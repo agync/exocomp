@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-21 — M2a scheduler closes half the M1 backup carve-out
+
+`architecture/overview.md`'s "one queue, no side doors" section named `exocomp backup run`
+as a direct CLI invocation outside the queue, "because there is no scheduler yet to enqueue
+[it] against." `internal/sched` now exists: it fires cron-scheduled jobs through
+`(*queue.Queue).Enqueue`, the same path everything else uses, so the reason the carve-out
+gave no longer holds for backups. The paragraph now says what `backup run` and
+`schedule add --kind backup` actually do — one queued job per target, concurrency key
+`backup:<target>` — and narrows to `exocomp restore`, which stays a direct invocation:
+restoring is an operator action at a cold start, not something the scheduler reaches.
+
 ## 2026-08-21 — Bundle created
 
 The `docs/` bundle was created as an OKF v0.2 knowledge base, curated from the

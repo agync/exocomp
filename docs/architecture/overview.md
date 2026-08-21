@@ -70,10 +70,13 @@ The alternative — an execution engine with its own scheduler and its own Run b
 dispatch paths the gate never sees. That is the structural flaw that eliminated two of the
 three candidate designs.
 
-**M1 carve-out.** `exocomp backup run` and `exocomp restore` run as direct CLI invocations,
-outside the queue: there is no scheduler yet to enqueue them against, and the guardrails
-this invariant protects (cooldown, cap, dedup, approval) do not apply to a backup or a
-restore. They become queued jobs once the M2 scheduler exists.
+**M2a closed half the carve-out.** `exocomp backup run` now enqueues one job per target
+(kind `backup`, concurrency key `backup:<target>`) and drains the queue in place: a backup
+goes through the same guardrails as everything else, and `exocomp schedule add --kind
+backup` puts it on a cron expression via `internal/sched` (`robfig/cron/v3`), rebuilt from
+the `schedule` table on every start. `exocomp restore` is still a direct CLI invocation,
+outside the queue — restoring is an operator recovering from a cold start, not a target the
+scheduler already reaches, and it stays a carve-out until that changes.
 
 ## Components
 
