@@ -26,6 +26,9 @@ var (
 	ErrStateConflict = errors.New("store: job not in expected state")
 	// ErrDuplicate is returned when a unique constraint rejects a write.
 	ErrDuplicate = errors.New("store: duplicate key")
+	// ErrConcurrencyHeld is returned when a claim is refused because a running
+	// job already holds the row's concurrency key.
+	ErrConcurrencyHeld = errors.New("store: concurrency key held")
 )
 
 // Store is the handle on the SQLite database.

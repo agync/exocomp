@@ -60,7 +60,7 @@ type Queue struct {
 	wg   sync.WaitGroup
 
 	mu       sync.Mutex
-	busy     map[string]bool
+	enqueued map[int64]bool
 	inflight int
 }
 
@@ -74,7 +74,7 @@ func New(st *store.Store, drv executor.Driver, opts Options, extra ...Option) *Q
 		pollInterval:   opts.PollInterval,
 		log:            opts.Logger,
 		wake:           make(chan struct{}, 1),
-		busy:           map[string]bool{},
+		enqueued:       map[int64]bool{},
 	}
 	if q.workers <= 0 {
 		q.workers = 4
@@ -103,6 +103,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		existing, err := q.store.JobByIdempotencyKey(ctx, spec.IdempotencyKey)
 		switch {
 		case err == nil:
+			q.remember(existing.ID)
 			return existing, nil
 		case !errors.Is(err, store.ErrNotFound):
 			return store.Job{}, err
@@ -125,40 +126,69 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 	})
 	if errors.Is(err, store.ErrDuplicate) && spec.IdempotencyKey != "" {
 		// Another caller won the race on the same key.
-		return q.store.JobByIdempotencyKey(ctx, spec.IdempotencyKey)
+		existing, getErr := q.store.JobByIdempotencyKey(ctx, spec.IdempotencyKey)
+		if getErr == nil {
+			q.remember(existing.ID)
+		}
+		return existing, getErr
 	}
 	if err != nil {
 		return store.Job{}, err
 	}
 
+	q.remember(job.ID)
 	q.notify()
 	return job, nil
 }
 
-// Run drains the queue until ctx is done, then waits for in-flight jobs.
-// Cancelling ctx also cancels those jobs' subprocesses, which land in the
-// cancelled state.
-func (q *Queue) Run(ctx context.Context) error {
-	return q.loop(ctx, false)
+// remember records a job this queue created, which is the set a Drain claims
+// from and waits on.
+func (q *Queue) remember(id int64) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.enqueued[id] = true
 }
 
-// Drain runs until no job is queued and none is in flight. It is what a
-// one-shot command uses instead of a long-lived worker.
-func (q *Queue) Drain(ctx context.Context) error {
+func (q *Queue) mine() []int64 {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	ids := make([]int64, 0, len(q.enqueued))
+	for id := range q.enqueued {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+// Run drains every queued row until ctx is done, then waits for in-flight
+// jobs. It is the daemon's loop: one process claims whatever reaches the job
+// table, whichever process put it there. Cancelling ctx also cancels those
+// jobs' subprocesses, which land in the cancelled state.
+func (q *Queue) Run(ctx context.Context) error {
 	return q.loop(ctx, true)
 }
 
-func (q *Queue) loop(ctx context.Context, stopWhenIdle bool) error {
+// Drain runs the jobs this queue enqueued and returns once every one of them
+// is terminal. It is what a one-shot command uses instead of a long-lived
+// worker, and it claims nothing else: a CLI that swept up a daemon's rows
+// would run them through a driver built for its own job and fail them.
+func (q *Queue) Drain(ctx context.Context) error {
+	return q.loop(ctx, false)
+}
+
+// loop dispatches until it should stop. claimAny separates the daemon (claims
+// every queued row, never idles) from a one-shot drain (claims only its own
+// rows, and returns when they are done).
+func (q *Queue) loop(ctx context.Context, claimAny bool) error {
 	defer q.wg.Wait()
 
 	ticker := time.NewTicker(q.pollInterval)
 	defer ticker.Stop()
 
 	for {
-		if err := q.dispatch(ctx); err != nil {
+		if err := q.dispatch(ctx, claimAny); err != nil {
 			return err
 		}
-		if stopWhenIdle {
+		if !claimAny {
 			idle, err := q.idle(ctx)
 			if err != nil {
 				return err
@@ -177,14 +207,13 @@ func (q *Queue) loop(ctx context.Context, stopWhenIdle bool) error {
 	}
 }
 
-// dispatch launches every queued job that a free worker slot and an
-// unheld concurrency key allow.
-func (q *Queue) dispatch(ctx context.Context) error {
+// dispatch launches every claimable job a free worker slot allows.
+func (q *Queue) dispatch(ctx context.Context, claimAny bool) error {
 	for ctx.Err() == nil {
 		if !q.takeSlot() {
 			return nil
 		}
-		job, ok, err := q.claim(ctx)
+		job, ok, err := q.claim(ctx, claimAny)
 		if err != nil || !ok {
 			q.finishSlot()
 			return err
@@ -195,8 +224,9 @@ func (q *Queue) dispatch(ctx context.Context) error {
 }
 
 // claim moves the oldest runnable queued job to running. Jobs whose
-// concurrency key is already held are skipped, not waited for.
-func (q *Queue) claim(ctx context.Context) (store.Job, bool, error) {
+// concurrency key is already held are skipped, not waited for; so is every
+// row this queue did not enqueue when claimAny is false.
+func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, error) {
 	jobs, err := q.store.ListJobs(ctx, store.JobFilter{
 		States: []store.JobState{store.StateQueued},
 		Limit:  512,
@@ -206,13 +236,15 @@ func (q *Queue) claim(ctx context.Context) (store.Job, bool, error) {
 	}
 
 	for _, job := range jobs {
-		if !q.reserve(job.ConcurrencyKey) {
+		if !claimAny && !q.owns(job.ID) {
 			continue
 		}
-		err := q.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning)
+		// The store decides: the queued -> running move and the concurrency
+		// key check are one statement there, so a second process over the same
+		// database cannot claim a key this one is holding.
+		err := q.store.ClaimJob(ctx, job.ID)
 		if err != nil {
-			q.release(job.ConcurrencyKey)
-			if errors.Is(err, store.ErrStateConflict) {
+			if errors.Is(err, store.ErrStateConflict) || errors.Is(err, store.ErrConcurrencyHeld) {
 				continue
 			}
 			return store.Job{}, false, err
@@ -222,12 +254,17 @@ func (q *Queue) claim(ctx context.Context) (store.Job, bool, error) {
 	return store.Job{}, false, nil
 }
 
+func (q *Queue) owns(id int64) bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.enqueued[id]
+}
+
 func (q *Queue) launch(ctx context.Context, job store.Job) {
 	q.wg.Add(1)
 	go func() {
 		defer q.wg.Done()
 		defer q.notify()
-		defer q.release(job.ConcurrencyKey)
 		defer q.finishSlot()
 
 		q.execute(ctx, job)
@@ -295,6 +332,10 @@ func outcome(res executor.Result, runErr, ctxErr error) (store.JobState, string)
 	}
 }
 
+// idle reports whether every job this queue enqueued has reached a terminal
+// state. Global emptiness is the wrong question for a one-shot command: a
+// daemon enqueueing on a schedule keeps the table non-empty forever, and a
+// row another process claimed still has to be waited for.
 func (q *Queue) idle(ctx context.Context) (bool, error) {
 	q.mu.Lock()
 	inflight := q.inflight
@@ -303,14 +344,16 @@ func (q *Queue) idle(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	queued, err := q.store.ListJobs(ctx, store.JobFilter{
-		States: []store.JobState{store.StateQueued},
-		Limit:  1,
-	})
-	if err != nil {
-		return false, err
+	for _, id := range q.mine() {
+		job, err := q.store.GetJob(ctx, id)
+		if err != nil {
+			return false, err
+		}
+		if !job.State.Terminal() {
+			return false, nil
+		}
 	}
-	return len(queued) == 0, nil
+	return true, nil
 }
 
 // takeSlot reserves a worker slot when one is free.
@@ -328,30 +371,6 @@ func (q *Queue) finishSlot() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.inflight--
-}
-
-// reserve takes a concurrency key, refusing when another job holds it. The
-// empty key constrains nothing.
-func (q *Queue) reserve(key string) bool {
-	if key == "" {
-		return true
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.busy[key] {
-		return false
-	}
-	q.busy[key] = true
-	return true
-}
-
-func (q *Queue) release(key string) {
-	if key == "" {
-		return
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	delete(q.busy, key)
 }
 
 func (q *Queue) notify() {

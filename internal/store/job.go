@@ -278,6 +278,46 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, from, to JobState) 
 	return fmt.Errorf("store: job %d is %s, not %s: %w", id, job.State, from, ErrStateConflict)
 }
 
+// ClaimJob moves a queued job to running, refusing when a running row already
+// holds the same concurrency key. The key check and the transition are one
+// statement, so the database — not a process's memory — decides who runs: a
+// daemon and a CLI over the same file cannot both find the key free.
+//
+// A refusal that is not the job's state is ErrConcurrencyHeld, which a caller
+// answers by trying another row rather than by waiting.
+func (s *Store) ClaimJob(ctx context.Context, id int64) error {
+	now := time.Now().UTC().UnixMilli()
+	res, err := s.db.ExecContext(ctx, `
+		UPDATE job SET state = ?, started_at = COALESCE(started_at, ?), owner_pid = ?
+		WHERE id = ? AND state = ?
+		  AND (concurrency_key = '' OR NOT EXISTS (
+		        SELECT 1 FROM job AS held
+		        WHERE held.concurrency_key = job.concurrency_key
+		          AND held.state = ? AND held.id <> job.id))`,
+		string(StateRunning), now, os.Getpid(), id, string(StateQueued), string(StateRunning))
+	if err != nil {
+		return wrap("claim job", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("claim job", err)
+	}
+	if affected == 1 {
+		return nil
+	}
+
+	job, err := s.GetJob(ctx, id)
+	if err != nil {
+		return err
+	}
+	if job.State != StateQueued {
+		return fmt.Errorf("store: job %d is %s, not %s: %w",
+			id, job.State, StateQueued, ErrStateConflict)
+	}
+	return fmt.Errorf("store: claim job %d: concurrency key %q is held: %w",
+		id, job.ConcurrencyKey, ErrConcurrencyHeld)
+}
+
 // SetJobExitCode records the subprocess exit code. Correctness is decided by
 // this number alone; the state transition that follows reflects it.
 func (s *Store) SetJobExitCode(ctx context.Context, id int64, code int) error {
