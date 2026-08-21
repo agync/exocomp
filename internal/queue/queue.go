@@ -16,11 +16,14 @@ import (
 // Spec describes work to enqueue. It carries no environment or secret
 // material: those are resolved at execution time and never persisted.
 type Spec struct {
-	Runbook        string
-	Kind           string
-	Trigger        string
-	Argv           []string
-	Dir            string
+	Runbook string
+	Kind    string
+	Trigger string
+	Argv    []string
+	Dir     string
+	// VaultProject names the envelope derivation an ansible job's vault
+	// password comes from, so whichever process claims the job can derive it.
+	VaultProject   string
 	ConcurrencyKey string
 	DedupKey       string
 	IdempotencyKey string
@@ -111,9 +114,10 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		Kind:    spec.Kind,
 		Trigger: spec.Trigger,
 		Args: store.JobArgs{
-			Argv:    spec.Argv,
-			Dir:     spec.Dir,
-			Timeout: store.Duration(spec.Timeout),
+			Argv:         spec.Argv,
+			Dir:          spec.Dir,
+			Timeout:      store.Duration(spec.Timeout),
+			VaultProject: spec.VaultProject,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,

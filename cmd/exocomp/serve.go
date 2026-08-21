@@ -330,24 +330,31 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 		return nil, err
 	}
 	return kindRouter{
-		tofu: workspaceDriver{store: st, env: env, server: srv, addr: srv.Addr(), dirs: dirs},
-		rest: sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{}, targetEnv)),
+		tofu:    workspaceDriver{store: st, env: env, server: srv, addr: srv.Addr(), dirs: dirs},
+		ansible: ansibleJobDriver{store: st, env: env, dataDir: dir},
+		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{}, targetEnv)),
 	}, nil
 }
 
-// kindRouter sends tofu jobs to the workspace driver and everything else to
-// the scheduler's shell/backup routing.
+// kindRouter sends tofu and ansible jobs to the drivers that rebuild their
+// per-job secret material, and everything else to the scheduler's shell/backup
+// routing.
 type kindRouter struct {
-	tofu executor.Driver
-	rest executor.Driver
+	tofu    executor.Driver
+	ansible executor.Driver
+	rest    executor.Driver
 }
 
 // Run implements executor.Driver.
 func (r kindRouter) Run(ctx context.Context, spec executor.Spec, sink executor.EventSink) (executor.Result, error) {
-	if spec.Kind == executor.KindTofu {
+	switch spec.Kind {
+	case executor.KindTofu:
 		return r.tofu.Run(ctx, spec, sink)
+	case executor.KindAnsible:
+		return r.ansible.Run(ctx, spec, sink)
+	default:
+		return r.rest.Run(ctx, spec, sink)
 	}
-	return r.rest.Run(ctx, spec, sink)
 }
 
 // workspaceDriver runs a queued tofu job. What such a job needs beyond its

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -156,6 +158,56 @@ func TestServeRefusesASecondInstance(t *testing.T) {
 	second.waitForLine(t, &second.stdout, "scheduler started", 30*time.Second)
 	second.signal(t, syscall.SIGTERM)
 	second.waitExit(t, 60*time.Second)
+}
+
+// vaultCanary is sealed as a secret row, vault-encrypted into a playbook, and
+// printed by that playbook. One string has to survive decryption — which only
+// the right derived password allows — and then be scrubbed out of every event.
+const vaultCanary = "vault-canary-2f7b41"
+
+// TestServeRunsAVaultedAnsibleJob proves the daemon rebuilds an ansible job's
+// vault password from the project the row names. The job row carries the
+// project and never the password; a daemon that could not derive it would fail
+// the play at decryption time.
+func TestServeRunsAVaultedAnsibleJob(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	requireTools(t, "ansible-playbook", "ansible-vault")
+	bin := buildExocomp(t)
+
+	runCLI(t, bin, "init")
+	sealSecret(t, bin, "lab/canary", vaultCanary)
+	playbook := vaultedPlaybook(t, "lab", vaultCanary)
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+
+	job := enqueueJob(t, store.NewJob{
+		Runbook: "playbook",
+		Kind:    executor.KindAnsible,
+		Trigger: "test",
+		Args: store.JobArgs{
+			Argv:         executor.AnsibleArgv(playbook, ""),
+			VaultProject: "lab",
+		},
+	})
+	waitFor(t, "the ansible job to finish", 120*time.Second, func() bool {
+		return jobState(t, job).Terminal()
+	})
+
+	events := jobEventText(t, job)
+	if got := jobState(t, job); got != store.StateSucceeded {
+		t.Fatalf("the vaulted ansible job is %s, want succeeded\n%s\n%s", got, events, d.dump())
+	}
+	assertRedacted(t, events, vaultCanary, vaultPassword(t, "lab"))
+	// The play printed the decrypted value, so the marker is the proof that
+	// decryption happened at all — a failed decryption never gets this far.
+	if !strings.Contains(events, secrets.Marker) {
+		t.Errorf("no redacted value in the job's events, so nothing was decrypted:\n%s", events)
+	}
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+	assertNothingLeftRunning(t, d)
 }
 
 // TestServeShutdownLetsAnInFlightBackupFinish is the SIGTERM-mid-backup half
@@ -478,6 +530,107 @@ func fakeRestic(t *testing.T, sleep int) string {
     ;;
 esac
 exit 0`, sleep))
+}
+
+func requireTools(t *testing.T, names ...string) {
+	t.Helper()
+	for _, name := range names {
+		if _, err := exec.LookPath(name); err != nil {
+			t.Skipf("%s is required for this test and is not on PATH", name)
+		}
+	}
+}
+
+// sealSecret seals a value through the CLI, so the row the daemon reads for
+// its redactor is the one an operator would have made.
+func sealSecret(t *testing.T, bin, name, value string) {
+	t.Helper()
+	cmd := exec.Command(bin, "secrets", "add", name, "--kind", "generic")
+	cmd.Stdin = strings.NewReader(value)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("secrets add %s: %v\n%s", name, err, stderr.String())
+	}
+}
+
+// vaultPassword derives what `playbook run` and the daemon both derive for a
+// vault project: the test computes it from the envelope rather than being told.
+func vaultPassword(t *testing.T, project string) string {
+	t.Helper()
+	dir, err := dataDir()
+	if err != nil {
+		t.Fatalf("resolve data dir: %v", err)
+	}
+	env, err := secrets.Open(dir)
+	if err != nil {
+		t.Fatalf("open envelope: %v", err)
+	}
+	defer func() { _ = env.Close() }()
+	return base64.StdEncoding.EncodeToString(env.Derive(vaultPurpose, project))
+}
+
+// vaultedPlaybook writes a playbook whose only variable is vault-encrypted
+// under the project's derived password, and which prints that variable.
+func vaultedPlaybook(t *testing.T, project, value string) string {
+	t.Helper()
+
+	dir := t.TempDir()
+	pass := filepath.Join(dir, "vault-pass")
+	writeFile(t, pass, vaultPassword(t, project)+"\n")
+
+	encrypt := exec.Command("ansible-vault", "encrypt_string",
+		"--vault-id", executor.DefaultVaultID+"@"+pass, "--name", "canary", value)
+	encrypt.Stderr = io.Discard
+	encrypted, err := encrypt.Output()
+	if err != nil {
+		t.Fatalf("ansible-vault encrypt_string: %v", err)
+	}
+	writeFile(t, filepath.Join(dir, "vars.yml"), string(encrypted)+"\n")
+
+	playbook := filepath.Join(dir, "play.yml")
+	writeFile(t, playbook, `- hosts: localhost
+  connection: local
+  gather_facts: false
+  vars_files:
+    - vars.yml
+  tasks:
+    - name: print the vaulted value
+      ansible.builtin.debug:
+        msg: "canary is {{ canary }}"
+`)
+	return playbook
+}
+
+// jobEventText joins everything a job wrote to its event rows.
+func jobEventText(t *testing.T, jobID int64) string {
+	t.Helper()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	events, err := st.ListJobEvents(context.Background(), jobID)
+	if err != nil {
+		t.Fatalf("list job events: %v", err)
+	}
+	var b strings.Builder
+	for _, e := range events {
+		b.WriteString(e.Level + " " + e.Msg + " " + e.RawJSON + "\n")
+	}
+	return b.String()
+}
+
+// assertRedacted fails if any secret value survived into the events.
+func assertRedacted(t *testing.T, events string, secretValues ...string) {
+	t.Helper()
+	for _, value := range secretValues {
+		if strings.Contains(events, value) {
+			t.Errorf("a secret value reached the job_event rows:\n%s", events)
+		}
+	}
 }
 
 func enqueueJob(t *testing.T, n store.NewJob) int64 {

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -20,10 +19,6 @@ import (
 func init() {
 	registerCommand(newPlaybookCmd)
 }
-
-// vaultPurpose is the HKDF purpose the ansible vault password is derived
-// under; the project name is the derivation id.
-const vaultPurpose = "ansible-vault"
 
 func newPlaybookCmd() *cobra.Command {
 	var (
@@ -114,39 +109,36 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		}
 	}()
 
-	opts := executor.AnsibleOptions{
-		VaultID:         executor.DefaultVaultID,
-		CollectionsPath: filepath.Join(dir, collectionsCacheDir),
-	}
-	var qopts []queue.Option
-
-	env, envErr := secrets.Open(dir)
-	if envErr != nil {
+	var env *secrets.Envelope
+	if opened, err := secrets.Open(dir); err != nil {
 		_, _ = fmt.Fprintf(warn, "WARNING: no envelope in %s (%v): running without a vault "+
-			"password and without redaction\n", dir, envErr)
+			"password and without redaction\n", dir, err)
 	} else {
+		env = opened
 		defer func() { _ = env.Close() }()
-		known := knownSecrets(ctx, st, env, warn)
-		if spec.vaultProject != "" {
-			derived := env.Derive(vaultPurpose, spec.vaultProject)
-			password := []byte(base64.StdEncoding.EncodeToString(derived))
-			opts.VaultPassword = password
-			known = append(known, derived, password)
-		}
+	}
+
+	driver, derived := newAnsibleDriver(dir, env, spec.vaultProject)
+	var qopts []queue.Option
+	if env != nil {
+		known := append(knownSecrets(ctx, st, env, warn), derived...)
 		qopts = append(qopts, queue.WithRedactor(secrets.NewRedactor(known)))
 	}
 
-	q := queue.New(st, executor.NewAnsible(opts), queue.Options{
+	q := queue.New(st, driver, queue.Options{
 		Workers:      1,
 		PollInterval: 50 * time.Millisecond,
 	}, qopts...)
 
+	// The vault project travels with the job, not the password it derives: a
+	// daemon that claims this row has to derive the same password itself.
 	job, err := q.Enqueue(ctx, queue.Spec{
-		Runbook: "playbook",
-		Kind:    executor.KindAnsible,
-		Trigger: "manual",
-		Argv:    executor.AnsibleArgv(playbook, inventory),
-		Timeout: spec.timeout,
+		Runbook:      "playbook",
+		Kind:         executor.KindAnsible,
+		Trigger:      "manual",
+		Argv:         executor.AnsibleArgv(playbook, inventory),
+		VaultProject: spec.vaultProject,
+		Timeout:      spec.timeout,
 	})
 	if err != nil {
 		return 0, err

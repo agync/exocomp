@@ -65,6 +65,10 @@ type JobArgs struct {
 	Argv    []string `json:"argv,omitempty"`
 	Dir     string   `json:"dir,omitempty"`
 	Timeout Duration `json:"timeout,omitempty"`
+	// VaultProject names the envelope derivation an ansible job's vault
+	// password comes from. The project name is public; the password it
+	// derives is resolved when the job runs and never written here.
+	VaultProject string `json:"vault_project,omitempty"`
 }
 
 // Duration is a time.Duration that marshals as a string ("30s") so job rows
