@@ -56,6 +56,18 @@ func (s *Store) applyMigration(ctx context.Context, m migration) error {
 	}
 	defer func() { _ = tx.Rollback() }()
 
+	// The version this migration was chosen against was read before the write
+	// lock existed, so another process opening the same file may have applied
+	// it meanwhile. Re-reading it inside the transaction is what makes two
+	// concurrent first-opens safe.
+	var current int
+	if err := tx.QueryRowContext(ctx, "PRAGMA user_version").Scan(&current); err != nil {
+		return fmt.Errorf("store: migrate %s: read user_version: %w", m.name, err)
+	}
+	if m.version <= current {
+		return nil
+	}
+
 	if _, err := tx.ExecContext(ctx, m.body); err != nil {
 		return fmt.Errorf("store: migrate %s: %w", m.name, err)
 	}

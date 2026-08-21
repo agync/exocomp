@@ -17,6 +17,9 @@ func TestTwoProcessesSerializeAConcurrencyKey(t *testing.T) {
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
+	// One job first, so both processes below meet a database that exists and
+	// is already migrated: what is under test is the claim, not the open.
+	runCLI(t, bin, "devrun", "--", "/bin/true")
 
 	const key = "backup:nas"
 	done := make(chan error, 2)
