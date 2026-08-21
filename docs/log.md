@@ -352,3 +352,9 @@ accent, signal system, type ramp). Artboard captures + the canvas PDF live under
   `exo` alias (exo-lang collision). The kit/wizard commands render as `exocomp`;
   the new surfaces the design assumes — `kit derive [--list]`, `kit verify`,
   `identity migrate` — are adopted into the M3 CLI scope.
+
+## 2026-08-22 — TUI design settled
+
+The TUI canvas answered its brief in full; adopted decisions and the one new
+engine requirement (notification-mute) recorded in
+[design/tui-brief.md](design/tui-brief.md).
