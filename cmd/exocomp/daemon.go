@@ -40,14 +40,39 @@ func daemonRunning(ctx context.Context, dir string) bool {
 // kind's driver.
 func enqueueForDaemon(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer) (
 	store.Job, error) {
-	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
-	job, err := q.Enqueue(ctx, spec)
+	jobs, err := enqueueAllForDaemon(ctx, st, dir, []queue.Spec{spec}, out)
 	if err != nil {
 		return store.Job{}, err
 	}
-	_, _ = fmt.Fprintf(out, "job %d queued for the running daemon\n", job.ID)
+	return jobs[0], nil
+}
 
-	return tailDaemonJob(ctx, st, dir, job.ID, out)
+// enqueueAllForDaemon queues every spec before following any of them, so the
+// daemon's workers run them side by side while this command reports them in
+// the order it asked for.
+func enqueueAllForDaemon(ctx context.Context, st *store.Store, dir string, specs []queue.Spec,
+	out io.Writer) ([]store.Job, error) {
+	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+
+	ids := make([]int64, 0, len(specs))
+	for _, spec := range specs {
+		job, err := q.Enqueue(ctx, spec)
+		if err != nil {
+			return nil, err
+		}
+		_, _ = fmt.Fprintf(out, "job %d queued for the running daemon\n", job.ID)
+		ids = append(ids, job.ID)
+	}
+
+	jobs := make([]store.Job, 0, len(ids))
+	for _, id := range ids {
+		job, err := tailDaemonJob(ctx, st, dir, id, out)
+		if err != nil {
+			return nil, err
+		}
+		jobs = append(jobs, job)
+	}
+	return jobs, nil
 }
 
 // tailDaemonJob prints a job's events as they land until the job reaches a

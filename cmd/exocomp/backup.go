@@ -150,20 +150,16 @@ func newBackupRunCmd() *cobra.Command {
 }
 
 // runBackup enqueues one backup job per matching target — kind backup,
-// concurrency key "backup:<target>" — and drains the queue in this process,
-// closing the M1 carve-out recorded in docs/architecture/overview.md: a
-// backup runs through the same queue as everything else, not as a direct
-// engine call.
+// concurrency key "backup:<target>" — closing the M1 carve-out recorded in
+// docs/architecture/overview.md: a backup runs through the same queue as
+// everything else, not as a direct engine call. A running `exocomp serve`
+// claims and runs those jobs while this command follows them; with no daemon
+// up the queue is drained here instead.
 func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 	dir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("backup run: resolve data dir: %w", err)
 	}
-	env, err := secrets.Open(dir)
-	if err != nil {
-		return fmt.Errorf("backup run: %w", err)
-	}
-	defer func() { _ = env.Close() }()
 
 	st, err := openJobStore(ctx, w)
 	if err != nil {
@@ -190,21 +186,22 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 		return errors.New("backup run: no enabled targets")
 	}
 
-	runner := backup.NewRunner(st, env, backup.Options{}, targetEnv)
-	q := queue.New(st, runner, queue.Options{Workers: len(targets), PollInterval: 50 * time.Millisecond})
-
+	specs := make([]queue.Spec, 0, len(targets))
 	for _, t := range targets {
-		if _, err := q.Enqueue(ctx, queue.Spec{
+		specs = append(specs, queue.Spec{
 			Runbook:        "backup",
 			Kind:           backup.JobKind,
 			Trigger:        "manual",
 			Argv:           backup.Argv(t.Name),
 			ConcurrencyKey: backup.ConcurrencyKey(t.Name),
-		}); err != nil {
+		})
+	}
+
+	if daemonRunning(ctx, dir) {
+		if _, err := enqueueAllForDaemon(ctx, st, dir, specs, w); err != nil {
 			return err
 		}
-	}
-	if err := q.Drain(ctx); err != nil {
+	} else if err := runBackupInline(ctx, st, dir, specs); err != nil {
 		return err
 	}
 
@@ -228,6 +225,26 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 		return err
 	}
 	return errors.Join(failed...)
+}
+
+// runBackupInline drains the jobs in this process, which is what a host with
+// no daemon does. The envelope is opened here and never leaves: a backup job
+// row alone is not enough to run one.
+func runBackupInline(ctx context.Context, st *store.Store, dir string, specs []queue.Spec) error {
+	env, err := secrets.Open(dir)
+	if err != nil {
+		return fmt.Errorf("backup run: %w", err)
+	}
+	defer func() { _ = env.Close() }()
+
+	runner := backup.NewRunner(st, env, backup.Options{}, targetEnv)
+	q := queue.New(st, runner, queue.Options{Workers: len(specs), PollInterval: 50 * time.Millisecond})
+	for _, spec := range specs {
+		if _, err := q.Enqueue(ctx, spec); err != nil {
+			return err
+		}
+	}
+	return q.Drain(ctx)
 }
 
 // latestBackupRun returns a target's most recent backup_run row, the one the

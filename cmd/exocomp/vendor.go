@@ -90,25 +90,19 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements string) (c
 		}
 	}()
 
-	q := queue.New(st, executor.NewShell(), queue.Options{
-		Workers:      1,
-		PollInterval: 50 * time.Millisecond,
-	})
-	job, err := q.Enqueue(ctx, queue.Spec{
+	spec := queue.Spec{
 		Runbook: "playbook-vendor",
 		Kind:    vendorKind,
 		Trigger: "manual",
 		Argv:    []string{"ansible-galaxy", "collection", "install", "-r", requirements, "-p", cache},
-	})
-	if err != nil {
-		return 0, err
 	}
 
-	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
-		return 0, err
+	var final store.Job
+	if daemonRunning(ctx, dir) {
+		final, err = enqueueForDaemon(ctx, st, dir, spec, out)
+	} else {
+		final, err = runVendorInline(ctx, st, spec, out)
 	}
-
-	final, err := st.GetJob(ctx, job.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -123,4 +117,21 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements string) (c
 	default:
 		return 1, nil
 	}
+}
+
+// runVendorInline drains the one job in this process, which is what a host
+// with no daemon does.
+func runVendorInline(ctx context.Context, st *store.Store, spec queue.Spec, out io.Writer) (store.Job, error) {
+	q := queue.New(st, executor.NewShell(), queue.Options{
+		Workers:      1,
+		PollInterval: 50 * time.Millisecond,
+	})
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		return store.Job{}, err
+	}
+	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
+		return store.Job{}, err
+	}
+	return st.GetJob(ctx, job.ID)
 }

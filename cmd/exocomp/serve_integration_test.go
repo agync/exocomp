@@ -221,6 +221,80 @@ func TestDaemonRunsWhatTheCLIEnqueues(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
+// TestDaemonRunsBackupsAndVendorFromTheCLI is the rest of the daemon-aware
+// CLI. A schedule saturates every worker, so both commands have to wait behind
+// work they did not enqueue — which is the shape that used to make a drain
+// claim a foreign row, fail it through the wrong driver, and never idle.
+func TestDaemonRunsBackupsAndVendorFromTheCLI(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	bin := buildExocomp(t)
+	fakeRestic(t, 0)
+	fakeTool(t, "ansible-galaxy", "exit 0")
+
+	runCLI(t, bin, "init")
+	repo := filepath.Join(t.TempDir(), "repo")
+	runCLI(t, bin, "backup", "add-target", "--name", "local", "--kind", "restic_local", "--uri", repo)
+	// One fire a second, five seconds of work each: more than four workers can
+	// keep up with, so the queue is saturated and never empty.
+	runCLI(t, bin, "schedule", "add", "hog", "--cron", "@every 1s", "--kind", "shell",
+		"--", "/bin/sleep", "5")
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+	waitFor(t, "the daemon's workers to fill up", 30*time.Second, func() bool {
+		return len(jobsIn(t, store.StateRunning)) == serveWorkers &&
+			len(jobsIn(t, store.StateQueued)) > 0
+	})
+
+	backupOut, backupCode := runCLIExit(t, bin, "backup", "run")
+	assertDaemonRan(t, backupOut, "backup run")
+	if backupCode != 0 || !strings.Contains(backupOut, "succeeded") {
+		t.Errorf("backup run exited %d:\n%s\n%s", backupCode, backupOut, d.dump())
+	}
+
+	requirements := filepath.Join(t.TempDir(), "requirements.yml")
+	writeFile(t, requirements, "collections: []\n")
+	vendorOut, vendorCode := runCLIExit(t, bin, "playbook", "vendor", "--requirements", requirements)
+	assertDaemonRan(t, vendorOut, "playbook vendor")
+	if vendorCode != 0 || !strings.Contains(vendorOut, "state: succeeded") {
+		t.Errorf("playbook vendor exited %d:\n%s\n%s", vendorCode, vendorOut, d.dump())
+	}
+
+	// Nothing the schedule queued was run by the wrong driver.
+	for _, job := range jobsWithRunbook(t, "hog") {
+		if events := jobEventText(t, job.ID); strings.Contains(events, "not a backup job") {
+			t.Errorf("a CLI claimed schedule job %d and failed it:\n%s", job.ID, events)
+		}
+	}
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+	assertNothingLeftRunning(t, d)
+}
+
+// jobsWithRunbook returns every job a runbook has produced, in any state.
+func jobsWithRunbook(t *testing.T, runbook string) []store.Job {
+	t.Helper()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	jobs, err := st.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	var matching []store.Job
+	for _, job := range jobs {
+		if job.Runbook == runbook {
+			matching = append(matching, job)
+		}
+	}
+	return matching
+}
+
 // assertDaemonRan checks a command took the daemon path rather than draining a
 // queue of its own.
 func assertDaemonRan(t *testing.T, out, what string) {
