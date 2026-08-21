@@ -18,6 +18,22 @@ import (
 // Trigger is the queue.Spec.Trigger every fire this package produces carries.
 const Trigger = "schedule"
 
+// parser is the one cron dialect this project speaks: six fields with seconds
+// first, plus the "@every"/"@daily" descriptors. It is exported through
+// ValidateCron so `schedule add` refuses at write time exactly what the
+// scheduler would refuse at read time.
+var parser = cron.NewParser(cron.Second | cron.Minute | cron.Hour |
+	cron.Dom | cron.Month | cron.Dow | cron.Descriptor)
+
+// ValidateCron reports whether expr is an expression the scheduler can
+// register.
+func ValidateCron(expr string) error {
+	if _, err := parser.Parse(expr); err != nil {
+		return fmt.Errorf("sched: %q is not a cron expression: %w", expr, err)
+	}
+	return nil
+}
+
 // Enqueuer is the subset of *queue.Queue the scheduler needs. It exists so
 // tests can substitute a fake that records what a fire enqueues without
 // running a full queue; *queue.Queue satisfies it as-is.
@@ -52,6 +68,10 @@ func New(st *store.Store, q Enqueuer, log *slog.Logger) *Scheduler {
 // that parses six fields (seconds first) and the "@every" form. Fires
 // spawned after Start use a context derived from ctx for their jitter sleep
 // and their Enqueue call, so cancelling ctx cancels any fire in flight too.
+//
+// A row the parser rejects is logged and skipped: one unregisterable schedule
+// must not cost the daemon every other one, nor the queue and the state
+// backend that start with it.
 func (s *Scheduler) Start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -59,13 +79,12 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		return fmt.Errorf("sched: already started")
 	}
 
-	s.runCtx, s.cancel = context.WithCancel(ctx)
-	s.cron = cron.New(cron.WithSeconds())
-	if err := s.loadLocked(ctx); err != nil {
-		s.cancel()
-		s.cron, s.runCtx, s.cancel = nil, nil, nil
+	c, entries, err := s.build(ctx)
+	if err != nil {
 		return err
 	}
+	s.runCtx, s.cancel = context.WithCancel(ctx)
+	s.cron, s.entries = c, entries
 	s.cron.Start()
 	return nil
 }
@@ -91,33 +110,51 @@ func (s *Scheduler) Stop() {
 // Reload rebuilds every registration from the database: schedules added,
 // re-enabled, disabled, or edited since Start (or the last Reload) take
 // effect. It requires the scheduler to already be started.
+//
+// The new set is built whole before anything is swapped, so a reload that
+// cannot read the database leaves the running registrations alone rather than
+// unregistering every schedule on the way to failing.
 func (s *Scheduler) Reload(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.cron == nil {
 		return fmt.Errorf("sched: not started")
 	}
-	for _, id := range s.entries {
-		s.cron.Remove(id)
-	}
-	s.entries = map[int64]cron.EntryID{}
-	return s.loadLocked(ctx)
-}
 
-// loadLocked registers every enabled schedule. Callers hold s.mu.
-func (s *Scheduler) loadLocked(ctx context.Context) error {
-	rows, err := s.store.ListSchedules(ctx, true)
+	c, entries, err := s.build(ctx)
 	if err != nil {
 		return err
 	}
-	for _, sc := range rows {
-		id, err := s.cron.AddFunc(sc.CronExpr, func() { s.fire(sc) })
-		if err != nil {
-			return fmt.Errorf("sched: register %q: %w", sc.Name, err)
-		}
-		s.entries[sc.ID] = id
-	}
+	old := s.cron
+	s.cron, s.entries = c, entries
+	c.Start()
+	// Stop only fires no more; a fire already running keeps its goroutine and
+	// finishes against the entries this reload just installed.
+	old.Stop()
 	return nil
+}
+
+// build assembles a cron instance holding every enabled schedule the parser
+// accepts. An error means the database could not be read at all — a row that
+// will not register is logged and left out.
+func (s *Scheduler) build(ctx context.Context) (*cron.Cron, map[int64]cron.EntryID, error) {
+	rows, err := s.store.ListSchedules(ctx, true)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	c := cron.New(cron.WithParser(parser))
+	entries := make(map[int64]cron.EntryID, len(rows))
+	for _, sc := range rows {
+		id, err := c.AddFunc(sc.CronExpr, func() { s.fire(sc) })
+		if err != nil {
+			s.log.Error("sched: schedule not registered",
+				"schedule", sc.Name, "cron", sc.CronExpr, "err", err)
+			continue
+		}
+		entries[sc.ID] = id
+	}
+	return c, entries, nil
 }
 
 // fire runs one schedule: it sleeps up to JitterS seconds, builds the specs

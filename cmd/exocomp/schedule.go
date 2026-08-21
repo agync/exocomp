@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -61,12 +62,24 @@ func newScheduleAddCmd() *cobra.Command {
 				if len(argv) != 0 {
 					return errors.New("schedule add: kind backup takes no argv")
 				}
+				// A backup fire builds its own key per target
+				// ("backup:<target>"), so anything given here would be
+				// dropped on the floor.
+				if concurrencyKey != "" {
+					return errors.New("schedule add: kind backup keys each fire by target; " +
+						"--concurrency-key applies to kind shell only")
+				}
 				scheduleArgs.Target = target
 			default:
 				return fmt.Errorf("schedule add: --kind must be %s or %s", store.ScheduleShell, store.ScheduleBackup)
 			}
 			if jitter < 0 {
 				return errors.New("schedule add: --jitter cannot be negative")
+			}
+			// The same parser the scheduler registers with, so a row that
+			// cannot fire is refused here rather than logged on every boot.
+			if err := sched.ValidateCron(cronExpr); err != nil {
+				return fmt.Errorf("schedule add: %w", err)
 			}
 
 			st, err := openStore()
