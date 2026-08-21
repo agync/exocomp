@@ -68,3 +68,20 @@ critique source win over curated prose):
   the docs true.
 - Effort figures: ADR 0001's comparison row now carries its units caveat;
   `delivery.md` explains the ~22 vs ~23 FTE-week split.
+
+## 2026-08-21 — M1a implementation landed
+
+The secrets envelope and the store/queue core now exist in code; pages describing
+them are design-accurate but the implementation is authoritative:
+
+- The recovery card's derivation block is executable text enforced by test
+  (`internal/secrets/kit_test.go` runs the card's age + openssl lines verbatim and
+  the derived password opens a real restic repository). The card uses `od`/`tr`
+  instead of `xxd` for bare-host portability.
+- The HKDF domain-separation salt is live: `exocomp/v1`
+  (see [ADR 0003](adr/0003-secrets-envelope.md); the archive's `control/v1` was
+  never used by any artifact).
+- The job state machine, append-only `job_event` (trigger-enforced), per-key
+  serialization, idempotency dedup, and the interrupted-job boot sweep are
+  implemented and race-tested as designed in
+  [architecture/execution.md](architecture/execution.md).
