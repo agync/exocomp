@@ -98,3 +98,31 @@ Server-rendered HTML + htmx over one JSON API; live updates via SSE (log tails, 
 state). No SPA. Type system: monospace-forward is native to this product's audience —
 a mono for data/labels with a quiet UI sans is acceptable; pure-mono is on-brand.
 The TUI already establishes: one accent, dim-by-default, state-colored text.
+
+## Approval surface contract (settled in the design exploration, binding for M3)
+
+The phone approval flow's semantics, decided visually and adopted as implementation
+contract:
+
+1. **Terse lock screen**: notifications name no host, workspace, playbook, or
+   resource — a count, a TTL, and "open to see what it wants to do." Notifications
+   rank by whether a human is the blocker.
+2. **Risk-ordered approval view**: state + fail-closed countdown ("then auto-rejects
+   and the plan is discarded; nothing applies on its own"), destroys in their own
+   red block with NO UNDO, then the verbatim diff. Secret-backed values render as
+   `[redacted · secret]`; the phone never carries a value the web UI would not show.
+3. **Provenance on the card**: which alert matched which rule, and the standing
+   guardrail stated as copy — no rule can approve its own apply.
+4. **Stale plan is refusal, not a disabled button**: when the workspace serial moved
+   after the plan, the screen shows what moved, which job moved it and from where,
+   keeps the dead plan as a dimmed artifact, and offers exactly re-plan or discard.
+5. **Unreachable leads with what is safe to believe**: fail-closed means an
+   unreachable daemon cannot hurt you; then last-synced facts with their age, retry
+   cadence, and a copyable expert fallback (`ssh <host>`). A used or expired decision
+   link is a terminal notice, never an error.
+6. **Mute always expires**: duration mandatory (no "until I turn it off"), scope
+   ladder from this-alert to one-host to the global kill — which never fires one-tap:
+   its confirm lists what it touches AND what it does not (running jobs finish,
+   schedules still fire), requires an expiry, and commits by hold-to-confirm.
+7. **A silence or pause is a banner on every screen** until it lifts, carrying the
+   count of swallowed alerts.

@@ -281,3 +281,9 @@ The m2 gate caught the daemon snapshotting sealed secrets at startup: a secret
 sealed after `exocomp serve` started was not redacted until restart. The queue
 now takes a redactor provider resolved at job claim time
 ([operations/serve.md](operations/serve.md), "Redaction freshness").
+
+## 2026-08-22 — approval surface contract adopted
+
+The design exploration settled the phone approval flow's semantics; the seven-point
+contract is recorded in [design/ui-brief.md](design/ui-brief.md) and binds the M3
+web/approvals implementation.
