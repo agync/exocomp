@@ -6,6 +6,7 @@ Getting an install standing up, and getting it back after it falls over.
 |---|---|
 | [Bootstrap](bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, and the adoption runbooks for an existing homelab |
 | [Disaster recovery](disaster-recovery.md) | What is backed up, the three legs, the recovery chain, the runbook for a dead host, the recovery card, failure modes, RPO/RTO, and verification |
+| [Offline caches](offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
 
 The two are one loop, not two topics: bootstrap does not finish until a restore drill has
 passed, so the recovery path is proven before any real work exists to lose.

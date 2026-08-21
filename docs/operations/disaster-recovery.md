@@ -39,6 +39,23 @@ alert. A target that fails twice consecutively raises a `critical` notification.
 dead-man's-switch ping fires **only on full success**, because the failure mode that
 actually kills you is silent non-execution.
 
+### Sealing S3 credentials
+
+A `restic_s3` target's credentials are ordinary sealed secrets, named
+`s3/<target>/<field>` (`<target>` is the name given to `backup add-target`):
+
+```
+printf '%s' "$ACCESS_KEY" | exocomp secrets add s3/offsite/access-key-id --kind s3-credential
+printf '%s' "$SECRET_KEY" | exocomp secrets add s3/offsite/secret-access-key --kind s3-credential
+```
+
+`region` and `session-token` fields are optional, sealed the same way. Both
+`access-key-id` and `secret-access-key` must be sealed for the target to use them: a
+target with only one, or neither, falls back to the process environment
+(`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) and the run logs a warning — it never fails
+silently on a missing sealed credential, and it never mixes one sealed field with one
+environment field.
+
 ## The one detail that makes recovery work
 
 **`keyring.age` is written to every target root, outside the restic repository.**

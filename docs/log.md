@@ -6,6 +6,28 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-21 — M2b caches: offline-caches page added, MinIO assessment closed out
+
+[operations/offline-caches.md](operations/offline-caches.md) is new: `playbook vendor`
+and the ansible collections cache, the tofu plugin cache and its `OfflineProviders`
+mode, and how to verify offline resolution for real. Linked from
+`operations/index.md` and the top-level `index.md`.
+
+[operations/disaster-recovery.md](operations/disaster-recovery.md) gained the operator
+commands for sealing a `restic_s3` target's S3 credentials
+(`s3/<target>/access-key-id`/`secret-access-key`) — the row naming and fallback
+behavior were already documented, but not how an operator actually seals one; the
+backup lane shipped the mechanism without that step.
+
+[sbom/minio-assessment.md](sbom/minio-assessment.md)'s decision section is no longer a
+backlog item: the S3 test fixture (`internal/backup/s3_test.go`,
+`test/e2e/m1-gate.sh`) is SeaweedFS, verified against the real restic leg and this
+project's own SigV4 client, with the full e2e gate passing against it. Two
+fixture-only quirks the swap surfaced are recorded there: SeaweedFS rejects a signed
+request without a real `-s3.config` identity (anonymous mode is not viable for
+restic), and the mounted config needs world-readable permissions because rootless
+podman's UID remap does not preserve ownership into the container.
+
 ## 2026-08-21 — M2a scheduler closes half the M1 backup carve-out
 
 `architecture/overview.md`'s "one queue, no side doors" section named `exocomp backup run`
