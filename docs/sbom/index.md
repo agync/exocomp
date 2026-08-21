@@ -10,3 +10,4 @@ Two rules govern everything listed there:
   subprocesses, never linked, so `exocompd`'s own license stays unencumbered.
 - **Pins are recorded per build in `MANIFEST.json`**, not in prose. `exocomp doctor`
   enforces them and refuses to run a job against an untested tool version.
+- [MinIO assessment](minio-assessment.md) — license and health verdict for the S3 test fixture

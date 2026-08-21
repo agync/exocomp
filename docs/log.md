@@ -168,3 +168,10 @@ executor and CLI surface as though they already shipped (code wins, per
 `doctor --deep`, `jobs list`, and the card-carried storage credential were still
 described as current in three spots the M1 corrections missed; each now names the
 shipped command or marks the capability M2.
+
+## 2026-08-21 — MinIO assessment added
+
+[sbom/minio-assessment.md](sbom/minio-assessment.md): AGPL-as-test-fixture imposes no
+obligation; the real finding is CE's archival (2026-04). Fixture swap to SeaweedFS
+backlogged for M2b/M3; BOM's operator-store row no longer suggests MinIO for new
+deployments.

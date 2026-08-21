@@ -70,7 +70,7 @@ glibc image — the Python requirement rules out distroless-static.
 | healthchecks (self-hosted or hosted) | BSD-3 | dead-man's switch; ping URL on the recovery kit | yes — backup honesty |
 | Prometheus + Alertmanager (existing) | Apache-2.0 | event source in; `/metrics` and seeded rules out | recommended |
 | NAS share (SMB/NFS) | — | restic leg 1 | ≥ 1 of the |
-| S3-compatible store (MinIO/Garage/B2/R2) | varies | restic leg 2; optional Litestream target | three legs |
+| S3-compatible store (Garage/SeaweedFS/B2/R2 (MinIO CE archived 2026-04, see the MinIO assessment)) | varies | restic leg 2; optional Litestream target | three legs |
 | private GitHub/Gitea repo | — | leg 3: age-encrypted orphan-commit archives | required |
 | Git forge for ops repos | — | playbook and OpenTofu sources, bundled into every backup | yes |
 | Tailscale/WireGuard *(optional)* | BSD-3 | the specified remote-access path for approvals; Caddy (Apache-2.0) is the fallback | recommended |
