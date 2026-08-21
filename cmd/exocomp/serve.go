@@ -124,6 +124,10 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		}
 	}()
 
+	if err := flagStaleLocks(ctx, st, warn); err != nil {
+		return err
+	}
+
 	env, err := secrets.Open(dir)
 	if err != nil {
 		return fmt.Errorf("serve: open envelope (run `exocomp init` first): %w", err)
@@ -182,6 +186,31 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		queueDone:  qDone,
 		grace:      opts.drainGrace,
 	})
+}
+
+// flagStaleLocks names every workspace whose state lock outlived the job that
+// took it. Breaking one is the operator's call, not the daemon's — an apply
+// that is still running somewhere would lose its state to an automatic
+// release — so this reports and points at the command (ADR 0004).
+//
+// It runs after the boot sweep, so a lock whose job that sweep just retired is
+// already visible as stale.
+func flagStaleLocks(ctx context.Context, st *store.Store, warn io.Writer) error {
+	stale, err := st.StaleTFLocks(ctx)
+	if err != nil {
+		return err
+	}
+	for _, lock := range stale {
+		ws, err := st.GetWorkspace(ctx, lock.WorkspaceID)
+		if err != nil {
+			return err
+		}
+		_, _ = fmt.Fprintf(warn, "WARNING: workspace %s holds a stale state lock (%s by %s since %s); "+
+			"run `exocomp workspace unlock %s`\n",
+			ws.Name, lock.Operation, lock.Who,
+			lock.CreatedAt.Format("2006-01-02 15:04:05Z"), ws.Name)
+	}
+	return nil
 }
 
 // serveUntilSignal blocks until SIGINT or SIGTERM, rebuilding the schedules on

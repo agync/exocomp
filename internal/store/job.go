@@ -181,6 +181,7 @@ func (s *Store) JobByIdempotencyKey(ctx context.Context, key string) (Job, error
 type JobFilter struct {
 	States         []JobState
 	ConcurrencyKey string
+	Runbook        string
 	Limit          int
 }
 
@@ -201,6 +202,10 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 	if f.ConcurrencyKey != "" {
 		where = append(where, "concurrency_key = ?")
 		args = append(args, f.ConcurrencyKey)
+	}
+	if f.Runbook != "" {
+		where = append(where, "runbook = ?")
+		args = append(args, f.Runbook)
 	}
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")

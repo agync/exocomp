@@ -340,6 +340,79 @@ func (s *Store) ReleaseTFLock(ctx context.Context, workspaceID int64, lockID str
 		workspaceID, holder.LockID, lockID, ErrLocked)
 }
 
+// ListTFLocks returns every held workspace lock, oldest first.
+func (s *Store) ListTFLocks(ctx context.Context) ([]TFLock, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+tflockColumns+` FROM tflock ORDER BY created_at, workspace_id`)
+	if err != nil {
+		return nil, wrap("list tflocks", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []TFLock
+	for rows.Next() {
+		l, err := scanTFLock(rows)
+		if err != nil {
+			return nil, wrap("list tflocks", err)
+		}
+		out = append(out, l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap("list tflocks", err)
+	}
+	return out, nil
+}
+
+// StaleTFLocks returns the locks whose owning job can no longer release them:
+// the job reached a terminal state, or the lock names no job at all. A killed
+// apply leaves exactly this, and nothing else in the system moves it (ADR
+// 0004: stale-lock recovery is an audited force-unlock, flagged on boot).
+//
+// It reads the job table as it stands, so callers run it after the boot sweep
+// has retired the rows a dead process left: a lock whose job is still running
+// under a live process is not stale.
+func (s *Store) StaleTFLocks(ctx context.Context) ([]TFLock, error) {
+	locks, err := s.ListTFLocks(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var stale []TFLock
+	for _, l := range locks {
+		if l.JobID == nil {
+			stale = append(stale, l)
+			continue
+		}
+		job, err := s.GetJob(ctx, *l.JobID)
+		if errors.Is(err, ErrNotFound) {
+			stale = append(stale, l)
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		if job.State.Terminal() {
+			stale = append(stale, l)
+		}
+	}
+	return stale, nil
+}
+
+// ForceReleaseTFLock drops a workspace's lock whoever holds it, and returns
+// the lock it removed. A free workspace is ErrNotFound: there is nothing to
+// record having broken.
+func (s *Store) ForceReleaseTFLock(ctx context.Context, workspaceID int64) (TFLock, error) {
+	held, err := s.GetTFLock(ctx, workspaceID)
+	if err != nil {
+		return TFLock{}, err
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`DELETE FROM tflock WHERE workspace_id = ?`, workspaceID); err != nil {
+		return TFLock{}, wrap("force release tflock", err)
+	}
+	return held, nil
+}
+
 func scanWorkspace(row rowScanner) (Workspace, error) {
 	var (
 		w Workspace

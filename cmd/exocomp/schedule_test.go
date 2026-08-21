@@ -19,7 +19,11 @@ func runScheduleCmd(t *testing.T, args ...string) (string, error) {
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
 	cmd.SetArgs(args)
-	return out.String(), cmd.Execute()
+
+	// Execute first: a return statement evaluates its operands left to right,
+	// so reading the buffer in the return would read it before the command ran.
+	err := cmd.Execute()
+	return out.String(), err
 }
 
 func schedules(t *testing.T) []store.Schedule {

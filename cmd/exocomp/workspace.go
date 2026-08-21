@@ -50,8 +50,135 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceListCmd(),
 		newWorkspacePlanCmd(),
 		newWorkspaceApplyCmd(),
+		newWorkspaceUnlockCmd(),
 	)
 	return cmd
+}
+
+func newWorkspaceUnlockCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unlock <name>",
+		Short: "Break a state lock whose job is gone",
+		Long: "A job killed mid-apply leaves the workspace's state lock held by nobody, " +
+			"and no run can take it again. This breaks it and records that on the job the " +
+			"lock named, or on the workspace's most recent job. `exocomp serve` flags such " +
+			"locks at startup; breaking one whose job is still running is refused.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceUnlock(cmd, args[0])
+		},
+	}
+}
+
+// runWorkspaceUnlock breaks one workspace's lock. The audit row is the point:
+// a lock that vanished without a trace is indistinguishable from one that was
+// never taken (ADR 0004).
+func runWorkspaceUnlock(cmd *cobra.Command, name string) (err error) {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	ws, err := st.WorkspaceByName(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("workspace unlock: no workspace %q", name)
+	}
+	if err != nil {
+		return err
+	}
+
+	held, err := st.GetTFLock(ctx, ws.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		_, err = fmt.Fprintf(out, "workspace %s is not locked\n", ws.Name)
+		return err
+	}
+	if err != nil {
+		return err
+	}
+
+	// A live job's lock is the system working, not a leftover.
+	if held.JobID != nil {
+		owner, err := st.GetJob(ctx, *held.JobID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			return err
+		}
+		if err == nil && !owner.State.Terminal() {
+			return fmt.Errorf("workspace unlock: job %d is still %s; cancel it first",
+				owner.ID, owner.State)
+		}
+	}
+
+	broken, err := st.ForceReleaseTFLock(ctx, ws.ID)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(out, "workspace %s unlocked: lock %s, %s by %s since %s\n",
+		ws.Name, broken.LockID, broken.Operation, broken.Who,
+		broken.CreatedAt.Format("2006-01-02 15:04:05Z"))
+
+	return auditUnlock(ctx, st, out, ws, broken)
+}
+
+// auditUnlock records the break on the job the lock named, falling back to the
+// workspace's most recent job. A workspace that has never run a job has
+// nothing to append to, and that is said out loud rather than passed over.
+func auditUnlock(ctx context.Context, st *store.Store, out io.Writer,
+	ws store.Workspace, broken store.TFLock) error {
+	jobID, err := unlockAuditJob(ctx, st, ws, broken)
+	if err != nil {
+		return err
+	}
+	if jobID == 0 {
+		_, err := fmt.Fprintf(out,
+			"WARNING: workspace %s has no job to record the unlock on\n", ws.Name)
+		return err
+	}
+
+	msg := fmt.Sprintf("force-unlocked tofu state: lock %s, %s by %s since %s",
+		broken.LockID, broken.Operation, broken.Who,
+		broken.CreatedAt.Format("2006-01-02 15:04:05Z"))
+	if _, err := st.AppendJobEvent(ctx, store.JobEvent{
+		JobID: jobID,
+		Level: store.LevelSystem,
+		Msg:   msg,
+	}); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(out, "recorded on job %d\n", jobID)
+	return err
+}
+
+// unlockAuditJob picks the job the audit row belongs on, returning 0 when the
+// workspace has never had one.
+func unlockAuditJob(ctx context.Context, st *store.Store, ws store.Workspace,
+	broken store.TFLock) (int64, error) {
+	if broken.JobID != nil {
+		if _, err := st.GetJob(ctx, *broken.JobID); err == nil {
+			return *broken.JobID, nil
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return 0, err
+		}
+	}
+
+	jobs, err := st.ListJobs(ctx, store.JobFilter{Runbook: workspaceRunbookPrefix + ws.Name})
+	if err != nil {
+		return 0, err
+	}
+	var latest int64
+	for _, job := range jobs {
+		if job.ID > latest {
+			latest = job.ID
+		}
+	}
+	return latest, nil
 }
 
 func newWorkspaceAddCmd() *cobra.Command {

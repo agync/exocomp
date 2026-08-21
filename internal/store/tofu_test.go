@@ -280,3 +280,100 @@ func TestReleaseTFLockChecksLockID(t *testing.T) {
 		t.Errorf("lock after release = %v, want ErrNotFound", err)
 	}
 }
+
+// TestStaleTFLocksNamesWhatNoJobWillRelease: a lock's holder is a job, and a
+// job that ended will never send UNLOCK. Nothing else in the system moves that
+// row, so it has to be findable (ADR 0004).
+func TestStaleTFLocksNamesWhatNoJobWillRelease(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+
+	live := newWorkspace(t, s, "live")
+	dead := newWorkspace(t, s, "dead")
+	orphan := newWorkspace(t, s, "orphan")
+
+	running, err := s.CreateJob(ctx, store.NewJob{Runbook: "workspace:live", Kind: "tofu", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.ClaimJob(ctx, running.ID); err != nil {
+		t.Fatalf("claim job: %v", err)
+	}
+	finished, err := s.CreateJob(ctx, store.NewJob{Runbook: "workspace:dead", Kind: "tofu", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.ClaimJob(ctx, finished.ID); err != nil {
+		t.Fatalf("claim job: %v", err)
+	}
+	if err := s.TransitionJob(ctx, finished.ID, store.StateRunning, store.StateInterrupted); err != nil {
+		t.Fatalf("interrupt job: %v", err)
+	}
+
+	for _, tc := range []struct {
+		ws    store.Workspace
+		jobID *int64
+	}{
+		{live, &running.ID},
+		{dead, &finished.ID},
+		{orphan, nil},
+	} {
+		if _, err := s.AcquireTFLock(ctx, store.TFLock{
+			WorkspaceID: tc.ws.ID, LockID: "lock-" + tc.ws.Name,
+			Who: "operator@host", Operation: "OperationTypeApply", JobID: tc.jobID,
+		}); err != nil {
+			t.Fatalf("acquire lock on %s: %v", tc.ws.Name, err)
+		}
+	}
+
+	stale, err := s.StaleTFLocks(ctx)
+	if err != nil {
+		t.Fatalf("stale locks: %v", err)
+	}
+	held := map[int64]bool{}
+	for _, l := range stale {
+		held[l.WorkspaceID] = true
+	}
+	if held[live.ID] {
+		t.Error("a lock whose job is still running was called stale")
+	}
+	if !held[dead.ID] {
+		t.Error("a lock whose job ended was not called stale")
+	}
+	if !held[orphan.ID] {
+		t.Error("a lock naming no job was not called stale")
+	}
+}
+
+func TestForceReleaseTFLock(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+	ws := newWorkspace(t, s, "edge")
+
+	if _, err := s.ForceReleaseTFLock(ctx, ws.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("force release of a free workspace = %v, want ErrNotFound", err)
+	}
+
+	if _, err := s.AcquireTFLock(ctx, store.TFLock{
+		WorkspaceID: ws.ID, LockID: "held", Who: "gone@host", Operation: "OperationTypeApply",
+	}); err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	// Breaking it takes no lock id: the holder is what cannot be asked.
+	broken, err := s.ForceReleaseTFLock(ctx, ws.ID)
+	if err != nil {
+		t.Fatalf("force release: %v", err)
+	}
+	if broken.LockID != "held" || broken.Who != "gone@host" {
+		t.Errorf("broken = %+v, want the lock that was held", broken)
+	}
+	if _, err := s.GetTFLock(ctx, ws.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("get after force release = %v, want ErrNotFound", err)
+	}
+	if _, err := s.AcquireTFLock(ctx, store.TFLock{
+		WorkspaceID: ws.ID, LockID: "next", Who: "apply@host", Operation: "OperationTypeApply",
+	}); err != nil {
+		t.Errorf("a later apply could not take the freed lock: %v", err)
+	}
+}
