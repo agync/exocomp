@@ -397,11 +397,3 @@ func nullInt64(v *int64) any {
 	}
 	return *v
 }
-
-func int64Ptr(v sql.NullInt64) *int64 {
-	if !v.Valid {
-		return nil
-	}
-	n := v.Int64
-	return &n
-}
