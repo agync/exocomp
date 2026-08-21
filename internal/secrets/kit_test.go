@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -41,6 +42,16 @@ func TestKitRendersSecretKeyOnlyAtInit(t *testing.T) {
 		if !strings.Contains(minted, phrase) {
 			t.Errorf("init kit omits %q", phrase)
 		}
+	}
+	// The card must not promise what it does not carry, and must not name a
+	// flag the binary does not have.
+	for _, phrase := range []string{"credential from this card", "--deep"} {
+		if strings.Contains(minted, phrase) {
+			t.Errorf("init kit still claims %q", phrase)
+		}
+	}
+	if !strings.Contains(minted, "carries no storage credential") {
+		t.Error("init kit does not say the storage credential is the operator's to supply")
 	}
 
 	structure := env.KitStructure().Render()
@@ -117,11 +128,13 @@ func TestKeyringDecryptsWithAgeCLI(t *testing.T) {
 	}
 }
 
-// TestRecoveryCardRunsAsWritten executes the derivation block from the printed
-// card verbatim and diffs the result against Derive. The card's command text is
-// a build artifact: a card whose commands do not run is worse than no card.
+// TestRecoveryCardRunsAsWritten executes the card's commands verbatim against a
+// real restic repository: unwrap the DEK with age, derive the password with
+// openssl, then restore a snapshot out of a repository this test created with
+// the password Derive produces. The card's command text is a build artifact —
+// a card whose commands do not run is worse than no card.
 func TestRecoveryCardRunsAsWritten(t *testing.T) {
-	requireTools(t, "sh", "age", "openssl", "od", "tr", "base64", "printf")
+	requireTools(t, "sh", "age", "openssl", "od", "tr", "base64", "printf", "restic")
 
 	dir := t.TempDir()
 	env, kit := mustInit(t, dir, nil)
@@ -138,12 +151,29 @@ func TestRecoveryCardRunsAsWritten(t *testing.T) {
 	}
 
 	const target = "nas"
-	script := strings.ReplaceAll(cardCommands(t, kit.Render()), "<target-id>", target)
+	want := base64.StdEncoding.EncodeToString(env.Derive("restic-repo", target))
+
+	// The fixture repository is created with the password Derive produces, so
+	// the card's own restore step only succeeds if its openssl pipeline lands
+	// on the same bytes and restic accepts the file the card writes.
+	repo := filepath.Join(dir, "repo")
+	restic := resticFixture(t, dir, repo, want)
+
+	restored := filepath.Join(dir, "restored")
+	script := strings.NewReplacer(
+		"<target-id>", target,
+		"<target-uri>", repo,
+		"/srv/exocomp", restored,
+	).Replace(cardCommands(t, kit.Render()))
+
 	cmd := exec.Command("sh", "-eu", "-c", script)
 	cmd.Dir = dir
-	if out, err := cmd.CombinedOutput(); err != nil {
+	cmd.Env = restic.env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
 		t.Fatalf("card commands failed: %v\nscript:\n%s\noutput:\n%s", err, script, out)
 	}
+	t.Logf("card commands ran verbatim against %s:\n%s", repo, out)
 
 	unwrapped, err := os.ReadFile(filepath.Join(dir, "dek.bin"))
 	if err != nil {
@@ -157,15 +187,74 @@ func TestRecoveryCardRunsAsWritten(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read restic.pass: %v", err)
 	}
-	want := base64.StdEncoding.EncodeToString(env.Derive("restic-repo", target))
 	if got := strings.TrimSpace(string(pass)); got != want {
 		t.Errorf("card derived a restic password that differs from Derive(%q, %q)",
 			"restic-repo", target)
 	}
+
+	body, err := os.ReadFile(filepath.Join(restored, strings.TrimPrefix(restic.payload, "/")))
+	if err != nil {
+		t.Fatalf("card step 4 restored no %s: %v", restic.payload, err)
+	}
+	if string(body) != resticPayloadBody {
+		t.Errorf("restored payload = %q, want %q", body, resticPayloadBody)
+	}
+
+	// A repository password the card cannot reproduce must fail this test.
+	probe := exec.Command("restic", "-r", repo, "cat", "config")
+	probe.Env = append(slices.Clone(restic.env), "RESTIC_PASSWORD=not-the-derived-password")
+	if err := probe.Run(); err == nil {
+		t.Fatal("restic opened the fixture repository with a wrong password")
+	}
+}
+
+const resticPayloadBody = "recovery-card-fixture\n"
+
+type resticRepoFixture struct {
+	env []string
+	// payload is the absolute path restic recorded, which is also the path it
+	// recreates under --target.
+	payload string
+}
+
+// resticFixture builds a restic repository holding one snapshot, locked with
+// password. It stands in for a repository exocomp wrote: the card has to open
+// it with nothing but age, openssl and coreutils.
+func resticFixture(t *testing.T, home, repo, password string) resticRepoFixture {
+	t.Helper()
+
+	// An explicit environment, so a RESTIC_* variable exported by whoever runs
+	// the suite cannot decide the outcome.
+	base := []string{
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + home,
+		"RESTIC_CACHE_DIR=" + filepath.Join(home, "restic-cache"),
+	}
+
+	payloadDir := filepath.Join(home, "payload")
+	if err := os.MkdirAll(payloadDir, 0o700); err != nil {
+		t.Fatalf("create payload dir: %v", err)
+	}
+	payload := filepath.Join(payloadDir, "snapshot.db")
+	if err := os.WriteFile(payload, []byte(resticPayloadBody), 0o600); err != nil {
+		t.Fatalf("write payload: %v", err)
+	}
+
+	for _, step := range [][]string{
+		{"-r", repo, "init"},
+		{"-r", repo, "backup", "--quiet", payload},
+	} {
+		cmd := exec.Command("restic", step...)
+		cmd.Env = append(slices.Clone(base), "RESTIC_PASSWORD="+password)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("restic %s: %v\n%s", strings.Join(step, " "), err, out)
+		}
+	}
+	return resticRepoFixture{env: base, payload: payload}
 }
 
 // cardCommands lifts the executable lines out of the rendered card: the age
-// unwrap and the openssl derivation, dedented for sh.
+// unwrap, the openssl derivation, and the restic restore, dedented for sh.
 func cardCommands(t *testing.T, card string) string {
 	t.Helper()
 
@@ -177,12 +266,14 @@ func cardCommands(t *testing.T, card string) string {
 			strings.HasPrefix(trimmed, "hex()"),
 			strings.HasPrefix(trimmed, "openssl kdf"),
 			strings.HasPrefix(trimmed, "-kdfopt"),
-			strings.HasPrefix(trimmed, "-binary HKDF"):
+			strings.HasPrefix(trimmed, "-binary HKDF"),
+			strings.HasPrefix(trimmed, "RESTIC_PASSWORD_FILE="),
+			strings.HasPrefix(trimmed, "restore latest"):
 			out = append(out, trimmed)
 		}
 	}
-	if len(out) < 7 {
-		t.Fatalf("card carries %d executable lines, want the full derivation block:\n%s",
+	if len(out) < 9 {
+		t.Fatalf("card carries %d executable lines, want the derivation block and the restore:\n%s",
 			len(out), card)
 	}
 	return strings.Join(out, "\n")

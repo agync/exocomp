@@ -39,12 +39,16 @@ binary anywhere on this path:
          -kdfopt "hexinfo:$(printf 'restic-repo:<target-id>' | hex)" \
          -binary HKDF | base64 > restic.pass
 
-  4. Restore, using the read-only storage credential from this card:
+  4. Restore. This card carries no storage credential: you supply
+     <target-uri> and whatever reaching it needs - nothing for a local path or
+     a mounted share, AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY for S3. The
+     RECOVERY.md beside keyring.age names the uri this target was written to.
+     Per-target read-only credentials arrive on this card in M2.
 
        RESTIC_PASSWORD_FILE=restic.pass restic -r <target-uri> \
          restore latest --target /srv/exocomp
 
-  5. Start the service and run: exocomp doctor --deep`
+  5. Start the service and run: exocomp doctor`
 
 // RecoveryKit is the printed card. AgeSecretKey is populated only when the
 // recovery identity is minted; it is never written to disk or to the database.
