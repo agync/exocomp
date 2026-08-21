@@ -1,0 +1,8 @@
+# Local agent shims — not tracked
+CLAUDE.md
+.claude/
+# Worktrees for parallel lanes
+.worktrees/
+# Build artifacts
+/bin/
+/dist/
