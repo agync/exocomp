@@ -52,8 +52,11 @@ func (e *Engine) resticPassword(name string) (string, error) {
 // from the key that keyring wraps.
 func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (_ string, _ int64, err error) {
 	// An s3 repository uri can carry its own key and secret, and both this
-	// package and restic quote the uri back in failure messages.
-	defer func() { err = scrubbed(err) }()
+	// package and restic quote the uri back in failure messages. red covers
+	// what the uri cannot: the repository password and the resolved storage
+	// credentials, which restic echoes back on its own.
+	var red *secrets.Redactor
+	defer func() { err = scrubbed(redacted(red, err)) }()
 
 	password, err := e.resticPassword(t.Name)
 	if err != nil {
@@ -91,7 +94,7 @@ func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (_ strin
 	}
 	defer cleanup()
 
-	red := secrets.NewRedactor([][]byte{[]byte(password)})
+	red = secrets.NewRedactor(legSecrets(password, t.Env))
 	env := t.Env
 	run := func(timeout time.Duration, args ...string) (toolResult, error) {
 		return e.runTool(ctx, executor.Spec{
@@ -143,6 +146,42 @@ func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (_ strin
 		return summary.SnapshotID, summary.DataAdded, err
 	}
 	return summary.SnapshotID, summary.DataAdded, nil
+}
+
+// secretEnvKeys names the target environment entries whose values are secret.
+// The region and the cache dir are not.
+var secretEnvKeys = []string{
+	"AWS_ACCESS_KEY_ID",
+	"AWS_SECRET_ACCESS_KEY",
+	"AWS_SESSION_TOKEN",
+}
+
+// legSecrets is everything a restic leg must never write down: the repository
+// password and the storage credentials resolved for this target. They are
+// already in hand when the leg starts, which is the only moment anything can
+// scrub them out of what restic prints.
+func legSecrets(password string, env map[string]string) [][]byte {
+	known := [][]byte{[]byte(password)}
+	for _, k := range secretEnvKeys {
+		if v := env[k]; v != "" {
+			known = append(known, []byte(v))
+		}
+	}
+	return known
+}
+
+// redacted rewrites an error's text with every known secret replaced. Like
+// scrubbed, the original is dropped rather than wrapped: unwrapping a wrapper
+// would hand the unredacted text straight back.
+func redacted(red *secrets.Redactor, err error) error {
+	if err == nil || red == nil {
+		return err
+	}
+	clean := string(red.Redact([]byte(err.Error())))
+	if clean == err.Error() {
+		return err
+	}
+	return errors.New(clean)
 }
 
 // writeRootFiles puts keyring.age and RECOVERY.md at the target root, next to
