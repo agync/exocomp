@@ -12,6 +12,12 @@ import (
 //
 // VACUUM INTO refuses an existing destination, and that refusal is kept: a
 // half-written snapshot must never be mistaken for a good one.
+//
+// Open sets SetMaxOpenConns(1), so a VacuumInto call started while another
+// goroutine holds an open write transaction on this *Store blocks on the
+// store's single pooled connection until that transaction commits or rolls
+// back, then runs; it does not run concurrently with it and does not error.
+// TestVacuumIntoSucceedsDuringWriterTransaction pins this.
 func (s *Store) VacuumInto(ctx context.Context, path string) error {
 	if path == "" {
 		return errors.New("store: vacuum into: empty destination path")
