@@ -287,3 +287,9 @@ now takes a redactor provider resolved at job claim time
 The design exploration settled the phone approval flow's semantics; the seven-point
 contract is recorded in [design/ui-brief.md](design/ui-brief.md) and binds the M3
 web/approvals implementation.
+
+## 2026-08-22 — ADR 0008: step ledger over DBOS
+
+Durable-execution assessment recorded: DBOS Go+SQLite is the one invariant-
+compatible engine but is deferred (young SQLite path, single-maintainer, second
+runtime); M3 builds rotation/upgrade on a step-ledger extension of the job store.
