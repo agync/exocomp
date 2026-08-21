@@ -1,3 +1,3 @@
-// Package api implements the server side of the OpenAPI 3.1 contract shared
-// with the typed client under api/.
+// Package api implements the server side of the HTTP/JSON contract; the
+// OpenAPI spec and typed client land under api/ in M1.
 package api
