@@ -34,7 +34,6 @@ func newRootCmd() *cobra.Command {
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
-	root.AddCommand(newServeCmd())
 	for _, f := range commandFactories {
 		root.AddCommand(f())
 	}
@@ -49,16 +48,6 @@ func newVersionCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), version.String())
 			return err
-		},
-	}
-}
-
-func newServeCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:   "serve",
-		Short: "Run the exocompd service",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			return fmt.Errorf("serve: not implemented in M0")
 		},
 	}
 }
