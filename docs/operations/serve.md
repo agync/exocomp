@@ -66,3 +66,9 @@ before they are written, so the tail the CLI prints is already scrubbed.
 
 If the daemon disappears while a command is following its job, the command stops with an
 error naming the job rather than waiting on a row nothing will move.
+
+## Redaction freshness
+
+The daemon resolves the known-secret set per job at claim time, so a secret
+sealed while the daemon runs is scrubbed from the very next job's events — no
+restart or reload required.

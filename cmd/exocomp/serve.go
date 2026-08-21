@@ -155,7 +155,9 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return err
 	}
 	q := queue.New(st, drv, queue.Options{Workers: serveWorkers, PollInterval: servePoll},
-		queue.WithRedactor(secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))))
+		queue.WithRedactorProvider(func() *secrets.Redactor {
+			return secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))
+		}))
 
 	qDone := make(chan error, 1)
 	go func() { qDone <- q.Run(jobCtx) }()

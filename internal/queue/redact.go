@@ -36,3 +36,20 @@ func (s redactingSink) Emit(ev executor.Event) {
 	}
 	s.next.Emit(ev)
 }
+
+// WithRedactorProvider resolves the redactor once per job, at claim time, so
+// secrets sealed after the daemon started are scrubbed without a restart.
+func WithRedactorProvider(f func() *secrets.Redactor) Option {
+	return func(q *Queue) {
+		if f == nil {
+			return
+		}
+		q.wrapSink = func(next executor.EventSink) executor.EventSink {
+			r := f()
+			if r == nil {
+				return next
+			}
+			return redactingSink{redactor: r, next: next}
+		}
+	}
+}

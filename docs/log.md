@@ -274,3 +274,10 @@ deployments.
 convergent findings folded into M3 scope; ranked v1.1 backlog established;
 [ADR 0007](adr/0007-audit-chain-deferral.md) records the previously silent audit-chain
 deferral.
+
+## 2026-08-21 — daemon redaction resolves per job
+
+The m2 gate caught the daemon snapshotting sealed secrets at startup: a secret
+sealed after `exocomp serve` started was not redacted until restart. The queue
+now takes a redactor provider resolved at job claim time
+([operations/serve.md](operations/serve.md), "Redaction freshness").
