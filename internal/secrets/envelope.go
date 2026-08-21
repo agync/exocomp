@@ -1,0 +1,300 @@
+package secrets
+
+import (
+	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/hkdf"
+	"crypto/rand"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+
+	"filippo.io/age"
+	"filippo.io/age/armor"
+)
+
+// Salt is the HKDF domain-separation salt for this envelope version. It is
+// printed on the recovery kit, so changing it invalidates every printed card.
+const Salt = "exocomp/v1"
+
+const (
+	hostKeyFile    = "host.key"
+	keyringFile    = "keyring.age"
+	recipientsFile = "recipients"
+
+	dekLen   = 32
+	nonceLen = 12
+)
+
+// ErrAlreadyInitialized reports that the data dir already holds a keyring.
+var ErrAlreadyInitialized = errors.New("secrets: keyring already exists")
+
+// ErrClosed reports use of an Envelope whose DEK has been zeroed.
+var ErrClosed = errors.New("secrets: envelope closed")
+
+// Envelope holds the unwrapped data encryption key and the public keyring that
+// wraps it. The DEK lives in exactly one []byte, zeroed by Close.
+type Envelope struct {
+	dataDir    string
+	dek        []byte
+	keyring    []byte
+	recipients []Recipient
+}
+
+// SealedSecret is one AES-256-GCM ciphertext. Name and Kind are bound as
+// additional data, so moving a ciphertext to another row fails to open.
+type SealedSecret struct {
+	Name       string
+	Kind       string
+	Nonce      []byte
+	Ciphertext []byte
+}
+
+// Init creates the host identity and the keyring under dataDir and returns the
+// live envelope plus the recovery kit. The recovery identity's secret key is
+// returned in the kit and never written to disk.
+func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, error) {
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, nil, fmt.Errorf("secrets: create data dir: %w", err)
+	}
+	switch _, err := os.Stat(filepath.Join(dataDir, keyringFile)); {
+	case err == nil:
+		return nil, nil, ErrAlreadyInitialized
+	case !errors.Is(err, os.ErrNotExist):
+		return nil, nil, fmt.Errorf("secrets: stat keyring: %w", err)
+	}
+
+	host, err := age.GenerateX25519Identity()
+	if err != nil {
+		return nil, nil, fmt.Errorf("secrets: generate host identity: %w", err)
+	}
+	recovery, err := age.GenerateX25519Identity()
+	if err != nil {
+		return nil, nil, fmt.Errorf("secrets: generate recovery identity: %w", err)
+	}
+
+	recipients := []Recipient{
+		newRecipient("host", host.Recipient().String()),
+		newRecipient("recovery", recovery.Recipient().String()),
+	}
+	wrapTo := []age.Recipient{host.Recipient(), recovery.Recipient()}
+	for i, s := range extraRecipients {
+		r, err := age.ParseX25519Recipient(strings.TrimSpace(s))
+		if err != nil {
+			return nil, nil, fmt.Errorf("secrets: extra recipient %d: %w", i+1, err)
+		}
+		recipients = append(recipients, newRecipient(fmt.Sprintf("extra-%d", i+1), r.String()))
+		wrapTo = append(wrapTo, r)
+	}
+
+	dek := make([]byte, dekLen)
+	if _, err := rand.Read(dek); err != nil {
+		return nil, nil, fmt.Errorf("secrets: generate dek: %w", err)
+	}
+	keyring, err := wrapDEK(dek, wrapTo)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if err := writeHostKey(filepath.Join(dataDir, hostKeyFile), host); err != nil {
+		return nil, nil, err
+	}
+	if err := os.WriteFile(filepath.Join(dataDir, recipientsFile), marshalRecipients(recipients), 0o644); err != nil {
+		return nil, nil, fmt.Errorf("secrets: write recipients: %w", err)
+	}
+	// Written last: the keyring's presence is what marks the dir initialized.
+	if err := os.WriteFile(filepath.Join(dataDir, keyringFile), keyring, 0o644); err != nil {
+		return nil, nil, fmt.Errorf("secrets: write keyring: %w", err)
+	}
+
+	env := &Envelope{dataDir: dataDir, dek: dek, keyring: keyring, recipients: recipients}
+	kit := &RecoveryKit{
+		AgeSecretKey: recovery.String(),
+		Salt:         Salt,
+		Derivation:   derivationRecipe,
+		Recipients:   slices.Clone(recipients),
+	}
+	return env, kit, nil
+}
+
+// Open loads the host identity from dataDir and unwraps the DEK from the keyring.
+func Open(dataDir string) (*Envelope, error) {
+	raw, err := os.ReadFile(filepath.Join(dataDir, hostKeyFile))
+	if err != nil {
+		return nil, fmt.Errorf("secrets: read host key: %w", err)
+	}
+	host, err := age.ParseX25519Identity(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("secrets: parse host key: %w", err)
+	}
+
+	keyring, err := os.ReadFile(filepath.Join(dataDir, keyringFile))
+	if err != nil {
+		return nil, fmt.Errorf("secrets: read keyring: %w", err)
+	}
+	dek, err := unwrapDEK(keyring, host)
+	if err != nil {
+		return nil, err
+	}
+
+	recipients, err := readRecipients(filepath.Join(dataDir, recipientsFile))
+	if err != nil {
+		return nil, err
+	}
+	return &Envelope{dataDir: dataDir, dek: dek, keyring: keyring, recipients: recipients}, nil
+}
+
+// Seal encrypts pt under the DEK with a fresh 96-bit nonce, binding name|kind.
+func (e *Envelope) Seal(name, kind string, pt []byte) (SealedSecret, error) {
+	aead, err := e.aead()
+	if err != nil {
+		return SealedSecret{}, err
+	}
+	nonce := make([]byte, nonceLen)
+	if _, err := rand.Read(nonce); err != nil {
+		return SealedSecret{}, fmt.Errorf("secrets: generate nonce: %w", err)
+	}
+	return SealedSecret{
+		Name:       name,
+		Kind:       kind,
+		Nonce:      nonce,
+		Ciphertext: aead.Seal(nil, nonce, pt, additionalData(name, kind)),
+	}, nil
+}
+
+// OpenSecret decrypts s, failing if the ciphertext, the nonce, or the
+// name|kind pair it was sealed under has changed.
+func (e *Envelope) OpenSecret(s SealedSecret) ([]byte, error) {
+	aead, err := e.aead()
+	if err != nil {
+		return nil, err
+	}
+	if len(s.Nonce) != nonceLen {
+		return nil, fmt.Errorf("secrets: nonce is %d bytes, want %d", len(s.Nonce), nonceLen)
+	}
+	pt, err := aead.Open(nil, s.Nonce, s.Ciphertext, additionalData(s.Name, s.Kind))
+	if err != nil {
+		return nil, fmt.Errorf("secrets: open %q: %w", s.Name, err)
+	}
+	return pt, nil
+}
+
+// Derive returns the 32-byte subkey for purpose:id via HKDF-SHA256 over the
+// DEK. It returns nil once the envelope is closed.
+func (e *Envelope) Derive(purpose, id string) []byte {
+	if len(e.dek) != dekLen {
+		return nil
+	}
+	k, err := hkdf.Key(sha256.New, e.dek, []byte(Salt), purpose+":"+id, dekLen)
+	if err != nil {
+		// Unreachable: HKDF-SHA256 admits outputs up to 255*32 bytes. Panicking
+		// beats handing a caller a zero-value repository password.
+		panic("secrets: hkdf: " + err.Error())
+	}
+	return k
+}
+
+// KeyringAge returns the armored age ciphertext wrapping the DEK, one recipient
+// stanza per keyring recipient. It is ciphertext: safe to publish, and it is
+// written to every backup target root outside the restic repository.
+func (e *Envelope) KeyringAge() ([]byte, error) {
+	if len(e.keyring) == 0 {
+		return nil, errors.New("secrets: no keyring loaded")
+	}
+	return bytes.Clone(e.keyring), nil
+}
+
+// Recipients lists the public keyring recipients.
+func (e *Envelope) Recipients() []Recipient { return slices.Clone(e.recipients) }
+
+// DataDir reports the directory this envelope was opened from.
+func (e *Envelope) DataDir() string { return e.dataDir }
+
+// KitStructure renders the kit from stored public data only. AgeSecretKey stays
+// empty: the recovery secret key exists in memory only at Init or rotation.
+func (e *Envelope) KitStructure() *RecoveryKit {
+	return &RecoveryKit{
+		Salt:       Salt,
+		Derivation: derivationRecipe,
+		Recipients: e.Recipients(),
+	}
+}
+
+// Close zeroes the DEK. Every later Seal, OpenSecret, or Derive fails.
+func (e *Envelope) Close() error {
+	clear(e.dek)
+	e.dek = nil
+	return nil
+}
+
+func (e *Envelope) aead() (cipher.AEAD, error) {
+	if len(e.dek) != dekLen {
+		return nil, ErrClosed
+	}
+	block, err := aes.NewCipher(e.dek)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: aes: %w", err)
+	}
+	aead, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: gcm: %w", err)
+	}
+	return aead, nil
+}
+
+func additionalData(name, kind string) []byte { return []byte(name + "|" + kind) }
+
+func wrapDEK(dek []byte, to []age.Recipient) ([]byte, error) {
+	var buf bytes.Buffer
+	armored := armor.NewWriter(&buf)
+	w, err := age.Encrypt(armored, to...)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: wrap dek: %w", err)
+	}
+	if _, err := w.Write(dek); err != nil {
+		return nil, fmt.Errorf("secrets: wrap dek: %w", err)
+	}
+	if err := w.Close(); err != nil {
+		return nil, fmt.Errorf("secrets: wrap dek: %w", err)
+	}
+	if err := armored.Close(); err != nil {
+		return nil, fmt.Errorf("secrets: armor keyring: %w", err)
+	}
+	return buf.Bytes(), nil
+}
+
+func unwrapDEK(keyring []byte, id age.Identity) ([]byte, error) {
+	r, err := age.Decrypt(armor.NewReader(bytes.NewReader(keyring)), id)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: unwrap dek: %w", err)
+	}
+	dek, err := io.ReadAll(io.LimitReader(r, dekLen+1))
+	if err != nil {
+		return nil, fmt.Errorf("secrets: unwrap dek: %w", err)
+	}
+	if len(dek) != dekLen {
+		return nil, fmt.Errorf("secrets: keyring holds a %d-byte key, want %d", len(dek), dekLen)
+	}
+	return dek, nil
+}
+
+func writeHostKey(path string, id *age.X25519Identity) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o400)
+	if err != nil {
+		return fmt.Errorf("secrets: create host key: %w", err)
+	}
+	if _, err := io.WriteString(f, id.String()+"\n"); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("secrets: write host key: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("secrets: write host key: %w", err)
+	}
+	return nil
+}

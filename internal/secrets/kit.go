@@ -1,0 +1,97 @@
+package secrets
+
+import "strings"
+
+// derivationRecipe is the printed card's manual path. Its literal text is a
+// build artifact: kit_test.go executes the openssl pipeline below and diffs the
+// result against Derive, because a card whose commands do not run is worse than
+// no card.
+const derivationRecipe = `How every other secret is derived
+---------------------------------
+
+The keyring wraps one 32-byte data encryption key (the DEK). Nothing else is
+stored: each consumer's key is derived from the DEK with HKDF-SHA256, using the
+salt above and an info string of "<purpose>:<id>". The output is 32 bytes.
+
+  restic-repo:<target-id>        restic repository password, base64 of the 32 bytes
+  tofu-state:<workspace-id>      OpenTofu state encryption passphrase
+  ansible-vault:<project-id>     ansible-vault password
+  webhook-hmac:<source-id>       webhook signature key
+  approval-token:<id>            approval token signing key
+
+Recovering by hand, with only age, openssl, restic and coreutils - no exocomp
+binary anywhere on this path:
+
+  1. Fetch keyring.age from any backup target root. It sits outside the restic
+     repository, because the repository password is derived from the key it
+     wraps.
+
+  2. Unwrap the DEK with the recovery key printed on this card:
+
+       age -d -i recovery.key keyring.age > dek.bin
+
+  3. Derive the restic password for the target you are restoring from:
+
+       hex() { od -An -tx1 -v | tr -d ' \n'; }
+       openssl kdf -keylen 32 -kdfopt digest:SHA256 \
+         -kdfopt "hexkey:$(hex < dek.bin)" \
+         -kdfopt "hexsalt:$(printf 'exocomp/v1' | hex)" \
+         -kdfopt "hexinfo:$(printf 'restic-repo:<target-id>' | hex)" \
+         -binary HKDF | base64 > restic.pass
+
+  4. Restore, using the read-only storage credential from this card:
+
+       RESTIC_PASSWORD_FILE=restic.pass restic -r <target-uri> \
+         restore latest --target /srv/exocomp
+
+  5. Start the service and run: exocomp doctor --deep`
+
+// RecoveryKit is the printed card. AgeSecretKey is populated only when the
+// recovery identity is minted; it is never written to disk or to the database.
+type RecoveryKit struct {
+	AgeSecretKey string
+	Salt         string
+	Derivation   string
+	Recipients   []Recipient
+}
+
+// Render returns the card text. Without AgeSecretKey it renders the structure
+// only and says so.
+func (k *RecoveryKit) Render() string {
+	lines := []string{
+		"exocomp recovery kit",
+		"====================",
+		"",
+	}
+
+	if k.AgeSecretKey != "" {
+		lines = append(lines,
+			"RECOVERY AGE SECRET KEY - shown once, here, and never again.",
+			"Store it offline now. It is not on disk and not in the database.",
+			"",
+			"    "+k.AgeSecretKey,
+			"",
+		)
+	} else {
+		lines = append(lines,
+			"The recovery age secret key is NOT shown here.",
+			"It appears only when it is minted: at `exocomp init`, or when the",
+			"recovery identity is rotated. If you no longer have it, re-key - that",
+			"mints a new recovery identity and revokes the old keyring row.",
+			"",
+		)
+	}
+
+	lines = append(lines, "Keyring recipients - any one of them unwraps the DEK:", "")
+	for _, r := range k.Recipients {
+		lines = append(lines, "    "+r.Label+"  "+r.Fingerprint+"  "+r.Public)
+	}
+
+	lines = append(lines,
+		"",
+		"HKDF salt: "+k.Salt,
+		"",
+		k.Derivation,
+	)
+	return strings.Join(lines, "\n") + "\n"
+}
