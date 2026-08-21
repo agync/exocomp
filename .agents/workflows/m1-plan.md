@@ -164,3 +164,37 @@ caches + hardening), M2c (gate + maintenance).
   endpoints pointed at a black-hole address) — the §3.8 offline-DR property.
 - fixture: S3 tests and the e2e gate run against SeaweedFS (Apache-2.0); if any restic
   or SigV4 incompatibility appears, keep the pinned MinIO image and record why.
+
+---
+
+# M3 — v1.0
+
+Stages: M3a (reactive core + sandbox/image + security folds), M3b (web UI + metrics
++ onboarding/wizard + LAN tokens per ADR 0009), M3c (upgrade/rollback + plan policy
++ step ledger per ADR 0008), M3d (v1.0 gate + maintenance). Binding inputs:
+docs/design/ui-brief.md "Approval surface contract", docs/design/tui-brief.md,
+ADR 0008/0009, internal/web/tokens.css, docs/design/user-feedback.md M3 folds.
+
+## File ownership (M3a)
+
+| Lane | Owns exclusively |
+|---|---|
+| reactive | internal/reactive/**, internal/notify/**, migration 0005 (event, rule, silence, approval, rule_fire), internal/queue/gate.go (+ minimal queue wiring for the approval gate), internal/sched tofu-plan schedule kind, cmd/exocomp/{rule.go,silence.go,approval.go}, cmd/exocomp/serve.go (ingress + engine wiring) |
+| sandbox | internal/executor/sandbox*.go (nono local-sandboxed tier + selection + doctor probes), packaging/Containerfile (uv toolchain layer per ADR 0006), packaging budget make targets + tests |
+| secfolds | internal/secrets (keyring version counter, kit derive/verify support), internal/backup (manifest + parts HMAC, downgrade refusal, plan-artifact encryption call sites), cmd/exocomp/kit.go (kit derive [--list] / kit verify / identity migrate), DCO file + AGENTS.md contributor line |
+
+## Gate (M3a)
+
+- reactive: alertmanager-shaped webhook → normalized event → CEL rule → guardrails
+  (cooldown ledger, cap disables, dedup, kill switch `pause`) → approval (HMAC,
+  TTL fail-closed, stale-plan refusal, resolve-cancels) → ntfy action callback
+  (token-authed, simulated in tests) → job through the queue; silences (scoped +
+  global, mandatory expiry) swallow with counts; every event persisted with
+  outcome + reason; explain trace matches the events design.
+- sandbox: a job under local-sandboxed cannot read exocomp.db/host.key/serve.lock
+  (probe-asserted); doctor reports tier + Landlock ABI, degrades loudly; image
+  builds with the uv toolchain layer self-contained (ansible runs offline from
+  the image) and stays ≤800MB with budgets printed by make.
+- secfolds: restore refuses a downgraded keyring version and a tampered manifest
+  (HMAC); `exocomp kit derive restic/<t>` = engine's password (cross-checked);
+  `kit verify` validates a printed page's sha; plan artifacts unreadable at rest.
