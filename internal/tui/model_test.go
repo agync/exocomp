@@ -197,6 +197,12 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 		t.Fatalf("create second backup target: %v", err)
 	}
 
+	if _, err := st.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "restic-paused", Kind: "restic_local", URI: "/var/lib/exocomp/paused", Enabled: false,
+	}); err != nil {
+		t.Fatalf("create disabled backup target: %v", err)
+	}
+
 	m := New(st)
 	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = update(t, m, loadJobsCmd(st)())
@@ -211,7 +217,7 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 
 	m = update(t, m, key('2'))
 	backupsView := m.View().Content
-	for _, want := range []string{"restic-local", "restic_local", "succeeded", "a1b2c3d4", "5.0MiB", "git-remote", "git", "-"} {
+	for _, want := range []string{"restic-local", "restic_local", "succeeded", "a1b2c3d4", "5.0MiB", "git-remote", "git", "-", "restic-paused", "disabled"} {
 		if !strings.Contains(backupsView, want) {
 			t.Errorf("backups view missing %q, view:\n%s", want, backupsView)
 		}

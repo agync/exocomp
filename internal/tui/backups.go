@@ -47,6 +47,10 @@ func (t backupsTable) View() string { return t.model.View() }
 func backupRows(targets []store.BackupTarget, runs map[int64]store.BackupRun) []table.Row {
 	rows := make([]table.Row, len(targets))
 	for i, target := range targets {
+		if !target.Enabled {
+			rows[i] = disabledBackupRow(target)
+			continue
+		}
 		run, ok := runs[target.ID]
 		if !ok {
 			rows[i] = table.Row{target.Name, target.Kind, renderState("-"), emptyCell, emptyCell, ""}
@@ -66,4 +70,18 @@ func backupRows(targets []store.BackupTarget, runs map[int64]store.BackupRun) []
 		}
 	}
 	return rows
+}
+
+// disabledBackupRow dims a disabled target end to end and reports "disabled"
+// in STATE: `exocomp backup list` calls this same state disabled, and a
+// disabled target's last run outcome (or its absence) is not its state.
+func disabledBackupRow(target store.BackupTarget) table.Row {
+	return table.Row{
+		styleDim.Render(target.Name),
+		styleDim.Render(target.Kind),
+		styleDim.Render("disabled"),
+		styleDim.Render(emptyCell),
+		styleDim.Render(emptyCell),
+		"",
+	}
 }
