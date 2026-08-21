@@ -99,3 +99,47 @@ type Driver interface {
   round-trips after restore; each leg fails independently.
 - tui: `exocomp tui` renders Jobs (live list + event tail) and Backups screens against
   a real store; model unit tests; clean exit.
+
+---
+
+# M2 — both halves
+
+Goal (docs/design/delivery.md): the Terraform-Cloud half joins the AWX half. Staged:
+M2a (tofu core + scheduler + queue carve-out closure), M2b (TUI expansion + offline
+caches + hardening), M2c (gate + maintenance).
+
+## Decisions binding for M2
+
+- The HTTP state backend lives in `internal/api`, served by `exocomp serve` on
+  127.0.0.1 only (unix socket for everything else arrives with the full API); per-job
+  bearer tokens derived per workspace, valid for the job's lifetime.
+- State is encrypted by tofu itself: `TF_ENCRYPTION` pbkdf2 passphrase =
+  base64(Derive("tofu-state", workspace)). Ciphertext rows in `tfstate`, lock in
+  `tflock` (UNIQUE PK), version history kept.
+- Migration numbers: 0003 tofu tables (workspace, tfstate, tflock) — tofu lane;
+  0004 schedule table — scheduler lane. Forward-only as always.
+- Backups become queued jobs (kind `backup`, concurrency_key `backup:<target>`),
+  closing the M1 carve-out recorded in architecture/overview.md.
+- Scheduler: robfig/cron/v3, schedules in the DB, rebuilt on boot; jitter supported.
+
+## File ownership (M2a)
+
+| Lane | Owns exclusively |
+|---|---|
+| tofu | `internal/api/**` (state backend + serve wiring), `internal/executor/tofu*.go`, `cmd/exocomp/serve.go` (replaces the stub in main.go — move serve out of main.go first, coordinate via this file being yours), `cmd/exocomp/workspace.go`, migration `0003_tofu.sql` + `internal/store/tofu.go` (new files) |
+| scheduler | `internal/sched/**`, migration `0004_schedule.sql` + `internal/store/schedule.go` (new files), `cmd/exocomp/schedule.go`, backup-as-job: `internal/backup/job.go` (new; queue-enqueued legs) + minimal wiring in `cmd/exocomp/backup.go` |
+| hardening | `internal/backup/chunk.go` (git-leg 90 MB chunking + repo-size guard), sealed S3 credentials (`secrets add` rows named `s3/<target>/access-key` etc. read by the engine; extend `internal/backup/s3.go` credential resolution only), `serve --ssh` via charmbracelet/wish wrapping the TUI, `cmd/exocomp/ssh.go` |
+
+## Gate (M2a)
+
+- tofu: `exocomp workspace add` + a real `tofu plan`/`apply` of a local_file resource
+  through the queue, state stored encrypted in sqlite via the HTTP backend (verify:
+  the tfstate row is ciphertext, `tofu state list` works via the CLI, plan→apply are
+  linked jobs); drift: mutate the file, scheduled plan detects exit-code 2 → job row
+  `drift=true` analog; lock contention: second apply blocks/fails cleanly.
+- scheduler: a `@every 5s` schedule fires a job through the queue; reboot rebuilds
+  schedules from the DB; a scheduled backup runs as a queued job with its
+  concurrency key (two backups of one target serialize).
+- hardening: git leg chunks a >90 MB synthetic snapshot and refuses at the size
+  guard; S3 creds resolve from sealed rows (env fallback warns); `ssh -p <port>
+  localhost` renders the TUI over wish (scripted probe).
