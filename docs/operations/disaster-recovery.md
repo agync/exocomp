@@ -10,15 +10,16 @@ One staging tree, assembled to tmpfs, sent as identical bytes to all three legs:
 
 ```
 backup-<ts>/
-├── MANIFEST.json     schema_version, tool versions, timestamp, sha256 of every file
-├── exocomp.db        ← VACUUM INTO (consistent, WAL-checkpointed, sub-second)
-├── config.toml       non-secret daemon config
-├── keyring.age       the N age-wrapped DEK copies — see below
-├── blobs/            job artifacts and plan files, retention-pruned first
-└── repos/
-    ├── <project>-ansible.bundle    git bundle create --all
-    └── <project>-tofu.bundle
+├── MANIFEST.json     manifest/schema/exocomp versions, tool versions, timestamp,
+│                     sha256 + size of every file
+├── snapshot.db       ← VACUUM INTO (consistent, WAL-checkpointed, sub-second)
+└── keyring.age       the N age-wrapped DEK copies — see below
 ```
+
+The M1 engine (`internal/backup`) ships exactly this tree. `config.toml`, `blobs/`
+(job artifacts), and `repos/*.bundle` (project git bundles) join the tree when those
+features land — the design remains as above; the implementation is authoritative for
+what exists today.
 
 OpenTofu state ciphertext rides inside `exocomp.db`. ansible-vault and sops files ride
 inside the git bundles as ciphertext — restic treats them as opaque blobs, so there is no

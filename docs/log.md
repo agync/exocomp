@@ -85,3 +85,23 @@ them are design-accurate but the implementation is authoritative:
   serialization, idempotency dedup, and the interrupted-job boot sweep are
   implemented and race-tested as designed in
   [architecture/execution.md](architecture/execution.md).
+
+## 2026-08-21 — M1b implementation landed
+
+- Ansible driver (`internal/executor/ansible.go`): env allowlist, per-job 0700
+  private dir for vault-password and extra-vars files, `--vault-id` from the
+  envelope-derived password; queue events pass through the redactor before
+  persistence (`internal/queue/redact.go`). `exocomp playbook run` is live.
+- Backup engine (`internal/backup`): three legs implemented and tested against
+  real restic, a real bare git repo (single rolling orphan commit verified), and
+  MinIO-under-podman for S3; `keyring.age` + `RECOVERY.md` land at every target
+  root outside the restic repo; `exocomp backup run` / `exocomp restore` live.
+- Correction: [operations/disaster-recovery.md](operations/disaster-recovery.md)
+  staging tree updated to the implemented M1 contents (snapshot.db, keyring.age,
+  MANIFEST.json); config/blobs/repo-bundle entries return with their features.
+- TUI (`internal/tui`): Jobs and Backups screens, `exocomp tui`.
+- `exocomp secrets add|list` seals values from stdin; playbook runs feed every
+  sealed plaintext to the redactor.
+- Deferred to M2, tracked: amendment-2 git-leg chunking and repo-size guard;
+  S3 credentials as sealed rows (amendment 1); systemd-creds TPM sealing;
+  age-plugin-yubikey recipients; `backup canary` removal in favor of `secrets add`.
