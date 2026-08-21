@@ -189,11 +189,17 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) erro
 	if err != nil {
 		return err
 	}
+	passFile, cleanup, err := writePasswordFile(src.StageRoot, password)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	restored := filepath.Join(work, "restic")
 	res, err := runTool(ctx, src.Driver, executor.Spec{
 		Kind: "shell",
 		Argv: []string{"restic", "-r", repo, "restore", "latest", "--target", restored},
-		Env:  resticEnv(src.Env, password),
+		Env:  resticEnv(src.Env, passFile),
 	}, secrets.NewRedactor([][]byte{[]byte(password)}))
 	if err != nil {
 		return err

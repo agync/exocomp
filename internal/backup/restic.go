@@ -70,6 +70,12 @@ func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (string,
 		}
 	}
 
+	passFile, cleanup, err := writePasswordFile(e.opts.StageRoot, password)
+	if err != nil {
+		return "", 0, err
+	}
+	defer cleanup()
+
 	red := secrets.NewRedactor([][]byte{[]byte(password)})
 	env := t.Env
 	run := func(timeout time.Duration, args ...string) (toolResult, error) {
@@ -77,7 +83,7 @@ func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (string,
 			Kind:    "shell",
 			Argv:    append([]string{"restic", "-r", repo}, args...),
 			Dir:     stage,
-			Env:     resticEnv(env, password),
+			Env:     resticEnv(env, passFile),
 			Timeout: timeout,
 		}, red)
 	}
@@ -160,13 +166,42 @@ func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) err
 	}
 }
 
-// resticEnv puts the derived repository password into a leg's environment.
-func resticEnv(extra map[string]string, password string) []string {
-	env := map[string]string{"RESTIC_PASSWORD": password}
+// resticEnv points restic at a password file. The password itself never enters
+// the child's environment: /proc/<pid>/environ is readable by every process of
+// this uid for the whole life of the leg, and a backup is unbounded in time.
+// A 0600 file bounds the same exposure to the filesystem.
+func resticEnv(extra map[string]string, passwordFile string) []string {
+	env := map[string]string{"RESTIC_PASSWORD_FILE": passwordFile}
 	for k, v := range extra {
 		env[k] = v
 	}
 	return toolEnv(env)
+}
+
+// writePasswordFile puts password in a 0600 file inside a fresh 0700 directory
+// under root, and returns the path with the function that removes both.
+//
+// The directory is deliberately not the backup staging dir: the leg runs
+// `restic backup .` there and the git leg tars it, so a credential dropped in
+// it would be archived into the snapshot it protects.
+func writePasswordFile(root, password string) (string, func(), error) {
+	dir, err := os.MkdirTemp(root, "exocomp-cred-")
+	if err != nil {
+		return "", nil, fmt.Errorf("backup: create credential dir: %w", err)
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	// MkdirTemp already creates 0700; say so explicitly, because everything
+	// below depends on it.
+	if err := os.Chmod(dir, 0o700); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("backup: credential dir mode: %w", err)
+	}
+	path := filepath.Join(dir, "restic.pass")
+	if err := os.WriteFile(path, []byte(password+"\n"), 0o600); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("backup: write repository password: %w", err)
+	}
+	return path, cleanup, nil
 }
 
 // preflightLocal asserts the repository directory exists and is a directory
