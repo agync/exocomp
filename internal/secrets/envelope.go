@@ -105,11 +105,19 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	if err := writeHostKey(filepath.Join(dataDir, hostKeyFile), host); err != nil {
 		return nil, nil, err
 	}
+	// A half-written dir would fail every retry on the host key's O_EXCL, so
+	// roll back to an uninitialized dir instead.
+	rollback := func() {
+		_ = os.Remove(filepath.Join(dataDir, hostKeyFile))
+		_ = os.Remove(filepath.Join(dataDir, recipientsFile))
+	}
 	if err := os.WriteFile(filepath.Join(dataDir, recipientsFile), marshalRecipients(recipients), 0o644); err != nil {
+		rollback()
 		return nil, nil, fmt.Errorf("secrets: write recipients: %w", err)
 	}
 	// Written last: the keyring's presence is what marks the dir initialized.
 	if err := os.WriteFile(filepath.Join(dataDir, keyringFile), keyring, 0o644); err != nil {
+		rollback()
 		return nil, nil, fmt.Errorf("secrets: write keyring: %w", err)
 	}
 

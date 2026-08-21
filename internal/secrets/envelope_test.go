@@ -87,6 +87,31 @@ func TestInitRefusesSecondRun(t *testing.T) {
 	}
 }
 
+func TestInitRollsBackPartialWrite(t *testing.T) {
+	dir := t.TempDir()
+
+	// A non-empty directory where the recipients file belongs fails the write
+	// and resists removal, so only the host key rollback is observable.
+	blocker := filepath.Join(dir, recipientsFile)
+	if err := os.MkdirAll(filepath.Join(blocker, "occupied"), 0o755); err != nil {
+		t.Fatalf("stage blocker: %v", err)
+	}
+
+	if _, _, err := Init(dir, nil); err == nil {
+		t.Fatal("Init succeeded with an unwritable recipients path")
+	}
+	if _, err := os.Stat(filepath.Join(dir, hostKeyFile)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("host key survived a failed Init: err = %v", err)
+	}
+
+	if err := os.RemoveAll(blocker); err != nil {
+		t.Fatalf("clear blocker: %v", err)
+	}
+	if _, _, err := Init(dir, nil); err != nil {
+		t.Fatalf("Init after rollback: %v", err)
+	}
+}
+
 func TestInitExtraRecipientUnwrapsDEK(t *testing.T) {
 	extra, err := age.GenerateX25519Identity()
 	if err != nil {
