@@ -35,8 +35,10 @@ in worktrees with the file-ownership map below; integrator reviews and fast-forw
 | store | `internal/store/**`, `internal/queue/**`, `internal/executor/driver.go` + `internal/executor/shell.go`, `cmd/exocomp/devrun.go` |
 
 `cmd/exocomp/main.go` registers subcommands via the per-file `registerCommand` pattern —
-lanes add their own file, never edit shared files. `go.mod` deps are pre-added by the
-integrator before lanes branch; lanes must not run `go get`.
+lanes add their own file, never edit shared files. Each lane runs `go get` only for
+its own deps (secrets: `filippo.io/age`; store: `modernc.org/sqlite`); the integrator
+unions `go.mod`/`go.sum` with `go mod tidy` at merge — lane conflicts there are
+expected and mechanical.
 
 ## Interface contracts (M1a)
 
