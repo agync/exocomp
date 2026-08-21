@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -9,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -56,9 +58,32 @@ func TestScreenSwitching(t *testing.T) {
 		t.Fatalf("did not switch to Backups, view:\n%s", got)
 	}
 
+	m = update(t, m, key('3'))
+	if m.active != screenWorkspaces {
+		t.Fatalf("active = %v, want screenWorkspaces", m.active)
+	}
+	if got := m.View().Content; !strings.Contains(got, "no workspaces registered") {
+		t.Fatalf("did not switch to Workspaces, view:\n%s", got)
+	}
+
+	m = update(t, m, key('4'))
+	if m.active != screenSchedules {
+		t.Fatalf("active = %v, want screenSchedules", m.active)
+	}
+	if got := m.View().Content; !strings.Contains(got, "no schedules configured") {
+		t.Fatalf("did not switch to Schedules, view:\n%s", got)
+	}
+
+	// tab cycles Jobs -> Backups -> Workspaces -> Schedules -> Jobs.
 	m = update(t, m, specialKey(tea.KeyTab))
 	if m.active != screenJobs {
-		t.Fatalf("tab did not switch back to Jobs, active = %v", m.active)
+		t.Fatalf("tab did not wrap back to Jobs, active = %v", m.active)
+	}
+	for _, want := range []screen{screenBackups, screenWorkspaces, screenSchedules, screenJobs} {
+		m = update(t, m, specialKey(tea.KeyTab))
+		if m.active != want {
+			t.Fatalf("tab did not advance to %v, active = %v", want, m.active)
+		}
 	}
 
 	m = update(t, m, key('2'))
@@ -249,6 +274,181 @@ func TestNoOpKeysLeaveScreenUnchanged(t *testing.T) {
 	m = update(t, m, key('x'))
 	if m.active != screenJobs || m.tailing {
 		t.Fatalf("unrecognized key changed state: active=%v tailing=%v", m.active, m.tailing)
+	}
+}
+
+// seedTofuJob creates a plan or apply job the way `workspace plan`/`workspace
+// apply` do (cmd/exocomp/workspace.go): Runbook "workspace:<name>", Kind
+// executor.KindTofu, and the concurrency key the Workspaces screen groups
+// jobs by.
+func seedTofuJob(t *testing.T, st *store.Store, ws store.Workspace, op string, final store.JobState) store.Job {
+	t.Helper()
+	ctx := context.Background()
+	job, err := st.CreateJob(ctx, store.NewJob{
+		Runbook:        "workspace:" + ws.Name,
+		Kind:           executor.KindTofu,
+		Trigger:        "manual",
+		Args:           store.JobArgs{Argv: []string{"tofu", op}},
+		ConcurrencyKey: workspaceTofuConcurrencyKey(ws.Name),
+	})
+	if err != nil {
+		t.Fatalf("create %s job: %v", op, err)
+	}
+	if final == store.StateQueued {
+		return job
+	}
+	if err := st.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("transition to running: %v", err)
+	}
+	if final != store.StateRunning {
+		if err := st.TransitionJob(ctx, job.ID, store.StateRunning, final); err != nil {
+			t.Fatalf("transition to %s: %v", final, err)
+		}
+	}
+	job, err = st.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	return job
+}
+
+// appendPlanOutcomeEvent appends the event `tofu plan` itself writes
+// (executor.reportPlanOutcome): raw_json shaped {"tofu":{"operation":"plan",
+// "changes":...}}, which executor.TofuPlanChanges and the Workspaces screen's
+// drift marker both read back.
+func appendPlanOutcomeEvent(t *testing.T, st *store.Store, jobID int64, changes bool) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]executor.TofuPlanOutcome{
+		"tofu": {Operation: "plan", Changes: changes},
+	})
+	if err != nil {
+		t.Fatalf("encode plan outcome: %v", err)
+	}
+	if _, err := st.AppendJobEvent(context.Background(), store.JobEvent{
+		JobID: jobID, Level: store.LevelSystem, Msg: "tofu plan", RawJSON: string(raw),
+	}); err != nil {
+		t.Fatalf("append plan outcome event: %v", err)
+	}
+}
+
+func TestWorkspacesScreenRendersStatusAndDrift(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	drifted, err := st.CreateWorkspace(ctx, store.Workspace{Name: "edge", TofuDir: "/srv/tofu/edge"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := st.AppendTFState(ctx, store.NewTFState{
+		WorkspaceID: drifted.ID, Lineage: "l1", Ciphertext: []byte("ct"),
+	}); err != nil {
+		t.Fatalf("append tfstate: %v", err)
+	}
+	plan := seedTofuJob(t, st, drifted, "plan", store.StateSucceeded)
+	appendPlanOutcomeEvent(t, st, plan.ID, true)
+	apply := seedTofuJob(t, st, drifted, "apply", store.StateFailed)
+
+	clean, err := st.CreateWorkspace(ctx, store.Workspace{Name: "core", TofuDir: "/srv/tofu/core"})
+	if err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	cleanPlan := seedTofuJob(t, st, clean, "plan", store.StateSucceeded)
+	appendPlanOutcomeEvent(t, st, cleanPlan.ID, false)
+
+	if _, err := st.CreateWorkspace(ctx, store.Workspace{
+		Name: "unplanned", TofuDir: "/srv/tofu/unplanned",
+	}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, loadWorkspacesCmd(st)())
+	m = update(t, m, key('3'))
+
+	view := m.View().Content
+	for _, want := range []string{"edge", "1", "succeeded", "failed", "drift", "core", "unplanned"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("workspaces view missing %q, view:\n%s", want, view)
+		}
+	}
+
+	// "core" planned clean: its row must not carry the drift marker, only
+	// "edge"'s does. Count occurrences of the marker text across the whole
+	// view rather than assuming column position.
+	if got := strings.Count(view, "drift"); got != 1 {
+		t.Errorf("drift marker appears %d times, want 1 (view):\n%s", got, view)
+	}
+
+	// ListWorkspaces orders by name, so the rows are core, edge, unplanned;
+	// move the cursor down onto "edge" and tail its latest tofu job, the
+	// apply that ran after the plan.
+	m = update(t, m, specialKey(tea.KeyDown))
+	m = update(t, m, specialKey(tea.KeyEnter))
+	if !m.tailing {
+		t.Fatal("enter on workspaces did not start tailing")
+	}
+	if m.tailJobID != apply.ID {
+		t.Fatalf("tailing job %d, want %d (edge's latest job)", m.tailJobID, apply.ID)
+	}
+	m = update(t, m, specialKey(tea.KeyEscape))
+
+	// A workspace with no tofu job yet has nothing to tail: Enter on it is a
+	// no-op, not a crash or a tail of some other job.
+	m = update(t, m, specialKey(tea.KeyDown))
+	m = update(t, m, specialKey(tea.KeyEnter))
+	if m.tailing {
+		t.Fatal("enter on an unplanned workspace should not start tailing")
+	}
+}
+
+func TestSchedulesScreenRendersEnabledAndDisabled(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	active, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly-backup", CronExpr: "@daily", Kind: store.ScheduleBackup,
+	})
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+	job, err := st.CreateJob(ctx, store.NewJob{Runbook: "rb", Kind: "backup", Trigger: "cron"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := st.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("transition to running: %v", err)
+	}
+	if err := st.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {
+		t.Fatalf("transition to succeeded: %v", err)
+	}
+	next := time.Now().Add(24 * time.Hour)
+	if err := st.RecordScheduleFire(ctx, active.ID, &job.ID, &next); err != nil {
+		t.Fatalf("record schedule fire: %v", err)
+	}
+
+	if _, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "paused-plan", CronExpr: "@every 5m", Kind: store.ScheduleShell,
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+	if err := st.SetScheduleEnabled(ctx, "paused-plan", false); err != nil {
+		t.Fatalf("disable schedule: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, loadSchedulesCmd(st)())
+	m = update(t, m, key('4'))
+
+	view := m.View().Content
+	for _, want := range []string{
+		"nightly-backup", "@daily", store.ScheduleBackup, "yes", "succeeded",
+		"paused-plan", "@every 5m", store.ScheduleShell, "no",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("schedules view missing %q, view:\n%s", want, view)
+		}
 	}
 }
 

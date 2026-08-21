@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -72,6 +73,114 @@ func loadBackupsCmd(st *store.Store) tea.Cmd {
 			}
 		}
 		return backupsLoadedMsg{targets: targets, runs: runs}
+	}
+}
+
+// workspaceTofuConcurrencyKey is the concurrency_key `workspace plan` and
+// `workspace apply` both enqueue under (cmd/exocomp/workspace.go); it is the
+// only thing tying a job row back to a workspace, so it is also how this
+// screen finds a workspace's tofu jobs.
+func workspaceTofuConcurrencyKey(name string) string { return "tofu:" + name }
+
+// workspacesLoadedMsg carries the result of a workspaces + tofu job status
+// refresh.
+type workspacesLoadedMsg struct {
+	workspaces []store.Workspace
+	status     map[int64]workspaceStatus // keyed by workspace id
+	err        error
+}
+
+func loadWorkspacesCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		workspaces, err := st.ListWorkspaces(ctx)
+		if err != nil {
+			return workspacesLoadedMsg{err: err}
+		}
+		status := make(map[int64]workspaceStatus, len(workspaces))
+		for _, ws := range workspaces {
+			s, err := loadWorkspaceStatus(ctx, st, ws)
+			if err != nil {
+				return workspacesLoadedMsg{err: err}
+			}
+			status[ws.ID] = s
+		}
+		return workspacesLoadedMsg{workspaces: workspaces, status: status}
+	}
+}
+
+// loadWorkspaceStatus derives one workspace's row status from its tofu jobs.
+// ListJobs returns them oldest first, so the last plan and last apply seen
+// while scanning are the most recent of each, and the final job scanned is
+// the latest of either kind, which is what Enter tails. Drift comes from that
+// last plan's own outcome event (executor.TofuPlanChanges).
+func loadWorkspaceStatus(ctx context.Context, st *store.Store, ws store.Workspace) (workspaceStatus, error) {
+	jobs, err := st.ListJobs(ctx, store.JobFilter{ConcurrencyKey: workspaceTofuConcurrencyKey(ws.Name)})
+	if err != nil {
+		return workspaceStatus{}, err
+	}
+
+	var (
+		out        workspaceStatus
+		lastPlanID int64
+	)
+	for _, j := range jobs {
+		out.LatestJobID = j.ID
+		if len(j.Args.Argv) < 2 {
+			continue
+		}
+		switch j.Args.Argv[1] {
+		case "plan":
+			out.LastPlanState = j.State
+			lastPlanID = j.ID
+		case "apply":
+			out.LastApplyState = j.State
+		}
+	}
+	if lastPlanID == 0 {
+		return out, nil
+	}
+
+	events, err := st.ListJobEvents(ctx, lastPlanID)
+	if err != nil {
+		return workspaceStatus{}, err
+	}
+	for _, e := range events {
+		if changes, ok := executor.TofuPlanChanges(e.RawJSON); ok {
+			out.Drift = changes
+			break
+		}
+	}
+	return out, nil
+}
+
+// schedulesLoadedMsg carries the result of a schedules + last-job-state
+// refresh.
+type schedulesLoadedMsg struct {
+	schedules []store.Schedule
+	lastState map[int64]store.JobState // keyed by schedule id
+	err       error
+}
+
+func loadSchedulesCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		schedules, err := st.ListSchedules(ctx, false)
+		if err != nil {
+			return schedulesLoadedMsg{err: err}
+		}
+		lastState := make(map[int64]store.JobState, len(schedules))
+		for _, sc := range schedules {
+			if sc.LastJobID == nil {
+				continue
+			}
+			job, err := st.GetJob(ctx, *sc.LastJobID)
+			if err != nil {
+				return schedulesLoadedMsg{err: err}
+			}
+			lastState[sc.ID] = job.State
+		}
+		return schedulesLoadedMsg{schedules: schedules, lastState: lastState}
 	}
 }
 
