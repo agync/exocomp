@@ -60,6 +60,16 @@ func newBackupAddTargetCmd() *cobra.Command {
 			}
 			t.Enabled = !disabled
 
+			// The uri is stored in plain SQLite and handed to subprocesses.
+			// A token embedded in it is therefore at rest in the database and
+			// one echoed line away from a job's recorded output.
+			if backup.HasURIUserinfo(t.URI) {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"WARNING: --uri embeds credentials; they are stored in cleartext in the "+
+						"database. Prefer an ssh key, a credential helper, or the target's "+
+						"own environment.\n")
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err

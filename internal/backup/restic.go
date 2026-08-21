@@ -50,7 +50,11 @@ func (e *Engine) resticPassword(name string) (string, error) {
 // applies retention, and writes keyring.age plus RECOVERY.md at the target
 // root — outside the repository, because the repository password is derived
 // from the key that keyring wraps.
-func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (string, int64, error) {
+func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (_ string, _ int64, err error) {
+	// An s3 repository uri can carry its own key and secret, and both this
+	// package and restic quote the uri back in failure messages.
+	defer func() { err = scrubbed(err) }()
+
 	password, err := e.resticPassword(t.Name)
 	if err != nil {
 		return "", 0, err

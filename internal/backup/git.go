@@ -5,11 +5,13 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"filippo.io/age"
@@ -23,10 +25,45 @@ import (
 // can reclaim them — a leg that appended would grow forever.
 const backupRef = "refs/heads/backup"
 
+// uriUserinfo matches the "user@" or "user:password@" of a URL authority.
+// A git remote is routinely written as https://<token>@host/repo, and the
+// tools that fail to reach it quote the remote back at us.
+var uriUserinfo = regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/@\s]+@`)
+
+// ScrubURIUserinfo replaces the userinfo of every URL in s with "***".
+// Anything a leg records — a backup_run error above all — goes through it,
+// because a token echoed by a subprocess is a token in the database.
+func ScrubURIUserinfo(s string) string {
+	return uriUserinfo.ReplaceAllString(s, "$1***@")
+}
+
+// HasURIUserinfo reports whether s carries userinfo in a URL authority, so the
+// CLI can object before such a uri is stored.
+func HasURIUserinfo(s string) bool {
+	return uriUserinfo.MatchString(s)
+}
+
+// scrubbed rewrites an error's text with every URL userinfo removed. The
+// original is dropped rather than wrapped: errors.Unwrap on a wrapper would
+// hand the unscrubbed text straight back.
+func scrubbed(err error) error {
+	if err == nil {
+		return nil
+	}
+	text := err.Error()
+	clean := ScrubURIUserinfo(text)
+	if clean == text {
+		return err
+	}
+	return errors.New(clean)
+}
+
 // gitLeg tars the staging tree, compresses it, encrypts it to every keyring
 // recipient, and force-pushes it as a single orphan commit. keyring.age rides
 // along unencrypted: it is the ciphertext that unwraps everything else.
-func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (string, int64, error) {
+func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, _ int64, err error) {
+	defer func() { err = scrubbed(err) }()
+
 	recipients, err := ageRecipients(e.env.Recipients())
 	if err != nil {
 		return "", 0, err
