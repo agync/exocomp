@@ -1,0 +1,16 @@
+services:
+  exocomp:
+    image: localhost/exocomp:latest
+    build:
+      context: ..
+      dockerfile: packaging/Containerfile
+    container_name: exocomp
+    restart: always
+    mem_limit: 1.5g
+    volumes:
+      - exocomp-state:/var/lib/exocomp
+    environment:
+      EXOCOMP_STATE_DIR: /var/lib/exocomp
+
+volumes:
+  exocomp-state: {}

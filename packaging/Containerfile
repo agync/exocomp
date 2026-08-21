@@ -1,0 +1,14 @@
+FROM docker.io/library/golang:1.26 AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /out/exocompd ./cmd/exocomp
+
+FROM registry.fedoraproject.org/fedora-minimal:44 AS runtime
+RUN microdnf install -y python3 python3-pip && microdnf clean all
+RUN pip3 install --no-cache-dir uv
+COPY --from=build /out/exocompd /usr/local/bin/exocompd
+VOLUME ["/var/lib/exocomp"]
+USER 1000:1000
+ENTRYPOINT ["/usr/local/bin/exocompd"]

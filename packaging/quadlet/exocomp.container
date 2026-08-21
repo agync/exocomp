@@ -1,0 +1,21 @@
+[Unit]
+Description=exocomp control plane
+After=exocomp.volume
+
+[Container]
+Image=localhost/exocomp:latest
+ContainerName=exocomp
+Volume=exocomp.volume:/var/lib/exocomp
+UserNS=keep-id
+Environment=EXOCOMP_STATE_DIR=/var/lib/exocomp
+
+[Service]
+# Default Type for .container units is notify; conmon supplies READY=1 on
+# its own, so this works even though exocompd does not call sd_notify (M0).
+# Type=notify
+Restart=always
+RestartSec=5
+MemoryMax=1.5G
+
+[Install]
+WantedBy=default.target
