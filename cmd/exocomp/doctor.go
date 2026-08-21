@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/sys/unix"
 )
 
 // optionalTool is a tool exocompd shells out to that is not required in M0.
@@ -47,11 +48,11 @@ func runDoctor(w io.Writer) error {
 	if err != nil {
 		return fmt.Errorf("doctor: resolve data dir: %w", err)
 	}
-	if err := checkDataDirWritable(dataDir); err != nil {
-		p("data dir:     %s — NOT WRITABLE (%v)\n", dataDir, err)
-		return fmt.Errorf("doctor: data dir not writable: %w", err)
+	report, fault := inspectDataDir(dataDir)
+	p("data dir:     %s — %s\n", dataDir, report)
+	if fault != nil {
+		return fmt.Errorf("doctor: %w", fault)
 	}
-	p("data dir:     %s — writable\n", dataDir)
 
 	p("optional tools (M0 probe subset):\n")
 	for _, t := range optionalTools {
@@ -72,17 +73,61 @@ func dataDir() (string, error) {
 	return filepath.Join(home, ".local", "share", "exocomp"), nil
 }
 
-func checkDataDirWritable(dir string) error {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return err
+// dataDirMode is the only mode the data dir may have: it holds host.key and
+// the keyring, so nothing outside this uid has any business reading it.
+const dataDirMode os.FileMode = 0o700
+
+// inspectDataDir describes the data dir without touching it, and returns the
+// fault that should fail the run. A doctor that created the dir would report
+// on its own handiwork, and would create it under whatever mode it chose
+// rather than the 0700 `exocomp init` uses.
+func inspectDataDir(dir string) (string, error) {
+	info, err := os.Stat(dir)
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		parent := filepath.Dir(dir)
+		if err := writableDir(parent); err != nil {
+			return fmt.Sprintf("absent, and %s cannot hold it (%v)", parent, err),
+				fmt.Errorf("data dir cannot be created: %w", err)
+		}
+		return fmt.Sprintf("absent — creatable, %s is writable; `exocomp init` creates it %04o",
+			parent, dataDirMode.Perm()), nil
+	case err != nil:
+		return fmt.Sprintf("UNREADABLE (%v)", err), fmt.Errorf("data dir not readable: %w", err)
 	}
-	probe, err := os.CreateTemp(dir, ".doctor-probe-*")
+
+	if !info.IsDir() {
+		return "NOT A DIRECTORY", errors.New("data dir is not a directory")
+	}
+	mode := info.Mode().Perm()
+	if err := writableDir(dir); err != nil {
+		return fmt.Sprintf("mode %04o — NOT WRITABLE (%v)", mode, err),
+			fmt.Errorf("data dir not writable: %w", err)
+	}
+	if mode&^dataDirMode != 0 {
+		return fmt.Sprintf("mode %04o — TOO PERMISSIVE, want %04o (chmod %04o %s)",
+				mode, dataDirMode.Perm(), dataDirMode.Perm(), dir),
+			fmt.Errorf("data dir mode %04o grants access beyond this user; it holds the host key",
+				mode)
+	}
+	return fmt.Sprintf("mode %04o — writable", mode), nil
+}
+
+// writableDir reports whether this process can create entries in dir, without
+// creating one. access(2) answers with the real uid, which for a process
+// that is never setuid is the uid everything else here runs as.
+func writableDir(dir string) error {
+	info, err := os.Stat(dir)
 	if err != nil {
 		return err
 	}
-	name := probe.Name()
-	_ = probe.Close()
-	return os.Remove(name)
+	if !info.IsDir() {
+		return fmt.Errorf("%s is not a directory", dir)
+	}
+	if err := unix.Access(dir, unix.W_OK|unix.X_OK); err != nil {
+		return fmt.Errorf("no write access to %s: %w", dir, err)
+	}
+	return nil
 }
 
 func probeTool(t optionalTool) string {
