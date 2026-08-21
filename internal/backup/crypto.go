@@ -30,8 +30,9 @@ const armorHeader = "-----BEGIN AGE ENCRYPTED FILE-----"
 //
 // It reproduces (*secrets.Envelope).Derive without an envelope, because the
 // host restoring a backup has no host identity to open one with — it has the
-// printed recovery key and keyring.age, and nothing else. crypto_test.go pins
-// this function against Derive so the two cannot drift.
+// printed recovery key and keyring.age, and nothing else.
+// TestResticPasswordMatchesEnvelope in engine_test.go pins this function
+// against Derive so the two cannot drift.
 func ResticPassword(dek []byte, target string) (string, error) {
 	if len(dek) != dekLen {
 		return "", fmt.Errorf("backup: dek is %d bytes, want %d", len(dek), dekLen)
