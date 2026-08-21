@@ -5,7 +5,7 @@ right on day one and is never invalidated afterwards.** Everything later is addi
 
 | Milestone | Contents | Effort (FTE-wks) |
 |---|---|---|
-| **v0.1 — "provable core"** | Skeleton; secrets envelope including the fuzzed redaction filter; job queue and executor; Ansible executor (direct `ansible-playbook` driver plus vault/sops wiring, [amendment 6](amendments.md#6-ansible-vault-is-designed-not-asserted)); backup engine, all three legs including the orphan-commit GitHub leg; restore, `install.sh`, and the CI-executed recovery card; a two-screen TUI | ~7.5 |
+| **v0.1 — "provable core"** | Skeleton; secrets envelope including the fuzzed redaction filter; job queue and executor; Ansible executor (direct `ansible-playbook` driver plus vault/sops wiring, [amendment 6](amendments.md#6-ansible-vault-is-designed-not-asserted)); backup engine, all three legs including the orphan-commit GitHub leg; restore, `install.sh`, and the CI-executed recovery card; a two-screen TUI | ~7.5 — **landed 2026-08-21**, gate `test/e2e/m1-gate.sh` |
 | **v0.5 — "both halves"** | OpenTofu executor, HTTP state backend, drift, plan-gated applies; scheduler; offline provider and collection caches; the full TUI (8 screens plus wizard); Wish/SSH serving | ~7 |
 | **v1.0** | Event ingress, CEL rules, guardrails; approvals and ntfy transport; the scoped notification and escalation surface; web UI; `/metrics` plus seeded alerts; host onboarding; upgrade and rollback; packaging with budgets enforced in CI; docs including threat model and adoption runbooks | ~8.5 |
 | Deferred | Wails desktop, OpenBao resolver, Litestream embedding, GoAlert-class escalation | — |
