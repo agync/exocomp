@@ -16,6 +16,16 @@ gave no longer holds for backups. The paragraph now says what `backup run` and
 `schedule add --kind backup` actually do — one queued job per target, concurrency key
 `backup:<target>` — and narrows to `exocomp restore`, which stays a direct invocation:
 restoring is an operator action at a cold start, not something the scheduler reaches.
+## 2026-08-21 — M2a hardening lands git chunking and sealed S3 credentials
+
+`operations/disaster-recovery.md`'s leg table previously flagged the git leg's 90 MB
+chunking and 4 GB repo-size guard as not-yet-shipped M2 work (see the M1 gate corrections
+entry below). Both now ship in `internal/backup/chunk.go`, so the row is corrected to
+describe the shipped mechanism instead of its absence. The S3 leg row gains the sealed
+credential resolution added alongside it: `s3/<target>/access-key-id` and
+`.../secret-access-key` rows, process-environment fallback with a logged warning. A new
+line documents `exocomp ssh-serve`, which was not previously mentioned anywhere in the
+bundle.
 
 ## 2026-08-21 — Bundle created
 

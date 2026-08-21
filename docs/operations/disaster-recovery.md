@@ -31,8 +31,8 @@ ride in the same snapshot, which is what makes an offline restore possible.
 | Leg | Mechanism |
 |---|---|
 | NAS | `restic` to a local repository on the SMB/NFS mount, after asserting mountpoint, canary file, and free space |
-| S3-compatible | `restic` to an `s3:` repository |
-| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window. Archive chunking at 90 MB and the 4 GB repo-size guard are **M2** — M1's git leg (`internal/backup/git.go`) pushes the archive whole and has no size guard |
+| S3-compatible | `restic` to an `s3:` repository. Credentials resolve from sealed secret rows `s3/<target>/access-key-id` and `s3/<target>/secret-access-key` (optionally `.../region`, `.../session-token`) when both required rows are sealed; otherwise the leg falls back to the process environment and logs a warning — it never fails silently on a missing sealed credential |
+| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window, chunked into 90 MB `.age.partNN` parts with a `sha256` parts manifest (`internal/backup/chunk.go`). The leg refuses loudly before pushing if the bare repository's `objects` directory already exceeds 4 GB |
 
 One leg failing does not abort the others; each gets its own `backup_run` row and its own
 alert. A target that fails twice consecutively raises a `critical` notification. The
@@ -94,6 +94,10 @@ Then verify rather than assume:
 exocomp doctor       # tool versions, data dir mode, keyring recipients
 exocomp tui          # last known activity — does it match your memory?
 ```
+
+`exocomp ssh-serve --listen <addr> --authorized-keys <file>` renders the same TUI over SSH
+(public-key auth only, no passwords) for a host with no local terminal at hand — a recovery
+host reached only over the network, for instance.
 
 ## The recovery card
 

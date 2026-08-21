@@ -26,7 +26,7 @@ a process boundary or does not ship.
 | `google/cel-go` | 0.2x | Apache-2.0 | sandboxed, non-Turing-complete event rules |
 | `containrrr/shoutrrr` | 0.8.x | MIT | notification fan-out (ntfy, gotify, SMTP, webhook) as a library |
 | Bubble Tea v2 + Bubbles + Lip Gloss | v2 | MIT | TUI — the priority-1 interface |
-| `charmbracelet/wish` | 1.x | MIT | TUI over SSH |
+| `charm.land/wish/v2` | 2.0.x | MIT | TUI over SSH, `exocomp ssh-serve` (`cmd/exocomp/ssh.go`). Not `charmbracelet/wish` v1.x — that major still pairs with Bubble Tea v1; `charm.land/wish/v2`'s `bubbletea` middleware is the release that targets Bubble Tea v2, which this project is on |
 | `a-h/templ` + htmx | 0.3.x / 2.x | MIT / 0BSD | server-rendered web UI via `go:embed`, no Node build |
 | `spf13/cobra` | 1.x | Apache-2.0 | CLI surface |
 | *(deferred)* Wails | v2 | MIT | desktop wrapper of the web UI |
