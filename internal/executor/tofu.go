@@ -1,0 +1,424 @@
+package executor
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strings"
+	"time"
+)
+
+// KindTofu is the Spec kind this driver serves.
+const KindTofu = "tofu"
+
+// TofuBinary is the pinned tool the driver runs.
+const TofuBinary = "tofu"
+
+// TofuStatePurpose is the HKDF purpose the state-encryption passphrase is
+// derived under; the workspace name is the derivation id. Tofu encrypts its
+// own state with it, so there is no second format and nothing extra to lose
+// (ADR 0004).
+const TofuStatePurpose = "tofu-state"
+
+// BackendOverrideFile is the file the driver drops into a workspace directory
+// to point tofu at this control plane's state backend. It is an override file
+// so the operator's own configuration never has to mention a backend, and it
+// carries no secret: the bearer lives in the private backend configuration
+// passed to init.
+const BackendOverrideFile = "zz_exocomp_backend_override.tf"
+
+// tofuEnvAllow is the environment a tofu run inherits. TF_ names are not
+// inherited wholesale the way ANSIBLE_ names are: TF_CLI_ARGS would let the
+// operator's shell rewrite the argv the queue recorded, and TF_ENCRYPTION and
+// TF_DATA_DIR are the driver's to set. Only module inputs pass through.
+var tofuEnvAllow = []string{"HOME", "LANG", "LC_ALL", "PATH", "TZ"}
+
+const tofuVarPrefix = "TF_VAR_"
+
+// tofuInputOps are the operations that accept -input; `tofu state list` and
+// its siblings reject the flag outright.
+var tofuInputOps = []string{"init", "plan", "apply", "destroy", "refresh", "validate"}
+
+// tofuSubcommandOps are the operations whose own subcommand is the next
+// argument, so generated flags belong after it rather than before.
+var tofuSubcommandOps = []string{"state", "workspace", "providers"}
+
+// TofuArgv returns the argv for one tofu operation. The driver adds the flags
+// every non-interactive run needs, so a job row records the operation and the
+// operator's own arguments and nothing else.
+func TofuArgv(op string, args ...string) []string {
+	argv := make([]string, 0, len(args)+2)
+	argv = append(argv, TofuBinary, op)
+	return append(argv, args...)
+}
+
+// TofuPlanOutcome is the structured payload attached to the event a plan
+// emits. `tofu plan -detailed-exitcode` reports "changes present" as exit code
+// 2, which is neither success nor failure; executor.Result has one exit code
+// and the queue reads it as the verdict, so the distinction travels as a job
+// event instead — durable, append-only, and readable by whatever asks later.
+type TofuPlanOutcome struct {
+	Operation string `json:"operation"`
+	Changes   bool   `json:"changes"`
+}
+
+// tofuEventKey namespaces the outcome inside an event's raw_json.
+const tofuEventKey = "tofu"
+
+// TofuPlanChanges reports whether a job event's raw_json is a plan outcome and
+// whether that plan found changes.
+func TofuPlanChanges(rawJSON string) (changes, ok bool) {
+	if rawJSON == "" {
+		return false, false
+	}
+	var envelope struct {
+		Tofu *TofuPlanOutcome `json:"tofu"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil || envelope.Tofu == nil {
+		return false, false
+	}
+	return envelope.Tofu.Changes, true
+}
+
+// TofuOptions configures the driver. Like AnsibleOptions it holds the material
+// a Spec must not: specs are persisted, options are resolved per execution.
+type TofuOptions struct {
+	// Binary overrides the executable. Empty resolves tofu on PATH.
+	Binary string
+	// Workspace names the state this run reads and writes.
+	Workspace string
+	// BackendURL is the state backend address for that workspace.
+	BackendURL string
+	// BackendToken is the bearer the backend expects, base64 of the derived
+	// subkey. It is written only to the private directory.
+	BackendToken string
+	// StatePassphrase feeds tofu's own pbkdf2 state encryption. Empty leaves
+	// TF_ENCRYPTION unset and state is pushed in the clear.
+	StatePassphrase string
+	// PrivateDirRoot is where the per-run private directory is created.
+	// Empty uses the system temp dir.
+	PrivateDirRoot string
+	// PluginCacheDir keeps providers across runs, so a run does not depend on
+	// a registry being reachable. Empty leaves tofu's default alone.
+	PluginCacheDir string
+	// Env adds explicit KEY=VALUE entries on top of the inherited allowlist.
+	Env []string
+}
+
+// Tofu runs OpenTofu against the control plane's own HTTP state backend. It
+// generates the backend wiring, sets state encryption, then hands each process
+// to the local shell driver so streaming and exit-code handling keep one
+// implementation.
+type Tofu struct {
+	opts  TofuOptions
+	inner Driver
+}
+
+// NewTofu returns the OpenTofu driver.
+func NewTofu(opts TofuOptions) *Tofu {
+	return &Tofu{opts: opts, inner: NewShell()}
+}
+
+// Run initializes the working directory against the state backend and then
+// executes the operation named by spec.Argv. A failing init returns its own
+// exit code: the operation never runs against a half-configured backend.
+func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	bin, op, err := t.resolve(spec)
+	if err != nil {
+		return Result{}, err
+	}
+	if spec.Dir == "" {
+		return Result{}, errors.New("executor: tofu: no working directory")
+	}
+
+	private, err := os.MkdirTemp(t.opts.PrivateDirRoot, "exocomp-tofu-")
+	if err != nil {
+		return Result{}, fmt.Errorf("executor: tofu: private dir: %w", err)
+	}
+	defer func() {
+		if rmErr := os.RemoveAll(private); rmErr != nil {
+			sink.Emit(Event{
+				Ts:    time.Now().UTC(),
+				Level: LevelSystem,
+				Msg:   fmt.Sprintf("private dir %s not removed: %v", private, rmErr),
+			})
+		}
+	}()
+	if err := os.Chmod(private, 0o700); err != nil {
+		return Result{}, fmt.Errorf("executor: tofu: private dir mode: %w", err)
+	}
+
+	backendConfig, err := t.writeBackendConfig(private)
+	if err != nil {
+		return Result{}, err
+	}
+	removeOverride, err := writeBackendOverride(spec.Dir)
+	if err != nil {
+		return Result{}, err
+	}
+	defer removeOverride(sink)
+
+	dataDir := filepath.Join(private, "data")
+	if err := os.Mkdir(dataDir, 0o700); err != nil {
+		return Result{}, fmt.Errorf("executor: tofu: data dir: %w", err)
+	}
+	env := t.env(dataDir)
+
+	// One deadline covers init and the operation together; the inner driver
+	// would otherwise grant each of them the job's whole timeout.
+	if spec.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, spec.Timeout)
+		defer cancel()
+	}
+	spec.Timeout = 0
+	spec.Env = env
+
+	if op != "init" {
+		initSpec := spec
+		initSpec.Argv = tofuFlags(bin, []string{TofuBinary, "init", "-backend-config=" + backendConfig})
+		sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem, Msg: "tofu init"})
+		res, err := t.inner.Run(ctx, initSpec, sink)
+		if err != nil || res.ExitCode != 0 {
+			return res, err
+		}
+	} else {
+		spec.Argv = append(spec.Argv, "-backend-config="+backendConfig)
+	}
+
+	spec.Argv = tofuFlags(bin, spec.Argv)
+	sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem, Msg: "tofu " + op})
+
+	res, err := t.inner.Run(ctx, spec, sink)
+	if err != nil {
+		return res, err
+	}
+	if op == "plan" {
+		res = reportPlanOutcome(res, sink)
+	}
+	return res, nil
+}
+
+// resolve validates the spec and resolves the executable and the operation.
+func (t *Tofu) resolve(spec Spec) (bin, op string, err error) {
+	if spec.Kind != "" && spec.Kind != KindTofu {
+		return "", "", fmt.Errorf("executor: tofu: spec kind is %q, want %s", spec.Kind, KindTofu)
+	}
+	if len(spec.Argv) < 2 {
+		return "", "", errors.New("executor: tofu: argv needs a binary and an operation")
+	}
+	if filepath.Base(spec.Argv[0]) != TofuBinary {
+		return "", "", fmt.Errorf("executor: tofu: argv[0] is %q, want %s", spec.Argv[0], TofuBinary)
+	}
+	op = spec.Argv[1]
+	if strings.HasPrefix(op, "-") {
+		return "", "", fmt.Errorf("executor: tofu: argv[1] is %q, want an operation", op)
+	}
+
+	bin = t.opts.Binary
+	if bin == "" {
+		resolved, lookErr := exec.LookPath(TofuBinary)
+		if lookErr != nil {
+			return "", "", fmt.Errorf("executor: tofu: %w", lookErr)
+		}
+		bin = resolved
+	}
+	return bin, op, nil
+}
+
+// reportPlanOutcome turns -detailed-exitcode's third answer into an event.
+// Exit 2 means the plan found changes, which is a fact about infrastructure,
+// not a failed run, so the job's exit code becomes 0.
+func reportPlanOutcome(res Result, sink EventSink) Result {
+	changes := res.ExitCode == 2
+	if res.ExitCode != 0 && !changes {
+		return res
+	}
+	outcome := TofuPlanOutcome{Operation: "plan", Changes: changes}
+	raw, err := json.Marshal(map[string]TofuPlanOutcome{tofuEventKey: outcome})
+	if err != nil {
+		// Unreachable: the payload is two fixed fields.
+		panic("executor: tofu: encode plan outcome: " + err.Error())
+	}
+
+	msg := "tofu plan: no changes"
+	if changes {
+		msg = "tofu plan: changes present (exit 2)"
+	}
+	sink.Emit(Event{
+		Ts:      time.Now().UTC(),
+		Level:   LevelSystem,
+		Msg:     msg,
+		RawJSON: string(raw),
+	})
+	res.ExitCode = 0
+	return res
+}
+
+// tofuFlags replaces argv[0] with the resolved binary and inserts the flags a
+// queued run always needs, leaving any the caller already chose alone.
+//
+// Position matters twice over: tofu stops reading flags at the first
+// positional argument, so `apply <planfile>` needs them before the file, while
+// `state list` needs them after the subcommand. The command path is what the
+// flags follow.
+func tofuFlags(bin string, argv []string) []string {
+	op := argv[1]
+
+	depth := 1
+	if slices.Contains(tofuSubcommandOps, op) {
+		depth = 2
+	}
+	if depth > len(argv)-1 {
+		depth = len(argv) - 1
+	}
+
+	var inject []string
+	if !slices.Contains(argv, "-no-color") {
+		inject = append(inject, "-no-color")
+	}
+	if slices.Contains(tofuInputOps, op) && !hasFlag(argv, "-input") {
+		inject = append(inject, "-input=false")
+	}
+	if op == "plan" && !slices.Contains(argv, "-detailed-exitcode") {
+		inject = append(inject, "-detailed-exitcode")
+	}
+
+	out := make([]string, 0, len(argv)+len(inject))
+	out = append(out, bin)
+	out = append(out, argv[1:1+depth]...)
+	out = append(out, inject...)
+	return append(out, argv[1+depth:]...)
+}
+
+func hasFlag(argv []string, name string) bool {
+	for _, a := range argv {
+		if a == name || strings.HasPrefix(a, name+"=") {
+			return true
+		}
+	}
+	return false
+}
+
+// writeBackendConfig writes the partial backend configuration init consumes.
+// It holds the bearer, so it lives in the 0700 private directory and dies with
+// it rather than sitting in the operator's workspace directory.
+func (t *Tofu) writeBackendConfig(dir string) (string, error) {
+	if t.opts.BackendURL == "" {
+		return "", errors.New("executor: tofu: no backend url")
+	}
+	address, err := hclString(t.opts.BackendURL)
+	if err != nil {
+		return "", fmt.Errorf("executor: tofu: backend url: %w", err)
+	}
+	token, err := hclString("Bearer " + t.opts.BackendToken)
+	if err != nil {
+		return "", fmt.Errorf("executor: tofu: backend token: %w", err)
+	}
+
+	body := fmt.Sprintf(`address        = %[1]s
+lock_address   = %[1]s
+unlock_address = %[1]s
+lock_method    = "LOCK"
+unlock_method  = "UNLOCK"
+headers = {
+  Authorization = %[2]s
+}
+`, address, token)
+
+	path := filepath.Join(dir, "backend.hcl")
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return "", fmt.Errorf("executor: tofu: write backend config: %w", err)
+	}
+	return path, nil
+}
+
+// writeBackendOverride declares the http backend in the workspace directory,
+// which is the only place tofu reads configuration from. The block is empty:
+// every value arrives through the private backend configuration.
+//
+// The file is shared by everything running in that directory, so two runs
+// there at once would remove each other's backend mid-flight. The queue's
+// concurrency key is what keeps them apart, which is why a workspace owns its
+// directory rather than sharing one.
+func writeBackendOverride(dir string) (func(EventSink), error) {
+	path := filepath.Join(dir, BackendOverrideFile)
+	body := "terraform {\n  backend \"http\" {}\n}\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		return nil, fmt.Errorf("executor: tofu: write backend override: %w", err)
+	}
+	return func(sink EventSink) {
+		if err := os.Remove(path); err != nil {
+			sink.Emit(Event{
+				Ts:    time.Now().UTC(),
+				Level: LevelSystem,
+				Msg:   fmt.Sprintf("backend override %s not removed: %v", path, err),
+			})
+		}
+	}, nil
+}
+
+// env builds the child environment: the allowlist over the parent, then the
+// entries that make the run non-interactive, private, and encrypted.
+func (t *Tofu) env(dataDir string) []string {
+	out := make([]string, 0, len(tofuEnvAllow)+8)
+	for _, kv := range os.Environ() {
+		name, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if slices.Contains(tofuEnvAllow, name) || strings.HasPrefix(name, tofuVarPrefix) {
+			out = append(out, kv)
+		}
+	}
+
+	out = append(out,
+		"TF_DATA_DIR="+dataDir,
+		"TF_IN_AUTOMATION=1",
+		"CHECKPOINT_DISABLE=1",
+	)
+	if t.opts.PluginCacheDir != "" {
+		out = append(out, "TF_PLUGIN_CACHE_DIR="+t.opts.PluginCacheDir)
+	}
+	if t.opts.StatePassphrase != "" {
+		out = append(out, "TF_ENCRYPTION="+encryptionConfig(t.opts.StatePassphrase))
+	}
+	return append(out, t.opts.Env...)
+}
+
+// encryptionConfig is the TF_ENCRYPTION document: pbkdf2 over the derived
+// passphrase, AES-GCM over the state. Tofu does the encrypting, so there is no
+// second format and no third party in the recovery path (ADR 0004).
+func encryptionConfig(passphrase string) string {
+	quoted, err := hclString(passphrase)
+	if err != nil {
+		// Unreachable: the passphrase is base64 of a derived subkey.
+		panic("executor: tofu: state passphrase: " + err.Error())
+	}
+	return fmt.Sprintf(`key_provider "pbkdf2" "exocomp" {
+  passphrase = %s
+}
+method "aes_gcm" "exocomp" {
+  keys = key_provider.pbkdf2.exocomp
+}
+state {
+  method = method.aes_gcm.exocomp
+}
+`, quoted)
+}
+
+// hclString quotes a value for an HCL document, refusing the characters that
+// would end the string or start an interpolation instead of escaping them:
+// every value the driver writes is a URL, a token, or a derived passphrase,
+// and none of them may legitimately contain any of these.
+func hclString(v string) (string, error) {
+	if strings.ContainsAny(v, "\"\\\n\r") || strings.Contains(v, "${") || strings.Contains(v, "%{") {
+		return "", fmt.Errorf("value %q is not representable in a generated HCL string", v)
+	}
+	return `"` + v + `"`, nil
+}
