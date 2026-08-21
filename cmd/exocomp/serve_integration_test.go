@@ -124,6 +124,40 @@ func TestServeIsTheDaemon(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
+// TestServeRefusesASecondInstance drives two real processes against one data
+// dir: the second must refuse rather than double-fire every schedule and race
+// the first for every queued job. Once the holder is gone its lock is free —
+// nothing has to clean up after it.
+func TestServeRefusesASecondInstance(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	bin := buildExocomp(t)
+
+	runCLI(t, bin, "init")
+
+	first := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	first.waitForLine(t, &first.stdout, "scheduler started", 30*time.Second)
+
+	out, err := runCLIOutput(bin, "serve", "--port", "0")
+	if err == nil {
+		t.Fatalf("a second serve started against the same data dir:\n%s", out)
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+		t.Errorf("second serve exited with %v, want exit status 1\n%s", err, out)
+	}
+	if pid := fmt.Sprintf("pid %d", first.cmd.Process.Pid); !strings.Contains(out, pid) {
+		t.Errorf("second serve did not name the holder (%s):\n%s", pid, out)
+	}
+
+	first.signal(t, syscall.SIGTERM)
+	first.waitExit(t, 60*time.Second)
+
+	second := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	second.waitForLine(t, &second.stdout, "scheduler started", 30*time.Second)
+	second.signal(t, syscall.SIGTERM)
+	second.waitExit(t, 60*time.Second)
+}
+
 // TestServeShutdownLetsAnInFlightBackupFinish is the SIGTERM-mid-backup half
 // of the gate. The backup leg writes its own backup_run row when it ends, so
 // the daemon has to outlive it: a shutdown that cancelled the leg would leave

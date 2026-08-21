@@ -113,6 +113,12 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return fmt.Errorf("serve: resolve data dir: %w", err)
 	}
 
+	lock, err := acquireServeLock(dir)
+	if err != nil {
+		return err
+	}
+	defer lock.release()
+
 	st, err := openJobStore(ctx, warn)
 	if err != nil {
 		return err
