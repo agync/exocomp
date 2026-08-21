@@ -105,3 +105,26 @@ them are design-accurate but the implementation is authoritative:
 - Deferred to M2, tracked: amendment-2 git-leg chunking and repo-size guard;
   S3 credentials as sealed rows (amendment 1); systemd-creds TPM sealing;
   age-plugin-yubikey recipients.
+
+## 2026-08-21 — M1 security and DR corrections
+
+An adversarial review of the M1 code found claims the implementation did not
+keep. Corrections, code first:
+
+- The recovery card told the operator to restore "using the read-only storage
+  credential from this card". The card carries no such credential: per-target
+  read-only keys are [amendment 1](design/amendments.md), scheduled for M2. The
+  card now says the operator supplies the uri and its credential.
+  [disaster-recovery.md](operations/disaster-recovery.md) still describes the
+  amendment-1 end state, which is design, not current behaviour.
+- `exocomp doctor --deep` does not exist. The card says `exocomp doctor`; the
+  operations pages still name the designed `--deep` form.
+- `install.sh --restore` without an exocomp binary printed "would restore" and
+  exited 0 — a recovery entrypoint reporting success having done nothing. It now
+  runs the card's chain in POSIX shell (age, openssl, restic, coreutils),
+  verifies the restored files against MANIFEST.json, and fails non-zero at every
+  step. `packaging/restore_test.go` drives it against a real backup.
+  keyring.age is read from a local target root; an s3 or git target needs the
+  operator to fetch keyring.age and pass `--keyring`.
+- `backup canary` is gone; `secrets add` supersedes it (it was listed above as
+  deferred to M2).

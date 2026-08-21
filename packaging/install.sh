@@ -20,15 +20,29 @@ Options:
   --dest DIR             With restore: data dir to rebuild (default \$EXOCOMP_DATA_DIR
                          or /var/lib/exocomp)
   --identity FILE        With restore: age identity file holding the recovery key
+  --keyring FILE         With restore: keyring.age, when it cannot be read from
+                         the target root (any non-local target)
+  --target-name NAME     With restore: the name the repository password was
+                         derived from; read from RECOVERY.md when omitted
   --image-tag TAG        With rollback: pin this image tag
   --help                 Show this help and exit
 
 Restore runs "exocomp restore" when an exocomp binary is available: on PATH, or
-named by \$EXOCOMP_BIN. Without one it prints what it would do, because the
-binary is what knows how to derive the repository password from the keyring.
+named by \$EXOCOMP_BIN. Without one it runs the same chain by hand with age,
+openssl, restic and coreutils - the chain printed on the recovery card - so a
+lost binary is not a lost restore.
+
+By hand, keyring.age comes from the target root: copied from the directory for
+a local target, and named with --keyring for an s3 or git target, which you
+fetch yourself with whatever reaches that store.
 
 Never invoked with sudo: rootless podman or docker only.
 EOF
+}
+
+fail() {
+    echo "install.sh: $*" >&2
+    exit 1
 }
 
 detect_tier() {
@@ -41,11 +55,30 @@ detect_tier() {
     fi
 }
 
+require_tools() {
+    for tool in "$@"; do
+        command -v "$tool" >/dev/null 2>&1 || fail "$tool is required for a manual restore and is not on PATH"
+    done
+}
+
+# ask prints a prompt and reads one line, but only when a human is there to
+# answer. A DR script that blocks forever on a closed stdin is a DR script that
+# fails at 3am.
+ask() {
+    [ -t 0 ] || return 1
+    printf '%s' "$1" >&2
+    read -r reply || return 1
+    [ -n "$reply" ] || return 1
+    echo "$reply"
+}
+
 mode=install
 image_tag=""
 from=""
 dest=""
 identity=""
+keyring=""
+target_name=""
 data_dir=${EXOCOMP_DATA_DIR:-/var/lib/exocomp}
 
 while [ $# -gt 0 ]; do
@@ -64,23 +97,33 @@ while [ $# -gt 0 ]; do
             mode=rollback
             ;;
         --image-tag)
-            [ $# -ge 2 ] || { echo "install.sh: --image-tag requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || fail "--image-tag requires a value"
             image_tag="$2"
             shift
             ;;
         --from)
-            [ $# -ge 2 ] || { echo "install.sh: --from requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || fail "--from requires a value"
             from="$2"
             shift
             ;;
         --dest)
-            [ $# -ge 2 ] || { echo "install.sh: --dest requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || fail "--dest requires a value"
             dest="$2"
             shift
             ;;
         --identity)
-            [ $# -ge 2 ] || { echo "install.sh: --identity requires a value" >&2; exit 1; }
+            [ $# -ge 2 ] || fail "--identity requires a value"
             identity="$2"
+            shift
+            ;;
+        --keyring)
+            [ $# -ge 2 ] || fail "--keyring requires a value"
+            keyring="$2"
+            shift
+            ;;
+        --target-name)
+            [ $# -ge 2 ] || fail "--target-name requires a value"
+            target_name="$2"
             shift
             ;;
         *)
@@ -93,16 +136,14 @@ while [ $# -gt 0 ]; do
 done
 
 if [ -n "$image_tag" ] && [ "$mode" != rollback ]; then
-    echo "install.sh: --image-tag is only valid with rollback" >&2
-    exit 1
+    fail "--image-tag is only valid with rollback"
 fi
 
 if [ "$mode" != restore ]; then
-    for opt in from dest identity; do
+    for opt in from dest identity keyring target_name; do
         eval "value=\$$opt"
         if [ -n "$value" ]; then
-            echo "install.sh: --$opt is only valid with restore" >&2
-            exit 1
+            fail "--$(echo "$opt" | tr _ -) is only valid with restore"
         fi
     done
 fi
@@ -116,37 +157,161 @@ elif command -v exocomp >/dev/null 2>&1; then
     exocomp_bin=$(command -v exocomp)
 fi
 
-tier=$(detect_tier)
+# repo_path strips the kind prefix a target uri may carry, so "restic_local:/srv/x"
+# and "/srv/x" name the same repository.
+repo_path() {
+    case "$1" in
+        restic_local:*) echo "${1#restic_local:}" ;;
+        local:*)        echo "${1#local:}" ;;
+        restic_s3:*)    echo "${1#restic_s3:}" ;;
+        *)              echo "$1" ;;
+    esac
+}
 
-if [ "$tier" = none ]; then
-    echo "install.sh: neither podman nor docker found on PATH" >&2
-    exit 1
-fi
+# manifest_sha reads one file's recorded digest out of MANIFEST.json. The file
+# is pretty-printed by the writer, one field per line, so awk is enough and a
+# restore does not need a JSON parser on the recovery host.
+manifest_sha() {
+    awk -v want="$1" '
+        $1 == "\"name\":" {
+            name = $2
+            gsub(/^"|",?$/, "", name)
+        }
+        $1 == "\"sha256\":" && name == want {
+            sha = $2
+            gsub(/^"|",?$/, "", sha)
+            print sha
+            exit
+        }
+    ' "$2"
+}
 
-echo "install.sh $VERSION: tier=$tier mode=$mode${image_tag:+ image_tag=$image_tag}"
+verify_file() {
+    want=$(manifest_sha "$1" "$3/MANIFEST.json")
+    [ -n "$want" ] || fail "MANIFEST.json records no sha256 for $1"
+    got=$(sha256sum "$2" | cut -d' ' -f1)
+    [ "$got" = "$want" ] || fail "$1: sha256 $got, manifest says $want"
+}
+
+# manual_restore walks the recovery card's chain with no exocomp code in it:
+# unwrap the DEK with age, derive the repository password with openssl, restore
+# the newest snapshot with restic. Every step's failure is fatal.
+manual_restore() {
+    require_tools age openssl restic od tr base64 sha256sum awk
+
+    [ -n "$from" ] || from=$(ask "target uri (or kind:uri): ") \
+        || fail "restore requires --from <uri-or-kind:uri>"
+    [ -n "$identity" ] || identity=$(ask "age identity file holding the recovery key: ") \
+        || fail "restore without an exocomp binary requires --identity <recovery-key-file>"
+    [ -r "$identity" ] || fail "identity file $identity is not readable"
+
+    repo=$(repo_path "$from")
+
+    case "$from" in
+        s3:*|restic_s3:*|git:*|https://*|ssh://*|git@*)
+            [ -n "$keyring" ] || fail "a $from target cannot be read as a directory: fetch keyring.age from the target root yourself and pass --keyring FILE"
+            ;;
+        *)
+            if [ -z "$keyring" ]; then
+                [ -d "$repo" ] || fail "target root $repo is not a directory"
+                keyring="$repo/keyring.age"
+            fi
+            if [ -z "$target_name" ] && [ -r "$repo/RECOVERY.md" ]; then
+                target_name=$(sed -n 's/^target-name: *//p' "$repo/RECOVERY.md" | head -n 1)
+            fi
+            ;;
+    esac
+    [ -r "$keyring" ] || fail "keyring.age not readable at $keyring"
+
+    [ -n "$target_name" ] || target_name=$(ask "target name the repository password was derived from: ") \
+        || fail "target name unknown: pass --target-name, or restore from a target root holding RECOVERY.md"
+
+    # 0077 so nothing below is readable by anyone else, DEK included.
+    umask 0077
+    work=$(mktemp -d "${TMPDIR:-/tmp}/exocomp-restore.XXXXXX")
+    trap 'rm -rf "$work"' EXIT INT TERM
+
+    echo "install.sh: unwrapping keyring.age with $identity"
+    age -d -i "$identity" "$keyring" > "$work/dek.bin" \
+        || fail "age could not unwrap $keyring with $identity"
+
+    echo "install.sh: deriving the repository password for target $target_name"
+    hex() { od -An -tx1 -v | tr -d ' \n'; }
+    openssl kdf -keylen 32 -kdfopt digest:SHA256 \
+        -kdfopt "hexkey:$(hex < "$work/dek.bin")" \
+        -kdfopt "hexsalt:$(printf 'exocomp/v1' | hex)" \
+        -kdfopt "hexinfo:$(printf 'restic-repo:%s' "$target_name" | hex)" \
+        -binary HKDF | base64 > "$work/restic.pass" \
+        || fail "openssl could not derive the repository password"
+
+    echo "install.sh: restoring the newest snapshot from $repo"
+    RESTIC_PASSWORD_FILE="$work/restic.pass" restic -r "$repo" \
+        restore latest --target "$work/tree" \
+        || fail "restic could not restore the newest snapshot from $repo"
+
+    # restic recreates absolute paths under --target, so the staging tree lands
+    # somewhere below it. MANIFEST.json marks the spot.
+    staged=$(find "$work/tree" -name MANIFEST.json -print | head -n 1)
+    [ -n "$staged" ] || fail "the restored snapshot holds no MANIFEST.json"
+    staged=$(dirname "$staged")
+
+    for name in snapshot.db keyring.age; do
+        [ -f "$staged/$name" ] || fail "the restored snapshot holds no $name"
+        verify_file "$name" "$staged/$name" "$staged"
+    done
+
+    for name in exocomp.db keyring.age host.key; do
+        if [ -e "$dest/$name" ]; then
+            fail "$dest/$name exists: refusing to restore over live state"
+        fi
+    done
+    mkdir -p "$dest"
+    chmod 0700 "$dest"
+
+    cp "$staged/snapshot.db" "$dest/exocomp.db"
+    cp "$staged/keyring.age" "$dest/keyring.age"
+    cp "$staged/MANIFEST.json" "$dest/MANIFEST.json"
+    chmod 0600 "$dest/exocomp.db" "$dest/keyring.age" "$dest/MANIFEST.json"
+
+    echo "install.sh: restored $dest from $repo (target $target_name), sha256 verified"
+    echo "install.sh: host.key is NOT restored; this host reads secrets with the recovery identity until it is re-keyed"
+}
 
 case "$mode" in
     install)
+        tier=$(detect_tier)
+        if [ "$tier" = none ]; then
+            fail "neither podman nor docker found on PATH"
+        fi
+        echo "install.sh $VERSION: tier=$tier mode=$mode"
         echo "would install exocomp via Quadlet ($tier rootless), pulling packaging/Containerfile image and enabling the systemd unit"
         ;;
     restore)
+        # No container runtime is required to restore: recovery must not depend
+        # on anything but the files and off-the-shelf tools (AGENTS.md 7).
+        echo "install.sh $VERSION: mode=restore dest=$dest"
         if [ -z "$exocomp_bin" ]; then
-            echo "would restore $dest from ${from:-a backup target} and restart the unit"
-            echo "install.sh: no exocomp binary found; set EXOCOMP_BIN or install first" >&2
-            exit 0
+            echo "install.sh: no exocomp binary; running the recovery card's chain by hand" >&2
+            manual_restore
+        else
+            [ -n "$from" ] || fail "restore requires --from <uri-or-kind:uri>"
+            set -- restore --from "$from" --dest "$dest"
+            if [ -n "$identity" ]; then
+                set -- "$@" --identity "$identity"
+            fi
+            if [ -n "$target_name" ]; then
+                set -- "$@" --target-name "$target_name"
+            fi
+            echo "install.sh: exec $exocomp_bin $*"
+            "$exocomp_bin" "$@"
         fi
-        if [ -z "$from" ]; then
-            echo "install.sh: restore requires --from <uri-or-kind:uri>" >&2
-            exit 1
-        fi
-        set -- restore --from "$from" --dest "$dest"
-        if [ -n "$identity" ]; then
-            set -- "$@" --identity "$identity"
-        fi
-        echo "install.sh: exec $exocomp_bin $*"
-        "$exocomp_bin" "$@"
         ;;
     rollback)
+        tier=$(detect_tier)
+        if [ "$tier" = none ]; then
+            fail "neither podman nor docker found on PATH"
+        fi
+        echo "install.sh $VERSION: tier=$tier mode=$mode${image_tag:+ image_tag=$image_tag}"
         echo "would roll back the running unit to the previous release image"
         ;;
 esac
