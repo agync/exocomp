@@ -33,11 +33,11 @@ done
 log "== uname =="
 limactl shell "$INSTANCE" -- uname -a || fail "uname failed"
 
+export PATH="$HOME/.local/bin:$PATH"
 if ! command -v ansible-playbook >/dev/null 2>&1; then
     log "ansible-core not found, installing user-scope via uv"
     uv tool install ansible-core
 fi
-export PATH="$HOME/.local/bin:$PATH"
 command -v ansible >/dev/null 2>&1 || fail "ansible not on PATH after install"
 
 ssh_config="$WORKDIR/ssh_config"
