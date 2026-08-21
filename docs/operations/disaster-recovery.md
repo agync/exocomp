@@ -39,6 +39,11 @@ alert. A target that fails twice consecutively raises a `critical` notification.
 dead-man's-switch ping fires **only on full success**, because the failure mode that
 actually kills you is silent non-execution.
 
+A `backup_run` row ends in `succeeded`, `failed`, or `cancelled`; a leg the daemon's
+shutdown stopped before its drain grace ran out records `cancelled`, not `failed`. The
+row is closed whatever happens to the leg, so a row still reading `running` means the
+process writing it was killed outright (`SIGKILL`), not that a backup is in progress.
+
 ### Sealing S3 credentials
 
 A `restic_s3` target's credentials are ordinary sealed secrets, named

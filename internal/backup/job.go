@@ -102,6 +102,7 @@ func (r *Runner) Run(ctx context.Context, spec executor.Spec, sink executor.Even
 		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelError, Msg: "no leg ran"})
 		exitCode = 1
 	}
+	cancelled := false
 	for _, leg := range report.Legs {
 		level := executor.LevelInfo
 		msg := fmt.Sprintf("target %s: %s snapshot=%s added=%d", leg.Target, leg.State, leg.SnapshotID, leg.BytesAdded)
@@ -110,8 +111,11 @@ func (r *Runner) Run(ctx context.Context, spec executor.Spec, sink executor.Even
 			msg += " error=" + leg.Err.Error()
 			exitCode = 1
 		}
+		cancelled = cancelled || leg.State == store.BackupCancelled
 		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: level, Msg: msg})
 	}
 
-	return executor.Result{ExitCode: exitCode, Duration: time.Since(started)}, nil
+	// A leg that was cancelled is reported as signaled, so the queue records
+	// the job as cancelled rather than failed: nothing about the target broke.
+	return executor.Result{ExitCode: exitCode, Signaled: cancelled, Duration: time.Since(started)}, nil
 }

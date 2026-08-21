@@ -7,11 +7,14 @@ import (
 	"time"
 )
 
-// Backup run states.
+// Backup run states. Cancelled is what a leg the operator or a shutdown
+// stopped records: it distinguishes a run nobody let finish from one the
+// target itself failed.
 const (
 	BackupRunning   = "running"
 	BackupSucceeded = "succeeded"
 	BackupFailed    = "failed"
+	BackupCancelled = "cancelled"
 )
 
 // BackupTarget is one leg of the backup fan-out.

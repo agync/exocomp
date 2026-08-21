@@ -173,6 +173,49 @@ func TestServeShutdownLetsAnInFlightBackupFinish(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
+// TestServeForcedCancelFinishesTheBackupRow is the same shutdown with no grace
+// at all: the leg is cancelled mid-run, and the backup_run row it opened still
+// has to reach a terminal state before the process is gone. Nothing else in
+// the system moves that row — a boot sweep repairs jobs, not backup runs.
+func TestServeForcedCancelFinishesTheBackupRow(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	bin := buildExocomp(t)
+	fakeRestic(t, 10)
+
+	runCLI(t, bin, "init")
+	repo := filepath.Join(t.TempDir(), "repo")
+	runCLI(t, bin, "backup", "add-target", "--name", "local", "--kind", "restic_local", "--uri", repo)
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--drain-grace", "0")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+
+	job := enqueueJob(t, store.NewJob{
+		Runbook:        "backup",
+		Kind:           backup.JobKind,
+		Trigger:        "test",
+		Args:           store.JobArgs{Argv: backup.Argv("local")},
+		ConcurrencyKey: backup.ConcurrencyKey("local"),
+	})
+	waitFor(t, "the backup leg to start", 30*time.Second, func() bool {
+		return len(backupRunsInState(t, store.BackupRunning)) == 1
+	})
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+
+	if got := jobState(t, job); got != store.StateCancelled {
+		t.Errorf("the cancelled backup job is %s, want cancelled\n%s", got, d.dump())
+	}
+	if runs := backupRunsInState(t, store.BackupRunning); len(runs) != 0 {
+		t.Errorf("%d backup_run row(s) left running after the leg was cancelled", len(runs))
+	}
+	if runs := backupRunsInState(t, store.BackupCancelled); len(runs) != 1 {
+		t.Errorf("%d cancelled backup_run row(s), want the one that was in flight\n%s",
+			len(runs), d.dump())
+	}
+	assertNothingLeftRunning(t, d)
+}
+
 // TestServeShutdownRetiresWhatItCannotFinish covers the other end of the grace
 // window: work that outlasts it is cancelled rather than waited on forever,
 // and every row this daemon owned still reaches a terminal state before the
@@ -387,13 +430,16 @@ func fakeTool(t *testing.T, name, body string) string {
 }
 
 // fakeRestic is a restic that takes sleep seconds to back anything up, so a
-// shutdown lands in the middle of a leg rather than between two of them.
+// shutdown lands in the middle of a leg rather than between two of them. The
+// sleep gets its own descriptors: killing this script must close the pipes the
+// driver is scanning, and a grandchild holding them open would make a
+// cancelled leg look like one that ignored the cancel.
 func fakeRestic(t *testing.T, sleep int) string {
 	t.Helper()
 	return fakeTool(t, "restic", fmt.Sprintf(`case "$3" in
   cat) exit 1 ;;
   backup)
-    /bin/sleep %d
+    /bin/sleep %d >/dev/null 2>&1
     echo '{"message_type":"summary","snapshot_id":"5eb0dd4c","data_added":4096}'
     ;;
 esac

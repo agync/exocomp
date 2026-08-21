@@ -2,6 +2,7 @@ package backup
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"os"
 	"os/exec"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -324,6 +326,54 @@ func TestLegsFailIndependently(t *testing.T) {
 	}
 	if len(goodRuns) != 1 || goodRuns[0].State != store.BackupSucceeded {
 		t.Fatalf("reachable target row = %+v", goodRuns)
+	}
+}
+
+// cancellingDriver is the subprocess a forced shutdown kills: the context is
+// cancelled while the leg is running, which is exactly when the engine still
+// has its backup_run row to close.
+type cancellingDriver struct{ cancel context.CancelFunc }
+
+func (d cancellingDriver) Run(ctx context.Context, _ executor.Spec, _ executor.EventSink) (executor.Result, error) {
+	d.cancel()
+	<-ctx.Done()
+	return executor.Result{Signaled: true}, ctx.Err()
+}
+
+// TestCancelledLegFinishesItsRow covers the forced-cancel path: a daemon whose
+// drain grace runs out cancels the leg, and the row the leg opened must still
+// reach a terminal state. A backup_run left running is a run nothing is
+// running, and nothing else in the system will ever move it.
+func TestCancelledLegFinishesItsRow(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	f.engine.opts.Driver = cancellingDriver{cancel: cancel}
+	target := f.target(t, "nas", KindResticLocal, filepath.Join(t.TempDir(), "nas"))
+
+	report, err := f.engine.Run(ctx, []Target{target})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if report.Legs[0].State != store.BackupCancelled {
+		t.Errorf("leg state = %s, want %s", report.Legs[0].State, store.BackupCancelled)
+	}
+
+	runs, err := f.store.ListBackupRuns(context.Background(), target.ID, 1)
+	if err != nil {
+		t.Fatalf("list runs: %v", err)
+	}
+	if len(runs) != 1 {
+		t.Fatalf("backup_run rows = %d, want 1", len(runs))
+	}
+	if runs[0].State == store.BackupRunning {
+		t.Errorf("backup_run %d is still running after the leg was cancelled", runs[0].ID)
+	}
+	if runs[0].State != store.BackupCancelled || runs[0].FinishedAt == nil {
+		t.Errorf("backup_run %d = state %s finished_at %v, want %s and a stamp",
+			runs[0].ID, runs[0].State, runs[0].FinishedAt, store.BackupCancelled)
 	}
 }
 

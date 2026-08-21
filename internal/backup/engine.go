@@ -187,8 +187,13 @@ func (e *Engine) runLeg(ctx context.Context, t Target, stage string) LegResult {
 	snapshot, added, legErr := e.dispatch(ctx, t, stage)
 	run.SnapshotID = snapshot
 	run.BytesAdded = added
-	run.State = store.BackupSucceeded
-	if legErr != nil {
+	switch {
+	case legErr == nil:
+		run.State = store.BackupSucceeded
+	case ctx.Err() != nil:
+		run.State = store.BackupCancelled
+		run.Error = legErr.Error()
+	default:
 		run.State = store.BackupFailed
 		run.Error = legErr.Error()
 	}
@@ -197,7 +202,10 @@ func (e *Engine) runLeg(ctx context.Context, t Target, stage string) LegResult {
 	res.BytesAdded = added
 	res.Err = legErr
 
-	if err := e.store.FinishBackupRun(ctx, run); err != nil {
+	// The row this leg opened is closed even when the leg was cancelled: a
+	// backup_run left running is a run nothing is running, and the write that
+	// says so must not itself run under the context that was just cancelled.
+	if err := e.store.FinishBackupRun(context.WithoutCancel(ctx), run); err != nil {
 		res.Err = errors.Join(res.Err, err)
 	}
 	return res
