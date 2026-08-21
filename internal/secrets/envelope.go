@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"filippo.io/age"
 	"filippo.io/age/armor"
@@ -45,6 +46,7 @@ type Envelope struct {
 	dek        []byte
 	keyring    []byte
 	recipients []Recipient
+	version    KeyringVersion
 }
 
 // SealedSecret is one AES-256-GCM ciphertext. Name and Kind are bound as
@@ -110,10 +112,21 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	rollback := func() {
 		_ = os.Remove(filepath.Join(dataDir, hostKeyFile))
 		_ = os.Remove(filepath.Join(dataDir, recipientsFile))
+		_ = os.Remove(filepath.Join(dataDir, KeyringVersionName))
 	}
 	if err := os.WriteFile(filepath.Join(dataDir, recipientsFile), marshalRecipients(recipients), 0o644); err != nil {
 		rollback()
 		return nil, nil, fmt.Errorf("secrets: write recipients: %w", err)
+	}
+	// Truncated to the second the file stores, so the envelope in memory and
+	// the file on disk report the same generation.
+	version := KeyringVersion{
+		Version:   firstKeyringVersion,
+		Generated: time.Now().UTC().Truncate(time.Second),
+	}
+	if err := writeKeyringVersion(dataDir, version); err != nil {
+		rollback()
+		return nil, nil, err
 	}
 	// Written last: the keyring's presence is what marks the dir initialized.
 	if err := os.WriteFile(filepath.Join(dataDir, keyringFile), keyring, 0o644); err != nil {
@@ -121,13 +134,15 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		return nil, nil, fmt.Errorf("secrets: write keyring: %w", err)
 	}
 
-	env := &Envelope{dataDir: dataDir, dek: dek, keyring: keyring, recipients: recipients}
-	kit := &RecoveryKit{
-		AgeSecretKey: recovery.String(),
-		Salt:         Salt,
-		Derivation:   derivationRecipe,
-		Recipients:   slices.Clone(recipients),
+	env := &Envelope{
+		dataDir:    dataDir,
+		dek:        dek,
+		keyring:    keyring,
+		recipients: recipients,
+		version:    version,
 	}
+	kit := env.KitStructure()
+	kit.AgeSecretKey = recovery.String()
 	return env, kit, nil
 }
 
@@ -155,7 +170,17 @@ func Open(dataDir string) (*Envelope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Envelope{dataDir: dataDir, dek: dek, keyring: keyring, recipients: recipients}, nil
+	version, err := ReadKeyringVersion(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	return &Envelope{
+		dataDir:    dataDir,
+		dek:        dek,
+		keyring:    keyring,
+		recipients: recipients,
+		version:    version,
+	}, nil
 }
 
 // Seal encrypts pt under the DEK with a fresh 96-bit nonce, binding name|kind.
@@ -224,10 +249,15 @@ func (e *Envelope) Recipients() []Recipient { return slices.Clone(e.recipients) 
 // DataDir reports the directory this envelope was opened from.
 func (e *Envelope) DataDir() string { return e.dataDir }
 
+// KeyringVersion reports the generation of the keyring this envelope was
+// opened from.
+func (e *Envelope) KeyringVersion() KeyringVersion { return e.version }
+
 // KitStructure renders the kit from stored public data only. AgeSecretKey stays
 // empty: the recovery secret key exists in memory only at Init or rotation.
 func (e *Envelope) KitStructure() *RecoveryKit {
 	return &RecoveryKit{
+		Version:    e.version,
 		Salt:       Salt,
 		Derivation: derivationRecipe,
 		Recipients: e.Recipients(),

@@ -1,6 +1,9 @@
 package secrets
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+)
 
 // derivationRecipe is the printed card's manual path. Its literal text is a
 // build artifact: kit_test.go executes the openssl pipeline below and diffs the
@@ -54,9 +57,24 @@ binary anywhere on this path:
 // recovery identity is minted; it is never written to disk or to the database.
 type RecoveryKit struct {
 	AgeSecretKey string
+	Version      KeyringVersion
 	Salt         string
 	Derivation   string
 	Recipients   []Recipient
+}
+
+// VersionLine is the card's identity line: which generation this page is, when
+// it was minted, and — from the second generation on — that the page it
+// replaces is now waste paper.
+func (k *RecoveryKit) VersionLine() string {
+	line := "kit " + k.Version.String()
+	if !k.Version.Generated.IsZero() {
+		line += " · generated " + k.Version.Generated.UTC().Format("2006-01-02")
+	}
+	if k.Version.Version > firstKeyringVersion {
+		line += " · replaces v" + strconv.Itoa(k.Version.Version-1) + " (destroy it)"
+	}
+	return line
 }
 
 // Render returns the card text. Without AgeSecretKey it renders the structure
@@ -65,6 +83,7 @@ func (k *RecoveryKit) Render() string {
 	lines := []string{
 		"exocomp recovery kit",
 		"====================",
+		k.VersionLine(),
 		"",
 	}
 
