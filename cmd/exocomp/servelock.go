@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 )
 
 // serveLockName is the file a running daemon holds an exclusive lock on, in
@@ -21,8 +22,17 @@ const serveLockName = "serve.lock"
 // there is no stale lock file to clean up after a kill.
 type serveLock struct{ file *os.File }
 
-// acquireServeLock takes the data dir's daemon lock without blocking, and
-// records this process's pid in it so a second daemon can name the holder.
+// probeGrace bounds how long acquiring keeps trying. A daemon that really owns
+// the dir holds the lock for its whole life, so this only ever delays a refusal
+// — but a CLI probing the same file holds a shared lock for an instant, and
+// losing the daemon to that instant is not a thing to accept.
+const (
+	probeGrace = 250 * time.Millisecond
+	probeRetry = 10 * time.Millisecond
+)
+
+// acquireServeLock takes the data dir's daemon lock, and records this process's
+// pid in it so a second daemon can name the holder.
 func acquireServeLock(dir string) (*serveLock, error) {
 	if err := os.MkdirAll(dir, dataDirMode); err != nil {
 		return nil, fmt.Errorf("serve: create data dir: %w", err)
@@ -34,7 +44,7 @@ func acquireServeLock(dir string) (*serveLock, error) {
 		return nil, fmt.Errorf("serve: open %s: %w", path, err)
 	}
 
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := lockExclusive(file); err != nil {
 		holder := lockHolder(file)
 		_ = file.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
@@ -71,21 +81,38 @@ func lockHolder(file *os.File) string {
 	return pid
 }
 
+// lockExclusive takes the lock without blocking, retrying for probeGrace so a
+// probe's momentary shared lock does not cost a starting daemon the dir.
+func lockExclusive(file *os.File) error {
+	deadline := time.Now().Add(probeGrace)
+	for {
+		err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil || !errors.Is(err, syscall.EWOULDBLOCK) || !time.Now().Before(deadline) {
+			return err
+		}
+		time.Sleep(probeRetry)
+	}
+}
+
 // serveLockHeld reports whether a daemon holds dir's lock. It is how a CLI
 // tells a running daemon from the short-lived state backend another CLI
 // started: both answer /healthz, only the daemon drains the queue.
+//
+// The probe is shared, never exclusive: asking the question must not answer it
+// for anyone else. An exclusive probe conflicts with every other probe, so two
+// CLIs asking at once each conclude a daemon is up.
 func serveLockHeld(dir string) bool {
-	file, err := os.OpenFile(filepath.Join(dir, serveLockName), os.O_RDWR, 0o600)
+	file, err := os.Open(filepath.Join(dir, serveLockName))
 	if err != nil {
 		return false
 	}
 	defer func() { _ = file.Close() }()
 
-	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+	if err := syscall.Flock(int(file.Fd()), syscall.LOCK_SH|syscall.LOCK_NB); err != nil {
 		return errors.Is(err, syscall.EWOULDBLOCK)
 	}
-	// The lock was free; release it again rather than holding what this
-	// process has no business holding.
+	// Nobody holds it exclusively; release the shared lock rather than keeping
+	// what this process has no business keeping.
 	_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 	return false
 }
