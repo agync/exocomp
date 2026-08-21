@@ -15,5 +15,12 @@ COPY --from=uv /uv /usr/local/bin/uv
 COPY --from=build /out/exocompd /usr/local/bin/exocompd
 RUN mkdir -p /var/lib/exocomp && chown 1000:1000 /var/lib/exocomp
 VOLUME ["/var/lib/exocomp"]
+# The data dir is <XDG_DATA_HOME>/exocomp, and uid 1000 has no home here:
+# without this the daemon resolves it under /, cannot create it, and exits.
+ENV XDG_DATA_HOME=/var/lib
 USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/exocompd"]
+# exocompd is the CLI; the daemon is one of its subcommands. Without this the
+# container starts, prints the help, and exits — a control plane that never
+# ran. `podman run <image> <subcommand>` still overrides it.
+CMD ["serve"]

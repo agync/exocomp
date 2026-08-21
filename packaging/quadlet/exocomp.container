@@ -7,7 +7,10 @@ Image=localhost/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
 UserNS=keep-id
-Environment=EXOCOMP_STATE_DIR=/var/lib/exocomp
+# The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
+Environment=XDG_DATA_HOME=/var/lib
+# Named rather than inherited from the image: the unit says what it runs.
+Exec=serve
 
 [Service]
 # The generated unit is Type=notify by default; conmon supplies READY=1,
