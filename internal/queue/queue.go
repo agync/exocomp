@@ -1,0 +1,347 @@
+package queue
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
+	"time"
+
+	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// Spec describes work to enqueue. It carries no environment or secret
+// material: those are resolved at execution time and never persisted.
+type Spec struct {
+	Runbook        string
+	Kind           string
+	Trigger        string
+	Argv           []string
+	Dir            string
+	ConcurrencyKey string
+	DedupKey       string
+	IdempotencyKey string
+	Timeout        time.Duration
+}
+
+// Options configures a Queue. The zero value is usable.
+type Options struct {
+	// Workers caps concurrently running jobs. Default 4.
+	Workers int
+	// DefaultTimeout applies to jobs that specify none. Zero means no limit.
+	DefaultTimeout time.Duration
+	// PollInterval bounds how long the queue sleeps when nothing wakes it.
+	// Default one second.
+	PollInterval time.Duration
+	// Logger receives failures that are not the job's own, e.g. an event
+	// that could not be written. Default slog.Default().
+	Logger *slog.Logger
+}
+
+// Queue drains queued job rows, serializing jobs that share a concurrency
+// key. It is the single execution path: guardrails live here, not in
+// configuration (AGENTS.md invariant 5).
+type Queue struct {
+	store          *store.Store
+	driver         executor.Driver
+	workers        int
+	defaultTimeout time.Duration
+	pollInterval   time.Duration
+	log            *slog.Logger
+
+	wake chan struct{}
+	wg   sync.WaitGroup
+
+	mu       sync.Mutex
+	busy     map[string]bool
+	inflight int
+}
+
+// New returns a queue draining st through drv.
+func New(st *store.Store, drv executor.Driver, opts Options) *Queue {
+	q := &Queue{
+		store:          st,
+		driver:         drv,
+		workers:        opts.Workers,
+		defaultTimeout: opts.DefaultTimeout,
+		pollInterval:   opts.PollInterval,
+		log:            opts.Logger,
+		wake:           make(chan struct{}, 1),
+		busy:           map[string]bool{},
+	}
+	if q.workers <= 0 {
+		q.workers = 4
+	}
+	if q.pollInterval <= 0 {
+		q.pollInterval = time.Second
+	}
+	if q.log == nil {
+		q.log = slog.Default()
+	}
+	return q
+}
+
+// Enqueue records a job in the queued state. When the spec carries an
+// idempotency key that a job already holds, that job is returned unchanged
+// instead of a second one being created.
+func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
+	if len(spec.Argv) == 0 {
+		return store.Job{}, errors.New("queue: enqueue: empty argv")
+	}
+
+	if spec.IdempotencyKey != "" {
+		existing, err := q.store.JobByIdempotencyKey(ctx, spec.IdempotencyKey)
+		switch {
+		case err == nil:
+			return existing, nil
+		case !errors.Is(err, store.ErrNotFound):
+			return store.Job{}, err
+		}
+	}
+
+	job, err := q.store.CreateJob(ctx, store.NewJob{
+		Runbook: spec.Runbook,
+		Kind:    spec.Kind,
+		Trigger: spec.Trigger,
+		Args: store.JobArgs{
+			Argv:    spec.Argv,
+			Dir:     spec.Dir,
+			Timeout: store.Duration(spec.Timeout),
+		},
+		ConcurrencyKey: spec.ConcurrencyKey,
+		DedupKey:       spec.DedupKey,
+		IdempotencyKey: spec.IdempotencyKey,
+	})
+	if errors.Is(err, store.ErrDuplicate) && spec.IdempotencyKey != "" {
+		// Another caller won the race on the same key.
+		return q.store.JobByIdempotencyKey(ctx, spec.IdempotencyKey)
+	}
+	if err != nil {
+		return store.Job{}, err
+	}
+
+	q.notify()
+	return job, nil
+}
+
+// Run drains the queue until ctx is done, then waits for in-flight jobs.
+// Cancelling ctx also cancels those jobs' subprocesses, which land in the
+// cancelled state.
+func (q *Queue) Run(ctx context.Context) error {
+	return q.loop(ctx, false)
+}
+
+// Drain runs until no job is queued and none is in flight. It is what a
+// one-shot command uses instead of a long-lived worker.
+func (q *Queue) Drain(ctx context.Context) error {
+	return q.loop(ctx, true)
+}
+
+func (q *Queue) loop(ctx context.Context, stopWhenIdle bool) error {
+	defer q.wg.Wait()
+
+	ticker := time.NewTicker(q.pollInterval)
+	defer ticker.Stop()
+
+	for {
+		if err := q.dispatch(ctx); err != nil {
+			return err
+		}
+		if stopWhenIdle {
+			idle, err := q.idle(ctx)
+			if err != nil {
+				return err
+			}
+			if idle {
+				return nil
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-q.wake:
+		case <-ticker.C:
+		}
+	}
+}
+
+// dispatch launches every queued job that a free worker slot and an
+// unheld concurrency key allow.
+func (q *Queue) dispatch(ctx context.Context) error {
+	for ctx.Err() == nil {
+		if !q.takeSlot() {
+			return nil
+		}
+		job, ok, err := q.claim(ctx)
+		if err != nil || !ok {
+			q.finishSlot()
+			return err
+		}
+		q.launch(ctx, job)
+	}
+	return nil
+}
+
+// claim moves the oldest runnable queued job to running. Jobs whose
+// concurrency key is already held are skipped, not waited for.
+func (q *Queue) claim(ctx context.Context) (store.Job, bool, error) {
+	jobs, err := q.store.ListJobs(ctx, store.JobFilter{
+		States: []store.JobState{store.StateQueued},
+		Limit:  512,
+	})
+	if err != nil {
+		return store.Job{}, false, err
+	}
+
+	for _, job := range jobs {
+		if !q.reserve(job.ConcurrencyKey) {
+			continue
+		}
+		err := q.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning)
+		if err != nil {
+			q.release(job.ConcurrencyKey)
+			if errors.Is(err, store.ErrStateConflict) {
+				continue
+			}
+			return store.Job{}, false, err
+		}
+		return job, true, nil
+	}
+	return store.Job{}, false, nil
+}
+
+func (q *Queue) launch(ctx context.Context, job store.Job) {
+	q.wg.Add(1)
+	go func() {
+		defer q.wg.Done()
+		defer q.notify()
+		defer q.release(job.ConcurrencyKey)
+		defer q.finishSlot()
+
+		q.execute(ctx, job)
+	}()
+}
+
+func (q *Queue) execute(ctx context.Context, job store.Job) {
+	sink := newStoreSink(q.store, job.ID, q.log)
+	sink.Emit(executor.Event{
+		Level: executor.LevelSystem,
+		Msg:   "running " + strings.Join(job.Args.Argv, " "),
+	})
+
+	timeout := time.Duration(job.Args.Timeout)
+	if timeout <= 0 {
+		timeout = q.defaultTimeout
+	}
+
+	res, runErr := q.driver.Run(ctx, executor.Spec{
+		JobID:   job.ID,
+		Kind:    job.Kind,
+		Argv:    job.Args.Argv,
+		Dir:     job.Args.Dir,
+		Timeout: timeout,
+	}, sink)
+
+	// The job's own outcome must be recorded even when the queue is shutting
+	// down, so finalisation does not run under the cancelled context.
+	final := context.WithoutCancel(ctx)
+	state, msg := outcome(res, runErr, ctx.Err())
+
+	if runErr != nil {
+		sink.Emit(executor.Event{Level: executor.LevelError, Msg: runErr.Error()})
+	} else if err := q.store.SetJobExitCode(final, job.ID, res.ExitCode); err != nil {
+		q.log.Error("record job exit code", "job", job.ID, "err", err)
+	}
+
+	sink.Emit(executor.Event{Level: executor.LevelSystem, Msg: msg})
+	if err := q.store.TransitionJob(final, job.ID, store.StateRunning, state); err != nil {
+		q.log.Error("finish job", "job", job.ID, "state", state, "err", err)
+	}
+}
+
+// outcome maps a driver result onto the job state machine. Exit code alone
+// decides success; everything else only explains the ending.
+func outcome(res executor.Result, runErr, ctxErr error) (store.JobState, string) {
+	switch {
+	case runErr != nil:
+		return store.StateFailed, "driver error: " + runErr.Error()
+	case res.TimedOut:
+		return store.StateTimedOut, fmt.Sprintf("timed out after %s", res.Duration.Round(time.Millisecond))
+	case errors.Is(ctxErr, context.Canceled):
+		return store.StateCancelled, "cancelled"
+	case res.ExitCode == 0:
+		return store.StateSucceeded, "succeeded (exit 0)"
+	default:
+		return store.StateFailed, fmt.Sprintf("failed (exit %d)", res.ExitCode)
+	}
+}
+
+func (q *Queue) idle(ctx context.Context) (bool, error) {
+	q.mu.Lock()
+	inflight := q.inflight
+	q.mu.Unlock()
+	if inflight > 0 {
+		return false, nil
+	}
+
+	queued, err := q.store.ListJobs(ctx, store.JobFilter{
+		States: []store.JobState{store.StateQueued},
+		Limit:  1,
+	})
+	if err != nil {
+		return false, err
+	}
+	return len(queued) == 0, nil
+}
+
+// takeSlot reserves a worker slot when one is free.
+func (q *Queue) takeSlot() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.inflight >= q.workers {
+		return false
+	}
+	q.inflight++
+	return true
+}
+
+func (q *Queue) finishSlot() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.inflight--
+}
+
+// reserve takes a concurrency key, refusing when another job holds it. The
+// empty key constrains nothing.
+func (q *Queue) reserve(key string) bool {
+	if key == "" {
+		return true
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if q.busy[key] {
+		return false
+	}
+	q.busy[key] = true
+	return true
+}
+
+func (q *Queue) release(key string) {
+	if key == "" {
+		return
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.busy, key)
+}
+
+func (q *Queue) notify() {
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
