@@ -51,6 +51,7 @@ type Queue struct {
 	defaultTimeout time.Duration
 	pollInterval   time.Duration
 	log            *slog.Logger
+	wrapSink       func(executor.EventSink) executor.EventSink
 
 	wake chan struct{}
 	wg   sync.WaitGroup
@@ -60,8 +61,8 @@ type Queue struct {
 	inflight int
 }
 
-// New returns a queue draining st through drv.
-func New(st *store.Store, drv executor.Driver, opts Options) *Queue {
+// New returns a queue draining st through drv, adjusted by extra.
+func New(st *store.Store, drv executor.Driver, opts Options, extra ...Option) *Queue {
 	q := &Queue{
 		store:          st,
 		driver:         drv,
@@ -80,6 +81,9 @@ func New(st *store.Store, drv executor.Driver, opts Options) *Queue {
 	}
 	if q.log == nil {
 		q.log = slog.Default()
+	}
+	for _, opt := range extra {
+		opt(q)
 	}
 	return q
 }
@@ -227,7 +231,10 @@ func (q *Queue) launch(ctx context.Context, job store.Job) {
 }
 
 func (q *Queue) execute(ctx context.Context, job store.Job) {
-	sink := newStoreSink(q.store, job.ID, q.log)
+	var sink executor.EventSink = newStoreSink(q.store, job.ID, q.log)
+	if q.wrapSink != nil {
+		sink = q.wrapSink(sink)
+	}
 	sink.Emit(executor.Event{
 		Level: executor.LevelSystem,
 		Msg:   "running " + strings.Join(job.Args.Argv, " "),
