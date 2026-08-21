@@ -30,6 +30,11 @@ func init() {
 // and the job that consumed it.
 const planArtifactKind = "tofu-plan"
 
+// workspaceRunbookPrefix is what `workspace plan|apply` puts in a job's
+// runbook. It is the only place the workspace a queued tofu job belongs to is
+// recorded, so the daemon reads it back to rebuild that job's driver.
+const workspaceRunbookPrefix = "workspace:"
+
 // planExitChanges is what a plan reports to the shell when it found changes,
 // mirroring `tofu plan -detailed-exitcode`. The job itself succeeded: drift is
 // a fact about infrastructure, not a failed run.
@@ -275,7 +280,7 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 	}
 
 	job, err := q.Enqueue(ctx, queue.Spec{
-		Runbook:        "workspace:" + ws.Name,
+		Runbook:        workspaceRunbookPrefix + ws.Name,
 		Kind:           executor.KindTofu,
 		Trigger:        "manual",
 		Argv:           argv,

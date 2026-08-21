@@ -54,11 +54,6 @@ const defaultDrainGrace = 30 * time.Second
 // the database, so `schedule enable` reaches it without a signal.
 const defaultReloadInterval = time.Minute
 
-// workspaceRunbookPrefix is what `workspace plan|apply` puts in a job's
-// runbook. It is the only place the workspace a queued tofu job belongs to is
-// recorded, so the daemon reads it back to rebuild that job's driver.
-const workspaceRunbookPrefix = "workspace:"
-
 // serveOptions is what the daemon is started with.
 type serveOptions struct {
 	port           int
