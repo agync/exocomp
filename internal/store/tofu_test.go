@@ -27,14 +27,13 @@ func TestWorkspaceCRUD(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := s.CreateWorkspace(ctx, store.Workspace{
-		Name:      "edge",
-		TofuDir:   "/srv/tofu/edge",
-		AutoApply: true,
+		Name:    "edge",
+		TofuDir: "/srv/tofu/edge",
 	})
 	if err != nil {
 		t.Fatalf("create workspace: %v", err)
 	}
-	if created.ID == 0 || !created.AutoApply || created.Serial != 0 {
+	if created.ID == 0 || created.Serial != 0 {
 		t.Fatalf("created = %+v", created)
 	}
 

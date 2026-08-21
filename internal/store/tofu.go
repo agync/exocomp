@@ -14,10 +14,9 @@ var ErrLocked = errors.New("store: workspace state is locked")
 
 // Workspace is one OpenTofu root module under this control plane's care.
 type Workspace struct {
-	ID        int64
-	Name      string
-	TofuDir   string
-	AutoApply bool
+	ID      int64
+	Name    string
+	TofuDir string
 	// Serial is the newest tfstate version stored for the workspace; 0 means
 	// no state has ever been pushed.
 	Serial int64
@@ -63,8 +62,8 @@ const workspaceColumns = `id, name, tofu_dir, auto_apply, serial`
 // CreateWorkspace inserts a workspace. A repeated name returns ErrDuplicate.
 func (s *Store) CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO workspace (name, tofu_dir, auto_apply, serial) VALUES (?, ?, ?, 0)`,
-		w.Name, w.TofuDir, boolInt(w.AutoApply))
+		INSERT INTO workspace (name, tofu_dir, serial) VALUES (?, ?, 0)`,
+		w.Name, w.TofuDir)
 	if err != nil {
 		return Workspace{}, wrap("create workspace", err)
 	}
@@ -343,13 +342,14 @@ func (s *Store) ReleaseTFLock(ctx context.Context, workspaceID int64, lockID str
 
 func scanWorkspace(row rowScanner) (Workspace, error) {
 	var (
-		w         Workspace
+		w Workspace
+		// auto_apply is reserved for the M3 scheduled-drift work and is read
+		// only to consume the column; nothing sets it.
 		autoApply int64
 	)
 	if err := row.Scan(&w.ID, &w.Name, &w.TofuDir, &autoApply, &w.Serial); err != nil {
 		return Workspace{}, err
 	}
-	w.AutoApply = autoApply != 0
 	return w, nil
 }
 
@@ -382,13 +382,6 @@ func scanTFLock(row rowScanner) (TFLock, error) {
 	l.CreatedAt = time.UnixMilli(createdAt).UTC()
 	l.JobID = int64Ptr(jobID)
 	return l, nil
-}
-
-func boolInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
 }
 
 func nullInt64(v *int64) any {

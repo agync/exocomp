@@ -55,10 +55,7 @@ func newWorkspaceCmd() *cobra.Command {
 }
 
 func newWorkspaceAddCmd() *cobra.Command {
-	var (
-		dir       string
-		autoApply bool
-	)
+	var dir string
 	add := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Register a tofu root module as a workspace",
@@ -86,9 +83,8 @@ func newWorkspaceAddCmd() *cobra.Command {
 			defer func() { _ = st.Close() }()
 
 			ws, err := st.CreateWorkspace(cmd.Context(), store.Workspace{
-				Name:      args[0],
-				TofuDir:   abs,
-				AutoApply: autoApply,
+				Name:    args[0],
+				TofuDir: abs,
 			})
 			if errors.Is(err, store.ErrDuplicate) {
 				return fmt.Errorf("workspace add: %q already exists", args[0])
@@ -101,7 +97,6 @@ func newWorkspaceAddCmd() *cobra.Command {
 		},
 	}
 	add.Flags().StringVar(&dir, "dir", "", "path to the tofu root module (required)")
-	add.Flags().BoolVar(&autoApply, "auto-apply", false, "let a scheduled plan apply itself")
 	return add
 }
 
@@ -127,8 +122,7 @@ func newWorkspaceListCmd() *cobra.Command {
 				return nil
 			}
 			for _, w := range rows {
-				_, _ = fmt.Fprintf(out, "%-20s serial %-6d %-11s %s\n",
-					w.Name, w.Serial, autoApplyLabel(w.AutoApply), w.TofuDir)
+				_, _ = fmt.Fprintf(out, "%-20s serial %-6d %s\n", w.Name, w.Serial, w.TofuDir)
 			}
 			return nil
 		},
@@ -548,11 +542,4 @@ func fileDigest(path string) (sum string, size int64, err error) {
 		return "", 0, fmt.Errorf("digest %s: %w", path, err)
 	}
 	return hex.EncodeToString(h.Sum(nil)), size, nil
-}
-
-func autoApplyLabel(auto bool) string {
-	if auto {
-		return "auto-apply"
-	}
-	return "plan-gated"
 }
