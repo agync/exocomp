@@ -293,3 +293,10 @@ web/approvals implementation.
 Durable-execution assessment recorded: DBOS Go+SQLite is the one invariant-
 compatible engine but is deferred (young SQLite path, single-maintainer, second
 runtime); M3 builds rotation/upgrade on a step-ledger extension of the job store.
+
+## 2026-08-22 — ADR 0008 fact corrected
+
+SQLite is DBOS's default system database, not merely optional (verified against
+their docs); their Postgres-for-production advice is about multi-server
+distribution, which this project's invariants exclude. The deferral rationale
+(single-maintainer, second execution runtime) is unchanged.
