@@ -60,6 +60,11 @@ type AnsibleOptions struct {
 	// PrivateDirRoot is where the per-job private directory is created.
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
+	// CollectionsPath is appended to ANSIBLE_COLLECTIONS_PATH so a run also
+	// searches collections vendored by `playbook vendor` (design/amendments.md
+	// item 8) without discarding a path the operator already set. Empty
+	// leaves ANSIBLE_COLLECTIONS_PATH exactly as inherited.
+	CollectionsPath string
 }
 
 // Ansible runs playbooks through ansible-playbook. It builds the invocation
@@ -111,7 +116,7 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	argv = append(argv, extra...)
 
 	spec.Argv = argv
-	spec.Env = ansibleEnv(os.Environ(), a.opts.Env)
+	spec.Env = ansibleEnv(os.Environ(), a.opts.Env, a.opts.CollectionsPath)
 	return a.inner.Run(ctx, spec, sink)
 }
 
@@ -175,10 +180,16 @@ func (a *Ansible) writePrivate(dir string) ([]string, error) {
 	return args, nil
 }
 
+// ansibleCollectionsPathVar is the variable ansible-playbook reads for extra
+// collection search directories.
+const ansibleCollectionsPathVar = "ANSIBLE_COLLECTIONS_PATH"
+
 // ansibleEnv builds the child environment from an allowlist over parent plus
 // the caller's explicit entries, which win over what was inherited.
-func ansibleEnv(parent, explicit []string) []string {
-	out := make([]string, 0, len(ansibleEnvAllow)+len(explicit))
+// collectionsPath, if set, is appended to ANSIBLE_COLLECTIONS_PATH rather
+// than replacing whatever the operator's own environment already named.
+func ansibleEnv(parent, explicit []string, collectionsPath string) []string {
+	out := make([]string, 0, len(ansibleEnvAllow)+len(explicit)+1)
 	for _, kv := range parent {
 		name, _, ok := strings.Cut(kv, "=")
 		if !ok {
@@ -188,5 +199,23 @@ func ansibleEnv(parent, explicit []string) []string {
 			out = append(out, kv)
 		}
 	}
-	return append(out, explicit...)
+	out = append(out, explicit...)
+	if collectionsPath == "" {
+		return out
+	}
+	return appendCollectionsPath(out, collectionsPath)
+}
+
+// appendCollectionsPath adds dir to the last ANSIBLE_COLLECTIONS_PATH entry
+// in env (parent or explicit may have set one), or adds a new entry when
+// none did.
+func appendCollectionsPath(env []string, dir string) []string {
+	prefix := ansibleCollectionsPathVar + "="
+	for i := len(env) - 1; i >= 0; i-- {
+		if existing, ok := strings.CutPrefix(env[i], prefix); ok {
+			env[i] = prefix + existing + string(os.PathListSeparator) + dir
+			return env
+		}
+	}
+	return append(env, prefix+dir)
 }

@@ -103,9 +103,15 @@ type TofuOptions struct {
 	// PrivateDirRoot is where the per-run private directory is created.
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
-	// PluginCacheDir keeps providers across runs, so a run does not depend on
-	// a registry being reachable. Empty leaves tofu's default alone.
+	// PluginCacheDir keeps providers across runs, so a run does not need to
+	// redownload one a previous run already fetched. Empty leaves tofu's
+	// default alone.
 	PluginCacheDir string
+	// OfflineProviders restricts provider resolution to PluginCacheDir alone:
+	// no registry, no network (design/amendments.md item 8). Set it only once
+	// the cache is known warm; a provider missing from it then fails the run
+	// instead of falling back to the network. Requires PluginCacheDir.
+	OfflineProviders bool
 	// Env adds explicit KEY=VALUE entries on top of the inherited allowlist.
 	Env []string
 }
@@ -163,11 +169,22 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	}
 	defer removeOverride(sink)
 
+	var cliConfig string
+	if t.opts.OfflineProviders {
+		if t.opts.PluginCacheDir == "" {
+			return Result{}, errors.New("executor: tofu: offline providers requires a plugin cache dir")
+		}
+		cliConfig, err = writeOfflineProviderConfig(private, t.opts.PluginCacheDir)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+
 	dataDir := filepath.Join(private, "data")
 	if err := os.Mkdir(dataDir, 0o700); err != nil {
 		return Result{}, fmt.Errorf("executor: tofu: data dir: %w", err)
 	}
-	env := t.env(dataDir)
+	env := t.env(dataDir, cliConfig)
 
 	// One deadline covers init and the operation together; the inner driver
 	// would otherwise grant each of them the job's whole timeout.
@@ -338,6 +355,34 @@ headers = {
 	return path, nil
 }
 
+// writeOfflineProviderConfig writes a CLI configuration that resolves
+// providers from pluginCacheDir alone, declaring no "direct" installation
+// method at all. OpenTofu's filesystem-mirror method reads the exact
+// directory layout TF_PLUGIN_CACHE_DIR already populates, so the one
+// directory serves both roles: an online run downloads into it, an offline
+// run resolves only from it. A "direct" fallback is deliberately absent —
+// tofu queries the registry's discovery document for any provider a
+// declared "direct" method covers even when a cached copy would already
+// satisfy the request, which defeats offline resolution entirely.
+func writeOfflineProviderConfig(dir, pluginCacheDir string) (string, error) {
+	path, err := hclString(pluginCacheDir)
+	if err != nil {
+		return "", fmt.Errorf("executor: tofu: plugin cache dir: %w", err)
+	}
+	body := fmt.Sprintf(`provider_installation {
+  filesystem_mirror {
+    path = %s
+  }
+}
+`, path)
+
+	out := filepath.Join(dir, "offline-providers.tfrc")
+	if err := os.WriteFile(out, []byte(body), 0o600); err != nil {
+		return "", fmt.Errorf("executor: tofu: write offline provider config: %w", err)
+	}
+	return out, nil
+}
+
 // writeBackendOverride declares the http backend in the workspace directory,
 // which is the only place tofu reads configuration from. The block is empty:
 // every value arrives through the private backend configuration.
@@ -365,7 +410,8 @@ func writeBackendOverride(dir string) (func(EventSink), error) {
 
 // env builds the child environment: the allowlist over the parent, then the
 // entries that make the run non-interactive, private, and encrypted.
-func (t *Tofu) env(dataDir string) []string {
+// cliConfig, when set, is the offline provider configuration's path.
+func (t *Tofu) env(dataDir, cliConfig string) []string {
 	out := make([]string, 0, len(tofuEnvAllow)+8)
 	for _, kv := range os.Environ() {
 		name, _, ok := strings.Cut(kv, "=")
@@ -384,6 +430,9 @@ func (t *Tofu) env(dataDir string) []string {
 	)
 	if t.opts.PluginCacheDir != "" {
 		out = append(out, "TF_PLUGIN_CACHE_DIR="+t.opts.PluginCacheDir)
+	}
+	if cliConfig != "" {
+		out = append(out, "TF_CLI_CONFIG_FILE="+cliConfig)
 	}
 	if t.opts.StatePassphrase != "" {
 		out = append(out, "TF_ENCRYPTION="+encryptionConfig(t.opts.StatePassphrase))
