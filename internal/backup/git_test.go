@@ -50,14 +50,23 @@ func TestGitLegRollsOneOrphanCommit(t *testing.T) {
 	tree := gitRun(t, bare, "ls-tree", "--name-only", backupRef)
 	names := strings.Fields(tree)
 	wantSnapshot := "snapshot-" + second.Format(stampLayout)
-	var haveSnapshot bool
+	var havePart, haveManifest bool
 	for _, n := range names {
-		if strings.HasPrefix(n, wantSnapshot) && strings.HasSuffix(n, ".age") {
-			haveSnapshot = true
+		if !strings.HasPrefix(n, wantSnapshot) {
+			continue
+		}
+		switch {
+		case strings.HasSuffix(n, partsSuffix):
+			haveManifest = true
+		case strings.Contains(n, ".age.part"):
+			havePart = true
 		}
 	}
-	if !haveSnapshot {
-		t.Errorf("tree = %v, want the %s* archive", names, wantSnapshot)
+	if !havePart {
+		t.Errorf("tree = %v, want a %s*.age.part* chunk", names, wantSnapshot)
+	}
+	if !haveManifest {
+		t.Errorf("tree = %v, want the %s%s manifest", names, wantSnapshot, partsSuffix)
 	}
 	for _, want := range []string{KeyringName, RecoveryName} {
 		if !strings.Contains(tree, want) {

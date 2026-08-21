@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"filippo.io/age"
@@ -64,6 +66,10 @@ func scrubbed(err error) error {
 func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, _ int64, err error) {
 	defer func() { err = scrubbed(err) }()
 
+	if err := checkRepoSize(ctx, t.URI); err != nil {
+		return "", 0, err
+	}
+
 	recipients, err := ageRecipients(e.env.Recipients())
 	if err != nil {
 		return "", 0, err
@@ -91,16 +97,28 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 
 	stamp := e.opts.Now().UTC().Format(stampLayout)
 	snapshot := "snapshot-" + stamp + ext + ".age"
+	parts, partsManifest := chunkSnapshot(snapshot, sealed)
+
 	files := map[string][]byte{
-		snapshot:     sealed,
 		KeyringName:  keyring,
 		RecoveryName: renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC()),
 	}
+	maps.Copy(files, parts)
 	for name, body := range files {
 		if err := os.WriteFile(filepath.Join(work, name), body, 0o644); err != nil {
 			return "", 0, fmt.Errorf("backup: stage %s: %w", name, err)
 		}
 	}
+	if err := writePartsManifest(work, partsManifest); err != nil {
+		return "", 0, err
+	}
+
+	addArgs := make([]string, 0, len(files)+2)
+	for name := range files {
+		addArgs = append(addArgs, name)
+	}
+	addArgs = append(addArgs, partsManifestName(snapshot))
+	sort.Strings(addArgs)
 
 	git := func(args ...string) (toolResult, error) {
 		return e.runTool(ctx, executor.Spec{
@@ -112,7 +130,7 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	}
 	steps := [][]string{
 		{"init", "-q", "-b", "backup"},
-		{"add", "--", snapshot, KeyringName, RecoveryName},
+		append([]string{"add", "--"}, addArgs...),
 		{"-c", "user.name=exocomp", "-c", "user.email=exocomp@invalid",
 			"commit", "-q", "--no-gpg-sign", "-m", "exocomp backup " + stamp},
 		{"push", "--force", "--quiet", t.URI, "HEAD:" + backupRef},

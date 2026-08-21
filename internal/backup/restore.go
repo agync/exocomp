@@ -245,13 +245,17 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) error {
 	if err != nil {
 		return err
 	}
-	sealed, err := os.ReadFile(snapshot)
+	manifest, err := readPartsManifest(clone, snapshot)
 	if err != nil {
-		return fmt.Errorf("backup: read %s: %w", filepath.Base(snapshot), err)
+		return err
+	}
+	sealed, err := reassembleSnapshot(clone, manifest)
+	if err != nil {
+		return err
 	}
 	archive, err := ageDecrypt(sealed, ids)
 	if err != nil {
-		return fmt.Errorf("backup: decrypt %s: %w", filepath.Base(snapshot), err)
+		return fmt.Errorf("backup: decrypt %s: %w", snapshot, err)
 	}
 	raw, err := decompress(ctx, archive)
 	if err != nil {
@@ -260,17 +264,21 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) error {
 	return untar(raw, extracted)
 }
 
+// newestSnapshot returns the base name of the newest chunked snapshot in dir
+// — e.g. "snapshot-20260301T020000Z.tar.zst.age" — found by its parts
+// manifest rather than its (no longer single) archive file. Snapshot names
+// carry a sortable UTC stamp.
 func newestSnapshot(dir string) (string, error) {
-	matches, err := filepath.Glob(filepath.Join(dir, "snapshot-*.age"))
+	matches, err := filepath.Glob(filepath.Join(dir, "snapshot-*"+partsSuffix))
 	if err != nil {
 		return "", fmt.Errorf("backup: scan snapshots: %w", err)
 	}
 	if len(matches) == 0 {
-		return "", fmt.Errorf("backup: no snapshot-*.age in %s", dir)
+		return "", fmt.Errorf("backup: no snapshot-*%s in %s", partsSuffix, dir)
 	}
-	// Snapshot names carry a sortable UTC stamp.
 	sort.Strings(matches)
-	return matches[len(matches)-1], nil
+	newest := filepath.Base(matches[len(matches)-1])
+	return strings.TrimSuffix(newest, partsSuffix), nil
 }
 
 // fetchRoot reads keyring.age and RECOVERY.md from the target root, which sits
