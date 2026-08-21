@@ -15,7 +15,7 @@ LDFLAGS   := -X $(MODULE)/internal/version.Version=$(VERSION) \
 build: ## Build the static exocomp binary into bin/
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/exocomp ./cmd/exocomp
 
-check: fmt-check vet lint test ## Run fmt-check, vet, lint, and test
+check: fmt-check vet lint tidy-check test ## Run fmt-check, vet, lint, and test
 
 fmt: ## Format source files
 	gofmt -w -s .
@@ -33,8 +33,11 @@ lint: ## Run golangci-lint if installed
 	@if command -v golangci-lint >/dev/null 2>&1; then \
 		golangci-lint run ./...; \
 	else \
-		echo "golangci-lint not installed — skipping"; \
+		echo "WARNING: golangci-lint not installed — lint NOT run" >&2; \
 	fi
+
+tidy-check: ## Fail if go.mod/go.sum are not tidy
+	go mod tidy -diff
 
 test: ## Run the test suite
 	go test ./...
