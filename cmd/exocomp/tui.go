@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/tui"
@@ -28,6 +29,10 @@ func newTUICmd() *cobra.Command {
 }
 
 func runTUI(cmd *cobra.Command) (err error) {
+	if f, ok := cmd.InOrStdin().(*os.File); !ok || !term.IsTerminal(f.Fd()) {
+		return errors.New("tui: stdin is not a terminal; run `exocomp tui` from an interactive shell")
+	}
+
 	dir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("tui: resolve data dir: %w", err)
