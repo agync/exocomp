@@ -32,10 +32,11 @@ SQLite database. Roughly 400 LOC; the hard part (encryption) is done by `tofu`.
 | `LOCK` | `/api/v1/tf/state/{workspace}` | `INSERT INTO tflock`; a UNIQUE primary key gives atomic locking inside SQLite's own transaction, 423 plus the lock JSON on conflict |
 | `UNLOCK` | same | delete, checking `lock_id` |
 
-Backend configuration is generated per job and points at `127.0.0.1`, authenticated by a
-bearer valid only for that job's lifetime. Applies are *additionally* serialized by the
-queue's `concurrency_key`, so a single control plane never runs two applies against one
-workspace regardless of what any storage backend can promise.
+Backend configuration is generated per run and points at `127.0.0.1`, authenticated by a
+bearer derived per workspace from the DEK: `base64(Derive("tf-backend", workspace))`,
+recomputed by whoever needs it rather than stored anywhere. Applies are *additionally*
+serialized by the queue's `concurrency_key`, so a single control plane never runs two
+applies against one workspace regardless of what any storage backend can promise.
 
 State remains encrypted by OpenTofu itself: `exocompd` sets `TF_ENCRYPTION` with the
 `pbkdf2` key provider and a passphrase derived per workspace from the DEK
@@ -46,12 +47,19 @@ party in the DR path.
 
 - Locking is correct on any storage, including a NAS mount and the S3-compatible stores
   above, because the lock is a row rather than an object-store race.
-- Every serial is retained (pruned to the last 100 plus everything from the last 30 days),
-  which yields state version history and rollback as ordinary UI objects.
+- Every serial is retained, which yields state version history and rollback as ordinary UI
+  objects. The pruning policy — the last 100 plus everything from the last 30 days — is
+  designed and not yet implemented.
 - Stale-lock recovery is an audited one-click `force-unlock` instead of a console trip. On
   boot, `tflock` rows whose owning job is dead are flagged for it.
-- Drift becomes a first-class object: a scheduled `tofu plan -detailed-exitcode -json`,
-  exit 2 → `job.drift = true` → notify and optionally open an approval-gated apply.
+- Drift becomes a first-class object: a scheduled `tofu plan -detailed-exitcode`, exit 2 →
+  a plan-outcome row in the job's append-only `job_event` log → notify and optionally open
+  an approval-gated apply. The job itself succeeds, because changes being present is a fact
+  about infrastructure rather than a failed run.
+- A saved plan file is a credential. It carries the backend address and the bearer it was
+  made against, so plan artifacts live inside the 0700 data dir, and the backend address
+  has to be the same one when a later job applies the plan. The running backend records
+  its address in the data dir; a stale record is re-bound rather than trusted.
 - The claim "state is opaque to the control plane" is **false** and is not used to justify
   anything. `exocompd` derives the passphrase. The ciphertext is opaque to backup targets.
 - The protocol surface is wider than four handlers: `DELETE`, the custom `LOCK`/`UNLOCK`

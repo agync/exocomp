@@ -70,6 +70,34 @@ With `local-sandboxed` shipped, the remaining justification for this tier narrow
 per-project EE versioning and hard per-job resource caps, so it stays deferred alongside
 Wails and OpenBao.
 
+## OpenTofu runs
+
+A tofu job is one `Spec` of kind `tofu` whose argv is the operation plus the operator's own
+arguments — everything a job row is allowed to remember. The driver supplies the rest per
+run:
+
+- a `terraform { backend "http" {} }` override file in the workspace directory, and the
+  values that fill it — address, `LOCK`/`UNLOCK` methods, the workspace bearer — in a 0700
+  private directory handed to `tofu init -backend-config`. The bearer never reaches the
+  workspace directory or the process table.
+- `TF_DATA_DIR` inside that private directory. `.terraform/terraform.tfstate` records the
+  backend configuration verbatim, bearer included, so it dies with the run.
+- `TF_ENCRYPTION` naming the `pbkdf2` key provider with a passphrase derived per workspace.
+  Tofu encrypts its own state; `exocompd` stores the envelope it is handed
+  ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)).
+- an environment built from an allowlist. `TF_VAR_` names pass through; other `TF_` names
+  do not, because `TF_CLI_ARGS` would let whatever the operator exported rewrite the argv
+  the job row records.
+
+`init` runs before every operation, and a failing init is the job's exit code: the
+operation never runs against a half-configured backend. `plan` runs with
+`-detailed-exitcode`, where exit 2 means changes are present — neither success nor failure,
+so the driver records a plan outcome in `job_event` and reports exit 0.
+
+Two runs cannot share a workspace directory: they would remove each other's backend
+override mid-flight. The queue's `tofu:<workspace>` concurrency key keeps them apart, and
+the backend's own lock row holds against anything the queue does not know about.
+
 ## Offline-restorable job dependencies
 
 An executor is only as restorable as what it needs to fetch. Disaster recovery must not

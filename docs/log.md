@@ -26,6 +26,37 @@ credential resolution added alongside it: `s3/<target>/access-key-id` and
 `.../secret-access-key` rows, process-environment fallback with a logged warning. A new
 line documents `exocomp ssh-serve`, which was not previously mentioned anywhere in the
 bundle.
+## 2026-08-21 — M2a tofu corrections
+
+Building the OpenTofu half found three claims in
+[ADR 0004](adr/0004-opentofu-http-state-backend.md) the shipped code does not
+support (code wins, per [AGENTS.md](../AGENTS.md)):
+
+- **Bearer scope.** The ADR said the backend bearer is "valid only for that job's
+  lifetime". It is derived per workspace and is therefore stable. A per-job token
+  cannot work as written: a saved plan file carries the bearer it was made against
+  and is applied by a later job.
+- **Drift representation.** The ADR said exit 2 sets `job.drift = true`. No such
+  column exists, and `executor.Result` carries one exit code that the queue reads
+  as the job's verdict, so the driver records the plan outcome in the job's
+  append-only `job_event` log and reports exit 0. The plan job succeeds.
+- **Retention pruning** of old `tfstate` serials was stated as a property. Every
+  serial is kept; nothing prunes them yet, and the page now says so.
+
+Added to the same ADR's consequences: a saved plan file is a credential, because it
+carries the backend address and bearer, which is also why the backend address has to
+survive between a plan and the apply that consumes it.
+
+`architecture/execution.md` gained an "OpenTofu runs" section describing the shipped
+driver: the generated backend override, the private `TF_DATA_DIR`, the `TF_ENCRYPTION`
+passphrase, the environment allowlist, and why two runs cannot share a workspace
+directory.
+
+Two rows of `operations/disaster-recovery.md` said `exocompd serve` "is not yet
+implemented", which the M1 corrections had made true. `exocomp serve` now exists and
+serves the state backend; the startup integrity gating, the single-recipient nag, and
+the bootstrap wizard those rows point at are still unbuilt, so the rows name that
+instead of the command.
 
 ## 2026-08-21 — Bundle created
 
