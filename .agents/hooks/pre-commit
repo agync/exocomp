@@ -1,0 +1,14 @@
+#!/bin/sh
+# Runs `make check` at the worktree root when a check target exists.
+# Installed via `git config core.hooksPath .agents/hooks`.
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+
+if [ -f "$root/Makefile" ] && grep -Eq '^check:' "$root/Makefile"; then
+    make -C "$root" check
+else
+    echo "pre-commit: no Makefile check target, skipping"
+fi
+
+exit 0
