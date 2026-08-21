@@ -6,14 +6,22 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sync"
+	"syscall"
 	"time"
 )
 
 // maxLineBytes caps one scanned output line. Longer lines are reported as a
 // scan error event rather than growing the buffer without bound.
 const maxLineBytes = 1 << 20
+
+// pipeDrainGrace is how long the output pipes are read after the job's own
+// process is gone. A grandchild that outlives its parent — a backgrounded
+// helper, an ssh control master — inherits those descriptors and would
+// otherwise hold the job open for as long as it runs.
+const pipeDrainGrace = 2 * time.Second
 
 // Shell is the M1 local driver: one subprocess per job, output scanned line
 // by line into events, exit code returned as-is.
@@ -37,34 +45,56 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 	cmd := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
 	cmd.Dir = spec.Dir
 	cmd.Env = spec.Env
+	// The job is the whole tree, not one pid: a cancelled run has to reach the
+	// helpers its process started, and a shell that exec'd something else is
+	// only reachable by group.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 
-	stdout, err := cmd.StdoutPipe()
+	// The pipes are ours rather than cmd.StdoutPipe()'s, so closing them is
+	// this function's decision: Wait would otherwise be the only thing that
+	// ever closes them, and it is exactly what is being unblocked.
+	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return Result{}, fmt.Errorf("executor: stdout pipe: %w", err)
 	}
-	stderr, err := cmd.StderrPipe()
+	defer func() { _ = stdout.Close() }()
+	stderr, stderrW, err := os.Pipe()
 	if err != nil {
+		_ = stdoutW.Close()
 		return Result{}, fmt.Errorf("executor: stderr pipe: %w", err)
 	}
+	defer func() { _ = stderr.Close() }()
+	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 
 	started := time.Now()
-	if err := cmd.Start(); err != nil {
+	err = cmd.Start()
+	// Only the child needs the write ends; holding them here would mean no
+	// reader ever sees EOF.
+	_ = stdoutW.Close()
+	_ = stderrW.Close()
+	if err != nil {
 		return Result{}, fmt.Errorf("executor: start %s: %w", spec.Argv[0], err)
 	}
 
-	var wg sync.WaitGroup
-	wg.Add(2)
+	scanned := make(chan struct{})
 	go func() {
-		defer wg.Done()
-		scan(stdout, LevelInfo, sink)
+		defer close(scanned)
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			scan(stdout, LevelInfo, sink)
+		}()
+		go func() {
+			defer wg.Done()
+			scan(stderr, LevelError, sink)
+		}()
+		wg.Wait()
 	}()
-	go func() {
-		defer wg.Done()
-		scan(stderr, LevelError, sink)
-	}()
-	wg.Wait()
 
 	waitErr := cmd.Wait()
+	drainOutput(scanned, stdout, stderr)
 	res := Result{Duration: time.Since(started)}
 
 	var exitErr *exec.ExitError
@@ -82,14 +112,34 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 	return res, nil
 }
 
+// drainOutput waits for the scanners to reach EOF, then gives up: whatever
+// still holds the write end outlived the job, and the job's outcome does not
+// wait on it. Closing the read ends is what stops the scanners.
+func drainOutput(scanned <-chan struct{}, pipes ...*os.File) {
+	timer := time.NewTimer(pipeDrainGrace)
+	defer timer.Stop()
+
+	select {
+	case <-scanned:
+		return
+	case <-timer.C:
+	}
+	for _, p := range pipes {
+		_ = p.Close()
+	}
+	<-scanned
+}
+
 func scan(r io.Reader, level string, sink EventSink) {
 	scanner := bufio.NewScanner(r)
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineBytes)
 	for scanner.Scan() {
 		sink.Emit(Event{Ts: time.Now().UTC(), Level: level, Msg: scanner.Text()})
 	}
-	// A closed pipe is how a killed process ends; it is not an output error.
-	if err := scanner.Err(); err != nil && !errors.Is(err, io.ErrClosedPipe) {
+	// A closed pipe is how a killed process ends, and how a drain that gave up
+	// on a grandchild ends; neither is an output error.
+	if err := scanner.Err(); err != nil &&
+		!errors.Is(err, io.ErrClosedPipe) && !errors.Is(err, os.ErrClosed) {
 		sink.Emit(Event{
 			Ts:    time.Now().UTC(),
 			Level: LevelSystem,
