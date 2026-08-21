@@ -1,0 +1,63 @@
+package executor
+
+import (
+	"context"
+	"time"
+)
+
+// Event levels. They match the levels the store writes to job_event.
+const (
+	LevelInfo   = "info"
+	LevelError  = "error"
+	LevelSystem = "system"
+)
+
+// Spec is one unit of work handed to a driver.
+type Spec struct {
+	JobID   int64
+	Kind    string   // shell|ansible|tofu
+	Argv    []string // Argv[0] is the executable
+	Dir     string   // working directory; empty means the caller's
+	Env     []string // nil inherits the caller's environment
+	Timeout time.Duration
+}
+
+// Result is what a driver reports about a process that ran to completion.
+// ExitCode alone decides success (AGENTS.md invariant 3); the other fields
+// only explain how the process ended.
+type Result struct {
+	ExitCode int  // -1 when a signal ended the process
+	Signaled bool // true when a signal, not exit(), ended it
+	TimedOut bool // true when the deadline killed it
+	Duration time.Duration
+}
+
+// Event is one line of a job's output or one lifecycle note.
+type Event struct {
+	Ts      time.Time
+	Level   string
+	Msg     string
+	RawJSON string // structured payload for drivers that emit one
+}
+
+// EventSink receives events as a job runs. Implementations must be safe for
+// concurrent use: a driver scans stdout and stderr on separate goroutines.
+// Emit returns nothing because event delivery is telemetry, never the
+// arbiter of whether a job succeeded.
+type EventSink interface {
+	Emit(Event)
+}
+
+// SinkFunc adapts a function to EventSink.
+type SinkFunc func(Event)
+
+// Emit implements EventSink.
+func (f SinkFunc) Emit(e Event) { f(e) }
+
+// Driver runs a Spec somewhere: a local subprocess today, a sandboxed one or
+// a sibling container later. Run returns an error only when the process could
+// not be run to completion; a process that ran and failed returns a Result
+// with a non-zero ExitCode and a nil error.
+type Driver interface {
+	Run(ctx context.Context, spec Spec, sink EventSink) (Result, error)
+}
