@@ -137,8 +137,8 @@ func TestDrainIdlesWhileForeignRowsKeepArriving(t *testing.T) {
 }
 
 // TestConcurrencyKeyHoldsAcrossQueues is the cross-process guarantee, proved
-// with two queues over one database: the in-memory busy map of either one
-// knows nothing about the other, so only the store can serialize them.
+// with two queues over one database: neither one's memory can see the other's,
+// so only the store can serialize them.
 func TestConcurrencyKeyHoldsAcrossQueues(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -231,5 +231,30 @@ func TestClaimRefusesAHeldConcurrencyKey(t *testing.T) {
 	}
 	if err := st.ClaimJob(ctx, waiting.ID); err != nil {
 		t.Fatalf("claim after the key was freed: %v", err)
+	}
+}
+
+// TestTheClaimSetShrinksAsJobsEnd: the daemon's queue enqueues every schedule
+// fire for as long as the process lives. A set that only grew would be a leak
+// measured in days.
+func TestTheClaimSetShrinksAsJobsEnd(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := openStore(t, filepath.Join(t.TempDir(), "exocomp.db"))
+	q := queueOver(st, executor.NewShell(), 2)
+
+	for range 8 {
+		if _, err := q.Enqueue(ctx, shellSpec("/bin/true")); err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+	}
+	if got := q.TrackedJobs(); got != 8 {
+		t.Fatalf("tracked jobs before the drain = %d, want 8", got)
+	}
+
+	drain(t, q)
+
+	if got := q.TrackedJobs(); got != 0 {
+		t.Errorf("tracked jobs after every job ended = %d, want 0", got)
 	}
 }

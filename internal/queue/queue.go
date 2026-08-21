@@ -149,6 +149,14 @@ func (q *Queue) remember(id int64) {
 	q.enqueued[id] = true
 }
 
+// forget drops a job this queue ran to its end. The daemon enqueues for as
+// long as it lives, so the set has to shrink as well as grow.
+func (q *Queue) forget(id int64) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	delete(q.enqueued, id)
+}
+
 func (q *Queue) mine() []int64 {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -266,6 +274,7 @@ func (q *Queue) launch(ctx context.Context, job store.Job) {
 		defer q.wg.Done()
 		defer q.notify()
 		defer q.finishSlot()
+		defer q.forget(job.ID)
 
 		q.execute(ctx, job)
 	}()
