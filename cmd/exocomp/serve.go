@@ -255,9 +255,17 @@ func shutdownServe(ctx context.Context, out, warn io.Writer, sd shutdown) error 
 		_, _ = fmt.Fprintf(out, "retired %d job(s) this process owned to interrupted\n", retired)
 	}
 
+	// A CLI killed while its row waited on a key this daemon held leaves that
+	// row queued and owned by nobody. The daemon is the last process here that
+	// can see it; the next boot's sweep is too late to be the only answer.
+	swept, sweepErr := sd.store.SweepInterrupted(ctx)
+	if swept > 0 {
+		_, _ = fmt.Fprintf(out, "retired %d job(s) left by a process that is gone to interrupted\n", swept)
+	}
+
 	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownGrace)
 	defer cancel()
-	return errors.Join(qErr, retireErr, sd.server.Shutdown(shutdownCtx))
+	return errors.Join(qErr, retireErr, sweepErr, sd.server.Shutdown(shutdownCtx))
 }
 
 // waitForOwnJobs blocks until this process owns no queued or running job, or

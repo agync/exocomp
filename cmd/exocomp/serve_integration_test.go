@@ -934,3 +934,53 @@ func readFile(t *testing.T, path string) string {
 	}
 	return string(body)
 }
+
+// TestServeShutdownRetiresADeadProcessRow is the shutdown's other duty. A CLI
+// killed while its row waited on a concurrency key this daemon held leaves a
+// queued row owned by a pid that no longer exists: retiring only the rows this
+// process owns leaves it queued until some later boot sweeps it.
+func TestServeShutdownRetiresADeadProcessRow(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	bin := buildExocomp(t)
+
+	runCLI(t, bin, "init")
+	// One at a time, by key: whatever the CLI enqueues under the same key
+	// cannot be claimed by anyone while the daemon's job runs.
+	runCLI(t, bin, "schedule", "add", "hold", "--cron", "@every 1s", "--kind", "shell",
+		"--concurrency-key", "held", "--", "/bin/sleep", "30")
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--drain-grace", "200ms")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+	waitFor(t, "the daemon to hold the key", 30*time.Second, func() bool {
+		return len(jobsIn(t, store.StateRunning)) == 1
+	})
+
+	cli := exec.Command(bin, "devrun", "--concurrency-key", "held", "--", "/bin/true")
+	if err := cli.Start(); err != nil {
+		t.Fatalf("start devrun: %v", err)
+	}
+	var blocked int64
+	waitFor(t, "the CLI's row to be queued behind the key", 30*time.Second, func() bool {
+		for _, job := range jobsIn(t, store.StateQueued) {
+			if job.Runbook == "devrun" {
+				blocked = job.ID
+				return true
+			}
+		}
+		return false
+	})
+	if err := cli.Process.Kill(); err != nil {
+		t.Fatalf("kill devrun: %v", err)
+	}
+	if _, err := cli.Process.Wait(); err != nil {
+		t.Fatalf("reap devrun: %v", err)
+	}
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+
+	if got := jobState(t, blocked); got != store.StateInterrupted {
+		t.Errorf("the killed CLI's row is %s after shutdown, want interrupted\n%s", got, d.dump())
+	}
+	assertNothingLeftRunning(t, d)
+}
