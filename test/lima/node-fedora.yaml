@@ -1,0 +1,15 @@
+minimumLimaVersion: 2.0.0
+
+# Dummy managed node for exocomp integration tests. Instance name is chosen
+# by the caller (limactl start --name ...); nothing here is name-specific.
+base:
+- template:fedora
+
+cpus: 2
+memory: "2GiB"
+
+# Empty lists are treated as unset by Lima's base-template merge, so the
+# inherited home-directory mount is kept but forced read-only instead.
+mounts:
+- location: "~"
+  writable: false
