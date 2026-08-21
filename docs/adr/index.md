@@ -19,3 +19,4 @@ platform support tiers are in
 [architecture/platform-contract.md](../architecture/platform-contract.md).
 | [0007](0007-audit-chain-deferral.md) | Audit hash chain deferred; revival requires an off-host-anchored head |
 | [0008](0008-step-ledger-over-dbos.md) | Multi-step choreography via a step ledger on the job store; DBOS deferred |
+| [0009](0009-lan-access-tokens.md) | LAN listeners require locally-minted bearer tokens; TLS by default |

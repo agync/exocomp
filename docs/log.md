@@ -300,3 +300,10 @@ SQLite is DBOS's default system database, not merely optional (verified against
 their docs); their Postgres-for-production advice is about multi-server
 distribution, which this project's invariants exclude. The deferral rationale
 (single-maintainer, second execution runtime) is unchanged.
+
+## 2026-08-22 — ADR 0009: LAN access tokens
+
+Operator decision: LAN exposure is secured by bearer tokens minted and managed
+via local auth only, with default self-signed TLS and fingerprint pinning
+([ADR 0009](adr/0009-lan-access-tokens.md)). Binds the M3 web lane and adds four
+v1.0 gate assertions.
