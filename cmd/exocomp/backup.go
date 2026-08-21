@@ -8,10 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/backup"
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -147,6 +149,11 @@ func newBackupRunCmd() *cobra.Command {
 	return cmd
 }
 
+// runBackup enqueues one backup job per matching target — kind backup,
+// concurrency key "backup:<target>" — and drains the queue in this process,
+// closing the M1 carve-out recorded in docs/architecture/overview.md: a
+// backup runs through the same queue as everything else, not as a direct
+// engine call.
 func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 	dir, err := dataDir()
 	if err != nil {
@@ -158,7 +165,7 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 	}
 	defer func() { _ = env.Close() }()
 
-	st, err := openStore()
+	st, err := openJobStore(ctx, w)
 	if err != nil {
 		return err
 	}
@@ -172,36 +179,68 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 	if err != nil {
 		return err
 	}
-	var targets []backup.Target
+	var targets []store.BackupTarget
 	for _, row := range rows {
 		if only != "" && row.Name != only {
 			continue
 		}
-		targets = append(targets, backup.Target{BackupTarget: row, Env: targetEnv(row)})
+		targets = append(targets, row)
 	}
 	if len(targets) == 0 {
 		return errors.New("backup run: no enabled targets")
 	}
 
-	report, err := backup.New(st, env, backup.Options{}).Run(ctx, targets)
-	if err != nil {
+	runner := backup.NewRunner(st, env, backup.Options{}, targetEnv)
+	q := queue.New(st, runner, queue.Options{Workers: len(targets), PollInterval: 50 * time.Millisecond})
+
+	for _, t := range targets {
+		if _, err := q.Enqueue(ctx, queue.Spec{
+			Runbook:        "backup",
+			Kind:           backup.JobKind,
+			Trigger:        "manual",
+			Argv:           backup.Argv(t.Name),
+			ConcurrencyKey: backup.ConcurrencyKey(t.Name),
+		}); err != nil {
+			return err
+		}
+	}
+	if err := q.Drain(ctx); err != nil {
 		return err
 	}
 
 	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "TARGET\tKIND\tSTATE\tSNAPSHOT\tADDED\tDETAIL")
-	for _, leg := range report.Legs {
-		detail := ""
-		if leg.Err != nil {
-			detail = leg.Err.Error()
+	var failed []error
+	for _, t := range targets {
+		run, runErr := latestBackupRun(ctx, st, t.ID)
+		if runErr != nil {
+			failed = append(failed, fmt.Errorf("target %s: %w", t.Name, runErr))
+			_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n", t.Name, t.Kind, "unknown", "-", 0, runErr.Error())
+			continue
+		}
+		if run.State != store.BackupSucceeded {
+			failed = append(failed, fmt.Errorf("target %s: %s", t.Name, run.Error))
 		}
 		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%d\t%s\n",
-			leg.Target, leg.Kind, leg.State, shortID(leg.SnapshotID), leg.BytesAdded, detail)
+			t.Name, t.Kind, run.State, shortID(run.SnapshotID), run.BytesAdded, run.Error)
 	}
 	if err := tw.Flush(); err != nil {
 		return err
 	}
-	return report.Err()
+	return errors.Join(failed...)
+}
+
+// latestBackupRun returns a target's most recent backup_run row, the one the
+// job just enqueued created.
+func latestBackupRun(ctx context.Context, st *store.Store, targetID int64) (store.BackupRun, error) {
+	runs, err := st.ListBackupRuns(ctx, targetID, 1)
+	if err != nil {
+		return store.BackupRun{}, err
+	}
+	if len(runs) == 0 {
+		return store.BackupRun{}, errors.New("no backup_run row")
+	}
+	return runs[0], nil
 }
 
 func openStore() (*store.Store, error) {
