@@ -10,6 +10,14 @@ import (
 	"exocomp.dev/exocomp/internal/version"
 )
 
+// commandFactories collects per-file subcommand constructors so parallel
+// lanes register commands without editing shared files.
+var commandFactories []func() *cobra.Command
+
+func registerCommand(f func() *cobra.Command) {
+	commandFactories = append(commandFactories, f)
+}
+
 func main() {
 	if err := newRootCmd().Execute(); err != nil {
 		os.Exit(1)
@@ -27,6 +35,9 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
 	root.AddCommand(newServeCmd())
+	for _, f := range commandFactories {
+		root.AddCommand(f())
+	}
 
 	return root
 }
