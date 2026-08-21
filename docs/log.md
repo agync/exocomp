@@ -104,4 +104,4 @@ them are design-accurate but the implementation is authoritative:
   sealed plaintext to the redactor.
 - Deferred to M2, tracked: amendment-2 git-leg chunking and repo-size guard;
   S3 credentials as sealed rows (amendment 1); systemd-creds TPM sealing;
-  age-plugin-yubikey recipients; `backup canary` removal in favor of `secrets add`.
+  age-plugin-yubikey recipients.

@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+// TestBackupHasNoCanaryCommand: `secrets add` seals a value from stdin for any
+// kind, so a second hidden command that sealed one under a fixed kind was a
+// duplicate surface over the same key material.
+func TestBackupHasNoCanaryCommand(t *testing.T) {
+	for _, c := range newBackupCmd().Commands() {
+		if c.Name() == "canary" {
+			t.Error("backup canary is back; secrets add supersedes it")
+		}
+	}
+}
+
 // TestAddTargetWarnsOnCredentialsInURI: a uri with userinfo is accepted, since
 // refusing it would strand an operator whose remote only speaks tokens, but it
 // is never accepted quietly.

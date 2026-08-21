@@ -36,7 +36,7 @@ func newBackupCmd() *cobra.Command {
 		Use:   "backup",
 		Short: "Assemble a snapshot and fan it out to every enabled target",
 	}
-	cmd.AddCommand(newBackupAddTargetCmd(), newBackupListCmd(), newBackupRunCmd(), newBackupCanaryCmd())
+	cmd.AddCommand(newBackupAddTargetCmd(), newBackupListCmd(), newBackupRunCmd())
 	return cmd
 }
 
@@ -202,60 +202,6 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 		return err
 	}
 	return report.Err()
-}
-
-// newBackupCanaryCmd seals a canary secret so a restore can be proven end to
-// end before the secret store has its own CLI. The value is read from stdin,
-// never from argv.
-func newBackupCanaryCmd() *cobra.Command {
-	return &cobra.Command{
-		Use:    "canary <name>",
-		Short:  "Seal a canary secret read from stdin",
-		Hidden: true,
-		Args:   cobra.ExactArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			value, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), 1<<16))
-			if err != nil {
-				return fmt.Errorf("backup canary: read value: %w", err)
-			}
-			if len(value) == 0 {
-				return errors.New("backup canary: empty value on stdin")
-			}
-
-			dir, err := dataDir()
-			if err != nil {
-				return fmt.Errorf("backup canary: resolve data dir: %w", err)
-			}
-			env, err := secrets.Open(dir)
-			if err != nil {
-				return fmt.Errorf("backup canary: %w", err)
-			}
-			defer func() { _ = env.Close() }()
-
-			sealed, err := env.Seal(args[0], "canary", value)
-			if err != nil {
-				return err
-			}
-			st, err := openStore()
-			if err != nil {
-				return err
-			}
-			defer func() { _ = st.Close() }()
-
-			_, err = st.CreateSecret(cmd.Context(), store.SecretRow{
-				Name:       sealed.Name,
-				Kind:       sealed.Kind,
-				Nonce:      sealed.Nonce,
-				Ciphertext: sealed.Ciphertext,
-				AAD:        sealed.Name + "|" + sealed.Kind,
-			})
-			if err != nil {
-				return err
-			}
-			_, err = fmt.Fprintf(cmd.OutOrStdout(), "sealed canary %q (%d bytes)\n", sealed.Name, len(value))
-			return err
-		},
-	}
 }
 
 func openStore() (*store.Store, error) {
