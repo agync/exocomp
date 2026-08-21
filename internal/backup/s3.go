@@ -6,6 +6,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -15,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // The S3 leg needs exactly two object operations — put and get keyring.age and
@@ -235,4 +239,83 @@ func firstNonEmpty(values ...string) string {
 func snippet(r io.Reader) string {
 	body, _ := io.ReadAll(io.LimitReader(r, 512))
 	return strings.TrimSpace(string(body))
+}
+
+// s3CredField is one field of a restic_s3 target's sealed credential,
+// mapping the sealed secret row's name suffix to the environment variable it
+// fills.
+type s3CredField struct {
+	suffix string
+	envKey string
+}
+
+var s3CredFields = []s3CredField{
+	{"access-key-id", "AWS_ACCESS_KEY_ID"},
+	{"secret-access-key", "AWS_SECRET_ACCESS_KEY"},
+	{"region", "AWS_DEFAULT_REGION"},
+	{"session-token", "AWS_SESSION_TOKEN"},
+}
+
+// s3SecretName is the sealed secret row name for one credential field of a
+// restic_s3 target: "s3/<target>/access-key-id" and so on.
+func s3SecretName(target, suffix string) string {
+	return "s3/" + target + "/" + suffix
+}
+
+// resolveS3Env builds the process environment for a restic_s3 leg. Sealed
+// secret rows named s3/<target>/<field> take precedence, field by field,
+// over fallback (ordinarily the process environment the caller gathered
+// before the store or the envelope were involved); a target with no sealed
+// access-key-id/secret-access-key pair falls back to fallback entirely, and
+// warned reports that so the caller can log it without ever holding a
+// credential value past this call. Fallback keys resolveS3Env does not
+// itself resolve (RESTIC_CACHE_DIR in tests, for instance) ride along either
+// way.
+func resolveS3Env(
+	ctx context.Context, st *store.Store, env *secrets.Envelope, target string, fallback map[string]string,
+) (out map[string]string, warned bool, err error) {
+	resolved := map[string]string{}
+	for _, f := range s3CredFields {
+		value, found, err := openS3Secret(ctx, st, env, target, f.suffix)
+		if err != nil {
+			return nil, false, err
+		}
+		if found {
+			resolved[f.envKey] = value
+		}
+	}
+
+	if resolved["AWS_ACCESS_KEY_ID"] == "" || resolved["AWS_SECRET_ACCESS_KEY"] == "" {
+		return fallback, true, nil
+	}
+	for k, v := range fallback {
+		if _, exists := resolved[k]; !exists {
+			resolved[k] = v
+		}
+	}
+	return resolved, false, nil
+}
+
+// openS3Secret reads and unseals one sealed credential field for target. It
+// reports found=false, not an error, for a field that was never sealed —
+// only region and session-token are optional, but the caller decides which
+// fields are required.
+func openS3Secret(
+	ctx context.Context, st *store.Store, env *secrets.Envelope, target, field string,
+) (value string, found bool, err error) {
+	name := s3SecretName(target, field)
+	row, err := st.GetSecret(ctx, name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return "", false, nil
+		}
+		return "", false, fmt.Errorf("backup: load %s: %w", name, err)
+	}
+	pt, err := env.OpenSecret(secrets.SealedSecret{
+		Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+	})
+	if err != nil {
+		return "", false, fmt.Errorf("backup: open %s: %w", name, err)
+	}
+	return string(pt), true, nil
 }

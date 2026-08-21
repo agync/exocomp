@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"exocomp.dev/exocomp/internal/store"
 )
 
 const (
@@ -85,6 +87,130 @@ func TestResticS3Leg(t *testing.T) {
 		t.Fatalf("restore from s3: %v", err)
 	}
 	assertRestoredChain(t, f, dest, "offsite-s3")
+}
+
+// TestResticS3LegResolvesSealedCredentials proves the leg succeeds from
+// sealed secret rows alone: the target's own Env carries only
+// RESTIC_CACHE_DIR, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can only
+// have reached restic and the s3 client through resolveS3Env.
+func TestResticS3LegResolvesSealedCredentials(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("podman"); err != nil {
+		t.Skip("podman is not on PATH")
+	}
+	f := newFixture(t)
+	endpoint := startMinIO(t)
+
+	const targetName = "offsite-s3-sealed"
+	sealS3Secret(t, f, targetName, "access-key-id", minioUser)
+	sealS3Secret(t, f, targetName, "secret-access-key", minioPassword)
+	sealS3Secret(t, f, targetName, "region", "us-east-1")
+
+	uri := "s3:" + endpoint + "/exocomp-backup-sealed"
+	target := f.target(t, targetName, KindResticS3, uri)
+
+	report, err := f.engine.Run(t.Context(), []Target{target})
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if err := report.Err(); err != nil {
+		t.Fatalf("s3 leg with sealed credentials: %v", err)
+	}
+	if report.Legs[0].SnapshotID == "" {
+		t.Error("no snapshot id parsed")
+	}
+
+	client, err := newS3Client(uri, map[string]string{
+		"AWS_ACCESS_KEY_ID":     minioUser,
+		"AWS_SECRET_ACCESS_KEY": minioPassword,
+		"AWS_DEFAULT_REGION":    "us-east-1",
+	})
+	if err != nil {
+		t.Fatalf("s3 client: %v", err)
+	}
+	if _, err := client.get(t.Context(), KeyringName); err != nil {
+		t.Fatalf("get %s written under sealed credentials: %v", KeyringName, err)
+	}
+}
+
+func sealS3Secret(t *testing.T, f *fixture, target, field, value string) {
+	t.Helper()
+	name := s3SecretName(target, field)
+	sealed, err := f.env.Seal(name, "s3-credential", []byte(value))
+	if err != nil {
+		t.Fatalf("seal %s: %v", name, err)
+	}
+	if _, err := f.store.CreateSecret(t.Context(), store.SecretRow{
+		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce, Ciphertext: sealed.Ciphertext,
+		AAD: sealed.Name + "|" + sealed.Kind,
+	}); err != nil {
+		t.Fatalf("create secret row %s: %v", name, err)
+	}
+}
+
+// TestResolveS3EnvPrefersSealedCredentials covers resolveS3Env directly:
+// sealed rows win over fallback, an incomplete pair (only one of the two
+// required fields) falls back entirely rather than handing restic a half
+// credential, and either path carries fallback-only keys like
+// RESTIC_CACHE_DIR through untouched.
+func TestResolveS3EnvPrefersSealedCredentials(t *testing.T) {
+	t.Parallel()
+	f := newFixture(t)
+	fallback := map[string]string{
+		"AWS_ACCESS_KEY_ID":     "fallback-key",
+		"AWS_SECRET_ACCESS_KEY": "fallback-secret",
+		"RESTIC_CACHE_DIR":      "/cache",
+	}
+
+	t.Run("no sealed rows falls back and warns", func(t *testing.T) {
+		env, warned, err := resolveS3Env(t.Context(), f.store, f.env, "no-secrets", fallback)
+		if err != nil {
+			t.Fatalf("resolveS3Env: %v", err)
+		}
+		if !warned {
+			t.Error("warned = false, want true when no rows are sealed")
+		}
+		if env["AWS_ACCESS_KEY_ID"] != "fallback-key" || env["RESTIC_CACHE_DIR"] != "/cache" {
+			t.Errorf("env = %+v, want the fallback map unchanged", env)
+		}
+	})
+
+	t.Run("sealed rows win and do not warn", func(t *testing.T) {
+		sealS3Secret(t, f, "sealed-target", "access-key-id", "sealed-key")
+		sealS3Secret(t, f, "sealed-target", "secret-access-key", "sealed-secret")
+
+		env, warned, err := resolveS3Env(t.Context(), f.store, f.env, "sealed-target", fallback)
+		if err != nil {
+			t.Fatalf("resolveS3Env: %v", err)
+		}
+		if warned {
+			t.Error("warned = true, want false when both required rows are sealed")
+		}
+		if env["AWS_ACCESS_KEY_ID"] != "sealed-key" || env["AWS_SECRET_ACCESS_KEY"] != "sealed-secret" {
+			t.Errorf("env = %+v, want the sealed credential", env)
+		}
+		if env["RESTIC_CACHE_DIR"] != "/cache" {
+			t.Errorf("env = %+v, want the fallback-only key carried through", env)
+		}
+		if _, ok := env["AWS_DEFAULT_REGION"]; ok {
+			t.Errorf("env = %+v, want no region when none was sealed", env)
+		}
+	})
+
+	t.Run("incomplete pair falls back entirely", func(t *testing.T) {
+		sealS3Secret(t, f, "half-sealed-target", "access-key-id", "sealed-key")
+
+		env, warned, err := resolveS3Env(t.Context(), f.store, f.env, "half-sealed-target", fallback)
+		if err != nil {
+			t.Fatalf("resolveS3Env: %v", err)
+		}
+		if !warned {
+			t.Error("warned = false, want true for an incomplete sealed pair")
+		}
+		if env["AWS_ACCESS_KEY_ID"] != "fallback-key" {
+			t.Errorf("env = %+v, want the fallback key, not a half-sealed credential", env)
+		}
+	})
 }
 
 // startMinIO boots a throwaway MinIO on a loopback port and returns its

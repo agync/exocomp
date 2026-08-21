@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -55,6 +56,10 @@ type Options struct {
 	// through the backup window. Zero uses defaultProbeTimeout. Transferring
 	// the data is never bounded this way.
 	ProbeTimeout time.Duration
+	// Logger receives warnings that are not leg failures — e.g. an s3 target
+	// falling back to its process environment because it has no sealed
+	// credentials. Zero uses slog.Default().
+	Logger *slog.Logger
 }
 
 // defaultProbeTimeout is how long a target has to prove it is reachable.
@@ -74,6 +79,9 @@ func New(st *store.Store, env *secrets.Envelope, opts Options) *Engine {
 	}
 	if opts.Now == nil {
 		opts.Now = func() time.Time { return time.Now().UTC() }
+	}
+	if opts.Logger == nil {
+		opts.Logger = slog.Default()
 	}
 	return &Engine{store: st, env: env, opts: opts}
 }

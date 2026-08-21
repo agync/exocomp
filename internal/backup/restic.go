@@ -73,6 +73,17 @@ func (e *Engine) resticLeg(ctx context.Context, t Target, stage string) (_ strin
 			return "", 0, err
 		}
 	}
+	if t.Kind == KindResticS3 {
+		resolved, warned, err := resolveS3Env(ctx, e.store, e.env, t.Name, t.Env)
+		if err != nil {
+			return "", 0, err
+		}
+		if warned {
+			e.opts.Logger.Warn("s3 target has no sealed credentials; falling back to the process environment",
+				"target", t.Name)
+		}
+		t.Env = resolved
+	}
 
 	passFile, cleanup, err := writePasswordFile(e.opts.StageRoot, password)
 	if err != nil {
