@@ -27,7 +27,7 @@ graph TB
     end
 
     subgraph tools["Pinned subprocesses in the image"]
-        T1["ansible-runner / ansible-core"]
+        T1["ansible-playbook / ansible-core"]
         T2["opentofu"]
         T3["restic · sops · age · git"]
     end
@@ -69,6 +69,11 @@ rather than advisory:
 The alternative — an execution engine with its own scheduler and its own Run button — leaves
 dispatch paths the gate never sees. That is the structural flaw that eliminated two of the
 three candidate designs.
+
+**M1 carve-out.** `exocomp backup run` and `exocomp restore` run as direct CLI invocations,
+outside the queue: there is no scheduler yet to enqueue them against, and the guardrails
+this invariant protects (cooldown, cap, dedup, approval) do not apply to a backup or a
+restore. They become queued jobs once the M2 scheduler exists.
 
 ## Components
 

@@ -38,8 +38,8 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | Tool | Pin | License | Role | Interface contract |
 |---|---|---|---|---|
 | uv | 0.8.x | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: operator-only escape hatch, doctor-gated, never invoked by `exocompd` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + operator shell |
-| ansible-core (+ Python via uv) | 2.1x / 3.12+ | GPL-3.0+ / PSF | playbook execution | via ansible-runner; exit codes gate success |
-| ansible-runner | 2.4.x | Apache-2.0 | per-task JSON event stream, artifact capture | `--json` NDJSON, golden-file tested |
+| ansible-core (+ Python via uv) | 2.1x / 3.12+ | GPL-3.0+ / PSF | playbook execution | M1: direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
+| ansible-runner | 2.4.x | Apache-2.0 | **not used in M1** — the direct `ansible-playbook` driver above is the M1 executor; ansible-runner's per-task JSON events and artifact capture are re-evaluated for M2 | re-evaluated in M2 |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
 | OpenTofu | 1.12.x | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
 | restic | 0.19.x (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |

@@ -32,7 +32,7 @@ ride in the same snapshot, which is what makes an offline restore possible.
 |---|---|
 | NAS | `restic` to a local repository on the SMB/NFS mount, after asserting mountpoint, canary file, and free space |
 | S3-compatible | `restic` to an `s3:` repository |
-| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window; archives chunked at 90 MB; the leg fails loudly at 4 GB of repo size |
+| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window. Archive chunking at 90 MB and the 4 GB repo-size guard are **M2** — M1's git leg (`internal/backup/git.go`) pushes the archive whole and has no size guard |
 
 One leg failing does not abort the others; each gets its own `backup_run` row and its own
 alert. A target that fails twice consecutively raises a `critical` notification. The
@@ -131,10 +131,10 @@ database has no recovery-kind keyring row.
 |---|---|
 | Host disk | The runbook above |
 | Host key, kit intact | The runbook above — the recovery key unwraps the DEK, a new host key is minted and the old one revoked |
-| Recovery kit lost, host alive | `exocomp recovery-kit --regenerate` mints a new recovery identity, wraps the DEK, revokes the old row. Zero downtime — this is why the kit is regenerable |
-| Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has. The doctor nags weekly if only one recipient exists, and the wizard refuses to finish without a second |
-| DB corrupt, backups fine | `exocomp restore --snapshot <id>` in place. `exocompd` refuses to start on a `PRAGMA integrity_check` failure rather than serving garbage |
-| One backup target unreachable | Others proceed, an alert fires, and the doctor shows per-target last-success age with a red threshold at 48 h |
+| Recovery kit lost, host alive | **M2.** M1's `exocomp recovery-kit` only re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row. Re-keying and revocation are re-evaluated for M2 |
+| Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has. The weekly single-recipient nag and the bootstrap wizard are **M2** — `exocompd serve` itself is not yet implemented |
+| DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot and refuses a destination that already holds a keyring. M1 has no `--snapshot <id>` selector or in-place restore, and startup `PRAGMA integrity_check` gating is **M2** (`exocompd serve` is not yet implemented) |
+| One backup target unreachable | Others proceed and each gets its own `backup_run` row; per-target alerting and the doctor's last-success-age view are **M2** |
 | `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
 ## RPO and RTO

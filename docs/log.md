@@ -128,3 +128,37 @@ keep. Corrections, code first:
   operator to fetch keyring.age and pass `--keyring`.
 - `backup canary` is gone; `secrets add` supersedes it (it was listed above as
   deferred to M2).
+  age-plugin-yubikey recipients; `backup canary` removal in favor of `secrets add`.
+
+## 2026-08-21 — M1 gate corrections
+
+Adversarial review of the M1 gate found curated pages describing a not-yet-built
+executor and CLI surface as though they already shipped (code wins, per
+[AGENTS.md](../AGENTS.md)):
+
+- **Executor substitution.** `requirements.md`, `overview.md` (the diagram node and
+  a new explicit carve-out, below), `delivery.md`, and both affected
+  `sbom/bill-of-materials.md` rows named `ansible-runner` with per-task JSON
+  events as the run engine. M1's actual executor
+  (`internal/executor/ansible.go`) is a direct `ansible-playbook` subprocess with
+  stdout scanned line by line into events and exit-code-only correctness;
+  `ansible-runner` is unused in M1 and re-evaluated for M2.
+- **`operations/disaster-recovery.md` legs and failure-mode tables.** The git
+  leg's 90 MB chunking and 4 GB size guard (amendment 2) are M2, not shipped —
+  `internal/backup/git.go` pushes the archive whole with no size guard. Every
+  command in the failure-mode table now matches the shipped CLI: `exocomp
+  restore` takes `--from`/`--dest`/`--identity` and restores latest only (no
+  `--snapshot` selector, no in-place restore); `exocomp recovery-kit` only
+  re-renders stored kit structure and cannot mint or revoke a recovery identity;
+  `exocompd serve` itself is not implemented in M1, so startup integrity
+  gating, per-target alerting, the weekly recipient nag, and the bootstrap
+  wizard are all M2.
+- **`architecture/overview.md`'s "one queue, no side doors" invariant.**
+  `exocomp backup run` and `exocomp restore` are direct CLI invocations in M1,
+  outside the queue — there is no scheduler yet to enqueue them against, and
+  the queue's guardrails do not apply to them. The page now states this
+  explicitly as an M1 carve-out rather than leaving the exception silent; they
+  become queued jobs once the M2 scheduler exists.
+- **`api/` lands in M2, not M1.** `AGENTS.md`'s layout table and
+  `internal/api/doc.go` both said the OpenAPI spec and typed client land in M1;
+  neither exists yet. Corrected to M2.
