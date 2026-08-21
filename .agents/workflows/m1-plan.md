@@ -143,3 +143,24 @@ caches + hardening), M2c (gate + maintenance).
 - hardening: git leg chunks a >90 MB synthetic snapshot and refuses at the size
   guard; S3 creds resolve from sealed rows (env fallback warns); `ssh -p <port>
   localhost` renders the TUI over wish (scripted probe).
+
+## File ownership (M2b)
+
+| Lane | Owns exclusively |
+|---|---|
+| serve-unify | `cmd/exocomp/serve.go` (daemon = backend + scheduler + queue workers + boot sweep; graceful shutdown finishes in-flight legs via context.WithoutCancel), `cmd/exocomp/schedule.go` (enable/disable subcommands), deprecating `scheduler run` |
+| tui-expand | `internal/tui/**` (Workspaces + Schedules screens), `cmd/exocomp/tui.go` |
+| caches | tofu driver TF_PLUGIN_CACHE_DIR under the data dir (`internal/executor/tofu.go` cache lines only), `cmd/exocomp/vendor.go` (`playbook vendor` via ansible-galaxy into the data dir) + ANSIBLE_COLLECTIONS_PATH in the ansible driver env (`internal/executor/ansible.go` env lines only), SeaweedFS fixture swap in `internal/backup/s3_test.go` + `test/e2e/m1-gate.sh`, operator docs for `s3/<target>/…` sealed-cred naming |
+
+## Gate (M2b)
+
+- serve: one daemon serves the state backend while a schedule fires and a workspace
+  apply runs concurrently; SIGTERM mid-backup leaves no zombie running rows (finish
+  writes complete); boot sweep runs at serve start.
+- tui: Workspaces (serial, last plan/apply, drift marker) and Schedules (cron,
+  next/last) render against a seeded store; four screens navigable.
+- caches: after `playbook vendor` and one cached `tofu init`, a play and a plan both
+  succeed with network access denied (unshare -rn if available, else galaxy/registry
+  endpoints pointed at a black-hole address) — the §3.8 offline-DR property.
+- fixture: S3 tests and the e2e gate run against SeaweedFS (Apache-2.0); if any restic
+  or SigV4 incompatibility appears, keep the pinned MinIO image and record why.
