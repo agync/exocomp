@@ -1,6 +1,8 @@
 # exocomp — UI design brief
 
-For a designer with no prior context. Direction: clean, minimal, modern, functional,
+For a designer with no prior context. A visual design exploration against this
+brief is in flight (tracked outside the repository); its output feeds the web UI
+work in M3. Direction: clean, minimal, modern, functional,
 accessible. This brief covers the web UI (priority 2 surface) and the phone approval
 flow; the TUI exists and sets the tone — the web UI is its calmer sibling, not a
 marketing site.
