@@ -1,23 +1,13 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"fmt"
-	"io"
-	"os"
-	"os/signal"
-	"syscall"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"exocomp.dev/exocomp/internal/backup"
-	"exocomp.dev/exocomp/internal/executor"
-	"exocomp.dev/exocomp/internal/queue"
-	"exocomp.dev/exocomp/internal/sched"
-	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -31,7 +21,13 @@ func newScheduleCmd() *cobra.Command {
 		Use:   "schedule",
 		Short: "Manage recurring jobs",
 	}
-	cmd.AddCommand(newScheduleAddCmd(), newScheduleListCmd(), newScheduleRmCmd())
+	cmd.AddCommand(
+		newScheduleAddCmd(),
+		newScheduleListCmd(),
+		newScheduleRmCmd(),
+		newScheduleEnableCmd(),
+		newScheduleDisableCmd(),
+	)
 	return cmd
 }
 
@@ -162,6 +158,57 @@ func newScheduleRmCmd() *cobra.Command {
 	}
 }
 
+func newScheduleEnableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "enable <name>",
+		Short: "Let a schedule fire again",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return setScheduleEnabled(cmd, args[0], true)
+		},
+	}
+}
+
+func newScheduleDisableCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "disable <name>",
+		Short: "Stop a schedule from firing, keeping its definition",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return setScheduleEnabled(cmd, args[0], false)
+		},
+	}
+}
+
+// setScheduleEnabled flips the stored flag. A running daemon holds its
+// registrations in memory, so the change lands there on the next reload —
+// which is why the confirmation says how to make that happen now.
+func setScheduleEnabled(cmd *cobra.Command, name string, enabled bool) error {
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+
+	if err := st.SetScheduleEnabled(cmd.Context(), name, enabled); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("schedule %s: %q not found", enabledVerb(enabled), name)
+		}
+		return err
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(),
+		"schedule %s %s; a running `exocomp serve` picks it up on its next reload, or at once on SIGHUP\n",
+		name, enabledLabel(enabled))
+	return err
+}
+
+func enabledVerb(enabled bool) string {
+	if enabled {
+		return "enable"
+	}
+	return "disable"
+}
+
 func lastJobIDLabel(id *int64) string {
 	if id == nil {
 		return "-"
@@ -179,69 +226,23 @@ func nextAtLabel(t *time.Time) string {
 func newSchedulerCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "scheduler",
-		Short: "Run the schedule daemon",
+		Short: "Deprecated: the schedule daemon is `exocomp serve`",
 	}
 	cmd.AddCommand(newSchedulerRunCmd())
 	return cmd
 }
 
+// newSchedulerRunCmd keeps the M2a entry point working as an alias. Its own
+// process — scheduler plus queue, without the state backend — is gone: one
+// daemon owns every surface, and two of them would fight over the same rows.
 func newSchedulerRunCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "run",
-		Short: "Fire schedules and drain the queue until interrupted",
-		Long: "The M2 stand-in for exocompd: it fires schedules through the same queue " +
-			"as every other execution path and runs until SIGINT or SIGTERM. It goes away " +
-			"once `exocomp serve` unifies every surface into one long-running process.",
-		Args: cobra.NoArgs,
+		Use:        "run",
+		Short:      "Deprecated alias for `exocomp serve`",
+		Deprecated: "run `exocomp serve`: one process serves the state backend, drains the queue, and fires schedules.",
+		Args:       cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runScheduler(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr())
+			return runServe(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), defaultServeOptions())
 		},
 	}
-}
-
-func runScheduler(ctx context.Context, out, warn io.Writer) (err error) {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	dir, err := dataDir()
-	if err != nil {
-		return fmt.Errorf("scheduler run: resolve data dir: %w", err)
-	}
-
-	env, err := secrets.Open(dir)
-	if err != nil {
-		return fmt.Errorf("scheduler run: %w", err)
-	}
-	defer func() { _ = env.Close() }()
-
-	st, err := openJobStore(ctx, warn)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if cerr := st.Close(); cerr != nil && err == nil {
-			err = cerr
-		}
-	}()
-
-	runner := backup.NewRunner(st, env, backup.Options{}, targetEnv)
-	drv := sched.NewDriver(executor.NewShell(), runner)
-	q := queue.New(st, drv, queue.Options{Workers: 4, PollInterval: 200 * time.Millisecond})
-
-	s := sched.New(st, q, nil)
-	if err := s.Start(ctx); err != nil {
-		return fmt.Errorf("scheduler run: %w", err)
-	}
-
-	qDone := make(chan error, 1)
-	go func() { qDone <- q.Run(ctx) }()
-
-	_, _ = fmt.Fprintln(out, "scheduler running (ctrl-c to stop)")
-	<-ctx.Done()
-
-	s.Stop()
-	return <-qDone
 }
