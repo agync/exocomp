@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build check fmt fmt-check vet lint test clean help
+.PHONY: build check fmt fmt-check vet lint tidy-check test clean help
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -39,8 +39,8 @@ lint: ## Run golangci-lint if installed
 tidy-check: ## Fail if go.mod/go.sum are not tidy
 	go mod tidy -diff
 
-test: ## Run the test suite
-	go test ./...
+test: ## Run the test suite with the race detector
+	go test -race ./...
 
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/
