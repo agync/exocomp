@@ -10,9 +10,8 @@ UserNS=keep-id
 Environment=EXOCOMP_STATE_DIR=/var/lib/exocomp
 
 [Service]
-# Default Type for .container units is notify; conmon supplies READY=1 on
-# its own, so this works even though exocompd does not call sd_notify (M0).
-# Type=notify
+# The generated unit is Type=notify by default; conmon supplies READY=1,
+# so this works even though exocompd does not call sd_notify yet (M0).
 Restart=always
 RestartSec=5
 MemoryMax=1.5G

@@ -5,8 +5,13 @@ services:
       context: ..
       dockerfile: packaging/Containerfile
     container_name: exocomp
-    restart: always
+    restart: unless-stopped
     mem_limit: 1.5g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
     volumes:
       - exocomp-state:/var/lib/exocomp
     environment:

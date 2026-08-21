@@ -9,13 +9,14 @@ install.sh $VERSION - exocomp installer
 
 Usage: install.sh [MODE] [OPTIONS]
 
-Modes:
-  install    Install exocomp (default)
-  restore    Restore state from a backup
-  rollback   Roll back to the previous release
+Modes (positional or flag form):
+  install                Install exocomp (default)
+  restore | --restore    Restore state from a backup
+  rollback | --rollback  Roll back to the previous release
 
 Options:
-  --help     Show this help and exit
+  --image-tag TAG        With rollback: pin this image tag
+  --help                 Show this help and exit
 
 Never invoked with sudo: rootless podman or docker only.
 EOF
@@ -32,23 +33,41 @@ detect_tier() {
 }
 
 mode=install
+image_tag=""
 
-for arg in "$@"; do
-    case "$arg" in
+while [ $# -gt 0 ]; do
+    case "$1" in
         --help)
             usage
             exit 0
             ;;
         install|restore|rollback)
-            mode="$arg"
+            mode="$1"
+            ;;
+        --restore)
+            mode=restore
+            ;;
+        --rollback)
+            mode=rollback
+            ;;
+        --image-tag)
+            [ $# -ge 2 ] || { echo "install.sh: --image-tag requires a value" >&2; exit 1; }
+            image_tag="$2"
+            shift
             ;;
         *)
-            echo "install.sh: unknown argument: $arg" >&2
+            echo "install.sh: unknown argument: $1" >&2
             usage >&2
             exit 1
             ;;
     esac
+    shift
 done
+
+if [ -n "$image_tag" ] && [ "$mode" != rollback ]; then
+    echo "install.sh: --image-tag is only valid with rollback" >&2
+    exit 1
+fi
 
 tier=$(detect_tier)
 
@@ -57,7 +76,7 @@ if [ "$tier" = none ]; then
     exit 1
 fi
 
-echo "install.sh $VERSION: tier=$tier mode=$mode"
+echo "install.sh $VERSION: tier=$tier mode=$mode${image_tag:+ image_tag=$image_tag}"
 
 case "$mode" in
     install)
