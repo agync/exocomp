@@ -6,6 +6,34 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — M2d reconciliation: serve, execution, and BOM corrected against code
+
+[operations/serve.md](operations/serve.md): the daemon-aware CLI list gained `backup
+run` and `playbook vendor`; the single-instance probe is now documented as shared and
+non-blocking, with the acquire-side retry that keeps a probe from costing a starting
+daemon the directory; startup's stale-lock warning and a "Known limits" section
+(`SQLITE_BUSY` on the WAL pragma, the executor's ~2s pipe-drain grace) are new; a
+"Schedules" section documents `--cron` validation and skip-on-reject reload behaviour.
+
+[architecture/execution.md](architecture/execution.md): a "Queue semantics" section
+states the one-shot-drain/no-daemon-rows rule and that `store.ClaimJob` enforces
+concurrency keys in one SQL statement, not an in-process map. The executor tier table
+now says what `local` actually ships (no per-job tmpfs, no separate executor UID) and
+marks `local-sandboxed`/`container` designed for M3, with the trust-equivalence
+consequence stated plainly. The stale-tflock paragraph flipped from aspiration to
+implemented (`workspace unlock`, audited system event).
+
+[adr/0004](adr/0004-opentofu-http-state-backend.md) gained a status note dating the
+stale-lock recovery landing. [operations/disaster-recovery.md](operations/disaster-recovery.md)
+re-dated its two lingering "M2" failure-mode rows to M3, neither matching a v1.1
+backlog item. [sbom/bill-of-materials.md](sbom/bill-of-materials.md) refreshed
+drifted Go module rows against `go.mod` and closed the ansible-runner
+re-evaluation: staying with the direct driver, JSON callback plugin backlogged v1.1.
+
+[design/delivery.md](design/delivery.md) marks v0.5/M2 landed 2026-08-22
+(`test/e2e/m2-gate.sh`), splitting the full 8-screen TUI and wizard out to v1.0/M3
+now that both are designed.
+
 ## 2026-08-21 — M2c: serve page added, backup run states corrected
 
 [operations/serve.md](operations/serve.md) is new: `exocomp serve`'s flags
