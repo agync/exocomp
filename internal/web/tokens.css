@@ -1,0 +1,125 @@
+/* exocomp — design tokens v0.1
+ * Source of truth: "exocomp - Foundations.dc.html" (project canvas).
+ * Contrast ratios are measured against the surface the token actually sits on:
+ * dark ink/signals vs surface-tray #171C1E; light ink/signals vs panel #FFFDF9.
+ * Intended for internal/web/tokens.css verbatim. */
+
+:root {
+  /* ---- Surfaces · dark (native theme) ---- */
+  --surface-void:    #0A0C0D; /* page backplate */
+  --surface-rail:    #0E1112; /* left nav */
+  --surface-card:    #121618; /* card, table shell */
+  --surface-tray:    #171C1E; /* raised tray, row group */
+  --surface-row:     #191F21; /* selected / active row */
+  --surface-control: #22282A; /* button, input, chip */
+  /* Depth is fill, not line: each step up the ramp is a lighter surface.
+   * Hairlines survive in exactly two places — a wide table's header rule and
+   * an inset state ring (box-shadow: inset 0 0 0 1px <state-border>). */
+  --hairline:        rgba(255,255,255,.09);
+  --hairline-faint:  rgba(255,255,255,.06);
+
+  /* ---- Ink (on surface-tray #171C1E) ---- */
+  --ink-100: #ECEFF0; /* 14.6:1 · headings, values */
+  --ink-200: #D6DBDD; /* 11.7:1 · body */
+  --ink-400: #A6AFB2; /*  7.5:1 · secondary, labels */
+  --ink-500: #8A9296; /*  5.4:1 · timestamps, meta, dim states (last AA text step) */
+  --ink-600: #6B7477; /*  3.6:1 · dots, rules, dividers — NEVER text */
+
+  /* ---- Accent · amethyst, deliberately split ---- */
+  --accent-fill: #A435CE; /* solid fills/buttons only · white text on it = 5.1:1 */
+  --accent-text: #BE7BEB; /* accent as text, icon, link, focus ring
+                             (#A435CE on graphite is 3.65:1 and fails AA) */
+  --accent-tint:   rgba(164,53,206,.14); /* tinted fill */
+  --accent-border: rgba(190,123,235,.34); /* 1px state ring */
+
+  /* ---- Signals (text · 1px borders · 8px dots; tinted fills 10–14% alpha) ---- */
+  --signal-ok:   #4FB86B; /* 7.9:1 · succeeded, fresh, in sync */
+  --signal-wait: #E3A008; /* 7.6:1 · awaiting approval, stale, drift */
+  --signal-fail: #F0645A; /* 5.4:1 · failed, timed out, interrupted */
+  --signal-dim-text: #8A9296; /* queued, skipped, disabled (text) */
+  --signal-dim-dot:  #6B7477; /* queued, skipped, disabled (dots only) */
+  --ok-tint:    rgba(79,184,107,.12);  --ok-border:   rgba(79,184,107,.28);
+  --wait-tint:  rgba(227,160,8,.12);   --wait-border: rgba(227,160,8,.30);
+  --fail-tint:  rgba(240,100,90,.12);  --fail-border: rgba(240,100,90,.30);
+
+  /* ---- Type ---- */
+  --font-ui:   'IBM Plex Sans', system-ui, sans-serif;   /* anything a human wrote */
+  --font-mono: 'JetBrains Mono', monospace;              /* anything a machine produced */
+  /* font-variant-numeric: tabular-nums — on for ALL digits, always. */
+  /* Ramp (size/line-height · letter-spacing · weight): */
+  --type-display: 600 30px/1.1 var(--font-ui);   /* -0.7px · page title, live timer */
+  --type-section: 600 23px/1.2 var(--font-ui);   /* -0.3px · section heading */
+  --type-card:    600 19px/1.3 var(--font-ui);   /* card title */
+  --type-bar:     500 15px/1.4 var(--font-ui);   /* bar title, section label */
+  --type-button:  500 13.5px/1 var(--font-ui);
+  --type-body:    400 13px/1.6 var(--font-ui);   /* body + all data (mono for data) */
+  --type-log:     400 12.5px/1.65 var(--font-mono);
+  --type-keyword: 600 11px/1 var(--font-mono);   /* +0.4px · UPPERCASE state keywords */
+  --type-kicker:  600 11px/1 var(--font-mono);   /* +2.4px · UPPERCASE eyebrow, accent-text */
+
+  /* ---- Spacing & shape ---- */
+  --row-h: 44px;        /* job row, table row, control & button height (min hit target) */
+  --header-h: 60px;     /* app bar */
+  --tray-inset: 6px;    /* rows float in a padded tray… */
+  --radius-row: 10px;   /* …with 10px row radius; selected row is a fill, not a rule */
+  --radius-chip: 8px;
+  --radius-control: 11px;
+  --radius-card: 14px;
+  --radius-shell: 16px;
+  --gap-inline: 8px;    /* chip/badge clusters */
+  --gap-cell: 16px;     /* row grid columns */
+  --gap-card: 12px;     /* between cards */
+  --pad-card: 22px 24px;
+  --pad-page: 26px 30px;
+
+  /* ---- Focus (\:focus-visible only — a mouse click must not ring) ---- */
+  --focus-ring: 3px solid var(--accent-text); /* outline, 2px offset, radius inherited */
+  --focus-offset: 2px;
+  /* The ring never recolours to match state (an amber card still focuses amethyst).
+   * A focused row rings the whole 44px cell, drawn outside tray padding.
+   * outline:none without a replacement ring is a review-blocking bug. */
+
+  /* ---- Motion ---- */
+  --breathe: xc-breathe 1.6s infinite; /* RUNNING pin/dot breathes, never spins */
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Warm, low-chroma remap — lab notebook, not an inverted console. */
+    --surface-void:    #F5F2EC; /* page */
+    --surface-rail:    #EFEBE3; /* left nav, app bar */
+    --surface-card:    #FFFDF9; /* panel */
+    --surface-tray:    #FFFDF9;
+    --surface-row:     #F1EDE5; /* selected / active row */
+    --surface-control: #EFEBE3;
+    --hairline:        rgba(60,50,38,.16);
+    --hairline-faint:  rgba(60,50,38,.12);
+
+    /* Ink (on #FFFDF9) */
+    --ink-100: #1D1A16;
+    --ink-200: #3A352E;
+    --ink-400: #6B655B;
+    --ink-500: #6B655B;
+    --ink-600: rgba(60,50,38,.28); /* rules/dots only */
+
+    /* One accent carries text, buttons and focus rings — no second tint. */
+    --accent-fill: #7A2FA6; /* 7.4:1 */
+    --accent-text: #7A2FA6;
+    --accent-tint:   rgba(122,47,166,.10);
+    --accent-border: rgba(122,47,166,.34);
+
+    --signal-ok:   #16703C; /* 6.2:1 */
+    --signal-wait: #7A5200; /* 6.5:1 */
+    --signal-fail: #A82F22; /* 5.7:1 */
+    --signal-dim-text: #6B655B;
+    --signal-dim-dot:  rgba(60,50,38,.40);
+    --ok-tint:   rgba(22,112,60,.10);  --ok-border:   rgba(22,112,60,.30);
+    --wait-tint: rgba(122,82,0,.12);   --wait-border: rgba(122,82,0,.42);
+    --fail-tint: rgba(168,47,34,.12);  --fail-border: rgba(168,47,34,.34);
+
+    --focus-ring: 3px solid #7A2FA6;
+  }
+}
+
+@keyframes xc-breathe { 0%,100%{opacity:1} 50%{opacity:.35} }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important } }

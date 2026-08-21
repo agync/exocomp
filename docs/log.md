@@ -307,3 +307,20 @@ Operator decision: LAN exposure is secured by bearer tokens minted and managed
 via local auth only, with default self-signed TLS and fingerprint pinning
 ([ADR 0009](adr/0009-lan-access-tokens.md)). Binds the M3 web lane and adds four
 v1.0 gate assertions.
+
+## 2026-08-22 — design handoff v0.1 imported
+
+Tokens landed verbatim at `internal/web/tokens.css` (annotated contrast, split
+accent, signal system, type ramp). Artboard captures + the canvas PDF live under
+[design/reference](design/reference/). Two reconciliations recorded for M3:
+
+- **The printed card's derivation block must render from code, not the mock.**
+  The design shows a per-install random salt (section 3) and `info =
+  "exocomp/v1/" + purpose`; the shipped envelope uses the constant salt
+  `exocomp/v1` with `info = purpose:id` (ADR 0003, CI-executed card test). Code
+  wins; the card layout is adopted, its derivation text regenerates from the
+  implementation.
+- **The mock's `exo` command shorthand does not exist**: ADR 0002 forbids an
+  `exo` alias (exo-lang collision). The kit/wizard commands render as `exocomp`;
+  the new surfaces the design assumes — `kit derive [--list]`, `kit verify`,
+  `identity migrate` — are adopted into the M3 CLI scope.
