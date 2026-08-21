@@ -70,7 +70,7 @@ func newPlaybookCmd() *cobra.Command {
 		Use:   "playbook",
 		Short: "Run ansible playbooks through the queue",
 	}
-	cmd.AddCommand(run)
+	cmd.AddCommand(run, newPlaybookVendorCmd())
 	return cmd
 }
 
@@ -114,7 +114,10 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		}
 	}()
 
-	opts := executor.AnsibleOptions{VaultID: executor.DefaultVaultID}
+	opts := executor.AnsibleOptions{
+		VaultID:         executor.DefaultVaultID,
+		CollectionsPath: filepath.Join(dir, collectionsCacheDir),
+	}
 	var qopts []queue.Option
 
 	env, envErr := secrets.Open(dir)
