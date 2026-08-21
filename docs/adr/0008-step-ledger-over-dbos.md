@@ -10,10 +10,11 @@ snapshot, and multi-leg backup verification. Durable-execution engines exist for
 exactly this. Assessment of the embeddable field (sources in the assessment note):
 
 - **DBOS Transact** is the only candidate compatible with the invariants:
-  in-process library, MIT, and — decisively — a SQLite system database that is now
-  DBOS's **default** (Python docs, verified 2026-08-22; the Go SDK ships it backed
-  by the same `modernc.org/sqlite` driver this project already uses, v1.0.0,
-  2026-07-31). It genuinely embeds; no second process, no Postgres. DBOS's own
+  in-process library, MIT, and — decisively — a SQLite system database — the **default**
+  in the Python SDK, and in the Go SDK an explicit driver import (a binary-size
+  choice, not a maturity signal) backed by the same `modernc.org/sqlite` driver
+  this project already uses; the Go config even accepts a supplied `*sql.DB`
+  handle (verified against the vendor docs, 2026-08-22). It genuinely embeds; no second process, no Postgres. DBOS's own
   production caveat for SQLite is multi-server distribution — a topology this
   project forbids by invariant, so the caveat does not apply here.
 - Everything else disqualifies structurally: Restate (separate server, BSL),
@@ -42,4 +43,5 @@ We own ~200 more lines of sequencing code and its tests; rotation/upgrade land o
 infrastructure the drills already exercise. Revisit DBOS in 6–12 months if its
 SQLite backend matures, the contributor base broadens, and a choreography
 genuinely outgrows the ledger (fan-out with per-step retries and timers would be
-the signal).
+the signal). A future adoption could hand DBOS a `*sql.DB` over a file in our own
+data dir, so the storage story would stay one directory even then.
