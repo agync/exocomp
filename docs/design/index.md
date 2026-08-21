@@ -13,3 +13,4 @@ The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.
 three candidates it was chosen from and the critique that reshaped it are preserved
 verbatim in [history](../history/index.md).
 | [UI brief](ui-brief.md) | Design brief for the web UI and phone approval surface |
+| [Persona review](user-feedback.md) | Four-persona adoption review: convergences, M3 scope folds, ranked v1.1 backlog |

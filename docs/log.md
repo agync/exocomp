@@ -227,3 +227,11 @@ shipped command or marks the capability M2.
 obligation; the real finding is CE's archival (2026-04). Fixture swap to SeaweedFS
 backlogged for M2b/M3; BOM's operator-store row no longer suggests MinIO for new
 deployments.
+
+## 2026-08-21 — persona review synthesized
+
+[design/user-feedback.md](design/user-feedback.md): four adversarial persona reviews
+(veteran homelabber, SRE-at-home, time-poor generalist, security engineer). Five
+convergent findings folded into M3 scope; ranked v1.1 backlog established;
+[ADR 0007](adr/0007-audit-chain-deferral.md) records the previously silent audit-chain
+deferral.
