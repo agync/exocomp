@@ -1,14 +1,23 @@
 #!/bin/sh
-# Runs `make check` at the worktree root when a check target exists.
+# Runs `make check` against the INDEX (what is being committed), not the
+# working tree, so unstaged edits can neither mask nor cause a failure.
 # Installed via `git config core.hooksPath .agents/hooks`.
 set -eu
 
 root=$(git rev-parse --show-toplevel)
 
-if [ -f "$root/Makefile" ] && grep -Eq '^check:' "$root/Makefile"; then
-    make -C "$root" check
-else
+if [ ! -f "$root/Makefile" ] || ! grep -Eq '^check:' "$root/Makefile"; then
     echo "pre-commit: no Makefile check target, skipping"
+    exit 0
 fi
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/exocomp-precommit.XXXXXX")
+trap 'rm -rf "$tmp"' EXIT INT TERM
+
+GIT_INDEX_FILE=$(git rev-parse --git-path index)
+export GIT_INDEX_FILE
+git checkout-index -a --prefix="$tmp/"
+
+make -C "$tmp" check
 
 exit 0

@@ -11,23 +11,41 @@ fail() {
     exit 1
 }
 
-subject_len=$(printf '%s' "$subject" | wc -m | tr -d ' ')
-if [ "$subject_len" -gt 52 ]; then
-    fail "title exceeds 52 chars ($subject_len): $subject"
+# Git-generated subjects (merge, revert) and rebase-autosquash markers pass the
+# style checks — invariant 11 sanctions those workflows — but the trailer and
+# emoji guards below still apply to the full message.
+git_generated=0
+case "$subject" in
+    "Merge "*|"Revert \""*|"fixup! "*|"squash! "*|"amend! "*) git_generated=1 ;;
+esac
+
+if [ "$git_generated" -eq 0 ]; then
+    subject_len=$(printf '%s' "$subject" | wc -m | tr -d ' ')
+    if [ "$subject_len" -gt 52 ]; then
+        fail "title exceeds 52 chars ($subject_len): $subject"
+    fi
+
+    if ! printf '%s\n' "$subject" | grep -Eq '^(feat|fix|chore|docs|refactor|test|perf|build)(\([a-z0-9./-]+\))?: .+'; then
+        fail "title must match ^(feat|fix|chore|docs|refactor|test|perf|build)(scope): summary, got: $subject"
+    fi
 fi
 
-if ! printf '%s\n' "$subject" | grep -Eq '^(feat|fix|chore|docs|refactor|test|perf|build)(\([a-z0-9./-]+\))?: .+'; then
-    fail "title must match ^(feat|fix|chore|docs|refactor|test|perf|build)(scope): summary, got: $subject"
-fi
-
-if grep -Eq '^(Co-Authored-By|Co-authored-by|Signed-off-by|Claude-Session|Generated-with|Generated with):?' "$msg_file"; then
+if grep -Eiq '^(Co-Authored-By|Signed-off-by|Claude-Session|Generated-with|Generated with):?' "$msg_file"; then
     fail "message contains a disallowed trailer (Co-Authored-By/Signed-off-by/Claude-Session/Generated-with)"
 fi
 
 # Conservative check for the common "AI slop" emoji: robot, sparkles, rocket
 # and a few celebratory glyphs — not a full unicode-emoji class.
-if grep -qP '[\x{1F916}\x{2728}\x{1F680}\x{1F31F}\x{2705}\x{274C}\x{1F389}\x{1F4A1}]' "$msg_file" 2>/dev/null; then
-    fail "message contains an emoji"
+if echo x | grep -qP 'x' 2>/dev/null; then
+    if grep -qP '[\x{1F916}\x{2728}\x{1F680}\x{1F31F}\x{2705}\x{274C}\x{1F389}\x{1F4A1}]' "$msg_file"; then
+        fail "message contains an emoji"
+    fi
+else
+    # No PCRE grep on this host: match the same glyphs via their UTF-8 bytes so
+    # the guard degrades to a byte-pattern check instead of silently passing.
+    if grep -q "$(printf '\xf0\x9f\xa4\x96\|\xe2\x9c\xa8\|\xf0\x9f\x9a\x80\|\xf0\x9f\x8c\x9f\|\xe2\x9c\x85\|\xe2\x9d\x8c\|\xf0\x9f\x8e\x89\|\xf0\x9f\x92\xa1')" "$msg_file"; then
+        fail "message contains an emoji"
+    fi
 fi
 
 exit 0
