@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -57,7 +56,7 @@ func newSecretsAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("secrets add: %w", err)
 			}
-			st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+			st, err := openStore()
 			if err != nil {
 				return err
 			}
@@ -84,11 +83,7 @@ func newSecretsListCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List sealed secret names (never values)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			dir, err := dataDir()
-			if err != nil {
-				return err
-			}
-			st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+			st, err := openStore()
 			if err != nil {
 				return err
 			}

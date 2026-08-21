@@ -135,20 +135,64 @@ func TestPlaybookSweepsAbandonedJobs(t *testing.T) {
 	}
 }
 
-// TestEveryJobPathOpensTheStoreThroughOpenJobStore guards the wiring rather
-// than one instance of it. The sweep was called by exactly one command, which
-// is how a job abandoned by a dead process survived every other entry point.
-func TestEveryJobPathOpensTheStoreThroughOpenJobStore(t *testing.T) {
-	for _, name := range []string{"devrun.go", "playbook.go", "tui.go"} {
+// packageSources returns every non-test Go file of this package, so a guard
+// over "every job path" is derived from what the package holds rather than
+// from a list a new file can be added without touching.
+func packageSources(t *testing.T) map[string]string {
+	t.Helper()
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read package dir: %v", err)
+	}
+	sources := map[string]string{}
+	for _, e := range entries {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
 		body, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("read %s: %v", name, err)
 		}
-		if strings.Contains(string(body), "store.Open(") {
+		sources[name] = string(body)
+	}
+	if len(sources) == 0 {
+		t.Fatal("the guard found no sources to check")
+	}
+	return sources
+}
+
+// TestEveryJobPathOpensTheStoreThroughOpenJobStore guards the wiring rather
+// than one instance of it. The sweep was called by exactly one command, which
+// is how a job abandoned by a dead process survived every other entry point.
+func TestEveryJobPathOpensTheStoreThroughOpenJobStore(t *testing.T) {
+	sources := packageSources(t)
+
+	var plumbing string
+	for name, body := range sources {
+		if strings.Contains(body, "func openJobStore(") {
+			plumbing = name
+		}
+	}
+	if plumbing == "" {
+		t.Fatal("no file declares openJobStore")
+	}
+
+	for name, body := range sources {
+		// Only the file that declares the sweeping opener may reach past it.
+		if name != plumbing && strings.Contains(body, "store.Open(") {
 			t.Errorf("%s opens the store directly; use openJobStore so the sweep runs", name)
 		}
-		if !strings.Contains(string(body), "openJobStore(") {
-			t.Errorf("%s does not open the store through openJobStore", name)
+		if !strings.Contains(body, "queue.New(") {
+			continue
+		}
+		// A file handed a *store.Store by its caller opens nothing itself.
+		if !strings.Contains(body, "openStore(") && !strings.Contains(body, "store.Open(") {
+			continue
+		}
+		if !strings.Contains(body, "openJobStore(") {
+			t.Errorf("%s runs jobs over a store it opened without the sweep; use openJobStore", name)
 		}
 	}
 }
