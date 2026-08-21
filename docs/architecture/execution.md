@@ -5,44 +5,77 @@ interface costs approximately nothing to introduce early — the queue already i
 execution behind a single call — and it is what makes the isolation tier a deployment
 choice rather than a rewrite.
 
+## Queue semantics
+
+One `job` table, one daemon claiming whatever reaches it. `exocomp serve`'s queue claims
+every queued row, whichever process enqueued it, and never idles. A one-shot CLI command
+(`workspace plan` with no daemon up, for instance) runs its own queue instead, and that
+queue's `Drain` claims only the rows it enqueued itself — a CLI never touches a daemon's
+rows, so it cannot run a job through a driver built for a different job's kind by racing a
+daemon that got there first.
+
+Concurrency keys are enforced by a single SQL `UPDATE` at claim time
+(`store.ClaimJob`) — the key check and the state transition to `running` are one
+statement, conditioned on no other `running` row sharing the key — not by a map held in
+process memory. A daemon and a CLI claiming from the same database file are both bound by
+the same statement, so which one wins is a database fact, not a race either has to reason
+about.
+
+A job's subprocess runs in its own process group (`Setpgid`); cancelling a job signals the
+whole group (`SIGKILL` to `-pid`), not just the process the executor started, because a
+shell that exec'd something else or forked a helper is only reachable by group.
+
 Three tiers, in increasing isolation and increasing cost:
 
 | Tier | Status | Isolation mechanism |
 |---|---|---|
-| `local` | fallback, and the only topology bootstrap and DR require | subprocess boundary, per-job tmpfs, separate executor UID, rootless container |
-| `local-sandboxed` | **default on Linux** where the kernel supports it | the above plus a kernel default-deny sandbox per job subprocess |
-| `container` | opt-in, deferred post-v1 | per-job sibling containers |
+| `local` | **shipped**, and the only topology bootstrap and DR require | subprocess boundary, rootless container, per-job 0700 private dir, env allowlists |
+| `local-sandboxed` | designed, M3 (`nono`, Landlock) | the above plus a kernel default-deny sandbox per job subprocess |
+| `container` | designed, M3, deferred alongside Wails and OpenBao | per-job sibling containers |
+
+Until the sandbox tier lands, a job is trust-equivalent to the daemon: `local` isolates
+jobs from each other and from the host by process boundary and file permissions, not by a
+kernel policy, so anything a job subprocess's uid can reach, the daemon's own code could
+reach too.
 
 ## `local`
 
-Pinned tools in the image, one subprocess per job, a per-job tmpfs directory
-(mode 0700, unmounted at job end) holding decrypted secret material, a separate executor
-UID, all inside the rootless container.
+Pinned tools in the image, one subprocess per job, run in its own process group
+(`Setpgid`) so a cancel or timeout signals the whole tree rather than one pid a shell may
+have exec'd past. Secret material — a workspace's backend bearer and state passphrase, an
+ansible job's vault password — is written only to a per-job private directory
+(`os.MkdirTemp`, mode 0700, removed when the job ends) inside the rootless container, and
+the subprocess's environment is built from an allowlist rather than inherited, so an
+operator's exported `TF_CLI_ARGS` cannot rewrite the argv a job row recorded.
 
-One image plus one volume is a working system. Nothing else has to be pulled at restore
-time — which is exactly why this tier, and not a fancier one, is what the DR path is
-allowed to use.
+This tier ships without a per-job tmpfs mount or a separate executor UID: every job
+subprocess runs as the same container user, distinguished only by its own private
+directory and the argv it was given. One image plus one volume is a working system.
+Nothing else has to be pulled at restore time — which is exactly why this tier, and not a
+fancier one, is what the DR path is allowed to use.
 
 ## `local-sandboxed`
 
-Every job subprocess runs under `nono run --profile job-<kind>` (Landlock on Linux,
-Apache-2.0, ≥ 0.55.0 sha256-pinned) with a default-deny filesystem policy.
+Designed for M3: every job subprocess would run under `nono run --profile job-<kind>`
+(Landlock on Linux, Apache-2.0, ≥ 0.55.0 sha256-pinned) with a default-deny filesystem
+policy.
 
 | | Paths |
 |---|---|
 | Allowed | job tmpfs, repo checkout, artifact dir, tool paths, provider and collection caches |
 | Denied | `exocomp.db`, `host.key`, the keyring, other jobs' tmpfs, **the exocomp API socket, and any podman socket** |
 
-Network is scoped by runbook kind: Ansible gets SSH to inventory hosts; OpenTofu gets
-provider endpoints plus the `127.0.0.1` state backend.
+Network would be scoped by runbook kind: Ansible gets SSH to inventory hosts; OpenTofu
+gets provider endpoints plus the `127.0.0.1` state backend.
 
 The consequence that matters: a playbook is arbitrary code from a git repository, and under
-this tier it can no longer read the database, the host key, or the API socket. That is most
-of the `container` tier's prize with no podman socket handed to `exocompd` and no registry
-on the DR path — Landlock is local, so the sandbox still applies during a restore.
+this tier it would no longer be able to read the database, the host key, or the API
+socket. That is most of the `container` tier's prize with no podman socket handed to
+`exocompd` and no registry on the DR path — Landlock is local, so the sandbox would still
+apply during a restore.
 
-`exocomp doctor` probes the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7) and
-degrades **loudly** to `local` on older kernels, never silently. It also asserts the
+`exocomp doctor` would probe the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7)
+and degrade **loudly** to `local` on older kernels, never silently, and would assert the
 socket denial by attempting a connect from inside a probe sandbox and expecting failure.
 Full rationale and the CVE lesson behind that probe:
 [ADR 0005](../adr/0005-job-sandboxing-nono.md).
@@ -66,7 +99,7 @@ The trades are stated so the choice is informed, not assumed:
 - Per-project tool versions widen the golden-file test matrix, so EEs are tested
   per-project, not globally.
 
-With `local-sandboxed` shipped, the remaining justification for this tier narrows to
+Once `local-sandboxed` ships, the remaining justification for this tier narrows to
 per-project EE versioning and hard per-job resource caps, so it stays deferred alongside
 Wails and OpenBao.
 
@@ -115,6 +148,13 @@ depend on registry.opentofu.org or Ansible Galaxy being reachable:
 
 A container restart kills `ansible-playbook` mid-run, and a restored snapshot contains such
 rows by construction. On startup, jobs in `queued` or `running` whose process is gone are
-swept to `interrupted` — a terminal state, notified, **never auto-retried** — and stale
-`tflock` rows whose owning job is dead are flagged with an audited one-click force-unlock.
-The restore drill asserts both.
+swept to `interrupted` — a terminal state, notified, **never auto-retried**.
+
+Stale `tflock` rows are handled the same way, and it is implemented, not aspirational: the
+boot sweep runs first, then `exocomp serve` warns once per workspace whose lock still
+names a job that is gone or terminal — a lock naming no live job row is stale by policy,
+whether that job never existed, finished, or was swept above. `exocomp workspace unlock
+<name>` breaks the lock, refusing outright while the job it names is still running (the
+lock is the system working, not a leftover), and records the break as an audited
+`job_event` system entry on the job the lock named, or on the workspace's most recent job.
+The restore drill asserts both the job sweep and the lock flag.

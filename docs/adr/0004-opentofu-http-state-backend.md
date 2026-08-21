@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted · 2026-08-21
+Accepted · 2026-08-21. Stale-lock recovery landed 2026-08-22: `exocomp workspace
+unlock` plus a boot-sweep warning (below).
 
 ## Context
 

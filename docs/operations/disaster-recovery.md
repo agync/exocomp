@@ -157,10 +157,10 @@ database has no recovery-kind keyring row.
 |---|---|
 | Host disk | The runbook above |
 | Host key, kit intact | The runbook above — the recovery key unwraps the DEK, a new host key is minted and the old one revoked |
-| Recovery kit lost, host alive | **M2.** M1's `exocomp recovery-kit` only re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row. Re-keying and revocation are re-evaluated for M2 |
+| Recovery kit lost, host alive | **M3.** `exocomp recovery-kit` only re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row. Re-keying and revocation are re-evaluated for M3 |
 | Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has. The weekly single-recipient nag and the bootstrap wizard are still unbuilt |
 | DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot and refuses a destination that already holds a keyring. M1 has no `--snapshot <id>` selector or in-place restore, and startup `PRAGMA integrity_check` gating is still unbuilt |
-| One backup target unreachable | Others proceed and each gets its own `backup_run` row; per-target alerting and the doctor's last-success-age view are **M2** |
+| One backup target unreachable | Others proceed and each gets its own `backup_run` row; per-target alerting and the doctor's last-success-age view are **M3** |
 | `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
 ## RPO and RTO

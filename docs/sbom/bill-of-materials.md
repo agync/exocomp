@@ -18,14 +18,14 @@ a process boundary or does not ship.
 
 | Component | Pin | License | Role |
 |---|---|---|---|
-| Go toolchain | 1.24+ | BSD-3 | `CGO_ENABLED=0` static builds, amd64 + arm64 |
-| `modernc.org/sqlite` | latest stable | BSD-3 | embedded DB, pure Go, no CGO; `exocomp.db`, WAL |
-| `filippo.io/age` | 1.2.x | BSD-3 | envelope crypto as a library (recipients → DEK) |
-| Go stdlib `crypto` (GCM, `crypto/hkdf`) | 1.24 stdlib | BSD-3 | secret encryption and subkey derivation — zero novel crypto |
-| `robfig/cron/v3` | 3.x | MIT | schedules, rebuilt from the DB on boot |
+| Go toolchain | 1.26+ | BSD-3 | `CGO_ENABLED=0` static builds, amd64 + arm64 |
+| `modernc.org/sqlite` | 1.57.x | BSD-3 | embedded DB, pure Go, no CGO; `exocomp.db`, WAL |
+| `filippo.io/age` | 1.3.x | BSD-3 | envelope crypto as a library (recipients → DEK) |
+| Go stdlib `crypto` (GCM, `crypto/hkdf`) | 1.26 stdlib | BSD-3 | secret encryption and subkey derivation — zero novel crypto |
+| `robfig/cron/v3` | 3.0.x | MIT | schedules, rebuilt from the DB on boot |
 | `google/cel-go` | 0.2x | Apache-2.0 | sandboxed, non-Turing-complete event rules |
 | `containrrr/shoutrrr` | 0.8.x | MIT | notification fan-out (ntfy, gotify, SMTP, webhook) as a library |
-| Bubble Tea v2 + Bubbles + Lip Gloss | v2 | MIT | TUI — the priority-1 interface |
+| `charm.land/bubbletea/v2` + `bubbles/v2` + `lipgloss/v2` | v2.0.x / v2.2.x / v2.0.x | MIT | TUI — the priority-1 interface. Not the `charmbracelet/*` v1 imports — Charm's tooling moved to the `charm.land` module path for the v2 line this project is on |
 | `charm.land/wish/v2` | 2.0.x | MIT | TUI over SSH, `exocomp ssh-serve` (`cmd/exocomp/ssh.go`). Not `charmbracelet/wish` v1.x — that major still pairs with Bubble Tea v1; `charm.land/wish/v2`'s `bubbletea` middleware is the release that targets Bubble Tea v2, which this project is on |
 | `a-h/templ` + htmx | 0.3.x / 2.x | MIT / 0BSD | server-rendered web UI via `go:embed`, no Node build |
 | `spf13/cobra` | 1.x | Apache-2.0 | CLI surface |
@@ -39,7 +39,7 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 |---|---|---|---|---|
 | uv | 0.8.x | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: operator-only escape hatch, doctor-gated, never invoked by `exocompd` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + operator shell |
 | ansible-core (+ Python via uv) | 2.1x / 3.12+ | GPL-3.0+ / PSF | playbook execution | M1: direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
-| ansible-runner | 2.4.x | Apache-2.0 | **not used in M1** — the direct `ansible-playbook` driver above is the M1 executor; ansible-runner's per-task JSON events and artifact capture are re-evaluated for M2 | re-evaluated in M2 |
+| ansible-runner | 2.4.x | Apache-2.0 | **not used.** M1 substituted a direct `ansible-playbook` driver — exit-code correctness, line-scanned output — and M2 confirmed staying direct rather than adopting ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | closed, v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
 | OpenTofu | 1.12.x | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
 | restic | 0.19.x (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
