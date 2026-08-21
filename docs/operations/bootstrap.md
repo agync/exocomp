@@ -35,7 +35,7 @@ create-the-admin footgun.
 | 3 | **Backup targets** | Add at least one NAS path, S3 URI, or GitHub repo. Each is *tested immediately*: init the restic repo, write a canary, read it back, delete it. A target that fails the round-trip cannot be saved |
 | 4 | **First project** | Git URL, with a deploy key generated and displayed for pasting into the forge; fetch, then **auto-discover** — repo-root YAML files with a `hosts:` key become candidate Ansible runbooks, directories containing `*.tf` become candidate OpenTofu workspaces, and the operator checkboxes what to import. Also the import-existing-vault-password flow |
 | 5 | **Notifications** | ntfy server and topic — **self-hosted or token-authenticated, never a public topic**, because approval URLs are bearer capabilities — with a test push. healthchecks is provisioned here as a first-class step, and its ping URL is stored, backed up, and printed on the kit |
-| 6 | **Verify** | Run `exocomp doctor --deep`, run the first backup, and run `dr-drill` **immediately**, showing the result. **You have a proven restore path before you have done any real work** |
+| 6 | **Verify** | Run `exocomp doctor` (`--deep` arrives with the wizard), run the first backup, and run `dr-drill` **immediately**, showing the result. **You have a proven restore path before you have done any real work** |
 
 Screen 4's auto-discovery is the difference between "five minutes to working" and "an
 afternoon of forms". Screen 6 is the one that cannot be made optional: it is the only thing

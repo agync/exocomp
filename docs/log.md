@@ -162,3 +162,9 @@ executor and CLI surface as though they already shipped (code wins, per
 - **`api/` lands in M2, not M1.** `AGENTS.md`'s layout table and
   `internal/api/doc.go` both said the OpenAPI spec and typed client land in M1;
   neither exists yet. Corrected to M2.
+
+## 2026-08-21 — operations pages aligned with the shipped surface
+
+`doctor --deep`, `jobs list`, and the card-carried storage credential were still
+described as current in three spots the M1 corrections missed; each now names the
+shipped command or marks the capability M2.

@@ -73,7 +73,7 @@ sequenceDiagram
     Note over NH: installs podman + pulls the image<br/>NO exocompd running yet
     NH->>Op: prompt: backup target URI?
     Op->>NH: target URI from the kit
-    NH->>T: fetch keyring.age (read-only credential from the kit)
+    NH->>T: fetch keyring.age (credential supplied by the operator; on the kit from M2)
     NH->>Op: prompt: paste or scan the recovery age key
     Op->>NH: AGE-SECRET-KEY-1…
     NH->>NH: age -d keyring.age → DEK
@@ -91,8 +91,8 @@ sequenceDiagram
 Then verify rather than assume:
 
 ```bash
-exocomp doctor --deep        # tool versions, DB integrity, keyring, targets reachable
-exocomp jobs list --limit 5  # last known activity — does it match your memory?
+exocomp doctor       # tool versions, data dir mode, keyring recipients
+exocomp tui          # last known activity — does it match your memory?
 ```
 
 ## The recovery card
@@ -114,8 +114,8 @@ Treat the printed card as authoritative over this page. The chain it automates i
    `restic-repo:<target-id>` — 32 bytes, base64-encoded → `RESTIC_PASSWORD`. Both the salt
    and the target id are printed on the card, so the derivation is reproducible by hand.
 3. `restic -r <target URI> restore latest --target <data volume>`, using the read-only
-   storage credential from the card.
-4. Start the service, then `exocomp doctor --deep`.
+   storage credential you supply (printed on the card from M2, amendment 1).
+4. Start the service, then `exocomp doctor`.
 
 The card also carries the QR-coded recovery key, the target URIs, the fingerprints of every
 active recipient (so the operator can tell which YubiKey), the healthchecks ping URL, and
