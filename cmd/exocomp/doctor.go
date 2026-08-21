@@ -31,28 +31,31 @@ func newDoctorCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "doctor",
 		Short: "Run environment checks",
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runDoctor(cmd.OutOrStdout())
 		},
 	}
 }
 
 func runDoctor(w io.Writer) error {
-	fmt.Fprintf(w, "go runtime:   %s\n", runtime.Version())
+	p := func(format string, a ...any) {
+		_, _ = fmt.Fprintf(w, format, a...)
+	}
+	p("go runtime:   %s\n", runtime.Version())
 
 	dataDir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("doctor: resolve data dir: %w", err)
 	}
 	if err := checkDataDirWritable(dataDir); err != nil {
-		fmt.Fprintf(w, "data dir:     %s — NOT WRITABLE (%v)\n", dataDir, err)
+		p("data dir:     %s — NOT WRITABLE (%v)\n", dataDir, err)
 		return fmt.Errorf("doctor: data dir not writable: %w", err)
 	}
-	fmt.Fprintf(w, "data dir:     %s — writable\n", dataDir)
+	p("data dir:     %s — writable\n", dataDir)
 
-	fmt.Fprintln(w, "optional tools:")
+	p("optional tools (M0 probe subset):\n")
 	for _, t := range optionalTools {
-		fmt.Fprintf(w, "  %-18s %s\n", t.name, probeTool(t))
+		p("  %-18s %s\n", t.name, probeTool(t))
 	}
 
 	return nil
