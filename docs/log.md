@@ -6,6 +6,23 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-21 — M2c: serve page added, backup run states corrected
+
+[operations/serve.md](operations/serve.md) is new: `exocomp serve`'s flags
+(`--port`, `--drain-grace`, `--reload-interval`), the signal contract for `SIGHUP` and
+`SIGTERM`/`SIGINT`, the single-instance lock on `<data dir>/serve.lock`, and what
+`workspace plan|apply` and `playbook run` do while a daemon is up — they enqueue and
+follow the job instead of draining a queue of their own. Linked from
+`operations/index.md` and the top-level `index.md`.
+
+[operations/disaster-recovery.md](operations/disaster-recovery.md) gained the terminal
+states a `backup_run` row can hold. `cancelled` is new — a leg stopped by a shutdown was
+previously indistinguishable from one the target failed, and a row left `running` now
+means only that the writing process was killed outright. Its failure-mode table said
+twice that "`exocomp serve` currently serves the OpenTofu state backend and nothing
+else"; that stopped being true when serve became the daemon, and both parentheticals are
+gone.
+
 ## 2026-08-21 — M2b caches: offline-caches page added, MinIO assessment closed out
 
 [operations/offline-caches.md](operations/offline-caches.md) is new: `playbook vendor`

@@ -59,6 +59,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 | Page | Covers |
 |---|---|
 | [Bootstrap](operations/bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, adoption runbooks |
+| [Running the daemon](operations/serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and the daemon-aware CLI |
 | [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |
 | [Offline caches](operations/offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
 
