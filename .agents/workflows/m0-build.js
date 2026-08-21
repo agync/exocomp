@@ -37,7 +37,7 @@ log('4 lanes in worktrees: docs (opus) · go · agents-infra · packaging-lima (
 const results = await parallel([
   () => agent(`${CONVENTIONS}
 YOUR LANE: docs-okf. Worktree: ${WT}/m0-docs (branch m0/docs).
-Build the repository's docs/ directory as an OKF v0.2 bundle, curated from the design archive at the pre-repo design archive (path supplied at run time)/ (READ-ONLY source; authoritative file: design/DESIGN.md; supporting: research/*.md, design/candidate-*.md, design/critique.md).
+Build the repository's docs/ directory as an OKF v0.2 bundle, curated from the pre-repo design archive, path supplied at run time (READ-ONLY source; authoritative file: design/DESIGN.md; supporting: research/*.md, design/candidate-*.md, design/critique.md).
 
 Deliverables inside <worktree>/docs/:
 1. index.md — root index with frontmatter "okf_version: \\"0.2\\"" plus title/description metadata; a high-signal map of every section with relative links.
