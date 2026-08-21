@@ -1,6 +1,19 @@
 package store
 
-import "context"
+import (
+	"context"
+	"time"
+)
+
+// BackdateJobForTest moves a job's clock before this process started, so tests
+// can produce the row a container restart leaves behind: same pid, older run.
+func (s *Store) BackdateJobForTest(id int64, at time.Time) error {
+	ms := at.UTC().UnixMilli()
+	_, err := s.db.ExecContext(context.Background(),
+		`UPDATE job SET queued_at = ?, started_at = CASE WHEN started_at IS NULL
+		 THEN NULL ELSE ? END WHERE id = ?`, ms, ms, id)
+	return err
+}
 
 // SetOwnerPIDForTest rewrites a job's owning pid so tests can produce rows
 // that look like they were left behind by a killed process.

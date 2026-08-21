@@ -4,9 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -289,25 +291,66 @@ func (s *Store) SetJobExitCode(ctx context.Context, id int64, code int) error {
 	return nil
 }
 
-// SweepInterrupted moves queued and running jobs left behind by a previous
-// process to interrupted, a terminal state that is never auto-retried. One
-// operator means one process owns the database (AGENTS.md invariant 1), so a
-// row owned by another pid is a row whose process is gone.
+// processStart is when this process loaded the package. A row owned by our own
+// pid but stamped before this instant belongs to a previous process wearing
+// the same number — the normal case in a container, where every restart is
+// pid 1.
+var processStart = time.Now().UTC()
+
+// ownerAlive reports whether the process that owns a job row is still running.
+// since is the row's own clock: started_at, or queued_at for a row that never
+// started.
+//
+// Pid equality is not ownership. A container restart hands the new process the
+// same pid 1 the dead one had, so a sweep keyed on "some other pid" leaves
+// exactly the rows it exists to clean up.
+func ownerAlive(pid int, since time.Time) bool {
+	switch {
+	case pid <= 0:
+		// A terminal row, or one written before owner_pid meant anything.
+		return false
+	case pid == os.Getpid():
+		return since.After(processStart)
+	}
+	// Signal 0 performs the permission and existence checks without sending
+	// anything. EPERM means the process exists and is someone else's.
+	err := syscall.Kill(pid, 0)
+	return err == nil || errors.Is(err, syscall.EPERM)
+}
+
+// SweepInterrupted moves queued and running jobs whose owning process is gone
+// to interrupted, a terminal state that is never auto-retried. One operator
+// means one process runs jobs at a time (AGENTS.md invariant 1); this decides
+// "gone" by asking the kernel, not by comparing pids.
 func (s *Store) SweepInterrupted(ctx context.Context) (int, error) {
-	now := time.Now().UTC().UnixMilli()
-	res, err := s.db.ExecContext(ctx, `
-		UPDATE job SET state = ?, finished_at = ?, owner_pid = 0
-		WHERE state IN (?, ?) AND owner_pid <> ?`,
-		string(StateInterrupted), now,
-		string(StateQueued), string(StateRunning), os.Getpid())
+	rows, err := s.ListJobs(ctx, JobFilter{States: []JobState{StateQueued, StateRunning}})
 	if err != nil {
-		return 0, wrap("sweep interrupted", err)
+		return 0, err
 	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return 0, wrap("sweep interrupted", err)
+
+	swept := 0
+	for _, job := range rows {
+		since := job.QueuedAt
+		if job.StartedAt != nil {
+			since = *job.StartedAt
+		}
+		if ownerAlive(job.OwnerPID, since) {
+			continue
+		}
+		res, err := s.db.ExecContext(ctx, `
+			UPDATE job SET state = ?, finished_at = ?, owner_pid = 0
+			WHERE id = ? AND state = ?`,
+			string(StateInterrupted), time.Now().UTC().UnixMilli(), job.ID, string(job.State))
+		if err != nil {
+			return swept, wrap("sweep interrupted", err)
+		}
+		affected, err := res.RowsAffected()
+		if err != nil {
+			return swept, wrap("sweep interrupted", err)
+		}
+		swept += int(affected)
 	}
-	return int(affected), nil
+	return swept, nil
 }
 
 type rowScanner interface {

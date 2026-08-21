@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -320,8 +321,10 @@ func TestSweepInterrupted(t *testing.T) {
 	}
 }
 
-// orphan rewrites owner_pid on the given jobs to a pid that is not this
-// process, simulating rows left by a killed exocompd.
+// orphan rewrites owner_pid on the given jobs to a pid that has genuinely
+// exited, simulating rows left by a killed exocompd. A pid that merely differs
+// from ours is not enough: the sweep asks the kernel whether the process is
+// alive, and an arbitrary number often belongs to something that is.
 func orphan(t *testing.T, path string, ids ...int64) {
 	t.Helper()
 	s, err := store.Open(path)
@@ -330,9 +333,94 @@ func orphan(t *testing.T, path string, ids ...int64) {
 	}
 	defer func() { _ = s.Close() }()
 
+	dead := deadPID(t)
 	for _, id := range ids {
-		if err := s.SetOwnerPIDForTest(id, os.Getpid()+1); err != nil {
+		if err := s.SetOwnerPIDForTest(id, dead); err != nil {
 			t.Fatalf("orphan job %d: %v", id, err)
+		}
+	}
+}
+
+// deadPID runs a process to completion and reaps it, so its pid names nothing.
+func deadPID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("/bin/true")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run /bin/true: %v", err)
+	}
+	return cmd.Process.Pid
+}
+
+// livePID starts a process that outlives the test body, so its pid names
+// something the sweep must leave alone.
+func livePID(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("/bin/sleep", "60")
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start /bin/sleep: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = cmd.Process.Kill()
+		_, _ = cmd.Process.Wait()
+	})
+	return cmd.Process.Pid
+}
+
+// TestSweepInterruptedUsesLivenessNotPIDEquality pins the two cases pid
+// equality gets wrong. A container restart reissues pid 1, so a row this
+// process "owns" can predate it; and another live process's rows are not ours
+// to terminate.
+func TestSweepInterruptedUsesLivenessNotPIDEquality(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	// The reused-pid case: same owner_pid as us, stamped before we started.
+	restarted, err := s.CreateJob(ctx, store.NewJob{Runbook: "before-restart", Kind: "shell", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.TransitionJob(ctx, restarted.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("claim: %v", err)
+	}
+	if err := s.BackdateJobForTest(restarted.ID, time.Now().Add(-24*time.Hour)); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	// The live-neighbour case: a pid that is not ours and is running.
+	neighbour, err := s.CreateJob(ctx, store.NewJob{Runbook: "neighbour", Kind: "shell", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.SetOwnerPIDForTest(neighbour.ID, livePID(t)); err != nil {
+		t.Fatalf("reassign owner: %v", err)
+	}
+
+	// Ours, started in this process: untouchable.
+	mine, err := s.CreateJob(ctx, store.NewJob{Runbook: "mine", Kind: "shell", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+
+	swept, err := s.SweepInterrupted(ctx)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept != 1 {
+		t.Fatalf("swept %d rows, want 1 (the row left by the previous process at this pid)", swept)
+	}
+
+	for id, want := range map[int64]store.JobState{
+		restarted.ID: store.StateInterrupted,
+		neighbour.ID: store.StateQueued,
+		mine.ID:      store.StateQueued,
+	} {
+		job, err := s.GetJob(ctx, id)
+		if err != nil {
+			t.Fatalf("get job %d: %v", id, err)
+		}
+		if job.State != want {
+			t.Errorf("job %d (%s) is %s, want %s", id, job.Runbook, job.State, want)
 		}
 	}
 }

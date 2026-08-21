@@ -269,6 +269,27 @@ func openStore() (*store.Store, error) {
 	return store.Open(filepath.Join(dir, "exocomp.db"))
 }
 
+// openJobStore opens the store for a command that runs jobs, first retiring
+// the rows a process that is no longer alive left queued or running. Every
+// such command sweeps, not just the first one anybody wrote: a job left
+// running by a killed process holds its concurrency key forever, and nothing
+// else in the system will ever move it.
+func openJobStore(ctx context.Context, warn io.Writer) (*store.Store, error) {
+	st, err := openStore()
+	if err != nil {
+		return nil, err
+	}
+	swept, err := st.SweepInterrupted(ctx)
+	if err != nil {
+		_ = st.Close()
+		return nil, err
+	}
+	if swept > 0 && warn != nil {
+		_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", swept)
+	}
+	return st, nil
+}
+
 func targetEnv(t store.BackupTarget) map[string]string {
 	if t.Kind != backup.KindResticS3 {
 		return nil

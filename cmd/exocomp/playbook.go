@@ -103,11 +103,8 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	if err != nil {
 		return 0, fmt.Errorf("playbook: resolve data dir: %w", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return 0, fmt.Errorf("playbook: create data dir: %w", err)
-	}
 
-	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	st, err := openJobStore(ctx, warn)
 	if err != nil {
 		return 0, err
 	}

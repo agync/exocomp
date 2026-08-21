@@ -9,7 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/spf13/cobra"
 
-	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/tui"
 )
 
@@ -42,7 +41,7 @@ func runTUI(cmd *cobra.Command) (err error) {
 		return fmt.Errorf("tui: stat %s: %w", dbPath, statErr)
 	}
 
-	st, err := store.Open(dbPath)
+	st, err := openJobStore(cmd.Context(), cmd.ErrOrStderr())
 	if err != nil {
 		return fmt.Errorf("tui: open store: %w", err)
 	}

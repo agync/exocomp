@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -59,15 +57,7 @@ func runDevRun(ctx context.Context, w io.Writer, spec devRunSpec) (err error) {
 		ctx = context.Background()
 	}
 
-	dir, err := dataDir()
-	if err != nil {
-		return fmt.Errorf("devrun: resolve data dir: %w", err)
-	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("devrun: create data dir: %w", err)
-	}
-
-	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	st, err := openJobStore(ctx, w)
 	if err != nil {
 		return err
 	}
@@ -76,14 +66,6 @@ func runDevRun(ctx context.Context, w io.Writer, spec devRunSpec) (err error) {
 			err = cerr
 		}
 	}()
-
-	swept, err := st.SweepInterrupted(ctx)
-	if err != nil {
-		return err
-	}
-	if swept > 0 {
-		_, _ = fmt.Fprintf(w, "swept %d job(s) left by a previous process to interrupted\n", swept)
-	}
 
 	q := queue.New(st, executor.NewShell(), queue.Options{
 		Workers:      1,
