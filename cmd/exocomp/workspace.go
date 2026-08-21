@@ -141,7 +141,8 @@ func newWorkspacePlanCmd() *cobra.Command {
 		Use:   "plan <name>",
 		Short: "Plan a workspace through the queue",
 		Long: "Runs tofu plan against the workspace's state, saving the plan as an " +
-			"artifact `workspace apply --plan` can consume. The plan runs with " +
+			"artifact `workspace apply --plan` can consume. A running `exocomp serve` " +
+			"runs the job while this command follows it. The plan runs with " +
 			"-detailed-exitcode: this command exits 2 when changes are present, " +
 			"while the job itself succeeds.",
 		Args: cobra.ExactArgs(1),
@@ -162,9 +163,10 @@ func newWorkspaceApplyCmd() *cobra.Command {
 	apply := &cobra.Command{
 		Use:   "apply <name>",
 		Short: "Apply a workspace through the queue",
-		Long: "Runs tofu apply against the workspace's state. With --plan the run " +
-			"applies a plan a previous job saved, and the apply job records the same " +
-			"artifact, which is what links it to the plan that produced it.",
+		Long: "Runs tofu apply against the workspace's state, through a running " +
+			"`exocomp serve` when there is one. With --plan the run applies a plan a " +
+			"previous job saved, and the apply job records the same artifact, which is " +
+			"what links it to the plan that produced it.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
@@ -196,9 +198,10 @@ type workspaceOp struct {
 	timeout   time.Duration
 }
 
-// runWorkspaceOp runs one tofu operation through the queue against a state
-// backend served in this process, and returns the exit code the shell should
-// see. The backend is loopback and lives only as long as the run.
+// runWorkspaceOp runs one tofu operation through the queue and returns the
+// exit code the shell should see. With a daemon up the job is enqueued for it
+// and followed to its end; without one this process serves the state backend
+// and drains the job itself, and the backend lives only as long as the run.
 func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (code int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -235,9 +238,66 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 	}
 	defer func() { _ = env.Close() }()
 
-	addr, srv, err := stateBackend(ctx, dir, st, env)
+	dirs, err := tofuDirs(dir)
 	if err != nil {
 		return 0, err
+	}
+
+	argv, planPath, parent, err := opArgv(ctx, st, op, ws, dirs.artifacts)
+	if err != nil {
+		return 0, err
+	}
+	spec := queue.Spec{
+		Runbook:        workspaceRunbookPrefix + ws.Name,
+		Kind:           executor.KindTofu,
+		Trigger:        "manual",
+		Argv:           argv,
+		Dir:            ws.TofuDir,
+		ConcurrencyKey: "tofu:" + ws.Name,
+		Timeout:        op.timeout,
+	}
+
+	var final store.Job
+	if daemonRunning(ctx, dir) {
+		final, err = enqueueForDaemon(ctx, st, dir, spec, out)
+	} else {
+		final, err = runWorkspaceInline(ctx, st, env, dir, dirs, ws, spec, out, warn)
+	}
+	if err != nil {
+		return 0, err
+	}
+	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
+		final.ID, final.State, jobDuration(final))
+
+	if parent != nil {
+		if _, err := st.CreateArtifact(ctx, store.Artifact{
+			JobID:  final.ID,
+			Kind:   planArtifactKind,
+			Path:   parent.Path,
+			SHA256: parent.SHA256,
+			Size:   parent.Size,
+		}); err != nil {
+			return 0, err
+		}
+		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", parent.ID, parent.JobID)
+	}
+	if planPath != "" {
+		if err := recordPlan(ctx, st, out, final.ID, planPath); err != nil {
+			return 0, err
+		}
+	}
+
+	return workspaceExit(ctx, st, out, final, op.op)
+}
+
+// runWorkspaceInline serves the state backend in this process and drains the
+// one job it enqueued. The bearer and the state passphrase are derived here
+// and never leave it, which is why a job row alone is not enough to run one.
+func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
+	dirs tofuPaths, ws store.Workspace, spec queue.Spec, out, warn io.Writer) (job store.Job, err error) {
+	addr, srv, err := stateBackend(ctx, dir, st, env)
+	if err != nil {
+		return store.Job{}, err
 	}
 	if srv != nil {
 		defer func() {
@@ -247,11 +307,6 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 				err = serr
 			}
 		}()
-	}
-
-	dirs, err := tofuDirs(dir)
-	if err != nil {
-		return 0, err
 	}
 
 	token := api.WorkspaceToken(env, ws.Name)
@@ -274,59 +329,18 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		PollInterval: 50 * time.Millisecond,
 	}, queue.WithRedactor(secrets.NewRedactor(known)))
 
-	argv, planPath, parent, err := opArgv(ctx, st, op, ws, dirs.artifacts)
+	queued, err := q.Enqueue(ctx, spec)
 	if err != nil {
-		return 0, err
+		return store.Job{}, err
 	}
-
-	job, err := q.Enqueue(ctx, queue.Spec{
-		Runbook:        workspaceRunbookPrefix + ws.Name,
-		Kind:           executor.KindTofu,
-		Trigger:        "manual",
-		Argv:           argv,
-		Dir:            ws.TofuDir,
-		ConcurrencyKey: "tofu:" + ws.Name,
-		Timeout:        op.timeout,
-	})
-	if err != nil {
-		return 0, err
-	}
-
 	if srv != nil {
-		srv.BindJob(ws.Name, job.ID)
+		srv.BindJob(ws.Name, queued.ID)
 		defer srv.ReleaseJob(ws.Name)
 	}
-
-	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
-		return 0, err
+	if err := drainAndTail(ctx, q, st, queued.ID, out); err != nil {
+		return store.Job{}, err
 	}
-
-	final, err := st.GetJob(ctx, job.ID)
-	if err != nil {
-		return 0, err
-	}
-	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
-		final.ID, final.State, jobDuration(final))
-
-	if parent != nil {
-		if _, err := st.CreateArtifact(ctx, store.Artifact{
-			JobID:  job.ID,
-			Kind:   planArtifactKind,
-			Path:   parent.Path,
-			SHA256: parent.SHA256,
-			Size:   parent.Size,
-		}); err != nil {
-			return 0, err
-		}
-		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", parent.ID, parent.JobID)
-	}
-	if planPath != "" {
-		if err := recordPlan(ctx, st, out, job.ID, planPath); err != nil {
-			return 0, err
-		}
-	}
-
-	return workspaceExit(ctx, st, out, final, op.op)
+	return st.GetJob(ctx, queued.ID)
 }
 
 // stateBackend resolves the address tofu talks to, returning a server only

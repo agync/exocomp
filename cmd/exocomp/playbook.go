@@ -30,11 +30,12 @@ func newPlaybookCmd() *cobra.Command {
 	run := &cobra.Command{
 		Use:   "run <playbook>",
 		Short: "Run one playbook through the queue",
-		Long: "Enqueues the playbook as an ansible job and drains the queue in this " +
-			"process, streaming its events. The vault password is derived from the " +
-			"envelope for --vault-project and handed to ansible through a file in a " +
-			"private directory that is removed when the run ends. The process exits " +
-			"with the job's exit code.",
+		Long: "Enqueues the playbook as an ansible job, streaming its events. A running " +
+			"`exocomp serve` claims and runs the job; with no daemon up the queue is " +
+			"drained in this process instead. The vault password is derived from the " +
+			"envelope for --vault-project by whichever process runs it, and handed to " +
+			"ansible through a file in a private directory that is removed when the run " +
+			"ends. The process exits with the job's exit code.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			code, err := runPlaybook(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), playbookSpec{
@@ -109,46 +110,23 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		}
 	}()
 
-	var env *secrets.Envelope
-	if opened, err := secrets.Open(dir); err != nil {
-		_, _ = fmt.Fprintf(warn, "WARNING: no envelope in %s (%v): running without a vault "+
-			"password and without redaction\n", dir, err)
-	} else {
-		env = opened
-		defer func() { _ = env.Close() }()
-	}
-
-	driver, derived := newAnsibleDriver(dir, env, spec.vaultProject)
-	var qopts []queue.Option
-	if env != nil {
-		known := append(knownSecrets(ctx, st, env, warn), derived...)
-		qopts = append(qopts, queue.WithRedactor(secrets.NewRedactor(known)))
-	}
-
-	q := queue.New(st, driver, queue.Options{
-		Workers:      1,
-		PollInterval: 50 * time.Millisecond,
-	}, qopts...)
-
 	// The vault project travels with the job, not the password it derives: a
 	// daemon that claims this row has to derive the same password itself.
-	job, err := q.Enqueue(ctx, queue.Spec{
+	queued := queue.Spec{
 		Runbook:      "playbook",
 		Kind:         executor.KindAnsible,
 		Trigger:      "manual",
 		Argv:         executor.AnsibleArgv(playbook, inventory),
 		VaultProject: spec.vaultProject,
 		Timeout:      spec.timeout,
-	})
-	if err != nil {
-		return 0, err
 	}
 
-	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
-		return 0, err
+	var final store.Job
+	if daemonRunning(ctx, dir) {
+		final, err = enqueueForDaemon(ctx, st, dir, queued, out)
+	} else {
+		final, err = runPlaybookInline(ctx, st, dir, queued, out, warn)
 	}
-
-	final, err := st.GetJob(ctx, job.ID)
 	if err != nil {
 		return 0, err
 	}
@@ -163,6 +141,42 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	default:
 		return 1, nil
 	}
+}
+
+// runPlaybookInline enqueues the job and drains it in this process, which is
+// what a host with no daemon does. The vault password is derived here, held
+// for the length of the run, and added to what the redactor scrubs.
+func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec queue.Spec,
+	out, warn io.Writer) (store.Job, error) {
+	var env *secrets.Envelope
+	if opened, err := secrets.Open(dir); err != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: no envelope in %s (%v): running without a vault "+
+			"password and without redaction\n", dir, err)
+	} else {
+		env = opened
+		defer func() { _ = env.Close() }()
+	}
+
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject)
+	var qopts []queue.Option
+	if env != nil {
+		known := append(knownSecrets(ctx, st, env, warn), derived...)
+		qopts = append(qopts, queue.WithRedactor(secrets.NewRedactor(known)))
+	}
+
+	q := queue.New(st, driver, queue.Options{
+		Workers:      1,
+		PollInterval: 50 * time.Millisecond,
+	}, qopts...)
+
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		return store.Job{}, err
+	}
+	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
+		return store.Job{}, err
+	}
+	return st.GetJob(ctx, job.ID)
 }
 
 // knownSecrets collects the plaintexts the redactor must scrub. A secret that

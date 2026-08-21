@@ -72,8 +72,9 @@ func TestServeIsTheDaemon(t *testing.T) {
 		ConcurrencyKey: "tofu:wsp",
 	})
 
-	// ... while a real `workspace apply` runs against the same daemon.
-	applyOut, applyErr := runCLIOutput(bin, "workspace", "apply", "wsp")
+	// ... while a real `workspace apply` runs against the same daemon. The CLI
+	// enqueues and follows; the daemon is the only process that claims a row.
+	applyOut, applyCode := runCLIExit(t, bin, "workspace", "apply", "wsp")
 
 	waitFor(t, "the injected workspace job to finish", 60*time.Second, func() bool {
 		return jobState(t, injected).Terminal()
@@ -81,10 +82,8 @@ func TestServeIsTheDaemon(t *testing.T) {
 	if got := jobState(t, injected); got != store.StateSucceeded {
 		t.Errorf("workspace job the daemon ran is %s, want succeeded\n%s", got, d.dump())
 	}
-	// Both queues may claim a queued row, so the apply either ran in the CLI
-	// or was already running in the daemon when the CLI looked.
-	if applyErr != nil && !strings.Contains(applyOut, "state: running") {
-		t.Errorf("workspace apply failed: %v\n%s", applyErr, applyOut)
+	if applyCode != 0 || !strings.Contains(applyOut, "state: succeeded") {
+		t.Errorf("workspace apply exited %d:\n%s", applyCode, applyOut)
 	}
 	if invocations := readFile(t, tofuLog); !strings.Contains(invocations, "init") ||
 		!strings.Contains(invocations, "apply") {
@@ -158,6 +157,77 @@ func TestServeRefusesASecondInstance(t *testing.T) {
 	second.waitForLine(t, &second.stdout, "scheduler started", 30*time.Second)
 	second.signal(t, syscall.SIGTERM)
 	second.waitExit(t, 60*time.Second)
+}
+
+// TestDaemonRunsWhatTheCLIEnqueues is the daemon-aware CLI: with `serve` up,
+// `workspace plan|apply` and `playbook run` enqueue, follow the job's events,
+// and exit with the job's own exit code. Neither command starts a queue of its
+// own, so nothing races the daemon for the row — the stand-in tool records the
+// pid that ran it, and it is the daemon's.
+func TestDaemonRunsWhatTheCLIEnqueues(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	requireTools(t, "ansible-playbook", "ansible-vault")
+	bin := buildExocomp(t)
+	// The stand-in fails `apply` with a code no part of the CLI produces on
+	// its own, so an exit code that reaches the shell came from the job.
+	tofuLog := fakeTool(t, executor.TofuBinary, "case \"$1\" in apply) exit 3 ;; esac\nexit 0")
+
+	runCLI(t, bin, "init")
+	sealSecret(t, bin, "lab/canary", vaultCanary)
+	playbook := vaultedPlaybook(t, "lab", vaultCanary)
+
+	module := t.TempDir()
+	writeFile(t, filepath.Join(module, "main.tf"), "# empty root module\n")
+	runCLI(t, bin, "workspace", "add", "wsp", "--dir", module)
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+	daemonPID := fmt.Sprintf("ppid=%d", d.cmd.Process.Pid)
+
+	planOut, planCode := runCLIExit(t, bin, "workspace", "plan", "wsp")
+	assertDaemonRan(t, planOut, "workspace plan")
+	if planCode != 0 || !strings.Contains(planOut, "state: succeeded") {
+		t.Errorf("workspace plan exited %d, want 0 and a succeeded job:\n%s", planCode, planOut)
+	}
+
+	applyOut, applyCode := runCLIExit(t, bin, "workspace", "apply", "wsp")
+	assertDaemonRan(t, applyOut, "workspace apply")
+	if applyCode != 3 {
+		t.Errorf("workspace apply exited %d, want the job's own 3:\n%s", applyCode, applyOut)
+	}
+	if !strings.Contains(applyOut, "state: failed") {
+		t.Errorf("workspace apply did not report the failed job:\n%s", applyOut)
+	}
+	if invocations := readFile(t, tofuLog); !strings.Contains(invocations, daemonPID) {
+		t.Errorf("tofu was not run by the daemon (%s):\n%s", daemonPID, invocations)
+	}
+
+	runOut, runCode := runCLIExit(t, bin, "playbook", "run", "--vault-project", "lab", playbook)
+	assertDaemonRan(t, runOut, "playbook run")
+	if runCode != 0 || !strings.Contains(runOut, "state: succeeded") {
+		t.Errorf("playbook run exited %d, want 0 and a succeeded job:\n%s", runCode, runOut)
+	}
+	// The daemon derived the vault password (nothing else decrypts the play's
+	// only variable) and the value it printed reached neither the event rows
+	// nor this command's own output.
+	events := jobEventText(t, lastJobID(t, "playbook"))
+	if !strings.Contains(events, secrets.Marker) {
+		t.Errorf("no redacted value in the job's events, so nothing was decrypted:\n%s", events)
+	}
+	assertRedacted(t, events+runOut, vaultCanary, vaultPassword(t, "lab"))
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+	assertNothingLeftRunning(t, d)
+}
+
+// assertDaemonRan checks a command took the daemon path rather than draining a
+// queue of its own.
+func assertDaemonRan(t *testing.T, out, what string) {
+	t.Helper()
+	if !strings.Contains(out, "queued for the running daemon") {
+		t.Errorf("%s did not hand its job to the daemon:\n%s", what, out)
+	}
 }
 
 // vaultCanary is sealed as a secret row, vault-encrypted into a playbook, and
@@ -497,16 +567,33 @@ func runCLIOutput(bin string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// runCLIExit runs one command and returns its output and the exit code the
+// shell would see. A command that failed to run at all fails the test: that is
+// not an exit code.
+func runCLIExit(t *testing.T, bin string, args ...string) (string, int) {
+	t.Helper()
+	out, err := runCLIOutput(bin, args...)
+	if err == nil {
+		return out, 0
+	}
+	var exitErr *exec.ExitError
+	if !errors.As(err, &exitErr) {
+		t.Fatalf("exocomp %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return out, exitErr.ExitCode()
+}
+
 // fakeTool puts a stand-in for one pinned tool ahead of the real one on PATH
-// and returns the file it records its invocations in. The daemon's wiring is
-// what these tests are about; whether restic and tofu themselves work is
-// proven elsewhere, at a cost in seconds these tests cannot pay.
+// and returns the file it records its invocations in, each with the pid that
+// spawned it — which process ran a job is a fact these tests need. The
+// daemon's wiring is what they are about; whether restic and tofu themselves
+// work is proven elsewhere, at a cost in seconds these tests cannot pay.
 func fakeTool(t *testing.T, name, body string) string {
 	t.Helper()
 
 	dir := t.TempDir()
 	log := filepath.Join(dir, name+".log")
-	script := fmt.Sprintf("#!/bin/sh\necho \"$@\" >> %q\n%s\n", log, body)
+	script := fmt.Sprintf("#!/bin/sh\necho \"$@ ppid=$PPID\" >> %q\n%s\n", log, body)
 	writeFile(t, filepath.Join(dir, name), script)
 	if err := os.Chmod(filepath.Join(dir, name), 0o755); err != nil {
 		t.Fatalf("chmod stand-in %s: %v", name, err)
@@ -663,6 +750,32 @@ func jobsIn(t *testing.T, states ...store.JobState) []store.Job {
 		t.Fatalf("list jobs: %v", err)
 	}
 	return jobs
+}
+
+// lastJobID returns the newest job with the given runbook.
+func lastJobID(t *testing.T, runbook string) int64 {
+	t.Helper()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	jobs, err := st.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	var id int64
+	for _, job := range jobs {
+		if job.Runbook == runbook && job.ID > id {
+			id = job.ID
+		}
+	}
+	if id == 0 {
+		t.Fatalf("no job with runbook %q", runbook)
+	}
+	return id
 }
 
 // countJobs counts every job a schedule has produced, whatever state it is in.
