@@ -264,15 +264,19 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 }
 
 // outcome maps a driver result onto the job state machine. Exit code alone
-// decides success; everything else only explains the ending.
+// decides success; everything else only explains the ending. A process that
+// exited on its own keeps its exit code even if a cancel arrived meanwhile —
+// cancellation only claims jobs the cancel actually stopped or prevented.
 func outcome(res executor.Result, runErr, ctxErr error) (store.JobState, string) {
+	cancelled := errors.Is(ctxErr, context.Canceled) && (runErr != nil || res.Signaled)
+
 	switch {
-	case runErr != nil:
-		return store.StateFailed, "driver error: " + runErr.Error()
 	case res.TimedOut:
 		return store.StateTimedOut, fmt.Sprintf("timed out after %s", res.Duration.Round(time.Millisecond))
-	case errors.Is(ctxErr, context.Canceled):
+	case cancelled:
 		return store.StateCancelled, "cancelled"
+	case runErr != nil:
+		return store.StateFailed, "driver error: " + runErr.Error()
 	case res.ExitCode == 0:
 		return store.StateSucceeded, "succeeded (exit 0)"
 	default:
