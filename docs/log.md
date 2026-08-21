@@ -26,13 +26,14 @@ pre-repository design archive that produced the project. Nothing existed before 
 
 **Sources.** The authoritative source was the archive's accepted technical design document.
 Supporting sources were eight research notes, a post-decision addendum, three candidate
-designs, and a 22-gap adversarial critique. The curated pages are summaries; the archive
+designs, and a 30-gap adversarial critique. The curated pages are summaries; the archive
 documents themselves were imported unchanged into `history/`.
 
-**Naming.** The archive predates the rename from the working name "control" to **exocomp**
-([ADR 0002](adr/0002-project-name-exocomp.md)). Curated pages use the current name
-throughout. Imported history pages keep the working name and were deliberately **not**
-rewritten — the reasoning is stated in [history/index.md](history/index.md).
+**Naming.** Most of the archive predates the rename from the working name "control" to
+**exocomp** ([ADR 0002](adr/0002-project-name-exocomp.md)); the post-decision addendum was
+written after it and mixes both names. Curated pages use the current name throughout.
+Imported history pages were deliberately **not** rewritten — the reasoning is stated in
+[history/index.md](history/index.md).
 
 **Import fidelity.** All 13 history files are byte-identical to the archive originals. They
 were checked for absolute filesystem paths, home directories, and local file URLs before
@@ -48,3 +49,22 @@ distributed across the curated pages rather than duplicated.
 page wins — history documents were not edited to stay consistent with later decisions. The
 twelve [amendments](design/amendments.md) override the accepted candidate design wherever
 they differ.
+
+## 2026-08-21 — M0 maintenance corrections
+
+Adversarial review of the integrated bundle corrected these facts (code and the
+critique source win over curated prose):
+
+- The critique's gap count is **30 enumerated gaps across sections A–H**, not 22;
+  the wrong count appeared on seven pages and traced to trusting a summary of the
+  review rather than the review itself. All seven corrected.
+- The naming claim over `history/` was over-broad: the post-decision addendum was
+  written *after* the rename and mixes both names. `history/index.md`, `index.md`,
+  and this log now say so.
+- `platform-contract.md` now states its CI enforcement is designed, not yet built.
+- `install.sh` gained the documented `--restore` / `--rollback --image-tag` forms,
+  resolving the contradiction with `operations/disaster-recovery.md`,
+  `operations/bootstrap.md`, and `design/amendments.md` in code's favor by making
+  the docs true.
+- Effort figures: ADR 0001's comparison row now carries its units caveat;
+  `delivery.md` explains the ~22 vs ~23 FTE-week split.

@@ -10,7 +10,8 @@ right on day one and is never invalidated afterwards.** Everything later is addi
 | **v1.0** | Event ingress, CEL rules, guardrails; approvals and ntfy transport; the scoped notification and escalation surface; web UI; `/metrics` plus seeded alerts; host onboarding; upgrade and rollback; packaging with budgets enforced in CI; docs including threat model and adoption runbooks | ~8.5 |
 | Deferred | Wails desktop, OpenBao resolver, Litestream embedding, GoAlert-class escalation | — |
 
-**Total ≈ 23 FTE-weeks** (~3 focused months). Every milestone is independently useful:
+**Total ≈ 23 FTE-weeks** (~5 months solo, ~3 with focus; ADR 0001's comparison table
+cites the candidate's original ~22 before the sandboxing and hardening additions). Every milestone is independently useful:
 v0.1 alone is "run Ansible playbooks with encrypted secrets, back up to three places, prove
 the restore."
 

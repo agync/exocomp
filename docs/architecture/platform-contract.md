@@ -1,7 +1,9 @@
 # Platform integration contract
 
-"Works with" is a tested contract, not an adjective. Each platform below has a tier, and a
-tier is only claimed where something in CI makes it true.
+"Works with" is a tested contract, not an adjective. Each platform below has a tier; the
+CI enforcement named per row is **designed, not yet built** — the repository has no CI in
+M0, so until it lands these tiers are commitments the delivery plan must make true, not
+verified claims.
 
 | Platform | Tier | What makes it true |
 |---|---|---|

@@ -1,7 +1,7 @@
 # Amendments
 
 Twelve changes made to the accepted candidate design in response to the adversarial review
-that found 22 gaps ([critique](../history/design/critique.md)). Each is **normative** and
+that found 30 enumerated gaps (sections A–H) ([critique](../history/design/critique.md)). Each is **normative** and
 overrides the candidate document where they differ.
 
 The gaps clustered at the *edges* — credentials to reach a backup, retention that reclaims

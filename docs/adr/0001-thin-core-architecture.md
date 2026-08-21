@@ -11,7 +11,7 @@ must survive two hard constraints — trivial bootstrap and trivial disaster rec
 [requirements](../design/requirements.md).
 
 Three architectures were designed independently and then reviewed adversarially; the
-review found 22 gaps ([critique](../history/design/critique.md)):
+review found 30 enumerated gaps (sections A–H) ([critique](../history/design/critique.md)):
 
 - **compose-first** — Semaphore UI as the execution engine, a `ctl` companion binary for
   glue.
@@ -31,6 +31,10 @@ abandoning the premise of the design.
 | Backup consistency | backup runs *as a Semaphore task*, so the DB is never quiescent at snapshot time | quiesce window exists, but two state stores with no shared transaction | one SQLite file, `VACUUM INTO` |
 | Key rotation | — | silently destroys Semaphore's key store (rotates the derived encryption key without re-encrypting the store) | sequenced single job with a rollback point |
 | Effort to v1 | ~42 person-days | ~46–63 person-days | ~22 FTE-weeks |
+
+Effort figures carry the candidates' own units and scopes and are not directly
+comparable — the critique flags exactly that; the decision rests on the structural
+rows above, not this one.
 
 Compose-first and hybrid are cheaper only until the bypass hole is closed: doing so means
 disabling Semaphore's scheduler, blocking its Run button, and restricting task creation to

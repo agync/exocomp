@@ -49,7 +49,7 @@ Purpose, revision under review, and build order — [design/index.md](design/ind
 | Page | Covers |
 |---|---|
 | [Requirements](design/requirements.md) | Two hard constraints, six goals, the anti-scope contract, and what is deferred behind a named seam |
-| [Amendments](design/amendments.md) | The twelve normative changes from the 22-gap adversarial review |
+| [Amendments](design/amendments.md) | The twelve normative changes from the 30-gap adversarial review |
 | [Delivery](design/delivery.md) | v0.1 / v0.5 / v1.0 with effort, and the risks carried into each |
 
 ## Operations
@@ -73,9 +73,9 @@ What ships and under what license — [sbom/index.md](sbom/index.md)
 
 Provenance records, imported byte-identical — [history/index.md](history/index.md)
 
-Three candidate designs, the 22-gap critique, eight research notes, and a post-decision
-addendum. They predate the rename and use the working name "control"; two of them describe
-architectures that were not built. Nothing there is normative.
+Three candidate designs, the 30-gap critique, eight research notes, and a post-decision
+addendum. All but the addendum predate the rename and use the working name "control"; two
+of them describe architectures that were not built. Nothing there is normative.
 
 ## Conventions
 

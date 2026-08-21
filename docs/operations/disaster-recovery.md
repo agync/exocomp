@@ -150,8 +150,6 @@ for most operators.
 
 ## Verification — the part people skip
 
-An untested backup is a rumour.
-
 - `restic check --read-data-subset=1/12` weekly per target, rotating through the whole
   repository quarterly so bandwidth stays sane.
 - A monthly **`dr-drill`**: restore the newest snapshot into a throwaway container, boot

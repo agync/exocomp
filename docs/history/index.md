@@ -6,10 +6,11 @@ living specs.
 
 ## Read these as records
 
-- **They use the working name "control"** — daemon `controld`, database `control.db`, CLI
-  `control`, domain `get.control.sh`. The project was renamed to **exocomp** after a
-  collision check ([ADR 0002](../adr/0002-project-name-exocomp.md)) that ran *after* these
-  documents were written. Every occurrence of the old name maps mechanically: `controld` →
+- **They mostly use the working name "control"** — daemon `controld`, database
+  `control.db`, CLI `control`, domain `get.control.sh`. The project was renamed to
+  **exocomp** after a collision check ([ADR 0002](../adr/0002-project-name-exocomp.md)).
+  Twelve records predate the rename; the post-decision addendum was written after it and
+  mixes both names (its nono section already says `exocomp.db` and `exocomp doctor`). Every occurrence of the old name maps mechanically: `controld` →
   `exocompd`, `control.db` → `exocomp.db`, `control <cmd>` → `exocomp <cmd>`.
   They are not rewritten, because rewriting a record is how a record stops being one.
 - **Two of them were rejected.** `candidate-compose-first.md` and `candidate-hybrid.md`
@@ -35,7 +36,7 @@ byte-for-byte copy of the archive original. The one relative cross-reference in 
 | [candidate-thin-core.md](design/candidate-thin-core.md) | The accepted architecture: one Go binary owning state, sequencing, keys and recovery. Full component tables, data model, and diagrams — the detail the curated pages summarise |
 | [candidate-compose-first.md](design/candidate-compose-first.md) | Rejected: Semaphore UI as the execution engine with a `ctl` companion for glue |
 | [candidate-hybrid.md](design/candidate-hybrid.md) | Rejected: Semaphore UI plus a `keel` supervisor owning keys and backup |
-| [critique.md](design/critique.md) | The adversarial completeness review of all three, 22 gaps across DR, backup mechanics, bypassable guardrails, uncovered requirements, auth and remote access, resource budget and upgrade, host lifecycle, and self-observability — plus seven claims flagged as unverified |
+| [critique.md](design/critique.md) | The adversarial completeness review of all three, 30 enumerated gaps (sections A–H) across DR, backup mechanics, bypassable guardrails, uncovered requirements, auth and remote access, resource budget and upgrade, host lifecycle, and self-observability — plus seven claims flagged as unverified |
 
 ## Research notes
 
