@@ -78,3 +78,24 @@ type Driver interface {
   one `concurrency_key` serializes (race test with `-race`).
 - `exocomp init` on a scratch `XDG_DATA_HOME` creates host identity + keyring +
   prints the kit; `exocomp recovery-kit` re-renders it; second `init` refuses.
+
+## File ownership (M1b)
+
+| Lane | Owns exclusively |
+|---|---|
+| ansible | `internal/executor/ansible*.go`, `internal/queue/redact.go` (+ the one queue option wiring redaction), `cmd/exocomp/playbook.go` |
+| backup | `internal/backup/**`, `internal/store/vacuum.go` (new file only), `cmd/exocomp/backup.go`, `cmd/exocomp/restore.go`, `packaging/install.sh` (restore wiring) |
+| tui | `internal/tui/**`, `cmd/exocomp/tui.go` (deps: charmbracelet bubbletea/v2, bubbles/v2, lipgloss/v2) |
+
+## Gate (M1b)
+
+- ansible: a real playbook with a vaulted variable runs against localhost through the
+  queue; the secret value appears in NO `job_event` row (redactor wired); exit-code-only
+  correctness; vault password delivered via a 0700 tmpdir file that is removed after.
+- backup: staging tree (vacuumed DB + keyring.age + config) fans out to a local restic
+  repo, an S3 restic repo (MinIO via podman), and an age-encrypted archive committed to
+  a bare git repo; `keyring.age` lands at every target root outside the restic repo;
+  `exocomp restore` rebuilds a scratch data dir from any leg; a canary sealed secret
+  round-trips after restore; each leg fails independently.
+- tui: `exocomp tui` renders Jobs (live list + event tail) and Backups screens against
+  a real store; model unit tests; clean exit.
