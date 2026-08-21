@@ -1,6 +1,6 @@
 #!/bin/sh
 # M1 gate: init -> vaulted playbook against a lima node (redacted events) ->
-# three-leg backup (restic_local, restic_s3 via MinIO-under-podman, git) ->
+# three-leg backup (restic_local, restic_s3 via SeaweedFS-under-podman, git) ->
 # restore from every leg with the RECOVERY identity, canary decrypts on each.
 # Run from the repo root. Requires: lima node template under test/lima/,
 # ansible-playbook, restic, age, openssl, git, podman, curl. Never uses sudo.
@@ -9,11 +9,11 @@ set -eu
 ROOT=$(git rev-parse --show-toplevel)
 INSTANCE=${EXOCOMP_E2E_INSTANCE:-exocomp-node0}
 WORK=$(mktemp -d)
-MINIO_NAME=""
+SEAWEEDFS_NAME=""
 
 cleanup() {
-    if [ -n "$MINIO_NAME" ]; then
-        podman rm -f --time 1 "$MINIO_NAME" >/dev/null 2>&1 || true
+    if [ -n "$SEAWEEDFS_NAME" ]; then
+        podman rm -f --time 1 "$SEAWEEDFS_NAME" >/dev/null 2>&1 || true
     fi
     rm -rf "$WORK"
 }
@@ -101,39 +101,62 @@ fi
 grep -q '\[REDACTED\]' "$WORK/play.out" \
     || fail "redaction marker absent from the job's captured events"
 
-log "start MinIO under podman for the restic_s3 leg"
-MINIO_NAME="exocomp-e2e-minio-$$"
-MINIO_USER="exocomp-e2e-user"
-MINIO_PASS="exocomp-e2e-pass-$$"
-podman run -d --rm --name "$MINIO_NAME" \
-    --publish 127.0.0.1::9000 \
-    --env MINIO_ROOT_USER="$MINIO_USER" \
-    --env MINIO_ROOT_PASSWORD="$MINIO_PASS" \
-    quay.io/minio/minio:latest server /data >"$WORK/minio.log" 2>&1 \
-    || { cat "$WORK/minio.log"; fail "podman run minio failed"; }
+log "start SeaweedFS under podman for the restic_s3 leg"
+SEAWEEDFS_NAME="exocomp-e2e-seaweedfs-$$"
+SEAWEEDFS_USER="exocomp-e2e-user"
+SEAWEEDFS_PASS="exocomp-e2e-pass-$$"
+SEAWEEDFS_CONFIG_DIR="$WORK/seaweedfs-config"
+mkdir -p "$SEAWEEDFS_CONFIG_DIR"
+# world-readable, not 0600: rootless podman's user-namespace UID remap means
+# the container's own user is neither this file's nor its directory's owner
+# (verified against a real run). It holds only this throwaway fixture's
+# dummy credential, not a secret.
+cat >"$SEAWEEDFS_CONFIG_DIR/s3.json" <<EOF
+{
+  "identities": [
+    {
+      "name": "$SEAWEEDFS_USER",
+      "credentials": [{"accessKey": "$SEAWEEDFS_USER", "secretKey": "$SEAWEEDFS_PASS"}],
+      "actions": ["Admin", "Read", "Write"]
+    }
+  ]
+}
+EOF
+chmod 0755 "$SEAWEEDFS_CONFIG_DIR"
+chmod 0644 "$SEAWEEDFS_CONFIG_DIR/s3.json"
 
-MINIO_HOSTPORT=$(podman port "$MINIO_NAME" 9000/tcp)
-[ -n "$MINIO_HOSTPORT" ] || fail "could not read minio's published port"
-MINIO_ENDPOINT="http://$MINIO_HOSTPORT"
+podman run -d --rm --name "$SEAWEEDFS_NAME" \
+    --publish 127.0.0.1::8333 \
+    --volume "$SEAWEEDFS_CONFIG_DIR:/etc/seaweedfs:Z" \
+    docker.io/chrislusf/seaweedfs:latest server -s3 -s3.port=8333 \
+    -s3.config=/etc/seaweedfs/s3.json -dir=/data >"$WORK/seaweedfs.log" 2>&1 \
+    || { cat "$WORK/seaweedfs.log"; fail "podman run seaweedfs failed"; }
 
+SEAWEEDFS_HOSTPORT=$(podman port "$SEAWEEDFS_NAME" 8333/tcp)
+[ -n "$SEAWEEDFS_HOSTPORT" ] || fail "could not read seaweedfs's published port"
+SEAWEEDFS_ENDPOINT="http://$SEAWEEDFS_HOSTPORT"
+
+# No -f: SeaweedFS answers an unauthenticated GET with 403, not 200 (verified
+# against a real run) — readiness here means the S3 API answers HTTP at all,
+# not any particular status.
 i=0
-until curl -fsS "$MINIO_ENDPOINT/minio/health/live" >/dev/null 2>&1; do
+until curl -sS -o /dev/null "$SEAWEEDFS_ENDPOINT/" 2>/dev/null; do
     i=$((i + 1))
     if [ "$i" -ge 360 ]; then
-        podman logs --tail 20 "$MINIO_NAME"
-        fail "minio did not become healthy within 90s"
+        podman logs --tail 20 "$SEAWEEDFS_NAME"
+        fail "seaweedfs did not become healthy within 90s"
     fi
     sleep 0.25
 done
 
-export AWS_ACCESS_KEY_ID="$MINIO_USER"
-export AWS_SECRET_ACCESS_KEY="$MINIO_PASS"
+export AWS_ACCESS_KEY_ID="$SEAWEEDFS_USER"
+export AWS_SECRET_ACCESS_KEY="$SEAWEEDFS_PASS"
 export AWS_DEFAULT_REGION="us-east-1"
 
 log "three-leg backup (restic_local, restic_s3, git)"
 git init -q --bare "$WORK/git-target.git"
 "$EXO" backup add-target --kind restic_local --name nas --uri "$WORK/restic-repo"
-"$EXO" backup add-target --kind restic_s3 --name offsite --uri "s3:$MINIO_ENDPOINT/exocomp-e2e-backup"
+"$EXO" backup add-target --kind restic_s3 --name offsite --uri "s3:$SEAWEEDFS_ENDPOINT/exocomp-e2e-backup"
 "$EXO" backup add-target --kind git --name gh --uri "$WORK/git-target.git"
 "$EXO" backup run >"$WORK/backup.out" 2>&1 || { cat "$WORK/backup.out"; fail "backup run failed"; }
 [ -f "$WORK/restic-repo/keyring.age" ] || fail "keyring.age missing at restic_local target root"
@@ -149,7 +172,7 @@ grep -q "canary: canary opened" "$WORK/restore-nas.out" \
 age -d -i "$WORK/recovery.key" "$WORK/restored-nas/keyring.age" | wc -c | grep -qx 32 \
     || fail "restic_local restored keyring does not unwrap to a 32-byte DEK"
 
-"$EXO" restore --from "restic_s3:s3:$MINIO_ENDPOINT/exocomp-e2e-backup" --dest "$WORK/restored-s3" \
+"$EXO" restore --from "restic_s3:s3:$SEAWEEDFS_ENDPOINT/exocomp-e2e-backup" --dest "$WORK/restored-s3" \
     --identity "$WORK/recovery.key" --target-name offsite --canary canary \
     >"$WORK/restore-s3.out" 2>&1 || { cat "$WORK/restore-s3.out"; fail "restic_s3 restore failed"; }
 grep -q "canary: canary opened" "$WORK/restore-s3.out" \
