@@ -54,7 +54,7 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | age (CLI) | 1.3.1 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
 | git | 2.4x | GPL-2.0 | project sources; bundle and push for the GitHub backup leg | plumbing only |
 | nono | 0.74.0, floor ≥ 0.55.0 (sha256-pinned) | Apache-2.0 | kernel sandbox around job subprocesses, the `local-sandboxed` tier and Linux default ([ADR 0005](../adr/0005-job-sandboxing-nono.md)) | `nono run` with per-kind grants; doctor probes the Landlock ABI and asserts the denials |
-| Litestream *(optional sidecar)* | 0.5.x | Apache-2.0 | continuous WAL → S3, seconds-level RPO | own process, config generated from the DB |
+| Litestream *(optional sidecar)* | 0.5.x | Apache-2.0 | continuous WAL replication, seconds-level RPO; fast-RPO complement to the authoritative restic chain ([ADR 0012](../adr/0012-litestream.md)). Does not encrypt — LAN-local or already-encrypted target only | own process (never embedded); `exocompd` generates its config and observes replica freshness, does not run it |
 
 Image target ≤ 800 MB measured in CI, with a working target of ~500 MB. The base is a slim
 glibc image — the Python requirement rules out distroless-static.
