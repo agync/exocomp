@@ -21,6 +21,9 @@ func newRestoreCmd() *cobra.Command {
 		name                 string
 		canary               string
 		allowUnauthenticated bool
+		fromLitestream       bool
+		replica              string
+		replicaEncrypted     bool
 	)
 
 	cmd := &cobra.Command{
@@ -32,6 +35,22 @@ func newRestoreCmd() *cobra.Command {
 			"destination that already holds a keyring.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The fast-RPO path recovers exocomp.db ONLY, from the Litestream
+			// replica, onto a data dir that already holds the keyring. It is a
+			// different chain from the authoritative restic restore below, so it
+			// branches before the restic source is even parsed.
+			if fromLitestream {
+				return runLitestreamRestore(cmd, litestreamRestoreArgs{
+					dest:             dest,
+					identity:         identity,
+					replica:          replica,
+					replicaEncrypted: replicaEncrypted,
+				})
+			}
+
+			if from == "" {
+				return fmt.Errorf("restore: --from is required (or use --from-litestream)")
+			}
 			src, err := backup.ParseSource(from)
 			if err != nil {
 				return err
@@ -81,7 +100,16 @@ func newRestoreCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&allowUnauthenticated, "allow-unauthenticated", false,
 		"accept a snapshot with no manifest tag from a target that authenticates its snapshots "+
 			"(warns instead of refusing); only for a snapshot you are certain is yours")
-	_ = cmd.MarkFlagRequired("from")
+	cmd.Flags().BoolVar(&fromLitestream, "from-litestream", false,
+		"fast-RPO path: restore exocomp.db ONLY from the Litestream replica, onto a data dir "+
+			"that already holds the keyring (run the full restic restore first); schedules stay paused")
+	cmd.Flags().StringVar(&replica, "replica", "",
+		"Litestream replica url; read from the "+backup.SettingReplicaURL+" setting when empty")
+	cmd.Flags().BoolVar(&replicaEncrypted, "i-know-the-replica-is-encrypted", false,
+		"acknowledge a plaintext public-remote replica — Litestream does not encrypt, so this "+
+			"asserts the store itself is encrypted; a LAN-local or file replica needs no ack")
+	// --from is required for the restic restore but meaningless for the
+	// litestream path, so it is validated in RunE, not marked globally required.
 	_ = cmd.MarkFlagRequired("dest")
 	return cmd
 }

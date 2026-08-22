@@ -222,8 +222,11 @@ Treat the printed card as authoritative over this page. The chain it automates i
 4. Start the service, then `exocomp doctor`.
 
 The card also carries the QR-coded recovery key, the target URIs, the fingerprints of every
-active recipient (so the operator can tell which YubiKey), the healthchecks ping URL, and
-the ansible-pull trust anchor fingerprint where pull mode is enabled.
+active recipient (so the operator can tell which YubiKey), the healthchecks ping URL, the
+ansible-pull trust anchor fingerprint where pull mode is enabled, and — where the optional
+Litestream sidecar is configured — the **replica URL**, so a rebuild can find the fast-RPO
+copy of `exocomp.db` (see below). The replica URL is a locator, not a secret; the replica's
+own storage credentials stay in the sealed secret plane, never on the card.
 
 The kit is displayed once and never stored in the database. The bootstrap wizard requires
 typing `I HAVE STORED THIS` before it will continue, and `exocomp doctor` warns if the
@@ -252,6 +255,53 @@ The 15-minute fast path is a `VACUUM INTO` plus a `restic backup` of just `exoco
 few hundred KB after dedup, cheap enough to run constantly. Litestream stays optional
 because losing 15 minutes of job history is not a data-loss event worth a second process
 for most operators.
+
+## Fast-RPO restore (Litestream)
+
+Litestream is the **fast-RPO complement**, not a replacement: restic stays the authoritative,
+encrypted DR chain. The two recover different things, and the precedence is deliberate.
+
+| | Litestream | restic |
+|---|---|---|
+| Recovers | `exocomp.db` **only** | keyring, sealed secrets, database, git bundles, tofu mirrors — **everything** |
+| RPO | ~seconds (continuous WAL shipping) | ≤ 15 min (fast path) / nightly (full tree) |
+| Encryption | **none** — plaintext WAL frames; the target must be LAN-local or an already-encrypted store | age-wrapped keyring + restic repository password derived from the DEK |
+| Authenticity | none in the transport; proven after the fact by the decrypt round-trip below | per-target manifest MAC + keyring-generation check |
+| Role | fast-forward the database on an already-recovered host | the root of trust and the whole recovery |
+
+**When to use which.** For a full disaster — dead host, lost host key — recover with restic
+(the runbook above): it is the only chain that carries the keyring and secrets, and Litestream
+cannot stand in for it. Then, *if* seconds matter and the Litestream sidecar was replicating,
+fast-forward the database to its freshest state:
+
+```sh
+exocomp restore --from-litestream \
+  --dest <data dir the restic restore rebuilt> \
+  --identity recovery.key \
+  --replica <replica url>          # omitted: read from the litestream.replica_url setting
+```
+
+The order is load-bearing. Litestream recovers the **database only**, so `--from-litestream`
+requires a data dir that already holds `keyring.age` — the keyring is what opens the database's
+sealed rows. Onto an empty dir it refuses and points you back at the restic restore. Because a
+replica ships unauthenticated, unencrypted bytes, the restored database is **not trusted until a
+decrypt round-trip proves it**: the command unwraps the DEK from the keyring beside it and opens
+one sealed row, and only then promotes the recovered file over the live one. A database that
+fails the round-trip is discarded, and the live one is left untouched.
+
+**The no-encryption caveat.** Litestream does not encrypt. A LAN-local or `file://` replica is
+accepted as-is; a plaintext **public remote** (`s3://…`, `sftp://host…`, `gs://…` on a routable
+host) is **refused** unless you pass `--i-know-the-replica-is-encrypted`, which asserts the store
+itself is encrypted. This mirrors the config side: never point Litestream at a plaintext remote.
+
+**A restore never resumes schedules.** Like the restic restore, `--from-litestream` leaves the
+system paused — it writes the database and stops. Starting `exocomp serve` is a deliberate act,
+so a half-understood recovery does not immediately fire jobs.
+
+Deterministic unit tests cover the source-selection precedence, the DB-only-vs-full distinction,
+the plaintext-remote refusal, and the decrypt round-trip gate without any `litestream` binary;
+the shell round-trip is an e2e that skips cleanly where the binary is absent, the same posture as
+the tofu and ansible gates.
 
 ## Verification — the part people skip
 
