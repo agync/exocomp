@@ -77,8 +77,13 @@ dir or any of the files above. That second check is the one that matters in prac
 the caches a job legitimately needs all live *inside* the data dir, so the mistake to
 catch is a grant one directory too high.
 
+Ansible and tofu jobs run under it. Shell runbooks and backup legs do not yet: the backup
+engine reads `keyring.age` by design — it is the file every target root gets a copy of —
+so those kinds need a profile shaped around the engine's targets rather than the deny list
+above.
+
 Network is scoped per kind: ansible gets TCP 22, tofu gets TCP 443 plus the loopback state
-backend's port, everything else gets none. **Scoped by port, not by destination**:
+backend's port. **Scoped by port, not by destination**:
 Landlock's network rules match the port alone, and the only per-destination filtering
 available routes traffic through an HTTPS-terminating proxy, which is unusable for SSH and
 wrong for provider signature verification.

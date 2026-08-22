@@ -55,7 +55,11 @@ What each kind of job may reach:
 |---|---|---|
 | ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm` | TCP 22 |
 | tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port |
-| everything else | the job's private dir and the working directory | none |
+
+Shell runbooks and backup legs still run at the `local` tier. The backup engine reads
+`keyring.age` by design — it is what every target root gets a copy of — so a profile that
+denied it would deny the job its own work. Sandboxing those kinds needs a profile shaped
+around the backup engine's targets and is not part of this milestone.
 
 Denied everywhere: `exocomp.db`, `host.key`, `keyring.age`, `serve.lock`,
 `state-backend.addr`, and every other job's private directory. Grants are checked against

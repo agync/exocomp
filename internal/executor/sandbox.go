@@ -101,7 +101,6 @@ type SandboxOptions struct {
 
 // SandboxProfile is one kind's resolved default-deny policy.
 type SandboxProfile struct {
-	Kind         string
 	Binary       string
 	DataDir      string
 	Read         []string
@@ -113,7 +112,6 @@ type SandboxProfile struct {
 // the egress each kind cannot work without.
 func ProfileFor(kind string, opts SandboxOptions) SandboxProfile {
 	p := SandboxProfile{
-		Kind:         kind,
 		Binary:       opts.Binary,
 		DataDir:      opts.DataDir,
 		Read:         normalizePaths(opts.ReadPaths),

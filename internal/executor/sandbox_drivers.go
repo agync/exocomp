@@ -179,19 +179,12 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	return drv.Run(ctx, spec, sink)
 }
 
-// NewSandboxedShell wraps the plain local driver for every other kind: no
-// egress, and only the grants the caller names.
-func NewSandboxedShell(sandbox SandboxOptions) Driver {
-	return NewSandbox("shell", sandbox, NewShell())
-}
-
 // jobDir is one job's private tree. The job's grants are children of it rather
 // than the tree itself, and HOME is a child that is deliberately not granted:
 // the launcher keeps its own state under $HOME and refuses to start when a
 // grant would let the sandboxed process reach it. Whatever a tool genuinely
 // needs from its home is granted one directory at a time.
 type jobDir struct {
-	root    string
 	private string // driver material: vault password, backend config
 	work    string // the working directory when the spec names none
 	tmp     string // TMPDIR
@@ -229,7 +222,6 @@ func newJobDir(root string) (jobDir, func(EventSink), error) {
 	}
 
 	d := jobDir{
-		root:    base,
 		private: filepath.Join(base, "p"),
 		work:    filepath.Join(base, "w"),
 		tmp:     filepath.Join(base, "t"),
