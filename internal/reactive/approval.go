@@ -1,0 +1,350 @@
+package reactive
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"time"
+
+	"exocomp.dev/exocomp/internal/notify"
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// Decision outcomes. They are what the decision endpoint renders and what the
+// CLI prints; a used or expired link is a terminal notice, never an error
+// (ui-brief, approval surface contract 5).
+const (
+	DecisionOutcomeApproved = "approved"
+	DecisionOutcomeRejected = "rejected"
+	DecisionOutcomeSettled  = "already-decided"
+	DecisionOutcomeExpired  = "expired"
+	DecisionOutcomeStale    = "stale-plan"
+)
+
+// ErrStalePlan reports that the workspace moved after the plan under decision
+// was made. It is a refusal, not a disabled button: the operator re-plans or
+// discards (ui-brief, approval surface contract 4).
+var ErrStalePlan = errors.New("reactive: the plan is stale")
+
+// Decision is what happened to a decision link.
+type Decision struct {
+	Approval store.Approval
+	Outcome  string
+	// Message is the terminal notice: one paragraph a phone can read without
+	// naming anything a notification would not.
+	Message string
+}
+
+// Decide resolves one decision link. It is the single place a human's answer
+// enters the system, whatever surface asked: HTTP callback, CLI, or TUI.
+//
+// The order is the fail-closed one: the token first, then whether the question
+// is still open, then the TTL, then the stale-plan check — so an expired link
+// can never release a job, and a stale plan is refused before the approval is
+// spent rather than after.
+func (e *Engine) Decide(ctx context.Context, approvalID int64, decision, token, via string) (Decision, error) {
+	if decision != DecisionApprove && decision != DecisionReject {
+		return Decision{}, fmt.Errorf("reactive: %q is not %s or %s",
+			decision, DecisionApprove, DecisionReject)
+	}
+
+	approval, err := e.store.GetApproval(ctx, approvalID)
+	if err != nil {
+		return Decision{}, err
+	}
+	if err := VerifyApprovalToken(e.deriver, approval.JobID, approval.TokenHash, token); err != nil {
+		return Decision{}, err
+	}
+
+	if approval.State != store.ApprovalPending {
+		return Decision{
+			Approval: approval,
+			Outcome:  DecisionOutcomeSettled,
+			Message:  settledNotice(approval),
+		}, nil
+	}
+
+	if !e.now().Before(approval.ExpiresAt) {
+		expired, err := e.expire(ctx, approval)
+		if err != nil {
+			return Decision{}, err
+		}
+		return Decision{
+			Approval: expired,
+			Outcome:  DecisionOutcomeExpired,
+			Message: fmt.Sprintf("This decision expired at %s. The job was rejected and "+
+				"nothing was applied.", clock(approval.ExpiresAt)),
+		}, nil
+	}
+
+	if decision == DecisionApprove {
+		if notice, stale, err := e.stalePlan(ctx, approval); err != nil {
+			return Decision{}, err
+		} else if stale {
+			// Deliberately not spent: discarding is a reject on the same link,
+			// and burning the token here would leave the operator with neither
+			// option.
+			return Decision{
+				Approval: approval,
+				Outcome:  DecisionOutcomeStale,
+				Message:  notice,
+			}, ErrStalePlan
+		}
+	}
+
+	state := store.ApprovalApproved
+	outcome := DecisionOutcomeApproved
+	if decision == DecisionReject {
+		state = store.ApprovalRejected
+		outcome = DecisionOutcomeRejected
+	}
+
+	decided, err := e.store.DecideApproval(ctx, approvalID, state, via, "")
+	if errors.Is(err, store.ErrApprovalDecided) {
+		// Two taps raced; the loser reports what the winner decided.
+		return Decision{
+			Approval: decided,
+			Outcome:  DecisionOutcomeSettled,
+			Message:  settledNotice(decided),
+		}, nil
+	}
+	if err != nil {
+		return Decision{}, err
+	}
+
+	if state == store.ApprovalApproved {
+		if err := e.queue.Release(ctx, decided.JobID); err != nil {
+			return Decision{}, err
+		}
+	} else if err := e.queue.Withdraw(ctx, decided.JobID); err != nil {
+		return Decision{}, err
+	}
+
+	e.notify(ctx, decidedNotification(decided, outcome))
+	return Decision{
+		Approval: decided,
+		Outcome:  outcome,
+		Message:  fmt.Sprintf("Recorded: %s. Job %d %s.", outcome, decided.JobID, jobFate(state)),
+	}, nil
+}
+
+func jobFate(state store.ApprovalState) string {
+	if state == store.ApprovalApproved {
+		return "is queued and will run"
+	}
+	return "was cancelled; nothing was applied"
+}
+
+func settledNotice(a store.Approval) string {
+	when := ""
+	if a.DecidedAt != nil {
+		when = " at " + clock(*a.DecidedAt)
+	}
+	return fmt.Sprintf("This decision link has already been used: %s%s. Nothing changed.",
+		a.State, when)
+}
+
+// stalePlan reports whether the workspace moved after the plan under decision
+// was made, and renders what moved it. The attribution matters more than the
+// refusal: "which job moved it and from where" is what tells the operator
+// whether re-planning is safe.
+func (e *Engine) stalePlan(ctx context.Context, a store.Approval) (string, bool, error) {
+	if a.Workspace == "" {
+		return "", false, nil
+	}
+	ws, err := e.store.WorkspaceByName(ctx, a.Workspace)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if ws.Serial <= a.PlanSerial {
+		return "", false, nil
+	}
+
+	mover, err := e.movedBy(ctx, ws.ID, a.PlanSerial)
+	if err != nil {
+		return "", false, err
+	}
+	return fmt.Sprintf("Refused: the plan was made at serial %d and the workspace is now at "+
+		"serial %d, %s. The plan is kept but cannot be applied — re-plan, or reject this to "+
+		"discard it. Nothing was applied.",
+		a.PlanSerial, ws.Serial, mover), true, nil
+}
+
+// movedBy names the job that first advanced the workspace past a serial, and
+// what triggered it.
+func (e *Engine) movedBy(ctx context.Context, workspaceID, since int64) (string, error) {
+	versions, err := e.store.ListTFStates(ctx, workspaceID, 0)
+	if err != nil {
+		return "", err
+	}
+
+	// Newest first; the last one above the plan's serial is the one that
+	// moved it first.
+	var first *store.TFState
+	for i := range versions {
+		if versions[i].Serial > since {
+			first = &versions[i]
+		}
+	}
+	if first == nil || first.CreatedByJob == nil {
+		return "moved by something outside this control plane", nil
+	}
+
+	job, err := e.store.GetJob(ctx, *first.CreatedByJob)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Sprintf("moved by job %d, which no longer exists", *first.CreatedByJob), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("moved by job %d (%s, triggered %s) at %s",
+		job.ID, job.Runbook, job.Trigger, clock(first.CreatedAt)), nil
+}
+
+// expire fails an approval closed: the TTL running out rejects the job rather
+// than leaving it claimable. An unreachable daemon cannot hurt you because the
+// default is refusal, not eventual execution.
+func (e *Engine) expire(ctx context.Context, a store.Approval) (store.Approval, error) {
+	expired, err := e.store.DecideApproval(ctx, a.ID, store.ApprovalExpired, "ttl",
+		"the decision window closed with no answer")
+	if errors.Is(err, store.ErrApprovalDecided) {
+		return expired, nil
+	}
+	if err != nil {
+		return store.Approval{}, err
+	}
+	if err := e.queue.Withdraw(ctx, expired.JobID); err != nil {
+		return store.Approval{}, err
+	}
+	e.notify(ctx, expiredNotification(expired))
+	return expired, nil
+}
+
+// SweepApprovals runs the two clock-driven halves of the approval surface:
+// every TTL that ran out fails closed, and every approval past half its window
+// gets one more push. It is called on a timer by the daemon.
+func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, err error) {
+	now := e.now()
+
+	due, err := e.store.PendingApprovalsExpiredAt(ctx, now)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, a := range due {
+		if _, err := e.expire(ctx, a); err != nil {
+			return expired, 0, err
+		}
+		expired++
+	}
+
+	pending, err := e.store.ListApprovals(ctx, true)
+	if err != nil {
+		return expired, 0, err
+	}
+	for _, a := range pending {
+		half := a.RequestedAt.Add(a.ExpiresAt.Sub(a.RequestedAt) / 2)
+		if now.Before(half) || e.republished[a.ID] {
+			continue
+		}
+		token, _, err := ApprovalToken(e.deriver, a.JobID)
+		if err != nil {
+			return expired, republished, err
+		}
+		e.notify(ctx, e.approvalNotification(a, token, 2))
+		e.republished[a.ID] = true
+		republished++
+	}
+	return expired, republished, nil
+}
+
+// DecisionLinks returns the two URLs for a pending approval, for the CLI and
+// the TUI to print. They are capabilities: printing one is handing it out.
+func (e *Engine) DecisionLinks(a store.Approval) (approve, reject string, err error) {
+	token, _, err := ApprovalToken(e.deriver, a.JobID)
+	if err != nil {
+		return "", "", err
+	}
+	return DecisionURL(e.baseURL, a.ID, DecisionApprove, token),
+		DecisionURL(e.baseURL, a.ID, DecisionReject, token), nil
+}
+
+// approvalNotification is the terse lock-screen message: a count, a TTL, and
+// what to do about it. It names no host, workspace, playbook, or resource —
+// what the job wants to do is behind the tap (ui-brief, contract 1).
+func (e *Engine) approvalNotification(a store.Approval, token string, attempt int) notify.Notification {
+	title := "1 approval waiting"
+	priority := notify.PriorityHigh
+	if attempt > 1 {
+		title = "1 approval still waiting"
+		priority = notify.PriorityMax
+	}
+	left := humanDuration(a.ExpiresAt.Sub(e.now()))
+
+	return notify.Notification{
+		Title:    title,
+		Body:     fmt.Sprintf("%s left, then it auto-rejects — open to see what it wants to do.", left),
+		Priority: priority,
+		Tags:     []string{"warning"},
+		Actions: []notify.Action{
+			{Label: "Approve", URL: DecisionURL(e.baseURL, a.ID, DecisionApprove, token)},
+			{Label: "Reject", URL: DecisionURL(e.baseURL, a.ID, DecisionReject, token)},
+		},
+	}
+}
+
+func decidedNotification(a store.Approval, outcome string) notify.Notification {
+	return notify.Notification{
+		Title:    "Approval " + outcome,
+		Body:     fmt.Sprintf("Approval %d was %s via %s.", a.ID, outcome, a.DecidedVia),
+		Priority: notify.PriorityDefault,
+	}
+}
+
+func expiredNotification(a store.Approval) notify.Notification {
+	return notify.Notification{
+		Title:    "Approval expired",
+		Body:     fmt.Sprintf("Approval %d ran out its window and was rejected. Nothing was applied.", a.ID),
+		Priority: notify.PriorityHigh,
+		Tags:     []string{"hourglass"},
+	}
+}
+
+func withdrawnNotification(a store.Approval) notify.Notification {
+	return notify.Notification{
+		Title:    "Approval withdrawn",
+		Body:     fmt.Sprintf("The condition cleared, so approval %d was withdrawn and its job cancelled.", a.ID),
+		Priority: notify.PriorityDefault,
+	}
+}
+
+// capDisabledNotification is max priority because only a human can undo it.
+func capDisabledNotification(rule store.Rule) notify.Notification {
+	return notify.Notification{
+		Title: "Rule disabled by its daily cap",
+		Body: fmt.Sprintf("Rule %q hit its cap of %d in %s and is now disabled. "+
+			"Nothing it would have run has run; re-enable it once you know why.",
+			rule.Name, rule.DailyCap, humanDuration(capWindow)),
+		Priority: notify.PriorityMax,
+		Tags:     []string{"rotating_light"},
+	}
+}
+
+func matchedNotification(rule store.Rule, ev Event) notify.Notification {
+	return notify.Notification{
+		Title:    "Rule matched: " + rule.Name,
+		Body:     fmt.Sprintf("%s %s", ev.Name, ev.Status),
+		Priority: notify.PriorityDefault,
+	}
+}
+
+// ApprovalDeadline renders how long a pending approval has left, for the
+// CLI's and the TUI's listings.
+func ApprovalDeadline(a store.Approval, now time.Time) string {
+	if !now.Before(a.ExpiresAt) {
+		return "expired"
+	}
+	return humanDuration(a.ExpiresAt.Sub(now)) + " left"
+}
