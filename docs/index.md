@@ -41,6 +41,7 @@ How it is assembled, and which support claims are contractual —
 | [Overview](architecture/overview.md) | Component map, the one-queue convergence property, state layout, standing commitments |
 | [Platform contract](architecture/platform-contract.md) | Tiers for systemd/Quadlet, rootless podman, docker-compose, and SELinux enforcing; the specified remote-access path |
 | [Execution](architecture/execution.md) | `ExecutorDriver` tiers `local` / `local-sandboxed` / `container`, offline-restorable job dependencies, boot-time reconciliation |
+| [Reactive layer](architecture/reactive.md) | Webhook ingress, one event shape, CEL rules, the guardrails in ledger order, approvals, drift as an event |
 
 ## Design
 
@@ -62,6 +63,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 | [Running the daemon](operations/serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and the daemon-aware CLI |
 | [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |
 | [Offline caches](operations/offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
+| [Reacting to alerts](operations/reactive.md) | Wiring a monitor to the hooks, sealing push, writing rules, silencing, answering approvals, asking why a rule did not fire |
 
 ## Bill of materials
 

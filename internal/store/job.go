@@ -15,8 +15,8 @@ import (
 // JobState is a job's position in the execution state machine.
 type JobState string
 
-// The job states. awaiting_approval is reserved for M3 approvals; the queue
-// never produces it in M1.
+// The job states. awaiting_approval is the approval gate: a job in it is
+// claimable by nothing, and only a decision moves it back to queued.
 const (
 	StateQueued           JobState = "queued"
 	StateAwaitingApproval JobState = "awaiting_approval"

@@ -6,6 +6,25 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — M3a reactive: two pages added, overview's carve-out closed
+
+[architecture/reactive.md](architecture/reactive.md) is new: the webhook ingress and its
+derived per-source path token, the one normalized event shape and why its dedup key
+excludes the status, the sandboxed CEL environment and its time and cost budgets, the
+guardrails in ledger order with the reason strings each writes, the approval token's
+derivation and its mapping onto the six points of the approval surface contract, and
+drift-as-an-event with the event table as its own checkpoint.
+
+[operations/reactive.md](operations/reactive.md) is new: wiring Alertmanager,
+healthchecks, and generic JSON senders; the sealed-secret names the ntfy transport reads
+and why a bare public topic is refused rather than warned about; `rule`, `silence`,
+`approval`, and `event` usage; and the `tofu-plan` schedule kind. Linked from
+`architecture/index.md`, `operations/index.md`, and the top-level `index.md`.
+
+[architecture/overview.md](architecture/overview.md) gained the paragraph closing the
+other half of the one-queue carve-out: guardrails and approvals are enforced at enqueue,
+and `awaiting_approval` is a state no claim statement admits rather than a UI convention.
+
 ## 2026-08-22 — M2d reconciliation: serve, execution, and BOM corrected against code
 
 [operations/serve.md](operations/serve.md): the daemon-aware CLI list gained `backup

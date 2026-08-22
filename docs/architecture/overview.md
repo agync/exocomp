@@ -78,6 +78,15 @@ the `schedule` table on every start. `exocomp restore` is still a direct CLI inv
 outside the queue — restoring is an operator recovering from a cold start, not a target the
 scheduler already reaches, and it stays a carve-out until that changes.
 
+**M3a closed the other half.** A webhook is now the fourth headless client of the same
+queue: `POST /hook/<derived token>` on the daemon's own listener, normalized onto one
+event shape, matched by `cel-go` rules, and gated by silence, dedup, cooldown, and daily
+cap before anything is enqueued. A destructive action becomes a `job` row in
+`awaiting_approval` — a state no claim statement admits — released only by a single-use
+HMAC decision link that fails closed on its TTL. Every event is persisted with its
+outcome, its reason, and the trace that produced them
+([reactive layer](reactive.md)).
+
 ## Components
 
 | Component | Owns | Notes |
