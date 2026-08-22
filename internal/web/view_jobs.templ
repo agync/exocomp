@@ -1,0 +1,106 @@
+package web
+
+// jobsList is the one list every execution path shares: manual runs, scheduled
+// runs, backups, applies. One list, one detail view (the brief's "everything is
+// a job").
+templ jobsList(vm dashboardVM) {
+	@layout(vm.Page) {
+		<h1>Jobs</h1>
+		<div class="card span2" style="margin-top:18px">
+			if len(vm.Queue) == 0 {
+				<p class="meta">No jobs yet.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Job</th>
+								<th scope="col">Runbook</th>
+								<th scope="col">Kind</th>
+								<th scope="col">Trigger</th>
+								<th scope="col">State</th>
+								<th scope="col" class="right">Exit</th>
+								<th scope="col" class="right">Age</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, j := range vm.Queue {
+								<tr>
+									<td class="num"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
+									<td>{ j.Runbook }</td>
+									<td class="mono">{ j.Kind }</td>
+									<td class="mono">{ j.Trigger }</td>
+									<td>@chip(j.StateClass(), string(j.State))</td>
+									<td class="right num">{ j.ExitCode }</td>
+									<td class="right num">{ j.Age }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
+
+// jobDetail streams a job's event tail. The pre-rendered events are what the
+// server has already seen; the SSE connection appends the rest. The log region
+// is announced politely and never steals focus (a11y hard requirement).
+templ jobDetail(vm jobDetailVM) {
+	@layout(vm.Page) {
+		<h1>Job #{ itoa64(vm.Job.ID) }</h1>
+		<p class="meta">
+			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
+			· @chip(vm.Job.StateClass(), string(vm.Job.State))
+		</p>
+		<div class="card" style="margin-top:14px">
+			<div class="kicker">Live tail</div>
+			<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
+				for _, e := range vm.Events {
+					@logLine(e)
+				}
+			</pre>
+		</div>
+		if !vm.Job.State.Terminal() {
+			@jobStream(vm.Job.ID)
+		}
+	}
+}
+
+templ logLine(e eventLine) {
+	if e.Level == "error" {
+		<span class="err">{ e.Ts } { e.Msg }
+</span>
+	} else if e.Level == "system" {
+		<span class="sys">{ e.Ts } { e.Msg }
+</span>
+	} else {
+		<span>{ e.Ts } { e.Msg }
+</span>
+	}
+}
+
+// jobStream opens the SSE connection for a running job with the browser's own
+// EventSource — no framework, the brief's "SSE for live updates". It appends
+// each event and stops when the stream closes.
+templ jobStream(id int64) {
+	<script data-job={ itoa64(id) }>
+	(function () {
+		var script = document.currentScript;
+		var job = script.getAttribute("data-job");
+		var log = document.getElementById("log");
+		var es = new EventSource("/jobs/" + job + "/stream");
+		es.addEventListener("line", function (ev) {
+			var d = JSON.parse(ev.data);
+			var span = document.createElement("span");
+			if (d.level === "error") span.className = "err";
+			else if (d.level === "system") span.className = "sys";
+			span.textContent = d.ts + " " + d.msg + "\n";
+			log.appendChild(span);
+			log.scrollTop = log.scrollHeight;
+		});
+		es.addEventListener("done", function () { es.close(); });
+		es.onerror = function () { es.close(); };
+	})();
+	</script>
+}

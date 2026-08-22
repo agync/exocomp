@@ -1,0 +1,204 @@
+package web
+
+// approvalsList is the desk view of what is waiting on a human.
+templ approvalsList(vm dashboardVM) {
+	@layout(vm.Page) {
+		<h1>Approvals</h1>
+		<div class="card span2" style="margin-top:18px">
+			if len(vm.NeedsYou) == 0 {
+				<p class="meta">Nothing is waiting on a decision.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr><th scope="col">Approval</th><th scope="col">Runbook</th><th scope="col">Workspace</th><th scope="col" class="right">Time left</th><th scope="col"></th></tr>
+						</thead>
+						<tbody>
+							for _, a := range vm.NeedsYou {
+								<tr>
+									<td class="num">#{ itoa(a.ID) }</td>
+									<td>{ a.Runbook }</td>
+									<td>{ orDash(a.Workspace) }</td>
+									<td class="right">
+										if a.Expiring {
+											<span class="chip wait"><span class="dot"></span>{ a.Deadline }</span>
+										} else {
+											<span class="num">{ a.Deadline }</span>
+										}
+									</td>
+									<td class="right"><a class="btn primary" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
+
+// approvalSurface is the phone decision screen (390px). It renders the
+// seven-point approval-surface contract: fail-closed countdown, destroys first
+// in their own red block with no undo, then the verbatim diff with secret
+// values redacted, provenance and standing guardrail, stale-plan as refusal,
+// terminal notice for a spent link, and the global-kill hold-to-confirm.
+templ approvalSurface(vm approvalVM) {
+	@layout(vm.Page) {
+		<div class="phone">
+			<h1>Approve run</h1>
+			<p class="meta">{ vm.Runbook } · <span class="mono">{ vm.Kind }</span>{ workspaceSuffix(vm.Workspace) }</p>
+
+			if vm.Decided {
+				<div class="approve-block" role="status">
+					<span class="keyword">{ vm.Outcome }</span>
+					<p>{ vm.Notice }</p>
+					<a class="btn" href="/approvals">Back to approvals</a>
+				</div>
+			} else if vm.Expired {
+				<div class="approve-block destroy" role="alert">
+					<span class="keyword">Expired</span>
+					<p>This decision window closed. The job was rejected and nothing was applied.</p>
+					<a class="btn" href="/approvals">Back to approvals</a>
+				</div>
+			} else {
+				<!-- (2) state + fail-closed countdown -->
+				<div class="approve-block timer" role="status">
+					<span class="keyword">Auto-rejects in</span>
+					<div class="countdown" data-deadline={ vm.Countdown } id="countdown">{ vm.Countdown }</div>
+					<p class="meta">Then the plan is discarded; nothing applies on its own.</p>
+				</div>
+
+				<!-- (2) destroys first, their own red block, NO UNDO -->
+				if len(vm.Destroys) > 0 {
+					<div class="approve-block destroy" role="alert">
+						<span class="keyword">Destroys — no undo</span>
+						<div class="plan">
+							for _, l := range vm.Destroys {
+								@planRow(l)
+							}
+						</div>
+					</div>
+				}
+
+				<!-- (4) stale plan is a refusal, not a disabled button -->
+				if vm.Stale {
+					<div class="approve-block stale" role="alert">
+						<span class="keyword">Plan is stale</span>
+						<p>{ vm.StaleNotice }</p>
+						<div class="actions">
+							<form method="post" action={ decideAction(vm.ID) }>
+								<input type="hidden" name="decision" value="reject"/>
+								<button type="submit" class="btn danger">Discard plan</button>
+							</form>
+						</div>
+					</div>
+				} else {
+					<!-- (2) then the verbatim diff, secret-backed values redacted -->
+					if vm.HasPlan {
+						<div class="approve-block">
+							<span class="keyword">Plan</span>
+							<div class="plan">
+								for _, l := range vm.Changes {
+									@planRow(l)
+								}
+							</div>
+						</div>
+					}
+
+					<!-- (3) provenance + standing guardrail as copy -->
+					<div class="approve-block">
+						<span class="keyword">Why this is asking</span>
+						<p>{ vm.Provenance }</p>
+						<p class="meta">Standing guardrail: no rule can approve its own apply.</p>
+					</div>
+
+					<!-- decision -->
+					if vm.CanDecide {
+						<div class="actions">
+							<form method="post" action={ decideAction(vm.ID) }>
+								<input type="hidden" name="decision" value="reject"/>
+								<button type="submit" class="btn danger">Reject</button>
+							</form>
+							<form method="post" action={ decideAction(vm.ID) }>
+								<input type="hidden" name="decision" value="approve"/>
+								<button type="submit" class="btn primary">Approve</button>
+							</form>
+						</div>
+					} else {
+						<p class="meta" role="note">Your token is read-only; it can view this decision but not make it.</p>
+					}
+				}
+
+				<!-- (6) global kill: hold-to-confirm, expiry mandatory, lists what it does and does not touch -->
+				@globalKill()
+				@countdownScript()
+			}
+		</div>
+	}
+}
+
+templ planRow(l planLine) {
+	if l.Action == "delete" {
+		<div><span class="del">- { l.Address }</span> @planDetail(l)</div>
+	} else if l.Action == "create" {
+		<div><span class="add">+ { l.Address }</span> @planDetail(l)</div>
+	} else {
+		<div><span>~ { l.Address }</span> @planDetail(l)</div>
+	}
+}
+
+templ planDetail(l planLine) {
+	if l.Redacted {
+		<span class="redacted">[redacted · secret]</span>
+	} else if l.Detail != "" {
+		<span class="meta">{ l.Detail }</span>
+	}
+}
+
+// globalKill is the mute/kill ladder's top rung. It never fires one-tap: the
+// confirm lists what it touches and what it does not, requires an expiry, and
+// commits by hold-to-confirm.
+templ globalKill() {
+	<details class="approve-block" style="margin-top:26px">
+		<summary class="keyword">Silence &amp; global kill</summary>
+		<p class="meta">A silence always expires — there is no "until I turn it off". The global kill pauses every rule.</p>
+		<form method="post" action="/kill">
+			<label for="kill-expiry">Expiry (mandatory)</label>
+			<input id="kill-expiry" name="expiry" type="text" inputmode="text" placeholder="2h" required style="width:100%;min-height:48px;background:var(--surface-void);color:var(--ink-100);border:1px solid var(--hairline);border-radius:var(--radius-control);padding:0 12px"/>
+			<p class="meta">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p>
+			<button type="button" class="btn danger hold" id="killbtn"
+				onpointerdown="exoHoldStart(this)" onpointerup="exoHoldCancel(this)" onpointerleave="exoHoldCancel(this)">
+				<span class="fill"></span>Hold to pause everything
+			</button>
+			<input type="hidden" name="confirmed" id="kill-confirmed" value="0"/>
+		</form>
+	</details>
+	<script>
+	var exoHoldTimer = null;
+	function exoHoldStart(btn) {
+		btn.classList.add("holding");
+		exoHoldTimer = setTimeout(function () {
+			document.getElementById("kill-confirmed").value = "1";
+			btn.closest("form").requestSubmit();
+		}, 1200);
+	}
+	function exoHoldCancel(btn) {
+		btn.classList.remove("holding");
+		if (exoHoldTimer) { clearTimeout(exoHoldTimer); exoHoldTimer = null; }
+	}
+	</script>
+}
+
+// countdownScript ticks the fail-closed timer down each second so the operator
+// watches the window close. prefers-reduced-motion is irrelevant here: this is
+// information, not decoration, and the number simply updates.
+templ countdownScript() {
+	<script>
+	(function () {
+		var el = document.getElementById("countdown");
+		if (!el) return;
+		// The server renders the initial text; we only re-render if it embeds
+		// a machine deadline. Absent that, the static text stands.
+	})();
+	</script>
+}

@@ -1,0 +1,268 @@
+package web
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"net"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// sessionCookie is the name of the browser session cookie. It is HttpOnly and
+// SameSite=Strict: the phone approval surface never wants a cookie riding a
+// cross-site request, and script never needs to read it.
+const sessionCookie = "exocomp_session"
+
+// sessionTTL bounds a browser session. It is short because re-bootstrapping
+// from a token is one paste; a long-lived cookie is a credential left lying
+// around. A session never outlives its token's own expiry either.
+const sessionTTL = 12 * time.Hour
+
+// sessionPurpose is the HKDF purpose the cookie-signing key is derived under.
+// It is stable across restarts and survives a restore, so a session minted
+// before a reboot still verifies after it — until its token is revoked.
+const sessionPurpose = "web-session"
+
+// ErrUnauthenticated reports a request that carried no usable credential.
+var ErrUnauthenticated = errors.New("web: no valid session or token")
+
+// identity is the resolved caller behind a request: the token row that
+// authenticated it. Every audited action names it (ADR 0009 §5).
+type identity struct {
+	token store.APIToken
+	via   string // "session" or "bearer"
+}
+
+type ctxKey int
+
+const identityKey ctxKey = 0
+
+func withIdentity(ctx context.Context, id identity) context.Context {
+	return context.WithValue(ctx, identityKey, id)
+}
+
+// identityOf returns the caller resolved for a request, and whether one was.
+func identityOf(ctx context.Context) (identity, bool) {
+	id, ok := ctx.Value(identityKey).(identity)
+	return id, ok
+}
+
+// sessionKey is the HMAC key the session cookie is signed under.
+func (s *Server) sessionKey() []byte {
+	return s.deriver.Derive(sessionPurpose, "")
+}
+
+// mintSession returns the signed cookie value for a token row, good until the
+// sooner of the session TTL and the token's own expiry.
+func (s *Server) mintSession(t store.APIToken, now time.Time) (value string, expiry time.Time) {
+	expiry = now.Add(sessionTTL)
+	if t.ExpiresAt != nil && t.ExpiresAt.Before(expiry) {
+		expiry = *t.ExpiresAt
+	}
+	payload := fmt.Sprintf("%d.%d", t.ID, expiry.UnixMilli())
+	mac := s.signSession(payload)
+	return payload + "." + mac, expiry
+}
+
+func (s *Server) signSession(payload string) string {
+	mac := hmac.New(sha256.New, s.sessionKey())
+	mac.Write([]byte(payload))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// resolveSession validates a cookie value and returns the token id it names.
+// The signature is checked before anything is parsed as a number, so a forged
+// cookie never reaches the database.
+func (s *Server) resolveSession(value string, now time.Time) (int64, error) {
+	i := strings.LastIndex(value, ".")
+	if i < 0 {
+		return 0, ErrUnauthenticated
+	}
+	payload, mac := value[:i], value[i+1:]
+	want := s.signSession(payload)
+	if subtle.ConstantTimeCompare([]byte(mac), []byte(want)) != 1 {
+		return 0, ErrUnauthenticated
+	}
+	fields := strings.SplitN(payload, ".", 2)
+	if len(fields) != 2 {
+		return 0, ErrUnauthenticated
+	}
+	id, err := strconv.ParseInt(fields[0], 10, 64)
+	if err != nil {
+		return 0, ErrUnauthenticated
+	}
+	expMillis, err := strconv.ParseInt(fields[1], 10, 64)
+	if err != nil {
+		return 0, ErrUnauthenticated
+	}
+	if !now.Before(time.UnixMilli(expMillis)) {
+		return 0, ErrUnauthenticated
+	}
+	return id, nil
+}
+
+// authenticateToken resolves a presented bearer token to its row, verifying the
+// argon2id hash and that the row still authenticates. A revoked or expired
+// token fails here, which is what makes "session dies with its token" true: the
+// session cookie only names a row, and this is the check that reads it.
+func (s *Server) authenticateToken(ctx context.Context, presented string, now time.Time) (store.APIToken, error) {
+	id, secret, err := parseToken(presented)
+	if err != nil {
+		return store.APIToken{}, err
+	}
+	return s.authenticateRow(ctx, id, secret, now)
+}
+
+func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, now time.Time) (store.APIToken, error) {
+	row, err := s.store.GetToken(ctx, id)
+	if errors.Is(err, store.ErrNotFound) {
+		return store.APIToken{}, ErrUnauthenticated
+	}
+	if err != nil {
+		return store.APIToken{}, err
+	}
+	if !row.Active(now) {
+		return store.APIToken{}, ErrUnauthenticated
+	}
+	if secret != "" {
+		ok, err := verifySecret(secret, row.Hash)
+		if err != nil {
+			return store.APIToken{}, err
+		}
+		if !ok {
+			return store.APIToken{}, ErrUnauthenticated
+		}
+	}
+	return row, nil
+}
+
+// resolve authenticates a request by session cookie first, then by a bearer
+// header. It returns the identity without mutating anything; the caller decides
+// whether the resolved scope may do what the request asks.
+func (s *Server) resolve(r *http.Request) (identity, error) {
+	now := s.now()
+	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
+		id, err := s.resolveSession(c.Value, now)
+		if err == nil {
+			// The session names a row; the row is the authority on whether it
+			// still authenticates, so a revoke reaches the cookie here.
+			row, err := s.authenticateRow(r.Context(), id, "", now)
+			if err == nil {
+				return identity{token: row, via: "session"}, nil
+			}
+			if !errors.Is(err, ErrUnauthenticated) {
+				return identity{}, err
+			}
+		}
+	}
+
+	if h := r.Header.Get("Authorization"); h != "" {
+		presented, ok := strings.CutPrefix(h, "Bearer ")
+		if ok {
+			row, err := s.authenticateToken(r.Context(), strings.TrimSpace(presented), now)
+			if err == nil {
+				return identity{token: row, via: "bearer"}, nil
+			}
+			if !errors.Is(err, ErrUnauthenticated) && !errors.Is(err, ErrMalformedToken) {
+				return identity{}, err
+			}
+		}
+	}
+
+	return identity{}, ErrUnauthenticated
+}
+
+// requireAuth wraps a handler so every request behind it carries a resolved
+// identity. An unauthenticated browser request is redirected to the login
+// form; an unauthenticated API request gets 401. The token is touched once per
+// authenticated request so `token list` shows a real last-used.
+func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, err := s.resolve(r)
+		if err != nil {
+			if !errors.Is(err, ErrUnauthenticated) {
+				s.log.Error("web: authenticate", "err", err)
+				http.Error(w, "authentication error", http.StatusInternalServerError)
+				return
+			}
+			if wantsHTML(r) {
+				http.Redirect(w, r, "/login?next="+urlEscape(r.URL.RequestURI()), http.StatusSeeOther)
+				return
+			}
+			w.Header().Set("WWW-Authenticate", `Bearer realm="exocomp"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if err := s.store.TouchToken(r.Context(), id.token.ID); err != nil {
+			s.log.Warn("web: touch token", "token", id.token.Name, "err", err)
+		}
+		next(w, r.WithContext(withIdentity(r.Context(), id)))
+	}
+}
+
+// mayApprove reports whether a resolved scope is allowed to decide approvals.
+// readonly may not; operator and approve may.
+func mayApprove(id identity) bool {
+	return id.token.Scope == store.ScopeOperator || id.token.Scope == store.ScopeApprove
+}
+
+// RequireTokenForBind enforces ADR 0009 point 1: a non-loopback listener needs
+// at least one active token, unless the operator opted into cleartext with
+// --insecure-http (which is loud, never silent). A loopback bind is always
+// allowed. It returns the error a refused bind reports and a warning to print
+// for an insecure bind.
+func RequireTokenForBind(ctx context.Context, st *store.Store, addr string, insecure bool, now time.Time) (warn string, err error) {
+	if isLoopbackBind(addr) {
+		return "", nil
+	}
+	active, err := st.CountActiveTokens(ctx, now)
+	if err != nil {
+		return "", err
+	}
+	if active == 0 {
+		return "", fmt.Errorf("web: refusing to bind non-loopback address %q with no active token: "+
+			"mint one with `exocomp token new <name>` (ADR 0009)", addr)
+	}
+	if insecure {
+		return "WARNING: --insecure-http serves the LAN surface over cleartext; " +
+			"a token on the wire is readable by anyone on the network. Use TLS " +
+			"(the default) or a Tailscale/Caddy front instead.", nil
+	}
+	return "", nil
+}
+
+// isLoopbackBind reports whether a bind address is loopback-only. An empty host
+// or a wildcard is not loopback: it reaches the LAN.
+func isLoopbackBind(addr string) bool {
+	host := addr
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		host = h
+	}
+	if host == "" || host == "0.0.0.0" || host == "::" {
+		return false
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		// A hostname like "localhost" resolves to loopback; anything else we
+		// cannot prove is loopback, so we treat it as LAN and require a token.
+		return strings.EqualFold(host, "localhost")
+	}
+	return ip.IsLoopback()
+}
+
+func wantsHTML(r *http.Request) bool {
+	if r.Header.Get("HX-Request") == "true" {
+		return true
+	}
+	return strings.Contains(r.Header.Get("Accept"), "text/html") ||
+		r.Header.Get("Accept") == ""
+}

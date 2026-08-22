@@ -1,0 +1,253 @@
+/* exocomp web surface — applies the design tokens (tokens.css) to the dashboard,
+ * jobs, phone approval, and events screens. tokens.css owns the palette; this
+ * file owns layout and the a11y-required affordances: the focus-visible ring,
+ * >=48px touch targets on the phone surface, tabular-nums on every digit.
+ *
+ * Themes: tokens.css defaults to dark and swaps to light under
+ * prefers-color-scheme. The [data-theme] blocks below let the in-page toggle
+ * force either theme, so both are first-class and reachable without touching OS
+ * settings. */
+
+:root[data-theme="light"] {
+  --surface-void: #F5F2EC; --surface-rail: #EFEBE3; --surface-card: #FFFDF9;
+  --surface-tray: #FFFDF9; --surface-row: #F1EDE5; --surface-control: #EFEBE3;
+  --hairline: rgba(60,50,38,.16); --hairline-faint: rgba(60,50,38,.12);
+  --ink-100: #1D1A16; --ink-200: #3A352E; --ink-400: #6B655B; --ink-500: #6B655B;
+  --ink-600: rgba(60,50,38,.28);
+  --accent-fill: #7A2FA6; --accent-text: #7A2FA6;
+  --accent-tint: rgba(122,47,166,.10); --accent-border: rgba(122,47,166,.34);
+  --signal-ok: #16703C; --signal-wait: #7A5200; --signal-fail: #A82F22;
+  --signal-dim-text: #6B655B; --signal-dim-dot: rgba(60,50,38,.40);
+  --ok-tint: rgba(22,112,60,.10); --ok-border: rgba(22,112,60,.30);
+  --wait-tint: rgba(122,82,0,.12); --wait-border: rgba(122,82,0,.42);
+  --fail-tint: rgba(168,47,34,.12); --fail-border: rgba(168,47,34,.34);
+  --focus-ring: 3px solid #7A2FA6;
+}
+
+:root[data-theme="dark"] {
+  --surface-void: #0A0C0D; --surface-rail: #0E1112; --surface-card: #121618;
+  --surface-tray: #171C1E; --surface-row: #191F21; --surface-control: #22282A;
+  --hairline: rgba(255,255,255,.09); --hairline-faint: rgba(255,255,255,.06);
+  --ink-100: #ECEFF0; --ink-200: #D6DBDD; --ink-400: #A6AFB2; --ink-500: #8A9296;
+  --ink-600: #6B7477;
+  --accent-fill: #A435CE; --accent-text: #BE7BEB;
+  --accent-tint: rgba(164,53,206,.14); --accent-border: rgba(190,123,235,.34);
+  --signal-ok: #4FB86B; --signal-wait: #E3A008; --signal-fail: #F0645A;
+  --signal-dim-text: #8A9296; --signal-dim-dot: #6B7477;
+  --ok-tint: rgba(79,184,107,.12); --ok-border: rgba(79,184,107,.28);
+  --wait-tint: rgba(227,160,8,.12); --wait-border: rgba(227,160,8,.30);
+  --fail-tint: rgba(240,100,90,.12); --fail-border: rgba(240,100,90,.30);
+  --focus-ring: 3px solid var(--accent-text);
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface-void);
+  color: var(--ink-200);
+  font: var(--type-body);
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Every digit aligns: the brief's tabular-nums-everywhere rule. */
+.num, td, th, time, .mono, code, pre { font-variant-numeric: tabular-nums; }
+.mono, code, pre, .log { font: var(--type-log); }
+
+h1 { font: var(--type-display); letter-spacing: -0.7px; color: var(--ink-100); margin: 0; }
+h2 { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); margin: 0 0 12px; }
+h3 { font: var(--type-card); color: var(--ink-100); margin: 0 0 8px; }
+
+a { color: var(--accent-text); text-underline-offset: 2px; }
+
+/* The one a11y non-negotiable: a visible ring on keyboard focus, never removed
+ * without a replacement. It stays amethyst even on an amber card (tokens.css). */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+  border-radius: var(--radius-chip);
+}
+/* A mouse click must not ring (matches tokens.css intent). */
+:focus:not(:focus-visible) { outline: none; }
+
+/* ---- App frame ---- */
+.app { min-height: 100vh; }
+.appbar {
+  height: var(--header-h);
+  display: flex; align-items: center; gap: var(--gap-cell);
+  padding: 0 30px;
+  background: var(--surface-rail);
+  border-bottom: 1px solid var(--hairline);
+  position: sticky; top: 0; z-index: 10;
+}
+.appbar .brand { font: var(--type-bar); color: var(--ink-100); letter-spacing: 0.3px; }
+.appbar nav { display: flex; gap: 4px; margin-left: 8px; }
+.appbar nav a {
+  display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
+  border-radius: var(--radius-chip); color: var(--ink-400); text-decoration: none;
+  font: var(--type-button);
+}
+.appbar nav a[aria-current="page"] { background: var(--accent-tint); color: var(--accent-text); }
+.appbar .spacer { flex: 1; }
+.appbar .who { color: var(--ink-500); font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase; }
+
+.themetoggle {
+  height: 36px; min-width: 36px; padding: 0 10px;
+  background: var(--surface-control); color: var(--ink-200);
+  border: 1px solid var(--hairline); border-radius: var(--radius-chip);
+  font: var(--type-button); cursor: pointer;
+}
+
+main { padding: var(--pad-page); max-width: 1100px; margin: 0 auto; }
+
+/* ---- Banner (pause / silence / insecure) ---- */
+.banner {
+  display: flex; align-items: center; gap: var(--gap-cell);
+  padding: 14px 18px; margin-bottom: 18px;
+  border-radius: var(--radius-card);
+  border: 1px solid var(--wait-border); background: var(--wait-tint);
+  color: var(--ink-100);
+}
+.banner.fail { border-color: var(--fail-border); background: var(--fail-tint); }
+.banner .keyword {
+  font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--signal-wait);
+}
+.banner.fail .keyword { color: var(--signal-fail); }
+.banner .count { color: var(--ink-400); }
+
+/* ---- Cards & grid ---- */
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--gap-card); }
+.card {
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-faint);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+}
+.card.span2 { grid-column: 1 / -1; }
+.card .kicker {
+  font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--accent-text); margin-bottom: 10px;
+}
+
+/* ---- Tables ---- */
+table { width: 100%; border-collapse: collapse; }
+thead th {
+  text-align: left; font: var(--type-keyword); letter-spacing: 0.4px;
+  text-transform: uppercase; color: var(--ink-400);
+  padding: 6px 8px; border-bottom: 1px solid var(--hairline);
+}
+tbody td { padding: 10px 8px; border-bottom: 1px solid var(--hairline-faint); color: var(--ink-200); }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: var(--surface-tray); }
+td.right, th.right { text-align: right; }
+
+.tablewrap { overflow-x: auto; }
+
+/* ---- State chips ---- */
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: var(--radius-chip);
+  font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
+  border: 1px solid var(--hairline);
+}
+.chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal-dim-dot); }
+.chip.ok    { color: var(--signal-ok);   border-color: var(--ok-border);   background: var(--ok-tint); }
+.chip.ok .dot   { background: var(--signal-ok); }
+.chip.wait  { color: var(--signal-wait); border-color: var(--wait-border); background: var(--wait-tint); }
+.chip.wait .dot { background: var(--signal-wait); }
+.chip.fail  { color: var(--signal-fail); border-color: var(--fail-border); background: var(--fail-tint); }
+.chip.fail .dot { background: var(--signal-fail); }
+.chip.run   { color: var(--accent-text); border-color: var(--accent-border); background: var(--accent-tint); }
+.chip.run .dot  { background: var(--accent-text); animation: var(--breathe); }
+.chip.dim   { color: var(--signal-dim-text); }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: var(--row-h); padding: 0 18px;
+  border-radius: var(--radius-control); border: 1px solid var(--hairline);
+  background: var(--surface-control); color: var(--ink-100);
+  font: var(--type-button); cursor: pointer; text-decoration: none;
+}
+.btn.primary { background: var(--accent-fill); color: #fff; border-color: transparent; }
+.btn.danger  { background: var(--fail-tint); color: var(--signal-fail); border-color: var(--fail-border); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---- Log tail ---- */
+.log {
+  background: var(--surface-void); border: 1px solid var(--hairline);
+  border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
+  max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
+}
+.log .err { color: var(--signal-fail); }
+.log .sys { color: var(--ink-500); }
+
+.meta { color: var(--ink-500); font: var(--type-body); }
+.footer-signal {
+  margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--hairline-faint);
+  color: var(--ink-500); font: var(--type-log);
+  display: flex; flex-wrap: wrap; gap: 18px;
+}
+.footer-signal .warn { color: var(--signal-fail); }
+
+/* ---- Phone approval surface (390px) ---- */
+.phone {
+  max-width: 390px; margin: 0 auto; padding: 18px 16px 48px;
+}
+.phone h1 { font: var(--type-section); }
+.approve-block {
+  border-radius: var(--radius-card); padding: 16px; margin: 14px 0;
+  border: 1px solid var(--hairline); background: var(--surface-card);
+}
+.approve-block.timer { border-color: var(--wait-border); background: var(--wait-tint); }
+.approve-block.destroy { border-color: var(--fail-border); background: var(--fail-tint); }
+.approve-block.destroy .keyword { color: var(--signal-fail); }
+.approve-block.stale { border-color: var(--wait-border); background: var(--wait-tint); }
+.approve-block .keyword {
+  font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
+  color: var(--ink-400); display: block; margin-bottom: 6px;
+}
+.countdown { font: var(--type-display); letter-spacing: -0.7px; color: var(--signal-wait); }
+.plan { background: var(--surface-void); border-radius: var(--radius-chip); padding: 12px; }
+.plan .add { color: var(--signal-ok); }
+.plan .del { color: var(--signal-fail); }
+.redacted { color: var(--ink-500); font-style: italic; }
+
+/* Touch targets never below 48px on the phone (a11y hard requirement). */
+.phone .btn, .phone button, .phone .actions a { min-height: 48px; font-size: 15px; }
+.actions { display: flex; gap: 12px; margin-top: 18px; }
+.actions form { flex: 1; }
+.actions .btn { width: 100%; }
+
+/* Hold-to-confirm global kill: the fill grows while pressed. */
+.hold {
+  position: relative; overflow: hidden;
+}
+.hold .fill {
+  position: absolute; inset: 0 100% 0 0; background: var(--fail-border);
+  transition: right 1.2s linear;
+}
+.hold.holding .fill { right: 0; }
+
+/* ---- Login ---- */
+.login { max-width: 420px; margin: 12vh auto; padding: 0 20px; }
+.login .card { padding: 28px 26px; }
+.login label { display: block; margin: 14px 0 6px; color: var(--ink-400); font: var(--type-button); }
+.login input[type="password"], .login input[type="text"] {
+  width: 100%; min-height: var(--row-h); padding: 0 12px;
+  background: var(--surface-void); color: var(--ink-100);
+  border: 1px solid var(--hairline); border-radius: var(--radius-control);
+  font: var(--type-log);
+}
+.error { color: var(--signal-fail); margin: 10px 0; }
+.fingerprint { color: var(--ink-500); font: var(--type-log); word-break: break-all; }
+
+@media (max-width: 720px) {
+  .cards { grid-template-columns: 1fr; }
+  main { padding: 18px 14px; }
+  .appbar { padding: 0 14px; }
+}

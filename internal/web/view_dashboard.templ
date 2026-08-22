@@ -1,0 +1,149 @@
+package web
+
+// dashboard is the glance screen. It answers "is everything OK?" without
+// scrolling: banner state, what needs a human, the queue, backup freshness,
+// and workspace drift. Healthy is quiet; waiting-on-human and stale are loud.
+templ dashboard(vm dashboardVM) {
+	@layout(vm.Page) {
+		if vm.Page.Insecure {
+			<div class="banner fail" role="alert">
+				<span class="keyword">INSECURE HTTP</span>
+				<span>This surface is served over cleartext. Tokens on the wire are readable by anyone on the network.</span>
+			</div>
+		}
+		if vm.Banner.Active() {
+			<div class={ "banner", templ.KV("fail", vm.Banner.Paused) } role="alert">
+				<span class="keyword">{ vm.Banner.Keyword() }</span>
+				<span>{ vm.Banner.Message() }</span>
+				<span class="count">{ swallowedText(vm.Banner) }</span>
+			</div>
+		}
+		<h1>Dashboard</h1>
+		<div class="cards" style="margin-top:18px">
+			<section class="card span2" aria-labelledby="needsyou-h">
+				<div class="kicker">Needs you</div>
+				<h3 id="needsyou-h">Pending approvals</h3>
+				if len(vm.NeedsYou) == 0 {
+					<p class="meta">Nothing is waiting on a decision.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Approval</th><th scope="col">Runbook</th><th scope="col">Workspace</th><th scope="col" class="right">Time left</th><th scope="col"></th></tr>
+							</thead>
+							<tbody>
+								for _, a := range vm.NeedsYou {
+									<tr>
+										<td class="num">#{ itoa(a.ID) }</td>
+										<td>{ a.Runbook }</td>
+										<td>{ orDash(a.Workspace) }</td>
+										<td class="right">
+											if a.Expiring {
+												<span class="chip wait"><span class="dot"></span>{ a.Deadline }</span>
+											} else {
+												<span class="num">{ a.Deadline }</span>
+											}
+										</td>
+										<td class="right"><a class="btn" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</section>
+
+			<section class="card" aria-labelledby="queue-h">
+				<div class="kicker">Everything is a job</div>
+				<h3 id="queue-h">Queue</h3>
+				if len(vm.Queue) == 0 {
+					<p class="meta">The queue is empty.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Job</th><th scope="col">Runbook</th><th scope="col">State</th><th scope="col" class="right">Age</th></tr>
+							</thead>
+							<tbody>
+								for _, j := range vm.Queue {
+									<tr>
+										<td class="num"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
+										<td>{ j.Runbook }</td>
+										<td>@chip(j.StateClass(), string(j.State))</td>
+										<td class="right num">{ j.Age }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</section>
+
+			<section class="card" aria-labelledby="backups-h">
+				<div class="kicker">Truth over reassurance</div>
+				<h3 id="backups-h">Backups</h3>
+				if len(vm.Backups) == 0 {
+					<p class="meta">No backup targets configured.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Target</th><th scope="col">Snapshot</th><th scope="col" class="right">Age</th></tr>
+							</thead>
+							<tbody>
+								for _, b := range vm.Backups {
+									<tr>
+										<td>
+											{ b.Name }
+											if b.Drill {
+												<span class="chip dim" style="margin-left:6px">drill</span>
+											}
+										</td>
+										<td class="mono">{ orDash(b.Snapshot) }</td>
+										<td class="right">@chip(b.Freshness, b.Age)</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</section>
+
+			<section class="card span2" aria-labelledby="ws-h">
+				<div class="kicker">Workspaces</div>
+				<h3 id="ws-h">OpenTofu drift</h3>
+				if len(vm.Workspaces) == 0 {
+					<p class="meta">No workspaces registered.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Workspace</th><th scope="col" class="right">Serial</th><th scope="col">State</th><th scope="col">Last move</th></tr>
+							</thead>
+							<tbody>
+								for _, w := range vm.Workspaces {
+									<tr>
+										<td>{ w.Name }</td>
+										<td class="right num">{ itoa64(w.Serial) }</td>
+										<td>
+											if w.Drift {
+												<span class="chip wait"><span class="dot"></span>DRIFT</span>
+											} else {
+												<span class="chip ok"><span class="dot"></span>IN SYNC</span>
+											}
+										</td>
+										<td class="meta">{ orDash(w.LastJob) }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</section>
+		</div>
+	}
+}
+
+templ chip(class, label string) {
+	<span class={ "chip", class }><span class="dot"></span>{ label }</span>
+}

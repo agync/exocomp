@@ -1,0 +1,132 @@
+package web
+
+// layout is the chrome every authenticated screen renders inside. The viewport
+// meta is load-bearing: the phone approval surface is designed at 390px and
+// must not be zoomed out to a desktop width.
+templ layout(p page) {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>{ p.Title } · exocomp</title>
+			<link rel="preconnect" href="https://fonts.googleapis.com"/>
+			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"/>
+			<link rel="stylesheet" href="/assets/tokens.css"/>
+			<link rel="stylesheet" href="/assets/app.css"/>
+			@themeInit()
+		</head>
+		<body>
+			<div class="app">
+				<header class="appbar">
+					<span class="brand">exocomp</span>
+					<nav aria-label="Primary">
+						@navlink(p.Nav, "dashboard", "/", "Dashboard")
+						@navlink(p.Nav, "jobs", "/jobs", "Jobs")
+						@navlink(p.Nav, "approvals", "/approvals", "Approvals")
+						@navlink(p.Nav, "events", "/events", "Events")
+					</nav>
+					<span class="spacer"></span>
+					if p.Who != "" {
+						<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
+					}
+					<button type="button" class="themetoggle" onclick="exoToggleTheme()" aria-label="Toggle light or dark theme">theme</button>
+				</header>
+				<main>
+					{ children... }
+					@footer(p.Signal)
+				</main>
+			</div>
+			<script src="/assets/htmx.min.js"></script>
+		</body>
+	</html>
+}
+
+templ navlink(active, key, href, label string) {
+	if active == key {
+		<a href={ templ.SafeURL(href) } aria-current="page">{ label }</a>
+	} else {
+		<a href={ templ.SafeURL(href) }>{ label }</a>
+	}
+}
+
+templ footer(s SignalLine) {
+	<div class="footer-signal" role="contentinfo">
+		<span>dead-man { s.DeadMan }</span>
+		<span>ntfy { s.Ntfy }</span>
+		if s.Warn {
+			<span class="warn">disk { s.Disk }</span>
+		} else {
+			<span>disk { s.Disk }</span>
+		}
+		<span>{ s.Version }</span>
+	</div>
+}
+
+// themeInit applies the persisted theme before first paint so a light-mode
+// operator never sees a dark flash, and defines the toggle.
+templ themeInit() {
+	<script>
+	(function () {
+		try {
+			var t = localStorage.getItem("exocomp-theme");
+			if (t) document.documentElement.setAttribute("data-theme", t);
+		} catch (e) {}
+	})();
+	function exoToggleTheme() {
+		var el = document.documentElement;
+		var cur = el.getAttribute("data-theme");
+		if (!cur) {
+			cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+		}
+		var next = cur === "dark" ? "light" : "dark";
+		el.setAttribute("data-theme", next);
+		try { localStorage.setItem("exocomp-theme", next); } catch (e) {}
+	}
+	</script>
+}
+
+// loginPage bootstraps a browser session from a token. The token is pasted
+// once and exchanged for the session cookie; the fingerprint is shown so the
+// operator can confirm they are pinning the certificate they minted.
+templ loginPage(errMsg, next, fingerprint string, insecure bool) {
+	<!doctype html>
+	<html lang="en">
+		<head>
+			<meta charset="utf-8"/>
+			<meta name="viewport" content="width=device-width, initial-scale=1"/>
+			<title>Sign in · exocomp</title>
+			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"/>
+			<link rel="stylesheet" href="/assets/tokens.css"/>
+			<link rel="stylesheet" href="/assets/app.css"/>
+			@themeInit()
+		</head>
+		<body>
+			<div class="login">
+				<div class="card">
+					<div class="kicker">exocomp</div>
+					<h2>Sign in</h2>
+					<p class="meta">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>
+					if errMsg != "" {
+						<p class="error" role="alert">{ errMsg }</p>
+					}
+					if insecure {
+						<p class="error" role="alert">This listener serves cleartext HTTP (--insecure-http). Your token is readable on the wire.</p>
+					}
+					<form method="post" action="/login">
+						<input type="hidden" name="next" value={ next }/>
+						<label for="token">Access token</label>
+						<input id="token" name="token" type="password" autocomplete="off" autofocus required aria-describedby="fp"/>
+						<div class="actions">
+							<button type="submit" class="btn primary">Sign in</button>
+						</div>
+					</form>
+					if fingerprint != "" {
+						<p id="fp" class="fingerprint" style="margin-top:18px">certificate SHA-256<br/>{ fingerprint }</p>
+					}
+				</div>
+			</div>
+		</body>
+	</html>
+}

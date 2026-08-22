@@ -1,0 +1,85 @@
+package web
+
+// eventsList shows every received alert with its outcome, so "why didn't it
+// fire?" is answerable by scanning (the brief's Event vocabulary).
+templ eventsList(vm eventsVM) {
+	@layout(vm.Page) {
+		<h1>Events</h1>
+		<div class="card span2" style="margin-top:18px">
+			if len(vm.Events) == 0 {
+				<p class="meta">No events received yet.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Event</th>
+								<th scope="col">Source</th>
+								<th scope="col">Alert</th>
+								<th scope="col">Outcome</th>
+								<th scope="col">Reason</th>
+								<th scope="col" class="right">Received</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, e := range vm.Events {
+								<tr>
+									<td class="num"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
+									<td class="mono">{ e.Source }</td>
+									<td>{ e.Name }</td>
+									<td>@chip(e.OutcomeClass(), string(e.Outcome))</td>
+									<td class="meta">{ e.Reason }</td>
+									<td class="right num">{ e.Received }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
+
+// eventTrace renders one event's stored evaluation trace: the per-condition
+// pass/fail exactly as it was decided, not recomputed.
+templ eventTrace(vm traceVM) {
+	@layout(vm.Page) {
+		<h1>Event #{ itoa64(vm.Event.ID) }</h1>
+		<p class="meta">
+			<span class="mono">{ vm.Event.Source }</span> · { vm.Event.Name } ·
+			@chip(vm.Event.OutcomeClass(), string(vm.Event.Outcome))
+			· { vm.Event.Received }
+		</p>
+		<div class="card" style="margin-top:14px">
+			<div class="kicker">Evaluation trace</div>
+			if len(vm.Steps) == 0 {
+				<p class="meta">No trace recorded.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr><th scope="col"></th><th scope="col">Step</th><th scope="col">Detail</th><th scope="col">Reason</th></tr>
+						</thead>
+						<tbody>
+							for _, s := range vm.Steps {
+								<tr>
+									<td>
+										if s.Passed {
+											<span class="chip ok"><span class="dot"></span>PASS</span>
+										} else {
+											<span class="chip fail"><span class="dot"></span>STOP</span>
+										}
+									</td>
+									<td class="mono">{ s.Step }</td>
+									<td class="mono">{ orDash(s.Detail) }</td>
+									<td class="meta">{ s.Reason }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+			<p class="meta" style="margin-top:14px">Reason: { vm.Event.Reason }</p>
+		</div>
+	}
+}
