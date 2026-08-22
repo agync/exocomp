@@ -32,6 +32,11 @@ var optionalTools = []optionalTool{
 	{name: "restic", args: []string{"version"}},
 	{name: "age", args: []string{"--version"}},
 	{name: "sops", args: []string{"--version"}},
+	// uv resolves project dependency manifests at runtime and git syncs git
+	// sources; both are declared runtime dependencies (ADR 0011), so a missing
+	// one is a real gap the operator should see rather than discover mid-run.
+	{name: "uv", args: []string{"--version"}},
+	{name: "git", args: []string{"--version"}},
 }
 
 func newDoctorCmd() *cobra.Command {

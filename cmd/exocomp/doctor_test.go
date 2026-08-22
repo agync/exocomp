@@ -101,3 +101,25 @@ func TestInitCreatesAPrivateDataDir(t *testing.T) {
 		t.Fatalf("doctor rejects the dir init just made: %v\n%s", err, doctorOut.String())
 	}
 }
+
+// TestDoctorProbesUvAndGit: uv and git became runtime dependencies with ADR
+// 0011 (project-dependency resolution and git sources), so doctor must list
+// them beside the other optional tools rather than staying silent about a gap
+// an operator only discovers mid-run.
+func TestDoctorProbesUvAndGit(t *testing.T) {
+	root := t.TempDir()
+	useDataDir(t, root)
+	if err := os.Mkdir(filepath.Join(root, "exocomp"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := runDoctor(&out); err != nil {
+		t.Fatalf("doctor: %v\n%s", err, out.String())
+	}
+	for _, tool := range []string{"uv", "git"} {
+		if !strings.Contains(out.String(), tool) {
+			t.Errorf("doctor did not probe %q:\n%s", tool, out.String())
+		}
+	}
+}
