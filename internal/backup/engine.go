@@ -60,6 +60,12 @@ type Options struct {
 	// falling back to its process environment because it has no sealed
 	// credentials. Zero uses slog.Default().
 	Logger *slog.Logger
+	// Quiesce, when set, wraps the snapshot in application-consistency hooks:
+	// its Pre steps quiesce the source before staging and its Post steps
+	// un-quiesce it after. A failed Pre step aborts the Run before any snapshot
+	// is taken. Nil means no quiesce — the snapshot is assembled directly, as
+	// before.
+	Quiesce *Quiesce
 }
 
 // defaultProbeTimeout is how long a target has to prove it is reachable.
@@ -129,6 +135,17 @@ func (r Report) Err() error {
 // attempted at all; per-leg failures live in the Report.
 func (e *Engine) Run(ctx context.Context, targets []Target) (Report, error) {
 	rep := Report{StartedAt: e.opts.Now()}
+
+	// Quiesce the source before anything is staged: a failed quiesce aborts here,
+	// so the snapshot is never taken over a torn source. Once quiesced, the
+	// un-quiesce is deferred and runs whatever happens to the legs below.
+	if e.opts.Quiesce != nil {
+		thaw, err := e.opts.Quiesce.freeze(ctx, e.opts.Logger)
+		if err != nil {
+			return rep, fmt.Errorf("backup: quiesce aborted before any snapshot was taken: %w", err)
+		}
+		defer thaw()
+	}
 
 	stage, err := os.MkdirTemp(e.opts.StageRoot, "exocomp-backup-")
 	if err != nil {
