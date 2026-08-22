@@ -53,10 +53,11 @@ type Envelope struct {
 	// host is the identity the keyring was opened with. It is kept so an
 	// artifact sealed to the keyring's recipients can be read back without a
 	// second trip to disk for the key.
-	host       age.Identity
-	recipients []Recipient
-	version    KeyringVersion
-	memLock    MemoryLock
+	host        age.Identity
+	recipients  []Recipient
+	version     KeyringVersion
+	memLock     MemoryLock
+	hostKeyProt HostKeyProtection
 }
 
 // SealedSecret is one AES-256-GCM ciphertext. Name and Kind are bound as
@@ -114,13 +115,29 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		return nil, nil, err
 	}
 
-	if err := writeHostKey(filepath.Join(dataDir, hostKeyFile), host); err != nil {
+	// The default (non-TPM) story must be genuinely secure (finding E1): when an
+	// operator passphrase is set, the host key is scrypt-wrapped and no
+	// plaintext key ever touches the data dir. Without one it is a bare
+	// plaintext file — the caller (init/setup) warns loudly and points at the
+	// fix, and the protection state below reports it honestly.
+	passphrase, hasPassphrase, perr := hostKeyPassphrase()
+	if perr != nil {
+		return nil, nil, perr
+	}
+	protection := HostKeyPlaintext
+	if hasPassphrase {
+		if err := writeWrappedHostKey(filepath.Join(dataDir, hostKeyAgeFile), host, passphrase); err != nil {
+			return nil, nil, err
+		}
+		protection = HostKeyPassphrase
+	} else if err := writeHostKey(filepath.Join(dataDir, hostKeyFile), host); err != nil {
 		return nil, nil, err
 	}
 	// A half-written dir would fail every retry on the host key's O_EXCL, so
 	// roll back to an uninitialized dir instead.
 	rollback := func() {
 		_ = os.Remove(filepath.Join(dataDir, hostKeyFile))
+		_ = os.Remove(filepath.Join(dataDir, hostKeyAgeFile))
 		_ = os.Remove(filepath.Join(dataDir, recipientsFile))
 		_ = os.Remove(filepath.Join(dataDir, KeyringVersionName))
 	}
@@ -145,12 +162,13 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	}
 
 	env := &Envelope{
-		dataDir:    dataDir,
-		dek:        dek,
-		keyring:    keyring,
-		host:       host,
-		recipients: recipients,
-		version:    version,
+		dataDir:     dataDir,
+		dek:         dek,
+		keyring:     keyring,
+		host:        host,
+		recipients:  recipients,
+		version:     version,
+		hostKeyProt: protection,
 	}
 	env.lockDEK()
 	kit := env.KitStructure()
@@ -158,15 +176,13 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	return env, kit, nil
 }
 
-// Open loads the host identity from dataDir and unwraps the DEK from the keyring.
+// Open loads the host identity from dataDir — from the systemd credential, a
+// passphrase-wrapped file, or a plaintext file, in that order — and unwraps the
+// DEK from the keyring.
 func Open(dataDir string) (*Envelope, error) {
-	raw, err := os.ReadFile(filepath.Join(dataDir, hostKeyFile))
+	host, protection, err := loadHostIdentity(dataDir)
 	if err != nil {
-		return nil, fmt.Errorf("secrets: read host key: %w", err)
-	}
-	host, err := age.ParseX25519Identity(strings.TrimSpace(string(raw)))
-	if err != nil {
-		return nil, fmt.Errorf("secrets: parse host key: %w", err)
+		return nil, err
 	}
 
 	keyring, err := os.ReadFile(filepath.Join(dataDir, keyringFile))
@@ -187,16 +203,21 @@ func Open(dataDir string) (*Envelope, error) {
 		return nil, err
 	}
 	env := &Envelope{
-		dataDir:    dataDir,
-		dek:        dek,
-		keyring:    keyring,
-		host:       host,
-		recipients: recipients,
-		version:    version,
+		dataDir:     dataDir,
+		dek:         dek,
+		keyring:     keyring,
+		host:        host,
+		recipients:  recipients,
+		version:     version,
+		hostKeyProt: protection,
 	}
 	env.lockDEK()
 	return env, nil
 }
+
+// HostKeyProtection reports how the host identity this envelope opened with is
+// protected at rest.
+func (e *Envelope) HostKeyProtection() HostKeyProtection { return e.hostKeyProt }
 
 // Seal encrypts pt under the DEK with a fresh 96-bit nonce, binding name|kind.
 func (e *Envelope) Seal(name, kind string, pt []byte) (SealedSecret, error) {

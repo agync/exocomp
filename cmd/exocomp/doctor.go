@@ -85,15 +85,44 @@ func runDoctor(w io.Writer) error {
 // reportSecretsProtection prints the real at-rest and in-memory posture of the
 // key material: whether the DEK can be pinned out of swap (E5). The host-key
 // at-rest state is added alongside it.
-func reportSecretsProtection(w io.Writer, _ string) {
+func reportSecretsProtection(w io.Writer, dataDir string) {
 	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
 	p("secrets protection:\n")
+
+	switch prot := secrets.InspectHostKeyProtection(dataDir); prot {
+	case secrets.HostKeySystemdCredential:
+		p("  %-18s %s\n", "host key at rest",
+			"systemd credential — unwrap secret is outside the data volume"+tpmSuffix())
+	case secrets.HostKeyPassphrase:
+		p("  %-18s %s\n", "host key at rest",
+			"passphrase-wrapped — a stolen data volume alone does not yield it")
+	case secrets.HostKeyPlaintext:
+		p("  %-18s %s\n", "host key at rest",
+			"PLAINTEXT in the data dir — a volume read alone yields every secret; "+hostKeyFixHint)
+	default:
+		p("  %-18s %s\n", "host key at rest", "absent — run `exocomp init`")
+	}
+
 	if lock := secrets.ProbeMemoryLock(); lock.Locked {
 		p("  %-18s %s\n", "memory lock", "mlock available — the DEK is pinned out of swap and core dumps")
 	} else {
 		p("  %-18s %s\n", "memory lock",
 			"UNAVAILABLE — the DEK may reach swap or a core dump ("+lock.Err.Error()+")")
 	}
+}
+
+// hostKeyFixHint names the two ways to move a plaintext host key to a secure
+// tier. It is one line so init and doctor say the same thing.
+const hostKeyFixHint = "wrap it (set " + secrets.EnvHostKeyPassphrase +
+	" and re-init, or install via the Quadlet unit's systemd credential)"
+
+// tpmSuffix notes TPM backing only when a TPM is actually present, so the
+// report never claims hardware sealing that is not there.
+func tpmSuffix() string {
+	if secrets.TPMPresent() {
+		return " (TPM 2.0 present)"
+	}
+	return ""
 }
 
 // reportSelfObservability prints whether the daemon can be watched: the

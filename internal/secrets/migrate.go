@@ -205,10 +205,34 @@ func ageRecipients(rs []Recipient) ([]age.Recipient, error) {
 	return out, nil
 }
 
-// replaceHostKey writes the new host identity over the old one. The file keeps
-// its 0400 mode, so it is written beside and renamed rather than opened for
-// writing.
+// replaceHostKey writes the new host identity over the old one, in the same
+// at-rest tier the data dir already uses so a rotation never downgrades a
+// wrapped key to plaintext (finding E1). A systemd credential is provisioned
+// outside this process, so rotating under it is refused with a pointer to the
+// re-provision step rather than silently writing a plaintext key beside it.
 func replaceHostKey(dataDir string, host *age.X25519Identity) error {
+	if _, ok := credentialHostKeyPath(); ok {
+		return fmt.Errorf("secrets: migrate: host key is delivered by a systemd credential; " +
+			"rotate it by re-encrypting the credential (systemd-creds encrypt --with-key=host), not in-process")
+	}
+
+	passphrase, hasPassphrase, perr := hostKeyPassphrase()
+	if perr != nil {
+		return perr
+	}
+	if hasPassphrase {
+		path := filepath.Join(dataDir, hostKeyAgeFile)
+		tmp := path + ".new"
+		_ = os.Remove(tmp)
+		if err := writeWrappedHostKey(tmp, host, passphrase); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, path); err != nil {
+			return fmt.Errorf("secrets: migrate: replace host key: %w", err)
+		}
+		return nil
+	}
+
 	path := filepath.Join(dataDir, hostKeyFile)
 	tmp := path + ".new"
 	_ = os.Remove(tmp)

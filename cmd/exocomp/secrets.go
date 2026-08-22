@@ -42,6 +42,7 @@ func newInitCmd() *cobra.Command {
 			}
 			defer func() { _ = env.Close() }()
 
+			warnIfPlaintextHostKey(env.HostKeyProtection(), cmd.ErrOrStderr())
 			decorateKit(cmd.Context(), kit, cmd.ErrOrStderr())
 			_, err = io.WriteString(cmd.OutOrStdout(), kit.Render())
 			return err
@@ -51,6 +52,23 @@ func newInitCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&extra, "recipient", nil,
 		"additional age recipient (age1…) to wrap the DEK to; repeatable")
 	return cmd
+}
+
+// warnIfPlaintextHostKey prints a loud, actionable warning when the host key
+// was left as a bare plaintext file in the data dir — the insecure default a
+// stolen data volume defeats (finding E1). The secure tiers say nothing.
+func warnIfPlaintextHostKey(prot secrets.HostKeyProtection, warn io.Writer) {
+	if prot != secrets.HostKeyPlaintext {
+		return
+	}
+	_, _ = fmt.Fprintln(warn, "")
+	_, _ = fmt.Fprintln(warn, "WARNING: host.key is a bare PLAINTEXT file in the data dir.")
+	_, _ = fmt.Fprintln(warn, "         A copy of the data volume alone recovers every secret.")
+	_, _ = fmt.Fprintf(warn, "         Move it to a secure tier: set %s (or %s) and re-init for a\n",
+		secrets.EnvHostKeyPassphrase, secrets.EnvHostKeyPassphraseFile)
+	_, _ = fmt.Fprintln(warn, "         passphrase-wrapped key, or install via the Quadlet unit's systemd")
+	_, _ = fmt.Fprintln(warn, "         credential (host key unwrapped with a secret outside the volume).")
+	_, _ = fmt.Fprintln(warn, "")
 }
 
 func newRecoveryKitCmd() *cobra.Command {

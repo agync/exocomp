@@ -104,11 +104,16 @@ type setupInput struct {
 // dataDirProvisioner is the real provisioner over the host's data dir.
 type dataDirProvisioner struct{ dir string }
 
-// AlreadyInitialized treats a present host key as an initialized host: that is
-// the file secrets.Init writes first and refuses to overwrite.
+// AlreadyInitialized treats a present host key — plaintext or the
+// passphrase-wrapped host.key.age — as an initialized host: one of those is the
+// file secrets.Init writes first and refuses to overwrite.
 func (p *dataDirProvisioner) AlreadyInitialized() bool {
-	_, err := os.Stat(filepath.Join(p.dir, "host.key"))
-	return err == nil
+	for _, name := range []string{"host.key", "host.key.age"} {
+		if _, err := os.Stat(filepath.Join(p.dir, name)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Commit mints the identity and keyring through secrets.Init — the one and

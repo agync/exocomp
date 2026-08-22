@@ -32,9 +32,15 @@ bytes of recipient stanzas.
 ## Decision
 
 **Envelope.** N age recipients each wrap one 32-byte DEK, stored as `keyring` rows. The
-default recipients are the host identity (TPM-sealed via `systemd-creds` where available)
-and a printed recovery identity; an `age-plugin-yubikey` recipient is optional. Any one
-recipient unwraps the DEK.
+default recipients are the host identity and a printed recovery identity; an
+`age-plugin-yubikey` recipient is optional. Any one recipient unwraps the DEK. The host
+identity's private key (`host.key`) is protected **at rest** so a stolen data volume alone
+does not contain it: on the primary systemd tier it is delivered through an encrypted
+`systemd-creds` credential (`--with-key=host`, TPM-sealed with `host+tpm2` where a TPM is
+present), whose unwrap secret lives outside the data volume; on the compose tier it is a
+scrypt-passphrase-wrapped `host.key.age` with the passphrase held outside the volume. A
+bare plaintext `host.key` is the insecure fallback only — `init` warns loudly and `doctor`
+reports the real tier.
 
 **Secrets under the DEK.** `secret.ciphertext` is AES-256-GCM under the DEK with random
 96-bit nonces and `(name, kind)` bound as AAD under a length-prefixed encoding
@@ -71,9 +77,12 @@ whose password is derived from the DEK it wraps would be a perfect circle.
   start if any backup target is unreachable, and gates it behind an approval even for the
   operator.
 - The security claim is stated honestly and not overstated: `exocompd` can decrypt
-  everything it manages. The envelope protects backups, stolen disks, and off-host
-  attackers — not root on the box. State ciphertext is opaque *to backup targets*, not to
-  the control plane, which derives the passphrase itself.
+  everything it manages. The envelope protects backups and off-host attackers, and a
+  stolen disk **when `host.key` is on a secure at-rest tier** (systemd credential or
+  passphrase-wrapped) — a bare plaintext `host.key` in the data dir defeats the stolen-disk
+  case, which is why that state is a loud warning rather than a supported default. It does
+  not protect against root on the box. State ciphertext is opaque *to backup targets*, not
+  to the control plane, which derives the passphrase itself.
 - The monthly DR drill runs from a scratch container holding **only** the kit contents — no
   host state, no shell history — so the circular-dependency class fails a scheduled test
   instead of a real disaster.

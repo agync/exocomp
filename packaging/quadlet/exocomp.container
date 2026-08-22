@@ -9,6 +9,13 @@ Volume=exocomp.volume:/var/lib/exocomp
 UserNS=keep-id
 # The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
 Environment=XDG_DATA_HOME=/var/lib
+# host.key at rest (finding E1): systemd decrypts the encrypted credential into
+# $CREDENTIALS_DIRECTORY/host.key at start, using a secret
+# (/var/lib/systemd/credential.secret, or the TPM) that never enters the data
+# volume. A stolen volume holds only host.key.cred, which is useless without it.
+# install.sh writes host.key.cred with `systemd-creds encrypt` and deletes the
+# plaintext key; the daemon reads the credential in preference to any file.
+LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
 # Named rather than inherited from the image: the unit says what it runs.
 Exec=serve
 

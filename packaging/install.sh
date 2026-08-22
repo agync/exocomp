@@ -13,6 +13,8 @@ Modes (positional or flag form):
   install                Install exocomp (default)
   restore | --restore    Restore state from a backup
   rollback | --rollback  Roll back to the previous release
+  harden-host-key        Wrap host.key into a systemd credential (TPM-sealed
+                         when a TPM is present), off the data volume (finding E1)
 
 Options:
   --from URI             With restore: target uri, or kind:uri
@@ -89,6 +91,9 @@ while [ $# -gt 0 ]; do
             ;;
         install|restore|rollback)
             mode="$1"
+            ;;
+        harden-host-key|--harden-host-key)
+            mode=harden-host-key
             ;;
         --restore)
             mode=restore
@@ -277,6 +282,36 @@ manual_restore() {
     echo "install.sh: host.key is NOT restored; this host reads secrets with the recovery identity until it is re-keyed"
 }
 
+# wrap_host_key moves the host key off the data volume into a systemd credential
+# (finding E1). systemd-creds encrypts it with a host secret
+# (/var/lib/systemd/credential.secret) or, when a TPM 2.0 is present, seals it to
+# the TPM (--with-key=host+tpm2) — neither of which lives in the data volume, so
+# a stolen volume holds only the opaque host.key.cred. The quadlet's
+# LoadCredentialEncrypted= decrypts it back to $CREDENTIALS_DIRECTORY/host.key at
+# start. The plaintext key is deleted once the credential is written.
+wrap_host_key() {
+    plaintext="$data_dir/host.key"
+    cred="$data_dir/host.key.cred"
+
+    command -v systemd-creds >/dev/null 2>&1 \
+        || fail "systemd-creds is required to wrap the host key and is not on PATH"
+    [ -f "$plaintext" ] || fail "$plaintext does not exist; nothing to wrap (already wrapped?)"
+
+    if [ -e /dev/tpmrm0 ]; then
+        with_key="host+tpm2"
+        echo "install.sh: TPM 2.0 present — sealing the host key to this box (--with-key=$with_key)"
+    else
+        with_key="host"
+        echo "install.sh: no TPM — wrapping the host key with the systemd host secret (--with-key=$with_key)"
+    fi
+
+    umask 077
+    systemd-creds encrypt --name=host.key --with-key="$with_key" "$plaintext" "$cred" \
+        || fail "systemd-creds could not encrypt the host key (try --with-key=host if TPM sealing failed)"
+    rm -f "$plaintext"
+    echo "install.sh: host key wrapped to $cred; plaintext removed. The daemon reads it via the quadlet credential."
+}
+
 case "$mode" in
     install)
         tier=$(detect_tier)
@@ -285,6 +320,11 @@ case "$mode" in
         fi
         echo "install.sh $VERSION: tier=$tier mode=$mode"
         echo "would install exocomp via Quadlet ($tier rootless), pulling packaging/Containerfile image and enabling the systemd unit"
+        echo "install.sh: after init, run \`install.sh harden-host-key\` to move host.key off the volume into a systemd credential"
+        ;;
+    harden-host-key)
+        echo "install.sh $VERSION: mode=harden-host-key data_dir=$data_dir"
+        wrap_host_key
         ;;
     restore)
         # No container runtime is required to restore: recovery must not depend
