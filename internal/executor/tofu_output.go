@@ -10,6 +10,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -37,14 +39,117 @@ type tofuOutput struct {
 // carries output NAMES only, never a value: an output may hold a secret even
 // when it is not sensitive-marked, and the durable event log must stay safe to
 // keep regardless. The host and group data lives in the materialized file
-// (0600, under the data dir), not here.
+// (0600, under the data dir), not here — Hosts is a count for exactly that
+// reason, because a host name is inventory data and a count is not.
 type InventoryCapture struct {
 	Path       string   `json:"path"`
 	SHA256     string   `json:"sha256"`
 	Size       int64    `json:"size"`
+	Hosts      int      `json:"hosts"`      // hosts the materialized inventory names
 	Captured   []string `json:"captured"`   // non-sensitive output names written
 	Suppressed []string `json:"suppressed"` // sensitive output names dropped (no sealer)
 	Sealed     []string `json:"sealed"`     // sensitive output names sealed as run-secrets
+}
+
+// InventoryHost is one host a materialized inventory names, reduced to the
+// connection facts a caller acts on before any play does: where to reach it and
+// whether reaching it means the network at all. It is what turns "the apply
+// produced an inventory" into "these are the hosts to wait for, scan, and
+// onboard" without a second parse in every caller.
+type InventoryHost struct {
+	// Name is the inventory_hostname.
+	Name string
+	// Address is ansible_host, or Name when the inventory declares none.
+	Address string
+	// Port is ansible_port, or SSHPort when the inventory declares none.
+	Port int
+	// Local reports ansible_connection == "local": a host reached without SSH,
+	// which a reachability wait and a host-key scan must both skip.
+	Local bool
+}
+
+// inventoryGroup is one group of an Ansible JSON inventory. Only the two keys
+// that hold hosts are read; group vars are the play's business.
+type inventoryGroup struct {
+	Hosts    map[string]map[string]json.RawMessage `json:"hosts"`
+	Children map[string]json.RawMessage            `json:"children"`
+}
+
+// InventoryHosts reads the hosts a materialized inventory names, walking every
+// top-level group and its children. It exists so the chain that follows an
+// apply — wait for SSH, scan the host key, onboard, converge — derives its
+// targets from the same bytes the play will read, rather than from the state or
+// from a second `tofu output`.
+//
+// The var form the capture falls back to (no ansible_inventory output) names no
+// hosts, so it returns an empty slice: a caller that must not run a play
+// against nothing has its fail-closed signal here.
+func InventoryHosts(body []byte) ([]InventoryHost, error) {
+	var groups map[string]json.RawMessage
+	if err := json.Unmarshal(body, &groups); err != nil {
+		return nil, fmt.Errorf("executor: parse inventory: %w", err)
+	}
+	seen := map[string]InventoryHost{}
+	for _, raw := range groups {
+		if err := walkInventoryGroup(raw, seen); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]InventoryHost, 0, len(seen))
+	for _, h := range seen {
+		out = append(out, h)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// walkInventoryGroup collects one group's hosts and recurses into its children.
+// A group that is not an object (a stray var, a null) contributes nothing
+// rather than failing the walk: the inventory is operator-shaped Terraform
+// output, and one odd key must not cost the whole host list.
+func walkInventoryGroup(raw json.RawMessage, seen map[string]InventoryHost) error {
+	var g inventoryGroup
+	if err := json.Unmarshal(raw, &g); err != nil {
+		return nil
+	}
+	for name, vars := range g.Hosts {
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = inventoryHost(name, vars)
+	}
+	for _, child := range g.Children {
+		if err := walkInventoryGroup(child, seen); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// inventoryHost resolves one host's connection facts from its host vars.
+func inventoryHost(name string, vars map[string]json.RawMessage) InventoryHost {
+	h := InventoryHost{Name: name, Address: name, Port: SSHPort}
+	if v, ok := inventoryString(vars["ansible_host"]); ok && v != "" {
+		h.Address = v
+	}
+	if raw, ok := vars["ansible_port"]; ok {
+		if n, err := strconv.Atoi(strings.Trim(string(raw), `"`)); err == nil && n > 0 {
+			h.Port = n
+		}
+	}
+	if v, ok := inventoryString(vars["ansible_connection"]); ok && v == "local" {
+		h.Local = true
+	}
+	return h
+}
+
+// inventoryString reads a JSON string var, reporting whether it was one.
+func inventoryString(raw json.RawMessage) (string, bool) {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return "", false
+	}
+	return s, true
 }
 
 // OutputSealer seals one sensitive tofu output so a downstream step can bind it
@@ -142,11 +247,17 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 		return InventoryCapture{}, fmt.Errorf("executor: write inventory: %w", err)
 	}
 
+	hosts, err := InventoryHosts(body)
+	if err != nil {
+		return InventoryCapture{}, err
+	}
+
 	sum := sha256.Sum256(body)
 	return InventoryCapture{
 		Path:       outPath,
 		SHA256:     hex.EncodeToString(sum[:]),
 		Size:       int64(len(body)),
+		Hosts:      len(hosts),
 		Captured:   captured,
 		Suppressed: suppressed,
 		Sealed:     sealed,
@@ -201,7 +312,8 @@ func inventoryCaptureEvent(c InventoryCapture) Event {
 		// Unreachable: the payload is fixed fields and string slices.
 		panic("executor: tofu: encode inventory capture: " + err.Error())
 	}
-	msg := fmt.Sprintf("captured %d output(s) to inventory %s", len(c.Captured), c.Path)
+	msg := fmt.Sprintf("captured %d output(s) to inventory %s naming %d host(s)",
+		len(c.Captured), c.Path, c.Hosts)
 	if len(c.Sealed) > 0 {
 		msg += fmt.Sprintf("; sealed %d sensitive output(s)", len(c.Sealed))
 	}
