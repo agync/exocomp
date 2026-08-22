@@ -26,6 +26,8 @@ func (m Model) View() tea.View {
 			return tea.NewView(liveFrame(m.withBanner(renderEventsScreen(m.eventsModel()))))
 		case screenSources:
 			return tea.NewView(liveFrame(m.withBanner(m.renderSourcesScreen())))
+		case screenWorkflows:
+			return tea.NewView(liveFrame(m.withBanner(m.renderWorkflowsScreen())))
 		}
 	}
 	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
@@ -45,6 +47,18 @@ func (m Model) renderSourcesScreen() string {
 		return styleErr.Render("failed to load sources: " + m.sourcesErr.Error())
 	}
 	return renderSourcesScreen(m.sourcesModel())
+}
+
+// renderWorkflowsScreen renders the workflows list, or the step ledger of the
+// chain whose detail is open, or the error state.
+func (m Model) renderWorkflowsScreen() string {
+	if m.workflowsErr != nil {
+		return styleErr.Render("failed to load workflows: " + m.workflowsErr.Error())
+	}
+	if m.workflowDetail != "" {
+		return renderWorkflowDetail(m.workflowDetailModel())
+	}
+	return renderWorkflowsScreen(m.workflowsModel())
 }
 
 // withBanner prepends the hold banner when a silence or mute is active.

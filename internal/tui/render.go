@@ -8,7 +8,8 @@ import (
 
 // itoa is strconv.Itoa, kept short because the screen renderers use it inline
 // in section headers and counts.
-func itoa(n int) string { return strconv.Itoa(n) }
+func itoa(n int) string     { return strconv.Itoa(n) }
+func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
 // The v0.2 TUI screens render as the no-color text forms first: every glyph in
 // the golden fixtures is single width, so display width is the rune count, and

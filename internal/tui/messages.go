@@ -215,6 +215,34 @@ func loadSourcesCmd(st *store.Store) tea.Cmd {
 	}
 }
 
+// maxWorkflowsShown caps the workflows surface at the most-recent chains.
+const maxWorkflowsShown = 50
+
+// workflowsLoadedMsg carries the result of a workflows + step-ledger refresh.
+type workflowsLoadedMsg struct {
+	workflows []workflowView
+	err       error
+}
+
+func loadWorkflowsCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		ids, err := st.ListWorkflowIDs(ctx, maxWorkflowsShown)
+		if err != nil {
+			return workflowsLoadedMsg{err: err}
+		}
+		out := make([]workflowView, 0, len(ids))
+		for _, id := range ids {
+			steps, err := st.GetWorkflow(ctx, id)
+			if err != nil {
+				return workflowsLoadedMsg{err: err}
+			}
+			out = append(out, workflowView{id: id, steps: steps})
+		}
+		return workflowsLoadedMsg{workflows: out}
+	}
+}
+
 // eventsLoadedMsg carries a job's event tail. It is keyed by jobID so a
 // response arriving after the user has moved to a different job is ignored.
 type eventsLoadedMsg struct {

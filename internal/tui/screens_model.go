@@ -218,6 +218,55 @@ func sourceSyncShort(sha string) string {
 	return sha
 }
 
+// workflowsModel assembles the workflows surface, marking the cursor row.
+func (m Model) workflowsModel() WorkflowsModel {
+	now := time.Now()
+	wm := WorkflowsModel{
+		summary: fmt.Sprintf("workflows · %d recorded", len(m.workflows)),
+		clock:   now.Local().Format("15:04 MST"),
+	}
+	for i, w := range m.workflows {
+		wm.rows = append(wm.rows, workflowListRow{
+			id:       truncate(w.id, 30),
+			state:    string(w.state()),
+			progress: fmt.Sprintf("%d/%d", w.done(), len(w.steps)),
+			rail:     stepRail(w.steps),
+			selected: i == m.workflowsCursor,
+		})
+	}
+	return wm
+}
+
+// workflowDetailModel assembles the open chain's step ledger from the
+// already-loaded workflow, so the detail refreshes with the list.
+func (m Model) workflowDetailModel() WorkflowDetailModel {
+	var w workflowView
+	for _, cand := range m.workflows {
+		if cand.id == m.workflowDetail {
+			w = cand
+			break
+		}
+	}
+	dm := WorkflowDetailModel{
+		id:      m.workflowDetail,
+		state:   string(w.state()),
+		summary: fmt.Sprintf("%d/%d done", w.done(), len(w.steps)),
+	}
+	for _, s := range w.steps {
+		job := emptyCell
+		if s.JobID != nil {
+			job = "#" + itoa64(*s.JobID)
+		}
+		dm.steps = append(dm.steps, workflowStepLine{
+			no:     itoa(s.StepNo),
+			kind:   truncate(s.Kind, 18),
+			status: string(s.Status),
+			job:    job,
+		})
+	}
+	return dm
+}
+
 // --- small live-data formatters ---
 
 func (m Model) queueLine(now time.Time) string {

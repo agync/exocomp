@@ -121,6 +121,63 @@ func TestSourcesScreenRendersLive(t *testing.T) {
 	}
 }
 
+// TestWorkflowsScreenRendersLiveAndDetail drives the [9] Workflows surface: the
+// list shows a chain's derived state and step rail, and [enter] opens the step
+// ledger with each step's status and job, [esc] closes it.
+func TestWorkflowsScreenRendersLiveAndDetail(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	if err := st.CreateWorkflow(ctx, "provision-aurora", []store.NewWorkflowStep{
+		{StepNo: 1, Kind: "provision", IdempotencyKey: "k1"},
+		{StepNo: 2, Kind: "converge", IdempotencyKey: "k2"},
+	}); err != nil {
+		t.Fatalf("create workflow: %v", err)
+	}
+	job, err := st.CreateJob(ctx, store.NewJob{Runbook: "rb", Kind: "ansible", Trigger: "workflow"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := st.StartStep(ctx, "provision-aurora", 1, job.ID); err != nil {
+		t.Fatalf("start step 1: %v", err)
+	}
+	if err := st.CompleteStep(ctx, "provision-aurora", 1, store.StepSucceeded, ""); err != nil {
+		t.Fatalf("complete step 1: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadWorkflowsCmd(st)())
+	m = update(t, m, key('9'))
+	if m.active != screenWorkflows {
+		t.Fatalf("[9] did not open Workflows, active = %v", m.active)
+	}
+	list := m.View().Content
+	for _, want := range []string{"workflows · 1 recorded", "provision-aurora", "running", "1/2"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("workflows list missing %q, view:\n%s", want, list)
+		}
+	}
+
+	// enter opens the step ledger; it shows each step's kind, status and job.
+	m = update(t, m, specialKey(tea.KeyEnter))
+	if m.workflowDetail != "provision-aurora" {
+		t.Fatalf("enter did not open the ledger, detail = %q", m.workflowDetail)
+	}
+	detail := m.View().Content
+	for _, want := range []string{"workflow · provision-aurora", "provision", "succeeded", "converge", "pending", "#" + itoa64(job.ID)} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("workflow detail missing %q, view:\n%s", want, detail)
+		}
+	}
+
+	// esc closes the ledger back to the list, not out of the screen.
+	m = update(t, m, specialKey(tea.KeyEscape))
+	if m.workflowDetail != "" || m.active != screenWorkflows {
+		t.Fatalf("esc did not close the ledger: detail=%q active=%v", m.workflowDetail, m.active)
+	}
+}
+
 // TestApprovalsAndEventsRenderLive drives the two new screens over seeded rows
 // and asserts their live assembly reaches the fixture renderers.
 func TestApprovalsAndEventsRenderLive(t *testing.T) {

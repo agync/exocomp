@@ -171,6 +171,31 @@ func TestSourcesGolden(t *testing.T) {
 	assertFrame(t, "sources-120", renderSourcesScreen(m))
 }
 
+func TestWorkflowsGolden(t *testing.T) {
+	m := WorkflowsModel{
+		summary: "workflows · 3 recorded", clock: "14:03 UTC+11",
+		rows: []workflowListRow{
+			{id: "provision-aurora-8f2", state: "running", progress: "2/4", rail: "✓✓●·", selected: true},
+			{id: "converge-fleet-1a9", state: "succeeded", progress: "3/3", rail: "✓✓✓"},
+			{id: "tf-apply-core-77c", state: "failed", progress: "1/3", rail: "✓✗▪"},
+		},
+	}
+	assertFrame(t, "workflows-120", renderWorkflowsScreen(m))
+}
+
+func TestWorkflowDetailGolden(t *testing.T) {
+	m := WorkflowDetailModel{
+		id: "provision-aurora-8f2", state: "running", summary: "2/4 done",
+		steps: []workflowStepLine{
+			{no: "1", kind: "provision", status: "succeeded", job: "#12"},
+			{no: "2", kind: "onboard", status: "succeeded", job: "#13"},
+			{no: "3", kind: "converge", status: "running", job: "#14"},
+			{no: "4", kind: "verify", status: "pending", job: "-"},
+		},
+	}
+	assertFrame(t, "workflow-detail-80", renderWorkflowDetail(m))
+}
+
 func TestTraceGolden(t *testing.T) {
 	m := TraceModel{
 		title: "trace · disk-pressure @ 14:02:11",

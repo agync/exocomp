@@ -63,6 +63,11 @@ type Model struct {
 	sources    []store.Source
 	sourcesErr error
 
+	workflows       []workflowView
+	workflowsErr    error
+	workflowsCursor int
+	workflowDetail  string // non-empty: the workflow id whose step ledger is open
+
 	// The glance streams the new screens read: pending approvals, recent
 	// events, and the active holds behind the banner.
 	approvals      []store.Approval
@@ -111,6 +116,7 @@ func (m Model) Init() tea.Cmd {
 		loadWorkspacesCmd(m.store),
 		loadSchedulesCmd(m.store),
 		loadSourcesCmd(m.store),
+		loadWorkflowsCmd(m.store),
 		loadGlanceCmd(m.store),
 		tickCmd(),
 	)
@@ -172,6 +178,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case workflowsLoadedMsg:
+		m.workflowsErr = msg.err
+		if msg.err == nil {
+			m.workflows = msg.workflows
+			// Clamp the cursor: a reload may have shortened the list.
+			if m.workflowsCursor >= len(m.workflows) {
+				m.workflowsCursor = 0
+			}
+		}
+		return m, nil
+
 	case glanceLoadedMsg:
 		m.glanceErr = msg.err
 		if msg.err == nil {
@@ -224,6 +241,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadSchedulesCmd(m.store))
 	case screenSources:
 		cmds = append(cmds, loadSourcesCmd(m.store))
+	case screenWorkflows:
+		cmds = append(cmds, loadWorkflowsCmd(m.store))
 	case screenApprovals, screenEvents:
 		cmds = append(cmds, loadGlanceCmd(m.store))
 	}
@@ -297,6 +316,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "9":
+		if !m.tailing {
+			m.active = screenWorkflows
+			m.workflowDetail = ""
+		}
+		return m, nil
+
 	case "tab":
 		if !m.tailing {
 			m.active = otherScreen(m.active)
@@ -310,6 +336,9 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.tailJobID = 0
 			m.tailEvents = nil
 			m.tailErr = nil
+		case m.active == screenWorkflows && m.workflowDetail != "":
+			// esc closes the step ledger back to the workflows list.
+			m.workflowDetail = ""
 		case m.active != screenHome:
 			// esc walks back toward the root rather than quitting.
 			m.active = screenHome
@@ -325,6 +354,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			return m.startTailSelectedJob()
 		case screenWorkspaces:
 			return m.startTailSelectedWorkspace()
+		case screenWorkflows:
+			if m.workflowDetail == "" && m.workflowsCursor < len(m.workflows) {
+				m.workflowDetail = m.workflows[m.workflowsCursor].id
+			}
+			return m, nil
 		}
 		return m, nil
 	}
@@ -341,8 +375,25 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.workspacesTable.model, cmd = m.workspacesTable.model.Update(msg)
 	case m.active == screenSchedules:
 		m.schedulesTable.model, cmd = m.schedulesTable.model.Update(msg)
+	case m.active == screenWorkflows && m.workflowDetail == "":
+		m.moveWorkflowsCursor(msg.String())
 	}
 	return m, cmd
+}
+
+// moveWorkflowsCursor walks the workflows list selection. The surface is a
+// fixture frame, not a bubbles table, so it carries its own j/k + arrow cursor.
+func (m *Model) moveWorkflowsCursor(key string) {
+	switch key {
+	case "up", "k":
+		if m.workflowsCursor > 0 {
+			m.workflowsCursor--
+		}
+	case "down", "j":
+		if m.workflowsCursor < len(m.workflows)-1 {
+			m.workflowsCursor++
+		}
+	}
 }
 
 // startTailSelectedJob begins tailing the Jobs screen's selected job.
