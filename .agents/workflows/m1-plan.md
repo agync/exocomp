@@ -274,3 +274,76 @@ where noted.
    mute/metrics/setup; log.md entries.
 10. Deferred to v1.1 (not gating): dead-man ping subsystem (metrics gauge + doctor
     honest today); the terraform_provider inventory plugin path (story 5 ergonomic).
+
+---
+
+# M3c — the last build milestone (durable choreography + policy + story 5)
+
+The four items share ONE spine: the ADR 0008 step ledger (`workflow_step` table,
+each step's effect written in the same tx as its ledger row, resume-from-ledger in
+the boot sweep, the queue stays the sole execution authority). Because upgrade and
+the story-5 chain are choreographies ON the ledger, M3c runs in TWO merged passes,
+NOT one parallel fan-out: pass 1 lands the primitives, I merge, pass 2 builds the
+choreographies on them. Grounding: docs/adr/0008-step-ledger-over-dbos.md,
+docs/design/v1-acceptance.md (stories 3 + 5 especially, and the governing rule
+"never expose raw state"), docs/design/expert-reviews.md.
+
+Migration numbers are ASSIGNED per lane to avoid the collision hazard: ledger=0011,
+plan-policy=0012, story5=0013 (only if a table is truly needed — prefer reusing
+`inventory`/`artifact`), upgrade=0014 (only if needed). No `git add -A`; a lane
+edits only its own migration file.
+
+## File ownership (M3c pass 1 — primitives)
+
+| Lane | Owns exclusively |
+|---|---|
+| ledger | internal/store migration 0011 (`workflow_step`: workflow_id, step_no, kind, status, result_json, rollback_marker, created_at/updated_at) + its CRUD (new file internal/store/workflow.go), internal/queue workflow sequencer (new file internal/queue/workflow.go): enqueue an ordered step list, run step N+1 only when step N reached `succeeded`, persist each step's outcome in the ledger, and resume incomplete workflows from the ledger in the boot sweep (extend the existing crash sweep, don't fork it). The apply→play dependency EDGE is the minimal proof. The queue remains the only executor — a workflow drives it, it does not become a second runtime. |
+| plan-policy | internal/policy/** (NEW package: a CEL env over the tofu plan-show JSON, reusing the reactive/rule.go pattern — celEnv via sync.OnceValues, Compile enforcing a bool AST, Program.Match under a cost+time budget — but with a `plan` variable, not `event`), internal/store migration 0012 (`plan_policy`: id, name UNIQUE, workspace, expr, action[deny|require_approval], enabled), cmd/exocomp/policy.go (policy add/list/rm), and the enforcement SEAM at plan-seal time: when a plan artifact is sealed (cmd/exocomp/planseal.go + the seal call site), evaluate matching policies against the plan-show JSON; a `deny` verdict marks the sealed plan unconsumable so a later apply refuses it, a `require_approval` verdict routes through the existing queue approval gate. Reads the plan-show JSON tofu.go already produces — do NOT rewrite tofu.go's plan path. |
+
+## Gate (M3c pass 1)
+
+- ledger: a two-step workflow where step 2 runs iff step 1 succeeded; step 1 failing
+  leaves step 2 `blocked` and the workflow `failed`, both readable from the ledger;
+  killing the daemon mid-workflow and restarting RESUMES from the ledger (step 1
+  not re-run if already `succeeded`) — proven with real daemon-restart output. The
+  ledger row is written in the same tx as the step effect (a crash between effect
+  and ledger cannot double-run an idempotent step). Full -race suite green.
+- plan-policy: a policy `deny` on a plan whose show-JSON matches (e.g.
+  `plan.resource_changes.exists(c, c.change.actions.exists(a, a == "delete"))`)
+  makes the sealed plan unconsumable — a subsequent apply of that plan REFUSES with
+  the policy name in the message; a `require_approval` policy routes the apply
+  through the approval gate; a non-matching plan applies clean. CEL compile errors
+  are refused at policy-add time (a rule that cannot decide cannot silently allow).
+  Real transcripts.
+
+## File ownership (M3c pass 2 — choreographies, on the merged primitives)
+
+| Lane | Owns exclusively |
+|---|---|
+| story5 | The story-5 handoff: at apply end, internal/executor/tofu.go runs `tofu output -json` INSIDE the same sandboxed run that holds the bearer + pbkdf2 passphrase; a new producer persists ONLY declared, non-sensitive outputs (sensitive-marked outputs redacted via internal/queue/redact.go, never written) as a workspace inventory artifact (internal/store artifact + inventory; reuse `static` kind or migration 0013 for a `tofu-output` provenance). internal/executor/ansible.go consumes that artifact as `--inventory` from its own 0700 private dir (the existing os.MkdirTemp pattern) with NO bearer and NO tfstate access. The apply→capture→inventory→play CHAIN is a ledger workflow (pass-1 primitive). cmd wiring to define+run the chain. GOVERNING RULE (v1-acceptance.md:44): raw tfstate is NEVER the inventory source — declared outputs only. |
+| upgrade | Self upgrade/rollback as a ledger choreography: cmd/exocomp/{upgrade.go,rollback.go}. Steps: snapshot (reuse internal/backup engine.go) → stage the new binary → verify (run `version`/`doctor` against the staged binary) → atomic swap → post-swap health check → ROLLBACK to the snapshot + prior binary on any failed step. Version pinning/channel in internal/version if needed; migration 0014 only if an `upgrade_history` row is genuinely warranted (else the ledger IS the history). Never sudo — operate within the data dir + the binary's own path; document the systemd restart handoff. |
+
+## Gate (M3c pass 2)
+
+- story5: `tofu apply` in a workspace with declared outputs → `tofu output -json`
+  captured in-sandbox → a sensitive-marked output is ABSENT from the materialized
+  inventory (asserted) while non-sensitive host/group outputs are present → a
+  dependent ansible play runs against that inventory from a 0700 dir, and the play's
+  environment carries NO bearer/passphrase/tfstate (asserted). Prove the raw
+  tfstate never reaches the play. The chain is one ledger workflow; a failed apply
+  leaves the play blocked. Real transcripts.
+- upgrade: `exocomp upgrade` to a good staged binary swaps it and the new version
+  reports; `exocomp upgrade` to a DELIBERATELY BROKEN staged binary (fails
+  version/doctor) rolls back — the old binary and the pre-upgrade data snapshot are
+  restored and the daemon is healthy — proven with real before/after `version` +
+  the rollback transcript. No sudo anywhere in the path.
+
+## M3c gate scripts + docs
+
+Each pass adds its e2e gate script under test/e2e/ (m3c-ledger-gate.sh,
+m3c-policy-gate.sh, m3c-story5-gate.sh, m3c-upgrade-gate.sh) in the m1/m2-gate.sh
+style (POSIX sh, set -eu, fresh clone, run on the lima node where a story needs a
+host). Docs (invariant 8): operator pages for workflows/step-ledger, plan policy,
+the terraform→ansible handoff, and upgrade/rollback; log.md entries. After both
+passes merge, an M3c maintenance pass (like m3a-maintain/m3b-fix) hardens the seams
+before M3d runs the five-story v1.0 gate.
