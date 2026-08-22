@@ -57,15 +57,11 @@ func TofuArgv(op string, args ...string) []string {
 	return append(argv, args...)
 }
 
-// TofuPlanOutcome is the structured payload attached to the event a plan
-// emits. `tofu plan -detailed-exitcode` reports "changes present" as exit code
-// 2, which is neither success nor failure; executor.Result has one exit code
-// and the queue reads it as the verdict, so the distinction travels as a job
-// event instead — durable, append-only, and readable by whatever asks later.
-type TofuPlanOutcome struct {
-	Operation string `json:"operation"`
-	Changes   bool   `json:"changes"`
-}
+// The payload `tofu plan -detailed-exitcode` reports "changes present" as exit
+// code 2, which is neither success nor failure; executor.Result has one exit
+// code and the queue reads it as the verdict, so the distinction travels as a
+// job event instead — durable, append-only, and readable by whatever asks
+// later. TofuPlanOutcome, with its resource-level drift, lives in tofu_drift.go.
 
 // tofuEventKey namespaces the outcome inside an event's raw_json.
 const tofuEventKey = "tofu"
@@ -225,9 +221,32 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 		return res, err
 	}
 	if op == "plan" {
-		res = reportPlanOutcome(res, sink)
+		res = reportPlanOutcome(ctx, res, sink, t.driftShower(bin, spec))
 	}
 	return res, nil
+}
+
+// driftShower captures `tofu show -json <planfile>` for a plan that wrote one,
+// so the outcome carries resource-level drift. It runs in the daemon, reading
+// the plan file the run produced — the file is a local artifact the control
+// plane already holds, so no sandbox is needed to describe it, and a failure
+// here only omits the detail (the plan's exit code is still the verdict). A
+// plan with no -out has no file to describe and returns nothing.
+func (t *Tofu) driftShower(bin string, spec Spec) func(context.Context) []byte {
+	planFile, _ := planOutPath(spec.Argv)
+	if planFile == "" {
+		return nil
+	}
+	return func(ctx context.Context) []byte {
+		cmd := exec.CommandContext(ctx, bin, "show", "-json", "-no-color", planFile)
+		cmd.Dir = spec.Dir
+		cmd.Env = spec.Env
+		out, err := cmd.Output()
+		if err != nil {
+			return nil
+		}
+		return out
+	}
 }
 
 // resolve validates the spec and resolves the executable and the operation.
@@ -259,31 +278,55 @@ func (t *Tofu) resolve(spec Spec) (bin, op string, err error) {
 
 // reportPlanOutcome turns -detailed-exitcode's third answer into an event.
 // Exit 2 means the plan found changes, which is a fact about infrastructure,
-// not a failed run, so the job's exit code becomes 0.
-func reportPlanOutcome(res Result, sink EventSink) Result {
+// not a failed run, so the job's exit code becomes 0. When a shower is given —
+// the plan wrote a file to describe — the outcome carries the resource-level
+// drift and pending changes, with attribute values suppressed.
+func reportPlanOutcome(ctx context.Context, res Result, sink EventSink, show func(context.Context) []byte) Result {
 	changes := res.ExitCode == 2
 	if res.ExitCode != 0 && !changes {
 		return res
 	}
+
 	outcome := TofuPlanOutcome{Operation: "plan", Changes: changes}
+	if changes && show != nil {
+		if body := show(ctx); body != nil {
+			if drift, pending, err := ParsePlanShowJSON(body); err == nil {
+				outcome.Drift = drift
+				outcome.Pending = pending
+			}
+		}
+	}
+
 	raw, err := json.Marshal(map[string]TofuPlanOutcome{tofuEventKey: outcome})
 	if err != nil {
-		// Unreachable: the payload is two fixed fields.
+		// Unreachable: the payload is fixed fields and string slices.
 		panic("executor: tofu: encode plan outcome: " + err.Error())
 	}
 
-	msg := "tofu plan: no changes"
-	if changes {
-		msg = "tofu plan: changes present (exit 2)"
-	}
 	sink.Emit(Event{
 		Ts:      time.Now().UTC(),
 		Level:   LevelSystem,
-		Msg:     msg,
+		Msg:     planOutcomeMsg(outcome),
 		RawJSON: string(raw),
 	})
 	res.ExitCode = 0
 	return res
+}
+
+// planOutcomeMsg is the human line beside the structured payload: the
+// resource-level drift when there is any, a bare "changes present" otherwise.
+func planOutcomeMsg(o TofuPlanOutcome) string {
+	if !o.Changes {
+		return "tofu plan: no changes"
+	}
+	if len(o.Drift) > 0 {
+		addrs := make([]string, len(o.Drift))
+		for i, d := range o.Drift {
+			addrs[i] = d.Address
+		}
+		return "tofu plan: drift in " + strings.Join(addrs, ", ")
+	}
+	return "tofu plan: changes present (exit 2)"
 }
 
 // tofuFlags replaces argv[0] with the resolved binary and inserts the flags a
