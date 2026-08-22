@@ -236,3 +236,14 @@ handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
   exposes the staleness gauges + a scrape shows them; the setup wizard runs
   end-to-end writing nothing until step 4; notification-mute yields the MUTED
   banner (jobs still run) distinct from PAUSED.
+
+## M3a residuals carried to v1.1 (from the maintenance fixes)
+
+- Git-snapshot forgery: the AUTHENTICATED.mac marker travels in the repo, so an
+  attacker stripping BOTH tag and marker falls back to legacy warn-and-proceed.
+  The realistic add-a-forged-snapshot case (marker intact) is refused today;
+  fully closing the deletion gap needs an out-of-band marker record (the recovery
+  kit already carries per-target facts — add the authenticates-flag there).
+- m1-gate depends on lima's ssh ControlPersist master (a pathname AF_UNIX socket
+  the sandbox permits); if a future lima drops it the play needs the identity key
+  + target port granted. Not a product issue — a test-harness coupling to note.
