@@ -62,6 +62,11 @@ const (
 
 func init() {
 	registerCommand(newUpgradeCmd)
+	// The upgrade steps run inline over upgradeDriver, which the daemon's queue
+	// driver does not register. A hard crash mid-upgrade must not have the boot
+	// ResumeAll re-drive them through a driver that cannot execute the kind; mark
+	// them so the daemon leaves an interrupted upgrade for `rollback` to settle.
+	queue.RegisterInlineOnlyKind(kindSnapshot, kindStage, kindVerify, kindSwap, kindHealth)
 }
 
 func newUpgradeCmd() *cobra.Command {

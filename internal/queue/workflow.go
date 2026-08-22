@@ -6,10 +6,50 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// inlineOnlyKinds is the set of step kinds a daemon's ResumeAll must never
+// re-drive. Some workflows run their steps inline over a driver only the
+// operator command builds — the upgrade choreography's upgradeDriver — which
+// the daemon's queue driver does not register. A hard crash mid-upgrade leaves
+// such a workflow incomplete in the ledger; without this, the boot ResumeAll
+// would hand its steps to a daemon driver that cannot execute the kind. The
+// owning command registers its kinds at init, so the queue stays a generic
+// executor with no compiled-in knowledge of upgrade.
+var (
+	inlineOnlyMu    sync.RWMutex
+	inlineOnlyKinds = map[string]struct{}{}
+)
+
+// RegisterInlineOnlyKind marks step kinds as operator-inline: a workflow whose
+// ledger carries any of them is left untouched by ResumeAll rather than
+// re-driven by a daemon. Call it from an init function of the command that owns
+// the kind. Safe for concurrent use.
+func RegisterInlineOnlyKind(kinds ...string) {
+	inlineOnlyMu.Lock()
+	defer inlineOnlyMu.Unlock()
+	for _, k := range kinds {
+		inlineOnlyKinds[k] = struct{}{}
+	}
+}
+
+// workflowInlineOnly reports whether any of a workflow's steps carry a kind
+// registered as operator-inline, so ResumeAll can skip the whole workflow: a
+// daemon cannot drive it, and re-arming one step of it would strand the rest.
+func workflowInlineOnly(steps []store.WorkflowStep) bool {
+	inlineOnlyMu.RLock()
+	defer inlineOnlyMu.RUnlock()
+	for _, step := range steps {
+		if _, ok := inlineOnlyKinds[step.Kind]; ok {
+			return true
+		}
+	}
+	return false
+}
 
 // Step is one leg of a workflow: a job to run, plus the kind recorded in the
 // ledger. The Spec is an ordinary queue Spec — the sequencer sets its
@@ -110,6 +150,11 @@ func (s *Sequencer) Run(ctx context.Context, workflowID string) error {
 // left, this picks up the workflows those jobs belonged to and runs their
 // remaining steps — never the ones already succeeded. Errors from one workflow
 // do not stop the others.
+//
+// Operator-inline workflows are skipped, not run: a workflow whose steps use a
+// kind only an operator command's driver executes (the upgrade choreography) is
+// left exactly as the crash left it, so the daemon never trips over an
+// interrupted upgrade. The operator's own re-run or `rollback` settles it.
 func (s *Sequencer) ResumeAll(ctx context.Context) (int, error) {
 	ids, err := s.q.store.ListIncompleteWorkflows(ctx)
 	if err != nil {
@@ -118,6 +163,14 @@ func (s *Sequencer) ResumeAll(ctx context.Context) (int, error) {
 	resumed := 0
 	var errs []error
 	for _, id := range ids {
+		steps, err := s.q.store.GetWorkflow(ctx, id)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("resume workflow %s: %w", id, err))
+			continue
+		}
+		if workflowInlineOnly(steps) {
+			continue // operator-inline (upgrade): not the daemon's to drive
+		}
 		if err := s.Run(ctx, id); err != nil {
 			errs = append(errs, fmt.Errorf("resume workflow %s: %w", id, err))
 			continue
