@@ -88,8 +88,29 @@ regression test, fixes it, and proves the exploit is dead.
      `systemd-creds`/rootless-podman path needs validation on a real host.
    - **E4** (keyring-version downgrade on an unauthenticated file) — still open; the DEK now
      rotates (E2), reducing its blast radius.
-2. **Supply-chain / deps** — S1 (sandbox the resolver), S2 (signed-ref fail-closed), S4
-   (resolver confinement), S5 (known_hosts on sync), S3.
+2. **Supply-chain / deps — S1/S2/S4/S5 LANDED 2026-08-22** (commits
+   65690ce/8fa16f2/6a71495/532518f): **S1 FIXED** (the uv resolver runs under the job
+   sandbox tier, not the daemon context — every uv invocation is wrapped in the nono
+   launcher, granted its venv cache, the manifest, and HTTPS, and denied the data dir and
+   the keys by the profile guard; a manifest whose install step reads a denied path fails
+   closed, proven against the real launcher). **S2 FIXED** (a `--signed` sync refuses when
+   there is no exocomp-owned allowed-signers rather than verifying against ambient git
+   config; `source add --signed` refuses at add time without `--allowed-signers`/`--signer`;
+   verification is pinned to ssh format — the attacker-signed-ref-via-ambient-config repro
+   now refuses). **S4 FIXED** (a pyproject dependency specifier beginning with `-` is
+   refused at parse, so `--index-url=…`/`-e /etc` cannot reach uv as a flag; accepted
+   specifiers pass uv after `--`). **S5 FIXED** (a git `ssh://` source pins the forge host
+   key from the recorded `known_host` store — strict verification when recorded, TOFU only
+   for an unrecorded forge; a host-key mismatch fails the sync). **S3** (unsigned default /
+   local-tree trust posture) is still open — HARDEN+DOC, not in this wave.
+   - **S1-resid** the resolver profile's grant set (uv tool tree, base interpreter, uv
+     cache) is validated against the sandbox by unit test with a stand-in uv; a live uv
+     resolve under the sandbox on a real host — fetching a real index, seeding a real
+     interpreter — still needs on-host validation, like the E1 systemd-credential tier.
+   - **S5-resid** the pin consumes the `known_host` store but does not itself record the
+     forge key; recording is `host onboard`/`ssh-keyscan`, so a forge's first sync is still
+     TOFU until its key is recorded. A non-standard forge SSH port needs its `known_host`
+     row keyed as `[host]:port`.
 3. **Reactive / approval** — R1 (dedup anchor), R2 (resolve auth), R3 (cap-disable), R4.
 4. **Daemon / backup** — D1 (KDF DoS), B1 (out-of-band backup marker), D3, D2.
 
