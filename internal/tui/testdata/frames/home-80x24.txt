@@ -21,4 +21,4 @@ SELF
 
 ────────────────────────────────────────────────────────────────────────────────
 dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗
-[0-6] screens  [enter] open  [p] pause  [m] mute  [q] quit              [?] help
+[0-9] screens  [enter] open  [p] pause  [m] mute  [q] quit              [?] help

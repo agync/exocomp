@@ -26,7 +26,7 @@ func renderEmptyWorkspaces() string {
 		"",
 		indent(17, "add the first:  exocomp workspace add ./infra"),
 	}
-	return renderEmpty("workspaces · 0", "14:03 UTC+11", block, "[0-6] screens  [q] quit")
+	return renderEmpty("workspaces · 0", "14:03 UTC+11", block, "[0-9] screens  [q] quit")
 }
 
 func indent(n int, s string) string { return fmt.Sprintf("%*s%s", n, "", s) }

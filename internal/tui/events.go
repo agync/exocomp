@@ -41,7 +41,7 @@ func renderEventsScreen(m EventsModel) string {
 			cell{26, r.source}, cell{37, r.outcome}, cell{49, r.reason},
 		))
 	}
-	lines = append(lines, "", lr(eventsKeys, "[0-6] screens", w))
+	lines = append(lines, "", lr(eventsKeys, "[0-9] screens", w))
 	return join(lines)
 }
 
