@@ -87,6 +87,11 @@ type JobArgs struct {
 	// table). Only names+values the operator typed travel here; envelope-sealed
 	// secrets never do.
 	ExtraVars map[string]string `json:"extra_vars,omitempty"`
+	// TolerateUnreachable opts an ansible run into the degraded outcome: a run
+	// whose only non-success is unreachable hosts settles as a tolerated
+	// degradation instead of a failure. It lives on the row so a daemon that
+	// claims the job runs it under the same tolerance the operator asked for.
+	TolerateUnreachable bool `json:"tolerate_unreachable,omitempty"`
 }
 
 // Duration is a time.Duration that marshals as a string ("30s") so job rows
@@ -128,6 +133,11 @@ type Job struct {
 	DedupKey       string
 	IdempotencyKey string
 	OwnerPID       int
+	// Partial is set when a succeeded job settled as a tolerated degradation
+	// (an unreachable-tolerant ansible run that reached every host it could and
+	// recorded the ones it could not). The state stays succeeded; this flag
+	// marks it a degraded success rather than a clean one.
+	Partial bool
 }
 
 // NewJob describes a job to create. Every job starts queued.
@@ -143,7 +153,7 @@ type NewJob struct {
 
 const jobColumns = `id, runbook, kind, "trigger", state, args_json, queued_at,
 	started_at, finished_at, exit_code, concurrency_key, dedup_key,
-	idempotency_key, owner_pid`
+	idempotency_key, owner_pid, partial`
 
 // CreateJob inserts a queued job. A duplicate idempotency_key returns
 // ErrDuplicate; use JobByIdempotencyKey to recover the original.
@@ -358,6 +368,25 @@ func (s *Store) SetJobExitCode(ctx context.Context, id int64, code int) error {
 	return nil
 }
 
+// SetJobPartial marks a job as a tolerated degradation: a succeeded run whose
+// only non-success was unreachable hosts. The job's terminal state is unchanged
+// (it stays succeeded, so no state-machine consumer is disturbed and it does not
+// page); this flag records that the success was degraded, not clean.
+func (s *Store) SetJobPartial(ctx context.Context, id int64, partial bool) error {
+	res, err := s.db.ExecContext(ctx, `UPDATE job SET partial = ? WHERE id = ?`, boolInt(partial), id)
+	if err != nil {
+		return wrap("set job partial", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("set job partial", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: set job partial %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 // processStart is when this process loaded the package. A row owned by our own
 // pid but stamped before this instant belongs to a previous process wearing
 // the same number — the normal case in a container, where every restart is
@@ -433,11 +462,12 @@ func scanJob(row rowScanner) (Job, error) {
 		exitCode                   sql.NullInt64
 		dedupKey, idempotencyKey   sql.NullString
 		ownerPID                   int64
+		partial                    int64
 		runbook, kind, triggerName string
 	)
 	err := row.Scan(&job.ID, &runbook, &kind, &triggerName, &state, &argsJSON,
 		&queuedAt, &startedAt, &finishedAt, &exitCode, &job.ConcurrencyKey,
-		&dedupKey, &idempotencyKey, &ownerPID)
+		&dedupKey, &idempotencyKey, &ownerPID, &partial)
 	if err != nil {
 		return Job{}, err
 	}
@@ -451,6 +481,7 @@ func scanJob(row rowScanner) (Job, error) {
 	job.FinishedAt = timePtr(finishedAt)
 	job.ExitCode = intPtr(exitCode)
 	job.OwnerPID = int(ownerPID)
+	job.Partial = partial != 0
 	if dedupKey.Valid {
 		job.DedupKey = dedupKey.String
 	}

@@ -43,6 +43,20 @@ func TestOutcome(t *testing.T) {
 			executor.Result{ExitCode: 3},
 			nil, context.Canceled, store.StateFailed,
 		},
+		{
+			// A tolerated degradation settles succeeded, not failed, even though
+			// the process exited non-zero — so it does not page.
+			"degraded settles succeeded",
+			executor.Result{ExitCode: 4, Degraded: true, UnreachableHosts: []string{"laptop"}},
+			nil, nil, store.StateSucceeded,
+		},
+		{
+			// A timeout or a driver error wins over Degraded: the tolerance only
+			// reclassifies a process that ran to completion on its own.
+			"timeout beats degraded",
+			executor.Result{ExitCode: -1, Signaled: true, TimedOut: true, Degraded: true},
+			nil, context.DeadlineExceeded, store.StateTimedOut,
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

@@ -33,11 +33,16 @@ type Spec struct {
 	// ExtraVars are an ansible run's operator-supplied `-e key=val` variables,
 	// carried to the job row so a daemon replays them and written to a file at
 	// run time, never onto the ansible process's argv.
-	ExtraVars      map[string]string
-	ConcurrencyKey string
-	DedupKey       string
-	IdempotencyKey string
-	Timeout        time.Duration
+	ExtraVars map[string]string
+	// TolerateUnreachable opts an ansible run into the degraded outcome: a run
+	// whose only non-success is unreachable hosts settles as a tolerated
+	// degradation, not a failure. Carried to the job row so a daemon that claims
+	// the job runs it under the same tolerance.
+	TolerateUnreachable bool
+	ConcurrencyKey      string
+	DedupKey            string
+	IdempotencyKey      string
+	Timeout             time.Duration
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -125,13 +130,14 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		Kind:    spec.Kind,
 		Trigger: spec.Trigger,
 		Args: store.JobArgs{
-			Argv:             spec.Argv,
-			Dir:              spec.Dir,
-			Timeout:          store.Duration(spec.Timeout),
-			VaultProject:     spec.VaultProject,
-			RunSecretBinding: spec.RunSecretBinding,
-			Inventory:        spec.Inventory,
-			ExtraVars:        spec.ExtraVars,
+			Argv:                spec.Argv,
+			Dir:                 spec.Dir,
+			Timeout:             store.Duration(spec.Timeout),
+			VaultProject:        spec.VaultProject,
+			RunSecretBinding:    spec.RunSecretBinding,
+			Inventory:           spec.Inventory,
+			ExtraVars:           spec.ExtraVars,
+			TolerateUnreachable: spec.TolerateUnreachable,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
@@ -327,6 +333,17 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 		q.log.Error("record job exit code", "job", job.ID, "err", err)
 	}
 
+	// A degraded run settled as a tolerated non-failure: the driver reported it
+	// (an unreachable-tolerant ansible run whose only non-success was offline
+	// hosts). The state below stays succeeded so no consumer is disturbed; this
+	// flag records that the success was degraded, not clean, and the driver has
+	// already emitted the event naming the unreachable hosts.
+	if runErr == nil && res.Degraded && state == store.StateSucceeded {
+		if err := q.store.SetJobPartial(final, job.ID, true); err != nil {
+			q.log.Error("record job partial", "job", job.ID, "err", err)
+		}
+	}
+
 	sink.Emit(executor.Event{Level: executor.LevelSystem, Msg: msg})
 	if err := q.store.TransitionJob(final, job.ID, store.StateRunning, state); err != nil {
 		q.log.Error("finish job", "job", job.ID, "state", state, "err", err)
@@ -349,6 +366,13 @@ func outcome(res executor.Result, runErr, ctxErr error) (store.JobState, string)
 		return store.StateFailed, "driver error: " + runErr.Error()
 	case res.ExitCode == 0:
 		return store.StateSucceeded, "succeeded (exit 0)"
+	case res.Degraded:
+		// A tolerated degradation: the process exited non-zero, but its only
+		// non-success was a condition the operator opted to tolerate (ansible
+		// unreachable hosts). It settles succeeded-but-degraded, not failed, so
+		// it does not page — while the real exit code stays recorded.
+		return store.StateSucceeded, fmt.Sprintf("succeeded (degraded: exit %d, %d host(s) unreachable, tolerated)",
+			res.ExitCode, len(res.UnreachableHosts))
 	default:
 		return store.StateFailed, fmt.Sprintf("failed (exit %d)", res.ExitCode)
 	}
