@@ -46,7 +46,11 @@ func newScheduleAddCmd() *cobra.Command {
 		Short: "Register a recurring job",
 		Long: "Kind shell runs argv (everything after --) on the cron schedule. Kind " +
 			"backup runs one target's leg (--target), or every enabled target when " +
-			"--target is empty, each as its own job.",
+			"--target is empty, each as its own job. Kind play runs a playbook " +
+			"(everything after --, the playbook first) against the standing inventory " +
+			"--target names — `tf:<workspace>` for the inventory a workspace's apply " +
+			"refreshes, so a newly provisioned host joins the next fire. A play whose " +
+			"inventory is missing, stale, or hostless enqueues nothing.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
@@ -70,8 +74,18 @@ func newScheduleAddCmd() *cobra.Command {
 						"--concurrency-key applies to kind shell only")
 				}
 				scheduleArgs.Target = target
+			case sched.KindPlay:
+				if len(argv) == 0 {
+					return errors.New("schedule add: kind play needs a playbook after --")
+				}
+				if target == "" {
+					return errors.New("schedule add: kind play needs --target <inventory>")
+				}
+				scheduleArgs.Argv = argv
+				scheduleArgs.Target = target
 			default:
-				return fmt.Errorf("schedule add: --kind must be %s or %s", store.ScheduleShell, store.ScheduleBackup)
+				return fmt.Errorf("schedule add: --kind must be %s, %s or %s",
+					store.ScheduleShell, store.ScheduleBackup, sched.KindPlay)
 			}
 			if jitter < 0 {
 				return errors.New("schedule add: --jitter cannot be negative")
@@ -109,9 +123,9 @@ func newScheduleAddCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&cronExpr, "cron", "",
 		"cron expression: 6 fields (seconds first), or \"@every 5s\"")
-	cmd.Flags().StringVar(&kind, "kind", "", "shell|backup")
-	cmd.Flags().StringVar(&target, "target", "", "backup kind: target name (empty: every enabled target)")
-	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell kind: serialize against jobs sharing this key")
+	cmd.Flags().StringVar(&kind, "kind", "", "shell|backup|play")
+	cmd.Flags().StringVar(&target, "target", "", "backup kind: target name (empty: every enabled target); play kind: standing inventory name")
+	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell/play kinds: serialize against jobs sharing this key")
 	cmd.Flags().IntVar(&jitter, "jitter", 0, "sleep a random number of seconds up to this before enqueueing")
 	_ = cmd.MarkFlagRequired("cron")
 	_ = cmd.MarkFlagRequired("kind")

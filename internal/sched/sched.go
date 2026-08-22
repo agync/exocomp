@@ -289,6 +289,13 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 		// pipeline a webhook enters, so drift can gate an apply.
 		return []queue.Spec{reactive.PlanSpec(ws, Trigger)}, nil
 
+	case KindPlay:
+		spec, err := s.playSpec(ctx, sc)
+		if err != nil {
+			return nil, err
+		}
+		return []queue.Spec{spec}, nil
+
 	case store.ScheduleBackup:
 		names, err := s.backupTargetNames(ctx, sc.Args.Target)
 		if err != nil {

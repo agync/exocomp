@@ -10,8 +10,9 @@ import (
 
 // Schedule kinds, aliased from internal/store so callers need one import for
 // both the stored row and the queue Spec.Kind a fire produces. KindTofuPlan
-// is the odd one out: its fires are ordinary tofu jobs, so the daemon's own
-// tofu driver serves them and this package's router never sees one.
+// and KindPlay are the odd ones out: their fires are ordinary tofu and ansible
+// jobs, so the daemon's own drivers serve them and this package's router never
+// sees one.
 const (
 	KindShell    = store.ScheduleShell
 	KindBackup   = store.ScheduleBackup
