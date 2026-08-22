@@ -105,10 +105,12 @@ a:visited { color: var(--accent-text); }
 .appbar nav {
   display: flex; gap: 4px; margin-left: 8px;
   min-width: 0; overflow-x: auto; scrollbar-width: none;
+  /* Trailing-edge fade signals more items scroll off-screen (no JS, no arrow). */
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
 .appbar nav::-webkit-scrollbar { display: none; }
 .appbar nav a {
-  display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
+  display: inline-flex; align-items: center; height: 44px; padding: 0 12px;
   border-radius: var(--radius-chip); color: var(--ink-400); text-decoration: none;
   font: var(--type-button); flex: none; white-space: nowrap;
 }
@@ -117,11 +119,13 @@ a:visited { color: var(--accent-text); }
 .appbar .who { color: var(--ink-500); font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase; }
 
 .themetoggle {
-  height: 36px; min-width: 36px; padding: 0 10px;
+  height: 44px; min-width: 44px; padding: 0 14px;
   background: var(--surface-control); color: var(--ink-200);
-  border: 1px solid var(--hairline); border-radius: var(--radius-chip);
+  border: 1px solid var(--hairline); border-radius: 999px;
   font: var(--type-button); cursor: pointer;
+  display: inline-flex; align-items: center; gap: 7px;
 }
+.themetoggle:hover { color: var(--ink-100); }
 
 main { padding: var(--pad-page); max-width: 1100px; margin: 0 auto; }
 

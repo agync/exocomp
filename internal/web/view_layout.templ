@@ -35,13 +35,16 @@ templ layout(p page) {
 					if p.Who != "" {
 						<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
 					}
-					<button type="button" class="themetoggle" onclick="exoToggleTheme()" aria-label="Toggle light or dark theme">theme</button>
+					<button type="button" class="themetoggle" onclick="exoToggleTheme()" aria-label="Switch to light theme" id="themebtn">
+						<span id="themelabel">Light</span>
+					</button>
 				</header>
 				<main>
 					{ children... }
 					@footer(p.Signal)
 				</main>
 			</div>
+			@layoutReady()
 			<script src="/assets/htmx.min.js"></script>
 		</body>
 	</html>
@@ -87,7 +90,32 @@ templ themeInit() {
 		var next = cur === "dark" ? "light" : "dark";
 		el.setAttribute("data-theme", next);
 		try { localStorage.setItem("exocomp-theme", next); } catch (e) {}
+		exoSyncThemeLabel();
 	}
+	// The label names the theme a tap switches TO; the aria-label mirrors it.
+	// Null-safe so it is harmless before the button exists (it runs for real
+	// from the end-of-body script on load, and from the toggle thereafter).
+	function exoSyncThemeLabel() {
+		var lbl = document.getElementById("themelabel");
+		var btn = document.getElementById("themebtn");
+		if (!lbl || !btn) return;
+		var cur = document.documentElement.getAttribute("data-theme");
+		if (!cur) cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+		var target = cur === "dark" ? "Light" : "Dark";
+		lbl.textContent = target;
+		btn.setAttribute("aria-label", "Switch to " + target.toLowerCase() + " theme");
+	}
+	</script>
+}
+
+// layoutReady runs once the chrome is in the DOM: it syncs the theme-toggle
+// label to the active theme and scrolls the active nav item into view so the
+// current page is visible when the nav has scrolled off-screen on a phone.
+templ layoutReady() {
+	<script>
+	exoSyncThemeLabel();
+	document.querySelector('nav [aria-current="page"]')
+		?.scrollIntoView({ inline: "center", block: "nearest" });
 	</script>
 }
 
