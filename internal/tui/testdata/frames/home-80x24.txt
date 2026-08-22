@@ -14,9 +14,9 @@ BACKUPS                                     WORKSPACES
 
 NEXT    02:00 nightly-db · fires in 11h 57m
 
-
-
-
+SELF
+  version    0.7.4 · the binary an upgrade replaces
+  litestream RPO 3m · newest replicated frame
 
 
 ────────────────────────────────────────────────────────────────────────────────

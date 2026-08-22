@@ -31,7 +31,23 @@ type HomeModel struct {
 	ws                 []homeWs
 	nextLine           string
 	next               []homeNext
-	signal             string
+	// Self-observability: the control plane reporting on itself. version is the
+	// running binary (the upgrade target); rpo is the Litestream replication
+	// RPO age with the freshness detail beside it.
+	selfVersion string
+	selfRPO     string
+	selfDetail  string
+	signal      string
+}
+
+// selfLines is the SELF section both Home widths render: the running version
+// (what an upgrade replaces) and the Litestream replication RPO age.
+func (m HomeModel) selfLines() []string {
+	return []string{
+		"", "SELF",
+		row(cell{2, "version"}, cell{13, m.selfVersion + " · the binary an upgrade replaces"}),
+		row(cell{2, "litestream"}, cell{13, "RPO " + m.selfRPO + " · " + m.selfDetail}),
+	}
 }
 
 const (
@@ -73,6 +89,7 @@ func renderHome80(m HomeModel) string {
 		body = append(body, row(cs...))
 	}
 	body = append(body, "", "NEXT"+"    "+m.nextLine)
+	body = append(body, m.selfLines()...)
 
 	footer := []string{hrule(w), m.signal, lr(homeKeys80, helpRight, w)}
 	return frame(24, head, body, footer)
@@ -123,6 +140,7 @@ func renderHome120(m HomeModel) string {
 		}
 		body = append(body, row(cs...))
 	}
+	body = append(body, m.selfLines()...)
 
 	footer := []string{hrule(w), m.signal, lr(homeKeys120, helpRight, w)}
 	return frame(36, head, body, footer)

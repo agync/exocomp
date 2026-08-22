@@ -83,6 +83,25 @@ func TestBannerShowsMutedDistinctFromPaused(t *testing.T) {
 	}
 }
 
+// TestHomeSelfObservabilityRendersLive proves the Home SELF section carries the
+// running version and the Litestream replication RPO age. With no replica
+// configured the RPO reads "unknown · no replica configured" — never a
+// fresh-looking zero.
+func TestHomeSelfObservabilityRendersLive(t *testing.T) {
+	st := openTestStore(t)
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadGlanceCmd(st)())
+
+	view := m.View().Content
+	for _, want := range []string{"SELF", "version", "litestream", "RPO unknown", "no replica configured"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("Home SELF section missing %q, view:\n%s", want, view)
+		}
+	}
+}
+
 // TestSourcesScreenRendersLive drives the [7] Sources surface over seeded rows
 // and asserts trust posture, last-sync sha and the enabled flag all render.
 func TestSourcesScreenRendersLive(t *testing.T) {

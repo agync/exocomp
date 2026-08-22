@@ -78,6 +78,8 @@ type Model struct {
 	silences       []store.Silence
 	swallowed      int
 	mutes          []store.NotifyMute
+	selfRPO        string
+	selfDetail     string
 	glanceErr      error
 
 	tailing    bool
@@ -208,6 +210,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.silences = msg.silences
 			m.mutes = msg.mutes
 			m.swallowed = msg.swallowed
+			m.selfRPO = msg.selfRPO
+			m.selfDetail = msg.selfDetail
 		}
 		return m, nil
 

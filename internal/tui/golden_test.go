@@ -80,8 +80,11 @@ func home80Model() HomeModel {
 			{name: "dns-edge", status: "in sync"},
 			{name: "staging", status: "in sync"},
 		},
-		nextLine: "02:00 nightly-db · fires in 11h 57m",
-		signal:   "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗",
+		nextLine:    "02:00 nightly-db · fires in 11h 57m",
+		selfVersion: "0.7.4",
+		selfRPO:     "3m",
+		selfDetail:  "newest replicated frame",
+		signal:      "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗",
 	}
 }
 
@@ -114,7 +117,10 @@ func home120Model() HomeModel {
 			{at: "03:00", name: "configs", when: "in 12h 57m"},
 			{at: "Mon 04:00", name: "restore drill", when: "in 2d 13h"},
 		},
-		signal: "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗ update available",
+		selfVersion: "0.7.4",
+		selfRPO:     "3m",
+		selfDetail:  "newest replicated frame",
+		signal:      "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗ update available",
 	}
 }
 

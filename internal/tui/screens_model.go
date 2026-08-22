@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/version"
 )
@@ -27,7 +28,11 @@ type glanceLoadedMsg struct {
 	silences  []store.Silence
 	mutes     []store.NotifyMute
 	swallowed int
-	err       error
+	// Self-observability the Home SELF section reads: the running version and
+	// the Litestream replication RPO age with its freshness detail.
+	selfRPO    string
+	selfDetail string
+	err        error
 }
 
 func loadGlanceCmd(st *store.Store) tea.Cmd {
@@ -63,8 +68,36 @@ func loadGlanceCmd(st *store.Store) tea.Cmd {
 				return glanceLoadedMsg{err: err}
 			}
 		}
-		return glanceLoadedMsg{approvals: approvals, events: events, silences: silences, mutes: mutes, swallowed: swallowed}
+		rpo, detail := litestreamRPO(ctx, st, time.Now())
+		return glanceLoadedMsg{
+			approvals: approvals, events: events, silences: silences, mutes: mutes,
+			swallowed: swallowed, selfRPO: rpo, selfDetail: detail,
+		}
 	}
+}
+
+// litestreamRPO observes the Litestream replication RPO age the same way the
+// metrics registry's staleness gauge does: read the configured replica target,
+// then the newest replicated frame's age. An age exocomp cannot observe (no
+// replica, a remote replica only litestream can read, or no frames yet) is
+// reported honestly as "unknown", never as a fresh-looking zero.
+func litestreamRPO(ctx context.Context, st *store.Store, now time.Time) (rpo, detail string) {
+	raw, err := st.GetSetting(ctx, litestream.SettingReplicaTarget)
+	if err != nil || raw == "" {
+		return "unknown", "no replica configured"
+	}
+	target, perr := litestream.ParseTarget(raw)
+	if perr != nil {
+		return "unknown", "replica target unparseable"
+	}
+	age, _, ok, ferr := litestream.ReplicaFreshness(target, now)
+	if ferr != nil || !ok {
+		if target.Remote() {
+			return "unknown", "remote replica — readable only by litestream"
+		}
+		return "unknown", "no frames replicated yet"
+	}
+	return shortDur(age), "newest replicated frame"
 }
 
 // bannerState derives the top-line banner from the active holds. A global
@@ -97,12 +130,15 @@ func (m Model) bannerState() BannerState {
 func (m Model) homeModel() HomeModel {
 	now := time.Now()
 	h := HomeModel{
-		title:      "exocomp · " + hostname(),
-		clock:      now.Local().Format("15:04 MST"),
-		tick:       "tick 2s",
-		needsCount: len(m.approvals),
-		signal:     m.signalLine(),
-		nextLine:   m.nextFireLine(now),
+		title:       "exocomp · " + hostname(),
+		clock:       now.Local().Format("15:04 MST"),
+		tick:        "tick 2s",
+		needsCount:  len(m.approvals),
+		signal:      m.signalLine(),
+		nextLine:    m.nextFireLine(now),
+		selfVersion: version.Version,
+		selfRPO:     orUnknown(m.selfRPO),
+		selfDetail:  orUnknown(m.selfDetail),
 	}
 	for _, a := range m.approvals {
 		h.needs = append(h.needs, homeNeed{

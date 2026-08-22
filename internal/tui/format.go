@@ -53,6 +53,15 @@ func orDash(s string) string {
 	return s
 }
 
+// orUnknown renders a self-observability field that has not loaded yet as
+// "unknown" rather than a blank, so the SELF section never reads as fresh-zero.
+func orUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
+}
+
 // yesNo renders a boolean flag column the way the schedules table does.
 func yesNo(b bool) string {
 	if b {
