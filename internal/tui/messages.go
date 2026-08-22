@@ -154,11 +154,18 @@ func loadWorkspaceStatus(ctx context.Context, st *store.Store, ws store.Workspac
 	return out, nil
 }
 
-// schedulesLoadedMsg carries the result of a schedules + last-job-state
-// refresh.
+// scheduleLast is a schedule's last-fire summary: the state of the job its last
+// fire enqueued and when that job ran, so the schedules screen shows both the
+// outcome (a drift-check schedule's last drift result included) and its recency.
+type scheduleLast struct {
+	state store.JobState
+	fired time.Time
+}
+
+// schedulesLoadedMsg carries the result of a schedules + last-fire refresh.
 type schedulesLoadedMsg struct {
 	schedules []store.Schedule
-	lastState map[int64]store.JobState // keyed by schedule id
+	last      map[int64]scheduleLast // keyed by schedule id
 	err       error
 }
 
@@ -169,7 +176,7 @@ func loadSchedulesCmd(st *store.Store) tea.Cmd {
 		if err != nil {
 			return schedulesLoadedMsg{err: err}
 		}
-		lastState := make(map[int64]store.JobState, len(schedules))
+		last := make(map[int64]scheduleLast, len(schedules))
 		for _, sc := range schedules {
 			if sc.LastJobID == nil {
 				continue
@@ -178,9 +185,17 @@ func loadSchedulesCmd(st *store.Store) tea.Cmd {
 			if err != nil {
 				return schedulesLoadedMsg{err: err}
 			}
-			lastState[sc.ID] = job.State
+			l := scheduleLast{state: job.State}
+			// The last fire's time is when its job ran: finished if it has,
+			// else when it was queued (a still-running or queued fire).
+			if job.FinishedAt != nil {
+				l.fired = *job.FinishedAt
+			} else {
+				l.fired = job.QueuedAt
+			}
+			last[sc.ID] = l
 		}
-		return schedulesLoadedMsg{schedules: schedules, lastState: lastState}
+		return schedulesLoadedMsg{schedules: schedules, last: last}
 	}
 }
 

@@ -434,6 +434,29 @@ func TestSchedulesScreenRendersEnabledAndDisabled(t *testing.T) {
 		t.Fatalf("record schedule fire: %v", err)
 	}
 
+	// A drift-check schedule: a tofu-plan whose last fire's job state is the
+	// last drift outcome the screen surfaces, and whose kind must not truncate.
+	drift, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "drift-core", CronExpr: "@every 6h", Kind: store.ScheduleTofuPlan,
+	})
+	if err != nil {
+		t.Fatalf("create drift schedule: %v", err)
+	}
+	driftJob, err := st.CreateJob(ctx, store.NewJob{Runbook: "workspace:core", Kind: "tofu", Trigger: "cron"})
+	if err != nil {
+		t.Fatalf("create drift job: %v", err)
+	}
+	if err := st.TransitionJob(ctx, driftJob.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("transition drift to running: %v", err)
+	}
+	if err := st.TransitionJob(ctx, driftJob.ID, store.StateRunning, store.StateFailed); err != nil {
+		t.Fatalf("transition drift to failed: %v", err)
+	}
+	driftNext := time.Now().Add(6 * time.Hour)
+	if err := st.RecordScheduleFire(ctx, drift.ID, &driftJob.ID, &driftNext); err != nil {
+		t.Fatalf("record drift fire: %v", err)
+	}
+
 	if _, err := st.CreateSchedule(ctx, store.NewSchedule{
 		Name: "paused-plan", CronExpr: "@every 5m", Kind: store.ScheduleShell,
 	}); err != nil {
@@ -444,13 +467,15 @@ func TestSchedulesScreenRendersEnabledAndDisabled(t *testing.T) {
 	}
 
 	m := New(st)
-	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = update(t, m, loadSchedulesCmd(st)())
 	m = update(t, m, key('4'))
 
 	view := m.View().Content
 	for _, want := range []string{
 		"nightly-backup", "@daily", store.ScheduleBackup, "yes", "succeeded",
+		"drift-core", store.ScheduleTofuPlan, "failed", // the drift outcome, kind untruncated
+		"FIRED", // the last-fire column reached parity with the web surface
 		"paused-plan", "@every 5m", store.ScheduleShell, "no",
 	} {
 		if !strings.Contains(view, want) {

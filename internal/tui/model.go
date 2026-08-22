@@ -54,10 +54,10 @@ type Model struct {
 	workspacesTable workspacesTable
 	workspacesErr   error
 
-	schedules         []store.Schedule
-	scheduleLastState map[int64]store.JobState
-	schedulesTable    schedulesTable
-	schedulesErr      error
+	schedules      []store.Schedule
+	scheduleLast   map[int64]scheduleLast
+	schedulesTable schedulesTable
+	schedulesErr   error
 
 	// Post-v1 parity surfaces the web UI grew after v1 that the TUI had not.
 	sources    []store.Source
@@ -160,8 +160,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.schedulesErr = msg.err
 		if msg.err == nil {
 			m.schedules = msg.schedules
-			m.scheduleLastState = msg.lastState
-			m.schedulesTable.SetRows(scheduleRows(msg.schedules, msg.lastState))
+			m.scheduleLast = msg.last
+			m.schedulesTable.SetRows(scheduleRows(msg.schedules, msg.last))
 		}
 		return m, nil
 
