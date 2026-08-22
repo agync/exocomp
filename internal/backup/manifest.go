@@ -52,6 +52,40 @@ const macSuffix = ".mac"
 // something that did not hold the DEK.
 var ErrManifestTampered = errors.New("backup: manifest does not authenticate")
 
+// ErrManifestUnauthenticated reports a snapshot that carries no tag from a
+// target on record as authenticating its snapshots. A git target is encrypted
+// only to public recipients, so the DEK-keyed tag is the sole control binding a
+// snapshot to the secret; dropping it is the downgrade an attacker with git
+// write and the public recipients would attempt. It is distinct from
+// ErrManifestTampered (a tag present but wrong) and from the legacy warning (a
+// target that never authenticated at all).
+var ErrManifestUnauthenticated = errors.New("backup: snapshot is not authenticated")
+
+// AuthMarkerName sits at a target root once that target has written an
+// authenticated snapshot. Its presence turns a later snapshot that carries no
+// tag from a warning into a refusal: a target that authenticated once does not
+// silently fall back to trusting whatever bytes are there. The marker is itself
+// MAC'd under the target subkey, so no one lacking the DEK can forge one.
+const AuthMarkerName = "AUTHENTICATED.mac"
+
+// authMarkerBody is the fixed content the marker's tag is taken over. The
+// marker carries no data of its own — its presence and a valid tag are the
+// whole signal.
+var authMarkerBody = []byte("exocomp backup target authenticates its manifests\n")
+
+// WriteAuthMarker records at dir that this target authenticates its snapshots,
+// tagged with target's subkey.
+func WriteAuthMarker(dir string, key []byte, target string) error {
+	return WriteMACFile(filepath.Join(dir, AuthMarkerName), key, authMarkerBody, target, AuthMarkerName)
+}
+
+// VerifyAuthMarker reports whether dir holds an authenticating marker, and
+// errors when one is present but does not verify under key — a forged or
+// wrong-target marker is tampering, not a plain absence.
+func VerifyAuthMarker(dir string, key []byte, target string) (present bool, err error) {
+	return VerifyMACFile(filepath.Join(dir, AuthMarkerName), key, authMarkerBody, target)
+}
+
 // MACFile is what a .mac file holds. Target is informational — the key that
 // verifies the tag is already bound to the target it was derived for.
 type MACFile struct {

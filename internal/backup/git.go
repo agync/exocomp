@@ -129,12 +129,17 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	if err := WriteMACFile(filepath.Join(work, partsName+macSuffix), macKey, partsBody, t.Name, partsName); err != nil {
 		return "", 0, err
 	}
+	// Record that this target authenticates its snapshots, so a later push that
+	// drops the tag is caught as a downgrade rather than trusted as legacy.
+	if err := WriteAuthMarker(work, macKey, t.Name); err != nil {
+		return "", 0, err
+	}
 
-	addArgs := make([]string, 0, len(files)+2)
+	addArgs := make([]string, 0, len(files)+3)
 	for name := range files {
 		addArgs = append(addArgs, name)
 	}
-	addArgs = append(addArgs, partsName, partsName+macSuffix)
+	addArgs = append(addArgs, partsName, partsName+macSuffix, AuthMarkerName)
 	sort.Strings(addArgs)
 
 	git := func(args ...string) (toolResult, error) {

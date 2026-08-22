@@ -37,10 +37,15 @@ type Source struct {
 	IdentityFile string
 	// Password restores a restic repository whose password is already known,
 	// for the case where no age identity is at hand.
-	Password  string
-	Env       map[string]string
-	Driver    executor.Driver
-	StageRoot string
+	Password string
+	Env      map[string]string
+	// AllowUnauthenticated downgrades a missing manifest tag from a refusal to
+	// a loud warning. It exists for the genuinely legacy backup an operator
+	// knowingly accepts; the default refuses an untagged snapshot from a target
+	// that has authenticated before.
+	AllowUnauthenticated bool
+	Driver               executor.Driver
+	StageRoot            string
 	// Warn receives integrity findings that do not stop the restore — a
 	// snapshot with no manifest tag above all. Empty logs them.
 	Warn func(string)
@@ -351,7 +356,8 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) (leg le
 	if err != nil {
 		return legSource{}, err
 	}
-	if err := authenticateParts(clone, partsBody, snapshot, leg.dek, leg.target, src.warn); err != nil {
+	if err := authenticateParts(clone, partsBody, snapshot, leg.dek, leg.target,
+		src.AllowUnauthenticated, src.warn); err != nil {
 		return legSource{}, err
 	}
 	sealed, err := reassembleSnapshot(clone, manifest)
@@ -403,7 +409,8 @@ func checkKeyringVersion(extracted string, rootVersion int, m Manifest) error {
 // authenticateParts checks the parts manifest before a byte of it is trusted:
 // it lists the digests every part is checked against, so an unauthenticated
 // parts manifest makes those digests worth nothing.
-func authenticateParts(dir string, body []byte, snapshot string, dek []byte, target string, warn func(string)) error {
+func authenticateParts(dir string, body []byte, snapshot string, dek []byte, target string,
+	allowUnauthenticated bool, warn func(string)) error {
 	name := partsManifestName(snapshot)
 	if len(dek) != dekLen || target == "" {
 		warn("parts manifest not authenticated: no keyring in the clone to derive the " +
@@ -420,10 +427,26 @@ func authenticateParts(dir string, body []byte, snapshot string, dek []byte, tar
 	if err != nil {
 		return err
 	}
-	if !present {
-		warn("legacy backup: integrity unverified - " + name + " carries no tag; " +
-			"the part digests are self-consistent, but nothing proves they are yours")
+	if present {
+		return nil
 	}
+
+	// No tag. If this target has authenticated before it carries a marker at
+	// its root, and a snapshot that drops the tag there is a downgrade — the
+	// git forgery this refusal exists to stop. A forged or wrong-target marker
+	// surfaces as ErrManifestTampered from the verify.
+	marked, err := VerifyAuthMarker(dir, key, target)
+	if err != nil {
+		return err
+	}
+	if marked && !allowUnauthenticated {
+		return fmt.Errorf("%w: %s carries no tag, but %s records this target as authenticating its "+
+			"snapshots — a git snapshot binds to your keyring only through that tag; restore with "+
+			"--allow-unauthenticated only if you are certain this snapshot is yours",
+			ErrManifestUnauthenticated, name, AuthMarkerName)
+	}
+	warn("legacy backup: integrity unverified - " + name + " carries no tag; " +
+		"the part digests are self-consistent, but nothing proves they are yours")
 	return nil
 }
 

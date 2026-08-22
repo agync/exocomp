@@ -183,7 +183,8 @@ func TestRestoreRefusesATamperedPartsManifest(t *testing.T) {
 }
 
 // TestRestoreWarnsOnALegacySnapshot proves the compatibility half: a snapshot
-// written before tags existed still restores, and says so loudly.
+// written before tags existed — no tag and no authenticating marker — still
+// restores, and says so loudly.
 func TestRestoreWarnsOnALegacySnapshot(t *testing.T) {
 	t.Parallel()
 	requireTool(t, "git")
@@ -196,8 +197,10 @@ func TestRestoreWarnsOnALegacySnapshot(t *testing.T) {
 		t.Fatalf("git leg: %v / %v", err, report.Err())
 	}
 
+	// A genuinely legacy snapshot carries neither the tag nor the marker; strip
+	// both to stand in for one written before authentication shipped.
 	rewriteBackupRef(t, bare, func(clone string) {
-		gitRun(t, clone, "rm", "--quiet", partsManifestFile(t, clone)+macSuffix)
+		gitRun(t, clone, "rm", "--quiet", partsManifestFile(t, clone)+macSuffix, AuthMarkerName)
 	})
 
 	var warnings []string
@@ -222,6 +225,65 @@ func TestRestoreWarnsOnALegacySnapshot(t *testing.T) {
 		t.Fatalf("an untagged snapshot restored quietly: %v", warnings)
 	}
 	assertRestoredChain(t, f, dest, "offsite-git")
+}
+
+// TestRestoreRefusesDowngradeAtMarkedTarget is the forgery this control exists
+// to stop: a git target is encrypted only to public recipients, so the DEK-keyed
+// tag is the sole thing binding a snapshot to the secret. An attacker with git
+// write and those recipients forges a snapshot with a self-consistent parts
+// manifest and no tag. Because a real backup left the authenticating marker at
+// the target root, the restore refuses rather than warning — unless the operator
+// explicitly accepts the snapshot.
+func TestRestoreRefusesDowngradeAtMarkedTarget(t *testing.T) {
+	t.Parallel()
+	requireTool(t, "git")
+	f := newFixture(t)
+
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gitRun(t, "", "init", "--bare", "--quiet", bare)
+	target := f.target(t, "offsite-git", KindGit, bare)
+	if report, err := f.engine.Run(t.Context(), []Target{target}); err != nil || report.Err() != nil {
+		t.Fatalf("git leg: %v / %v", err, report.Err())
+	}
+
+	// Strip only the tag: the marker a genuine backup wrote stays, so the target
+	// is on record as authenticating. This is the forger's untagged snapshot.
+	rewriteBackupRef(t, bare, func(clone string) {
+		gitRun(t, clone, "rm", "--quiet", partsManifestFile(t, clone)+macSuffix)
+	})
+
+	dest := filepath.Join(t.TempDir(), "restored")
+	_, err := RestoreLatest(t.Context(), Source{
+		Kind:         KindGit,
+		URI:          bare,
+		IdentityFile: f.identity,
+	}, dest)
+	if !errors.Is(err, ErrManifestUnauthenticated) {
+		t.Fatalf("restore of an untagged snapshot at a marked target = %v, want ErrManifestUnauthenticated", err)
+	}
+	t.Logf("downgrade refused: %v", err)
+
+	// The escape hatch is explicit and loud: --allow-unauthenticated turns the
+	// refusal back into the legacy warning for a snapshot the operator vouches for.
+	var warnings []string
+	if _, err := RestoreLatest(t.Context(), Source{
+		Kind:                 KindGit,
+		URI:                  bare,
+		IdentityFile:         f.identity,
+		AllowUnauthenticated: true,
+		Warn:                 func(msg string) { warnings = append(warnings, msg) },
+	}, filepath.Join(t.TempDir(), "restored-allowed")); err != nil {
+		t.Fatalf("restore with --allow-unauthenticated: %v", err)
+	}
+	var loud bool
+	for _, w := range warnings {
+		if strings.Contains(w, "legacy backup: integrity unverified") {
+			loud = true
+		}
+	}
+	if !loud {
+		t.Fatalf("--allow-unauthenticated restored quietly: %v", warnings)
+	}
 }
 
 // partsManifestFile names the one parts manifest in a clone of the backup ref.

@@ -22,9 +22,18 @@ backup-<ts>/
 `MANIFEST.mac` is not listed inside the manifest it authenticates, and its key is
 per target, so a manifest lifted from one target does not verify against another.
 A restore checks the tag **before** it trusts a single sha256: a tag that does not
-match is reported as tampering, a digest that does not match as corruption. A
-snapshot with no tag — every backup written before this shipped — still restores,
-with a loud `legacy backup: integrity unverified` warning.
+match is reported as tampering, a digest that does not match as corruption.
+
+A snapshot with no tag from a target that never authenticated one still restores, with
+a loud `legacy backup: integrity unverified` warning. A git target is the exception: it
+is age-encrypted only to public recipients, so the DEK-keyed tag is the **only** thing
+binding a snapshot to your keyring. A git target that has authenticated once leaves an
+`AUTHENTICATED.mac` marker at its root; a later untagged snapshot there is a downgrade —
+the forgery an attacker with git write and the public recipients would attempt — and the
+restore **refuses** it (`ErrManifestUnauthenticated`) unless you pass
+`--allow-unauthenticated` for a snapshot you are certain is yours. Restic targets need no
+marker: their repository password is derived from the DEK, so an attacker without it can
+neither read nor write the repo.
 
 The engine (`internal/backup`) ships exactly this tree. `config.toml`, `blobs/`
 (job artifacts), and `repos/*.bundle` (project git bundles) join the tree when those

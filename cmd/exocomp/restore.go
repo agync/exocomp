@@ -15,11 +15,12 @@ func init() {
 
 func newRestoreCmd() *cobra.Command {
 	var (
-		from     string
-		dest     string
-		identity string
-		name     string
-		canary   string
+		from                 string
+		dest                 string
+		identity             string
+		name                 string
+		canary               string
+		allowUnauthenticated bool
 	)
 
 	cmd := &cobra.Command{
@@ -38,6 +39,7 @@ func newRestoreCmd() *cobra.Command {
 			src.Name = name
 			src.IdentityFile = identity
 			src.Env = restoreEnv(src.Kind)
+			src.AllowUnauthenticated = allowUnauthenticated
 			// An unauthenticated snapshot restores, but never quietly: the
 			// operator reading this is deciding whether to trust the result.
 			src.Warn = func(msg string) {
@@ -76,6 +78,9 @@ func newRestoreCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "target-name", "",
 		"target name the repository password was derived from; read from RECOVERY.md when empty")
 	cmd.Flags().StringVar(&canary, "canary", "", "after restoring, open this sealed secret to prove the chain")
+	cmd.Flags().BoolVar(&allowUnauthenticated, "allow-unauthenticated", false,
+		"accept a snapshot with no manifest tag from a target that authenticates its snapshots "+
+			"(warns instead of refusing); only for a snapshot you are certain is yours")
 	_ = cmd.MarkFlagRequired("from")
 	_ = cmd.MarkFlagRequired("dest")
 	return cmd
