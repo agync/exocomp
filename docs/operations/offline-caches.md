@@ -44,6 +44,14 @@ already satisfy the request, so a plain `TF_PLUGIN_CACHE_DIR` run still needs a 
 `OfflineProviders` mode that restricts resolution to that cache directory alone, with no
 registry method declared at all — one directory serves both roles, since tofu's
 filesystem-mirror method reads the exact layout `TF_PLUGIN_CACHE_DIR` already writes.
+
+A lockfile written online carries only `zh:` (registry) hashes, which the filesystem
+mirror cannot satisfy with no network, so an offline `init` would fail verification against
+it. In `OfflineProviders` mode the driver first runs `tofu providers lock -fs-mirror
+<cache> -platform=<current>`, which writes platform-correct `h1:` hashes into
+`.terraform.lock.hcl` sourced from the mirror alone — the hashes the following offline
+`init` can verify.
+
 That mode is proven end to end (`TestTofuPlanRunsOfflineFromPluginCache`,
 `internal/executor/tofu_offline_test.go`: one online apply, then a network-denied init and
 plan from the same cache) but is not yet wired to a workspace CLI flag — a restore-drill

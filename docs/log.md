@@ -466,3 +466,24 @@ converge: the execution cores are correct but the credential plane binding seale
 secrets to run env (provider env / plugin env / TF_VAR_) is missing, and the
 sandbox allowlist starves dynamic inventory and providers. v1 must-fixes fold into
 the M3b source-model scope; both lists recorded.
+
+## 2026-08-22 — M3b glue: run-path credentials and v1 surfaces
+
+The credential-plane binding is wired end to end: a run carries its `run_secret`
+binding and inventory names on the job row and resolves them to named env at
+execution — sealed values decrypted through the envelope for that run alone,
+absent from the row and scrubbed from events. This is what lets a dynamic
+inventory or a provider authenticate under the sandbox (stories 1/3/4/5).
+[operations/sources.md](operations/sources.md).
+
+Surfaces and deferred must-fixes landed with it: `workspace add --state-only`
+emits the mode-A backend block + bearer; `workspace prune` applies a keep-last-N
++ last-M-days state policy; the web dashboard shows MUTED (jobs still run)
+distinct from PAUSED; `serve --web-addr` runs the token-gated TLS LAN surface
+beside the loopback state backend ([ADR 0009](adr/0009-lan-access-tokens.md));
+the offline tofu path regenerates the lock from the fs-mirror with `h1:` hashes;
+`host onboard` records `known_hosts` into the backed-up store, ensures the fleet
+key, and seeds the onboarding runbook; and setup step 4 persists the operator
+name and ntfy topic and sends (or clearly declines) the test push. Operator
+pages: [sources](operations/sources.md), [LAN access](operations/lan-access.md),
+[setup and notifications](operations/notifications.md).
