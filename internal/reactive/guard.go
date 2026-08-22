@@ -211,10 +211,14 @@ func (e *Engine) guardCooldown(ctx context.Context, rule store.Rule, now time.Ti
 // rule that fired ten times at 23:59 must not get ten more at 00:01.
 const capWindow = 24 * time.Hour
 
-// guardDailyCap disables a rule that has spent its budget. A cap throttling
-// silently would leave a misfiring rule firing forever at the cap rate; a rule
-// that disables itself is a thing the operator has to come and look at, which
-// is the point (architecture/overview.md).
+// guardDailyCap throttles a rule that has spent its budget: the action is
+// withheld, but the rule stays armed. Disabling it instead would let a flood of
+// matching events push a security rule into a silent dark state where later
+// real events are missed with no signal until a human re-enables it by hand
+// (finding R3). Throttling keeps the rule evaluating — every over-cap event is
+// recorded as a suppressed row naming the rule, and the budget recovers on its
+// own when the rolling window clears — and pages loudly, once per window, so a
+// flood is loud rather than blinding.
 func (e *Engine) guardDailyCap(ctx context.Context, rule store.Rule, now time.Time, trace *Trace) (guardVerdict, error) {
 	if rule.DailyCap <= 0 {
 		trace.add(StepCap, rule.Name, true, "no daily cap")
@@ -231,14 +235,28 @@ func (e *Engine) guardDailyCap(ctx context.Context, rule store.Rule, now time.Ti
 		return guardVerdict{}, nil
 	}
 
-	if err := e.store.SetRuleEnabled(ctx, rule.Name, false); err != nil {
-		return guardVerdict{}, err
-	}
-	reason := fmt.Sprintf("daily cap %d reached; rule %s disabled", rule.DailyCap, rule.Name)
+	reason := fmt.Sprintf("daily cap %d reached; rule %s throttled but still armed",
+		rule.DailyCap, rule.Name)
 	trace.add(StepCap, rule.Name, false, "%s", reason)
 
-	e.notify(ctx, capDisabledNotification(rule))
+	if e.capPageDue(rule.ID, now) {
+		e.notify(ctx, capThrottledNotification(rule))
+	}
 	return guardVerdict{suppressed: true, reason: reason}, nil
+}
+
+// capPageDue reports whether a rule's cap should page now, and marks it paged.
+// A cap that paged on every over-budget event would turn a flood into a
+// notification storm — a second denial-of-service on the operator's phone — so
+// it pages at most once per rolling window per rule.
+func (e *Engine) capPageDue(ruleID int64, now time.Time) bool {
+	e.capMu.Lock()
+	defer e.capMu.Unlock()
+	if last, ok := e.capPaged[ruleID]; ok && now.Sub(last) < capWindow {
+		return false
+	}
+	e.capPaged[ruleID] = now
+	return true
 }
 
 // clock renders a wall-clock time the way a reason string carries one.

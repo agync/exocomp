@@ -76,8 +76,12 @@ run is refused here rather than logged on every event. `event` carries `source`,
 `kind`, `name`, `status`, `severity`, `host`, `instance`, `fingerprint`,
 `summary`, `labels`, and `annotations`.
 
-`rule list` shows each rule's guardrails and why it is gated. A rule its daily
-cap disabled stays disabled until `rule enable` — that is the point of the cap.
+`rule list` shows each rule's guardrails and why it is gated. A rule that hits
+its daily cap is throttled, not disabled: its actions are withheld and it pages
+at max priority, but it stays armed and keeps evaluating, and the budget recovers
+on its own once the rolling 24h window clears — a flood cannot blind it into a
+state that needs `rule enable` by hand. (`rule enable`/`rule disable` still work
+for a rule you turn off yourself.)
 
 `tofu-apply` is approval-gated whatever `--require-approval` says.
 

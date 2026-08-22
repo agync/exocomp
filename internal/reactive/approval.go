@@ -322,12 +322,16 @@ func withdrawnNotification(a store.Approval) notify.Notification {
 	}
 }
 
-// capDisabledNotification is max priority because only a human can undo it.
-func capDisabledNotification(rule store.Rule) notify.Notification {
+// capThrottledNotification is max priority because a rule at its cap is either
+// misfiring or under a flood, and both want a human now. It stays armed and
+// keeps evaluating — the page says so, so nobody re-enables a rule that was
+// never off (finding R3).
+func capThrottledNotification(rule store.Rule) notify.Notification {
 	return notify.Notification{
-		Title: "Rule disabled by its daily cap",
-		Body: fmt.Sprintf("Rule %q hit its cap of %d in %s and is now disabled. "+
-			"Nothing it would have run has run; re-enable it once you know why.",
+		Title: "Rule hit its daily cap",
+		Body: fmt.Sprintf("Rule %q hit its cap of %d in %s. It stays armed and keeps "+
+			"evaluating; its actions are withheld until the rolling window clears. "+
+			"A flood that trips this is worth looking at now.",
 			rule.Name, rule.DailyCap, humanDuration(capWindow)),
 		Priority: notify.PriorityMax,
 		Tags:     []string{"rotating_light"},

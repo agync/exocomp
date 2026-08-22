@@ -81,6 +81,13 @@ type Engine struct {
 	// restart sending one more is better than a column that has to be swept.
 	republished map[int64]bool
 
+	// capMu guards capPaged: the last time a rule's daily cap paged, so a flood
+	// past the cap alerts loudly once per rolling window instead of once per
+	// event. Process state on purpose, like republished — a restart re-pages
+	// once, which is louder than silent, not a ledger that has to be swept.
+	capMu    sync.Mutex
+	capPaged map[int64]time.Time
+
 	mu      sync.RWMutex
 	baseURL string
 }
@@ -108,6 +115,7 @@ func New(opts Options) (*Engine, error) {
 		clock:       opts.Clock,
 		log:         opts.Logger,
 		republished: map[int64]bool{},
+		capPaged:    map[int64]time.Time{},
 		baseURL:     opts.BaseURL,
 	}
 	if e.dedupWindow == 0 {

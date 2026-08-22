@@ -286,9 +286,15 @@ func TestCooldownReasonNamesTheNextEligibleTime(t *testing.T) {
 	}
 }
 
-// TestDailyCapDisablesTheRuleAndPages: a cap that throttled silently would
-// leave a misfiring rule firing forever at the cap rate.
-func TestDailyCapDisablesTheRuleAndPages(t *testing.T) {
+// TestDailyCapThrottlesButKeepsTheRuleArmed is the R3 red-team repro: a flood
+// of matching events must not push a security rule into a silent disabled state
+// where later real events are missed with no signal. A cap hit throttles the
+// action and pages loudly, but the rule stays armed — it keeps evaluating, each
+// throttled event stays visible as a suppressed row naming the rule, and the
+// budget recovers on its own when the rolling window clears. Nothing has to
+// re-enable it by hand, which is what the old disabling cap left an attacker to
+// exploit: flood to the cap, and the rule goes dark until a human notices.
+func TestDailyCapThrottlesButKeepsTheRuleArmed(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -297,37 +303,40 @@ func TestDailyCapDisablesTheRuleAndPages(t *testing.T) {
 	rule.DailyCap = 2
 	h.addRule(t, rule)
 
-	for i := range 2 {
-		h.advance(2 * shortDedup)
-		stored, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
+	// Spend the budget on two distinct conditions (distinct hosts, so dedup
+	// does not collapse them).
+	for _, host := range []string{"web-01", "web-02"} {
+		stored, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", host), []byte(`{}`))
 		if err != nil {
-			t.Fatalf("ingest %d: %v", i, err)
+			t.Fatalf("ingest %s: %v", host, err)
 		}
 		if stored.Outcome != store.OutcomeFired {
-			t.Fatalf("ingest %d outcome = %s (%s), want fired", i, stored.Outcome, stored.Reason)
+			t.Fatalf("ingest %s outcome = %s (%s), want fired", host, stored.Outcome, stored.Reason)
 		}
 	}
 
-	h.advance(2 * shortDedup)
-	capped, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
+	// The next distinct condition is over budget: throttled, not disabling.
+	capped, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-03"), []byte(`{}`))
 	if err != nil {
 		t.Fatalf("capped ingest: %v", err)
 	}
 	if capped.Outcome != store.OutcomeSuppressed {
 		t.Fatalf("capped outcome = %s (%s), want suppressed", capped.Outcome, capped.Reason)
 	}
-	if capped.Reason != "daily cap 2 reached; rule restart disabled" {
+	if capped.Reason != "daily cap 2 reached; rule restart throttled but still armed" {
 		t.Fatalf("reason = %q", capped.Reason)
 	}
 
-	stored, err := h.store.GetRule(ctx, "restart")
+	// The rule is still enabled — it did not go dark.
+	still, err := h.store.GetRule(ctx, "restart")
 	if err != nil {
 		t.Fatalf("get rule: %v", err)
 	}
-	if stored.Enabled {
-		t.Fatal("the rule is still enabled after hitting its cap")
+	if !still.Enabled {
+		t.Fatal("the cap disabled the rule; a flood must not be able to blind it")
 	}
 
+	// The cap paged loudly.
 	var paged *notify.Notification
 	for i := range h.sent.sent {
 		if h.sent.sent[i].Priority == notify.PriorityMax {
@@ -337,19 +346,33 @@ func TestDailyCapDisablesTheRuleAndPages(t *testing.T) {
 	if paged == nil {
 		t.Fatalf("no max-priority notification was sent; got %+v", h.sent.sent)
 	}
-	if !strings.Contains(paged.Body, "restart") || !strings.Contains(paged.Body, "disabled") {
+	if !strings.Contains(paged.Body, "restart") || !strings.Contains(paged.Body, "cap") {
 		t.Fatalf("cap notification body = %q", paged.Body)
 	}
 
-	// A disabled rule is out of the evaluated set, so the next event is
-	// ignored rather than suppressed again.
-	h.advance(2 * shortDedup)
-	next, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
+	// A later real event still reaches the rule: it is suppressed by the cap and
+	// recorded against the rule, a visible signal — not ignored as if no rule
+	// existed, which is how the disabling cap lost the alert.
+	next, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-04"), []byte(`{}`))
 	if err != nil {
-		t.Fatalf("post-cap ingest: %v", err)
+		t.Fatalf("later ingest: %v", err)
 	}
-	if next.Outcome != store.OutcomeIgnored {
-		t.Fatalf("post-cap outcome = %s, want ignored", next.Outcome)
+	if next.Outcome != store.OutcomeSuppressed {
+		t.Fatalf("later outcome = %s, want suppressed (still evaluated), not lost", next.Outcome)
+	}
+	if next.MatchedRule != "restart" {
+		t.Fatalf("later event matched rule = %q, want restart — the rule went blind", next.MatchedRule)
+	}
+
+	// Past the rolling window (24h) the budget recovers with no manual re-enable.
+	h.advance(25 * time.Hour)
+	recovered, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-05"), []byte(`{}`))
+	if err != nil {
+		t.Fatalf("post-window ingest: %v", err)
+	}
+	if recovered.Outcome != store.OutcomeFired {
+		t.Fatalf("post-window outcome = %s (%s), want fired — the rule never recovered",
+			recovered.Outcome, recovered.Reason)
 	}
 }
 
@@ -393,13 +416,12 @@ func TestGuardLedgersSurviveARestart(t *testing.T) {
 }
 
 // TestGuardOrderIsTheLedgerOrder: silence comes first, so an event nobody
-// wants to hear about cannot spend a rule's budget or, worse, trip the cap
-// that disables the rule. A maintenance window must not leave the operator
-// with a rule they have to re-enable afterwards.
+// wants to hear about cannot spend a rule's budget or trip its cap. A
+// maintenance window must not cost the rule a fire it never made.
 //
 // Mutation check: move guardDailyCap or guardCooldown ahead of guardSilence in
-// runGuards and this fails — the silenced event reports the cap instead, and
-// disables the rule on its way out.
+// runGuards and this fails — the silenced event reports the cap or cooldown
+// instead of the silence, and the ledger assertion catches the spent budget.
 func TestGuardOrderIsTheLedgerOrder(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

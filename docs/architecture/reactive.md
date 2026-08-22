@@ -71,7 +71,7 @@ spend a rule's daily cap, and a duplicate must not reset a cooldown.
 | silence | does an active silence cover this event? | `silenced: host web-01 until 14:32 (12 swallowed)` |
 | dedup | has this condition already been decided inside the window? | `duplicate of event 41 within 5m` |
 | cooldown | did this rule fire too recently? | `cooldown 6h, next eligible 14:32` |
-| daily cap | has this rule spent its budget? | `daily cap 5 reached; rule restart disabled` |
+| daily cap | has this rule spent its budget? | `daily cap 5 reached; rule restart throttled but still armed` |
 | approval | is the action destructive, or does the rule require one? | `approval 3 pending, expires 14:32` |
 
 Silences are rows with a mandatory `expires_at`; there is no never-expires form,
@@ -80,9 +80,15 @@ global scope is the reactive kill switch — one row, not a separate flag, so
 pausing everything obeys the same mandatory expiry as muting one alert.
 
 Cooldowns and caps read `rule_fire` rows rather than counters in memory, so a
-crash-loop restart does not hand a rule a fresh budget. A cap **disables** the
-rule and pages at max priority: a cap that throttled silently would leave a
-misfiring rule firing forever at the cap rate.
+crash-loop restart does not hand a rule a fresh budget. A cap **throttles** the
+rule — it withholds the action but keeps the rule armed — and pages at max
+priority, once per rolling window. Disabling the rule instead would let a flood
+of matching events blind a security rule: it would go dark until a human
+re-enabled it, which is exactly what an attacker floods to achieve (finding R3).
+Throttling keeps the rule evaluating, so every over-cap event stays visible as a
+suppressed row naming the rule, the budget recovers on its own when the rolling
+window clears, and the loud page is throttled to one per window so the flood
+cannot turn into a notification storm.
 
 A dedup window anchors on the last event with the key that was *not* itself
 swallowed. Anchoring on the suppressed repeat would slide the window forward

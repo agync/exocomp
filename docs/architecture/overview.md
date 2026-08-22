@@ -53,7 +53,8 @@ architecture's single load-bearing property, and it is why the guardrails are en
 rather than advisory:
 
 - **Guardrails live in the queue**, not in configuration: cooldown, daily cap (which
-  *disables* the rule rather than throttling it), dedup, a global reactive kill switch, and
+  *throttles* the rule — withholds the action but keeps it armed and pages, rather than
+  disabling it into a state a flood could exploit), dedup, a global reactive kill switch, and
   default-deny on destructive runbook kinds. Their ledgers are SQLite rows, so a crash-loop
   restart does not reset the counters.
 - **Serialization is a queue property.** `concurrency_key` (defaulting to the workspace or
