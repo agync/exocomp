@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -26,11 +27,27 @@ func TestKnownHostRoundTrip(t *testing.T) {
 		t.Fatalf("record rsa: %v", err)
 	}
 
-	// A rekey of the same (host, type) replaces the value, not appends a row.
+	// Re-recording the SAME key is idempotent, not an error.
+	if err := s.RecordKnownHost(ctx, store.KnownHost{
+		Host: "node0", KeyType: "ssh-ed25519", Key: "AAAAC3NzaC1lZDI1NTE5AAAAoriginal",
+	}); err != nil {
+		t.Fatalf("re-record same key: %v", err)
+	}
+
+	// A CHANGED key for an existing (host, type) is refused, never silently
+	// overwritten — a changed key is a rekey the operator confirms, or a MITM.
 	if err := s.RecordKnownHost(ctx, store.KnownHost{
 		Host: "node0", KeyType: "ssh-ed25519", Key: "AAAAC3NzaC1lZDI1NTE5AAAArekeyed",
+	}); !errors.Is(err, store.ErrKnownHostChanged) {
+		t.Fatalf("changed key: want ErrKnownHostChanged, got %v", err)
+	}
+
+	// RotateKnownHost replaces the value after out-of-band confirmation, still
+	// one row per (host, type).
+	if err := s.RotateKnownHost(ctx, store.KnownHost{
+		Host: "node0", KeyType: "ssh-ed25519", Key: "AAAAC3NzaC1lZDI1NTE5AAAArekeyed",
 	}); err != nil {
-		t.Fatalf("rekey: %v", err)
+		t.Fatalf("rotate: %v", err)
 	}
 
 	hosts, err := s.ListKnownHosts(ctx)

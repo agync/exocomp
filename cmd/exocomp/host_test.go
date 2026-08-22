@@ -30,7 +30,7 @@ func TestHostOnboardRecordsKeysSeedsRunbookAndFleetKey(t *testing.T) {
 	}
 
 	var out, warn strings.Builder
-	if err := runHostOnboard(ctx, &out, &warn, []string{"node0"}); err != nil {
+	if err := runHostOnboard(ctx, &out, &warn, []string{"node0"}, false); err != nil {
 		t.Fatalf("onboard: %v (warn: %s)", err, warn.String())
 	}
 
@@ -102,7 +102,7 @@ func TestHostOnboardAgainstLocalhost(t *testing.T) {
 	dir := initForSource(t)
 	ctx := context.Background()
 	var o, w strings.Builder
-	if err := runHostOnboard(ctx, &o, &w, []string{"localhost"}); err != nil {
+	if err := runHostOnboard(ctx, &o, &w, []string{"localhost"}, false); err != nil {
 		t.Fatalf("onboard localhost: %v (%s)", err, w.String())
 	}
 

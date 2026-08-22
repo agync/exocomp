@@ -3,7 +3,8 @@
 # new host from an account that can already log in and escalate; exocomp writes
 # this file and the fleet public key, then runs it through the sandboxed, gated
 # queue. It creates the automation user, authorizes the fleet key, and grants
-# scoped passwordless sudo. Pass the fleet public key as an extra-var:
+# passwordless become (broad by default — scope the sudoers below if you need
+# least privilege). Pass the fleet public key as an extra-var:
 #   exocomp playbook run onboard.yml --inventory <hosts> \
 #     -e exocomp_fleet_pubkey="ssh-ed25519 AAAA... exocomp-fleet"
 - name: Onboard a host into the exocomp fleet
@@ -25,7 +26,7 @@
         state: present
         exclusive: false
 
-    - name: Grant scoped passwordless sudo
+    - name: Grant passwordless become for automation
       ansible.builtin.copy:
         dest: "/etc/sudoers.d/exocomp-{{ exocomp_user }}"
         content: "{{ exocomp_user }} ALL=(ALL) NOPASSWD:ALL\n"

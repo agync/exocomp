@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -18,12 +20,46 @@ type KnownHost struct {
 	CreatedAt time.Time
 }
 
-// RecordKnownHost stores or replaces a host's key of one type. A repeat of the
-// same (host, key_type) replaces the value: an operator-confirmed rekey, not a
-// second row.
+// ErrKnownHostChanged reports that a host presented a key different from the one
+// already recorded for that key type. The recorded key is not overwritten: a
+// changed key is a rekey the operator must confirm, or an attacker at scan time.
+var ErrKnownHostChanged = errors.New("store: known host key changed")
+
+// RecordKnownHost stores a host's key of one type on first sight (trust on first
+// use). Re-recording the SAME key is idempotent. A DIFFERENT key for an existing
+// (host, key_type) is refused with ErrKnownHostChanged — never silently
+// overwritten; the caller confirms and calls RotateKnownHost to replace it.
 func (s *Store) RecordKnownHost(ctx context.Context, kh KnownHost) error {
 	if kh.Host == "" || kh.KeyType == "" || kh.Key == "" {
 		return fmt.Errorf("store: record known host: host, key_type and key are all required")
+	}
+	if kh.CreatedAt.IsZero() {
+		kh.CreatedAt = time.Now().UTC()
+	}
+	var existing string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT key FROM known_host WHERE host = ? AND key_type = ?`, kh.Host, kh.KeyType).Scan(&existing)
+	switch {
+	case err == nil && existing == kh.Key:
+		return nil
+	case err == nil:
+		return fmt.Errorf("%w: %s (%s)", ErrKnownHostChanged, kh.Host, kh.KeyType)
+	case !errors.Is(err, sql.ErrNoRows):
+		return wrap("record known host", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO known_host (host, key_type, key, created_at) VALUES (?, ?, ?, ?)`,
+		kh.Host, kh.KeyType, kh.Key, kh.CreatedAt.UnixMilli()); err != nil {
+		return wrap("record known host", err)
+	}
+	return nil
+}
+
+// RotateKnownHost replaces a recorded key after the operator has confirmed the
+// change out of band (the --rotate path).
+func (s *Store) RotateKnownHost(ctx context.Context, kh KnownHost) error {
+	if kh.Host == "" || kh.KeyType == "" || kh.Key == "" {
+		return fmt.Errorf("store: rotate known host: host, key_type and key are all required")
 	}
 	if kh.CreatedAt.IsZero() {
 		kh.CreatedAt = time.Now().UTC()
@@ -33,7 +69,7 @@ func (s *Store) RecordKnownHost(ctx context.Context, kh KnownHost) error {
 		ON CONFLICT(host, key_type) DO UPDATE SET key = excluded.key, created_at = excluded.created_at`,
 		kh.Host, kh.KeyType, kh.Key, kh.CreatedAt.UnixMilli())
 	if err != nil {
-		return wrap("record known host", err)
+		return wrap("rotate known host", err)
 	}
 	return nil
 }

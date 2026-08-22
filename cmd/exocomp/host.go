@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	_ "embed"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -60,6 +62,7 @@ func newHostCmd() *cobra.Command {
 }
 
 func newHostOnboardCmd() *cobra.Command {
+	var rotate bool
 	onboard := &cobra.Command{
 		Use:   "onboard <host>...",
 		Short: "Record host keys, ensure the fleet key, seed the onboarding runbook",
@@ -68,12 +71,16 @@ func newHostOnboardCmd() *cobra.Command {
 			"fleet SSH key exists (generating it on first run), and writes the seeded " +
 			"onboarding runbook into the data volume. It then prints the fleet public key " +
 			"to authorize and the exact `playbook run` that pushes it, creates the " +
-			"automation user, and grants sudo — through the sandboxed, gated queue.",
+			"automation user and grants it passwordless become (broad by default; " +
+			"restrict the seeded sudoers to a command set if you need least privilege) " +
+			"— through the sandboxed, gated queue.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runHostOnboard(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), args)
+			return runHostOnboard(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), args, rotate)
 		},
 	}
+	onboard.Flags().BoolVar(&rotate, "rotate", false,
+		"replace an already-recorded host key that changed (confirm the new fingerprint out of band first)")
 	return onboard
 }
 
@@ -102,7 +109,7 @@ func newHostKnownHostsCmd() *cobra.Command {
 	}
 }
 
-func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string) (err error) {
+func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string, rotate bool) (err error) {
 	dir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("host onboard: resolve data dir: %w", err)
@@ -134,7 +141,7 @@ func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string) (e
 			_, _ = fmt.Fprintf(warn, "WARNING: %v; %s not recorded\n", err, host)
 			continue
 		}
-		n, err := recordScanned(ctx, st, scanned)
+		n, err := recordScanned(ctx, st, scanned, rotate, out)
 		if err != nil {
 			return err
 		}
@@ -197,10 +204,13 @@ func ensureFleetKey(ctx context.Context, st *store.Store, env *secrets.Envelope)
 	return key.PublicAuthorizedKey, nil
 }
 
-// recordScanned parses ssh-keyscan output and records each host key. Comment
-// and blank lines are skipped; a malformed line is skipped rather than failing
-// the whole scan.
-func recordScanned(ctx context.Context, st *store.Store, scanned []byte) (int, error) {
+// recordScanned parses ssh-keyscan output and records each host key on first
+// sight, printing its fingerprint so first-use trust is a deliberate act.
+// Comment and blank lines are skipped; a malformed line is skipped rather than
+// failing the whole scan. A host key that DIFFERS from one already recorded is
+// refused (ErrKnownHostChanged) unless rotate is set — a changed key is a rekey
+// the operator confirms out of band, or an attacker at scan time.
+func recordScanned(ctx context.Context, st *store.Store, scanned []byte, rotate bool, out io.Writer) (int, error) {
 	n := 0
 	sc := bufio.NewScanner(bytes.NewReader(scanned))
 	for sc.Scan() {
@@ -212,17 +222,35 @@ func recordScanned(ctx context.Context, st *store.Store, scanned []byte) (int, e
 		if len(fields) < 3 {
 			continue
 		}
-		if err := st.RecordKnownHost(ctx, store.KnownHost{
-			Host: fields[0], KeyType: fields[1], Key: fields[2],
-		}); err != nil {
+		kh := store.KnownHost{Host: fields[0], KeyType: fields[1], Key: fields[2]}
+		record := st.RecordKnownHost
+		if rotate {
+			record = st.RotateKnownHost
+		}
+		if err := record(ctx, kh); err != nil {
+			if errors.Is(err, store.ErrKnownHostChanged) {
+				return n, fmt.Errorf("%w — verify the new key out of band, then re-run with --rotate", err)
+			}
 			return n, err
 		}
+		_, _ = fmt.Fprintf(out, "  %s %s %s\n", kh.Host, kh.KeyType, sshKeyFingerprint(kh.Key))
 		n++
 	}
 	if err := sc.Err(); err != nil {
 		return n, fmt.Errorf("host onboard: read scan output: %w", err)
 	}
 	return n, nil
+}
+
+// sshKeyFingerprint renders the SHA256 fingerprint OpenSSH shows, so an operator
+// can verify a recorded key against the host's own `ssh-keygen -lf`.
+func sshKeyFingerprint(base64Key string) string {
+	raw, err := base64.StdEncoding.DecodeString(base64Key)
+	if err != nil {
+		return "(unparseable)"
+	}
+	sum := sha256.Sum256(raw)
+	return "SHA256:" + strings.TrimRight(base64.StdEncoding.EncodeToString(sum[:]), "=")
 }
 
 // seedOnboardRunbook writes the embedded onboarding playbook into the data
