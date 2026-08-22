@@ -53,3 +53,7 @@ freshness — the last successful backup, the oldest unanswered approval, and th
 
 Related: [Reacting to alerts](reactive.md) · [LAN access](lan-access.md) ·
 [Disaster recovery](disaster-recovery.md).
+
+A scoped (non-global) silence shows a **SILENCED** banner (distinct from the
+global-pause **PAUSED** and the notification **MUTED**), carrying the count of
+alerts swallowed while it is active; it lifts automatically at its expiry.

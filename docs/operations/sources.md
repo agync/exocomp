@@ -58,6 +58,15 @@ any `--run-secrets` set, so the plugin authenticates under the sandbox. `playboo
 
 ## Managed-host SSH — fleet key, onboarding, known_hosts
 
+> **v1 runtime status.** The fleet key is generated, sealed, and its public half
+> printed, and `host onboard` records each host's key into a backed-up
+> `known_host` store — but a run does **not yet** load the fleet key into a
+> per-job ssh-agent or verify against the recorded `known_hosts`. For v1, give a
+> play its connection credentials the ordinary Ansible way: a vaulted
+> `ansible_ssh_private_key_file` or `ansible_password` in `group_vars` (the
+> secret lives in the repo vault, decrypted by the registered vault-id). The
+> agent-load + `known_hosts` verification runtime is v1.1.
+
 exocomp holds one ed25519 **fleet key** sealed in the envelope. Onboard a host with:
 
 ```

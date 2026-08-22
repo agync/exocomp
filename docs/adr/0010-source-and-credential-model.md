@@ -27,7 +27,14 @@ fragments (inventory undesigned; host onboarding; per-host become/ssh).
    ansible-vault/<project>` or derives it) mapped to a `--vault-id label`.
    Multiple ids per repo (dev/prod) are first-class.
 3. **Managed-host SSH is a credential plane.** exocomp holds an ed25519 fleet
-   key sealed in the envelope; a per-job `ssh-agent` loads it from memory
+   key sealed in the envelope. *Runtime status (v1):* the key is generated and
+   sealed and `host onboard` records each host's key into a backed-up
+   known_hosts store, but a run does not yet load the fleet key into a per-job
+   ssh-agent nor set `UserKnownHostsFile`/`StrictHostKeyChecking` from that
+   store — the v1 connection path is a vaulted `ansible_ssh_private_key_file` /
+   `ansible_password` in group_vars (secret in the repo vault, decrypted by the
+   envelope). The agent-load + known_hosts-verify runtime is v1.1. As designed,
+   a per-job `ssh-agent` loads it from memory
    (never disk). Hosts are onboarded by a seeded runbook (push key, create
    `ansible_user`, sudoers, record `known_hosts`); `known_hosts` is stored and
    backed up. `become_pass`/`ansible_ssh_pass` come from sealed rows bound per
