@@ -104,6 +104,14 @@ type TofuOptions struct {
 	// redownload one a previous run already fetched. Empty leaves tofu's
 	// default alone.
 	PluginCacheDir string
+	// ModuleCacheDir is a persistent per-workspace home for the modules tofu
+	// installs on init. TF_DATA_DIR is per-run and ephemeral, so registry and
+	// git modules would re-download every init; pointing the run's modules
+	// directory at this stable path lets a second init reuse what the first
+	// fetched (ADR 0011), the module-plane twin of PluginCacheDir. Empty derives
+	// a default beside PluginCacheDir when both a plugin cache and a workspace
+	// name are set, and otherwise leaves modules per-run as before.
+	ModuleCacheDir string
 	// OfflineProviders restricts provider resolution to PluginCacheDir alone:
 	// no registry, no network (design/amendments.md item 8). Set it only once
 	// the cache is known warm; a provider missing from it then fails the run
@@ -193,6 +201,9 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	dataDir := filepath.Join(private, "data")
 	if err := os.Mkdir(dataDir, 0o700); err != nil {
 		return Result{}, fmt.Errorf("executor: tofu: data dir: %w", err)
+	}
+	if err := t.linkModuleCache(dataDir, sink); err != nil {
+		return Result{}, err
 	}
 	env, err := t.env(dataDir, cliConfig)
 	if err != nil {
@@ -520,6 +531,65 @@ func writeBackendOverride(dir string) (func(EventSink), error) {
 			})
 		}
 	}, nil
+}
+
+// linkModuleCache points the run's per-run modules directory at a persistent
+// per-workspace home, so modules a prior init fetched are reused rather than
+// re-downloaded (ADR 0011). tofu installs modules at $TF_DATA_DIR/modules; a
+// symlink there redirects the writes to the stable cache transparently, and a
+// following init finds modules.json already present and skips the fetch.
+//
+// A cache miss (no derivable location) leaves modules per-run, unchanged from
+// before. A symlink failure is a hard error: proceeding would silently re-fetch
+// every run, which is exactly what this exists to stop.
+func (t *Tofu) linkModuleCache(dataDir string, sink EventSink) error {
+	cache := moduleCacheDir(t.opts)
+	if cache == "" {
+		return nil
+	}
+	if err := os.MkdirAll(cache, 0o700); err != nil {
+		return fmt.Errorf("executor: tofu: module cache dir: %w", err)
+	}
+	link := filepath.Join(dataDir, "modules")
+	if err := os.Symlink(cache, link); err != nil {
+		return fmt.Errorf("executor: tofu: link module cache: %w", err)
+	}
+	sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem,
+		Msg: "tofu module cache " + cache})
+	return nil
+}
+
+// moduleCacheDir resolves the persistent module cache location: the explicit
+// option when set, otherwise a directory beside the plugin cache keyed by the
+// workspace. It returns "" when nothing can be derived, so a run with neither a
+// plugin cache nor a workspace keeps modules per-run. It is a function of the
+// options alone so the sandboxed tier grants the same directory the driver
+// links.
+func moduleCacheDir(opts TofuOptions) string {
+	if opts.ModuleCacheDir != "" {
+		return opts.ModuleCacheDir
+	}
+	if opts.PluginCacheDir == "" || !safeWorkspaceName(opts.Workspace) {
+		return ""
+	}
+	return filepath.Join(filepath.Dir(opts.PluginCacheDir), "module-cache", opts.Workspace)
+}
+
+// safeWorkspaceName reports whether name is a single safe path component, so a
+// crafted workspace name cannot escape the module cache root.
+func safeWorkspaceName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+		case r == '-' || r == '_' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // env builds the child environment: the allowlist over the parent, then the
