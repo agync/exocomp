@@ -24,6 +24,41 @@ and why a bare public topic is refused rather than warned about; `rule`, `silenc
 [architecture/overview.md](architecture/overview.md) gained the paragraph closing the
 other half of the one-queue carve-out: guardrails and approvals are enforced at enqueue,
 and `awaiting_approval` is a state no claim statement admits rather than a UI convention.
+## 2026-08-22 — M3a security folds: keyring generations, manifest tags, kit CLI
+
+The five convergent findings of [design/user-feedback.md](design/user-feedback.md) that
+touch keys and backups are implemented; the pages describing them are corrected here.
+
+**The keyring generation lives beside the keyring, not inside it.** The design called for
+a versioned keyring file. age rejects any framing added before or after an armored file —
+verified against the `age` CLI both ways — and the printed card's
+`age -d -i recovery.key keyring.age` is a CI-executed build artifact, so the counter rides
+in `keyring.version` next to `keyring.age`: in the data dir, in the backup staging tree,
+and at every target root. A directory with no such file is generation 1, which is every
+data dir written before this.
+
+[operations/disaster-recovery.md](operations/disaster-recovery.md) gains the two files the
+staging tree grew (`keyring.version`, `MANIFEST.mac`), what a restore does with them —
+authenticity before integrity, tampering reported apart from corruption, an untagged
+snapshot restored with a loud warning — and a "Deriving without the daemon" section for
+`exocomp kit derive`, `kit verify` and `identity migrate`.
+
+**The card takes the design handoff's section layout**, numbered 1-6 with the
+hand-written storage-credential box, the kit version line and the page digest. The
+handoff's section 7 (dead-man ping) is *not* rendered: nothing configures a dead-man ping
+yet, and a card section describing an unbuilt feature is the failure mode the M1 gate
+corrections were about. It lands with the reactive layer. The derivation block renders
+from the salt and purpose table in code, as the design-handoff entry below records, and
+every command renders as `exocomp` ([ADR 0002](adr/0002-project-name-exocomp.md)).
+
+[architecture/execution.md](architecture/execution.md)'s OpenTofu section states that a
+saved plan is encrypted at rest to the keyring's recipients and decrypted into the run's
+private directory for an apply or an approval diff. Plan artifacts are not part of the
+backup staging tree, so the restore drill is unchanged.
+
+The repository root gains a [DCO](../DCO); [AGENTS.md](../AGENTS.md) records that
+contributing certifies it and that no sign-off trailer is used, invariant 9 admitting
+none.
 
 ## 2026-08-22 — M2d reconciliation: serve, execution, and BOM corrected against code
 

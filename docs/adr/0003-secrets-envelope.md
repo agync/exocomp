@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted · 2026-08-21
+Accepted · 2026-08-21 · extended 2026-08-22: the keyring carries a monotonic generation
+(`keyring.version` beside `keyring.age`), recipient changes and host-key rotation bump it
+(`exocomp identity migrate`), and a restore refuses a keyring older than the generation the
+snapshot's manifest records. One further subkey, `backup-manifest-mac:<target>`,
+authenticates `MANIFEST.json` and the git leg's parts manifest.
 
 ## Context
 
