@@ -388,13 +388,63 @@ Scope (v1 — the decided line + the one pulled-in correctness item + cheap fold
    threshold — that can FAIL an otherwise-zero-exit run and gate/branch a workflow.
    This is what makes the M3c chains (and any future cutover) actually safe. Reuse the
    redactor; probes run in the daemon over local/allowed endpoints.
-4. **Cheap folds** (small, adjacency-justified): sensitive tofu output → sealed secret
-   sink (the secrets twin of story 5); backup quiesce pre/post hooks (free from item 2);
-   ansible `--check` structured drift (extends story 3 to the Ansible surface); host-key
-   re-pin runtime detection/quarantine (extends the M3b `ErrKnownHostChanged` primitive
-   — detect a known_hosts mismatch on a run, quarantine the host's concurrency key,
-   approval-gated re-pin). Each ships with a test.
+4. **Cheap folds** — moved to the M3c maintenance pass (backlog item 8): they touch the
+   same executor files as the deps lane, so folding them into maintenance avoids a lane
+   conflict while keeping them in v1 (maintenance runs before M3d). Still v1 scope.
+
+Pass 3 is TWO lanes: **deps** (item 1 — per-source uv venv + tofu module cache + manifest
+discovery + doctor uv/git probes; owns executor/{ansible,tofu}.go + a vendor pkg + cmd/
+vendor + doctor) and **lifecycle** (items 2+3 — pre/post hooks + health/verification gate
+as ledger steps; owns new pkgs + the run-as-workflow wrapper + serve.go + cmd; does NOT
+touch executor/{ansible,tofu}.go). Both read `.exocomp/` but different files (manifests vs
+hooks.yml), so no shared-code conflict.
 
 The rest of the panel's findings are the ranked post-v1 backlog in
 docs/design/v1.1-roadmap.md — NOT v1 scope. v1's bar stays core reliability of the
 five stories, not breadth.
+
+## M3c maintenance backlog (carry-forwards from the pass 1+2 merges)
+
+Folded into the M3c maintenance pass (after pass 3 builds), with pass-2's deferred
+shared-file edits:
+
+1. **Ledger crash-resume fix review (LANDED, verify).** A real bug: the pass-1
+   sequencer recorded ANY non-succeeded terminal job as a step FAILURE, so a crash
+   landing inside a running step failed the whole workflow on resume instead of
+   continuing. TestSequencerResumesFromLedgerAfterRestart was flaky (masked at pass-1
+   merge, failed ~deterministically under load). Fixed by the story5 lane (commit
+   316a368 on main): re-run a step whose job did NOT reach a decision (StateInterrupted,
+   or StateCancelled with StartedAt!=nil) via RetargetStep + a fresh gated job; a real
+   outcome still settles. Verified 20/20 on merged main. Maintenance: confirm the
+   idempotency-key contract holds for the upgrade lane's steps too.
+2. **Daemon ResumeAll vs upgrade-kind workflows (INTEGRATION BUG).** story5 wired
+   Sequencer.ResumeAll into serve.go's boot; upgrade drives its own steps inline with an
+   `upgradeDriver` the DAEMON queue does not register. A hard crash mid-upgrade leaves a
+   pending upgrade workflow the daemon's boot ResumeAll would try to re-drive and fail on
+   an unknown kind. Fix: mark operator-inline workflows (upgrade) non-daemon-resumable,
+   or have ResumeAll skip kinds the daemon queue cannot execute. upgrade already
+   terminalizes on clean rollback; this covers the hard-crash case.
+3. **Flaky TestAnsibleRunsFromCheckoutDir** — "text file busy" fork/exec race writing +
+   exec'ing a fake tool under -race. Harden (write-then-close-then-exec, or a distinct
+   path) so the pre-commit gate stops seeing intermittent reds.
+4. **Manual `exocomp rollback` discards post-upgrade DB changes** (restores the
+   pre-upgrade snapshot). Documented as an escape hatch; maintenance: louder warning +
+   consider a safety snapshot before the rollback restore.
+5. **Sandbox: a source path may not be an ancestor of the data dir** (the grant is
+   refused). Fold into the source/operations docs (keep playbooks/workspaces outside the
+   data dir).
+6. **docs/log.md + docs/operations/index.md** — both pass-2 lanes deferred their shared
+   log/index entries; add M3c entries (handoff, upgrade/rollback, plan-policy, ledger).
+7. **Schema-migrating upgrade** not stress-tested end-to-end with real binaries (the
+   pre-swap snapshot is the insurance). Add a real-binary schema-change gate or note the
+   limit for v1.1.
+8. **The four v1 "cheap folds"** (moved here from pass 3 to avoid an executor-file lane
+   conflict; still v1): (a) sensitive tofu output → sealed secret sink — the secrets twin
+   of story 5, route `sensitive = true` outputs into the envelope instead of dropping
+   them, for a downstream step to consume; (b) backup quiesce pre/post hooks — reuse the
+   pass-3 hook mechanism on a backup step; (c) ansible `--check` structured drift —
+   extend story 3's drift to the Ansible surface (parse `--check --diff` changed-task
+   counts into resource-level drift); (d) host-key re-pin runtime detection/quarantine —
+   extend the M3b `ErrKnownHostChanged` primitive so a run that hits a known_hosts
+   mismatch quarantines the host's concurrency key and requires an approval-gated re-pin.
+   Each ships with a test.
