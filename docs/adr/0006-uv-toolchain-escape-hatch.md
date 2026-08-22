@@ -51,6 +51,10 @@ Boundary rules keep the hatch from becoming a hole:
 
 - Per-project Python module dependencies may likewise be uv-installed into cached venvs
   under the same volume toolchain directory — backed up, offline-restorable, drill-covered.
+  [ADR 0011](0011-project-dependency-resolution.md) refines the "control plane never invokes
+  uv" boundary for exactly this case: exocomp MAY resolve a project's *declared* deps
+  (root `requirements.txt`/`pyproject.toml`) via uv, hash-gated and off the DR path, while
+  the ansible-core toolchain switch stays operator-initiated.
 - The 800 MB image ceiling stands and the working target drops to ~500 MB.
 - The escape hatch widens the tested surface: a switched toolchain is a supported *state*,
   not a supported *configuration*, and the doctor is what makes the difference visible.

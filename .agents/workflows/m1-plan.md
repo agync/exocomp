@@ -356,16 +356,25 @@ Built AFTER pass 2 merges (it touches executor/{ansible,tofu}.go which story5 ed
 Exact file ownership is finalised against pass 2's actual edits at authoring time.
 
 Scope (v1 — the decided line + the one pulled-in correctness item + cheap folds):
-1. **Dependency vendoring, hash-gated + offline** (extends the existing collections
-   vendor + tofu plugin cache pattern): a `.exocomp/` manifest set in the source
-   (repo-side default, operator-registerable override) — `requirements.yml` (galaxy,
-   already works), `requirements.txt` (Python → a **uv-managed venv** in
-   `cache/python/<hash>`, wired via `ansible_python_interpreter`), and a **tofu module
-   cache** (persistent, so registry/git modules are not re-fetched every run). A
-   manifest CONTENT HASH gates re-vendor; unchanged → reuse cache → resolve offline.
-   "Deps met, never fresh every run." System packages are OUT of runtime scope (host
-   provides them, or the user adds a container layer; **bring-your-own-runner** is the
-   named post-v1 seam — do not paint over it).
+1. **Dependency vendoring, hash-gated + offline** (ADR 0011; extends the existing
+   collections vendor + tofu plugin cache pattern). Manifest discovery is repo-side
+   default with a `.exocomp/` override:
+   - **Python** — project-root `pyproject.toml` (PEP 621 `[project.dependencies]` /
+     `[dependency-groups]`) OR `requirements.txt` (honour the files operators already
+     use), `.exocomp/requirements.txt` overrides. Resolved by **uv** into a venv at
+     `cache/python/<manifest-hash>`, wired via `ansible_python_interpreter` + PATH. uv
+     is ALREADY in the distribution (Containerfile runtime stage + MANIFEST.json pin);
+     ADD uv (and git) to `exocomp doctor`'s probe list (today it probes
+     ansible/tofu/restic/age/sops only).
+   - **Ansible collections** — `requirements.yml` → `cache/collections` (already works).
+   - **Tofu modules** — a persistent per-workspace module cache (registry/git modules
+     not re-fetched every init); providers already cached.
+   A manifest CONTENT HASH gates re-vendor; unchanged → reuse cache → resolve offline.
+   "Deps met, never fresh every run." The control plane MAY invoke uv for PROJECT deps
+   (ADR 0011) but NEVER for the ansible-core toolchain switch, and NEVER on the DR-path
+   runbooks (image-pinned). System packages are OUT of runtime scope (host provides
+   them, or the user adds a container layer; **bring-your-own-runner** is the named
+   post-v1 seam — do not paint over it).
 2. **Pre/post-run hooks** as step-ledger steps: a run becomes `[pre-hooks] → main →
    [post-hooks]`, each a sandboxed ledger step, defined in `.exocomp/hooks.yml`
    (repo-side default + operator override). Hooks run user-space as the run user.
