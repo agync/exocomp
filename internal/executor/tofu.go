@@ -619,6 +619,15 @@ func (t *Tofu) env(dataDir, cliConfig string) ([]string, error) {
 		"TF_IN_AUTOMATION=1",
 		"CHECKPOINT_DISABLE=1",
 	)
+	if t.opts.Workspace != "" {
+		// The exocomp workspace name IS the state identity, so expose it to the
+		// config as var.exocomp_workspace — a config can branch on the environment
+		// the way terraform.workspace would under native TF workspaces. The HTTP
+		// backend has no native workspace multiplexing, so a var is the mechanism;
+		// it is namespaced so it never clobbers a user's own var.workspace, and is
+		// a no-op unless the config declares `variable "exocomp_workspace"`.
+		out = append(out, "TF_VAR_exocomp_workspace="+t.opts.Workspace)
+	}
 	if t.opts.PluginCacheDir != "" {
 		out = append(out, "TF_PLUGIN_CACHE_DIR="+t.opts.PluginCacheDir)
 	}
