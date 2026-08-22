@@ -35,6 +35,11 @@ const sessionPurpose = "web-session"
 // ErrUnauthenticated reports a request that carried no usable credential.
 var ErrUnauthenticated = errors.New("web: no valid session or token")
 
+// ErrKDFBusy reports that the pre-auth KDF gate is saturated: too many argon2id
+// verifications are already in flight, so this one was refused rather than run
+// (finding D1). It is a transient 503, not an authentication failure.
+var ErrKDFBusy = errors.New("web: authentication is busy, retry shortly")
+
 // identity is the resolved caller behind a request: the token row that
 // authenticated it. Every audited action names it (ADR 0009 §5).
 type identity struct {
@@ -134,7 +139,7 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 		return store.APIToken{}, ErrUnauthenticated
 	}
 	if secret != "" {
-		ok, err := verifySecret(secret, row.Hash)
+		ok, err := s.verify(secret, row.Hash)
 		if err != nil {
 			return store.APIToken{}, err
 		}
@@ -143,6 +148,23 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 		}
 	}
 	return row, nil
+}
+
+// authenticateTokenGated is authenticateToken behind the KDF concurrency gate.
+// A malformed token is rejected before a slot is taken — it never reaches the
+// KDF — and a saturated gate returns ErrKDFBusy instead of running argon2id, so
+// an unauthenticated flood cannot amplify the KDF's memory cost (finding D1).
+func (s *Server) authenticateTokenGated(r *http.Request, presented string, now time.Time) (store.APIToken, error) {
+	id, secret, err := parseToken(presented)
+	if err != nil {
+		return store.APIToken{}, err
+	}
+	release, ok := s.kdf.acquire(sourceKey(r))
+	if !ok {
+		return store.APIToken{}, ErrKDFBusy
+	}
+	defer release()
+	return s.authenticateRow(r.Context(), id, secret, now)
 }
 
 // resolve authenticates a request by session cookie first, then by a bearer
@@ -168,7 +190,7 @@ func (s *Server) resolve(r *http.Request) (identity, error) {
 	if h := r.Header.Get("Authorization"); h != "" {
 		presented, ok := strings.CutPrefix(h, "Bearer ")
 		if ok {
-			row, err := s.authenticateToken(r.Context(), strings.TrimSpace(presented), now)
+			row, err := s.authenticateTokenGated(r, strings.TrimSpace(presented), now)
 			if err == nil {
 				return identity{token: row, via: "bearer"}, nil
 			}
@@ -189,6 +211,11 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
 		if err != nil {
+			if errors.Is(err, ErrKDFBusy) {
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "authentication busy, retry shortly", http.StatusServiceUnavailable)
+				return
+			}
 			if !errors.Is(err, ErrUnauthenticated) {
 				s.log.Error("web: authenticate", "err", err)
 				http.Error(w, "authentication error", http.StatusInternalServerError)

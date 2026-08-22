@@ -69,6 +69,13 @@ type Server struct {
 	dataDir     string
 	log         *slog.Logger
 	clock       func() time.Time
+	// kdf bounds concurrent argon2id evaluations on the pre-auth path so a
+	// flood cannot amplify the KDF's memory cost (finding D1).
+	kdf *kdfGate
+	// verify checks a presented secret against a stored argon2id hash. It is a
+	// field only so a test can observe the KDF's concurrency; production always
+	// uses verifySecret.
+	verify func(secret, phc string) (bool, error)
 }
 
 // New returns a Server ready to be mounted.
@@ -98,6 +105,8 @@ func New(opts Options) (*Server, error) {
 		dataDir:     opts.DataDir,
 		log:         log,
 		clock:       clock,
+		kdf:         newKDFGate(),
+		verify:      verifySecret,
 	}, nil
 }
 

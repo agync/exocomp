@@ -32,8 +32,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	token := r.PostFormValue("token")
 	next := sanitizeNext(r.PostFormValue("next"))
 
-	row, err := s.authenticateToken(r.Context(), token, s.now())
+	row, err := s.authenticateTokenGated(r, token, s.now())
 	if err != nil {
+		if errors.Is(err, ErrKDFBusy) {
+			// A flood is holding every KDF slot; this login ran no argon2id.
+			// Tell the operator to retry rather than run the KDF unbounded.
+			w.Header().Set("Retry-After", "1")
+			s.render(w, r, http.StatusServiceUnavailable,
+				loginPage("The server is busy verifying other sign-ins. Try again in a moment.", next, s.fingerprint, s.insecure))
+			return
+		}
 		if errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrMalformedToken) {
 			s.render(w, r, http.StatusUnauthorized,
 				loginPage("That token is not valid, is expired, or was revoked.", next, s.fingerprint, s.insecure))
