@@ -171,6 +171,18 @@ func TestSourcesGolden(t *testing.T) {
 	assertFrame(t, "sources-120", renderSourcesScreen(m))
 }
 
+func TestPoliciesGolden(t *testing.T) {
+	m := PoliciesModel{
+		summary: "plan policies · 3", clock: "14:03 UTC+11",
+		rows: []policyRow{
+			{name: "no-prod-destroy", workspace: "prod", action: "deny", enabled: "yes", expr: "plan.resource_changes.exists(c, c.actions==['delete'])"},
+			{name: "gate-core", workspace: "core-infra", action: "require_approval", enabled: "yes", expr: "plan.resource_changes.size() > 0"},
+			{name: "old-rule", workspace: "-", action: "deny", enabled: "no", expr: "false"},
+		},
+	}
+	assertFrame(t, "policies-120", renderPoliciesScreen(m))
+}
+
 func TestWorkflowsGolden(t *testing.T) {
 	m := WorkflowsModel{
 		summary: "workflows · 3 recorded", clock: "14:03 UTC+11",

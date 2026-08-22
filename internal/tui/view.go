@@ -26,6 +26,8 @@ func (m Model) View() tea.View {
 			return tea.NewView(liveFrame(m.withBanner(renderEventsScreen(m.eventsModel()))))
 		case screenSources:
 			return tea.NewView(liveFrame(m.withBanner(m.renderSourcesScreen())))
+		case screenPolicies:
+			return tea.NewView(liveFrame(m.withBanner(m.renderPoliciesScreen())))
 		case screenWorkflows:
 			return tea.NewView(liveFrame(m.withBanner(m.renderWorkflowsScreen())))
 		}
@@ -47,6 +49,14 @@ func (m Model) renderSourcesScreen() string {
 		return styleErr.Render("failed to load sources: " + m.sourcesErr.Error())
 	}
 	return renderSourcesScreen(m.sourcesModel())
+}
+
+// renderPoliciesScreen renders the plan-policies surface, or its error state.
+func (m Model) renderPoliciesScreen() string {
+	if m.policiesErr != nil {
+		return styleErr.Render("failed to load plan policies: " + m.policiesErr.Error())
+	}
+	return renderPoliciesScreen(m.policiesModel())
 }
 
 // renderWorkflowsScreen renders the workflows list, or the step ledger of the

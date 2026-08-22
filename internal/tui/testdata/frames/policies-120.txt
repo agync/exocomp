@@ -1,0 +1,8 @@
+plan policies · 3                                                                                           14:03 UTC+11
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ POLICY            WORKSPACE       ON MATCH           ENABLED  EXPRESSION
+ no-prod-destroy   prod            deny               yes      plan.resource_changes.exists(c, c.actions==['delete'])
+ gate-core         core-infra      require_approval   yes      plan.resource_changes.size() > 0
+ old-rule          -               deny               no       false
+
+read-only · authored with exocomp policy add                                                               [0-9] screens

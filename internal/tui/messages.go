@@ -215,6 +215,22 @@ func loadSourcesCmd(st *store.Store) tea.Cmd {
 	}
 }
 
+// policiesLoadedMsg carries the result of a plan-policies refresh.
+type policiesLoadedMsg struct {
+	policies []store.PlanPolicy
+	err      error
+}
+
+func loadPoliciesCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		policies, err := st.ListPlanPolicies(context.Background(), "", false)
+		if err != nil {
+			return policiesLoadedMsg{err: err}
+		}
+		return policiesLoadedMsg{policies: policies}
+	}
+}
+
 // maxWorkflowsShown caps the workflows surface at the most-recent chains.
 const maxWorkflowsShown = 50
 

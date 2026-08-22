@@ -63,6 +63,9 @@ type Model struct {
 	sources    []store.Source
 	sourcesErr error
 
+	policies    []store.PlanPolicy
+	policiesErr error
+
 	workflows       []workflowView
 	workflowsErr    error
 	workflowsCursor int
@@ -116,6 +119,7 @@ func (m Model) Init() tea.Cmd {
 		loadWorkspacesCmd(m.store),
 		loadSchedulesCmd(m.store),
 		loadSourcesCmd(m.store),
+		loadPoliciesCmd(m.store),
 		loadWorkflowsCmd(m.store),
 		loadGlanceCmd(m.store),
 		tickCmd(),
@@ -175,6 +179,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.sourcesErr = msg.err
 		if msg.err == nil {
 			m.sources = msg.sources
+		}
+		return m, nil
+
+	case policiesLoadedMsg:
+		m.policiesErr = msg.err
+		if msg.err == nil {
+			m.policies = msg.policies
 		}
 		return m, nil
 
@@ -241,6 +252,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadSchedulesCmd(m.store))
 	case screenSources:
 		cmds = append(cmds, loadSourcesCmd(m.store))
+	case screenPolicies:
+		cmds = append(cmds, loadPoliciesCmd(m.store))
 	case screenWorkflows:
 		cmds = append(cmds, loadWorkflowsCmd(m.store))
 	case screenApprovals, screenEvents:
@@ -313,6 +326,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "7":
 		if !m.tailing {
 			m.active = screenSources
+		}
+		return m, nil
+
+	case "8":
+		if !m.tailing {
+			m.active = screenPolicies
 		}
 		return m, nil
 

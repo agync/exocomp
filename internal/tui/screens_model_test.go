@@ -121,6 +121,45 @@ func TestSourcesScreenRendersLive(t *testing.T) {
 	}
 }
 
+// TestPoliciesScreenRendersLive drives the [8] plan-policies surface over
+// seeded rows and asserts each verdict, its expression and the enabled flag.
+func TestPoliciesScreenRendersLive(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.CreatePlanPolicy(ctx, store.PlanPolicy{
+		Name: "no-prod-destroy", Workspace: "prod",
+		Expr: "plan.resource_changes.size() > 0", Action: store.PolicyDeny,
+	}); err != nil {
+		t.Fatalf("create deny policy: %v", err)
+	}
+	if _, err := st.CreatePlanPolicy(ctx, store.PlanPolicy{
+		Name: "gate-core", Workspace: "core-infra",
+		Expr: "true", Action: store.PolicyRequireApproval,
+	}); err != nil {
+		t.Fatalf("create gate policy: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadPoliciesCmd(st)())
+	m = update(t, m, key('8'))
+	if m.active != screenPolicies {
+		t.Fatalf("[8] did not open Policies, active = %v", m.active)
+	}
+
+	view := m.View().Content
+	for _, want := range []string{
+		"plan policies · 2", "no-prod-destroy", "prod", store.PolicyDeny,
+		"plan.resource_changes.size() > 0", "gate-core", "core-infra",
+		store.PolicyRequireApproval, "yes",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("policies view missing %q, view:\n%s", want, view)
+		}
+	}
+}
+
 // TestWorkflowsScreenRendersLiveAndDetail drives the [9] Workflows surface: the
 // list shows a chain's derived state and step rail, and [enter] opens the step
 // ledger with each step's status and job, [esc] closes it.

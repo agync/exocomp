@@ -218,6 +218,25 @@ func sourceSyncShort(sha string) string {
 	return sha
 }
 
+// policiesModel assembles the plan-policies surface.
+func (m Model) policiesModel() PoliciesModel {
+	now := time.Now()
+	pm := PoliciesModel{
+		summary: fmt.Sprintf("plan policies · %d", len(m.policies)),
+		clock:   now.Local().Format("15:04 MST"),
+	}
+	for _, p := range m.policies {
+		pm.rows = append(pm.rows, policyRow{
+			name:      truncate(p.Name, 16),
+			workspace: truncate(orDash(p.Workspace), 14),
+			action:    p.Action,
+			enabled:   yesNo(p.Enabled),
+			expr:      truncate(p.Expr, 56),
+		})
+	}
+	return pm
+}
+
 // workflowsModel assembles the workflows surface, marking the cursor row.
 func (m Model) workflowsModel() WorkflowsModel {
 	now := time.Now()
