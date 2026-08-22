@@ -347,3 +347,41 @@ host). Docs (invariant 8): operator pages for workflows/step-ledger, plan policy
 the terraform→ansible handoff, and upgrade/rollback; log.md entries. After both
 passes merge, an M3c maintenance pass (like m3a-maintain/m3b-fix) hardens the seams
 before M3d runs the five-story v1.0 gate.
+
+## File ownership (M3c pass 3 — dependencies & run lifecycle)
+
+Added after the persona panel (docs/design/persona-scenarios.md) and the operator's
+"handle galaxy/python/module deps cleanly + configurable pre/post-run steps" note.
+Built AFTER pass 2 merges (it touches executor/{ansible,tofu}.go which story5 edits).
+Exact file ownership is finalised against pass 2's actual edits at authoring time.
+
+Scope (v1 — the decided line + the one pulled-in correctness item + cheap folds):
+1. **Dependency vendoring, hash-gated + offline** (extends the existing collections
+   vendor + tofu plugin cache pattern): a `.exocomp/` manifest set in the source
+   (repo-side default, operator-registerable override) — `requirements.yml` (galaxy,
+   already works), `requirements.txt` (Python → a **uv-managed venv** in
+   `cache/python/<hash>`, wired via `ansible_python_interpreter`), and a **tofu module
+   cache** (persistent, so registry/git modules are not re-fetched every run). A
+   manifest CONTENT HASH gates re-vendor; unchanged → reuse cache → resolve offline.
+   "Deps met, never fresh every run." System packages are OUT of runtime scope (host
+   provides them, or the user adds a container layer; **bring-your-own-runner** is the
+   named post-v1 seam — do not paint over it).
+2. **Pre/post-run hooks** as step-ledger steps: a run becomes `[pre-hooks] → main →
+   [post-hooks]`, each a sandboxed ledger step, defined in `.exocomp/hooks.yml`
+   (repo-side default + operator override). Hooks run user-space as the run user.
+3. **Post-run health/verification gate** (pulled into v1 on correctness grounds — see
+   persona-scenarios.md): a ledger step whose success is a DECLARED PROBE, not just an
+   exit code — HTTP status, DNS resolution, TLS handshake + notAfter, or a metric
+   threshold — that can FAIL an otherwise-zero-exit run and gate/branch a workflow.
+   This is what makes the M3c chains (and any future cutover) actually safe. Reuse the
+   redactor; probes run in the daemon over local/allowed endpoints.
+4. **Cheap folds** (small, adjacency-justified): sensitive tofu output → sealed secret
+   sink (the secrets twin of story 5); backup quiesce pre/post hooks (free from item 2);
+   ansible `--check` structured drift (extends story 3 to the Ansible surface); host-key
+   re-pin runtime detection/quarantine (extends the M3b `ErrKnownHostChanged` primitive
+   — detect a known_hosts mismatch on a run, quarantine the host's concurrency key,
+   approval-gated re-pin). Each ships with a test.
+
+The rest of the panel's findings are the ranked post-v1 backlog in
+docs/design/v1.1-roadmap.md — NOT v1 scope. v1's bar stays core reliability of the
+five stories, not breadth.
