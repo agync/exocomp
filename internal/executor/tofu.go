@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"time"
@@ -201,6 +202,18 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	spec.Timeout = 0
 	spec.Env = env
 
+	// Offline resolution needs a lockfile the filesystem mirror can satisfy. A
+	// lockfile written online carries only zh: (registry) hashes; the mirror
+	// provides h1: hashes, so an offline init would fail verification against a
+	// zh:-only lock. Regenerate the lock from the mirror for this platform
+	// first, so init verifies with no network (expert-reviews.md #6).
+	if t.opts.OfflineProviders {
+		res, lockErr := t.lockProvidersFromMirror(ctx, bin, spec, sink)
+		if lockErr != nil || res.ExitCode != 0 {
+			return res, lockErr
+		}
+	}
+
 	if op != "init" {
 		initSpec := spec
 		initSpec.Argv = tofuFlags(bin, []string{TofuBinary, "init", "-backend-config=" + backendConfig})
@@ -224,6 +237,24 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 		res = reportPlanOutcome(ctx, res, sink, t.driftShower(bin, spec))
 	}
 	return res, nil
+}
+
+// lockProvidersFromMirror runs `tofu providers lock -fs-mirror <dir>
+// -platform=<current>`, writing platform-correct h1: hashes into the workspace's
+// .terraform.lock.hcl. Sourced from the filesystem mirror with no network, it
+// is what lets the following offline init verify: the filesystem_mirror method
+// yields h1: hashes, and a lock that already carries them (rather than the zh:
+// hashes an online run left) verifies against the mirror with no egress. The
+// spec already carries the offline CLI config in its env, so this command reads
+// the mirror too, not the registry.
+func (t *Tofu) lockProvidersFromMirror(ctx context.Context, bin string, spec Spec, sink EventSink) (Result, error) {
+	platform := runtime.GOOS + "_" + runtime.GOARCH
+	lockSpec := spec
+	lockSpec.Argv = tofuFlags(bin, []string{TofuBinary, "providers", "lock",
+		"-fs-mirror=" + t.opts.PluginCacheDir, "-platform=" + platform})
+	sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem,
+		Msg: "tofu providers lock (offline, " + platform + ")"})
+	return t.inner.Run(ctx, lockSpec, sink)
 }
 
 // driftShower captures `tofu show -json <planfile>` for a plan that wrote one,
