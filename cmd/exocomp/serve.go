@@ -287,7 +287,9 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		Notifier:    notifier,
 		DedupWindow: opts.dedupWindow,
 		ApprovalTTL: opts.approvalTTL,
-		Redactor:    secrets.NewRedactor(knownSecrets(ctx, st, env, warn)),
+		Redactor: func() reactive.Redactor {
+			return secrets.NewRedactor(knownSecrets(ctx, st, env, warn))
+		},
 	})
 }
 

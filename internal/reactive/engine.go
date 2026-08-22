@@ -54,8 +54,10 @@ type Options struct {
 	// ApprovalTTL is how long a decision link is good for. Default
 	// DefaultApprovalTTL. Expiry is fail-closed: the job is rejected.
 	ApprovalTTL time.Duration
-	// Redactor scrubs sealed secret values out of stored bodies.
-	Redactor Redactor
+	// Redactor resolves the filter that scrubs sealed secret values out of
+	// stored bodies. It is a function, resolved once per recorded event, so a
+	// secret sealed after the daemon started is scrubbed without a restart.
+	Redactor func() Redactor
 	// Clock overrides time.Now, for tests.
 	Clock func() time.Time
 	// Logger receives failures that are nobody's job. Default slog.Default().
@@ -70,7 +72,7 @@ type Engine struct {
 	notifier    *notify.Notifier
 	dedupWindow time.Duration
 	approvalTTL time.Duration
-	redactor    Redactor
+	redactor    func() Redactor
 	clock       func() time.Time
 	log         *slog.Logger
 
@@ -353,23 +355,33 @@ func (e *Engine) record(ctx context.Context, ev Event, raw []byte, outcome store
 	if ev.ReceivedAt.IsZero() {
 		ev.ReceivedAt = e.now()
 	}
+	r := e.scrubber()
 	return e.store.CreateEvent(ctx, store.Event{
 		Source:      ev.Source,
 		ReceivedAt:  ev.ReceivedAt,
 		DedupKey:    ev.DedupKey,
-		Normalized:  e.scrub(ev.JSON()),
-		Raw:         e.scrub(string(raw)),
+		Normalized:  scrub(r, ev.JSON()),
+		Raw:         scrub(r, string(raw)),
 		MatchedRule: ruleName,
 		Outcome:     outcome,
-		Reason:      e.scrub(reason),
+		Reason:      scrub(r, reason),
 		JobID:       jobID,
-		Trace:       e.scrub(trace.JSON()),
+		Trace:       scrub(r, trace.JSON()),
 	})
 }
 
-func (e *Engine) scrub(s string) string {
-	if e.redactor == nil || s == "" {
+// scrubber resolves the redactor for one recorded event, or nil when none is
+// configured.
+func (e *Engine) scrubber() Redactor {
+	if e.redactor == nil {
+		return nil
+	}
+	return e.redactor()
+}
+
+func scrub(r Redactor, s string) string {
+	if r == nil || s == "" {
 		return s
 	}
-	return string(e.redactor.Redact([]byte(s)))
+	return string(r.Redact([]byte(s)))
 }

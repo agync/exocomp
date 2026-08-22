@@ -343,10 +343,15 @@ func matchedNotification(rule store.Rule, ev Event) notify.Notification {
 }
 
 // ApprovalDeadline renders how long a pending approval has left, for the
-// CLI's and the TUI's listings.
+// CLI's and the TUI's listings. A decided one has no deadline: its window
+// stopped mattering the moment it was answered.
 func ApprovalDeadline(a store.Approval, now time.Time) string {
-	if !now.Before(a.ExpiresAt) {
+	switch {
+	case a.State != store.ApprovalPending:
+		return "-"
+	case !now.Before(a.ExpiresAt):
 		return "expired"
+	default:
+		return humanDuration(a.ExpiresAt.Sub(now)) + " left"
 	}
-	return humanDuration(a.ExpiresAt.Sub(now)) + " left"
 }

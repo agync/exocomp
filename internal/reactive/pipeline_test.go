@@ -233,3 +233,43 @@ func TestEvaluationIsTimeBudgeted(t *testing.T) {
 		t.Fatalf("evaluation took %s before the budget stopped it", elapsed)
 	}
 }
+
+// TestStoredBodiesAreRedacted: a webhook body is attacker-influenced text
+// landing in a durable table, and a sealed value that reached it — a monitor
+// quoting a connection string in an annotation — must not survive the write
+// (AGENTS.md invariant 4).
+func TestStoredBodiesAreRedacted(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	const sealed = "s3cr3t-vault-password"
+	h := newHarness(t, harnessOptions{known: [][]byte{[]byte(sealed)}})
+	h.addRule(t, shellRule("restart"))
+
+	body := []byte(`{"version":"4","status":"firing","alerts":[{"status":"firing",` +
+		`"labels":{"alertname":"DiskFull","instance":"web-01:9100","severity":"critical"},` +
+		`"annotations":{"summary":"connect with ` + sealed + `"},"fingerprint":"fp"}]}`)
+	events, err := reactive.Normalize(reactive.SourceAlertmanager, body, h.nowValue)
+	if err != nil {
+		t.Fatalf("normalize: %v", err)
+	}
+	stored, err := h.engine.Ingest(ctx, events[0], body)
+	if err != nil {
+		t.Fatalf("ingest: %v", err)
+	}
+
+	row, err := h.store.GetEvent(ctx, stored.ID)
+	if err != nil {
+		t.Fatalf("get event: %v", err)
+	}
+	for name, field := range map[string]string{
+		"raw_json": row.Raw, "normalized_json": row.Normalized,
+	} {
+		if strings.Contains(field, sealed) {
+			t.Fatalf("%s holds the sealed value: %s", name, field)
+		}
+		if !strings.Contains(field, "[REDACTED]") {
+			t.Fatalf("%s was not scrubbed at all: %s", name, field)
+		}
+	}
+}

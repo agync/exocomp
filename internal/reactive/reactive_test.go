@@ -15,6 +15,7 @@ import (
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -53,6 +54,9 @@ type harnessOptions struct {
 	approvalTTL time.Duration
 	baseURL     string
 	dbPath      string
+	// known are the secret values the engine's redactor must scrub out of a
+	// stored body.
+	known [][]byte
 }
 
 func newHarness(t *testing.T, opts harnessOptions) *harness {
@@ -82,10 +86,16 @@ func newHarness(t *testing.T, opts harnessOptions) *harness {
 		nowValue: time.Now().UTC(),
 	}
 
+	var redactor func() reactive.Redactor
+	if len(opts.known) > 0 {
+		redactor = func() reactive.Redactor { return secrets.NewRedactor(opts.known) }
+	}
+
 	engine, err := reactive.New(reactive.Options{
 		Store:       st,
 		Queue:       q,
 		Deriver:     h.deriver,
+		Redactor:    redactor,
 		Notifier:    notify.New(slog.New(slog.DiscardHandler), h.sent),
 		BaseURL:     opts.baseURL,
 		DedupWindow: opts.dedupWindow,
