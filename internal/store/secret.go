@@ -18,6 +18,14 @@ type KeyringEntry struct {
 	RevokedAt  *time.Time
 }
 
+// Secret source kinds: how a sealed value was minted. A user secret was supplied
+// by the operator on stdin; a generated secret was minted with crypto/rand and
+// its previous value has no upstream to revoke.
+const (
+	SecretSourceUser      = "user"
+	SecretSourceGenerated = "generated"
+)
+
 // SecretRow is a secret at rest: AES-256-GCM ciphertext under the DEK, with
 // name|kind bound in as AAD. Plaintext never enters this package.
 type SecretRow struct {
@@ -27,6 +35,10 @@ type SecretRow struct {
 	Nonce      []byte
 	Ciphertext []byte
 	AAD        string
+	// Source is how the value was minted (SecretSourceUser|SecretSourceGenerated).
+	Source string
+	// ExpiresAt is when the secret should be rotated or removed; nil means never.
+	ExpiresAt  *time.Time
 	CreatedAt  time.Time
 	RotatedAt  *time.Time
 	LastUsedAt *time.Time
@@ -130,10 +142,13 @@ func (s *Store) CreateSecret(ctx context.Context, sec SecretRow) (SecretRow, err
 	if sec.CreatedAt.IsZero() {
 		sec.CreatedAt = time.Now().UTC()
 	}
+	if sec.Source == "" {
+		sec.Source = SecretSourceUser
+	}
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO secret (name, kind, nonce, ciphertext, aad, created_at, rotated_at, last_used_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		sec.Name, sec.Kind, sec.Nonce, sec.Ciphertext, sec.AAD,
+		INSERT INTO secret (name, kind, nonce, ciphertext, aad, source, expires_at, created_at, rotated_at, last_used_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		sec.Name, sec.Kind, sec.Nonce, sec.Ciphertext, sec.AAD, sec.Source, msPtr(sec.ExpiresAt),
 		sec.CreatedAt.UnixMilli(), msPtr(sec.RotatedAt), msPtr(sec.LastUsedAt))
 	if err != nil {
 		return SecretRow{}, wrap("create secret", err)
@@ -149,7 +164,7 @@ func (s *Store) CreateSecret(ctx context.Context, sec SecretRow) (SecretRow, err
 // GetSecret returns a secret by name.
 func (s *Store) GetSecret(ctx context.Context, name string) (SecretRow, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, name, kind, nonce, ciphertext, aad, created_at, rotated_at, last_used_at
+		SELECT id, name, kind, nonce, ciphertext, aad, source, expires_at, created_at, rotated_at, last_used_at
 		FROM secret WHERE name = ?`, name)
 	sec, err := scanSecret(row)
 	if err != nil {
@@ -161,7 +176,7 @@ func (s *Store) GetSecret(ctx context.Context, name string) (SecretRow, error) {
 // ListSecrets returns every secret row, ordered by name.
 func (s *Store) ListSecrets(ctx context.Context) ([]SecretRow, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, name, kind, nonce, ciphertext, aad, created_at, rotated_at, last_used_at
+		SELECT id, name, kind, nonce, ciphertext, aad, source, expires_at, created_at, rotated_at, last_used_at
 		FROM secret ORDER BY name`)
 	if err != nil {
 		return nil, wrap("list secrets", err)
@@ -237,15 +252,16 @@ func (s *Store) DeleteSecret(ctx context.Context, name string) error {
 
 func scanSecret(row rowScanner) (SecretRow, error) {
 	var (
-		sec                   SecretRow
-		createdAt             int64
-		rotatedAt, lastUsedAt sql.NullInt64
+		sec                              SecretRow
+		createdAt                        int64
+		expiresAt, rotatedAt, lastUsedAt sql.NullInt64
 	)
 	err := row.Scan(&sec.ID, &sec.Name, &sec.Kind, &sec.Nonce, &sec.Ciphertext,
-		&sec.AAD, &createdAt, &rotatedAt, &lastUsedAt)
+		&sec.AAD, &sec.Source, &expiresAt, &createdAt, &rotatedAt, &lastUsedAt)
 	if err != nil {
 		return SecretRow{}, err
 	}
+	sec.ExpiresAt = timePtr(expiresAt)
 	sec.CreatedAt = time.UnixMilli(createdAt).UTC()
 	sec.RotatedAt = timePtr(rotatedAt)
 	sec.LastUsedAt = timePtr(lastUsedAt)
