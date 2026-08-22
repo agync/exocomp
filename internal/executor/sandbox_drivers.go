@@ -92,6 +92,13 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), a.opts.CollectionsPath)
 	sb.ReadPaths = append(sb.ReadPaths, ansibleSourceDirs(spec.Argv)...)
 	sb.ReadPaths = append(sb.ReadPaths, toolGrant(a.opts.Binary, AnsibleBinary)...)
+	// The per-source uv venv (ADR 0011) holds the interpreter and the project's
+	// installed libraries; a module that cannot read them fails, so the venv
+	// root is granted read when the run is bound to one. It is a data-volume
+	// cache path granted for this run, not added to any global allowlist.
+	if a.opts.VenvBin != "" {
+		sb.ReadPaths = append(sb.ReadPaths, filepath.Dir(a.opts.VenvBin))
+	}
 
 	if spec.Dir == "" {
 		spec.Dir = job.work
@@ -187,6 +194,12 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	if t.opts.PluginCacheDir != "" {
 		// An online init downloads into the cache, so read-only is not enough.
 		sb.WritePaths = append(sb.WritePaths, t.opts.PluginCacheDir)
+	}
+	// The persistent module cache (ADR 0011) is written by init through the
+	// symlink the driver plants in TF_DATA_DIR, so the target itself must be a
+	// granted write path or the redirected write is denied.
+	if cache := moduleCacheDir(t.opts); cache != "" {
+		sb.WritePaths = append(sb.WritePaths, cache)
 	}
 	if port := backendPort(t.opts.BackendURL); port != 0 {
 		sb.ConnectPorts = append(slices.Clone(sb.ConnectPorts), port)
