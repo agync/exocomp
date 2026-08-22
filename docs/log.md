@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — M3c plan policy: one operator page added
+
+[operations/plan-policy.md](operations/plan-policy.md) is new: the CEL gate over a
+workspace's `tofu show -json` plan. It documents the `plan` variable and the plan-show
+keys a policy reaches (`resource_changes[]`, `resource_drift[]`, `.change.actions[]`),
+compile-at-add refusal, the two actions (`deny` sealing a plan unconsumable so its apply
+refuses, `require_approval` routing the apply through the existing gate), the operator
+transcripts for each, and the boundaries: the verdict record carries only policy name and
+action, evaluation re-describes the sealed plan offline from the plugin cache with no
+backend or bearer, a workspace with no policies pays nothing, an unexaminable plan seals
+fail-closed denied, and a raw plan-file apply is not gated. Linked from the operations
+index between reacting-to-alerts and sources.
+
 ## 2026-08-22 — M3a reactive: two pages added, overview's carve-out closed
 
 [architecture/reactive.md](architecture/reactive.md) is new: the webhook ingress and its
