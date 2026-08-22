@@ -61,7 +61,9 @@ func runDoctor(w io.Writer) error {
 	}
 
 	reportSandbox(context.Background(), w)
-	return nil
+	// The report prints first, so an operator sees why; then an explicit
+	// local-sandboxed request that cannot be enforced is a failing check.
+	return enforceSandboxTier(context.Background())
 }
 
 func dataDir() (string, error) {

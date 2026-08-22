@@ -87,3 +87,38 @@ func resetSandboxDecision(t *testing.T) {
 	undecide()
 	t.Cleanup(undecide)
 }
+
+// TestExplicitSandboxFailsClosed: a named local-sandboxed request that the host
+// cannot enforce is a refusal, not a silent downgrade — running the fleet's
+// jobs unsandboxed is not what was asked for.
+func TestExplicitSandboxFailsClosed(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierLocalSandboxed
+	sandbox.result = executor.ProbeResult{
+		Requested: executor.TierLocalSandboxed,
+		Effective: executor.TierLocal,
+		Reason:    "Landlock unavailable on this kernel",
+	}
+	sandbox.once.Do(func() {})
+
+	if err := enforceSandboxTier(context.Background()); err == nil {
+		t.Fatal("an unenforceable explicit local-sandboxed request was allowed to run")
+	}
+}
+
+// TestAutoTierDegradesWithoutRefusing: auto means "sandbox where the kernel
+// allows it, and say so loudly where it does not", so a degraded auto tier runs.
+func TestAutoTierDegradesWithoutRefusing(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierAuto
+	sandbox.result = executor.ProbeResult{
+		Requested: executor.TierAuto,
+		Effective: executor.TierLocal,
+		Reason:    "Landlock unavailable on this kernel",
+	}
+	sandbox.once.Do(func() {})
+
+	if err := enforceSandboxTier(context.Background()); err != nil {
+		t.Fatalf("auto tier refused to degrade: %v", err)
+	}
+}

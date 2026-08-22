@@ -139,6 +139,9 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err := requestSandboxTier(opts.sandbox, warn); err != nil {
 		return fmt.Errorf("serve: %w", err)
 	}
+	if err := enforceSandboxTier(ctx); err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
 	_, _ = fmt.Fprintf(out, "job isolation tier: %s\n", sandboxTier(ctx).Effective)
 
 	lock, err := acquireServeLock(dir)

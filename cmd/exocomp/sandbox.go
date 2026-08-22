@@ -108,6 +108,22 @@ func sandboxed(ctx context.Context) bool {
 	return sandboxTier(ctx).Effective == executor.TierLocalSandboxed
 }
 
+// enforceSandboxTier fails closed when the sandbox was asked for by name and
+// the host cannot provide it. TierAuto degrades to the subprocess boundary with
+// a warning — that is what "auto" means. An explicit local-sandboxed request is
+// a policy, not a preference: running the fleet's jobs unsandboxed is not what
+// was asked for, so the daemon and the doctor refuse rather than quietly
+// downgrade (ADR 0005, "never silently").
+func enforceSandboxTier(ctx context.Context) error {
+	res := sandboxTier(ctx)
+	if res.Requested == executor.TierLocalSandboxed && res.Degraded() {
+		return fmt.Errorf("sandbox: %s was requested but cannot be enforced here: %s; "+
+			"pass --sandbox %s to accept the subprocess boundary instead",
+			executor.TierLocalSandboxed, res.Reason, executor.TierAuto)
+	}
+	return nil
+}
+
 // sandboxCanary names the executable the probe runs inside the sandbox: this
 // binary re-entered at its hidden canary subcommand, so what is asserted is the
 // same process image jobs are launched by.

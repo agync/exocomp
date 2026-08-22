@@ -39,11 +39,12 @@ job isolation tier: local-sandboxed
 ```
 
 `auto` — the default — asks for `local-sandboxed` and accepts plain `local` when the host
-cannot enforce it. Either way the daemon says so: a degradation is a `WARNING` on stderr
-and a line in `exocomp doctor`, never a silent downgrade. `local` skips the probe
-entirely, which is the honest way to run on a kernel without Landlock; `local-sandboxed`
-asks for the sandbox explicitly and still degrades loudly rather than refusing to start,
-because a control plane that will not run is worse than one that says what it is doing.
+cannot enforce it: a degradation is a `WARNING` on stderr and a line in `exocomp doctor`,
+never a silent downgrade. `local` skips the probe entirely, which is the honest way to run
+on a kernel without Landlock. `local-sandboxed` asks for the sandbox by name, and a name is
+a policy: when the host cannot enforce it, `exocomp serve` and `exocomp doctor` refuse
+rather than run the fleet's jobs unsandboxed. Pass `--sandbox auto` to accept the
+subprocess boundary instead.
 
 The probe is an assertion, not a version check. It stands up a file standing in for
 `host.key`, two listening unix sockets, and a listening loopback TCP port, runs a canary
@@ -53,7 +54,7 @@ What each kind of job may reach:
 
 | | Granted | Egress |
 |---|---|---|
-| ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm` | TCP 22 |
+| ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm`, `~/.ansible` under the redirected home, the single file `/etc/passwd` (ssh resolves the local user through it) | TCP 22 |
 | tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port |
 
 Shell runbooks and backup legs still run at the `local` tier. The backup engine reads

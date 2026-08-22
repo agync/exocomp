@@ -90,8 +90,10 @@ wrong for provider signature verification.
 
 `exocomp doctor` reports the launcher version against the floor, the kernel's Landlock ABI
 (network rules need ABI v4+, kernel ≥ 6.7), the tier in effect, and what the startup probe
-asserted — and the daemon degrades **loudly** to `local`, never silently, on a kernel or a
-launcher that cannot deliver it.
+asserted — and under `auto` the daemon degrades **loudly** to `local`, never silently, on a
+kernel or a launcher that cannot deliver it. A tier named explicitly is a policy, not a
+preference: `local-sandboxed` that cannot be enforced makes `serve` and `doctor` refuse
+rather than degrade, since running the fleet's jobs unsandboxed is not what was asked for.
 
 The probe asserts rather than assumes: it stands up a file standing in for `host.key`, two
 listening unix sockets, and a listening loopback TCP port, then runs a canary inside a
