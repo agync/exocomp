@@ -147,17 +147,33 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) ([]Event, error) 
 	return out, nil
 }
 
-// LastEventByDedupKey returns the newest event carrying key that was not
-// itself swallowed as a duplicate, or ErrNotFound. It is the dedup ledger:
-// comparing against a suppressed duplicate would let a window slide forward
-// forever on repeats.
+// actingOutcomes are the event outcomes that anchor the dedup window: an event
+// that actually matched a rule and got as far as acting on it. An ignored event
+// (no rule matched) or an errored one never fired anything, so it must not
+// become the anchor that suppresses a later real alert sharing the key (finding
+// R1: an inert plant would otherwise mute the alert). A suppressed duplicate is
+// excluded too, so a source retrying forever cannot slide the window forward.
+var actingOutcomes = []EventOutcome{OutcomeMatched, OutcomeGated, OutcomeFired}
+
+// LastEventByDedupKey returns the newest event carrying key that actually
+// matched a rule and acted on it, or ErrNotFound. It is the dedup ledger:
+// anchoring on an event that never fired a rule would let an attacker plant an
+// inert event to silence a real one, and anchoring on a suppressed duplicate
+// would let a window slide forward forever on repeats.
 func (s *Store) LastEventByDedupKey(ctx context.Context, key string) (Event, error) {
 	if key == "" {
 		return Event{}, fmt.Errorf("store: last event by dedup key: %w", ErrNotFound)
 	}
+	placeholders := make([]string, len(actingOutcomes))
+	args := make([]any, 0, len(actingOutcomes)+1)
+	args = append(args, key)
+	for i, o := range actingOutcomes {
+		placeholders[i] = "?"
+		args = append(args, string(o))
+	}
 	row := s.db.QueryRowContext(ctx, `SELECT `+eventColumns+` FROM event
-		WHERE dedup_key = ? AND outcome <> ? ORDER BY received_at DESC, id DESC LIMIT 1`,
-		key, string(OutcomeSuppressed))
+		WHERE dedup_key = ? AND outcome IN (`+strings.Join(placeholders, ", ")+`)
+		ORDER BY received_at DESC, id DESC LIMIT 1`, args...)
 	e, err := scanEvent(row)
 	if err != nil {
 		return Event{}, wrap("last event by dedup key", err)

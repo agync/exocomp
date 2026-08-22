@@ -180,6 +180,66 @@ func TestDedupSwallowsARepeatInsideTheWindow(t *testing.T) {
 	}
 }
 
+// TestDedupAnchorIsNotPlantedByAnInertEvent is the R1 red-team repro: an
+// attacker pre-plants a benign event that matches no rule but carries the
+// dedup key a real alert will share, hoping to have the real alert swallowed as
+// its "duplicate". The anchor must be an event that actually matched a rule, so
+// the inert plant cannot mute the alert that follows.
+func TestDedupAnchorIsNotPlantedByAnInertEvent(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{dedupWindow: 5 * time.Minute})
+	h.addRule(t, shellRule("restart")) // matches DiskFull firing, nothing else.
+
+	const key = "alertmanager:fp:shared"
+
+	// The plant: same source and dedup key as the coming alert, but a name no
+	// rule matches. It is recorded, outcome "ignored".
+	plant := reactive.Event{
+		Source: reactive.SourceAlertmanager, Name: "Benign", Status: "firing",
+		DedupKey: key, ReceivedAt: h.nowValue,
+	}
+	planted, err := h.engine.Ingest(ctx, plant, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ingest plant: %v", err)
+	}
+	if planted.Outcome != store.OutcomeIgnored {
+		t.Fatalf("plant outcome = %s (%s), want ignored", planted.Outcome, planted.Reason)
+	}
+
+	// The real alert arrives a moment later, inside the dedup window, sharing
+	// the key. It must fire, not be swallowed as a duplicate of the plant.
+	h.advance(time.Minute)
+	alert := reactive.Event{
+		Source: reactive.SourceAlertmanager, Name: "DiskFull", Status: "firing",
+		DedupKey: key, ReceivedAt: h.nowValue,
+	}
+	fired, err := h.engine.Ingest(ctx, alert, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ingest alert: %v", err)
+	}
+	if fired.Outcome != store.OutcomeFired {
+		t.Fatalf("alert outcome = %s (%s), want fired — an inert plant muted a real alert",
+			fired.Outcome, fired.Reason)
+	}
+
+	// Legitimate dedup is preserved: a genuine repeat of the firing alert,
+	// still inside the window, is anchored on the event that fired and swallowed.
+	h.advance(time.Minute)
+	repeat, err := h.engine.Ingest(ctx, alert, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ingest repeat: %v", err)
+	}
+	if repeat.Outcome != store.OutcomeSuppressed {
+		t.Fatalf("repeat outcome = %s (%s), want suppressed", repeat.Outcome, repeat.Reason)
+	}
+	want := "duplicate of event " + strconv.FormatInt(fired.ID, 10) + " within 5m"
+	if repeat.Reason != want {
+		t.Fatalf("repeat reason = %q, want %q", repeat.Reason, want)
+	}
+}
+
 // TestCooldownReasonNamesTheNextEligibleTime pins the reason string the events
 // design specifies: "cooldown 6h, next eligible HH:MM".
 func TestCooldownReasonNamesTheNextEligibleTime(t *testing.T) {
