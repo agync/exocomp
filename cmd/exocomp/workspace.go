@@ -257,7 +257,10 @@ func newWorkspaceListCmd() *cobra.Command {
 }
 
 func newWorkspacePlanCmd() *cobra.Command {
-	var timeout time.Duration
+	var (
+		timeout    time.Duration
+		runSecrets string
+	)
 	plan := &cobra.Command{
 		Use:   "plan <name>",
 		Short: "Plan a workspace through the queue",
@@ -269,17 +272,20 @@ func newWorkspacePlanCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "plan", timeout: timeout}))
+				workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets, timeout: timeout}))
 		},
 	}
 	plan.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
+	plan.Flags().StringVar(&runSecrets, "run-secrets", "",
+		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	return plan
 }
 
 func newWorkspaceApplyCmd() *cobra.Command {
 	var (
-		timeout time.Duration
-		planRef string
+		timeout    time.Duration
+		planRef    string
+		runSecrets string
 	)
 	apply := &cobra.Command{
 		Use:   "apply <name>",
@@ -291,12 +297,14 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "apply", planRef: planRef, timeout: timeout}))
+				workspaceOp{workspace: args[0], op: "apply", planRef: planRef, runSecrets: runSecrets, timeout: timeout}))
 		},
 	}
 	apply.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
 	apply.Flags().StringVar(&planRef, "plan", "",
 		"apply a saved plan, named by artifact id or by path")
+	apply.Flags().StringVar(&runSecrets, "run-secrets", "",
+		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	return apply
 }
 
@@ -313,10 +321,11 @@ func exitWith(code int, err error) error {
 }
 
 type workspaceOp struct {
-	workspace string
-	op        string
-	planRef   string
-	timeout   time.Duration
+	workspace  string
+	op         string
+	planRef    string
+	runSecrets string
+	timeout    time.Duration
 }
 
 // runWorkspaceOp runs one tofu operation through the queue and returns the
@@ -370,13 +379,14 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 	}
 	defer cleanupPlan()
 	spec := queue.Spec{
-		Runbook:        workspaceRunbookPrefix + ws.Name,
-		Kind:           executor.KindTofu,
-		Trigger:        "manual",
-		Argv:           argv,
-		Dir:            ws.TofuDir,
-		ConcurrencyKey: "tofu:" + ws.Name,
-		Timeout:        op.timeout,
+		Runbook:          workspaceRunbookPrefix + ws.Name,
+		Kind:             executor.KindTofu,
+		Trigger:          "manual",
+		Argv:             argv,
+		Dir:              ws.TofuDir,
+		RunSecretBinding: op.runSecrets,
+		ConcurrencyKey:   "tofu:" + ws.Name,
+		Timeout:          op.timeout,
 	}
 
 	var final store.Job
@@ -435,8 +445,14 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 	stateKey := env.Derive(executor.TofuStatePurpose, ws.Name)
 	passphrase := base64.StdEncoding.EncodeToString(stateKey)
 
+	runSecrets, secretPlain, err := resolveRunSecrets(ctx, st, env, spec.RunSecretBinding, "")
+	if err != nil {
+		return store.Job{}, err
+	}
+
 	known := knownSecrets(ctx, st, env, warn)
 	known = append(known, []byte(token), stateKey, []byte(passphrase))
+	known = append(known, secretPlain...)
 
 	driver := tofuTierDriver(dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
@@ -445,6 +461,7 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		StatePassphrase: passphrase,
 		PrivateDirRoot:  dirs.private,
 		PluginCacheDir:  dirs.pluginCache,
+		RunSecrets:      runSecrets,
 	})
 	q := queue.New(st, driver, queue.Options{
 		Workers:      1,

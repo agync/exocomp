@@ -19,10 +19,12 @@ const vaultPurpose = "ansible-vault"
 // Whoever runs the job — the CLI draining its own queue or the daemon claiming
 // the row — derives the vault password here and nowhere else, so the two
 // cannot drift apart. An empty project runs without a vault password.
-func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string) (executor.Driver, [][]byte) {
+func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
+	runSecrets executor.RunSecrets) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
 		VaultID:         executor.DefaultVaultID,
 		CollectionsPath: filepath.Join(dataDir, collectionsCacheDir),
+		RunSecrets:      runSecrets,
 	}
 	if env == nil || vaultProject == "" {
 		return ansibleTierDriver(dataDir, opts), nil
@@ -50,9 +52,16 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		return executor.Result{}, err
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject)
-	if len(derived) == 0 {
+	runSecrets, secretPlain, err := resolveRunSecrets(ctx, d.store, d.env,
+		job.Args.RunSecretBinding, job.Args.Inventory)
+	if err != nil {
+		return executor.Result{}, err
+	}
+
+	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets)
+	material := append(derived, secretPlain...)
+	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)
 	}
-	return drv.Run(ctx, spec, runSink{redactor: secrets.NewRedactor(derived), next: sink})
+	return drv.Run(ctx, spec, runSink{redactor: secrets.NewRedactor(material), next: sink})
 }

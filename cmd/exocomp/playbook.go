@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,7 @@ func newPlaybookCmd() *cobra.Command {
 	var (
 		inventory    string
 		vaultProject string
+		runSecrets   string
 		timeout      time.Duration
 	)
 
@@ -42,6 +44,7 @@ func newPlaybookCmd() *cobra.Command {
 				playbook:     args[0],
 				inventory:    inventory,
 				vaultProject: vaultProject,
+				runSecrets:   runSecrets,
 				timeout:      timeout,
 			})
 			if err != nil {
@@ -56,9 +59,11 @@ func newPlaybookCmd() *cobra.Command {
 		},
 	}
 	run.Flags().StringVar(&inventory, "inventory", "",
-		"inventory path (default: localhost over the local connection)")
+		"inventory path, or a registered inventory name (default: localhost over the local connection)")
 	run.Flags().StringVar(&vaultProject, "vault-project", "",
 		"derive the ansible-vault password for this project from the envelope")
+	run.Flags().StringVar(&runSecrets, "run-secrets", "",
+		"bind a run_secret set as named env for the run (a dynamic-inventory plugin or module authenticates from it)")
 	run.Flags().DurationVar(&timeout, "timeout", 0,
 		"kill the run after this long (0: no limit)")
 
@@ -74,6 +79,7 @@ type playbookSpec struct {
 	playbook     string
 	inventory    string
 	vaultProject string
+	runSecrets   string
 	timeout      time.Duration
 }
 
@@ -87,12 +93,6 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	playbook, err := filepath.Abs(spec.playbook)
 	if err != nil {
 		return 0, fmt.Errorf("playbook: resolve %s: %w", spec.playbook, err)
-	}
-	inventory := spec.inventory
-	if inventory != "" {
-		if inventory, err = filepath.Abs(inventory); err != nil {
-			return 0, fmt.Errorf("playbook: resolve inventory: %w", err)
-		}
 	}
 
 	dir, err := dataDir()
@@ -110,15 +110,24 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		}
 	}()
 
-	// The vault project travels with the job, not the password it derives: a
-	// daemon that claims this row has to derive the same password itself.
+	// --inventory names either a registered inventory (whose env_binding is
+	// resolved for a dynamic plugin) or a plain path.
+	inventory, invName, err := resolveInventoryArg(ctx, st, spec.inventory)
+	if err != nil {
+		return 0, err
+	}
+
+	// The vault project and binding names travel with the job, not the material
+	// they resolve: a daemon that claims this row derives the same secrets.
 	queued := queue.Spec{
-		Runbook:      "playbook",
-		Kind:         executor.KindAnsible,
-		Trigger:      "manual",
-		Argv:         executor.AnsibleArgv(playbook, inventory),
-		VaultProject: spec.vaultProject,
-		Timeout:      spec.timeout,
+		Runbook:          "playbook",
+		Kind:             executor.KindAnsible,
+		Trigger:          "manual",
+		Argv:             executor.AnsibleArgv(playbook, inventory),
+		VaultProject:     spec.vaultProject,
+		RunSecretBinding: spec.runSecrets,
+		Inventory:        invName,
+		Timeout:          spec.timeout,
 	}
 
 	var final store.Job
@@ -143,6 +152,26 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	}
 }
 
+// resolveInventoryArg turns a --inventory value into the path ansible targets
+// and, when it names a registered inventory, that inventory's name so its
+// env_binding resolves for a dynamic plugin. A value that matches no registered
+// inventory is treated as a filesystem path. An empty value targets localhost.
+func resolveInventoryArg(ctx context.Context, st *store.Store, value string) (path, name string, err error) {
+	if value == "" {
+		return "", "", nil
+	}
+	if inv, ierr := st.InventoryByName(ctx, value); ierr == nil {
+		return inv.Path, inv.Name, nil
+	} else if !errors.Is(ierr, store.ErrNotFound) {
+		return "", "", ierr
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return "", "", fmt.Errorf("playbook: resolve inventory: %w", err)
+	}
+	return abs, "", nil
+}
+
 // runPlaybookInline enqueues the job and drains it in this process, which is
 // what a host with no daemon does. The vault password is derived here, held
 // for the length of the run, and added to what the redactor scrubs.
@@ -157,10 +186,16 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 		defer func() { _ = env.Close() }()
 	}
 
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject)
+	runSecrets, secretPlain, err := resolveRunSecrets(ctx, st, env, spec.RunSecretBinding, spec.Inventory)
+	if err != nil {
+		return store.Job{}, err
+	}
+
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)
+		known = append(known, secretPlain...)
 		qopts = append(qopts, queue.WithRedactor(secrets.NewRedactor(known)))
 	}
 

@@ -600,6 +600,11 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 	stateKey := d.env.Derive(executor.TofuStatePurpose, ws.Name)
 	passphrase := base64.StdEncoding.EncodeToString(stateKey)
 
+	runSecrets, secretPlain, err := resolveRunSecrets(ctx, d.store, d.env, job.Args.RunSecretBinding, "")
+	if err != nil {
+		return executor.Result{}, err
+	}
+
 	d.server.BindJob(ws.Name, job.ID)
 	defer d.server.ReleaseJob(ws.Name)
 
@@ -610,8 +615,10 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		StatePassphrase: passphrase,
 		PrivateDirRoot:  d.dirs.private,
 		PluginCacheDir:  d.dirs.pluginCache,
+		RunSecrets:      runSecrets,
 	})
-	redactor := secrets.NewRedactor([][]byte{[]byte(token), stateKey, []byte(passphrase)})
+	material := append([][]byte{[]byte(token), stateKey, []byte(passphrase)}, secretPlain...)
+	redactor := secrets.NewRedactor(material)
 	return drv.Run(ctx, spec, runSink{redactor: redactor, next: sink})
 }
 

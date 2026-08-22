@@ -69,6 +69,16 @@ type JobArgs struct {
 	// password comes from. The project name is public; the password it
 	// derives is resolved when the job runs and never written here.
 	VaultProject string `json:"vault_project,omitempty"`
+	// RunSecretBinding names the run_secret set (a store binding) whose sealed
+	// values are resolved to named env for this run alone — the credential
+	// plane a provider or dynamic-inventory plugin authenticates from. Only the
+	// binding name travels here; the secret values are resolved at execution
+	// time and never written to the job row.
+	RunSecretBinding string `json:"run_secret_binding,omitempty"`
+	// Inventory names a registered inventory. For a dynamic inventory its
+	// env_binding is resolved into the run's credential env alongside
+	// RunSecretBinding. The name is public; the values it binds are not.
+	Inventory string `json:"inventory,omitempty"`
 }
 
 // Duration is a time.Duration that marshals as a string ("30s") so job rows

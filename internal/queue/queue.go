@@ -23,11 +23,17 @@ type Spec struct {
 	Dir     string
 	// VaultProject names the envelope derivation an ansible job's vault
 	// password comes from, so whichever process claims the job can derive it.
-	VaultProject   string
-	ConcurrencyKey string
-	DedupKey       string
-	IdempotencyKey string
-	Timeout        time.Duration
+	VaultProject string
+	// RunSecretBinding names the run_secret set resolved to named env for the
+	// run; Inventory names a registered inventory whose env_binding is resolved
+	// alongside it. Both carry only names — the sealed values are resolved when
+	// the job runs and never written to the row.
+	RunSecretBinding string
+	Inventory        string
+	ConcurrencyKey   string
+	DedupKey         string
+	IdempotencyKey   string
+	Timeout          time.Duration
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -115,10 +121,12 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		Kind:    spec.Kind,
 		Trigger: spec.Trigger,
 		Args: store.JobArgs{
-			Argv:         spec.Argv,
-			Dir:          spec.Dir,
-			Timeout:      store.Duration(spec.Timeout),
-			VaultProject: spec.VaultProject,
+			Argv:             spec.Argv,
+			Dir:              spec.Dir,
+			Timeout:          store.Duration(spec.Timeout),
+			VaultProject:     spec.VaultProject,
+			RunSecretBinding: spec.RunSecretBinding,
+			Inventory:        spec.Inventory,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
