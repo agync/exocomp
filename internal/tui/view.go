@@ -12,8 +12,43 @@ func (m Model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
+	// The v0.2 screens are full frames the fixture renderers draw end to end
+	// (their own header, rule, and help bar); the M1 screens still use the
+	// generic header/body/help chrome. A banner, when a hold is active, rides
+	// above whichever is showing.
+	if !m.tailing {
+		switch m.active {
+		case screenHome:
+			return tea.NewView(liveFrame(m.withBanner(m.renderHomeScreen())))
+		case screenApprovals:
+			return tea.NewView(liveFrame(m.withBanner(renderApprovalDetail(m.approvalsModel()))))
+		case screenEvents:
+			return tea.NewView(liveFrame(m.withBanner(renderEventsScreen(m.eventsModel()))))
+		}
+	}
 	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
 }
+
+// renderHomeScreen picks the width-appropriate Home layout.
+func (m Model) renderHomeScreen() string {
+	if m.width >= 120 {
+		return renderHome120(m.homeModel())
+	}
+	return renderHome80(m.homeModel())
+}
+
+// withBanner prepends the hold banner when a silence or mute is active.
+func (m Model) withBanner(screen string) string {
+	if b := m.bannerState(); b.Active() {
+		return bannerLine(b) + "\n" + screen
+	}
+	return screen
+}
+
+// liveFrame strips the trailing newline the fixture renderers carry: a golden
+// file ends in one, but a full-height frame handed to the program with a
+// trailing newline scrolls its own first line off the top of the terminal.
+func liveFrame(s string) string { return strings.TrimSuffix(s, "\n") }
 
 func (m Model) renderHeader() string {
 	tabs := []struct {

@@ -7,14 +7,18 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// screen selects which of the four top-level views is showing.
+// screen selects which top-level view is showing. [0] Home is the root; [1]-[4]
+// are the M1 tables; [5] Approvals and [6] Events are the reactive surfaces.
 type screen int
 
 const (
-	screenJobs screen = iota
-	screenBackups
-	screenWorkspaces
-	screenSchedules
+	screenHome       screen = iota // [0] the glance, and the root: q quits only here
+	screenJobs                     // [1]
+	screenBackups                  // [2]
+	screenWorkspaces               // [3]
+	screenSchedules                // [4]
+	screenApprovals                // [5]
+	screenEvents                   // [6]
 )
 
 const (
@@ -22,10 +26,11 @@ const (
 	helpLines   = 2 // blank + help line
 )
 
-// Model is the top-level Bubble Tea program: four screens (Jobs, Backups,
-// Workspaces, Schedules) switchable with 1/2/3/4/tab, a job event tail
-// entered from the Jobs and Workspaces screens, and a bottom help bar. It
-// refreshes from the store on a 2s tick.
+// Model is the top-level Bubble Tea program: the Home glance ([0], the root),
+// the M1 tables (Jobs, Backups, Workspaces, Schedules; [1]-[4]/tab), the
+// Approvals ([5]) and Events ([6]) surfaces, a job event tail entered from the
+// Jobs and Workspaces screens, and a hold banner. It refreshes from the store
+// on a 2s tick. q quits only at the root; esc walks a screen back.
 type Model struct {
 	store *store.Store
 
@@ -51,6 +56,14 @@ type Model struct {
 	schedulesTable    schedulesTable
 	schedulesErr      error
 
+	// The glance streams the new screens read: pending approvals, recent
+	// events, and the active holds behind the banner.
+	approvals      []store.Approval
+	reactiveEvents []store.Event
+	silences       []store.Silence
+	mutes          []store.NotifyMute
+	glanceErr      error
+
 	tailing    bool
 	tailJobID  int64
 	tailView   viewport.Model
@@ -64,7 +77,7 @@ type Model struct {
 func New(st *store.Store) Model {
 	m := Model{
 		store:           st,
-		active:          screenJobs,
+		active:          screenHome,
 		width:           80,
 		height:          24,
 		jobsTable:       newJobsTable(),
@@ -89,6 +102,7 @@ func (m Model) Init() tea.Cmd {
 		loadBackupsCmd(m.store),
 		loadWorkspacesCmd(m.store),
 		loadSchedulesCmd(m.store),
+		loadGlanceCmd(m.store),
 		tickCmd(),
 	)
 }
@@ -142,6 +156,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case glanceLoadedMsg:
+		m.glanceErr = msg.err
+		if msg.err == nil {
+			m.approvals = msg.approvals
+			m.reactiveEvents = msg.events
+			m.silences = msg.silences
+			m.mutes = msg.mutes
+		}
+		return m, nil
+
 	case eventsLoadedMsg:
 		if msg.jobID != m.tailJobID {
 			return m, nil
@@ -168,6 +192,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m Model) refreshCmd() tea.Cmd {
 	cmds := []tea.Cmd{tickCmd()}
 	switch m.active {
+	case screenHome:
+		// The glance reads every stream: reload them all.
+		cmds = append(cmds,
+			loadJobsCmd(m.store), loadBackupsCmd(m.store),
+			loadWorkspacesCmd(m.store), loadSchedulesCmd(m.store), loadGlanceCmd(m.store))
 	case screenJobs:
 		cmds = append(cmds, loadJobsCmd(m.store))
 	case screenBackups:
@@ -176,6 +205,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadWorkspacesCmd(m.store))
 	case screenSchedules:
 		cmds = append(cmds, loadSchedulesCmd(m.store))
+	case screenApprovals, screenEvents:
+		cmds = append(cmds, loadGlanceCmd(m.store))
 	}
 	if m.tailing {
 		cmds = append(cmds, loadEventsCmd(m.store, m.tailJobID))
@@ -185,9 +216,25 @@ func (m Model) refreshCmd() tea.Cmd {
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
+
+	case "q":
+		// q quits only at the root; elsewhere esc walks back. This is the
+		// keymap delta the design settled on, so a stray q deep in a screen
+		// cannot drop the operator out of the whole UI.
+		if !m.tailing && m.active == screenHome {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		return m, nil
+
+	case "0":
+		if !m.tailing {
+			m.active = screenHome
+		}
+		return m, nil
 
 	case "1":
 		if !m.tailing {
@@ -213,6 +260,18 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case "5":
+		if !m.tailing {
+			m.active = screenApprovals
+		}
+		return m, nil
+
+	case "6":
+		if !m.tailing {
+			m.active = screenEvents
+		}
+		return m, nil
+
 	case "tab":
 		if !m.tailing {
 			m.active = otherScreen(m.active)
@@ -220,11 +279,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "esc":
-		if m.tailing {
+		switch {
+		case m.tailing:
 			m.tailing = false
 			m.tailJobID = 0
 			m.tailEvents = nil
 			m.tailErr = nil
+		case m.active != screenHome:
+			// esc walks back toward the root rather than quitting.
+			m.active = screenHome
 		}
 		return m, nil
 

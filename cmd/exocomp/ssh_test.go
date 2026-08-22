@@ -40,7 +40,9 @@ func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 	if status != 0 {
 		t.Fatalf("ssh session exited %d, transcript:\n%s", status, out)
 	}
-	for _, want := range []string{"exocomp", "[1] Jobs", "[2] Backups", "no jobs yet", "q quit"} {
+	// The TUI opens on the Home glance ([0], the root): its header, the
+	// needs/queue sections, and the screen-selector help bar.
+	for _, want := range []string{"exocomp", "NEEDS YOU", "QUEUE", "BACKUPS", "[0-6] screens", "[q] quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("session transcript does not contain %q:\n%s", want, out)
 		}

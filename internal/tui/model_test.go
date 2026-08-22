@@ -46,8 +46,13 @@ func TestScreenSwitching(t *testing.T) {
 	m := New(openTestStore(t))
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
+	// [0] Home is the new root; [1] selects Jobs.
+	if m.active != screenHome {
+		t.Fatalf("initial screen = %v, want screenHome", m.active)
+	}
+	m = update(t, m, key('1'))
 	if got := m.View().Content; !strings.Contains(got, "no jobs yet") {
-		t.Fatalf("initial screen not Jobs, view:\n%s", got)
+		t.Fatalf("[1] did not show Jobs, view:\n%s", got)
 	}
 
 	m = update(t, m, key('2'))
@@ -153,6 +158,7 @@ func TestSelectionMovementAndTailToggling(t *testing.T) {
 
 	m := New(st)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, key('1')) // Home is the root; move to Jobs to drive its table
 
 	msg := loadJobsCmd(st)()
 	m = update(t, m, msg)
@@ -230,6 +236,7 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 
 	m := New(st)
 	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, key('1')) // leave Home for the Jobs table
 	m = update(t, m, loadJobsCmd(st)())
 	m = update(t, m, loadBackupsCmd(st)())
 
@@ -272,7 +279,7 @@ func TestNoOpKeysLeaveScreenUnchanged(t *testing.T) {
 	m := New(openTestStore(t))
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('x'))
-	if m.active != screenJobs || m.tailing {
+	if m.active != screenHome || m.tailing {
 		t.Fatalf("unrecognized key changed state: active=%v tailing=%v", m.active, m.tailing)
 	}
 }
