@@ -15,6 +15,12 @@ import (
 // offline-restorable tree (ADR 0011).
 const pythonCacheDir = "cache/python"
 
+// uvCacheSubdir is uv's own download cache, under the venv cache root so it is
+// backed up with the venvs it seeds. It is a granted write path under the
+// resolver sandbox; uv's default cache lives under the daemon home, which the
+// sandbox does not grant.
+const uvCacheSubdir = "uv-cache"
+
 // resolveProjectVenv resolves the per-source uv venv a playbook run executes
 // inside (ADR 0011). It discovers the project's Python manifest from the
 // playbook's directory; a source that declares none returns a zero Venv, so the
@@ -37,11 +43,30 @@ func resolveProjectVenv(ctx context.Context, dataDir, playbook string) (deps.Ven
 	if !manifest.HasDeps() {
 		return deps.Venv{}, nil
 	}
-	return deps.EnsureVenv(ctx, deps.VenvSpec{
-		CacheRoot: filepath.Join(dataDir, pythonCacheDir),
-		Source:    deps.SourceKey(manifest.Root),
+	cacheRoot := filepath.Join(dataDir, pythonCacheDir)
+	source := deps.SourceKey(manifest.Root)
+	spec := deps.VenvSpec{
+		CacheRoot: cacheRoot,
+		Source:    source,
 		Manifest:  manifest,
-	})
+	}
+	// The resolver runs uv, and uv runs a manifest's build backend — code
+	// derived from an untrusted source. Under the sandbox tier it is confined to
+	// its venv cache and the manifest, denied the data dir and the keys (finding
+	// S1); the daemon-context resolve stays only where no sandbox can enforce it.
+	if sandboxed(ctx) {
+		uvCache := filepath.Join(cacheRoot, uvCacheSubdir)
+		read := executor.ToolGrants(deps.UVBinary, "python3")
+		read = append(read, manifest.Root)
+		spec.UVCacheDir = uvCache
+		spec.Sandbox = deps.NewResolverSandbox(deps.ResolverSandboxOptions{
+			DataDir:    dataDir,
+			VenvDir:    filepath.Join(cacheRoot, source),
+			ReadPaths:  read,
+			WritePaths: []string{uvCache},
+		})
+	}
+	return deps.EnsureVenv(ctx, spec)
 }
 
 // ansiblePlaybookPath returns the playbook file an ansible argv names: its last

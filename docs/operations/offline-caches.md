@@ -32,6 +32,28 @@ that a path outside its configured collections paths "will not be picked up" —
 warning describes running `ansible-galaxy` directly, not a playbook run through
 `exocomp`, which sets the path itself).
 
+## Python dependencies
+
+A source that declares Python dependencies (`requirements.txt`, or a
+`pyproject.toml` with PEP 621 / `[dependency-groups]` deps) resolves into a
+per-source uv venv at `<data dir>/cache/python/<source>/<manifest-hash>`
+([ADR 0011](../adr/0011-project-dependency-resolution.md)). uv's own download
+cache lands at `<data dir>/cache/python/uv-cache`, so both travel with the
+backup.
+
+**The resolver runs under the job sandbox, not the daemon.** uv resolves and
+installs a project's declared deps, and a manifest can steer that — a
+`pyproject.toml` build backend is arbitrary code, run at install time, derived
+from an untrusted source. So when the sandbox tier is in effect the uv
+invocation is wrapped in the same nono launcher every job runs under
+([ADR 0005](../adr/0005-job-sandboxing-nono.md)): uv is granted write on its
+venv and cache, read on its tool tree and the manifest, and HTTPS to fetch
+packages, and is **denied the data dir, `host.key`, `keyring.age`, and the
+database** by the same profile guard a run's grants pass through. A resolve that
+tries to read a denied path fails closed, leaving no half-built venv. A host
+that cannot enforce the sandbox resolves in the daemon context, loudly, the same
+way any job degrades there.
+
 ## OpenTofu providers
 
 `workspace plan`/`apply` sets `TF_PLUGIN_CACHE_DIR` to `<data dir>/tofu/plugin-cache`, so

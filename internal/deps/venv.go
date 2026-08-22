@@ -54,6 +54,15 @@ type VenvSpec struct {
 	// Offline passes uv's --offline, so resolution is served from the uv cache
 	// alone with no network. Set it once the cache is known to hold the pins.
 	Offline bool
+	// Sandbox, when set, wraps every uv invocation in the job sandbox tier so
+	// the resolver — arbitrary code an untrusted manifest can steer — never
+	// runs in the daemon context (finding S1). Nil runs uv directly, which the
+	// hermetic unit tests and a host with no sandbox both rely on.
+	Sandbox SandboxLauncher
+	// UVCacheDir, when set, is exported as UV_CACHE_DIR so uv's download cache
+	// lands on a granted, backed-up path instead of the daemon's home — which
+	// the sandbox does not grant. Empty leaves uv's default cache location.
+	UVCacheDir string
 }
 
 // Venv is a provisioned per-source virtual environment.
@@ -122,14 +131,18 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 		return fmt.Errorf("deps: clear stale venv: %w", err)
 	}
 
-	if err := runUV(ctx, uv, spec, "venv", dir); err != nil {
+	// The resolver runs with its working directory inside the granted cache
+	// tree: under the sandbox an ungranted cwd is refused outright, and the
+	// per-source cache dir is a write grant the profile already carries.
+	work := filepath.Dir(dir)
+	if err := runUV(ctx, uv, spec, work, "venv", dir); err != nil {
 		return err
 	}
 
 	install := []string{"pip", "install", "--python", v.Python}
 	install = append(install, toolchainPins(spec)...)
 	install = append(install, installArgs(spec.Manifest)...)
-	if err := runUV(ctx, uv, spec, install...); err != nil {
+	if err := runUV(ctx, uv, spec, work, install...); err != nil {
 		return err
 	}
 
@@ -141,18 +154,33 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 
 // runUV invokes uv with the resolver environment. Correctness is the exit code
 // (AGENTS.md invariant 3); uv's stderr rides in the returned error for the
-// operator, never parsed for a verdict.
-func runUV(ctx context.Context, uv string, spec VenvSpec, args ...string) error {
+// operator, never parsed for a verdict. When the spec carries a sandbox the uv
+// argv is wrapped in the launcher first, so a poisoned manifest's build backend
+// runs confined (finding S1) rather than with daemon privileges.
+func runUV(ctx context.Context, uv string, spec VenvSpec, workDir string, args ...string) error {
 	if spec.Offline {
 		args = append([]string{"--offline"}, args...)
 	}
-	cmd := exec.CommandContext(ctx, uv, args...)
+	subcommand := args[0]
+	argv := append([]string{uv}, args...)
+	if spec.Sandbox != nil {
+		wrapped, err := spec.Sandbox.Wrap(argv)
+		if err != nil {
+			return fmt.Errorf("deps: sandbox uv %s: %w", subcommand, err)
+		}
+		argv = wrapped
+	}
+	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+	cmd.Dir = workDir
 	// Hardlink-seed from the shared uv cache so per-source venvs are cheap and
 	// offline once cached (ADR 0011); uv falls back to copy across filesystems.
 	cmd.Env = append(os.Environ(), "UV_LINK_MODE=hardlink")
+	if spec.UVCacheDir != "" {
+		cmd.Env = append(cmd.Env, "UV_CACHE_DIR="+spec.UVCacheDir)
+	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("deps: uv %s: %w: %s", args[0], err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("deps: uv %s: %w: %s", subcommand, err, strings.TrimSpace(string(out)))
 	}
 	return nil
 }
