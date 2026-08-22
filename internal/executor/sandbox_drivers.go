@@ -174,9 +174,129 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 		sb.ConnectPorts = append(slices.Clone(sb.ConnectPorts), port)
 	}
 
+	// A `plan -out=` points at the data dir's artifacts tree, which the sandbox
+	// denies by design. Redirect it into the job's own private dir, which is
+	// granted, then relocate the finished plan to the requested path once the
+	// subprocess has exited — this driver runs unsandboxed, so it can write the
+	// data dir the job could not.
+	planDst, argv := planOutPath(spec.Argv)
+	if planDst != "" {
+		redirected := filepath.Join(job.private, "plan.tfplan")
+		spec.Argv = setPlanOutPath(argv, redirected)
+		defer relocatePlan(redirected, planDst, sink)
+	}
+	// `apply <planfile>` reads a saved plan the caller decrypted into the data
+	// dir, which the sandbox denies just the same. Stage it into the granted
+	// job dir — the driver reads the data-dir plaintext the subprocess cannot.
+	staged, err := stagePlanInput(spec.Argv, job.private)
+	if err != nil {
+		return Result{}, err
+	}
+	spec.Argv = staged
+
 	drv := NewTofu(opts)
 	drv.inner = NewSandbox(KindTofu, sb, drv.inner)
 	return drv.Run(ctx, spec, sink)
+}
+
+// planOutPath returns the tofu plan output path named in a `-out=PATH` or
+// `-out PATH` argument, or "" when the argv writes no plan file.
+func planOutPath(argv []string) (string, []string) {
+	for i, a := range argv {
+		if v, ok := strings.CutPrefix(a, "-out="); ok {
+			return v, argv
+		}
+		if a == "-out" && i+1 < len(argv) {
+			return argv[i+1], argv
+		}
+	}
+	return "", argv
+}
+
+// setPlanOutPath rewrites the plan output path in a tofu argv to dst, returning
+// a copy so the caller's slice is left alone.
+func setPlanOutPath(argv []string, dst string) []string {
+	out := slices.Clone(argv)
+	for i, a := range out {
+		if strings.HasPrefix(a, "-out=") {
+			out[i] = "-out=" + dst
+			return out
+		}
+		if a == "-out" && i+1 < len(out) {
+			out[i+1] = dst
+			return out
+		}
+	}
+	return out
+}
+
+// stagePlanInput copies a saved plan named on an `apply <planfile>` argv into
+// the granted job dir and rewrites the argv to read it from there. The caller
+// decrypts the plan into the data dir, which the sandbox denies; this driver
+// runs unsandboxed and can bridge it. An argv that names no plan file — a bare
+// `apply -auto-approve`, or any other operation — is returned unchanged.
+func stagePlanInput(argv []string, jobPrivate string) ([]string, error) {
+	if len(argv) < 2 || argv[1] != "apply" {
+		return argv, nil
+	}
+	for i := 2; i < len(argv); i++ {
+		arg := argv[i]
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		info, err := os.Stat(arg)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		body, err := os.ReadFile(arg)
+		if err != nil {
+			return nil, fmt.Errorf("executor: sandbox: read plan %s: %w", arg, err)
+		}
+		staged := filepath.Join(jobPrivate, "saved.tfplan")
+		if err := os.WriteFile(staged, body, 0o600); err != nil {
+			return nil, fmt.Errorf("executor: sandbox: stage plan: %w", err)
+		}
+		out := slices.Clone(argv)
+		out[i] = staged
+		return out, nil
+	}
+	return argv, nil
+}
+
+// relocatePlan moves a finished plan file from the sandboxed job dir to the
+// path the caller will seal it from. The job dir is removed when the job ends,
+// so the plan has to leave it first. A missing source is not an error: a failed
+// init, or a plan tofu never got to write, simply has none.
+func relocatePlan(src, dst string, sink EventSink) {
+	if _, err := os.Stat(src); err != nil {
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o700); err != nil {
+		sink.Emit(planRelocateFailed(dst, err))
+		return
+	}
+	if err := os.Rename(src, dst); err == nil {
+		return
+	}
+	// A rename across filesystems fails with a link error; copy then remove.
+	body, err := os.ReadFile(src)
+	if err != nil {
+		sink.Emit(planRelocateFailed(dst, err))
+		return
+	}
+	if err := os.WriteFile(dst, body, 0o600); err != nil {
+		sink.Emit(planRelocateFailed(dst, err))
+		return
+	}
+	_ = os.Remove(src)
+}
+
+func planRelocateFailed(dst string, err error) Event {
+	return Event{
+		Ts:    time.Now().UTC(),
+		Level: LevelSystem,
+		Msg:   fmt.Sprintf("plan artifact not moved to %s: %v", dst, err),
+	}
 }
 
 // jobDir is one job's private tree. The job's grants are children of it rather

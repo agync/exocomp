@@ -116,3 +116,98 @@ func equalPaths(a, b []string) bool {
 	}
 	return true
 }
+
+// TestPlanOutPathRedirect covers the plan-artifact rewrite: a tofu `plan -out=`
+// aimed at the data dir the sandbox denies is redirected into the granted job
+// dir, then the finished plan is relocated back to where the caller will seal
+// it from.
+func TestPlanOutPathRedirect(t *testing.T) {
+	t.Parallel()
+
+	for _, argv := range [][]string{
+		{"tofu", "plan", "-out=/data/artifacts/ws.tfplan"},
+		{"tofu", "plan", "-out", "/data/artifacts/ws.tfplan"},
+	} {
+		dst, _ := planOutPath(argv)
+		if dst != "/data/artifacts/ws.tfplan" {
+			t.Fatalf("planOutPath(%v) = %q", argv, dst)
+		}
+		rewritten := setPlanOutPath(argv, "/job/p/plan.tfplan")
+		if got, _ := planOutPath(rewritten); got != "/job/p/plan.tfplan" {
+			t.Errorf("setPlanOutPath(%v) left %q", argv, got)
+		}
+		if _, orig := planOutPath(argv); planMustNotMutate(orig) != "/data/artifacts/ws.tfplan" {
+			t.Errorf("setPlanOutPath mutated the caller's argv: %v", argv)
+		}
+	}
+
+	if dst, _ := planOutPath([]string{"tofu", "apply", "-auto-approve"}); dst != "" {
+		t.Errorf("planOutPath on an apply reported %q, want none", dst)
+	}
+}
+
+func planMustNotMutate(argv []string) string {
+	dst, _ := planOutPath(argv)
+	return dst
+}
+
+// TestRelocatePlanMovesTheArtifact: the plan the sandboxed subprocess wrote into
+// the job dir is moved out before the job dir is torn down, and a run that wrote
+// none is not an error.
+func TestRelocatePlanMovesTheArtifact(t *testing.T) {
+	t.Parallel()
+
+	job := t.TempDir()
+	src := filepath.Join(job, "plan.tfplan")
+	if err := os.WriteFile(src, []byte("PLAN"), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	dst := filepath.Join(t.TempDir(), "artifacts", "ws.tfplan")
+
+	relocatePlan(src, dst, discardSink{})
+	body, err := os.ReadFile(dst)
+	if err != nil || string(body) != "PLAN" {
+		t.Fatalf("relocated plan = %q / %v", body, err)
+	}
+	if _, err := os.Stat(src); !os.IsNotExist(err) {
+		t.Errorf("source plan still present after relocation")
+	}
+
+	// A missing source is a no-op, not a panic or an error.
+	relocatePlan(filepath.Join(job, "absent.tfplan"), filepath.Join(t.TempDir(), "x.tfplan"), discardSink{})
+}
+
+// TestStagePlanInputCopiesIntoTheJobDir: an `apply <planfile>` naming a plan in
+// the data dir the sandbox denies is rewritten to read from the granted job
+// dir, with the bytes copied there.
+func TestStagePlanInputCopiesIntoTheJobDir(t *testing.T) {
+	t.Parallel()
+
+	plan := filepath.Join(t.TempDir(), "saved.tfplan")
+	if err := os.WriteFile(plan, []byte("SAVED"), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	jobPrivate := t.TempDir()
+
+	staged, err := stagePlanInput([]string{"tofu", "apply", plan}, jobPrivate)
+	if err != nil {
+		t.Fatalf("stagePlanInput: %v", err)
+	}
+	got := staged[2]
+	if filepath.Dir(got) != jobPrivate {
+		t.Fatalf("apply plan not staged into the job dir: %q", got)
+	}
+	if body, err := os.ReadFile(got); err != nil || string(body) != "SAVED" {
+		t.Fatalf("staged plan = %q / %v", body, err)
+	}
+
+	// A plan-less apply is returned untouched.
+	argv := []string{"tofu", "apply", "-auto-approve"}
+	if out, _ := stagePlanInput(argv, jobPrivate); !equalPaths(out, argv) {
+		t.Errorf("stagePlanInput rewrote a plan-less apply: %v", out)
+	}
+}
+
+type discardSink struct{}
+
+func (discardSink) Emit(Event) {}
