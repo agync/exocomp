@@ -1,0 +1,68 @@
+# exocomp alert rules — seeded, Prometheus-compatible.
+#
+# Every rule keys on a staleness gauge from internal/metrics: a last-success
+# timestamp drifting away from now, or a hold that was meant to be temporary.
+# Thresholds are homelab defaults, not universal truth; edit `for:` and the
+# comparison to taste. Point a Prometheus (or Alertmanager-shaped scraper) at
+# GET /metrics on the daemon's listener and load this file as a rule group.
+groups:
+  - name: exocomp-staleness
+    rules:
+      - alert: ReactivePaused
+        # A pause is a deliberate, temporary act. Left on, it means reactive
+        # jobs are silently not running — the homelab has stopped healing
+        # itself and nobody is being told.
+        expr: exocomp_reactive_paused == 1
+        for: 2h
+        labels: {severity: warning}
+        annotations:
+          summary: reactive engine paused for over 2h
+          description: A global silence is holding reactive jobs. Resume with `exocomp silence rm` or [p] in the TUI.
+
+      - alert: ApprovalsBackingUp
+        # Approvals fail closed on a TTL, so a backlog is work quietly expiring
+        # unactioned, not work waiting safely.
+        expr: exocomp_pending_approval_oldest_age_seconds > 3600
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: an approval has waited over an hour
+          description: "{{ $value | humanizeDuration }} since the oldest pending approval was raised."
+
+      - alert: BackupStale48h
+        # The whole point of the fan-out is that a leg failing is survivable —
+        # but only if someone notices the leg failing.
+        expr: exocomp_backup_staleness_seconds > 172800
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: "backup leg {{ $labels.target }} has not succeeded in 48h"
+          description: "Last success was {{ $value | humanizeDuration }} ago (or never)."
+
+      - alert: DrillFailed
+        # A restore drill is the only proof the backups are restorable. A stale
+        # drill is an untested recovery path.
+        expr: exocomp_backup_staleness_seconds{target=~".*drill.*"} > 604800
+        for: 10m
+        labels: {severity: critical}
+        annotations:
+          summary: restore drill has not passed in a week
+          description: "The restore drill leg {{ $labels.target }} last succeeded {{ $value | humanizeDuration }} ago."
+
+      - alert: DiskLow
+        expr: exocomp_disk_used_ratio > 0.9
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: "data-dir filesystem over 90% full"
+          description: "{{ $labels.path }} is {{ $value | humanizePercentage }} used."
+
+      - alert: QueueStuck
+        # A queue whose oldest job keeps ageing is a worker wedged, not a busy
+        # day: work arrives but nothing drains.
+        expr: exocomp_queue_oldest_job_age_seconds > 1800
+        for: 10m
+        labels: {severity: warning}
+        annotations:
+          summary: oldest queued job is over 30m old
+          description: "{{ $value | humanizeDuration }} and still queued — the queue may be wedged."

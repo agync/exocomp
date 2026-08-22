@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +19,7 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
@@ -212,6 +214,15 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return err
 	}
 	if err := srv.Mount(ingress.Mounts()); err != nil {
+		return err
+	}
+
+	// Self-observability rides the same listener: the staleness gauges read
+	// the store the daemon already owns, so a second endpoint would only be a
+	// second bind and a second auth story to get wrong.
+	if err := srv.Mount(map[string]http.Handler{
+		"GET /metrics": metrics.New(st, dir).Handler(),
+	}); err != nil {
 		return err
 	}
 
