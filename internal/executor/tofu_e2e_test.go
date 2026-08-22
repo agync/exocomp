@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -22,15 +24,71 @@ import (
 // canary is the resource value the state must never hold in the clear.
 const canary = "exocomp-state-canary-2f8a1c"
 
-// tofuPluginCache is shared across runs so a test does not depend on the
-// provider registry being reachable more than once per machine.
+// tofuPluginCache returns a machine-persistent provider cache, warmed exactly
+// once. The fixtures resolve providers from it offline (OfflineProviders), so
+// after the first warm the live-provider e2e no longer touches the registry —
+// its previous flake was `tofu init` doing online version discovery while the
+// network dropped mid-run, which no reachability probe can prevent. Warming is
+// the sole online step: it needs the registry only when the cache is cold, and
+// a cold cache with an unreachable registry SKIPS (the offline path has its own
+// no-network proof in tofu_offline_test.go), never fails.
 func tofuPluginCache(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(os.TempDir(), "exocomp-tofu-plugin-cache")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatalf("plugin cache: %v", err)
 	}
+	tofuWarmOnce.Do(func() { tofuWarmSkip = warmTofuCache(dir) })
+	if tofuWarmSkip != "" {
+		t.Skip(tofuWarmSkip)
+	}
 	return dir
+}
+
+var (
+	tofuWarmOnce sync.Once
+	tofuWarmSkip string // non-empty is a skip reason; empty means warm and offline-ready
+)
+
+// warmTofuCache ensures the hashicorp/local provider is present in cacheDir so
+// offline resolution can satisfy it. It returns "" on success, or a skip reason
+// when tofu is absent or the cache is cold and the registry is unreachable. A
+// warm cache short-circuits with no network at all.
+func warmTofuCache(cacheDir string) string {
+	if _, err := exec.LookPath(executor.TofuBinary); err != nil {
+		return fmt.Sprintf("%s not installed: %v", executor.TofuBinary, err)
+	}
+	glob := filepath.Join(cacheDir, "registry.opentofu.org", "hashicorp", "local", "*", "*", "terraform-provider-local*")
+	if hits, _ := filepath.Glob(glob); len(hits) > 0 {
+		return ""
+	}
+	// Cold cache: one network fetch populates it. Probe first so an unreachable
+	// registry skips cleanly instead of a slow init failure.
+	c := &http.Client{Timeout: 6 * time.Second}
+	resp, err := c.Get("https://registry.opentofu.org/.well-known/terraform.json")
+	if err != nil {
+		return fmt.Sprintf("provider registry unreachable and plugin cache cold, skipping live-provider e2e: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	work, err := os.MkdirTemp("", "exocomp-tofu-warm")
+	if err != nil {
+		return fmt.Sprintf("warm plugin cache: workdir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(work) }()
+	config := "terraform {\n  required_providers {\n    local = {\n      source = \"hashicorp/local\"\n    }\n  }\n}\n"
+	if err := os.WriteFile(filepath.Join(work, "main.tf"), []byte(config), 0o600); err != nil {
+		return fmt.Sprintf("warm plugin cache: config: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, executor.TofuBinary, "init", "-backend=false", "-input=false")
+	cmd.Dir = work
+	cmd.Env = append(os.Environ(), "TF_PLUGIN_CACHE_DIR="+cacheDir)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		return fmt.Sprintf("warm plugin cache: tofu init: %v\n%s", err, out)
+	}
+	return ""
 }
 
 func requireTofu(t *testing.T) {
@@ -38,15 +96,6 @@ func requireTofu(t *testing.T) {
 	if _, err := exec.LookPath(executor.TofuBinary); err != nil {
 		t.Skipf("%s not installed: %v", executor.TofuBinary, err)
 	}
-	// These fixtures init a real provider from registry.opentofu.org. When the
-	// registry is unreachable the test proves nothing about exocomp — skip
-	// rather than fail on a network blip (offline resolution has its own test).
-	c := &http.Client{Timeout: 6 * time.Second}
-	resp, err := c.Get("https://registry.opentofu.org/.well-known/terraform.json")
-	if err != nil {
-		t.Skipf("provider registry unreachable, skipping live-provider e2e: %v", err)
-	}
-	_ = resp.Body.Close()
 }
 
 // fixture is a whole tofu half in miniature: a workspace directory managing a
@@ -125,6 +174,9 @@ func newFixture(t *testing.T, workers int) *fixture {
 		StatePassphrase: passphrase,
 		PrivateDirRoot:  t.TempDir(),
 		PluginCacheDir:  tofuPluginCache(t),
+		// Resolve providers from the warmed cache alone: no online version
+		// discovery during init, so the run is deterministic and network-free.
+		OfflineProviders: true,
 	})
 	q := queue.New(st, driver, queue.Options{
 		Workers:      workers,
