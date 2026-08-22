@@ -106,3 +106,37 @@ func TestAnsibleNonCheckNoDriftEvent(t *testing.T) {
 		}
 	}
 }
+
+// TestAnsibleCheckChanges is the reactive seam: the outcome a check run put in
+// its event's raw_json reads back through the same shape TofuPlanChanges gives
+// the tofu drift sweep, so a future AnsibleDrift sweep can mirror SweepDrift.
+func TestAnsibleCheckChanges(t *testing.T) {
+	t.Parallel()
+
+	outcome := executor.AnsibleCheckOutcome{
+		Operation:  "check",
+		Changes:    true,
+		CleanHosts: 1,
+		Drift:      []executor.AnsibleHostDrift{{Host: "web1", Changed: 2}},
+	}
+	raw, err := json.Marshal(map[string]executor.AnsibleCheckOutcome{"ansible_check": outcome})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	got, ok := executor.AnsibleCheckChanges(string(raw))
+	if !ok {
+		t.Fatal("ok = false for a real ansible_check payload")
+	}
+	if !got.Changes || got.CleanHosts != 1 || len(got.Drift) != 1 || got.Drift[0].Host != "web1" {
+		t.Errorf("outcome = %+v, want the round-trip of what was emitted", got)
+	}
+
+	// A non-check event (a tofu outcome, or nothing) reads as not-present, so a
+	// sweep skips it rather than reporting a phantom clean run.
+	for _, raw := range []string{"", `{"tofu":{"operation":"plan","changes":true}}`, "not json"} {
+		if _, ok := executor.AnsibleCheckChanges(raw); ok {
+			t.Errorf("ok = true for a non-ansible_check payload %q", raw)
+		}
+	}
+}

@@ -39,6 +39,7 @@ func newScheduleAddCmd() *cobra.Command {
 		target         string
 		concurrencyKey string
 		jitter         int
+		check          bool
 	)
 
 	cmd := &cobra.Command{
@@ -50,10 +51,18 @@ func newScheduleAddCmd() *cobra.Command {
 			"(everything after --, the playbook first) against the standing inventory " +
 			"--target names — `tf:<workspace>` for the inventory a workspace's apply " +
 			"refreshes, so a newly provisioned host joins the next fire. A play whose " +
-			"inventory is missing, stale, or hostless enqueues nothing.",
+			"inventory is missing, stale, or hostless enqueues nothing.\n\n" +
+			"Kind play with --check is the config-drift schedule: it fires the play in " +
+			"ansible check mode (--check --diff) on the cron, so every fire emits the " +
+			"structured 'would change' outcome as a job event without touching a host " +
+			"— the config twin of a tofu-plan drift schedule (docs/operations/playbook-run.md).",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
+
+			if check && kind != sched.KindPlay {
+				return errors.New("schedule add: --check applies to kind play (the config-drift schedule)")
+			}
 
 			var scheduleArgs store.ScheduleArgs
 			switch kind {
@@ -83,6 +92,13 @@ func newScheduleAddCmd() *cobra.Command {
 				}
 				scheduleArgs.Argv = argv
 				scheduleArgs.Target = target
+				if check {
+					// The config-drift schedule: --check --diff go after the
+					// playbook, where AnsibleArtifactArgv reads them as the
+					// passthrough options that put the fire in check mode. The
+					// ansible driver then emits the structured drift outcome.
+					scheduleArgs.Argv = append(scheduleArgs.Argv, "--check", "--diff")
+				}
 			default:
 				return fmt.Errorf("schedule add: --kind must be %s, %s or %s",
 					store.ScheduleShell, store.ScheduleBackup, sched.KindPlay)
@@ -127,6 +143,7 @@ func newScheduleAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&target, "target", "", "backup kind: target name (empty: every enabled target); play kind: standing inventory name")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell/play kinds: serialize against jobs sharing this key")
 	cmd.Flags().IntVar(&jitter, "jitter", 0, "sleep a random number of seconds up to this before enqueueing")
+	cmd.Flags().BoolVar(&check, "check", false, "play kind: run in ansible check mode (--check --diff) as the config-drift schedule")
 	_ = cmd.MarkFlagRequired("cron")
 	_ = cmd.MarkFlagRequired("kind")
 	return cmd

@@ -33,6 +33,27 @@ type AnsibleCheckOutcome struct {
 	Drift      []AnsibleHostDrift `json:"drift,omitempty"`
 }
 
+// AnsibleCheckChanges reads the check-mode outcome back out of a job event's
+// raw_json, the config-drift twin of TofuPlanChanges. The reactive engine's
+// drift sweep uses it to turn a scheduled `--check` play that found drift into
+// an event the same way SweepDrift turns a tofu plan into a TofuDrift event:
+// scan the succeeded ansible jobs, read each one's events through this, and
+// raise an AnsibleDrift event when Changes is true. It lives here, beside the
+// producer, so the two cannot drift apart. ok is false when the event carries no
+// ansible_check payload (a normal, non-check run).
+func AnsibleCheckChanges(rawJSON string) (outcome AnsibleCheckOutcome, ok bool) {
+	if rawJSON == "" {
+		return AnsibleCheckOutcome{}, false
+	}
+	var envelope struct {
+		Check *AnsibleCheckOutcome `json:"ansible_check"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil || envelope.Check == nil {
+		return AnsibleCheckOutcome{}, false
+	}
+	return *envelope.Check, true
+}
+
 // isAnsibleCheck reports whether argv runs ansible in check mode, so a normal
 // run is left exactly as it was and only a dry run grows the drift event.
 func isAnsibleCheck(argv []string) bool {

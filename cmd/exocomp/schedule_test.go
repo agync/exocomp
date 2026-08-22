@@ -96,3 +96,41 @@ func TestScheduleAddRejectsConcurrencyKeyForBackup(t *testing.T) {
 		t.Fatalf("schedule add without the flag: %v", err)
 	}
 }
+
+// TestScheduleAddPlayCheckStoresCheckMode: --check on a play schedule appends
+// --check --diff after the playbook, which is what puts every fire in ansible
+// check mode — the config-drift schedule.
+func TestScheduleAddPlayCheckStoresCheckMode(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runScheduleCmd(t, "add", "drift", "--kind", "play",
+		"--target", "tf:edge", "--cron", "@every 1h", "--check", "--", "converge.yml"); err != nil {
+		t.Fatalf("schedule add --kind play --check: %v", err)
+	}
+	rows := schedules(t)
+	if len(rows) != 1 {
+		t.Fatalf("schedules = %d, want 1", len(rows))
+	}
+	argv := strings.Join(rows[0].Args.Argv, " ")
+	if argv != "converge.yml --check --diff" {
+		t.Errorf("argv = %q, want \"converge.yml --check --diff\"", argv)
+	}
+}
+
+// TestScheduleAddCheckRejectedForNonPlay: --check is the play-kind drift
+// schedule; on any other kind it is a mistake, not silently dropped.
+func TestScheduleAddCheckRejectedForNonPlay(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	out, err := runScheduleCmd(t, "add", "tick", "--kind", "shell",
+		"--cron", "@every 1h", "--check", "--", "/bin/true")
+	if err == nil {
+		t.Fatalf("schedule add accepted --check for kind shell:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "--check") {
+		t.Errorf("error = %v, want one naming --check", err)
+	}
+	if rows := schedules(t); len(rows) != 0 {
+		t.Errorf("the refused schedule was written anyway: %+v", rows)
+	}
+}
