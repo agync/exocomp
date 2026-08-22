@@ -20,6 +20,9 @@ const jobDirPrefix = "job-"
 // shmDir is the POSIX shared-memory mount ansible's multiprocessing needs.
 const shmDir = "/dev/shm"
 
+// passwdFile is the local user database ssh reads to resolve the running uid.
+const passwdFile = "/etc/passwd"
+
 // toolGrant is the read grant for the binary a driver will run: the override
 // when the caller named one, otherwise whatever the default name resolves to
 // on PATH. A driver grants its own tool rather than leaving it to the caller,
@@ -66,11 +69,26 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 		"HOME="+job.home,
 	)
 
+	// ansible reads and writes ~/.ansible on every run — the ssh connection
+	// plugin puts its ControlPath sockets under ~/.ansible/cp — and reports a
+	// denial there as a task failure. HOME itself stays ungranted (the launcher
+	// keeps its own state under the real one), so the single directory ansible
+	// needs is created and granted while the rest of the redirected home is not.
+	ansibleHome, err := job.homeSubdir(".ansible")
+	if err != nil {
+		return Result{}, err
+	}
+
 	sb := a.sandbox
 	// ansible-core forks a worker per host and coordinates them with POSIX
 	// semaphores, which live in /dev/shm; without it the run dies at startup
 	// with "Unable to use multiprocessing".
-	sb.WritePaths = append(slices.Clone(sb.WritePaths), append(job.grants(), shmDir)...)
+	sb.WritePaths = append(slices.Clone(sb.WritePaths), append(job.grants(), shmDir, ansibleHome)...)
+	// ssh resolves the local user through /etc/passwd on startup and aborts
+	// ("No user exists for uid N") when it cannot read it; nono does not grant
+	// it by default. It is a single file, world-readable in the normal case,
+	// and holds no secret — the shadow file, which does, is never granted.
+	sb.ReadFiles = append(slices.Clone(sb.ReadFiles), passwdFile)
 	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), a.opts.CollectionsPath)
 	sb.ReadPaths = append(sb.ReadPaths, ansibleSourceDirs(spec.Argv)...)
 	sb.ReadPaths = append(sb.ReadPaths, toolGrant(a.opts.Binary, AnsibleBinary)...)
