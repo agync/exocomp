@@ -366,7 +366,7 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 // daemon and a silent phone, not a daemon that refuses to start.
 func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 	env *secrets.Envelope, warn io.Writer, opts serveOptions) (*reactive.Engine, error) {
-	transport, err := notify.LoadNtfy(ctx, func(ctx context.Context, name string) ([]byte, error) {
+	look := func(ctx context.Context, name string) ([]byte, error) {
 		row, err := st.GetSecret(ctx, name)
 		if err != nil {
 			return nil, err
@@ -374,20 +374,37 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		return env.OpenSecret(secrets.SealedSecret{
 			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
 		})
-	})
-	if err != nil {
-		// A refused push configuration is the operator's to fix, and running
-		// blind past it would mean approvals nobody is told about.
-		return nil, fmt.Errorf("serve: %w", err)
 	}
 
-	var notifier *notify.Notifier
-	if transport != nil {
-		notifier = notify.New(nil, transport)
-	} else {
-		notifier = notify.New(nil)
-		_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed (%s, %s); "+
-			"approvals will wait silently\n", notify.SecretNtfyURL, notify.SecretNtfyTopic)
+	// Both transports are loaded and every non-nil one is used. A refused
+	// configuration is the operator's to fix and hard-fails here — running blind
+	// past it would mean approvals and failures nobody is told about — but an
+	// unconfigured transport is a nil, not an error: an operator who sealed only
+	// one, or neither, still gets a working daemon.
+	var transports []notify.Transport
+
+	ntfyT, err := notify.LoadNtfy(ctx, look)
+	if err != nil {
+		return nil, fmt.Errorf("serve: %w", err)
+	}
+	if ntfyT != nil {
+		transports = append(transports, ntfyT)
+	}
+
+	goalertT, err := notify.LoadGoAlert(ctx, look)
+	if err != nil {
+		return nil, fmt.Errorf("serve: %w", err)
+	}
+	if goalertT != nil {
+		transports = append(transports, goalertT)
+	}
+
+	notifier := notify.New(nil, transports...)
+	if len(transports) == 0 {
+		_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed "+
+			"(ntfy: %s, %s; goalert: %s, %s); approvals and job failures will alert silently\n",
+			notify.SecretNtfyURL, notify.SecretNtfyTopic,
+			notify.SecretGoAlertURL, notify.SecretGoAlertKey)
 	}
 
 	return reactive.New(reactive.Options{
@@ -414,8 +431,9 @@ func printHooks(out io.Writer, env *secrets.Envelope, base string) {
 
 // sweepReactive runs the clock-driven halves of the reactive layer: approvals
 // whose TTL ran out fail closed, approvals halfway through their window get
-// one more push, and a scheduled plan that found changes becomes a drift
-// event. It runs until the job context is cancelled.
+// one more push, a scheduled plan that found changes becomes a drift event,
+// and a job that ended in a terminal failure pages the operator once. It runs
+// until the job context is cancelled.
 func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer, interval time.Duration) {
 	if interval <= 0 {
 		return
@@ -445,6 +463,14 @@ func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer,
 			}
 		} else if raised > 0 {
 			_, _ = fmt.Fprintf(warn, "drift: %d workspace(s) planned changes\n", raised)
+		}
+
+		if paged, err := engine.SweepJobOutcomes(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: page job failures: %v\n", err)
+			}
+		} else if paged > 0 {
+			_, _ = fmt.Fprintf(warn, "job failures: %d paged\n", paged)
 		}
 	}
 }
