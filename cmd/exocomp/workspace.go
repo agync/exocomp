@@ -182,14 +182,25 @@ func unlockAuditJob(ctx context.Context, st *store.Store, ws store.Workspace,
 }
 
 func newWorkspaceAddCmd() *cobra.Command {
-	var dir string
+	var (
+		dir       string
+		stateOnly bool
+		address   string
+	)
 	add := &cobra.Command{
 		Use:   "add <name>",
-		Short: "Register a tofu root module as a workspace",
-		Args:  cobra.ExactArgs(1),
+		Short: "Register a tofu root module, or a state-only workspace",
+		Long: "Registers a workspace exocomp runs (--dir), or, with --state-only, a " +
+			"mode-A workspace exocomp only stores state for: it emits a ready-to-paste " +
+			"backend \"http\" block plus its bearer so an unmodified external tofu keeps " +
+			"its state encrypted and locked in exocomp while running plans itself.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if stateOnly {
+				return runWorkspaceAddStateOnly(cmd, args[0], address)
+			}
 			if dir == "" {
-				return errors.New("workspace add: --dir is required")
+				return errors.New("workspace add: --dir is required (or --state-only)")
 			}
 			abs, err := filepath.Abs(dir)
 			if err != nil {
@@ -223,8 +234,97 @@ func newWorkspaceAddCmd() *cobra.Command {
 			return nil
 		},
 	}
-	add.Flags().StringVar(&dir, "dir", "", "path to the tofu root module (required)")
+	add.Flags().StringVar(&dir, "dir", "", "path to the tofu root module (required unless --state-only)")
+	add.Flags().BoolVar(&stateOnly, "state-only", false,
+		"register a mode-A state-store-only workspace and emit its backend block")
+	add.Flags().StringVar(&address, "address", "",
+		"state backend address the emitted block targets (default: the recorded backend address)")
 	return add
+}
+
+// runWorkspaceAddStateOnly registers a mode-A workspace (ADR 0010) and prints
+// the backend "http" block an external tofu pastes. The bearer is deterministic
+// (api.WorkspaceToken), so it is the same one the backend will check; it is
+// printed once, kit discipline, and never stored beyond the workspace name it
+// derives from.
+func runWorkspaceAddStateOnly(cmd *cobra.Command, name, address string) (err error) {
+	ctx := cmd.Context()
+	out := cmd.OutOrStdout()
+
+	dir, err := dataDir()
+	if err != nil {
+		return fmt.Errorf("workspace add: resolve data dir: %w", err)
+	}
+	if address == "" {
+		recorded, rerr := api.ReadAddress(filepath.Join(dir, api.AddressFile))
+		if rerr != nil {
+			return rerr
+		}
+		if recorded == "" {
+			return errors.New("workspace add: no recorded state backend address; " +
+				"pass --address host:port or start `exocomp serve` first")
+		}
+		address = recorded
+	}
+
+	env, err := secrets.Open(dir)
+	if err != nil {
+		return fmt.Errorf("workspace add: open envelope (run `exocomp init` first): %w", err)
+	}
+	defer func() { _ = env.Close() }()
+
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	ws, err := st.CreateWorkspace(ctx, store.Workspace{Name: name})
+	if errors.Is(err, store.ErrDuplicate) {
+		// A state-only workspace already registered is fine to re-emit for: the
+		// bearer is deterministic, so the operator just gets the block again.
+		if existing, gerr := st.WorkspaceByName(ctx, name); gerr == nil {
+			ws = existing
+		} else {
+			return fmt.Errorf("workspace add: %q already exists", name)
+		}
+	} else if err != nil {
+		return err
+	}
+
+	token := api.WorkspaceToken(env, ws.Name)
+	url := api.StateURL(address, ws.Name)
+	return writeStateOnlyBackend(out, ws.Name, url, token)
+}
+
+// writeStateOnlyBackend prints the mode-A backend block. The address, lock and
+// unlock URLs are one and the same (the SQLite backend serves LOCK/UNLOCK on
+// the state path); the header carries the bearer inline so the block pastes as
+// one unit.
+func writeStateOnlyBackend(w io.Writer, name, url, token string) error {
+	_, err := fmt.Fprintf(w, `# exocomp workspace %q — mode A (secure state store only).
+# One exocomp workspace = one state = one backend URL. `+"`tofu workspace new`"+`
+# and `+"`tofu workspace select`"+` are unsupported against this backend: use a
+# separate exocomp workspace per environment. State lands encrypted and locked
+# in exocomp; exocomp does not run your plan in this mode.
+terraform {
+  backend "http" {
+    address        = %[2]q
+    lock_address   = %[2]q
+    unlock_address = %[2]q
+    lock_method    = "LOCK"
+    unlock_method  = "UNLOCK"
+    headers = {
+      Authorization = "Bearer %[3]s"
+    }
+  }
+}
+`, name, url, token)
+	return err
 }
 
 func newWorkspaceListCmd() *cobra.Command {
