@@ -231,8 +231,9 @@ func newRuleEnableCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "enable <name>",
 		Short: "Let a rule match again",
-		Long: "A rule its daily cap disabled stays disabled until this is run: the cap " +
-			"exists so a misfiring rule stops, not so it fires at the cap rate forever.",
+		Long: "Re-enable a rule you disabled. A daily cap no longer disables a rule — it " +
+			"throttles (the action is withheld, the rule stays armed and pages once, and " +
+			"the budget recovers as the 24h window clears), so this is for a manual disable.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return setRuleEnabled(cmd, args[0], true)

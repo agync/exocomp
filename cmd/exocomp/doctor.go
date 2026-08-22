@@ -18,6 +18,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/litestream"
+	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -154,6 +155,12 @@ func probeMetrics(ctx context.Context, dataDir string) string {
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
 	if err != nil {
 		return "unreachable (" + err.Error() + ")"
+	}
+	// /metrics is bearer-gated (finding D3); present the envelope-derived scrape
+	// token so the probe reads gauges instead of a 401.
+	if env, oerr := secrets.Open(dataDir); oerr == nil {
+		req.Header.Set("Authorization", "Bearer "+metrics.ScrapeToken(env))
+		_ = env.Close()
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

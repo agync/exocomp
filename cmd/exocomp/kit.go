@@ -343,7 +343,11 @@ func kitTargets(ctx context.Context) ([]secrets.KitTarget, error) {
 	}
 	out := make([]secrets.KitTarget, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, secrets.KitTarget{Name: r.Name, Kind: r.Kind, URI: r.URI})
+		// Every backup target writes the DEK-keyed manifest tag, so every one
+		// authenticates its snapshots. The card records it out of band (B1) so a
+		// restore passes --target-authenticates and a stripped tag+marker is
+		// caught as a downgrade rather than trusted as a legacy target.
+		out = append(out, secrets.KitTarget{Name: r.Name, Kind: r.Kind, URI: r.URI, Authenticates: true})
 	}
 	return out, nil
 }

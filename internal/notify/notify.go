@@ -17,8 +17,8 @@ import (
 // the phone's notification channels already understand.
 type Priority int
 
-// The priorities. Max is reserved for what only a human can unblock — a rule
-// its cap disabled, an approval about to expire.
+// The priorities. Max is reserved for what only a human can unblock — an
+// approval about to expire, or a rule throttled at its daily cap paging once.
 const (
 	PriorityMin     Priority = 1
 	PriorityLow     Priority = 2

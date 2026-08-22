@@ -138,7 +138,24 @@ regression test, fixes it, and proves the exploit is dead.
      `cmd/exocomp/rule.go` help, `internal/store/rule.go`'s `SetRuleEnabled` comment,
      and `internal/notify/notify.go` — outside the reactive lane's owned files, left
      for the integrator to correct.
-4. **Daemon / backup** — D1 (KDF DoS), B1 (out-of-band backup marker), D3, D2.
+4. **Daemon / backup — B1/D1/D3 LANDED 2026-08-22** (commits 8073781/9e2c841/a90a3e4,
+   merged a90a3e4; CLI wiring + doctor follow-up on main): **B1 FIXED** (a per-target
+   `Authenticates` fact carried out-of-band on the recovery kit and honored at restore —
+   a git snapshot whose in-repo tag + `AUTHENTICATED.mac` were stripped is refused as a
+   downgrade, not trusted as a legacy target; `--allow-unauthenticated` is still the loud
+   escape; `--target-authenticates` on `restore` + the kit's section-6 record wire it
+   end-to-end). **D1 FIXED** (a KDF concurrency gate — global ceiling + per-source in-flight
+   cap — sheds a pre-auth flood with 503 having run no argon2id; a real login still 200s).
+   **D3 FIXED** (`/metrics` bearer-gated with an envelope-derived scrape token, constant-time,
+   fails closed with no deriver; `doctor` now presents the token).
+   - **D1-resid** the per-source cap keys on RemoteAddr (X-Forwarded-For, D4-adjacent) — the
+     global ceiling still bounds total KDF memory behind a proxy.
+   - **B1-resid** the kit marks every target `Authenticates`; a genuinely-legacy target
+     needs `--allow-unauthenticated`. The scrape/session derive purposes are operational
+     (not on the recovery card) — add to secrets.Purposes() if card-reproducibility is wanted.
+
+**All six exploited HIGH findings (E1, E2, S1, S2, R1, B1) are now closed.** Remaining:
+medium/low defense-in-depth (S3, D2, D4, R4, S6, E4, U1) + the residuals noted above.
 
 Each wave is a build+verify workflow that reproduces the finding as a failing test first,
 then fixes it, then proves the exploit no longer works (red-team's repro becomes a
