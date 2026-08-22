@@ -259,7 +259,6 @@ func (e *Envelope) KitStructure() *RecoveryKit {
 	return &RecoveryKit{
 		Version:    e.version,
 		Salt:       Salt,
-		Derivation: derivationRecipe,
 		Recipients: e.Recipients(),
 	}
 }

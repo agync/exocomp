@@ -43,15 +43,38 @@ func TestKitRendersSecretKeyOnlyAtInit(t *testing.T) {
 			t.Errorf("init kit omits %q", phrase)
 		}
 	}
-	// The card must not promise what it does not carry, and must not name a
-	// flag the binary does not have.
-	for _, phrase := range []string{"credential from this card", "--deep"} {
+	// The card must not promise what it does not carry, must not name a flag
+	// the binary does not have, and must not print the `exo` shorthand ADR 0002
+	// forbids.
+	for _, phrase := range []string{"credential from this card", "--deep", "exo kit", "exo backup"} {
 		if strings.Contains(minted, phrase) {
 			t.Errorf("init kit still claims %q", phrase)
 		}
 	}
-	if !strings.Contains(minted, "carries no storage credential") {
+	if !strings.Contains(minted, "exocomp prints no storage credential") {
 		t.Error("init kit does not say the storage credential is the operator's to supply")
+	}
+	for _, section := range []string{
+		"1 · RECOVERY KEY",
+		"2 · RECIPIENTS",
+		"3 · SALT",
+		"4 · READ-ONLY STORAGE CREDENTIAL (WRITE BY HAND)",
+		"5 · DERIVATION RECIPE",
+		"6 · TARGETS",
+	} {
+		if !strings.Contains(minted, section) {
+			t.Errorf("init kit omits section %q", section)
+		}
+	}
+	if !strings.Contains(minted, "kit v1") || !strings.Contains(minted, "kit sha256 · ") {
+		t.Error("init kit omits its version line or its page digest")
+	}
+	// Every purpose the CLI can derive is named on the card: an operator who
+	// cannot find a purpose there cannot reproduce it by hand.
+	for _, p := range Purposes() {
+		if !strings.Contains(minted, p.Name+":"+p.IDLabel) {
+			t.Errorf("init kit omits purpose %q", p.Name)
+		}
 	}
 
 	structure := env.KitStructure().Render()
@@ -208,6 +231,113 @@ func TestRecoveryCardRunsAsWritten(t *testing.T) {
 	}
 }
 
+// TestCardDerivesAVaultPassword proves the card's one rule generalizes past
+// restic: the same openssl pipeline with a different info string produces the
+// ansible-vault password, checked against a file `ansible-vault` itself
+// encrypted. The persona review's first finding was that a card deriving only
+// the restic password bricks the operator's own playbooks.
+func TestCardDerivesAVaultPassword(t *testing.T) {
+	requireTools(t, "sh", "age", "openssl", "od", "tr", "base64", "printf", "ansible-vault")
+
+	dir := t.TempDir()
+	env, kit := mustInit(t, dir, nil)
+
+	if err := os.WriteFile(filepath.Join(dir, "recovery.key"), []byte(kit.AgeSecretKey+"\n"), 0o600); err != nil {
+		t.Fatalf("write recovery key: %v", err)
+	}
+	keyring, err := env.KeyringAge()
+	if err != nil {
+		t.Fatalf("KeyringAge: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "keyring.age"), keyring, 0o644); err != nil {
+		t.Fatalf("write keyring: %v", err)
+	}
+
+	const project = "homelab"
+	script := strings.NewReplacer(
+		"restic-repo:<target-id>", "ansible-vault:"+project,
+		"> restic.pass", "> vault.pass",
+	).Replace(derivationCommands(t, kit.Render()))
+
+	cmd := exec.Command("sh", "-eu", "-c", script)
+	cmd.Dir = dir
+	cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("card derivation failed: %v\nscript:\n%s\noutput:\n%s", err, script, out)
+	}
+
+	pass, err := os.ReadFile(filepath.Join(dir, "vault.pass"))
+	if err != nil {
+		t.Fatalf("read vault.pass: %v", err)
+	}
+	want := base64.StdEncoding.EncodeToString(env.Derive("ansible-vault", project))
+	if got := strings.TrimSpace(string(pass)); got != want {
+		t.Fatalf("card derived a vault password that differs from Derive(%q, %q)",
+			"ansible-vault", project)
+	}
+
+	// The fixture is encrypted with the envelope's password and opened with the
+	// card's, so the two only agree if ansible-vault itself accepts the card.
+	sealedBy := filepath.Join(dir, "envelope.pass")
+	if err := os.WriteFile(sealedBy, []byte(want+"\n"), 0o600); err != nil {
+		t.Fatalf("write envelope password file: %v", err)
+	}
+	vaulted := filepath.Join(dir, "group_vars.yml")
+	if err := os.WriteFile(vaulted, []byte("db_password: hunter2\n"), 0o600); err != nil {
+		t.Fatalf("write plaintext vars: %v", err)
+	}
+
+	base := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + dir, "ANSIBLE_NOCOWS=1"}
+	encrypt := exec.Command("ansible-vault", "encrypt", "--vault-password-file", sealedBy, vaulted)
+	encrypt.Env = base
+	if out, err := encrypt.CombinedOutput(); err != nil {
+		t.Fatalf("ansible-vault encrypt: %v\n%s", err, out)
+	}
+
+	view := exec.Command("ansible-vault", "view",
+		"--vault-password-file", filepath.Join(dir, "vault.pass"), vaulted)
+	view.Env = base
+	out, err := view.CombinedOutput()
+	if err != nil {
+		t.Fatalf("ansible-vault view with the card's password: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "db_password: hunter2") {
+		t.Errorf("ansible-vault view returned %q", out)
+	}
+	t.Logf("ansible-vault opened a real vault with the card's derived password:\n%s", out)
+
+	wrong := exec.Command("ansible-vault", "view", "--vault-password-file", "/dev/null", vaulted)
+	wrong.Env = base
+	if err := wrong.Run(); err == nil {
+		t.Fatal("ansible-vault opened the fixture with an empty password")
+	}
+}
+
+// TestKitPageDigestRoundTrips is `kit verify`'s core: a rendered page hashes to
+// the digest it prints, and any edit to the page breaks that.
+func TestKitPageDigestRoundTrips(t *testing.T) {
+	env, _ := mustInit(t, t.TempDir(), nil)
+	page := env.KitStructure().Render()
+
+	printed, ok := ParsePageSHA256(page)
+	if !ok {
+		t.Fatal("rendered page carries no digest line")
+	}
+	computed := PageSHA256(page)
+	if compact := strings.ReplaceAll(printed, " ", ""); !strings.HasPrefix(computed, compact) {
+		t.Fatalf("printed digest %q is not a prefix of %s", printed, computed)
+	}
+	if PageSHA256(env.KitStructure().Render()) != computed {
+		t.Error("two renderings of one kit hash differently")
+	}
+
+	flipped := []byte(page)
+	flipped[strings.Index(page, "3 · SALT")+4] ^= 0x20
+	if PageSHA256(string(flipped)) == computed {
+		t.Fatal("a flipped byte in the page did not change its digest")
+	}
+}
+
 const resticPayloadBody = "recovery-card-fixture\n"
 
 type resticRepoFixture struct {
@@ -251,6 +381,21 @@ func resticFixture(t *testing.T, home, repo, password string) resticRepoFixture 
 		}
 	}
 	return resticRepoFixture{env: base, payload: payload}
+}
+
+// derivationCommands lifts only the card's unwrap-and-derive lines, so a test
+// can point the one rule at a purpose other than restic's.
+func derivationCommands(t *testing.T, card string) string {
+	t.Helper()
+
+	var out []string
+	for _, line := range strings.Split(cardCommands(t, card), "\n") {
+		if strings.HasPrefix(line, "RESTIC_PASSWORD_FILE=") || strings.HasPrefix(line, "restore latest") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
 }
 
 // cardCommands lifts the executable lines out of the rendered card: the age
