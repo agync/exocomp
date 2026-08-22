@@ -6,6 +6,26 @@ Operator directive (2026-08-22): v1.0 is not "the milestones shipped"; it is
 OpenBao) does NOT begin until this bar is met. Reliability of the core over
 breadth of features.
 
+## RESULT — v1.0 MET (2026-08-22)
+
+**All five stories pass end-to-end. `test/e2e/v1-acceptance-gate.sh`: 6 passed, 0
+skipped, 0 failed.** Each story has its own gate, exercised on real infra (a Lima
+Fedora node for the host-facing runs, real tofu/ansible/git/restic throughout):
+
+| Story | Gate | Verdict |
+|---|---|---|
+| 1 · git repo → run playbook regularly (signed ref) | `test/e2e/m3d-story1-gate.sh` | PASS |
+| 2 · on event/alert → run X | `test/e2e/m3d-story2-gate.sh` | PASS |
+| 3 · run terraform regularly, notify drift | `test/e2e/m3d-story3-gate.sh` | PASS |
+| 4 · load working dir → run ansible/terraform | `test/e2e/m1-gate.sh` (Lima) + `m2-gate.sh` | PASS |
+| 5 · terraform → dynamic inventory FROM terraform → play | `test/e2e/m3c-story5-gate.sh` | PASS |
+
+The four M3c capability gates (`m3c-{policy,upgrade,lifecycle}-gate.sh`) and the
+backup/DR + daemon coverage in m1/m2 also pass. Story 1's trust anchor gap found
+during M3d — trusted signers came from ambient git config, not exocomp — was fixed
+(exocomp-owned `--allowed-signers`, migration 0014). **v1.0 is declared; the post-v1
+program may begin.**
+
 ## The acceptance stories (each must run end-to-end, gate-tested)
 
 1. **"Here is my git repo, go run my playbook regularly."** Register a git
