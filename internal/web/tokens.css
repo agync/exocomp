@@ -29,6 +29,7 @@
   --accent-fill: #A435CE; /* solid fills/buttons only · white text on it = 5.1:1 */
   --accent-text: #BE7BEB; /* accent as text, icon, link, focus ring
                              (#A435CE on graphite is 3.65:1 and fails AA) */
+  --accent-on:   #fff;    /* text/icon on a solid --accent-fill (both themes) */
   --accent-tint:   rgba(164,53,206,.14); /* tinted fill */
   --accent-border: rgba(190,123,235,.34); /* 1px state ring */
 
@@ -117,8 +118,45 @@
     --wait-tint: rgba(122,82,0,.12);   --wait-border: rgba(122,82,0,.42);
     --fail-tint: rgba(168,47,34,.12);  --fail-border: rgba(168,47,34,.34);
 
-    --focus-ring: 3px solid #7A2FA6;
+    --focus-ring: 3px solid var(--accent-text);
   }
+}
+
+/* The in-page toggle forces either theme regardless of OS setting, so both are
+ * first-class and reachable without touching OS settings. These live here — this
+ * file owns the palette — and mirror the two sets above so a palette tweak is a
+ * one-file edit. [data-theme] wins over the media default by specificity, in
+ * both directions. */
+:root[data-theme="light"] {
+  --surface-void: #F5F2EC; --surface-rail: #EFEBE3; --surface-card: #FFFDF9;
+  --surface-tray: #FFFDF9; --surface-row: #F1EDE5; --surface-control: #EFEBE3;
+  --hairline: rgba(60,50,38,.16); --hairline-faint: rgba(60,50,38,.12);
+  --ink-100: #1D1A16; --ink-200: #3A352E; --ink-400: #6B655B; --ink-500: #6B655B;
+  --ink-600: rgba(60,50,38,.28);
+  --accent-fill: #7A2FA6; --accent-text: #7A2FA6;
+  --accent-tint: rgba(122,47,166,.10); --accent-border: rgba(122,47,166,.34);
+  --signal-ok: #16703C; --signal-wait: #7A5200; --signal-fail: #A82F22;
+  --signal-dim-text: #6B655B; --signal-dim-dot: rgba(60,50,38,.40);
+  --ok-tint: rgba(22,112,60,.10); --ok-border: rgba(22,112,60,.30);
+  --wait-tint: rgba(122,82,0,.12); --wait-border: rgba(122,82,0,.42);
+  --fail-tint: rgba(168,47,34,.12); --fail-border: rgba(168,47,34,.34);
+  --focus-ring: 3px solid var(--accent-text);
+}
+
+:root[data-theme="dark"] {
+  --surface-void: #0A0C0D; --surface-rail: #0E1112; --surface-card: #121618;
+  --surface-tray: #171C1E; --surface-row: #191F21; --surface-control: #22282A;
+  --hairline: rgba(255,255,255,.09); --hairline-faint: rgba(255,255,255,.06);
+  --ink-100: #ECEFF0; --ink-200: #D6DBDD; --ink-400: #A6AFB2; --ink-500: #8A9296;
+  --ink-600: #6B7477;
+  --accent-fill: #A435CE; --accent-text: #BE7BEB;
+  --accent-tint: rgba(164,53,206,.14); --accent-border: rgba(190,123,235,.34);
+  --signal-ok: #4FB86B; --signal-wait: #E3A008; --signal-fail: #F0645A;
+  --signal-dim-text: #8A9296; --signal-dim-dot: #6B7477;
+  --ok-tint: rgba(79,184,107,.12); --ok-border: rgba(79,184,107,.28);
+  --wait-tint: rgba(227,160,8,.12); --wait-border: rgba(227,160,8,.30);
+  --fail-tint: rgba(240,100,90,.12); --fail-border: rgba(240,100,90,.30);
+  --focus-ring: 3px solid var(--accent-text);
 }
 
 @keyframes xc-breathe { 0%,100%{opacity:1} 50%{opacity:.35} }

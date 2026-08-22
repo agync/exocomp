@@ -57,9 +57,9 @@ func TestDashboardA11y(t *testing.T) {
 }
 
 // TestFocusRingAndThemes asserts the served CSS carries the visible focus ring
-// and both first-class themes (the a11y hard requirements). tokens.css keeps
-// the prefers-color-scheme default; app.css adds the data-theme overrides the
-// in-page toggle drives.
+// and both first-class themes (the a11y hard requirements). tokens.css owns the
+// palette: the prefers-color-scheme default AND the [data-theme] overrides the
+// in-page toggle drives. app.css references those tokens and carries the ring.
 func TestFocusRingAndThemes(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -67,7 +67,7 @@ func TestFocusRingAndThemes(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
-	for _, want := range []string{":focus-visible", "outline: var(--focus-ring)", `[data-theme="light"]`, `[data-theme="dark"]`} {
+	for _, want := range []string{":focus-visible", "outline: var(--focus-ring)"} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing %q", want)
 		}
@@ -90,11 +90,19 @@ func TestFocusRingAndThemes(t *testing.T) {
 	}
 
 	_, tokens := getBody(t, client, ts.URL+"/assets/tokens.css")
-	if !strings.Contains(tokens, "prefers-color-scheme: light") {
-		t.Error("tokens.css missing the light theme")
+	// Both theme mechanisms live in tokens.css now: the OS-driven default and
+	// the explicit toggle overrides, in both directions.
+	for _, want := range []string{"prefers-color-scheme: light", `[data-theme="light"]`, `[data-theme="dark"]`} {
+		if !strings.Contains(tokens, want) {
+			t.Errorf("tokens.css missing %q", want)
+		}
 	}
 	if !strings.Contains(tokens, "tabular-nums") {
 		t.Error("tokens.css missing the tabular-nums rule")
+	}
+	// The palette moved out of app.css entirely — no theme block defined there.
+	if strings.Contains(app, `:root[data-theme="light"]`) || strings.Contains(app, `:root[data-theme="dark"]`) {
+		t.Error("app.css still defines the palette; tokens.css owns it")
 	}
 }
 
