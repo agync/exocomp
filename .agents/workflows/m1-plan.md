@@ -198,3 +198,41 @@ ADR 0008/0009, internal/web/tokens.css, docs/design/user-feedback.md M3 folds.
 - secfolds: restore refuses a downgraded keyring version and a tampered manifest
   (HMAC); `exocomp kit derive restic/<t>` = engine's password (cross-checked);
   `kit verify` validates a printed page's sha; plan artifacts unreadable at rest.
+
+---
+
+# M3b — v1.0 surfaces + the real source/credential model
+
+REVISED after ADR 0010 and the two expert reviews (docs/design/expert-reviews.md).
+The credential-plane binding is now the spine of this milestone, not a side note.
+Binding inputs: ADR 0009 (LAN tokens), ADR 0010 (source model + 3 localities),
+expert-reviews.md v1 must-fixes, docs/design/{ui-brief,tui-brief}.md + the v0.2
+handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
+
+## File ownership (M3b)
+
+| Lane | Owns exclusively |
+|---|---|
+| sources | internal/source/** (git repo register + auto-sync + deploy key; host-path + in-container-path localities per ADR 0010), migration 0006 (source, inventory, run_secret bindings), cmd/exocomp/{source.go,host.go}, the RUN-ENV CREDENTIAL BINDING in internal/executor/{ansible,tofu}.go (sealed-secret set → named env; the convergent must-fix), ansible flag passthrough (--check/--limit/--tags/-e) + ansible.cfg Dir fix + multi-vault-id, tofu arg passthrough (-var-file/-target/-replace) + workspace add --state-only emit + the workspace-collision doc + offline lock-hash fix (tofu providers lock -fs-mirror) + tfstate pruning policy |
+| web | internal/web/** (templ+htmx on tokens.css: dashboard incl. banner states, jobs+tail SSE, phone approval 390px per the approval-surface contract, events+trace), ADR 0009 LAN auth (token new/list/revoke, session cookie, self-signed TLS + fingerprint), cmd/exocomp/{web.go,token.go} |
+| ops-ui | internal/tui/** (Home[0]/Approvals[5]/Events[6] screens + banner system + q-root-only + [0]-home, matching internal/tui/testdata/frames golden fixtures; notification-mute for the PAUSED-vs-MUTED banner split), internal/metrics/** (/metrics staleness gauges + seeded alert rules), cmd/exocomp/setup.go (the 4-step wizard: identity→kit→backup+drill→handover, nothing-written-until-step-4), doctor self-observability lines |
+
+## Gate (M3b)
+
+- sources: register a git repo with a generated deploy key, auto-sync a signed
+  ref; run a playbook FROM the synced checkout with a DYNAMIC inventory whose
+  plugin authenticates from a bound sealed secret (the must-fix — prove the token
+  reaches the plugin under the sandbox); the repo's ./ansible.cfg loads; two
+  vault-ids resolve; a host-path source and an in-container-path source both run.
+  tofu: workspace add --state-only emits a backend block an UNMODIFIED external
+  tofu uses successfully (state lands encrypted+locked); mode B runs a provider
+  that needs a bound token; -var-file passes; offline init succeeds against the
+  fs-mirror lock. All under the sandbox tier.
+- web: token-gated LAN listener (ADR 0009 gate assertions: tokenless bind refused,
+  revoked token rejected, session dies with token, insecure warns); dashboard +
+  phone approval render on tokens.css; approve-from-phone runs a gated job; a11y
+  hard reqs (keyboard, focus ring, both themes, 48px).
+- ops-ui: the 3 new TUI screens diff clean against the golden fixtures; /metrics
+  exposes the staleness gauges + a scrape shows them; the setup wizard runs
+  end-to-end writing nothing until step 4; notification-mute yields the MUTED
+  banner (jobs still run) distinct from PAUSED.
