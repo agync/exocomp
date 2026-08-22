@@ -20,10 +20,10 @@ type spyProvisioner struct {
 }
 
 func (s *spyProvisioner) AlreadyInitialized() bool { return false }
-func (s *spyProvisioner) Commit(_ context.Context, in setupInput) (string, error) {
+func (s *spyProvisioner) Commit(_ context.Context, in setupInput) (string, string, error) {
 	s.commits++
 	s.last = in
-	return "KIT-TEXT", nil
+	return "KIT-TEXT", "topic " + in.topic + " · test push sent", nil
 }
 
 func typeRunes(m setupModel, s string) setupModel {

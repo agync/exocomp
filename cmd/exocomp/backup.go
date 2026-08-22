@@ -265,6 +265,15 @@ func openStore() (*store.Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve data dir: %w", err)
 	}
+	return openStoreAt(dir)
+}
+
+// openStoreAt opens the store under an explicit data dir, for callers that hold
+// the directory directly rather than resolving it from the environment (the
+// setup wizard, which writes into the dir it is provisioning). It is not a job
+// path and deliberately does not sweep; it lives here so the store.Open call
+// that the sweep-wiring guard polices stays in this one file.
+func openStoreAt(dir string) (*store.Store, error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}

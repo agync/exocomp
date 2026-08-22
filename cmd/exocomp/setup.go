@@ -14,7 +14,9 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/tui"
 )
 
@@ -84,9 +86,11 @@ type setupProvisioner interface {
 	// AlreadyInitialized reports whether the host is already set up, so setup
 	// refuses rather than clobbering an existing identity.
 	AlreadyInitialized() bool
-	// Commit performs every write at once: identity, keyring, and recovery
-	// kit. It returns the kit text to show on the hand-over screen.
-	Commit(ctx context.Context, in setupInput) (string, error)
+	// Commit performs every write at once: identity, keyring, recovery kit, the
+	// operator name and ntfy topic, and the test push. It returns the kit text
+	// to show on the hand-over screen and a one-line notify status (whether a
+	// test push went out, or that no transport is configured yet).
+	Commit(ctx context.Context, in setupInput) (kitText, notifyStatus string, err error)
 }
 
 // setupInput is what the operator supplied across the earlier steps, applied
@@ -108,20 +112,90 @@ func (p *dataDirProvisioner) AlreadyInitialized() bool {
 }
 
 // Commit mints the identity and keyring through secrets.Init — the one and
-// only disk write in the whole flow, so the step-1 promise holds by
-// construction. secrets.Init generates and persists atomically; a host that
-// somehow became initialized between the check and here surfaces as an error
-// rather than a clobber.
-func (p *dataDirProvisioner) Commit(_ context.Context, _ setupInput) (string, error) {
+// only atomic identity write in the flow, so the step-1 promise holds by
+// construction — then persists the operator name and the generated ntfy topic
+// and attempts the test push. secrets.Init generates and persists atomically; a
+// host that somehow became initialized between the check and here surfaces as an
+// error rather than a clobber.
+func (p *dataDirProvisioner) Commit(ctx context.Context, in setupInput) (string, string, error) {
 	if err := os.MkdirAll(p.dir, 0o700); err != nil {
-		return "", fmt.Errorf("create data dir: %w", err)
+		return "", "", fmt.Errorf("create data dir: %w", err)
 	}
 	env, kit, err := secrets.Init(p.dir, nil)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer func() { _ = env.Close() }()
-	return kit.Render(), nil
+
+	st, err := openStoreAt(p.dir)
+	if err != nil {
+		return "", "", err
+	}
+	defer func() { _ = st.Close() }()
+
+	notifyStatus, err := persistOperatorConfig(ctx, st, env, in)
+	if err != nil {
+		return "", "", err
+	}
+	return kit.Render(), notifyStatus, nil
+}
+
+// persistOperatorConfig writes the operator display name and the ntfy topic
+// (plain, in the setting table for readback, and sealed as the notify config the
+// transport reads), then attempts a test push. It returns the notify status line
+// the hand-over screen shows: a real push when a transport is configured, or a
+// clear no-transport message when only a topic has been minted so far.
+func persistOperatorConfig(ctx context.Context, st *store.Store, env *secrets.Envelope,
+	in setupInput) (string, error) {
+	if err := st.PutSetting(ctx, store.SettingOperator, in.operator); err != nil {
+		return "", err
+	}
+	if err := st.PutSetting(ctx, store.SettingNtfyTopic, in.topic); err != nil {
+		return "", err
+	}
+	if err := sealConfigSecret(ctx, st, env, notify.SecretNtfyTopic, in.topic); err != nil {
+		return "", err
+	}
+
+	transport, err := notify.LoadNtfy(ctx, func(ctx context.Context, name string) ([]byte, error) {
+		return openSealed(ctx, st, env.DataDir(), name)
+	})
+	if err != nil {
+		return "", err
+	}
+	if transport == nil {
+		return "topic " + in.topic + " saved · no push transport yet (seal " +
+			notify.SecretNtfyURL + " to enable)", nil
+	}
+	if perr := transport.Publish(ctx, notify.Notification{
+		Title:    "exocomp is set up",
+		Body:     "Test push for " + orDash(in.operator) + " on " + in.machine + ".",
+		Priority: notify.PriorityDefault,
+	}); perr != nil {
+		return "topic " + in.topic + " saved · test push failed: " + perr.Error(), nil
+	}
+	return "topic " + in.topic + " · test push sent", nil
+}
+
+// sealConfigSecret seals value under name and upserts it into the secret table,
+// so a re-seal (a second setup or a topic change) replaces rather than
+// duplicates.
+func sealConfigSecret(ctx context.Context, st *store.Store, env *secrets.Envelope, name, value string) error {
+	sealed, err := env.Seal(name, "generic", []byte(value))
+	if err != nil {
+		return err
+	}
+	row := store.SecretRow{
+		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce,
+		Ciphertext: sealed.Ciphertext, AAD: sealed.Name + "|" + sealed.Kind,
+	}
+	if _, err := st.CreateSecret(ctx, row); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			return st.RotateSecret(ctx, name, sealed.Nonce, sealed.Ciphertext)
+		}
+		return err
+	}
+	return nil
 }
 
 // setupModel is the wizard state machine. step runs 1..4; committed guards the
@@ -134,10 +208,11 @@ type setupModel struct {
 	topic    string
 	kitTyped string
 
-	committed bool
-	kitText   string
-	err       error
-	quitting  bool
+	committed    bool
+	kitText      string
+	notifyStatus string
+	err          error
+	quitting     bool
 }
 
 func newSetupModel(prov setupProvisioner, machine string) setupModel {
@@ -210,12 +285,13 @@ func (m setupModel) advance() (tea.Model, tea.Cmd) {
 	case 3:
 		m.step = 4
 		if !m.committed {
-			kit, err := m.prov.Commit(context.Background(), setupInput{
+			kit, notifyStatus, err := m.prov.Commit(context.Background(), setupInput{
 				machine: m.machine, operator: m.operator, topic: m.topic,
 			})
 			m.committed = true
 			m.err = err
 			m.kitText = kit
+			m.notifyStatus = notifyStatus
 		}
 		return m, nil
 	default:
@@ -256,10 +332,14 @@ func (m setupModel) renderStep4() string {
 	if m.err != nil {
 		lines = []string{"setup failed: " + m.err.Error(), "", "nothing partial was left behind."}
 	} else {
+		notifyLine := "notify     " + m.notifyStatus
+		if m.notifyStatus == "" {
+			notifyLine = "notify     topic " + m.topic
+		}
 		lines = []string{
 			"operator   " + orDash(m.operator),
 			"machine    " + m.machine,
-			"notify     topic " + m.topic + " · test push sent",
+			notifyLine,
 			"",
 			"the recovery kit is printed below — store it now.",
 		}
