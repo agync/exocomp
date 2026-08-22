@@ -56,6 +56,7 @@ type Envelope struct {
 	host       age.Identity
 	recipients []Recipient
 	version    KeyringVersion
+	memLock    MemoryLock
 }
 
 // SealedSecret is one AES-256-GCM ciphertext. Name and Kind are bound as
@@ -151,6 +152,7 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		recipients: recipients,
 		version:    version,
 	}
+	env.lockDEK()
 	kit := env.KitStructure()
 	kit.AgeSecretKey = recovery.String()
 	return env, kit, nil
@@ -184,14 +186,16 @@ func Open(dataDir string) (*Envelope, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Envelope{
+	env := &Envelope{
 		dataDir:    dataDir,
 		dek:        dek,
 		keyring:    keyring,
 		host:       host,
 		recipients: recipients,
 		version:    version,
-	}, nil
+	}
+	env.lockDEK()
+	return env, nil
 }
 
 // Seal encrypts pt under the DEK with a fresh 96-bit nonce, binding name|kind.
@@ -279,6 +283,10 @@ func DeriveWithSalt(dek []byte, salt, purpose, id string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("secrets: derive %s:%s: %w", purpose, id, err)
 	}
+	// Best-effort: the derived subkey is a secret too, and is short-lived and
+	// zeroed by its caller. A host that forbids mlock still derives; only the
+	// DEK's lock state is tracked and reported.
+	_ = lockMemory(k)
 	return k, nil
 }
 
@@ -312,8 +320,27 @@ func (e *Envelope) KitStructure() *RecoveryKit {
 	}
 }
 
-// Close zeroes the DEK. Every later Seal, OpenSecret, or Derive fails.
+// MemoryLock reports whether the DEK is pinned into RAM (out of swap and core
+// dumps), and why not when it is not.
+func (e *Envelope) MemoryLock() MemoryLock { return e.memLock }
+
+// lockDEK pins the DEK's pages into RAM. A host that forbids it still runs;
+// doctor reports the state either way (finding E5).
+func (e *Envelope) lockDEK() {
+	if err := lockMemory(e.dek); err != nil {
+		e.memLock = MemoryLock{Locked: false, Err: err}
+		return
+	}
+	e.memLock = MemoryLock{Locked: true}
+}
+
+// Close zeroes the DEK and releases its memory lock. Every later Seal,
+// OpenSecret, or Derive fails.
 func (e *Envelope) Close() error {
+	if e.memLock.Locked {
+		_ = unlockMemory(e.dek)
+		e.memLock = MemoryLock{Locked: false}
+	}
 	clear(e.dek)
 	e.dek = nil
 	return nil

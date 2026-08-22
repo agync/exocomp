@@ -18,6 +18,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/litestream"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -66,6 +67,8 @@ func runDoctor(w io.Writer) error {
 		return fmt.Errorf("doctor: %w", fault)
 	}
 
+	reportSecretsProtection(w, dataDir)
+
 	p("optional tools (M0 probe subset):\n")
 	for _, t := range optionalTools {
 		p("  %-18s %s\n", t.name, probeTool(t))
@@ -77,6 +80,20 @@ func runDoctor(w io.Writer) error {
 	// The report prints first, so an operator sees why; then an explicit
 	// local-sandboxed request that cannot be enforced is a failing check.
 	return enforceSandboxTier(context.Background())
+}
+
+// reportSecretsProtection prints the real at-rest and in-memory posture of the
+// key material: whether the DEK can be pinned out of swap (E5). The host-key
+// at-rest state is added alongside it.
+func reportSecretsProtection(w io.Writer, _ string) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("secrets protection:\n")
+	if lock := secrets.ProbeMemoryLock(); lock.Locked {
+		p("  %-18s %s\n", "memory lock", "mlock available — the DEK is pinned out of swap and core dumps")
+	} else {
+		p("  %-18s %s\n", "memory lock",
+			"UNAVAILABLE — the DEK may reach swap or a core dump ("+lock.Err.Error()+")")
+	}
 }
 
 // reportSelfObservability prints whether the daemon can be watched: the

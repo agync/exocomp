@@ -80,9 +80,12 @@ whose password is derived from the DEK it wraps would be a perfect circle.
 - Losing the recovery kit *and* the host key is unrecoverable by design, the same property
   any real vault has. `exocomp doctor` nags weekly if only one recipient exists, and the
   bootstrap wizard refuses to finish without a second.
-- Decrypted values live in mlocked memory and a per-job tmpfs directory, never in
-  `exocomp.db` and never in `job_event`; a redaction filter scrubs known secret values from
-  every event line before it is persisted.
+- The DEK is pinned into RAM with `mlock(2)` for its lifetime (released and zeroed on
+  close), and each derived subkey is mlocked best-effort while it is held; a host that
+  forbids mlock (a low `RLIMIT_MEMLOCK`) still runs, and `exocomp doctor` reports the real
+  state rather than assuming it. Decrypted values live in that memory and a per-job tmpfs
+  directory, never in `exocomp.db` and never in `job_event`; a redaction filter scrubs known
+  secret values from every event line before it is persisted.
 - The key-provider is an interface. The local age identity is the default implementation;
   an external KMS or OpenBao Transit key can substitute at bootstrap, which lines up with
   OpenTofu's own support for Transit as a state-encryption key provider.
