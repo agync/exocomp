@@ -316,6 +316,39 @@ func TestIdentityMigrateRoundTrip(t *testing.T) {
 	}
 }
 
+// TestIdentityMigrateRefusesWhileTheDaemonRuns: the daemon holds the keyring it
+// started with, so a migration behind its back would be undone by the next
+// backup writing that keyring back to every target root.
+func TestIdentityMigrateRefusesWhileTheDaemonRuns(t *testing.T) {
+	dir, _ := initForKit(t)
+
+	lock, err := acquireServeLock(dir)
+	if err != nil {
+		t.Fatalf("acquire serve lock: %v", err)
+	}
+	defer lock.release()
+
+	var out, errOut bytes.Buffer
+	cmd := newIdentityCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs([]string{"migrate", "--rotate-host"})
+	err = cmd.Execute()
+	if err == nil {
+		t.Fatal("identity migrate ran while the daemon held the lock")
+	}
+	if !strings.Contains(err.Error(), "exocomp serve") {
+		t.Errorf("refusal does not name the daemon: %v", err)
+	}
+	version, err := secrets.ReadKeyringVersion(dir)
+	if err != nil {
+		t.Fatalf("ReadKeyringVersion: %v", err)
+	}
+	if version.Version != 1 {
+		t.Errorf("the refused migration bumped the keyring to %s", version)
+	}
+}
+
 // generateIdentity writes a fresh age identity to path and returns its public
 // recipient.
 func generateIdentity(t *testing.T, path string) string {

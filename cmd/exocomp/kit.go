@@ -377,6 +377,13 @@ func newIdentityMigrateCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("identity migrate: resolve data dir: %w", err)
 			}
+			// A running daemon holds the keyring it opened with in memory, and
+			// the next backup would write that one — the generation this
+			// command just retired — back to every target root.
+			if serveLockHeld(dir) {
+				return errors.New("identity migrate: `exocomp serve` is running; " +
+					"stop it first, or the next backup writes the previous keyring back to your targets")
+			}
 			res, err := secrets.Migrate(dir, secrets.MigrateOptions{
 				Add: add, Drop: drop, RotateHost: rotateHost,
 			})

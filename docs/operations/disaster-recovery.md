@@ -155,7 +155,9 @@ a page that no longer matches the current kit needs reprinting. The card asks fo
 quarterly.
 
 `exocomp identity migrate --add-recipient label=age1… | --drop-recipient label |
---rotate-host` re-wraps the keyring and bumps its generation. Sealed secrets and derived
+--rotate-host` re-wraps the keyring and bumps its generation. It refuses while
+`exocomp serve` is running: the daemon holds the keyring it started with, and the next
+backup would write that one back to every target root. Sealed secrets and derived
 subkeys survive untouched — only who can unwrap the DEK changes — and the command ends
 with the reprint nag.
 
