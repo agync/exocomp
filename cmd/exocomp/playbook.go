@@ -198,7 +198,13 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 			return store.Job{}, err
 		}
 	}
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact)
+	// Resolve the per-source venv (ADR 0011 vendoring step) before draining the
+	// job inline. Fail-closed: a manifest that will not resolve stops the run.
+	venv, err := resolveProjectVenv(ctx, dir, ansiblePlaybookPath(spec.Argv))
+	if err != nil {
+		return store.Job{}, err
+	}
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"path/filepath"
+	"time"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
@@ -20,13 +22,17 @@ const vaultPurpose = "ansible-vault"
 // the row — derives the vault password here and nowhere else, so the two
 // cannot drift apart. An empty project runs without a vault password.
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
-	runSecrets executor.RunSecrets, inventoryArtifact string) (executor.Driver, [][]byte) {
+	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
 		VaultID:           executor.DefaultVaultID,
 		CollectionsPath:   filepath.Join(dataDir, collectionsCacheDir),
 		RunSecrets:        runSecrets,
 		InventoryArtifact: inventoryArtifact,
 	}
+	// A source that declared Python dependencies runs inside its per-source uv
+	// venv (ADR 0011): the venv's ansible-playbook, interpreter, and PATH. A
+	// zero venv leaves the driver on the image toolchain.
+	applyVenv(&opts, venv)
 	if env == nil || vaultProject == "" {
 		return ansibleTierDriver(dataDir, opts), nil
 	}
@@ -71,7 +77,18 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		}
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact)
+	// Resolve the per-source venv before the run (ADR 0011 vendoring step). A
+	// failure fails the job: a run must not proceed against half-met deps.
+	venv, err := resolveProjectVenv(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))
+	if err != nil {
+		return executor.Result{}, err
+	}
+	if venv.Created {
+		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelSystem,
+			Msg: "resolved project deps into " + venv.Dir})
+	}
+
+	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv)
 	material := append(derived, secretPlain...)
 	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)
