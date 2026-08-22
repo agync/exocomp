@@ -120,7 +120,7 @@ func TestStagingManifestVerifies(t *testing.T) {
 	for _, f := range manifest.Files {
 		names = append(names, f.Name)
 	}
-	want := []string{KeyringName, SnapshotName}
+	want := []string{KeyringName, KeyringVersionName, SnapshotName}
 	if strings.Join(names, ",") != strings.Join(want, ",") {
 		t.Errorf("manifest files = %v, want %v", names, want)
 	}
@@ -219,8 +219,8 @@ func TestResticLocalRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("restore: %v", err)
 	}
-	if len(manifest.Files) != 2 {
-		t.Errorf("restored manifest lists %d files, want 2", len(manifest.Files))
+	if len(manifest.Files) != 3 {
+		t.Errorf("restored manifest lists %d files, want 3", len(manifest.Files))
 	}
 	assertRestoredChain(t, f, dest, "nas")
 }
@@ -231,7 +231,7 @@ func TestResticLocalRoundTrip(t *testing.T) {
 func assertRestoredChain(t *testing.T, f *fixture, dest, targetName string) {
 	t.Helper()
 
-	for _, name := range []string{RestoredDBName, KeyringName, ManifestName} {
+	for _, name := range []string{RestoredDBName, KeyringName, KeyringVersionName, ManifestName} {
 		if _, err := os.Stat(filepath.Join(dest, name)); err != nil {
 			t.Fatalf("restored data dir: %v", err)
 		}

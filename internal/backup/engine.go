@@ -162,15 +162,21 @@ func (e *Engine) stage(ctx context.Context, dir string) (Manifest, error) {
 	if err := os.WriteFile(filepath.Join(dir, KeyringName), keyring, 0o600); err != nil {
 		return Manifest{}, fmt.Errorf("backup: stage keyring: %w", err)
 	}
+	version := e.env.KeyringVersion()
+	if err := os.WriteFile(filepath.Join(dir, KeyringVersionName),
+		secrets.MarshalKeyringVersion(version), 0o600); err != nil {
+		return Manifest{}, fmt.Errorf("backup: stage keyring version: %w", err)
+	}
 
 	schema, err := e.store.SchemaVersion(ctx)
 	if err != nil {
 		return Manifest{}, err
 	}
 	return WriteManifest(dir, Manifest{
-		SchemaVersion: schema,
-		CreatedAt:     e.opts.Now().UTC(),
-		ToolVersions:  toolVersions(),
+		SchemaVersion:  schema,
+		KeyringVersion: version.Version,
+		CreatedAt:      e.opts.Now().UTC(),
+		ToolVersions:   toolVersions(),
 	})
 }
 

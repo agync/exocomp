@@ -191,6 +191,12 @@ func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) err
 	if err != nil {
 		return fmt.Errorf("backup: read staged keyring: %w", err)
 	}
+	// The generation rides beside the keyring it describes, so a restore can
+	// tell an old keyring from the current one before it trusts either.
+	version, err := os.ReadFile(filepath.Join(stage, KeyringVersionName))
+	if err != nil {
+		return fmt.Errorf("backup: read staged keyring version: %w", err)
+	}
 	recovery := renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC())
 
 	switch t.Kind {
@@ -202,6 +208,9 @@ func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) err
 		if err := os.WriteFile(filepath.Join(root, KeyringName), keyring, 0o644); err != nil {
 			return fmt.Errorf("backup: write target keyring: %w", err)
 		}
+		if err := os.WriteFile(filepath.Join(root, KeyringVersionName), version, 0o644); err != nil {
+			return fmt.Errorf("backup: write target keyring version: %w", err)
+		}
 		if err := os.WriteFile(filepath.Join(root, RecoveryName), recovery, 0o644); err != nil {
 			return fmt.Errorf("backup: write target recovery notes: %w", err)
 		}
@@ -212,6 +221,9 @@ func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) err
 			return err
 		}
 		if err := client.put(ctx, KeyringName, keyring, "application/octet-stream"); err != nil {
+			return err
+		}
+		if err := client.put(ctx, KeyringVersionName, version, "text/plain"); err != nil {
 			return err
 		}
 		return client.put(ctx, RecoveryName, recovery, "text/markdown")

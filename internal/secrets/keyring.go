@@ -48,7 +48,13 @@ func ReadKeyringVersion(dir string) (KeyringVersion, error) {
 	if err != nil {
 		return KeyringVersion{}, fmt.Errorf("secrets: read keyring version: %w", err)
 	}
+	return ParseKeyringVersion(body)
+}
 
+// ParseKeyringVersion reads a version file's bytes. Backup targets keep the
+// same file beside keyring.age, and an s3 target reads it as an object rather
+// than off a filesystem.
+func ParseKeyringVersion(body []byte) (KeyringVersion, error) {
 	out := KeyringVersion{}
 	for line := range strings.Lines(string(body)) {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), ":")

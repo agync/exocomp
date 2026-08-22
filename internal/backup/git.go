@@ -88,6 +88,10 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	if err != nil {
 		return "", 0, fmt.Errorf("backup: read staged keyring: %w", err)
 	}
+	keyringVersion, err := os.ReadFile(filepath.Join(stage, KeyringVersionName))
+	if err != nil {
+		return "", 0, fmt.Errorf("backup: read staged keyring version: %w", err)
+	}
 
 	work, err := os.MkdirTemp(e.opts.StageRoot, "exocomp-git-")
 	if err != nil {
@@ -100,8 +104,9 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	parts, partsManifest := chunkSnapshot(snapshot, sealed)
 
 	files := map[string][]byte{
-		KeyringName:  keyring,
-		RecoveryName: renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC()),
+		KeyringName:        keyring,
+		KeyringVersionName: keyringVersion,
+		RecoveryName:       renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC()),
 	}
 	maps.Copy(files, parts)
 	for name, body := range files {

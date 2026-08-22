@@ -16,6 +16,12 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
+// ErrKeyringDowngrade reports a keyring older than the snapshot being
+// restored. An old keyring wraps the DEK to recipients the operator has since
+// revoked, so accepting one hands a revoked key its access back — the rollback
+// attack the keyring generation exists to catch.
+var ErrKeyringDowngrade = errors.New("backup: keyring rollback refused")
+
 // ErrDestInitialized reports a destination that already holds key material.
 // Restoring over a live data dir would replace the keyring that unwraps its
 // secrets, so the restore stops instead.
@@ -103,22 +109,19 @@ func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, erro
 		return Manifest{}, fmt.Errorf("backup: create restore work dir: %w", err)
 	}
 
-	var (
-		dek    []byte
-		target string
-	)
+	var leg legSource
 	switch src.Kind {
 	case KindResticLocal, KindResticS3:
-		dek, target, err = restoreRestic(ctx, src, work, extracted)
+		leg, err = restoreRestic(ctx, src, work, extracted)
 	case KindGit:
-		dek, target, err = restoreGit(ctx, src, work, extracted)
+		leg, err = restoreGit(ctx, src, work, extracted)
 	default:
 		err = fmt.Errorf("backup: unknown target kind %q", src.Kind)
 	}
 	if err != nil {
 		return Manifest{}, err
 	}
-	defer clear(dek)
+	defer clear(leg.dek)
 
 	manifest, err := ReadManifest(extracted)
 	if err != nil {
@@ -126,7 +129,10 @@ func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, erro
 	}
 	// Authenticity before integrity: a manifest that is not this envelope's is
 	// not a manifest worth hashing files against.
-	if err := authenticateSnapshot(extracted, dek, target, src.warn); err != nil {
+	if err := authenticateSnapshot(extracted, leg.dek, leg.target, src.warn); err != nil {
+		return Manifest{}, err
+	}
+	if err := checkKeyringVersion(extracted, leg.rootVersion, manifest); err != nil {
 		return Manifest{}, err
 	}
 	if err := manifest.Verify(extracted); err != nil {
@@ -155,12 +161,18 @@ func install(from, dest string) error {
 		return fmt.Errorf("backup: create destination: %w", err)
 	}
 	files := map[string]string{
-		SnapshotName: RestoredDBName,
-		KeyringName:  KeyringName,
-		ManifestName: ManifestName,
+		SnapshotName:       RestoredDBName,
+		KeyringName:        KeyringName,
+		KeyringVersionName: KeyringVersionName,
+		ManifestName:       ManifestName,
 	}
 	for src, dst := range files {
 		body, err := os.ReadFile(filepath.Join(from, src))
+		if errors.Is(err, os.ErrNotExist) && src == KeyringVersionName {
+			// A snapshot from before the counter: the restored dir is
+			// generation 1, which is what a missing file already means.
+			continue
+		}
 		if err != nil {
 			return fmt.Errorf("backup: restore %s: %w", src, err)
 		}
@@ -201,56 +213,64 @@ func authenticateSnapshotKey(dir string, key []byte, target string, warn func(st
 	return nil
 }
 
+// legSource is what a restore leg learned on its way to the snapshot: the DEK
+// it unwrapped, the target name it derived under, and the keyring generation
+// sitting at the target root. rootVersion is zero when the leg read no root.
+type legSource struct {
+	dek         []byte
+	target      string
+	rootVersion int
+}
+
 // restoreRestic derives the repository password from the keyring at the target
 // root — the chain the recovery card prints — and restores the newest snapshot.
-// It returns the DEK it unwrapped and the target name it derived under, which
-// is what the manifest tag is checked with.
-func restoreRestic(ctx context.Context, src Source, work, extracted string) (dek []byte, name string, err error) {
+func restoreRestic(ctx context.Context, src Source, work, extracted string) (leg legSource, err error) {
 	password := src.Password
-	name = src.Name
+	leg.target = src.Name
 	if password == "" {
-		keyring, recovery, err := fetchRoot(ctx, src)
+		root, err := fetchRoot(ctx, src)
 		if err != nil {
-			return nil, "", err
+			return legSource{}, err
 		}
-		if name == "" {
-			name = targetNameFromRecovery(recovery)
+		leg.rootVersion = root.version
+		if leg.target == "" {
+			leg.target = targetNameFromRecovery(root.recovery)
 		}
-		if name == "" {
-			return nil, "", errors.New("backup: target name unknown: pass it explicitly, " +
+		if leg.target == "" {
+			return legSource{}, errors.New("backup: target name unknown: pass it explicitly, " +
 				"or restore from a target whose root holds " + RecoveryName)
 		}
 		if src.IdentityFile == "" {
-			return nil, "", errors.New("backup: an age identity is required to unwrap " + KeyringName)
+			return legSource{}, errors.New("backup: an age identity is required to unwrap " + KeyringName)
 		}
 		ids, err := ReadIdentities(src.IdentityFile)
 		if err != nil {
-			return nil, "", err
+			return legSource{}, err
 		}
-		dek, err = UnwrapDEK(keyring, ids)
+		leg.dek, err = UnwrapDEK(root.keyring, ids)
 		if err != nil {
-			return nil, "", err
+			return legSource{}, err
 		}
 
-		password, err = ResticPassword(dek, name)
+		password, err = ResticPassword(leg.dek, leg.target)
 		if err != nil {
-			clear(dek)
-			return nil, "", err
+			clear(leg.dek)
+			return legSource{}, err
 		}
 	}
 	defer func() {
 		if err != nil {
-			clear(dek)
+			clear(leg.dek)
 		}
 	}()
 
 	repo, err := resticRepo(Target{BackupTarget: store.BackupTarget{Kind: src.Kind, URI: src.URI}})
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	passFile, cleanup, err := writePasswordFile(src.StageRoot, password)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	defer cleanup()
 
@@ -261,34 +281,34 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) (dek
 		Env:  resticEnv(src.Env, passFile),
 	}, secrets.NewRedactor([][]byte{[]byte(password)}))
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	if res.exitCode != 0 {
-		return nil, "", fmt.Errorf("backup: restic restore exited %d: %s", res.exitCode, res.tail(5))
+		return legSource{}, fmt.Errorf("backup: restic restore exited %d: %s", res.exitCode, res.tail(5))
 	}
 
 	// restic restores absolute paths under --target, so the staging tree lands
 	// somewhere below it; the manifest marks the spot.
 	dir, err := findManifestDir(restored)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	if err := copyDirFiles(dir, extracted); err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
-	return dek, name, nil
+	return leg, nil
 }
 
 // restoreGit clones the rolling backup ref, decrypts the newest snapshot, and
-// unpacks it. It returns the DEK from the keyring in the clone and the target
-// name its recovery notes carry, for the manifest tag.
-func restoreGit(ctx context.Context, src Source, work, extracted string) (dek []byte, name string, err error) {
+// unpacks it. The keyring committed in the clone is this leg's root: it gives
+// both the DEK the tags are checked with and the generation it belongs to.
+func restoreGit(ctx context.Context, src Source, work, extracted string) (leg legSource, err error) {
 	if src.IdentityFile == "" {
-		return nil, "", errors.New("backup: an age identity is required to decrypt a git snapshot")
+		return legSource{}, errors.New("backup: an age identity is required to decrypt a git snapshot")
 	}
 	ids, err := ReadIdentities(src.IdentityFile)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 
 	clone := filepath.Join(work, "clone")
@@ -298,53 +318,86 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) (dek []
 		Env:  gitEnv(src.Env),
 	}, nil)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	if res.exitCode != 0 {
-		return nil, "", fmt.Errorf("backup: git clone exited %d: %s", res.exitCode, res.tail(5))
+		return legSource{}, fmt.Errorf("backup: git clone exited %d: %s", res.exitCode, res.tail(5))
 	}
 
-	name = src.Name
-	if name == "" {
+	leg.target = src.Name
+	if leg.target == "" {
 		notes, _ := os.ReadFile(filepath.Join(clone, RecoveryName))
-		name = targetNameFromRecovery(notes)
+		leg.target = targetNameFromRecovery(notes)
 	}
 	if keyring, kerr := os.ReadFile(filepath.Join(clone, KeyringName)); kerr == nil {
-		dek, _ = UnwrapDEK(keyring, ids)
+		leg.dek, _ = UnwrapDEK(keyring, ids)
+		version, verr := secrets.ReadKeyringVersion(clone)
+		if verr != nil {
+			return legSource{}, verr
+		}
+		leg.rootVersion = version.Version
 	}
 	defer func() {
 		if err != nil {
-			clear(dek)
+			clear(leg.dek)
 		}
 	}()
 
 	snapshot, err := newestSnapshot(clone)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	manifest, partsBody, err := readPartsManifest(clone, snapshot)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
-	if err := authenticateParts(clone, partsBody, snapshot, dek, name, src.warn); err != nil {
-		return nil, "", err
+	if err := authenticateParts(clone, partsBody, snapshot, leg.dek, leg.target, src.warn); err != nil {
+		return legSource{}, err
 	}
 	sealed, err := reassembleSnapshot(clone, manifest)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	archive, err := ageDecrypt(sealed, ids)
 	if err != nil {
-		return nil, "", fmt.Errorf("backup: decrypt %s: %w", snapshot, err)
+		return legSource{}, fmt.Errorf("backup: decrypt %s: %w", snapshot, err)
 	}
 	raw, err := decompress(ctx, archive)
 	if err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
 	if err := untar(raw, extracted); err != nil {
-		return nil, "", err
+		return legSource{}, err
 	}
-	return dek, name, nil
+	return leg, nil
+}
+
+// checkKeyringVersion refuses a keyring older than the snapshot it is being
+// used with, at the target root and inside the snapshot alike. A manifest with
+// no generation predates the counter and cannot be judged.
+func checkKeyringVersion(extracted string, rootVersion int, m Manifest) error {
+	if m.KeyringVersion == 0 {
+		return nil
+	}
+	snapshot, err := secrets.ReadKeyringVersion(extracted)
+	if err != nil {
+		return err
+	}
+	for _, found := range []struct {
+		where   string
+		version int
+	}{
+		{"the target root", rootVersion},
+		{"the restored snapshot", snapshot.Version},
+	} {
+		if found.version == 0 || found.version >= m.KeyringVersion {
+			continue
+		}
+		return fmt.Errorf("%w: %s holds keyring v%d, this snapshot was written under v%d; "+
+			"fetch the current %s, or restore a snapshot from that generation",
+			ErrKeyringDowngrade, found.where, found.version, m.KeyringVersion, KeyringName)
+	}
+	return nil
 }
 
 // authenticateParts checks the parts manifest before a byte of it is trusted:
@@ -391,32 +444,66 @@ func newestSnapshot(dir string) (string, error) {
 	return strings.TrimSuffix(newest, partsSuffix), nil
 }
 
-// fetchRoot reads keyring.age and RECOVERY.md from the target root, which sits
-// outside the repository.
-func fetchRoot(ctx context.Context, src Source) (keyring, recovery []byte, err error) {
+// rootFiles are the files a target keeps outside its repository: the keyring
+// that unwraps everything, the generation it belongs to, and the notes naming
+// the target.
+type rootFiles struct {
+	keyring  []byte
+	recovery []byte
+	version  int
+}
+
+// fetchRoot reads keyring.age, keyring.version and RECOVERY.md from the target
+// root, which sits outside the repository.
+func fetchRoot(ctx context.Context, src Source) (rootFiles, error) {
+	var out rootFiles
 	switch src.Kind {
 	case KindResticLocal:
 		root := localRepoPath(src.URI)
-		keyring, err = os.ReadFile(filepath.Join(root, KeyringName))
+		keyring, err := os.ReadFile(filepath.Join(root, KeyringName))
 		if err != nil {
-			return nil, nil, fmt.Errorf("backup: read %s at target root: %w", KeyringName, err)
+			return rootFiles{}, fmt.Errorf("backup: read %s at target root: %w", KeyringName, err)
 		}
-		recovery, _ = os.ReadFile(filepath.Join(root, RecoveryName))
-		return keyring, recovery, nil
+		version, err := secrets.ReadKeyringVersion(root)
+		if err != nil {
+			return rootFiles{}, err
+		}
+		out.keyring, out.version = keyring, version.Version
+		out.recovery, _ = os.ReadFile(filepath.Join(root, RecoveryName))
+		return out, nil
 	case KindResticS3:
 		client, err := newS3Client(src.URI, src.Env)
 		if err != nil {
-			return nil, nil, err
+			return rootFiles{}, err
 		}
-		keyring, err = client.get(ctx, KeyringName)
+		out.keyring, err = client.get(ctx, KeyringName)
 		if err != nil {
-			return nil, nil, err
+			return rootFiles{}, err
 		}
-		recovery, _ = client.get(ctx, RecoveryName)
-		return keyring, recovery, nil
+		out.version, err = fetchRootVersion(ctx, client)
+		if err != nil {
+			return rootFiles{}, err
+		}
+		out.recovery, _ = client.get(ctx, RecoveryName)
+		return out, nil
 	default:
-		return nil, nil, fmt.Errorf("backup: kind %q has no target root", src.Kind)
+		return rootFiles{}, fmt.Errorf("backup: kind %q has no target root", src.Kind)
 	}
+}
+
+// fetchRootVersion reads the generation beside a bucket's keyring. A target
+// written before the counter existed has no object there, which is
+// generation 1 — the same rule a local root follows.
+func fetchRootVersion(ctx context.Context, client *s3Client) (int, error) {
+	body, err := client.get(ctx, KeyringVersionName)
+	if err != nil {
+		return 1, nil
+	}
+	version, err := secrets.ParseKeyringVersion(body)
+	if err != nil {
+		return 0, err
+	}
+	return version.Version, nil
 }
 
 func findManifestDir(root string) (string, error) {

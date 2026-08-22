@@ -15,17 +15,19 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/version"
 )
 
 // Names of the files in the staging tree, and what the snapshot becomes once
 // it is restored into a data dir.
 const (
-	ManifestName   = "MANIFEST.json"
-	SnapshotName   = "snapshot.db"
-	KeyringName    = "keyring.age"
-	RecoveryName   = "RECOVERY.md"
-	RestoredDBName = "exocomp.db"
+	ManifestName       = "MANIFEST.json"
+	SnapshotName       = "snapshot.db"
+	KeyringName        = "keyring.age"
+	KeyringVersionName = secrets.KeyringVersionName
+	RecoveryName       = "RECOVERY.md"
+	RestoredDBName     = "exocomp.db"
 )
 
 // manifestVersion is the version of the MANIFEST.json layout itself, bumped
@@ -153,12 +155,18 @@ type FileEntry struct {
 // Manifest describes one snapshot: what produced it, when, and the digest of
 // every file beside it.
 type Manifest struct {
-	ManifestVersion int               `json:"manifest_version"`
-	SchemaVersion   int               `json:"schema_version"`
-	ExocompVersion  string            `json:"exocomp_version"`
-	CreatedAt       time.Time         `json:"created_at"`
-	ToolVersions    map[string]string `json:"tool_versions"`
-	Files           []FileEntry       `json:"files"`
+	ManifestVersion int `json:"manifest_version"`
+	SchemaVersion   int `json:"schema_version"`
+	// KeyringVersion is the keyring generation this snapshot was written
+	// under. A restore refuses a keyring older than it: an old keyring wraps
+	// the DEK to recipients the operator has since revoked, so rolling one
+	// back is how a revoked key gets its access returned. Zero means the
+	// snapshot predates the counter.
+	KeyringVersion int               `json:"keyring_version,omitempty"`
+	ExocompVersion string            `json:"exocomp_version"`
+	CreatedAt      time.Time         `json:"created_at"`
+	ToolVersions   map[string]string `json:"tool_versions"`
+	Files          []FileEntry       `json:"files"`
 }
 
 // WriteManifest hashes every file in dir except the manifest itself and writes

@@ -10,13 +10,23 @@ One staging tree, assembled to tmpfs, sent as identical bytes to all three legs:
 
 ```
 backup-<ts>/
-├── MANIFEST.json     manifest/schema/exocomp versions, tool versions, timestamp,
-│                     sha256 + size of every file
+├── MANIFEST.json     manifest/schema/exocomp/keyring versions, tool versions,
+│                     timestamp, sha256 + size of every file
+├── MANIFEST.mac      HMAC-SHA256 of MANIFEST.json under
+│                     Derive("backup-manifest-mac", <target>) — written per leg
 ├── snapshot.db       ← VACUUM INTO (consistent, WAL-checkpointed, sub-second)
+├── keyring.version   the keyring generation this snapshot was written under
 └── keyring.age       the N age-wrapped DEK copies — see below
 ```
 
-The M1 engine (`internal/backup`) ships exactly this tree. `config.toml`, `blobs/`
+`MANIFEST.mac` is not listed inside the manifest it authenticates, and its key is
+per target, so a manifest lifted from one target does not verify against another.
+A restore checks the tag **before** it trusts a single sha256: a tag that does not
+match is reported as tampering, a digest that does not match as corruption. A
+snapshot with no tag — every backup written before this shipped — still restores,
+with a loud `legacy backup: integrity unverified` warning.
+
+The engine (`internal/backup`) ships exactly this tree. `config.toml`, `blobs/`
 (job artifacts), and `repos/*.bundle` (project git bundles) join the tree when those
 features land — the design remains as above; the implementation is authoritative for
 what exists today.
@@ -32,7 +42,7 @@ ride in the same snapshot, which is what makes an offline restore possible.
 |---|---|
 | NAS | `restic` to a local repository on the SMB/NFS mount, after asserting mountpoint, canary file, and free space |
 | S3-compatible | `restic` to an `s3:` repository. Credentials resolve from sealed secret rows `s3/<target>/access-key-id` and `s3/<target>/secret-access-key` (optionally `.../region`, `.../session-token`) when both required rows are sealed; otherwise the leg falls back to the process environment and logs a warning — it never fails silently on a missing sealed credential |
-| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window, chunked into 90 MB `.age.partNN` parts with a `sha256` parts manifest (`internal/backup/chunk.go`). The leg refuses loudly before pushing if the bare repository's `objects` directory already exceeds 4 GB |
+| private GitHub repo | tar+zstd of the staging tree, `age`-encrypted, pushed as a **single orphan commit, force-pushed** to a rolling ref window, chunked into 90 MB `.age.partNN` parts with a `sha256` parts manifest (`internal/backup/chunk.go`) that carries its own `.mac` — it is the one file a chunked snapshot exposes outside the age envelope. The leg refuses loudly before pushing if the bare repository's `objects` directory already exceeds 4 GB |
 
 One leg failing does not abort the others; each gets its own `backup_run` row and its own
 alert. A target that fails twice consecutively raises a `critical` notification. The
@@ -63,7 +73,8 @@ environment field.
 
 ## The one detail that makes recovery work
 
-**`keyring.age` is written to every target root, outside the restic repository.**
+**`keyring.age` is written to every target root, outside the restic repository**, with
+`keyring.version` beside it.
 
 It is ciphertext — N age-wrapped copies of the DEK — so leaving it in the clear is safe. It
 must not be *inside* the encrypted backup, because the restic password is derived from the
@@ -74,6 +85,13 @@ the single most likely way to build an unrecoverable system.
 printed recovery key → fetch keyring.age from ANY target → unwrap DEK
                      → HKDF → restic password → restore → running control plane
 ```
+
+The generation beside it is what makes a rollback visible: an old `keyring.age` still
+unwraps the DEK — that is what it is for — so nothing else distinguishes the current
+keyring from one that predates a revoked recipient. `exocomp restore` refuses a keyring
+older than the generation the snapshot's manifest records, at the target root and inside
+the snapshot alike. Recipient changes and host-key rotation bump the generation
+(`exocomp identity migrate`), which is also when the printed card goes stale.
 
 Every arrow is executable with off-the-shelf tools. The second circularity — needing a
 storage credential to fetch anything at all — is closed by putting a **read-only** storage
