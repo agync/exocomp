@@ -22,12 +22,14 @@ const vaultPurpose = "ansible-vault"
 // the row — derives the vault password here and nowhere else, so the two
 // cannot drift apart. An empty project runs without a vault password.
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
-	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv) (executor.Driver, [][]byte) {
+	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv,
+	extraVars map[string]string) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
 		VaultID:           executor.DefaultVaultID,
 		CollectionsPath:   filepath.Join(dataDir, collectionsCacheDir),
 		RunSecrets:        runSecrets,
 		InventoryArtifact: inventoryArtifact,
+		ExtraVars:         extraVars,
 	}
 	// A source that declared Python dependencies runs inside its per-source uv
 	// venv (ADR 0011): the venv's ansible-playbook, interpreter, and PATH. A
@@ -97,7 +99,7 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 			Msg: "resolved project deps into " + venv.Dir})
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv)
+	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, job.Args.ExtraVars)
 	material := append(derived, secretPlain...)
 	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)

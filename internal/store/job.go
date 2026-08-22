@@ -79,6 +79,14 @@ type JobArgs struct {
 	// env_binding is resolved into the run's credential env alongside
 	// RunSecretBinding. The name is public; the values it binds are not.
 	Inventory string `json:"inventory,omitempty"`
+	// ExtraVars are an ansible run's operator-supplied `-e key=val` variables.
+	// They live on the row rather than in Argv so a daemon that claims the job
+	// replays them, and they never reach the ansible process's own argv: the
+	// driver writes them to a file in the run's private directory (AGENTS.md
+	// invariant 4 — nothing that could carry a value belongs in a process
+	// table). Only names+values the operator typed travel here; envelope-sealed
+	// secrets never do.
+	ExtraVars map[string]string `json:"extra_vars,omitempty"`
 }
 
 // Duration is a time.Duration that marshals as a string ("30s") so job rows

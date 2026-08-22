@@ -109,6 +109,11 @@ type runSpec struct {
 	runSecrets   string
 	timeout      time.Duration
 	wait         bool
+	// passthrough and extraVars carry `playbook run`'s ansible flags into the
+	// play step of a hooked --source workflow, so --limit/--tags/-e/--check work
+	// the same whether or not the source declares hooks.
+	passthrough []string
+	extraVars   map[string]string
 }
 
 // runWithHooks resolves a source's hooks + gate and composes them with the main
@@ -209,11 +214,12 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 			Runbook:          "playbook",
 			Kind:             executor.KindAnsible,
 			Trigger:          "run",
-			Argv:             executor.AnsibleArgv(playbook, invPath),
+			Argv:             executor.AnsibleArgv(playbook, invPath, rs.passthrough...),
 			Dir:              root,
 			VaultProject:     rs.vaultProject,
 			RunSecretBinding: rs.runSecrets,
 			Inventory:        invName,
+			ExtraVars:        rs.extraVars,
 			Timeout:          rs.timeout,
 		},
 	})

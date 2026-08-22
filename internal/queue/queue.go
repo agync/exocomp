@@ -30,10 +30,14 @@ type Spec struct {
 	// the job runs and never written to the row.
 	RunSecretBinding string
 	Inventory        string
-	ConcurrencyKey   string
-	DedupKey         string
-	IdempotencyKey   string
-	Timeout          time.Duration
+	// ExtraVars are an ansible run's operator-supplied `-e key=val` variables,
+	// carried to the job row so a daemon replays them and written to a file at
+	// run time, never onto the ansible process's argv.
+	ExtraVars      map[string]string
+	ConcurrencyKey string
+	DedupKey       string
+	IdempotencyKey string
+	Timeout        time.Duration
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -127,6 +131,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			VaultProject:     spec.VaultProject,
 			RunSecretBinding: spec.RunSecretBinding,
 			Inventory:        spec.Inventory,
+			ExtraVars:        spec.ExtraVars,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,

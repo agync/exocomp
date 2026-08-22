@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -31,6 +33,12 @@ func newPlaybookCmd() *cobra.Command {
 		sourceName   string
 		timeout      time.Duration
 		wait         bool
+		limit        string
+		tags         string
+		skipTags     string
+		extraVars    []string
+		check        bool
+		diff         bool
 	)
 
 	run := &cobra.Command{
@@ -42,6 +50,12 @@ func newPlaybookCmd() *cobra.Command {
 			"envelope for --vault-project by whichever process runs it, and handed to " +
 			"ansible through a file in a private directory that is removed when the run " +
 			"ends. The process exits with the job's exit code.\n\n" +
+			"--limit, --tags, --skip-tags, --check and --diff pass straight through to " +
+			"ansible-playbook. --extra-var/-e is repeatable and takes either key=val or " +
+			"@file: a key=val is carried on the job row and written to a file for the " +
+			"run, never onto ansible's own argv; @file is passed through as -e @path. " +
+			"--check runs a dry run and emits the structured config-drift outcome as a " +
+			"job event (see docs/operations/playbook-run.md).\n\n" +
 			"With --source, the play runs from that source's checkout and honours its " +
 			"`.exocomp/hooks.yml`: if the source declares pre/post-run hooks or a health " +
 			"gate the run becomes the same lifecycle workflow `exocomp run` composes " +
@@ -49,6 +63,11 @@ func newPlaybookCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, warn := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+			passthrough, vars, err := ansiblePassthrough(limit, tags, skipTags, check, diff, extraVars)
+			if err != nil {
+				return err
+			}
 
 			// A named source's lifecycle applies no matter which command runs the
 			// play: when it declares hooks or a gate, defer to the one workflow
@@ -67,6 +86,8 @@ func newPlaybookCmd() *cobra.Command {
 						runSecrets:   runSecrets,
 						timeout:      timeout,
 						wait:         wait,
+						passthrough:  passthrough,
+						extraVars:    vars,
 					})
 				}
 				args[0] = pb
@@ -78,6 +99,8 @@ func newPlaybookCmd() *cobra.Command {
 				vaultProject: vaultProject,
 				runSecrets:   runSecrets,
 				timeout:      timeout,
+				passthrough:  passthrough,
+				extraVars:    vars,
 			})
 			if err != nil {
 				return err
@@ -102,6 +125,18 @@ func newPlaybookCmd() *cobra.Command {
 		"kill the run after this long (0: no limit)")
 	run.Flags().BoolVar(&wait, "wait", false,
 		"when the source has hooks, follow the composed workflow until it is terminal")
+	run.Flags().StringVar(&limit, "limit", "",
+		"ansible --limit: restrict the play to this host pattern")
+	run.Flags().StringVar(&tags, "tags", "",
+		"ansible --tags: only run tasks with these tags")
+	run.Flags().StringVar(&skipTags, "skip-tags", "",
+		"ansible --skip-tags: skip tasks with these tags")
+	run.Flags().StringArrayVarP(&extraVars, "extra-var", "e", nil,
+		"repeatable: key=val (written to a run-private file, never ansible's argv) or @file")
+	run.Flags().BoolVar(&check, "check", false,
+		"ansible --check: dry run; emits the structured config-drift outcome as a job event")
+	run.Flags().BoolVar(&diff, "diff", false,
+		"ansible --diff: show what would change (pairs with --check)")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -117,6 +152,92 @@ type playbookSpec struct {
 	vaultProject string
 	runSecrets   string
 	timeout      time.Duration
+	// passthrough is the public ansible flags (--limit, --tags, --skip-tags,
+	// --check, --diff, -e @file) placed before the playbook in argv.
+	passthrough []string
+	// extraVars are `-e key=val` variables, kept off argv and written to a
+	// run-private file by the ansible driver.
+	extraVars map[string]string
+}
+
+// ansibleFlagValue is a shell-free argv token: no NUL or newline, which are the
+// only bytes exec cannot carry in a single argument. A flag's value is one argv
+// token after its flag, so it cannot introduce a second flag — validation here
+// is against a value that would truncate or split the argument, not injection.
+func ansibleFlagValue(flag, value string) error {
+	if strings.ContainsAny(value, "\x00\n\r") {
+		return fmt.Errorf("playbook run: %s value contains a newline or NUL", flag)
+	}
+	return nil
+}
+
+// extraVarKey is the ansible variable-name shape: a leading letter or
+// underscore, then letters, digits, underscores. Rejecting anything else is
+// what stops a crafted `-e` key from carrying flag-like or whitespace-split
+// text into the run.
+var extraVarKey = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// ansiblePassthrough splits the operator's flags into the argv passthrough (the
+// public flags ansible reads before the playbook) and the extra-vars map (kept
+// off argv, written to a run-private file). A key=val is validated and mapped; a
+// @file is resolved to an absolute path and passed through as `-e @path`, its
+// values never leaving the file. secrets never travel here: the vault password
+// and run-secrets keep their own out-of-argv paths untouched.
+func ansiblePassthrough(limit, tags, skipTags string, check, diff bool, extraVars []string) ([]string, map[string]string, error) {
+	var argv []string
+	for flag, value := range map[string]string{"--limit": limit, "--tags": tags, "--skip-tags": skipTags} {
+		if value == "" {
+			continue
+		}
+		if err := ansibleFlagValue(flag, value); err != nil {
+			return nil, nil, err
+		}
+	}
+	// Rebuild in a stable order: a map iteration is unordered and the argv a
+	// job records must be deterministic.
+	for _, f := range []struct {
+		flag, value string
+	}{{"--limit", limit}, {"--tags", tags}, {"--skip-tags", skipTags}} {
+		if f.value != "" {
+			argv = append(argv, f.flag, f.value)
+		}
+	}
+	if check {
+		argv = append(argv, "--check")
+	}
+	if diff {
+		argv = append(argv, "--diff")
+	}
+
+	var vars map[string]string
+	for _, raw := range extraVars {
+		if strings.HasPrefix(raw, "@") {
+			path, err := filepath.Abs(raw[1:])
+			if err != nil {
+				return nil, nil, fmt.Errorf("playbook run: resolve -e %s: %w", raw, err)
+			}
+			if _, err := os.Stat(path); err != nil {
+				return nil, nil, fmt.Errorf("playbook run: -e %s: %w", raw, err)
+			}
+			argv = append(argv, "-e", "@"+path)
+			continue
+		}
+		key, val, ok := strings.Cut(raw, "=")
+		if !ok {
+			return nil, nil, fmt.Errorf("playbook run: -e %q is neither key=val nor @file", raw)
+		}
+		if !extraVarKey.MatchString(key) {
+			return nil, nil, fmt.Errorf("playbook run: -e %q has an invalid variable name", key)
+		}
+		if err := ansibleFlagValue("-e", val); err != nil {
+			return nil, nil, err
+		}
+		if vars == nil {
+			vars = map[string]string{}
+		}
+		vars[key] = val
+	}
+	return argv, vars, nil
 }
 
 // runPlaybook returns the job's exit code, and an error only when the job
@@ -159,10 +280,11 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		Runbook:          "playbook",
 		Kind:             executor.KindAnsible,
 		Trigger:          "manual",
-		Argv:             executor.AnsibleArgv(playbook, inventory),
+		Argv:             executor.AnsibleArgv(playbook, inventory, spec.passthrough...),
 		VaultProject:     spec.vaultProject,
 		RunSecretBinding: spec.runSecrets,
 		Inventory:        invName,
+		ExtraVars:        spec.extraVars,
 		Timeout:          spec.timeout,
 	}
 
@@ -297,7 +419,7 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	if err != nil {
 		return store.Job{}, err
 	}
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv)
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)
