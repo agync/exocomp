@@ -70,6 +70,15 @@ type KitTarget struct {
 	Name string
 	Kind string
 	URI  string
+	// Authenticates records that this target authenticates its snapshots — it
+	// has written the DEK-keyed manifest tag at least once. The card carries it
+	// out of band so a git restore can refuse a snapshot whose in-repo tag and
+	// AUTHENTICATED.mac marker an attacker stripped: the in-repo marker travels
+	// in the very ref the attacker controls, this line does not (finding B1). A
+	// restore of such a target passes `--target-authenticates` (or the CLI
+	// reads this line) so a stripped marker is caught as a downgrade, not
+	// trusted as a never-authenticated legacy target.
+	Authenticates bool
 }
 
 // RecoveryKit is the printed card. AgeSecretKey is populated only when the
@@ -304,8 +313,23 @@ func (k *RecoveryKit) sectionTargets() []string {
 			"",
 		)
 	}
+	authed := false
 	for _, t := range k.Targets {
-		lines = append(lines, fmt.Sprintf("    %-16s %-13s %s", t.Name, t.Kind, t.URI))
+		auth := ""
+		if t.Authenticates {
+			auth = "  authenticates"
+			authed = true
+		}
+		lines = append(lines, fmt.Sprintf("    %-16s %-13s %s%s", t.Name, t.Kind, t.URI, auth))
+	}
+	if authed {
+		lines = append(lines,
+			"",
+			"A target marked `authenticates` has signed its snapshots with your keyring.",
+			"Restore it with `exocomp restore --target-authenticates`: this line is the",
+			"out-of-band record that stops a stripped in-repo marker from downgrading the",
+			"forgery refusal to a warning (git targets especially).",
+		)
 	}
 	return append(lines, "")
 }

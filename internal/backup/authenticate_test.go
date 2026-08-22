@@ -77,7 +77,7 @@ func TestTamperingIsNotCorruption(t *testing.T) {
 
 	var warnings []string
 	warn := func(msg string) { warnings = append(warnings, msg) }
-	if err := authenticateSnapshotKey(dir, key, "nas", warn); err != nil {
+	if err := authenticateSnapshotKey(dir, key, "nas", false, false, warn); err != nil {
 		t.Fatalf("an untouched snapshot did not authenticate: %v", err)
 	}
 	if len(warnings) != 0 {
@@ -92,7 +92,7 @@ func TestTamperingIsNotCorruption(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadManifest: %v", err)
 	}
-	if err := authenticateSnapshotKey(dir, key, "nas", warn); err != nil {
+	if err := authenticateSnapshotKey(dir, key, "nas", false, false, warn); err != nil {
 		t.Fatalf("a corrupt file broke manifest authentication: %v", err)
 	}
 	err = manifest.Verify(dir)
@@ -119,7 +119,7 @@ func TestTamperingIsNotCorruption(t *testing.T) {
 	if err := forged.Verify(dir); err != nil {
 		t.Fatalf("the forged manifest does not verify against its own files: %v", err)
 	}
-	err = authenticateSnapshotKey(dir, key, "nas", warn)
+	err = authenticateSnapshotKey(dir, key, "nas", false, false, warn)
 	if !errors.Is(err, ErrManifestTampered) {
 		t.Fatalf("authenticate of a rewritten manifest = %v, want ErrManifestTampered", err)
 	}
@@ -132,7 +132,7 @@ func TestTamperingIsNotCorruption(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, ManifestName), body, 0o600); err != nil {
 		t.Fatalf("restore manifest: %v", err)
 	}
-	if err := authenticateSnapshotKey(dir, key, "offsite", warn); !errors.Is(err, ErrManifestTampered) {
+	if err := authenticateSnapshotKey(dir, key, "offsite", false, false, warn); !errors.Is(err, ErrManifestTampered) {
 		t.Fatalf("authenticate under the wrong target = %v, want ErrManifestTampered", err)
 	}
 }
@@ -328,7 +328,7 @@ func TestUnauthenticatedRestoreWarns(t *testing.T) {
 	warn := func(msg string) { warnings = append(warnings, msg) }
 
 	key := bytes.Repeat([]byte{0x5a}, dekLen)
-	if err := authenticateSnapshotKey(dir, key, "nas", warn); err != nil {
+	if err := authenticateSnapshotKey(dir, key, "nas", false, false, warn); err != nil {
 		t.Fatalf("a legacy snapshot refused to restore: %v", err)
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "legacy backup: integrity unverified") {
@@ -336,7 +336,7 @@ func TestUnauthenticatedRestoreWarns(t *testing.T) {
 	}
 
 	warnings = nil
-	if err := authenticateSnapshot(dir, nil, "nas", warn); err != nil {
+	if err := authenticateSnapshot(dir, nil, "nas", false, false, warn); err != nil {
 		t.Fatalf("a keyring-less restore refused: %v", err)
 	}
 	if len(warnings) != 1 || !strings.Contains(warnings[0], "not authenticated") {

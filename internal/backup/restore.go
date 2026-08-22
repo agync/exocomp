@@ -44,8 +44,19 @@ type Source struct {
 	// knowingly accepts; the default refuses an untagged snapshot from a target
 	// that has authenticated before.
 	AllowUnauthenticated bool
-	Driver               executor.Driver
-	StageRoot            string
+	// Authenticates asserts, out of band, that this target authenticates its
+	// snapshots — the per-target fact the recovery kit records (section 6). It
+	// is the counter to the git-leg downgrade (finding B1): the in-repo
+	// AUTHENTICATED.mac marker travels in the very ref an attacker with git
+	// write controls, so stripping keyring.age and that marker together erases
+	// the only in-repo evidence the target ever authenticated, and an untagged
+	// snapshot then reads as a never-authenticated legacy target. With this
+	// set, a snapshot that arrives with no derivable, valid tag is refused as
+	// tampering rather than trusted — the marker cannot be silently downgraded
+	// for a target the kit says authenticates.
+	Authenticates bool
+	Driver        executor.Driver
+	StageRoot     string
 	// Warn receives integrity findings that do not stop the restore — a
 	// snapshot with no manifest tag above all. Empty logs them.
 	Warn func(string)
@@ -134,7 +145,8 @@ func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, erro
 	}
 	// Authenticity before integrity: a manifest that is not this envelope's is
 	// not a manifest worth hashing files against.
-	if err := authenticateSnapshot(extracted, leg.dek, leg.target, src.warn); err != nil {
+	if err := authenticateSnapshot(extracted, leg.dek, leg.target,
+		src.Authenticates, src.AllowUnauthenticated, src.warn); err != nil {
 		return Manifest{}, err
 	}
 	if err := checkKeyringVersion(extracted, leg.rootVersion, manifest); err != nil {
@@ -191,9 +203,17 @@ func install(from, dest string) error {
 // authenticateSnapshot checks the restored manifest against the tag the leg
 // wrote beside it. A snapshot with no tag predates manifest authentication:
 // it restores, loudly, because refusing it would strand every backup written
-// before this shipped.
-func authenticateSnapshot(dir string, dek []byte, target string, warn func(string)) error {
+// before this shipped — unless the recovery kit records this target as
+// authenticating (authenticates), in which case a missing tag is the downgrade
+// finding B1 refuses.
+func authenticateSnapshot(dir string, dek []byte, target string, authenticates, allowUnauthenticated bool, warn func(string)) error {
 	if len(dek) != dekLen || target == "" {
+		if authenticates && !allowUnauthenticated {
+			return fmt.Errorf("%w: this restore has no keyring to derive the %s subkey from, "+
+				"but the recovery kit records target %q as authenticating its snapshots; "+
+				"restore with --allow-unauthenticated only if you are certain this snapshot is yours",
+				ErrManifestUnauthenticated, ManifestMACPurpose, target)
+		}
 		warn("manifest not authenticated: this restore has no keyring to derive the " +
 			ManifestMACPurpose + " subkey from, so only the sha256 digests were checked")
 		return nil
@@ -203,18 +223,24 @@ func authenticateSnapshot(dir string, dek []byte, target string, warn func(strin
 		return err
 	}
 	defer clear(key)
-	return authenticateSnapshotKey(dir, key, target, warn)
+	return authenticateSnapshotKey(dir, key, target, authenticates, allowUnauthenticated, warn)
 }
 
-func authenticateSnapshotKey(dir string, key []byte, target string, warn func(string)) error {
+func authenticateSnapshotKey(dir string, key []byte, target string, authenticates, allowUnauthenticated bool, warn func(string)) error {
 	present, err := VerifyManifestMAC(dir, key, target)
 	if err != nil {
 		return err
 	}
-	if !present {
-		warn("legacy backup: integrity unverified - this snapshot carries no " + ManifestMACName +
-			"; its digests are self-consistent, but nothing proves the manifest was written by your envelope")
+	if present {
+		return nil
 	}
+	if authenticates && !allowUnauthenticated {
+		return fmt.Errorf("%w: this snapshot carries no %s, but the recovery kit records target %q "+
+			"as authenticating its snapshots; restore with --allow-unauthenticated only if you are "+
+			"certain this snapshot is yours", ErrManifestUnauthenticated, ManifestMACName, target)
+	}
+	warn("legacy backup: integrity unverified - this snapshot carries no " + ManifestMACName +
+		"; its digests are self-consistent, but nothing proves the manifest was written by your envelope")
 	return nil
 }
 
@@ -357,7 +383,7 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) (leg le
 		return legSource{}, err
 	}
 	if err := authenticateParts(clone, partsBody, snapshot, leg.dek, leg.target,
-		src.AllowUnauthenticated, src.warn); err != nil {
+		src.Authenticates, src.AllowUnauthenticated, src.warn); err != nil {
 		return legSource{}, err
 	}
 	sealed, err := reassembleSnapshot(clone, manifest)
@@ -410,9 +436,24 @@ func checkKeyringVersion(extracted string, rootVersion int, m Manifest) error {
 // it lists the digests every part is checked against, so an unauthenticated
 // parts manifest makes those digests worth nothing.
 func authenticateParts(dir string, body []byte, snapshot string, dek []byte, target string,
-	allowUnauthenticated bool, warn func(string)) error {
+	authenticates, allowUnauthenticated bool, warn func(string)) error {
 	name := partsManifestName(snapshot)
 	if len(dek) != dekLen || target == "" {
+		// No keyring in the clone to derive the tag key from. An attacker with
+		// git write and the public recipients strips keyring.age and the
+		// in-repo AUTHENTICATED.mac marker together, so the marker sitting in
+		// the same ref cannot be trusted to be present — its absence here is
+		// exactly the state the strip produces. The recovery kit's out-of-band
+		// record that this target authenticates is what still catches the
+		// downgrade (finding B1); without it a stripped keyring reads as a
+		// never-authenticated legacy target.
+		if authenticates && !allowUnauthenticated {
+			return fmt.Errorf("%w: %s carries no tag and the clone holds no %s to derive one, but the "+
+				"recovery kit records target %q as authenticating its snapshots — stripping %s and %s "+
+				"together is the git downgrade this refuses; restore with --allow-unauthenticated only "+
+				"if you are certain this snapshot is yours",
+				ErrManifestUnauthenticated, name, KeyringName, target, KeyringName, AuthMarkerName)
+		}
 		warn("parts manifest not authenticated: no keyring in the clone to derive the " +
 			ManifestMACPurpose + " subkey from")
 		return nil
@@ -434,16 +475,23 @@ func authenticateParts(dir string, body []byte, snapshot string, dek []byte, tar
 	// No tag. If this target has authenticated before it carries a marker at
 	// its root, and a snapshot that drops the tag there is a downgrade — the
 	// git forgery this refusal exists to stop. A forged or wrong-target marker
-	// surfaces as ErrManifestTampered from the verify.
+	// surfaces as ErrManifestTampered from the verify. The recovery kit's
+	// out-of-band record backs the in-repo marker up: an attacker who kept the
+	// keyring but stripped only the marker is still caught when the kit says
+	// this target authenticates.
 	marked, err := VerifyAuthMarker(dir, key, target)
 	if err != nil {
 		return err
 	}
-	if marked && !allowUnauthenticated {
+	if (marked || authenticates) && !allowUnauthenticated {
+		record := AuthMarkerName
+		if !marked {
+			record = "the recovery kit"
+		}
 		return fmt.Errorf("%w: %s carries no tag, but %s records this target as authenticating its "+
 			"snapshots — a git snapshot binds to your keyring only through that tag; restore with "+
 			"--allow-unauthenticated only if you are certain this snapshot is yours",
-			ErrManifestUnauthenticated, name, AuthMarkerName)
+			ErrManifestUnauthenticated, name, record)
 	}
 	warn("legacy backup: integrity unverified - " + name + " carries no tag; " +
 		"the part digests are self-consistent, but nothing proves they are yours")
