@@ -61,7 +61,23 @@ h1 { font: var(--type-display); letter-spacing: -0.7px; color: var(--ink-100); m
 h2 { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); margin: 0 0 12px; }
 h3 { font: var(--type-card); color: var(--ink-100); margin: 0 0 8px; }
 
-a { color: var(--accent-text); text-underline-offset: 2px; }
+/* Content links carry no resting underline: 500-weight is the affordance (in the
+ * type ramp already), underline returns on hover/focus as an interaction signal.
+ * The hover guard keeps a chip-wrapping anchor from drawing a stray underline
+ * through the chip's box. :visited == default — this is a control plane, not a
+ * document corpus. */
+a {
+  color: var(--accent-text);
+  text-decoration: none;
+  text-underline-offset: 2px;
+  font-weight: 500;
+}
+a:hover:not(:has(.chip)),
+a:focus-visible {
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+}
+a:visited { color: var(--accent-text); }
 
 /* The one a11y non-negotiable: a visible ring on keyboard focus, never removed
  * without a replacement. It stays amethyst even on an amber card (tokens.css). */

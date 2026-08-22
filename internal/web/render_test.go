@@ -62,6 +62,13 @@ func TestFocusRingAndThemes(t *testing.T) {
 	if strings.Contains(app, "outline: none;") && !strings.Contains(app, ":focus:not(:focus-visible)") {
 		t.Error("outline:none must be paired with a focus-visible replacement")
 	}
+	// Content links rest without an underline; the underline returns on hover.
+	if !strings.Contains(app, "text-decoration: none;") {
+		t.Error("app.css: content links must rest with text-decoration:none")
+	}
+	if !strings.Contains(app, "text-decoration: underline;") {
+		t.Error("app.css: hover/focus underline affordance is missing")
+	}
 
 	_, tokens := getBody(t, client, ts.URL+"/assets/tokens.css")
 	if !strings.Contains(tokens, "prefers-color-scheme: light") {
