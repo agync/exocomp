@@ -8,7 +8,8 @@ import (
 )
 
 // screen selects which top-level view is showing. [0] Home is the root; [1]-[4]
-// are the M1 tables; [5] Approvals and [6] Events are the reactive surfaces.
+// are the M1 tables; [5] Approvals and [6] Events are the reactive surfaces;
+// [7] Sources, [8] Policies and [9] Workflows are the post-v1 parity surfaces.
 type screen int
 
 const (
@@ -31,9 +32,11 @@ const (
 
 // Model is the top-level Bubble Tea program: the Home glance ([0], the root),
 // the M1 tables (Jobs, Backups, Workspaces, Schedules; [1]-[4]/tab), the
-// Approvals ([5]) and Events ([6]) surfaces, a job event tail entered from the
-// Jobs and Workspaces screens, and a hold banner. It refreshes from the store
-// on a 2s tick. q quits only at the root; esc walks a screen back.
+// Approvals ([5]) and Events ([6]) surfaces, the post-v1 parity surfaces
+// (Sources [7], Policies [8], Workflows [9] with a step-ledger detail), a job
+// event tail entered from the Jobs and Workspaces screens, and a hold banner.
+// It refreshes from the store on a 2s tick. q quits only at the root; esc walks
+// a screen back.
 type Model struct {
 	store *store.Store
 
