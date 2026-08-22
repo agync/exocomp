@@ -494,7 +494,30 @@ func shutdownServe(ctx context.Context, out, warn io.Writer, sd shutdown) error 
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownGrace)
 	defer cancel()
-	return errors.Join(qErr, retireErr, sweepErr, sd.web.Shutdown(shutdownCtx), sd.server.Shutdown(shutdownCtx))
+	joined := errors.Join(qErr, retireErr, sweepErr, sd.web.Shutdown(shutdownCtx), sd.server.Shutdown(shutdownCtx))
+	// The queue and its in-flight store reads stop because we cancelled them:
+	// a context.Canceled from a deliberate shutdown is the expected outcome,
+	// not a failure to report. A real timeout surfaces as its own message above.
+	if joined != nil && errors.Is(joined, context.Canceled) && !hasNonCancelError(joined) {
+		return nil
+	}
+	return joined
+}
+
+// hasNonCancelError reports whether a joined error carries anything other than
+// context.Canceled, so shutdown reports genuine failures but not its own
+// cancellation.
+func hasNonCancelError(err error) bool {
+	type unwrapper interface{ Unwrap() []error }
+	if j, ok := err.(unwrapper); ok {
+		for _, e := range j.Unwrap() {
+			if e != nil && !errors.Is(e, context.Canceled) {
+				return true
+			}
+		}
+		return false
+	}
+	return !errors.Is(err, context.Canceled)
 }
 
 // waitForOwnJobs blocks until this process owns no queued or running job, or

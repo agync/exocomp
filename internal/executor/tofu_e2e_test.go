@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,15 @@ func requireTofu(t *testing.T) {
 	if _, err := exec.LookPath(executor.TofuBinary); err != nil {
 		t.Skipf("%s not installed: %v", executor.TofuBinary, err)
 	}
+	// These fixtures init a real provider from registry.opentofu.org. When the
+	// registry is unreachable the test proves nothing about exocomp — skip
+	// rather than fail on a network blip (offline resolution has its own test).
+	c := &http.Client{Timeout: 6 * time.Second}
+	resp, err := c.Get("https://registry.opentofu.org/.well-known/terraform.json")
+	if err != nil {
+		t.Skipf("provider registry unreachable, skipping live-provider e2e: %v", err)
+	}
+	_ = resp.Body.Close()
 }
 
 // fixture is a whole tofu half in miniature: a workspace directory managing a
