@@ -84,3 +84,50 @@ ad-hoc module runs; network_cli/winrm/docker/k8s connection matrix.
 sops-encrypted tfvars; lineage reconciliation after `state push -force`; DELETE
 verb; `-refresh-only` drift (true drift vs pending config) + structured diff;
 `workspace destroy`; git-provenance refuse-if-moved.
+
+---
+
+## Follow-up: how practitioners run the five stories today (v1 minimums)
+
+Both experts, asked "how do you actually do each today," returned concrete
+mechanics. The v1 minimums below are the acceptance-bar work.
+
+### Ansible
+
+- **Story 1 (repo, scheduled):** today = cron `git pull --ff-only && ansible-playbook`,
+  or `ansible-pull -C <tag>`, or AWX Projects+Schedules. v1: `source add --url --ref`,
+  sealed deploy key, sync-to-pinned-ref, a schedule that runs `--check --diff` first
+  and **advances the pinned ref only after a gated run** (the ansible-pull trust model).
+- **Story 2 (working dir):** already works (`playbook run <path>`); v1 = document the
+  sandbox mount requirement (rootless-visible + Landlock-grantable).
+- **Story 4 (dynamic inventory):** `community.general.proxmox`/`amazon.aws.aws_ec2`
+  plugins, auth from plugin env — **stripped by the allowlist today (broken)**. v1: bind
+  a sealed secret set to the plugin's env names per run; `cache_connection` at a
+  backed-up data-dir path; `cache_timeout` as the staleness knob.
+- **Story 5 (TF→inventory):** see v1-acceptance.md — outputs-based, in-process, no key
+  to the consumer.
+
+### OpenTofu
+
+- **Story 3 (drift):** today = `plan -refresh-only -detailed-exitcode` (NOT a full plan —
+  full plan pages on any `.tf` edit). Parse `show -json`: `.resource_drift[]` is true
+  drift, `.resource_changes[]` is config change — the JSON already separates them. v1:
+  scheduler runs refresh-only, stores `resource_drift[].address` + attribute keys
+  (**values suppressed**) in the outcome; notify with addresses+attrs, not the full diff
+  (leaks) nor a bare count (uninactionable). Keep the full-plan job as "work pending."
+  Today's code stores a bare `changes bool` from a full plan — conflates the two.
+- **Story 1/2 (repo/dir, scheduled):** unattended = scheduled **plan**, never unattended
+  apply. v1: plan-then-gate default (drift → approval → apply-the-saved-plan); auto-apply
+  only behind the CEL pass over `show -json` (destroy-count, protected addresses); arg
+  passthrough for `-target`/`-replace`/`-var-file` (today `apply` is unconditional
+  `-auto-approve`, no gate, no passthrough — the v1 hole).
+- **Mode A (state-store-only) airtight bar:** `--state-only` emit (unbuilt); a
+  **documented no-proxy/loopback constraint** — LOCK/UNLOCK are non-standard verbs some
+  CI proxies drop, silently no-opping the lock; surface the lock ID from the 423 body for
+  `force-unlock`; state that `tofu workspace new/select` is unsupported (env = separate
+  exocomp workspace). SQLite lock-as-row is the right call, more correct than S3
+  `use_lockfile`.
+
+Common fit: all ride the existing queue/envelope/SQLite; the missing pieces are
+`show -json`/`output -json` capture, a richer drift outcome, the apply gate, the
+credential-plane env binding, and the mode-A emit. No new infra, no external DB.
