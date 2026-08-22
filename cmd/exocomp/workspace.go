@@ -18,6 +18,7 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -537,6 +538,29 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		return 0, err
 	}
 
+	// A saved plan carries the policy verdict its seal recorded. Consult it
+	// before anything is enqueued or decrypted: a deny plan is refused outright
+	// (unconsumable), a require_approval plan is routed through the gate rather
+	// than run. A fresh apply (no --plan) and an apply of an operator's own plan
+	// file carry no verdict and proceed.
+	if op.op == "apply" && op.planRef != "" {
+		saved, err := resolvePlan(ctx, st, op.planRef)
+		if err != nil {
+			return 0, err
+		}
+		verdict, err := planVerdict(ctx, st, saved)
+		if err != nil {
+			return 0, err
+		}
+		if verdict.Deny() {
+			return 0, fmt.Errorf("workspace apply: plan %s is unconsumable: denied by policy %q",
+				op.planRef, verdict.Policy)
+		}
+		if verdict.RequireApproval() {
+			return enqueueGatedApply(ctx, st, env, ws, op, saved, verdict.Policy, out)
+		}
+	}
+
 	argv, planPath, parent, cleanupPlan, err := opArgv(ctx, st, env, op, ws, dirs)
 	if err != nil {
 		return 0, err
@@ -578,8 +602,23 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", parent.ID, parent.JobID)
 	}
 	if planPath != "" {
-		if err := recordPlan(ctx, st, env, out, final.ID, planPath); err != nil {
+		// Seal the plan, then evaluate the workspace's policies against the
+		// outcome the run already recorded and stamp the verdict onto the sealed
+		// artifact. A deny here is what makes the plan unconsumable.
+		saved, err := recordPlan(ctx, st, env, out, final.ID, planPath)
+		if err != nil {
 			return 0, err
+		}
+		if saved != nil {
+			verdict, err := evalPlanPolicy(ctx, st, out, ws, final.ID)
+			if err != nil {
+				return 0, err
+			}
+			if verdict.Matched() {
+				if err := recordPlanVerdict(ctx, st, out, saved.JobID, saved.ID, verdict); err != nil {
+					return 0, err
+				}
+			}
 		}
 	}
 
@@ -762,20 +801,20 @@ func resolvePlan(ctx context.Context, st *store.Store, ref string) (store.Artifa
 // never got that far. The digest recorded is of the ciphertext, because that
 // is what is on disk to check later.
 func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out io.Writer,
-	jobID int64, path string) error {
+	jobID int64, path string) (*store.Artifact, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return nil
+		return nil, nil
 	}
 	path, err := sealArtifact(env, planArtifactKind, path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	sum, size, err := fileDigest(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return nil, nil
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	saved, err := st.CreateArtifact(ctx, store.Artifact{
 		JobID:  jobID,
@@ -785,10 +824,61 @@ func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out
 		Size:   size,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 	_, _ = fmt.Fprintf(out, "saved plan artifact %d at %s\n", saved.ID, saved.Path)
-	return nil
+	return &saved, nil
+}
+
+// enqueueGatedApply routes a require_approval plan's apply through the existing
+// approval gate instead of running it: the job lands in awaiting_approval, no
+// worker can claim it, and an approval that releases it is created and its link
+// pointed to. It reuses the gate and approval machinery the reactive engine
+// uses (EnqueueGated, ApprovalToken, CreateApproval), so there is one gate, not
+// a second one.
+func enqueueGatedApply(ctx context.Context, st *store.Store, env *secrets.Envelope,
+	ws store.Workspace, op workspaceOp, saved store.Artifact, policyName string, out io.Writer) (int, error) {
+	spec := queue.Spec{
+		Runbook:          workspaceRunbookPrefix + ws.Name,
+		Kind:             executor.KindTofu,
+		Trigger:          "manual",
+		Argv:             executor.TofuArgv("apply", saved.Path),
+		Dir:              ws.TofuDir,
+		RunSecretBinding: op.runSecrets,
+		ConcurrencyKey:   "tofu:" + ws.Name,
+		Timeout:          op.timeout,
+	}
+	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+	job, err := q.EnqueueGated(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+
+	token, hash, err := reactive.ApprovalToken(env, job.ID)
+	if err != nil {
+		return 0, err
+	}
+	_ = token // the capability is re-derived on demand by `approval link`, never printed here
+	now := time.Now().UTC()
+	artifactID := saved.ID
+	approval, err := st.CreateApproval(ctx, store.Approval{
+		JobID:        job.ID,
+		PlanArtifact: &artifactID,
+		Workspace:    ws.Name,
+		PlanSerial:   ws.Serial,
+		RequestedAt:  now,
+		ExpiresAt:    now.Add(reactive.DefaultApprovalTTL),
+		TokenHash:    hash,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	_, _ = fmt.Fprintf(out, "plan %d requires approval by policy %q\n", saved.ID, policyName)
+	_, _ = fmt.Fprintf(out, "job %d gated (awaiting_approval); approval %d expires %s\n",
+		job.ID, approval.ID, approval.ExpiresAt.Format("2006-01-02 15:04:05Z"))
+	_, _ = fmt.Fprintf(out, "print its decision link with `exocomp approval link %d`\n", approval.ID)
+	return 0, nil
 }
 
 // workspaceExit reports the shell exit code, translating a plan that found
