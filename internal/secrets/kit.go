@@ -38,7 +38,7 @@ var purposes = []Purpose{
 	{"tf-backend", "backend", "<workspace-id>", "state backend bearer token", EncodingBase64},
 	{"backup-manifest-mac", "", "<target-id>", "backup manifest HMAC key", EncodingHex},
 	{"webhook-hmac", "", "<source-id>", "webhook signature key", EncodingHex},
-	{"approval-token", "", "<id>", "approval token signing key", EncodingHex},
+	{"approval", "", "", "approval token signing key", EncodingHex},
 }
 
 // Purposes lists every derivation family in use, in card order.
