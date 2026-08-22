@@ -1,0 +1,33 @@
+---
+# Seeded fleet-onboarding runbook (ADR 0010, credential plane 3). Run once per
+# new host from an account that can already log in and escalate; exocomp writes
+# this file and the fleet public key, then runs it through the sandboxed, gated
+# queue. It creates the automation user, authorizes the fleet key, and grants
+# scoped passwordless sudo. Pass the fleet public key as an extra-var:
+#   exocomp playbook run onboard.yml --inventory <hosts> \
+#     -e exocomp_fleet_pubkey="ssh-ed25519 AAAA... exocomp-fleet"
+- name: Onboard a host into the exocomp fleet
+  hosts: all
+  become: true
+  vars:
+    exocomp_user: "{{ exocomp_ansible_user | default('ansible') }}"
+  tasks:
+    - name: Create the automation user
+      ansible.builtin.user:
+        name: "{{ exocomp_user }}"
+        shell: /bin/bash
+        create_home: true
+
+    - name: Authorize the fleet key
+      ansible.posix.authorized_key:
+        user: "{{ exocomp_user }}"
+        key: "{{ exocomp_fleet_pubkey }}"
+        state: present
+        exclusive: false
+
+    - name: Grant scoped passwordless sudo
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/exocomp-{{ exocomp_user }}"
+        content: "{{ exocomp_user }} ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+        validate: "visudo -cf %s"

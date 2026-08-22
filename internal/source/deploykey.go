@@ -52,3 +52,19 @@ func GenerateDeployKey(sourceName string) (DeployKey, error) {
 		PublicAuthorizedKey: authorized + " " + comment,
 	}, nil
 }
+
+// PublicFromPrivatePEM derives the "ssh-ed25519 AAAA... <comment>" authorized-key
+// line from an OpenSSH private key PEM, so a caller holding only the sealed
+// private half (the fleet key) can print the public one to authorize on a host.
+// comment, when non-empty, is appended so the line stays recognizable.
+func PublicFromPrivatePEM(privatePEM []byte, comment string) (string, error) {
+	signer, err := ssh.ParsePrivateKey(privatePEM)
+	if err != nil {
+		return "", fmt.Errorf("source: parse private key: %w", err)
+	}
+	line := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey())))
+	if comment = strings.TrimSpace(comment); comment != "" {
+		line += " " + comment
+	}
+	return line, nil
+}
