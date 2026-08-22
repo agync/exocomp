@@ -62,23 +62,29 @@ case "$node_status" in
     *)
         limactl start "$INSTANCE" >"$WORK/lima.log" 2>&1             || { tail -5 "$WORK/lima.log"; fail "lima start failed"; } ;;
 esac
-limactl show-ssh --format=config "$INSTANCE" >"$WORK/ssh_config"
+# Playbook, inventory, vaulted var, and ssh_config live under $WORK/src, not
+# $WORK itself: a sandboxed job reads the playbook's and inventory's directory,
+# and $WORK also holds the data dir ($WORK/data) — a source path may not be an
+# ancestor of the data dir, so the sources get their own subtree.
+SRC="$WORK/src"
+mkdir -p "$SRC"
+limactl show-ssh --format=config "$INSTANCE" >"$SRC/ssh_config"
 NODE="lima-$INSTANCE"
-cat >"$WORK/inventory.ini" <<EOF
+cat >"$SRC/inventory.ini" <<EOF
 [nodes]
 $NODE
 [nodes:vars]
-ansible_ssh_common_args=-F $WORK/ssh_config
+ansible_ssh_common_args=-F $SRC/ssh_config
 EOF
 
 log "vaulted playbook against the node (canary value as the vaulted var)"
 printf '%s' "$CANARY_VALUE" | ansible-vault encrypt_string \
-    --vault-id exocomp@"$WORK/vault-pass" --stdin-name marker >"$WORK/vaulted-var.yml"
-cat >"$WORK/play.yml" <<EOF
+    --vault-id exocomp@"$WORK/vault-pass" --stdin-name marker >"$SRC/vaulted-var.yml"
+cat >"$SRC/play.yml" <<EOF
 - hosts: nodes
   gather_facts: false
   vars_files:
-    - $WORK/vaulted-var.yml
+    - $SRC/vaulted-var.yml
   tasks:
     - name: write the marker on the node
       ansible.builtin.copy:
@@ -89,7 +95,12 @@ cat >"$WORK/play.yml" <<EOF
       ansible.builtin.debug:
         msg: "{{ marker }}"
 EOF
-"$EXO" playbook run "$WORK/play.yml" --inventory "$WORK/inventory.ini" \
+# Reuse lima's persistent ssh control master (a pathname AF_UNIX socket, which
+# the sandbox permits reaching) so the play connects without reading lima's
+# identity key or dialing lima's dynamic TCP port — the sandbox grants a job
+# neither, and a real fleet reaches its nodes on port 22 with a granted key.
+export ANSIBLE_SSH_CONTROL_PATH="$HOME/.lima/$INSTANCE/ssh.sock"
+"$EXO" playbook run "$SRC/play.yml" --inventory "$SRC/inventory.ini" \
     --vault-project e2e >"$WORK/play.out" 2>&1 || { cat "$WORK/play.out"; fail "playbook run failed"; }
 limactl shell "$INSTANCE" -- cat /tmp/exocomp-e2e | grep -q "$CANARY_VALUE" \
     || fail "marker not written on node"

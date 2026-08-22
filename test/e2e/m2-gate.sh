@@ -77,17 +77,22 @@ MARK="m2-vault-mark-$$"
 # Redaction covers envelope-derived material and SEALED secrets; seal the
 # marker so the redactor knows it (the documented boundary since M1).
 printf '%s' "$MARK" | "$EXO" secrets add m2-canary --kind e2e >/dev/null
-printf '%s' "$MARK" | ansible-vault encrypt_string --vault-id exocomp@"$WORK/vp" --stdin-name marker >"$WORK/vaulted.yml"
-cat >"$WORK/play.yml" <<EOF
+# Playbook sources live under $WORK/src, not $WORK itself: a sandboxed job
+# reads the playbook's directory, and $WORK also holds the data dir ($WORK/data)
+# — a source path may not be an ancestor of the data dir, so it gets its own.
+SRC="$WORK/src"
+mkdir -p "$SRC"
+printf '%s' "$MARK" | ansible-vault encrypt_string --vault-id exocomp@"$WORK/vp" --stdin-name marker >"$SRC/vaulted.yml"
+cat >"$SRC/play.yml" <<EOF
 - hosts: localhost
   connection: local
   gather_facts: false
-  vars_files: [$WORK/vaulted.yml]
+  vars_files: [$SRC/vaulted.yml]
   tasks:
     - ansible.builtin.debug:
         msg: "marker is {{ marker }}"
 EOF
-"$EXO" playbook run "$WORK/play.yml" --vault-project m2 >"$WORK/play.out" 2>&1 || { cat "$WORK/play.out"; fail "playbook failed"; }
+"$EXO" playbook run "$SRC/play.yml" --vault-project m2 >"$WORK/play.out" 2>&1 || { cat "$WORK/play.out"; fail "playbook failed"; }
 grep -q 'queued for the running daemon' "$WORK/play.out" || fail "playbook did not take the daemon path"
 grep -q 'REDACTED' "$WORK/play.out" || fail "no redaction marker — decryption may not have happened"
 grep -aq -- "$MARK" "$DB" && fail "vaulted value leaked into the database" || true
