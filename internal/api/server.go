@@ -58,6 +58,7 @@ type Server struct {
 	tokens TokenDeriver
 	log    *slog.Logger
 	port   int
+	mount  map[string]http.Handler
 
 	http *http.Server
 	ln   net.Listener
@@ -86,8 +87,27 @@ func New(opts Options) (*Server, error) {
 		tokens: opts.Tokens,
 		log:    log,
 		port:   opts.Port,
+		mount:  map[string]http.Handler{},
 		jobs:   map[string]int64{},
 	}, nil
+}
+
+// Mount registers extra routes, keyed by net/http pattern. It is how a
+// surface this package knows nothing about — the reactive webhook ingress,
+// the approval decision links — is served from the one listener rather than
+// from a second one. Routes are fixed when the server starts, so mounting
+// after Start is refused rather than silently ignored.
+func (s *Server) Mount(routes map[string]http.Handler) error {
+	if s.ln != nil {
+		return errors.New("api: cannot mount routes on a started server")
+	}
+	for pattern, handler := range routes {
+		if _, taken := s.mount[pattern]; taken {
+			return fmt.Errorf("api: pattern %q is already mounted", pattern)
+		}
+		s.mount[pattern] = handler
+	}
+	return nil
 }
 
 // Handler returns the routes, for tests that drive them without a listener.
@@ -98,6 +118,9 @@ func (s *Server) Handler() http.Handler {
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.HandleFunc(StatePrefix+"{workspace}", s.handleState)
+	for pattern, handler := range s.mount {
+		mux.Handle(pattern, handler)
+	}
 	return mux
 }
 

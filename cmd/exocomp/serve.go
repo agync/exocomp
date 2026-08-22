@@ -18,7 +18,9 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
@@ -54,17 +56,30 @@ const defaultDrainGrace = 30 * time.Second
 // the database, so `schedule enable` reaches it without a signal.
 const defaultReloadInterval = time.Minute
 
+// defaultSweepInterval is how often the daemon fails expired approvals
+// closed, re-publishes the ones halfway through their window, and turns a
+// plan that found changes into a drift event.
+const defaultSweepInterval = 30 * time.Second
+
 // serveOptions is what the daemon is started with.
 type serveOptions struct {
 	port           int
 	drainGrace     time.Duration
 	reloadInterval time.Duration
+	sweepInterval  time.Duration
+	dedupWindow    time.Duration
+	approvalTTL    time.Duration
+	hookAllow      string
+	publicURL      string
 }
 
 func defaultServeOptions() serveOptions {
 	return serveOptions{
 		drainGrace:     defaultDrainGrace,
 		reloadInterval: defaultReloadInterval,
+		sweepInterval:  defaultSweepInterval,
+		dedupWindow:    reactive.DefaultDedupWindow,
+		approvalTTL:    reactive.DefaultApprovalTTL,
 	}
 }
 
@@ -89,6 +104,16 @@ func newServeCmd() *cobra.Command {
 		"how long in-flight jobs may finish after a signal before they are cancelled")
 	cmd.Flags().DurationVar(&opts.reloadInterval, "reload-interval", opts.reloadInterval,
 		"how often schedules are rebuilt from the database (0: only on SIGHUP)")
+	cmd.Flags().DurationVar(&opts.sweepInterval, "sweep-interval", opts.sweepInterval,
+		"how often approvals are expired and re-published and drift is collected")
+	cmd.Flags().DurationVar(&opts.dedupWindow, "dedup-window", opts.dedupWindow,
+		"how long a repeat of the same condition is a duplicate")
+	cmd.Flags().DurationVar(&opts.approvalTTL, "approval-ttl", opts.approvalTTL,
+		"how long a decision link is good for before the job is rejected")
+	cmd.Flags().StringVar(&opts.hookAllow, "hook-allow", "",
+		"comma-separated CIDRs webhooks may come from (empty: any)")
+	cmd.Flags().StringVar(&opts.publicURL, "public-url", "",
+		"base URL decision links point at (empty: the bound loopback address)")
 	return cmd
 }
 
@@ -138,13 +163,6 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err != nil {
 		return err
 	}
-	if err := srv.Start(); err != nil {
-		return err
-	}
-	if err := api.WriteAddress(filepath.Join(dir, api.AddressFile), srv.Addr()); err != nil {
-		return err
-	}
-	_, _ = fmt.Fprintf(out, "state backend listening on http://%s\n", srv.Addr())
 
 	// Jobs run under a context of their own, not the signal context: a
 	// SIGTERM has to stop new work without cancelling a leg that is halfway
@@ -163,6 +181,43 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 			return secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))
 		}))
 
+	// The reactive surfaces are mounted on the one listener before it binds:
+	// routes are fixed at start, and a second listener would be a second
+	// authentication story.
+	engine, err := reactiveEngine(ctx, st, q, env, warn, opts)
+	if err != nil {
+		return err
+	}
+	allow, err := reactive.ParseAllow(opts.hookAllow)
+	if err != nil {
+		return fmt.Errorf("serve: --hook-allow: %w", err)
+	}
+	ingress, err := reactive.NewIngress(reactive.IngressOptions{
+		Engine:  engine,
+		Deriver: env,
+		Allow:   allow,
+	})
+	if err != nil {
+		return err
+	}
+	if err := srv.Mount(ingress.Mounts()); err != nil {
+		return err
+	}
+
+	if err := srv.Start(); err != nil {
+		return err
+	}
+	if err := api.WriteAddress(filepath.Join(dir, api.AddressFile), srv.Addr()); err != nil {
+		return err
+	}
+	base := opts.publicURL
+	if base == "" {
+		base = "http://" + srv.Addr()
+	}
+	engine.SetBaseURL(base)
+	_, _ = fmt.Fprintf(out, "state backend listening on http://%s\n", srv.Addr())
+	printHooks(out, env, base)
+
 	qDone := make(chan error, 1)
 	go func() { qDone <- q.Run(jobCtx) }()
 	_, _ = fmt.Fprintf(out, "queue draining with %d workers\n", serveWorkers)
@@ -175,10 +230,16 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	_, _ = fmt.Fprintln(out, "scheduler started")
 
+	sweepDone := make(chan struct{})
+	go func() {
+		defer close(sweepDone)
+		sweepReactive(jobCtx, engine, warn, opts.sweepInterval)
+	}()
+
 	serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval)
 	_, _ = fmt.Fprintln(out, "shutting down")
 
-	return shutdownServe(finalCtx, out, warn, shutdown{
+	err = shutdownServe(finalCtx, out, warn, shutdown{
 		store:      st,
 		sched:      s,
 		server:     srv,
@@ -186,6 +247,94 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		queueDone:  qDone,
 		grace:      opts.drainGrace,
 	})
+	<-sweepDone
+	return err
+}
+
+// reactiveEngine builds the rule engine, with push configured from sealed
+// secrets. An operator who has not sealed an ntfy endpoint gets a working
+// daemon and a silent phone, not a daemon that refuses to start.
+func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
+	env *secrets.Envelope, warn io.Writer, opts serveOptions) (*reactive.Engine, error) {
+	transport, err := notify.LoadNtfy(ctx, func(ctx context.Context, name string) ([]byte, error) {
+		row, err := st.GetSecret(ctx, name)
+		if err != nil {
+			return nil, err
+		}
+		return env.OpenSecret(secrets.SealedSecret{
+			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+		})
+	})
+	if err != nil {
+		// A refused push configuration is the operator's to fix, and running
+		// blind past it would mean approvals nobody is told about.
+		return nil, fmt.Errorf("serve: %w", err)
+	}
+
+	var notifier *notify.Notifier
+	if transport != nil {
+		notifier = notify.New(nil, transport)
+	} else {
+		notifier = notify.New(nil)
+		_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed (%s, %s); "+
+			"approvals will wait silently\n", notify.SecretNtfyURL, notify.SecretNtfyTopic)
+	}
+
+	return reactive.New(reactive.Options{
+		Store:       st,
+		Queue:       q,
+		Deriver:     env,
+		Notifier:    notifier,
+		DedupWindow: opts.dedupWindow,
+		ApprovalTTL: opts.approvalTTL,
+		Redactor:    secrets.NewRedactor(knownSecrets(ctx, st, env, warn)),
+	})
+}
+
+// printHooks tells the operator where each source posts. The tokens are
+// derived, so they are the same after a restore and this is the only place
+// they have to be looked up.
+func printHooks(out io.Writer, env *secrets.Envelope, base string) {
+	for _, source := range reactive.Sources {
+		_, _ = fmt.Fprintf(out, "hook %-14s %s\n", source, reactive.HookURL(base, env, source))
+	}
+}
+
+// sweepReactive runs the clock-driven halves of the reactive layer: approvals
+// whose TTL ran out fail closed, approvals halfway through their window get
+// one more push, and a scheduled plan that found changes becomes a drift
+// event. It runs until the job context is cancelled.
+func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer, interval time.Duration) {
+	if interval <= 0 {
+		return
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		if expired, republished, err := engine.SweepApprovals(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: sweep approvals: %v\n", err)
+			}
+		} else if expired > 0 || republished > 0 {
+			_, _ = fmt.Fprintf(warn, "approvals: %d expired, %d re-published\n",
+				expired, republished)
+		}
+
+		if raised, err := engine.SweepDrift(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: collect drift: %v\n", err)
+			}
+		} else if raised > 0 {
+			_, _ = fmt.Fprintf(warn, "drift: %d workspace(s) planned changes\n", raised)
+		}
+	}
 }
 
 // flagStaleLocks names every workspace whose state lock outlived the job that
@@ -369,7 +518,7 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 		return nil, err
 	}
 	return kindRouter{
-		tofu:    workspaceDriver{store: st, env: env, server: srv, addr: srv.Addr(), dirs: dirs},
+		tofu:    workspaceDriver{store: st, env: env, server: srv, dirs: dirs},
 		ansible: ansibleJobDriver{store: st, env: env, dataDir: dir},
 		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{}, targetEnv)),
 	}, nil
@@ -404,7 +553,6 @@ type workspaceDriver struct {
 	store  *store.Store
 	env    *secrets.Envelope
 	server *api.Server
-	addr   string
 	dirs   tofuPaths
 }
 
@@ -433,7 +581,7 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 
 	drv := executor.NewTofu(executor.TofuOptions{
 		Workspace:       ws.Name,
-		BackendURL:      api.StateURL(d.addr, ws.Name),
+		BackendURL:      api.StateURL(d.server.Addr(), ws.Name),
 		BackendToken:    token,
 		StatePassphrase: passphrase,
 		PrivateDirRoot:  d.dirs.private,

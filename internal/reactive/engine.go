@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"exocomp.dev/exocomp/internal/notify"
@@ -67,7 +68,6 @@ type Engine struct {
 	queue       Gate
 	deriver     Deriver
 	notifier    *notify.Notifier
-	baseURL     string
 	dedupWindow time.Duration
 	approvalTTL time.Duration
 	redactor    Redactor
@@ -78,6 +78,9 @@ type Engine struct {
 	// It is process state on purpose: the reminder is a nudge, and a daemon
 	// restart sending one more is better than a column that has to be swept.
 	republished map[int64]bool
+
+	mu      sync.RWMutex
+	baseURL string
 }
 
 // New returns an Engine.
@@ -97,13 +100,13 @@ func New(opts Options) (*Engine, error) {
 		queue:       opts.Queue,
 		deriver:     opts.Deriver,
 		notifier:    opts.Notifier,
-		baseURL:     opts.BaseURL,
 		dedupWindow: opts.DedupWindow,
 		approvalTTL: opts.ApprovalTTL,
 		redactor:    opts.Redactor,
 		clock:       opts.Clock,
 		log:         opts.Logger,
 		republished: map[int64]bool{},
+		baseURL:     opts.BaseURL,
 	}
 	if e.dedupWindow == 0 {
 		e.dedupWindow = DefaultDedupWindow
@@ -121,6 +124,21 @@ func New(opts Options) (*Engine, error) {
 }
 
 func (e *Engine) now() time.Time { return e.clock().UTC() }
+
+// SetBaseURL sets what decision links are rooted at. The daemon calls it once
+// its listener's address is known and before it starts serving, because the
+// address is only decided by the bind.
+func (e *Engine) SetBaseURL(u string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.baseURL = u
+}
+
+func (e *Engine) base() string {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.baseURL
+}
 
 // notify publishes without letting delivery decide anything. A phone that is
 // unreachable does not change what the ledgers say happened.

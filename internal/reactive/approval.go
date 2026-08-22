@@ -267,8 +267,9 @@ func (e *Engine) DecisionLinks(a store.Approval) (approve, reject string, err er
 	if err != nil {
 		return "", "", err
 	}
-	return DecisionURL(e.baseURL, a.ID, DecisionApprove, token),
-		DecisionURL(e.baseURL, a.ID, DecisionReject, token), nil
+	base := e.base()
+	return DecisionURL(base, a.ID, DecisionApprove, token),
+		DecisionURL(base, a.ID, DecisionReject, token), nil
 }
 
 // approvalNotification is the terse lock-screen message: a count, a TTL, and
@@ -282,6 +283,7 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 		priority = notify.PriorityMax
 	}
 	left := humanDuration(a.ExpiresAt.Sub(e.now()))
+	base := e.base()
 
 	return notify.Notification{
 		Title:    title,
@@ -289,8 +291,8 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 		Priority: priority,
 		Tags:     []string{"warning"},
 		Actions: []notify.Action{
-			{Label: "Approve", URL: DecisionURL(e.baseURL, a.ID, DecisionApprove, token)},
-			{Label: "Reject", URL: DecisionURL(e.baseURL, a.ID, DecisionReject, token)},
+			{Label: "Approve", URL: DecisionURL(base, a.ID, DecisionApprove, token)},
+			{Label: "Reject", URL: DecisionURL(base, a.ID, DecisionReject, token)},
 		},
 	}
 }
