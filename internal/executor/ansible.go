@@ -178,19 +178,31 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 		spec.Env = prependPath(spec.Env, a.opts.VenvBin)
 	}
 
-	// A check-mode run grows a structured, resource-level drift event parsed
-	// from its own PLAY RECAP; a normal run streams unchanged. The recap sink
-	// only observes the same stdout the operator sees, so the dry run's
-	// behaviour and exit code are untouched.
-	if isAnsibleCheck(spec.Argv) {
-		recap := &recapSink{inner: sink}
-		res, err := a.inner.Run(ctx, spec, recap)
-		if err == nil {
-			emitAnsibleCheckOutcome(recap.snapshot(), sink)
-		}
-		return res, err
+	// Any run is observed for a host-key mismatch: a connection whose recorded
+	// pin no longer matches is a security signal surfaced as an event, so the
+	// caller quarantines the host and requires an approved re-pin. The observer
+	// keeps only the banner lines; the run's streaming and exit code are
+	// untouched (invariant 3).
+	hk := &hostKeyObserver{inner: sink}
+	runSink := EventSink(hk)
+
+	// A check-mode run additionally grows a structured, resource-level drift
+	// event parsed from its own PLAY RECAP; a normal run streams unchanged.
+	checkMode := isAnsibleCheck(spec.Argv)
+	var recap *recapSink
+	if checkMode {
+		recap = &recapSink{inner: hk}
+		runSink = recap
 	}
-	return a.inner.Run(ctx, spec, sink)
+
+	res, err := a.inner.Run(ctx, spec, runSink)
+	if err == nil && checkMode {
+		emitAnsibleCheckOutcome(recap.snapshot(), sink)
+	}
+	if m, ok := hk.mismatch(); ok {
+		sink.Emit(hostKeyMismatchEvent(m))
+	}
+	return res, err
 }
 
 // prependPath puts dir at the front of the PATH entry in env so the venv's own

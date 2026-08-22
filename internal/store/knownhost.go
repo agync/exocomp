@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"sort"
@@ -56,7 +58,10 @@ func (s *Store) RecordKnownHost(ctx context.Context, kh KnownHost) error {
 }
 
 // RotateKnownHost replaces a recorded key after the operator has confirmed the
-// change out of band (the --rotate path).
+// change out of band (the --rotate path). It is also the approved re-pin that
+// lifts a quarantine (fold 8d): the new key and the quarantine clear settle in
+// one transaction, so a host is never left recording the new key while still
+// blocked, nor cleared while still recording the old.
 func (s *Store) RotateKnownHost(ctx context.Context, kh KnownHost) error {
 	if kh.Host == "" || kh.KeyType == "" || kh.Key == "" {
 		return fmt.Errorf("store: rotate known host: host, key_type and key are all required")
@@ -64,14 +69,139 @@ func (s *Store) RotateKnownHost(ctx context.Context, kh KnownHost) error {
 	if kh.CreatedAt.IsZero() {
 		kh.CreatedAt = time.Now().UTC()
 	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO known_host (host, key_type, key, created_at) VALUES (?, ?, ?, ?)
-		ON CONFLICT(host, key_type) DO UPDATE SET key = excluded.key, created_at = excluded.created_at`,
-		kh.Host, kh.KeyType, kh.Key, kh.CreatedAt.UnixMilli())
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return wrap("rotate known host", err)
 	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO known_host (host, key_type, key, created_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(host, key_type) DO UPDATE SET key = excluded.key, created_at = excluded.created_at`,
+		kh.Host, kh.KeyType, kh.Key, kh.CreatedAt.UnixMilli()); err != nil {
+		return wrap("rotate known host", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM host_quarantine WHERE host = ?`, kh.Host); err != nil {
+		return wrap("rotate known host", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return wrap("rotate known host", err)
+	}
 	return nil
+}
+
+// Fingerprint is the OpenSSH SHA256 fingerprint of a recorded key, so a
+// quarantine record can carry the pinned key as the same string ssh prints for
+// the presented one — old vs new, comparable at a glance. An unparseable key
+// yields an empty string rather than an error: a fingerprint is a display aid,
+// not a decision input.
+func (kh KnownHost) Fingerprint() string {
+	raw, err := base64.StdEncoding.DecodeString(kh.Key)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return "SHA256:" + base64.RawStdEncoding.EncodeToString(sum[:])
+}
+
+// HostQuarantine is a host blocked after a runtime host-key mismatch: the
+// recorded fingerprint, the one the host presented, and why. It clears only
+// through RotateKnownHost (the approved re-pin).
+type HostQuarantine struct {
+	Host           string
+	Reason         string
+	OldFingerprint string
+	NewFingerprint string
+	QuarantinedAt  time.Time
+}
+
+// QuarantineHost records (or refreshes) a host quarantine. It is idempotent by
+// host: a repeated mismatch updates the record rather than failing, so a
+// re-detected change does not error the run.
+func (s *Store) QuarantineHost(ctx context.Context, q HostQuarantine) error {
+	if q.Host == "" {
+		return fmt.Errorf("store: quarantine host: host is required")
+	}
+	if q.QuarantinedAt.IsZero() {
+		q.QuarantinedAt = time.Now().UTC()
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO host_quarantine (host, reason, old_fingerprint, new_fingerprint, quarantined_at)
+		VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT(host) DO UPDATE SET
+			reason = excluded.reason,
+			old_fingerprint = excluded.old_fingerprint,
+			new_fingerprint = excluded.new_fingerprint,
+			quarantined_at = excluded.quarantined_at`,
+		q.Host, q.Reason, q.OldFingerprint, q.NewFingerprint, q.QuarantinedAt.UnixMilli())
+	if err != nil {
+		return wrap("quarantine host", err)
+	}
+	return nil
+}
+
+// GetHostQuarantine returns a host's quarantine, or ErrNotFound when the host is
+// not quarantined.
+func (s *Store) GetHostQuarantine(ctx context.Context, host string) (HostQuarantine, error) {
+	var (
+		q             HostQuarantine
+		quarantinedAt int64
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT host, reason, old_fingerprint, new_fingerprint, quarantined_at
+		FROM host_quarantine WHERE host = ?`, host).
+		Scan(&q.Host, &q.Reason, &q.OldFingerprint, &q.NewFingerprint, &quarantinedAt)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return HostQuarantine{}, fmt.Errorf("store: get host quarantine %q: %w", host, ErrNotFound)
+	case err != nil:
+		return HostQuarantine{}, wrap("get host quarantine", err)
+	}
+	q.QuarantinedAt = time.UnixMilli(quarantinedAt).UTC()
+	return q, nil
+}
+
+// IsHostQuarantined reports whether a host is currently quarantined — the check
+// the queue makes before admitting a run against a host's concurrency key.
+func (s *Store) IsHostQuarantined(ctx context.Context, host string) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT 1 FROM host_quarantine WHERE host = ?`, host).Scan(&one)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return false, nil
+	case err != nil:
+		return false, wrap("is host quarantined", err)
+	}
+	return true, nil
+}
+
+// ListQuarantinedHosts returns every quarantined host, newest first.
+func (s *Store) ListQuarantinedHosts(ctx context.Context) ([]HostQuarantine, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT host, reason, old_fingerprint, new_fingerprint, quarantined_at
+		FROM host_quarantine ORDER BY quarantined_at DESC, host`)
+	if err != nil {
+		return nil, wrap("list quarantined hosts", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []HostQuarantine
+	for rows.Next() {
+		var (
+			q             HostQuarantine
+			quarantinedAt int64
+		)
+		if err := rows.Scan(&q.Host, &q.Reason, &q.OldFingerprint, &q.NewFingerprint, &quarantinedAt); err != nil {
+			return nil, wrap("list quarantined hosts", err)
+		}
+		q.QuarantinedAt = time.UnixMilli(quarantinedAt).UTC()
+		out = append(out, q)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap("list quarantined hosts", err)
+	}
+	return out, nil
 }
 
 // ListKnownHosts returns every recorded host key, ordered by host then type.
