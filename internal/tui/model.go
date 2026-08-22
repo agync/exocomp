@@ -61,6 +61,7 @@ type Model struct {
 	approvals      []store.Approval
 	reactiveEvents []store.Event
 	silences       []store.Silence
+	swallowed      int
 	mutes          []store.NotifyMute
 	glanceErr      error
 
@@ -163,6 +164,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.reactiveEvents = msg.events
 			m.silences = msg.silences
 			m.mutes = msg.mutes
+			m.swallowed = msg.swallowed
 		}
 		return m, nil
 

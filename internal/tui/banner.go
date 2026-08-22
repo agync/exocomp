@@ -9,6 +9,7 @@ import "fmt"
 // ▌ marker for the "!!" text form so the state survives with no color.
 type BannerState struct {
 	Paused         bool
+	Silenced       bool
 	Swallowed      int
 	Muted          bool
 	MutedUntil     string // "15:00"
@@ -17,7 +18,7 @@ type BannerState struct {
 }
 
 // Active reports whether anything is holding the daemon back.
-func (s BannerState) Active() bool { return s.Paused || s.Muted }
+func (s BannerState) Active() bool { return s.Paused || s.Silenced || s.Muted }
 
 // bannerLine composes the banner into an 80-column line with the action key
 // flush right and a one-column right margin (the fixtures carry that trailing
@@ -37,6 +38,9 @@ func bannerLine(s BannerState) string {
 		left = fmt.Sprintf("%s MUTED until %s (%s) · notifications held · jobs still run",
 			marker, s.MutedUntil, s.MutedRemaining)
 		keys = "[m] unmute"
+	case s.Silenced:
+		left = fmt.Sprintf("%s SILENCED — scoped alerts held · %d swallowed", marker, s.Swallowed)
+		keys = "[e] events"
 	default:
 		left = fmt.Sprintf("%s PAUSED — reactive jobs held · %d alerts swallowed", marker, s.Swallowed)
 		keys = "[p] resume"

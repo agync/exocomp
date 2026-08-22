@@ -166,6 +166,7 @@ func TestBannersGolden(t *testing.T) {
 		bannerLine(BannerState{Paused: true, Swallowed: 3}),
 		bannerLine(BannerState{Muted: true, MutedUntil: "15:00", MutedRemaining: "43m"}),
 		bannerLine(BannerState{Paused: true, Muted: true, MutedUntil: "15:00", Swallowed: 3}),
+		bannerLine(BannerState{Silenced: true, Swallowed: 3}),
 		bannerLine(BannerState{Paused: true, Swallowed: 3, NoColor: true}),
 	}
 	assertFrame(t, "banners-80", join(lines))

@@ -26,6 +26,7 @@ type glanceLoadedMsg struct {
 	events    []store.Event
 	silences  []store.Silence
 	mutes     []store.NotifyMute
+	swallowed int
 	err       error
 }
 
@@ -48,7 +49,21 @@ func loadGlanceCmd(st *store.Store) tea.Cmd {
 		if err != nil {
 			return glanceLoadedMsg{err: err}
 		}
-		return glanceLoadedMsg{approvals: approvals, events: events, silences: silences, mutes: mutes}
+		// Swallowed is the alerts actually suppressed since the oldest active
+		// silence began, not the silence count (matches the web dashboard).
+		swallowed := 0
+		if len(silences) > 0 {
+			earliest := silences[0].CreatedAt
+			for _, sil := range silences[1:] {
+				if sil.CreatedAt.Before(earliest) {
+					earliest = sil.CreatedAt
+				}
+			}
+			if swallowed, err = st.CountSuppressedSince(ctx, earliest); err != nil {
+				return glanceLoadedMsg{err: err}
+			}
+		}
+		return glanceLoadedMsg{approvals: approvals, events: events, silences: silences, mutes: mutes, swallowed: swallowed}
 	}
 }
 
@@ -56,10 +71,12 @@ func loadGlanceCmd(st *store.Store) tea.Cmd {
 // silence is PAUSED; any active notify mute is MUTED; both can be true at once.
 func (m Model) bannerState() BannerState {
 	now := time.Now()
-	s := BannerState{Swallowed: len(m.silences)}
+	s := BannerState{Swallowed: m.swallowed}
 	for _, sil := range m.silences {
 		if sil.ScopeKind == store.ScopeGlobal {
 			s.Paused = true
+		} else {
+			s.Silenced = true
 		}
 	}
 	if len(m.mutes) > 0 {
