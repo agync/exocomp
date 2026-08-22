@@ -19,6 +19,9 @@ const (
 	screenSchedules                // [4]
 	screenApprovals                // [5]
 	screenEvents                   // [6]
+	screenSources                  // [7] post-v1 parity surfaces
+	screenPolicies                 // [8]
+	screenWorkflows                // [9]
 )
 
 const (
@@ -55,6 +58,10 @@ type Model struct {
 	scheduleLastState map[int64]store.JobState
 	schedulesTable    schedulesTable
 	schedulesErr      error
+
+	// Post-v1 parity surfaces the web UI grew after v1 that the TUI had not.
+	sources    []store.Source
+	sourcesErr error
 
 	// The glance streams the new screens read: pending approvals, recent
 	// events, and the active holds behind the banner.
@@ -103,6 +110,7 @@ func (m Model) Init() tea.Cmd {
 		loadBackupsCmd(m.store),
 		loadWorkspacesCmd(m.store),
 		loadSchedulesCmd(m.store),
+		loadSourcesCmd(m.store),
 		loadGlanceCmd(m.store),
 		tickCmd(),
 	)
@@ -157,6 +165,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case sourcesLoadedMsg:
+		m.sourcesErr = msg.err
+		if msg.err == nil {
+			m.sources = msg.sources
+		}
+		return m, nil
+
 	case glanceLoadedMsg:
 		m.glanceErr = msg.err
 		if msg.err == nil {
@@ -207,6 +222,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadWorkspacesCmd(m.store))
 	case screenSchedules:
 		cmds = append(cmds, loadSchedulesCmd(m.store))
+	case screenSources:
+		cmds = append(cmds, loadSourcesCmd(m.store))
 	case screenApprovals, screenEvents:
 		cmds = append(cmds, loadGlanceCmd(m.store))
 	}
@@ -271,6 +288,12 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "6":
 		if !m.tailing {
 			m.active = screenEvents
+		}
+		return m, nil
+
+	case "7":
+		if !m.tailing {
+			m.active = screenSources
 		}
 		return m, nil
 

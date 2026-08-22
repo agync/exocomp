@@ -83,6 +83,44 @@ func TestBannerShowsMutedDistinctFromPaused(t *testing.T) {
 	}
 }
 
+// TestSourcesScreenRendersLive drives the [7] Sources surface over seeded rows
+// and asserts trust posture, last-sync sha and the enabled flag all render.
+func TestSourcesScreenRendersLive(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	if _, err := st.CreateSource(ctx, store.Source{
+		Name: "core-infra", Kind: store.SourceGit, URI: "ssh://git/core.git",
+		Ref: "refs/heads/main", LastSyncSHA: "a1b2c3d4e5f6a7b8", Signed: true,
+		AllowedSigners: "dana ssh-ed25519 AAAA", Enabled: true,
+	}); err != nil {
+		t.Fatalf("create signed source: %v", err)
+	}
+	if _, err := st.CreateSource(ctx, store.Source{
+		Name: "host-media", Kind: store.SourceHostPath, URI: "/srv/media", Enabled: false,
+	}); err != nil {
+		t.Fatalf("create hostpath source: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadSourcesCmd(st)())
+	m = update(t, m, key('7'))
+	if m.active != screenSources {
+		t.Fatalf("[7] did not open Sources, active = %v", m.active)
+	}
+
+	view := m.View().Content
+	for _, want := range []string{
+		"sources · 2 registered", "core-infra", "git", "refs/heads/main",
+		"a1b2c3d4e5f6", "SIGNED · SIGNERS", "host-media", "hostpath", "unsigned", "no",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("sources view missing %q, view:\n%s", want, view)
+		}
+	}
+}
+
 // TestApprovalsAndEventsRenderLive drives the two new screens over seeded rows
 // and asserts their live assembly reaches the fixture renderers.
 func TestApprovalsAndEventsRenderLive(t *testing.T) {

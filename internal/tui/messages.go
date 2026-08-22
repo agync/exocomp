@@ -184,6 +184,22 @@ func loadSchedulesCmd(st *store.Store) tea.Cmd {
 	}
 }
 
+// sourcesLoadedMsg carries the result of a run-tree sources refresh.
+type sourcesLoadedMsg struct {
+	sources []store.Source
+	err     error
+}
+
+func loadSourcesCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		sources, err := st.ListSources(context.Background())
+		if err != nil {
+			return sourcesLoadedMsg{err: err}
+		}
+		return sourcesLoadedMsg{sources: sources}
+	}
+}
+
 // eventsLoadedMsg carries a job's event tail. It is keyed by jobID so a
 // response arriving after the user has moved to a different job is ignored.
 type eventsLoadedMsg struct {

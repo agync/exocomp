@@ -45,6 +45,22 @@ func formatBytes(n int64) string {
 	return strconv.FormatFloat(float64(n)/float64(div), 'f', 1, 64) + string(units[exp]) + "iB"
 }
 
+// orDash renders an empty string as the "-" every unset cell uses.
+func orDash(s string) string {
+	if s == "" {
+		return emptyCell
+	}
+	return s
+}
+
+// yesNo renders a boolean flag column the way the schedules table does.
+func yesNo(b bool) string {
+	if b {
+		return "yes"
+	}
+	return "no"
+}
+
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {

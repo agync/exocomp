@@ -1,11 +1,17 @@
 package tui
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// updateGolden rewrites the fixtures from the current renderers when set
+// (`go test ./internal/tui -update`). It defaults off, so an ordinary run — the
+// pre-commit gate included — compares byte-for-byte and never rewrites.
+var updateGolden = flag.Bool("update", false, "rewrite golden fixtures from the current output")
 
 // readFrame returns the golden fixture's bytes as a string.
 func readFrame(t *testing.T, name string) string {
@@ -22,6 +28,13 @@ func readFrame(t *testing.T, name string) string {
 // obvious.
 func assertFrame(t *testing.T, name, got string) {
 	t.Helper()
+	if *updateGolden {
+		path := filepath.Join("testdata", "frames", name+".txt")
+		if err := os.WriteFile(path, []byte(got), 0o644); err != nil {
+			t.Fatalf("update frame %s: %v", name, err)
+		}
+		return
+	}
 	want := readFrame(t, name)
 	if got == want {
 		return
@@ -143,6 +156,19 @@ func TestEventsGolden(t *testing.T) {
 		},
 	}
 	assertFrame(t, "events-120", renderEventsScreen(m))
+}
+
+func TestSourcesGolden(t *testing.T) {
+	m := SourcesModel{
+		summary: "sources · 4 registered", clock: "14:03 UTC+11",
+		rows: []sourceRow{
+			{name: "core-infra", kind: "git", ref: "refs/heads/main", sync: "a1b2c3d4e5f6", trust: "SIGNED · SIGNERS", enabled: "yes"},
+			{name: "playbooks", kind: "git", ref: "refs/tags/v3", sync: "9f8e7d6c5b4a", trust: "SIGNED", enabled: "yes"},
+			{name: "host-media", kind: "hostpath", ref: "-", sync: "-", trust: "unsigned", enabled: "yes"},
+			{name: "vol-scratch", kind: "volpath", ref: "-", sync: "-", trust: "unsigned", enabled: "no"},
+		},
+	}
+	assertFrame(t, "sources-120", renderSourcesScreen(m))
 }
 
 func TestTraceGolden(t *testing.T) {

@@ -24,6 +24,8 @@ func (m Model) View() tea.View {
 			return tea.NewView(liveFrame(m.withBanner(renderApprovalDetail(m.approvalsModel()))))
 		case screenEvents:
 			return tea.NewView(liveFrame(m.withBanner(renderEventsScreen(m.eventsModel()))))
+		case screenSources:
+			return tea.NewView(liveFrame(m.withBanner(m.renderSourcesScreen())))
 		}
 	}
 	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
@@ -35,6 +37,14 @@ func (m Model) renderHomeScreen() string {
 		return renderHome120(m.homeModel())
 	}
 	return renderHome80(m.homeModel())
+}
+
+// renderSourcesScreen renders the sources surface, or its error/empty state.
+func (m Model) renderSourcesScreen() string {
+	if m.sourcesErr != nil {
+		return styleErr.Render("failed to load sources: " + m.sourcesErr.Error())
+	}
+	return renderSourcesScreen(m.sourcesModel())
 }
 
 // withBanner prepends the hold banner when a silence or mute is active.

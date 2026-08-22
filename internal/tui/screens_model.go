@@ -172,6 +172,52 @@ func (m Model) eventsModel() EventsModel {
 	return em
 }
 
+// sourcesModel assembles the sources screen from the loaded run-tree sources.
+func (m Model) sourcesModel() SourcesModel {
+	now := time.Now()
+	sm := SourcesModel{
+		summary: fmt.Sprintf("sources · %d registered", len(m.sources)),
+		clock:   now.Local().Format("15:04 MST"),
+	}
+	for _, s := range m.sources {
+		sm.rows = append(sm.rows, sourceRow{
+			name:    truncate(s.Name, 18),
+			kind:    s.Kind,
+			ref:     truncate(orDash(s.Ref), 20),
+			sync:    sourceSyncShort(s.LastSyncSHA),
+			trust:   sourceTrust(s),
+			enabled: yesNo(s.Enabled),
+		})
+	}
+	return sm
+}
+
+// sourceTrust names a source's trust posture as a label (never color-only): a
+// signed source pinned to its own allowed-signers is the strong form, signed
+// alone a step down, unsigned the dim neutral.
+func sourceTrust(s store.Source) string {
+	switch {
+	case s.Signed && s.AllowedSigners != "":
+		return "SIGNED · SIGNERS"
+	case s.Signed:
+		return "SIGNED"
+	default:
+		return "unsigned"
+	}
+}
+
+// sourceSyncShort renders a last-sync sha at the length a human scans, never
+// the full 40; an unsynced source shows the same "-" every unset cell uses.
+func sourceSyncShort(sha string) string {
+	if sha == "" {
+		return emptyCell
+	}
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
 // --- small live-data formatters ---
 
 func (m Model) queueLine(now time.Time) string {
