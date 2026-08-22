@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build check fmt fmt-check vet lint tidy-check test clean help
+.PHONY: build budgets check clean fmt fmt-check help image lint test tidy-check vet
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -44,6 +44,34 @@ test: ## Run the test suite with the race detector
 
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/
+
+##@ Packaging & budgets
+
+IMAGE        := localhost/exocomp:dev
+IMAGE_MAX_MB := 800
+RSS_MAX_MB   := 80
+
+image: ## Build the container image
+	podman build -t $(IMAGE) -f packaging/Containerfile .
+
+# The budgets are the ones docs/sbom/bill-of-materials.md commits to. A number
+# in a README is a wish; this target exits non-zero, so it is a constraint.
+budgets: build ## Print image size and idle RSS against their ceilings, failing above
+	@fail=0; \
+	if size=$$(podman image inspect --format '{{.Size}}' $(IMAGE) 2>/dev/null); then \
+		mb=$$(( size / 1048576 )); \
+		printf 'image size   %4d MB  (ceiling %d MB)' "$$mb" "$(IMAGE_MAX_MB)"; \
+		if [ "$$mb" -gt "$(IMAGE_MAX_MB)" ]; then echo '  FAIL'; fail=1; else echo '  ok'; fi; \
+	else \
+		echo "image size    MISSING  ($(IMAGE) is not built; run 'make image')"; fail=1; \
+	fi; \
+	rss=$$(packaging/idle-rss.sh ./bin/exocomp) || fail=1; \
+	if [ -n "$$rss" ]; then \
+		mb=$$(( rss / 1024 )); \
+		printf 'idle RSS     %4d MB  (ceiling %d MB)' "$$mb" "$(RSS_MAX_MB)"; \
+		if [ "$$mb" -gt "$(RSS_MAX_MB)" ]; then echo '  FAIL'; fail=1; else echo '  ok'; fi; \
+	fi; \
+	exit $$fail
 
 ##@ Utilities
 
