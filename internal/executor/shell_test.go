@@ -145,18 +145,37 @@ func TestShellRunTimesOut(t *testing.T) {
 	}
 }
 
+// notifyOnFirst closes ch the first time the process emits anything, so a test
+// can cancel exactly once the child is confirmed running.
+type notifyOnFirst struct {
+	once sync.Once
+	ch   chan struct{}
+}
+
+func (n *notifyOnFirst) Emit(executor.Event) { n.once.Do(func() { close(n.ch) }) }
+
 func TestShellRunHonoursCancel(t *testing.T) {
 	t.Parallel()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		cancel()
-	}()
 	defer cancel()
 
-	var sink collector
-	res, err := executor.NewShell().Run(ctx, executor.Spec{Argv: []string{"/bin/sleep", "30"}}, &sink)
+	// Cancel only once the child is actually running. Racing a fixed 100ms timer
+	// against fork/exec flakes under load: if cancel fires before the process
+	// starts, a not-yet-running process is not "signalled". The child prints a
+	// line first, so the sink tells us it is up before we cancel.
+	started := make(chan struct{})
+	sink := &notifyOnFirst{ch: started}
+	go func() {
+		select {
+		case <-started:
+		case <-time.After(20 * time.Second): // fail-safe so a stuck exec cannot hang the test
+		}
+		cancel()
+	}()
+
+	res, err := executor.NewShell().Run(ctx,
+		executor.Spec{Argv: []string{"/bin/sh", "-c", "echo up; sleep 30"}}, sink)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
