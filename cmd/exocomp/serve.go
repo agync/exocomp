@@ -19,6 +19,7 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/queue"
@@ -26,6 +27,7 @@ import (
 	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/verify"
 )
 
 func init() {
@@ -644,16 +646,20 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 	return kindRouter{
 		tofu:    workspaceDriver{store: st, env: env, server: srv, dirs: dirs},
 		ansible: ansibleJobDriver{store: st, env: env, dataDir: dir},
+		hook:    hookJobDriver{store: st, env: env, dataDir: dir},
+		verify:  verifyJobDriver{},
 		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{}, targetEnv)),
 	}, nil
 }
 
 // kindRouter sends tofu and ansible jobs to the drivers that rebuild their
-// per-job secret material, and everything else to the scheduler's shell/backup
-// routing.
+// per-job secret material, hook and gate steps to the run-lifecycle drivers,
+// and everything else to the scheduler's shell/backup routing.
 type kindRouter struct {
 	tofu    executor.Driver
 	ansible executor.Driver
+	hook    executor.Driver
+	verify  executor.Driver
 	rest    executor.Driver
 }
 
@@ -664,6 +670,10 @@ func (r kindRouter) Run(ctx context.Context, spec executor.Spec, sink executor.E
 		return r.tofu.Run(ctx, spec, sink)
 	case executor.KindAnsible:
 		return r.ansible.Run(ctx, spec, sink)
+	case hooks.JobKind:
+		return r.hook.Run(ctx, spec, sink)
+	case verify.JobKind:
+		return r.verify.Run(ctx, spec, sink)
 	default:
 		return r.rest.Run(ctx, spec, sink)
 	}
