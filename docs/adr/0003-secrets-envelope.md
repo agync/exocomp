@@ -70,12 +70,18 @@ whose password is derived from the DEK it wraps would be a perfect circle.
 
 ## Consequences
 
-- Adding or revoking a recipient is O(1) — one unwrap, one wrap — and touches no secret.
+- Adding a recipient is O(1) — one unwrap, one wrap — and touches no secret. **Revoking**
+  one is not: re-wrapping the same DEK leaves the dropped recipient's retained `keyring.age`
+  able to unwrap it forever, so a drop **rotates the DEK** (`identity migrate
+  --drop-recipient` → `RotateDEK`), minting a new key, re-encrypting every sealed row under
+  it, and re-wrapping the keyring to the remaining recipients only (finding E2).
 - DEK rotation is the most dangerous operation in the system, because the derived subkeys
-  change with it: restic repos must be re-keyed and OpenTofu state re-encrypted.
-  `exocompd` sequences the whole thing as a single job with a rollback point, refuses to
-  start if any backup target is unreachable, and gates it behind an approval even for the
-  operator.
+  change with it: restic repos must be re-keyed and OpenTofu state re-encrypted. The
+  envelope-level rotation re-encrypts the sealed rows and bumps the generation; the derived
+  consumers are the operator's follow-through, which the command spells out (which restic
+  repos and tofu workspaces to re-key). The fuller story `exocompd` should sequence — a
+  single job with a rollback point that refuses to start if any backup target is unreachable
+  and gates behind an approval — remains the target for the daemon-driven path.
 - The security claim is stated honestly and not overstated: `exocompd` can decrypt
   everything it manages. The envelope protects backups and off-host attackers, and a
   stolen disk **when `host.key` is on a secure at-rest tier** (systemd credential or

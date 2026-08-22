@@ -1,6 +1,7 @@
 package secrets
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"maps"
@@ -68,6 +69,13 @@ func Migrate(dataDir string, opts MigrateOptions) (MigrateResult, error) {
 	if len(opts.Add) == 0 && len(opts.Drop) == 0 && !opts.RotateHost {
 		return MigrateResult{}, errors.New("secrets: migrate: nothing to change")
 	}
+	// A drop must revoke, and re-wrapping the same DEK does not: the dropped
+	// recipient's retained keyring.age keeps unwrapping it (finding E2). Migrate
+	// is the O(1) same-DEK re-wrap for adds and host rotations only; a drop goes
+	// through RotateDEK, which mints a new DEK and re-encrypts every secret.
+	if len(opts.Drop) > 0 {
+		return MigrateResult{}, errors.New("secrets: migrate: dropping a recipient must rotate the DEK; use RotateDEK")
+	}
 
 	env, err := Open(dataDir)
 	if err != nil {
@@ -127,6 +135,129 @@ func Migrate(dataDir string, opts MigrateOptions) (MigrateResult, error) {
 	}
 
 	res.To = KeyringVersion{Version: res.From.Version + 1, Generated: now().UTC().Truncate(time.Second)}
+	if err := writeKeyringVersion(dataDir, res.To); err != nil {
+		return MigrateResult{}, err
+	}
+	res.Recipients = keep
+	return res, nil
+}
+
+// keyringNextName is the side file RotateDEK writes the new keyring to before
+// it re-encrypts the secret rows. Holding both the old (active) keyring and the
+// new one on disk while rows migrate means a crash never strands rows under a
+// DEK no keyring wraps: every row is under one of the two, and both are
+// recoverable. It is promoted to the active keyring only once every row is
+// re-encrypted.
+const keyringNextName = keyringFile + ".next"
+
+// RotateDEK is revocation that actually revokes (finding E2). It mints a NEW
+// DEK, re-wraps the keyring to the kept recipients only (applying opts.Drop,
+// opts.Add and opts.RotateHost), and bumps the generation — so a dropped
+// recipient's retained keyring.age unwraps only the OLD, now-unused DEK and
+// decrypts nothing that survives the rotation.
+//
+// reseal is called with the old and new envelopes after the new DEK is minted
+// and safely on disk, but before it becomes active: it must re-encrypt every
+// sealed row under newEnv and persist it, returning an error to leave the
+// rotation to be retried. Derived subkeys (restic repo passwords, tofu state
+// passphrases) change with the DEK; RotateDEK does not re-key those consumers —
+// the caller must, and must tell the operator so.
+func RotateDEK(dataDir string, opts MigrateOptions, reseal func(oldEnv, newEnv *Envelope) error) (MigrateResult, error) {
+	now := opts.Now
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
+
+	oldEnv, err := Open(dataDir)
+	if err != nil {
+		return MigrateResult{}, err
+	}
+	defer func() { _ = oldEnv.Close() }()
+
+	res := MigrateResult{From: oldEnv.version, HostRotated: opts.RotateHost}
+	keep, dropped, err := dropRecipients(oldEnv.Recipients(), opts.Drop)
+	if err != nil {
+		return MigrateResult{}, err
+	}
+	res.Dropped = dropped
+
+	var host *age.X25519Identity
+	if opts.RotateHost {
+		host, err = age.GenerateX25519Identity()
+		if err != nil {
+			return MigrateResult{}, fmt.Errorf("secrets: rotate: generate host identity: %w", err)
+		}
+		for i := range keep {
+			if keep[i].Label == hostLabel {
+				keep[i] = newRecipient(hostLabel, host.Recipient().String())
+			}
+		}
+	}
+
+	added, err := parseAdditions(keep, opts.Add)
+	if err != nil {
+		return MigrateResult{}, err
+	}
+	res.Added = added
+	keep = append(keep, added...)
+	if len(keep) < 2 {
+		return MigrateResult{}, errors.New("secrets: rotate: a keyring needs at least two recipients")
+	}
+	wrapTo, err := ageRecipients(keep)
+	if err != nil {
+		return MigrateResult{}, err
+	}
+
+	newDEK := make([]byte, dekLen)
+	if _, err := rand.Read(newDEK); err != nil {
+		return MigrateResult{}, fmt.Errorf("secrets: rotate: generate dek: %w", err)
+	}
+	newKeyring, err := wrapDEK(newDEK, wrapTo)
+	if err != nil {
+		clear(newDEK)
+		return MigrateResult{}, err
+	}
+
+	newEnv := &Envelope{
+		dataDir:     dataDir,
+		dek:         newDEK,
+		keyring:     newKeyring,
+		host:        oldEnv.host,
+		recipients:  keep,
+		version:     KeyringVersion{Version: res.From.Version + 1, Generated: now().UTC().Truncate(time.Second)},
+		hostKeyProt: oldEnv.hostKeyProt,
+	}
+	newEnv.lockDEK()
+	defer func() { _ = newEnv.Close() }()
+
+	// The new DEK reaches disk before any row moves onto it, so a crash mid
+	// re-encryption strands nothing: old keyring active, new keyring beside it.
+	nextPath := filepath.Join(dataDir, keyringNextName)
+	if err := os.WriteFile(nextPath, newKeyring, 0o644); err != nil {
+		return MigrateResult{}, fmt.Errorf("secrets: rotate: stage keyring: %w", err)
+	}
+
+	if err := reseal(oldEnv, newEnv); err != nil {
+		// The new keyring stays on disk: rows that already moved onto the new
+		// DEK are still recoverable through it while the operator retries.
+		return MigrateResult{}, fmt.Errorf("secrets: rotate: re-encrypt secrets: %w", err)
+	}
+
+	// Every row is now under the new DEK. Promote it: the host key first (so a
+	// rotated host can open the freshly active keyring), then the keyring, then
+	// the public metadata.
+	if host != nil {
+		if err := replaceHostKey(dataDir, host); err != nil {
+			return MigrateResult{}, err
+		}
+	}
+	if err := os.Rename(nextPath, filepath.Join(dataDir, keyringFile)); err != nil {
+		return MigrateResult{}, fmt.Errorf("secrets: rotate: activate keyring: %w", err)
+	}
+	if err := writeFileAtomic(filepath.Join(dataDir, recipientsFile), marshalRecipients(keep), 0o644); err != nil {
+		return MigrateResult{}, fmt.Errorf("secrets: rotate: write recipients: %w", err)
+	}
+	res.To = newEnv.version
 	if err := writeKeyringVersion(dataDir, res.To); err != nil {
 		return MigrateResult{}, err
 	}

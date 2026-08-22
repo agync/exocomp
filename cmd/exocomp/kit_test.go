@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -288,31 +289,37 @@ func TestIdentityMigrateRoundTrip(t *testing.T) {
 		t.Error("the added recipient derives a different restic password")
 	}
 
+	// Dropping is a revocation: it rotates the DEK (finding E2), so the report
+	// says "revoked" and names the rotation, and every derived key changes.
 	dropped := run("migrate", "--drop-recipient", "laptop", "--rotate-host")
-	if !strings.Contains(dropped, "dropped  laptop") || !strings.Contains(dropped, "host identity rotated") {
-		t.Errorf("migrate did not report the drop and the rotation: %q", dropped)
+	if !strings.Contains(dropped, "revoked  laptop") || !strings.Contains(dropped, "host identity rotated") {
+		t.Errorf("migrate did not report the revocation and the rotation: %q", dropped)
+	}
+	if !strings.Contains(dropped, "DEK was rotated") {
+		t.Errorf("migrate did not name the DEK re-key follow-through: %q", dropped)
 	}
 	if _, _, err := runKit(t, "derive", "restic/nas", "--identity", laptopKey,
 		"--keyring", filepath.Join(dir, secrets.KeyringName)); err == nil {
 		t.Fatal("the dropped recipient still unwraps the keyring")
 	}
 
-	// The printed card and the rotated host both still derive the same key:
-	// re-wrapping changes who can unwrap, never what is derived.
+	// The DEK rotated, so the derived restic password MUST change — that is what
+	// makes the revocation real. Host and printed card, still recipients of the
+	// new keyring, both derive the SAME new value.
 	after, _, err := runKit(t, "derive", "restic/nas")
 	if err != nil {
 		t.Fatalf("kit derive after rotation: %v", err)
 	}
-	if after != before {
-		t.Error("rotating the host key changed the derived restic password")
+	if after == before {
+		t.Error("dropping a recipient did not rotate the DEK: the derived restic password is unchanged")
 	}
 	viaCard, _, err := runKit(t, "derive", "restic/nas", "--identity", identity,
 		"--keyring", filepath.Join(dir, secrets.KeyringName))
 	if err != nil {
 		t.Fatalf("kit derive with the printed recovery key: %v", err)
 	}
-	if viaCard != before {
-		t.Error("the printed recovery key no longer derives the restic password")
+	if viaCard != after {
+		t.Error("the printed recovery key does not derive the rotated restic password")
 	}
 }
 
@@ -368,4 +375,107 @@ func generateIdentity(t *testing.T, path string) string {
 	}
 	t.Fatal("scratch keyring has no recovery recipient")
 	return ""
+}
+
+// runIdentity executes `identity <args>` against the ambient data dir.
+func runIdentity(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	cmd := newIdentityCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&errOut)
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	if err != nil {
+		return out.String() + errOut.String(), err
+	}
+	return out.String(), nil
+}
+
+// sealSecretForTest seals value under name into the store the ambient data dir
+// holds, the way `exocomp secrets add` would.
+func sealSecretForTest(t *testing.T, dir, name, value string) {
+	t.Helper()
+	env, err := secrets.Open(dir)
+	if err != nil {
+		t.Fatalf("open envelope: %v", err)
+	}
+	defer func() { _ = env.Close() }()
+	sealed, err := env.Seal(name, "generic", []byte(value))
+	if err != nil {
+		t.Fatalf("seal %s: %v", name, err)
+	}
+	st, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	if _, err := st.CreateSecret(t.Context(), store.SecretRow{
+		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce,
+		Ciphertext: sealed.Ciphertext, AAD: sealed.Name + "|" + sealed.Kind,
+	}); err != nil {
+		t.Fatalf("create secret %s: %v", name, err)
+	}
+}
+
+// TestIdentityMigrateDropRevokesViaRotation is the E2 red-team repro: a dropped
+// recipient that kept a copy of keyring.age from before the drop must not be
+// able to decrypt anything — neither a secret sealed before the drop (it is
+// re-encrypted under the new DEK) nor one sealed after. Before the fix, drop
+// re-wrapped the SAME DEK, so the retained keyring kept decrypting everything.
+func TestIdentityMigrateDropRevokesViaRotation(t *testing.T) {
+	dir, _ := initForKit(t)
+
+	victimKey := filepath.Join(t.TempDir(), "victim.key")
+	victimPub := generateIdentity(t, victimKey)
+	if _, err := runIdentity(t, "migrate", "--add-recipient", "victim="+victimPub); err != nil {
+		t.Fatalf("add victim: %v", err)
+	}
+
+	// The victim keeps a copy of keyring.age as it stands now — the crux of the
+	// attack: revocation must not depend on the dropped party discarding it.
+	retained := filepath.Join(t.TempDir(), "retained.age")
+	keyringBytes, err := os.ReadFile(filepath.Join(dir, secrets.KeyringName))
+	if err != nil {
+		t.Fatalf("read keyring: %v", err)
+	}
+	if err := os.WriteFile(retained, keyringBytes, 0o600); err != nil {
+		t.Fatalf("retain keyring: %v", err)
+	}
+
+	sealSecretForTest(t, dir, "s1", "pre-drop value")
+
+	if out, err := runIdentity(t, "migrate", "--drop-recipient", "victim"); err != nil {
+		t.Fatalf("drop victim: %v (%s)", err, out)
+	}
+
+	sealSecretForTest(t, dir, "s2", "post-drop value")
+
+	// The victim unwraps its retained keyring to whatever DEK it holds, and
+	// tries to open the current secret rows offline.
+	victimIDs, err := backup.ReadIdentities(victimKey)
+	if err != nil {
+		t.Fatalf("read victim identity: %v", err)
+	}
+	dek, err := backup.UnwrapDEK(keyringBytes, victimIDs)
+	if err != nil {
+		t.Fatalf("victim unwrap retained keyring: %v", err)
+	}
+	defer clear(dek)
+
+	st, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	for _, name := range []string{"s1", "s2"} {
+		row, err := st.GetSecret(t.Context(), name)
+		if err != nil {
+			t.Fatalf("get %s: %v", name, err)
+		}
+		if _, err := backup.OpenSealed(dek, row.Name, row.Kind, row.Nonce, row.Ciphertext); err == nil {
+			t.Fatalf("dropped recipient decrypted %q with its retained keyring", name)
+		}
+	}
 }

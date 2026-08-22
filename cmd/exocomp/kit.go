@@ -384,14 +384,25 @@ func newIdentityMigrateCmd() *cobra.Command {
 				return errors.New("identity migrate: `exocomp serve` is running; " +
 					"stop it first, or the next backup writes the previous keyring back to your targets")
 			}
-			res, err := secrets.Migrate(dir, secrets.MigrateOptions{
-				Add: add, Drop: drop, RotateHost: rotateHost,
-			})
+
+			opts := secrets.MigrateOptions{Add: add, Drop: drop, RotateHost: rotateHost}
+			out := cmd.OutOrStdout()
+
+			// A drop is a revocation, and re-wrapping the same DEK does not
+			// revoke: a dropped recipient's retained keyring.age keeps unwrapping
+			// it (finding E2). So a drop rotates the DEK, re-encrypting every
+			// sealed row, and only then is the recipient gone. Adds and host
+			// rotations without a drop stay the O(1) re-wrap.
+			var res secrets.MigrateResult
+			if len(drop) > 0 {
+				res, err = rotateDEKDroppingRecipients(cmd, dir, opts)
+			} else {
+				res, err = secrets.Migrate(dir, opts)
+			}
 			if err != nil {
 				return err
 			}
 
-			out := cmd.OutOrStdout()
 			if res.HostRotated {
 				_, _ = fmt.Fprintln(out, "host identity rotated; the previous host key no longer unwraps the keyring")
 			}
@@ -399,7 +410,10 @@ func newIdentityMigrateCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(out, "added    %-10s %s\n", r.Label, r.Fingerprint)
 			}
 			for _, r := range res.Dropped {
-				_, _ = fmt.Fprintf(out, "dropped  %-10s %s\n", r.Label, r.Fingerprint)
+				_, _ = fmt.Fprintf(out, "revoked  %-10s %s (DEK rotated to %s)\n", r.Label, r.Fingerprint, res.To)
+			}
+			if len(res.Dropped) > 0 {
+				printReKeyFollowThrough(cmd.Context(), out)
 			}
 			_, err = fmt.Fprintln(out, res.Nag())
 			return err
@@ -409,8 +423,82 @@ func newIdentityMigrateCmd() *cobra.Command {
 	cmd.Flags().StringArrayVar(&add, "add-recipient", nil,
 		"age recipient to wrap the DEK to, as age1… or label=age1…; repeatable")
 	cmd.Flags().StringArrayVar(&drop, "drop-recipient", nil,
-		"recipient to stop wrapping to, by label or public key; repeatable")
+		"recipient to revoke; rotates the DEK and re-encrypts every secret, by label or public key; repeatable")
 	cmd.Flags().BoolVar(&rotateHost, "rotate-host", false,
 		"mint a new host identity and replace host.key")
 	return cmd
+}
+
+// rotateDEKDroppingRecipients performs the DEK rotation a drop requires: it
+// re-encrypts every sealed row under the new DEK as part of the same operation
+// that re-wraps the keyring to the remaining recipients, so the drop actually
+// revokes (finding E2).
+func rotateDEKDroppingRecipients(cmd *cobra.Command, dir string, opts secrets.MigrateOptions) (secrets.MigrateResult, error) {
+	st, err := openStoreAt(dir)
+	if err != nil {
+		return secrets.MigrateResult{}, err
+	}
+	defer func() { _ = st.Close() }()
+
+	ctx := cmd.Context()
+	reseal := func(oldEnv, newEnv *secrets.Envelope) error {
+		rows, err := st.ListSecrets(ctx)
+		if err != nil {
+			return err
+		}
+		for _, row := range rows {
+			pt, err := oldEnv.OpenSecret(secrets.SealedSecret{
+				Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+			})
+			if err != nil {
+				return fmt.Errorf("open %q under the old DEK: %w", row.Name, err)
+			}
+			sealed, err := newEnv.Seal(row.Name, row.Kind, pt)
+			clear(pt)
+			if err != nil {
+				return fmt.Errorf("re-seal %q: %w", row.Name, err)
+			}
+			if err := st.RotateSecret(ctx, row.Name, sealed.Nonce, sealed.Ciphertext); err != nil {
+				return fmt.Errorf("store re-sealed %q: %w", row.Name, err)
+			}
+		}
+		return nil
+	}
+	return secrets.RotateDEK(dir, opts, reseal)
+}
+
+// printReKeyFollowThrough names the derived consumers a DEK rotation invalidates
+// so the operator finishes the job: HKDF subkeys change with the DEK, so restic
+// repositories and OpenTofu state must be re-keyed with the new derivations. A
+// rotation that stopped at the secret rows would leave those unreadable.
+func printReKeyFollowThrough(ctx context.Context, out io.Writer) {
+	_, _ = fmt.Fprintln(out, "")
+	_, _ = fmt.Fprintln(out, "The DEK was rotated. Every key DERIVED from it changed, so finish the re-key:")
+	_, _ = fmt.Fprintln(out, "  - restic repositories: rebuild the password on each target")
+	_, _ = fmt.Fprintln(out, "    (`restic key add` with the new `exocomp kit derive restic/<target>`, then remove the old key)")
+	_, _ = fmt.Fprintln(out, "  - OpenTofu state: re-encrypt each workspace with the new `tofu-state/<workspace>` passphrase")
+	_, _ = fmt.Fprintln(out, "  - reprint the recovery kit and destroy the previous page")
+	if names := derivedConsumerNames(ctx); names != "" {
+		_, _ = fmt.Fprintln(out, "  consumers currently in use: "+names)
+	}
+	_, _ = fmt.Fprintln(out, "")
+}
+
+// derivedConsumerNames lists the purpose:id derivations the store knows are in
+// use, best-effort, so the follow-through names the actual repos and workspaces.
+func derivedConsumerNames(ctx context.Context) string {
+	st, err := openStore()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = st.Close() }()
+	found, err := derivationsInUse(ctx, st)
+	if err != nil || len(found) == 0 {
+		return ""
+	}
+	names := make([]string, 0, len(found))
+	for _, d := range found {
+		names = append(names, d.purpose.Name+":"+d.id)
+	}
+	return strings.Join(names, ", ")
 }

@@ -79,27 +79,109 @@ func TestMigrateRoundTripsARecipient(t *testing.T) {
 		t.Error("the re-rendered card does not carry the new generation")
 	}
 
-	dropped, err := Migrate(dir, MigrateOptions{Drop: []string{"laptop"}})
-	if err != nil {
-		t.Fatalf("Migrate drop: %v", err)
-	}
-	if dropped.To.Version != 3 {
-		t.Errorf("drop moved to %s, want v3", dropped.To)
-	}
-	if len(dropped.Dropped) != 1 || dropped.Dropped[0].Label != "laptop" {
-		t.Errorf("drop reports %v", dropped.Dropped)
-	}
-	if _, err := unwrapWith(t, dir, laptop); err == nil {
-		t.Fatal("the dropped recipient still unwraps the keyring")
-	}
-
-	// The printed card is the one thing a migration must never lock out.
+	// A re-wrap must never lock out the printed card.
 	recovery, err := age.ParseX25519Identity(kit.AgeSecretKey)
 	if err != nil {
 		t.Fatalf("parse recovery key: %v", err)
 	}
 	if got, err := unwrapWith(t, dir, recovery); err != nil || !bytes.Equal(got, dek) {
 		t.Fatalf("the printed recovery key no longer unwraps the keyring: %v", err)
+	}
+
+	// Migrate is the same-DEK path: a drop is refused here and must go through
+	// RotateDEK, which revokes for real.
+	if _, err := Migrate(dir, MigrateOptions{Drop: []string{"laptop"}}); err == nil {
+		t.Fatal("Migrate accepted a drop; dropping must rotate the DEK")
+	}
+}
+
+// TestRotateDEKRevokesDroppedRecipient is the E2 property at the envelope
+// level: dropping a recipient rotates the DEK, so the dropped party's retained
+// keyring.age unwraps only the OLD DEK and decrypts nothing that survives — not
+// a secret re-encrypted by the rotation, and not one sealed afterwards.
+func TestRotateDEKRevokesDroppedRecipient(t *testing.T) {
+	dir := t.TempDir()
+	victim, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatalf("generate victim: %v", err)
+	}
+	env, _ := mustInit(t, dir, []string{victim.Recipient().String()})
+
+	// One secret sealed before the drop, kept in a stand-in store.
+	rows := map[string]SealedSecret{}
+	s1, err := env.Seal("s1", "generic", []byte("pre-drop"))
+	if err != nil {
+		t.Fatalf("seal s1: %v", err)
+	}
+	rows["s1"] = s1
+
+	// The victim keeps the keyring as it stands now.
+	retained, err := env.KeyringAge()
+	if err != nil {
+		t.Fatalf("KeyringAge: %v", err)
+	}
+	oldDEK := bytes.Clone(env.dek)
+	_ = env.Close()
+
+	reseal := func(oldEnv, newEnv *Envelope) error {
+		for name, s := range rows {
+			pt, err := oldEnv.OpenSecret(s)
+			if err != nil {
+				return err
+			}
+			ns, err := newEnv.Seal(s.Name, s.Kind, pt)
+			clear(pt)
+			if err != nil {
+				return err
+			}
+			rows[name] = ns
+		}
+		return nil
+	}
+	res, err := RotateDEK(dir, MigrateOptions{Drop: []string{"extra-1"}}, reseal)
+	if err != nil {
+		t.Fatalf("RotateDEK: %v", err)
+	}
+	if res.To.Version != 2 || len(res.Dropped) != 1 {
+		t.Fatalf("rotation reported %s dropped=%v", res.To, res.Dropped)
+	}
+
+	// A post-drop secret under the new DEK.
+	live, err := Open(dir)
+	if err != nil {
+		t.Fatalf("Open after rotation: %v", err)
+	}
+	defer func() { _ = live.Close() }()
+	s2, err := live.Seal("s2", "generic", []byte("post-drop"))
+	if err != nil {
+		t.Fatalf("seal s2: %v", err)
+	}
+	rows["s2"] = s2
+
+	if bytes.Equal(live.dek, oldDEK) {
+		t.Fatal("RotateDEK did not change the DEK")
+	}
+	if _, err := unwrapDEK(retained, victim); err != nil {
+		t.Fatalf("victim's retained keyring should still unwrap its old DEK: %v", err)
+	}
+	// The dropped recipient is not a recipient of the new keyring.
+	if _, err := unwrapWith(t, dir, victim); err == nil {
+		t.Fatal("dropped recipient still unwraps the rotated keyring")
+	}
+
+	// With only the OLD DEK, the victim opens nothing in the current store.
+	attacker := &Envelope{dek: oldDEK}
+	for _, name := range []string{"s1", "s2"} {
+		if _, err := attacker.OpenSecret(rows[name]); err == nil {
+			t.Errorf("old DEK opened %q after rotation", name)
+		}
+	}
+	// The live daemon opens both.
+	for name, want := range map[string]string{"s1": "pre-drop", "s2": "post-drop"} {
+		got, err := live.OpenSecret(rows[name])
+		if err != nil || string(got) != want {
+			t.Errorf("live open %q = %q, %v; want %q", name, got, err, want)
+		}
 	}
 }
 
