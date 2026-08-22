@@ -174,7 +174,14 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return err
 	}
 
-	env, err := secrets.Open(dir)
+	seal, err := secrets.SealConfigFromEnv()
+	if err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	if seal.Configured() {
+		_, _ = fmt.Fprintf(out, "envelope seal: openbao transit key %q at %s\n", seal.KeyName, seal.Address)
+	}
+	env, err := secrets.OpenWithSeal(dir, seal)
 	if err != nil {
 		return fmt.Errorf("serve: open envelope (run `exocomp init` first): %w", err)
 	}
