@@ -124,12 +124,16 @@ func TestPartsManifestRoundTrip(t *testing.T) {
 
 	_, manifest := chunkSnapshot("snapshot-manifest.age", []byte("payload"))
 	dir := t.TempDir()
-	if err := writePartsManifest(dir, manifest); err != nil {
+	written, err := writePartsManifest(dir, manifest)
+	if err != nil {
 		t.Fatalf("writePartsManifest: %v", err)
 	}
-	got, err := readPartsManifest(dir, "snapshot-manifest.age")
+	got, body, err := readPartsManifest(dir, "snapshot-manifest.age")
 	if err != nil {
 		t.Fatalf("readPartsManifest: %v", err)
+	}
+	if !bytes.Equal(written, body) {
+		t.Error("the parts manifest read back differs from the bytes written; the tag covers those bytes")
 	}
 	if got.SHA256 != manifest.SHA256 || got.Size != manifest.Size || len(got.Parts) != len(manifest.Parts) {
 		t.Errorf("read back %+v, want %+v", got, manifest)

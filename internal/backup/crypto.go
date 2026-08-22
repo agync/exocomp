@@ -44,6 +44,25 @@ func ResticPassword(dek []byte, target string) (string, error) {
 	return base64.StdEncoding.EncodeToString(key), nil
 }
 
+// ManifestMACPurpose is the HKDF purpose the manifest authentication subkey is
+// derived under, one key per target. It is on the recovery card's purpose
+// table; TestManifestMACPurposeIsOnTheCard pins the two together.
+const ManifestMACPurpose = "backup-manifest-mac"
+
+// ManifestMACKey derives a target's manifest authentication key from the DEK.
+// Same reason as ResticPassword: the host verifying a manifest during a
+// restore has the printed recovery key and keyring.age, and no envelope.
+func ManifestMACKey(dek []byte, target string) ([]byte, error) {
+	if len(dek) != dekLen {
+		return nil, fmt.Errorf("backup: dek is %d bytes, want %d", len(dek), dekLen)
+	}
+	key, err := hkdf.Key(sha256.New, dek, []byte(secrets.Salt), ManifestMACPurpose+":"+target, dekLen)
+	if err != nil {
+		return nil, fmt.Errorf("backup: derive manifest mac key: %w", err)
+	}
+	return key, nil
+}
+
 // OpenSealed decrypts a secret row with a raw DEK: AES-256-GCM, name|kind as
 // additional data. Same reason as ResticPassword — after a restore there is no
 // envelope yet, and this is the off-the-shelf path the recovery card describes.

@@ -124,29 +124,32 @@ func reassembleSnapshot(dir string, manifest PartsManifest) ([]byte, error) {
 	return buf, nil
 }
 
-func writePartsManifest(dir string, manifest PartsManifest) error {
+// writePartsManifest writes the manifest and returns the exact bytes it wrote,
+// which are the bytes the parts tag authenticates.
+func writePartsManifest(dir string, manifest PartsManifest) ([]byte, error) {
 	body, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return fmt.Errorf("backup: marshal parts manifest for %s: %w", manifest.Snapshot, err)
+		return nil, fmt.Errorf("backup: marshal parts manifest for %s: %w", manifest.Snapshot, err)
 	}
+	body = append(body, '\n')
 	name := partsManifestName(manifest.Snapshot)
-	if err := os.WriteFile(filepath.Join(dir, name), append(body, '\n'), 0o644); err != nil {
-		return fmt.Errorf("backup: write %s: %w", name, err)
+	if err := os.WriteFile(filepath.Join(dir, name), body, 0o644); err != nil {
+		return nil, fmt.Errorf("backup: write %s: %w", name, err)
 	}
-	return nil
+	return body, nil
 }
 
-func readPartsManifest(dir, snapshot string) (PartsManifest, error) {
+func readPartsManifest(dir, snapshot string) (PartsManifest, []byte, error) {
 	name := partsManifestName(snapshot)
 	body, err := os.ReadFile(filepath.Join(dir, name))
 	if err != nil {
-		return PartsManifest{}, fmt.Errorf("backup: read %s: %w", name, err)
+		return PartsManifest{}, nil, fmt.Errorf("backup: read %s: %w", name, err)
 	}
 	var m PartsManifest
 	if err := json.Unmarshal(body, &m); err != nil {
-		return PartsManifest{}, fmt.Errorf("backup: parse %s: %w", name, err)
+		return PartsManifest{}, nil, fmt.Errorf("backup: parse %s: %w", name, err)
 	}
-	return m, nil
+	return m, body, nil
 }
 
 // repoDU reports the size in bytes of a bare git repository's objects

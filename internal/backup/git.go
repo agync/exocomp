@@ -109,7 +109,19 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 			return "", 0, fmt.Errorf("backup: stage %s: %w", name, err)
 		}
 	}
-	if err := writePartsManifest(work, partsManifest); err != nil {
+	partsBody, err := writePartsManifest(work, partsManifest)
+	if err != nil {
+		return "", 0, err
+	}
+	// The parts manifest lives outside the age envelope, so on its own it is
+	// the one place a chunked snapshot can be rewritten unnoticed.
+	macKey := e.env.Derive(ManifestMACPurpose, t.Name)
+	if len(macKey) != dekLen {
+		return "", 0, errors.New("backup: envelope is closed")
+	}
+	defer clear(macKey)
+	partsName := partsManifestName(snapshot)
+	if err := WriteMACFile(filepath.Join(work, partsName+macSuffix), macKey, partsBody, t.Name, partsName); err != nil {
 		return "", 0, err
 	}
 
@@ -117,7 +129,7 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	for name := range files {
 		addArgs = append(addArgs, name)
 	}
-	addArgs = append(addArgs, partsManifestName(snapshot))
+	addArgs = append(addArgs, partsName, partsName+macSuffix)
 	sort.Strings(addArgs)
 
 	git := func(args ...string) (toolResult, error) {

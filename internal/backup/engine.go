@@ -212,6 +212,11 @@ func (e *Engine) runLeg(ctx context.Context, t Target, stage string) LegResult {
 }
 
 func (e *Engine) dispatch(ctx context.Context, t Target, stage string) (string, int64, error) {
+	// Per leg, because the subkey is per target: the tag says this manifest was
+	// written for this target by something holding the DEK.
+	if err := e.authenticate(t, stage); err != nil {
+		return "", 0, err
+	}
 	switch t.Kind {
 	case KindResticLocal, KindResticS3:
 		return e.resticLeg(ctx, t, stage)
@@ -220,6 +225,16 @@ func (e *Engine) dispatch(ctx context.Context, t Target, stage string) (string, 
 	default:
 		return "", 0, fmt.Errorf("backup: unknown target kind %q", t.Kind)
 	}
+}
+
+// authenticate writes the target's tag over the staged manifest.
+func (e *Engine) authenticate(t Target, stage string) error {
+	key := e.env.Derive(ManifestMACPurpose, t.Name)
+	if len(key) != dekLen {
+		return errors.New("backup: envelope is closed")
+	}
+	defer clear(key)
+	return AuthenticateManifest(stage, key, t.Name)
 }
 
 // toolResult is what one subprocess left behind. ExitCode alone decides

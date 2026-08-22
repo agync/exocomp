@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -34,6 +35,17 @@ type Source struct {
 	Env       map[string]string
 	Driver    executor.Driver
 	StageRoot string
+	// Warn receives integrity findings that do not stop the restore — a
+	// snapshot with no manifest tag above all. Empty logs them.
+	Warn func(string)
+}
+
+func (s Source) warn(msg string) {
+	if s.Warn != nil {
+		s.Warn(msg)
+		return
+	}
+	slog.Default().Warn(msg)
 }
 
 // ParseSource reads the "--from" form: either "<kind>:<uri>" with an explicit
@@ -91,20 +103,30 @@ func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, erro
 		return Manifest{}, fmt.Errorf("backup: create restore work dir: %w", err)
 	}
 
+	var (
+		dek    []byte
+		target string
+	)
 	switch src.Kind {
 	case KindResticLocal, KindResticS3:
-		err = restoreRestic(ctx, src, work, extracted)
+		dek, target, err = restoreRestic(ctx, src, work, extracted)
 	case KindGit:
-		err = restoreGit(ctx, src, work, extracted)
+		dek, target, err = restoreGit(ctx, src, work, extracted)
 	default:
 		err = fmt.Errorf("backup: unknown target kind %q", src.Kind)
 	}
 	if err != nil {
 		return Manifest{}, err
 	}
+	defer clear(dek)
 
 	manifest, err := ReadManifest(extracted)
 	if err != nil {
+		return Manifest{}, err
+	}
+	// Authenticity before integrity: a manifest that is not this envelope's is
+	// not a manifest worth hashing files against.
+	if err := authenticateSnapshot(extracted, dek, target, src.warn); err != nil {
 		return Manifest{}, err
 	}
 	if err := manifest.Verify(extracted); err != nil {
@@ -149,49 +171,86 @@ func install(from, dest string) error {
 	return nil
 }
 
+// authenticateSnapshot checks the restored manifest against the tag the leg
+// wrote beside it. A snapshot with no tag predates manifest authentication:
+// it restores, loudly, because refusing it would strand every backup written
+// before this shipped.
+func authenticateSnapshot(dir string, dek []byte, target string, warn func(string)) error {
+	if len(dek) != dekLen || target == "" {
+		warn("manifest not authenticated: this restore has no keyring to derive the " +
+			ManifestMACPurpose + " subkey from, so only the sha256 digests were checked")
+		return nil
+	}
+	key, err := ManifestMACKey(dek, target)
+	if err != nil {
+		return err
+	}
+	defer clear(key)
+	return authenticateSnapshotKey(dir, key, target, warn)
+}
+
+func authenticateSnapshotKey(dir string, key []byte, target string, warn func(string)) error {
+	present, err := VerifyManifestMAC(dir, key, target)
+	if err != nil {
+		return err
+	}
+	if !present {
+		warn("legacy backup: integrity unverified - this snapshot carries no " + ManifestMACName +
+			"; its digests are self-consistent, but nothing proves the manifest was written by your envelope")
+	}
+	return nil
+}
+
 // restoreRestic derives the repository password from the keyring at the target
 // root — the chain the recovery card prints — and restores the newest snapshot.
-func restoreRestic(ctx context.Context, src Source, work, extracted string) error {
+// It returns the DEK it unwrapped and the target name it derived under, which
+// is what the manifest tag is checked with.
+func restoreRestic(ctx context.Context, src Source, work, extracted string) (dek []byte, name string, err error) {
 	password := src.Password
+	name = src.Name
 	if password == "" {
 		keyring, recovery, err := fetchRoot(ctx, src)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
-		name := src.Name
 		if name == "" {
 			name = targetNameFromRecovery(recovery)
 		}
 		if name == "" {
-			return errors.New("backup: target name unknown: pass it explicitly, " +
+			return nil, "", errors.New("backup: target name unknown: pass it explicitly, " +
 				"or restore from a target whose root holds " + RecoveryName)
 		}
 		if src.IdentityFile == "" {
-			return errors.New("backup: an age identity is required to unwrap " + KeyringName)
+			return nil, "", errors.New("backup: an age identity is required to unwrap " + KeyringName)
 		}
 		ids, err := ReadIdentities(src.IdentityFile)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
-		dek, err := UnwrapDEK(keyring, ids)
+		dek, err = UnwrapDEK(keyring, ids)
 		if err != nil {
-			return err
+			return nil, "", err
 		}
-		defer clear(dek)
 
 		password, err = ResticPassword(dek, name)
 		if err != nil {
-			return err
+			clear(dek)
+			return nil, "", err
 		}
 	}
+	defer func() {
+		if err != nil {
+			clear(dek)
+		}
+	}()
 
 	repo, err := resticRepo(Target{BackupTarget: store.BackupTarget{Kind: src.Kind, URI: src.URI}})
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	passFile, cleanup, err := writePasswordFile(src.StageRoot, password)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	defer cleanup()
 
@@ -202,30 +261,34 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) erro
 		Env:  resticEnv(src.Env, passFile),
 	}, secrets.NewRedactor([][]byte{[]byte(password)}))
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if res.exitCode != 0 {
-		return fmt.Errorf("backup: restic restore exited %d: %s", res.exitCode, res.tail(5))
+		return nil, "", fmt.Errorf("backup: restic restore exited %d: %s", res.exitCode, res.tail(5))
 	}
 
 	// restic restores absolute paths under --target, so the staging tree lands
 	// somewhere below it; the manifest marks the spot.
 	dir, err := findManifestDir(restored)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
-	return copyDirFiles(dir, extracted)
+	if err := copyDirFiles(dir, extracted); err != nil {
+		return nil, "", err
+	}
+	return dek, name, nil
 }
 
 // restoreGit clones the rolling backup ref, decrypts the newest snapshot, and
-// unpacks it.
-func restoreGit(ctx context.Context, src Source, work, extracted string) error {
+// unpacks it. It returns the DEK from the keyring in the clone and the target
+// name its recovery notes carry, for the manifest tag.
+func restoreGit(ctx context.Context, src Source, work, extracted string) (dek []byte, name string, err error) {
 	if src.IdentityFile == "" {
-		return errors.New("backup: an age identity is required to decrypt a git snapshot")
+		return nil, "", errors.New("backup: an age identity is required to decrypt a git snapshot")
 	}
 	ids, err := ReadIdentities(src.IdentityFile)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 
 	clone := filepath.Join(work, "clone")
@@ -235,33 +298,80 @@ func restoreGit(ctx context.Context, src Source, work, extracted string) error {
 		Env:  gitEnv(src.Env),
 	}, nil)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	if res.exitCode != 0 {
-		return fmt.Errorf("backup: git clone exited %d: %s", res.exitCode, res.tail(5))
+		return nil, "", fmt.Errorf("backup: git clone exited %d: %s", res.exitCode, res.tail(5))
 	}
+
+	name = src.Name
+	if name == "" {
+		notes, _ := os.ReadFile(filepath.Join(clone, RecoveryName))
+		name = targetNameFromRecovery(notes)
+	}
+	if keyring, kerr := os.ReadFile(filepath.Join(clone, KeyringName)); kerr == nil {
+		dek, _ = UnwrapDEK(keyring, ids)
+	}
+	defer func() {
+		if err != nil {
+			clear(dek)
+		}
+	}()
 
 	snapshot, err := newestSnapshot(clone)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
-	manifest, err := readPartsManifest(clone, snapshot)
+	manifest, partsBody, err := readPartsManifest(clone, snapshot)
 	if err != nil {
-		return err
+		return nil, "", err
+	}
+	if err := authenticateParts(clone, partsBody, snapshot, dek, name, src.warn); err != nil {
+		return nil, "", err
 	}
 	sealed, err := reassembleSnapshot(clone, manifest)
 	if err != nil {
-		return err
+		return nil, "", err
 	}
 	archive, err := ageDecrypt(sealed, ids)
 	if err != nil {
-		return fmt.Errorf("backup: decrypt %s: %w", snapshot, err)
+		return nil, "", fmt.Errorf("backup: decrypt %s: %w", snapshot, err)
 	}
 	raw, err := decompress(ctx, archive)
 	if err != nil {
+		return nil, "", err
+	}
+	if err := untar(raw, extracted); err != nil {
+		return nil, "", err
+	}
+	return dek, name, nil
+}
+
+// authenticateParts checks the parts manifest before a byte of it is trusted:
+// it lists the digests every part is checked against, so an unauthenticated
+// parts manifest makes those digests worth nothing.
+func authenticateParts(dir string, body []byte, snapshot string, dek []byte, target string, warn func(string)) error {
+	name := partsManifestName(snapshot)
+	if len(dek) != dekLen || target == "" {
+		warn("parts manifest not authenticated: no keyring in the clone to derive the " +
+			ManifestMACPurpose + " subkey from")
+		return nil
+	}
+	key, err := ManifestMACKey(dek, target)
+	if err != nil {
 		return err
 	}
-	return untar(raw, extracted)
+	defer clear(key)
+
+	present, err := VerifyMACFile(filepath.Join(dir, name+macSuffix), key, body, target)
+	if err != nil {
+		return err
+	}
+	if !present {
+		warn("legacy backup: integrity unverified - " + name + " carries no tag; " +
+			"the part digests are self-consistent, but nothing proves they are yours")
+	}
+	return nil
 }
 
 // newestSnapshot returns the base name of the newest chunked snapshot in dir

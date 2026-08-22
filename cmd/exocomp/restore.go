@@ -38,6 +38,11 @@ func newRestoreCmd() *cobra.Command {
 			src.Name = name
 			src.IdentityFile = identity
 			src.Env = restoreEnv(src.Kind)
+			// An unauthenticated snapshot restores, but never quietly: the
+			// operator reading this is deciding whether to trust the result.
+			src.Warn = func(msg string) {
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: "+msg)
+			}
 
 			manifest, err := backup.RestoreLatest(cmd.Context(), src, dest)
 			if err != nil {
