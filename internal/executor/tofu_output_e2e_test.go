@@ -109,6 +109,105 @@ func TestTofuApplyCapturesInventory(t *testing.T) {
 	}
 }
 
+// TestTofuApplySealsSensitiveOutput is the 8a gate: with an OutputSealer wired,
+// a successful apply seals each sensitive output into the envelope as a
+// run-secret (openable, correct value) instead of dropping it, while the value
+// still reaches neither the inventory nor any event, and redaction holds.
+func TestTofuApplySealsSensitiveOutput(t *testing.T) {
+	f := newFixture(t, 1)
+	ctx := context.Background()
+	appendOutputs(t, f.tofuDir)
+
+	outPath := filepath.Join(t.TempDir(), "edge-inventory.json")
+	drv := executor.NewTofu(executor.TofuOptions{
+		Workspace:        f.workspace.Name,
+		BackendURL:       api.StateURL(f.server.Addr(), f.workspace.Name),
+		BackendToken:     f.token,
+		StatePassphrase:  f.passphrase,
+		PrivateDirRoot:   t.TempDir(),
+		PluginCacheDir:   tofuPluginCache(t),
+		OfflineProviders: true,
+		InventoryOut:     outPath,
+		OutputSealer:     executor.EnvelopeOutputSealer{Env: f.env, Store: f.store},
+	})
+	// The redactor knows only the envelope material, deliberately NOT the
+	// sensitive value: its absence from the log must be the capture routing it
+	// away, not the redactor scrubbing it after the fact.
+	q := queue.New(f.store, drv, queue.Options{Workers: 1, PollInterval: 20 * time.Millisecond},
+		queue.WithRedactor(secrets.NewRedactor([][]byte{[]byte(f.token), []byte(f.passphrase)})))
+
+	job, err := q.Enqueue(ctx, queue.Spec{
+		Runbook:        "workspace:" + f.workspace.Name,
+		Kind:           executor.KindTofu,
+		Trigger:        "test",
+		Argv:           executor.TofuArgv("apply", "-auto-approve"),
+		Dir:            f.tofuDir,
+		ConcurrencyKey: "tofu:" + f.workspace.Name,
+	})
+	if err != nil {
+		t.Fatalf("enqueue apply: %v", err)
+	}
+	f.server.BindJob(f.workspace.Name, job.ID)
+	defer f.server.ReleaseJob(f.workspace.Name)
+	if err := q.Drain(ctx); err != nil {
+		t.Fatalf("drain: %v", err)
+	}
+
+	final, err := f.store.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if final.State != store.StateSucceeded {
+		t.Fatalf("apply ended %s:\n%s", final.State, f.log(job.ID))
+	}
+
+	// The sensitive output is sealed under the stable run-secret name and opens
+	// back to exactly the value tofu emitted.
+	secName := executor.TofuOutputSecretName(f.workspace.Name, "db_password")
+	row, err := f.store.GetSecret(ctx, secName)
+	if err != nil {
+		t.Fatalf("sealed output %q not stored: %v", secName, err)
+	}
+	if row.Kind != executor.SecretKindTofuOutput {
+		t.Errorf("sealed output kind = %q, want %q", row.Kind, executor.SecretKindTofuOutput)
+	}
+	pt, err := f.env.OpenSecret(secrets.SealedSecret{
+		Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+	})
+	if err != nil {
+		t.Fatalf("open sealed output: %v", err)
+	}
+	if string(pt) != sensitiveCanary {
+		t.Fatalf("sealed output value = %q, want the sensitive canary", pt)
+	}
+
+	// The capture records it as sealed, not suppressed, and not among the
+	// non-sensitive names.
+	capture := findCapture(t, f, job.ID)
+	if !contains(capture.Sealed, "db_password") {
+		t.Errorf("capture did not record the sealed output: %+v", capture)
+	}
+	if contains(capture.Suppressed, "db_password") {
+		t.Errorf("a sealed output must not also be reported dropped: %+v", capture)
+	}
+	if contains(capture.Captured, "db_password") {
+		t.Errorf("sensitive output leaked into the non-sensitive inventory names: %+v", capture)
+	}
+
+	// The value is absent from the materialized inventory...
+	body, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatalf("read materialized inventory: %v", err)
+	}
+	if strings.Contains(string(body), sensitiveCanary) {
+		t.Errorf("materialized inventory leaked the sealed output:\n%s", body)
+	}
+	// ...and from every event in the durable log (redaction + routing hold).
+	if log := f.log(job.ID); strings.Contains(log, sensitiveCanary) {
+		t.Errorf("an event carried the sealed output value:\n%s", log)
+	}
+}
+
 // appendOutputs adds the story-5 outputs to the fixture's configuration: a
 // non-sensitive ansible_inventory (host + group) and a sensitive password.
 func appendOutputs(t *testing.T, tofuDir string) {

@@ -104,6 +104,7 @@ func requireTofu(t *testing.T) {
 type fixture struct {
 	t          *testing.T
 	store      *store.Store
+	env        *secrets.Envelope
 	server     *api.Server
 	workspace  store.Workspace
 	tofuDir    string
@@ -188,6 +189,7 @@ func newFixture(t *testing.T, workers int) *fixture {
 	return &fixture{
 		t:          t,
 		store:      st,
+		env:        env,
 		server:     srv,
 		workspace:  ws,
 		tofuDir:    tofuDir,

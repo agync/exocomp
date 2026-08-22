@@ -132,6 +132,13 @@ type TofuOptions struct {
 	// a plain apply is unchanged. The raw tfstate is never the source —
 	// declared outputs only, sensitive ones dropped (v1-acceptance.md).
 	InventoryOut string
+	// OutputSealer, when set, seals each `sensitive = true` tofu output into the
+	// envelope as a run-secret named tf-output/<workspace>/<name> instead of
+	// dropping it — the secrets twin of the inventory capture. A downstream step
+	// then binds the sealed value as named env through the run-secret plane. The
+	// sealed value never reaches the inventory or an event. Nil keeps the drop
+	// behaviour, so a plain apply is unchanged.
+	OutputSealer OutputSealer
 }
 
 // Tofu runs OpenTofu against the control plane's own HTTP state backend. It
@@ -269,7 +276,7 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 // missing inventory surfaces when the dependent play cannot find it, not as a
 // false apply failure.
 func (t *Tofu) captureInventory(ctx context.Context, bin string, spec Spec, sink EventSink) {
-	capture, err := captureTofuInventory(ctx, bin, spec.Dir, spec.Env, t.opts.InventoryOut)
+	capture, err := captureTofuInventory(ctx, bin, spec.Dir, spec.Env, t.opts.InventoryOut, t.opts.Workspace, t.opts.OutputSealer)
 	if err != nil {
 		sink.Emit(Event{
 			Ts:    time.Now().UTC(),

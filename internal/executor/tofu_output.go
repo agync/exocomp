@@ -43,7 +43,38 @@ type InventoryCapture struct {
 	SHA256     string   `json:"sha256"`
 	Size       int64    `json:"size"`
 	Captured   []string `json:"captured"`   // non-sensitive output names written
-	Suppressed []string `json:"suppressed"` // sensitive output names dropped
+	Suppressed []string `json:"suppressed"` // sensitive output names dropped (no sealer)
+	Sealed     []string `json:"sealed"`     // sensitive output names sealed as run-secrets
+}
+
+// OutputSealer seals one sensitive tofu output so a downstream step can bind it
+// as a named-env run secret — the secrets twin of the inventory capture. The
+// value is plaintext held only for the duration of the call; an implementation
+// persists it sealed and MUST NOT log, event, or otherwise surface it. A nil
+// sealer restores the drop-on-capture behaviour: a sensitive output then lands
+// in Suppressed and reaches nothing.
+type OutputSealer interface {
+	SealOutput(ctx context.Context, name string, value []byte) error
+}
+
+// TofuOutputSecretName is the stable run-secret name a sealed sensitive output
+// is stored under: tf-output/<workspace>/<output>. It is deterministic so a
+// re-apply reseals the same row and a downstream step can name the binding
+// ahead of time.
+func TofuOutputSecretName(workspace, output string) string {
+	return "tf-output/" + workspace + "/" + output
+}
+
+// sensitiveOutputValue is the plaintext to seal for a sensitive output: the
+// unquoted string when the output is a JSON string (a token, a password — the
+// common case a provider env or TF_VAR consumes verbatim), otherwise the raw
+// JSON so a structured value survives intact.
+func sensitiveOutputValue(raw json.RawMessage) []byte {
+	var s string
+	if json.Unmarshal(raw, &s) == nil {
+		return []byte(s)
+	}
+	return append([]byte(nil), raw...)
 }
 
 // captureTofuInventory runs `tofu output -json` in the same environment the
@@ -61,7 +92,7 @@ type InventoryCapture struct {
 // -json` prints every value — sensitive ones included — so its stdout must be
 // captured privately and filtered before any of it can become an event. This
 // mirrors driftShower, which likewise reads structured output in-process.
-func captureTofuInventory(ctx context.Context, bin, dir string, env []string, outPath string) (InventoryCapture, error) {
+func captureTofuInventory(ctx context.Context, bin, dir string, env []string, outPath, workspace string, sealer OutputSealer) (InventoryCapture, error) {
 	cmd := exec.CommandContext(ctx, bin, "output", "-json", "-no-color")
 	cmd.Dir = dir
 	cmd.Env = env
@@ -76,10 +107,20 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 	}
 
 	nonSensitive := make(map[string]json.RawMessage, len(outputs))
-	var captured, suppressed []string
+	var captured, suppressed, sealed []string
 	for name, out := range outputs {
 		if out.Sensitive {
-			suppressed = append(suppressed, name)
+			// A sensitive output never reaches the inventory or an event. With a
+			// sealer it is routed into the envelope as a run-secret for a
+			// downstream bind; without one it is dropped, as before.
+			if sealer != nil {
+				if err := sealer.SealOutput(ctx, TofuOutputSecretName(workspace, name), sensitiveOutputValue(out.Value)); err != nil {
+					return InventoryCapture{}, fmt.Errorf("executor: seal sensitive output %q: %w", name, err)
+				}
+				sealed = append(sealed, name)
+			} else {
+				suppressed = append(suppressed, name)
+			}
 			continue
 		}
 		nonSensitive[name] = out.Value
@@ -87,6 +128,7 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 	}
 	sort.Strings(captured)
 	sort.Strings(suppressed)
+	sort.Strings(sealed)
 
 	body, err := shapeInventory(nonSensitive)
 	if err != nil {
@@ -107,6 +149,7 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 		Size:       int64(len(body)),
 		Captured:   captured,
 		Suppressed: suppressed,
+		Sealed:     sealed,
 	}, nil
 }
 
@@ -159,6 +202,9 @@ func inventoryCaptureEvent(c InventoryCapture) Event {
 		panic("executor: tofu: encode inventory capture: " + err.Error())
 	}
 	msg := fmt.Sprintf("captured %d output(s) to inventory %s", len(c.Captured), c.Path)
+	if len(c.Sealed) > 0 {
+		msg += fmt.Sprintf("; sealed %d sensitive output(s)", len(c.Sealed))
+	}
 	if len(c.Suppressed) > 0 {
 		msg += fmt.Sprintf("; suppressed %d sensitive output(s)", len(c.Suppressed))
 	}
