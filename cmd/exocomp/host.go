@@ -10,13 +10,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
@@ -41,11 +41,17 @@ const fleetKeySecret = "fleet/ssh"
 // fleetKeyKind labels the sealed fleet key.
 const fleetKeyKind = "fleet-ssh-key"
 
-// keyscanHost scans a host's SSH keys. It is a package variable so a test drives
-// onboarding without a live sshd; production runs ssh-keyscan.
-var keyscanHost = func(ctx context.Context, host string) ([]byte, error) {
-	out, err := exec.CommandContext(ctx, "ssh-keyscan", "-T", "5",
-		"-t", "ed25519,rsa,ecdsa", host).Output()
+// keyscanHost scans a host's SSH keys on the port it serves them from. It is a
+// package variable so a test drives onboarding without a live sshd; production
+// runs ssh-keyscan. A non-default port matters because a tofu-derived host
+// carries whatever ansible_port its inventory declares, and ssh-keyscan records
+// such a host under the `[host]:port` name known_hosts expects.
+var keyscanHost = func(ctx context.Context, host string, port int) ([]byte, error) {
+	args := []string{"-T", "5", "-t", "ed25519,rsa,ecdsa"}
+	if port != 0 && port != executor.SSHPort {
+		args = append(args, "-p", strconv.Itoa(port))
+	}
+	out, err := exec.CommandContext(ctx, "ssh-keyscan", append(args, host)...).Output()
 	if err != nil {
 		return nil, fmt.Errorf("ssh-keyscan %s: %w", host, err)
 	}
@@ -136,7 +142,7 @@ func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string, ro
 
 	recorded := 0
 	for _, host := range hosts {
-		scanned, err := keyscanHost(ctx, host)
+		scanned, err := keyscanHost(ctx, host, executor.SSHPort)
 		if err != nil {
 			_, _ = fmt.Fprintf(warn, "WARNING: %v; %s not recorded\n", err, host)
 			continue
@@ -162,8 +168,14 @@ func runHostOnboard(ctx context.Context, out, warn io.Writer, hosts []string, ro
 	_, _ = fmt.Fprintln(out, "authorize this fleet key on each host's initial admin account:")
 	_, _ = fmt.Fprintln(out, pub)
 	_, _ = fmt.Fprintf(out, "then push it, create the user, and grant sudo through the queue:\n")
+	extra, err := extraVarsArgs(map[string]any{"exocomp_fleet_pubkey": pub})
+	if err != nil {
+		return err
+	}
+	// The extra-var is printed in JSON form on purpose: ansible's k=v form
+	// splits on whitespace, and an authorized_keys line has two spaces in it.
 	_, _ = fmt.Fprintf(out, "  exocomp playbook run %s --inventory %s \\\n", runbookPath, strings.Join(hosts, ","))
-	_, _ = fmt.Fprintf(out, "    -e exocomp_fleet_pubkey=%q\n", pub)
+	_, _ = fmt.Fprintf(out, "    %s '%s'\n", extra[0], extra[1])
 	return nil
 }
 
@@ -254,16 +266,7 @@ func sshKeyFingerprint(base64Key string) string {
 }
 
 // seedOnboardRunbook writes the embedded onboarding playbook into the data
-// volume (a volpath source) so it runs through the queue like any other play. It
-// is rewritten each call so an upgrade's newer runbook lands.
+// volume (a volpath source) so it runs through the queue like any other play.
 func seedOnboardRunbook(dir string) (string, error) {
-	runbookDir := filepath.Join(dir, "runbooks")
-	if err := os.MkdirAll(runbookDir, 0o700); err != nil {
-		return "", fmt.Errorf("host onboard: create runbook dir: %w", err)
-	}
-	path := filepath.Join(runbookDir, "onboard.yml")
-	if err := os.WriteFile(path, onboardRunbook, 0o600); err != nil {
-		return "", fmt.Errorf("host onboard: write runbook: %w", err)
-	}
-	return path, nil
+	return seedRunbook(dir, "onboard.yml", onboardRunbook)
 }

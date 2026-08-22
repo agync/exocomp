@@ -1,0 +1,29 @@
+---
+# Seeded reachability gate for the provision chain. A `tofu apply` returns as
+# soon as the provider says the resource exists; the box behind it is still
+# booting. This play waits, bounded, for each derived host's SSH port to accept
+# a connection, so the onboarding step that follows fails on a real problem
+# rather than on a machine that had not finished starting.
+#
+# It never connects to the hosts: every task is delegated to the control plane
+# and only probes the port, which is the whole point — the credentials are
+# pushed by the onboarding runbook, after this succeeds. A host the inventory
+# declares ansible_connection=local needs no SSH at all and is skipped; the
+# guard reads that through hostvars because the delegation makes the plain
+# ansible_connection read `local` for every host.
+#
+# exocomp writes this file and runs it through the sandboxed, gated queue with
+# the workspace's materialized inventory:
+#   exocomp provision run <workspace> <playbook>
+- name: Wait for SSH on the provisioned hosts
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for the SSH port to accept connections
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host | default(inventory_hostname) }}"
+        port: "{{ ansible_port | default(22) }}"
+        timeout: "{{ exocomp_ssh_wait_timeout | default(300) | int }}"
+        state: started
+      delegate_to: localhost
+      when: (hostvars[inventory_hostname].ansible_connection | default('ssh')) != 'local'

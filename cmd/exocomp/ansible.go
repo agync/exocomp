@@ -77,6 +77,15 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		}
 	}
 
+	// A provision chain's onboarding step pins each derived host's key before it
+	// pushes the fleet key to it. It happens here because the driver is the
+	// first place the hosts are known — they come from the inventory the apply
+	// materialized, not from the command that defined the workflow. Any other
+	// job is a no-op.
+	if err := recordProvisionedHostKeys(ctx, d.store, job, inventoryArtifact, sink); err != nil {
+		return executor.Result{}, err
+	}
+
 	// Resolve the per-source venv before the run (ADR 0011 vendoring step). A
 	// failure fails the job: a run must not proceed against half-met deps.
 	venv, err := resolveProjectVenv(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))

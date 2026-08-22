@@ -23,7 +23,7 @@ func TestHostOnboardRecordsKeysSeedsRunbookAndFleetKey(t *testing.T) {
 	// Stub ssh-keyscan: return a canned two-key scan for the named host.
 	orig := keyscanHost
 	t.Cleanup(func() { keyscanHost = orig })
-	keyscanHost = func(_ context.Context, host string) ([]byte, error) {
+	keyscanHost = func(_ context.Context, host string, _ int) ([]byte, error) {
 		return []byte("# " + host + ":22 SSH-2.0-OpenSSH\n" +
 			host + " ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAstub\n" +
 			host + " ssh-rsa AAAAB3NzaC1yc2Estub\n"), nil
