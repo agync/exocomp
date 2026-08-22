@@ -46,9 +46,13 @@ var ErrClosed = errors.New("secrets: envelope closed")
 // Envelope holds the unwrapped data encryption key and the public keyring that
 // wraps it. The DEK lives in exactly one []byte, zeroed by Close.
 type Envelope struct {
-	dataDir    string
-	dek        []byte
-	keyring    []byte
+	dataDir string
+	dek     []byte
+	keyring []byte
+	// host is the identity the keyring was opened with. It is kept so an
+	// artifact sealed to the keyring's recipients can be read back without a
+	// second trip to disk for the key.
+	host       age.Identity
 	recipients []Recipient
 	version    KeyringVersion
 }
@@ -142,6 +146,7 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		dataDir:    dataDir,
 		dek:        dek,
 		keyring:    keyring,
+		host:       host,
 		recipients: recipients,
 		version:    version,
 	}
@@ -182,6 +187,7 @@ func Open(dataDir string) (*Envelope, error) {
 		dataDir:    dataDir,
 		dek:        dek,
 		keyring:    keyring,
+		host:       host,
 		recipients: recipients,
 		version:    version,
 	}, nil

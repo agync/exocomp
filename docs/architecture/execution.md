@@ -169,6 +169,15 @@ operation never runs against a half-configured backend. `plan` runs with
 `-detailed-exitcode`, where exit 2 means changes are present — neither success nor failure,
 so the driver records a plan outcome in `job_event` and reports exit 0.
 
+A saved plan is the least-protected place a secret appears: it carries every attribute of
+every resource the apply would change, in the clear, and it outlives the run that made it.
+So it is encrypted at rest — `age` to the keyring's recipients, the same recipients that
+wrap the DEK — the moment the run that wrote it ends, and the `artifact` row records the
+ciphertext's path and digest. An apply decrypts it into the run's own 0700 private
+directory and removes it when the run ends; the approval diff reads it the same way.
+Plan artifacts are not part of the backup staging tree, so nothing about the restore drill
+changes.
+
 Two runs cannot share a workspace directory: they would remove each other's backend
 override mid-flight. The queue's `tofu:<workspace>` concurrency key keeps them apart, and
 the backend's own lock row holds against anything the queue does not know about.

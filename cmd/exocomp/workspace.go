@@ -364,10 +364,11 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		return 0, err
 	}
 
-	argv, planPath, parent, err := opArgv(ctx, st, op, ws, dirs.artifacts)
+	argv, planPath, parent, cleanupPlan, err := opArgv(ctx, st, env, op, ws, dirs)
 	if err != nil {
 		return 0, err
 	}
+	defer cleanupPlan()
 	spec := queue.Spec{
 		Runbook:        workspaceRunbookPrefix + ws.Name,
 		Kind:           executor.KindTofu,
@@ -403,7 +404,7 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", parent.ID, parent.JobID)
 	}
 	if planPath != "" {
-		if err := recordPlan(ctx, st, out, final.ID, planPath); err != nil {
+		if err := recordPlan(ctx, st, env, out, final.ID, planPath); err != nil {
 			return 0, err
 		}
 	}
@@ -517,24 +518,32 @@ func startBackend(st *store.Store, env *secrets.Envelope, port int) (*api.Server
 
 // opArgv builds the tofu argv for the operation and reports the plan file it
 // will write and the saved plan it will consume.
-func opArgv(ctx context.Context, st *store.Store, op workspaceOp, ws store.Workspace, artifacts string) (
-	argv []string, planPath string, parent *store.Artifact, err error) {
+func opArgv(ctx context.Context, st *store.Store, env *secrets.Envelope, op workspaceOp,
+	ws store.Workspace, dirs tofuPaths) (
+	argv []string, planPath string, parent *store.Artifact, cleanup func(), err error) {
+	cleanup = func() {}
 	switch op.op {
 	case "plan":
-		planPath = filepath.Join(artifacts,
+		planPath = filepath.Join(dirs.artifacts,
 			fmt.Sprintf("%s-%d.tfplan", ws.Name, time.Now().UTC().UnixNano()))
-		return executor.TofuArgv("plan", "-out="+planPath), planPath, nil, nil
+		return executor.TofuArgv("plan", "-out="+planPath), planPath, nil, cleanup, nil
 	case "apply":
 		if op.planRef == "" {
-			return executor.TofuArgv("apply", "-auto-approve"), "", nil, nil
+			return executor.TofuArgv("apply", "-auto-approve"), "", nil, cleanup, nil
 		}
 		saved, err := resolvePlan(ctx, st, op.planRef)
 		if err != nil {
-			return nil, "", nil, err
+			return nil, "", nil, cleanup, err
 		}
-		return executor.TofuArgv("apply", saved.Path), "", &saved, nil
+		// The stored plan is ciphertext; tofu reads the plaintext copy this
+		// run makes and the cleanup removes.
+		readable, release, err := openPlanForRun(env, dirs.private, saved.Path)
+		if err != nil {
+			return nil, "", nil, cleanup, err
+		}
+		return executor.TofuArgv("apply", readable), "", &saved, release, nil
 	default:
-		return nil, "", nil, fmt.Errorf("workspace: unknown operation %q", op.op)
+		return nil, "", nil, cleanup, fmt.Errorf("workspace: unknown operation %q", op.op)
 	}
 }
 
@@ -567,9 +576,19 @@ func resolvePlan(ctx context.Context, st *store.Store, ref string) (store.Artifa
 	return store.Artifact{Kind: planArtifactKind, Path: abs, SHA256: sum, Size: size}, nil
 }
 
-// recordPlan registers the plan file a run wrote. A run that changed nothing
-// still writes one, so its absence means the plan never got that far.
-func recordPlan(ctx context.Context, st *store.Store, out io.Writer, jobID int64, path string) error {
+// recordPlan registers the plan file a run wrote, encrypted at rest first. A
+// run that changed nothing still writes one, so its absence means the plan
+// never got that far. The digest recorded is of the ciphertext, because that
+// is what is on disk to check later.
+func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out io.Writer,
+	jobID int64, path string) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	path, err := sealArtifact(env, planArtifactKind, path)
+	if err != nil {
+		return err
+	}
 	sum, size, err := fileDigest(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
