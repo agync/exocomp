@@ -12,6 +12,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -238,6 +239,21 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 			Argv:           sc.Args.Argv,
 			ConcurrencyKey: sc.ConcurrencyKey,
 		}}, nil
+
+	case store.ScheduleTofuPlan:
+		name := sc.Args.TofuWorkspace()
+		if name == "" {
+			return nil, fmt.Errorf("schedule %q: kind %s needs a workspace",
+				sc.Name, store.ScheduleTofuPlan)
+		}
+		ws, err := s.store.WorkspaceByName(ctx, name)
+		if err != nil {
+			return nil, fmt.Errorf("schedule %q: workspace %q: %w", sc.Name, name, err)
+		}
+		// Drift detection: the plan runs with -detailed-exitcode, and the
+		// reactive engine turns "changes present" into an event in the same
+		// pipeline a webhook enters, so drift can gate an apply.
+		return []queue.Spec{reactive.PlanSpec(ws, Trigger)}, nil
 
 	case store.ScheduleBackup:
 		names, err := s.backupTargetNames(ctx, sc.Args.Target)

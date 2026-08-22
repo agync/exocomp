@@ -9,10 +9,13 @@ import (
 )
 
 // Schedule kinds, aliased from internal/store so callers need one import for
-// both the stored row and the queue Spec.Kind a fire produces.
+// both the stored row and the queue Spec.Kind a fire produces. KindTofuPlan
+// is the odd one out: its fires are ordinary tofu jobs, so the daemon's own
+// tofu driver serves them and this package's router never sees one.
 const (
-	KindShell  = store.ScheduleShell
-	KindBackup = store.ScheduleBackup
+	KindShell    = store.ScheduleShell
+	KindBackup   = store.ScheduleBackup
+	KindTofuPlan = store.ScheduleTofuPlan
 )
 
 // NewDriver returns a Driver that dispatches on spec.Kind: KindShell to
