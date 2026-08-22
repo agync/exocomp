@@ -19,6 +19,7 @@ func TestSourceCRUD(t *testing.T) {
 		Ref:             "main",
 		DeployKeySecret: "source/infra/deploy-key",
 		Signed:          true,
+		AllowedSigners:  "* ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAtrusted\n",
 		Enabled:         true,
 	})
 	if err != nil {
@@ -34,6 +35,9 @@ func TestSourceCRUD(t *testing.T) {
 	}
 	if byName.URI != "git@forge:org/infra.git" || byName.Ref != "main" {
 		t.Fatalf("byName = %+v", byName)
+	}
+	if byName.AllowedSigners != "* ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAtrusted\n" {
+		t.Fatalf("allowed signers did not round-trip: %q", byName.AllowedSigners)
 	}
 
 	if _, err := s.CreateSource(ctx, store.Source{Name: "infra", Kind: store.SourceGit}); !errors.Is(err, store.ErrDuplicate) {

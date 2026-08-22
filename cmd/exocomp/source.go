@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -37,11 +38,13 @@ func newSourceCmd() *cobra.Command {
 
 func newSourceAddCmd() *cobra.Command {
 	var (
-		url    string
-		ref    string
-		path   string
-		kind   string
-		signed bool
+		url         string
+		ref         string
+		path        string
+		kind        string
+		signed      bool
+		signersFile string
+		signers     []string
 	)
 	add := &cobra.Command{
 		Use:   "add <name>",
@@ -56,8 +59,15 @@ func newSourceAddCmd() *cobra.Command {
 			if (url == "") == (path == "") {
 				return errors.New("source add: give exactly one of --url or --path")
 			}
+			allowed, err := resolveAllowedSigners(signersFile, signers)
+			if err != nil {
+				return err
+			}
+			if allowed != "" && !signed {
+				return errors.New("source add: --allowed-signers/--signer require --signed")
+			}
 			return runSourceAdd(cmd, args[0], sourceAddSpec{
-				url: url, ref: ref, path: path, kind: kind, signed: signed,
+				url: url, ref: ref, path: path, kind: kind, signed: signed, allowedSigners: allowed,
 			})
 		},
 	}
@@ -67,12 +77,39 @@ func newSourceAddCmd() *cobra.Command {
 	add.Flags().StringVar(&kind, "kind", store.SourceHostPath,
 		"path source kind: hostpath (bind-mounted, read-only) or volpath (in the data volume)")
 	add.Flags().BoolVar(&signed, "signed", false, "require a verified signature on the pinned ref before a sync advances")
+	add.Flags().StringVar(&signersFile, "allowed-signers", "",
+		"SSH allowed-signers file whose keys a --signed ref is verified against (exocomp-owned trust, not the host git config)")
+	add.Flags().StringArrayVar(&signers, "signer", nil,
+		"an allowed-signers line (`principal ssh-ed25519 AAAA...`, or `*` as principal), repeatable; appended to --allowed-signers")
 	return add
+}
+
+// resolveAllowedSigners builds the stored allowed-signers content from a file
+// and/or inline --signer lines, in git's allowed-signers format. Empty when
+// neither is given (a signed source then falls back to git's own config).
+func resolveAllowedSigners(file string, signers []string) (string, error) {
+	var b strings.Builder
+	if file != "" {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return "", fmt.Errorf("source add: read allowed-signers: %w", err)
+		}
+		b.Write(data)
+		if len(data) > 0 && data[len(data)-1] != '\n' {
+			b.WriteByte('\n')
+		}
+	}
+	for _, line := range signers {
+		b.WriteString(strings.TrimRight(line, "\n"))
+		b.WriteByte('\n')
+	}
+	return b.String(), nil
 }
 
 type sourceAddSpec struct {
 	url, ref, path, kind string
 	signed               bool
+	allowedSigners       string
 }
 
 func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
@@ -82,7 +119,7 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 	}
 	defer func() { _ = st.Close() }()
 
-	row := store.Source{Name: name, Ref: spec.ref, Signed: spec.signed, Enabled: true}
+	row := store.Source{Name: name, Ref: spec.ref, Signed: spec.signed, AllowedSigners: spec.allowedSigners, Enabled: true}
 	out := cmd.OutOrStdout()
 
 	if spec.path != "" {
@@ -141,6 +178,10 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 	}
 
 	_, _ = fmt.Fprintf(out, "registered git source %q (%s, ref %s)\n", name, spec.url, spec.ref)
+	if spec.signed && spec.allowedSigners == "" {
+		_, _ = fmt.Fprintln(out, "note: --signed with no --allowed-signers/--signer trusts the host git "+
+			"config's signers; pass --allowed-signers for exocomp-owned, backed-up trust.")
+	}
 	_, _ = fmt.Fprintln(out, "add this deploy key to the forge as a read-only key:")
 	_, _ = fmt.Fprintln(out, key.PublicAuthorizedKey)
 	return nil
@@ -237,6 +278,24 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 		}
 		defer zero(key)
 		opts.DeployKeyPEM = key
+	}
+	if src.Signed && src.AllowedSigners != "" {
+		// Materialize exocomp's own allowed-signers outside the checkout (git
+		// clean -fdx wipes the tree) so verify-tag/commit trusts these keys, not
+		// whatever the host's git config happens to name.
+		f, err := os.CreateTemp("", "exocomp-signers-*")
+		if err != nil {
+			return fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		defer func() { _ = os.Remove(f.Name()) }()
+		if _, err := f.WriteString(src.AllowedSigners); err != nil {
+			_ = f.Close()
+			return fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		opts.AllowedSignersFile = f.Name()
 	}
 
 	res, err := source.Sync(cmd.Context(), opts)

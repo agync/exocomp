@@ -36,8 +36,12 @@ type Source struct {
 	DeployKeySecret string
 	LastSyncSHA     string
 	Signed          bool
-	Enabled         bool
-	CreatedAt       time.Time
+	// AllowedSigners is the SSH allowed-signers content a signed source verifies
+	// its pinned ref against — exocomp-owned trust, materialized to a 0700 file at
+	// sync. Empty falls back to git's own configuration.
+	AllowedSigners string
+	Enabled        bool
+	CreatedAt      time.Time
 }
 
 // Inventory is what an ansible run targets. For a dynamic inventory EnvBinding
@@ -64,7 +68,7 @@ type RunSecret struct {
 }
 
 const sourceColumns = `id, name, kind, uri, ref, deploy_key_secret,
-	last_sync_sha, signed, enabled, created_at`
+	last_sync_sha, signed, allowed_signers, enabled, created_at`
 
 // CreateSource inserts a source. A repeated name returns ErrDuplicate.
 func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
@@ -73,10 +77,10 @@ func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO source (name, kind, uri, ref, deploy_key_secret,
-		                    last_sync_sha, signed, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                    last_sync_sha, signed, allowed_signers, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		src.Name, src.Kind, src.URI, src.Ref, src.DeployKeySecret,
-		src.LastSyncSHA, boolInt(src.Signed), boolInt(src.Enabled),
+		src.LastSyncSHA, boolInt(src.Signed), src.AllowedSigners, boolInt(src.Enabled),
 		src.CreatedAt.UnixMilli())
 	if err != nil {
 		return Source{}, wrap("create source", err)
@@ -341,7 +345,7 @@ func scanSource(row rowScanner) (Source, error) {
 		createdAt       int64
 	)
 	if err := row.Scan(&src.ID, &src.Name, &src.Kind, &src.URI, &src.Ref,
-		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &enabled, &createdAt); err != nil {
+		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &src.AllowedSigners, &enabled, &createdAt); err != nil {
 		return Source{}, err
 	}
 	src.Signed = signed != 0
