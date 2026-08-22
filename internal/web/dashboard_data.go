@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
@@ -142,6 +143,191 @@ func (s *Server) workspaces(r *http.Request, pending []approvalRow) ([]workspace
 		out = append(out, workspaceRow{Name: w.Name, Serial: w.Serial, Drift: drifting[w.Name]})
 	}
 	return out, nil
+}
+
+// sources reads the run-tree sources (ADR 0010) into rows: where each run's
+// tree comes from, whether its ref is signed and pinned to allowed-signers, and
+// the commit its last sync landed on. Read-only — registration is a
+// CLI-and-local-auth path, not a web mutation.
+func (s *Server) sources(r *http.Request) ([]sourceRow, error) {
+	list, err := s.store.ListSources(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	var out []sourceRow
+	for _, src := range list {
+		out = append(out, sourceRow{
+			Name: src.Name, Kind: src.Kind, URI: src.URI, Ref: src.Ref,
+			SyncSHA: src.LastSyncSHA, Signed: src.Signed,
+			Signers: src.AllowedSigners != "", Enabled: src.Enabled,
+		})
+	}
+	return out, nil
+}
+
+// schedules reads every schedule (enabled and disabled) with its kind, cron,
+// next fire, and the outcome of the job its last fire enqueued. A drift-check
+// schedule (a tofu-plan or play --check kind) thereby surfaces its last drift
+// result — the last job's state — without opening the job.
+func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
+	list, err := s.store.ListSchedules(r.Context(), false)
+	if err != nil {
+		return nil, err
+	}
+	var out []scheduleRow
+	for _, sc := range list {
+		row := scheduleRow{
+			Name: sc.Name, Kind: sc.Kind, Cron: sc.CronExpr,
+			Enabled: sc.Enabled, Next: "-",
+		}
+		if sc.NextAt != nil {
+			row.Next = clock(*sc.NextAt)
+		}
+		if sc.LastJobID != nil {
+			if job, err := s.store.GetJob(r.Context(), *sc.LastJobID); err == nil {
+				row.HasLast = true
+				row.LastJobID = job.ID
+				row.LastRunbook = job.Runbook
+				row.LastState = job.State
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// workflowRowFrom derives one chain's row from its ordered step ledger: the
+// whole-workflow state (read from the steps, not stored), a done/total tally,
+// and each step's status and job.
+func workflowRowFrom(id string, steps []store.WorkflowStep) workflowRow {
+	row := workflowRow{ID: id, State: store.WorkflowStatus(steps), Total: len(steps)}
+	for _, st := range steps {
+		if st.Status == store.StepSucceeded {
+			row.Done++
+		}
+		row.Steps = append(row.Steps, workflowStepRow{
+			StepNo: st.StepNo, Kind: st.Kind, Status: st.Status, JobID: st.JobID,
+		})
+	}
+	return row
+}
+
+// inflightWorkflows reads the chains with a step still to run — the
+// provision->onboard->converge and TF->ansible handoff ledgers that are live
+// right now — capped at limit for the glance screen.
+func (s *Server) inflightWorkflows(r *http.Request, limit int) ([]workflowRow, error) {
+	ids, err := s.store.ListIncompleteWorkflows(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	var out []workflowRow
+	for _, id := range ids {
+		if limit > 0 && len(out) >= limit {
+			break
+		}
+		steps, err := s.store.GetWorkflow(r.Context(), id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, workflowRowFrom(id, steps))
+	}
+	return out, nil
+}
+
+// recentWorkflows reads the most-recently-active chains, in-flight and finished
+// together, for the workflows surface.
+func (s *Server) recentWorkflows(r *http.Request, limit int) ([]workflowRow, error) {
+	ids, err := s.store.ListWorkflowIDs(r.Context(), limit)
+	if err != nil {
+		return nil, err
+	}
+	var out []workflowRow
+	for _, id := range ids {
+		steps, err := s.store.GetWorkflow(r.Context(), id)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, workflowRowFrom(id, steps))
+	}
+	return out, nil
+}
+
+// policies reads every CEL plan policy into rows: which workspace it gates,
+// whether a match denies the plan or routes the apply through approval, its
+// expression verbatim, and whether it is enabled.
+func (s *Server) policies(r *http.Request) ([]policyRow, error) {
+	list, err := s.store.ListPlanPolicies(r.Context(), "", false)
+	if err != nil {
+		return nil, err
+	}
+	var out []policyRow
+	for _, p := range list {
+		out = append(out, policyRow{
+			Name: p.Name, Workspace: p.Workspace, Action: p.Action,
+			Expr: p.Expr, Enabled: p.Enabled,
+		})
+	}
+	return out, nil
+}
+
+// selfObs builds the dashboard's self-observability row: the running binary
+// version (the upgrade target) and the Litestream replication RPO age. The RPO
+// read mirrors the metrics registry's litestream gauge exactly — read the
+// configured replica target, then observe the newest replicated frame's age —
+// so the surface and the scrape never disagree. An age exocomp cannot observe
+// (no replica, a remote replica only litestream can read, or no frames yet) is
+// reported honestly as "unknown", never as a fresh-looking zero.
+func (s *Server) selfObs(ctx context.Context) selfObs {
+	so := selfObs{Version: s.version}
+	if so.Version == "" {
+		so.Version = "dev"
+	}
+
+	raw, err := s.store.GetSetting(ctx, litestream.SettingReplicaTarget)
+	if err != nil || raw == "" {
+		so.LSAge = "unknown"
+		so.LSClass = "dim"
+		so.LSDetail = "no replica configured"
+		return so
+	}
+	so.LSConfigured = true
+
+	target, perr := litestream.ParseTarget(raw)
+	if perr != nil {
+		so.LSAge = "unknown"
+		so.LSClass = "wait"
+		so.LSDetail = "replica target unparseable"
+		return so
+	}
+	age, _, ok, ferr := litestream.ReplicaFreshness(target, s.now())
+	if ferr != nil || !ok {
+		so.LSAge = "unknown"
+		so.LSClass = "dim"
+		if target.Remote() {
+			so.LSDetail = "remote replica — frame age readable only by litestream"
+		} else {
+			so.LSDetail = "no frames replicated yet"
+		}
+		return so
+	}
+	so.LSAge = humanAge(age)
+	so.LSClass = rpoFreshness(age)
+	so.LSDetail = "newest replicated frame"
+	return so
+}
+
+// rpoFreshness maps a replication RPO age to the chip ladder. Litestream ships
+// WAL frames continuously, so a homelab replica is fresh in minutes: quiet
+// under 10m, a warning past it, loud past an hour of unreplicated writes.
+func rpoFreshness(age time.Duration) string {
+	switch {
+	case age >= time.Hour:
+		return "fail"
+	case age >= 10*time.Minute:
+		return "wait"
+	default:
+		return "ok"
+	}
 }
 
 // signal builds the footer's is-the-control-plane-alive strip: newest backup

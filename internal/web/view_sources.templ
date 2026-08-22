@@ -1,0 +1,65 @@
+package web
+
+// signedChip states a source's trust posture: a signed source pinned to its own
+// allowed-signers is the strong form, signed-only is a step down, unsigned is a
+// dim neutral — never color-only, always a label. Shared by the sources surface
+// and the dashboard's sources card.
+templ signedChip(sc sourceRow) {
+	if sc.Signed && sc.Signers {
+		<span class="chip ok"><span class="dot"></span>SIGNED · SIGNERS</span>
+	} else if sc.Signed {
+		<span class="chip ok"><span class="dot"></span>SIGNED</span>
+	} else {
+		<span class="chip dim"><span class="dot"></span>UNSIGNED</span>
+	}
+}
+
+// sourcesList is the run-tree sources surface (ADR 0010): where every run's
+// tree comes from, its trust posture (signed / allowed-signers), and the commit
+// its last sync landed on. Read-only — registration stays a CLI-and-local-auth
+// path, so there is no mutation control here.
+templ sourcesList(vm sourcesVM) {
+	@layout(vm.Page) {
+		<h1>Sources</h1>
+		<div class="card span2" style="margin-top:18px">
+			if len(vm.Sources) == 0 {
+				<p class="meta">No sources registered. Register one with <code>exocomp source add</code>.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Source</th>
+								<th scope="col">Kind</th>
+								<th scope="col">URI</th>
+								<th scope="col">Ref</th>
+								<th scope="col">Trust</th>
+								<th scope="col" class="right">Last sync</th>
+								<th scope="col">Enabled</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, sc := range vm.Sources {
+								<tr>
+									<td>{ sc.Name }</td>
+									<td class="mono">{ sc.Kind }</td>
+									<td class="mono">{ orDash(sc.URI) }</td>
+									<td class="mono">{ orDash(sc.Ref) }</td>
+									<td>@signedChip(sc)</td>
+									<td class="right mono">{ orDash(sc.Short()) }</td>
+									<td>
+										if sc.Enabled {
+											<span class="chip ok"><span class="dot"></span>ENABLED</span>
+										} else {
+											<span class="chip dim"><span class="dot"></span>DISABLED</span>
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}

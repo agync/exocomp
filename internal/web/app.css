@@ -165,6 +165,19 @@ td.right, th.right { text-align: right; }
 .chip.run .dot  { background: var(--accent-text); animation: var(--breathe); }
 .chip.dim   { color: var(--signal-dim-text); }
 
+/* ---- Step rail (workflow ledger shape at a glance) ---- */
+.steprail { display: inline-flex; align-items: center; gap: 5px; }
+.stepdot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--signal-dim-dot);
+  border: 1px solid var(--hairline);
+}
+.stepdot.ok   { background: var(--signal-ok);   border-color: var(--ok-border); }
+.stepdot.wait { background: var(--signal-wait); border-color: var(--wait-border); }
+.stepdot.fail { background: var(--signal-fail); border-color: var(--fail-border); }
+.stepdot.run  { background: var(--accent-text); border-color: var(--accent-border); animation: var(--breathe); }
+.stepdot.dim  { background: var(--signal-dim-dot); }
+
 /* ---- Buttons ---- */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;

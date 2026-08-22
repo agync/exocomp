@@ -119,7 +119,96 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Workspaces = ws
 
+	sources, err := s.sources(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Sources = sources
+
+	schedules, err := s.schedules(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Schedules = schedules
+
+	flows, err := s.inflightWorkflows(r, queueGlance)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Workflows = flows
+
+	vm.Self = s.selfObs(r.Context())
+
 	s.render(w, r, http.StatusOK, dashboard(vm))
+}
+
+func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.sources(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := sourcesVM{Page: s.pageFor(r, "Sources", "sources"), Sources: rows}
+	s.render(w, r, http.StatusOK, sourcesList(vm))
+}
+
+func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.schedules(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := schedulesVM{Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows}
+	s.render(w, r, http.StatusOK, schedulesList(vm))
+}
+
+func (s *Server) handleWorkflows(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.recentWorkflows(r, queueGlance)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := workflowsVM{Page: s.pageFor(r, "Workflows", "workflows"), Workflows: rows}
+	s.render(w, r, http.StatusOK, workflowsList(vm))
+}
+
+func (s *Server) handleWorkflowDetail(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	steps, err := s.store.GetWorkflow(r.Context(), id)
+	if errors.Is(err, store.ErrNotFound) {
+		vm := workflowVM{Page: s.pageFor(r, "Workflow", "workflows"), ID: id, NotFound: true}
+		s.render(w, r, http.StatusNotFound, workflowDetail(vm))
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	row := workflowRowFrom(id, steps)
+	vm := workflowVM{
+		Page:  s.pageFor(r, "Workflow", "workflows"),
+		ID:    id,
+		State: row.State,
+		Steps: row.Steps,
+	}
+	s.render(w, r, http.StatusOK, workflowDetail(vm))
+}
+
+func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.policies(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := policiesVM{Page: s.pageFor(r, "Plan policies", "policies"), Policies: rows}
+	s.render(w, r, http.StatusOK, policiesList(vm))
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {

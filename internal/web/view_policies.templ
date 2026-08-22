@@ -1,0 +1,48 @@
+package web
+
+// policiesList is the plan-policy surface: the CEL gates that decide what an
+// apply is allowed to do. A match either denies the plan outright or routes the
+// apply through the approval gate; the expression is shown verbatim so an
+// operator sees exactly what gates their applies. Read-only — policies are
+// authored via the CLI, which compiles and rejects a bad expression at write.
+templ policiesList(vm policiesVM) {
+	@layout(vm.Page) {
+		<h1>Plan policies</h1>
+		<div class="card span2" style="margin-top:18px">
+			if len(vm.Policies) == 0 {
+				<p class="meta">No plan policies. Applies are gated only by their workspace's own approval settings.</p>
+			} else {
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Policy</th>
+								<th scope="col">Workspace</th>
+								<th scope="col">On match</th>
+								<th scope="col">Expression</th>
+								<th scope="col">Enabled</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, p := range vm.Policies {
+								<tr>
+									<td>{ p.Name }</td>
+									<td class="mono">{ orDash(p.Workspace) }</td>
+									<td>@chip(p.ActionClass(), p.Action)</td>
+									<td class="mono">{ p.Expr }</td>
+									<td>
+										if p.Enabled {
+											<span class="chip ok"><span class="dot"></span>ENABLED</span>
+										} else {
+											<span class="chip dim"><span class="dot"></span>DISABLED</span>
+										}
+									</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}

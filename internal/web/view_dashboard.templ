@@ -140,6 +140,125 @@ templ dashboard(vm dashboardVM) {
 					</div>
 				}
 			</section>
+
+			<section class="card span2" aria-labelledby="flows-h">
+				<div class="kicker">Step ledgers</div>
+				<h3 id="flows-h">Workflows in flight</h3>
+				if len(vm.Workflows) == 0 {
+					<p class="meta">No workflows are running.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Workflow</th><th scope="col">State</th><th scope="col" class="right">Steps</th><th scope="col">Ledger</th></tr>
+							</thead>
+							<tbody>
+								for _, f := range vm.Workflows {
+									<tr>
+										<td class="mono"><a href={ templ.SafeURL("/workflows/" + f.ID) }>{ f.ID }</a></td>
+										<td>@chip(f.StateClass(), string(f.State))</td>
+										<td class="right num">{ f.Progress() }</td>
+										<td>@stepDots(f.Steps)</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</section>
+
+			<section class="card" aria-labelledby="sources-h">
+				<div class="kicker">Where runs come from</div>
+				<h3 id="sources-h">Sources</h3>
+				if len(vm.Sources) == 0 {
+					<p class="meta">No sources registered.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Signed</th><th scope="col" class="right">Sync</th></tr>
+							</thead>
+							<tbody>
+								for _, sc := range vm.Sources {
+									<tr>
+										<td>
+											{ sc.Name }
+											if !sc.Enabled {
+												<span class="chip dim" style="margin-left:6px">disabled</span>
+											}
+										</td>
+										<td class="mono">{ sc.Kind }</td>
+										<td>@signedChip(sc)</td>
+										<td class="right mono">{ orDash(sc.Short()) }</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+				<p class="meta" style="margin-top:10px"><a href="/sources">All sources →</a></p>
+			</section>
+
+			<section class="card" aria-labelledby="sched-h">
+				<div class="kicker">Everything is a job</div>
+				<h3 id="sched-h">Schedules</h3>
+				if len(vm.Schedules) == 0 {
+					<p class="meta">No schedules registered.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Schedule</th><th scope="col">Cron</th><th scope="col">Last</th></tr>
+							</thead>
+							<tbody>
+								for _, sc := range vm.Schedules {
+									<tr>
+										<td>
+											{ sc.Name }
+											if !sc.Enabled {
+												<span class="chip dim" style="margin-left:6px">disabled</span>
+											}
+										</td>
+										<td class="mono">{ sc.Cron }</td>
+										<td>
+											if sc.HasLast {
+												@chip(sc.LastClass(), string(sc.LastState))
+											} else {
+												<span class="meta">never fired</span>
+											}
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+				<p class="meta" style="margin-top:10px"><a href="/schedules">All schedules →</a></p>
+			</section>
+
+			<section class="card span2" aria-labelledby="self-h">
+				<div class="kicker">Truth over reassurance</div>
+				<h3 id="self-h">This control plane</h3>
+				<div class="tablewrap">
+					<table>
+						<thead>
+							<tr><th scope="col">Signal</th><th scope="col">State</th><th scope="col">Detail</th></tr>
+						</thead>
+						<tbody>
+							<tr>
+								<td>Running version</td>
+								<td class="mono">{ vm.Self.Version }</td>
+								<td class="meta">the binary an upgrade replaces</td>
+							</tr>
+							<tr>
+								<td>Litestream RPO</td>
+								<td>@chip(vm.Self.LSClass, vm.Self.LSAge)</td>
+								<td class="meta">{ vm.Self.LSDetail }</td>
+							</tr>
+						</tbody>
+					</table>
+				</div>
+			</section>
 		</div>
 	}
 }
