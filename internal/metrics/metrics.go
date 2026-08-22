@@ -103,6 +103,12 @@ func (r *Registry) gather(ctx context.Context) ([]gauge, error) {
 	}
 	out = append(out, held...)
 
+	ls, err := r.litestreamGauges(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, ls...)
+
 	if g, ok := r.diskGauge(); ok {
 		out = append(out, g)
 	}

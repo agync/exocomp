@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sys/unix"
 
 	"exocomp.dev/exocomp/internal/api"
+	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -72,6 +73,7 @@ func runDoctor(w io.Writer) error {
 
 	reportSandbox(context.Background(), w)
 	reportSelfObservability(context.Background(), w, dataDir)
+	reportLitestream(context.Background(), w)
 	// The report prints first, so an operator sees why; then an explicit
 	// local-sandboxed request that cannot be enforced is a failing check.
 	return enforceSandboxTier(context.Background())
@@ -161,6 +163,73 @@ func holdStatus(ctx context.Context) string {
 		return "none active"
 	}
 	return strings.Join(parts, " · ")
+}
+
+// reportLitestream reports the optional WAL-replication sidecar: whether the
+// binary is installed, what replica target is configured, and the RPO age (the
+// staleness of the newest replicated frame). Nothing here fails the check — the
+// sidecar is optional, so an absent binary or an unconfigured target is a state
+// to read, said plainly. It reads through openStore so the one sweeping opener
+// stays the only door to the database; absent a database, there is nothing to
+// report on the target.
+func reportLitestream(ctx context.Context, w io.Writer) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("litestream sidecar:\n")
+
+	binPath, version := litestream.Presence()
+	switch {
+	case binPath == "":
+		p("  %-18s %s\n", "binary", "not installed (optional) — "+litestream.InstallHint)
+	case version == "":
+		p("  %-18s %s\n", "binary", "found at "+binPath+" (version probe failed)")
+	default:
+		p("  %-18s %s\n", "binary", "found at "+binPath+" ("+version+")")
+	}
+
+	dir, err := dataDir()
+	if err != nil {
+		p("  %-18s %s\n", "target", "unknown ("+err.Error()+")")
+		return
+	}
+	if _, err := os.Stat(filepath.Join(dir, "exocomp.db")); err != nil {
+		p("  %-18s %s\n", "target", "no database yet")
+		return
+	}
+	st, err := openStore()
+	if err != nil {
+		p("  %-18s %s\n", "target", "unknown ("+err.Error()+")")
+		return
+	}
+	defer func() { _ = st.Close() }()
+
+	raw, err := st.GetSetting(ctx, litestream.SettingReplicaTarget)
+	if errors.Is(err, store.ErrNotFound) || raw == "" {
+		p("  %-18s %s\n", "target", "none configured — `exocomp litestream target <uri>`")
+		p("  %-18s %s\n", "RPO age", "unknown (no replica target)")
+		return
+	}
+	if err != nil {
+		p("  %-18s %s\n", "target", "unknown ("+err.Error()+")")
+		return
+	}
+	target, perr := litestream.ParseTarget(raw)
+	if perr != nil {
+		p("  %-18s %s\n", "target", raw+" (UNPARSEABLE: "+perr.Error()+")")
+		return
+	}
+	p("  %-18s %s\n", "target", target.Raw+" ("+string(target.Type)+")")
+
+	_, mtime, ok, ferr := litestream.ReplicaFreshness(target, time.Now().UTC())
+	switch {
+	case ferr != nil:
+		p("  %-18s %s\n", "RPO age", "unknown ("+ferr.Error()+")")
+	case ok:
+		p("  %-18s %s\n", "RPO age", time.Since(mtime).Truncate(time.Second).String()+" (newest replicated frame)")
+	case target.Remote():
+		p("  %-18s %s\n", "RPO age", "unknown — a remote replica's frame age needs the litestream binary")
+	default:
+		p("  %-18s %s\n", "RPO age", "no replicated frames yet — sidecar not running?")
+	}
 }
 
 func dataDir() (string, error) {
