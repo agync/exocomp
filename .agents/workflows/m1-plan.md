@@ -169,6 +169,14 @@ caches + hardening), M2c (gate + maintenance).
 
 # M3 — v1.0
 
+**v1.0 DECLARED (2026-08-22, tag v1.0.0 on ba4fb83).** All four M3c passes + the
+M3c maintenance pass + the M3d acceptance gate are done. The five acceptance
+stories pass end-to-end (test/e2e/v1-acceptance-gate.sh: 6 passed, 0 failed, on a
+Lima node + real tofu/ansible/git/restic). M3d also found and fixed the story-1
+trust gap (exocomp-owned allowed-signers). The post-v1 program
+(Litestream/GoAlert/OpenBao + the v1.1 roadmap in docs/design/v1.1-roadmap.md) may
+now begin.
+
 Stages: M3a (reactive core + sandbox/image + security folds), M3b (web UI + metrics
 + onboarding/wizard + LAN tokens per ADR 0009), M3c (upgrade/rollback + plan policy
 + step ledger per ADR 0008), M3d (v1.0 gate + maintenance). Binding inputs:
