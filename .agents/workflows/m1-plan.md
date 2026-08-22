@@ -405,6 +405,17 @@ five stories, not breadth.
 
 ## M3c maintenance backlog (carry-forwards from the pass 1+2 merges)
 
+**STATUS: M3c COMPLETE (all four passes + two integration fixes merged, tree green).**
+The maintenance pass closed items 1-11 and 13. Two integration fixes landed at the
+merge gate: the ETXTBSY exec-race in runExoBinary (a rare under-load flake + real
+upgrade robustness) and the backup-quiesce CLI wire (mechanism built by the lane,
+reached from the CLI by the integrator). Residuals deferred BEYOND M3c:
+- Item 12 (exercise the nono-tier venv/module-cache grants end-to-end) → folded into
+  the **M3d Lima gate** (the natural place for real-sandbox runs).
+- Item 7 (schema-migrating upgrade stress test) and item 14 (a distinct uv base venv
+  for no-deps sources) → **v1.1** (documented limits; the pre-swap snapshot is the
+  insurance for 7, and 14 is a uniformity nicety).
+
 Folded into the M3c maintenance pass (after pass 3 builds), with pass-2's deferred
 shared-file edits:
 
