@@ -1,6 +1,38 @@
 package tui
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
+
+// RenderWizardIdentity renders step 1 from plain fields, for the `exocomp
+// setup` command (which holds no tui structs of its own).
+func RenderWizardIdentity(machine, operator, topic string, cursor bool) string {
+	return renderWizardIdentity(WizardIdentity{machine: machine, operator: operator, topic: topic, cursor: cursor})
+}
+
+// RenderWizardKit renders step 2 before the identity is minted: the key is
+// sealed only at step 4, so the age-key line is a placeholder until then while
+// the key id and created stamp are already known.
+func RenderWizardKit(machine, typed string) string {
+	now := time.Now()
+	return renderWizardKit(WizardKit{
+		machine: machine,
+		ageKey:  "sealed at step 4 — nothing on disk yet",
+		keyID:   machine + "-" + now.Format("2006-01"),
+		created: now.Format("2006-01-02 15:04 MST"),
+		typed:   typed,
+	})
+}
+
+// RenderWizardStep renders a plain wizard step (3 and 4, which carry no
+// fixture): the standard header and help bar around a titled body.
+func RenderWizardStep(n int, title string, body []string, keysLeft, keysRight string) string {
+	head := []string{lr("exocomp · first run", fmt.Sprintf("step %d of 4", n), 80), hrule(80)}
+	full := append([]string{title, ""}, body...)
+	footer := []string{hrule(80), lr(keysLeft, keysRight, 80)}
+	return frame(24, head, full, footer)
+}
 
 // The first-run wizard renders as full-screen states. Nothing here writes to
 // disk — the steps collect what step 4 will commit, and the copy is explicit
