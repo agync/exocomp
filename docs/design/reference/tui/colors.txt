@@ -1,0 +1,21 @@
+EXOCOMP TUI — COLOR TABLE · v0.2 · 2026-08-22
+destination: theme table in internal/tui
+color is a hint, never the message. the rightmost column is the contract:
+every state must read as text alone. word forms travel with the color in
+every mode; color-only meaning is a review-blocking bug.
+
+SEMANTIC               TRUECOLOR   ANSI-16               NO COLOR — TEXT FORM
+signal-ok              #4FB86B     2  green              ok · SUCCEEDED · in sync
+signal-wait            #E3A008     3  yellow             STALE · WAITING · DRIFT · 3
+signal-fail            #F0645A     9  bright red         FAILED · TIMEOUT · 1 DESTROY
+accent (keys, links)   #BE7BEB     13 bright magenta     brackets already carry it: [a]
+ink · headings         #ECEFF0     15 bright white/bold  bold; degrades to plain
+ink · body             #D6DBDD     7  default fg         —
+dim · meta, disabled   #8A9296     8  bright black*      parenthesized · "disabled" spelled out
+rules                  #4A5254     8  bright black*      ─ characters, structural only
+selected row           bg #1D2426  reverse video         ▸ prefix (ASCII fallback: >)
+running                #4FB86B ●   2  green ● static     the word "running" — dot is decoration
+                       breathes 1.6s
+
+* in 8-color terminals (no bright black), dim falls back to 7 default fg —
+  content is never invisible.

@@ -1,0 +1,9 @@
+ ┌────────────────────────────────────────────────────────┐
+ │ mute notifications                                     │
+ │                                                        │
+ │ for:  15m   1h   4h  until 09:00                       │
+ │ reason (logged): maintenance window▍                   │
+ │                                                        │
+ │ everything is loud again by 15:00 — no indefinite mute │
+ │ [enter] mute · [←/→] expiry · [esc] cancel             │
+ └────────────────────────────────────────────────────────┘

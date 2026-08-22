@@ -358,3 +358,13 @@ accent, signal system, type ramp). Artboard captures + the canvas PDF live under
 The TUI canvas answered its brief in full; adopted decisions and the one new
 engine requirement (notification-mute) recorded in
 [design/tui-brief.md](design/tui-brief.md).
+
+## 2026-08-22 — design handoff v0.2 (TUI) imported
+
+TUI round as text under [design/reference/tui](design/reference/tui/): frames,
+keymap, colors, copy, states — the authoritative artifacts (PNGs for looking
+only). The twelve frames are copied into `internal/tui/testdata/frames/` as
+golden fixtures the M3 TUI View() tests assert against; all pass their declared
+width invariant (80/120/60). Canvas PDF v0.2 committed. Both standing
+corrections (`exocomp` not `exo`, derivation-from-code) honored by the handoff.
+Tokens refreshed from source.

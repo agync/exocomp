@@ -1,0 +1,24 @@
+exocomp · first run                                                  step 1 of 4
+────────────────────────────────────────────────────────────────────────────────
+IDENTITY
+
+machine        aurora (hostname, detected) ✓
+operator       Dana Kim▍
+notify (ntfy)  topic exo-aurora-8f2 · generated · test message sent at step 4
+
+quitting now leaves no trace — nothing is written until step 4
+
+
+
+
+
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+[tab] next field  [enter] continue                              [esc] quit setup

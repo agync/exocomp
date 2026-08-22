@@ -16,3 +16,4 @@ verbatim in [history](../history/index.md).
 | [Persona review](user-feedback.md) | Four-persona adoption review: convergences, M3 scope folds, ranked v1.1 backlog |
 | [Design reference](reference/) | Handoff v0.1: canvas PDF + artboard captures; tokens live at internal/web/tokens.css |
 | [TUI brief](tui-brief.md) | Design brief for the terminal surface: constraints, M3 screens, deliverables |
+| [TUI reference](reference/tui/) | Handoff v0.2: text frames (golden fixtures), keymap, colors, copy, states |

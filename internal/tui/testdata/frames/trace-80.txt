@@ -1,0 +1,9 @@
+trace · disk-pressure @ 14:02:11                                    [esc] closes
+────────────────────────────────────────────────────────────────────────────────
+ 1  rule 'disk-pressure' pattern host=aurora vol=/data                     MATCH
+ 2  reactive pause                                                           off
+ 3  dedup window 15m · last same event 12:51 — outside                      pass
+ 4  silence 'maintenance' until 15:00 · set by dana 13:55                    HIT
+    → outcome SUPPRESSED · nothing ran · counted on the banner
+ 5  approval gate                                                    not reached
+ 6  notify                                                           not reached

@@ -1,0 +1,4 @@
+PLAN STALE — core-infra changed after this plan (drift seen 14:12)
+approval disabled · fail closed · re-plan: exocomp plan core-infra
+
+[r] reject stale plan  [esc] back

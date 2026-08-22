@@ -1,0 +1,24 @@
+exocomp · aurora                                          14:03 UTC+11 · tick 2s
+────────────────────────────────────────────────────────────────────────────────
+NEEDS YOU (2)
+  approval   core-infra plan · 1 DESTROY                      expires 06:41  [5]
+  backup     media-store STALE 26h (max 24h)                      run now  [2]→b
+
+QUEUE   ● 1 running · 2 queued · oldest 4m 12s
+
+BACKUPS                                     WORKSPACES
+  nightly-db      2h   ok                     core-infra   DRIFT · 3
+  media-store    26h   STALE                  dns-edge     in sync
+  configs         6h   ok                     staging      in sync
+  restore drill  12d   ok · monthly
+
+NEXT    02:00 nightly-db · fires in 11h 57m
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗
+[0-6] screens  [enter] open  [p] pause  [m] mute  [q] quit              [?] help

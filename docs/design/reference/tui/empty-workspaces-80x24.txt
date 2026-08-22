@@ -1,0 +1,24 @@
+workspaces · 0                                                      14:03 UTC+11
+────────────────────────────────────────────────────────────────────────────────
+
+
+
+
+
+
+
+
+                               no workspaces yet
+       terraform dirs exocomp watches for drift and plans on your behalf
+
+                 add the first:  exocomp workspace add ./infra
+
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+[0-6] screens  [q] quit                                                 [?] help
