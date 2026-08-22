@@ -57,6 +57,12 @@ type AnsibleOptions struct {
 	ExtraVars map[string]string
 	// Env adds explicit KEY=VALUE entries on top of the inherited allowlist.
 	Env []string
+	// RunSecrets is the credential-plane binding: sealed-secret values exported
+	// as named env for this run alone, so a dynamic-inventory plugin
+	// authenticates under the sandbox from a bound token the global allowlist
+	// would otherwise strip. Resolved by the caller from the envelope; the
+	// driver only injects it.
+	RunSecrets RunSecrets
 	// PrivateDirRoot is where the per-job private directory is created.
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
@@ -115,9 +121,30 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	argv = append(argv, spec.Argv[1:]...)
 	argv = append(argv, extra...)
 
+	explicit, err := a.explicitEnv()
+	if err != nil {
+		return Result{}, err
+	}
+
 	spec.Argv = argv
-	spec.Env = ansibleEnv(os.Environ(), a.opts.Env, a.opts.CollectionsPath)
+	spec.Env = ansibleEnv(os.Environ(), explicit, a.opts.CollectionsPath)
 	return a.inner.Run(ctx, spec, sink)
+}
+
+// explicitEnv is the caller's own env entries plus the credential-plane
+// binding, the run secrets appended last so a bound provider variable wins over
+// an incidental one the operator set by hand.
+func (a *Ansible) explicitEnv() ([]string, error) {
+	secretEnv, err := runSecretEnv(a.opts.RunSecrets)
+	if err != nil {
+		return nil, err
+	}
+	if len(secretEnv) == 0 {
+		return a.opts.Env, nil
+	}
+	out := make([]string, 0, len(a.opts.Env)+len(secretEnv))
+	out = append(out, a.opts.Env...)
+	return append(out, secretEnv...), nil
 }
 
 // binary validates the spec and resolves the executable to run.

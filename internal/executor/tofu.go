@@ -114,6 +114,12 @@ type TofuOptions struct {
 	OfflineProviders bool
 	// Env adds explicit KEY=VALUE entries on top of the inherited allowlist.
 	Env []string
+	// RunSecrets is the credential-plane binding: sealed-secret values exported
+	// as named env (a provider's CLOUDFLARE_API_TOKEN, PROXMOX_VE_TOKEN, or a
+	// TF_VAR_) for this run alone, so mode B runs a provider that needs auth
+	// under the sandbox. Resolved by the caller from the envelope; the driver
+	// only injects it.
+	RunSecrets RunSecrets
 }
 
 // Tofu runs OpenTofu against the control plane's own HTTP state backend. It
@@ -184,7 +190,10 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	if err := os.Mkdir(dataDir, 0o700); err != nil {
 		return Result{}, fmt.Errorf("executor: tofu: data dir: %w", err)
 	}
-	env := t.env(dataDir, cliConfig)
+	env, err := t.env(dataDir, cliConfig)
+	if err != nil {
+		return Result{}, err
+	}
 
 	// One deadline covers init and the operation together; the inner driver
 	// would otherwise grant each of them the job's whole timeout.
@@ -411,7 +420,7 @@ func writeBackendOverride(dir string) (func(EventSink), error) {
 // env builds the child environment: the allowlist over the parent, then the
 // entries that make the run non-interactive, private, and encrypted.
 // cliConfig, when set, is the offline provider configuration's path.
-func (t *Tofu) env(dataDir, cliConfig string) []string {
+func (t *Tofu) env(dataDir, cliConfig string) ([]string, error) {
 	out := make([]string, 0, len(tofuEnvAllow)+8)
 	for _, kv := range os.Environ() {
 		name, _, ok := strings.Cut(kv, "=")
@@ -437,7 +446,16 @@ func (t *Tofu) env(dataDir, cliConfig string) []string {
 	if t.opts.StatePassphrase != "" {
 		out = append(out, "TF_ENCRYPTION="+encryptionConfig(t.opts.StatePassphrase))
 	}
-	return append(out, t.opts.Env...)
+	out = append(out, t.opts.Env...)
+
+	// The bound credentials go on last so a provider variable wins over an
+	// incidental one, and after TF_VAR_ inheritance so a bound TF_VAR_ is the
+	// one tofu reads.
+	secretEnv, err := runSecretEnv(t.opts.RunSecrets)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, secretEnv...), nil
 }
 
 // encryptionConfig is the TF_ENCRYPTION document: pbkdf2 over the derived
