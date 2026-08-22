@@ -177,6 +177,19 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	if a.opts.VenvBin != "" {
 		spec.Env = prependPath(spec.Env, a.opts.VenvBin)
 	}
+
+	// A check-mode run grows a structured, resource-level drift event parsed
+	// from its own PLAY RECAP; a normal run streams unchanged. The recap sink
+	// only observes the same stdout the operator sees, so the dry run's
+	// behaviour and exit code are untouched.
+	if isAnsibleCheck(spec.Argv) {
+		recap := &recapSink{inner: sink}
+		res, err := a.inner.Run(ctx, spec, recap)
+		if err == nil {
+			emitAnsibleCheckOutcome(recap.snapshot(), sink)
+		}
+		return res, err
+	}
 	return a.inner.Run(ctx, spec, sink)
 }
 
