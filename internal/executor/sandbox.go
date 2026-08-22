@@ -91,6 +91,10 @@ type SandboxOptions struct {
 	DataDir string
 	// ReadPaths are granted read-only: tool trees, vendored collections.
 	ReadPaths []string
+	// ReadFiles are single files granted read-only, for a system file a tool
+	// insists on that no directory grant should widen to — /etc/passwd, which
+	// ssh resolves the local user through, above all.
+	ReadFiles []string
 	// WritePaths are granted read+write: the job's private dir, the workspace
 	// checkout, provider caches a run populates.
 	WritePaths []string
@@ -104,6 +108,7 @@ type SandboxProfile struct {
 	Binary       string
 	DataDir      string
 	Read         []string
+	ReadFiles    []string
 	Write        []string
 	ConnectPorts []int
 }
@@ -115,6 +120,7 @@ func ProfileFor(kind string, opts SandboxOptions) SandboxProfile {
 		Binary:       opts.Binary,
 		DataDir:      opts.DataDir,
 		Read:         normalizePaths(opts.ReadPaths),
+		ReadFiles:    normalizePaths(opts.ReadFiles),
 		Write:        normalizePaths(opts.WritePaths),
 		ConnectPorts: slices.Clone(opts.ConnectPorts),
 	}
@@ -222,13 +228,16 @@ func (p SandboxProfile) Command(argv []string) ([]string, error) {
 		return nil, err
 	}
 
-	out := make([]string, 0, len(argv)+2*(len(p.Read)+len(p.Write)+len(p.ConnectPorts))+6)
+	out := make([]string, 0, len(argv)+2*(len(p.Read)+len(p.ReadFiles)+len(p.Write)+len(p.ConnectPorts))+6)
 	// --silent keeps nono's banner out of the job's event stream; --no-audit
 	// keeps its own Merkle ledger out of the data volume, because job_event is
 	// this project's audit surface and a second one would only rot.
 	out = append(out, p.Binary, "run", "--silent", "--no-audit", "--block-net")
 	for _, r := range p.Read {
 		out = append(out, "--read", r)
+	}
+	for _, f := range p.ReadFiles {
+		out = append(out, "--read-file", f)
 	}
 	for _, w := range p.Write {
 		out = append(out, "--allow", w)
@@ -251,24 +260,52 @@ func (p SandboxProfile) Validate() error {
 		return errors.New("executor: sandbox: no data dir to protect; refusing to build a profile")
 	}
 
-	denied := make([]string, 0, len(deniedDataDirNames)+1)
-	denied = append(denied, dataDir)
+	// Both the data dir and a grant may reach the same bytes through a symlink
+	// a lexical compare would miss — a grant on a symlink to the data dir, or a
+	// data dir under a symlinked ancestor. Resolve each and check the resolved
+	// forms as well; a path that does not yet exist keeps its lexical form.
+	realDataDir := resolveSymlinks(dataDir)
+
+	type target struct {
+		lexical, resolved string
+		isDataDir         bool
+	}
+	denied := []target{{lexical: dataDir, resolved: realDataDir, isDataDir: true}}
 	for _, name := range deniedDataDirNames {
-		denied = append(denied, filepath.Join(dataDir, name))
+		lex := filepath.Join(dataDir, name)
+		denied = append(denied, target{lexical: lex, resolved: filepath.Join(realDataDir, name)})
 	}
 
-	for _, grant := range slices.Concat(p.Read, p.Write) {
+	for _, grant := range slices.Concat(p.Read, p.ReadFiles, p.Write) {
 		if !filepath.IsAbs(grant) {
 			return fmt.Errorf("executor: sandbox: grant %q is not absolute", grant)
 		}
+		grantResolved := resolveSymlinks(grant)
 		for _, d := range denied {
-			if covers(grant, d) {
-				return fmt.Errorf("executor: sandbox: grant %q covers %s, which no job may reach",
-					grant, d)
+			if !covers(grant, d.lexical) && !covers(grantResolved, d.resolved) {
+				continue
 			}
+			if d.isDataDir {
+				return fmt.Errorf("executor: sandbox: grant %q is an ancestor of the data dir %s, "+
+					"which no job may reach — a source path may not be an ancestor of the data dir; "+
+					"keep playbooks, inventories, and workspaces outside it",
+					grant, d.lexical)
+			}
+			return fmt.Errorf("executor: sandbox: grant %q covers %s, which no job may reach",
+				grant, d.lexical)
 		}
 	}
 	return nil
+}
+
+// resolveSymlinks returns the fully symlink-resolved form of path, or path
+// cleaned when it cannot be resolved — a grant that does not exist yet has no
+// symlink to follow, and the lexical form is the only honest answer.
+func resolveSymlinks(path string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		return resolved
+	}
+	return filepath.Clean(path)
 }
 
 // covers reports whether a grant on dir reaches path: the same path, or

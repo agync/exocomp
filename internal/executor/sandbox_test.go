@@ -2,6 +2,7 @@ package executor_test
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -217,4 +218,84 @@ type driverFunc func(context.Context, executor.Spec, executor.EventSink) (execut
 func (f driverFunc) Run(ctx context.Context, spec executor.Spec, sink executor.EventSink) (
 	executor.Result, error) {
 	return f(ctx, spec, sink)
+}
+
+// TestSandboxReadFileGrantsAreDistinct: a single-file read grant emits
+// --read-file, so /etc/passwd (which ssh resolves the local user through) is
+// reachable without widening a whole directory into the sandbox.
+func TestSandboxReadFileGrantsAreDistinct(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	full := argvOf(t, executor.KindAnsible, executor.SandboxOptions{
+		DataDir:   data,
+		ReadFiles: []string{"/etc/passwd"},
+	}, []string{"/usr/bin/ansible-playbook", "play.yml"})
+
+	if got := flagValues(full, "--read-file"); !slices.Contains(got, "/etc/passwd") {
+		t.Errorf("--read-file = %v, want it to grant /etc/passwd", got)
+	}
+	if slices.Contains(flagValues(full, "--read"), "/etc/passwd") {
+		t.Errorf("a single-file grant widened into a --read directory grant")
+	}
+}
+
+// TestSandboxGuardRefusesAReadFileOverAKey: a --read-file grant is validated
+// against the denied set too, so it cannot be pointed at the keyring or host key.
+func TestSandboxGuardRefusesAReadFileOverAKey(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	_, err := executor.ProfileFor("shell", executor.SandboxOptions{
+		DataDir:   data,
+		ReadFiles: []string{filepath.Join(data, "keyring.age")},
+	}).Command([]string{"/bin/true"})
+	if err == nil {
+		t.Fatal("a read-file grant on the keyring was accepted")
+	}
+}
+
+// TestSandboxGuardNamesTheFixForASourceAncestor: the refusal an operator hits
+// when a playbook sits above the data dir must point at the fix, not just the
+// symptom.
+func TestSandboxGuardNamesTheFixForASourceAncestor(t *testing.T) {
+	t.Parallel()
+
+	data := "/srv/exocomp/data/exocomp"
+	_, err := executor.ProfileFor(executor.KindAnsible, executor.SandboxOptions{
+		DataDir:   data,
+		ReadPaths: []string{"/srv/exocomp"},
+	}).Command([]string{"/usr/bin/ansible-playbook", "play.yml"})
+	if err == nil {
+		t.Fatal("a grant above the data dir was accepted")
+	}
+	if !strings.Contains(err.Error(), "may not be an ancestor of the data dir") {
+		t.Errorf("refusal does not name the fix: %v", err)
+	}
+}
+
+// TestSandboxGuardResolvesSymlinkedAncestor: the guard compares symlink-resolved
+// paths, so a grant that reaches the data dir only through a symlinked ancestor
+// is still refused. A lexical compare would wave it through.
+func TestSandboxGuardResolvesSymlinkedAncestor(t *testing.T) {
+	t.Parallel()
+
+	realRoot := t.TempDir()
+	dataDir := filepath.Join(realRoot, "exocomp")
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		t.Fatalf("mkdir data dir: %v", err)
+	}
+	// A symlink standing in for a grant that points at the data dir's parent.
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(realRoot, link); err != nil {
+		t.Fatalf("symlink: %v", err)
+	}
+
+	_, err := executor.ProfileFor("shell", executor.SandboxOptions{
+		DataDir:   dataDir,
+		ReadPaths: []string{link},
+	}).Command([]string{"/bin/true"})
+	if err == nil {
+		t.Fatal("a grant reaching the data dir through a symlink was accepted")
+	}
 }
