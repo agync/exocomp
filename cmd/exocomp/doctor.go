@@ -5,14 +5,19 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/sys/unix"
+
+	"exocomp.dev/exocomp/internal/api"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // optionalTool is a tool exocompd shells out to that is not required in M0.
@@ -61,9 +66,96 @@ func runDoctor(w io.Writer) error {
 	}
 
 	reportSandbox(context.Background(), w)
+	reportSelfObservability(context.Background(), w, dataDir)
 	// The report prints first, so an operator sees why; then an explicit
 	// local-sandboxed request that cannot be enforced is a failing check.
 	return enforceSandboxTier(context.Background())
+}
+
+// reportSelfObservability prints whether the daemon can be watched: the
+// metrics endpoint reachable, a dead-man ping configured, and any active
+// silence or mute. None of these fail the check — they are what an operator
+// reads to answer "is anything holding it back, and would I be told if it
+// broke".
+func reportSelfObservability(ctx context.Context, w io.Writer, dataDir string) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("self-observability:\n")
+	p("  %-18s %s\n", "metrics", probeMetrics(ctx, dataDir))
+	p("  %-18s %s\n", "dead-man", deadManStatus())
+	p("  %-18s %s\n", "silence/mute", holdStatus(ctx))
+}
+
+// probeMetrics reads the daemon's recorded address and scrapes /metrics. No
+// address file means no running daemon, which is a state, not a fault.
+func probeMetrics(ctx context.Context, dataDir string) string {
+	addr, err := api.ReadAddress(filepath.Join(dataDir, api.AddressFile))
+	if err != nil {
+		return "unknown (" + err.Error() + ")"
+	}
+	if addr == "" {
+		return "daemon not running (no address file)"
+	}
+	url := "http://" + addr + "/metrics"
+	reqCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return "unreachable (" + err.Error() + ")"
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "unreachable at " + url + " (" + err.Error() + ")"
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<16))
+	if resp.StatusCode != http.StatusOK || !strings.Contains(string(body), "exocomp_up") {
+		return fmt.Sprintf("listener up but /metrics returned %d", resp.StatusCode)
+	}
+	return "reachable at " + url
+}
+
+// deadManStatus reports the dead-man ping. The ping is not yet a subsystem, so
+// the honest answer is that nothing is configured — said plainly rather than
+// implied by silence.
+func deadManStatus() string {
+	return "not configured — no external heartbeat wired yet"
+}
+
+// holdStatus opens the store and reports what is currently holding the daemon
+// back: a global silence is a pause, an active notify mute is a mute. The two
+// are named separately because they mean different things. It opens through
+// openStore (never store.Open directly) so the one sweeping opener stays the
+// only door to the database; absent a database, there is nothing to report.
+func holdStatus(ctx context.Context) string {
+	dir, err := dataDir()
+	if err != nil {
+		return "unknown (" + err.Error() + ")"
+	}
+	if _, err := os.Stat(filepath.Join(dir, "exocomp.db")); err != nil {
+		return "no database yet"
+	}
+	st, err := openStore()
+	if err != nil {
+		return "unknown (" + err.Error() + ")"
+	}
+	defer func() { _ = st.Close() }()
+
+	var parts []string
+	if silences, err := st.ListSilences(ctx, true); err == nil {
+		for _, s := range silences {
+			if s.ScopeKind == store.ScopeGlobal {
+				parts = append(parts, "PAUSED (global silence)")
+				break
+			}
+		}
+	}
+	if mutes, err := st.ListNotifyMutes(ctx, true); err == nil && len(mutes) > 0 {
+		parts = append(parts, fmt.Sprintf("MUTED (%d active)", len(mutes)))
+	}
+	if len(parts) == 0 {
+		return "none active"
+	}
+	return strings.Join(parts, " · ")
 }
 
 func dataDir() (string, error) {
