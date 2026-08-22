@@ -1,0 +1,283 @@
+package queue
+
+import (
+	"context"
+	"errors"
+	"io"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/store"
+)
+
+func readMarkers(t *testing.T, path string) []string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read markers: %v", err)
+	}
+	return strings.Fields(string(data))
+}
+
+func readMarkerFile(path string) ([]byte, error) { return os.ReadFile(path) }
+
+func writeFile(path string) error { return os.WriteFile(path, []byte("go"), 0o600) }
+
+// The sequencer lives in package queue (not queue_test) so its resume path can
+// be driven against a queue rebuilt over the same store file — the in-process
+// stand-in for a daemon restart.
+
+func newSeqQueue(t *testing.T, path string) (*Queue, *store.Store) {
+	t.Helper()
+	st, err := store.Open(path)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	q := New(st, executor.NewShell(), Options{
+		Workers:      2,
+		PollInterval: 10 * time.Millisecond,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	return q, st
+}
+
+func step(kind string, argv ...string) Step {
+	return Step{Kind: kind, Spec: Spec{Runbook: "wf", Kind: "shell", Trigger: "workflow", Argv: argv}}
+}
+
+func runDaemon(t *testing.T, q *Queue) (context.Context, context.CancelFunc, <-chan error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- q.Run(ctx) }()
+	return ctx, cancel, done
+}
+
+func stopDaemon(t *testing.T, cancel context.CancelFunc, done <-chan error) {
+	t.Helper()
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("daemon run: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("daemon did not stop")
+	}
+}
+
+func mustSteps(t *testing.T, st *store.Store, id string) []store.WorkflowStep {
+	t.Helper()
+	steps, err := st.GetWorkflow(context.Background(), id)
+	if err != nil {
+		t.Fatalf("get workflow %s: %v", id, err)
+	}
+	return steps
+}
+
+// TestSequencerRunsSecondStepOnlyAfterFirstSucceeds is the primary gate: step 2
+// runs iff step 1 succeeded, and its effect lands only after step 1's.
+func TestSequencerRunsSecondStepOnlyAfterFirstSucceeds(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	q, st := newSeqQueue(t, filepath.Join(dir, "exocomp.db"))
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	markers := filepath.Join(dir, "markers")
+	// Each step appends its label; ordering in the file proves the sequencing.
+	steps := []Step{
+		step("shell", "/bin/sh", "-c", "echo one >> "+markers),
+		step("shell", "/bin/sh", "-c", "echo two >> "+markers),
+	}
+	if err := seq.Start(ctx, "wf-a", steps); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	_, cancel, done := runDaemon(t, q)
+	defer stopDaemon(t, cancel, done)
+
+	if err := seq.Run(ctx, "wf-a"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	got := readMarkers(t, markers)
+	want := []string{"one", "two"}
+	if len(got) != 2 || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("markers = %v, want %v", got, want)
+	}
+
+	ledger := mustSteps(t, st, "wf-a")
+	for _, s := range ledger {
+		if s.Status != store.StepSucceeded {
+			t.Errorf("step %d is %s, want succeeded", s.StepNo, s.Status)
+		}
+	}
+	if got := store.WorkflowStatus(ledger); got != store.WorkflowSucceeded {
+		t.Errorf("workflow status = %s, want succeeded", got)
+	}
+}
+
+// TestSequencerBlocksAfterAFailure proves a failed step leaves the later steps
+// blocked and the workflow failed, both readable from the ledger, and the
+// blocked step's effect never runs.
+func TestSequencerBlocksAfterAFailure(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	q, st := newSeqQueue(t, filepath.Join(dir, "exocomp.db"))
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	marker := filepath.Join(dir, "step2-ran")
+	steps := []Step{
+		step("shell", "/bin/false"), // fails
+		step("shell", "/usr/bin/touch", marker),
+	}
+	if err := seq.Start(ctx, "wf-b", steps); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	_, cancel, done := runDaemon(t, q)
+	defer stopDaemon(t, cancel, done)
+
+	if err := seq.Run(ctx, "wf-b"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	ledger := mustSteps(t, st, "wf-b")
+	if ledger[0].Status != store.StepFailed {
+		t.Errorf("step 1 is %s, want failed", ledger[0].Status)
+	}
+	if ledger[1].Status != store.StepBlocked {
+		t.Errorf("step 2 is %s, want blocked", ledger[1].Status)
+	}
+	if got := store.WorkflowStatus(ledger); got != store.WorkflowFailed {
+		t.Errorf("workflow status = %s, want failed", got)
+	}
+	if _, err := readMarkerFile(marker); err == nil {
+		t.Fatal("step 2 ran though step 1 failed: its marker exists")
+	}
+
+	// The blocked step's job was withdrawn-equivalent: it stays awaiting, never
+	// claimed, so a running daemon cannot pick it up later.
+	step2, err := st.JobByIdempotencyKey(ctx, stepKey("wf-b", 2))
+	if err != nil {
+		t.Fatalf("find step 2 job: %v", err)
+	}
+	if step2.State != store.StateAwaitingApproval {
+		t.Errorf("step 2 job is %s, want it left un-runnable at awaiting_approval", step2.State)
+	}
+}
+
+// TestSequencerResumesFromLedgerAfterRestart is the daemon-restart gate: a
+// workflow is killed after step 1 succeeds; a fresh queue+sequencer over the
+// same database resumes it, runs step 2 from the ledger, and NEVER re-runs step
+// 1 — proven by step 1's marker appearing exactly once.
+//
+// Mutation check: making ResumeAll a no-op fails this at "post-resume workflow
+// status = running, want succeeded"; the final [one two] marker assertion is
+// what a resume that re-ran step 1 (an extra "one") would trip.
+func TestSequencerResumesFromLedgerAfterRestart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "exocomp.db")
+	markers := filepath.Join(dir, "markers")
+
+	// A gate file makes step 2 block until we allow it, so we can kill the
+	// daemon in the window after step 1 has succeeded and before step 2 runs.
+	gate := filepath.Join(dir, "gate")
+	steps := []Step{
+		step("shell", "/bin/sh", "-c", "echo one >> "+markers),
+		step("shell", "/bin/sh", "-c", "until [ -f "+gate+" ]; do sleep 0.02; done; echo two >> "+markers),
+	}
+
+	ctx := context.Background()
+
+	// First process: run until step 1 has succeeded, then kill mid-workflow.
+	{
+		q, st := newSeqQueue(t, dbPath)
+		seq := NewSequencer(q)
+		if err := seq.Start(ctx, "wf-c", steps); err != nil {
+			t.Fatalf("start: %v", err)
+		}
+		_, cancel, done := runDaemon(t, q)
+
+		seqCtx, seqCancel := context.WithCancel(ctx)
+		seqDone := make(chan error, 1)
+		go func() { seqDone <- seq.Run(seqCtx, "wf-c") }()
+
+		// Wait until step 1 is recorded succeeded in the ledger.
+		waitForStep(t, st, "wf-c", 1, store.StepSucceeded)
+
+		// Kill the sequencer and the daemon — the crash.
+		seqCancel()
+		<-seqDone
+		stopDaemon(t, cancel, done)
+
+		ledger := mustSteps(t, st, "wf-c")
+		if ledger[0].Status != store.StepSucceeded {
+			t.Fatalf("pre-restart step 1 is %s, want succeeded", ledger[0].Status)
+		}
+		if ledger[1].Status == store.StepSucceeded {
+			t.Fatalf("pre-restart step 2 already succeeded; the kill window was missed")
+		}
+	}
+
+	// Let step 2 proceed once it is (re)started.
+	if err := writeFile(gate); err != nil {
+		t.Fatalf("open gate: %v", err)
+	}
+
+	// Second process: a fresh queue+sequencer over the same database resumes.
+	{
+		q, st := newSeqQueue(t, dbPath)
+		seq := NewSequencer(q)
+
+		// The boot job sweep retires the rows the dead process left, exactly as
+		// openJobStore does at daemon start.
+		if _, err := st.SweepInterrupted(ctx); err != nil {
+			t.Fatalf("boot sweep: %v", err)
+		}
+
+		_, cancel, done := runDaemon(t, q)
+		defer stopDaemon(t, cancel, done)
+
+		resumed, err := seq.ResumeAll(ctx)
+		if err != nil {
+			t.Fatalf("resume: %v", err)
+		}
+		if resumed != 1 {
+			t.Fatalf("resumed %d workflows, want 1", resumed)
+		}
+
+		ledger := mustSteps(t, st, "wf-c")
+		if got := store.WorkflowStatus(ledger); got != store.WorkflowSucceeded {
+			t.Fatalf("post-resume workflow status = %s, want succeeded", got)
+		}
+	}
+
+	// Step 1 ran exactly once (not re-run on resume); step 2 ran once.
+	got := readMarkers(t, markers)
+	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
+		t.Fatalf("markers = %v, want [one two] — step 1 re-run would repeat 'one'", got)
+	}
+}
+
+func waitForStep(t *testing.T, st *store.Store, id string, stepNo int, want store.StepStatus) {
+	t.Helper()
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		s, err := st.GetWorkflowStep(context.Background(), id, stepNo)
+		if err == nil && s.Status == want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("workflow %s step %d never reached %s", id, stepNo, want)
+}
