@@ -52,3 +52,5 @@ test/lima/       Fedora lima templates for dummy managed nodes + smoke tests
   disagree, code wins and the correction lands in `docs/log.md`.
 - Verification before completion: run the check, paste the output, then claim done.
 - ADRs record decisions with consequences; one decision per file under `docs/adr/`.
+- Contributing certifies the [DCO](DCO): submitting work is the certification. No
+  `Signed-off-by` trailer — invariant 9 admits no trailers at all.
