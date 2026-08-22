@@ -362,10 +362,14 @@ Scope (v1 — the decided line + the one pulled-in correctness item + cheap fold
    - **Python** — project-root `pyproject.toml` (PEP 621 `[project.dependencies]` /
      `[dependency-groups]`) OR `requirements.txt` (honour the files operators already
      use), `.exocomp/requirements.txt` overrides. Resolved by **uv** into a venv at
-     `cache/python/<manifest-hash>`, wired via `ansible_python_interpreter` + PATH. uv
-     is ALREADY in the distribution (Containerfile runtime stage + MANIFEST.json pin);
-     ADD uv (and git) to `exocomp doctor`'s probe list (today it probes
-     ansible/tofu/restic/age/sops only).
+     `cache/python/<source>/<manifest-hash>`, wired via `ansible_python_interpreter` +
+     PATH. EXECUTION MODEL (ADR 0011): every ansible run executes INSIDE a uv-managed
+     venv scoped to its source — the venv carries ansible-core (project-pinned; default
+     = image toolchain pin) + ansible-runner + declared deps; a no-deps source reuses
+     the shared base venv; DR-path runbooks always use the image toolchain, never a
+     project venv. uv is ALREADY in the distribution (Containerfile runtime stage +
+     MANIFEST.json pin); ADD uv (and git) to `exocomp doctor`'s probe list (today it
+     probes ansible/tofu/restic/age/sops only).
    - **Ansible collections** — `requirements.yml` → `cache/collections` (already works).
    - **Tofu modules** — a persistent per-workspace module cache (registry/git modules
      not re-fetched every init); providers already cached.

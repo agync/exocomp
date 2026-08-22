@@ -38,8 +38,22 @@ source model):
 
 - **Python** — project-root `pyproject.toml` (PEP 621 deps / `[dependency-groups]`) or
   `requirements.txt`; `.exocomp/requirements.txt` overrides. Resolved by **uv** into a
-  managed venv at `cache/python/<manifest-hash>` under the data-volume toolchain dir;
-  the ansible driver points `ansible_python_interpreter` (and PATH) at it.
+  managed venv at `cache/python/<source>/<manifest-hash>` under the data-volume toolchain
+  dir; the ansible driver points `ansible_python_interpreter` (and PATH) at it.
+
+**Execution model — every ansible run executes inside a uv-managed venv scoped to its
+source (project/workspace).** The run is never launched against the bare shared
+interpreter; the driver always activates a uv venv keyed to the source + manifest hash.
+That venv carries `ansible-core` (project-pinned; default = the image toolchain pin from
+ADR 0006) + `ansible-runner` + the source's declared Python deps. Per-source isolation is
+cheap because uv seeds each venv from its shared package cache by hardlink (no re-download,
+offline once cached), and the manifest hash means an unchanged project reuses its venv as a
+no-op. A source that declares NO extra deps resolves to the shared base toolchain venv (also
+uv-managed — there is nothing project-specific to isolate); the moment it declares one, it
+gets its own. This gives the homelab/hybrid case what it wants — a playbook can pin its own
+ansible-core and libraries without disturbing another project — while the **DR-path runbooks
+(backup, restore drill, host onboarding) still execute the image-pinned toolchain, never a
+project venv** (ADR 0006: a fresh restore has the image before it has the volume).
 - **Ansible collections** — `.exocomp/requirements.yml` (or a repo-root `requirements.yml`)
   vendored into `cache/collections` (already built; `ANSIBLE_COLLECTIONS_PATH`).
 - **Tofu providers** — the existing plugin cache + `filesystem_mirror` (already built).
