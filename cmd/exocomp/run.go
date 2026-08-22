@@ -114,6 +114,8 @@ type runSpec struct {
 	// the same whether or not the source declares hooks.
 	passthrough []string
 	extraVars   map[string]string
+	// tolerateUnreachable opts the play step into the degraded outcome.
+	tolerateUnreachable bool
 }
 
 // runWithHooks resolves a source's hooks + gate and composes them with the main
@@ -211,16 +213,17 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 	steps = append(steps, queue.Step{
 		Kind: executor.KindAnsible,
 		Spec: queue.Spec{
-			Runbook:          "playbook",
-			Kind:             executor.KindAnsible,
-			Trigger:          "run",
-			Argv:             executor.AnsibleArgv(playbook, invPath, rs.passthrough...),
-			Dir:              root,
-			VaultProject:     rs.vaultProject,
-			RunSecretBinding: rs.runSecrets,
-			Inventory:        invName,
-			ExtraVars:        rs.extraVars,
-			Timeout:          rs.timeout,
+			Runbook:             "playbook",
+			Kind:                executor.KindAnsible,
+			Trigger:             "run",
+			Argv:                executor.AnsibleArgv(playbook, invPath, rs.passthrough...),
+			Dir:                 root,
+			VaultProject:        rs.vaultProject,
+			RunSecretBinding:    rs.runSecrets,
+			Inventory:           invName,
+			ExtraVars:           rs.extraVars,
+			TolerateUnreachable: rs.tolerateUnreachable,
+			Timeout:             rs.timeout,
 		},
 	})
 

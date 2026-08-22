@@ -19,6 +19,11 @@ const (
 type ScheduleArgs struct {
 	Argv   []string `json:"argv,omitempty"`
 	Target string   `json:"target,omitempty"`
+	// TolerateUnreachable, on a kind-play schedule, runs each fire under the
+	// unreachable-tolerant outcome: a converge whose only non-success is offline
+	// hosts settles degraded, not failed, so a scheduled play against a fleet
+	// with a roaming machine does not page every time that machine sleeps.
+	TolerateUnreachable bool `json:"tolerate_unreachable,omitempty"`
 }
 
 // Schedule is one row of the schedule table.

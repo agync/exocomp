@@ -39,6 +39,7 @@ func newPlaybookCmd() *cobra.Command {
 		extraVars    []string
 		check        bool
 		diff         bool
+		tolerateUnre bool
 	)
 
 	run := &cobra.Command{
@@ -79,28 +80,30 @@ func newPlaybookCmd() *cobra.Command {
 				}
 				if hooked {
 					return runWithHooks(cmd.Context(), out, warn, runSpec{
-						sourceName:   sourceName,
-						playbook:     args[0],
-						inventory:    inventory,
-						vaultProject: vaultProject,
-						runSecrets:   runSecrets,
-						timeout:      timeout,
-						wait:         wait,
-						passthrough:  passthrough,
-						extraVars:    vars,
+						sourceName:          sourceName,
+						playbook:            args[0],
+						inventory:           inventory,
+						vaultProject:        vaultProject,
+						runSecrets:          runSecrets,
+						timeout:             timeout,
+						wait:                wait,
+						passthrough:         passthrough,
+						extraVars:           vars,
+						tolerateUnreachable: tolerateUnre,
 					})
 				}
 				args[0] = pb
 			}
 
 			code, err := runPlaybook(cmd.Context(), out, warn, playbookSpec{
-				playbook:     args[0],
-				inventory:    inventory,
-				vaultProject: vaultProject,
-				runSecrets:   runSecrets,
-				timeout:      timeout,
-				passthrough:  passthrough,
-				extraVars:    vars,
+				playbook:            args[0],
+				inventory:           inventory,
+				vaultProject:        vaultProject,
+				runSecrets:          runSecrets,
+				timeout:             timeout,
+				passthrough:         passthrough,
+				extraVars:           vars,
+				tolerateUnreachable: tolerateUnre,
 			})
 			if err != nil {
 				return err
@@ -137,6 +140,8 @@ func newPlaybookCmd() *cobra.Command {
 		"ansible --check: dry run; emits the structured config-drift outcome as a job event")
 	run.Flags().BoolVar(&diff, "diff", false,
 		"ansible --diff: show what would change (pairs with --check)")
+	run.Flags().BoolVar(&tolerateUnre, "tolerate-unreachable", false,
+		"a run whose only non-success is unreachable hosts settles degraded, not failed, and does not page (a task failure on a reachable host still fails)")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -158,6 +163,8 @@ type playbookSpec struct {
 	// extraVars are `-e key=val` variables, kept off argv and written to a
 	// run-private file by the ansible driver.
 	extraVars map[string]string
+	// tolerateUnreachable opts the run into the degraded outcome.
+	tolerateUnreachable bool
 }
 
 // ansibleFlagValue is a shell-free argv token: no NUL or newline, which are the
@@ -277,15 +284,16 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	// The vault project and binding names travel with the job, not the material
 	// they resolve: a daemon that claims this row derives the same secrets.
 	queued := queue.Spec{
-		Runbook:          "playbook",
-		Kind:             executor.KindAnsible,
-		Trigger:          "manual",
-		Argv:             executor.AnsibleArgv(playbook, inventory, spec.passthrough...),
-		VaultProject:     spec.vaultProject,
-		RunSecretBinding: spec.runSecrets,
-		Inventory:        invName,
-		ExtraVars:        spec.extraVars,
-		Timeout:          spec.timeout,
+		Runbook:             "playbook",
+		Kind:                executor.KindAnsible,
+		Trigger:             "manual",
+		Argv:                executor.AnsibleArgv(playbook, inventory, spec.passthrough...),
+		VaultProject:        spec.vaultProject,
+		RunSecretBinding:    spec.runSecrets,
+		Inventory:           invName,
+		ExtraVars:           spec.extraVars,
+		TolerateUnreachable: spec.tolerateUnreachable,
+		Timeout:             spec.timeout,
 	}
 
 	var final store.Job
@@ -297,16 +305,28 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	if err != nil {
 		return 0, err
 	}
+	return reportJobOutcome(out, final), nil
+}
+
+// reportJobOutcome prints the terminal job's one-line summary and maps it to a
+// shell exit code. A degraded success (an unreachable-tolerant run that settled
+// partial) is a success: it prints "(degraded)" and exits 0, so a tolerated
+// offline host is not a failure to the caller or to whatever watches the code.
+func reportJobOutcome(out io.Writer, final store.Job) int {
+	stateLabel := string(final.State)
+	if final.Partial {
+		stateLabel += " (degraded)"
+	}
 	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
-		final.ID, final.State, jobDuration(final))
+		final.ID, stateLabel, jobDuration(final))
 
 	switch {
 	case final.State == store.StateSucceeded:
-		return 0, nil
+		return 0
 	case final.ExitCode != nil && *final.ExitCode != 0:
-		return *final.ExitCode, nil
+		return *final.ExitCode
 	default:
-		return 1, nil
+		return 1
 	}
 }
 
@@ -419,7 +439,7 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	if err != nil {
 		return store.Job{}, err
 	}
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars)
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)

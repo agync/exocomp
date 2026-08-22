@@ -40,6 +40,7 @@ func newScheduleAddCmd() *cobra.Command {
 		concurrencyKey string
 		jitter         int
 		check          bool
+		tolerateUnre   bool
 	)
 
 	cmd := &cobra.Command{
@@ -55,13 +56,21 @@ func newScheduleAddCmd() *cobra.Command {
 			"Kind play with --check is the config-drift schedule: it fires the play in " +
 			"ansible check mode (--check --diff) on the cron, so every fire emits the " +
 			"structured 'would change' outcome as a job event without touching a host " +
-			"— the config twin of a tofu-plan drift schedule (docs/operations/playbook-run.md).",
+			"— the config twin of a tofu-plan drift schedule (docs/operations/playbook-run.md).\n\n" +
+			"Kind play with --tolerate-unreachable is the roaming-fleet converge: a fire " +
+			"whose only non-success is unreachable hosts settles degraded (not failed) and " +
+			"does not page, so a scheduled site.yml against a fleet with a laptop that sleeps " +
+			"keeps converging the online hosts instead of paging every night " +
+			"(docs/operations/adhoc-and-partial.md).",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
 
 			if check && kind != sched.KindPlay {
 				return errors.New("schedule add: --check applies to kind play (the config-drift schedule)")
+			}
+			if tolerateUnre && kind != sched.KindPlay {
+				return errors.New("schedule add: --tolerate-unreachable applies to kind play")
 			}
 
 			var scheduleArgs store.ScheduleArgs
@@ -92,6 +101,7 @@ func newScheduleAddCmd() *cobra.Command {
 				}
 				scheduleArgs.Argv = argv
 				scheduleArgs.Target = target
+				scheduleArgs.TolerateUnreachable = tolerateUnre
 				if check {
 					// The config-drift schedule: --check --diff go after the
 					// playbook, where AnsibleArtifactArgv reads them as the
@@ -144,6 +154,7 @@ func newScheduleAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell/play kinds: serialize against jobs sharing this key")
 	cmd.Flags().IntVar(&jitter, "jitter", 0, "sleep a random number of seconds up to this before enqueueing")
 	cmd.Flags().BoolVar(&check, "check", false, "play kind: run in ansible check mode (--check --diff) as the config-drift schedule")
+	cmd.Flags().BoolVar(&tolerateUnre, "tolerate-unreachable", false, "play kind: a fire whose only non-success is unreachable hosts settles degraded, not failed (a roaming host asleep does not page)")
 	_ = cmd.MarkFlagRequired("cron")
 	_ = cmd.MarkFlagRequired("kind")
 	return cmd

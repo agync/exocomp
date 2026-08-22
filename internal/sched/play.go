@@ -47,12 +47,13 @@ func (s *Scheduler) playSpec(ctx context.Context, sc store.Schedule) (queue.Spec
 	s.log.Info("sched: play on standing inventory",
 		"schedule", sc.Name, "inventory", inventory, "hosts", hosts)
 	return queue.Spec{
-		Runbook:        sc.Name,
-		Kind:           executor.KindAnsible,
-		Trigger:        Trigger,
-		Argv:           executor.AnsibleArtifactArgv(sc.Args.Argv[0], sc.Args.Argv[1:]...),
-		Inventory:      inventory,
-		ConcurrencyKey: sc.ConcurrencyKey,
+		Runbook:             sc.Name,
+		Kind:                executor.KindAnsible,
+		Trigger:             Trigger,
+		Argv:                executor.AnsibleArtifactArgv(sc.Args.Argv[0], sc.Args.Argv[1:]...),
+		Inventory:           inventory,
+		ConcurrencyKey:      sc.ConcurrencyKey,
+		TolerateUnreachable: sc.Args.TolerateUnreachable,
 	}, nil
 }
 
