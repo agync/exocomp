@@ -51,3 +51,84 @@ func TestQuadletNamesTheSubcommand(t *testing.T) {
 		t.Error("the quadlet no longer mounts the data volume the env above assumes")
 	}
 }
+
+// TestContainerfileBakesTheToolchain: ADR 0006's determinism half. The image
+// resolves its own pinned toolchain, and the operator escape hatch stays
+// opt-in, so a restore comes back with the versions that produced the backup.
+func TestContainerfileBakesTheToolchain(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+
+	for _, want := range []string{
+		"uv python install",
+		"uv tool install",
+		"--constraints /tmp/constraints.txt",
+		"ansible-runner",
+		"UV_TOOL_DIR=/opt/exocomp/toolchain",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Containerfile does not %q; the Python layer is not the pinned one", want)
+		}
+	}
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.Contains(line, "UV_TOOL_DIR=/var/lib") {
+			t.Error("the image's default toolchain points at the data volume; " +
+				"a fresh restore has the image before it has the volume (ADR 0006)")
+		}
+	}
+	if !strings.Contains(body, "HOME=/home/exocomp") {
+		t.Error("the image gives its uid no home; ansible-core refuses to start without one")
+	}
+}
+
+// TestEveryFetchedToolIsPinnedByDigest: a tool downloaded at build time is
+// supply chain, and a version tag is not a pin. Every artifact the build
+// fetches has to be checked against a recorded sha256 for both architectures.
+func TestEveryFetchedToolIsPinnedByDigest(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+	digests := readPackagingFile(t, "tool-digests.txt")
+
+	if !strings.Contains(body, "sha256sum -c -") {
+		t.Fatal("the build does not verify what it downloads")
+	}
+	for _, tool := range []string{"tofu", "restic", "age", "sops", "nono"} {
+		if !strings.Contains(body, "fetch "+tool+" ") {
+			t.Errorf("the build does not fetch %s through the checked path", tool)
+		}
+		for _, arch := range []string{"amd64", "arm64"} {
+			if !strings.Contains(digests, tool+" "+arch+" ") {
+				t.Errorf("no sha256 pinned for %s on %s", tool, arch)
+			}
+		}
+	}
+}
+
+// TestConstraintsPinTheResolvedSet: `uv tool install` consumes no lockfile, so
+// the committed constraints file is what keeps a transitive dependency from
+// moving between two builds of the same tag (ADR 0006).
+func TestConstraintsPinTheResolvedSet(t *testing.T) {
+	body := readPackagingFile(t, "toolchain-constraints.txt")
+
+	pinned := 0
+	for line := range strings.SplitSeq(body, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		if !strings.Contains(line, "==") {
+			t.Errorf("constraints line %q is not an exact pin", line)
+			continue
+		}
+		pinned++
+	}
+	if pinned < 10 {
+		t.Errorf("only %d dependencies pinned; the resolved set is larger than that", pinned)
+	}
+	for _, want := range []string{"ansible-core==", "ansible-runner==", "cryptography==", "jinja2=="} {
+		if !strings.Contains(body, want) {
+			t.Errorf("constraints do not pin %s", strings.TrimSuffix(want, "=="))
+		}
+	}
+}

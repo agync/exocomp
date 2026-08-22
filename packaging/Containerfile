@@ -7,17 +7,108 @@ RUN CGO_ENABLED=0 go build -o /out/exocompd ./cmd/exocomp
 
 FROM ghcr.io/astral-sh/uv:0.9.7 AS uv
 
-FROM registry.fedoraproject.org/fedora-minimal:44 AS runtime
-# uv provisions the Python/ansible toolchain per ADR 0006 (uv python install
-# plus a constraints-pinned tool install); that layer lands in a later
-# milestone — only the pinned uv binary ships in M0.
+# The pinned subprocess tools (docs/sbom/bill-of-materials.md). Each one is
+# fetched over TLS and then checked against a sha256 recorded here, so the
+# build fails on a substituted artifact rather than shipping it. git is the
+# one exception: it comes from Fedora's signed repository in the runtime stage
+# because upstream publishes no binary release to pin, and its resolved
+# version is recorded in MANIFEST.json instead.
+FROM registry.fedoraproject.org/fedora-minimal:44 AS tools
+ARG TARGETARCH=amd64
+ARG TOFU_VERSION=1.11.5
+ARG RESTIC_VERSION=0.19.1
+ARG AGE_VERSION=1.3.1
+ARG SOPS_VERSION=3.13.3
+ARG NONO_VERSION=0.74.0
+RUN microdnf -y install --setopt=install_weak_deps=0 ca-certificates curl tar gzip bzip2 unzip \
+    && microdnf clean all
+WORKDIR /tools
+COPY packaging/tool-digests.txt .
+# One shell so a failed checksum stops the build: sha256sum -c exits non-zero
+# and `set -e` turns that into a failed layer.
+RUN set -eu; \
+    fetch() { \
+      name="$1"; url="$2"; \
+      digest="$(grep "^${name} ${TARGETARCH} " tool-digests.txt | cut -d' ' -f3)"; \
+      [ -n "$digest" ] || { echo "no digest pinned for $name/$TARGETARCH" >&2; exit 1; }; \
+      curl -fsSL --retry 3 -o "/tmp/$name.dl" "$url"; \
+      echo "$digest  /tmp/$name.dl" | sha256sum -c -; \
+    }; \
+    mkdir -p /out/bin; \
+    fetch tofu "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.zip"; \
+    unzip -j -o /tmp/tofu.dl tofu -d /out/bin; \
+    fetch restic "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${TARGETARCH}.bz2"; \
+    bunzip2 -c /tmp/restic.dl > /out/bin/restic; \
+    fetch age "https://github.com/FiloSottile/age/releases/download/v${AGE_VERSION}/age-v${AGE_VERSION}-linux-${TARGETARCH}.tar.gz"; \
+    tar -xzf /tmp/age.dl -C /tmp age/age age/age-keygen; \
+    mv /tmp/age/age /tmp/age/age-keygen /out/bin/; \
+    fetch sops "https://github.com/getsops/sops/releases/download/v${SOPS_VERSION}/sops-v${SOPS_VERSION}.linux.${TARGETARCH}"; \
+    cp /tmp/sops.dl /out/bin/sops; \
+    case "$TARGETARCH" in amd64) nono_arch=x86_64 ;; arm64) nono_arch=aarch64 ;; *) exit 1 ;; esac; \
+    fetch nono "https://github.com/nolabs-ai/nono/releases/download/v${NONO_VERSION}/nono-v${NONO_VERSION}-${nono_arch}-unknown-linux-gnu.tar.gz"; \
+    tar -xzf /tmp/nono.dl -C /tmp; \
+    find /tmp -maxdepth 3 -type f -name nono -exec cp {} /out/bin/nono \; ; \
+    chmod 0755 /out/bin/*; \
+    rm -rf /tmp/*.dl /tmp/age
+
+# The Python half, built with uv (ADR 0006): a standalone CPython plus one
+# keyed tool install, pinned by the committed constraints file so the resolved
+# set is the same on every build.
+FROM registry.fedoraproject.org/fedora-minimal:44 AS toolchain
+ARG PYTHON_VERSION=3.14.0
+ARG ANSIBLE_CORE_VERSION=2.21.3
+ARG ANSIBLE_RUNNER_VERSION=2.4.3
 COPY --from=uv /uv /usr/local/bin/uv
+ENV UV_PYTHON_INSTALL_DIR=/opt/exocomp/python \
+    UV_TOOL_DIR=/opt/exocomp/toolchain \
+    UV_TOOL_BIN_DIR=/opt/exocomp/bin \
+    UV_CACHE_DIR=/tmp/uv-cache \
+    UV_NO_PROGRESS=1
+COPY packaging/toolchain-constraints.txt /tmp/constraints.txt
+RUN set -eu; \
+    uv python install "${PYTHON_VERSION}"; \
+    uv tool install \
+      --python "${PYTHON_VERSION}" \
+      --constraints /tmp/constraints.txt \
+      "ansible-core==${ANSIBLE_CORE_VERSION}" \
+      --with "ansible-runner==${ANSIBLE_RUNNER_VERSION}"; \
+    rm -rf "${UV_CACHE_DIR}"; \
+    /opt/exocomp/bin/ansible-playbook --version
+
+FROM registry.fedoraproject.org/fedora-minimal:44 AS runtime
+# git is a subprocess, never linked (the GPL boundary in the bill of
+# materials), and openssh-clients is what ansible connects to hosts with.
+RUN microdnf -y install --setopt=install_weak_deps=0 ca-certificates git-core openssh-clients \
+    && microdnf clean all
+COPY --from=uv /uv /usr/local/bin/uv
+COPY --from=tools /out/bin/ /usr/local/bin/
+COPY --from=toolchain /opt/exocomp /opt/exocomp
 COPY --from=build /out/exocompd /usr/local/bin/exocompd
-RUN mkdir -p /var/lib/exocomp && chown 1000:1000 /var/lib/exocomp
+# The baked toolchain is what the image resolves, and what DR-path runbooks
+# always execute (ADR 0006). The operator escape hatch is opt-in: setting
+# UV_TOOL_DIR=/var/lib/exocomp/toolchain and UV_CACHE_DIR=/var/lib/exocomp/uv
+# on the container moves `uv tool install` into the data volume, so a switched
+# ansible-core survives restarts and rides inside every backup. It is not the
+# default here, because a fresh restore has the image before it has the volume.
+ENV PATH=/opt/exocomp/bin:/usr/local/bin:/usr/bin:/bin
+RUN set -eu; \
+    printf '{\n  "ansible_core": "2.21.3",\n  "ansible_runner": "2.4.3",\n  "python": "3.14.0",\n  "tofu": "1.11.5",\n  "restic": "0.19.1",\n  "age": "1.3.1",\n  "sops": "3.13.3",\n  "nono": "0.74.0",\n  "uv": "0.9.7",\n  "git": "%s"\n}\n' \
+      "$(git --version | awk '{print $3}')" > /opt/exocomp/MANIFEST.json
+# 0700 is the only mode the data dir may have: it holds host.key and the
+# keyring, and `exocomp doctor` refuses to run against anything wider.
+#
+# uid 1000 also needs a home. Without one ansible-core resolves ~/.ansible to
+# /.ansible and refuses to start, and the sandbox launcher cannot write the
+# session state it keeps under $HOME. It is deliberately not the data volume:
+# tool scratch has no business inside what every backup copies.
+RUN mkdir -p /var/lib/exocomp /home/exocomp \
+    && chown 1000:1000 /var/lib/exocomp /home/exocomp \
+    && chmod 0700 /var/lib/exocomp /home/exocomp
 VOLUME ["/var/lib/exocomp"]
 # The data dir is <XDG_DATA_HOME>/exocomp, and uid 1000 has no home here:
 # without this the daemon resolves it under /, cannot create it, and exits.
-ENV XDG_DATA_HOME=/var/lib
+ENV XDG_DATA_HOME=/var/lib \
+    HOME=/home/exocomp
 USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/exocompd"]
 # exocompd is the CLI; the daemon is one of its subcommands. Without this the

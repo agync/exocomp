@@ -1,0 +1,36 @@
+# Resolved by `uv pip compile --universal --python-version 3.14` from the pins in
+# Containerfile. Regenerate with the same command when a pin moves; the image
+# build passes this file to `uv tool install -c`, so an unpinned transitive
+# dependency cannot drift between builds (ADR 0006).
+ansible-core==2.21.3
+    # via -r tool-req.in
+ansible-runner==2.4.3
+    # via -r tool-req.in
+cffi==2.1.1 ; platform_python_implementation != 'PyPy'
+    # via cryptography
+cryptography==50.0.0
+    # via ansible-core
+jinja2==3.1.6
+    # via ansible-core
+lockfile==0.12.2
+    # via python-daemon
+markupsafe==3.0.3
+    # via jinja2
+packaging==26.3
+    # via
+    #   ansible-core
+    #   ansible-runner
+pexpect==4.9.0
+    # via ansible-runner
+ptyprocess==0.7.0
+    # via pexpect
+pycparser==3.0 ; implementation_name != 'PyPy' and platform_python_implementation != 'PyPy'
+    # via cffi
+python-daemon==3.1.2
+    # via ansible-runner
+pyyaml==6.0.3
+    # via
+    #   ansible-core
+    #   ansible-runner
+resolvelib==1.2.1
+    # via ansible-core
