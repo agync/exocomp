@@ -137,6 +137,37 @@ func TestNtfyRefusesABarePublicTopic(t *testing.T) {
 	}
 }
 
+// TestNtfyRefusesPublicHostVariants pins the normalization: a tokenless public
+// topic must be refused however the host is spelled. url.Hostname does not
+// case-fold or strip a trailing dot, so "NTFY.SH" and "ntfy.sh." both reach the
+// public server, and a subdomain does too — none may slip past the check.
+func TestNtfyRefusesPublicHostVariants(t *testing.T) {
+	t.Parallel()
+
+	for _, host := range []string{
+		"https://NTFY.SH",
+		"https://ntfy.sh.",
+		"https://Ntfy.Sh./",
+		"https://www.ntfy.sh",
+	} {
+		if _, err := notify.NewNtfy(notify.NtfyOptions{BaseURL: host, Topic: "exocomp-7f3a"}); err == nil {
+			t.Errorf("%s: tokenless public topic accepted, want a refusal", host)
+		}
+		if _, err := notify.NewNtfy(notify.NtfyOptions{
+			BaseURL: host, Topic: "exocomp-7f3a", Token: "tk_secret",
+		}); err != nil {
+			t.Errorf("%s with a token: %v", host, err)
+		}
+	}
+
+	// A look-alike host that only ends in the same letters is not ntfy.sh.
+	if _, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: "https://notntfy.sh", Topic: "exocomp",
+	}); err != nil {
+		t.Fatalf("host merely ending in the public name must not be treated as public: %v", err)
+	}
+}
+
 func TestLoadNtfyFromSealedSecrets(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

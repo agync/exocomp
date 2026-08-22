@@ -22,9 +22,19 @@ const (
 	SecretNtfyToken = "ntfy/token"
 )
 
-// publicNtfyHosts are the hosts whose topics are public, unauthenticated
+// publicNtfyBase is the public ntfy service. Its topics are unauthenticated
 // channels: anyone who guesses the topic can read it and publish to it.
-var publicNtfyHosts = map[string]bool{"ntfy.sh": true, "www.ntfy.sh": true}
+const publicNtfyBase = "ntfy.sh"
+
+// isPublicNtfyHost reports whether host is ntfy.sh or any host under it. It
+// normalizes first: url.Hostname does not case-fold ("NTFY.SH") or strip the
+// trailing dot of a fully-qualified name ("ntfy.sh."), and either spelling
+// reaches the public server while a raw comparison would miss it and wave the
+// tokenless configuration through.
+func isPublicNtfyHost(host string) bool {
+	host = strings.ToLower(strings.TrimSuffix(host, "."))
+	return host == publicNtfyBase || strings.HasSuffix(host, "."+publicNtfyBase)
+}
 
 // ntfyTimeout bounds one publish. A phone that is not reachable must not hold
 // a guardrail decision open.
@@ -75,7 +85,7 @@ func NewNtfy(opts NtfyOptions) (*Ntfy, error) {
 	if base.Scheme != "http" && base.Scheme != "https" {
 		return nil, fmt.Errorf("notify: ntfy server URL scheme %q is not http or https", base.Scheme)
 	}
-	if publicNtfyHosts[base.Hostname()] && opts.Token == "" {
+	if isPublicNtfyHost(base.Hostname()) && opts.Token == "" {
 		return nil, fmt.Errorf("notify: refusing topic %q on the public server %s without an "+
 			"access token: approval links are bearer capabilities, and a public topic is "+
 			"readable and publishable by anyone who guesses it — self-host ntfy, or seal %s",
