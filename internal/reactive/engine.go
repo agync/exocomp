@@ -316,7 +316,12 @@ func (e *Engine) gateAction(ctx context.Context, ev Event, raw []byte, rule stor
 		&job.ID, *trace)
 }
 
-// withdrawResolved cancels the approvals a now-cleared condition raised.
+// withdrawResolved cancels the approvals a now-cleared condition raised, but
+// only the ones this resolve has the authority to cancel. A bare resolve
+// carries no approval credential, so its authority is the rule that raised the
+// approval: the resolve must be admitted by that rule and match it as a firing.
+// A forged resolve that shares only the dedup key — stripped of the labels the
+// rule fired on — cannot cancel a remediation it never had a rule for (R2).
 func (e *Engine) withdrawResolved(ctx context.Context, ev Event, trace *Trace) (int, error) {
 	pending, err := e.store.PendingApprovalsByDedupKey(ctx, ev.DedupKey)
 	if err != nil {
@@ -329,6 +334,15 @@ func (e *Engine) withdrawResolved(ctx context.Context, ev Event, trace *Trace) (
 
 	withdrawn := 0
 	for _, a := range pending {
+		ok, why, err := e.resolveAuthorized(ctx, ev, a)
+		if err != nil {
+			return withdrawn, err
+		}
+		if !ok {
+			trace.add(StepResolve, ev.DedupKey, false,
+				"resolve refused for approval %d: %s", a.ID, why)
+			continue
+		}
 		if _, err := e.store.DecideApproval(ctx, a.ID, store.ApprovalWithdrawn, "resolve",
 			"the alert resolved while the approval was pending"); err != nil {
 			if errors.Is(err, store.ErrApprovalDecided) {
@@ -345,6 +359,56 @@ func (e *Engine) withdrawResolved(ctx context.Context, ev Event, trace *Trace) (
 		withdrawn++
 	}
 	return withdrawn, nil
+}
+
+// resolveAuthorized reports whether a resolve event may withdraw one pending
+// approval. The authority is the rule that raised the approval: the resolve
+// must come from the same source, be admitted by that rule's source filter, and
+// match the rule when its status is read as firing — i.e. it is the same
+// condition clearing, not an unrelated event that merely shares the dedup key.
+// A rule that no longer exists or will not compile authorizes nothing; the
+// approval then fails closed at its TTL rather than being cancelled by a
+// resolve that cannot be scoped.
+func (e *Engine) resolveAuthorized(ctx context.Context, ev Event, a store.Approval) (bool, string, error) {
+	origin, err := e.store.EventByJobID(ctx, a.JobID)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, "no event raised this approval", nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	if origin.MatchedRule == "" {
+		return false, "the approval was not raised by a rule", nil
+	}
+	if origin.Source != ev.Source {
+		return false, "resolve source does not match the source that raised it", nil
+	}
+
+	rule, err := e.store.GetRule(ctx, origin.MatchedRule)
+	if errors.Is(err, store.ErrNotFound) {
+		return false, "the rule that raised it no longer exists", nil
+	}
+	if err != nil {
+		return false, "", err
+	}
+	if !Applies(rule, ev) {
+		return false, "the rule that raised it does not admit this source", nil
+	}
+
+	prg, err := Compile(rule.CELExpr)
+	if err != nil {
+		return false, "the rule that raised it no longer compiles", nil
+	}
+	probe := ev
+	probe.Status = StatusFiring
+	matched, err := prg.Match(ctx, probe)
+	if err != nil {
+		return false, "the rule that raised it could not evaluate the resolve", nil
+	}
+	if !matched {
+		return false, "the resolve does not match the condition the rule fired on", nil
+	}
+	return true, "", nil
 }
 
 // record writes the one event row this ingestion produces, scrubbing sealed

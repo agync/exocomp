@@ -181,6 +181,20 @@ func (s *Store) LastEventByDedupKey(ctx context.Context, key string) (Event, err
 	return e, nil
 }
 
+// EventByJobID returns the event that named a job, or ErrNotFound. A job is
+// named by exactly one event — the one whose rule enqueued or gated it — so
+// this recovers which rule and source raised a pending approval, which is how
+// a resolve is scoped to the rule that owns the job it would cancel (R2).
+func (s *Store) EventByJobID(ctx context.Context, jobID int64) (Event, error) {
+	row := s.db.QueryRowContext(ctx, `SELECT `+eventColumns+` FROM event
+		WHERE job_id = ? ORDER BY received_at DESC, id DESC LIMIT 1`, jobID)
+	e, err := scanEvent(row)
+	if err != nil {
+		return Event{}, wrap("event by job id", err)
+	}
+	return e, nil
+}
+
 // CountEventsByDedupKey counts every event carrying key, whatever its outcome.
 func (s *Store) CountEventsByDedupKey(ctx context.Context, key string) (int, error) {
 	var n int

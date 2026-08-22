@@ -121,7 +121,13 @@ Against the [approval surface contract](../design/ui-brief.md):
 
 An alert that resolves withdraws the approvals its firing raised and cancels
 their jobs, before anything else looks at it: approving a restart for a host
-that came back on its own is the one outcome nobody wants.
+that came back on its own is the one outcome nobody wants. A bare resolve
+carries no approval credential, so its authority to cancel is the rule that
+raised the approval: the resolve must come from the same source, be admitted by
+that rule's source filter, and match the rule when its status is read as firing.
+A forged resolve that shares only the dedup key — stripped of the labels the
+rule fired on — matches no rule and cancels nothing; the approval then fails
+closed at its TTL. This is the R2 scoping.
 
 ## Drift
 

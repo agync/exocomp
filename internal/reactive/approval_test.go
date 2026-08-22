@@ -365,6 +365,72 @@ func TestResolveWithdrawsAPendingApproval(t *testing.T) {
 	}
 }
 
+// TestForgedResolveCannotWithdrawAnApproval is the R2 red-team repro: a
+// resolve event withdraws the approvals its firing raised, and the old path did
+// so on the dedup key alone, before any rule looked at it. An attacker who can
+// reach the hook forges a "resolved" that shares the key but carries none of
+// the labels the rule fired on, and the remediation is cancelled with no
+// approval credential and no matching rule. The withdrawal must be scoped to
+// the rule that raised the approval: a resolve that would not have matched that
+// rule as a firing has no authority to cancel its job.
+func TestForgedResolveCannotWithdrawAnApproval(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	// The rule fires only on a critical DiskFull and requires approval.
+	h.addRule(t, store.NewRule{
+		Name:            "restart",
+		CELExpr:         `event.name == "DiskFull" && event.severity == "critical"`,
+		ActionKind:      store.ActionShell,
+		Action:          store.RuleAction{Argv: []string{"/bin/true"}},
+		RequireApproval: true,
+	})
+
+	const key = "alertmanager:fp:cond-1"
+	firing := reactive.Event{
+		Source: reactive.SourceAlertmanager, Name: "DiskFull", Severity: "critical",
+		Host: "web-01", Status: "firing", DedupKey: key, ReceivedAt: h.nowValue,
+	}
+	gated, err := h.engine.Ingest(ctx, firing, []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ingest firing: %v", err)
+	}
+	if gated.Outcome != store.OutcomeGated || gated.JobID == nil {
+		t.Fatalf("firing outcome = %s (%s), want gated with a job", gated.Outcome, gated.Reason)
+	}
+	approval, err := h.store.ApprovalByJob(ctx, *gated.JobID)
+	if err != nil {
+		t.Fatalf("approval by job: %v", err)
+	}
+
+	// The forgery: same source and dedup key, status resolved, but stripped of
+	// the severity the rule fired on — it matches no rule.
+	forged := reactive.Event{
+		Source: reactive.SourceAlertmanager, Name: "DiskFull",
+		Host: "web-01", Status: "resolved", DedupKey: key, ReceivedAt: h.nowValue,
+	}
+	if _, err := h.engine.Ingest(ctx, forged, []byte(`{}`)); err != nil {
+		t.Fatalf("ingest forged resolve: %v", err)
+	}
+
+	// The approval is untouched and the job is still awaiting the human.
+	after, err := h.store.GetApproval(ctx, approval.ID)
+	if err != nil {
+		t.Fatalf("get approval: %v", err)
+	}
+	if after.State != store.ApprovalPending {
+		t.Fatalf("approval is %s after a forged resolve, want still pending", after.State)
+	}
+	job, err := h.store.GetJob(ctx, *gated.JobID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if job.State != store.StateAwaitingApproval {
+		t.Fatalf("job is %s after a forged resolve, want still awaiting_approval", job.State)
+	}
+}
+
 // TestStalePlanIsRefusedWithAttribution: the workspace moved after the plan,
 // so approving is refused — and the refusal says what moved it, which job, and
 // from where.
