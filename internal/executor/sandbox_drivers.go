@@ -92,6 +92,9 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), a.opts.CollectionsPath)
 	sb.ReadPaths = append(sb.ReadPaths, ansibleSourceDirs(spec.Argv)...)
 	sb.ReadPaths = append(sb.ReadPaths, toolGrant(a.opts.Binary, AnsibleBinary)...)
+	// An ad-hoc run executes `ansible`, a sibling of ansible-playbook; grant it
+	// too so `exocomp command`/`ansible` resolve their tool under the sandbox.
+	sb.ReadPaths = append(sb.ReadPaths, ToolGrants(AnsibleAdhocBinary)...)
 	// The per-source uv venv (ADR 0011) holds the interpreter and the project's
 	// installed libraries; a module that cannot read them fails, so the venv
 	// root is granted read when the run is bound to one. It is a data-volume

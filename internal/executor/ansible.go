@@ -17,8 +17,14 @@ import (
 // KindAnsible is the Spec kind this driver serves.
 const KindAnsible = "ansible"
 
-// AnsibleBinary is the pinned tool the driver runs.
+// AnsibleBinary is the pinned tool the driver runs for a playbook.
 const AnsibleBinary = "ansible-playbook"
+
+// AnsibleAdhocBinary is the pinned tool the driver runs for an ad-hoc module
+// invocation (`exocomp command` / `exocomp ansible`). It is a sibling of
+// ansible-playbook in the same bin directory, so the credential plane, the
+// sandbox, and the environment allowlist are shared and only argv[0] differs.
+const AnsibleAdhocBinary = "ansible"
 
 // DefaultVaultID labels the vault password when the caller names no label.
 const DefaultVaultID = "exocomp"
@@ -61,6 +67,30 @@ func AnsibleArtifactArgv(playbook string, passthrough ...string) []string {
 	argv := []string{AnsibleBinary}
 	argv = append(argv, passthrough...)
 	return append(argv, playbook)
+}
+
+// AnsibleAdhocArgv builds the argv an ad-hoc ansible job carries: the everyday
+// operator verb, `ansible <pattern> -i <inv> -m <module> -a "<args>"`, run from
+// a source checkout against its inventory. pattern is any ansible host pattern
+// (a host, a group, or an expression like `fedora:!nas`) and travels as the sole
+// positional. An empty inventory targets localhost over the local connection,
+// the same default AnsibleArgv uses. module defaults to `command` at the caller;
+// args is the module's `-a` string, omitted when empty (ping and setup take
+// none). The passthrough carries the same public flags a playbook run does
+// (--become, --limit, --check) — secrets keep their own out-of-argv paths, so
+// nothing here is a secret and the whole argv is safe on the job row.
+func AnsibleAdhocArgv(pattern, inventory, module, args string, passthrough ...string) []string {
+	argv := []string{AnsibleAdhocBinary, pattern, "--inventory"}
+	if inventory == "" {
+		argv = append(argv, "localhost,", "--connection", "local")
+	} else {
+		argv = append(argv, inventory)
+	}
+	argv = append(argv, "--module-name", module)
+	if args != "" {
+		argv = append(argv, "--args", args)
+	}
+	return append(argv, passthrough...)
 }
 
 // AnsibleOptions configures the driver. Secret material belongs here and not
@@ -117,6 +147,15 @@ type AnsibleOptions struct {
 	// as the allowlist built it. It pairs with Binary pointing at the venv's
 	// ansible-playbook: the whole run executes inside the source's venv.
 	VenvBin string
+	// TolerateUnreachable opts this run into the degraded outcome: when the only
+	// non-success in the PLAY RECAP is unreachable hosts (failed=0 on every host
+	// the run reached), the run settles as a tolerated degradation rather than a
+	// failure — the online hosts converged and the offline ones are recorded and
+	// named, not paged. A task failure on any reachable host stays a hard failure
+	// regardless. Off (the default) keeps strict exit-code truth: an unreachable
+	// host is a failure like any non-zero exit (AGENTS.md invariant 3 holds; this
+	// is a per-run opt-in the operator asked for, not a global reclassification).
+	TolerateUnreachable bool
 }
 
 // Ansible runs playbooks through ansible-playbook. It builds the invocation
@@ -186,11 +225,13 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	hk := &hostKeyObserver{inner: sink}
 	runSink := EventSink(hk)
 
-	// A check-mode run additionally grows a structured, resource-level drift
-	// event parsed from its own PLAY RECAP; a normal run streams unchanged.
+	// A check-mode run grows a structured drift event, and a tolerate-unreachable
+	// run needs the recap to tell an unreachable-only degradation from a real
+	// failure. Either reason retains the stdout so the PLAY RECAP can be parsed
+	// after the run; a plain run streams unchanged with nothing retained.
 	checkMode := isAnsibleCheck(spec.Argv)
 	var recap *recapSink
-	if checkMode {
+	if checkMode || a.opts.TolerateUnreachable {
 		recap = &recapSink{inner: hk}
 		runSink = recap
 	}
@@ -199,10 +240,32 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	if err == nil && checkMode {
 		emitAnsibleCheckOutcome(recap.snapshot(), sink)
 	}
+	if err == nil && a.opts.TolerateUnreachable {
+		a.classifyDegraded(&res, recap.snapshot(), sink)
+	}
 	if m, ok := hk.mismatch(); ok {
 		sink.Emit(hostKeyMismatchEvent(m))
 	}
 	return res, err
+}
+
+// classifyDegraded settles an unreachable-tolerant run whose only non-success is
+// unreachable hosts as a tolerated degradation: it marks the result Degraded,
+// names the offline hosts, and emits the warning outcome event. It fires only on
+// a non-zero exit (a clean run needs no reclassification) and fails closed — no
+// recap, or any task-failed host, leaves the result a hard failure untouched, so
+// a real failure never hides behind the flag.
+func (a *Ansible) classifyDegraded(res *Result, lines []string, sink EventSink) {
+	if res.ExitCode == 0 {
+		return
+	}
+	class, found := ClassifyOutcome(lines)
+	if !found || len(class.Failed) > 0 || len(class.Unreachable) == 0 {
+		return
+	}
+	res.Degraded = true
+	res.UnreachableHosts = class.Unreachable
+	emitPartialOutcome(class.Unreachable, sink)
 }
 
 // prependPath puts dir at the front of the PATH entry in env so the venv's own
@@ -243,13 +306,21 @@ func (a *Ansible) binary(spec Spec) (string, error) {
 	if len(spec.Argv) == 0 {
 		return "", errors.New("executor: ansible: empty argv")
 	}
-	if filepath.Base(spec.Argv[0]) != AnsibleBinary {
-		return "", fmt.Errorf("executor: ansible: argv[0] is %q, want %s", spec.Argv[0], AnsibleBinary)
+	base := filepath.Base(spec.Argv[0])
+	if base != AnsibleBinary && base != AnsibleAdhocBinary {
+		return "", fmt.Errorf("executor: ansible: argv[0] is %q, want %s or %s",
+			spec.Argv[0], AnsibleBinary, AnsibleAdhocBinary)
 	}
+	// Binary overrides the playbook executable (the venv's ansible-playbook). The
+	// ad-hoc `ansible` is its sibling in the same bin directory, so an ad-hoc run
+	// under a venv resolves against that directory rather than PATH.
 	if a.opts.Binary != "" {
-		return a.opts.Binary, nil
+		if base == AnsibleBinary {
+			return a.opts.Binary, nil
+		}
+		return filepath.Join(filepath.Dir(a.opts.Binary), base), nil
 	}
-	resolved, err := exec.LookPath(AnsibleBinary)
+	resolved, err := exec.LookPath(base)
 	if err != nil {
 		return "", fmt.Errorf("executor: ansible: %w", err)
 	}

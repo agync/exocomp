@@ -30,6 +30,16 @@ type Result struct {
 	Signaled bool // true when a signal, not exit(), ended it
 	TimedOut bool // true when the deadline killed it
 	Duration time.Duration
+	// Degraded is set by a driver that ran under an opt-in tolerance (the
+	// ansible unreachable-tolerant run): the process exited non-zero, but the
+	// only non-success was a tolerated condition, so the queue settles the job
+	// as a non-failing degraded outcome rather than a failure. ExitCode still
+	// carries the process's true code (invariant 3: the number is not rewritten);
+	// Degraded only tells the queue how to classify it. Off by default.
+	Degraded bool
+	// UnreachableHosts names the hosts a Degraded ansible run could not reach.
+	// It is telemetry for the job event and the operator, never the arbiter.
+	UnreachableHosts []string
 }
 
 // Event is one line of a job's output or one lifecycle note.
