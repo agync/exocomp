@@ -111,7 +111,33 @@ regression test, fixes it, and proves the exploit is dead.
      forge key; recording is `host onboard`/`ssh-keyscan`, so a forge's first sync is still
      TOFU until its key is recorded. A non-standard forge SSH port needs its `known_host`
      row keyed as `[host]:port`.
-3. **Reactive / approval** — R1 (dedup anchor), R2 (resolve auth), R3 (cap-disable), R4.
+3. **Reactive / approval — R1/R2/R3 LANDED 2026-08-22** (commits
+   d0884b9/167f9d1/e719346): **R1 FIXED** (the dedup window anchors only on events
+   that actually matched a rule and acted — `matched`/`gated`/`fired` — so an inert
+   non-matching event planted first can no longer become the anchor that suppresses a
+   later real alert sharing the key; legitimate dedup of a genuine repeat is preserved,
+   proven against the engine). **R2 FIXED** (a resolve withdraws an approval only when
+   it is scoped to the rule that raised it: same source, admitted by that rule's source
+   filter, and matching the rule when its status is read as firing; a forged resolve
+   that shares only the dedup key — stripped of the labels the rule fired on — matches
+   no rule and cancels nothing, and the approval then fails closed at its TTL). **R3
+   FIXED** (a daily cap throttles rather than disables: the action is withheld but the
+   rule stays armed, keeps evaluating so every over-cap event stays visible as a
+   suppressed row naming the rule, recovers on its own when the rolling window clears,
+   and pages at max priority once per window so a flood cannot blind a security rule
+   into a silent disabled state — the R3 exploit — nor storm the operator's phone). R4
+   (source-less rule cross-source spoofing) is DOC-only and still open.
+   - **R2-resid** a legitimate resolve is not auto-withdrawn if the rule that raised the
+     approval was deleted, disabled-to-not-compiling, or is otherwise unresolvable at
+     resolve time; the approval still fails closed at its TTL, and the operator can
+     reject it by hand. This is the safe direction (a resolve that cannot be scoped
+     cancels nothing) but means a rule deleted mid-approval loses the auto-cancel.
+   - **R3-resid** the once-per-window cap page is process state (like the approval
+     re-publish), so a daemon restart re-pages a still-capped rule once; louder than
+     silent, but not a swept ledger. Stale "cap disables the rule" wording remains in
+     `cmd/exocomp/rule.go` help, `internal/store/rule.go`'s `SetRuleEnabled` comment,
+     and `internal/notify/notify.go` — outside the reactive lane's owned files, left
+     for the integrator to correct.
 4. **Daemon / backup** — D1 (KDF DoS), B1 (out-of-band backup marker), D3, D2.
 
 Each wave is a build+verify workflow that reproduces the finding as a failing test first,
