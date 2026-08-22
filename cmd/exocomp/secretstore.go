@@ -1,10 +1,13 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -25,14 +28,91 @@ func newSecretsCmd() *cobra.Command {
 	return cmd
 }
 
+// generatedValueBytes is the entropy behind a --generate value: 32 random bytes
+// (256 bits), rendered base64url so the sealed plaintext is printable env-safe
+// ASCII.
+const generatedValueBytes = 32
+
+// generateSecretValue mints a cryptographically-random secret value.
+func generateSecretValue() ([]byte, error) {
+	raw := make([]byte, generatedValueBytes)
+	if _, err := rand.Read(raw); err != nil {
+		return nil, fmt.Errorf("generate value: %w", err)
+	}
+	enc := base64.RawURLEncoding.EncodeToString(raw)
+	return []byte(enc), nil
+}
+
+// parseExpiry turns a --expires flag into an absolute instant. An empty string
+// means no expiry (nil). A value that parses as a Go duration (e.g. 720h) is
+// taken relative to now; otherwise it must be an RFC3339 timestamp.
+func parseExpiry(spec string) (*time.Time, error) {
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return nil, nil
+	}
+	if d, err := time.ParseDuration(spec); err == nil {
+		if d <= 0 {
+			return nil, fmt.Errorf("expiry duration %q is not in the future", spec)
+		}
+		t := time.Now().UTC().Add(d)
+		return &t, nil
+	}
+	if t, err := time.Parse(time.RFC3339, spec); err == nil {
+		u := t.UTC()
+		return &u, nil
+	}
+	return nil, fmt.Errorf("expiry %q is neither a Go duration (720h) nor an RFC3339 timestamp", spec)
+}
+
+// expirySuffix renders " (expires <RFC3339>)" for a set expiry, or "" for none.
+func expirySuffix(at *time.Time) string {
+	if at == nil {
+		return ""
+	}
+	return " (expires " + at.UTC().Format(time.RFC3339) + ")"
+}
+
 func newSecretsAddCmd() *cobra.Command {
-	var kind string
+	var (
+		kind     string
+		generate bool
+		expires  string
+	)
 	add := &cobra.Command{
 		Use:   "add <name>",
-		Short: "Seal a secret read from stdin",
+		Short: "Seal a secret from stdin, or mint one with --generate",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+
+			expiresAt, err := parseExpiry(expires)
+			if err != nil {
+				return fmt.Errorf("secrets add: %w", err)
+			}
+
+			var (
+				value  []byte
+				source string
+			)
+			if generate {
+				value, err = generateSecretValue()
+				if err != nil {
+					return fmt.Errorf("secrets add: %w", err)
+				}
+				source = store.SecretSourceGenerated
+			} else {
+				value, err = io.ReadAll(io.LimitReader(cmd.InOrStdin(), 1<<20))
+				if err != nil {
+					return fmt.Errorf("secrets add: read value from stdin: %w", err)
+				}
+				value = []byte(strings.TrimRight(string(value), "\n"))
+				if len(value) == 0 {
+					return errors.New("secrets add: empty value on stdin")
+				}
+				source = store.SecretSourceUser
+			}
+
 			dir, err := dataDir()
 			if err != nil {
 				return err
@@ -42,15 +122,6 @@ func newSecretsAddCmd() *cobra.Command {
 				return fmt.Errorf("secrets add: open envelope (run `exocomp init` first): %w", err)
 			}
 			defer func() { _ = env.Close() }()
-
-			value, err := io.ReadAll(io.LimitReader(cmd.InOrStdin(), 1<<20))
-			if err != nil {
-				return fmt.Errorf("secrets add: read value from stdin: %w", err)
-			}
-			value = []byte(strings.TrimRight(string(value), "\n"))
-			if len(value) == 0 {
-				return errors.New("secrets add: empty value on stdin")
-			}
 
 			sealed, err := env.Seal(name, kind, value)
 			if err != nil {
@@ -67,14 +138,19 @@ func newSecretsAddCmd() *cobra.Command {
 				Nonce:      sealed.Nonce,
 				Ciphertext: sealed.Ciphertext,
 				AAD:        sealed.Name + "|" + sealed.Kind,
+				Source:     source,
+				ExpiresAt:  expiresAt,
 			}); err != nil {
 				return fmt.Errorf("secrets add: %w", err)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sealed %q (kind %s, %d bytes)\n", name, kind, len(value))
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sealed %q (kind %s, source %s, %d bytes)%s\n",
+				name, kind, source, len(value), expirySuffix(expiresAt))
 			return nil
 		},
 	}
 	add.Flags().StringVar(&kind, "kind", "generic", "secret kind, bound into the AAD")
+	add.Flags().BoolVar(&generate, "generate", false, "mint a random value instead of reading stdin")
+	add.Flags().StringVar(&expires, "expires", "", "expiry as a Go duration (720h) or RFC3339 timestamp")
 	return add
 }
 

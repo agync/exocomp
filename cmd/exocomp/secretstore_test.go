@@ -1,0 +1,99 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// runSecrets executes the secrets command tree with the given stdin and args.
+func runSecrets(t *testing.T, stdin string, args ...string) (string, error) {
+	t.Helper()
+	var out bytes.Buffer
+	cmd := newSecretsCmd()
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetIn(strings.NewReader(stdin))
+	cmd.SetArgs(args)
+	err := cmd.Execute()
+	return out.String(), err
+}
+
+// openSecretValue reads a sealed secret back through the envelope, returning its
+// plaintext and row. Used only in tests to prove what was sealed.
+func openSecretValue(t *testing.T, dir, name string) (string, store.SecretRow) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	row, err := st.GetSecret(context.Background(), name)
+	if err != nil {
+		t.Fatalf("get secret %q: %v", name, err)
+	}
+	env, err := secrets.Open(dir)
+	if err != nil {
+		t.Fatalf("open envelope: %v", err)
+	}
+	defer func() { _ = env.Close() }()
+	pt, err := env.OpenSecret(secrets.SealedSecret{
+		Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+	})
+	if err != nil {
+		t.Fatalf("open secret %q: %v", name, err)
+	}
+	return string(pt), row
+}
+
+func TestSecretsAddGenerateDecryptable(t *testing.T) {
+	dir := initForSource(t)
+
+	out, err := runSecrets(t, "", "add", "api-key", "--generate")
+	if err != nil {
+		t.Fatalf("add --generate: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "source generated") {
+		t.Errorf("add output = %q, want it to name the generated source", out)
+	}
+
+	val, row := openSecretValue(t, dir, "api-key")
+	if row.Source != store.SecretSourceGenerated {
+		t.Errorf("source = %q, want generated", row.Source)
+	}
+	if len(val) == 0 {
+		t.Error("generated secret decrypted to empty")
+	}
+}
+
+func TestSecretsAddUserWithExpiry(t *testing.T) {
+	dir := initForSource(t)
+
+	out, err := runSecrets(t, "hunter2\n", "add", "db-pass", "--expires", "720h")
+	if err != nil {
+		t.Fatalf("add user: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "source user") || !strings.Contains(out, "expires") {
+		t.Errorf("add output = %q, want source user and an expiry", out)
+	}
+
+	val, row := openSecretValue(t, dir, "db-pass")
+	if val != "hunter2" {
+		t.Errorf("decrypted %q, want hunter2", val)
+	}
+	if row.Source != store.SecretSourceUser {
+		t.Errorf("source = %q, want user", row.Source)
+	}
+	if row.ExpiresAt == nil {
+		t.Fatal("expires_at is nil, want a future instant")
+	}
+	if !row.ExpiresAt.After(time.Now().UTC()) {
+		t.Errorf("expires_at = %v, want in the future", row.ExpiresAt)
+	}
+}
