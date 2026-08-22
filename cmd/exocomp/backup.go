@@ -237,7 +237,11 @@ func runBackupInline(ctx context.Context, st *store.Store, dir string, specs []q
 	}
 	defer func() { _ = env.Close() }()
 
-	runner := backup.NewRunner(st, env, backup.Options{}, targetEnv)
+	quiesce, err := backup.LoadQuiesce(filepath.Join(dir, ".exocomp", "backup-quiesce.yml"))
+	if err != nil {
+		return fmt.Errorf("backup run: %w", err)
+	}
+	runner := backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)
 	q := queue.New(st, runner, queue.Options{Workers: len(specs), PollInterval: 50 * time.Millisecond})
 	for _, spec := range specs {
 		if _, err := q.Enqueue(ctx, spec); err != nil {

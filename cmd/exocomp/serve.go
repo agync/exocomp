@@ -643,12 +643,16 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 	if err != nil {
 		return nil, err
 	}
+	quiesce, err := backup.LoadQuiesce(filepath.Join(dir, ".exocomp", "backup-quiesce.yml"))
+	if err != nil {
+		return nil, err
+	}
 	return kindRouter{
 		tofu:    workspaceDriver{store: st, env: env, server: srv, dirs: dirs},
 		ansible: ansibleJobDriver{store: st, env: env, dataDir: dir},
 		hook:    hookJobDriver{store: st, env: env, dataDir: dir},
 		verify:  verifyJobDriver{},
-		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{}, targetEnv)),
+		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
 	}, nil
 }
 

@@ -24,6 +24,31 @@ per target, so a manifest lifted from one target does not verify against another
 A restore checks the tag **before** it trusts a single sha256: a tag that does not
 match is reported as tampering, a digest that does not match as corruption.
 
+### Application-consistent backups (quiesce hooks)
+
+The snapshot above is consistent for exocomp's own SQLite (VACUUM INTO). For a
+*live application's* data (a running Postgres, a busy Vaultwarden SQLite), a raw
+copy can be torn. Drop a `.exocomp/backup-quiesce.yml` in the data dir to wrap the
+backup in quiesce hooks — its `pre_run` steps quiesce (e.g. `pg_dump`, stop a
+compose stack, `sqlite3 .backup`), its `post_run` steps un-quiesce:
+
+```yaml
+pre_run:
+  - name: dump-postgres
+    run: pg_dump -Fc app > /var/lib/exocomp/dumps/app.dump
+post_run:
+  - name: done
+    run: 'true'
+```
+
+It uses the same schema as `.exocomp/hooks.yml` (a `gate:` is refused — a backup
+has no health gate). A **failed `pre_run` aborts the backup before anything is
+staged** — never a torn snapshot — and the failure surfaces to be alerted on; the
+`post_run` un-quiesce always runs once quiesce succeeded. A missing file (or one
+with no steps) runs the backup exactly as before. Both the `backup run` CLI and
+the daemon's scheduled backups honor it. Hooks run sandboxed as the run user
+(no sudo, no egress — see [run lifecycle](run-lifecycle.md)).
+
 A snapshot with no tag from a target that never authenticated one still restores, with
 a loud `legacy backup: integrity unverified` warning. A git target is the exception: it
 is age-encrypted only to public recipients, so the DEK-keyed tag is the **only** thing
