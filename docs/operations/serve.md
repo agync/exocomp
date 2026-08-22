@@ -26,6 +26,60 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--port` | `0` | Loopback port for the state backend; `0` takes an ephemeral one. The bound address is written to `<data dir>/state-backend.addr`, which is how a CLI finds it. The backend binds `127.0.0.1` only ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)) — remote access is a reverse proxy's job, never a bind address. |
 | `--drain-grace` | `30s` | How long jobs already running may finish after a signal before they are cancelled. Generous on purpose: a backup leg writes its own `backup_run` row at the end. |
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
+| `--sandbox` | `$EXOCOMP_SANDBOX`, else `auto` | Job isolation tier: `local`, `local-sandboxed`, or `auto`. See below. |
+
+## Job isolation
+
+Every job subprocess runs under a kernel sandbox where the host supports one
+([ADR 0005](../adr/0005-job-sandboxing-nono.md)). The tier is decided once at startup and
+printed:
+
+```
+job isolation tier: local-sandboxed
+```
+
+`auto` — the default — asks for `local-sandboxed` and accepts plain `local` when the host
+cannot enforce it. Either way the daemon says so: a degradation is a `WARNING` on stderr
+and a line in `exocomp doctor`, never a silent downgrade. `local` skips the probe
+entirely, which is the honest way to run on a kernel without Landlock; `local-sandboxed`
+asks for the sandbox explicitly and still degrades loudly rather than refusing to start,
+because a control plane that will not run is worse than one that says what it is doing.
+
+The probe is an assertion, not a version check. It stands up a file standing in for
+`host.key`, two listening unix sockets, and a listening loopback TCP port, runs a canary
+inside a sandbox that grants none of them, and requires the refusals.
+
+What each kind of job may reach:
+
+| | Granted | Egress |
+|---|---|---|
+| ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm` | TCP 22 |
+| tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port |
+| everything else | the job's private dir and the working directory | none |
+
+Denied everywhere: `exocomp.db`, `host.key`, `keyring.age`, `serve.lock`,
+`state-backend.addr`, and every other job's private directory. Grants are checked against
+those paths before a job starts, so a profile that would expose them fails the job rather
+than running it.
+
+**Egress is filtered by port, not by destination.** Landlock's network rules match the TCP
+port and nothing else, and the only per-destination filtering nono offers routes traffic
+through an HTTPS-terminating proxy — unusable for SSH and wrong for provider signature
+verification. So an ansible job can open TCP 22 to any address, and a tofu job any TCP 443.
+Restricting *which* hosts a job reaches stays a network-layer question.
+
+**A pathname unix socket is not covered.** Landlock mediates path opening, and
+`connect(2)` on an `AF_UNIX` socket opens nothing, so no Landlock ABI shipped so far can
+refuse it — abstract sockets, which Landlock does scope, are refused. The mitigation is
+placement: exocomp's own surfaces are loopback TCP inside the data dir's recorded address,
+no exocomp unix socket exists for a job to reach, and no podman socket is mounted into the
+container. `exocomp doctor` prints this rather than implying a denial it cannot make.
+
+**The data dir has to be short.** A sandboxed job's `TMPDIR` lives under
+`<data dir>/run/job-<n>/`, and the tools that run there coordinate their workers over unix
+sockets placed inside it. `AF_UNIX` addresses cap at 108 bytes, so `<data dir>/run` longer
+than 57 bytes cannot support the tier; the probe checks it at startup and degrades loudly
+with the measurement. The packaged path, `/var/lib/exocomp/run`, is 20.
 
 ## Signals
 
@@ -113,3 +167,8 @@ to drain whatever was already written. A grandchild the job process left behind 
 a backgrounded helper, an ssh control master — that still holds those pipes open loses
 any output it produces after that window; the job's own exit code and events are
 unaffected.
+
+A job's `HOME` is redirected into its own private directory under the sandboxed tier, so
+an operator's `~/.ansible.cfg` or `~/.terraformrc` does not apply to a queued run. That is
+the intent — a job row is meant to record everything a run depended on — but it is a
+behaviour difference from the `local` tier worth knowing before comparing two runs.

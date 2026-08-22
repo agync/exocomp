@@ -37,16 +37,16 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 
 | Tool | Pin | License | Role | Interface contract |
 |---|---|---|---|---|
-| uv | 0.8.x | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: operator-only escape hatch, doctor-gated, never invoked by `exocompd` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + operator shell |
-| ansible-core (+ Python via uv) | 2.1x / 3.12+ | GPL-3.0+ / PSF | playbook execution | M1: direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
-| ansible-runner | 2.4.x | Apache-2.0 | **not used.** M1 substituted a direct `ansible-playbook` driver — exit-code correctness, line-scanned output — and M2 confirmed staying direct rather than adopting ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | closed, v1.1 backlog |
+| uv | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: operator-only escape hatch, doctor-gated, never invoked by `exocompd` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + operator shell |
+| ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | M1: direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
+| ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** M1 substituted a direct `ansible-playbook` driver — exit-code correctness, line-scanned output — and M2 confirmed staying direct rather than adopting ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | closed, v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
-| OpenTofu | 1.12.x | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
-| restic | 0.19.x (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
-| sops | 3.x | MPL-2.0 | repo-file secret ops, identical behaviour to the operator CLI | shelled out |
-| age (CLI) | 1.2.x | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
+| OpenTofu | 1.11.5 (sha256-pinned) | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
+| restic | 0.19.1 (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
+| sops | 3.13.3 (sha256-pinned) | MPL-2.0 | repo-file secret ops, identical behaviour to the operator CLI | shelled out |
+| age (CLI) | 1.3.1 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
 | git | 2.4x | GPL-2.0 | project sources; bundle and push for the GitHub backup leg | plumbing only |
-| nono | ≥ 0.55.0 (sha256-pinned) | Apache-2.0 | kernel sandbox around job subprocesses, the `local-sandboxed` tier and Linux default ([ADR 0005](../adr/0005-job-sandboxing-nono.md)) | `nono run --profile job-<kind>`; doctor probes the Landlock ABI |
+| nono | 0.74.0, floor ≥ 0.55.0 (sha256-pinned) | Apache-2.0 | kernel sandbox around job subprocesses, the `local-sandboxed` tier and Linux default ([ADR 0005](../adr/0005-job-sandboxing-nono.md)) | `nono run` with per-kind grants; doctor probes the Landlock ABI and asserts the denials |
 | Litestream *(optional sidecar)* | 0.5.x | Apache-2.0 | continuous WAL → S3, seconds-level RPO | own process, config generated from the DB |
 
 Image target ≤ 800 MB measured in CI, with a working target of ~500 MB. The base is a slim
@@ -82,8 +82,8 @@ enforced by something.
 
 | Budget | Value | Enforced by |
 |---|---|---|
-| Image size | ≤ 800 MB | CI |
-| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | CI |
+| Image size | ≤ 800 MB | `make budgets` (592 MB measured at M3a) |
+| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | `make budgets` (17 MB measured at M3a) |
 | Container memory | `MemoryMax=1.5G` | the Quadlet unit |
 | Concurrent jobs | 2 by default, memory-derived | queue config |
 | Target hardware | 4 GB N100 / Raspberry Pi 4, amd64 + arm64 | reference benchmark in CI |

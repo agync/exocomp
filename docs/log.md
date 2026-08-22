@@ -387,3 +387,39 @@ golden fixtures the M3 TUI View() tests assert against; all pass their declared
 width invariant (80/120/60). Canvas PDF v0.2 committed. Both standing
 corrections (`exocomp` not `exo`, derivation-from-code) honored by the handoff.
 Tokens refreshed from source.
+## 2026-08-22 — `local-sandboxed` shipped, and one ADR 0005 claim corrected
+
+The nono tier is the default on Linux: per-kind profiles, a startup probe that
+asserts rather than assumes, and a loud degradation to plain `local` on any host
+that cannot enforce it. Three corrections the executed probe forced, code
+winning over the design as usual:
+
+- **A pathname `AF_UNIX` connect is not mediated by any Landlock ABI.** Landlock
+  hooks path opening; `connect(2)` on a unix socket opens nothing. Abstract
+  sockets are scoped and refused; pathname ones are not. ADR 0005's socket
+  denial now holds by placement — no exocomp unix socket exists for a job to
+  name, the daemon's own surface is loopback TCP, no podman socket is mounted —
+  and `doctor` prints the gap instead of implying a denial. The ADR's insistence
+  on asserting is what found this.
+- **Egress is filtered by port, not by destination.** Landlock's network rules
+  match the TCP port alone, and nono's per-domain filtering routes through an
+  HTTPS-terminating proxy — unusable for SSH, wrong for provider signature
+  verification. Ansible gets TCP 22, tofu gets 443 plus the loopback backend
+  port. Which *hosts* a job reaches stays a network-layer question.
+- **`<data dir>/run` must stay under 57 bytes.** The tier redirects `TMPDIR`
+  beneath it and the tools there coordinate over unix sockets placed inside it;
+  `AF_UNIX` addresses cap at 108. The probe measures it and degrades loudly
+  rather than letting each job discover it as an unexplained timeout.
+
+## 2026-08-22 — image toolchain baked in (ADR 0006)
+
+`packaging/Containerfile` builds the real Python layer: uv-managed CPython 3.14.0
+plus `ansible-core==2.21.3` with `ansible-runner==2.4.3`, resolved through the
+committed `toolchain-constraints.txt`. tofu, restic, age, sops, and nono are
+fetched by sha256 from `tool-digests.txt` for both architectures; git alone comes
+from Fedora's signed repository, because upstream publishes no binary release to
+pin, and its resolved version is recorded in the image's `MANIFEST.json`.
+`make budgets` measures the two numbers the bill of materials commits to and
+exits non-zero above either ceiling: 592 MB against 800, 17 MB idle RSS against
+80. The uv escape hatch stays opt-in — the image's `UV_TOOL_DIR` is baked, not
+the volume, because a fresh restore has the image before it has the volume.

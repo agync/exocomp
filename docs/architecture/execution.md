@@ -30,13 +30,13 @@ Three tiers, in increasing isolation and increasing cost:
 | Tier | Status | Isolation mechanism |
 |---|---|---|
 | `local` | **shipped**, and the only topology bootstrap and DR require | subprocess boundary, rootless container, per-job 0700 private dir, env allowlists |
-| `local-sandboxed` | designed, M3 (`nono`, Landlock) | the above plus a kernel default-deny sandbox per job subprocess |
+| `local-sandboxed` | **shipped** (M3a; `nono`, Landlock), the default on Linux | the above plus a kernel default-deny sandbox per job subprocess |
 | `container` | designed, M3, deferred alongside Wails and OpenBao | per-job sibling containers |
 
-Until the sandbox tier lands, a job is trust-equivalent to the daemon: `local` isolates
-jobs from each other and from the host by process boundary and file permissions, not by a
-kernel policy, so anything a job subprocess's uid can reach, the daemon's own code could
-reach too.
+Under `local` a job is trust-equivalent to the daemon: isolation is process boundary and
+file permissions, not kernel policy, so anything a job subprocess's uid can reach, the
+daemon's own code could reach too. `local-sandboxed` is what breaks that equivalence, and
+it is the default wherever the kernel supports it.
 
 ## `local`
 
@@ -56,29 +56,66 @@ fancier one, is what the DR path is allowed to use.
 
 ## `local-sandboxed`
 
-Designed for M3: every job subprocess would run under `nono run --profile job-<kind>`
-(Landlock on Linux, Apache-2.0, ≥ 0.55.0 sha256-pinned) with a default-deny filesystem
-policy.
+Every job subprocess runs under `nono run` (Landlock on Linux, Apache-2.0, ≥ 0.55.0
+sha256-pinned) with a default-deny filesystem policy built per job kind. The sandbox is
+spliced in *underneath* the ansible and tofu drivers: it sees the argv and environment
+those drivers finished building, and hands the result to the same local subprocess driver,
+so streaming, process groups, and exit-code semantics have one implementation.
 
 | | Paths |
 |---|---|
-| Allowed | job tmpfs, repo checkout, artifact dir, tool paths, provider and collection caches |
-| Denied | `exocomp.db`, `host.key`, the keyring, other jobs' tmpfs, **the exocomp API socket, and any podman socket** |
+| Allowed | the job's own private directory, the working directory, the repo paths its argv names, the tool tree, the provider and collection caches |
+| Denied | `exocomp.db`, `host.key`, `keyring.age`, `serve.lock`, `state-backend.addr`, every other job's private directory |
 
-Network would be scoped by runbook kind: Ansible gets SSH to inventory hosts; OpenTofu
-gets provider endpoints plus the `127.0.0.1` state backend.
+Every job gets a private directory of its own, and the driver's secret material — the
+vault password, the backend bearer — is written there rather than into a root shared by
+all jobs, so one job's grant never covers another's.
 
-The consequence that matters: a playbook is arbitrary code from a git repository, and under
-this tier it would no longer be able to read the database, the host key, or the API
-socket. That is most of the `container` tier's prize with no podman socket handed to
-`exocompd` and no registry on the DR path — Landlock is local, so the sandbox would still
-apply during a restore.
+The denial is enforced twice: by the kernel, because nothing outside the profile is
+granted, and by a guard that refuses to build a profile whose grants would cover the data
+dir or any of the files above. That second check is the one that matters in practice —
+the caches a job legitimately needs all live *inside* the data dir, so the mistake to
+catch is a grant one directory too high.
 
-`exocomp doctor` would probe the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7)
-and degrade **loudly** to `local` on older kernels, never silently, and would assert the
-socket denial by attempting a connect from inside a probe sandbox and expecting failure.
-Full rationale and the CVE lesson behind that probe:
-[ADR 0005](../adr/0005-job-sandboxing-nono.md).
+Network is scoped per kind: ansible gets TCP 22, tofu gets TCP 443 plus the loopback state
+backend's port, everything else gets none. **Scoped by port, not by destination**:
+Landlock's network rules match the port alone, and the only per-destination filtering
+available routes traffic through an HTTPS-terminating proxy, which is unusable for SSH and
+wrong for provider signature verification.
+
+`exocomp doctor` reports the launcher version against the floor, the kernel's Landlock ABI
+(network rules need ABI v4+, kernel ≥ 6.7), the tier in effect, and what the startup probe
+asserted — and the daemon degrades **loudly** to `local`, never silently, on a kernel or a
+launcher that cannot deliver it.
+
+The probe asserts rather than assumes: it stands up a file standing in for `host.key`, two
+listening unix sockets, and a listening loopback TCP port, then runs a canary inside a
+sandbox granting none of them and requires the refusals. Live targets are the point — a
+refusal has to come from the kernel policy, not from there being nothing to reach.
+
+One assertion in [ADR 0005](../adr/0005-job-sandboxing-nono.md) did not survive contact
+with the kernel. **A `connect(2)` to a pathname `AF_UNIX` socket is not mediated by any
+Landlock ABI shipped so far**: Landlock hooks path opening, and connecting to a unix socket
+opens nothing. Abstract sockets, which Landlock does scope, are refused; pathname ones are
+not. The ADR's socket denial therefore holds by placement rather than by policy — exocomp
+ships no unix socket for a job to reach, its own surface is loopback TCP, and no podman
+socket is mounted into the container — and `doctor` prints the gap instead of implying a
+denial it cannot make. The CVE lesson behind the probe is unchanged and now better
+evidenced: it took an executed assertion to find this, which is exactly why the ADR
+required one.
+
+The consequence that matters is unchanged: a playbook is arbitrary code from a git
+repository, and under this tier it cannot read the database, the host key, or the keyring.
+That is most of the `container` tier's prize with no podman socket handed to `exocompd`
+and no registry on the DR path — Landlock is local and unprivileged, so the sandbox
+applies inside a rootless container and during a restore.
+
+Two operational constraints come with it. A job's `HOME` is redirected into its own
+private directory, so an operator's `~/.ansible.cfg` or `~/.terraformrc` does not reach a
+queued run. And `<data dir>/run` must stay under 57 bytes: the tier redirects `TMPDIR`
+beneath it, the tools that run there coordinate over unix sockets placed inside it, and
+`AF_UNIX` addresses cap at 108. The probe measures it at startup and degrades loudly
+rather than letting each job discover it as a timeout.
 
 ## `container`
 
@@ -99,7 +136,7 @@ The trades are stated so the choice is informed, not assumed:
 - Per-project tool versions widen the golden-file test matrix, so EEs are tested
   per-project, not globally.
 
-Once `local-sandboxed` ships, the remaining justification for this tier narrows to
+With `local-sandboxed` shipped, the remaining justification for this tier narrows to
 per-project EE versioning and hard per-job resource caps, so it stays deferred alongside
 Wails and OpenBao.
 

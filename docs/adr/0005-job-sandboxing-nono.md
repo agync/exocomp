@@ -50,10 +50,19 @@ Version floor **≥ 0.55.0**, sha256-pinned like restic.
 - **The CVE lesson is the load-bearing part.** nono's CVE-2026-47128 was an escape via the
   user systemd D-Bus socket, fixed in 0.55.0. The escape class generalizes to *"a sandboxed
   process reaches a powerful local unix socket."* Exocomp ships such sockets itself, so job
-  profiles deny local sockets explicitly, and `exocomp doctor` **asserts** the denial rather
-  than assuming it — it attempts a socket connect from inside a probe sandbox and expects
-  failure. container-selinux's socket confinement is treated as a second, independent
-  enforcement of the same rule.
+  profiles grant no socket, and `exocomp doctor` **asserts** the denial rather than assuming
+  it — it attempts socket connects from inside a probe sandbox and expects failure.
+  container-selinux's socket confinement is treated as a second, independent enforcement of
+  the same rule.
+
+  **The assertion found that half of it cannot hold.** Landlock mediates path *opening*,
+  and `connect(2)` on a pathname `AF_UNIX` socket opens nothing, so no Landlock ABI shipped
+  so far refuses one; abstract sockets, which Landlock scopes, are refused. The denial for
+  pathname sockets is therefore enforced by **placement, not policy**: exocomp ships no unix
+  socket for a job to name, its own surface is loopback TCP, and no podman socket is mounted
+  into the container. `doctor` prints the gap rather than implying a denial it cannot make.
+  Recorded in [log.md](../log.md); the requirement to assert instead of assume is what
+  surfaced it, and stands.
 - `doctor` probes the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7) and degrades
   **loudly** to plain `local` with a warning on older kernels — never silently.
 - Landlock stacks with SELinux (stackable LSM; policies AND together). This is asserted in
