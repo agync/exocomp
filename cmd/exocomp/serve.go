@@ -74,6 +74,8 @@ type serveOptions struct {
 	hookAllow      string
 	publicURL      string
 	sandbox        string
+	webAddr        string
+	webInsecure    bool
 }
 
 func defaultServeOptions() serveOptions {
@@ -117,6 +119,10 @@ func newServeCmd() *cobra.Command {
 		"comma-separated CIDRs webhooks may come from (empty: any)")
 	cmd.Flags().StringVar(&opts.publicURL, "public-url", "",
 		"base URL decision links point at (empty: the bound loopback address)")
+	cmd.Flags().StringVar(&opts.webAddr, "web-addr", "",
+		"also serve the token-gated LAN web+API surface here over TLS (ADR 0009); empty starts no web listener")
+	cmd.Flags().BoolVar(&opts.webInsecure, "web-insecure-http", false,
+		"serve the web surface as cleartext HTTP (loud, never the documented path)")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
 		"job isolation tier: local, local-sandboxed, or auto (default: $"+sandboxTierEnv+", else auto)")
 	return cmd
@@ -240,6 +246,25 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	_, _ = fmt.Fprintf(out, "state backend listening on http://%s\n", srv.Addr())
 	printHooks(out, env, base)
 
+	// The LAN web/token surface is a second, separate listener: non-loopback
+	// and TLS, token-gated per ADR 0009, sharing this process's engine so an
+	// approval decided in a browser releases the job into this queue. The
+	// loopback state backend above stays loopback-only and takes no LAN token.
+	var surface *webSurface
+	if opts.webAddr != "" {
+		surface, err = startWebSurface(ctx, st, env, dir, engine, opts.webAddr, opts.webInsecure, warn)
+		if err != nil {
+			shutdownCtx, cancel := context.WithTimeout(finalCtx, shutdownGrace)
+			defer cancel()
+			_ = srv.Shutdown(shutdownCtx)
+			return err
+		}
+		_, _ = fmt.Fprintf(out, "web surface listening on %s://%s\n", surface.scheme, surface.addr)
+		if surface.fingerprint != "" {
+			_, _ = fmt.Fprintf(out, "certificate SHA-256: %s\n", surface.fingerprint)
+		}
+	}
+
 	qDone := make(chan error, 1)
 	go func() { qDone <- q.Run(jobCtx) }()
 	_, _ = fmt.Fprintf(out, "queue draining with %d workers\n", serveWorkers)
@@ -265,6 +290,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		store:      st,
 		sched:      s,
 		server:     srv,
+		web:        surface,
 		cancelJobs: cancelJobs,
 		queueDone:  qDone,
 		grace:      opts.drainGrace,
@@ -421,6 +447,7 @@ type shutdown struct {
 	store      *store.Store
 	sched      *sched.Scheduler
 	server     *api.Server
+	web        *webSurface
 	cancelJobs context.CancelFunc
 	queueDone  <-chan error
 	grace      time.Duration
@@ -467,7 +494,7 @@ func shutdownServe(ctx context.Context, out, warn io.Writer, sd shutdown) error 
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownGrace)
 	defer cancel()
-	return errors.Join(qErr, retireErr, sweepErr, sd.server.Shutdown(shutdownCtx))
+	return errors.Join(qErr, retireErr, sweepErr, sd.web.Shutdown(shutdownCtx), sd.server.Shutdown(shutdownCtx))
 }
 
 // waitForOwnJobs blocks until this process owns no queued or running job, or

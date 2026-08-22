@@ -88,27 +88,81 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 	}
 	defer func() { _ = env.Close() }()
 
-	// The bind guard is the ADR 0009 gate: a LAN address needs a token, and
-	// --insecure-http is loud.
-	guardWarn, err := web.RequireTokenForBind(ctx, st, opts.addr, opts.insecure, time.Now().UTC())
-	if err != nil {
-		return err
-	}
-	if guardWarn != "" {
-		_, _ = fmt.Fprintln(warn, guardWarn)
-	}
-
+	// A standalone web process releases gated jobs for the daemon to run but
+	// runs none itself, so its engine is release-only.
 	engine, err := webEngine(st, env)
 	if err != nil {
 		return err
 	}
 
+	surface, err := startWebSurface(ctx, st, env, dir, engine, opts.addr, opts.insecure, warn)
+	if err != nil {
+		return err
+	}
+	_, _ = fmt.Fprintf(out, "web UI listening on %s://%s\n", surface.scheme, surface.addr)
+	if surface.fingerprint != "" {
+		_, _ = fmt.Fprintf(out, "certificate SHA-256: %s\n", surface.fingerprint)
+	}
+
+	select {
+	case <-sigCtx.Done():
+		_, _ = fmt.Fprintln(out, "shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), webShutdownGrace)
+		defer cancel()
+		return surface.Shutdown(shutdownCtx)
+	case e := <-surface.serveErr:
+		if errors.Is(e, http.ErrServerClosed) {
+			return nil
+		}
+		return e
+	}
+}
+
+// webSurface is a running token-gated LAN web listener. It is started by the
+// `web` command and, when `serve --web-addr` is set, alongside the loopback
+// state backend in the daemon — a separate non-loopback TLS listener for the
+// web/token surface, distinct from the loopback state backend (ADR 0009). The
+// state backend never requires a LAN token; this surface always does.
+type webSurface struct {
+	http        *http.Server
+	addr        string
+	scheme      string
+	fingerprint string
+	serveErr    <-chan error
+}
+
+// Shutdown stops the listener within the caller's deadline.
+func (w *webSurface) Shutdown(ctx context.Context) error {
+	if w == nil || w.http == nil {
+		return nil
+	}
+	if err := w.http.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return err
+	}
+	return nil
+}
+
+// startWebSurface builds and starts the LAN web listener sharing st/env and
+// deciding approvals through decider. It runs the ADR 0009 bind guard first: a
+// non-loopback address refuses to bind without an active token, and
+// --insecure-http is loud. decider is the caller's reactive engine, so an
+// approval decided here releases the job into that process's queue.
+func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
+	decider web.Decider, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
+	guardWarn, err := web.RequireTokenForBind(ctx, st, addr, insecure, time.Now().UTC())
+	if err != nil {
+		return nil, err
+	}
+	if guardWarn != "" {
+		_, _ = fmt.Fprintln(warn, guardWarn)
+	}
+
 	var fingerprint string
 	var tlsCert tls.Certificate
-	if !opts.insecure {
+	if !insecure {
 		cert, fp, cerr := web.EnsureCert(dir)
 		if cerr != nil {
-			return cerr
+			return nil, cerr
 		}
 		tlsCert, fingerprint = cert, fp
 	}
@@ -116,38 +170,33 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 	srv, err := web.New(web.Options{
 		Store:       st,
 		Deriver:     env,
-		Decider:     engine,
+		Decider:     decider,
 		Plans:       env,
-		Insecure:    opts.insecure,
+		Insecure:    insecure,
 		Fingerprint: fingerprint,
 		Version:     version.String(),
 		DataDir:     dir,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	httpSrv := &http.Server{
 		Handler:           srv.Handler(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	ln, err := net.Listen("tcp", opts.addr)
+	ln, err := net.Listen("tcp", addr)
 	if err != nil {
-		return fmt.Errorf("web: listen: %w", err)
+		return nil, fmt.Errorf("web: listen: %w", err)
 	}
 
 	scheme := "https"
-	if opts.insecure {
+	if insecure {
 		scheme = "http"
 	}
-	_, _ = fmt.Fprintf(out, "web UI listening on %s://%s\n", scheme, ln.Addr())
-	if fingerprint != "" {
-		_, _ = fmt.Fprintf(out, "certificate SHA-256: %s\n", fingerprint)
-	}
-
 	serveErr := make(chan error, 1)
 	go func() {
-		if opts.insecure {
+		if insecure {
 			serveErr <- httpSrv.Serve(ln)
 			return
 		}
@@ -155,18 +204,13 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 		serveErr <- httpSrv.ServeTLS(ln, "", "")
 	}()
 
-	select {
-	case <-sigCtx.Done():
-		_, _ = fmt.Fprintln(out, "shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), webShutdownGrace)
-		defer cancel()
-		return httpSrv.Shutdown(shutdownCtx)
-	case e := <-serveErr:
-		if errors.Is(e, http.ErrServerClosed) {
-			return nil
-		}
-		return e
-	}
+	return &webSurface{
+		http:        httpSrv,
+		addr:        ln.Addr().String(),
+		scheme:      scheme,
+		fingerprint: fingerprint,
+		serveErr:    serveErr,
+	}, nil
 }
 
 // webEngine builds the reactive engine the web surface decides approvals
