@@ -117,6 +117,13 @@ type TofuOptions struct {
 	// under the sandbox. Resolved by the caller from the envelope; the driver
 	// only injects it.
 	RunSecrets RunSecrets
+	// InventoryOut, when set and an apply succeeds, is the path this run writes
+	// the materialized Ansible inventory to: the declared, NON-sensitive tofu
+	// outputs captured by `tofu output -json` at apply end (story 5). It is the
+	// producer half of the Terraform->Ansible handoff. Empty skips capture, so
+	// a plain apply is unchanged. The raw tfstate is never the source —
+	// declared outputs only, sensitive ones dropped (v1-acceptance.md).
+	InventoryOut string
 }
 
 // Tofu runs OpenTofu against the control plane's own HTTP state backend. It
@@ -236,7 +243,31 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	if op == "plan" {
 		res = reportPlanOutcome(ctx, res, sink, t.driftShower(bin, spec))
 	}
+	if op == "apply" && res.ExitCode == 0 && t.opts.InventoryOut != "" {
+		t.captureInventory(ctx, bin, spec, sink)
+	}
 	return res, nil
+}
+
+// captureInventory materializes the workspace's declared, non-sensitive tofu
+// outputs as an Ansible inventory after a successful apply — the story-5
+// producer. It runs while the backend override and the passphrase env are still
+// live (their cleanups are deferred), so `tofu output -json` reads the state
+// the apply just wrote. A capture failure is loud but never fails the run: the
+// apply already succeeded and changed infrastructure (exit-code doctrine), so a
+// missing inventory surfaces when the dependent play cannot find it, not as a
+// false apply failure.
+func (t *Tofu) captureInventory(ctx context.Context, bin string, spec Spec, sink EventSink) {
+	capture, err := captureTofuInventory(ctx, bin, spec.Dir, spec.Env, t.opts.InventoryOut)
+	if err != nil {
+		sink.Emit(Event{
+			Ts:    time.Now().UTC(),
+			Level: LevelError,
+			Msg:   fmt.Sprintf("inventory capture failed: %v", err),
+		})
+		return
+	}
+	sink.Emit(inventoryCaptureEvent(capture))
 }
 
 // lockProvidersFromMirror runs `tofu providers lock -fs-mirror <dir>

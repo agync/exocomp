@@ -51,6 +51,18 @@ func AnsibleArgv(playbook, inventory string, passthrough ...string) []string {
 	return append(argv, playbook)
 }
 
+// AnsibleArtifactArgv builds the argv for a play whose inventory is a
+// materialized artifact (story 5): it carries no --inventory of its own,
+// because the driver copies AnsibleOptions.InventoryArtifact into the run's own
+// 0700 private directory and points ansible at that copy. Keeping the flag out
+// of the argv is what makes the private copy the sole inventory — the play
+// never names, and the sandbox never grants, the data-dir artifact directly.
+func AnsibleArtifactArgv(playbook string, passthrough ...string) []string {
+	argv := []string{AnsibleBinary}
+	argv = append(argv, passthrough...)
+	return append(argv, playbook)
+}
+
 // AnsibleOptions configures the driver. Secret material belongs here and not
 // in a Spec: specs are persisted, options are resolved per execution.
 type AnsibleOptions struct {
@@ -78,6 +90,14 @@ type AnsibleOptions struct {
 	// would otherwise strip. Resolved by the caller from the envelope; the
 	// driver only injects it.
 	RunSecrets RunSecrets
+	// InventoryArtifact is a materialized inventory file (story 5: the
+	// non-sensitive tofu outputs a prior apply captured) the run consumes as
+	// its inventory. The driver copies it into the run's own 0700 private
+	// directory and appends --inventory pointing at that copy, so the play
+	// reads an isolated copy and never the data-dir artifact — and its process
+	// carries no bearer, no state passphrase, and no tfstate. Empty leaves the
+	// argv's own inventory untouched.
+	InventoryArtifact string
 	// PrivateDirRoot is where the per-job private directory is created.
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
@@ -206,6 +226,21 @@ func (a *Ansible) vaultEntries() []VaultEntry {
 // at it.
 func (a *Ansible) writePrivate(dir string) ([]string, error) {
 	var args []string
+
+	// The materialized inventory is copied into the private dir before anything
+	// else, so the play reads an isolated 0600 copy the run owns. The source is
+	// a data-dir artifact the fleet-facing play must never be granted directly.
+	if a.opts.InventoryArtifact != "" {
+		body, err := os.ReadFile(a.opts.InventoryArtifact)
+		if err != nil {
+			return nil, fmt.Errorf("executor: ansible: read inventory artifact: %w", err)
+		}
+		path := filepath.Join(dir, "inventory.json")
+		if err := os.WriteFile(path, body, 0o600); err != nil {
+			return nil, fmt.Errorf("executor: ansible: write inventory: %w", err)
+		}
+		args = append(args, "--inventory", path)
+	}
 
 	seen := map[string]bool{}
 	for i, entry := range a.vaultEntries() {
