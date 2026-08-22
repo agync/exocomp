@@ -160,3 +160,23 @@ medium/low defense-in-depth (S3, D2, D4, R4, S6, E4, U1) + the residuals noted a
 Each wave is a build+verify workflow that reproduces the finding as a failing test first,
 then fixes it, then proves the exploit no longer works (red-team's repro becomes a
 regression test). The red-team re-runs against each wave.
+
+## Optional OpenBao Transit seal (ADR 0013)
+
+An operator may move the DEK's wrapping key off the data volume into an OpenBao Transit key
+(the auto-unseal pattern). It is **additive**: `keyring.transit` wraps the DEK via
+`transit/encrypt` beside an untouched `keyring.age`, so the printed recovery card still
+opens the store **without OpenBao** — recovery never depends on the vendor (invariant 7).
+
+- **Threat addressed.** A stolen data volume with the seal enabled contains no key that
+  unwraps the DEK: the host key need not be on disk, and the transit key never leaves
+  OpenBao. This closes the stolen-disk gap that a plaintext `host.key` leaves open, for the
+  daemon's normal boot path.
+- **Failure mode is explicit.** A configured-but-unreachable OpenBao fails `Open` with a
+  clear error and never silently falls back to the host-key path — an outage cannot quietly
+  downgrade the chosen seal. Reverting is a deliberate `exocomp seal disable`.
+- **New trust.** OpenBao can read the DEK it wraps, and its own seal/audit posture joins the
+  operator's threat model. The token authenticating to OpenBao is sourced from the
+  environment or a file outside the data dir and is never written into it; neither the token
+  nor the DEK plaintext ever reaches a log line or job event.
+- **Not a defence against root** on the box, same as ADR 0003.
