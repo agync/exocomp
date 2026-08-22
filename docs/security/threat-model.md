@@ -63,13 +63,31 @@ Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HAR
 - **S6** pinned tools resolved by bare name on ambient PATH — no absolute pin/checksum. HARDEN.
 - **U1** upgrade "verify" is a functional smoke test, not a staged-binary trust control (no signature/provenance). HARDEN — ties to the deferred cosign/SLSA supply-chain track.
 
-## Blue-team waves (planned)
+## Blue-team waves
 
-Dispatched after the in-flight A+B feature merges (avoiding file contention). Grouped by
-domain, HIGH first:
+Grouped by domain, HIGH first. Each wave turns the red-team repro into a failing
+regression test, fixes it, and proves the exploit is dead.
 
-1. **Envelope** — E1 (secure-default host.key wrapping + honest docs), E2 (DEK rotation on
-   revoke), E3 (AAD encoding), E5 (mlock), E4.
+1. **Envelope — LANDED 2026-08-22** (commits 9cd6bb8/daca061/a7de445/88e23f1, merged
+   015ab68): **E1 FIXED** (host.key resolved by precedence — systemd credential →
+   scrypt-passphrase-wrapped → plaintext-with-LOUD-warning; init never writes a plaintext
+   key when a passphrase is set; doctor reports the real tier; Quadlet
+   `LoadCredentialEncrypted` + install.sh `harden-host-key`; the false "sealed to this box"
+   walkthrough + ADR 0003 claims corrected; evil-maid repro now recovers nothing).
+   **E2 FIXED** (`identity migrate --drop-recipient` rotates the DEK, re-encrypts every row,
+   re-wraps to remaining recipients; a dropped recipient decrypts nothing pre- or post-drop).
+   **E3 FIXED** (length-prefixed AAD, legacy fallback on open for pre-E3 rows). **E5 FIXED**
+   (DEK mlock'd with lifecycle; doctor reports the real state). Residual follow-ups added to
+   the backlog below.
+   - **E2-resid** rotation is CLI-only + daemon-stopped, not a sequenced job with
+     rollback/approval; derived consumers (restic repos, tofu state) are NOT auto-re-keyed
+     (printed as manual follow-through). A daemon-sequenced rotation is a follow-up.
+   - **E3-resid** un-migrated pre-E3 rows keep the legacy-AAD fallback, so the collision
+     still exists for those; a one-time re-seal migration would close it fully.
+   - **E1-resid** the systemd-credential tier is unit-tested on the read side only; the real
+     `systemd-creds`/rootless-podman path needs validation on a real host.
+   - **E4** (keyring-version downgrade on an unauthenticated file) — still open; the DEK now
+     rotates (E2), reducing its blast radius.
 2. **Supply-chain / deps** — S1 (sandbox the resolver), S2 (signed-ref fail-closed), S4
    (resolver confinement), S5 (known_hosts on sync), S3.
 3. **Reactive / approval** — R1 (dedup anchor), R2 (resolve auth), R3 (cap-disable), R4.
