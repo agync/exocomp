@@ -6,6 +6,26 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — provision → onboard → converge, and the standing inventory
+
+**New page: [operations/provision-converge.md](operations/provision-converge.md)** —
+`exocomp provision run` chains a `tofu apply` to the hosts its declared outputs name:
+a bounded wait for their SSH, the seeded onboarding runbook (host key pinned first,
+then fleet key and automation user), and the configure play, as one four-step
+step-ledger workflow. The page also covers `tf:<workspace>` as a STANDING inventory a
+`schedule --kind play` targets by name, and the fail-closed rule that a hostless or
+stale inventory runs no play at all.
+
+[terraform-ansible-handoff.md](operations/terraform-ansible-handoff.md) keeps
+describing the two-step `handoff run` and now points at the new page for the case
+where the apply creates hosts that do not exist yet; the operations index lists both.
+
+**Correction of fact.** `exocomp host onboard` used to print its onboarding command
+with `-e exocomp_fleet_pubkey="<key>"`. Ansible's `k=v` extra-var form splits on
+whitespace and an `authorized_keys` line has two spaces in it, so that command set
+`exocomp_fleet_pubkey` to the key *type* alone. It now prints — and the chain passes —
+the JSON `--extra-vars` form.
+
 ## 2026-08-22 — M3c maintenance: lifecycle wiring, deps, packaging, docs
 
 The maintenance pass over merged M3c hardens the seams and links the operator pages the

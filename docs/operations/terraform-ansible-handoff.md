@@ -6,6 +6,11 @@ handing the fleet-facing play a state key. This is story 5 of the v1 acceptance
 bar: the capability one tool holding both halves can make safe and a hand-rolled
 `terraform output | jq` cannot.
 
+For a workspace whose apply creates hosts that do not exist yet, the chain to
+reach for is [`provision run`](provision-converge.md): the same apply and
+capture, plus the bounded SSH wait and the onboarding step that stand between a
+finished apply and a machine a play can reach.
+
 ## Governing rule — never expose raw state
 
 The inventory is built from declared `output` blocks, **not** the state file. A
