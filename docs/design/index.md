@@ -17,3 +17,4 @@ verbatim in [history](../history/index.md).
 | [Design reference](reference/) | Handoff v0.1: canvas PDF + artboard captures; tokens live at internal/web/tokens.css |
 | [TUI brief](tui-brief.md) | Design brief for the terminal surface: constraints, M3 screens, deliverables |
 | [TUI reference](reference/tui/) | Handoff v0.2: text frames (golden fixtures), keymap, colors, copy, states |
+| [Expert reviews](expert-reviews.md) | Ansible & OpenTofu practitioner gap reviews; v1 must-fix vs v1.1 |

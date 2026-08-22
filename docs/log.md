@@ -458,3 +458,11 @@ pin, and its resolved version is recorded in the image's `MANIFEST.json`.
 exits non-zero above either ceiling: 592 MB against 800, 17 MB idle RSS against
 80. The uv escape hatch stays opt-in — the image's `UV_TOOL_DIR` is baked, not
 the volume, because a fresh restore has the image before it has the volume.
+
+## 2026-08-22 — Ansible & OpenTofu expert reviews
+
+Two practitioner reviews ([design/expert-reviews.md](design/expert-reviews.md))
+converge: the execution cores are correct but the credential plane binding sealed
+secrets to run env (provider env / plugin env / TF_VAR_) is missing, and the
+sandbox allowlist starves dynamic inventory and providers. v1 must-fixes fold into
+the M3b source-model scope; both lists recorded.

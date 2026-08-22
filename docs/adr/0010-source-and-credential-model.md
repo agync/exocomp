@@ -36,6 +36,21 @@ fragments (inventory undesigned; host onboarding; per-host become/ssh).
 4. **Run** executes from the synced checkout with the vault-id, the fleet key,
    sandboxed, redacted, through the one queue.
 
+### Source locality — three kinds, git is the headline not the only one
+
+A source is one of: a **registered git repo** (headline — auto-synced, signed,
+deploy-keyed, as above); a **host path** bind-mounted into the container (the
+operator already keeps a repo checkout on the box or on the NAS and points
+exocomp at it — no deploy key, sync is the operator's own `git pull` or an
+editor); or an **in-container path** in the data volume (seeded by a runbook, or
+an operator working directly). The credential planes (vault, fleet key, provider
+env) are identical across all three — only *how the tree arrives and stays fresh*
+differs. Host and in-container paths are the quick/air-gapped path and what the
+tests use; git is the managed path. The sandbox profile grants the source tree
+read (host bind mounts are read-only by default); `source add --path <p>` and
+`--url <git>` are the two registration forms, and `--dir` on a run is shorthand
+for an ad-hoc in-container path.
+
 ### OpenTofu — two modes, both first-class
 
 - **Mode A · secure state store only.** `exocomp workspace add <name>
