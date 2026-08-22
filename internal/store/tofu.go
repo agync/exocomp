@@ -259,6 +259,36 @@ func (s *Store) ListTFStates(ctx context.Context, workspaceID int64, limit int) 
 	return out, nil
 }
 
+// PruneTFStates deletes a workspace's old state versions under a keep policy:
+// the newest keepSerials versions are always retained, and so is every version
+// created at or after keepSince. A version is pruned only when it fails both —
+// old and beyond the serial window (expert-reviews.md #7: state grows unbounded
+// otherwise, and every backup copies all serials). The latest version is always
+// within the newest keepSerials, so a workspace never loses its current state.
+// keepSerials below 1 is treated as 1.
+func (s *Store) PruneTFStates(ctx context.Context, workspaceID int64, keepSerials int, keepSince time.Time) (int, error) {
+	if keepSerials < 1 {
+		keepSerials = 1
+	}
+	res, err := s.db.ExecContext(ctx, `
+		DELETE FROM tfstate
+		WHERE workspace_id = ?1
+		  AND created_at < ?2
+		  AND id NOT IN (
+		      SELECT id FROM tfstate WHERE workspace_id = ?1
+		      ORDER BY serial DESC, id DESC LIMIT ?3
+		  )`,
+		workspaceID, keepSince.UTC().UnixMilli(), keepSerials)
+	if err != nil {
+		return 0, wrap("prune tfstates", err)
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, wrap("prune tfstates", err)
+	}
+	return int(n), nil
+}
+
 const tflockColumns = `workspace_id, lock_id, who, operation, created_at, job_id`
 
 // AcquireTFLock takes the workspace lock. Acquisition is the INSERT itself:

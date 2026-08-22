@@ -51,8 +51,72 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspacePlanCmd(),
 		newWorkspaceApplyCmd(),
 		newWorkspaceUnlockCmd(),
+		newWorkspacePruneCmd(),
 	)
 	return cmd
+}
+
+func newWorkspacePruneCmd() *cobra.Command {
+	var (
+		keep int
+		days int
+	)
+	prune := &cobra.Command{
+		Use:   "prune [name]",
+		Short: "Drop old state serials past the keep policy",
+		Long: "Deletes state versions a workspace no longer needs: the newest --keep " +
+			"serials are always retained, and so is every version from the last --days. " +
+			"A version is removed only when it is both older than the window and beyond " +
+			"the serial budget, so a workspace never loses its current state. With no " +
+			"name every workspace is pruned.",
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if cerr := st.Close(); cerr != nil && err == nil {
+					err = cerr
+				}
+			}()
+
+			var targets []store.Workspace
+			if len(args) == 1 {
+				ws, err := st.WorkspaceByName(ctx, args[0])
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("workspace prune: no workspace %q", args[0])
+				}
+				if err != nil {
+					return err
+				}
+				targets = []store.Workspace{ws}
+			} else {
+				targets, err = st.ListWorkspaces(ctx)
+				if err != nil {
+					return err
+				}
+			}
+
+			since := time.Now().AddDate(0, 0, -days)
+			total := 0
+			for _, ws := range targets {
+				n, err := st.PruneTFStates(ctx, ws.ID, keep, since)
+				if err != nil {
+					return err
+				}
+				total += n
+				_, _ = fmt.Fprintf(out, "%-20s pruned %d\n", ws.Name, n)
+			}
+			_, _ = fmt.Fprintf(out, "pruned %d state versions across %d workspaces\n", total, len(targets))
+			return nil
+		},
+	}
+	prune.Flags().IntVar(&keep, "keep", 10, "newest serials always retained")
+	prune.Flags().IntVar(&days, "days", 90, "retain every version from this many days back")
+	return prune
 }
 
 func newWorkspaceUnlockCmd() *cobra.Command {
