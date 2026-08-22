@@ -206,6 +206,29 @@ func TestSourceSyncFromLocalRepo(t *testing.T) {
 	}
 }
 
+// TestSourceAddSignedRequiresOwnedSigners is the add-time half of S2: a
+// --signed git source with no --allowed-signers/--signer is refused at
+// registration, because a signed ref must verify against exocomp's own signers,
+// never the ambient host git config. Supplying an inline signer is accepted.
+func TestSourceAddSignedRequiresOwnedSigners(t *testing.T) {
+	initForSource(t)
+
+	out, err := runSource(t, "add", "infra", "--url", "git@forge:org/infra.git", "--signed")
+	if err == nil {
+		t.Fatalf("--signed with no signers was accepted: %q", out)
+	}
+	if !strings.Contains(err.Error(), "allowed-signers") {
+		t.Fatalf("error = %v, want it to name --allowed-signers", err)
+	}
+
+	// A signed source that names its trust is fine.
+	ok, err := runSource(t, "add", "infra", "--url", "git@forge:org/infra.git", "--signed",
+		"--signer", "* ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIExampleKeyMaterialForTest")
+	if err != nil {
+		t.Fatalf("signed add with a signer failed: %v (%s)", err, ok)
+	}
+}
+
 // --- helpers ---
 
 func runSource(t *testing.T, args ...string) (string, error) {

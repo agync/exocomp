@@ -194,19 +194,102 @@ func TestSyncNeedsRef(t *testing.T) {
 }
 
 func TestSyncSignedRefRefusesUnsigned(t *testing.T) {
-	repo, _, _ := originRepo(t)
+	repo, home, _ := originRepo(t)
+	// A valid allowed-signers file so the sync clears the S2 guard and reaches
+	// the signature check itself; the point here is the unsigned ref, not the
+	// missing signers file (that path is TestSyncSignedRefRefusesAmbientTrust).
+	key, err := source.GenerateDeployKey("signer")
+	if err != nil {
+		t.Fatalf("generate signer: %v", err)
+	}
+	fields := strings.Fields(key.PublicAuthorizedKey)
+	allowedPath := filepath.Join(home, "allowed_signers")
+	if err := os.WriteFile(allowedPath,
+		[]byte("signer@exocomp "+fields[0]+" "+fields[1]+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	// v1.0.0 is a lightweight, unsigned tag; a signed source must refuse it.
-	_, err := source.Sync(context.Background(), source.SyncOptions{
-		Root:   filepath.Join(t.TempDir(), "sources", "infra"),
-		URL:    repo,
-		Ref:    "v1.0.0",
-		Signed: true,
+	_, err = source.Sync(context.Background(), source.SyncOptions{
+		Root:               filepath.Join(t.TempDir(), "sources", "infra"),
+		URL:                repo,
+		Ref:                "v1.0.0",
+		Signed:             true,
+		AllowedSignersFile: allowedPath,
 	})
 	if err == nil {
 		t.Fatal("signed sync accepted an unsigned tag")
 	}
 	if !strings.Contains(err.Error(), "signature") {
 		t.Fatalf("error = %v, want it to mention the missing signature", err)
+	}
+}
+
+// TestSyncSignedRefRefusesAmbientTrust is the S2 gate: a --signed source with
+// no exocomp-owned allowed-signers must refuse, never fall back to the host git
+// config. The test first proves the fallback was a real hole — it stands up an
+// ambient git config that trusts an attacker key and shows git itself accepts
+// the attacker-signed tag under it — then shows the sync refuses that ref.
+func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not available for SSH tag signing")
+	}
+	repo, home, _ := originRepo(t)
+
+	// An attacker's key signs a tag exocomp never authorized.
+	key, err := source.GenerateDeployKey("attacker")
+	if err != nil {
+		t.Fatalf("generate attacker key: %v", err)
+	}
+	keyPath := filepath.Join(home, "attacker")
+	if err := os.WriteFile(keyPath, key.PrivatePEM, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fields := strings.Fields(key.PublicAuthorizedKey)
+	allowed := "attacker@evil " + fields[0] + " " + fields[1]
+	allowedPath := filepath.Join(home, "attacker_allowed_signers")
+	if err := os.WriteFile(allowedPath, []byte(allowed+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command("git", "-C", repo, "tag", "-s", "-m", "attacker release", "v9.9.9")
+	cmd.Env = append(gitEnv(home),
+		"GIT_CONFIG_COUNT=3",
+		"GIT_CONFIG_KEY_0=gpg.format", "GIT_CONFIG_VALUE_0=ssh",
+		"GIT_CONFIG_KEY_1=user.signingkey", "GIT_CONFIG_VALUE_1="+keyPath,
+		"GIT_CONFIG_KEY_2=user.email", "GIT_CONFIG_VALUE_2=attacker@evil",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("sign attacker tag: %v\n%s", err, out)
+	}
+
+	// The ambient host git config trusts the attacker key — the exact fallback
+	// S2 closes. Prove git accepts the attacker tag under it, so the refusal
+	// below is closing a real hole rather than an imaginary one.
+	gitconfig := filepath.Join(home, ".gitconfig")
+	cfg := "[gpg]\n\tformat = ssh\n[gpg \"ssh\"]\n\tallowedSignersFile = " + allowedPath + "\n"
+	if err := os.WriteFile(gitconfig, []byte(cfg), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	verify := exec.Command("git", "-C", repo, "verify-tag", "v9.9.9")
+	verify.Env = gitEnv(home) // GIT_CONFIG_GLOBAL points at the attacker config
+	if out, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("ambient config did not accept the attacker tag, so the exploit control is not established: %v\n%s", err, out)
+	}
+
+	// The sync runs git under this same HOME; before S2 it verified against that
+	// ambient config and accepted the attacker tag. It must now refuse.
+	t.Setenv("HOME", home)
+	_, err = source.Sync(context.Background(), source.SyncOptions{
+		Root:   filepath.Join(t.TempDir(), "sources", "infra"),
+		URL:    repo,
+		Ref:    "v9.9.9",
+		Signed: true, // AllowedSignersFile deliberately empty
+	})
+	if err == nil {
+		t.Fatal("signed sync accepted a ref with no exocomp-owned allowed-signers")
+	}
+	if !strings.Contains(err.Error(), "allowed-signers") {
+		t.Fatalf("error = %v, want it to name the missing allowed-signers", err)
 	}
 }
 

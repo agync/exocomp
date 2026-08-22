@@ -123,9 +123,21 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 // commit-signing workflow satisfies the trust anchor. A ref with no valid
 // signature fails the sync — the bad commit cannot reach the fleet.
 func verifyRef(ctx context.Context, git string, opts SyncOptions, sshCommand string) error {
-	var config []string
-	if opts.AllowedSignersFile != "" {
-		config = []string{"-c", "gpg.ssh.allowedSignersFile=" + opts.AllowedSignersFile}
+	// Fail closed: a --signed source with no exocomp-owned allowed-signers must
+	// never fall back to the ambient host git config (finding S2). Whatever keys
+	// that config happens to name — a permissive or attacker-influenced
+	// allowedSignersFile — would decide the verdict, so a ref an attacker signed
+	// gets accepted. Refuse rather than verify against trust exocomp does not own.
+	if strings.TrimSpace(opts.AllowedSignersFile) == "" {
+		return fmt.Errorf("source: sync %s: --signed requires an exocomp-owned allowed-signers file; "+
+			"refusing to verify ref %q against the ambient git configuration", opts.Root, opts.Ref)
+	}
+
+	// Pin verification to the SSH signature format and exocomp's own signers,
+	// overriding any ambient gpg.format / allowedSignersFile the host config sets.
+	config := []string{
+		"-c", "gpg.format=ssh",
+		"-c", "gpg.ssh.allowedSignersFile=" + opts.AllowedSignersFile,
 	}
 
 	tagArgs := append(append([]string{}, config...), "verify-tag", opts.Ref)

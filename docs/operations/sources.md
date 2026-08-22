@@ -18,7 +18,12 @@ across all three; only how the tree arrives and stays fresh differs.
 
 A git source prints an ed25519 deploy key to add to the forge as a read-only key;
 `source sync` clones and pins it. `--signed` requires a verified signature on the pinned
-ref before a sync advances it, so a bad commit cannot reach the fleet.
+ref before a sync advances it, so a bad commit cannot reach the fleet. Signing trust is
+**exocomp's own, never the host git config**: `--signed` must be paired with
+`--allowed-signers <file>` or one or more `--signer '<principal> <type> <key>'` lines, and
+is refused at `add` time without them. A `--signed` sync with no recorded signers fails
+closed rather than falling back to whatever `~/.gitconfig` happens to trust — the fallback
+that once let an attacker-signed ref through (finding S2).
 
 **Keep a source tree outside the data dir.** A run's tree is granted read (host paths)
 or read+write (volume paths) into the sandbox, while the data dir — `exocomp.db`,

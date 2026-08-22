@@ -66,6 +66,14 @@ func newSourceAddCmd() *cobra.Command {
 			if allowed != "" && !signed {
 				return errors.New("source add: --allowed-signers/--signer require --signed")
 			}
+			// Fail closed at registration: a --signed source with no exocomp-owned
+			// signers would otherwise verify against the ambient host git config at
+			// sync (finding S2). Refuse now rather than record a source that can
+			// never sync — the trust must be exocomp's own.
+			if signed && allowed == "" {
+				return errors.New("source add: --signed requires --allowed-signers or --signer; " +
+					"exocomp verifies a signed ref against its own signers, never the host git config")
+			}
 			return runSourceAdd(cmd, args[0], sourceAddSpec{
 				url: url, ref: ref, path: path, kind: kind, signed: signed, allowedSigners: allowed,
 			})
@@ -86,7 +94,7 @@ func newSourceAddCmd() *cobra.Command {
 
 // resolveAllowedSigners builds the stored allowed-signers content from a file
 // and/or inline --signer lines, in git's allowed-signers format. Empty when
-// neither is given (a signed source then falls back to git's own config).
+// neither is given, which a --signed source refuses at add time (finding S2).
 func resolveAllowedSigners(file string, signers []string) (string, error) {
 	var b strings.Builder
 	if file != "" {
@@ -178,10 +186,6 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 	}
 
 	_, _ = fmt.Fprintf(out, "registered git source %q (%s, ref %s)\n", name, spec.url, spec.ref)
-	if spec.signed && spec.allowedSigners == "" {
-		_, _ = fmt.Fprintln(out, "note: --signed with no --allowed-signers/--signer trusts the host git "+
-			"config's signers; pass --allowed-signers for exocomp-owned, backed-up trust.")
-	}
 	_, _ = fmt.Fprintln(out, "add this deploy key to the forge as a read-only key:")
 	_, _ = fmt.Fprintln(out, key.PublicAuthorizedKey)
 	return nil
