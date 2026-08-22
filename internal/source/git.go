@@ -12,6 +12,51 @@ import (
 // GitBinary is the pinned tool this package shells out to.
 const GitBinary = "git"
 
+// ForgeHost returns the SSH host a git URL connects to, so a sync can pin that
+// host's key from the recorded known_hosts store (ADR 0010, finding S5). It
+// returns "" for a URL that reaches no SSH host — a local path, or an explicit
+// file/http/git transport — where there is no host key to verify. A port, when
+// present, is dropped: the store keys a host by name, matching how it is
+// recorded.
+func ForgeHost(rawURL string) string {
+	u := strings.TrimSpace(rawURL)
+	if u == "" {
+		return ""
+	}
+	if rest, ok := strings.CutPrefix(u, "ssh://"); ok {
+		if at := strings.LastIndex(rest, "@"); at >= 0 {
+			rest = rest[at+1:]
+		}
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			rest = rest[:slash]
+		}
+		if colon := strings.LastIndexByte(rest, ':'); colon >= 0 {
+			rest = rest[:colon]
+		}
+		return rest
+	}
+	// An explicit non-SSH transport carries no SSH host key.
+	for _, p := range []string{"file://", "http://", "https://", "git://"} {
+		if strings.HasPrefix(u, p) {
+			return ""
+		}
+	}
+	// scp-like syntax: [user@]host:path — the host ends at the first colon, and
+	// that colon must come before any slash (a leading absolute path has none).
+	colon := strings.IndexByte(u, ':')
+	if colon < 0 {
+		return ""
+	}
+	if slash := strings.IndexByte(u, '/'); slash >= 0 && slash < colon {
+		return ""
+	}
+	host := u[:colon]
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		host = host[at+1:]
+	}
+	return host
+}
+
 // SyncOptions drives one sync of a git source to a pinned ref.
 type SyncOptions struct {
 	// Root is the checkout directory in the data volume (Locality.Root).

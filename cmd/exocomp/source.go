@@ -283,6 +283,21 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 		defer zero(key)
 		opts.DeployKeyPEM = key
 	}
+
+	// Pin the forge's host key from the recorded known_hosts store (ADR 0010,
+	// finding S5): without it the ssh transport trusts whatever key the forge
+	// presents on first contact. When the forge host has a recorded key, verify
+	// against it strictly; a mismatch fails the sync rather than trusting a new
+	// key. A forge not yet recorded stays trust-on-first-use — record it (host
+	// onboard / ssh-keyscan into the store) to get the pin.
+	if host := source.ForgeHost(src.URI); host != "" {
+		khFile, cleanup, err := forgeKnownHosts(cmd.Context(), st, host)
+		if err != nil {
+			return fmt.Errorf("source sync: known_hosts: %w", err)
+		}
+		defer cleanup()
+		opts.KnownHostsFile = khFile
+	}
 	if src.Signed && src.AllowedSigners != "" {
 		// Materialize exocomp's own allowed-signers outside the checkout (git
 		// clean -fdx wipes the tree) so verify-tag/commit trusts these keys, not
@@ -311,6 +326,43 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "synced %q to %s (%s)\n", name, res.Ref, short(res.SHA))
 	return nil
+}
+
+// forgeKnownHosts materializes the recorded host keys for one forge host into a
+// temporary known_hosts file for the sync's ssh transport, returning the path
+// and a cleanup. When the host has no recorded key it returns an empty path and
+// a no-op cleanup: the sync stays trust-on-first-use rather than failing to
+// clone a forge the operator has not yet recorded.
+func forgeKnownHosts(ctx context.Context, st *store.Store, host string) (string, func(), error) {
+	noop := func() {}
+	rows, err := st.ListKnownHosts(ctx)
+	if err != nil {
+		return "", noop, err
+	}
+	var forge []store.KnownHost
+	for _, kh := range rows {
+		if kh.Host == host {
+			forge = append(forge, kh)
+		}
+	}
+	if len(forge) == 0 {
+		return "", noop, nil
+	}
+	f, err := os.CreateTemp("", "exocomp-knownhosts-*")
+	if err != nil {
+		return "", noop, err
+	}
+	cleanup := func() { _ = os.Remove(f.Name()) }
+	if _, err := f.WriteString(store.RenderKnownHosts(forge)); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", noop, err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", noop, err
+	}
+	return f.Name(), cleanup, nil
 }
 
 func newSourceRmCmd() *cobra.Command {

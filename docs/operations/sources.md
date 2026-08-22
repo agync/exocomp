@@ -25,6 +25,13 @@ is refused at `add` time without them. A `--signed` sync with no recorded signer
 closed rather than falling back to whatever `~/.gitconfig` happens to trust — the fallback
 that once let an attacker-signed ref through (finding S2).
 
+A `git` source over `ssh://` (or `user@host:path`) **pins the forge host key** from the
+recorded `known_host` store: when the forge host has a recorded key, `source sync` verifies
+it strictly (`UserKnownHostsFile` + `StrictHostKeyChecking=yes`), so a changed or attacker
+key fails the sync instead of being trusted on first contact (finding S5). A forge not yet
+recorded stays trust-on-first-use — record its key (`host onboard`, or `ssh-keyscan` into
+the store) so the next sync pins it.
+
 **Keep a source tree outside the data dir.** A run's tree is granted read (host paths)
 or read+write (volume paths) into the sandbox, while the data dir — `exocomp.db`,
 `host.key`, `keyring.age` — is denied to every job. Those two rules collide if a source

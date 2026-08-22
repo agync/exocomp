@@ -293,6 +293,115 @@ func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
 	}
 }
 
+func TestForgeHost(t *testing.T) {
+	t.Parallel()
+	cases := map[string]string{
+		"git@forge:org/repo.git":            "forge",
+		"ssh://git@forge:2222/org/repo.git": "forge",
+		"ssh://forge/org/repo.git":          "forge",
+		"user@host.example:path/to/repo":    "host.example",
+		"https://forge/org/repo.git":        "",
+		"http://forge/org/repo.git":         "",
+		"git://forge/repo.git":              "",
+		"file:///data/repo":                 "",
+		"/data/checkouts/seeded":            "",
+		"":                                  "",
+	}
+	for url, want := range cases {
+		if got := source.ForgeHost(url); got != want {
+			t.Errorf("ForgeHost(%q) = %q, want %q", url, got, want)
+		}
+	}
+}
+
+// fakeSSHDir writes an `ssh` stand-in that models OpenSSH's host-key check and
+// then transports the git command locally. Under StrictHostKeyChecking=yes it
+// reads the pinned key for the host out of UserKnownHostsFile and refuses the
+// connection (exit 255) when it does not match the key the "forge" presents
+// (baked into the script, since the sync runs git under a minimal env) — the
+// way a real host-key mismatch fails a clone.
+func fakeSSHDir(t *testing.T, presentedKey string) string {
+	t.Helper()
+	dir := t.TempDir()
+	script := `#!/bin/sh
+presented="` + presentedKey + `"
+known=""; strict=""; host=""; cmd=""; hostset=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) case "$2" in
+          UserKnownHostsFile=*) known="${2#UserKnownHostsFile=}" ;;
+          StrictHostKeyChecking=*) strict="${2#StrictHostKeyChecking=}" ;;
+        esac; shift 2 ;;
+    -i) shift 2 ;;
+    -*) shift ;;
+    *) if [ -z "$hostset" ]; then host="$1"; hostset=1; else cmd="$cmd $1"; fi; shift ;;
+  esac
+done
+if [ "$strict" = yes ] && [ -n "$known" ]; then
+  pinned=$(awk -v h="$host" '$1==h {print $3; exit}' "$known")
+  if [ "$pinned" != "$presented" ]; then
+    echo "Host key verification failed." >&2
+    exit 255
+  fi
+fi
+exec sh -c "$cmd"
+`
+	if err := os.WriteFile(filepath.Join(dir, "ssh"), []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake ssh: %v", err)
+	}
+	return dir
+}
+
+// TestSyncPinsForgeHostKey is the S5 gate: with a known_hosts file the sync
+// verifies the forge host key strictly, so a key that does not match the pinned
+// one fails the clone; a matching pin clones cleanly. Without the pin the sync
+// would trust whatever key the forge presented (trust on first use).
+func TestSyncPinsForgeHostKey(t *testing.T) {
+	if _, err := exec.LookPath("git-upload-pack"); err != nil {
+		t.Skip("git-upload-pack not available for the ssh transport")
+	}
+	repo, _, wantSHA := originRepo(t)
+
+	t.Setenv("PATH", fakeSSHDir(t, "AAAArealforgekey")+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	// ssh://forge<abs repo path>: git connects to host "forge" and runs
+	// git-upload-pack on the repo path, which the fake ssh serves locally.
+	url := "ssh://forge" + repo
+
+	writeKH := func(body string) string {
+		p := filepath.Join(t.TempDir(), "known_hosts")
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	// A matching pin clones.
+	res, err := source.Sync(context.Background(), source.SyncOptions{
+		Root:           filepath.Join(t.TempDir(), "ok"),
+		URL:            url,
+		Ref:            "v1.0.0",
+		KnownHostsFile: writeKH("forge ssh-ed25519 AAAArealforgekey\n"),
+	})
+	if err != nil {
+		t.Fatalf("sync with a matching forge host key failed: %v", err)
+	}
+	if res.SHA != wantSHA {
+		t.Fatalf("synced SHA = %q, want %q", res.SHA, wantSHA)
+	}
+
+	// A mismatching pin fails the sync — the host key changed under us.
+	_, err = source.Sync(context.Background(), source.SyncOptions{
+		Root:           filepath.Join(t.TempDir(), "bad"),
+		URL:            url,
+		Ref:            "v1.0.0",
+		KnownHostsFile: writeKH("forge ssh-ed25519 AAAAattackerkey\n"),
+	})
+	if err == nil {
+		t.Fatal("sync accepted a forge host key that did not match the pin")
+	}
+}
+
 func TestSyncVerifiesSSHSignedTag(t *testing.T) {
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not available for SSH tag signing")

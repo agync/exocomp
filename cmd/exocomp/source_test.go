@@ -229,6 +229,57 @@ func TestSourceAddSignedRequiresOwnedSigners(t *testing.T) {
 	}
 }
 
+// TestForgeKnownHosts covers the S5 wiring: a sync materializes exactly the
+// recorded keys for the forge host into a known_hosts file, and a forge with no
+// recorded key pins nothing (stays trust-on-first-use) rather than failing.
+func TestForgeKnownHosts(t *testing.T) {
+	dir := initForSource(t)
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+
+	for _, kh := range []store.KnownHost{
+		{Host: "forge", KeyType: "ssh-ed25519", Key: "AAAAforgekey"},
+		{Host: "other", KeyType: "ssh-ed25519", Key: "AAAAotherkey"},
+	} {
+		if err := st.RecordKnownHost(ctx, kh); err != nil {
+			t.Fatalf("record %s: %v", kh.Host, err)
+		}
+	}
+
+	path, cleanup, err := forgeKnownHosts(ctx, st, "forge")
+	if err != nil {
+		t.Fatalf("forgeKnownHosts: %v", err)
+	}
+	defer cleanup()
+	if path == "" {
+		t.Fatal("no known_hosts file materialized for a recorded forge")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "forge ssh-ed25519 AAAAforgekey") {
+		t.Errorf("known_hosts missing the forge key: %q", body)
+	}
+	if strings.Contains(string(body), "other") {
+		t.Errorf("known_hosts leaked an unrelated host: %q", body)
+	}
+
+	// A forge with no recorded key must not pin, or a first clone could never run.
+	p2, c2, err := forgeKnownHosts(ctx, st, "unrecorded")
+	if err != nil {
+		t.Fatalf("forgeKnownHosts(unrecorded): %v", err)
+	}
+	defer c2()
+	if p2 != "" {
+		t.Errorf("an unrecorded forge pinned a file %q, want trust-on-first-use", p2)
+	}
+}
+
 // --- helpers ---
 
 func runSource(t *testing.T, args ...string) (string, error) {
