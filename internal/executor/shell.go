@@ -23,6 +23,15 @@ const maxLineBytes = 1 << 20
 // otherwise hold the job open for as long as it runs.
 const pipeDrainGrace = 2 * time.Second
 
+// textBusyRetries bounds the ETXTBSY retry at start. ETXTBSY is a transient of
+// exec'ing a file while a concurrent fork+exec elsewhere in this process still
+// holds a writable descriptor to it (a vendored tool just written, or a fake
+// tool in a parallel test): the kernel refuses the exec until that sibling
+// child execs and its O_CLOEXEC descriptor closes — microseconds later. It is
+// never a permanent condition, so a bounded backoff clears it deterministically
+// rather than surfacing a spurious start failure.
+const textBusyRetries = 12
+
 // Shell is the M1 local driver: one subprocess per job, output scanned line
 // by line into events, exit code returned as-is.
 type Shell struct{}
@@ -42,18 +51,11 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
-	cmd.Dir = spec.Dir
-	cmd.Env = spec.Env
-	// The job is the whole tree, not one pid: a cancelled run has to reach the
-	// helpers its process started, and a shell that exec'd something else is
-	// only reachable by group.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
-
 	// The pipes are ours rather than cmd.StdoutPipe()'s, so closing them is
 	// this function's decision: Wait would otherwise be the only thing that
-	// ever closes them, and it is exactly what is being unblocked.
+	// ever closes them, and it is exactly what is being unblocked. They are
+	// created once and reused across a start retry: a start that failed never
+	// touched them.
 	stdout, stdoutW, err := os.Pipe()
 	if err != nil {
 		return Result{}, fmt.Errorf("executor: stdout pipe: %w", err)
@@ -65,10 +67,35 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 		return Result{}, fmt.Errorf("executor: stderr pipe: %w", err)
 	}
 	defer func() { _ = stderr.Close() }()
-	cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 
-	started := time.Now()
-	err = cmd.Start()
+	var cmd *exec.Cmd
+	var started time.Time
+	for attempt := 0; ; attempt++ {
+		cmd = exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
+		cmd.Dir = spec.Dir
+		cmd.Env = spec.Env
+		// The job is the whole tree, not one pid: a cancelled run has to reach the
+		// helpers its process started, and a shell that exec'd something else is
+		// only reachable by group.
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+		cmd.Stdout, cmd.Stderr = stdoutW, stderrW
+
+		started = time.Now()
+		err = cmd.Start()
+		if err == nil || !errors.Is(err, syscall.ETXTBSY) || attempt >= textBusyRetries {
+			break
+		}
+		// Back off briefly for the sibling exec to complete, then re-arm. The
+		// context still bounds the total wait.
+		select {
+		case <-ctx.Done():
+			err = ctx.Err()
+		case <-time.After(textBusyBackoff(attempt)):
+			continue
+		}
+		break
+	}
 	// Only the child needs the write ends; holding them here would mean no
 	// reader ever sees EOF.
 	_ = stdoutW.Close()
@@ -128,6 +155,17 @@ func drainOutput(scanned <-chan struct{}, pipes ...*os.File) {
 		_ = p.Close()
 	}
 	<-scanned
+}
+
+// textBusyBackoff grows the pause between ETXTBSY start retries from 1ms,
+// capped at 32ms: the window is a single sibling fork→exec, so a short
+// exponential clears it well inside the retry budget.
+func textBusyBackoff(attempt int) time.Duration {
+	d := time.Millisecond << attempt
+	if d > 32*time.Millisecond {
+		d = 32 * time.Millisecond
+	}
+	return d
 }
 
 func scan(r io.Reader, level string, sink EventSink) {
