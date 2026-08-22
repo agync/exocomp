@@ -54,6 +54,18 @@ tries to read a denied path fails closed, leaving no half-built venv. A host
 that cannot enforce the sandbox resolves in the daemon context, loudly, the same
 way any job degrades there.
 
+**Index posture and no flag injection.** A `pyproject.toml`'s
+`[project].dependencies` are PEP 508 package requirements — a package name comes
+first, never a dash. A specifier that begins with `-` is therefore a pip option
+smuggled into the dependency list (`--index-url=…` to redirect the resolver's
+index, `-e /path` to install an editable tree), and the vendoring step refuses
+it rather than pass it to uv as a flag (finding S4); the specifiers it does
+accept are handed to uv after a `--` separator as defence in depth, so nothing
+from the manifest is ever read as an option. A `requirements.txt`, by contrast,
+is uv's own input format and its in-file options are the operator's declaration,
+honoured as written — pin the index and hashes there when a private index or
+hash-gating is wanted, and keep the source a trusted (ideally `--signed`) one.
+
 ## OpenTofu providers
 
 `workspace plan`/`apply` sets `TF_PLUGIN_CACHE_DIR` to `<data dir>/tofu/plugin-cache`, so

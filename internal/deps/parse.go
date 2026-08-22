@@ -64,7 +64,27 @@ func parsePyprojectDeps(body []byte) ([]string, error) {
 			specs = append(specs, stringItems(groups[name])...)
 		}
 	}
+	if err := validateSpecifiers(specs); err != nil {
+		return nil, err
+	}
 	return specs, nil
+}
+
+// validateSpecifiers refuses a dependency specifier that would reach uv as a
+// flag rather than a package (finding S4). A PEP 508 requirement names a
+// package first — it never begins with `-`, so a leading dash means a
+// `--index-url=…` redirect or a `-e /etc` editable smuggled through
+// `[project.dependencies]`, where pip options have no business. Rejecting it
+// fails the vendoring step loudly instead of handing uv a flag it did not mean
+// to grant; the argv path also passes these past `--` as defence in depth.
+func validateSpecifiers(specs []string) error {
+	for _, s := range specs {
+		if strings.HasPrefix(strings.TrimSpace(s), "-") {
+			return fmt.Errorf("dependency specifier %q begins with '-'; a package requirement "+
+				"cannot start a flag — refusing to pass it to the resolver", s)
+		}
+	}
+	return nil
 }
 
 // stringItems returns the string elements of a decoded TOML array, skipping any

@@ -200,14 +200,20 @@ func toolchainPins(spec VenvSpec) []string {
 // installArgs is the uv-pip tail that installs the declared dependencies:
 // -r for a requirements file, the extracted specifiers for a pyproject. uv
 // understands the manifest formats natively, so nothing here re-implements
-// resolution.
+// resolution. The pyproject specifiers are passed after `--`, so a specifier
+// beginning with a dash cannot be read as a uv flag (finding S4); parse-time
+// validation already refuses one, and this is the defence-in-depth behind it.
+// The content was validated at discovery, so the parse here cannot fail.
 func installArgs(m PythonManifest) []string {
 	switch m.Kind {
 	case KindRequirements:
 		return []string{"-r", m.Path}
 	case KindPyproject:
-		specs, _ := parsePyprojectDeps(m.content)
-		return specs
+		specs, err := parsePyprojectDeps(m.content)
+		if err != nil || len(specs) == 0 {
+			return nil
+		}
+		return append([]string{"--"}, specs...)
 	default:
 		return nil
 	}

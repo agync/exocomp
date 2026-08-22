@@ -1,6 +1,7 @@
 package deps
 
 import (
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -101,6 +102,59 @@ func TestParsePyprojectMalformedIsError(t *testing.T) {
 	}
 	if _, err := parsePyprojectDeps([]byte("[project\nname = \"broken\"\n")); err == nil {
 		t.Fatal("malformed table header parsed without error")
+	}
+}
+
+// A dependency specifier that begins with a dash is a flag smuggled through
+// [project].dependencies (finding S4): --index-url redirects the resolver's
+// index, -e installs an editable path. Parsing must refuse it so it never
+// reaches uv as a flag, rather than dropping it silently.
+func TestParsePyprojectRejectsFlagSpecifier(t *testing.T) {
+	for _, spec := range []string{
+		"--index-url=http://evil.example/simple",
+		"-i http://evil.example/simple",
+		"-e /etc",
+		"  --extra-index-url=http://evil.example",
+	} {
+		body := []byte("[project]\ndependencies = [\"jmespath\", \"" + spec + "\"]\n")
+		if _, err := parsePyprojectDeps(body); err == nil {
+			t.Errorf("spec %q parsed without error; a flag reached the resolver", spec)
+		}
+	}
+}
+
+// The whole-manifest path fails closed too: a pyproject carrying a flag
+// specifier errors at discovery, so no venv is built and no flag is passed.
+func TestDiscoverPythonRejectsFlagSpecifier(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "pyproject.toml"),
+		"[project]\ndependencies = [\"--index-url=http://evil.example\"]\n")
+	if _, err := DiscoverPython(root); err == nil {
+		t.Fatal("DiscoverPython accepted a pyproject with a flag specifier")
+	}
+}
+
+// A valid pyproject's specifiers are passed after a `--` separator, so even a
+// specifier that somehow began with a dash would be a package path to uv, never
+// a flag — defence in depth behind the parse-time refusal.
+func TestInstallArgsPassesPyprojectSpecsPastSeparator(t *testing.T) {
+	m := PythonManifest{Kind: KindPyproject, content: []byte(
+		"[project]\ndependencies = [\"jmespath==1.1.0\", \"netaddr\"]\n")}
+	args := installArgs(m)
+	sep := -1
+	for i, a := range args {
+		if a == "--" {
+			sep = i
+			break
+		}
+	}
+	if sep < 0 {
+		t.Fatalf("installArgs did not separate specifiers with --: %v", args)
+	}
+	for _, a := range args[:sep] {
+		if a == "jmespath==1.1.0" || a == "netaddr" {
+			t.Errorf("specifier %q appears before the -- separator: %v", a, args)
+		}
 	}
 }
 
