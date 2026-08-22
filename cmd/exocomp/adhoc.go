@@ -1,0 +1,337 @@
+package main
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"regexp"
+	"strings"
+	"time"
+	"unicode"
+
+	"github.com/spf13/cobra"
+
+	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/source"
+	"exocomp.dev/exocomp/internal/store"
+)
+
+func init() {
+	registerCommand(newAnsibleAdhocCmd)
+}
+
+// defaultAdhocModule is what `command` runs and the fallback for `ansible`: the
+// command module runs a bare program with no shell, so a pipe or a redirect is
+// an explicit `--shell` (or `-m shell`) rather than an accident.
+const defaultAdhocModule = "command"
+
+// shellAdhocModule switches `command --shell` to a shell so pipes and redirects
+// work, at the cost of the command module's no-shell safety.
+const shellAdhocModule = "shell"
+
+// adhocModuleName is the ansible module-name shape: a leading letter/digit/
+// underscore, then letters, digits, underscores and dots (so `ansible.builtin.ping`
+// is admitted). Anything else — a leading dash, a space, a shell metacharacter —
+// is refused, so `-m` cannot smuggle a flag or a second token onto the argv.
+var adhocModuleName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.]*$`)
+
+// adhocSpec is one ad-hoc invocation: `ansible <pattern> -i <inv> -m <module>
+// -a "<args>"`, run from a source checkout (or localhost) through the one queue
+// under the same governance a playbook run gets.
+type adhocSpec struct {
+	// runbook labels the job so `command` and `ansible` are told apart in the
+	// job list; both are ordinary ansible jobs.
+	runbook             string
+	sourceName          string
+	pattern             string
+	inventory           string
+	module              string
+	args                string
+	become              bool
+	vaultProject        string
+	runSecrets          string
+	requireApproval     bool
+	tolerateUnreachable bool
+	timeout             time.Duration
+}
+
+func newAnsibleAdhocCmd() *cobra.Command {
+	var (
+		sourceName          string
+		host                string
+		limit               string
+		inventory           string
+		module              string
+		args                string
+		become              bool
+		vaultProject        string
+		runSecrets          string
+		requireApproval     bool
+		tolerateUnreachable bool
+		timeout             time.Duration
+	)
+
+	cmd := &cobra.Command{
+		Use:   "ansible --host <pattern> -m <module> [-a <args>]",
+		Short: "Run any ad-hoc ansible module against a host pattern",
+		Long: "The power form of the everyday ad-hoc run: `ansible <pattern> -i <inv> " +
+			"-m <module> -a \"<args>\"` for any module (service, copy, package, ping, " +
+			"setup, …). `exocomp command` is the ergonomic shorthand for `-m command`. " +
+			"It runs from a source's checkout (--source) against its inventory, or against " +
+			"localhost over the local connection, through the same governance a playbook " +
+			"run gets: the sandbox, the vault-id, the fleet key, run-secrets, redaction, " +
+			"and the one queue. --require-approval gates a destructive module behind the " +
+			"approval gate; --tolerate-unreachable settles an unreachable-only run degraded " +
+			"rather than failed. The module name and args are injection-guarded and no " +
+			"secret is ever placed on ansible's argv (docs/operations/adhoc-and-partial.md).",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			pattern, err := resolveHostPattern(host, limit)
+			if err != nil {
+				return err
+			}
+			if err := guardModule(module); err != nil {
+				return err
+			}
+			if err := guardModuleArgs(args); err != nil {
+				return err
+			}
+			return runAdhocExit(cmd, adhocSpec{
+				runbook:             "ansible",
+				sourceName:          sourceName,
+				pattern:             pattern,
+				inventory:           inventory,
+				module:              module,
+				args:                args,
+				become:              become,
+				vaultProject:        vaultProject,
+				runSecrets:          runSecrets,
+				requireApproval:     requireApproval,
+				tolerateUnreachable: tolerateUnreachable,
+				timeout:             timeout,
+			})
+		},
+	}
+	cmd.Flags().StringVarP(&module, "module", "m", defaultAdhocModule, "ansible module to run")
+	cmd.Flags().StringVarP(&args, "args", "a", "", "module arguments (the -a string)")
+	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
+		&vaultProject, &runSecrets, &requireApproval, &tolerateUnreachable, &timeout)
+	return cmd
+}
+
+// addAdhocFlags registers the governance flags `command` and `ansible` share, so
+// the two verbs stay one skeleton with one set of names.
+func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *string,
+	become *bool, vaultProject, runSecrets *string, requireApproval, tolerateUnreachable *bool,
+	timeout *time.Duration) {
+	cmd.Flags().StringVarP(sourceName, "source", "s", "", "run from this registered source's checkout")
+	cmd.Flags().StringVar(host, "host", "", "ansible host pattern: a host, a group, or an expression like `fedora:!nas`")
+	cmd.Flags().StringVar(limit, "limit", "", "alias for --host")
+	cmd.Flags().StringVar(inventory, "inventory", "", "inventory path or registered inventory name (default: localhost over the local connection)")
+	cmd.Flags().BoolVar(become, "become", false, "run with privilege escalation (ansible --become)")
+	cmd.Flags().StringVar(vaultProject, "vault-project", "", "derive the ansible-vault password for this project from the envelope")
+	cmd.Flags().StringVar(runSecrets, "run-secrets", "", "bind a run_secret set as named env for the run")
+	cmd.Flags().BoolVar(requireApproval, "require-approval", false, "gate the run behind the approval gate; it waits in awaiting_approval until a decision")
+	cmd.Flags().BoolVar(tolerateUnreachable, "tolerate-unreachable", false, "a run whose only non-success is unreachable hosts settles degraded, not failed")
+	cmd.Flags().DurationVar(timeout, "timeout", 0, "kill the run after this long (0: no limit)")
+}
+
+// resolveHostPattern reconciles --host and its --limit alias into the one
+// pattern, and guards it: exactly one must be set, and the pattern may not start
+// with a dash or carry a control character, so it cannot be read as a flag or
+// split the argv.
+func resolveHostPattern(host, limit string) (string, error) {
+	pattern := host
+	switch {
+	case host != "" && limit != "" && host != limit:
+		return "", errors.New("command: pass one of --host or --limit, not both")
+	case host == "":
+		pattern = limit
+	}
+	if pattern == "" {
+		return "", errors.New("command: --host <pattern> is required")
+	}
+	if strings.HasPrefix(pattern, "-") {
+		return "", fmt.Errorf("command: host pattern %q starts with a dash", pattern)
+	}
+	if hasControl(pattern) {
+		return "", errors.New("command: host pattern contains a control character")
+	}
+	return pattern, nil
+}
+
+// guardModule refuses a module name that is not the plain ansible shape, so `-m`
+// can carry only a module, never a flag or a whitespace-split second token.
+func guardModule(module string) error {
+	if !adhocModuleName.MatchString(module) {
+		return fmt.Errorf("command: module %q is not a valid module name", module)
+	}
+	return nil
+}
+
+// guardModuleArgs refuses an -a string that starts with a dash or carries a
+// control character. A module's args are `key=value` pairs; a leading dash is a
+// flag trying to escape the single argv token, and a control character would
+// split or truncate it.
+func guardModuleArgs(args string) error {
+	trimmed := strings.TrimSpace(args)
+	if strings.HasPrefix(trimmed, "-") {
+		return fmt.Errorf("command: module args %q start with a dash", args)
+	}
+	if hasControl(args) {
+		return errors.New("command: module args contain a control character")
+	}
+	return nil
+}
+
+// hasControl reports whether s carries a control character (NUL, a newline, or
+// any other), the bytes an argv token cannot safely carry.
+func hasControl(s string) bool {
+	return strings.IndexFunc(s, func(r rune) bool { return unicode.IsControl(r) }) >= 0
+}
+
+// runAdhocExit runs the ad-hoc spec and translates its job outcome into the
+// process exit code, the same way `playbook run` does.
+func runAdhocExit(cmd *cobra.Command, spec adhocSpec) error {
+	code, err := runAdhoc(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), spec)
+	if err != nil {
+		return err
+	}
+	if code != 0 {
+		// A cobra RunE cannot carry an exit code; runAdhoc has already released
+		// the store and the envelope by here.
+		os.Exit(code)
+	}
+	return nil
+}
+
+// runAdhoc enqueues one ad-hoc ansible job and returns its exit code. It mirrors
+// runPlaybook: a running daemon claims the row, otherwise the queue is drained
+// in this process; --require-approval routes the job through the gate instead.
+func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code int, err error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	dir, err := dataDir()
+	if err != nil {
+		return 0, fmt.Errorf("command: resolve data dir: %w", err)
+	}
+
+	st, err := openJobStore(ctx, warn)
+	if err != nil {
+		return 0, err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	root, err := adhocSourceRoot(ctx, st, dir, spec.sourceName)
+	if err != nil {
+		return 0, err
+	}
+
+	invPath, invName, err := resolveInventoryArg(ctx, st, spec.inventory)
+	if err != nil {
+		return 0, err
+	}
+
+	var passthrough []string
+	if spec.become {
+		passthrough = append(passthrough, "--become")
+	}
+
+	queued := queue.Spec{
+		Runbook:             spec.runbook,
+		Kind:                executor.KindAnsible,
+		Trigger:             "manual",
+		Argv:                executor.AnsibleAdhocArgv(spec.pattern, invPath, spec.module, spec.args, passthrough...),
+		Dir:                 root,
+		VaultProject:        spec.vaultProject,
+		RunSecretBinding:    spec.runSecrets,
+		Inventory:           invName,
+		TolerateUnreachable: spec.tolerateUnreachable,
+		Timeout:             spec.timeout,
+	}
+
+	if spec.requireApproval {
+		return gateAdhoc(ctx, st, dir, queued, out)
+	}
+
+	var final store.Job
+	if daemonRunning(ctx, dir) {
+		final, err = enqueueForDaemon(ctx, st, dir, queued, out)
+	} else {
+		final, err = runPlaybookInline(ctx, st, dir, queued, out, warn)
+	}
+	if err != nil {
+		return 0, err
+	}
+	return reportJobOutcome(out, final), nil
+}
+
+// adhocSourceRoot resolves the working directory an ad-hoc run executes in: a
+// named source's checkout (so the repo's ansible.cfg and inventory apply), or
+// empty for a localhost run that runs in the caller's own directory.
+func adhocSourceRoot(ctx context.Context, st *store.Store, dir, sourceName string) (string, error) {
+	if sourceName == "" {
+		return "", nil
+	}
+	src, err := st.SourceByName(ctx, sourceName)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", fmt.Errorf("command: no source %q", sourceName)
+	}
+	if err != nil {
+		return "", err
+	}
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	if err != nil {
+		return "", fmt.Errorf("command: %w", err)
+	}
+	return loc.Root, nil
+}
+
+// gateAdhoc routes a --require-approval ad-hoc job through the approval gate: it
+// lands in awaiting_approval where no worker can claim it, an approval that
+// releases it is created, and its decision link is pointed to. It reuses the same
+// gate and approval machinery a gated tofu apply does, so there is one gate.
+func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer) (int, error) {
+	env, err := secrets.Open(dir)
+	if err != nil {
+		return 0, fmt.Errorf("command: --require-approval needs the envelope: %w", err)
+	}
+	defer func() { _ = env.Close() }()
+
+	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+	job, err := q.EnqueueGated(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+
+	_, hash, err := reactive.ApprovalToken(env, job.ID)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now().UTC()
+	approval, err := st.CreateApproval(ctx, store.Approval{
+		JobID:       job.ID,
+		RequestedAt: now,
+		ExpiresAt:   now.Add(reactive.DefaultApprovalTTL),
+		TokenHash:   hash,
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	_, _ = fmt.Fprintf(out, "job %d gated (awaiting_approval); approval %d expires %s\n",
+		job.ID, approval.ID, approval.ExpiresAt.Format("2006-01-02 15:04:05Z"))
+	_, _ = fmt.Fprintf(out, "it waits until decided; print its decision link with `exocomp approval link %d`\n", approval.ID)
+	return 0, nil
+}

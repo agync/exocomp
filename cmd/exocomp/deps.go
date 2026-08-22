@@ -77,6 +77,13 @@ func ansiblePlaybookPath(argv []string) string {
 	if len(argv) == 0 {
 		return ""
 	}
+	// An ad-hoc run (`ansible <pattern> ...`) names no playbook: its positionals
+	// are a host pattern and module args, not a file whose directory carries a
+	// Python manifest. Returning "" keeps ad-hoc runs on the image toolchain and
+	// stops a module arg being mistaken for a playbook path.
+	if filepath.Base(argv[0]) == executor.AnsibleAdhocBinary {
+		return ""
+	}
 	last := argv[len(argv)-1]
 	if strings.HasPrefix(last, "-") {
 		return ""

@@ -102,6 +102,7 @@ read each one's events through `AnsibleCheckChanges`, and raise an event when
 or gate on it. Wiring that sweep is the remaining step; the outcome and the
 read-back helper are in place for it.
 
-Related: [Reacting to alerts](reactive.md) · [Gating tofu plans](plan-policy.md) ·
+Related: [Ad-hoc runs and the unreachable-tolerant outcome](adhoc-and-partial.md) ·
+[Reacting to alerts](reactive.md) · [Gating tofu plans](plan-policy.md) ·
 [Provision → onboard → converge](provision-converge.md) ·
 [Run lifecycle: hooks and the gate](run-lifecycle.md).
