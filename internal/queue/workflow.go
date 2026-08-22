@@ -152,11 +152,29 @@ func (s *Sequencer) runStep(ctx context.Context, workflowID string, step store.W
 		return err
 	}
 
-	// A step whose job already reached a terminal state is decided by that job,
-	// not re-run: this is the crash-between-effect-and-ledger case and the
-	// resume of a job the boot sweep retired to interrupted.
+	// A step whose job reached a terminal state that is a DECISION — succeeded,
+	// failed on its own exit code, or timed out — is settled by that job and not
+	// re-run: this is the crash-between-effect-and-ledger case, where the job
+	// finished before the process died.
+	//
+	// A job that did NOT reach a decision — the boot sweep retired it to
+	// interrupted, or a shutdown cancelled it mid-run — means the process died
+	// under the step before it could finish. The ledger's contract is to resume
+	// (ADR 0008), so the step is re-armed and run again rather than recorded as
+	// a failure that would block the rest of the workflow.
 	if found && job.State.Terminal() {
-		return s.recordOutcome(ctx, workflowID, step, job)
+		if !nonDecision(job) {
+			return s.recordOutcome(ctx, workflowID, step, job)
+		}
+		rearmed, err := s.rearmStep(ctx, workflowID, step, job)
+		if err != nil {
+			return err
+		}
+		// Fall through with the fresh gated job in a pending step: the code
+		// below releases it, marks the ledger running, and waits for it.
+		job = rearmed
+		step.Status = store.StepPending
+		found = true
 	}
 	if !found {
 		return fmt.Errorf("queue: workflow %s step %d has no job to run", workflowID, step.StepNo)
@@ -185,6 +203,53 @@ func (s *Sequencer) runStep(ctx context.Context, workflowID string, step store.W
 		return err
 	}
 	return s.recordOutcome(ctx, workflowID, step, final)
+}
+
+// nonDecision reports whether a terminal job ended without deciding the step's
+// outcome, so a resume should re-run it rather than settle on it. Two states
+// qualify: interrupted (a crash the boot sweep retired, or shutdown retiring a
+// queued row), and cancelled AFTER the job had started running (a shutdown that
+// killed a running step). A cancelled job that never started is an approval the
+// gate denied — a real decision — so StartedAt is what tells the two apart.
+func nonDecision(job store.Job) bool {
+	switch job.State {
+	case store.StateInterrupted:
+		return true
+	case store.StateCancelled:
+		return job.StartedAt != nil
+	default:
+		return false
+	}
+}
+
+// rearmStep enqueues a fresh gated job from an interrupted step's own spec,
+// under a new idempotency key, and retargets the ledger step back to pending so
+// the caller can release and run it. The old job stays terminal as history; the
+// step's effect is expected to be idempotent (ADR 0008), so re-running a swap,
+// an apply, or a play that a crash cut short converges rather than duplicates.
+func (s *Sequencer) rearmStep(ctx context.Context, workflowID string, step store.WorkflowStep, job store.Job) (store.Job, error) {
+	newKey := fmt.Sprintf("%s:r%d", step.IdempotencyKey, time.Now().UTC().UnixNano())
+	newJob, err := s.q.EnqueueGated(ctx, Spec{
+		Runbook:          job.Runbook,
+		Kind:             job.Kind,
+		Trigger:          job.Trigger,
+		Argv:             job.Args.Argv,
+		Dir:              job.Args.Dir,
+		VaultProject:     job.Args.VaultProject,
+		RunSecretBinding: job.Args.RunSecretBinding,
+		Inventory:        job.Args.Inventory,
+		ConcurrencyKey:   job.ConcurrencyKey,
+		Timeout:          time.Duration(job.Args.Timeout),
+		IdempotencyKey:   newKey,
+	})
+	if err != nil {
+		return store.Job{}, fmt.Errorf("queue: workflow %s step %d: re-enqueue: %w",
+			workflowID, step.StepNo, err)
+	}
+	if err := s.q.store.RetargetStep(ctx, workflowID, step.StepNo, newKey); err != nil {
+		return store.Job{}, err
+	}
+	return newJob, nil
 }
 
 // recordOutcome writes a finished step's status from its job's terminal state:
