@@ -227,9 +227,12 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 
 	// Self-observability rides the same listener: the staleness gauges read
 	// the store the daemon already owns, so a second endpoint would only be a
-	// second bind and a second auth story to get wrong.
+	// second bind and a second auth story to get wrong. The listener is
+	// loopback but reachable by tofu-tier jobs, so the scrape is bearer-gated
+	// (finding D3) with a token derived from the envelope — configure
+	// Prometheus with `exocomp doctor`'s metrics-scrape credential.
 	if err := srv.Mount(map[string]http.Handler{
-		"GET /metrics": metrics.New(st, dir).Handler(),
+		"GET /metrics": metrics.Authenticated(metrics.New(st, dir).Handler(), env),
 	}); err != nil {
 		return err
 	}

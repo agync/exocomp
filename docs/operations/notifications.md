@@ -51,6 +51,11 @@ and the seeded alert rules. Point a scraper at it to alert on the control plane'
 freshness — the last successful backup, the oldest unanswered approval, and the like.
 `exocomp doctor` prints the same self-observability lines for a one-shot check.
 
+The loopback backend is reachable by tofu-tier jobs, so the scrape is **bearer-gated**
+(threat-model finding D3): every request must carry the `metrics-scrape` bearer, a token
+derived from the envelope like the state backend's own (ADR 0004). Configure Prometheus
+with it as an `authorization` credential; an unauthenticated scrape is refused with `401`.
+
 Related: [Reacting to alerts](reactive.md) · [LAN access](lan-access.md) ·
 [Disaster recovery](disaster-recovery.md).
 
