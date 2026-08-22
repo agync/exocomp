@@ -2,7 +2,10 @@ package deps
 
 import (
 	"fmt"
+	"sort"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // requirementLines returns the dependency specifiers in a requirements.txt
@@ -31,165 +34,65 @@ func stripComment(line string) string {
 	return line
 }
 
-// parsePyprojectDeps extracts the PEP 621 dependency specifiers from a
-// pyproject.toml: the [project] table's `dependencies` array and every array
-// under [dependency-groups]. It is a bounded reader for exactly those two
-// shapes — arrays of quoted PEP 508 strings — not a general TOML parser: uv is
-// what installs them, this only needs to know which strings to hand it.
+// parsePyprojectDeps extracts the dependency specifiers a source declares in a
+// pyproject.toml: the PEP 621 `[project].dependencies` array and every PEP 735
+// group under `[dependency-groups]`. It decodes the file with a real TOML
+// parser (github.com/BurntSushi/toml) rather than scanning lines, so every
+// legal spelling of those tables is read correctly and a malformed file fails
+// loudly instead of silently yielding fewer specifiers.
 //
-// The limitation is deliberate and fail-safe: a dependency expressed in a form
-// this does not recognise yields fewer specifiers, never a wrong one, and the
-// manifest hash is still taken over the whole file so a change always
-// re-resolves. A structurally broken array (an unterminated bracket) is an
-// error so a malformed manifest fails loudly rather than silently under-installs.
+// What it deliberately does NOT collect: `[project].optional-dependencies`
+// (extras are opt-in, not installed by default) and a `[dependency-groups]`
+// entry's `include-group` reference (that names another group, not a package).
+// uv is what installs the returned specifiers; this only decides which strings
+// to hand it.
 func parsePyprojectDeps(body []byte) ([]string, error) {
-	var (
-		specs   []string
-		section string
-		// capturing accumulates an array value that spans lines until its
-		// brackets balance; want records whether the captured key is one we
-		// collect specifiers from.
-		capturing bool
-		want      bool
-		depth     int
-		buf       strings.Builder
-	)
-
-	flush := func() {
-		if want {
-			specs = append(specs, quotedStrings(buf.String())...)
-		}
-		buf.Reset()
-		capturing = false
-		want = false
-		depth = 0
+	var doc map[string]any
+	if _, err := toml.Decode(string(body), &doc); err != nil {
+		return nil, fmt.Errorf("pyproject: %w", err)
 	}
 
-	for _, raw := range strings.Split(string(body), "\n") {
-		line := stripTOMLComment(raw)
-		if !capturing {
-			if h, ok := tableHeader(line); ok {
-				section = h
-				continue
-			}
-			key, value, ok := splitKeyValue(line)
-			if !ok {
-				continue
-			}
-			if !strings.HasPrefix(strings.TrimSpace(value), "[") {
-				continue
-			}
-			want = isDepKey(section, key)
-			capturing = true
-			depth = 0
-		}
-		// Accumulate the (possibly partial) array text and track bracket depth
-		// so a multi-line array closes on its own matching ']'.
-		text := line
-		if capturing {
-			buf.WriteString(text)
-			buf.WriteByte('\n')
-			depth += strings.Count(stripQuoted(text), "[")
-			depth -= strings.Count(stripQuoted(text), "]")
-			if depth <= 0 {
-				flush()
-			}
-		}
+	var specs []string
+	if project, ok := doc["project"].(map[string]any); ok {
+		specs = append(specs, stringItems(project["dependencies"])...)
 	}
-	if capturing {
-		return nil, fmt.Errorf("pyproject: unterminated array in [%s]", section)
+	if groups, ok := doc["dependency-groups"].(map[string]any); ok {
+		// A TOML table has no inherent order; the group names are sorted so the
+		// specifier list is stable across runs (the manifest hash and the uv
+		// install line must not depend on map iteration order).
+		for _, name := range sortedKeys(groups) {
+			specs = append(specs, stringItems(groups[name])...)
+		}
 	}
 	return specs, nil
 }
 
-// isDepKey reports whether a key in the current section carries dependency
-// specifiers: `dependencies` under [project], or any key under
-// [dependency-groups] and its subtables.
-func isDepKey(section, key string) bool {
-	if section == "project" && key == "dependencies" {
-		return true
+// stringItems returns the string elements of a decoded TOML array, skipping any
+// non-string element. In `[dependency-groups]` a non-string element is a
+// `{include-group = "..."}` table, which references another group rather than a
+// package, so dropping it is correct — never collected as a bogus specifier.
+func stringItems(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
 	}
-	return section == "dependency-groups" || strings.HasPrefix(section, "dependency-groups.")
-}
-
-// tableHeader returns the header name of a `[section]` line, without brackets.
-func tableHeader(line string) (string, bool) {
-	s := strings.TrimSpace(line)
-	if len(s) >= 2 && s[0] == '[' && s[len(s)-1] == ']' && s[1] != '[' {
-		return strings.TrimSpace(s[1 : len(s)-1]), true
-	}
-	return "", false
-}
-
-// splitKeyValue splits a `key = value` line, trimming the key of surrounding
-// quotes so a quoted group name in [dependency-groups] still matches.
-func splitKeyValue(line string) (key, value string, ok bool) {
-	i := strings.IndexByte(line, '=')
-	if i < 0 {
-		return "", "", false
-	}
-	key = strings.TrimSpace(line[:i])
-	key = strings.Trim(key, `"'`)
-	return key, line[i+1:], true
-}
-
-// quotedStrings returns every single- or double-quoted string in s. It is what
-// turns a captured array's text into specifiers, and it ignores anything
-// outside quotes (commas, brackets, whitespace).
-func quotedStrings(s string) []string {
-	var out []string
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if c != '"' && c != '\'' {
-			continue
-		}
-		if j := strings.IndexByte(s[i+1:], c); j >= 0 {
-			if inner := strings.TrimSpace(s[i+1 : i+1+j]); inner != "" {
-				out = append(out, inner)
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			if s = strings.TrimSpace(s); s != "" {
+				out = append(out, s)
 			}
-			i += j + 1
 		}
 	}
 	return out
 }
 
-// stripQuoted blanks the contents of quoted strings so bracket counting does
-// not miscount a '[' or ']' that appears inside a version marker string.
-func stripQuoted(s string) string {
-	var b strings.Builder
-	inQuote := byte(0)
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		switch {
-		case inQuote != 0:
-			if c == inQuote {
-				inQuote = 0
-			}
-		case c == '"' || c == '\'':
-			inQuote = c
-		default:
-			b.WriteByte(c)
-		}
+// sortedKeys returns a map's keys in lexical order.
+func sortedKeys(m map[string]any) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
 	}
-	return b.String()
-}
-
-// stripTOMLComment drops a trailing comment, honouring quotes so a '#' inside a
-// specifier string is not mistaken for a comment.
-func stripTOMLComment(line string) string {
-	inQuote := byte(0)
-	for i := 0; i < len(line); i++ {
-		c := line[i]
-		switch {
-		case inQuote != 0:
-			if c == inQuote {
-				inQuote = 0
-			}
-		case c == '"' || c == '\'':
-			inQuote = c
-		case c == '#':
-			return line[:i]
-		}
-	}
-	return line
+	sort.Strings(keys)
+	return keys
 }

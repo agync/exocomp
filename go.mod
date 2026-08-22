@@ -9,6 +9,7 @@ require (
 	charm.land/ssh v0.4.3
 	charm.land/wish/v2 v2.0.3
 	filippo.io/age v1.3.1
+	github.com/BurntSushi/toml v1.5.0
 	github.com/a-h/templ v0.3.906
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/creack/pty v1.1.24

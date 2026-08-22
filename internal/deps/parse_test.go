@@ -19,8 +19,6 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest", "ruff"]
-
-[dependency-groups.docs]
 docs = ["mkdocs"]
 
 [tool.black]
@@ -58,10 +56,51 @@ func TestParsePyprojectIgnoresBuildRequires(t *testing.T) {
 	}
 }
 
-func TestParsePyprojectUnterminatedIsError(t *testing.T) {
-	_, err := parsePyprojectDeps([]byte("[project]\ndependencies = [\n  \"jmespath\",\n"))
-	if err == nil {
+// A PEP 735 include-group entry references another group, not a package: it
+// must never be collected as a specifier. The line-scanning reader this
+// replaced would have picked up the "test" string as a bogus dependency.
+func TestParsePyprojectSkipsIncludeGroup(t *testing.T) {
+	body := []byte(`
+[dependency-groups]
+test = ["pytest"]
+all = ["coverage", {include-group = "test"}]
+`)
+	got, err := parsePyprojectDeps(body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	want := []string{"coverage", "pytest"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("deps = %v, want %v (include-group must not become a spec)", got, want)
+	}
+}
+
+// optional-dependencies are extras, installed on demand, not by default: they
+// stay out of the resolved set so a run does not silently pull an extra in.
+func TestParsePyprojectIgnoresOptionalDeps(t *testing.T) {
+	body := []byte(`
+[project]
+dependencies = ["core-pkg"]
+[project.optional-dependencies]
+aws = ["boto3"]
+`)
+	got, err := parsePyprojectDeps(body)
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if !reflect.DeepEqual(got, []string{"core-pkg"}) {
+		t.Errorf("deps = %v, want [core-pkg]", got)
+	}
+}
+
+// A structurally broken pyproject fails loudly rather than resolving to fewer
+// deps: a malformed manifest must stop the run, not silently under-install.
+func TestParsePyprojectMalformedIsError(t *testing.T) {
+	if _, err := parsePyprojectDeps([]byte("[project]\ndependencies = [\n  \"jmespath\",\n")); err == nil {
 		t.Fatal("unterminated array parsed without error")
+	}
+	if _, err := parsePyprojectDeps([]byte("[project\nname = \"broken\"\n")); err == nil {
+		t.Fatal("malformed table header parsed without error")
 	}
 }
 
