@@ -35,11 +35,20 @@ const ansibleEnvPrefix = "ANSIBLE_"
 // directory and are appended when the job runs, so nothing secret and no
 // path that outlives the run is written to the job row. An empty inventory
 // targets localhost over the local connection.
-func AnsibleArgv(playbook, inventory string) []string {
+// The passthrough arguments are the operator's own flags — --check, --diff,
+// --limit, --tags, -e, --forks — recorded on the job row because they are
+// public: what a run does is not a secret, only the vault password and the
+// extra-vars values are, and those never travel in argv. They are placed
+// before the playbook so ansible-playbook reads them as options.
+func AnsibleArgv(playbook, inventory string, passthrough ...string) []string {
+	argv := []string{AnsibleBinary, "--inventory"}
 	if inventory == "" {
-		return []string{AnsibleBinary, "--inventory", "localhost,", "--connection", "local", playbook}
+		argv = append(argv, "localhost,", "--connection", "local")
+	} else {
+		argv = append(argv, inventory)
 	}
-	return []string{AnsibleBinary, "--inventory", inventory, playbook}
+	argv = append(argv, passthrough...)
+	return append(argv, playbook)
 }
 
 // AnsibleOptions configures the driver. Secret material belongs here and not
@@ -50,8 +59,14 @@ type AnsibleOptions struct {
 	// VaultID is the --vault-id label. Empty means DefaultVaultID.
 	VaultID string
 	// VaultPassword is written to the private directory for the run. Empty
-	// runs without a vault password.
+	// runs without a vault password. It is the single-vault shorthand for
+	// Vaults; when both are set this entry is written first.
 	VaultPassword []byte
+	// Vaults maps additional --vault-id labels to their passwords, so one repo
+	// can carry several vaults (dev/prod) and mix envelope-derived passwords
+	// with imported ones (the "dead daemon bricks my playbooks" fix). Each
+	// resolves to its own --vault-id label@file.
+	Vaults []VaultEntry
 	// ExtraVars are passed through a file, never on the command line where
 	// the process table would expose them.
 	ExtraVars map[string]string
@@ -168,24 +183,51 @@ func (a *Ansible) binary(spec Spec) (string, error) {
 	return resolved, nil
 }
 
+// VaultEntry is one --vault-id label and its password. Several may apply to one
+// run so a repo's dev and prod vaults resolve at once.
+type VaultEntry struct {
+	// ID is the --vault-id label. Empty means DefaultVaultID.
+	ID string
+	// Password is written to the private directory for the run.
+	Password []byte
+}
+
+// vaultEntries is the effective set: the single-vault shorthand first, then the
+// explicit list, so the common one-vault case keeps its stable file name.
+func (a *Ansible) vaultEntries() []VaultEntry {
+	var entries []VaultEntry
+	if len(a.opts.VaultPassword) > 0 {
+		entries = append(entries, VaultEntry{ID: a.opts.VaultID, Password: a.opts.VaultPassword})
+	}
+	return append(entries, a.opts.Vaults...)
+}
+
 // writePrivate fills the private directory and returns the arguments pointing
 // at it.
 func (a *Ansible) writePrivate(dir string) ([]string, error) {
 	var args []string
 
-	if len(a.opts.VaultPassword) > 0 {
-		id := a.opts.VaultID
+	seen := map[string]bool{}
+	for i, entry := range a.vaultEntries() {
+		if len(entry.Password) == 0 {
+			continue
+		}
+		id := entry.ID
 		if id == "" {
 			id = DefaultVaultID
 		}
 		if strings.ContainsAny(id, "@ \t\r\n") {
 			return nil, fmt.Errorf("executor: ansible: vault id %q contains a separator", id)
 		}
-		if bytes.ContainsAny(a.opts.VaultPassword, "\r\n") {
+		if seen[id] {
+			return nil, fmt.Errorf("executor: ansible: vault id %q named twice", id)
+		}
+		seen[id] = true
+		if bytes.ContainsAny(entry.Password, "\r\n") {
 			return nil, errors.New("executor: ansible: vault password contains a newline")
 		}
-		path := filepath.Join(dir, "vault-pass")
-		pw := append(bytes.Clone(a.opts.VaultPassword), '\n')
+		path := filepath.Join(dir, fmt.Sprintf("vault-pass-%d", i))
+		pw := append(bytes.Clone(entry.Password), '\n')
 		if err := os.WriteFile(path, pw, 0o600); err != nil {
 			return nil, fmt.Errorf("executor: ansible: write vault password: %w", err)
 		}
