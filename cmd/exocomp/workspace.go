@@ -437,7 +437,7 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 	known := knownSecrets(ctx, st, env, warn)
 	known = append(known, []byte(token), stateKey, []byte(passphrase))
 
-	driver := executor.NewTofu(executor.TofuOptions{
+	driver := tofuTierDriver(dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
 		BackendURL:      api.StateURL(addr, ws.Name),
 		BackendToken:    token,
@@ -637,6 +637,7 @@ func planChanges(ctx context.Context, st *store.Store, jobID int64) (bool, error
 // sit inside the 0700 data dir: plan files hold resource values in the clear
 // and the private root holds the generated backend bearer.
 type tofuPaths struct {
+	root        string
 	artifacts   string
 	private     string
 	pluginCache string
@@ -644,8 +645,9 @@ type tofuPaths struct {
 
 func tofuDirs(dataDir string) (tofuPaths, error) {
 	p := tofuPaths{
+		root:        dataDir,
 		artifacts:   filepath.Join(dataDir, "artifacts", "tofu"),
-		private:     filepath.Join(dataDir, "run"),
+		private:     filepath.Join(dataDir, privateRunDir),
 		pluginCache: filepath.Join(dataDir, "tofu", "plugin-cache"),
 	}
 	for _, d := range []string{p.artifacts, p.private, p.pluginCache} {

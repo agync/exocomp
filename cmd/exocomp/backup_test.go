@@ -21,7 +21,7 @@ func TestBackupHasNoCanaryCommand(t *testing.T) {
 // refusing it would strand an operator whose remote only speaks tokens, but it
 // is never accepted quietly.
 func TestAddTargetWarnsOnCredentialsInURI(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	const token = "ghp-s3cr3t-token-1f4a"
 	var out, errOut bytes.Buffer
@@ -43,7 +43,7 @@ func TestAddTargetWarnsOnCredentialsInURI(t *testing.T) {
 }
 
 func TestAddTargetStaysQuietWithoutCredentials(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	var out, errOut bytes.Buffer
 	cmd := newBackupCmd()

@@ -26,7 +26,7 @@ import (
 func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 	requireSSHTools(t)
 	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
+	useDataDir(t, dir)
 
 	goodKey := genTestKey(t, dir, "good")
 	authorizedKeys := writeAuthorizedKeys(t, dir, goodKey+".pub")
@@ -53,7 +53,7 @@ func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 func TestSSHServeRejectsWrongKey(t *testing.T) {
 	requireSSHTools(t)
 	dir := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", dir)
+	useDataDir(t, dir)
 
 	goodKey := genTestKey(t, dir, "good")
 	badKey := genTestKey(t, dir, "bad")

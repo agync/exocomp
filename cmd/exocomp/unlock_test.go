@@ -105,7 +105,7 @@ func tryLock(t *testing.T, addr, workspace, lockID string) int {
 // and nothing implemented: a job killed mid-apply leaves the workspace locked
 // by a process that is gone, and no later run can ever take that lock.
 func TestStaleStateLockIsFlaggedAndBreakable(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
@@ -157,7 +157,7 @@ func TestStaleStateLockIsFlaggedAndBreakable(t *testing.T) {
 // running is the system working. Breaking it would let a second apply write
 // state under the first one.
 func TestWorkspaceUnlockRefusesALiveJob(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	module := t.TempDir()
 	if _, err := runWorkspaceCmd(t, "add", "wsp", "--dir", module); err != nil {
@@ -180,7 +180,7 @@ func TestWorkspaceUnlockRefusesALiveJob(t *testing.T) {
 }
 
 func TestWorkspaceUnlockOnAFreeWorkspace(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	module := t.TempDir()
 	if _, err := runWorkspaceCmd(t, "add", "wsp", "--dir", module); err != nil {

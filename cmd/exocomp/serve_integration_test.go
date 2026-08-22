@@ -32,7 +32,7 @@ import (
 // firing while a workspace job runs, SIGHUP rebuilds the schedules, and
 // SIGTERM leaves nothing queued or running behind.
 func TestServeIsTheDaemon(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 	// The stand-in takes three seconds to apply, so the schedule below has a
 	// workspace run to be concurrent with rather than a gap between two.
@@ -130,7 +130,7 @@ func TestServeIsTheDaemon(t *testing.T) {
 // the first for every queued job. Once the holder is gone its lock is free —
 // nothing has to clean up after it.
 func TestServeRefusesASecondInstance(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
@@ -165,7 +165,7 @@ func TestServeRefusesASecondInstance(t *testing.T) {
 // own, so nothing races the daemon for the row — the stand-in tool records the
 // pid that ran it, and it is the daemon's.
 func TestDaemonRunsWhatTheCLIEnqueues(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	requireTools(t, "ansible-playbook", "ansible-vault")
 	bin := buildExocomp(t)
 	// The stand-in fails `apply` with a code no part of the CLI produces on
@@ -226,7 +226,7 @@ func TestDaemonRunsWhatTheCLIEnqueues(t *testing.T) {
 // work they did not enqueue — which is the shape that used to make a drain
 // claim a foreign row, fail it through the wrong driver, and never idle.
 func TestDaemonRunsBackupsAndVendorFromTheCLI(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 	fakeRestic(t, 0)
 	fakeTool(t, "ansible-galaxy", "exit 0")
@@ -314,7 +314,7 @@ const vaultCanary = "vault-canary-2f7b41"
 // project and never the password; a daemon that could not derive it would fail
 // the play at decryption time.
 func TestServeRunsAVaultedAnsibleJob(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	requireTools(t, "ansible-playbook", "ansible-vault")
 	bin := buildExocomp(t)
 
@@ -359,7 +359,7 @@ func TestServeRunsAVaultedAnsibleJob(t *testing.T) {
 // the daemon has to outlive it: a shutdown that cancelled the leg would leave
 // the database claiming a run that nothing is running.
 func TestServeShutdownLetsAnInFlightBackupFinish(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 	fakeRestic(t, 3)
 
@@ -408,7 +408,7 @@ func TestServeShutdownLetsAnInFlightBackupFinish(t *testing.T) {
 // has to reach a terminal state before the process is gone. Nothing else in
 // the system moves that row — a boot sweep repairs jobs, not backup runs.
 func TestServeForcedCancelFinishesTheBackupRow(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 	fakeRestic(t, 10)
 
@@ -451,7 +451,7 @@ func TestServeForcedCancelFinishesTheBackupRow(t *testing.T) {
 // and every row this daemon owned still reaches a terminal state before the
 // process exits — there is nothing for the next boot's sweep to find.
 func TestServeShutdownRetiresWhatItCannotFinish(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
@@ -940,7 +940,7 @@ func readFile(t *testing.T, path string) string {
 // queued row owned by a pid that no longer exists: retiring only the rows this
 // process owns leaves it queued until some later boot sweeps it.
 func TestServeShutdownRetiresADeadProcessRow(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")

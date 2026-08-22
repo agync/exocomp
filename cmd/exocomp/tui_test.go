@@ -9,7 +9,7 @@ import (
 )
 
 func TestRunTUIRejectsNonTerminalStdin(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	cmd := &cobra.Command{}
 	cmd.SetIn(bytes.NewReader(nil))

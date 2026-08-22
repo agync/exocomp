@@ -13,7 +13,7 @@ import (
 // only the database can keep two jobs that share a key — two restic backups of
 // one repository, say — from running at once.
 func TestTwoProcessesSerializeAConcurrencyKey(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")

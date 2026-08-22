@@ -19,19 +19,19 @@ const vaultPurpose = "ansible-vault"
 // Whoever runs the job — the CLI draining its own queue or the daemon claiming
 // the row — derives the vault password here and nowhere else, so the two
 // cannot drift apart. An empty project runs without a vault password.
-func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string) (*executor.Ansible, [][]byte) {
+func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
 		VaultID:         executor.DefaultVaultID,
 		CollectionsPath: filepath.Join(dataDir, collectionsCacheDir),
 	}
 	if env == nil || vaultProject == "" {
-		return executor.NewAnsible(opts), nil
+		return ansibleTierDriver(dataDir, opts), nil
 	}
 
 	derived := env.Derive(vaultPurpose, vaultProject)
 	password := []byte(base64.StdEncoding.EncodeToString(derived))
 	opts.VaultPassword = password
-	return executor.NewAnsible(opts), [][]byte{derived, password}
+	return ansibleTierDriver(dataDir, opts), [][]byte{derived, password}
 }
 
 // ansibleJobDriver runs a queued ansible job the daemon claimed. The password

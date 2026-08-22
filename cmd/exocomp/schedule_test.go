@@ -45,7 +45,7 @@ func schedules(t *testing.T) []store.Schedule {
 // TestScheduleAddRejectsAnUnparseableCron keeps a row that can never fire out
 // of the database: the daemon would only log it, once per boot, forever.
 func TestScheduleAddRejectsAnUnparseableCron(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	out, err := runScheduleCmd(t, "add", "junk", "--kind", "shell",
 		"--cron", "not a cron at all", "--", "/bin/true")
@@ -61,7 +61,7 @@ func TestScheduleAddRejectsAnUnparseableCron(t *testing.T) {
 }
 
 func TestScheduleAddAcceptsTheScheduler(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	for _, expr := range []string{"@every 30s", "@daily", "0 30 3 * * *"} {
 		if _, err := runScheduleCmd(t, "add", "s"+expr[:2], "--kind", "shell",
@@ -77,7 +77,7 @@ func TestScheduleAddAcceptsTheScheduler(t *testing.T) {
 // TestScheduleAddRejectsConcurrencyKeyForBackup: a backup fire keys each leg
 // by its target, so a key given here would be silently dropped.
 func TestScheduleAddRejectsConcurrencyKeyForBackup(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	out, err := runScheduleCmd(t, "add", "nightly", "--kind", "backup",
 		"--cron", "@every 1h", "--concurrency-key", "mine")

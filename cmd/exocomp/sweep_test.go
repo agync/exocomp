@@ -97,7 +97,7 @@ func jobState(t *testing.T, id int64) store.JobState {
 }
 
 func TestDevRunSweepsAbandonedJobs(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	id := abandonJob(t)
 
 	var out bytes.Buffer
@@ -116,7 +116,7 @@ func TestPlaybookSweepsAbandonedJobs(t *testing.T) {
 	if _, err := exec.LookPath("ansible-playbook"); err != nil {
 		t.Skip("ansible-playbook not on PATH")
 	}
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 	id := abandonJob(t)
 
 	play := filepath.Join(t.TempDir(), "noop.yml")

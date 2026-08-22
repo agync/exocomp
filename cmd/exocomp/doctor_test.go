@@ -13,7 +13,7 @@ import (
 // where `exocomp init` uses 0700.
 func TestDoctorDoesNotCreateTheDataDir(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", root)
+	useDataDir(t, root)
 	dir := filepath.Join(root, "exocomp")
 
 	var out bytes.Buffer
@@ -33,7 +33,7 @@ func TestDoctorDoesNotCreateTheDataDir(t *testing.T) {
 
 func TestDoctorReportsAnExistingPrivateDataDir(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", root)
+	useDataDir(t, root)
 	dir := filepath.Join(root, "exocomp")
 	if err := os.Mkdir(dir, 0o700); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -53,7 +53,7 @@ func TestDoctorReportsAnExistingPrivateDataDir(t *testing.T) {
 func TestDoctorRejectsALooseDataDirMode(t *testing.T) {
 	for _, mode := range []os.FileMode{0o755, 0o750, 0o701} {
 		root := t.TempDir()
-		t.Setenv("XDG_DATA_HOME", root)
+		useDataDir(t, root)
 		dir := filepath.Join(root, "exocomp")
 		if err := os.Mkdir(dir, mode); err != nil {
 			t.Fatalf("mkdir: %v", err)
@@ -77,7 +77,7 @@ func TestDoctorRejectsALooseDataDirMode(t *testing.T) {
 // 0700, so the command that creates the dir has to produce it.
 func TestInitCreatesAPrivateDataDir(t *testing.T) {
 	root := t.TempDir()
-	t.Setenv("XDG_DATA_HOME", root)
+	useDataDir(t, root)
 	dir := filepath.Join(root, "exocomp")
 
 	var out bytes.Buffer

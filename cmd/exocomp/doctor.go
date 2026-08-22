@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -59,6 +60,7 @@ func runDoctor(w io.Writer) error {
 		p("  %-18s %s\n", t.name, probeTool(t))
 	}
 
+	reportSandbox(context.Background(), w)
 	return nil
 }
 

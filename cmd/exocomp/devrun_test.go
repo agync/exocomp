@@ -9,7 +9,7 @@ import (
 )
 
 func TestRunDevRunReportsFinalState(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	var out bytes.Buffer
 	err := runDevRun(context.Background(), &out, devRunSpec{argv: []string{"/bin/echo", "hello"}})
@@ -26,7 +26,7 @@ func TestRunDevRunReportsFinalState(t *testing.T) {
 }
 
 func TestRunDevRunFailsWithTheJob(t *testing.T) {
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	var out bytes.Buffer
 	err := runDevRun(context.Background(), &out, devRunSpec{

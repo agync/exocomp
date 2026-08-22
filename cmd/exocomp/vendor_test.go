@@ -14,7 +14,7 @@ func TestRunVendorInstallsCollectionsIntoTheCache(t *testing.T) {
 	if _, err := exec.LookPath("ansible-galaxy"); err != nil {
 		t.Skip("ansible-galaxy not on PATH")
 	}
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	requirements := filepath.Join(t.TempDir(), "requirements.yml")
 	body := "collections:\n  - name: community.sops\n"
@@ -48,7 +48,7 @@ func TestRunVendorFailsWithTheJobOnABadRequirementsFile(t *testing.T) {
 	if _, err := exec.LookPath("ansible-galaxy"); err != nil {
 		t.Skip("ansible-galaxy not on PATH")
 	}
-	t.Setenv("XDG_DATA_HOME", t.TempDir())
+	useDataDir(t, t.TempDir())
 
 	var out bytes.Buffer
 	code, err := runVendor(context.Background(), &out, &out, filepath.Join(t.TempDir(), "missing.yml"))

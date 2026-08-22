@@ -71,6 +71,7 @@ type serveOptions struct {
 	approvalTTL    time.Duration
 	hookAllow      string
 	publicURL      string
+	sandbox        string
 }
 
 func defaultServeOptions() serveOptions {
@@ -114,6 +115,8 @@ func newServeCmd() *cobra.Command {
 		"comma-separated CIDRs webhooks may come from (empty: any)")
 	cmd.Flags().StringVar(&opts.publicURL, "public-url", "",
 		"base URL decision links point at (empty: the bound loopback address)")
+	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
+		"job isolation tier: local, local-sandboxed, or auto (default: $"+sandboxTierEnv+", else auto)")
 	return cmd
 }
 
@@ -132,6 +135,11 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err != nil {
 		return fmt.Errorf("serve: resolve data dir: %w", err)
 	}
+
+	if err := requestSandboxTier(opts.sandbox, warn); err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "job isolation tier: %s\n", sandboxTier(ctx).Effective)
 
 	lock, err := acquireServeLock(dir)
 	if err != nil {
@@ -581,7 +589,7 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 	d.server.BindJob(ws.Name, job.ID)
 	defer d.server.ReleaseJob(ws.Name)
 
-	drv := executor.NewTofu(executor.TofuOptions{
+	drv := tofuTierDriver(d.dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
 		BackendURL:      api.StateURL(d.server.Addr(), ws.Name),
 		BackendToken:    token,
