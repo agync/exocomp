@@ -448,3 +448,28 @@ shared-file edits:
    extend the M3b `ErrKnownHostChanged` primitive so a run that hits a known_hosts
    mismatch quarantines the host's concurrency key and requires an approval-gated re-pin.
    Each ships with a test.
+
+### Pass-3 carry-forwards (deps + lifecycle merges)
+
+9. **Wire hooks + health gate into `playbook run` and `handoff run`** (v1 completeness).
+   Pass 3 shipped `exocomp run <source> <playbook>` which composes pre-hooks → play →
+   post-hooks → gate, but the existing `playbook run` / `handoff run` do NOT yet honor a
+   source's `.exocomp/hooks.yml`. A source's lifecycle should apply regardless of which
+   command runs the play — a small edit to those (now-mergeable) files.
+10. **pyproject.toml parsing is a bounded PEP-621 array reader** (internal/deps/parse.go),
+    not a full TOML parser (no TOML lib in go.mod). Live e2e used requirements.txt;
+    pyproject is unit-tested only. Decide: add a real TOML dependency or document the
+    supported subset. Fail-safe today (unrecognized forms → fewer specifiers).
+11. **MANIFEST.json for the toolchain pin.** The image ansible-core pin defaults to a
+    compiled constant (2.21.3); a live MANIFEST.json is read only via
+    EXOCOMP_TOOLCHAIN_MANIFEST and none is committed. Commit/generate one, or document the
+    switched-image path, so the default-pin source is not a hidden constant.
+12. **Sandbox grants under nono not exercised e2e** for the deps venv (read) + module cache
+    (write) grants — pass-3 e2e ran at the local subprocess tier. Exercise the venv +
+    module-cache runs under the nono tier (the M3d Lima gate is the natural place).
+13. **Networked pre-hooks are denied by the sandbox** (the `hook` kind grants no egress) —
+    a deliberate, documented boundary (the gate/verify step does network in-daemon). Note
+    for operators; a per-kind egress grant is a v1.1 option if demand appears.
+14. **No-deps sources stay on the image toolchain** rather than a distinct uv base venv
+    (pragmatic reading of ADR 0011's shared base). Fine for v1; a uv base venv is a
+    follow-up if uniformity is wanted.
