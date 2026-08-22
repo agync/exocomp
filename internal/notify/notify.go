@@ -48,6 +48,12 @@ type Notification struct {
 	// mute, never by an alert- or host-scoped one.
 	Source string
 	Host   string
+	// Resolved marks a notification as the clearing of a prior condition rather
+	// than a fresh one. A transport that models incidents (GoAlert) closes the
+	// matching alert instead of opening one; a fire-and-forget transport (ntfy)
+	// treats it as any other message. It defaults to false, so every existing
+	// caller keeps opening.
+	Resolved bool
 }
 
 // Transport delivers notifications somewhere.
