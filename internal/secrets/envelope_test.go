@@ -396,3 +396,50 @@ func TestRecipientsFileRoundTrips(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenSecretRejectsAADCollision is the E3 red-team repro: with an
+// unescaped "name|kind" AAD, two distinct (name,kind) rows whose concatenation
+// with "|" coincides share the same additional data, so a ciphertext sealed
+// under one row opens under the other — defeating the "move a ciphertext, it
+// won't open" property. Sealed under ("a", "b|c"); opened under ("a|b", "c").
+func TestOpenSecretRejectsAADCollision(t *testing.T) {
+	env, _ := mustInit(t, t.TempDir(), nil)
+
+	sealed, err := env.Seal("a", "b|c", []byte("a sensitive value"))
+	if err != nil {
+		t.Fatalf("Seal: %v", err)
+	}
+
+	moved := sealed
+	moved.Name, moved.Kind = "a|b", "c"
+	if _, err := env.OpenSecret(moved); err == nil {
+		t.Fatal("OpenSecret opened a ciphertext under a colliding (name,kind): AAD is ambiguous")
+	}
+}
+
+// TestOpenSecretOpensLegacyAAD proves backward compatibility: a ciphertext
+// sealed under the pre-E3 "name|kind" AAD still opens after the encoding
+// changed, so existing rows are readable without a flag day.
+func TestOpenSecretOpensLegacyAAD(t *testing.T) {
+	env, _ := mustInit(t, t.TempDir(), nil)
+
+	aead, err := env.aead()
+	if err != nil {
+		t.Fatalf("aead: %v", err)
+	}
+	nonce := make([]byte, nonceLen)
+	name, kind := "restic-nas", "backup-password"
+	legacy := SealedSecret{
+		Name:       name,
+		Kind:       kind,
+		Nonce:      nonce,
+		Ciphertext: aead.Seal(nil, nonce, []byte("legacy payload"), []byte(name+"|"+kind)),
+	}
+	got, err := env.OpenSecret(legacy)
+	if err != nil {
+		t.Fatalf("OpenSecret on a legacy-AAD ciphertext: %v", err)
+	}
+	if string(got) != "legacy payload" {
+		t.Errorf("legacy plaintext = %q, want %q", got, "legacy payload")
+	}
+}

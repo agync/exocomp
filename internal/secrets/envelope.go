@@ -7,6 +7,7 @@ import (
 	"crypto/hkdf"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -211,6 +212,13 @@ func (e *Envelope) Seal(name, kind string, pt []byte) (SealedSecret, error) {
 	}, nil
 }
 
+// aadVersion tags the length-prefixed AAD encoding. A tag byte the legacy
+// "name|kind" bytes never begin with (both hostname characters and the pipe
+// exclude 0x01) keeps the two encodings disjoint, so OpenSecret can try the
+// current encoding first and fall back to the legacy one for a row sealed
+// before this change without risking a false match.
+const aadVersion byte = 0x01
+
 // OpenSecret decrypts s, failing if the ciphertext, the nonce, or the
 // name|kind pair it was sealed under has changed.
 func (e *Envelope) OpenSecret(s SealedSecret) ([]byte, error) {
@@ -222,10 +230,17 @@ func (e *Envelope) OpenSecret(s SealedSecret) ([]byte, error) {
 		return nil, fmt.Errorf("secrets: nonce is %d bytes, want %d", len(s.Nonce), nonceLen)
 	}
 	pt, err := aead.Open(nil, s.Nonce, s.Ciphertext, additionalData(s.Name, s.Kind))
-	if err != nil {
-		return nil, fmt.Errorf("secrets: open %q: %w", s.Name, err)
+	if err == nil {
+		return pt, nil
 	}
-	return pt, nil
+	// A row sealed before the AAD became length-prefixed carries the old
+	// "name|kind" bytes. Try them so existing rows still open; a fresh seal is
+	// always length-prefixed, so this path never widens the collision the new
+	// encoding closes.
+	if pt, legacyErr := aead.Open(nil, s.Nonce, s.Ciphertext, legacyAdditionalData(s.Name, s.Kind)); legacyErr == nil {
+		return pt, nil
+	}
+	return nil, fmt.Errorf("secrets: open %q: %w", s.Name, err)
 }
 
 // Derive returns the 32-byte subkey for purpose:id via HKDF-SHA256 over the
@@ -319,7 +334,31 @@ func (e *Envelope) aead() (cipher.AEAD, error) {
 	return aead, nil
 }
 
-func additionalData(name, kind string) []byte { return []byte(name + "|" + kind) }
+// AdditionalData binds (name, kind) into the AEAD unambiguously. Length
+// prefixing each field means no two distinct (name, kind) pairs share an
+// encoding — ("a", "b|c") and ("a|b", "c") differ here — so a ciphertext moved
+// to another row fails to open, the property the "name|kind" concatenation lost
+// to its unescaped separator (finding E3).
+//
+// It is exported because the offline restore path reproduces the envelope's
+// decryption without an envelope (internal/backup), and the two must bind the
+// same additional data or a restored row will not open.
+func AdditionalData(name, kind string) []byte {
+	b := make([]byte, 0, 1+4+len(name)+4+len(kind))
+	b = append(b, aadVersion)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(name)))
+	b = append(b, name...)
+	b = binary.BigEndian.AppendUint32(b, uint32(len(kind)))
+	b = append(b, kind...)
+	return b
+}
+
+// LegacyAdditionalData is the pre-E3 encoding, kept only so a row sealed under
+// it can still be read. Nothing seals with it any more.
+func LegacyAdditionalData(name, kind string) []byte { return []byte(name + "|" + kind) }
+
+func additionalData(name, kind string) []byte       { return AdditionalData(name, kind) }
+func legacyAdditionalData(name, kind string) []byte { return LegacyAdditionalData(name, kind) }
 
 func wrapDEK(dek []byte, to []age.Recipient) ([]byte, error) {
 	var buf bytes.Buffer

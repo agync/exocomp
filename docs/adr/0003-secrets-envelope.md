@@ -37,8 +37,12 @@ and a printed recovery identity; an `age-plugin-yubikey` recipient is optional. 
 recipient unwraps the DEK.
 
 **Secrets under the DEK.** `secret.ciphertext` is AES-256-GCM under the DEK with random
-96-bit nonces and `name|kind` bound as AAD. Zero novel cryptography: `filippo.io/age` as a
-library, Go stdlib GCM and `crypto/hkdf`.
+96-bit nonces and `(name, kind)` bound as AAD under a length-prefixed encoding
+(`0x01 ‖ len(name) ‖ name ‖ len(kind) ‖ kind`), so no two distinct rows share additional
+data and a ciphertext moved to another row fails to open. Rows sealed under the earlier
+unescaped `name|kind` AAD still open — decryption falls back to that encoding — but nothing
+seals with it any more. Zero novel cryptography: `filippo.io/age` as a library, Go stdlib
+GCM and `crypto/hkdf`.
 
 **Everything else is derived.** HKDF-SHA256 from the DEK with a versioned
 domain-separation salt and a per-consumer `info` string yields the restic repository

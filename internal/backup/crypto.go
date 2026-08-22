@@ -63,9 +63,12 @@ func ManifestMACKey(dek []byte, target string) ([]byte, error) {
 	return key, nil
 }
 
-// OpenSealed decrypts a secret row with a raw DEK: AES-256-GCM, name|kind as
-// additional data. Same reason as ResticPassword — after a restore there is no
-// envelope yet, and this is the off-the-shelf path the recovery card describes.
+// OpenSealed decrypts a secret row with a raw DEK: AES-256-GCM, binding
+// (name, kind) with secrets.AdditionalData. Same reason as ResticPassword —
+// after a restore there is no envelope yet, and this is the off-the-shelf path
+// the recovery card describes. It shares the envelope's AAD encoder so the two
+// cannot drift, and falls back to the legacy encoding so a row sealed before
+// E3 still restores.
 func OpenSealed(dek []byte, name, kind string, nonce, ciphertext []byte) ([]byte, error) {
 	if len(dek) != dekLen {
 		return nil, fmt.Errorf("backup: dek is %d bytes, want %d", len(dek), dekLen)
@@ -78,11 +81,14 @@ func OpenSealed(dek []byte, name, kind string, nonce, ciphertext []byte) ([]byte
 	if err != nil {
 		return nil, fmt.Errorf("backup: gcm: %w", err)
 	}
-	pt, err := aead.Open(nil, nonce, ciphertext, []byte(name+"|"+kind))
-	if err != nil {
-		return nil, fmt.Errorf("backup: open sealed secret %q: %w", name, err)
+	pt, err := aead.Open(nil, nonce, ciphertext, secrets.AdditionalData(name, kind))
+	if err == nil {
+		return pt, nil
 	}
-	return pt, nil
+	if pt, legacyErr := aead.Open(nil, nonce, ciphertext, secrets.LegacyAdditionalData(name, kind)); legacyErr == nil {
+		return pt, nil
+	}
+	return nil, fmt.Errorf("backup: open sealed secret %q: %w", name, err)
 }
 
 // ReadIdentities parses an age key file.
