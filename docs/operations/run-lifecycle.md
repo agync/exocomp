@@ -77,6 +77,20 @@ running `exocomp serve` — the daemon's sequencer is what drives the chain and
 resumes it after a restart, exactly like the terraform→ansible handoff. The
 playbook path is relative to the source checkout.
 
+A source's lifecycle applies no matter which command runs the play, not just
+`exocomp run`:
+
+```
+exocomp playbook run --source <source> <playbook> --wait   # a plain play, wrapped
+exocomp handoff run --source <source> <workspace> <playbook>  # the apply->play chain, wrapped
+```
+
+`playbook run --source` composes the same `[pre_run] -> play -> [post_run] -> gate`
+workflow; `handoff run --source` wraps its `apply -> play` chain as
+`[pre_run] -> apply -> play -> [post_run] -> gate`. Both need a running daemon
+when the source has hooks, for the same reason `run` does. A source with no
+`hooks.yml` leaves either command behaving exactly as it did without `--source`.
+
 `run status` shows each step and its state; a `blocked` step is the visible proof
 that a failed predecessor retired the rest:
 

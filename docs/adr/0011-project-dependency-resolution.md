@@ -98,3 +98,10 @@ Boundary refinements to ADR 0006 (what stays true, what changes):
   a mutation — an old venv is reusable on rollback, matching the upgrade/rollback model.
 - A malformed or unresolvable manifest fails the vendoring step loudly (fail-closed), so a
   run never proceeds against half-met dependencies.
+- **`pyproject.toml` is parsed with a real TOML parser** (`github.com/BurntSushi/toml`, a
+  zero-dependency, widely-used library), not a line scanner: the control plane collects the
+  `[project].dependencies` array and every `[dependency-groups]` group array, and hands
+  those specifiers to uv. A PEP 735 `include-group` entry is skipped (it names a group, not
+  a package) and `[project.optional-dependencies]` extras are excluded (opt-in, not
+  installed by default). A structurally broken `pyproject.toml` is an error, so it fails the
+  vendoring step rather than silently resolving to fewer dependencies.

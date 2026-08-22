@@ -20,6 +20,16 @@ A git source prints an ed25519 deploy key to add to the forge as a read-only key
 `source sync` clones and pins it. `--signed` requires a verified signature on the pinned
 ref before a sync advances it, so a bad commit cannot reach the fleet.
 
+**Keep a source tree outside the data dir.** A run's tree is granted read (host paths)
+or read+write (volume paths) into the sandbox, while the data dir — `exocomp.db`,
+`host.key`, `keyring.age` — is denied to every job. Those two rules collide if a source
+path is an *ancestor* of the data dir: the sandbox refuses to grant a directory that
+contains the keys it must also deny, so the run fails to start. A `volpath` source
+therefore lives in its own subtree of the data volume (e.g. `/var/lib/exocomp/sources/…`,
+where `source add` clones git sources), never at the data-dir root; a `hostpath` source is
+any tree on the host that is not a parent of the data dir. Put playbooks and workspaces in
+their own directory, not the one holding the database and keys.
+
 ## The credential plane — sealed secrets as run env
 
 A dynamic-inventory plugin or an OpenTofu provider authenticates from environment

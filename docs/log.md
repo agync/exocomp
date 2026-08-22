@@ -6,6 +6,44 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — M3c maintenance: lifecycle wiring, deps, packaging, docs
+
+The maintenance pass over merged M3c hardens the seams and links the operator pages the
+pass-2/pass-3 lanes had left unlinked.
+
+**The operations index now links the M3c pages** that shipped without an index row:
+[run-lifecycle.md](operations/run-lifecycle.md) (pre/post-run hooks and the health gate),
+[terraform-ansible-handoff.md](operations/terraform-ansible-handoff.md) (the story-5
+apply→play chain), and [upgrade.md](operations/upgrade.md) (upgrade/rollback as a ledger
+choreography). [plan-policy.md](operations/plan-policy.md) was already linked.
+
+**A source's lifecycle now applies to `playbook run` and `handoff run`, not just `run`.**
+[run-lifecycle.md](operations/run-lifecycle.md) records that `playbook run --source` and
+`handoff run --source` compose the same `[pre_run] → main → [post_run] → gate` workflow via
+the one shared composition; a source with no `hooks.yml` leaves either command unchanged.
+
+**A source tree must stay outside the data dir.** [sources.md](operations/sources.md) gains
+the boundary: the sandbox denies the data dir (`exocomp.db`, `host.key`, `keyring.age`) to
+every job, so a source path that is an *ancestor* of the data dir cannot be granted and the
+run fails to start. Keep playbooks and workspaces in their own subtree.
+
+**`pyproject.toml` is parsed with a real TOML parser** now (`github.com/BurntSushi/toml`),
+replacing a line scanner. [ADR 0011](adr/0011-project-dependency-resolution.md) records
+which tables are read — `[project].dependencies` and `[dependency-groups]` — and that a
+PEP 735 `include-group` is skipped, `optional-dependencies` are excluded, and a broken file
+fails the vendoring step rather than resolving to fewer deps.
+
+**The toolchain pins are committed at `packaging/MANIFEST.json`**, the explicit source of
+the versions rather than a constant compiled into the binary. The image build copies it in
+(filling only the Fedora-resolved `git` version) and sets `EXOCOMP_TOOLCHAIN_MANIFEST` so
+the daemon reads the shipped pin; [bill-of-materials](sbom/bill-of-materials.md) records the
+wiring and a packaging test guards against drift from the Containerfile args.
+
+**Backup quiesce hooks landed** in `internal/backup`: a backup can carry pre/post quiesce
+steps (reusing the `internal/hooks` shape) so a live-DB snapshot is application-consistent —
+a failed pre-quiesce aborts the backup before any snapshot is taken (never a torn snapshot),
+and the un-quiesce always runs once the source was quiesced.
+
 ## 2026-08-22 — M3c plan policy: one operator page added
 
 [operations/plan-policy.md](operations/plan-policy.md) is new: the CEL gate over a

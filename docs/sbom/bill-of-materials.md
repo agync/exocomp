@@ -1,8 +1,15 @@
 # Bill of materials
 
-Indicative pins as of 2026-08. **Exact versions are recorded per build in `MANIFEST.json`
-and enforced by `exocomp doctor`**, which refuses to run a job whose tool version is
-outside a tested range rather than failing later with a parse error.
+Indicative pins as of 2026-08. **The frozen pins are committed at
+[`packaging/MANIFEST.json`](../../packaging/MANIFEST.json)** — the explicit source of the
+toolchain versions, not a constant hidden in the binary. The image build copies that file
+to `/opt/exocomp/MANIFEST.json`, filling in only `git` (resolved from Fedora's signed
+repo), and sets `EXOCOMP_TOOLCHAIN_MANIFEST` so the daemon reads the shipped pin — a
+per-source venv's default `ansible-core` comes from it, with the compiled default as the
+fallback for a run outside the image. A packaging test fails if the committed pins drift
+from the Containerfile's build args. **Exact versions are enforced by `exocomp doctor`**,
+which refuses to run a job whose tool version is outside a tested range rather than failing
+later with a parse error.
 
 ## The license boundary
 
