@@ -147,6 +147,24 @@ The event table is that sweep's own checkpoint: the drift event's dedup key
 names the job that found the drift, so a job already reported is skipped without
 a cursor to keep or state to lose on a restart.
 
+## Job failures
+
+A second sweep runs on the same tick: it lists recently-finished jobs in a
+terminal failure state (`failed`, `timed_out`) and pages the operator once for
+each one it has not already paged on, at high priority, attributed by runbook
+and workspace so a scoped mute can hold it and carrying the run's last error.
+Without it a failed scheduled converge or backup runs completely silent. A
+failed workflow step surfaces here through its own failed job, so the one scan
+covers both; a blocked step never ran, and the earlier failed step that blocked
+it is the one that pages.
+
+Its idempotency is the drift sweep's, unchanged: the page leaves a
+`job-outcome` event whose dedup key names the job, so `CountEventsByDedupKey`
+skips a job already paged on across repeated sweeps and across a restart — the
+same event-table checkpoint, not a weaker second mechanism. The row is written
+after the page, so a crash between the two re-pages once rather than losing the
+alert.
+
 ## What is persisted
 
 `event` (source, dedup key, normalized and raw bodies, matched rule, outcome,

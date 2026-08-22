@@ -31,6 +31,31 @@ A bare `ntfy.sh` topic is unauthenticated — readable and publishable by anyone
 it — so the transport refuses a public topic without an access token, because approval
 links are bearer capabilities.
 
+### GoAlert
+
+A second transport pages an on-call rotation through a GoAlert Generic API integration
+key. It is loaded the same way — from sealed secrets, nil when unconfigured — and both
+transports fan out together: seal one, the other, or both.
+
+```
+exocomp secrets add goalert/url         # e.g. https://goalert.lan
+exocomp secrets add goalert/key         # the Generic API integration key
+exocomp secrets add goalert/namespace   # optional dedup prefix for multiple instances
+```
+
+A firing notification opens an incident; a resolved one closes the matching incident,
+keyed by a dedup derived from the alert's source and host so the two halves line up. The
+integration key is a credential: it lives only in the envelope and never appears in a log
+or an error string, even when the server is unreachable.
+
+## Job-failure paging
+
+Beyond approvals, the daemon pages once for every job that ends in a terminal failure — a
+scheduled converge, a backup, a drift apply — that would otherwise run completely silent.
+The page is high priority, attributed by runbook and workspace so a scoped mute can hold
+it, and carries the run's last error. It is idempotent: a job already paged on never pages
+again, across repeated sweeps or a restart.
+
 ## Holding notifications: MUTED vs PAUSED
 
 Two different holds, shown as distinct banner states on the dashboard and the TUI:

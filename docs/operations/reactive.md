@@ -58,6 +58,11 @@ public topic is readable and publishable by anyone who guesses it. Self-host, or
 seal an access token. Without any of these the daemon warns once and runs with a
 silent phone.
 
+A GoAlert Generic API integration is a second transport, sealed as `goalert/url`
+and `goalert/key`; both fan out together. See
+[notifications](notifications.md#the-push-transport) for both and for the
+job-failure paging the same sweep does.
+
 ## Rules
 
 ```sh
@@ -136,3 +141,7 @@ exocomp schedule add drift-prod --cron '0 0 * * * *' --kind tofu-plan --target p
 The fire is an ordinary `tofu plan` job keyed `tofu:prod`. When it finds
 changes, the daemon's sweep turns that into a `drift` event, which a rule can
 turn into an approval-gated apply.
+
+The same sweep also pages once for any job that ends in a terminal failure, so a
+failed scheduled converge or backup is no longer silent. The page is idempotent
+over the same event-table checkpoint the drift sweep uses.

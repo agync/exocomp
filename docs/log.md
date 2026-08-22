@@ -579,3 +579,22 @@ key, and seeds the onboarding runbook; and setup step 4 persists the operator
 name and ntfy topic and sends (or clearly declines) the test push. Operator
 pages: [sources](operations/sources.md), [LAN access](operations/lan-access.md),
 [setup and notifications](operations/notifications.md).
+
+## 2026-08-23 — GoAlert transport and job-failure paging
+
+Two alerting features share the notify layer and the serve wiring. A GoAlert
+Generic API transport joins ntfy: both are loaded from sealed secrets, nil when
+unconfigured, and fan out together, so an operator seals one, the other, or
+neither and still gets a working daemon. A firing notification opens an incident
+and a resolved one closes the matching dedup; the integration key stays in the
+envelope and never reaches a log or an error string, even on a transport
+failure.
+
+The reactive sweep gained a second half beside drift: every job that ends in a
+terminal failure pages the operator once, at high priority, attributed by
+runbook and workspace so a scoped mute holds it and carrying the run's last
+error. A failed scheduled converge or backup no longer runs silent. Idempotency
+reuses the drift sweep's event-table checkpoint unchanged — a `job-outcome`
+event whose dedup key names the job — so the same job never pages twice across
+repeated sweeps or a restart. [architecture/reactive.md](architecture/reactive.md),
+[operations/notifications.md](operations/notifications.md).
