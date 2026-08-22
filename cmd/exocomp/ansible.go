@@ -20,11 +20,12 @@ const vaultPurpose = "ansible-vault"
 // the row — derives the vault password here and nowhere else, so the two
 // cannot drift apart. An empty project runs without a vault password.
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
-	runSecrets executor.RunSecrets) (executor.Driver, [][]byte) {
+	runSecrets executor.RunSecrets, inventoryArtifact string) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
-		VaultID:         executor.DefaultVaultID,
-		CollectionsPath: filepath.Join(dataDir, collectionsCacheDir),
-		RunSecrets:      runSecrets,
+		VaultID:           executor.DefaultVaultID,
+		CollectionsPath:   filepath.Join(dataDir, collectionsCacheDir),
+		RunSecrets:        runSecrets,
+		InventoryArtifact: inventoryArtifact,
 	}
 	if env == nil || vaultProject == "" {
 		return ansibleTierDriver(dataDir, opts), nil
@@ -58,7 +59,19 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		return executor.Result{}, err
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets)
+	// A play whose argv names no inventory but whose job names a registered
+	// static inventory (story 5: the tofu outputs a prior apply captured) reads
+	// it as a copy in the run's own private dir — no bearer, no passphrase, no
+	// tfstate near it. A play that already names an inventory keeps it as-is.
+	inventoryArtifact := ""
+	if !hasInventoryFlag(spec.Argv) {
+		inventoryArtifact, err = staticInventoryPath(ctx, d.store, job.Args.Inventory)
+		if err != nil {
+			return executor.Result{}, err
+		}
+	}
+
+	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact)
 	material := append(derived, secretPlain...)
 	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)

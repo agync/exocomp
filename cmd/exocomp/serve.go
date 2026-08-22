@@ -283,6 +283,19 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		sweepReactive(jobCtx, engine, warn, opts.sweepInterval)
 	}()
 
+	// The step-ledger sequencer runs here, after the boot job-sweep (openJobStore
+	// retired interrupted rows) and after the queue's workers are draining: its
+	// first pass is ResumeAll, so a workflow a crash left mid-flight continues
+	// from the ledger, and it then keeps live workflows — the story-5 apply->play
+	// handoff — progressing. The queue stays the sole executor; this only
+	// releases each next step and records its outcome (ADR 0008).
+	seq := queue.NewSequencer(q)
+	seqDone := make(chan struct{})
+	go func() {
+		defer close(seqDone)
+		driveWorkflows(jobCtx, seq, out, warn)
+	}()
+
 	serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval)
 	_, _ = fmt.Fprintln(out, "shutting down")
 
@@ -296,7 +309,44 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		grace:      opts.drainGrace,
 	})
 	<-sweepDone
+	<-seqDone
 	return err
+}
+
+// sequencerInterval is how often the daemon re-drives incomplete workflows, so
+// a chain a CLI just started is picked up promptly without a signal.
+const sequencerInterval = time.Second
+
+// driveWorkflows resumes crash-interrupted workflows at boot and keeps live
+// ones progressing. Each pass asks the ledger which workflows are unfinished
+// and runs their remaining steps; a succeeded step is never re-run, and a
+// failed step leaves the rest blocked. It runs until the job context ends.
+//
+// Workflows are driven one at a time within a pass: at homelab scale a handoff
+// runs to completion before the next is picked up, which keeps the ledger the
+// single source of truth without a second scheduler.
+func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writer) {
+	ticker := time.NewTicker(sequencerInterval)
+	defer ticker.Stop()
+
+	boot := true
+	for {
+		resumed, err := seq.ResumeAll(ctx)
+		if err != nil && ctx.Err() == nil {
+			_, _ = fmt.Fprintf(warn, "WARNING: drive workflows: %v\n", err)
+		}
+		if boot {
+			if resumed > 0 {
+				_, _ = fmt.Fprintf(out, "resumed %d workflow(s) from the ledger\n", resumed)
+			}
+			boot = false
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
 }
 
 // reactiveEngine builds the rule engine, with push configured from sealed
@@ -666,10 +716,33 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		PrivateDirRoot:  d.dirs.private,
 		PluginCacheDir:  d.dirs.pluginCache,
 		RunSecrets:      runSecrets,
+		// Every successful apply materializes the workspace's declared,
+		// non-sensitive outputs as an inventory artifact (story 5). The path is
+		// deterministic so the dependent play resolves it, and each apply
+		// refreshes the same file.
+		InventoryOut: handoffInventoryPath(d.dirs.root, ws.Name),
 	})
 	material := append([][]byte{[]byte(token), stateKey, []byte(passphrase)}, secretPlain...)
 	redactor := secrets.NewRedactor(material)
-	return drv.Run(ctx, spec, runSink{redactor: redactor, next: sink})
+	res, err := drv.Run(ctx, spec, runSink{redactor: redactor, next: sink})
+	if err == nil && res.ExitCode == 0 && tofuOp(spec.Argv) == "apply" {
+		if recErr := recordInventoryArtifact(ctx, d.store, spec.JobID, ws.Name, d.dirs.root); recErr != nil {
+			sink.Emit(executor.Event{
+				Ts:    time.Now().UTC(),
+				Level: executor.LevelError,
+				Msg:   fmt.Sprintf("record inventory artifact: %v", recErr),
+			})
+		}
+	}
+	return res, err
+}
+
+// tofuOp is the operation a tofu argv names, or "" when it names none.
+func tofuOp(argv []string) string {
+	if len(argv) < 2 {
+		return ""
+	}
+	return argv[1]
 }
 
 // runSink scrubs the material one run derives. The queue's own redactor is

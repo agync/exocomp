@@ -191,7 +191,14 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 		return store.Job{}, err
 	}
 
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets)
+	inventoryArtifact := ""
+	if !hasInventoryFlag(spec.Argv) {
+		inventoryArtifact, err = staticInventoryPath(ctx, st, spec.Inventory)
+		if err != nil {
+			return store.Job{}, err
+		}
+	}
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)
