@@ -12,8 +12,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -26,7 +28,9 @@ func newPlaybookCmd() *cobra.Command {
 		inventory    string
 		vaultProject string
 		runSecrets   string
+		sourceName   string
 		timeout      time.Duration
+		wait         bool
 	)
 
 	run := &cobra.Command{
@@ -37,10 +41,38 @@ func newPlaybookCmd() *cobra.Command {
 			"drained in this process instead. The vault password is derived from the " +
 			"envelope for --vault-project by whichever process runs it, and handed to " +
 			"ansible through a file in a private directory that is removed when the run " +
-			"ends. The process exits with the job's exit code.",
+			"ends. The process exits with the job's exit code.\n\n" +
+			"With --source, the play runs from that source's checkout and honours its " +
+			"`.exocomp/hooks.yml`: if the source declares pre/post-run hooks or a health " +
+			"gate the run becomes the same lifecycle workflow `exocomp run` composes " +
+			"(and needs a running daemon). A source with no hooks runs exactly as above.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			code, err := runPlaybook(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), playbookSpec{
+			out, warn := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+			// A named source's lifecycle applies no matter which command runs the
+			// play: when it declares hooks or a gate, defer to the one workflow
+			// composition `exocomp run` owns rather than the plain queued play.
+			if sourceName != "" {
+				hooked, pb, err := sourcePlaybook(cmd.Context(), warn, sourceName, args[0])
+				if err != nil {
+					return err
+				}
+				if hooked {
+					return runWithHooks(cmd.Context(), out, warn, runSpec{
+						sourceName:   sourceName,
+						playbook:     args[0],
+						inventory:    inventory,
+						vaultProject: vaultProject,
+						runSecrets:   runSecrets,
+						timeout:      timeout,
+						wait:         wait,
+					})
+				}
+				args[0] = pb
+			}
+
+			code, err := runPlaybook(cmd.Context(), out, warn, playbookSpec{
 				playbook:     args[0],
 				inventory:    inventory,
 				vaultProject: vaultProject,
@@ -64,8 +96,12 @@ func newPlaybookCmd() *cobra.Command {
 		"derive the ansible-vault password for this project from the envelope")
 	run.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as named env for the run (a dynamic-inventory plugin or module authenticates from it)")
+	run.Flags().StringVar(&sourceName, "source", "",
+		"run from this registered source's checkout and honour its .exocomp/hooks.yml")
 	run.Flags().DurationVar(&timeout, "timeout", 0,
 		"kill the run after this long (0: no limit)")
+	run.Flags().BoolVar(&wait, "wait", false,
+		"when the source has hooks, follow the composed workflow until it is terminal")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -150,6 +186,63 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 	default:
 		return 1, nil
 	}
+}
+
+// resolveSourceHooks resolves a registered source's checkout root and its
+// lifecycle (with the override-wins precedence). It is the shared read
+// `playbook run` and `handoff run` use to decide whether a source's
+// `.exocomp/hooks.yml` turns a run into a lifecycle workflow. A malformed hooks
+// file is an error here, so a broken lifecycle fails before the run starts
+// rather than being silently skipped.
+func resolveSourceHooks(ctx context.Context, sourceName string) (hk hooks.Hooks, root string, err error) {
+	dir, err := dataDir()
+	if err != nil {
+		return hooks.Hooks{}, "", fmt.Errorf("source hooks: resolve data dir: %w", err)
+	}
+	st, err := openStore()
+	if err != nil {
+		return hooks.Hooks{}, "", err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	src, err := st.SourceByName(ctx, sourceName)
+	if errors.Is(err, store.ErrNotFound) {
+		return hooks.Hooks{}, "", fmt.Errorf("no source %q", sourceName)
+	}
+	if err != nil {
+		return hooks.Hooks{}, "", err
+	}
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	if err != nil {
+		return hooks.Hooks{}, "", fmt.Errorf("source hooks: %w", err)
+	}
+	hk, err = hooks.Resolve(loc.Root, hooksOverridePath(dir, src.Name))
+	if err != nil {
+		return hooks.Hooks{}, "", err
+	}
+	return hk, loc.Root, nil
+}
+
+// sourcePlaybook resolves whether a --source run is a hooked lifecycle and,
+// when it is not, the playbook path rebased onto the source checkout so a plain
+// play still runs from the source's own tree (loading its ./ansible.cfg). The
+// hooked case is handled by runWithHooks, which rebases the path itself.
+func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook string) (hooked bool, abs string, err error) {
+	hk, root, err := resolveSourceHooks(ctx, sourceName)
+	if err != nil {
+		return false, "", err
+	}
+	if !hk.Empty() {
+		return true, "", nil
+	}
+	if !filepath.IsAbs(playbook) {
+		playbook = filepath.Join(root, playbook)
+	}
+	return false, playbook, nil
 }
 
 // resolveInventoryArg turns a --inventory value into the path ansible targets

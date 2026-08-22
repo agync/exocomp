@@ -13,8 +13,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/verify"
 )
 
 func init() {
@@ -63,19 +66,26 @@ func newHandoffRunCmd() *cobra.Command {
 	var (
 		vaultProject string
 		runSecrets   string
+		sourceName   string
 		timeout      time.Duration
 		wait         bool
 	)
 	run := &cobra.Command{
 		Use:   "run <workspace> <playbook>",
 		Short: "Define and start an apply->play handoff workflow",
-		Args:  cobra.ExactArgs(2),
+		Long: "Chains the workspace's apply to the play as one step-ledger workflow. With " +
+			"--source, the source's `.exocomp/hooks.yml` wraps the chain: its pre_run " +
+			"hooks run before the apply, its post_run hooks and health gate after the " +
+			"play, so a source's lifecycle applies to the handoff exactly as it does to " +
+			"`exocomp run`. A source with no hooks leaves the apply->play chain unchanged.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runHandoff(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), handoffSpec{
 				workspace:    args[0],
 				playbook:     args[1],
 				vaultProject: vaultProject,
 				runSecrets:   runSecrets,
+				sourceName:   sourceName,
 				timeout:      timeout,
 				wait:         wait,
 			})
@@ -85,6 +95,8 @@ func newHandoffRunCmd() *cobra.Command {
 		"derive the ansible-vault password for the play from the envelope")
 	run.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as provider/TF_VAR_ env for the apply step")
+	run.Flags().StringVar(&sourceName, "source", "",
+		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
 	run.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	run.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
 	return run
@@ -116,6 +128,7 @@ type handoffSpec struct {
 	playbook     string
 	vaultProject string
 	runSecrets   string
+	sourceName   string
 	timeout      time.Duration
 	wait         bool
 }
@@ -202,18 +215,80 @@ func runHandoff(ctx context.Context, out, warn io.Writer, hs handoffSpec) (err e
 		},
 	}
 
+	// A named source's lifecycle wraps the apply->play chain: its pre_run hooks
+	// run before the apply, its post_run hooks and health gate after the play.
+	// The source resolves against the already-open store, so this adds no second
+	// connection; a source with no hooks leaves the two-step chain unchanged.
+	if hs.sourceName != "" {
+		src, serr := st.SourceByName(ctx, hs.sourceName)
+		if errors.Is(serr, store.ErrNotFound) {
+			return fmt.Errorf("handoff: no source %q", hs.sourceName)
+		}
+		if serr != nil {
+			return serr
+		}
+		loc, serr := source.Resolve(dir, src.Kind, src.Name, src.URI)
+		if serr != nil {
+			return fmt.Errorf("handoff: %w", serr)
+		}
+		hk, serr := hooks.Resolve(loc.Root, hooksOverridePath(dir, src.Name))
+		if serr != nil {
+			return serr
+		}
+		if steps, serr = wrapWithHooks(loc.Root, hk, steps, hs.timeout); serr != nil {
+			return fmt.Errorf("handoff: %w", serr)
+		}
+	}
+
 	seq := queue.NewSequencer(queue.New(st, enqueueOnly{}, queue.Options{Workers: 1}))
 	if err := seq.Start(ctx, workflowID, steps); err != nil {
 		return err
 	}
-	_, _ = fmt.Fprintf(out, "workflow %s started: apply %s -> play %s\n",
-		workflowID, ws.Name, playbook)
+	_, _ = fmt.Fprintf(out, "workflow %s started: apply %s -> play %s (%d step(s))\n",
+		workflowID, ws.Name, playbook, len(steps))
 
 	if !hs.wait {
 		_, _ = fmt.Fprintf(out, "follow it with `exocomp handoff status %s`\n", workflowID)
 		return nil
 	}
 	return followWorkflow(ctx, st, out, dir, workflowID)
+}
+
+// wrapWithHooks wraps an ordered main-step list in a source's resolved
+// lifecycle: [pre_run hooks] -> main... -> [post_run hooks] -> gate. It reuses
+// the hook-step builder `exocomp run` owns (cmd/run.go) so all three commands
+// compose a hook identically, and it appends the same declared-probe gate step.
+// An empty Hooks returns main unchanged, which is what keeps a source with no
+// lifecycle behaving exactly as it did before.
+func wrapWithHooks(root string, hk hooks.Hooks, main []queue.Step, timeout time.Duration) ([]queue.Step, error) {
+	if hk.Empty() {
+		return main, nil
+	}
+	steps := make([]queue.Step, 0, len(hk.PreRun)+len(main)+len(hk.PostRun)+1)
+	for _, h := range hk.PreRun {
+		steps = append(steps, hookStep(root, h, timeout))
+	}
+	steps = append(steps, main...)
+	for _, h := range hk.PostRun {
+		steps = append(steps, hookStep(root, h, timeout))
+	}
+	if len(hk.Gate) > 0 {
+		argv, err := verify.Encode(hk.Gate)
+		if err != nil {
+			return nil, fmt.Errorf("gate: %w", err)
+		}
+		steps = append(steps, queue.Step{
+			Kind: verify.JobKind,
+			Spec: queue.Spec{
+				Runbook: "gate",
+				Kind:    verify.JobKind,
+				Trigger: "handoff",
+				Argv:    argv,
+				Timeout: timeout,
+			},
+		})
+	}
+	return steps, nil
 }
 
 // followWorkflow tails a workflow to a terminal state, printing each step's job
