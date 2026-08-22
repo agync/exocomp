@@ -247,3 +247,30 @@ handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
 - m1-gate depends on lima's ssh ControlPersist master (a pathname AF_UNIX socket
   the sandbox permits); if a future lima drops it the play needs the identity key
   + target port granted. Not a product issue — a test-harness coupling to note.
+
+## M3b-fix — gaps the lanes flagged (before M3b can gate)
+
+The three lanes deliberately avoided shared-file edits under concurrency, leaving
+integration glue + deferred must-fixes. All are acceptance-story-blocking except
+where noted.
+
+1. **Run-path credential wiring (CRITICAL).** sources built executor.RunSecrets +
+   the store bindings + the define-CLI, but nothing threads a binding NAME through
+   queue.Spec + store.JobArgs into cmd's newAnsibleDriver/newTofuDriver so a run
+   RESOLVES its bound secrets at execution. Without this the credential plane is
+   defined-but-unused — stories 1/3/4/5 cannot authenticate. Build the glue.
+2. **workspace add --state-only emit** + the workspace-collision comment.
+3. **host onboard** runbook (fleet key push, user/sudoers, known_hosts store+backup).
+4. **offline lock-hash fix** (tofu providers lock -fs-mirror → h1: entries).
+5. **tfstate pruning policy** (keep last N + last M days).
+6. **Banner reconciliation**: web dashboard must show MUTED (notify-mute, jobs run)
+   distinct from PAUSED (reactive silence), matching the TUI + ops-ui's model.
+7. **Listener decision**: web mounts on the same listener; ADR 0009 wants a
+   separate non-loopback TLS listener distinct from the loopback state backend.
+   Resolve: state backend stays loopback-only; the web+API bearer surface is the
+   TLS LAN listener. Wire and doc.
+8. **setup step-4**: persist operator name + generated ntfy topic + the test push.
+9. **Docs (invariant 8)**: operator pages for source/inventory/run-secret, token/web,
+   mute/metrics/setup; log.md entries.
+10. Deferred to v1.1 (not gating): dead-man ping subsystem (metrics gauge + doctor
+    honest today); the terraform_provider inventory plugin path (story 5 ergonomic).
