@@ -1,7 +1,10 @@
 package executor
 
 import (
+	"encoding/json"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -64,5 +67,57 @@ func TestAnsibleEnvAppendsCollectionsPath(t *testing.T) {
 				t.Errorf("ansibleEnv(...) has %d ANSIBLE_COLLECTIONS_PATH entries, want exactly 1: %v", count, got)
 			}
 		})
+	}
+}
+
+// TestPrependPath puts the venv bin at the front of PATH so the venv's own
+// executables win, and synthesizes a PATH when the run inherited none.
+func TestPrependPath(t *testing.T) {
+	t.Parallel()
+	got := prependPath([]string{"PATH=/usr/bin:/bin", "HOME=/h"}, "/venv/bin")
+	if !slices.Contains(got, "PATH=/venv/bin:/usr/bin:/bin") {
+		t.Errorf("prependPath did not prepend: %v", got)
+	}
+	got = prependPath([]string{"HOME=/h"}, "/venv/bin")
+	if !slices.Contains(got, "PATH=/venv/bin") {
+		t.Errorf("prependPath did not synthesize PATH: %v", got)
+	}
+}
+
+// TestWritePrivateForcesInterpreter proves the venv interpreter is written into
+// the extra-vars file (the highest-precedence var source) and merged with, not
+// substituted for, the caller's own extra-vars.
+func TestWritePrivateForcesInterpreter(t *testing.T) {
+	dir := t.TempDir()
+	a := NewAnsible(AnsibleOptions{
+		Interpreter: "/data/cache/python/demo/abc/bin/python",
+		ExtraVars:   map[string]string{"region": "eu"},
+	})
+	args, err := a.writePrivate(dir)
+	if err != nil {
+		t.Fatalf("writePrivate: %v", err)
+	}
+	var path string
+	for i, arg := range args {
+		if arg == "--extra-vars" && i+1 < len(args) {
+			path = strings.TrimPrefix(args[i+1], "@")
+		}
+	}
+	if path == "" {
+		t.Fatalf("no --extra-vars written: %v", args)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read extra-vars: %v", err)
+	}
+	var vars map[string]string
+	if err := json.Unmarshal(body, &vars); err != nil {
+		t.Fatalf("decode extra-vars: %v", err)
+	}
+	if vars["ansible_python_interpreter"] != "/data/cache/python/demo/abc/bin/python" {
+		t.Errorf("interpreter not forced: %v", vars)
+	}
+	if vars["region"] != "eu" {
+		t.Errorf("caller extra-vars lost: %v", vars)
 	}
 }

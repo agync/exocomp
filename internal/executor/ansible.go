@@ -106,6 +106,17 @@ type AnsibleOptions struct {
 	// item 8) without discarding a path the operator already set. Empty
 	// leaves ANSIBLE_COLLECTIONS_PATH exactly as inherited.
 	CollectionsPath string
+	// Interpreter, when set, is the Python the run's modules execute under:
+	// the per-source uv venv's interpreter (ADR 0011). The driver forces it as
+	// ansible_python_interpreter through extra-vars so a module resolves the
+	// project's declared libraries rather than the bare image interpreter.
+	// Empty leaves interpreter discovery to ansible.
+	Interpreter string
+	// VenvBin, when set, is prepended to PATH so the venv's own console
+	// scripts and the interpreter's neighbours resolve first. Empty leaves PATH
+	// as the allowlist built it. It pairs with Binary pointing at the venv's
+	// ansible-playbook: the whole run executes inside the source's venv.
+	VenvBin string
 }
 
 // Ansible runs playbooks through ansible-playbook. It builds the invocation
@@ -163,7 +174,24 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 
 	spec.Argv = argv
 	spec.Env = ansibleEnv(os.Environ(), explicit, a.opts.CollectionsPath)
+	if a.opts.VenvBin != "" {
+		spec.Env = prependPath(spec.Env, a.opts.VenvBin)
+	}
 	return a.inner.Run(ctx, spec, sink)
+}
+
+// prependPath puts dir at the front of the PATH entry in env so the venv's own
+// executables resolve before the image's. A run that inherited no PATH gets one
+// naming only dir.
+func prependPath(env []string, dir string) []string {
+	const prefix = "PATH="
+	for i, kv := range env {
+		if existing, ok := strings.CutPrefix(kv, prefix); ok {
+			env[i] = prefix + dir + string(os.PathListSeparator) + existing
+			return env
+		}
+	}
+	return append(env, prefix+dir)
 }
 
 // explicitEnv is the caller's own env entries plus the credential-plane
@@ -269,8 +297,22 @@ func (a *Ansible) writePrivate(dir string) ([]string, error) {
 		args = append(args, "--vault-id", id+"@"+path)
 	}
 
-	if len(a.opts.ExtraVars) > 0 {
-		blob, err := json.Marshal(a.opts.ExtraVars)
+	// The interpreter is forced through extra-vars, the highest-precedence var
+	// source, so it beats any ansible_python_interpreter an inventory or play
+	// set: the run's modules must execute under the source's venv, not whatever
+	// discovery would otherwise pick (ADR 0011). It merges into the caller's own
+	// extra-vars rather than replacing them.
+	extraVars := a.opts.ExtraVars
+	if a.opts.Interpreter != "" {
+		merged := make(map[string]string, len(extraVars)+1)
+		for k, v := range extraVars {
+			merged[k] = v
+		}
+		merged["ansible_python_interpreter"] = a.opts.Interpreter
+		extraVars = merged
+	}
+	if len(extraVars) > 0 {
+		blob, err := json.Marshal(extraVars)
 		if err != nil {
 			return nil, fmt.Errorf("executor: ansible: encode extra vars: %w", err)
 		}
