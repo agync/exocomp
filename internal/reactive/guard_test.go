@@ -332,46 +332,65 @@ func TestGuardLedgersSurviveARestart(t *testing.T) {
 	}
 }
 
-// TestGuardOrderIsTheLedgerOrder: a silenced event must not spend a rule's
-// cooldown or its cap. Mutation check: move the cooldown or the cap guard
-// ahead of the silence guard in runGuards and this fails.
+// TestGuardOrderIsTheLedgerOrder: silence comes first, so an event nobody
+// wants to hear about cannot spend a rule's budget or, worse, trip the cap
+// that disables the rule. A maintenance window must not leave the operator
+// with a rule they have to re-enable afterwards.
+//
+// Mutation check: move guardDailyCap or guardCooldown ahead of guardSilence in
+// runGuards and this fails — the silenced event reports the cap instead, and
+// disables the rule on its way out.
 func TestGuardOrderIsTheLedgerOrder(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
-	h := newHarness(t, harnessOptions{})
+	h := newHarness(t, harnessOptions{dedupWindow: shortDedup})
 	rule := shellRule("restart")
-	rule.CooldownS = 3600
+	rule.CooldownS = 1
 	rule.DailyCap = 1
 	created := h.addRule(t, rule)
 
+	// Spend the rule's whole budget legitimately.
+	fired, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
+	if err != nil {
+		t.Fatalf("first ingest: %v", err)
+	}
+	if fired.Outcome != store.OutcomeFired {
+		t.Fatalf("first outcome = %s (%s), want fired", fired.Outcome, fired.Reason)
+	}
+
+	// Now silence everything, the way a rack reboot would.
 	if _, err := h.store.CreateSilence(ctx, store.Silence{
-		ScopeKind: store.ScopeGlobal, ExpiresAt: time.Now().Add(80 * time.Millisecond),
+		ScopeKind: store.ScopeGlobal, ExpiresAt: time.Now().Add(time.Hour),
+		Reason: "rack maintenance",
 	}); err != nil {
 		t.Fatalf("create silence: %v", err)
 	}
-	for range 3 {
-		if _, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`)); err != nil {
-			t.Fatalf("ingest under the silence: %v", err)
-		}
+	h.advance(2 * shortDedup)
+
+	swallowed, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
+	if err != nil {
+		t.Fatalf("ingest under the silence: %v", err)
+	}
+	if !strings.HasPrefix(swallowed.Reason, "silenced:") {
+		t.Fatalf("reason = %q, want the silence to have decided it first", swallowed.Reason)
 	}
 
+	still, err := h.store.GetRule(ctx, "restart")
+	if err != nil {
+		t.Fatalf("get rule: %v", err)
+	}
+	if !still.Enabled {
+		t.Fatal("a silenced event disabled the rule; a maintenance window must not cost the cap")
+	}
+
+	// And it did not spend the ledger either.
 	fires, err := h.store.CountRuleFires(ctx, created.ID, time.Now().Add(-time.Hour))
 	if err != nil {
 		t.Fatalf("count fires: %v", err)
 	}
-	if fires != 0 {
-		t.Fatalf("%d fires recorded while silenced; a silence must not spend a rule's budget", fires)
-	}
-
-	// With the silence lifted the rule still has its whole budget.
-	time.Sleep(150 * time.Millisecond)
-	stored, err := h.engine.Ingest(ctx, h.firing(t, "DiskFull", "web-01"), []byte(`{}`))
-	if err != nil {
-		t.Fatalf("ingest after the silence: %v", err)
-	}
-	if stored.Outcome != store.OutcomeFired {
-		t.Fatalf("outcome after the silence = %s (%s), want fired", stored.Outcome, stored.Reason)
+	if fires != 1 {
+		t.Fatalf("%d fires recorded, want only the one that actually ran", fires)
 	}
 }
 
