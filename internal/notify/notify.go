@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"time"
 )
 
 // Priority ranks a notification. The ladder is ntfy's, because it is the one
@@ -42,6 +43,11 @@ type Notification struct {
 	Priority Priority
 	Tags     []string
 	Actions  []Action
+	// Source and Host attribute the notification so a scoped mute can hold it.
+	// They are optional: an unattributed notification is held only by a global
+	// mute, never by an alert- or host-scoped one.
+	Source string
+	Host   string
 }
 
 // Transport delivers notifications somewhere.
@@ -55,6 +61,7 @@ type Transport interface {
 // Notifier fans a notification out to every configured transport.
 type Notifier struct {
 	transports []Transport
+	mutes      MuteChecker
 	log        *slog.Logger
 }
 
@@ -74,6 +81,17 @@ func New(log *slog.Logger, transports ...Transport) *Notifier {
 	return &Notifier{transports: live, log: log}
 }
 
+// WithMutes attaches a mute checker. A held notification is not published,
+// logged as muted with the reason, and reported by Notify as delivered (nil):
+// a mute is a deliberate quiet, not a failure, so nothing downstream retries
+// or escalates it.
+func (n *Notifier) WithMutes(m MuteChecker) *Notifier {
+	if n != nil {
+		n.mutes = m
+	}
+	return n
+}
+
 // Transports reports how many transports are configured.
 func (n *Notifier) Transports() int { return len(n.transports) }
 
@@ -83,6 +101,14 @@ func (n *Notifier) Transports() int { return len(n.transports) }
 func (n *Notifier) Notify(ctx context.Context, note Notification) error {
 	if n == nil || len(n.transports) == 0 {
 		return nil
+	}
+	if n.mutes != nil {
+		if mute, held := n.mutes.Held(ctx, note.Source, note.Host); held {
+			n.log.Info("notify: held by mute",
+				"scope", mute.Scope, "value", mute.Value,
+				"reason", mute.Reason, "until", mute.ExpiresAt.Format(time.RFC3339))
+			return nil
+		}
 	}
 	var errs []error
 	for _, t := range n.transports {
