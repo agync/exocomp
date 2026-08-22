@@ -90,10 +90,22 @@ COPY --from=build /out/exocompd /usr/local/bin/exocompd
 # on the container moves `uv tool install` into the data volume, so a switched
 # ansible-core survives restarts and rides inside every backup. It is not the
 # default here, because a fresh restore has the image before it has the volume.
-ENV PATH=/opt/exocomp/bin:/usr/local/bin:/usr/bin:/bin
+# MANIFEST.json is the frozen toolchain pins (ADR 0006): the explicit source of
+# the versions the image ships, committed at packaging/MANIFEST.json rather than
+# left as a compiled constant. The build copies it in and fills the one field it
+# cannot know at authoring time — git, which comes from Fedora's signed repo and
+# whose resolved version is not a pin here.
+COPY packaging/MANIFEST.json /opt/exocomp/MANIFEST.json
 RUN set -eu; \
-    printf '{\n  "ansible_core": "2.21.3",\n  "ansible_runner": "2.4.3",\n  "python": "3.14.0",\n  "tofu": "1.11.5",\n  "restic": "0.19.1",\n  "age": "1.3.1",\n  "sops": "3.13.3",\n  "nono": "0.74.0",\n  "uv": "0.9.7",\n  "git": "%s"\n}\n' \
-      "$(git --version | awk '{print $3}')" > /opt/exocomp/MANIFEST.json
+    gitver="$(git --version | awk '{print $3}')"; \
+    awk -v g="$gitver" '/"git":/{sub(/"git":.*/, "\"git\": \"" g "\"")}1' \
+      /opt/exocomp/MANIFEST.json > /opt/exocomp/MANIFEST.json.tmp \
+    && mv /opt/exocomp/MANIFEST.json.tmp /opt/exocomp/MANIFEST.json
+# EXOCOMP_TOOLCHAIN_MANIFEST points the daemon at the manifest so a per-source
+# venv's default ansible-core is READ from the shipped pin, not the binary's
+# compiled fallback — the fallback stays for a run outside this image.
+ENV PATH=/opt/exocomp/bin:/usr/local/bin:/usr/bin:/bin \
+    EXOCOMP_TOOLCHAIN_MANIFEST=/opt/exocomp/MANIFEST.json
 # 0700 is the only mode the data dir may have: it holds host.key and the
 # keyring, and `exocomp doctor` refuses to run against anything wider.
 #

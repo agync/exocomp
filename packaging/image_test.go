@@ -1,7 +1,9 @@
 package packaging
 
 import (
+	"encoding/json"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -80,6 +82,74 @@ func TestContainerfileBakesTheToolchain(t *testing.T) {
 	}
 	if !strings.Contains(body, "HOME=/home/exocomp") {
 		t.Error("the image gives its uid no home; ansible-core refuses to start without one")
+	}
+}
+
+// containerfileArg returns the value of a `ARG NAME=value` line in the
+// Containerfile, so a test can assert the committed manifest tracks the build's
+// own pins.
+func containerfileArg(t *testing.T, body, name string) string {
+	t.Helper()
+	m := regexp.MustCompile(`(?m)^ARG ` + regexp.QuoteMeta(name) + `=(\S+)`).FindStringSubmatch(body)
+	if len(m) < 2 {
+		t.Fatalf("Containerfile has no ARG %s", name)
+	}
+	return m[1]
+}
+
+// TestManifestPinsMatchTheContainerfile: MANIFEST.json is the explicit,
+// committed source of the toolchain pins (ADR 0006), so it must not drift from
+// the ARGs the build actually fetches and installs. git is the one field the
+// committed file leaves empty — the build fills it from Fedora's resolved
+// version — so it is asserted empty here rather than against an ARG.
+func TestManifestPinsMatchTheContainerfile(t *testing.T) {
+	var pins map[string]string
+	if err := json.Unmarshal([]byte(readPackagingFile(t, "MANIFEST.json")), &pins); err != nil {
+		t.Fatalf("MANIFEST.json is not valid JSON: %v", err)
+	}
+	dockerfile := readPackagingFile(t, "Containerfile")
+
+	for field, arg := range map[string]string{
+		"ansible_core":   "ANSIBLE_CORE_VERSION",
+		"ansible_runner": "ANSIBLE_RUNNER_VERSION",
+		"python":         "PYTHON_VERSION",
+		"tofu":           "TOFU_VERSION",
+		"restic":         "RESTIC_VERSION",
+		"age":            "AGE_VERSION",
+		"sops":           "SOPS_VERSION",
+		"nono":           "NONO_VERSION",
+	} {
+		if want := containerfileArg(t, dockerfile, arg); pins[field] != want {
+			t.Errorf("MANIFEST.json %q = %q, Containerfile %s = %q", field, pins[field], arg, want)
+		}
+	}
+
+	// uv comes from a pinned base-image tag, not an ARG.
+	uv := regexp.MustCompile(`ghcr\.io/astral-sh/uv:(\S+) AS uv`).FindStringSubmatch(dockerfile)
+	if len(uv) < 2 {
+		t.Fatal("Containerfile has no pinned uv base image")
+	}
+	if pins["uv"] != uv[1] {
+		t.Errorf("MANIFEST.json uv = %q, Containerfile uv image = %q", pins["uv"], uv[1])
+	}
+
+	if pins["git"] != "" {
+		t.Errorf("committed MANIFEST.json git = %q, want empty (the build resolves it)", pins["git"])
+	}
+}
+
+// TestRuntimeReadsTheToolchainManifest: shipping the manifest is only half the
+// fix — the daemon must actually read it, so a per-source venv's default
+// ansible-core comes from the shipped pin rather than the compiled fallback.
+// The runtime stage copies the committed file in and points the env var at it.
+func TestRuntimeReadsTheToolchainManifest(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+	if !strings.Contains(body, "COPY packaging/MANIFEST.json /opt/exocomp/MANIFEST.json") {
+		t.Error("the build does not copy the committed MANIFEST.json into the image")
+	}
+	if !strings.Contains(body, "EXOCOMP_TOOLCHAIN_MANIFEST=/opt/exocomp/MANIFEST.json") {
+		t.Error("the image does not point EXOCOMP_TOOLCHAIN_MANIFEST at the shipped manifest; " +
+			"the venv default would silently fall back to the compiled pin")
 	}
 }
 
