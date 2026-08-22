@@ -460,7 +460,11 @@ func TestServeShutdownRetiresWhatItCannotFinish(t *testing.T) {
 
 	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--drain-grace", "200ms")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
-	waitFor(t, "the queue to fill up", 30*time.Second, func() bool {
+	// Generous: the daemon + its sleep jobs are competing for CPU, and a starved
+	// host (e.g. a parallel -race suite) can take much longer than a fresh one to
+	// get serveWorkers running and one more queued. The condition is what matters,
+	// not the deadline.
+	waitFor(t, "the queue to fill up", 90*time.Second, func() bool {
 		return len(jobsIn(t, store.StateRunning)) == serveWorkers &&
 			len(jobsIn(t, store.StateQueued)) > 0
 	})

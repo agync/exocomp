@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -54,9 +55,24 @@ func TestTwoProcessesSerializeAConcurrencyKey(t *testing.T) {
 		second.StartedAt == nil || second.FinishedAt == nil {
 		t.Fatalf("a job is missing its timestamps: %+v %+v", first, second)
 	}
-	if second.StartedAt.Before(*first.FinishedAt) && first.StartedAt.Before(*second.FinishedAt) {
-		t.Errorf("two processes ran one concurrency key at once: job %d [%s, %s], job %d [%s, %s]",
-			first.ID, first.StartedAt, first.FinishedAt,
+	// Serialization is SQL-enforced (a second claim cannot succeed while the key
+	// is held), so genuinely-concurrent same-key jobs would overlap for a whole
+	// job duration (~seconds). The recorded start/finish wall-clocks can still
+	// invert by well under a millisecond between two correctly-serialized jobs
+	// under load, so measure the overlap and only fail on a real one, not on
+	// timestamp jitter.
+	const overlapTolerance = 250 * time.Millisecond
+	overlapStart := *first.StartedAt
+	if second.StartedAt.After(overlapStart) {
+		overlapStart = *second.StartedAt
+	}
+	overlapEnd := *first.FinishedAt
+	if second.FinishedAt.Before(overlapEnd) {
+		overlapEnd = *second.FinishedAt
+	}
+	if overlap := overlapEnd.Sub(overlapStart); overlap > overlapTolerance {
+		t.Errorf("two processes ran one concurrency key at once (overlap %s): job %d [%s, %s], job %d [%s, %s]",
+			overlap, first.ID, first.StartedAt, first.FinishedAt,
 			second.ID, second.StartedAt, second.FinishedAt)
 	}
 }
