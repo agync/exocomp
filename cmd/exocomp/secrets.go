@@ -42,6 +42,7 @@ func newInitCmd() *cobra.Command {
 			}
 			defer func() { _ = env.Close() }()
 
+			decorateKit(cmd.Context(), kit, cmd.ErrOrStderr())
 			_, err = io.WriteString(cmd.OutOrStdout(), kit.Render())
 			return err
 		},
@@ -72,7 +73,9 @@ func newRecoveryKitCmd() *cobra.Command {
 			}
 			defer func() { _ = env.Close() }()
 
-			_, err = io.WriteString(cmd.OutOrStdout(), env.KitStructure().Render())
+			kit := env.KitStructure()
+			decorateKit(cmd.Context(), kit, cmd.ErrOrStderr())
+			_, err = io.WriteString(cmd.OutOrStdout(), kit.Render())
 			return err
 		},
 	}

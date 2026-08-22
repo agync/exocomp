@@ -135,6 +135,30 @@ exocomp doctor       # tool versions, data dir mode, keyring recipients
 exocomp tui          # last known activity — does it match your memory?
 ```
 
+## Deriving without the daemon
+
+The card's rule is one command, and it runs with or without a live envelope:
+
+```bash
+exocomp kit derive restic/nas                    # the repository password
+exocomp kit derive ansible-vault/homelab         # the vault password for a project
+exocomp kit derive --list                        # every purpose:id the store knows of
+
+# Offline: no daemon, no host key — the recovery key and a keyring.age
+# fetched from any target root are the only inputs.
+exocomp kit derive restic/nas --identity recovery.key --keyring ./keyring.age
+```
+
+`exocomp kit verify --page kit.txt` re-renders the kit as it stands now and compares it
+with a printed page: a page that no longer hashes to the digest it prints was edited, and
+a page that no longer matches the current kit needs reprinting. The card asks for this
+quarterly.
+
+`exocomp identity migrate --add-recipient label=age1… | --drop-recipient label |
+--rotate-host` re-wraps the keyring and bumps its generation. Sealed secrets and derived
+subkeys survive untouched — only who can unwrap the DEK changes — and the command ends
+with the reprint nag.
+
 `exocomp ssh-serve --listen <addr> --authorized-keys <file>` renders the same TUI over SSH
 (public-key auth only, no passwords) for a host with no local terminal at hand — a recovery
 host reached only over the network, for instance.

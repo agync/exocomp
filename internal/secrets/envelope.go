@@ -24,9 +24,13 @@ import (
 // printed on the recovery kit, so changing it invalidates every printed card.
 const Salt = "exocomp/v1"
 
+// KeyringName is the file wrapping the DEK. Backup targets carry a copy of it
+// at their root, outside the repository.
+const KeyringName = "keyring.age"
+
 const (
 	hostKeyFile    = "host.key"
-	keyringFile    = "keyring.age"
+	keyringFile    = KeyringName
 	recipientsFile = "recipients"
 
 	dekLen   = 32
@@ -224,13 +228,37 @@ func (e *Envelope) Derive(purpose, id string) []byte {
 	if len(e.dek) != dekLen {
 		return nil
 	}
-	k, err := hkdf.Key(sha256.New, e.dek, []byte(Salt), purpose+":"+id, dekLen)
+	k, err := DeriveWithSalt(e.dek, Salt, purpose, id)
 	if err != nil {
 		// Unreachable: HKDF-SHA256 admits outputs up to 255*32 bytes. Panicking
 		// beats handing a caller a zero-value repository password.
 		panic("secrets: hkdf: " + err.Error())
 	}
 	return k
+}
+
+// DeriveWithSalt derives purpose:id under an explicit salt, for a caller
+// reproducing a page printed under a salt this binary no longer defaults to.
+func (e *Envelope) DeriveWithSalt(salt, purpose, id string) ([]byte, error) {
+	if len(e.dek) != dekLen {
+		return nil, ErrClosed
+	}
+	return DeriveWithSalt(e.dek, salt, purpose, id)
+}
+
+// DeriveWithSalt is the card's one rule, over a raw DEK and an explicit salt:
+// HKDF-SHA256, info "<purpose>:<id>", 32 bytes out. `exocomp kit derive` runs
+// it offline against a DEK unwrapped from keyring.age, where there is no
+// envelope to open and the salt comes off the printed page.
+func DeriveWithSalt(dek []byte, salt, purpose, id string) ([]byte, error) {
+	if len(dek) != dekLen {
+		return nil, fmt.Errorf("secrets: dek is %d bytes, want %d", len(dek), dekLen)
+	}
+	k, err := hkdf.Key(sha256.New, dek, []byte(salt), purpose+":"+id, dekLen)
+	if err != nil {
+		return nil, fmt.Errorf("secrets: derive %s:%s: %w", purpose, id, err)
+	}
+	return k, nil
 }
 
 // KeyringAge returns the armored age ciphertext wrapping the DEK, one recipient

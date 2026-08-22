@@ -24,7 +24,7 @@ import (
 const (
 	ManifestName       = "MANIFEST.json"
 	SnapshotName       = "snapshot.db"
-	KeyringName        = "keyring.age"
+	KeyringName        = secrets.KeyringName
 	KeyringVersionName = secrets.KeyringVersionName
 	RecoveryName       = "RECOVERY.md"
 	RestoredDBName     = "exocomp.db"
