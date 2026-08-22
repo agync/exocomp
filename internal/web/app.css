@@ -83,12 +83,18 @@ a { color: var(--accent-text); text-underline-offset: 2px; }
   border-bottom: 1px solid var(--hairline);
   position: sticky; top: 0; z-index: 10;
 }
-.appbar .brand { font: var(--type-bar); color: var(--ink-100); letter-spacing: 0.3px; }
-.appbar nav { display: flex; gap: 4px; margin-left: 8px; }
+.appbar .brand { font: var(--type-bar); color: var(--ink-100); letter-spacing: 0.3px; flex: none; }
+/* The nav can hold many items; let it scroll within its space on a narrow
+ * screen rather than pushing the sticky bar wider than the viewport. */
+.appbar nav {
+  display: flex; gap: 4px; margin-left: 8px;
+  min-width: 0; overflow-x: auto; scrollbar-width: none;
+}
+.appbar nav::-webkit-scrollbar { display: none; }
 .appbar nav a {
   display: inline-flex; align-items: center; height: 36px; padding: 0 12px;
   border-radius: var(--radius-chip); color: var(--ink-400); text-decoration: none;
-  font: var(--type-button);
+  font: var(--type-button); flex: none; white-space: nowrap;
 }
 .appbar nav a[aria-current="page"] { background: var(--accent-tint); color: var(--accent-text); }
 .appbar .spacer { flex: 1; }
@@ -263,4 +269,12 @@ td.right, th.right { text-align: right; }
   .cards { grid-template-columns: 1fr; }
   main { padding: 18px 14px; }
   .appbar { padding: 0 14px; }
+  /* Reclaim room in the bar for the nav: drop the operator label, and let the
+   * spacer collapse so brand + scrolling nav + toggle sit tight. */
+  .appbar .who { display: none; }
+  .appbar .spacer { flex: 0 1 auto; }
 }
+/* Never let the page scroll sideways; wide content scrolls in its own box
+ * (.tablewrap, the nav). `clip` (not `hidden`) so it doesn't turn body into a
+ * scroll container and break the sticky app bar. */
+body { overflow-x: clip; }
