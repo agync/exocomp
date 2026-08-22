@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -38,34 +39,52 @@ type dashboardVM struct {
 	Workspaces []workspaceRow
 }
 
-// bannerVM carries the pause/silence state that rides every screen until it
-// lifts, with the count of alerts swallowed while it was up. Paused is the
-// global kill switch; Silenced is a scoped silence; both can be true at once.
+// bannerVM carries the pause/silence/mute state that rides every screen until
+// it lifts, with the count of alerts swallowed while it was up. The three holds
+// are independent and align with the TUI's banner model: Paused is the reactive
+// global kill switch (jobs held); Silenced is a scoped reactive silence; Muted
+// is a notification mute (notify_mute) — jobs still run, only the push is held.
+// Any combination can be true at once.
 type bannerVM struct {
-	Paused    bool
-	Silenced  bool
-	Swallowed int
-	Until     string
+	Paused     bool
+	Silenced   bool
+	Muted      bool
+	Swallowed  int
+	Until      string
+	MutedUntil string
 }
 
-func (b bannerVM) Active() bool { return b.Paused || b.Silenced }
+func (b bannerVM) Active() bool { return b.Paused || b.Silenced || b.Muted }
 
+// Keyword names every active hold, most severe first, so PAUSED (jobs held)
+// always leads and MUTED (jobs still run) reads as the distinct, milder state.
 func (b bannerVM) Keyword() string {
-	switch {
-	case b.Paused && b.Silenced:
-		return "PAUSED + SILENCED"
-	case b.Paused:
-		return "PAUSED"
-	default:
-		return "SILENCED"
+	var parts []string
+	if b.Paused {
+		parts = append(parts, "PAUSED")
 	}
+	if b.Silenced {
+		parts = append(parts, "SILENCED")
+	}
+	if b.Muted {
+		parts = append(parts, "MUTED")
+	}
+	return strings.Join(parts, " + ")
 }
 
 func (b bannerVM) Message() string {
-	if b.Paused {
+	switch {
+	case b.Paused:
 		return "The reactive engine is paused by the global kill switch. Received alerts are swallowed; running jobs finish and schedules still fire."
+	case b.Silenced:
+		return "One or more scoped silences are active. Matching alerts are swallowed until they expire."
+	default:
+		msg := "Notifications are muted — jobs still run and outcomes are recorded, only the phone push is held."
+		if b.MutedUntil != "" {
+			msg = "Notifications are muted until " + b.MutedUntil + " — jobs still run and outcomes are recorded, only the phone push is held."
+		}
+		return msg
 	}
-	return "One or more scoped silences are active. Matching alerts are swallowed until they expire."
 }
 
 // approvalRow is one pending decision on the dashboard's needs-you list and in

@@ -26,6 +26,11 @@ func workspaceSuffix(ws string) string {
 }
 
 func swallowedText(b bannerVM) string {
+	// A notification mute holds the push, it does not swallow alerts, so a
+	// mute-only banner reports the held-push fact instead of a zero count.
+	if b.Muted && !b.Paused && !b.Silenced {
+		return "jobs still run"
+	}
 	if b.Swallowed == 1 {
 		return "1 alert swallowed"
 	}

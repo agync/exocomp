@@ -13,9 +13,11 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// banner reads the active silences into the pause/silence state that rides
-// every screen. A global silence is the kill switch (PAUSED); a scoped one is a
-// SILENCED banner; both can hold at once.
+// banner reads the active reactive silences and notification mutes into the
+// pause/silence/mute state that rides every screen, matching the TUI's model. A
+// global silence is the kill switch (PAUSED); a scoped one is a SILENCED banner;
+// an active notify_mute is MUTED — a distinct, milder hold where jobs still run
+// and only the phone push is held. Any of them can hold at once.
 func (s *Server) banner(r *http.Request) (bannerVM, error) {
 	sils, err := s.store.ListSilences(r.Context(), true)
 	if err != nil {
@@ -33,7 +35,25 @@ func (s *Server) banner(r *http.Request) (bannerVM, error) {
 			earliest = sil.CreatedAt
 		}
 	}
-	if b.Active() {
+
+	mutes, err := s.store.ListNotifyMutes(r.Context(), true)
+	if err != nil {
+		return bannerVM{}, err
+	}
+	if len(mutes) > 0 {
+		b.Muted = true
+		soonest := mutes[0].ExpiresAt
+		for _, m := range mutes[1:] {
+			if m.ExpiresAt.Before(soonest) {
+				soonest = m.ExpiresAt
+			}
+		}
+		b.MutedUntil = soonest.Local().Format("15:04")
+	}
+
+	// Swallowed counts alerts held only by a reactive silence/pause, not by a
+	// notification mute: a mute does not swallow alerts, it holds the push.
+	if b.Paused || b.Silenced {
 		n, err := s.store.CountSuppressedSince(r.Context(), earliest)
 		if err != nil {
 			return bannerVM{}, err
