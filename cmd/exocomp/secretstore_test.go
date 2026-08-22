@@ -97,3 +97,64 @@ func TestSecretsAddUserWithExpiry(t *testing.T) {
 		t.Errorf("expires_at = %v, want in the future", row.ExpiresAt)
 	}
 }
+
+func TestSecretsRotateGeneratedChangesValue(t *testing.T) {
+	dir := initForSource(t)
+
+	if out, err := runSecrets(t, "", "add", "token", "--generate"); err != nil {
+		t.Fatalf("add: %v (%s)", err, out)
+	}
+	before, _ := openSecretValue(t, dir, "token")
+
+	out, err := runSecrets(t, "", "rotate", "token")
+	if err != nil {
+		t.Fatalf("rotate: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "regenerated") {
+		t.Errorf("rotate output = %q, want it to say regenerated", out)
+	}
+	after, row := openSecretValue(t, dir, "token")
+	if after == before {
+		t.Error("rotate did not change the generated value")
+	}
+	if len(after) == 0 {
+		t.Error("rotated value decrypted to empty")
+	}
+	if row.RotatedAt == nil {
+		t.Error("rotated_at not stamped")
+	}
+}
+
+func TestSecretsRotateUserFromStdin(t *testing.T) {
+	dir := initForSource(t)
+
+	if out, err := runSecrets(t, "old-value\n", "add", "cred"); err != nil {
+		t.Fatalf("add: %v (%s)", err, out)
+	}
+	before, _ := openSecretValue(t, dir, "cred")
+	if before != "old-value" {
+		t.Fatalf("initial value = %q, want old-value", before)
+	}
+
+	out, err := runSecrets(t, "new-value\n", "rotate", "cred")
+	if err != nil {
+		t.Fatalf("rotate: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "reminder:") {
+		t.Errorf("rotate output = %q, want the upstream-revoke reminder", out)
+	}
+	after, _ := openSecretValue(t, dir, "cred")
+	if after != "new-value" {
+		t.Errorf("rotated value = %q, want new-value", after)
+	}
+}
+
+func TestSecretsRotateUserEmptyStdinFails(t *testing.T) {
+	initForSource(t)
+	if out, err := runSecrets(t, "secret\n", "add", "cred"); err != nil {
+		t.Fatalf("add: %v (%s)", err, out)
+	}
+	if _, err := runSecrets(t, "", "rotate", "cred"); err == nil {
+		t.Error("rotate of a user secret with empty stdin should fail")
+	}
+}

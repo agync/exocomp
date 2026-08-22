@@ -216,6 +216,25 @@ func (s *Store) RotateSecret(ctx context.Context, name string, nonce, ciphertext
 	return nil
 }
 
+// SetSecretExpiry sets (or with a nil at, clears) a secret's expiry. It is the
+// lifecycle attribute the rotate path re-stamps; it never touches the sealed
+// value.
+func (s *Store) SetSecretExpiry(ctx context.Context, name string, at *time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE secret SET expires_at = ? WHERE name = ?`, msPtr(at), name)
+	if err != nil {
+		return wrap("set secret expiry", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("set secret expiry", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: set secret expiry %q: %w", name, ErrNotFound)
+	}
+	return nil
+}
+
 // TouchSecret records that a secret was used.
 func (s *Store) TouchSecret(ctx context.Context, name string) error {
 	res, err := s.db.ExecContext(ctx,
