@@ -2,9 +2,11 @@ package sched
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"math/rand/v2"
+	"strings"
 	"sync"
 	"time"
 
@@ -53,8 +55,14 @@ type Scheduler struct {
 	mu      sync.Mutex
 	cron    *cron.Cron
 	entries map[int64]cron.EntryID
-	runCtx  context.Context
-	cancel  context.CancelFunc
+	// fingerprint is what the running registrations were built from. A reload
+	// that reads the same rows back keeps them, because rebuilding restarts
+	// every entry's clock: an "@every 1h" registration rebuilt on a shorter
+	// reload interval would have its next fire pushed out forever and never
+	// run at all.
+	fingerprint string
+	runCtx      context.Context
+	cancel      context.CancelFunc
 }
 
 // New returns a Scheduler over st and q. log defaults to slog.Default().
@@ -80,12 +88,12 @@ func (s *Scheduler) Start(ctx context.Context) error {
 		return fmt.Errorf("sched: already started")
 	}
 
-	c, entries, err := s.build(ctx)
+	c, entries, fp, err := s.build(ctx)
 	if err != nil {
 		return err
 	}
 	s.runCtx, s.cancel = context.WithCancel(ctx)
-	s.cron, s.entries = c, entries
+	s.cron, s.entries, s.fingerprint = c, entries, fp
 	s.cron.Start()
 	return nil
 }
@@ -97,7 +105,7 @@ func (s *Scheduler) Stop() {
 	c := s.cron
 	cancel := s.cancel
 	s.cron, s.runCtx, s.cancel = nil, nil, nil
-	s.entries = map[int64]cron.EntryID{}
+	s.entries, s.fingerprint = map[int64]cron.EntryID{}, ""
 	s.mu.Unlock()
 
 	if cancel != nil {
@@ -122,12 +130,19 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 		return fmt.Errorf("sched: not started")
 	}
 
-	c, entries, err := s.build(ctx)
+	c, entries, fp, err := s.build(ctx)
 	if err != nil {
 		return err
 	}
+	if fp == s.fingerprint {
+		// Nothing changed. Installing an identical set would still restart
+		// every entry's clock, which for a relative expression means the next
+		// fire is pushed out by one whole period on every reload.
+		c.Stop()
+		return nil
+	}
 	old := s.cron
-	s.cron, s.entries = c, entries
+	s.cron, s.entries, s.fingerprint = c, entries, fp
 	c.Start()
 	// Stop only fires no more; a fire already running keeps its goroutine and
 	// finishes against the entries this reload just installed.
@@ -136,12 +151,13 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 }
 
 // build assembles a cron instance holding every enabled schedule the parser
-// accepts. An error means the database could not be read at all — a row that
-// will not register is logged and left out.
-func (s *Scheduler) build(ctx context.Context) (*cron.Cron, map[int64]cron.EntryID, error) {
+// accepts, plus the fingerprint of what it was built from. An error means the
+// database could not be read at all — a row that will not register is logged
+// and left out.
+func (s *Scheduler) build(ctx context.Context) (*cron.Cron, map[int64]cron.EntryID, string, error) {
 	rows, err := s.store.ListSchedules(ctx, true)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, "", err
 	}
 
 	c := cron.New(cron.WithParser(parser))
@@ -155,7 +171,25 @@ func (s *Scheduler) build(ctx context.Context) (*cron.Cron, map[int64]cron.Entry
 		}
 		entries[sc.ID] = id
 	}
-	return c, entries, nil
+	return c, entries, fingerprint(rows), nil
+}
+
+// fingerprint reduces the rows a build registered to a value two builds can be
+// compared by. It covers everything a fire acts on — the expression, the kind,
+// the args, the concurrency key, the jitter — and nothing that only records
+// history, so a stamped last_job_id does not read as a change.
+func fingerprint(rows []store.Schedule) string {
+	var b strings.Builder
+	for _, sc := range rows {
+		args, err := json.Marshal(sc.Args)
+		if err != nil {
+			// Unreachable: ScheduleArgs is a string slice and two strings.
+			args = []byte(err.Error())
+		}
+		fmt.Fprintf(&b, "%d\x00%s\x00%s\x00%s\x00%s\x00%s\x00%d\x1e",
+			sc.ID, sc.Name, sc.CronExpr, sc.Kind, args, sc.ConcurrencyKey, sc.JitterS)
+	}
+	return b.String()
 }
 
 // fire runs one schedule: it sleeps up to JitterS seconds, builds the specs

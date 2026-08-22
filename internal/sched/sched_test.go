@@ -432,3 +432,60 @@ func waitForLineCount(t *testing.T, path string, want int, timeout time.Duration
 	}
 	t.Fatalf("marker %s reached %d lines within %s, want >= %d", path, readLineCount(t, path), timeout, want)
 }
+
+// A reload that reads back the same rows must leave the running registrations
+// — and their clocks — alone. Rebuilding restarts every entry's timer, so a
+// relative expression reloaded more often than its own period would have its
+// next fire pushed out forever: the schedule would never run at all.
+func TestReloadDoesNotStarveARelativeSchedule(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	if _, err := st.CreateSchedule(t.Context(), store.NewSchedule{
+		Name: "ticker", CronExpr: "@every 3s", Kind: store.ScheduleShell,
+		Args: store.ScheduleArgs{Argv: []string{"/bin/true"}},
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	q := &fakeEnqueuer{store: st}
+	s := New(st, q, testLogger())
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+
+	// Reload far more often than the schedule's own period, which is what a
+	// daemon with a reload interval shorter than a schedule does.
+	deadline := time.Now().Add(12 * time.Second)
+	for time.Now().Before(deadline) {
+		if err := s.Reload(context.Background()); err != nil {
+			t.Fatalf("reload: %v", err)
+		}
+		if len(q.Specs()) > 0 {
+			return
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("a schedule reloaded more often than its period never fired")
+}
+
+// A reload that DID change something still takes effect.
+func TestReloadAppliesARealChange(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	createShellSchedule(t, st, "first", 0)
+
+	s := New(st, &fakeEnqueuer{store: st}, testLogger())
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+
+	createShellSchedule(t, st, "second", 0)
+	if err := s.Reload(context.Background()); err != nil {
+		t.Fatalf("reload: %v", err)
+	}
+	if got := len(s.entries); got != 2 {
+		t.Fatalf("entries after a changed reload = %d, want 2", got)
+	}
+}
