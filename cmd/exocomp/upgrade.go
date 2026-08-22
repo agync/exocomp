@@ -581,7 +581,38 @@ func fileExists(path string) bool {
 // runExoBinary runs an exocomp binary with an explicit data dir and returns its
 // stdout. Any non-zero exit or spawn failure is an error — exit-code-only, the
 // same doctrine every driver here follows.
+// exoExecRetries bounds the ETXTBSY retry when exec'ing a just-staged or
+// just-swapped exocomp binary. On a busy system the kernel refuses to exec a
+// file while a concurrent fork+exec elsewhere still holds a writable descriptor
+// to it — the same transient the executor's shell driver retries for job
+// subprocesses (internal/executor/shell.go). A real upgrade execs the staged
+// binary microseconds after copying it, so this is production robustness, not
+// only a test flake.
+const exoExecRetries = 12
+
+func exoExecBackoff(attempt int) time.Duration {
+	d := time.Millisecond << attempt
+	if d > 32*time.Millisecond {
+		d = 32 * time.Millisecond
+	}
+	return d
+}
+
 func runExoBinary(ctx context.Context, bin, dataHome string, args ...string) (string, error) {
+	for attempt := 0; ; attempt++ {
+		out, err := runExoBinaryOnce(ctx, bin, dataHome, args...)
+		if err == nil || !errors.Is(err, unix.ETXTBSY) || attempt >= exoExecRetries {
+			return out, err
+		}
+		select {
+		case <-ctx.Done():
+			return out, ctx.Err()
+		case <-time.After(exoExecBackoff(attempt)):
+		}
+	}
+}
+
+func runExoBinaryOnce(ctx context.Context, bin, dataHome string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Env = envWithDataHome(dataHome)
 	var out, errb bytes.Buffer
