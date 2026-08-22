@@ -1,0 +1,80 @@
+# Threat model & red-team findings
+
+First adversarial pass: 2026-08-22, against v1.0.0 (tag, HEAD 5d77dce), five lenses
+attacking a real freshly-built binary + data dir (see
+`.agents/workflows/post-red-team.js`). Every "exploited" finding was reproduced against
+a real binary, not read off the source. Ranked by realistic risk to a **solo homelab
+operator** running one container/host, not theoretical CVSS.
+
+exocomp is not deployed anywhere yet, so this is *fix-before-anyone-runs-it*, not incident
+response. It is tracked here as the security posture of record and the blue-team backlog.
+
+## Operator decisions
+
+- **host.key at rest (finding E1).** TPM sealing is an **enhancement**, not the default —
+  but **the default (non-TPM) story must be genuinely secure** (operator, 2026-08-22).
+  Resolution: `host.key` is never a bare plaintext file. Default at-rest protection is
+  **systemd-creds host-key wrapping** (`LoadCredentialEncrypted=`, `--with-key=host`) on
+  the primary Quadlet/systemd tier — the unwrap secret is `/var/lib/systemd/credential.secret`
+  (root-only, outside the exocomp data volume), so a stolen data volume / SSD snapshot does
+  not contain it. Compose / non-systemd tier: **passphrase-wrapped** host.key (operator
+  passphrase from an env/file outside the volume) with the residual risk stated honestly.
+  TPM (`--with-key=host+tpm2`) is the hardware-binding enhancement, detected-and-verified,
+  never claimed when absent. The false "TPM 2.0 detected — key sealed to this box"
+  walkthrough text and the ADR 0003 "protects stolen disks" claim are corrected to the
+  real posture as part of the fix.
+
+## Findings
+
+Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HARDEN
+(defense-in-depth), ACCEPT (documented residual), or DOC (honesty correction).
+
+### HIGH
+
+| id | finding | exploited | disposition |
+|---|---|---|---|
+| E1 | Evil-maid: `host.key` is plaintext, no TPM/systemd-creds sealing is implemented, yet the UI claims "key sealed to this box". A data-dir read yields every secret with `age -d` + stdlib GCM. | yes | **FIX + DOC** — secure default per the decision above; correct the UI/ADR now. |
+| E2 | `identity migrate --drop-recipient` re-wraps the *same* DEK (no rotation); a dropped recipient with any retained `keyring.age` keeps decrypting everything, incl. secrets sealed after the drop. CLI says "dropped". | yes | **FIX** — rotate the DEK on drop (re-encrypt every row) or refuse and name rotation as the real revocation; reword output so it never implies revocation without rotation. |
+| S1 | Dependency resolution (`uv pip install`) runs **unsandboxed in the daemon context**, before the nono/Landlock job sandbox — a poisoned `pyproject.toml`/`requirements.txt` executes with daemon privileges. | analysis | **FIX** — run the resolver under the job sandbox tier; it is untrusted-source-derived code. |
+| S2 | Signed-ref gate falls back to ambient host git config when `allowed_signers` is empty (the migration-0014 fallback); an attacker-signed ref was accepted that way. | yes | **FIX** — `--signed` fails closed with no exocomp-owned allowed-signers; never trust ambient git config. (Residual gap in the M3d story-1 fix.) |
+| R1 | Dedup-anchor planting: an inert non-matching event becomes the dedup anchor, silently suppressing a later *actionable* alert. | yes | **FIX** — dedup keyed only on events that actually matched/fired, or scope the anchor. |
+| B1 | Git restore leg: removing `keyring.age` from the backup ref downgrades the `AUTHENTICATED.mac` forgery-refusal to a warning; an attacker snapshot restores. (Known M3a residual — the marker-in-repo gap.) | yes | **FIX** — out-of-band authenticated marker (recovery-kit per-target authenticates flag). |
+
+### MEDIUM
+
+| id | finding | exploited | disposition |
+|---|---|---|---|
+| E3 | AEAD `name\|kind` AAD uses an unescaped `\|`; distinct (name,kind) rows collide and a ciphertext opens under the wrong identity — defeats the "move a ciphertext, it won't open" property. | yes | **FIX** — length-prefix / unambiguous AAD encoding. |
+| D1 | Pre-auth argon2id memory-amplification DoS on the LAN web `/login` + bearer endpoints. | yes | **HARDEN** — per-source rate limit / connection cap before the KDF. |
+| R2 | Resolve-event forgery withdraws a pending approval and cancels its remediation job — no approval credential, no matching rule. | yes | **FIX** — a resolve that cancels a remediation must be authenticated / rule-scoped. |
+| R3 | Daily-cap flood self-disables a security-relevant rule, suppressing later real events until manual re-enable. | yes | **HARDEN** — a cap hit alerts loudly and/or does not silently disable a security rule. |
+| S3 | Unsigned is the default; hostpath/volpath sources have no signature gate at all. | yes | **HARDEN + DOC** — surface the trust posture; a signed-source opt-in for local trees where it makes sense. |
+| S4 | Python resolver: no index confinement, no hash pinning, pyproject deps passed as raw argv to uv (flag injection). | yes | **FIX** — confine the index, pin hashes where possible, pass deps past `--` / validate. |
+| S5 | `known_hosts` pin (ADR 0010) is never applied to git source-sync — the forge host key is trust-on-first-use. | analysis | **HARDEN** — apply the pin to source-sync SSH. |
+
+### LOW / INFO (defense-in-depth backlog)
+
+- **E4** keyring-generation downgrade refusal trusts an unauthenticated root version file, no-ops on version 0 (and is moot until the DEK rotates — E2 fixes the root cause). HARDEN.
+- **E5** DEK + subkeys live in ordinary swappable/core-dumpable heap despite the ADR's "mlocked memory" claim. FIX (mlock is cheap) or DOC.
+- **D2** sandbox egress is filtered by port, not destination (a job can reach any host on 22/443). ACCEPT for v1 (documented) / HARDEN later with a destination allowlist.
+- **D3** unauthenticated `/metrics` shares the state-backend listener, reachable by tofu-tier jobs. HARDEN — move or auth.
+- **D4** `--hook-allow` CIDR allowlist is nullified behind a reverse proxy (X-Forwarded-For). DOC.
+- **R4** a rule with no `--source` matches events from ANY hook (cross-source spoofing footgun). DOC + a lint/warn.
+- **S6** pinned tools resolved by bare name on ambient PATH — no absolute pin/checksum. HARDEN.
+- **U1** upgrade "verify" is a functional smoke test, not a staged-binary trust control (no signature/provenance). HARDEN — ties to the deferred cosign/SLSA supply-chain track.
+
+## Blue-team waves (planned)
+
+Dispatched after the in-flight A+B feature merges (avoiding file contention). Grouped by
+domain, HIGH first:
+
+1. **Envelope** — E1 (secure-default host.key wrapping + honest docs), E2 (DEK rotation on
+   revoke), E3 (AAD encoding), E5 (mlock), E4.
+2. **Supply-chain / deps** — S1 (sandbox the resolver), S2 (signed-ref fail-closed), S4
+   (resolver confinement), S5 (known_hosts on sync), S3.
+3. **Reactive / approval** — R1 (dedup anchor), R2 (resolve auth), R3 (cap-disable), R4.
+4. **Daemon / backup** — D1 (KDF DoS), B1 (out-of-band backup marker), D3, D2.
+
+Each wave is a build+verify workflow that reproduces the finding as a failing test first,
+then fixes it, then proves the exploit no longer works (red-team's repro becomes a
+regression test). The red-team re-runs against each wave.
