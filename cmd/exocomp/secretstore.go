@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"errors"
@@ -24,7 +25,8 @@ func newSecretsCmd() *cobra.Command {
 		Use:   "secrets",
 		Short: "Manage sealed secrets",
 	}
-	cmd.AddCommand(newSecretsAddCmd(), newSecretsListCmd(), newSecretsRotateCmd())
+	cmd.AddCommand(newSecretsAddCmd(), newSecretsListCmd(),
+		newSecretsRotateCmd(), newSecretsRmCmd())
 	return cmd
 }
 
@@ -258,6 +260,71 @@ func newSecretsRotateCmd() *cobra.Command {
 	rotate.Flags().BoolVar(&generate, "generate", false, "mint a random value even for a user secret")
 	rotate.Flags().StringVar(&expires, "expires", "", "re-set expiry as a Go duration (720h) or RFC3339 timestamp; empty clears it")
 	return rotate
+}
+
+func newSecretsRmCmd() *cobra.Command {
+	var force bool
+	rm := &cobra.Command{
+		Use:   "rm <name>",
+		Short: "Delete a sealed secret, guarded against bound run-secrets",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			refs, err := bindingsReferencing(cmd.Context(), st, name)
+			if err != nil {
+				return fmt.Errorf("secrets rm: %w", err)
+			}
+			if len(refs) > 0 && !force {
+				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+					"refusing to delete %q: still bound by %d run-secret(s):\n", name, len(refs))
+				for _, r := range refs {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  binding %q env %s\n", r.Binding, r.EnvName)
+				}
+				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "re-run with --force to delete anyway.")
+				return fmt.Errorf("secrets rm: %q is bound by %d run-secret(s)", name, len(refs))
+			}
+
+			if err := st.DeleteSecret(cmd.Context(), name); err != nil {
+				return fmt.Errorf("secrets rm: %w", err)
+			}
+			forced := ""
+			if len(refs) > 0 {
+				forced = fmt.Sprintf(" (forced past %d binding reference(s))", len(refs))
+			}
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "deleted %q%s\n", name, forced)
+			return nil
+		},
+	}
+	rm.Flags().BoolVar(&force, "force", false, "delete even when run-secret bindings reference the secret")
+	return rm
+}
+
+// bindingsReferencing returns every run_secret pair whose secret_name is name,
+// across all bindings — the guard the delete path checks before removing a row.
+func bindingsReferencing(ctx context.Context, st *store.Store, name string) ([]store.RunSecret, error) {
+	bindings, err := st.ListRunSecretBindings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var refs []store.RunSecret
+	for _, b := range bindings {
+		pairs, err := st.RunSecretsByBinding(ctx, b)
+		if err != nil {
+			return nil, err
+		}
+		for _, p := range pairs {
+			if p.SecretName == name {
+				refs = append(refs, p)
+			}
+		}
+	}
+	return refs, nil
 }
 
 func newSecretsListCmd() *cobra.Command {

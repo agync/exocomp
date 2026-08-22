@@ -158,3 +158,44 @@ func TestSecretsRotateUserEmptyStdinFails(t *testing.T) {
 		t.Error("rotate of a user secret with empty stdin should fail")
 	}
 }
+
+func TestSecretsRmGuardsBoundSecret(t *testing.T) {
+	dir := initForSource(t)
+	ctx := context.Background()
+
+	sealSecretDirect(t, dir, "prox-token", "value")
+	if out, err := runRunSecret(t, "add", "prox", "PROXMOX_PASSWORD", "prox-token"); err != nil {
+		t.Fatalf("run-secret add: %v (%s)", err, out)
+	}
+
+	out, err := runSecrets(t, "", "rm", "prox-token")
+	if err == nil {
+		t.Fatalf("rm of a bound secret should fail; output = %q", out)
+	}
+	if !strings.Contains(out, "prox") || !strings.Contains(out, "PROXMOX_PASSWORD") {
+		t.Errorf("refusal did not name the binding: %q", out)
+	}
+
+	// The secret still exists after the refusal.
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.GetSecret(ctx, "prox-token"); err != nil {
+		t.Errorf("secret gone after a refused rm: %v", err)
+	}
+	_ = st.Close()
+
+	out, err = runSecrets(t, "", "rm", "prox-token", "--force")
+	if err != nil {
+		t.Fatalf("forced rm: %v (%s)", err, out)
+	}
+	st2, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st2.Close() }()
+	if _, err := st2.GetSecret(ctx, "prox-token"); err == nil {
+		t.Error("secret still present after forced rm")
+	}
+}
