@@ -199,3 +199,30 @@ func TestSecretsRmGuardsBoundSecret(t *testing.T) {
 		t.Error("secret still present after forced rm")
 	}
 }
+
+func TestSecretsListShowsSourceAndExpiryMarkers(t *testing.T) {
+	initForSource(t)
+
+	if out, err := runSecrets(t, "", "add", "gen-key", "--generate", "--expires", "720h"); err != nil {
+		t.Fatalf("add generated: %v (%s)", err, out)
+	}
+	// A secret already past its expiry, set via an RFC3339 timestamp in the past.
+	past := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
+	if out, err := runSecrets(t, "stale\n", "add", "old-cred", "--expires", past); err != nil {
+		t.Fatalf("add expired: %v (%s)", err, out)
+	}
+
+	list, err := runSecrets(t, "", "list")
+	if err != nil {
+		t.Fatalf("list: %v (%s)", err, list)
+	}
+	if !strings.Contains(list, "generated") || !strings.Contains(list, "user") {
+		t.Errorf("list missing source column: %q", list)
+	}
+	if !strings.Contains(list, "expires in") {
+		t.Errorf("list missing an expiring marker: %q", list)
+	}
+	if !strings.Contains(list, "EXPIRED") {
+		t.Errorf("list missing the EXPIRED marker: %q", list)
+	}
+}

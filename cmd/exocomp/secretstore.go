@@ -327,10 +327,29 @@ func bindingsReferencing(ctx context.Context, st *store.Store, name string) ([]s
 	return refs, nil
 }
 
+// expiryMarker renders a hygiene marker for the list view: EXPIRED for a past
+// instant, "expires in Nd" for a future one, empty when there is no expiry.
+func expiryMarker(at *time.Time, now time.Time) string {
+	if at == nil {
+		return ""
+	}
+	if !now.Before(*at) {
+		return "EXPIRED"
+	}
+	d := at.Sub(now)
+	if days := int(d.Hours()) / 24; days >= 1 {
+		return fmt.Sprintf("expires in %dd", days)
+	}
+	if hours := int(d.Hours()); hours >= 1 {
+		return fmt.Sprintf("expires in %dh", hours)
+	}
+	return "expires in <1h"
+}
+
 func newSecretsListCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List sealed secret names (never values)",
+		Short: "List sealed secret names, sources, and expiry (never values)",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			st, err := openStore()
 			if err != nil {
@@ -345,8 +364,11 @@ func newSecretsListCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no sealed secrets")
 				return nil
 			}
+			now := time.Now().UTC()
 			for _, s := range rows {
-				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s created %s\n", s.Name, s.Kind, s.CreatedAt.UTC().Format("2006-01-02 15:04"))
+				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%-30s %-12s %-10s created %s  %s\n",
+					s.Name, s.Kind, s.Source, s.CreatedAt.UTC().Format("2006-01-02 15:04"),
+					expiryMarker(s.ExpiresAt, now))
 			}
 			return nil
 		},
