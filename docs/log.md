@@ -6,6 +6,27 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-22 — playbook run flags and config-drift parity
+
+**New page: [operations/playbook-run.md](operations/playbook-run.md)** — `playbook run`
+gained the ansible passthrough flags (`--limit`, `--tags`, `--skip-tags`, `--check`,
+`--diff`) and a repeatable `-e/--extra-var` taking `key=val` or `@file`. The page records
+where extra-var values live: a `key=val` is carried on the job row and written to a
+run-private file, never onto ansible's own argv (the vault password and run-secrets keep
+their existing out-of-argv paths); `@file` passes only the path. It documents the trust
+posture — a `-e` value is operator run-config, not an envelope secret; use a run-secret or
+`--vault-project` for sensitive values.
+
+**Config-drift parity (roadmap C).** `playbook run --check` now surfaces the check-mode
+drift outcome the executor already parsed: a job event whose `raw_json` carries
+`ansible_check` with per-host would-change counts, and a human `ansible check: N clean,
+host X: M would change` line. `schedule add --kind play --check` registers the config-drift
+schedule — check-mode plays on a cron against a standing inventory, the config twin of a
+tofu-plan drift schedule. The operations index lists the new page. The reactive seam
+(`executor.AnsibleCheckChanges`, mirroring `TofuPlanChanges`) is in place for an
+`AnsibleDrift` sweep to mirror `SweepDrift`; wiring that sweep in `internal/reactive` is
+the remaining step.
+
 ## 2026-08-22 — provision → onboard → converge, and the standing inventory
 
 **New page: [operations/provision-converge.md](operations/provision-converge.md)** —
