@@ -3,10 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"exocomp.dev/exocomp/internal/backup"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // writeFakeExo writes a stand-in exocomp binary: a shell script answering
@@ -254,6 +258,124 @@ func TestRollbackLeavesNoResumableWorkflow(t *testing.T) {
 	if len(ids) != 0 {
 		t.Errorf("restored database has resumable workflows %v; the rollback must retire them", ids)
 	}
+}
+
+// TestRollbackWarnsAndSnapshotsBeforeRestore is the item-4 gate: rollback names
+// what its restore discards and takes a safety snapshot of the CURRENT database
+// first, so a rollback run by mistake is itself reversible. A marker job is
+// written AFTER the upgrade — a row the pre-upgrade snapshot cannot hold. After
+// rollback the live DB has lost it (the discard the warning promised), while the
+// safety snapshot still carries it (the reversibility the snapshot promises).
+//
+// Mutation check: dropping the preRollbackSafetySnapshot call leaves no
+// pre-rollback dir and no "safety:" line, and restoring the (absent) snapshot
+// fails — tripping the snapshot assertions; dropping warnRollbackDiscards trips
+// the warning-substring assertions.
+func TestRollbackWarnsAndSnapshotsBeforeRestore(t *testing.T) {
+	ctx := context.Background()
+	data, live := upgradeFixture(t, "1.0.0")
+	dir := filepath.Join(data, "exocomp")
+
+	newBin := filepath.Join(t.TempDir(), "new")
+	writeFakeExo(t, newBin, "2.0.0")
+
+	var out bytes.Buffer
+	if err := upgradeWithBinary(ctx, &out, live, newBin); err != nil {
+		t.Fatalf("upgrade: %v\n%s", err, out.String())
+	}
+
+	// A durable row that exists only AFTER the upgrade: rollback's restore of the
+	// pre-upgrade snapshot must discard it, and the safety snapshot must keep it.
+	const marker = "post-upgrade-marker"
+	writeMarkerJob(ctx, t, dir, marker)
+
+	var rout bytes.Buffer
+	if err := rollbackWithBinary(ctx, &rout, live); err != nil {
+		t.Fatalf("rollback: %v\n%s", err, rout.String())
+	}
+
+	// The warning names the blast radius, by category.
+	for _, want := range []string{"WARNING", "DISCARDED", "jobs", "backups", "workspaces", "secrets"} {
+		if !strings.Contains(rout.String(), want) {
+			t.Errorf("rollback warning missing %q:\n%s", want, rout.String())
+		}
+	}
+	if !strings.Contains(rout.String(), "safety:") {
+		t.Errorf("rollback did not report a safety snapshot:\n%s", rout.String())
+	}
+
+	// The live database lost the post-upgrade row (rollback discarded it).
+	if hasMarkerJob(ctx, t, dir, marker) {
+		t.Error("rollback did not discard the post-upgrade row from the live database")
+	}
+
+	// The safety snapshot captured the current database: restoring it into a
+	// scratch data dir recovers the row the rollback threw away.
+	snap := latestPreRollbackSnapshot(t, dir)
+	scratch := t.TempDir()
+	if err := backup.LocalRestore(snap, scratch); err != nil {
+		t.Fatalf("restore safety snapshot: %v", err)
+	}
+	if !hasMarkerJob(ctx, t, scratch, marker) {
+		t.Error("safety snapshot did not capture the current database (marker row absent) — " +
+			"a mistaken rollback would not be reversible")
+	}
+}
+
+// writeMarkerJob inserts a queued job under a distinctive idempotency key into
+// the store at dir — a cheap durable row for the safety-snapshot test.
+func writeMarkerJob(ctx context.Context, t *testing.T, dir, key string) {
+	t.Helper()
+	st, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	if _, err := st.CreateJob(ctx, store.NewJob{
+		Runbook: "marker", Kind: "shell", Trigger: "manual", IdempotencyKey: key,
+	}); err != nil {
+		t.Fatalf("create marker job: %v", err)
+	}
+}
+
+// hasMarkerJob reports whether the store at dir holds the marker job.
+func hasMarkerJob(ctx context.Context, t *testing.T, dir, key string) bool {
+	t.Helper()
+	st, err := openStoreAt(dir)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	_, err = st.JobByIdempotencyKey(ctx, key)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		return false
+	}
+	t.Fatalf("look up marker job: %v", err)
+	return false
+}
+
+// latestPreRollbackSnapshot returns the newest pre-rollback safety snapshot dir
+// under the data dir, failing if none was written.
+func latestPreRollbackSnapshot(t *testing.T, dir string) string {
+	t.Helper()
+	root := filepath.Join(dir, upgradeSubdir, preRollbackSubdir)
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		t.Fatalf("read pre-rollback snapshots under %s: %v", root, err)
+	}
+	best := ""
+	for _, e := range entries {
+		if e.IsDir() && e.Name() > best {
+			best = e.Name()
+		}
+	}
+	if best == "" {
+		t.Fatalf("no pre-rollback safety snapshot under %s", root)
+	}
+	return filepath.Join(root, best)
 }
 
 // TestRollbackWithNoUpgradePoint: rollback with nothing to undo fails clearly.

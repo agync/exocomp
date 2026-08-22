@@ -6,11 +6,19 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// preRollbackSubdir holds the pre-rollback safety snapshots, one timestamped
+// dir each, under the upgrade root. They are the escape hatch's own escape
+// hatch: the current database is copied here before a rollback overwrites it,
+// so a rollback run by mistake can itself be undone.
+const preRollbackSubdir = "pre-rollback"
 
 func init() {
 	registerCommand(newRollbackCmd)
@@ -73,6 +81,16 @@ func rollbackWithBinary(ctx context.Context, out io.Writer, live string) error {
 	// — the choreography, as steps, is the record of what is being undone.
 	printUpgradeLedger(ctx, out, dir, workflowID)
 
+	// Spell out what the restore throws away: the pre-upgrade snapshot replaces
+	// the live database wholesale, so every DB write since the upgrade is lost.
+	warnRollbackDiscards(out, workflowID)
+
+	// Snapshot the current database before overwriting it, so a rollback run by
+	// mistake is itself reversible. Best-effort and loud: the escape hatch must
+	// still work when the database it would snapshot is the very thing that is
+	// broken, so a snapshot failure warns but does not block the rollback.
+	preRollbackSafetySnapshot(ctx, dir, out)
+
 	if err := restorePriorState(ctx, paths, workflowID, out); err != nil {
 		return fmt.Errorf("rollback: restore hit an error: %w — inspect %s by hand", err, paths.workflowDir)
 	}
@@ -97,4 +115,43 @@ func printUpgradeLedger(ctx context.Context, out io.Writer, dir, workflowID stri
 	}
 	printLedger(out, steps)
 	_, _ = fmt.Fprintf(out, "(that upgrade's status was %s)\n", store.WorkflowStatus(steps))
+}
+
+// warnRollbackDiscards names, in plain terms, what a rollback throws away: the
+// restore puts back the database as it was at the START of the named upgrade,
+// so everything written to it since is gone. The list is by category, not an
+// exhaustive table dump — enough for an operator to know the blast radius
+// before the irreversible step runs.
+func warnRollbackDiscards(out io.Writer, workflowID string) {
+	_, _ = fmt.Fprintf(out, "\nWARNING: rollback restores the database snapshot taken at the start of "+
+		"upgrade %s.\nEverything written to the database SINCE that upgrade is DISCARDED, including:\n"+
+		"  - jobs run and their event history\n"+
+		"  - backups recorded, workspaces and their tofu state rows\n"+
+		"  - secrets sealed or rotated, approvals and schedule changes\n"+
+		"The binary is also reverted to the pre-upgrade one.\n", workflowID)
+}
+
+// preRollbackSafetySnapshot copies the current database into a fresh timestamped
+// dir under the upgrade root before the rollback overwrites it. LocalRestore
+// only replaces the restored database file, so this snapshot (living elsewhere
+// under the data dir) survives the rollback and can be restored by hand if the
+// rollback was a mistake. A failure is reported but does not abort: rollback is
+// the recovery path and must not be blocked by a failed safety net.
+func preRollbackSafetySnapshot(ctx context.Context, dir string, out io.Writer) {
+	st, err := openStoreAt(dir)
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "WARNING: pre-rollback safety snapshot skipped: open database: %v\n", err)
+		return
+	}
+	dest := filepath.Join(dir, upgradeSubdir, preRollbackSubdir,
+		time.Now().UTC().Format("20060102T150405.000000000Z"))
+	m, err := backup.LocalSnapshot(ctx, st, dest)
+	_ = st.Close()
+	if err != nil {
+		_, _ = fmt.Fprintf(out, "WARNING: pre-rollback safety snapshot FAILED (%v); "+
+			"the rollback will proceed but will NOT be reversible\n", err)
+		return
+	}
+	_, _ = fmt.Fprintf(out, "safety: current database snapshotted to %s (schema %d) before rollback;\n"+
+		"restore it by hand if this rollback was a mistake\n", dest, m.SchemaVersion)
 }
