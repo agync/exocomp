@@ -687,3 +687,17 @@ plan by path — are refused rather than sent to be resolved on the other box.
 `workspace plan`'s local exit-2-on-changes has no remote equivalent: it is read
 from the run's driver output, which the event projection does not carry.
 [operations/remote-cli.md](operations/remote-cli.md).
+
+## 2026-08-23 — Wire the error taxonomy to the process exit code
+
+`cmd/exocomp/main.go` exited `1` on any command error, so the taxonomy exit codes
+(`internal/wire`'s `not_found`/`forbidden`/`conflict`/`kdf_busy` → 3/4/5/7) were
+documented but unreachable — an agent branching on the process exit code alone
+only ever saw 0, 1, or, on the handful of commands that call `os.Exit` for their
+own run outcome, 2. A new `exitCodeFor` (`cmd/exocomp/exitcode.go`) is the one
+mapping site: a local error resolves through `wire.ExitFor`, a remote
+`client.APIError` through its own `ExitCode()` — the same table either way, so a
+`not_found` exits 3 whether it was decided locally or by a remote daemon. The
+per-command `os.Exit(code)` calls for a run's own outcome are untouched; they
+bypass `Execute()`'s returned error by construction and were never in scope.
+[operations/machine-output.md](operations/machine-output.md).

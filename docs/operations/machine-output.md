@@ -59,10 +59,10 @@ Every JSON `error.code` maps 1:1 onto a real sentinel — no code is invented pe
 Each carries a stable, code-keyed `hint` with no volatile detail, so it stays cache-friendly
 across repeated calls too.
 
-## Exit codes: the defined table, and what actually reaches the process today
+## Exit codes: the defined table, and what reaches the process
 
-`internal/wire` defines a small exit-code table as the intended primary machine signal
-(codifying invariant 3 — subprocess correctness is exit-code-only):
+`internal/wire` defines a small exit-code table as the primary machine signal (codifying
+invariant 3 — subprocess correctness is exit-code-only):
 
 | Code | Meaning |
 |---|---|
@@ -75,17 +75,30 @@ across repeated calls too.
 | 6 | awaiting approval |
 | 7 | busy — retry later |
 
-**What is actually wired today is narrower.** `cmd/exocomp/main.go`'s `Execute()` exits `1`
-on *any* non-nil error from a command — it does not inspect the `wire`/taxonomy code at all,
-so codes 3–7 are not reachable from the top-level process exit path yet. Code `2` **is**
-live, but only where a specific command calls `os.Exit` directly for its own run outcome
-(`workspace plan`/`apply` on changes-present, `playbook run`, `command`/`ansible`, `playbook
-vendor`) — not as a general taxonomy mapping. The remote client's `APIError` carries an
-`ExitCode()` method that maps a daemon's `error.code` onto this same table, but nothing in
-the CLI calls it yet either. Until that wiring lands, **the JSON `error.code` in the
-envelope is the reliable machine signal for a fine-grained branch; the process exit code
-reliably distinguishes only 0 (ok), 1 (failure), and — on the specific commands above — 2
-(changes present).**
+Two independent things produce this exit code, and both are wired.
+
+`cmd/exocomp/main.go`'s `Execute()` maps any error a command returns onto the table through
+`exitCodeFor` (`cmd/exocomp/exitcode.go`): a local error carrying a store/reactive sentinel
+resolves via `wire.ExitFor`, a remote failure (`client.APIError`, from a daemon's wire error
+envelope or a bare non-2xx status) resolves via its own `ExitCode()` — the same
+`wire.ExitForCode` table either way, so `jobs get <missing id>` exits `3` whether the id was
+missing locally or on a remote daemon, and a `403` exits `4` the same way. An error that
+matches no taxonomy sentinel (a plain `errors.New`, a malformed-flag error) exits `1`,
+unchanged from before this mapping existed.
+
+Code `2`, and the "partial" outcomes non-zero exit codes for a job's own run outcome, are
+produced separately: specific commands (`workspace plan`/`apply` on changes-present,
+`playbook run`, `command`/`ansible`, `playbook vendor`) call `os.Exit` directly with the
+job's own exit code once the store and secrets envelope are released — a `cobra.RunE`
+cannot carry an exit code, so those calls bypass `Execute()`'s returned error, and
+`exitCodeFor` never runs for them. That is deliberate, not a gap: it is the run's own outcome
+(what the subprocess job did), not a taxonomy-classified request failure.
+
+`6` (awaiting approval) is defined in the table but has no error sentinel that produces it: a
+gated write is a *successful* enqueue — the job lands in `awaiting_approval` and the CLI
+prints the pending approval and exits `0` (`ApprovalPending`/`approval.pending`, not an
+`error`). An agent tells a gated write apart from a clean one by the response `kind`
+(`job.enqueued` vs `approval.pending`), not by exit code.
 
 ## `doctor --output json`
 
