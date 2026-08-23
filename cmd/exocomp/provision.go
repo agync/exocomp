@@ -61,12 +61,13 @@ func newProvisionCmd() *cobra.Command {
 
 func newProvisionRunCmd() *cobra.Command {
 	var (
-		vaultProject string
-		runSecrets   string
-		onboardPath  string
-		sshWait      time.Duration
-		timeout      time.Duration
-		wait         bool
+		vaultProject    string
+		runSecrets      string
+		onboardPath     string
+		requireApproval bool
+		sshWait         time.Duration
+		timeout         time.Duration
+		wait            bool
 	)
 	run := &cobra.Command{
 		Use:   "run <workspace> <playbook>",
@@ -74,14 +75,15 @@ func newProvisionRunCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runProvision(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), provisionSpec{
-				workspace:    args[0],
-				playbook:     args[1],
-				vaultProject: vaultProject,
-				runSecrets:   runSecrets,
-				onboardPath:  onboardPath,
-				sshWait:      sshWait,
-				timeout:      timeout,
-				wait:         wait,
+				workspace:       args[0],
+				playbook:        args[1],
+				vaultProject:    vaultProject,
+				runSecrets:      runSecrets,
+				onboardPath:     onboardPath,
+				requireApproval: requireApproval,
+				sshWait:         sshWait,
+				timeout:         timeout,
+				wait:            wait,
 			})
 		},
 	}
@@ -91,6 +93,9 @@ func newProvisionRunCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the apply step")
 	run.Flags().StringVar(&onboardPath, "onboard-playbook", "",
 		"run this playbook as the onboarding step instead of the seeded runbook")
+	run.Flags().BoolVar(&requireApproval, "require-approval", false,
+		"gate the destructive apply behind an operator approval the daemon honors "+
+			"mid-chain: the apply step waits in awaiting_approval until `exocomp approval` settles it")
 	run.Flags().DurationVar(&sshWait, "ssh-wait", defaultSSHWait,
 		"how long the reachability step waits for each host's SSH port")
 	run.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
@@ -119,14 +124,15 @@ func newProvisionStatusCmd() *cobra.Command {
 }
 
 type provisionSpec struct {
-	workspace    string
-	playbook     string
-	vaultProject string
-	runSecrets   string
-	onboardPath  string
-	sshWait      time.Duration
-	timeout      time.Duration
-	wait         bool
+	workspace       string
+	playbook        string
+	vaultProject    string
+	runSecrets      string
+	onboardPath     string
+	requireApproval bool
+	sshWait         time.Duration
+	timeout         time.Duration
+	wait            bool
 }
 
 // runProvision defines the four-step chain and starts it. Like the handoff it
@@ -229,6 +235,10 @@ func runProvision(ctx context.Context, out, warn io.Writer, ps provisionSpec) (e
 	steps := []queue.Step{
 		{
 			Kind: "tofu-apply",
+			// The destructive apply is the gated step: with --require-approval the
+			// Sequencer parks it in awaiting_approval until an operator settles it,
+			// before any host is provisioned.
+			RequireApproval: ps.requireApproval,
 			Spec: queue.Spec{
 				Runbook:          workspaceRunbookPrefix + ws.Name,
 				Kind:             executor.KindTofu,

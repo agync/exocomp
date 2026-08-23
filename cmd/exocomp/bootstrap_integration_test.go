@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
@@ -52,6 +55,24 @@ func TestBootstrapComposesAnsibleFirst(t *testing.T) {
 	}
 	if steps[1].Spec.Captures != nil {
 		t.Errorf("the apply step carried captures without --capture: %+v", steps[1].Spec.Captures)
+	}
+	// Without --require-approval no step is gated.
+	if steps[0].RequireApproval || steps[1].RequireApproval {
+		t.Errorf("a step was gated without --require-approval: play=%v apply=%v",
+			steps[0].RequireApproval, steps[1].RequireApproval)
+	}
+}
+
+// TestBootstrapGatesApplyStep proves --require-approval marks exactly the
+// destructive apply as the gated step; the play is never gated.
+func TestBootstrapGatesApplyStep(t *testing.T) {
+	steps := composeBootstrapSteps("bootstrap:wsp:1", "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
+		bootstrapSpec{requireApproval: true})
+	if steps[0].RequireApproval {
+		t.Errorf("the play step is gated; only the apply should be")
+	}
+	if !steps[1].RequireApproval {
+		t.Errorf("the apply step is not gated under --require-approval")
 	}
 }
 
@@ -280,14 +301,21 @@ func TestBootstrapOutputJSON(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
-// TestBootstrapRequireApprovalGates proves --require-approval refuses to start
-// the destructive chain without an explicit --assume-yes, and that --assume-yes
-// opens the gate.
+// TestBootstrapRequireApprovalGates proves the durable gate end to end through
+// the real CLI and daemon: with --require-approval the destructive apply step
+// waits in awaiting_approval while a daemon runs, and does NOT apply until an
+// operator settles it with `exocomp approval decide`. This is the exact defeat
+// the finding described — a running daemon must not release a gated workflow
+// step on its own — closed at the composer + Sequencer + claim path.
 func TestBootstrapRequireApprovalGates(t *testing.T) {
 	useDataDir(t, t.TempDir())
 	bin := buildExocomp(t)
 	fakeTool(t, executor.AnsibleBinary, "exit 0")
-	fakeTool(t, executor.TofuBinary, "case \"$1\" in output) printf '{}' ;; esac\nexit 0")
+	// The fake apply writes a marker, so the presence of that file is proof the
+	// destructive step ran. It must not appear until the approval settles.
+	applied := filepath.Join(t.TempDir(), "applied")
+	fakeTool(t, executor.TofuBinary,
+		"case \"$1\" in output) printf '{}' ;; apply) : > "+applied+" ;; esac\nexit 0")
 
 	runCLI(t, bin, "init")
 	module := t.TempDir()
@@ -296,27 +324,38 @@ func TestBootstrapRequireApprovalGates(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	// No --assume-yes, non-interactive stdin: the gate refuses and nothing is
-	// enqueued. No daemon is needed — the refusal is at the CLI, before any store
-	// write.
-	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--require-approval")
-	if code == 0 {
-		t.Fatalf("bootstrap run --require-approval succeeded without confirmation:\n%s", out)
-	}
-	if !strings.Contains(out, "--assume-yes") {
-		t.Errorf("refusal did not name --assume-yes:\n%s", out)
-	}
-
 	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
-	// --assume-yes opens the gate: the chain composes and runs to success.
-	out, code = runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--require-approval", "--assume-yes", "--wait")
+	// Start the chain. It composes with the apply gated; the play runs, then the
+	// apply is armed and parked awaiting an approval.
+	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--require-approval")
 	if code != 0 {
-		t.Fatalf("bootstrap run --require-approval --assume-yes exited %d:\n%s\n%s", code, out, d.dump())
+		t.Fatalf("bootstrap run --require-approval exited %d:\n%s\n%s", code, out, d.dump())
 	}
-	if !strings.Contains(out, "succeeded") {
-		t.Fatalf("gated chain did not run to success:\n%s\n%s", out, d.dump())
+
+	// The gate holds while the daemon runs: an approval is armed, the apply job is
+	// awaiting_approval, and the apply has not run.
+	gated := waitForApproval(t)
+	if state := jobState(t, gated.JobID); state != store.StateAwaitingApproval {
+		t.Fatalf("gated apply job is %s, want awaiting_approval\n%s", state, d.dump())
+	}
+	if _, err := os.Stat(applied); !os.IsNotExist(err) {
+		t.Fatalf("the destructive apply ran before approval (stat %s: %v)\n%s", applied, err, d.dump())
+	}
+
+	// Settle it through the same DecideApproval path a single gated apply uses.
+	out, code = runCLIExit(t, bin, "approval", "decide", fmt.Sprint(gated.ID), "--approve")
+	if code != 0 {
+		t.Fatalf("approval decide --approve exited %d:\n%s\n%s", code, out, d.dump())
+	}
+
+	// Released, claimed by the running daemon, applied.
+	waitFor(t, "the approved apply to run", 30*time.Second, func() bool {
+		return jobState(t, gated.JobID) == store.StateSucceeded
+	})
+	if _, err := os.Stat(applied); err != nil {
+		t.Fatalf("the approved apply did not run: %v\n%s", err, d.dump())
 	}
 
 	d.signal(t, syscall.SIGTERM)

@@ -84,11 +84,12 @@ func newHandoffCmd() *cobra.Command {
 
 func newHandoffRunCmd() *cobra.Command {
 	var (
-		vaultProject string
-		runSecrets   string
-		sourceName   string
-		timeout      time.Duration
-		wait         bool
+		vaultProject    string
+		runSecrets      string
+		sourceName      string
+		requireApproval bool
+		timeout         time.Duration
+		wait            bool
 	)
 	run := &cobra.Command{
 		Use:   "run <workspace> <playbook>",
@@ -97,17 +98,20 @@ func newHandoffRunCmd() *cobra.Command {
 			"--source, the source's `.exocomp/hooks.yml` wraps the chain: its pre_run " +
 			"hooks run before the apply, its post_run hooks and health gate after the " +
 			"play, so a source's lifecycle applies to the handoff exactly as it does to " +
-			"`exocomp run`. A source with no hooks leaves the apply->play chain unchanged.",
+			"`exocomp run`. A source with no hooks leaves the apply->play chain unchanged. " +
+			"--require-approval gates the apply behind an operator decision the daemon " +
+			"honors mid-chain.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runHandoff(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), handoffSpec{
-				workspace:    args[0],
-				playbook:     args[1],
-				vaultProject: vaultProject,
-				runSecrets:   runSecrets,
-				sourceName:   sourceName,
-				timeout:      timeout,
-				wait:         wait,
+				workspace:       args[0],
+				playbook:        args[1],
+				vaultProject:    vaultProject,
+				runSecrets:      runSecrets,
+				sourceName:      sourceName,
+				requireApproval: requireApproval,
+				timeout:         timeout,
+				wait:            wait,
 			})
 		},
 	}
@@ -117,6 +121,9 @@ func newHandoffRunCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the apply step")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
+	run.Flags().BoolVar(&requireApproval, "require-approval", false,
+		"gate the apply behind an operator approval the daemon honors mid-chain: "+
+			"the apply step waits in awaiting_approval until `exocomp approval` settles it")
 	run.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	run.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
 	return run
@@ -159,13 +166,14 @@ func newHandoffStatusCmd() *cobra.Command {
 }
 
 type handoffSpec struct {
-	workspace    string
-	playbook     string
-	vaultProject string
-	runSecrets   string
-	sourceName   string
-	timeout      time.Duration
-	wait         bool
+	workspace       string
+	playbook        string
+	vaultProject    string
+	runSecrets      string
+	sourceName      string
+	requireApproval bool
+	timeout         time.Duration
+	wait            bool
 }
 
 // runHandoff defines the apply->play chain as a ledger workflow and starts it.
@@ -225,6 +233,9 @@ func runHandoff(ctx context.Context, out, warn io.Writer, hs handoffSpec) (err e
 	steps := []queue.Step{
 		{
 			Kind: "tofu-apply",
+			// The destructive apply is the gated step: with --require-approval the
+			// Sequencer parks it in awaiting_approval until an operator settles it.
+			RequireApproval: hs.requireApproval,
 			Spec: queue.Spec{
 				Runbook:          workspaceRunbookPrefix + ws.Name,
 				Kind:             executor.KindTofu,

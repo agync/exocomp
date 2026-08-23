@@ -74,18 +74,6 @@ func newBootstrapRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			// The chain runs a destructive `tofu apply`. --require-approval makes
-			// that gate explicit at the CLI: the operator pre-approves with
-			// --assume-yes rather than the chain starting unprompted. A durable
-			// per-step approval the daemon would honor mid-chain is not something
-			// Phase 0 can enforce — the Sequencer releases a gated workflow step
-			// on its own — so this confirmation is the Phase-0 guardrail.
-			if requireApproval {
-				if err := confirmDestructive(cmd, false,
-					"bootstrap runs a destructive tofu apply", ""); err != nil {
-					return err
-				}
-			}
 			captures, err := parseCaptures(captureSpecs, false)
 			if err != nil {
 				return err
@@ -106,15 +94,16 @@ func newBootstrapRunCmd() *cobra.Command {
 					"are mutually exclusive; the apply's binding is the captured ab:<workflow>")
 			}
 			return runBootstrap(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), mode, bootstrapSpec{
-				playbook:     args[0],
-				workspace:    args[1],
-				inventory:    inventory,
-				vaultProject: vaultProject,
-				runSecrets:   runSecrets,
-				captures:     captures,
-				sourceName:   sourceName,
-				timeout:      timeout,
-				wait:         wait,
+				playbook:        args[0],
+				workspace:       args[1],
+				inventory:       inventory,
+				vaultProject:    vaultProject,
+				runSecrets:      runSecrets,
+				captures:        captures,
+				sourceName:      sourceName,
+				requireApproval: requireApproval,
+				timeout:         timeout,
+				wait:            wait,
 			})
 		},
 	}
@@ -133,7 +122,8 @@ func newBootstrapRunCmd() *cobra.Command {
 	run.Flags().StringVar(&sourceName, "source", "",
 		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
 	run.Flags().BoolVar(&requireApproval, "require-approval", false,
-		"gate the destructive chain: require --assume-yes rather than start unprompted")
+		"gate the destructive apply behind an operator approval the daemon honors "+
+			"mid-chain: the apply step waits in awaiting_approval until `exocomp approval` settles it")
 	run.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	run.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
 	return run
@@ -160,15 +150,16 @@ func newBootstrapStatusCmd() *cobra.Command {
 }
 
 type bootstrapSpec struct {
-	playbook     string
-	workspace    string
-	inventory    string
-	vaultProject string
-	runSecrets   string
-	captures     []executor.AnsibleCapture
-	sourceName   string
-	timeout      time.Duration
-	wait         bool
+	playbook        string
+	workspace       string
+	inventory       string
+	vaultProject    string
+	runSecrets      string
+	captures        []executor.AnsibleCapture
+	sourceName      string
+	requireApproval bool
+	timeout         time.Duration
+	wait            bool
 }
 
 // parseCaptures turns each NAME=FILE into a declared capture target. NAME is the
@@ -265,6 +256,10 @@ func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, work
 		},
 		{
 			Kind: "tofu-apply",
+			// The destructive apply is the gated step: with --require-approval the
+			// Sequencer parks it in awaiting_approval until an operator decision
+			// settles it, so a running daemon cannot apply the play's work unbidden.
+			RequireApproval: bs.requireApproval,
 			Spec: queue.Spec{
 				Runbook:          workspaceRunbookPrefix + workspace,
 				Kind:             executor.KindTofu,
