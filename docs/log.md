@@ -6,6 +6,22 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — the `cli` kind routes through a running daemon
+
+`exocomp serve`'s kind router served only `tofu` and `ansible`; a queued `cli` job fell
+through to the scheduler's shell/backup driver, which refused any kind it did not
+recognize. `run-cli` worked around this by refusing outright whenever a daemon was up, and a
+`--require-approval` cli job that *was* approved died on release with `sched: no driver for
+kind "cli"`.
+
+A `cliJobDriver` alongside `workspaceDriver`/`ansibleJobDriver` closes both: it rebuilds
+`executor.CLIOptions` from the allow-list entry the job's argv[0] names — the same per-job
+rebuild those siblings already do for a workspace's state key and a play's vault password —
+and fails closed, never falling back to a raw binary, when the entry was deregistered
+between enqueue and claim. `run-cli` now enqueues for a running daemon and follows the job
+it creates, the shape `workspace apply`/`playbook run` already have.
+[operations/cli-run.md](operations/cli-run.md).
+
 ## 2026-08-23 — agent-interface docs debt closed: remote CLI, API, machine output, runners
 
 **Four new operations pages.** [remote-access.md](operations/remote-access.md) — `exocomp

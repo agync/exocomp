@@ -101,8 +101,14 @@ granted. A tool that insists on reading its own dotfile configuration will not f
 point it at a file in the source checkout, or bind its configuration through a run-secret
 environment variable instead.
 
+## Running against a daemon
+
+With `exocomp serve` up, `run-cli` enqueues and follows the job the daemon runs, the same
+shape `workspace apply` and `playbook run` already have — it does not drain a queue of its
+own. The daemon rebuilds the driver per job from the allow-list entry the row's argv[0]
+names; an entry removed between enqueue and claim fails the job closed rather than running
+whatever that name resolves to on the daemon's PATH.
+
 ## Not yet
 
-A running `exocomp serve` does not route the `cli` kind, so `run-cli` refuses while a daemon
-is up and tells you to stop it or gate the run instead. That routing, and the web/MCP
-surfaces for the new kind, are follow-ups.
+The web/MCP surfaces for the `cli` kind are follow-ups.
