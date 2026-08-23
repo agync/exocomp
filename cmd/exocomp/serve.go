@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/verify"
+	"exocomp.dev/exocomp/internal/web"
 )
 
 func init() {
@@ -205,10 +207,15 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err != nil {
 		return err
 	}
+	// The drain controller is built before the queue so the queue's claim gate
+	// can consult it; its scheduler handle is filled in once the scheduler
+	// exists (below). Until then it is uncordoned, so the gate is open.
+	cordon := &cordonController{store: st}
 	q := queue.New(st, drv, queue.Options{Workers: serveWorkers, PollInterval: servePoll},
 		queue.WithRedactorProvider(func() *secrets.Redactor {
 			return secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))
-		}))
+		}),
+		queue.WithClaimGate(cordon.claimAllowed))
 
 	// The reactive surfaces are mounted on the one listener before it binds:
 	// routes are fixed at start, and a second listener would be a second
@@ -265,7 +272,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// loopback state backend above stays loopback-only and takes no LAN token.
 	var surface *webSurface
 	if opts.webAddr != "" {
-		surface, err = startWebSurface(ctx, st, env, dir, engine, opts.webAddr, opts.webInsecure, warn)
+		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, opts.webAddr, opts.webInsecure, warn)
 		if err != nil {
 			shutdownCtx, cancel := context.WithTimeout(finalCtx, shutdownGrace)
 			defer cancel()
@@ -288,6 +295,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		<-qDone
 		return fmt.Errorf("serve: %w", err)
 	}
+	cordon.sched = s
 	_, _ = fmt.Fprintln(out, "scheduler started")
 
 	sweepDone := make(chan struct{})
@@ -538,6 +546,85 @@ func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
 			}
 		}
 	}
+}
+
+// cordonController is the daemon's drain seam (web.Maintenance). Cordon pauses
+// the scheduler and closes the queue's claim gate, so a planned reboot stops
+// taking new work while jobs already running finish; State answers the
+// readiness the `drain` CLI polls. It is deliberately NOT a queue job: a cordon
+// is control-plane state, not a run, so it has no Spec and no ledger entry.
+type cordonController struct {
+	store *store.Store
+
+	mu    sync.Mutex
+	on    bool
+	sched *sched.Scheduler
+}
+
+// claimAllowed is the queue's claim gate: closed (returns false) while cordoned.
+func (c *cordonController) claimAllowed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return !c.on
+}
+
+// Cordon stops new schedule fires and new job claims. It is idempotent.
+func (c *cordonController) Cordon(ctx context.Context) (web.MaintenanceState, error) {
+	c.mu.Lock()
+	c.on = true
+	s := c.sched
+	c.mu.Unlock()
+	if s != nil {
+		s.Pause()
+	}
+	return c.state(ctx)
+}
+
+// Uncordon re-enables firing (with catch-up) and claiming. It is idempotent.
+func (c *cordonController) Uncordon(ctx context.Context) (web.MaintenanceState, error) {
+	c.mu.Lock()
+	c.on = false
+	s := c.sched
+	c.mu.Unlock()
+	if s != nil {
+		s.Resume()
+	}
+	return c.state(ctx)
+}
+
+// State reports the current readiness.
+func (c *cordonController) State(ctx context.Context) (web.MaintenanceState, error) {
+	return c.state(ctx)
+}
+
+func (c *cordonController) state(ctx context.Context) (web.MaintenanceState, error) {
+	c.mu.Lock()
+	on := c.on
+	c.mu.Unlock()
+	n, err := runningJobsOwnedByThisProcess(ctx, c.store)
+	if err != nil {
+		return web.MaintenanceState{}, err
+	}
+	return web.MaintenanceState{Cordoned: on, InFlight: n}, nil
+}
+
+// runningJobsOwnedByThisProcess counts the jobs this daemon has in the running
+// state. In-flight is the reboot-blocking set: a queued row is not claimed while
+// cordoned (and is swept to interrupted on the next boot), but a running row is
+// live work whose terminal write a reboot would cut off.
+func runningJobsOwnedByThisProcess(ctx context.Context, st *store.Store) (int, error) {
+	rows, err := st.ListJobs(ctx, store.JobFilter{States: []store.JobState{store.StateRunning}})
+	if err != nil {
+		return 0, err
+	}
+	pid := os.Getpid()
+	n := 0
+	for _, job := range rows {
+		if job.OwnerPID == pid {
+			n++
+		}
+	}
+	return n, nil
 }
 
 // shutdown is what stopping the daemon needs a handle on.
