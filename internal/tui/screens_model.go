@@ -406,6 +406,37 @@ func secretDateOrNever(t *time.Time) string {
 	return secretDate(t)
 }
 
+// runnersModel assembles the runner registry surface from the loaded
+// definitions. It never carries a bootstrap body or Containerfile path past
+// this point — only the columns an operator places a runner by.
+func (m Model) runnersModel() RunnersModel {
+	rm := RunnersModel{
+		summary: fmt.Sprintf("runners · %d registered", len(m.runners)),
+		clock:   time.Now().Local().Format("15:04 MST"),
+	}
+	for _, r := range m.runners {
+		rm.rows = append(rm.rows, runnerRow{
+			name:    truncate(r.Name, 20),
+			mode:    r.Mode,
+			base:    truncate(r.Base, 34),
+			pkgs:    itoa(len(r.Packages)),
+			core:    orDash(r.AnsibleCore),
+			hash:    runnerHashPrefix(r.ContentHash),
+			created: r.CreatedAt.Local().Format("2006-01-02"),
+		})
+	}
+	return rm
+}
+
+// runnerHashPrefix renders the content hash at the length an operator scans a
+// fleet by: 12 hex characters, never the full 32.
+func runnerHashPrefix(hash string) string {
+	if len(hash) > 12 {
+		return hash[:12]
+	}
+	return hash
+}
+
 // --- small live-data formatters ---
 
 func (m Model) queueLine(now time.Time) string {

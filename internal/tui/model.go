@@ -24,6 +24,7 @@ const (
 	screenPolicies                 // [8]
 	screenWorkflows                // [9]
 	screenSecrets                  // [s] — the digits are spent, so the read-only secrets surface takes a mnemonic key
+	screenRunners                  // [r] — digits spent too; the read-only runner registry takes a mnemonic key
 )
 
 const (
@@ -82,6 +83,11 @@ type Model struct {
 	secretBindings map[string][]store.RunSecret
 	secretsErr     error
 
+	// The read-only runner registry: byo-runner definitions. No bootstrap
+	// body or Containerfile is ever held here — only what the columns show.
+	runners    []store.Runner
+	runnersErr error
+
 	// The glance streams the new screens read: pending approvals, recent
 	// events, and the active holds behind the banner.
 	approvals      []store.Approval
@@ -135,6 +141,7 @@ func (m Model) Init() tea.Cmd {
 		loadPoliciesCmd(m.store),
 		loadWorkflowsCmd(m.store),
 		loadSecretsCmd(m.store),
+		loadRunnersCmd(m.store),
 		loadGlanceCmd(m.store),
 		tickCmd(),
 	)
@@ -222,6 +229,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case runnersLoadedMsg:
+		m.runnersErr = msg.err
+		if msg.err == nil {
+			m.runners = msg.runners
+		}
+		return m, nil
+
 	case glanceLoadedMsg:
 		m.glanceErr = msg.err
 		if msg.err == nil {
@@ -282,6 +296,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadWorkflowsCmd(m.store))
 	case screenSecrets:
 		cmds = append(cmds, loadSecretsCmd(m.store))
+	case screenRunners:
+		cmds = append(cmds, loadRunnersCmd(m.store))
 	case screenApprovals, screenEvents:
 		cmds = append(cmds, loadGlanceCmd(m.store))
 	}
@@ -374,6 +390,14 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		// a global jump, inert while a job tail is open.
 		if !m.tailing {
 			m.active = screenSecrets
+		}
+		return m, nil
+
+	case "r":
+		// Like [s], a mnemonic global jump: the digits are spent, and it is
+		// inert while a job tail is open.
+		if !m.tailing {
+			m.active = screenRunners
 		}
 		return m, nil
 

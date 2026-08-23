@@ -305,6 +305,59 @@ func TestSecretsScreenRendersLive(t *testing.T) {
 	}
 }
 
+// TestRunnersScreenRendersLive drives the [r] runner registry surface over
+// seeded rows: a cached runner with packages and resource caps, and an
+// on-the-fly runner built from a Containerfile. It asserts the columns render
+// and that the bootstrap body never reaches the view (no bootstrap body,
+// matching invariant 4's "never carried into the model" precedent for secrets).
+func TestRunnersScreenRendersLive(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+
+	cached, err := st.CreateRunner(ctx, store.Runner{
+		Name: "fedora-ee", Mode: store.RunnerModeCached,
+		Base:        "registry.fedoraproject.org/fedora-minimal:44",
+		Bootstrap:   "#!/bin/sh\ndnf install -y sshpass rsync\n",
+		Packages:    []string{"sshpass", "rsync"},
+		AnsibleCore: "2.18.1", MemoryMax: "2G", CPUQuota: "200%",
+	})
+	if err != nil {
+		t.Fatalf("create cached runner: %v", err)
+	}
+	onthefly, err := st.CreateRunner(ctx, store.Runner{
+		Name: "custom-build", Mode: store.RunnerModeOnTheFly,
+		Base: "docker.io/library/debian:bookworm-slim", Containerfile: "images/custom/Containerfile",
+	})
+	if err != nil {
+		t.Fatalf("create onthefly runner: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadRunnersCmd(st)())
+	m = update(t, m, key('r'))
+	if m.active != screenRunners {
+		t.Fatalf("[r] did not open Runners, active = %v", m.active)
+	}
+
+	view := m.View().Content
+	for _, want := range []string{
+		"runners · 2 registered",
+		"fedora-ee", store.RunnerModeCached, "registry.fedoraproject.org/fedora", "2", "2.18.1",
+		cached.ContentHash[:12], cached.CreatedAt.Local().Format("2006-01-02"),
+		"custom-build", store.RunnerModeOnTheFly, "docker.io/library/debian:bookworm", "0", "-",
+		onthefly.ContentHash[:12], onthefly.CreatedAt.Local().Format("2006-01-02"),
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("runners view missing %q, view:\n%s", want, view)
+		}
+	}
+	// The bootstrap body must never reach the view.
+	if strings.Contains(view, "dnf install") {
+		t.Fatalf("runners view leaked the bootstrap body:\n%s", view)
+	}
+}
+
 // TestApprovalsAndEventsRenderLive drives the two new screens over seeded rows
 // and asserts their live assembly reaches the fixture renderers.
 func TestApprovalsAndEventsRenderLive(t *testing.T) {

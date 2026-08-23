@@ -298,6 +298,24 @@ func loadSecretsCmd(st *store.Store) tea.Cmd {
 	}
 }
 
+// runnersLoadedMsg carries the result of a runner registry refresh. It never
+// carries a bootstrap body or Containerfile path: store.Runner holds those,
+// but the runners screen reads only the columns it renders.
+type runnersLoadedMsg struct {
+	runners []store.Runner
+	err     error
+}
+
+func loadRunnersCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		runners, err := st.ListRunners(context.Background())
+		if err != nil {
+			return runnersLoadedMsg{err: err}
+		}
+		return runnersLoadedMsg{runners: runners}
+	}
+}
+
 // eventsLoadedMsg carries a job's event tail. It is keyed by jobID so a
 // response arriving after the user has moved to a different job is ignored.
 type eventsLoadedMsg struct {

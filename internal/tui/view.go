@@ -32,6 +32,8 @@ func (m Model) View() tea.View {
 			return tea.NewView(liveFrame(m.withBanner(m.renderWorkflowsScreen())))
 		case screenSecrets:
 			return tea.NewView(liveFrame(m.withBanner(m.renderSecretsScreen())))
+		case screenRunners:
+			return tea.NewView(liveFrame(m.withBanner(m.renderRunnersScreen())))
 		}
 	}
 	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
@@ -79,6 +81,14 @@ func (m Model) renderSecretsScreen() string {
 		return styleErr.Render("failed to load secrets: " + m.secretsErr.Error())
 	}
 	return renderSecretsScreen(m.secretsModel())
+}
+
+// renderRunnersScreen renders the runner registry surface, or its error state.
+func (m Model) renderRunnersScreen() string {
+	if m.runnersErr != nil {
+		return styleErr.Render("failed to load runners: " + m.runnersErr.Error())
+	}
+	return renderRunnersScreen(m.runnersModel())
 }
 
 // withBanner prepends the hold banner when a silence or mute is active.
