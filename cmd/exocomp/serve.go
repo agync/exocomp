@@ -177,6 +177,16 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return err
 	}
 
+	// Finish a DEK rotation an earlier crash left half-applied before opening the
+	// envelope: until it completes, keyring.age wraps the old DEK while some rows
+	// already moved to the new one, so those rows would fail to open. Reconcile is
+	// a no-op when nothing is staged.
+	if reconciled, err := secrets.Reconcile(dir, storeReseal(ctx, st)); err != nil {
+		return fmt.Errorf("serve: finish interrupted DEK rotation: %w", err)
+	} else if reconciled {
+		_, _ = fmt.Fprintln(out, "recovered an interrupted DEK rotation: every secret is now under the new key")
+	}
+
 	seal, err := secrets.SealConfigFromEnv()
 	if err != nil {
 		return fmt.Errorf("serve: %w", err)

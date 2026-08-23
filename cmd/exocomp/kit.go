@@ -445,30 +445,67 @@ func rotateDEKDroppingRecipients(cmd *cobra.Command, dir string, opts secrets.Mi
 	defer func() { _ = st.Close() }()
 
 	ctx := cmd.Context()
-	reseal := func(oldEnv, newEnv *secrets.Envelope) error {
+	reseal := storeReseal(ctx, st)
+
+	// Finish any rotation an earlier crash left half-applied before starting a new
+	// one: RotateDEK refuses to stack on a pending reseal, and reconciling here
+	// (rather than only on the daemon's next Open) keeps the CLI a valid recovery
+	// path on its own.
+	if _, err := secrets.Reconcile(dir, reseal); err != nil {
+		return secrets.MigrateResult{}, fmt.Errorf("finish the interrupted DEK rotation first: %w", err)
+	}
+	return secrets.RotateDEK(dir, opts, reseal)
+}
+
+// storeReseal walks every sealed row and re-encrypts it under the new DEK,
+// persisting each in place. It decrypts each row under whichever DEK currently
+// holds it — the new one for a row a crash already moved, the old one for a row
+// it did not — so the one function drives both the forward reseal and the
+// crash-recovery reconciliation, and re-running it after a crash converges. The
+// name|kind AAD is preserved: Seal binds it and the store row keeps its name.
+func storeReseal(ctx context.Context, st *store.Store) func(oldEnv, newEnv *secrets.Envelope) error {
+	return func(oldEnv, newEnv *secrets.Envelope) error {
 		rows, err := st.ListSecrets(ctx)
 		if err != nil {
 			return err
 		}
 		for _, row := range rows {
-			pt, err := oldEnv.OpenSecret(secrets.SealedSecret{
+			sealed := secrets.SealedSecret{
 				Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
-			})
-			if err != nil {
-				return fmt.Errorf("open %q under the old DEK: %w", row.Name, err)
 			}
-			sealed, err := newEnv.Seal(row.Name, row.Kind, pt)
+			pt, err := openUnderEither(oldEnv, newEnv, sealed)
+			if err != nil {
+				return fmt.Errorf("open %q under either DEK: %w", row.Name, err)
+			}
+			resealed, err := newEnv.Seal(row.Name, row.Kind, pt)
 			clear(pt)
 			if err != nil {
 				return fmt.Errorf("re-seal %q: %w", row.Name, err)
 			}
-			if err := st.RotateSecret(ctx, row.Name, sealed.Nonce, sealed.Ciphertext); err != nil {
+			if err := st.RotateSecret(ctx, row.Name, resealed.Nonce, resealed.Ciphertext); err != nil {
 				return fmt.Errorf("store re-sealed %q: %w", row.Name, err)
 			}
 		}
 		return nil
 	}
-	return secrets.RotateDEK(dir, opts, reseal)
+}
+
+// openUnderEither decrypts a row under whichever DEK holds it, trying the new
+// envelope first (an already-moved row) then the old. oldEnv is nil during a
+// reconciliation whose old keyring no longer opens, by which point every row is
+// already under the new DEK.
+func openUnderEither(oldEnv, newEnv *secrets.Envelope, s secrets.SealedSecret) ([]byte, error) {
+	if newEnv != nil {
+		if pt, err := newEnv.OpenSecret(s); err == nil {
+			return pt, nil
+		}
+	}
+	if oldEnv != nil {
+		if pt, err := oldEnv.OpenSecret(s); err == nil {
+			return pt, nil
+		}
+	}
+	return nil, fmt.Errorf("row %q opens under neither the old nor the new DEK", s.Name)
 }
 
 // printReKeyFollowThrough names the derived consumers a DEK rotation invalidates
