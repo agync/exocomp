@@ -5,6 +5,8 @@ templ approvalsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<h1>Approvals</h1>
 		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Waiting on a human</div>
+			<h3>Pending approvals</h3>
 			if len(vm.NeedsYou) == 0 {
 				<p class="meta">Nothing is waiting on a decision.</p>
 			} else {

@@ -6,6 +6,8 @@ templ eventsList(vm eventsVM) {
 	@layout(vm.Page) {
 		<h1>Events</h1>
 		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Received alerts</div>
+			<h3>All events</h3>
 			if len(vm.Events) == 0 {
 				<p class="meta">No events received yet.</p>
 			} else {

@@ -9,6 +9,8 @@ templ policiesList(vm policiesVM) {
 	@layout(vm.Page) {
 		<h1>Plan policies</h1>
 		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">CEL gates</div>
+			<h3>All policies</h3>
 			if len(vm.Policies) == 0 {
 				<p class="meta">No plan policies. Applies are gated only by their workspace's own approval settings.</p>
 			} else {
@@ -30,13 +32,7 @@ templ policiesList(vm policiesVM) {
 									<td class="mono" data-label="Workspace">{ orDash(p.Workspace) }</td>
 									<td data-label="On match">@chip(p.ActionClass(), p.Action)</td>
 									<td class="mono wrap" data-label="Expression">{ p.Expr }</td>
-									<td data-label="Enabled">
-										if p.Enabled {
-											<span class="chip ok"><span class="dot"></span>ENABLED</span>
-										} else {
-											<span class="chip dim"><span class="dot"></span>DISABLED</span>
-										}
-									</td>
+									<td data-label="Enabled">@enabledChip(p.Enabled)</td>
 								</tr>
 							}
 						</tbody>

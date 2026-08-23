@@ -1,0 +1,13 @@
+package web
+
+// enabledChip states a row's enabled/disabled posture as a labelled chip — ok
+// when enabled, dim when not — never color-only. Shared by the sources,
+// schedules, and policies surfaces, mirroring how signedChip and chip are shared
+// rather than repeating the same conditional in each template.
+templ enabledChip(enabled bool) {
+	if enabled {
+		<span class="chip ok"><span class="dot"></span>ENABLED</span>
+	} else {
+		<span class="chip dim"><span class="dot"></span>DISABLED</span>
+	}
+}

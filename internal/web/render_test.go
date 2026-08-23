@@ -107,14 +107,23 @@ func TestFocusRingAndThemes(t *testing.T) {
 	}
 }
 
-// TestResponsiveTables is the responsiveness gate: wide tables carry the
+// TestResponsiveTablesAndHeaders is the lane gate: wide tables carry the
 // stackable class and a data-label on every cell (so the phone stacked-card
-// pattern can label each value), while short and step-ledger tables are
-// deliberately left as plain scroll boxes, and the CSS carries the stacked-card
-// media block plus the desktop wrap cap.
-func TestResponsiveTables(t *testing.T) {
+// pattern can label each value), short/step-ledger tables are deliberately left
+// plain, every list-page card grew the kicker+<h3> header the detail views
+// already use, and the extracted enabledChip renders byte-identically to the old
+// inline enabled/disabled conditional in both branches.
+func TestResponsiveTablesAndHeaders(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
+	// A disabled source alongside the seed's enabled one exercises both
+	// enabledChip branches on the same page.
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "legacy", Kind: store.SourceGit, URI: "git@host:legacy.git",
+		Ref: "refs/heads/main", Enabled: false,
+	}); err != nil {
+		t.Fatalf("seed disabled source: %v", err)
+	}
 	// A queued job so /jobs renders its stackable table, and an event so /events
 	// does the same.
 	if _, err := h.store.CreateJob(context.Background(), store.NewJob{
@@ -156,6 +165,40 @@ func TestResponsiveTables(t *testing.T) {
 			if !strings.Contains(page, want) {
 				t.Errorf("%s missing stackable marker %q", c.path, want)
 			}
+		}
+	}
+
+	// (b) Every list-page card now carries the kicker+<h3> header block.
+	headers := []struct {
+		path, kicker, h3 string
+	}{
+		{"/sources", "Read-only · CLI-managed", "All sources"},
+		{"/schedules", "Cron schedules", "All schedules"},
+		{"/workflows", "Step ledgers", "All workflows"},
+		{"/policies", "CEL gates", "All policies"},
+		{"/jobs", "Everything is a job", "All jobs"},
+		{"/events", "Received alerts", "All events"},
+		{"/approvals", "Waiting on a human", "Pending approvals"},
+	}
+	for _, hd := range headers {
+		_, page := getBody(t, client, ts.URL+hd.path)
+		if !strings.Contains(page, `<div class="kicker">`+hd.kicker+`</div>`) {
+			t.Errorf("%s missing kicker %q", hd.path, hd.kicker)
+		}
+		if !strings.Contains(page, "<h3>"+hd.h3+"</h3>") {
+			t.Errorf("%s missing header %q", hd.path, hd.h3)
+		}
+	}
+
+	// (c) enabledChip renders identically to the old inline conditional, both
+	// branches, on the sources page (enabled seed + disabled "legacy").
+	_, sources := getBody(t, client, ts.URL+"/sources")
+	for _, want := range []string{
+		`<span class="chip ok"><span class="dot"></span>ENABLED</span>`,
+		`<span class="chip dim"><span class="dot"></span>DISABLED</span>`,
+	} {
+		if !strings.Contains(sources, want) {
+			t.Errorf("/sources enabledChip output changed: missing %q", want)
 		}
 	}
 

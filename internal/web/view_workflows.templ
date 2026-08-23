@@ -21,6 +21,8 @@ templ workflowsList(vm workflowsVM) {
 	@layout(vm.Page) {
 		<h1>Workflows</h1>
 		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Step ledgers</div>
+			<h3>All workflows</h3>
 			if len(vm.Workflows) == 0 {
 				<p class="meta">No workflows recorded.</p>
 			} else {

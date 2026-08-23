@@ -22,6 +22,8 @@ templ sourcesList(vm sourcesVM) {
 	@layout(vm.Page) {
 		<h1>Sources</h1>
 		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Read-only · CLI-managed</div>
+			<h3>All sources</h3>
 			if len(vm.Sources) == 0 {
 				<p class="meta">No sources registered. Register one with <code>exocomp source add</code>.</p>
 			} else {
@@ -47,13 +49,7 @@ templ sourcesList(vm sourcesVM) {
 									<td class="mono wrap" data-label="Ref">{ orDash(sc.Ref) }</td>
 									<td data-label="Trust">@signedChip(sc)</td>
 									<td class="right mono" data-label="Last sync">{ orDash(sc.Short()) }</td>
-									<td data-label="Enabled">
-										if sc.Enabled {
-											<span class="chip ok"><span class="dot"></span>ENABLED</span>
-										} else {
-											<span class="chip dim"><span class="dot"></span>DISABLED</span>
-										}
-									</td>
+									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
 								</tr>
 							}
 						</tbody>
