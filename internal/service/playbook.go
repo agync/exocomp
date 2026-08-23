@@ -24,6 +24,9 @@ type PlaybookInput struct {
 	TolerateUnreachable bool
 	IdempotencyKey      string
 	Timeout             time.Duration
+	// Actor identifies a non-CLI caller (an API token) for the job's event
+	// ledger; the zero value records nothing (see recordActor).
+	Actor Actor
 }
 
 // RunResult carries the job a verb enqueued. A face reads its id and, when the
@@ -51,6 +54,9 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {
+		return RunResult{}, err
+	}
+	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return RunResult{}, err
 	}
 	return RunResult{Job: job}, nil

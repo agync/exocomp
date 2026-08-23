@@ -24,6 +24,9 @@ type PlanInput struct {
 	// Trigger records who asked (TriggerManual/TriggerAPI); empty defaults to
 	// manual. The daemon reads it back to decide whether to seal the plan.
 	Trigger string
+	// Actor identifies a non-CLI caller (an API token) for the job's event
+	// ledger; the zero value records nothing (see recordActor).
+	Actor Actor
 }
 
 // PlanResult carries the enqueued job and the path the plan file will be
@@ -55,6 +58,9 @@ func (s *Service) PlanWorkspace(ctx context.Context, enq Enqueuer, in PlanInput)
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {
+		return PlanResult{}, err
+	}
+	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return PlanResult{}, err
 	}
 	return PlanResult{Job: job, PlanPath: planPath}, nil
@@ -94,6 +100,10 @@ type ApplyInput struct {
 	Timeout         time.Duration
 	SavedPlan       *store.Artifact
 	Gate            PlanGate
+	// Actor identifies a non-CLI caller (an API token) for the job's event
+	// ledger — recorded on the run when plain, or on the gated job a pending
+	// approval points at when gated (see recordActor).
+	Actor Actor
 }
 
 // WorkspaceRun is a plain (non-gated) tofu run. Parent is the saved plan an
@@ -169,6 +179,12 @@ func (s *Service) ApplyWorkspace(ctx context.Context, enq Enqueuer, deriver reac
 		}
 		return ApplyResult{}, err
 	}
+	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
+		if release != nil {
+			release()
+		}
+		return ApplyResult{}, err
+	}
 	return ApplyResult{Run: &WorkspaceRun{Job: job, Parent: parent, Release: release}}, nil
 }
 
@@ -193,6 +209,11 @@ func (s *Service) gatedApply(ctx context.Context, enq Enqueuer, deriver reactive
 	}
 	job, err := enq.EnqueueGated(ctx, spec)
 	if err != nil {
+		return ApplyResult{}, err
+	}
+	// Recorded on the gated job itself: a pending approval only points at
+	// JobID, so the actor is read back through the job's own event ledger.
+	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return ApplyResult{}, err
 	}
 

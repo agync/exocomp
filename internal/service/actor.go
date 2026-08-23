@@ -1,0 +1,70 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// ActorKindToken names an Actor resolved from an authenticated API/web
+// token. ActorKindLocal is available for a face that wants to record the
+// local CLI operator explicitly; the zero Actor (Kind == "") also means
+// "local CLI operator" and records nothing new, so a caller that never sets
+// Actor keeps today's behavior byte-for-byte.
+const (
+	ActorKindToken = "token"
+	ActorKindLocal = "local"
+)
+
+// Actor identifies who asked for a write, when the caller is not implicitly
+// the local CLI operator. Name is a token's NAME only, never its secret
+// (AGENTS.md invariant 4) — api_write.go resolves it from identityOf, the
+// same identity its approval-decision path already threads into
+// reactive.Decide (apiApprovalDecision).
+type Actor struct {
+	Kind string
+	Name string
+}
+
+// actorEventPayload is the values-free structured payload recorded on the job
+// ledger for an attributed write.
+type actorEventPayload struct {
+	ActorKind string `json:"actor_kind"`
+	ActorName string `json:"actor_name"`
+	Face      string `json:"face"`
+}
+
+// recordActor appends a system job_event naming who asked for a write, the
+// same append-only ledger every other job fact already lands on (no schema
+// migration, consistent with ADR 0007's audit-surface story). A zero Actor —
+// today's CLI default — records nothing and returns nil at once.
+//
+// When an actor IS present, a failure to append is returned rather than
+// logged-and-swallowed the way ordinary run telemetry is (queue/sink.go):
+// this record is the only durable evidence of who asked for the write, so a
+// write whose attribution silently failed to persist would defeat the point
+// of recording it at all.
+func (s *Service) recordActor(ctx context.Context, jobID int64, actor Actor) error {
+	if actor.Kind == "" {
+		return nil
+	}
+	payload, err := json.Marshal(actorEventPayload{
+		ActorKind: actor.Kind,
+		ActorName: actor.Name,
+		Face:      "api",
+	})
+	if err != nil {
+		return fmt.Errorf("service: marshal actor payload: %w", err)
+	}
+	if _, err := s.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID:   jobID,
+		Level:   store.LevelSystem,
+		Msg:     fmt.Sprintf("enqueued by %s %s via api", actor.Kind, actor.Name),
+		RawJSON: string(payload),
+	}); err != nil {
+		return fmt.Errorf("service: record actor: %w", err)
+	}
+	return nil
+}
