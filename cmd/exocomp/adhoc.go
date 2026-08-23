@@ -238,7 +238,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		return 0, err
 	}
 
-	invPath, invName, err := resolveInventoryArg(ctx, st, spec.inventory)
+	invPath, invName, err := resolveInventoryArg(ctx, st, dir, spec.inventory)
 	if err != nil {
 		return 0, err
 	}

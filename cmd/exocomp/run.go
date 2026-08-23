@@ -166,7 +166,7 @@ func runWithHooks(ctx context.Context, out, warn io.Writer, rs runSpec) (err err
 		playbook = filepath.Join(loc.Root, playbook)
 	}
 
-	invPath, invName, err := resolveInventoryArg(ctx, st, rs.inventory)
+	invPath, invName, err := resolveInventoryArg(ctx, st, dir, rs.inventory)
 	if err != nil {
 		return err
 	}
