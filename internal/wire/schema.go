@@ -13,10 +13,12 @@ const (
 	KindJobEvents     = "job.events"
 	KindWorkspaceList = "workspace.list"
 	KindSourceList    = "source.list"
+	KindApproval      = "approval.get"
 	KindApprovalList  = "approval.list"
 	KindScheduleList  = "schedule.list"
 	KindRuleList      = "rule.list"
 	KindSilenceList   = "silence.list"
+	KindEvent         = "event.get"
 	KindEventList     = "event.list"
 	KindSecretList    = "secret.list"
 	KindBackupList    = "backup.list"
@@ -162,6 +164,18 @@ type ApprovalView struct {
 	Reason      string  `json:"reason,omitempty"`
 }
 
+// NewApprovalView projects one approval. It mirrors NewApprovalList's element
+// mapping exactly, so a single-object `.get` and a one-element `.list` project
+// a row identically.
+func NewApprovalView(a store.Approval) ApprovalView {
+	return ApprovalView{
+		ID: a.ID, JobID: a.JobID, State: string(a.State), Workspace: a.Workspace,
+		PlanSerial: a.PlanSerial, RequestedAt: rfc3339(a.RequestedAt),
+		ExpiresAt: rfc3339(a.ExpiresAt), DecidedAt: rfc3339p(a.DecidedAt),
+		DecidedVia: a.DecidedVia, Reason: a.Reason,
+	}
+}
+
 // NewApprovalList projects approvals in store order.
 func NewApprovalList(rows []store.Approval) []ApprovalView {
 	out := make([]ApprovalView, 0, len(rows))
@@ -265,6 +279,16 @@ type EventView struct {
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
 	JobID       *int64 `json:"job_id,omitempty"`
+}
+
+// NewEventView projects one received event. It mirrors NewEventList's element
+// mapping exactly; the normalized/raw payloads and the per-condition trace
+// (which can carry values) are omitted, as they are from the list.
+func NewEventView(e store.Event) EventView {
+	return EventView{
+		ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
+		MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
+	}
 }
 
 // NewEventList projects events newest-first, as the store returns them.
