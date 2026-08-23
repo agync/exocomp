@@ -321,7 +321,14 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		// Fail-closed adjudication: a plan on a policied workspace with no
 		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
 		gate, err = svc.PlanGateForPlan(r.Context(), ws.Name, art)
-		if err != nil {
+		var mismatch *service.PlanWorkspaceMismatchError
+		switch {
+		case errors.As(err, &mismatch):
+			// A plan named for another workspace is a bad argument, refused
+			// before anything is enqueued or decrypted (finding AI-9).
+			s.badRequest(w, err.Error())
+			return
+		case err != nil:
 			s.apiFail(w, err)
 			return
 		}

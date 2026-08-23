@@ -493,6 +493,9 @@ func newWorkspaceApplyCmd() *cobra.Command {
 			"job id, or the pending approval and its TTL when the plan's policy gates it; " +
 			"watch the job with `jobs follow`. --plan then names a saved plan by artifact id, " +
 			"since a path names a file on this machine.\n\n" +
+			"A --plan must name a plan produced for THIS workspace: another workspace's " +
+			"sealed plan would run under the wrong backend bearer and state passphrase, so " +
+			"it is refused.\n\n" +
 			"On a workspace with enabled plan policies, plan-then-apply-by-id is the only " +
 			"path: a fresh apply has no plan for a policy to read and is refused, and a --plan " +
 			"whose artifact carries no recorded verdict is refused rather than applied " +

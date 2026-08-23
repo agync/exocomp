@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/policy"
@@ -310,13 +311,60 @@ func (e *PlanUnadjudicatedError) Error() string {
 
 func (e *PlanUnadjudicatedError) Unwrap() error { return store.ErrStateConflict }
 
+// PlanWorkspaceMismatchError reports a saved plan being applied in a workspace
+// that is not the one that produced it. The plan's owner is read from its plan
+// job's runbook, the only place a queued tofu job records its workspace.
+type PlanWorkspaceMismatchError struct {
+	PlanArtifactID int64
+	Owner          string
+	Asked          string
+}
+
+func (e *PlanWorkspaceMismatchError) Error() string {
+	return fmt.Sprintf("workspace apply: plan %d belongs to workspace %q, not %q",
+		e.PlanArtifactID, e.Owner, e.Asked)
+}
+
+// PlanOwner returns the workspace a saved plan was produced for, read back from
+// its plan job's runbook. An artifact with no job — an operator's own plan file,
+// resolved by path — has no recorded owner and returns "".
+func (s *Service) PlanOwner(ctx context.Context, art store.Artifact) (string, error) {
+	if art.JobID == 0 {
+		return "", nil
+	}
+	job, err := s.store.GetJob(ctx, art.JobID)
+	if errors.Is(err, store.ErrNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	name, ok := strings.CutPrefix(job.Runbook, workspaceRunbookPrefix)
+	if !ok {
+		return "", nil
+	}
+	return name, nil
+}
+
 // PlanGateForPlan resolves the gate a saved plan's recorded verdict implies,
+// refusing a plan produced for another workspace, and otherwise
 // FAIL-CLOSED: on a workspace carrying enabled plan policies, a plan with no
 // adjudication record is refused rather than treated as unpoliced. That closes
 // the window between CreateArtifact and the verdict event, where an apply-by-id
 // issued against a freshly-sealed plan used to bypass deny/require_approval
 // entirely (finding AI-3). It is the one adjudication read every face uses.
 func (s *Service) PlanGateForPlan(ctx context.Context, workspace string, art store.Artifact) (PlanGate, error) {
+	// A plan is adjudicated for the workspace that produced it and no other:
+	// applying one workspace's sealed plan inside another runs it under the
+	// wrong backend bearer and state passphrase, and reads the stale-plan serial
+	// from a workspace the plan was never made against (finding AI-9).
+	owner, err := s.PlanOwner(ctx, art)
+	if err != nil {
+		return PlanGate{}, err
+	}
+	if owner != "" && owner != workspace {
+		return PlanGate{}, &PlanWorkspaceMismatchError{PlanArtifactID: art.ID, Owner: owner, Asked: workspace}
+	}
 	rec, recorded, err := s.planPolicyRecord(ctx, art)
 	if err != nil {
 		return PlanGate{}, err

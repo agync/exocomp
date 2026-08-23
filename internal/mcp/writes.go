@@ -166,7 +166,13 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (st
 		saved = &art
 		// Fail-closed adjudication: a plan on a policied workspace with no
 		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
-		if gate, err = s.service().PlanGateForPlan(ctx, ws.Name, art); err != nil {
+		gate, err = s.service().PlanGateForPlan(ctx, ws.Name, art)
+		var mismatch *service.PlanWorkspaceMismatchError
+		if errors.As(err, &mismatch) {
+			// A plan named for another workspace is a bad argument (finding AI-9).
+			return "", nil, invalidArg(err.Error())
+		}
+		if err != nil {
 			return "", nil, err
 		}
 	}
