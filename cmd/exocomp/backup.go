@@ -39,7 +39,7 @@ func newBackupCmd() *cobra.Command {
 		Use:   "backup",
 		Short: "Assemble a snapshot and fan it out to every enabled target",
 	}
-	cmd.AddCommand(newBackupAddTargetCmd(), newBackupListCmd(), newBackupRunCmd())
+	cmd.AddCommand(newBackupAddTargetCmd(), newBackupListCmd(), newBackupRunCmd(), newBackupDrillCmd())
 	return cmd
 }
 
