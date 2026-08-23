@@ -2,10 +2,11 @@
 
 ## Status
 
-Proposed · 2026-08-23. Design only — no product code lands with this document. It
-specifies the mirror image of the provision-first handoff (items A/D of
-[v1.1-roadmap.md](v1.1-roadmap.md)) that the Kubernetes persona interview surfaced,
-so the shape is agreed before anything is built.
+Proposed · 2026-08-23; Phases 0–3 landed. It specifies the mirror image of the
+provision-first handoff (items A/D of [v1.1-roadmap.md](v1.1-roadmap.md)) that the
+Kubernetes persona interview surfaced. The shape was agreed here before it was built;
+Phases 0 (ansible-first chain), 1 (capture→seal), 2 (env-decomposition binding) and 3
+(`--capture-file` file staging) have since shipped — see §3 for what each touched.
 
 The persona: **Ansible bootstraps `kubeadm` nodes, then Terraform manages cluster
 resources** through the `kubernetes`/`helm` providers. That is the reverse of every
@@ -142,10 +143,14 @@ B1's binding convention is proven; not the first cut.
 Both are pure additions: no existing verb changes, and the tofu-first chains keep their
 behavior.
 
-### 2.3 (c) OPEN OWNER DECISION — KUBECONFIG file vs env-decomposition
+### 2.3 (c) OWNER DECISION — KUBECONFIG file vs env-decomposition
 
-This is a genuine fork with a real security tradeoff. **This document presents both and
-does not choose; the owner decides.**
+This was a genuine fork with a real security tradeoff. **Both are now shipped:** C-env
+first (Phase 2), then C-file (Phase 3) once the owner chose it. The owner decided C-file
+**is worth building, on the hard condition that the staged secret never touches durable
+disk** — a `noswap` tmpfs backs the per-job run directory, and the daemon fail-closed
+refuses to stage onto anything else (agentfs/CoW was evaluated for this and rejected in
+favour of plain tmpfs). The fork below is kept for the rationale.
 
 **Option C-env (works today, zero new exposure).** Decompose the kubeconfig into the
 provider's env fields and bind them as run-secrets: `KUBE_HOST`, `KUBE_TOKEN` (or the
@@ -166,17 +171,19 @@ choice precisely so a sealed value never lands on a filesystem. It also means th
 gains a secret-file-staging step it does not have now (§1.2c), i.e. new plumbing on the
 tofu driver, not just the ansible one.
 
-| | C-env (today's model) | C-file (option #4) |
+| | C-env (Phase 2) | C-file (Phase 3, as shipped) |
 |---|---|---|
-| Secret on disk | never | 0600 in 0700 ephemeral private dir, one run |
-| New code | capture hook seals N fields | capture hook + tofu-side file staging + `KUBECONFIG` export |
+| Secret on disk | never | 0600 on a `noswap` tmpfs (RAM), one run — or the apply is refused |
+| New code | capture hook seals N fields | capture hook + tofu-side file staging + tmpfs assertion + `KUBECONFIG` export |
 | Operator ergonomics | must map fields | paste a kubeconfig, get a path |
-| Exposure surface | unchanged (env-only) | new: a filesystem artifact holding a bearer |
+| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer, fail-closed off tmpfs |
 
-**Decision owner:** the exocomp owner. The recommendation of *this* design is to ship
-§2.1/§2.2 against **C-env** first (no new exposure, unblocks the persona), and treat
-C-file as a separately-justified follow-on only if field decomposition proves too sharp
-an edge in practice.
+**Decision:** the owner shipped **C-env first** (Phase 2 — no new exposure, unblocked the
+persona) and then approved **C-file** (Phase 3) as the follow-on, because field
+decomposition is too sharp an edge for the copy-paste `KUBECONFIG` case and for
+exec-auth tools that read a file. C-file's exposure is bounded to a `0600` file on a
+`noswap` tmpfs, torn down with the job, and the daemon refuses to stage anywhere else —
+so the "secret on disk" row is *RAM only, one run, or the run is refused*.
 
 ---
 
@@ -217,13 +224,22 @@ deterministic-name convention from the handoff (`handoff.go:184-187`). *New:* th
 `ab:<workflow>` naming convention. Reversible: without `--capture` the verb behaves as
 Phase 0.
 
-**Phase 3 (conditional, gated on the §2.3 decision) — `KUBECONFIG` file staging.**
-Only if the owner picks C-file: a secret-to-file materializer into the tofu run's private
-dir plus a `KUBECONFIG` export.
-*Touches:* a new tofu-side private-dir stager, `internal/executor/runsecret.go`.
-*New:* filesystem staging of a sealed value — the new exposure surface. Reversible in
-principle, but the exposure is the point of the decision, so it does not ship until C-file
-is chosen.
+**Phase 3 — `KUBECONFIG` file staging (LANDED, C-file chosen).**
+`bootstrap run --capture-file NAME=FILE` delivers a captured value to the apply as a file
+path instead of an env value: the daemon writes the sealed bytes to a `0600` file in the
+tofu run's private tree and exports `NAME=<that path>`. The value never reaches an argv,
+event, or the ledger; the file is removed with the job's private tree.
+*Touches:* `internal/executor/runsecret_file.go` (the `StageRunSecretFiles` stager and the
+`RunDirTmpfs` assertion), `TofuOptions.RunSecretFiles` + its wiring in `tofu.go`,
+`AnsibleCapture.AsFile` and the `--capture-file` flag/composer wiring in
+`cmd/exocomp/bootstrap.go`, the daemon read in `cmd/exocomp/serve.go`, the tmpfs mount in
+`packaging/quadlet/exocomp.container`, and the doctor report in `cmd/exocomp/sandbox.go`.
+*New:* filesystem staging of a sealed value — the one new exposure surface, bounded by the
+hard requirement below. **The staged file never touches durable disk:** the per-job run
+directory is a `noswap` tmpfs, and staging asserts `statfs f_type == TMPFS_MAGIC` on it and
+**refuses (failing the apply) when it is not** — the never-silent-downgrade discipline
+(ADR 0005) applied to disk. agentfs/CoW was evaluated as the backing and rejected in favour
+of plain tmpfs. Env-decomposition (Phase 2) is unaffected and needs no tmpfs.
 
 **Phase 4 (later) — generalize to `exocomp workflow` (Option B2)** if a third ordering
 appears. Pure composition over the same Sequencer; deferred until two concrete orderings
@@ -254,5 +270,7 @@ is decision-gated.
   sensitive fact is never captured. A missing sealer drops the capture rather than leaking
   it (mirror of `tofu_output.go:163-167`). Under C-env no secret touches a filesystem;
   under C-file the staged file inherits the 0600-in-0700, removed-on-exit lifecycle the
-  vault-password file already has (`ansible.go:184-199, 427-431`) — and that file is the
-  documented new exposure the §2.3 decision is about.
+  vault-password file already has (`ansible.go:184-199, 427-431`), and additionally must
+  live on a `noswap` tmpfs — staging asserts `statfs f_type == TMPFS_MAGIC` and refuses
+  otherwise, so the one new exposure the §2.3 decision is about is bounded to RAM for the
+  lifetime of one run, or the apply is refused rather than the secret written to disk.

@@ -6,6 +6,28 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — `bootstrap run --capture-file`: KUBECONFIG file staging (Phase 3)
+
+[operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained the
+**`--capture-file`** surface, and [design/bootstrap-first.md](design/bootstrap-first.md) is
+marked **Phase 3 landed** with §2.3's open owner-decision resolved. `--capture-file NAME=FILE`
+seals a play-fetched value exactly as `--capture` does, but the apply receives it as a **file
+path** — the daemon writes the sealed bytes to a `0600` file in the tofu run's private tree and
+sets `NAME` to that path — for a tool (`kubectl`/`helm`, exec-auth) that wants a `KUBECONFIG`
+file rather than decomposed env fields (Option **C-file**). The owner approved C-file on the
+hard condition that the staged secret never touches durable disk: the quadlet mounts a `noswap`
+tmpfs at `/var/lib/exocomp/run`, and the daemon asserts `statfs f_type == TMPFS_MAGIC` on the
+per-job run dir and **refuses to stage (failing the apply) when it is not** — the
+never-silent-downgrade discipline (ADR 0005) applied to disk (agentfs/CoW was evaluated for the
+backing and rejected in favour of plain tmpfs). `exocomp doctor` now reports the run dir's
+backing under **job run dir**. Env-decomposition (`--capture`, Phase 2) is unaffected and needs
+no tmpfs.
+
+**Correction of fact.** The design page's Status said "Design only — no product code lands with
+this document." Phases 0–3 have since shipped, so the Status now records them as landed and
+points at §3 for what each touched; §2.3, which "presented both and did not choose," now records
+the owner's decision (C-env first, then C-file).
+
 ## 2026-08-23 — the stdio MCP server is gone; one agent surface remains
 
 [operations/mcp.md](operations/mcp.md) no longer documents `exocomp mcp`: the bespoke stdio

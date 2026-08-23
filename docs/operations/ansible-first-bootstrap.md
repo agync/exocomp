@@ -85,9 +85,41 @@ Rules that keep it safe and predictable:
   `ab:<workflow>`. Bind pre-existing credentials this way only when the play does
   not produce them.
 
-A `KUBECONFIG` **file** on disk (rather than decomposed env fields) is a separate,
-decision-gated phase of [bootstrap-first](../design/bootstrap-first.md) and is not
-what `--capture` does.
+For a tool that reads a whole `KUBECONFIG` **file** rather than decomposed env
+fields (`kubectl`, `helm`, an exec-auth provider), use `--capture-file` — the next
+section.
+
+## `--capture-file`: hand the apply a KUBECONFIG file
+
+```
+exocomp bootstrap run site.yml wsp \
+    --capture-file KUBECONFIG=kubeconfig --wait
+```
+
+`--capture-file NAME=FILE` seals a play-fetched file exactly as `--capture` does,
+but the apply receives it as a **file path** rather than an env value: the daemon
+writes the sealed bytes to a `0600` file inside the run's private tree and sets
+`NAME` to that path (`KUBECONFIG=/var/lib/exocomp/run/…/kubeconfig`). A tool that
+wants a config file gets one, with no field decomposition to map.
+
+The value only ever exists in that file — never in an argv, an event, or the
+ledger — and the file is removed when the job ends, along with the rest of the
+run's private tree.
+
+**The run directory must be tmpfs.** A staged file holds a plaintext bearer, so it
+must never touch durable disk. The daemon asserts the per-job run directory is a
+`tmpfs` mount (the quadlet mounts a `noswap` tmpfs at `/var/lib/exocomp/run`) and
+**refuses to stage — failing the apply with a clear error — when it is not**,
+rather than silently writing the secret to disk. `exocomp doctor` reports the run
+directory's backing under **job run dir**, so you can confirm the mount before you
+rely on `--capture-file`. Env-decomposition (`--capture`) does not stage a file and
+does not need tmpfs.
+
+`--capture-file` shares every safety rule of `--capture` above (declare-only
+capture, POSIX-name skipping, values-free, re-run idempotence) and the same single
+binding slot, so it is likewise mutually exclusive with `--run-secrets`. The two
+capture forms may be mixed: `--capture KUBE_HOST=… --capture-file KUBECONFIG=…`
+delivers some values as env and others as a file in one chain.
 
 ## Flags
 
@@ -95,8 +127,9 @@ what `--capture` does.
 |---|---|
 | `--inventory <path\|name>` | Inventory for the bootstrap play (default: localhost). |
 | `--vault-project <p>` | Derive the play's ansible-vault password from the envelope. |
-| `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. Mutually exclusive with `--capture`. |
+| `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. Mutually exclusive with `--capture`/`--capture-file`. |
 | `--capture NAME=FILE` | Seal a play-fetched file (`FILE`, relative to the run's capture dir) and hand it to the **apply** as `NAME` env. Repeatable. Mutually exclusive with `--run-secrets`. |
+| `--capture-file NAME=FILE` | Like `--capture`, but deliver the sealed value as a **file**: `NAME`=path to a `0600` tmpfs file for a tool that wants a `KUBECONFIG` file. Repeatable. Needs the run dir tmpfs. Mutually exclusive with `--run-secrets`. |
 | `--source <s>` | Wrap the chain in a registered source's `.exocomp/hooks.yml` lifecycle — pre-run hooks before the play, post-run hooks and the health gate after the apply — identically to `handoff run --source`. |
 | `--require-approval` | Gate the destructive chain: refuse to start unless `--assume-yes` is passed. |
 | `--timeout <d>` | Per-step timeout (0: no limit). |
