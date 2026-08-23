@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — the stdio MCP server is gone; one agent surface remains
+
+[operations/mcp.md](operations/mcp.md) no longer documents `exocomp mcp`: the bespoke stdio
+MCP server and its `LocalCaller` (ambient local-operator authority, no credential, no scope)
+are removed from `internal/mcp` and `cmd/exocomp`. `POST /mcp` on the `exocomp serve
+--web-addr` listener — bearer-authenticated, ADR-0009 scoped — is now the one MCP surface. A
+stdio-only MCP client bridges to it with an off-the-shelf http-to-stdio wrapper (`npx
+mcp-remote`, supergateway); the sanctioned LOCAL agent path is the agent-aware CLI
+(`--output json`, exit codes), not an MCP hop. `HandleMessage` and the HTTP transport
+(`internal/web/mcp_http.go`) are unchanged; every test that exercised shared dispatch
+behaviour through the old stdio `Serve` loop now drives it through `HandleMessage` directly.
+
 ## 2026-08-23 — ADR-0014 reconciled to the single MCP-over-HTTP surface
 
 [adr/0014-agent-facing-surface.md](adr/0014-agent-facing-surface.md) and its design doc

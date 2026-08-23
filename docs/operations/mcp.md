@@ -1,13 +1,19 @@
 # The MCP surface
 
-One MCP server, two transports. `exocomp mcp` speaks it over stdio for an agent running
-beside the daemon; `POST /mcp` speaks it over HTTP on the same
+One MCP server, one transport. `POST /mcp` speaks it over HTTP on the same
 [ADR-0009](../adr/0009-lan-access-tokens.md) token-gated listener the browser surface and
-[`/api/v1`](api.md) already use — not a second listener, not a second auth story. Both
-transports run the *same* catalog and the *same* handlers (`internal/mcp`); they differ in
-how a message is framed and in which principal it is dispatched for. Design rationale:
-[agent-interface.md §3.5](../design/agent-interface.md); ratified in
+[`/api/v1`](api.md) already use — not a second listener, not a second auth story. Design
+rationale: [agent-interface.md §3.5](../design/agent-interface.md); ratified in
 [ADR 0014](../adr/0014-agent-facing-surface.md).
+
+There is no bespoke stdio MCP server, and none is coming back: a process running at the
+local operator's ambient authority with no credential and no scope is exactly the shape
+finding AI-1 broke (see [the threat model](../security/threat-model.md)). A stdio-only MCP
+client bridges to `POST /mcp` with an off-the-shelf http-to-stdio wrapper — see
+[Bridging a stdio client](#bridging-a-stdio-client) below. An agent working the local
+filesystem alongside exocomp is the sanctioned LOCAL path and drives the
+[agent-aware CLI](machine-output.md) directly (`--output json`, exit codes) — it needs no
+MCP hop at all.
 
 Every tool call and resource read routes to the same `internal/service` verbs the CLI and
 the HTTP API call, and marshals the same `internal/wire` envelope, so a resource's MCP
@@ -73,17 +79,28 @@ Resources — `exocomp://workspaces`, `exocomp://jobs/{id}`, `exocomp://jobs/{id
 `exocomp://workspaces/{name}/drift`, `exocomp://approvals/pending`, `exocomp://schedules`,
 `exocomp://events/recent`, `exocomp://health` — are reads, available to every scope.
 
-`run_playbook` is deliberately not exposed on either transport yet: the inventory and
+`run_playbook` is deliberately not exposed on the MCP surface yet: the inventory and
 `--source` path resolvers it needs are still CLI-resident. Use
 [`POST /api/v1/playbooks/run`](api.md) for that.
 
-### Stdio is not scope-gated, and offers no decisions
+### Bridging a stdio client
 
-`exocomp mcp` authenticates nothing — the process was handed the data dir, the same trust
-boundary a local `exocomp` invocation has — so it runs at the local operator's authority:
-the read and write tools, and **no** `approve_job`/`reject_job`. A face that can raise the
-gate does not get its release. Decide from the browser/phone surface, the CLI, an
-`approve`-scope `/api/v1` token, or an `approve`-scope MCP token over HTTP.
+A harness that only speaks the MCP 2024-11-05 stdio shape (no HTTP transport of its own)
+bridges to `POST /mcp` with an off-the-shelf stdio-to-HTTP wrapper — exocomp does not ship
+or endorse one; any spec-conformant wrapper works. Two examples, run as a subprocess of the
+harness:
+
+```sh
+npx mcp-remote https://<host>:<port>/mcp --header "Authorization: Bearer $EXOCOMP_TOKEN"
+```
+
+```sh
+npx supergateway --stdio "https://<host>:<port>/mcp" --header "Authorization: Bearer $EXOCOMP_TOKEN"
+```
+
+The wrapper is the transport; it carries no authority of its own beyond the bearer token you
+give it, so mint the token at the scope the agent actually needs (see below) rather than
+handing it an `operator` or `approve` token by default.
 
 ## What the transport does, and does not, implement
 
