@@ -17,11 +17,16 @@ evidence — a score without the quoted misread is not actionable.
 
 ## Severity
 
-Rank findings for the report in this order:
+A dangerous misread is any misread that could lead to a WRONG ACTION — not
+only a write mis-gated (Q3), but also a read tool's result misunderstood so
+the agent acts on the wrong data (Q1/Q5). Rank findings for the report in
+this order:
 
-1. **Dangerous misread** — any Q3 fail, or a Q4 answer that would pass a secret
-   value as an argument. These can cause a wrong or unsafe call, not just a
-   failed one. Highest priority regardless of the other axes.
+1. **Dangerous misread** — any Q3 fail; a Q4 answer that would pass a secret
+   value as an argument; or a Q1/Q5 fail on a read tool where the reader
+   would act on the wrong data (e.g. conflating two distinct return arrays).
+   These can cause a wrong or unsafe action, not just a failed one. Highest
+   priority regardless of the other axes.
 2. **Would-misroute** — a catalog reader (kind B) picks the wrong tool for a
    task, or an intent/when-to-call fail on a tool that has a look-alike sibling.
 3. **Would-fail-the-call** — an argument-construction fail: the agent tries the
@@ -33,8 +38,9 @@ Rank findings for the report in this order:
 
 - **Solid** — pass on intent, when-to-call, side-effect, and arguments.
 - **Weak** — any comprehension fail that is not dangerous.
-- **Dangerous** — any Q3 fail or secret-as-argument. Always rewrite, always
-  re-audit.
+- **Dangerous** — any Q3 fail, secret-as-argument, or a Q1/Q5 fail on a read
+  tool that would misdirect the agent onto the wrong data. Always rewrite,
+  always re-audit.
 
 ## Scope and catalog verdict
 
