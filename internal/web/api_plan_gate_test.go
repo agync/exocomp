@@ -46,6 +46,45 @@ func (h *harness) seedPlanArtifact(t *testing.T, ws string) store.Artifact {
 	return art
 }
 
+// TestAPIFreshApplyRefusedUnderPolicy is the AI-4 regression: omitting "plan"
+// used to skip the policy machinery entirely, so a workspace whose only policy
+// denies everything still enqueued `tofu apply -auto-approve`. A fresh apply on
+// a workspace with enabled plan policies is now refused — plan-then-apply-by-id
+// is the only path there, because that is the only one a policy can adjudicate.
+func TestAPIFreshApplyRefusedUnderPolicy(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	token := h.mint(t, "op", "operator")
+	h.seedWorkspace(t, "prod")
+	h.seedPlanPolicy(t, "prod", "no-destroy", store.PolicyDeny)
+
+	for _, body := range []string{"", "{}"} {
+		code, _, resp := bearerPost(t, ts.URL, "/api/v1/workspaces/prod/apply", token, body, nil)
+		if code != http.StatusConflict {
+			t.Fatalf("fresh apply body %q status = %d, want 409 (%s)", body, code, resp)
+		}
+		if kind, ecode, _ := decodeEnvelope(t, resp); kind != "error" || ecode != "conflict" {
+			t.Fatalf("fresh apply envelope = %s, want error/conflict", resp)
+		}
+	}
+	jobs, err := h.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook("prod")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a refused fresh apply still enqueued %d job(s)", len(jobs))
+	}
+
+	// A workspace with no policies is untouched: the fresh apply still enqueues.
+	h.seedWorkspace(t, "lab")
+	code, _, resp := bearerPost(t, ts.URL, "/api/v1/workspaces/lab/apply", token, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("unpolicied fresh apply status = %d, want 200 (%s)", code, resp)
+	}
+}
+
 // TestAPIApplyRefusesUnadjudicatedPlan is the AI-3 regression: between the
 // artifact row and the verdict event, an apply-by-id used to read "no verdict"
 // as "no policy" and enqueue plainly against a workspace whose policy denies

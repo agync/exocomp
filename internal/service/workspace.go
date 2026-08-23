@@ -87,6 +87,31 @@ func (e *PlanDeniedError) Error() string {
 		e.PlanArtifactID, e.Policy)
 }
 
+// FreshApplyPolicedError reports an apply with no saved plan on a workspace that
+// has enabled plan policies. There is nothing for a policy to read in a fresh
+// apply, so allowing one would be a documented bypass of the gate the operator
+// installed. It unwraps to the store's state-conflict sentinel, so every face
+// renders it as a conflict without its own mapping.
+type FreshApplyPolicedError struct {
+	Workspace string
+	Policies  int
+}
+
+func (e *FreshApplyPolicedError) Error() string {
+	return fmt.Sprintf("workspace apply: %q has %d enabled plan polic%s, so a fresh apply cannot "+
+		"be adjudicated: run `workspace plan %s` and apply that plan by id",
+		e.Workspace, e.Policies, plural(e.Policies), e.Workspace)
+}
+
+func (e *FreshApplyPolicedError) Unwrap() error { return store.ErrStateConflict }
+
+func plural(n int) string {
+	if n == 1 {
+		return "y"
+	}
+	return "ies"
+}
+
 // ApplyInput is a resolved tofu apply. SavedPlan is the plan being consumed
 // (nil for a fresh apply, or an operator's own plan file that carries no
 // verdict); Gate is its verdict. WorkspaceSerial is the serial the plan was made
@@ -153,6 +178,18 @@ func (s *Service) ApplyWorkspace(ctx context.Context, enq Enqueuer, deriver reac
 		}
 		if in.Gate.RequireApproval {
 			return s.gatedApply(ctx, enq, deriver, in)
+		}
+	} else {
+		// A fresh apply has no plan for a policy to read, so naming no plan used
+		// to skip the whole deny/require_approval machinery (finding AI-4). On a
+		// workspace that HAS enabled policies, refuse: plan-then-apply-by-id is
+		// the only path a policy can adjudicate.
+		policies, err := s.store.ListPlanPolicies(ctx, in.Workspace, true)
+		if err != nil {
+			return ApplyResult{}, err
+		}
+		if len(policies) > 0 {
+			return ApplyResult{}, &FreshApplyPolicedError{Workspace: in.Workspace, Policies: len(policies)}
 		}
 	}
 

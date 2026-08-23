@@ -130,7 +130,8 @@ func TestApplyWorkspacePlainRecordsActor(t *testing.T) {
 
 // TestApplyWorkspacePlainReleasesOnActorRecordError proves a failed actor
 // append still releases the plaintext plan the argv builder opened — the
-// write fails, but it must not leak a plaintext plan copy while doing so.
+// write fails, but it must not leak a plaintext plan copy while doing so. It
+// drives the saved-plan path, the one whose argv builder opens a plaintext.
 func TestApplyWorkspacePlainReleasesOnActorRecordError(t *testing.T) {
 	st := openStore(t)
 	_ = st.Close()
@@ -140,9 +141,10 @@ func TestApplyWorkspacePlainReleasesOnActorRecordError(t *testing.T) {
 
 	_, err := svc.ApplyWorkspace(context.Background(), enq, fixedDeriver{}, service.ApplyInput{
 		Workspace: "web", TofuDir: "/roots/web",
-		Actor: service.Actor{Kind: service.ActorKindToken, Name: "op"},
+		SavedPlan: &store.Artifact{ID: 7, Kind: "tofu-plan", Path: "/plans/web.tfplan.age"},
+		Actor:     service.Actor{Kind: service.ActorKindToken, Name: "op"},
 	}, func(context.Context) ([]string, *store.Artifact, func(), error) {
-		return executor.TofuArgv("apply", "-auto-approve"), nil, func() { released = true }, nil
+		return executor.TofuArgv("apply", "/tmp/plan"), nil, func() { released = true }, nil
 	})
 	if err == nil {
 		t.Fatal("want the actor-record error surfaced")

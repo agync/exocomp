@@ -493,9 +493,10 @@ func newWorkspaceApplyCmd() *cobra.Command {
 			"job id, or the pending approval and its TTL when the plan's policy gates it; " +
 			"watch the job with `jobs follow`. --plan then names a saved plan by artifact id, " +
 			"since a path names a file on this machine.\n\n" +
-			"On a workspace with enabled plan policies, a --plan whose artifact carries no " +
-			"recorded policy verdict is refused rather than applied unpoliced: re-plan so the " +
-			"verdict is stamped on the artifact you apply.",
+			"On a workspace with enabled plan policies, plan-then-apply-by-id is the only " +
+			"path: a fresh apply has no plan for a policy to read and is refused, and a --plan " +
+			"whose artifact carries no recorded verdict is refused rather than applied " +
+			"unpoliced. Re-plan so the verdict is stamped on the artifact you apply.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			op := workspaceOp{workspace: args[0], op: "apply", planRef: planRef,
