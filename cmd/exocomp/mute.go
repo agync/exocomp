@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -118,19 +119,33 @@ func muteLabel(m store.NotifyMute) string {
 func newMuteListCmd() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List active mutes",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List active mutes",
+		Example: "exocomp mute list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
 				return err
 			}
 			defer func() { _ = st.Close() }()
 
 			rows, err := st.ListNotifyMutes(cmd.Context(), !all)
 			if err != nil {
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindMuteList, wire.NewMuteList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {
