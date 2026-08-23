@@ -6,6 +6,20 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — bootstrap-first B1 example fixed; lane skills updated
+
+[design/bootstrap-first.md](design/bootstrap-first.md)'s Option B1 signature no
+longer shows `--capture` on the base command — that flag belongs to Phase 2,
+per the phased plan in §3; Phase 0 ships with no capture, matching what
+shipped. Also folded real lessons from this session's lane dispatch and
+integration work into `.agents/skills/lane-brief-authoring` (worktree created
+before dispatch, absolute-path-only writes, integrator dispatched only after
+WORKFLOW-COMPLETION, migration numbers final only at merge) and
+`.agents/skills/lane-integration` (run `make check` to completion in the
+integrator's own turn; stop and report on an "untracked working tree files"
+fast-forward refusal), and sharpened the dangerous-vs-confusing read-misread
+line in `.agents/skills/mcp-comprehension-audit`'s scoring rubric.
+
 ## 2026-08-23 — `bootstrap run --capture`: the ansible→tofu env handoff (Phase 2)
 
 [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained the

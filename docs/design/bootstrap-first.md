@@ -119,9 +119,12 @@ decision, not a runtime change. Two options, not mutually exclusive:
 `handoff`, argument order reversed:
 
 ```
-exocomp bootstrap run <playbook> <workspace> [--capture k=fact|@file ...] \
+exocomp bootstrap run <playbook> <workspace> \
     [--vault-project P] [--run-secrets NAME] [--source S] [--timeout D] [--wait]
 ```
+
+Phase 0 (§3) ships this shape with no capture flag; Phase 2 adds
+`--capture k=fact|@file ...` once the capture hook (§2.1) exists.
 
 Steps `[ansible-play, tofu-apply]`. Step 1 runs the bootstrap play; its capture hook
 (§2.1) seals the kubeconfig and binds `ab:<workflow>`. Step 2 is a `tofu apply` whose
