@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -96,17 +97,31 @@ func newSealDisableCmd() *cobra.Command {
 
 func newSealStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Report the transit seal posture",
-		Args:  cobra.NoArgs,
+		Use:     "status",
+		Short:   "Report the transit seal posture",
+		Example: "exocomp seal status --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			dir, err := dataDir()
 			if err != nil {
-				return fmt.Errorf("seal status: resolve data dir: %w", err)
+				err = fmt.Errorf("seal status: resolve data dir: %w", err)
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
+				return err
 			}
 			seal, cfgErr := secrets.SealConfigFromEnv()
-			out := cmd.OutOrStdout()
 			present := secrets.TransitSealPresent(dir)
+
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindSealStatus, sealStatusView(present, seal, cfgErr))
+			}
+
+			out := cmd.OutOrStdout()
 			_, _ = fmt.Fprintf(out, "transit seal file (%s): %s\n", secrets.TransitSealName, presence(present))
 			switch {
 			case cfgErr != nil:
@@ -123,6 +138,25 @@ func newSealStatusCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// sealStatusView projects the same facts the text report prints. The token is
+// never read from seal, by construction: SealConfig.Token has no json tag
+// path into this view at all.
+func sealStatusView(present bool, seal *secrets.SealConfig, cfgErr error) wire.SealStatusView {
+	v := wire.SealStatusView{TransitFilePresent: present}
+	switch {
+	case cfgErr != nil:
+		v.EnvError = cfgErr.Error()
+	case seal.Configured():
+		v.EnvConfigured = true
+		v.SealAddress = seal.Address
+		v.SealKeyName = seal.KeyName
+	}
+	if present && !seal.Configured() && cfgErr == nil {
+		v.OrphanBlob = true
+	}
+	return v
 }
 
 func presence(b bool) string {
