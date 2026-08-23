@@ -23,6 +23,7 @@ const (
 	KindTokenList     = "token.list"
 	KindPolicyList    = "policy.list"
 	KindCommands      = "commands"
+	KindDoctor        = "doctor"
 )
 
 func rfc3339(t time.Time) string { return t.UTC().Format(time.RFC3339) }

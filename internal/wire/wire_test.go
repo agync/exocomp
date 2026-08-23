@@ -100,6 +100,47 @@ func TestSecretViewHasNoSealedFields(t *testing.T) {
 	}
 }
 
+// TestGoldenDoctorHealth pins the doctor health envelope, including a
+// not-fully-healthy document so the warn/fail/unknown path is covered, not
+// just the all-ok case.
+func TestGoldenDoctorHealth(t *testing.T) {
+	entries := wire.HealthView{
+		{Name: "data_dir", Status: wire.HealthOK, Detail: "mode 0700 — writable"},
+		{Name: "secrets_protection", Status: wire.HealthFail, Detail: "host key: plaintext-in-datadir; memory lock: locked"},
+		{Name: "optional_tools", Status: wire.HealthWarn, Detail: "missing: restic, age"},
+		{Name: "self_observability", Status: wire.HealthUnknown, Detail: "metrics: daemon not running (no address file); dead-man: not configured — no external heartbeat wired yet; hold: none active"},
+		{Name: "litestream", Status: wire.HealthUnknown, Detail: "binary not installed (optional); no replica target configured"},
+	}
+
+	got, err := wire.MarshalSuccess(wire.KindDoctor, entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema_version":1,"kind":"doctor","data":[` +
+		`{"name":"data_dir","status":"ok","detail":"mode 0700 — writable"},` +
+		`{"name":"secrets_protection","status":"fail","detail":"host key: plaintext-in-datadir; memory lock: locked"},` +
+		`{"name":"optional_tools","status":"warn","detail":"missing: restic, age"},` +
+		`{"name":"self_observability","status":"unknown","detail":"metrics: daemon not running (no address file); dead-man: not configured — no external heartbeat wired yet; hold: none active"},` +
+		`{"name":"litestream","status":"unknown","detail":"binary not installed (optional); no replica target configured"}` +
+		`]}` + "\n"
+	if string(got) != want {
+		t.Fatalf("doctor health bytes drift:\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// TestGoldenDoctorHealthEmpty pins the empty case: data must render "[]", not
+// null, exactly like every other list projection.
+func TestGoldenDoctorHealthEmpty(t *testing.T) {
+	got, err := wire.MarshalSuccess(wire.KindDoctor, wire.HealthView{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema_version":1,"kind":"doctor","data":[]}` + "\n"
+	if string(got) != want {
+		t.Fatalf("empty doctor health bytes drift:\n got: %s\nwant: %s", got, want)
+	}
+}
+
 func TestExitCodeTable(t *testing.T) {
 	cases := []struct {
 		code string
