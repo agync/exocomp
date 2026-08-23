@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -20,6 +22,33 @@ type Workspace struct {
 	// Serial is the newest tfstate version stored for the workspace; 0 means
 	// no state has ever been pushed.
 	Serial int64
+	// ExtraEgressPorts are TCP ports the operator has deliberately granted this
+	// workspace's sandboxed tofu runs on top of the built-in HTTPS-and-backend
+	// egress. Empty is the default posture. Because Landlock filters egress by
+	// port and not by destination, a granted port opens that port to any host,
+	// not only the intended one (docs/operations/serve.md).
+	ExtraEgressPorts []int
+}
+
+// ErrInvalidEgressPort reports a declared egress port outside 1..65535.
+var ErrInvalidEgressPort = errors.New("store: egress port out of range 1..65535")
+
+// normalizeEgressPorts validates, de-duplicates, and sorts a declared egress
+// port set. It rejects any port outside 1..65535 rather than silently dropping
+// it: a junk declaration is an operator mistake worth surfacing at write time,
+// not a posture to quietly widen or narrow.
+func normalizeEgressPorts(ports []int) ([]int, error) {
+	out := make([]int, 0, len(ports))
+	for _, p := range ports {
+		if p < 1 || p > 65535 {
+			return nil, fmt.Errorf("%w: %d", ErrInvalidEgressPort, p)
+		}
+		if !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
 }
 
 // TFState is one stored state version. Ciphertext is exactly the body tofu
@@ -57,7 +86,7 @@ type TFLock struct {
 	JobID       *int64
 }
 
-const workspaceColumns = `id, name, tofu_dir, auto_apply, serial`
+const workspaceColumns = `id, name, tofu_dir, auto_apply, serial, extra_egress_ports`
 
 // CreateWorkspace inserts a workspace. A repeated name returns ErrDuplicate.
 func (s *Store) CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error) {
@@ -117,6 +146,30 @@ func (s *Store) ListWorkspaces(ctx context.Context) ([]Workspace, error) {
 		return nil, wrap("list workspaces", err)
 	}
 	return out, nil
+}
+
+// SetWorkspaceEgressPorts replaces a workspace's declared extra egress ports.
+// The set is validated (1..65535), de-duplicated, and sorted before it is
+// persisted, so a junk declaration is refused here rather than reaching the
+// sandbox profile. Passing an empty set restores the default posture.
+func (s *Store) SetWorkspaceEgressPorts(ctx context.Context, id int64, ports []int) (Workspace, error) {
+	clean, err := normalizeEgressPorts(ports)
+	if err != nil {
+		return Workspace{}, err
+	}
+	encoded, err := json.Marshal(clean)
+	if err != nil {
+		return Workspace{}, wrap("set egress ports", err)
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE workspace SET extra_egress_ports = ? WHERE id = ?`, string(encoded), id)
+	if err != nil {
+		return Workspace{}, wrap("set egress ports", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Workspace{}, ErrNotFound
+	}
+	return s.GetWorkspace(ctx, id)
 }
 
 // AppendTFState stores a new state version, verifying the lock the pusher
@@ -449,9 +502,15 @@ func scanWorkspace(row rowScanner) (Workspace, error) {
 		// auto_apply is reserved for the M3 scheduled-drift work and is read
 		// only to consume the column; nothing sets it.
 		autoApply int64
+		egress    string
 	)
-	if err := row.Scan(&w.ID, &w.Name, &w.TofuDir, &autoApply, &w.Serial); err != nil {
+	if err := row.Scan(&w.ID, &w.Name, &w.TofuDir, &autoApply, &w.Serial, &egress); err != nil {
 		return Workspace{}, err
+	}
+	if egress != "" {
+		if err := json.Unmarshal([]byte(egress), &w.ExtraEgressPorts); err != nil {
+			return Workspace{}, fmt.Errorf("store: workspace %d egress ports: %w", w.ID, err)
+		}
 	}
 	return w, nil
 }

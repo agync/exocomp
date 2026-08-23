@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"testing"
 
@@ -41,7 +42,7 @@ func TestWorkspaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("workspace by name: %v", err)
 	}
-	if byName != created {
+	if !reflect.DeepEqual(byName, created) {
 		t.Errorf("by name = %+v, want %+v", byName, created)
 	}
 
@@ -49,7 +50,7 @@ func TestWorkspaceCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get workspace: %v", err)
 	}
-	if byID != created {
+	if !reflect.DeepEqual(byID, created) {
 		t.Errorf("by id = %+v, want %+v", byID, created)
 	}
 
