@@ -449,6 +449,39 @@ func (s *Store) SweepInterrupted(ctx context.Context) (int, error) {
 	return swept, nil
 }
 
+// ListInterruptedJobs returns jobs retired to interrupted, most recent first.
+// Interrupted is terminal and never auto-retried (SweepInterrupted), so this is
+// the post-reboot view an operator re-drives from: the runs a shutdown or a
+// crash cut off, newest at the top. limit <= 0 returns them all.
+func (s *Store) ListInterruptedJobs(ctx context.Context, limit int) ([]Job, error) {
+	query := `SELECT ` + jobColumns + ` FROM job WHERE state = ?
+		ORDER BY finished_at DESC, id DESC`
+	args := []any{string(StateInterrupted)}
+	if limit > 0 {
+		query += " LIMIT ?"
+		args = append(args, limit)
+	}
+
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, wrap("list interrupted jobs", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Job
+	for rows.Next() {
+		job, err := scanJob(rows)
+		if err != nil {
+			return nil, wrap("list interrupted jobs", err)
+		}
+		out = append(out, job)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap("list interrupted jobs", err)
+	}
+	return out, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
