@@ -160,6 +160,9 @@ func TestValidateCLIToolRefusesUnsafeRegistrations(t *testing.T) {
 		{"shell string binary", CLITool{Name: "kubectl", Binary: "kubectl get pods", Egress: CLIEgressNone}},
 		{"unknown egress", CLITool{Name: "kubectl", Binary: "kubectl", Egress: "any"}},
 		{"bad pattern", CLITool{Name: "kubectl", Binary: "kubectl", Egress: CLIEgressNone, ArgPattern: "("}},
+		// A fixed argument that fails every run belongs refused at registration.
+		{"control char in fixed arg", CLITool{Name: "kubectl", Binary: "kubectl",
+			Egress: CLIEgressNone, FixedArgs: []string{"--context", "home\nlab"}}},
 	} {
 		if err := ValidateCLITool(tc.tool); err == nil {
 			t.Errorf("%s: registration accepted, want a refusal", tc.name)

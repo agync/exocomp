@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Egress postures a registered CLI tool may declare. They are the whole
@@ -84,6 +85,13 @@ func ValidateCLITool(t CLITool) error {
 	if strings.ContainsFunc(t.Binary, func(r rune) bool { return r <= ' ' }) {
 		return fmt.Errorf("cli tool %q binary %q must be one token: this is exec'd directly, "+
 			"never split by a shell", t.Name, t.Binary)
+	}
+	// A fixed argument carrying a control character would fail every run of the
+	// tool, so the registration is where it is refused rather than each run.
+	for _, a := range t.FixedArgs {
+		if strings.ContainsFunc(a, unicode.IsControl) {
+			return fmt.Errorf("cli tool %q fixed argument %q contains a control character", t.Name, a)
+		}
 	}
 	if t.Egress != CLIEgressNone && t.Egress != CLIEgressHTTPS {
 		return fmt.Errorf("cli tool %q egress must be %s or %s, not %q",
