@@ -282,18 +282,27 @@ func nonDecision(job store.Job) bool {
 // an apply, or a play that a crash cut short converges rather than duplicates.
 func (s *Sequencer) rearmStep(ctx context.Context, workflowID string, step store.WorkflowStep, job store.Job) (store.Job, error) {
 	newKey := fmt.Sprintf("%s:r%d", step.IdempotencyKey, time.Now().UTC().UnixNano())
+	// The re-armed job must carry EVERY durable replay field the original held,
+	// not a subset: a field dropped here changes how the step runs on resume.
+	// Captures is the field this lane exists for — a bootstrap play that lost it
+	// would seal nothing and leave the apply's ab:<workflow> binding empty — and
+	// ExtraVars/TolerateUnreachable are dropped by the same omission, so they are
+	// carried too rather than left for a later crash to expose.
 	newJob, err := s.q.EnqueueGated(ctx, Spec{
-		Runbook:          job.Runbook,
-		Kind:             job.Kind,
-		Trigger:          job.Trigger,
-		Argv:             job.Args.Argv,
-		Dir:              job.Args.Dir,
-		VaultProject:     job.Args.VaultProject,
-		RunSecretBinding: job.Args.RunSecretBinding,
-		Inventory:        job.Args.Inventory,
-		ConcurrencyKey:   job.ConcurrencyKey,
-		Timeout:          time.Duration(job.Args.Timeout),
-		IdempotencyKey:   newKey,
+		Runbook:             job.Runbook,
+		Kind:                job.Kind,
+		Trigger:             job.Trigger,
+		Argv:                job.Args.Argv,
+		Dir:                 job.Args.Dir,
+		VaultProject:        job.Args.VaultProject,
+		RunSecretBinding:    job.Args.RunSecretBinding,
+		Inventory:           job.Args.Inventory,
+		ExtraVars:           job.Args.ExtraVars,
+		TolerateUnreachable: job.Args.TolerateUnreachable,
+		Captures:            job.Args.Captures,
+		ConcurrencyKey:      job.ConcurrencyKey,
+		Timeout:             time.Duration(job.Args.Timeout),
+		IdempotencyKey:      newKey,
 	})
 	if err != nil {
 		return store.Job{}, fmt.Errorf("queue: workflow %s step %d: re-enqueue: %w",

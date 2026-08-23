@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -38,6 +39,117 @@ func TestNonDecision(t *testing.T) {
 					tc.job.State, tc.job.StartedAt != nil, got, tc.want)
 			}
 		})
+	}
+}
+
+// TestRearmStepCarriesCaptures is the crash-resume gate this lane closes: a
+// bootstrap play step re-armed after a mid-run crash must keep its capture
+// wiring, or the resumed play seals nothing and the dependent apply's
+// ab:<workflow> binding stays empty. It drives rearmStep directly against a step
+// whose job carries Captures (plus ExtraVars and TolerateUnreachable, the two
+// other replay fields the old rearmStep dropped), and asserts the fresh gated job
+// carries them identically.
+//
+// Mutation check: dropping `Captures: job.Args.Captures` from rearmStep's Spec
+// (the gap that existed before this lane) makes newJob.Args.Captures nil, tripping
+// the Captures assertion below — the exact loss a crashed-then-resumed bootstrap
+// play suffered.
+func TestRearmStepCarriesCaptures(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	q, st := newSeqQueue(t, filepath.Join(dir, "exocomp.db"))
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	const wf = "bootstrap:wsp:resume"
+	captures := &store.JobCaptures{
+		Workflow: wf,
+		Targets: []store.JobCapture{
+			{Name: "KUBECONFIG", File: "kubeconfig", AsFile: true},
+			{Name: "KUBE_TOKEN", File: "token"},
+		},
+	}
+	extraVars := map[string]string{"env": "prod"}
+	play := Step{
+		Kind: "ansible-play",
+		Spec: Spec{
+			Runbook:             "playbook",
+			Kind:                "ansible",
+			Trigger:             "bootstrap",
+			Argv:                []string{"/usr/bin/ansible-playbook", "site.yml"},
+			ExtraVars:           extraVars,
+			TolerateUnreachable: true,
+			Captures:            captures,
+		},
+	}
+	if err := seq.Start(ctx, wf, []Step{play}); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	// The gated job the ledger references already carries the wiring: the Spec
+	// threaded it through EnqueueGated onto the row (the store field this lane
+	// added), which is what a re-arm then has to preserve.
+	step := mustSteps(t, st, wf)[0]
+	if step.JobID == nil {
+		t.Fatal("play step has no job id")
+	}
+	orig, err := st.GetJob(ctx, *step.JobID)
+	if err != nil {
+		t.Fatalf("get gated job: %v", err)
+	}
+	if orig.Args.Captures == nil {
+		t.Fatal("gated job lost its captures before any crash: Spec->JobArgs threading is broken")
+	}
+
+	// Simulate a crash mid-run: the ledger step is marked running and its job
+	// starts, then a shutdown/boot-sweep retires the job to interrupted — a
+	// non-decision the sequencer re-arms rather than records as a failure. This
+	// is the exact ledger shape runStep hands rearmStep (a running step over an
+	// interrupted job).
+	if err := st.StartStep(ctx, wf, step.StepNo, orig.ID); err != nil {
+		t.Fatalf("start step: %v", err)
+	}
+	if err := st.TransitionJob(ctx, orig.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
+		t.Fatalf("run job: %v", err)
+	}
+	if err := st.TransitionJob(ctx, orig.ID, store.StateRunning, store.StateInterrupted); err != nil {
+		t.Fatalf("interrupt job: %v", err)
+	}
+	crashed, err := st.GetJob(ctx, orig.ID)
+	if err != nil {
+		t.Fatalf("re-read crashed job: %v", err)
+	}
+	if !nonDecision(crashed) {
+		t.Fatalf("interrupted job is not a non-decision; resume would not re-arm it")
+	}
+
+	rearmed, err := seq.rearmStep(ctx, wf, step, crashed)
+	if err != nil {
+		t.Fatalf("rearm: %v", err)
+	}
+
+	// The re-armed job is a fresh gated row under a new key, but carries every
+	// durable replay field verbatim — Captures above all.
+	if rearmed.ID == orig.ID {
+		t.Fatal("rearm reused the crashed job rather than enqueueing a fresh one")
+	}
+	if rearmed.State != store.StateAwaitingApproval {
+		t.Errorf("re-armed job is %s, want gated at awaiting_approval", rearmed.State)
+	}
+	if !reflect.DeepEqual(rearmed.Args.Captures, captures) {
+		t.Errorf("re-armed job captures = %+v, want %+v", rearmed.Args.Captures, captures)
+	}
+	if !reflect.DeepEqual(rearmed.Args.ExtraVars, extraVars) {
+		t.Errorf("re-armed job extra vars = %v, want %v", rearmed.Args.ExtraVars, extraVars)
+	}
+	if !rearmed.Args.TolerateUnreachable {
+		t.Error("re-armed job lost TolerateUnreachable")
+	}
+
+	// The ledger step now points at the re-armed job's key, so the resume runs it
+	// rather than the crashed original.
+	if got := mustSteps(t, st, wf)[0].IdempotencyKey; got == step.IdempotencyKey {
+		t.Errorf("ledger step key unchanged (%q): rearm did not retarget it", got)
 	}
 }
 
