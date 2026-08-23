@@ -6,6 +6,14 @@ After=exocomp.volume
 Image=localhost/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
+# The per-job run directory (dataDir/run) holds each job's private tree — where
+# a captured secret is staged to a 0600 KUBECONFIG file (bootstrap-first Phase
+# 3). A tmpfs mounted at this child of the data volume shadows the durable
+# volume for that subtree, so a staged bearer lives in RAM and never lands on
+# disk. noswap keeps it out of swap too; without it the RAM-only guarantee does
+# not hold. The daemon refuses file staging unless this mount is present, so it
+# is load-bearing, not an optimisation.
+Tmpfs=/var/lib/exocomp/run:size=16m,mode=0700,noswap
 UserNS=keep-id
 # The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
 Environment=XDG_DATA_HOME=/var/lib

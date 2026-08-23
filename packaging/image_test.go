@@ -54,6 +54,30 @@ func TestQuadletNamesTheSubcommand(t *testing.T) {
 	}
 }
 
+// TestQuadletTmpfsBacksTheRunDir: the per-job run dir is a tmpfs child of the
+// data volume, so a staged KUBECONFIG file (bootstrap-first Phase 3) lives in
+// RAM. noswap is required — without it the RAM-only guarantee the file-staging
+// assertion depends on does not hold.
+func TestQuadletTmpfsBacksTheRunDir(t *testing.T) {
+	body := readPackagingFile(t, "quadlet/exocomp.container")
+
+	var line string
+	for l := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(l, "Tmpfs=/var/lib/exocomp/run") {
+			line = l
+			break
+		}
+	}
+	if line == "" {
+		t.Fatal("the quadlet does not tmpfs-back the per-job run dir; a staged secret would land on the durable volume")
+	}
+	for _, opt := range []string{"noswap", "mode=0700"} {
+		if !strings.Contains(line, opt) {
+			t.Errorf("the run tmpfs mount %q lacks %q", line, opt)
+		}
+	}
+}
+
 // TestContainerfileBakesTheToolchain: ADR 0006's determinism half. The image
 // resolves its own pinned toolchain, and the operator escape hatch stays
 // opt-in, so a restore comes back with the versions that produced the backup.
