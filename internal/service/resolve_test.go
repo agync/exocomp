@@ -118,3 +118,64 @@ func TestResolveSourcePlaybookUnknownSource(t *testing.T) {
 		t.Fatal("ResolveSourcePlaybook on an unknown source returned no error")
 	}
 }
+
+// TestResolveSourcePlaybookConfined is the AI-12 regression: the rebase was a
+// bare filepath.Join with no containment check, so `../../../../tmp/attacker.yml`
+// resolved outside the checkout and an absolute path was not rebased at all —
+// a run recorded against a signed source executed a tree the signature never
+// covered. Both escapes are refused now.
+func TestResolveSourcePlaybookConfined(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	dataDir := t.TempDir()
+
+	checkout := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "attacker.yml")
+	if err := os.WriteFile(outside, []byte("- hosts: all\n"), 0o600); err != nil {
+		t.Fatalf("write attacker playbook: %v", err)
+	}
+	if _, err := st.CreateSource(ctx, store.Source{
+		Name: "signed-proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	svc := service.New(st, dataDir, nil)
+
+	for _, playbook := range []string{
+		"../../../../../../tmp/attacker.yml",
+		outside,
+		"nested/../../escape.yml",
+	} {
+		_, abs, err := svc.ResolveSourcePlaybook(ctx, "", "signed-proj", playbook)
+		if err == nil {
+			t.Errorf("playbook %q resolved to %q, want a refusal outside the checkout", playbook, abs)
+		}
+	}
+
+	// A path inside the checkout still resolves, including through a subdirectory.
+	if err := os.MkdirAll(filepath.Join(checkout, "plays"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, "plays", "site.yml"), []byte("- hosts: all\n"), 0o600); err != nil {
+		t.Fatalf("write playbook: %v", err)
+	}
+	_, abs, err := svc.ResolveSourcePlaybook(ctx, "", "signed-proj", "plays/site.yml")
+	if err != nil {
+		t.Fatalf("in-checkout playbook: %v", err)
+	}
+	if want := filepath.Join(checkout, "plays", "site.yml"); abs != want {
+		t.Fatalf("playbook = %q, want %q", abs, want)
+	}
+}
+
+// TestResolveSourceNameCharset: a source name is validated before it is spliced
+// into any path, so a traversal in the NAME cannot reach a hooks override file
+// outside the data dir (AI-12, adjacent).
+func TestResolveSourceNameCharset(t *testing.T) {
+	svc := service.New(openStore(t), t.TempDir(), nil)
+	for _, name := range []string{"../../etc", "proj/../../x", "a b", "pro:j"} {
+		if _, _, err := svc.ResolveSourcePlaybook(context.Background(), "", name, "site.yml"); err == nil {
+			t.Errorf("source name %q was accepted", name)
+		}
+	}
+}

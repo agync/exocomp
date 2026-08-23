@@ -523,9 +523,22 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 	svc := s.service()
 	playbook := req.Playbook
 	if req.Source != "" {
+		// Validate the NAME before it is spliced into any path: the override
+		// path below is built from it, ahead of the store lookup that would
+		// otherwise be what constrains it (finding AI-12).
+		if err := service.ValidSourceName(req.Source); err != nil {
+			s.badRequest(w, err.Error())
+			return
+		}
 		// The override file convention mirrors the CLI's hooksOverridePath.
 		override := filepath.Join(s.dataDir, "hooks", req.Source+".yml")
 		hooked, abs, serr := svc.ResolveSourcePlaybook(r.Context(), override, req.Source, req.Playbook)
+		if errors.Is(serr, service.ErrSourcePathEscape) {
+			// A playbook outside the source's checkout is a bad argument: the run
+			// would execute a tree the source's signature never covered.
+			s.badRequest(w, serr.Error())
+			return
+		}
 		if serr != nil {
 			s.apiFail(w, serr)
 			return

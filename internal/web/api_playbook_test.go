@@ -176,3 +176,40 @@ func postRunJobID(t *testing.T, base, token string, hdr map[string]string) int64
 	}
 	return jv.JobID
 }
+
+// TestAPIPlaybookRunRefusesEscapingSource is the AI-12 regression at the HTTP
+// seam: a --source playbook that resolves outside the checkout is an
+// invalid_argument, refused before anything is enqueued, so a run recorded
+// against a signed source can never execute a tree its signature never covered.
+func TestAPIPlaybookRunRefusesEscapingSource(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	token := h.mint(t, "op", "operator")
+
+	checkout := t.TempDir()
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "signed-proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+
+	for _, playbook := range []string{"../../../../etc/attacker.yml", "/etc/attacker.yml"} {
+		body := `{"source":"signed-proj","playbook":"` + playbook + `"}`
+		code, _, resp := bearerPost(t, ts.URL, "/api/v1/playbooks/run", token, body, nil)
+		if code != http.StatusBadRequest {
+			t.Fatalf("playbook %q status = %d, want 400 (%s)", playbook, code, resp)
+		}
+		if kind, ecode, _ := decodeEnvelope(t, resp); kind != "error" || ecode != codeInvalidArgument {
+			t.Fatalf("playbook %q envelope = %s, want error/invalid_argument", playbook, resp)
+		}
+	}
+	jobs, err := h.store.ListJobs(ctx, store.JobFilter{})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a refused --source run enqueued %d job(s)", len(jobs))
+	}
+}
