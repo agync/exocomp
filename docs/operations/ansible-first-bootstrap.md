@@ -32,19 +32,62 @@ A running `exocomp serve` drives the chain: it releases step 1, and step 2 only
 once step 1 reached succeeded. Without a daemon the command refuses rather than
 leaving a chain that will never progress.
 
-## Phase 0: the handoff between the steps is manual
+## Two ways the apply gets its credentials
 
-This first cut runs the two steps in order and **captures nothing** from the play
-into the apply. The apply reads its own pre-existing credential — bind it with
-`--run-secrets <name>` exactly as the handoff binds one, e.g. a `KUBECONFIG`-shaped
-run-secret the operator sealed ahead of time, or the apply's own `~/.kube/config`
-via a standing binding.
+**Without `--capture` (the standing-credential case).** The two steps run in order
+and nothing is captured between them. The apply reads its own pre-existing
+credential — bind it with `--run-secrets <name>` exactly as the handoff binds one,
+e.g. a `KUBECONFIG`-shaped run-secret the operator sealed ahead of time, or the
+apply's own `~/.kube/config` via a standing binding.
 
-What Phase 0 does **not** do: it does not seal a play-produced fact (the
-`kubeadm` kubeconfig, an `admin.conf` fetched off a control-plane node) and hand
-it to the apply automatically. That capture-and-bind hook is the next phase of
-[bootstrap-first](../design/bootstrap-first.md); until it lands, a credential the
-play produces reaches the apply only if you seal it and bind it yourself.
+**With `--capture` (the play produces the credential).** The bootstrap play fetches
+a sensitive value off the nodes it just brought up — the `kubeadm` kubeconfig, an
+`admin.conf` off a control-plane node — and the chain seals it and hands it to the
+apply as environment, with nothing for you to copy. See the next section.
+
+## `--capture`: seal a play output into the apply's env
+
+```
+exocomp bootstrap run site.yml wsp \
+    --capture KUBE_HOST=kube_host --capture KUBE_TOKEN=kube_token --wait
+```
+
+Each `--capture NAME=FILE` declares one output to hand from the play to the apply:
+
+- **`FILE`** is a path, relative to the run's capture directory, the play `fetch`es
+  the value into. The driver exports that directory to the play as the
+  `exocomp_capture_dir` variable; the play writes `{{ exocomp_capture_dir }}/<FILE>`.
+- **`NAME`** becomes the environment variable the apply receives, upper-cased
+  (`kube_token` → `KUBE_TOKEN`).
+
+After the play succeeds, the daemon reads each declared file **in-process** — never
+through the event stream — seals it under the run's envelope, and binds it under
+`ab:<workflow>`. The apply step of the same chain resolves that binding and receives
+the sealed values as env. No value is written to a filesystem the way a `KUBECONFIG`
+file would be: this is the **env-decomposition** path, so the `kubernetes`/`helm`
+providers authenticate from their native `KUBE_HOST` / `KUBE_TOKEN` /
+`KUBE_CLIENT_CERT_DATA` … variables. Capture whichever fields your providers read.
+
+Rules that keep it safe and predictable:
+
+- **Only what you declare is captured.** An undeclared fact is never scraped; a
+  declared file the play did not produce is reported, not fatal (the play already
+  changed the hosts — its exit code is the verdict).
+- **A name that is not a POSIX identifier is skipped, not mangled.** `--capture
+  kube-config=…` folds to `KUBE-CONFIG`, which is not a valid env name; the value is
+  sealed but left unbound with a reason in the play's events, never rewritten into
+  some `KUBE_CONFIG` the operator never asked for.
+- **Values never surface.** The sealed value is absent from every argv, job event,
+  and the ledger; only the binding name and the env name travel. A re-run reseals
+  in place.
+- **`--capture` and `--run-secrets` are mutually exclusive.** The apply has one
+  run-secret binding slot; `--capture` claims it for the chain's own
+  `ab:<workflow>`. Bind pre-existing credentials this way only when the play does
+  not produce them.
+
+A `KUBECONFIG` **file** on disk (rather than decomposed env fields) is a separate,
+decision-gated phase of [bootstrap-first](../design/bootstrap-first.md) and is not
+what `--capture` does.
 
 ## Flags
 
@@ -52,7 +95,8 @@ play produces reaches the apply only if you seal it and bind it yourself.
 |---|---|
 | `--inventory <path\|name>` | Inventory for the bootstrap play (default: localhost). |
 | `--vault-project <p>` | Derive the play's ansible-vault password from the envelope. |
-| `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. |
+| `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. Mutually exclusive with `--capture`. |
+| `--capture NAME=FILE` | Seal a play-fetched file (`FILE`, relative to the run's capture dir) and hand it to the **apply** as `NAME` env. Repeatable. Mutually exclusive with `--run-secrets`. |
 | `--source <s>` | Wrap the chain in a registered source's `.exocomp/hooks.yml` lifecycle — pre-run hooks before the play, post-run hooks and the health gate after the apply — identically to `handoff run --source`. |
 | `--require-approval` | Gate the destructive chain: refuse to start unless `--assume-yes` is passed. |
 | `--timeout <d>` | Per-step timeout (0: no limit). |

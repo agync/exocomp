@@ -57,9 +57,9 @@ func newBootstrapCmd() *cobra.Command {
 			"workspace, as one resumable workflow driven by a running `exocomp serve`. It " +
 			"exposes the ordering the Sequencer already supports for the case where the " +
 			"tofu step manages resources the play prepared (kubeadm nodes, a bootstrapped " +
-			"control plane). Phase 0: no credential is captured from the play into the " +
-			"apply — the apply reads its own pre-existing run-secret binding, and any " +
-			"handoff of a play-produced credential is manual until the capture hook lands.",
+			"control plane). With --capture the play's fetched credential is sealed and " +
+			"handed to the apply as env (ab:<workflow>); without it the apply reads its " +
+			"own pre-existing --run-secrets binding.",
 	}
 	cmd.AddCommand(newBootstrapRunCmd(), newBootstrapStatusCmd())
 	return cmd

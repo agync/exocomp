@@ -6,6 +6,25 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — `bootstrap run --capture`: the ansible→tofu env handoff (Phase 2)
+
+[operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained the
+**`--capture`** surface, closing the loop [design/bootstrap-first.md](design/bootstrap-first.md)
+opened. A bootstrap play `fetch`es a sensitive value into the run's capture dir; the daemon
+seals it in-process under `ab:<workflow>`, and the `tofu apply` of the same chain resolves that
+binding and receives the value as env — the mirror of the tofu-side `tf:<workspace>` auto-bind.
+This is the **env-decomposition** path (Option C-env): the value reaches the `kubernetes`/`helm`
+providers as `KUBE_HOST` / `KUBE_TOKEN` / … with nothing staged to a filesystem. The scoping is
+the binding string, so an unrelated tofu run inherits nothing; a capture whose name is not a
+POSIX identifier is sealed-but-unbound with a reason, never mangled; `--capture` and
+`--run-secrets` are mutually exclusive (one apply binding slot).
+
+**Correction of fact.** The design's §2.2 (Option B1) sketched the flag as
+`--capture k=fact|@file` on the Phase-0 verb signature. As built, `--capture` is a **Phase-2**
+flag and takes **`NAME=FILE`** only — a play-fetched file, no registered-`fact` source (Phase 1
+built the fetched-file capture; the fact-source shape in §2.1 was not implemented). Code wins;
+this records the divergence rather than editing the Proposed design page.
+
 ## 2026-08-23 — MCP handshake gains an event-family glossary
 
 [operations/mcp.md](operations/mcp.md)'s handshake section notes the `initialize` result's
