@@ -55,7 +55,7 @@ What each kind of job may reach:
 | | Granted | Egress |
 |---|---|---|
 | ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm`, `~/.ansible` under the redirected home, the single file `/etc/passwd` (ssh resolves the local user through it) | TCP 22 |
-| tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port |
+| tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port, plus any extra ports the workspace declared (below) |
 
 Shell runbooks and backup legs still run at the `local` tier. The backup engine reads
 `keyring.age` by design — it is what every target root gets a copy of — so a profile that
@@ -72,6 +72,33 @@ port and nothing else, and the only per-destination filtering nono offers routes
 through an HTTPS-terminating proxy — unusable for SSH and wrong for provider signature
 verification. So an ansible job can open TCP 22 to any address, and a tofu job any TCP 443.
 Restricting *which* hosts a job reaches stays a network-layer question.
+
+### Extra tofu egress ports
+
+A tofu run reaches TCP 443 and the state backend and nothing else, which is enough for the
+registry and any provider that talks to an HTTPS API. A provider that must reach a control
+plane on another port does not fit: the kubernetes and helm providers against a local
+kubeadm cluster talk to its API server on 6443, and the sandbox denies it.
+
+`exocomp workspace egress <name> <port>...` grants extra outbound ports to one workspace's
+tofu runs, on top of the built-in grant:
+
+```
+exocomp workspace egress k8s-home 6443
+```
+
+The declaration is per workspace and empty by default: a workspace that has declared
+nothing keeps exactly the 443-and-backend posture, and a grant on one workspace never
+touches another's run. Ports are validated (`1..65535`) and de-duplicated when declared, so
+a typo is refused at the CLI rather than reaching a run.
+
+This is a deliberate widening, and its limit is the same one the section above states:
+**Landlock filters egress by port, not by destination.** Granting 6443 permits a run to
+open 6443 to *any* host, not only the intended cluster — the grant cannot be scoped to the
+API server's address. Declare only the ports a workspace's providers genuinely need, and
+keep host-level restriction a network-layer job. The grant also only means anything under
+the sandbox: a fleet degraded to the `local` tier enforces no egress port limit at all, so
+this declaration is inert there.
 
 **A pathname unix socket is not covered.** Landlock mediates path opening, and
 `connect(2)` on an `AF_UNIX` socket opens nothing, so no Landlock ABI shipped so far can
