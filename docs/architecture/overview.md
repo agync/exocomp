@@ -92,8 +92,9 @@ outcome, its reason, and the trace that produced them
 
 | Component | Owns | Notes |
 |---|---|---|
-| API (`internal/api`) | thin HTTP/JSON over `internal/service` | unix socket by default; TCP + bearer tokens opt-in. OpenAPI 3.1 is generated from it and is the monorepo seam |
-| Service (`internal/service`) | **all** business logic | no HTTP, no terminal, no HTML — so no client can have a divergent code path |
+| API (`internal/api`) | the loopback OpenTofu HTTP state backend | `127.0.0.1` only, HKDF-derived per-workspace bearer; a separate listener from the operator `/api/v1` surface below |
+| Operator API (`internal/web` `/api/v1`) | thin HTTP/JSON over `internal/service`, mounted on the ADR-0009 token-gated listener | read and write routes are both live — see [Machine output](../operations/machine-output.md) and [The API surface](../operations/api.md) |
+| Service (`internal/service`) | the four write verbs (`PlanWorkspace`/`ApplyWorkspace`/`RunPlaybook`/`DecideApproval`) and their resolvers | the CLI, the `/api/v1` write routes, and `exocomp mcp` all enqueue through these, so a write can't fork a divergent path; **reads still go store-direct** in every face — the "own all business logic" target state is not reached yet |
 | Job queue + scheduler | state machine, concurrency keys, cancel, timeouts, event ingest | `robfig/cron/v3`; schedules live in SQLite and cron entries are rebuilt from the DB on boot and on mutation |
 | Rule engine | normalization, `cel-go` matching, guardrail ledgers | CEL is sandboxed and non-Turing-complete with a hard time budget — arbitrary code must not be able to fire an apply |
 | Approval gates | HMAC single-use tokens, TTL, constant-time compare | delivered via ntfy action button, TUI, or web to one endpoint |
