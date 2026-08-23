@@ -11,12 +11,17 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// driftScan bounds how many finished tofu jobs one sweep looks back over.
+// driftScan bounds how many finished jobs one sweep looks back over.
 const driftScan = 200
 
-// SweepDrift turns every scheduled plan that found changes into an event in
-// the same pipeline every webhook goes through, so a rule can gate an apply
-// behind an approval on the strength of drift alone.
+// SweepDrift turns every scheduled dry run that found changes into an event in
+// the same pipeline every webhook goes through, so a rule can gate a
+// remediation behind an approval on the strength of drift alone.
+//
+// Both halves of a homelab are swept here: a `tofu plan` that found changes and
+// an ansible `--check` play whose recap reported changed tasks. They differ in
+// what a drift subject is and in how the outcome is read back, and in nothing
+// else — one loop, one checkpoint discipline, one page identity.
 //
 // The event table is its own checkpoint: a drift event's dedup key names the
 // job that found the drift, so a job already reported is skipped without a
@@ -32,62 +37,71 @@ func (e *Engine) SweepDrift(ctx context.Context) (int, error) {
 
 	raised := 0
 	for _, job := range jobs {
-		if job.Kind != executor.KindTofu {
-			continue
+		var n int
+		var err error
+		switch job.Kind {
+		case executor.KindTofu:
+			n, err = e.sweepTofuPlan(ctx, job)
+		case executor.KindAnsible:
+			n, err = e.sweepAnsibleCheck(ctx, job)
 		}
-		workspace, ok := WorkspaceOf(job.Runbook)
-		if !ok {
-			continue
-		}
-
-		key := driftDedupKey(workspace, job.ID)
-		seen, err := e.store.CountEventsByDedupKey(ctx, key)
 		if err != nil {
 			return raised, err
 		}
-		if seen > 0 {
-			continue
-		}
-
-		changes, err := e.planFoundChanges(ctx, job.ID)
-		if err != nil {
-			return raised, err
-		}
-		if !changes {
-			// A clean plan is the other half of the story: if this workspace has
-			// an open, unresolved drift incident, this plan clears it. Jobs come
-			// back oldest first, so a drift and the clean plan that follows it
-			// settle in order within one pass.
-			openJob, open, err := e.latestOpenDrift(ctx, workspace)
-			if err != nil {
-				return raised, err
-			}
-			if open {
-				if err := e.clearDrift(ctx, workspace, openJob, job); err != nil {
-					return raised, err
-				}
-			}
-			continue
-		}
-
-		// Page the workspace's per-workspace drift incident before the checkpoint
-		// (the ingested event) lands, so a crash re-pages once — the louder trade,
-		// symmetric with clearDrift. The close reuses this Source/Host.
-		e.notify(ctx, driftOpenNotification(workspace, job))
-
-		ev := driftEvent(workspace, job, key, e.now())
-		raw, err := json.Marshal(map[string]any{
-			"workspace": workspace, "job": job.ID, "runbook": job.Runbook,
-		})
-		if err != nil {
-			return raised, err
-		}
-		if _, err := e.Ingest(ctx, ev, raw); err != nil {
-			return raised, err
-		}
-		raised++
+		raised += n
 	}
 	return raised, nil
+}
+
+// sweepTofuPlan settles one finished plan: it raises the workspace's drift, or
+// clears the incident an earlier plan opened.
+func (e *Engine) sweepTofuPlan(ctx context.Context, job store.Job) (int, error) {
+	workspace, ok := WorkspaceOf(job.Runbook)
+	if !ok {
+		return 0, nil
+	}
+
+	key := driftDedupKey(workspace, job.ID)
+	seen, err := e.store.CountEventsByDedupKey(ctx, key)
+	if err != nil {
+		return 0, err
+	}
+	if seen > 0 {
+		return 0, nil
+	}
+
+	changes, err := e.planFoundChanges(ctx, job.ID)
+	if err != nil {
+		return 0, err
+	}
+	if !changes {
+		// A clean plan is the other half of the story: if this workspace has an
+		// open, unresolved drift incident, this plan clears it. Jobs come back
+		// oldest first, so a drift and the clean plan that follows it settle in
+		// order within one pass.
+		openJob, open, err := e.latestOpenDrift(ctx, workspace)
+		if err != nil || !open {
+			return 0, err
+		}
+		return 0, e.clearDrift(ctx, workspace, openJob, job)
+	}
+
+	// Page the workspace's per-workspace drift incident before the checkpoint
+	// (the ingested event) lands, so a crash re-pages once — the louder trade,
+	// symmetric with clearDrift. The close reuses this Source/Host.
+	e.notify(ctx, driftOpenNotification(workspace, job))
+
+	ev := driftEvent(workspace, job, key, e.now())
+	raw, err := json.Marshal(map[string]any{
+		"workspace": workspace, "job": job.ID, "runbook": job.Runbook,
+	})
+	if err != nil {
+		return 0, err
+	}
+	if _, err := e.Ingest(ctx, ev, raw); err != nil {
+		return 0, err
+	}
+	return 1, nil
 }
 
 // driftDedupKey names the job that found the drift, so one plan raises one
