@@ -19,7 +19,7 @@ func TestWritePrivateCopiesInventoryArtifact(t *testing.T) {
 
 	private := t.TempDir()
 	a := NewAnsible(AnsibleOptions{InventoryArtifact: src})
-	args, err := a.writePrivate(private, false)
+	args, err := a.writePrivate(private, false, "")
 	if err != nil {
 		t.Fatalf("writePrivate: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestWritePrivateCopiesInventoryArtifact(t *testing.T) {
 // the argv is the only one and the test above cannot pass vacuously.
 func TestWritePrivateNoInventoryArtifact(t *testing.T) {
 	a := NewAnsible(AnsibleOptions{})
-	args, err := a.writePrivate(t.TempDir(), false)
+	args, err := a.writePrivate(t.TempDir(), false, "")
 	if err != nil {
 		t.Fatalf("writePrivate: %v", err)
 	}

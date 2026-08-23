@@ -158,6 +158,19 @@ type AnsibleOptions struct {
 	// host is a failure like any non-zero exit (AGENTS.md invariant 3 holds; this
 	// is a per-run opt-in the operator asked for, not a global reclassification).
 	TolerateUnreachable bool
+	// Captures are the operator-declared capture targets sealed after a
+	// successful play — the ansible mirror of a sensitive tofu output. Each names
+	// an output and the file, under the run's capture dir, the play fetched it
+	// into. The driver exports that dir as the AnsibleCaptureDirVar extra-var so
+	// the play knows where to write. Empty captures nothing; only a declared
+	// target is ever sealed (default-deny).
+	Captures []AnsibleCapture
+	// OutputSealer, when set, seals each declared capture into the secret store
+	// and binds it as a named env run-secret for the dependent tofu step. A nil
+	// sealer drops the capture — the fail-safe direction the tofu path also takes
+	// (tofu_output.go: a nil OutputSealer suppresses rather than leaks). Resolved
+	// by the caller from the envelope; the driver never reads the store.
+	OutputSealer OutputSealer
 }
 
 // Ansible runs playbooks through ansible-playbook. It builds the invocation
@@ -198,7 +211,19 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 		return Result{}, fmt.Errorf("executor: ansible: private dir mode: %w", err)
 	}
 
-	extra, err := a.writePrivate(private, localOnlyTarget(spec.Argv))
+	// A capture-bearing run gets a dedicated dir under the private tree the play
+	// fetches its declared outputs into, and the driver reads back in-process
+	// after the play. It is a child of the granted private dir, so the sandboxed
+	// play may write there while the value never leaves the process boundary.
+	captureDir := ""
+	if a.captureActive() {
+		captureDir = filepath.Join(private, "capture")
+		if err := os.Mkdir(captureDir, 0o700); err != nil {
+			return Result{}, fmt.Errorf("executor: ansible: capture dir: %w", err)
+		}
+	}
+
+	extra, err := a.writePrivate(private, localOnlyTarget(spec.Argv), captureDir)
 	if err != nil {
 		return Result{}, err
 	}
@@ -259,7 +284,39 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	if m, ok := hk.mismatch(); ok {
 		sink.Emit(hostKeyMismatchEvent(m))
 	}
+	// A successful play seals its declared captures — the item-D mirror. It runs
+	// after the process exits and before the deferred private-dir cleanup, in the
+	// daemon (unsandboxed), reading the fetched bytes off disk exactly as
+	// captureTofuInventory reads tofu output in-process. A capture failure is loud
+	// but never fails the run: the play already changed hosts (exit-code doctrine).
+	if err == nil && res.ExitCode == 0 && captureDir != "" {
+		a.captureOutputs(ctx, captureDir, sink)
+	}
 	return res, err
+}
+
+// captureActive reports whether this run has both a sealer and a declared
+// target, the two conditions a capture needs. Without a sealer the captures
+// drop (default-deny); without a target there is nothing to seal.
+func (a *Ansible) captureActive() bool {
+	return a.opts.OutputSealer != nil && len(a.opts.Captures) > 0
+}
+
+// captureOutputs seals the run's declared captures and emits the values-free
+// summary. A failure is surfaced as an error event and swallowed: the play's
+// exit code is the verdict, and a missing capture surfaces when the dependent
+// step cannot resolve it, not as a false play failure.
+func (a *Ansible) captureOutputs(ctx context.Context, captureDir string, sink EventSink) {
+	res, err := captureAnsibleOutputs(ctx, captureDir, a.opts.Captures, a.opts.OutputSealer)
+	if err != nil {
+		sink.Emit(Event{
+			Ts:    time.Now().UTC(),
+			Level: LevelError,
+			Msg:   fmt.Sprintf("ansible capture failed: %v", err),
+		})
+		return
+	}
+	sink.Emit(ansibleCaptureEvent(res))
 }
 
 // classifyDegraded settles an unreachable-tolerant run whose only non-success is
@@ -386,8 +443,10 @@ func localOnlyTarget(argv []string) bool {
 // writePrivate fills the private directory and returns the arguments pointing
 // at it. localOnly gates whether the source venv interpreter is forced on every
 // host (see localOnlyTarget): the controller's venv python is only ever a valid
-// interpreter when the controller is the only target.
-func (a *Ansible) writePrivate(dir string, localOnly bool) ([]string, error) {
+// interpreter when the controller is the only target. captureDir, when set, is
+// exported to the play through the AnsibleCaptureDirVar extra-var so it fetches
+// its declared sensitive outputs there.
+func (a *Ansible) writePrivate(dir string, localOnly bool, captureDir string) ([]string, error) {
 	var args []string
 
 	// The materialized inventory is copied into the private dir before anything
@@ -441,12 +500,21 @@ func (a *Ansible) writePrivate(dir string, localOnly bool) ([]string, error) {
 	// the venv because ansible itself runs under it (ADR 0011). The forced value
 	// merges into the caller's own extra-vars rather than replacing them.
 	extraVars := a.opts.ExtraVars
-	if a.opts.Interpreter != "" && localOnly {
-		merged := make(map[string]string, len(extraVars)+1)
+	forceInterpreter := a.opts.Interpreter != "" && localOnly
+	if forceInterpreter || captureDir != "" {
+		merged := make(map[string]string, len(extraVars)+2)
 		for k, v := range extraVars {
 			merged[k] = v
 		}
-		merged["ansible_python_interpreter"] = a.opts.Interpreter
+		if forceInterpreter {
+			merged["ansible_python_interpreter"] = a.opts.Interpreter
+		}
+		// The play fetches its declared captures into this dir; the driver reads
+		// them back in-process after the run. A driver-set path, never operator
+		// input, so it is a plain string var.
+		if captureDir != "" {
+			merged[AnsibleCaptureDirVar] = captureDir
+		}
 		extraVars = merged
 	}
 	if len(extraVars) > 0 {

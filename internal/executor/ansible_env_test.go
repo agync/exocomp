@@ -121,7 +121,7 @@ func TestWritePrivateForcesInterpreter(t *testing.T) {
 	}
 
 	t.Run("local run forces the interpreter", func(t *testing.T) {
-		args, err := newAnsible().writePrivate(t.TempDir(), true)
+		args, err := newAnsible().writePrivate(t.TempDir(), true, "")
 		if err != nil {
 			t.Fatalf("writePrivate: %v", err)
 		}
@@ -135,7 +135,7 @@ func TestWritePrivateForcesInterpreter(t *testing.T) {
 	})
 
 	t.Run("non-local run drops the interpreter", func(t *testing.T) {
-		args, err := newAnsible().writePrivate(t.TempDir(), false)
+		args, err := newAnsible().writePrivate(t.TempDir(), false, "")
 		if err != nil {
 			t.Fatalf("writePrivate: %v", err)
 		}
