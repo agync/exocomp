@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,9 @@ type Schedule struct {
 	Enabled        bool
 	LastJobID      *int64
 	NextAt         *time.Time
+	// LastRun is when the schedule last fired (nil = never). The scheduler
+	// coalesces a catch-up fire off it after downtime.
+	LastRun *time.Time
 }
 
 // NewSchedule describes a schedule to create.
@@ -51,7 +55,7 @@ type NewSchedule struct {
 }
 
 const scheduleColumns = `id, name, cron_expr, kind, args_json, concurrency_key,
-	jitter_s, enabled, last_job_id, next_at`
+	jitter_s, enabled, last_job_id, next_at, last_run`
 
 // CreateSchedule inserts an enabled schedule. Names are unique.
 func (s *Store) CreateSchedule(ctx context.Context, n NewSchedule) (Schedule, error) {
@@ -157,31 +161,26 @@ func (s *Store) DeleteSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
-// RecordScheduleFire stamps the outcome of one cron fire. lastJobID is nil
-// when the fire enqueued nothing (e.g. a backup schedule with no enabled
-// targets); nextAt is nil when the caller has no next-fire time to record.
+// RecordScheduleFire stamps the outcome of one cron fire. last_run always
+// advances to now — a fire happened, even one that enqueued nothing — so a
+// reboot's catch-up sees the schedule as current. lastJobID is nil when the
+// fire enqueued nothing (e.g. a backup schedule with no enabled targets);
+// nextAt is nil when the caller has no next-fire time to record.
 func (s *Store) RecordScheduleFire(ctx context.Context, id int64, lastJobID *int64, nextAt *time.Time) error {
-	if lastJobID == nil && nextAt == nil {
-		return nil
+	set := []string{"last_run = ?"}
+	args := []any{time.Now().UTC().UnixMilli()}
+	if lastJobID != nil {
+		set = append(set, "last_job_id = ?")
+		args = append(args, *lastJobID)
 	}
-
-	var (
-		query string
-		args  []any
-	)
-	switch {
-	case lastJobID != nil && nextAt != nil:
-		query = `UPDATE schedule SET last_job_id = ?, next_at = ? WHERE id = ?`
-		args = []any{*lastJobID, nextAt.UTC().UnixMilli(), id}
-	case lastJobID != nil:
-		query = `UPDATE schedule SET last_job_id = ? WHERE id = ?`
-		args = []any{*lastJobID, id}
-	default:
-		query = `UPDATE schedule SET next_at = ? WHERE id = ?`
-		args = []any{nextAt.UTC().UnixMilli(), id}
+	if nextAt != nil {
+		set = append(set, "next_at = ?")
+		args = append(args, nextAt.UTC().UnixMilli())
 	}
+	args = append(args, id)
 
-	res, err := s.db.ExecContext(ctx, query, args...)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE schedule SET `+strings.Join(set, ", ")+` WHERE id = ?`, args...)
 	if err != nil {
 		return wrap("record schedule fire", err)
 	}
@@ -195,6 +194,26 @@ func (s *Store) RecordScheduleFire(ctx context.Context, id int64, lastJobID *int
 	return nil
 }
 
+// SetScheduleLastRun overwrites a schedule's last_run. RecordScheduleFire
+// covers the live path; this exists to seed last_run to a past instant so a
+// test (or a migration/import) can model a daemon that was down across an
+// occurrence.
+func (s *Store) SetScheduleLastRun(ctx context.Context, id int64, t time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE schedule SET last_run = ? WHERE id = ?`, t.UTC().UnixMilli(), id)
+	if err != nil {
+		return wrap("set schedule last_run", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("set schedule last_run", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: set schedule last_run %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 func scanSchedule(row rowScanner) (Schedule, error) {
 	var (
 		sc        Schedule
@@ -203,9 +222,10 @@ func scanSchedule(row rowScanner) (Schedule, error) {
 		jitterS   int64
 		lastJobID sql.NullInt64
 		nextAt    sql.NullInt64
+		lastRun   sql.NullInt64
 	)
 	err := row.Scan(&sc.ID, &sc.Name, &sc.CronExpr, &sc.Kind, &argsJSON, &sc.ConcurrencyKey,
-		&jitterS, &enabled, &lastJobID, &nextAt)
+		&jitterS, &enabled, &lastJobID, &nextAt, &lastRun)
 	if err != nil {
 		return Schedule{}, err
 	}
@@ -214,6 +234,7 @@ func scanSchedule(row rowScanner) (Schedule, error) {
 	sc.Enabled = enabled != 0
 	sc.LastJobID = int64Ptr(lastJobID)
 	sc.NextAt = timePtr(nextAt)
+	sc.LastRun = timePtr(lastRun)
 	if argsJSON != "" {
 		if err := json.Unmarshal([]byte(argsJSON), &sc.Args); err != nil {
 			return Schedule{}, fmt.Errorf("decode args of schedule %d: %w", sc.ID, err)
