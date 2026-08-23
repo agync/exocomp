@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — write attribution closes the token-audit gap
+
+A remote write (`workspace plan`/`apply`, `playbooks/run` over the API) now leaves a
+durable record of which token asked, on the same append-only `job_event` ledger ADR
+0007 already treats as the audit surface — no new column. `internal/web/api_write.go`
+resolves the caller's identity and passes it to the `internal/service` verbs as an
+`Actor`, which append a `system` event (token name only, never its secret) before the
+job is claimable; a gated apply's pending approval carries no field of its own, so the
+same event on the job its `JobID` points at is the attribution record. An empty
+`Actor` — every CLI call today — records nothing, unchanged from before.
+
 ## 2026-08-23 — the config-drift sweep landed
 
 **Correction to the entry below.** [architecture/reactive.md](architecture/reactive.md)
