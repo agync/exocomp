@@ -32,21 +32,16 @@ import (
 // a decision needs approve-or-operator. An out-of-scope token is a wire
 // forbidden envelope before the input is even built.
 //
-// Deferred here, and why (see the lane's concerns, all follow-ups that need a
-// CLI-resident helper moved to a shared package, never a helper duplicated into
-// web):
-//   - POST /playbooks/run: RunPlaybook is reachable, but resolving an inventory
-//     name to its path (and a --source playbook onto its checkout) lives in the
-//     CLI (resolveInventoryArg/sourcePlaybook). Without it a server-side run
-//     cannot safely turn an operator's names into paths.
-//   - Applying a SAVED plan that carries no policy verdict: the plain run needs
-//     the sealed plan decrypted into a run-private plaintext copy (openPlanForRun),
-//     still CLI-resident. A fresh apply and a require-approval / deny plan need
-//     no decryption and are served here.
-//   - Sealing an API-initiated plan into a consumable artifact + recording its
-//     policy verdict is a post-run step that lives only in the CLI (recordPlan/
-//     evalPlanPolicy); the daemon does not do it. So a plan enqueued here runs
-//     and reports drift, but cannot yet be applied by artifact id via the API.
+// POST /playbooks/run resolves an inventory name to its path (and a --source
+// playbook onto its checkout) through the SAME service resolvers the CLI uses,
+// then enqueues through RunPlaybook. A --source whose checkout declares hooks is
+// refused: that lifecycle is a composed workflow the CLI owns, not one queued
+// play.
+//
+// Deferred here, and why: applying a SAVED plan that carries no policy verdict
+// needs the sealed plan decrypted into a run-private plaintext copy
+// (openPlanForRun), still CLI-resident. A fresh apply and a require-approval /
+// deny plan need no decryption and are served here.
 
 // Write-response kinds. The wire package (owned elsewhere, not edited by this
 // lane) has no write projections yet, so these presentation-only shapes live
@@ -103,6 +98,8 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspacePlan))
 	mux.HandleFunc("POST /api/v1/workspaces/{name}/apply",
 		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspaceApply))
+	mux.HandleFunc("POST /api/v1/playbooks/run",
+		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiPlaybookRun))
 }
 
 // enqueuer returns a PURE-ENQUEUE Enqueuer: it inserts the queued (or gated) row
@@ -417,4 +414,111 @@ func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		Outcome:    result.Outcome,
 		Message:    result.Message,
 	})
+}
+
+// --- playbook run -----------------------------------------------------------
+
+// playbookRunRequest is the JSON body of a POST /playbooks/run. The playbook
+// path and any --source, --inventory names are resolved server-side through the
+// SAME service resolvers the CLI uses, so an operator's names turn into the same
+// paths whichever face asked. extra_vars is key=val or @file, validated by the
+// shared passthrough seam; secret values never travel here (the vault password
+// and run-secrets keep their own out-of-argv paths).
+type playbookRunRequest struct {
+	Playbook            string   `json:"playbook"`
+	Inventory           string   `json:"inventory"`
+	VaultProject        string   `json:"vault_project"`
+	RunSecrets          string   `json:"run_secrets"`
+	Source              string   `json:"source"`
+	Limit               string   `json:"limit"`
+	Tags                string   `json:"tags"`
+	SkipTags            string   `json:"skip_tags"`
+	Check               bool     `json:"check"`
+	Diff                bool     `json:"diff"`
+	ExtraVars           []string `json:"extra_vars"`
+	TolerateUnreachable bool     `json:"tolerate_unreachable"`
+	Timeout             string   `json:"timeout"`
+}
+
+// apiPlaybookRun enqueues an ansible playbook through RunPlaybook and returns the
+// job id. It resolves the inventory name and the --source playbook path with the
+// shared service verbs, then hands the parsed input to the pure-enqueue Enqueuer;
+// a running daemon claims and runs the ansible job. A --source whose checkout
+// declares hooks is refused: that lifecycle is a composed workflow the CLI owns,
+// not a single queued play, so it is not offered on this face yet.
+func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
+	var req playbookRunRequest
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			s.badRequest(w, "request body is not valid JSON")
+			return
+		}
+	}
+	if req.Playbook == "" {
+		s.badRequest(w, "playbook is required")
+		return
+	}
+	var timeout time.Duration
+	if req.Timeout != "" {
+		d, err := time.ParseDuration(req.Timeout)
+		if err != nil {
+			s.badRequest(w, "timeout is not a valid Go duration")
+			return
+		}
+		timeout = d
+	}
+
+	passthrough, vars, err := service.AnsiblePassthrough(req.Limit, req.Tags, req.SkipTags, req.Check, req.Diff, req.ExtraVars)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+
+	svc := s.service()
+	playbook := req.Playbook
+	if req.Source != "" {
+		// The override file convention mirrors the CLI's hooksOverridePath.
+		override := filepath.Join(s.dataDir, "hooks", req.Source+".yml")
+		hooked, abs, serr := svc.ResolveSourcePlaybook(r.Context(), override, req.Source, req.Playbook)
+		if serr != nil {
+			s.apiFail(w, serr)
+			return
+		}
+		if hooked {
+			s.apiError(w, http.StatusNotImplemented, wire.NewError(wire.CodeInternal,
+				"source "+req.Source+" declares hooks; its lifecycle workflow is not offered on this face yet"))
+			return
+		}
+		playbook = abs
+	}
+	playbook, err = filepath.Abs(playbook)
+	if err != nil {
+		s.badRequest(w, "playbook path cannot be resolved")
+		return
+	}
+
+	invPath, invName, err := svc.ResolveInventory(r.Context(), req.Inventory)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+
+	res, err := svc.RunPlaybook(r.Context(), s.enqueuer(), service.PlaybookInput{
+		PlaybookPath:        playbook,
+		InventoryPath:       invPath,
+		InventoryName:       invName,
+		VaultProject:        req.VaultProject,
+		RunSecrets:          req.RunSecrets,
+		Passthrough:         passthrough,
+		ExtraVars:           vars,
+		TolerateUnreachable: req.TolerateUnreachable,
+		IdempotencyKey:      idempotencyKey(r),
+		Timeout:             timeout,
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
 }
