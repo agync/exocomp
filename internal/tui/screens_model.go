@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -320,6 +321,89 @@ func (m Model) workflowDetailModel() WorkflowDetailModel {
 		})
 	}
 	return dm
+}
+
+// secretsModel assembles the secrets surface from the loaded metadata rows and
+// their run-secret bindings. It renders source and the expiry staleness marker
+// as labels and the (binding -> env var) breakdown compactly; it never reads the
+// nonce, ciphertext or value — those are not even carried into the model.
+func (m Model) secretsModel() SecretsModel {
+	now := time.Now()
+	sm := SecretsModel{
+		summary: fmt.Sprintf("secrets · %d stored", len(m.secrets)),
+		clock:   now.Local().Format("15:04 MST"),
+	}
+	for _, s := range m.secrets {
+		sm.rows = append(sm.rows, secretRow{
+			name:     truncate(s.Name, 22),
+			kind:     truncate(orDash(s.Kind), 15),
+			source:   secretSource(s.Source),
+			created:  secretDate(&s.CreatedAt),
+			rotated:  secretDateOrNever(s.RotatedAt),
+			lastUsed: secretDateOrNever(s.LastUsedAt),
+			expiry:   secretExpiry(s.ExpiresAt, now),
+			bindings: secretBindings(m.secretBindings[s.Name]),
+		})
+	}
+	return sm
+}
+
+// secretSource labels how a secret was minted. An empty source (older rows) is
+// named honestly rather than shown as a blank cell.
+func secretSource(src string) string {
+	switch src {
+	case store.SecretSourceGenerated:
+		return "generated"
+	case store.SecretSourceUser:
+		return "user"
+	default:
+		return orDash(src)
+	}
+}
+
+// secretExpiry is the staleness marker: past its expiry reads EXPIRED, a future
+// expiry counts down as "expires in Nd", and a NULL expiry reads "no expiry".
+// It is a label, never color-only, so an expired secret is legible on its own.
+func secretExpiry(exp *time.Time, now time.Time) string {
+	if exp == nil {
+		return "no expiry"
+	}
+	if !exp.After(now) {
+		return "EXPIRED"
+	}
+	return "expires in " + shortDur(exp.Sub(now))
+}
+
+// secretBindings names the run-secret bindings that inject a secret and the env
+// var each maps it to, as "used by: <binding> as $ENV, ...". A secret no binding
+// references reads "unbound".
+func secretBindings(pairs []store.RunSecret) string {
+	if len(pairs) == 0 {
+		return "unbound"
+	}
+	parts := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		parts = append(parts, p.Binding+" as $"+p.EnvName)
+	}
+	return "used by: " + strings.Join(parts, ", ")
+}
+
+// secretDate renders a lifecycle timestamp as a day, the scale a secret's
+// create/rotate/use history is read at.
+func secretDate(t *time.Time) string {
+	if t == nil || t.IsZero() {
+		return emptyCell
+	}
+	return t.Local().Format("2006-01-02")
+}
+
+// secretDateOrNever renders an unset rotate/last-used timestamp as "never"
+// rather than the neutral dash, so an un-rotated or never-used secret says so.
+func secretDateOrNever(t *time.Time) string {
+	if t == nil {
+		return "never"
+	}
+	return secretDate(t)
 }
 
 // --- small live-data formatters ---

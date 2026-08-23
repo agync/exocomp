@@ -236,6 +236,75 @@ func TestWorkflowsScreenRendersLiveAndDetail(t *testing.T) {
 	}
 }
 
+// TestSecretsScreenRendersLive drives the [s] Secrets surface over seeded rows:
+// a generated secret, a user secret, an expired one and a bound one. It asserts
+// the source labels, the expiry staleness markers and the (binding -> env var)
+// breakdown all render — and that the sealed material (nonce, ciphertext) never
+// reaches the view (invariant 4).
+func TestSecretsScreenRendersLive(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// A generated secret, no expiry, and injected by a run-secret binding.
+	if _, err := st.CreateSecret(ctx, store.SecretRow{
+		Name: "restic-password", Kind: "backup", Source: store.SecretSourceGenerated,
+		Nonce: []byte("NONCEBYTES"), Ciphertext: []byte("SEALEDCIPHERTEXT"), AAD: "restic-password|backup",
+	}); err != nil {
+		t.Fatalf("create generated secret: %v", err)
+	}
+	if _, err := st.AddRunSecret(ctx, store.RunSecret{
+		Binding: "nightly-db", EnvName: "RESTIC_PASSWORD", SecretName: "restic-password",
+	}); err != nil {
+		t.Fatalf("bind run secret: %v", err)
+	}
+
+	// A user secret already past its expiry.
+	expired := now.Add(-24 * time.Hour)
+	if _, err := st.CreateSecret(ctx, store.SecretRow{
+		Name: "deploy-token", Kind: "git", Source: store.SecretSourceUser, ExpiresAt: &expired,
+		Nonce: []byte("NONCEBYTES"), Ciphertext: []byte("SEALEDCIPHERTEXT"), AAD: "deploy-token|git",
+	}); err != nil {
+		t.Fatalf("create expired secret: %v", err)
+	}
+
+	// A user secret with a future expiry, bound to nothing.
+	future := now.Add(30 * 24 * time.Hour)
+	if _, err := st.CreateSecret(ctx, store.SecretRow{
+		Name: "smtp-relay", Kind: "notify", Source: store.SecretSourceUser, ExpiresAt: &future,
+		Nonce: []byte("NONCEBYTES"), Ciphertext: []byte("SEALEDCIPHERTEXT"), AAD: "smtp-relay|notify",
+	}); err != nil {
+		t.Fatalf("create future secret: %v", err)
+	}
+
+	m := New(st)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadSecretsCmd(st)())
+	m = update(t, m, key('s'))
+	if m.active != screenSecrets {
+		t.Fatalf("[s] did not open Secrets, active = %v", m.active)
+	}
+
+	view := m.View().Content
+	for _, want := range []string{
+		"secrets · 3 stored",
+		"restic-password", "generated", "no expiry",
+		"used by: nightly-db as $RESTIC_PASSWORD",
+		"deploy-token", "user", "EXPIRED",
+		"smtp-relay", "expires in", "unbound",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("secrets view missing %q, view:\n%s", want, view)
+		}
+	}
+	// The sealed material must never reach the view.
+	for _, sealed := range []string{"SEALEDCIPHERTEXT", "NONCEBYTES"} {
+		if strings.Contains(view, sealed) {
+			t.Fatalf("secrets view leaked sealed material %q:\n%s", sealed, view)
+		}
+	}
+}
+
 // TestApprovalsAndEventsRenderLive drives the two new screens over seeded rows
 // and asserts their live assembly reaches the fixture renderers.
 func TestApprovalsAndEventsRenderLive(t *testing.T) {

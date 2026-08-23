@@ -23,6 +23,7 @@ const (
 	screenSources                  // [7] post-v1 parity surfaces
 	screenPolicies                 // [8]
 	screenWorkflows                // [9]
+	screenSecrets                  // [s] — the digits are spent, so the read-only secrets surface takes a mnemonic key
 )
 
 const (
@@ -73,6 +74,13 @@ type Model struct {
 	workflowsErr    error
 	workflowsCursor int
 	workflowDetail  string // non-empty: the workflow id whose step ledger is open
+
+	// The read-only secrets surface: sealed-secret metadata and, keyed by
+	// secret name, the run-secret bindings that inject each one. No value,
+	// nonce or ciphertext is ever held here.
+	secrets        []store.SecretRow
+	secretBindings map[string][]store.RunSecret
+	secretsErr     error
 
 	// The glance streams the new screens read: pending approvals, recent
 	// events, and the active holds behind the banner.
@@ -126,6 +134,7 @@ func (m Model) Init() tea.Cmd {
 		loadSourcesCmd(m.store),
 		loadPoliciesCmd(m.store),
 		loadWorkflowsCmd(m.store),
+		loadSecretsCmd(m.store),
 		loadGlanceCmd(m.store),
 		tickCmd(),
 	)
@@ -205,6 +214,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case secretsLoadedMsg:
+		m.secretsErr = msg.err
+		if msg.err == nil {
+			m.secrets = msg.secrets
+			m.secretBindings = msg.bindings
+		}
+		return m, nil
+
 	case glanceLoadedMsg:
 		m.glanceErr = msg.err
 		if msg.err == nil {
@@ -263,6 +280,8 @@ func (m Model) refreshCmd() tea.Cmd {
 		cmds = append(cmds, loadPoliciesCmd(m.store))
 	case screenWorkflows:
 		cmds = append(cmds, loadWorkflowsCmd(m.store))
+	case screenSecrets:
+		cmds = append(cmds, loadSecretsCmd(m.store))
 	case screenApprovals, screenEvents:
 		cmds = append(cmds, loadGlanceCmd(m.store))
 	}
@@ -346,6 +365,15 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if !m.tailing {
 			m.active = screenWorkflows
 			m.workflowDetail = ""
+		}
+		return m, nil
+
+	case "s":
+		// The 0-9 digits are spent on Home and the nine screens, so the
+		// read-only secrets surface takes a mnemonic key. Like the digits it is
+		// a global jump, inert while a job tail is open.
+		if !m.tailing {
+			m.active = screenSecrets
 		}
 		return m, nil
 

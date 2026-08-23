@@ -30,6 +30,8 @@ func (m Model) View() tea.View {
 			return tea.NewView(liveFrame(m.withBanner(m.renderPoliciesScreen())))
 		case screenWorkflows:
 			return tea.NewView(liveFrame(m.withBanner(m.renderWorkflowsScreen())))
+		case screenSecrets:
+			return tea.NewView(liveFrame(m.withBanner(m.renderSecretsScreen())))
 		}
 	}
 	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
@@ -69,6 +71,14 @@ func (m Model) renderWorkflowsScreen() string {
 		return renderWorkflowDetail(m.workflowDetailModel())
 	}
 	return renderWorkflowsScreen(m.workflowsModel())
+}
+
+// renderSecretsScreen renders the read-only secrets surface, or its error state.
+func (m Model) renderSecretsScreen() string {
+	if m.secretsErr != nil {
+		return styleErr.Render("failed to load secrets: " + m.secretsErr.Error())
+	}
+	return renderSecretsScreen(m.secretsModel())
 }
 
 // withBanner prepends the hold banner when a silence or mute is active.

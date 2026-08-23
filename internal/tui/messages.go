@@ -259,6 +259,45 @@ func loadWorkflowsCmd(st *store.Store) tea.Cmd {
 	}
 }
 
+// secretsLoadedMsg carries the sealed-secret metadata rows and, keyed by secret
+// name, the run-secret bindings that inject each one. It never carries the
+// nonce, ciphertext or value: the secrets surface is read-only metadata only
+// (invariant 4).
+type secretsLoadedMsg struct {
+	secrets  []store.SecretRow
+	bindings map[string][]store.RunSecret // secret name -> injecting run-secret pairs
+	err      error
+}
+
+func loadSecretsCmd(st *store.Store) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		secrets, err := st.ListSecrets(ctx)
+		if err != nil {
+			return secretsLoadedMsg{err: err}
+		}
+		// Fold the run-secret bindings into a per-secret index so the surface
+		// can show which binding injects a secret and as which env var. Walking
+		// the distinct bindings (then each binding's env->secret pairs) keeps
+		// the order deterministic: bindings sorted, env names sorted within.
+		names, err := st.ListRunSecretBindings(ctx)
+		if err != nil {
+			return secretsLoadedMsg{err: err}
+		}
+		bindings := map[string][]store.RunSecret{}
+		for _, name := range names {
+			pairs, err := st.RunSecretsByBinding(ctx, name)
+			if err != nil {
+				return secretsLoadedMsg{err: err}
+			}
+			for _, p := range pairs {
+				bindings[p.SecretName] = append(bindings[p.SecretName], p)
+			}
+		}
+		return secretsLoadedMsg{secrets: secrets, bindings: bindings}
+	}
+}
+
 // eventsLoadedMsg carries a job's event tail. It is keyed by jobID so a
 // response arriving after the user has moved to a different job is ignored.
 type eventsLoadedMsg struct {
