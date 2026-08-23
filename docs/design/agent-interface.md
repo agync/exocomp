@@ -262,7 +262,9 @@ POST /api/v1/approvals/{id}/decision  {decision: approve|reject}  → reactive.D
 
 Conventions: every mutating request accepts an `Idempotency-Key` header →
 `Spec.IdempotencyKey` → `JobByIdempotencyKey` dedup (queue.go:117-126), so a retry never
-double-enqueues. `httpError`'s flat `{"error":msg}` (state.go) is replaced everywhere by the
+double-enqueues. The header is namespaced server-side by the authenticated token id and the
+route before it reaches the queue: the dedup space is per-principal, per-verb, and the
+queue's reserved `wf:` step keys are unaddressable from any face (finding AI-7). `httpError`'s flat `{"error":msg}` (state.go) is replaced everywhere by the
 `wire` typed envelope. Apply applies the **saved** plan, not a fresh one — the plan→apply seam
 is two linked job rows and the approver sees the actual plan (overview.md:64-66).
 

@@ -61,6 +61,24 @@ type planWriteArgs struct {
 	Plan string `json:"plan"`
 }
 
+// Tool labels for the idempotency namespace, and the namespacing itself. A
+// caller-chosen key is scoped to this face and the tool that used it, so an
+// agent's guessable key ("deploy-<date>", a ticket id) cannot collide with
+// another caller's write or address the queue's reserved `wf:` workflow step
+// keys (finding AI-7). Stdio has no principal to scope by; when it grows a
+// token, the token id joins this prefix.
+const (
+	toolPlanKey  = "workspace.plan"
+	toolApplyKey = "workspace.apply"
+)
+
+func idempotencyKey(tool, key string) string {
+	if key == "" {
+		return ""
+	}
+	return "mcp:" + tool + ":" + key
+}
+
 func parseTimeout(v string) (time.Duration, error) {
 	if v == "" {
 		return 0, nil
@@ -104,7 +122,7 @@ func (s *Server) toolWorkspacePlan(ctx context.Context, args planWriteArgs) (str
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   artifacts,
 		RunSecrets:     args.RunSecrets,
-		IdempotencyKey: args.IdempotencyKey,
+		IdempotencyKey: idempotencyKey(toolPlanKey, args.IdempotencyKey),
 		Timeout:        timeout,
 	})
 	if err != nil {
@@ -166,7 +184,7 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (st
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      args.RunSecrets,
-		IdempotencyKey:  args.IdempotencyKey,
+		IdempotencyKey:  idempotencyKey(toolApplyKey, args.IdempotencyKey),
 		Timeout:         timeout,
 		SavedPlan:       saved,
 		Gate:            gate,

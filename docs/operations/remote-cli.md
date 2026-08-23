@@ -41,7 +41,9 @@ command off the box.
 
 Every write accepts `--idempotency-key` (or `EXOCOMP_IDEMPOTENCY_KEY`), which travels as
 the `Idempotency-Key` header: a retried request dedups to the one job instead of enqueuing
-a second.
+a second. The daemon namespaces the key by the authenticated token and the route, so a key
+only ever dedups *your* retry of *that* verb — a guessable key chosen by one caller cannot
+swallow another's write (finding AI-7, [threat model](../security/threat-model.md)).
 
 `--output json` re-emits the daemon's own envelope — `job.enqueued`, `approval.pending`,
 `approval.decision` — byte for byte. A *followed* run emits one document, the settled job,

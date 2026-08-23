@@ -178,11 +178,37 @@ func actorFromRequest(r *http.Request) service.Actor {
 	return service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name}
 }
 
-// idempotencyKey reads the caller-settable Idempotency-Key header. Threaded onto
-// the service Input, it dedups a retried request to one job (queue.go:117-126),
-// so a retrying agent never double-enqueues.
-func idempotencyKey(r *http.Request) string {
-	return r.Header.Get("Idempotency-Key")
+// Route labels for the idempotency namespace. They are stable strings, not
+// r.URL.Path: a path carries the workspace name, and two writes to the same
+// workspace under one key SHOULD dedup.
+const (
+	routePlan     = "workspace.plan"
+	routeApply    = "workspace.apply"
+	routePlaybook = "playbook.run"
+)
+
+// idempotencyKey reads the caller-settable Idempotency-Key header and namespaces
+// it by the authenticated principal and the route. Threaded onto the service
+// Input, it dedups a retried request to one job (queue.go:117-126), so a
+// retrying agent never double-enqueues.
+//
+// The namespace is the security half: the raw header is one global key space, so
+// a guessable key ("deploy-<date>", a ticket id) planted by one token silently
+// swallowed another token's write — the victim got a 200 naming a job it did not
+// create, its own write never enqueued (finding AI-7). Scoping by token id keeps
+// a caller's keys to itself; scoping by route keeps its own plan from swallowing
+// its own apply; and both prefixes make the queue's reserved `wf:` workflow step
+// keys unaddressable from this face.
+func idempotencyKey(r *http.Request, route string) string {
+	key := r.Header.Get("Idempotency-Key")
+	if key == "" {
+		return ""
+	}
+	var tokenID int64
+	if ident, ok := identityOf(r.Context()); ok {
+		tokenID = ident.token.ID
+	}
+	return "api:" + strconv.FormatInt(tokenID, 10) + ":" + route + ":" + key
 }
 
 // tofuArtifactsDir is where a plan's -out file lands, mirroring the CLI's
@@ -223,7 +249,7 @@ func (s *Server) apiWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   artifacts,
 		RunSecrets:     req.RunSecrets,
-		IdempotencyKey: idempotencyKey(r),
+		IdempotencyKey: idempotencyKey(r, routePlan),
 		Timeout:        timeout,
 		// The "api" trigger tells the daemon to seal this plan's -out file into a
 		// consumable artifact post-run; a CLI plan seals its own.
@@ -287,7 +313,7 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      req.RunSecrets,
-		IdempotencyKey:  idempotencyKey(r),
+		IdempotencyKey:  idempotencyKey(r, routeApply),
 		Timeout:         timeout,
 		SavedPlan:       saved,
 		Gate:            gate,
@@ -506,7 +532,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		Passthrough:         passthrough,
 		ExtraVars:           vars,
 		TolerateUnreachable: req.TolerateUnreachable,
-		IdempotencyKey:      idempotencyKey(r),
+		IdempotencyKey:      idempotencyKey(r, routePlaybook),
 		Timeout:             timeout,
 		Actor:               actorFromRequest(r),
 	})
