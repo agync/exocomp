@@ -189,6 +189,27 @@ func TestPoliciesGolden(t *testing.T) {
 	assertFrame(t, "policies-120", renderPoliciesScreen(m))
 }
 
+func TestSecretsGolden(t *testing.T) {
+	m := SecretsModel{
+		summary: "secrets · 4 stored", clock: "14:03 UTC+11",
+		rows: []secretRow{
+			{name: "restic-password", kind: "backup", source: "generated", created: "2026-05-02",
+				rotated: "2026-08-01", lastUsed: "2026-08-22", expiry: "no expiry",
+				bindings: "used by: nightly-db as $RESTIC_PASSWORD"},
+			{name: "grafana-admin", kind: "app", source: "user", created: "2026-06-14",
+				rotated: "never", lastUsed: "2026-08-20", expiry: "expires in 12d",
+				bindings: "used by: converge-fleet as $GF_SECURITY_ADMIN_PASSWORD"},
+			{name: "deploy-token", kind: "git", source: "user", created: "2026-01-09",
+				rotated: "2026-07-30", lastUsed: "2026-08-21", expiry: "EXPIRED",
+				bindings: "used by: core-infra as $DEPLOY_TOKEN, playbooks as $DEPLOY_TOKEN"},
+			{name: "smtp-relay", kind: "notify", source: "user", created: "2026-08-18",
+				rotated: "never", lastUsed: "never", expiry: "expires in 90d",
+				bindings: "unbound"},
+		},
+	}
+	assertFrame(t, "secrets-120", renderSecretsScreen(m))
+}
+
 func TestWorkflowsGolden(t *testing.T) {
 	m := WorkflowsModel{
 		summary: "workflows · 3 recorded", clock: "14:03 UTC+11",
