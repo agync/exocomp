@@ -9,10 +9,10 @@ import (
 	"time"
 )
 
-// TestMigration0023UpgradesFrom22 pins a database at user_version 22, then opens
+// TestMigration0024UpgradesFrom22 pins a database at user_version 22, then opens
 // it with the current binary: the migration must apply and the new lease must be
 // usable through the store, which is what an operator upgrading in place gets.
-func TestMigration0023UpgradesFrom22(t *testing.T) {
+func TestMigration0024UpgradesFrom22(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -33,7 +33,7 @@ func TestMigration0023UpgradesFrom22(t *testing.T) {
 		t.Fatalf("close raw db: %v", err)
 	}
 	if count != 0 {
-		t.Fatalf("serve_lease table exists at user_version 22, want it introduced by 0023")
+		t.Fatalf("serve_lease table exists at user_version 22, want it introduced by 0024")
 	}
 
 	s, err := Open(dbPath)
@@ -46,8 +46,8 @@ func TestMigration0023UpgradesFrom22(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if version < 23 {
-		t.Fatalf("schema version = %d after open, want >= 23", version)
+	if version < 24 {
+		t.Fatalf("schema version = %d after open, want >= 24", version)
 	}
 
 	if _, err := s.GetLease(ctx); !errors.Is(err, ErrNotFound) {

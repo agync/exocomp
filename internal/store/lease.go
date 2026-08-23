@@ -20,7 +20,7 @@ var (
 	ErrLeaseLost = errors.New("store: serve lease lost to another holder")
 )
 
-// leaseRowID pins the single-active lease to one row (migration 0023).
+// leaseRowID pins the single-active lease to one row (migration 0024).
 const leaseRowID = 1
 
 // Lease is the cross-host single-active lease. The active daemon holds it and
