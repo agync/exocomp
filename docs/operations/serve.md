@@ -139,6 +139,22 @@ parser rejects — a schedule edited or restored into a state that no longer val
 is logged and left out rather than aborting the daemon or every other schedule; the
 previous, working set stays registered until a reload succeeds.
 
+### Catch-up after downtime
+
+Cron fires forward only, so a scheduled window that falls while the daemon is down would
+otherwise be dropped in silence — a nightly backup or restore drill simply skipped until
+its next natural occurrence. To close that gap the daemon records each schedule's
+`last_run`. When it (re)loads, a schedule whose cron had at least one occurrence between
+its `last_run` and now fires **once** to settle the miss, then resumes its normal forward
+schedule.
+
+The catch-up is coalesced, not replayed: a daemon down for a week fires one backup, never
+one per missed night. A schedule that has never fired (`last_run` unset) does not
+back-fire — it only ever schedules forward from now. A schedule whose `last_run` is recent
+enough that nothing was missed does nothing. The catch-up fire enqueues under an
+idempotency key anchored on `last_run`, so a reload racing another, or a restart between
+the enqueue and the `last_run` stamp, still yields exactly one job.
+
 ## One daemon per data dir
 
 Startup takes an exclusive `flock` on `<data dir>/serve.lock` and writes its pid there. A

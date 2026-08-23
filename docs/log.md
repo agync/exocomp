@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — schedules catch up after downtime
+
+[serve.md](operations/serve.md) gained a **Catch-up after downtime** subsection. The
+scheduler now records each schedule's `last_run` (migration 0021) and, on (re)load, fires
+one coalesced catch-up for a schedule whose cron had an occurrence between `last_run` and
+now — closing the forward-only gap where a backup or restore drill scheduled during a
+daemon outage was silently dropped. Documents the coalesce (one fire, not one per missed
+occurrence), the never-fired no-back-fire rule, and the `last_run`-anchored idempotency
+key.
+
 ## 2026-08-23 — bootstrap-first design page (proposed)
 
 **New page.** [design/bootstrap-first.md](design/bootstrap-first.md) — a Proposed design for
