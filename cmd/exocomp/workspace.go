@@ -52,6 +52,7 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceListCmd(),
 		newWorkspacePlanCmd(),
 		newWorkspaceApplyCmd(),
+		newWorkspaceEgressCmd(),
 		newWorkspaceUnlockCmd(),
 		newWorkspacePruneCmd(),
 	)
@@ -119,6 +120,72 @@ func newWorkspacePruneCmd() *cobra.Command {
 	prune.Flags().IntVar(&keep, "keep", 10, "newest serials always retained")
 	prune.Flags().IntVar(&days, "days", 90, "retain every version from this many days back")
 	return prune
+}
+
+func newWorkspaceEgressCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "egress <name> [port...]",
+		Short: "Declare extra outbound TCP ports for a workspace's tofu runs",
+		Long: "Grants a workspace's sandboxed tofu runs egress on ports beyond the " +
+			"built-in HTTPS and state-backend grant, replacing any previous declaration. " +
+			"With no ports it clears the declaration. This is a deliberate widening: " +
+			"because the sandbox filters egress by port and not by destination, a granted " +
+			"port reaches any host on that port, not only the intended one. The homelab " +
+			"case is `egress <ws> 6443` so the kubernetes/helm providers reach a kubeadm " +
+			"API server (docs/operations/serve.md).",
+		Args: cobra.MinimumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runWorkspaceEgress(cmd, args[0], args[1:])
+		},
+	}
+}
+
+func runWorkspaceEgress(cmd *cobra.Command, name string, portArgs []string) (err error) {
+	ports := make([]int, 0, len(portArgs))
+	for _, a := range portArgs {
+		p, perr := strconv.Atoi(a)
+		if perr != nil {
+			return fmt.Errorf("workspace egress: %q is not a port number", a)
+		}
+		ports = append(ports, p)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := st.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
+
+	ctx := cmd.Context()
+	ws, err := st.WorkspaceByName(ctx, name)
+	if errors.Is(err, store.ErrNotFound) {
+		return fmt.Errorf("workspace egress: no workspace %q", name)
+	}
+	if err != nil {
+		return err
+	}
+
+	updated, err := st.SetWorkspaceEgressPorts(ctx, ws.ID, ports)
+	if errors.Is(err, store.ErrInvalidEgressPort) {
+		return fmt.Errorf("workspace egress: %w", err)
+	}
+	if err != nil {
+		return err
+	}
+
+	if len(updated.ExtraEgressPorts) == 0 {
+		_, err = fmt.Fprintf(cmd.OutOrStdout(),
+			"workspace %s extra egress ports: none (default 443 + state backend)\n", updated.Name)
+		return err
+	}
+	_, err = fmt.Fprintf(cmd.OutOrStdout(),
+		"workspace %s extra egress ports: %v (any host on these ports)\n",
+		updated.Name, updated.ExtraEgressPorts)
+	return err
 }
 
 func newWorkspaceUnlockCmd() *cobra.Command {
@@ -794,6 +861,9 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		PrivateDirRoot:  dirs.private,
 		PluginCacheDir:  dirs.pluginCache,
 		RunSecrets:      runSecrets,
+		// The workspace's opt-in egress widening: empty for all but a workspace
+		// whose providers were declared to need a non-443 port (a kubeadm 6443).
+		ExtraPorts: ws.ExtraEgressPorts,
 		// A successful apply captures the workspace's outputs wherever it runs,
 		// not only under the daemon: the non-sensitive ones into the standing
 		// inventory file, each sensitive one sealed and bound as named env for

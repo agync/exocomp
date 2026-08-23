@@ -849,6 +849,9 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		PrivateDirRoot:  d.dirs.private,
 		PluginCacheDir:  d.dirs.pluginCache,
 		RunSecrets:      runSecrets,
+		// The workspace's opt-in egress widening (docs/operations/serve.md);
+		// empty by default, so the daemon path keeps the 443-and-backend grant.
+		ExtraPorts: ws.ExtraEgressPorts,
 		// Every successful apply materializes the workspace's declared,
 		// non-sensitive outputs as an inventory artifact (story 5). The path is
 		// deterministic so the dependent play resolves it, and each apply
