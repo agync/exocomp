@@ -99,6 +99,7 @@ func runDoctor(w io.Writer) error {
 	}
 
 	reportSandbox(context.Background(), w)
+	reportRunDirTmpfs(w)
 	reportSelfObservability(context.Background(), w, dataDir)
 	reportLitestream(context.Background(), w, dataDir)
 	// The report prints first, so an operator sees why; then an explicit

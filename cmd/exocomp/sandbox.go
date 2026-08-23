@@ -155,6 +155,34 @@ func newSandboxCanaryCmd() *cobra.Command {
 	}
 }
 
+// reportRunDirTmpfs writes the doctor's job-run-dir block: the path and whether
+// it is tmpfs. File staging (bootstrap --capture-file) refuses unless it is, so
+// an operator reading "NOT tmpfs" here knows why a KUBECONFIG-file bootstrap
+// would be turned away — the same never-silent posture as the sandbox tier.
+func reportRunDirTmpfs(w io.Writer) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("job run dir:\n")
+
+	dir := jobRunDir()
+	if dir == "" {
+		p("  %-18s unknown (no data dir)\n", "path")
+		return
+	}
+	p("  %-18s %s\n", "path", dir)
+
+	tmpfs, err := executor.RunDirTmpfs(dir)
+	switch {
+	case err != nil:
+		// The per-job dir is created lazily, so an absent path is the common
+		// daemonless case, not a fault; under the quadlet the tmpfs mount exists.
+		p("  %-18s unknown (%v)\n", "backing", err)
+	case tmpfs:
+		p("  %-18s tmpfs — a staged secret file is held in RAM, never on disk\n", "backing")
+	default:
+		p("  %-18s NOT tmpfs — `bootstrap --capture-file` will REFUSE; a staged secret would hit durable disk\n", "backing")
+	}
+}
+
 // sandboxOptions is the grant set every kind starts from. The data dir is named
 // so the profile guard can refuse a grant that would cover the database or the
 // keys, and the vendored collections are granted because a job that cannot read
