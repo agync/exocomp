@@ -320,3 +320,22 @@ the tofu and ansible gates.
 Making the drill a scheduled job in the same engine costs nothing new, and it means a
 silently broken envelope fails a routine job instead of being discovered during a real
 disaster.
+
+### `backup drill`: the restic/digest/integrity_check slice, today
+
+`exocomp backup drill [--target <name>]` and `exocomp schedule add --kind drill` implement
+the restore-and-verify core of the dr-drill above (`internal/backup.RestoreDrill`): restore
+the newest snapshot into a throwaway directory, verify every manifest digest, open the
+restored database, and run `PRAGMA integrity_check` — then discard the directory whatever
+the outcome. Booting a scratch container, asserting row counts, and running a play/plan with
+network egress disabled are not yet wired to it; the section above stays the target shape.
+
+The restic password is derived straight from the running envelope (the same HKDF a backup
+writes with), so a scheduled drill needs no offline recovery identity and can run unattended
+on a cadence. A git target is the exception — it is only ever encrypted to public recipients
+— so it refuses live drilling and points at a manual `exocomp restore --identity` instead.
+
+A drilled snapshot that does not check out (`OK: false`) is a **drill finding**: the CLI
+reports it and exits nonzero, and a scheduled fire settles the job failed, which the ordinary
+job-failure paging already covers. A target the drill could not even reach — unresolved, no
+backup yet — is a plain error, the same finding-vs-infra-error split `RestoreDrill` documents.
