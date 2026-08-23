@@ -19,7 +19,8 @@ import (
 // RunE short-circuits into remoteClient and renders the daemon's wire projection
 // instead of touching a local data dir. --output json re-emits the decoded view
 // through wire.WriteSuccess, so remote bytes equal local bytes; text is rendered
-// here from the same views. Only reads are wired; writes wait on the write API.
+// here from the same views. The WRITE half of the seam — the verbs that enqueue
+// on the remote daemon and follow the job — lives in remotewrite.go.
 
 // remoteClient resolves the selected remote into a configured, pinned client.
 // The bool is false in LOCAL mode (no --remote, no EXOCOMP_REMOTE) — the caller

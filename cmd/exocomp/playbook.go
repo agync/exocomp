@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -36,6 +37,7 @@ func newPlaybookCmd() *cobra.Command {
 		check        bool
 		diff         bool
 		tolerateUnre bool
+		noFollow     bool
 	)
 
 	run := &cobra.Command{
@@ -56,10 +58,35 @@ func newPlaybookCmd() *cobra.Command {
 			"With --source, the play runs from that source's checkout and honours its " +
 			"`.exocomp/hooks.yml`: if the source declares pre/post-run hooks or a health " +
 			"gate the run becomes the same lifecycle workflow `exocomp run` composes " +
-			"(and needs a running daemon). A source with no hooks runs exactly as above.",
+			"(and needs a running daemon). A source with no hooks runs exactly as above.\n\n" +
+			"With --remote the play is enqueued on that daemon over HTTP and this command " +
+			"follows the job's event stream until it settles, exiting with the job's code " +
+			"just as a local run does; --no-follow prints the job id instead. Inputs are " +
+			"resolved on the daemon, so name a --source and a registered --inventory rather " +
+			"than paths on this machine.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, warn := cmd.OutOrStdout(), cmd.ErrOrStderr()
+
+			rc, remote, err := remoteClient(cmd)
+			if err != nil {
+				return err
+			}
+			if remote {
+				// The remote run enqueues over HTTP and follows the job the daemon
+				// runs; the ansible flags are split by the SAME service verb there.
+				return exitWith(runRemotePlaybook(cmd, rc, remotePlaybookOp{
+					playbook: args[0], inventory: inventory, vaultProject: vaultProject,
+					runSecrets: runSecrets, source: sourceName, limit: limit, tags: tags,
+					skipTags: skipTags, extraVars: extraVars, check: check, diff: diff,
+					tolerateUnreachable: tolerateUnre, wait: wait, noFollow: noFollow,
+					timeout: timeout, idempotencyKey: idempotencyKey(cmd),
+				}))
+			}
+			if noFollow {
+				return errors.New("playbook run: --no-follow applies to a --remote run; " +
+					"a local run drains or follows the job it enqueues")
+			}
 
 			passthrough, vars, err := ansiblePassthrough(limit, tags, skipTags, check, diff, extraVars)
 			if err != nil {
@@ -137,6 +164,8 @@ func newPlaybookCmd() *cobra.Command {
 		"ansible --check: dry run; emits the structured config-drift outcome as a job event")
 	run.Flags().BoolVar(&diff, "diff", false,
 		"ansible --diff: show what would change (pairs with --check)")
+	run.Flags().BoolVar(&noFollow, "no-follow", false,
+		"with --remote: print the enqueued job id and exit 0 instead of following the job to its end")
 	run.Flags().BoolVar(&tolerateUnre, "tolerate-unreachable", false,
 		"a run whose only non-success is unreachable hosts settles degraded, not failed, and does not page (a task failure on a reachable host still fails)")
 

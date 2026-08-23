@@ -18,6 +18,7 @@ Getting an install standing up, and getting it back after it falls over.
 | [Provision → onboard → converge](provision-converge.md) | `exocomp provision run` as one resumable four-step ledger chain — apply, bounded wait for SSH, seeded onboarding, configure play — and the standing `tf:<workspace>` inventory a `schedule --kind play` targets by name |
 | [Sources and credentials](sources.md) | Registering git/host/volume sources, inventories, and the run-secret credential binding; the fleet key, host onboarding, and known_hosts |
 | [LAN access](lan-access.md) | Minting bearer tokens and serving the TLS web + phone-approval surface, separate from the loopback state backend ([ADR 0009](../adr/0009-lan-access-tokens.md)) |
+| [Driving a remote daemon](remote-cli.md) | `exocomp login` and `--remote`: pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire |
 | [Setup and notifications](notifications.md) | The first-run wizard, the ntfy push transport, the MUTED-vs-PAUSED holds, and the `/metrics` staleness gauges |
 
 The two are one loop, not two topics: bootstrap does not finish until a restore drill has

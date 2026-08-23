@@ -451,12 +451,23 @@ func newWorkspacePlanCmd() *cobra.Command {
 			"artifact `workspace apply --plan` can consume. A running `exocomp serve` " +
 			"runs the job while this command follows it. The plan runs with " +
 			"-detailed-exitcode: this command exits 2 when changes are present, " +
-			"while the job itself succeeds.",
+			"while the job itself succeeds.\n\n" +
+			"With --remote the plan is enqueued on that daemon and this command prints the " +
+			"job id; watch it with `jobs follow <id>`. The exit-2-on-changes signal is a " +
+			"local reading of the run's own driver output, so a remote plan exits 0 once the " +
+			"job is queued.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets, timeout: timeout,
-					idempotencyKey: idempotencyKey(cmd)}))
+			op := workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets,
+				timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
+			rc, remote, err := remoteClient(cmd)
+			if err != nil {
+				return err
+			}
+			if remote {
+				return runRemoteWorkspace(cmd, rc, op)
+			}
+			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
 		},
 	}
 	plan.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
@@ -477,12 +488,23 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		Long: "Runs tofu apply against the workspace's state, through a running " +
 			"`exocomp serve` when there is one. With --plan the run applies a plan a " +
 			"previous job saved, and the apply job records the same artifact, which is " +
-			"what links it to the plan that produced it.",
+			"what links it to the plan that produced it.\n\n" +
+			"With --remote the apply is enqueued on that daemon and this command prints the " +
+			"job id, or the pending approval and its TTL when the plan's policy gates it; " +
+			"watch the job with `jobs follow`. --plan then names a saved plan by artifact id, " +
+			"since a path names a file on this machine.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "apply", planRef: planRef, runSecrets: runSecrets, timeout: timeout,
-					idempotencyKey: idempotencyKey(cmd)}))
+			op := workspaceOp{workspace: args[0], op: "apply", planRef: planRef,
+				runSecrets: runSecrets, timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
+			rc, remote, err := remoteClient(cmd)
+			if err != nil {
+				return err
+			}
+			if remote {
+				return runRemoteWorkspace(cmd, rc, op)
+			}
+			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
 		},
 	}
 	apply.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")

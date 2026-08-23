@@ -187,13 +187,13 @@ func newApprovalLinkCmd() *cobra.Command {
 	}
 }
 
-// newApprovalDecideCmd settles a pending approval from this box. There is no
-// --remote path here (unlike list/link): a decision is a write, and per
-// remote.go only reads are wired to the client yet. Locally it goes straight
-// at the same store list/link already open, deriving the SAME capability
-// token `approval link` prints rather than asking the operator to paste one
-// back in — this is an operator-authority action at the data dir, not a
-// bearer-link redemption.
+// newApprovalDecideCmd settles a pending approval. With --remote it POSTs the
+// decision to the daemon, which derives the capability token server-side — a
+// scope is not a capability link, so nothing bearer-like leaves this box either
+// way. Locally it goes straight at the same store list/link already open,
+// deriving the SAME capability token `approval link` prints rather than asking
+// the operator to paste one back in — this is an operator-authority action at
+// the data dir, not a bearer-link redemption.
 func newApprovalDecideCmd() *cobra.Command {
 	var approve, reject bool
 	cmd := &cobra.Command{
@@ -218,6 +218,16 @@ func newApprovalDecideCmd() *cobra.Command {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("approval decide: %q is not an approval id", args[0])
+			}
+
+			decision := reactive.DecisionReject
+			if approve {
+				decision = reactive.DecisionApprove
+			}
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				return runRemoteDecide(cmd, rc, id, decision)
 			}
 
 			dir, err := dataDir()
@@ -262,11 +272,6 @@ func newApprovalDecideCmd() *cobra.Command {
 			eng, err := reactive.New(reactive.Options{Store: st, Queue: gate, Deriver: env})
 			if err != nil {
 				return fmt.Errorf("approval decide: %w", err)
-			}
-
-			decision := reactive.DecisionReject
-			if approve {
-				decision = reactive.DecisionApprove
 			}
 
 			svc := service.New(st, dir, nil)

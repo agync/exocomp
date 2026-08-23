@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"strconv"
 	"text/tabwriter"
 
@@ -23,10 +24,87 @@ func newJobsCmd() *cobra.Command {
 		Example: "exocomp jobs list --state running --output json",
 		Long: "Read-only views over the one job queue: what is queued, running, or " +
 			"settled, and the append-only, already-redacted event log of a single run. " +
-			"An agent branches on state and exit_code; the JSON is values-free.",
+			"An agent branches on state and exit_code; the JSON is values-free. `follow` " +
+			"is the one verb here that waits, and it exits with the job's own code.",
 	}
-	cmd.AddCommand(newJobsListCmd(), newJobsGetCmd(), newJobsEventsCmd())
+	cmd.AddCommand(newJobsListCmd(), newJobsGetCmd(), newJobsEventsCmd(), newJobsFollowCmd())
 	return cmd
+}
+
+// newJobsFollowCmd watches one job to its end. It is the only jobs verb that
+// waits, and so the only one whose exit code is the JOB's: a follow is "wait for
+// this job", and what a waiter reports is the thing it waited for. Remotely it
+// consumes the daemon's SSE stream; locally it tails the same append-only
+// job_event rows the daemon writes.
+func newJobsFollowCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "follow <id>",
+		Short: "Watch a job's events until it settles",
+		Long: "Prints the job's already-redacted events as they land and exits with the " +
+			"job's own code once it is terminal: 0 for a success (a degraded run included), " +
+			"otherwise the run's exit code. A job that is already terminal prints its log " +
+			"and returns at once. With --remote the events arrive over the daemon's event " +
+			"stream, which resumes from the last sequence if the connection drops.",
+		Example: "exocomp --remote box jobs follow 42",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("jobs follow: %q is not a job id", args[0])
+			}
+
+			rc, remote, err := remoteClient(cmd)
+			if err != nil {
+				return err
+			}
+			if remote {
+				code, err := followRemoteJob(cmd, rc, mode, id)
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return exitWith(code, nil)
+			}
+			return exitWith(followLocalJob(cmd, mode, id))
+		},
+	}
+}
+
+// followLocalJob tails a local job through the same reader the CLI's own
+// daemon-enqueue path uses, so a followed job prints what an enqueuing command
+// would have printed.
+func followLocalJob(cmd *cobra.Command, mode string, id int64) (int, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return 0, err
+	}
+	st, err := openStore()
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = st.Close() }()
+
+	out := cmd.OutOrStdout()
+	sink := out
+	if mode == outputJSON {
+		// JSON mode emits ONE document: the settled job, not a stream of lines a
+		// caller did not ask to parse.
+		sink = io.Discard
+	}
+	final, err := tailDaemonJob(cmd.Context(), st, dir, id, sink)
+	if err != nil {
+		if mode == outputJSON {
+			return 0, failJSON(cmd, err)
+		}
+		return 0, err
+	}
+	if mode == outputJSON {
+		return reportJobOutcome(io.Discard, final), emitJSON(cmd, wire.KindJob, wire.NewJobView(final))
+	}
+	return reportJobOutcome(out, final), nil
 }
 
 func newJobsListCmd() *cobra.Command {
