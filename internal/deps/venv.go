@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -139,11 +140,12 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 		return err
 	}
 
+	core := ansibleCorePin(spec)
 	install := []string{"pip", "install", "--python", v.Python}
-	install = append(install, toolchainPins(spec)...)
+	install = append(install, toolchainPins(core)...)
 	install = append(install, installArgs(spec.Manifest)...)
 	if err := runUV(ctx, uv, spec, work, install...); err != nil {
-		return err
+		return wrapAnsibleCoreConflict(err, core)
 	}
 
 	if err := os.WriteFile(v.marker(), []byte(spec.Manifest.Hash+"\n"), 0o600); err != nil {
@@ -185,16 +187,60 @@ func runUV(ctx context.Context, uv string, spec VenvSpec, workDir string, args .
 	return nil
 }
 
+// ansibleCorePin resolves the ansible-core version this venv installs: the
+// spec override if the project pinned one, else the image default (ADR 0006).
+func ansibleCorePin(spec VenvSpec) string {
+	if spec.AnsibleCore != "" {
+		return spec.AnsibleCore
+	}
+	return imageAnsibleCore()
+}
+
 // toolchainPins is the ansible-core + ansible-runner the venv always carries.
 // The core default tracks the image (ADR 0006); the moment a project declares
 // its own ansible-core in the manifest, uv's resolver takes that pin because
 // the declared spec is installed alongside and wins.
-func toolchainPins(spec VenvSpec) []string {
-	core := spec.AnsibleCore
-	if core == "" {
-		core = imageAnsibleCore()
-	}
+func toolchainPins(core string) []string {
 	return []string{"ansible-core==" + core, "ansible-runner==" + defaultAnsibleRunner}
+}
+
+// ansibleCoreConflictPattern matches uv's unsatisfiable-resolution narrative
+// for the one conflict this venv's toolchain pin (ADR 0006) can cause on its
+// own: a requirements/pyproject entry for the `ansible` meta-package, which
+// bundles its own ansible-core range. uv's error only ever talks about PyPI
+// distribution names and version ranges — it has no notion of ADR 0006, so it
+// cannot say that "ansible" and "ansible-core" are different packages or that
+// the fix is to drop the meta-package. The wrapped constants tolerate uv's
+// line-wrapped, indented rendering of the narrative (see venv_test.go for a
+// captured example).
+var ansibleCoreConflictPattern = regexp.MustCompile(
+	`(?s)ansible==(\S+)\s+depends on\s+ansible-core(\S+)\s+and\s+you require\s+ansible-core==(\S+)`,
+)
+
+// wrapAnsibleCoreConflict recognizes uv's unsatisfiable error for the
+// ansible-meta-package-vs-pinned-ansible-core conflict and replaces the raw
+// resolver narrative with a message naming the meta-package, the pin, and the
+// fix — wrapping rather than discarding, so the original uv narrative is
+// still reachable via errors.Unwrap / %w for anyone who needs it. Any other
+// uv failure (a genuinely unresolvable third-party dependency, a network
+// error, a bad specifier) does not match this pattern and passes through
+// unchanged: this must never mask or alter a legitimate resolution failure.
+func wrapAnsibleCoreConflict(err error, pinnedCore string) error {
+	if err == nil {
+		return nil
+	}
+	m := ansibleCoreConflictPattern.FindStringSubmatch(err.Error())
+	if m == nil {
+		return err
+	}
+	metaVersion := strings.TrimRight(m[1], ",.;")
+	coreRange := strings.TrimRight(m[2], ",.;")
+	return fmt.Errorf(
+		"deps: the project's Python dependencies declare the 'ansible' meta-package "+
+			"(ansible==%s), which pins ansible-core%s; exocomp already pins "+
+			"ansible-core==%s (ADR 0006) — declare only the extra libraries the playbook "+
+			"needs, not 'ansible' itself (ansible-core is already provided): %w",
+		metaVersion, coreRange, pinnedCore, err)
 }
 
 // installArgs is the uv-pip tail that installs the declared dependencies:
