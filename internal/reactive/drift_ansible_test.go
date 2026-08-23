@@ -303,6 +303,53 @@ func TestDegradedCleanCheckDoesNotClose(t *testing.T) {
 	}
 }
 
+// TestFailedCheckDoesNotClose pins that only a check that actually finished
+// clean closes an incident: a check that failed decided nothing about drift,
+// whatever partial recap it printed on the way down.
+func TestFailedCheckDoesNotClose(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 2})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+
+	failed, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "nightly-converge",
+		Kind:    executor.KindAnsible,
+		Trigger: "schedule",
+		Args:    store.JobArgs{Argv: executor.AnsibleArtifactArgv("playbooks/site.yml", "--check")},
+	})
+	if err != nil {
+		t.Fatalf("create failed check: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: failed.ID, Level: store.LevelSystem, Msg: "ansible check finished",
+		RawJSON: checkRawJSON(t, executor.AnsibleCheckOutcome{Operation: "check", CleanHosts: 1}),
+	}); err != nil {
+		t.Fatalf("append check outcome: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, failed.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start failed check: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, failed.ID, store.StateRunning, store.StateFailed); err != nil {
+		t.Fatalf("fail check: %v", err)
+	}
+
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (failed check): %v", err)
+	}
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want only the open page", len(pages))
+	}
+	if pages[0].Resolved {
+		t.Fatal("a failed check closed the incident")
+	}
+}
+
 // TestAnsibleDriftGatesARule pins that an ansible drift reaches the same CEL
 // gate a tofu drift does, which is the point of routing it through Ingest.
 func TestAnsibleDriftGatesARule(t *testing.T) {
