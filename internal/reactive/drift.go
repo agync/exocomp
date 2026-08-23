@@ -54,8 +54,26 @@ func (e *Engine) SweepDrift(ctx context.Context) (int, error) {
 			return raised, err
 		}
 		if !changes {
+			// A clean plan is the other half of the story: if this workspace has
+			// an open, unresolved drift incident, this plan clears it. Jobs come
+			// back oldest first, so a drift and the clean plan that follows it
+			// settle in order within one pass.
+			openJob, open, err := e.latestOpenDrift(ctx, workspace)
+			if err != nil {
+				return raised, err
+			}
+			if open {
+				if err := e.clearDrift(ctx, workspace, openJob, job); err != nil {
+					return raised, err
+				}
+			}
 			continue
 		}
+
+		// Page the workspace's per-workspace drift incident before the checkpoint
+		// (the ingested event) lands, so a crash re-pages once — the louder trade,
+		// symmetric with clearDrift. The close reuses this Source/Host.
+		e.notify(ctx, driftOpenNotification(workspace, job))
 
 		ev := driftEvent(workspace, job, key, e.now())
 		raw, err := json.Marshal(map[string]any{
