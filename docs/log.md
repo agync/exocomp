@@ -6,6 +6,49 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — agent-interface docs debt closed: remote CLI, API, machine output, runners
+
+**Four new operations pages.** [remote-access.md](operations/remote-access.md) — `exocomp
+login`'s TOFU certificate pinning, `--remote`/`EXOCOMP_REMOTE`/`--token` precedence, and the
+honest list of which verbs the CLI actually remotes today (jobs/approvals/sources/
+workspaces/doctor, reads only — writes exist on the wire but the CLI's client mode does not
+call them yet). [api.md](operations/api.md) — the `/api/v1` surface as shipped: both the
+read routes and the write routes (`internal/web/api_write.go`) are live, not deferred as an
+older file comment in that package still claims; the wire envelope, Idempotency-Key dedup,
+and the error-code-to-HTTP-status table. [machine-output.md](operations/machine-output.md)
+— `--output json`/`EXOCOMP_OUTPUT`, the envelope, the error taxonomy, and a correction: the
+exit-code table `internal/wire` defines (0-7) is only partly wired to the process —
+`main.go` exits 1 on any error without inspecting the taxonomy code, so only 0/1/2 (the last
+only on specific commands) are reachable today; codes 3-7 exist in the JSON envelope and in
+the remote client's `APIError.ExitCode()`, which nothing calls yet. Also covers `exocomp
+mcp` briefly. [runners.md](operations/runners.md) — the `runner add/list/show/rm/import`
+registry, stated plainly as definitions only: nothing builds an image or runs one yet. All
+four are linked from the operations index.
+
+[sources.md](operations/sources.md) gains `secrets rotate`/`rm`, `--generate`, and
+`--expires`, and the expiry semantics a migration comment already stated but no operator
+page did: expiry is a hygiene marker only and never gates decryption or run-secret
+injection — an expired secret still opens and a run still gets it, with a warning logged
+naming the secret (never the value).
+
+**Corrections of fact.** [architecture/overview.md](architecture/overview.md)'s Components
+table said `internal/service` already owns "all business logic." It owns four write verbs
+(`PlanWorkspace`/`ApplyWorkspace`/`RunPlaybook`/`DecideApproval`) and their resolvers, which
+every write face now routes through — but every read still goes store-direct. The table
+also separates the loopback tofu state backend (`internal/api`) from the operator
+`/api/v1` surface (`internal/web`), previously conflated as one row.
+[v1.1-roadmap.md](design/v1.1-roadmap.md)'s near-term table still priced gaps A and B as
+future work after its own "Landed since v1.0" section said they had landed; the table now
+marks A, B, and C (ansible drift parity, shipped this wave —
+`internal/reactive/drift_ansible.go`) landed with pointers, leaving D open.
+[design/byo-runner.md](design/byo-runner.md) §6 proposed `systemd-run --user --scope` for
+per-job resource caps without checking it against exocompd's own deployment: validated
+against the packaging tree, the wrapper works unmodified only on a bare host — the shipped
+container has no `systemd` binary and is not started with cgroup delegation, so the
+in-container path is cgroup v2 direct writes gated on a privilege-model decision (root vs
+keep-id+delegation) left for the owner. §9 Phase 1 is marked blocked-as-written for the
+packaged deployment accordingly.
+
 ## 2026-08-23 — write attribution closes the token-audit gap
 
 A remote write (`workspace plan`/`apply`, `playbooks/run` over the API) now leaves a
