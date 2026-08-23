@@ -1,0 +1,7 @@
+runners · 2 registered                                                                                      14:03 UTC+11
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+ NAME                 MODE       BASE                                PKGS  CORE      HASH          CREATED
+ fedora-ee            cached     registry.fedoraproject.org/fedora…  2     2.18.1    f47ac10b58cc  2026-05-02
+ custom-build         onthefly   docker.io/library/debian:bookworm…  0     -         3d2e1f0a9b8c  2026-08-10
+
+read-only · manage via exocomp runner add|rm                                                           [0-9]/[r] screens

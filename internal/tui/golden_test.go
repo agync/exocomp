@@ -210,6 +210,19 @@ func TestSecretsGolden(t *testing.T) {
 	assertFrame(t, "secrets-120", renderSecretsScreen(m))
 }
 
+func TestRunnersGolden(t *testing.T) {
+	m := RunnersModel{
+		summary: "runners · 2 registered", clock: "14:03 UTC+11",
+		rows: []runnerRow{
+			{name: "fedora-ee", mode: "cached", base: "registry.fedoraproject.org/fedora…",
+				pkgs: "2", core: "2.18.1", hash: "f47ac10b58cc", created: "2026-05-02"},
+			{name: "custom-build", mode: "onthefly", base: "docker.io/library/debian:bookworm…",
+				pkgs: "0", core: "-", hash: "3d2e1f0a9b8c", created: "2026-08-10"},
+		},
+	}
+	assertFrame(t, "runners-120", renderRunnersScreen(m))
+}
+
 func TestWorkflowsGolden(t *testing.T) {
 	m := WorkflowsModel{
 		summary: "workflows · 3 recorded", clock: "14:03 UTC+11",
