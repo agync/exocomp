@@ -702,6 +702,36 @@ per-command `os.Exit(code)` calls for a run's own outcome are untouched; they
 bypass `Execute()`'s returned error by construction and were never in scope.
 [operations/machine-output.md](operations/machine-output.md).
 
+## 2026-08-23 — A governed run type for everything else
+
+Work that is neither ansible nor tofu — a `kubectl rollout`, a scoped token refresh, a
+vendor deploy CLI — reached the fleet through an `ansible shell` wrapper, which is a way of
+avoiding this control plane's guarantees rather than using them: the queue saw an ansible
+job, the argv on the row was a shell string, and nothing decided which programs could run.
+Executor kind `cli` runs one such binary under the machinery every other kind gets — the one
+queue, the sandbox, a per-job private directory, run-secret injection, redaction, the
+approval gate, and exit-code-is-truth.
+
+What makes it governable rather than a general-purpose escape hatch is the allow-list:
+`exocomp cli-tool add` registers which binaries may run, with the fixed argv prefix, the
+anchored argument pattern, and the egress posture each is registered for, and `run-cli`
+refuses an unregistered name *before* a job row exists. The registry is a table, beside
+sources and runners, so the boundary deciding what may execute is restored by the same
+backup as the rest of the control plane. Registering takes the confirm contract because it
+widens that boundary; removing does not, because it narrows it.
+
+The argv is a list end to end — assembled as a slice, stored as a slice, `execve`'d as a
+slice — so a metacharacter in an argument is one literal argument and not an injection
+surface; the mutation that routes it through `sh -c` fails the test that pins this. The
+sandbox profile is default-deny with **no** kind-wide egress: `ansible` and `tofu` each
+speak one protocol, but the `cli` kind is every allow-listed binary at once, so a port is
+granted per registration to that run alone.
+
+Deferred: the daemon's kind router lives in a file another lane owns, so `run-cli` refuses
+while `exocomp serve` is up rather than writing a row that would die on a worker. The
+health-gate composition and the web/MCP surfaces for the kind are not built.
+[operations/cli-run.md](operations/cli-run.md).
+
 ## 2026-08-23 — Blue team on the agent-facing surface
 
 The second adversarial pass went at the three programmatic faces — the write
