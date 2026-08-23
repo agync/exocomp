@@ -339,22 +339,32 @@ func (s *Store) TransitionJob(ctx context.Context, id int64, from, to JobState) 
 }
 
 // ClaimJob moves a queued job to running, refusing when a running row already
-// holds the same concurrency key. The key check and the transition are one
-// statement, so the database — not a process's memory — decides who runs: a
-// daemon and a CLI over the same file cannot both find the key free.
+// holds the same concurrency key, or when the job still carries a pending
+// approval. All three checks and the transition are one statement, so the
+// database — not a process's memory — decides who runs: a daemon and a CLI over
+// the same file cannot both find the key free, and neither can claim a job an
+// operator has not yet approved, however that job reached queued.
 //
-// A refusal that is not the job's state is ErrConcurrencyHeld, which a caller
-// answers by trying another row rather than by waiting.
+// The pending-approval join is the claim-path half of the gate. A single gated
+// apply is held by its awaiting_approval state; this makes a composed-chain step
+// held the same durable way at the point of execution — even a queued row with
+// an undecided approval is refused, so a mis-release or a race cannot run an
+// unapproved step. A refusal that is not the job's state is ErrConcurrencyHeld
+// or ErrApprovalPending, which a caller answers by trying another row.
 func (s *Store) ClaimJob(ctx context.Context, id int64) error {
 	now := time.Now().UTC().UnixMilli()
 	res, err := s.db.ExecContext(ctx, `
 		UPDATE job SET state = ?, started_at = COALESCE(started_at, ?), owner_pid = ?
 		WHERE id = ? AND state = ?
+		  AND NOT EXISTS (
+		        SELECT 1 FROM approval
+		        WHERE approval.job_id = job.id AND approval.state = ?)
 		  AND (concurrency_key = '' OR NOT EXISTS (
 		        SELECT 1 FROM job AS held
 		        WHERE held.concurrency_key = job.concurrency_key
 		          AND held.state = ? AND held.id <> job.id))`,
-		string(StateRunning), now, os.Getpid(), id, string(StateQueued), string(StateRunning))
+		string(StateRunning), now, os.Getpid(), id, string(StateQueued),
+		string(ApprovalPending), string(StateRunning))
 	if err != nil {
 		return wrap("claim job", err)
 	}
@@ -374,8 +384,34 @@ func (s *Store) ClaimJob(ctx context.Context, id int64) error {
 		return fmt.Errorf("store: job %d is %s, not %s: %w",
 			id, job.State, StateQueued, ErrStateConflict)
 	}
+	// State is queued but the claim matched no row: either an unsettled approval
+	// gates it, or a concurrency peer holds the key. The approval is the stronger
+	// refusal and the one this guard exists for, so it is named first.
+	pending, err := s.hasPendingApproval(ctx, id)
+	if err != nil {
+		return err
+	}
+	if pending {
+		return fmt.Errorf("store: claim job %d: approval unsettled: %w", id, ErrApprovalPending)
+	}
 	return fmt.Errorf("store: claim job %d: concurrency key %q is held: %w",
 		id, job.ConcurrencyKey, ErrConcurrencyHeld)
+}
+
+// hasPendingApproval reports whether a job carries an approval still awaiting a
+// decision, so a claim refusal can name the pending gate rather than a held key.
+func (s *Store) hasPendingApproval(ctx context.Context, jobID int64) (bool, error) {
+	var one int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT 1 FROM approval WHERE job_id = ? AND state = ? LIMIT 1`,
+		jobID, string(ApprovalPending)).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, wrap("pending approval", err)
+	}
+	return true, nil
 }
 
 // SetJobExitCode records the subprocess exit code. Correctness is decided by

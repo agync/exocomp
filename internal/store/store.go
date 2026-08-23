@@ -29,6 +29,11 @@ var (
 	// ErrConcurrencyHeld is returned when a claim is refused because a running
 	// job already holds the row's concurrency key.
 	ErrConcurrencyHeld = errors.New("store: concurrency key held")
+	// ErrApprovalPending is returned when a claim is refused because the job
+	// still carries an unsettled (pending) approval. It is the claim-path half
+	// of the gate: a job queued while its approval is undecided must not run,
+	// however it reached queued.
+	ErrApprovalPending = errors.New("store: approval unsettled")
 )
 
 // Store is the handle on the SQLite database.

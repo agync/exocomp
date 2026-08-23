@@ -44,8 +44,13 @@ type WorkflowStep struct {
 	JobID          *int64
 	ResultJSON     string
 	RollbackMarker *string
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// RequireApproval marks a step the Sequencer must not release on its own: it
+	// arms a pending approval and leaves the job awaiting_approval until an
+	// operator decision settles it, the same gate a single destructive apply
+	// passes through.
+	RequireApproval bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // NewWorkflowStep describes a step to create. Every step starts pending.
@@ -54,10 +59,13 @@ type NewWorkflowStep struct {
 	Kind           string
 	IdempotencyKey string
 	JobID          *int64
+	// RequireApproval gates the step behind an operator approval (see
+	// WorkflowStep.RequireApproval).
+	RequireApproval bool
 }
 
 const workflowStepColumns = `workflow_id, step_no, kind, status, idempotency_key,
-	job_id, result_json, rollback_marker, created_at, updated_at`
+	job_id, result_json, rollback_marker, require_approval, created_at, updated_at`
 
 // CreateWorkflow inserts a workflow's steps, all pending, in one transaction:
 // a half-written ledger would let a resume run a workflow whose later steps it
@@ -76,10 +84,10 @@ func (s *Store) CreateWorkflow(ctx context.Context, workflowID string, steps []N
 		for _, step := range steps {
 			_, err := tx.ExecContext(ctx, `
 				INSERT INTO workflow_step (workflow_id, step_no, kind, status,
-				    idempotency_key, job_id, result_json, created_at, updated_at)
-				VALUES (?, ?, ?, ?, ?, ?, '', ?, ?)`,
+				    idempotency_key, job_id, result_json, require_approval, created_at, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, '', ?, ?, ?)`,
 				workflowID, step.StepNo, step.Kind, string(StepPending),
-				step.IdempotencyKey, jobIDArg(step.JobID), now, now)
+				step.IdempotencyKey, jobIDArg(step.JobID), boolInt(step.RequireApproval), now, now)
 			if err != nil {
 				return wrap("create workflow", err)
 			}
@@ -355,20 +363,22 @@ func jobIDArg(id *int64) any {
 
 func scanWorkflowStep(row rowScanner) (WorkflowStep, error) {
 	var (
-		step      WorkflowStep
-		status    string
-		jobID     sql.NullInt64
-		rollback  sql.NullString
-		createdAt int64
-		updatedAt int64
+		step       WorkflowStep
+		status     string
+		jobID      sql.NullInt64
+		rollback   sql.NullString
+		requireApp int64
+		createdAt  int64
+		updatedAt  int64
 	)
 	err := row.Scan(&step.WorkflowID, &step.StepNo, &step.Kind, &status,
 		&step.IdempotencyKey, &jobID, &step.ResultJSON, &rollback,
-		&createdAt, &updatedAt)
+		&requireApp, &createdAt, &updatedAt)
 	if err != nil {
 		return WorkflowStep{}, err
 	}
 	step.Status = StepStatus(status)
+	step.RequireApproval = requireApp != 0
 	if jobID.Valid {
 		step.JobID = &jobID.Int64
 	}

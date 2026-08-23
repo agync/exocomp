@@ -1,0 +1,12 @@
+-- A composed-chain step that must not run until an operator approves it, the
+-- same gate a single destructive apply passes through. The Sequencer reads this
+-- flag when a step becomes current: a gated step is armed with a pending
+-- approval and left in awaiting_approval instead of being released, so a running
+-- daemon cannot claim it until the approval settles. It is a durable ledger
+-- property, not derived from the approval row, because the approval is created
+-- lazily when the step becomes current (its TTL must start then, not at chain
+-- start) — before that there is nothing to derive the requirement from.
+--
+-- ADD COLUMN is additive and needs no table rebuild; the default 0 leaves every
+-- existing step ungated, exactly as before.
+ALTER TABLE workflow_step ADD COLUMN require_approval INTEGER NOT NULL DEFAULT 0;
