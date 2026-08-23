@@ -181,10 +181,10 @@ func (s *Server) writeTools() []tool {
 				"idempotency_key": strProp("dedup key so a retry does not double-enqueue"),
 			}, "name"), s.runWorkspacePlan},
 		{"workspace_apply", "Apply now. Omit plan and it runs immediately, auto-approved, with NO review gate" +
-			" — unless the workspace has an enabled plan policy, in which case a planless apply is refused" +
-			" (run workspace_plan first, then apply that plan by id). Pass a saved plan's artifact id" +
-			" (a string-encoded integer, e.g. \"42\") to apply that plan instead; a require-approval plan" +
-			" then pends for approve_job/reject_job.",
+			" — unless the workspace has an enabled plan policy, in which case a planless apply is REFUSED" +
+			" OUTRIGHT, not queued: run workspace_plan first, then apply that plan by id. Pass a saved plan's" +
+			" artifact id (a string-encoded integer, e.g. \"42\") to apply that plan instead; a require-approval" +
+			" plan then pends for approve_job/reject_job.",
 			object(map[string]any{
 				"name":            strProp("the workspace name"),
 				"plan":            strProp("saved plan artifact id — a string-encoded integer (e.g. \"42\"), not a file path or workspace name"),
