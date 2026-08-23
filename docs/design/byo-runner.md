@@ -310,6 +310,40 @@ case.** If caps are the real driver (not BYO system-package images), build this 
 cheaper than the socket and does not lower the threat tier. **[inferred: validate that
 Landlock network filtering and a systemd scope compose cleanly under rootless.]**
 
+### Validation (2026-08-23): host-only as written, not inside exocompd's own container
+
+§1's whole premise is that exocompd runs as **one rootless container**
+(invariant 1; `packaging/quadlet/exocomp.container`). The wrapper above executes wherever
+the job subprocess executes — inside that same container, not on the operator's bare host —
+so it was checked against the shipped deployment, not just the host.
+
+- **On the host, unmodified, `systemd-run --user --scope` works** exactly as written: a
+  rootless user's own slice, `enable-linger`, no socket, no sudo.
+- **Inside exocompd's own container it does not.** The runtime image is
+  `registry.fedoraproject.org/fedora-minimal:44` (`packaging/Containerfile`); the runtime
+  layer installs `ca-certificates git-core openssh-clients` plus the pinned subprocess
+  tools, never a `systemd` package — there is no `systemd-run` binary and no `systemd
+  --user` manager to talk to. `packaging/quadlet/exocomp.container` also does not start the
+  container with `--systemd=always` or any cgroup delegation, so there would be no PID 1 to
+  hand a scope to even if the binary existed.
+- **The in-container path is cgroup v2 direct writes, not `systemd-run`**: writing
+  `memory.max`/`cpu.max` into the container's own delegated cgroup subtree. That needs two
+  things this document does not resolve:
+  1. A Quadlet change granting the delegation — `PodmanArgs=--systemd=always` (or
+     equivalent) plus a read-write cgroup mount — neither of which `exocomp.container` does
+     today.
+  2. A privilege-model decision: **root-in-container** (simplest cgroup writes, but
+     reintroduces root inside the one container the current `UserNS=keep-id` posture
+     avoids) versus **keep-id + delegation** (stays rootless, but needs podman to hand a
+     keep-id non-root user write access to its own delegated cgroup subtree — unverified on
+     this platform).
+- **Held for the owner.** Neither option is chosen here; §9 Phase 1 is downgraded
+  accordingly.
+
+The host-level design above ships as written only for a non-containerized run of the binary
+(development, a bare local install outside the packaged image) — not for the packaged
+Quadlet/compose deployment invariant 1 describes.
+
 ---
 
 ## 7. Cache and lifecycle — port the uv-venv model to OCI images
@@ -450,10 +484,14 @@ container tier is never built**, because they close real gaps in the shipped sys
 - **Phase 0 — Bound the existing caches (no container tooling).** Add the `cache/python` prune
   job (§7.5) as a scheduled queue job on the restic-forget cadence. Closes an unbounded-growth
   gap that exists **today**. Depends on nothing.
-- **Phase 1 — systemd transient-scope resource caps (no socket).** Implement §6: wrap the job
-  subprocess in `systemd-run --user --scope -p MemoryMax=/CPUQuota=`, composed outside the nono
-  wrapper. Add doctor probes for `enable-linger`. Delivers hard caps — likely retiring one of
-  the two container-tier justifications. Depends on nothing container-related.
+- **Phase 1 — systemd transient-scope resource caps (no socket). P1, blocked as written for
+  the packaged deployment (§6 validation).** Implement §6: wrap the job subprocess in
+  `systemd-run --user --scope -p MemoryMax=/CPUQuota=`, composed outside the nono wrapper.
+  Add doctor probes for `enable-linger`. Works unmodified only for a non-containerized run of
+  the binary; the packaged Quadlet/compose deployment needs the cgroup-v2-direct-write path
+  and its root-in-container-vs-keep-id-delegation decision first (held for the owner), not
+  just this wrapper. Depends on nothing container-related for the host-only case; blocked on
+  that decision for the packaged case.
 - **Phase 2 — doctor prerequisites probe for the container tier.** Add probes (rootless podman
   present, user socket reachable, subuid/subgid configured, SELinux booleans/label posture)
   that **assert rather than assume**, mirroring sandbox.go `Probe`/`RunCanary`. Gates every
@@ -490,7 +528,7 @@ container tier is never built**, because they close real gaps in the shipped sys
 | §3 tooling, docker-SDK-broken | **Grounded** | nmem podman-REST-not-BuildKit; go.mod; ADR 0006:58 |
 | §4 nesting decision | **Grounded** | execution.md:138, platform-contract.md:11, ADR 0005:18 |
 | §5 SELinux/hardening | **[inferred]** — SELinux lane stubbed | anchors: platform-contract.md:33-36, nmem relabel; assembly reconstructed |
-| §6 systemd scopes | **[inferred]** | anchor: platform-contract.md:10 (`MemoryMax=`); invocation reconstructed |
+| §6 systemd scopes | **[inferred]** for the design; **Grounded** for the 2026-08-23 host-vs-in-container validation | anchor: platform-contract.md:10 (`MemoryMax=`); invocation reconstructed; validation checked against packaging/Containerfile + packaging/quadlet/exocomp.container |
 | §7 cache/lifecycle | **Grounded** | venv.go, manifest.go:137-143, Containerfile, sched, restic.go:135, tofu.go:262-287 |
 | §8 recommendation | **Grounded** (synthesis) | follows from §1–§7 |
 | §9 phasing | **[inferred]** — integration lane stubbed | reconstructed from code seams |
