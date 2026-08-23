@@ -794,6 +794,13 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		PrivateDirRoot:  dirs.private,
 		PluginCacheDir:  dirs.pluginCache,
 		RunSecrets:      runSecrets,
+		// A successful apply captures the workspace's outputs wherever it runs,
+		// not only under the daemon: the non-sensitive ones into the standing
+		// inventory file, each sensitive one sealed and bound as named env for
+		// the dependent play. Both are apply-only inside the driver, so a plan
+		// through this same path captures nothing.
+		InventoryOut: handoffInventoryPath(dir, ws.Name),
+		OutputSealer: executor.EnvelopeOutputSealer{Env: env, Store: st, Workspace: ws.Name},
 	})
 	q := queue.New(st, driver, queue.Options{
 		Workers:      1,
@@ -811,7 +818,21 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 	if err := drainAndTail(ctx, q, st, queued.ID, out); err != nil {
 		return store.Job{}, err
 	}
-	return st.GetJob(ctx, queued.ID)
+	final, err := st.GetJob(ctx, queued.ID)
+	if err != nil {
+		return store.Job{}, err
+	}
+	// Record what the capture wrote and refresh the standing `tf:<workspace>`
+	// inventory, the way the daemon does after its own applies. A failure here
+	// is loud but never fails the run: the apply already changed infrastructure
+	// (exit-code doctrine), and a missing registration surfaces when a play
+	// cannot resolve the inventory.
+	if final.State == store.StateSucceeded && tofuOp(spec.Argv) == "apply" {
+		if rerr := recordInventoryArtifact(ctx, st, final.ID, ws.Name, dir); rerr != nil {
+			_, _ = fmt.Fprintf(warn, "record inventory artifact: %v\n", rerr)
+		}
+	}
+	return final, nil
 }
 
 // stateBackend resolves the address tofu talks to, returning a server only
