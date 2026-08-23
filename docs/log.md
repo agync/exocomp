@@ -701,3 +701,30 @@ mapping site: a local error resolves through `wire.ExitFor`, a remote
 per-command `os.Exit(code)` calls for a run's own outcome are untouched; they
 bypass `Execute()`'s returned error by construction and were never in scope.
 [operations/machine-output.md](operations/machine-output.md).
+
+## 2026-08-23 — Blue team on the agent-facing surface
+
+The second adversarial pass went at the three programmatic faces — the write
+`/api/v1`, `exocomp login` + `--remote`, and the stdio MCP server — and every
+exploited finding is closed, each one reproduced as a failing test first
+([security/threat-model.md](security/threat-model.md), AI-1..AI-13).
+
+Four operator-visible behaviours changed. Approvals over `/api/v1` now take an
+`approve`-scope token: the scope that enqueues a gated apply may not settle it,
+and no principal may decide an approval for a job its own token asked for. On a
+workspace with enabled plan policies, plan-then-apply-by-id is the only path — a
+fresh apply has no plan for a policy to read, and a plan carrying no recorded
+verdict is unconsumable rather than unpoliced, which also closes the window
+between the seal and the verdict. Accepting a *changed* certificate fingerprint
+takes the new login-only `--replace-pin`; `--assume-yes` pins a first fingerprint
+and never replaces one, because it is the flag every script already passes. And
+the MCP stdio face no longer offers `approve_job`/`reject_job` at all: a
+transport that carries no credential must not carry the release for the gate its
+own `workspace_apply` raises.
+
+The rest is boundary hardening: `/api/v1` writes require a bearer (no ambient
+cookie), idempotency keys are namespaced per token and route, a saved plan is
+bound to the workspace that produced it, a `--source` playbook is confined to its
+checkout, the health probe is cached instead of forking per request, failed
+bearer auth backs off with a constant-cost failure path, an open SSE stream ends
+when its token is revoked, and MCP writes are attributed and answerable.
