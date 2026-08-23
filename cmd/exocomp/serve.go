@@ -696,18 +696,20 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 	return kindRouter{
 		tofu:    workspaceDriver{store: st, env: env, server: srv, dirs: dirs},
 		ansible: ansibleJobDriver{store: st, env: env, dataDir: dir},
+		cli:     cliJobDriver{store: st, env: env, dataDir: dir},
 		hook:    hookJobDriver{store: st, env: env, dataDir: dir},
 		verify:  verifyJobDriver{},
 		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
 	}, nil
 }
 
-// kindRouter sends tofu and ansible jobs to the drivers that rebuild their
-// per-job secret material, hook and gate steps to the run-lifecycle drivers,
-// and everything else to the scheduler's shell/backup routing.
+// kindRouter sends tofu, ansible, and cli jobs to the drivers that rebuild
+// their per-job secret material, hook and gate steps to the run-lifecycle
+// drivers, and everything else to the scheduler's shell/backup routing.
 type kindRouter struct {
 	tofu    executor.Driver
 	ansible executor.Driver
+	cli     executor.Driver
 	hook    executor.Driver
 	verify  executor.Driver
 	rest    executor.Driver
@@ -720,6 +722,8 @@ func (r kindRouter) Run(ctx context.Context, spec executor.Spec, sink executor.E
 		return r.tofu.Run(ctx, spec, sink)
 	case executor.KindAnsible:
 		return r.ansible.Run(ctx, spec, sink)
+	case executor.KindCLI:
+		return r.cli.Run(ctx, spec, sink)
 	case hooks.JobKind:
 		return r.hook.Run(ctx, spec, sink)
 	case verify.JobKind:
@@ -727,6 +731,56 @@ func (r kindRouter) Run(ctx context.Context, spec executor.Spec, sink executor.E
 	default:
 		return r.rest.Run(ctx, spec, sink)
 	}
+}
+
+// cliJobDriver runs a queued governed-cli job the daemon claimed. The
+// allow-list entry is deliberately absent from the job row beyond its
+// name — spec.Argv[0] is the registered tool, the CLIArgv convention — so the
+// driver is rebuilt per job from the entry the store holds right now, the
+// same shape workspaceDriver and ansibleJobDriver rebuild their own options
+// in. An entry deregistered between enqueue and claim is refused here rather
+// than run: this never falls back to a raw binary.
+type cliJobDriver struct {
+	store   *store.Store
+	env     *secrets.Envelope
+	dataDir string
+}
+
+// Run implements executor.Driver.
+func (d cliJobDriver) Run(ctx context.Context, spec executor.Spec, sink executor.EventSink) (executor.Result, error) {
+	job, err := d.store.GetJob(ctx, spec.JobID)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	if len(spec.Argv) == 0 {
+		return executor.Result{}, fmt.Errorf("serve: job %d: cli job carries no argv", job.ID)
+	}
+
+	tool, err := d.store.CLIToolByName(ctx, spec.Argv[0])
+	if errors.Is(err, store.ErrNotFound) {
+		return executor.Result{}, fmt.Errorf(
+			"serve: job %d: cli tool %q is no longer on the allow-list; refusing to run",
+			job.ID, spec.Argv[0])
+	}
+	if err != nil {
+		return executor.Result{}, err
+	}
+
+	runSecrets, secretPlain, err := resolveRunSecrets(ctx, d.store, d.env, job.Args.RunSecretBinding, "")
+	if err != nil {
+		return executor.Result{}, err
+	}
+
+	drv := cliTierDriver(d.dataDir, executor.CLIOptions{
+		Tool:       tool.Name,
+		Binary:     tool.Binary,
+		RunSecrets: runSecrets,
+		AllowHTTPS: tool.Egress == store.CLIEgressHTTPS,
+	})
+	if len(secretPlain) == 0 {
+		return drv.Run(ctx, spec, sink)
+	}
+	return drv.Run(ctx, spec, runSink{redactor: secrets.NewRedactor(secretPlain), next: sink})
 }
 
 // workspaceDriver runs a queued tofu job. What such a job needs beyond its
