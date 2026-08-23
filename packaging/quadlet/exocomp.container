@@ -13,8 +13,29 @@ Volume=exocomp.volume:/var/lib/exocomp
 # disk. noswap keeps it out of swap too; without it the RAM-only guarantee does
 # not hold. The daemon refuses file staging unless this mount is present, so it
 # is load-bearing, not an optimisation.
+#
+# CAVEAT (validated 2026-08-24, podman 5.8.1 lima + 5.8.4 host): the `noswap`
+# option is refused on ROOTLESS tmpfs mounts — podman errors "the 'noswap'
+# option is only allowed with rootful tmpfs mounts". With the rootless
+# UserNS=keep-id posture below, this line prevents the container from starting.
+# A rootless deployment must drop `,noswap` (the DEK mlock and at-rest
+# encryption remain), or run the unit rootful. Held for the owner; not silently
+# changed here so the RAM-only intent stays visible.
 Tmpfs=/var/lib/exocomp/run:size=16m,mode=0700,noswap
 UserNS=keep-id
+# Per-job resource caps (docs/design/byo-runner.md §6) are OPT-IN and OFF in this
+# default deployment: it stays rootless and capless, and a job that requests caps
+# is REFUSED rather than run uncapped (fail-closed). Enforcing caps needs a
+# writable cgroup v2 subtree the daemon can create child cgroups in, which this
+# rootless keep-id container does not get — validated 2026-08-24: a keep-id
+# non-root process is denied writes to /sys/fs/cgroup even with --systemd=always.
+# To turn caps on, use the owner-approved root-in-container model: remove the
+# `UserNS=keep-id` line above and add
+#   PodmanArgs=--systemd=always
+# so podman mounts /sys/fs/cgroup read-write and PID 1 runs as uid 0 inside the
+# rootless user namespace (still no host root). The daemon then vacates its own
+# cgroup and writes memory.max / memory.swap.max / cpu.max per job. `exocomp
+# doctor` reports whether this is in effect under "per-job caps".
 # The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
 Environment=XDG_DATA_HOME=/var/lib
 # host.key at rest (finding E1): systemd decrypts the encrypted credential into
