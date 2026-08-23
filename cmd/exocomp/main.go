@@ -35,6 +35,7 @@ func newRootCmd() *cobra.Command {
 	addOutputFlag(root)
 	addIdempotencyFlag(root)
 	addConfirmFlags(root)
+	addRemoteFlags(root)
 
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
