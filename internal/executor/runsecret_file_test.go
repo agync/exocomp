@@ -131,6 +131,38 @@ func TestStageRunSecretFilesRefusesNonTmpfs(t *testing.T) {
 	}
 }
 
+// TestTofuFileStagingRefusesNonTmpfs proves the driver wires the fail-closed
+// assertion: with RunSecretFiles set and the private root on durable disk, Run
+// returns a tmpfs error, stages nothing, and never launches the tool.
+func TestTofuFileStagingRefusesNonTmpfs(t *testing.T) {
+	t.Parallel()
+	privateRoot := durableDir(t)
+	bin, logPath := envDumper(t, executor.TofuBinary)
+
+	_, err := executor.NewTofu(executor.TofuOptions{
+		Binary:         bin,
+		Workspace:      "edge",
+		BackendURL:     "http://127.0.0.1:41111/api/v1/tf/state/edge",
+		BackendToken:   "tok",
+		PrivateDirRoot: privateRoot,
+		RunSecrets:     executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel},
+		RunSecretFiles: []string{"KUBECONFIG"},
+	}).Run(context.Background(), executor.Spec{
+		JobID: 1, Kind: executor.KindTofu, Argv: executor.TofuArgv("plan"), Dir: t.TempDir(),
+	}, &collector{})
+	if err == nil {
+		t.Fatal("file staging onto a non-tmpfs private root must be refused")
+	}
+	if !strings.Contains(err.Error(), "tmpfs") {
+		t.Errorf("refusal error does not name tmpfs: %v", err)
+	}
+	// The tool never ran: the refusal is before tofu init, so its env log — which
+	// the script only creates on execution — does not exist.
+	if _, statErr := os.Stat(logPath); statErr == nil {
+		t.Error("the tool ran despite the staging refusal")
+	}
+}
+
 // fileStagerBin writes a fake tofu that records its whole environment, its args,
 // and — while the file still exists — the mode and body of $KUBECONFIG, so a
 // test can prove the child saw a path whose file held the sentinel at 0600.

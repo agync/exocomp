@@ -91,16 +91,51 @@ func TestBootstrapComposesCaptureBinding(t *testing.T) {
 // not NAME=FILE and a FILE that could escape the capture dir.
 func TestParseCapturesRejectsBadSpecs(t *testing.T) {
 	for _, bad := range []string{"KUBECONFIG", "=kubeconfig", "KUBECONFIG=", "K=/etc/passwd", "K=../escape"} {
-		if _, err := parseCaptures([]string{bad}); err == nil {
+		if _, err := parseCaptures([]string{bad}, false); err == nil {
 			t.Errorf("parseCaptures(%q) accepted a bad spec", bad)
 		}
 	}
-	got, err := parseCaptures([]string{"KUBECONFIG=kubeconfig", "TOKEN=sub/dir/token"})
+	got, err := parseCaptures([]string{"KUBECONFIG=kubeconfig", "TOKEN=sub/dir/token"}, false)
 	if err != nil {
 		t.Fatalf("parseCaptures rejected valid specs: %v", err)
 	}
 	if len(got) != 2 || got[0].Name != "KUBECONFIG" || got[1].File != "sub/dir/token" {
 		t.Errorf("parseCaptures returned %v", got)
+	}
+	if got[0].AsFile {
+		t.Errorf("--capture marked a capture as file delivery")
+	}
+	// --capture-file parses the same NAME=FILE, marking file delivery.
+	file, err := parseCaptures([]string{"KUBECONFIG=kubeconfig"}, true)
+	if err != nil {
+		t.Fatalf("parseCaptures(asFile) rejected a valid spec: %v", err)
+	}
+	if len(file) != 1 || !file[0].AsFile {
+		t.Errorf("--capture-file did not mark file delivery: %v", file)
+	}
+}
+
+// TestBootstrapComposesFileStaging proves --capture-file threads the env name to
+// the apply as the reserved stage-file var, and an env-only --capture leaves it
+// unset. The value never appears: only the env NAME to stage does.
+func TestBootstrapComposesFileStaging(t *testing.T) {
+	const wf = "bootstrap:wsp:7"
+
+	fileSteps := composeBootstrapSteps(wf, "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
+		bootstrapSpec{captures: []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig", AsFile: true}}})
+	if envs := bootstrapStagedFileEnvs(fileSteps[1].Spec.ExtraVars); len(envs) != 1 || envs[0] != "KUBECONFIG" {
+		t.Errorf("apply stage-file envs %v, want [KUBECONFIG]", envs)
+	}
+
+	// An env-only capture leaves the apply with no stage-file var, so every bound
+	// value delivers as env (the Phase-2 shape).
+	envSteps := composeBootstrapSteps(wf, "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
+		bootstrapSpec{captures: []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig"}}})
+	if _, ok := envSteps[1].Spec.ExtraVars[bootstrapStageFilesVar]; ok {
+		t.Errorf("an env-only --capture set the stage-file var: %v", envSteps[1].Spec.ExtraVars)
+	}
+	if envs := bootstrapStagedFileEnvs(envSteps[1].Spec.ExtraVars); len(envs) != 0 {
+		t.Errorf("env-only capture staged files %v, want none", envs)
 	}
 }
 

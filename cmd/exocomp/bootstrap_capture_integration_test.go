@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -165,6 +167,138 @@ func TestBootstrapCaptureHandoffEnv(t *testing.T) {
 	}
 	if got := readFile(t, lenLog); strings.Contains(got, "ENVNAME=KUBECONFIG") {
 		t.Errorf("an unrelated run's apply carried a KUBECONFIG env:\n%s", got)
+	}
+
+	d.signal(t, syscall.SIGTERM)
+	d.waitExit(t, 60*time.Second)
+	assertNothingLeftRunning(t, d)
+}
+
+// shmDataDir returns a data dir on a tmpfs mount, or skips: the file-staging
+// path (Phase 3) refuses to run unless the per-job run dir is tmpfs, so an e2e
+// that exercises it needs the daemon's data dir — and thus its run/ subtree — on
+// RAM-only storage. /dev/shm is tmpfs on a normal Linux host.
+func shmDataDir(t *testing.T) string {
+	t.Helper()
+	const base = "/dev/shm"
+	if ok, err := executor.RunDirTmpfs(base); err != nil || !ok {
+		t.Skipf("no tmpfs at %s (tmpfs=%v, err=%v)", base, ok, err)
+	}
+	dir, err := os.MkdirTemp(base, "exocomp-p3-data-")
+	if err != nil {
+		t.Fatalf("mkdir tmpfs data dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
+
+// fakeApplyRecordingFile is a stand-in tofu that, on apply, records the KUBECONFIG
+// PATH it received, that file's mode and byte length, and whether its contents
+// equal the sentinel — a 1/0, never the value. `output -json` is an empty object.
+func fakeApplyRecordingFile(t *testing.T, kcfgLog string) string {
+	t.Helper()
+	body := fmt.Sprintf(`case "$1" in
+  output) printf '{}' ;;
+  apply)
+    printf 'KCFG_PATH=%%s\n' "$KUBECONFIG" >> %q
+    if [ -f "$KUBECONFIG" ]; then
+      printf 'KCFG_MODE=%%s\n' "$(stat -c %%a "$KUBECONFIG")" >> %q
+      printf 'KCFG_LEN=%%s\n' "$(wc -c < "$KUBECONFIG" | tr -d ' ')" >> %q
+      if [ "$(cat "$KUBECONFIG")" = %q ]; then printf 'KCFG_MATCH=1\n' >> %q; else printf 'KCFG_MATCH=0\n' >> %q; fi
+    else
+      printf 'KCFG_MISSING=1\n' >> %q
+    fi
+    ;;
+esac
+exit 0`, kcfgLog, kcfgLog, kcfgLog, kubeCaptureSentinel, kcfgLog, kcfgLog, kcfgLog)
+	return fakeTool(t, executor.TofuBinary, body)
+}
+
+// TestBootstrapCaptureHandoffFile is the Phase-3 gate: a bootstrap chain whose
+// play fetches a sentinel kubeconfig, declared with --capture-file, delivers it
+// to the apply as KUBECONFIG=<path> — a 0600 file on the tmpfs run/ tree whose
+// contents are the sentinel — with the value absent from every argv and event,
+// and the file gone once the job ends.
+func TestBootstrapCaptureHandoffFile(t *testing.T) {
+	dataRoot := shmDataDir(t)
+	useDataDir(t, dataRoot)
+	bin := buildExocomp(t)
+	dataDir := filepath.Join(dataRoot, "exocomp")
+
+	kcfgLog := t.TempDir() + "/apply-kcfg.log"
+	ansibleLog := fakeCapturePlay(t, "kubeconfig")
+	tofuLog := fakeApplyRecordingFile(t, kcfgLog)
+
+	runCLI(t, bin, "init")
+	module := t.TempDir()
+	writeFile(t, module+"/main.tf", "# empty root module\n")
+	runCLI(t, bin, "workspace", "add", "wsp", "--dir", module)
+	playbook := module + "/site.yml"
+	writeFile(t, playbook, "- hosts: all\n")
+
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
+
+	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp",
+		"--capture-file", "KUBECONFIG=kubeconfig", "--wait")
+	if code != 0 || !strings.Contains(out, "succeeded") {
+		t.Fatalf("bootstrap run --capture-file exited %d, want success:\n%s\n%s", code, out, d.dump())
+	}
+	wf := parseBootstrapWorkflowID(t, out)
+
+	kcfg := readFile(t, kcfgLog)
+	kcfgPath := ""
+	for _, l := range strings.Split(kcfg, "\n") {
+		if v, ok := strings.CutPrefix(l, "KCFG_PATH="); ok {
+			kcfgPath = v
+		}
+	}
+	if kcfgPath == "" {
+		t.Fatalf("apply received no KUBECONFIG path:\n%s\n%s", kcfg, d.dump())
+	}
+	// The path is a file in the run's tmpfs private tree, not a value.
+	if !strings.HasPrefix(kcfgPath, filepath.Join(dataDir, "run")) {
+		t.Errorf("KUBECONFIG path %q is not under the tmpfs run dir %q", kcfgPath, filepath.Join(dataDir, "run"))
+	}
+	if filepath.Base(kcfgPath) != "kubeconfig" {
+		t.Errorf("staged file basename = %q, want kubeconfig", filepath.Base(kcfgPath))
+	}
+	// The file the apply read was 0600, the sentinel's length, and its contents.
+	if !strings.Contains(kcfg, "KCFG_MODE=600") {
+		t.Errorf("staged file was not 0600:\n%s", kcfg)
+	}
+	if !strings.Contains(kcfg, "KCFG_LEN="+strconv.Itoa(len(kubeCaptureSentinel))) {
+		t.Errorf("staged file length != sentinel length:\n%s", kcfg)
+	}
+	if !strings.Contains(kcfg, "KCFG_MATCH=1") {
+		t.Errorf("staged file contents did not equal the sentinel:\n%s", kcfg)
+	}
+
+	// The sealed row still round-trips (the seal is identical to env delivery).
+	assertSealedEquals(t, executor.AnsibleOutputSecretName(wf, "KUBECONFIG"), kubeCaptureSentinel)
+
+	// The value is in neither step's argv nor any of their job events.
+	steps := workflowSteps(t, wf)
+	for _, s := range steps {
+		if s.Status != store.StepSucceeded {
+			t.Fatalf("step %d (%s) is %s, want succeeded\n%s", s.StepNo, s.Kind, s.Status, d.dump())
+		}
+		if s.JobID != nil {
+			if ev := jobEventText(t, *s.JobID); strings.Contains(ev, kubeCaptureSentinel) {
+				t.Errorf("step %d (%s) leaked the sentinel into its events:\n%s", s.StepNo, s.Kind, ev)
+			}
+		}
+	}
+	if got := readFile(t, ansibleLog); strings.Contains(got, kubeCaptureSentinel) {
+		t.Errorf("the play's argv carried the sentinel:\n%s", got)
+	}
+	if got := readFile(t, tofuLog); strings.Contains(got, kubeCaptureSentinel) {
+		t.Errorf("the apply's argv carried the sentinel:\n%s", got)
+	}
+
+	// The job is over: the private dir's RemoveAll ran, so the staged file is gone.
+	if _, err := os.Stat(kcfgPath); !os.IsNotExist(err) {
+		t.Errorf("staged file survived the job: stat err = %v", err)
 	}
 
 	d.signal(t, syscall.SIGTERM)

@@ -48,6 +48,16 @@ const bootstrapCaptureVar = "exocomp_bootstrap_captures"
 // the queue's internal step-key format.
 const bootstrapWorkflowVar = "exocomp_bootstrap_workflow"
 
+// bootstrapStageFilesVar carries the env names a --capture-file declared onto
+// the TOFU step's reserved extra-vars, so the daemon's tofu driver stages those
+// run-secrets to files rather than injecting their values. It rides the tofu
+// step's ExtraVars for the same reason the play's captures ride the play step's
+// (store.JobArgs has no field for it); the tofu path never reads ExtraVars for
+// anything else, so the reserved key is inert there beyond this. The value is
+// JSON: a []string of env names. A play re-armed after a mid-run crash loses it
+// with the rest of ExtraVars — the same JobArgs-field follow-on Phase 2 noted.
+const bootstrapStageFilesVar = "exocomp_bootstrap_stage_files"
+
 func newBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
@@ -67,14 +77,15 @@ func newBootstrapCmd() *cobra.Command {
 
 func newBootstrapRunCmd() *cobra.Command {
 	var (
-		inventory       string
-		vaultProject    string
-		runSecrets      string
-		captureSpecs    []string
-		sourceName      string
-		requireApproval bool
-		timeout         time.Duration
-		wait            bool
+		inventory        string
+		vaultProject     string
+		runSecrets       string
+		captureSpecs     []string
+		captureFileSpecs []string
+		sourceName       string
+		requireApproval  bool
+		timeout          time.Duration
+		wait             bool
 	)
 	run := &cobra.Command{
 		Use:   "run <playbook> <workspace>",
@@ -103,17 +114,24 @@ func newBootstrapRunCmd() *cobra.Command {
 					return err
 				}
 			}
-			captures, err := parseCaptures(captureSpecs)
+			captures, err := parseCaptures(captureSpecs, false)
 			if err != nil {
 				return err
 			}
-			// The apply carries one run-secret binding. With --capture that slot is
+			// A --capture-file is the same capture with a file delivery: the sealed
+			// value reaches the apply as a KUBECONFIG path rather than an env value.
+			fileCaptures, err := parseCaptures(captureFileSpecs, true)
+			if err != nil {
+				return err
+			}
+			captures = append(captures, fileCaptures...)
+			// The apply carries one run-secret binding. With any capture that slot is
 			// the chain's own ab:<workflow>; a pre-existing --run-secrets would have
 			// to share it, which one field cannot, so the two are refused together
 			// rather than one silently winning.
 			if len(captures) > 0 && runSecrets != "" {
-				return errors.New("bootstrap: --capture and --run-secrets are mutually " +
-					"exclusive; the apply's binding is the captured ab:<workflow>")
+				return errors.New("bootstrap: --capture/--capture-file and --run-secrets " +
+					"are mutually exclusive; the apply's binding is the captured ab:<workflow>")
 			}
 			return runBootstrap(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), mode, bootstrapSpec{
 				playbook:     args[0],
@@ -137,6 +155,9 @@ func newBootstrapRunCmd() *cobra.Command {
 	run.Flags().StringArrayVar(&captureSpecs, "capture", nil,
 		"seal a play-fetched file as env for the apply: NAME=FILE, repeatable "+
 			"(NAME becomes the env var, FILE is fetched under the run's capture dir)")
+	run.Flags().StringArrayVar(&captureFileSpecs, "capture-file", nil,
+		"like --capture but deliver the sealed value as a FILE: NAME=FILE, repeatable "+
+			"(NAME=<tmpfs path> for a tool that wants a KUBECONFIG file; needs the run dir tmpfs)")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
 	run.Flags().BoolVar(&requireApproval, "require-approval", false,
@@ -178,22 +199,28 @@ type bootstrapSpec struct {
 	wait         bool
 }
 
-// parseCaptures turns each --capture NAME=FILE into a declared capture target.
-// NAME is the output name the sealed row and its env binding derive from; FILE is
-// the path, relative to the run's capture dir, the play fetched the value into. A
-// FILE that is absolute or climbs out of the capture dir is refused: a declared
-// target must stay inside the private dir the driver reads back in-process.
-func parseCaptures(specs []string) ([]executor.AnsibleCapture, error) {
+// parseCaptures turns each NAME=FILE into a declared capture target. NAME is the
+// output name the sealed row and its env binding derive from; FILE is the path,
+// relative to the run's capture dir, the play fetched the value into. A FILE that
+// is absolute or climbs out of the capture dir is refused: a declared target must
+// stay inside the private dir the driver reads back in-process. asFile marks the
+// consumer delivery — a file path rather than an env value — and is the only
+// difference between --capture and --capture-file.
+func parseCaptures(specs []string, asFile bool) ([]executor.AnsibleCapture, error) {
+	flag := "--capture"
+	if asFile {
+		flag = "--capture-file"
+	}
 	var out []executor.AnsibleCapture
 	for _, s := range specs {
 		name, file, ok := strings.Cut(s, "=")
 		if !ok || name == "" || file == "" {
-			return nil, fmt.Errorf("bootstrap: --capture %q: want NAME=FILE", s)
+			return nil, fmt.Errorf("bootstrap: %s %q: want NAME=FILE", flag, s)
 		}
 		if filepath.IsAbs(file) || strings.HasPrefix(file, "..") || strings.Contains(file, "/../") {
-			return nil, fmt.Errorf("bootstrap: --capture %q: FILE must be a relative path inside the capture dir", s)
+			return nil, fmt.Errorf("bootstrap: %s %q: FILE must be a relative path inside the capture dir", flag, s)
 		}
-		out = append(out, executor.AnsibleCapture{Name: name, File: file})
+		out = append(out, executor.AnsibleCapture{Name: name, File: file, AsFile: asFile})
 	}
 	return out, nil
 }
@@ -252,11 +279,14 @@ type bootstrapWorkflowView struct {
 // operator to copy. The two credential sources are mutually exclusive (one
 // binding slot), enforced at the CLI.
 func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, workspace string, bs bootstrapSpec) []queue.Step {
-	var playExtraVars map[string]string
+	var playExtraVars, tofuExtraVars map[string]string
 	tofuBinding := bs.runSecrets
 	if len(bs.captures) > 0 {
 		playExtraVars = bootstrapCaptureVars(workflowID, bs.captures)
 		tofuBinding = executor.AnsibleOutputBinding(workflowID)
+		// A --capture-file capture tells the apply's tofu driver to stage that
+		// bound value to a tmpfs file and hand it over as a path, not a value.
+		tofuExtraVars = bootstrapStageFileVars(bs.captures)
 	}
 	return []queue.Step{
 		{
@@ -281,11 +311,55 @@ func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, work
 				Argv:             executor.TofuArgv("apply", "-auto-approve"),
 				Dir:              tofuDir,
 				RunSecretBinding: tofuBinding,
+				ExtraVars:        tofuExtraVars,
 				ConcurrencyKey:   "tofu:" + workspace,
 				Timeout:          bs.timeout,
 			},
 		},
 	}
+}
+
+// bootstrapStageFileVars encodes the env names of the file-delivery captures as
+// the tofu step's reserved extra-var, so the daemon stages exactly those bound
+// run-secrets to files. It returns nil when no capture asked for file delivery,
+// leaving the tofu step's ExtraVars unset (every capture then delivers as env,
+// the Phase-2 shape). An env name a capture folds to a non-POSIX identifier is
+// dropped here for the same reason the sealer refuses to bind it.
+func bootstrapStageFileVars(captures []executor.AnsibleCapture) map[string]string {
+	var envs []string
+	for _, c := range captures {
+		if !c.AsFile {
+			continue
+		}
+		if env, ok := executor.AnsibleOutputEnvName(c.Name); ok {
+			envs = append(envs, env)
+		}
+	}
+	if len(envs) == 0 {
+		return nil
+	}
+	blob, err := json.Marshal(envs)
+	if err != nil {
+		// Unreachable: envs is a slice of strings.
+		panic("bootstrap: encode stage-file envs: " + err.Error())
+	}
+	return map[string]string{bootstrapStageFilesVar: string(blob)}
+}
+
+// bootstrapStagedFileEnvs reads the tofu step's reserved stage-file env list off
+// its job extra-vars — the channel composeBootstrapSteps smuggled it through —
+// for the daemon to set as TofuOptions.RunSecretFiles. A job with no reserved key
+// (every non-bootstrap apply) returns nil. A corrupted value drops to nil rather
+// than failing the apply: the composer wrote this JSON, so a decode failure is a
+// damaged row, and the apply is better off env-only than refused.
+func bootstrapStagedFileEnvs(extraVars map[string]string) []string {
+	raw, ok := extraVars[bootstrapStageFilesVar]
+	if !ok {
+		return nil
+	}
+	var envs []string
+	_ = json.Unmarshal([]byte(raw), &envs)
+	return envs
 }
 
 // bootstrapCaptureVars encodes the play step's capture declarations and workflow
