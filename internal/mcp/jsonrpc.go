@@ -64,10 +64,28 @@ func (e *rpcError) Error() string { return e.Message }
 // nullID is the id of a response to a message we could not parse an id from.
 var nullID = json.RawMessage("null")
 
+// HandleMessage dispatches ONE framed JSON-RPC message for a caller and returns
+// the response bytes. It is the seam a non-stdio transport mounts on: the HTTP
+// face frames messages its own way but runs this exact dispatch, so there is one
+// catalog and one set of handlers behind both faces. write is false for a
+// notification, which by JSON-RPC gets no response at all.
+func (s *Server) HandleMessage(ctx context.Context, c Caller, msg []byte) (json.RawMessage, bool) {
+	resp, write := s.handleLine(ctx, c, msg)
+	if !write {
+		return nil, false
+	}
+	var buf bytes.Buffer
+	if err := writeMessage(&buf, resp); err != nil {
+		fallback, _ := json.Marshal(errorResponse(nullID, codeInternalError, "marshal response"))
+		return fallback, true
+	}
+	return bytes.TrimRight(buf.Bytes(), "\n"), true
+}
+
 // serve runs the read-dispatch-write loop over a line-delimited transport until
 // the reader is exhausted or ctx is cancelled. It is single-goroutine: every
 // write happens on this goroutine, so no output interleaving is possible.
-func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer) error {
+func (s *Server) serve(ctx context.Context, c Caller, in io.Reader, out io.Writer) error {
 	br := bufio.NewReaderSize(in, 64<<10)
 	bw := bufio.NewWriter(out)
 	for {
@@ -85,7 +103,7 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer) error {
 			continue
 		}
 
-		resp, write := s.handleLine(ctx, line)
+		resp, write := s.handleLine(ctx, c, line)
 		if write {
 			if werr := writeMessage(bw, resp); werr != nil {
 				return werr
@@ -104,7 +122,7 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer) error {
 // response to write and whether to write at all (a notification, or a message
 // whose id we cannot recover, produces no response — except a parse error,
 // which JSON-RPC answers with a null-id error).
-func (s *Server) handleLine(ctx context.Context, line []byte) (rpcResponse, bool) {
+func (s *Server) handleLine(ctx context.Context, c Caller, line []byte) (rpcResponse, bool) {
 	var req rpcRequest
 	if err := json.Unmarshal(line, &req); err != nil {
 		return errorResponse(nullID, codeParseError, "parse error"), true
@@ -126,11 +144,11 @@ func (s *Server) handleLine(ctx context.Context, line []byte) (rpcResponse, bool
 				"method "+req.Method+" must carry an id: a side-effecting call is not a notification"), true
 		}
 		// Any other notification gets no reply: there is no id to answer.
-		_, _ = s.dispatch(ctx, req.Method, req.Params)
+		_, _ = s.dispatch(ctx, c, req.Method, req.Params)
 		return rpcResponse{}, false
 	}
 
-	result, rerr := s.dispatch(ctx, req.Method, req.Params)
+	result, rerr := s.dispatch(ctx, c, req.Method, req.Params)
 	if rerr != nil {
 		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: rerr}, true
 	}

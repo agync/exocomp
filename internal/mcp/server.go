@@ -22,9 +22,12 @@ const protocolVersion = "2024-11-05"
 // serverName is the MCP server identity a harness sees.
 const serverName = "exocomp"
 
-// Server is the stdio MCP adapter. It holds the same open store the CLI's local
+// Server is the MCP adapter. It holds the same open store the CLI's local
 // commands hold and the data dir under it; the service verbs and the pure-enqueue
 // Enqueuer are built per call over these, exactly as the HTTP write API does.
+// It is transport-agnostic: stdio drives it through Serve, a mounted HTTP
+// transport through HandleMessage, and the two differ only in the Caller they
+// hand to the one dispatch.
 type Server struct {
 	store   *store.Store
 	dataDir string
@@ -71,9 +74,21 @@ func (s *Server) SetLogger(l *slog.Logger) {
 }
 
 // Serve runs the MCP protocol over a stdio pair until in is exhausted or ctx is
-// cancelled. It is the one entry point `exocomp mcp` calls.
+// cancelled. It is the one entry point `exocomp mcp` calls, and it runs as the
+// LocalCaller: the local operator's authority, with no approve capability.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
-	return s.serve(ctx, in, out)
+	return s.serve(ctx, LocalCaller(), in, out)
+}
+
+// UseDeriver supplies an already-open approval-capability deriver instead of
+// opening the secrets envelope per gated apply. A transport mounted inside a
+// process that already holds the envelope (the web listener) passes its own, so
+// the daemon does not unwrap the keyring a second time; stdio opens its own.
+func (s *Server) UseDeriver(d reactive.Deriver) {
+	if d == nil {
+		return
+	}
+	s.openEnvelope = func() (reactive.Deriver, func(), error) { return d, func() {}, nil }
 }
 
 // service builds the operational core over the server's store, data dir, and
@@ -82,19 +97,31 @@ func (s *Server) service() *service.Service {
 	return service.New(s.store, s.dataDir, s.now)
 }
 
-// dispatch routes one JSON-RPC method to its handler. A protocol-level failure
-// (unknown method, malformed params) returns an *rpcError; a tool/resource
-// failure is carried inside the result as a wire error envelope, not here.
-func (s *Server) dispatch(ctx context.Context, method string, params json.RawMessage) (any, *rpcError) {
+// dispatch routes one JSON-RPC method to its handler for one caller. A
+// protocol-level failure (unknown method, malformed params) returns an
+// *rpcError; a tool/resource failure is carried inside the result as a wire
+// error envelope, not here.
+//
+// Everything past the handshake needs at least the read capability, checked on
+// every message rather than once per connection: the transports are stateless
+// and re-resolve the credential per request, so a revoked or downgraded token
+// stops working on its next call instead of at the end of its session (the same
+// property the SSE tail gained in finding AI-10).
+func (s *Server) dispatch(ctx context.Context, c Caller, method string, params json.RawMessage) (any, *rpcError) {
 	switch method {
 	case "initialize":
 		return s.handleInitialize(), nil
 	case "ping":
 		return struct{}{}, nil
+	}
+	if !c.allows(capRead) {
+		return nil, &rpcError{Code: codeInvalidRequest, Message: "this caller's scope may not read"}
+	}
+	switch method {
 	case "tools/list":
-		return s.handleToolsList(), nil
+		return s.handleToolsList(c), nil
 	case "tools/call":
-		return s.handleToolsCall(ctx, params)
+		return s.handleToolsCall(ctx, c, params)
 	case "resources/list":
 		return s.handleResourcesList(), nil
 	case "resources/templates/list":

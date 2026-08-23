@@ -103,12 +103,7 @@ func (s *Server) handleResourcesRead(ctx context.Context, params json.RawMessage
 		return nil, &rpcError{Code: codeInvalidParams, Message: "unknown resource: " + p.URI}
 	}
 	if err != nil {
-		var e wire.Error
-		if ae, isArg := err.(argError); isArg {
-			e = wire.NewError(codeInvalidArgument, ae.Error())
-		} else {
-			e = wire.ErrorFor(err)
-		}
+		e := wireError(err)
 		return nil, &rpcError{Code: codeInternalError, Message: e.Code + ": " + e.Message}
 	}
 	b, merr := wire.MarshalSuccess(kind, data)

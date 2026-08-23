@@ -50,13 +50,6 @@ type approvalPendingView struct {
 var errPlanDecryptUnsupported = errors.New(
 	"mcp: applying a saved plan without a policy verdict needs the plan-decrypt helper (not yet shared)")
 
-// mcpActor attributes every write this face enqueues. The HTTP API records the
-// token behind a write; stdio has no token, but recording nothing made an
-// agent's write indistinguishable in the ledger from the operator's own CLI run
-// (finding AI-13). The face marker is what an audit read needs to tell them
-// apart; when stdio grows a token, its name replaces "stdio" here.
-var mcpActor = service.Actor{Kind: service.ActorKindLocal, Name: "stdio", Face: "mcp"}
-
 // planWriteArgs is the shared argument shape for plan and apply. All optional; a
 // bare {name} is the common case.
 type planWriteArgs struct {
@@ -69,21 +62,20 @@ type planWriteArgs struct {
 }
 
 // Tool labels for the idempotency namespace, and the namespacing itself. A
-// caller-chosen key is scoped to this face and the tool that used it, so an
-// agent's guessable key ("deploy-<date>", a ticket id) cannot collide with
-// another caller's write or address the queue's reserved `wf:` workflow step
-// keys (finding AI-7). Stdio has no principal to scope by; when it grows a
-// token, the token id joins this prefix.
+// caller-chosen key is scoped to this face, the authenticated principal, and the
+// tool that used it, so an agent's guessable key ("deploy-<date>", a ticket id)
+// cannot collide with another caller's write or address the queue's reserved
+// `wf:` workflow step keys (finding AI-7).
 const (
 	toolPlanKey  = "workspace.plan"
 	toolApplyKey = "workspace.apply"
 )
 
-func idempotencyKey(tool, key string) string {
+func idempotencyKey(c Caller, tool, key string) string {
 	if key == "" {
 		return ""
 	}
-	return "mcp:" + tool + ":" + key
+	return "mcp:" + c.KeyNamespace + ":" + tool + ":" + key
 }
 
 func parseTimeout(v string) (time.Duration, error) {
@@ -108,7 +100,7 @@ func (s *Server) tofuArtifactsDir() (string, error) {
 // job id. Sealing the plan into a consumable artifact is a CLI-resident post-run
 // step (recordPlan/evalPlanPolicy), not done here — the same boundary the HTTP
 // write API draws.
-func (s *Server) toolWorkspacePlan(ctx context.Context, args planWriteArgs) (string, any, error) {
+func (s *Server) toolWorkspacePlan(ctx context.Context, c Caller, args planWriteArgs) (string, any, error) {
 	if args.Name == "" {
 		return "", nil, invalidArg("workspace name is required")
 	}
@@ -129,9 +121,9 @@ func (s *Server) toolWorkspacePlan(ctx context.Context, args planWriteArgs) (str
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   artifacts,
 		RunSecrets:     args.RunSecrets,
-		IdempotencyKey: idempotencyKey(toolPlanKey, args.IdempotencyKey),
+		IdempotencyKey: idempotencyKey(c, toolPlanKey, args.IdempotencyKey),
 		Timeout:        timeout,
-		Actor:          mcpActor,
+		Actor:          c.Actor,
 	})
 	if err != nil {
 		return "", nil, err
@@ -144,7 +136,7 @@ func (s *Server) toolWorkspacePlan(ctx context.Context, args planWriteArgs) (str
 // id is routed by its recorded policy verdict: deny is refused, require_approval
 // lands the job in awaiting_approval behind a fresh approval (the pending view),
 // and a plain saved-plan apply is refused for now (decrypt is CLI-resident).
-func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (string, any, error) {
+func (s *Server) toolWorkspaceApply(ctx context.Context, c Caller, args planWriteArgs) (string, any, error) {
 	if args.Name == "" {
 		return "", nil, invalidArg("workspace name is required")
 	}
@@ -198,11 +190,11 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (st
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      args.RunSecrets,
-		IdempotencyKey:  idempotencyKey(toolApplyKey, args.IdempotencyKey),
+		IdempotencyKey:  idempotencyKey(c, toolApplyKey, args.IdempotencyKey),
 		Timeout:         timeout,
 		SavedPlan:       saved,
 		Gate:            gate,
-		Actor:           mcpActor,
+		Actor:           c.Actor,
 	}, func(context.Context) ([]string, *store.Artifact, func(), error) {
 		if saved == nil {
 			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
