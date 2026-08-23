@@ -191,7 +191,12 @@ func TestEveryJobPathOpensTheStoreThroughOpenJobStore(t *testing.T) {
 		if !strings.Contains(body, "openStore(") && !strings.Contains(body, "store.Open(") {
 			continue
 		}
-		if !strings.Contains(body, "openJobStore(") {
+		// The invariant is that the sweep runs, not the name it runs under: serve
+		// opens the store itself so it can acquire the cross-host lease BEFORE the
+		// sweep (a fenced-out standby must not retire a live primary's rows), then
+		// sweeps explicitly via SweepInterrupted. Every other job path uses the
+		// coupled opener.
+		if !strings.Contains(body, "openJobStore(") && !strings.Contains(body, "SweepInterrupted(") {
 			t.Errorf("%s runs jobs over a store it opened without the sweep; use openJobStore", name)
 		}
 	}

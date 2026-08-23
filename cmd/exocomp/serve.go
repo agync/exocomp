@@ -68,6 +68,18 @@ const defaultReloadInterval = time.Minute
 // plan that found changes into a drift event.
 const defaultSweepInterval = 30 * time.Second
 
+// defaultLeaseTTL is how long the cross-host active lease stays live without a
+// renew, and defaultLeaseRenew how often the active daemon refreshes it. The
+// renew is a third of the TTL so two renews can be lost — a GC pause, a slow
+// replicated write — before a still-active daemon's lease is judged stale by a
+// standby. The TTL bounds how long a standby waits after an ungraceful primary
+// loss (a clean stop releases at once); a few tens of seconds trades a small
+// failover delay for tolerance of ordinary jitter.
+const (
+	defaultLeaseTTL   = 30 * time.Second
+	defaultLeaseRenew = 10 * time.Second
+)
+
 // serveOptions is what the daemon is started with.
 type serveOptions struct {
 	port           int
@@ -76,6 +88,9 @@ type serveOptions struct {
 	sweepInterval  time.Duration
 	dedupWindow    time.Duration
 	approvalTTL    time.Duration
+	leaseTTL       time.Duration
+	leaseRenew     time.Duration
+	forceLease     bool
 	hookAllow      string
 	publicURL      string
 	sandbox        string
@@ -90,6 +105,8 @@ func defaultServeOptions() serveOptions {
 		sweepInterval:  defaultSweepInterval,
 		dedupWindow:    reactive.DefaultDedupWindow,
 		approvalTTL:    reactive.DefaultApprovalTTL,
+		leaseTTL:       defaultLeaseTTL,
+		leaseRenew:     defaultLeaseRenew,
 	}
 }
 
@@ -130,6 +147,12 @@ func newServeCmd() *cobra.Command {
 		"serve the web surface as cleartext HTTP (loud, never the documented path)")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
 		"job isolation tier: local, local-sandboxed, or auto (default: $"+sandboxTierEnv+", else auto)")
+	cmd.Flags().DurationVar(&opts.leaseTTL, "lease-ttl", opts.leaseTTL,
+		"how long the cross-host active lease stays live without a renew")
+	cmd.Flags().DurationVar(&opts.leaseRenew, "lease-renew", opts.leaseRenew,
+		"how often the active daemon renews the cross-host lease (keep well below --lease-ttl)")
+	cmd.Flags().BoolVar(&opts.forceLease, "force-lease", false,
+		"take over an active lease still held by another daemon; use only when that holder is truly gone")
 	return cmd
 }
 
@@ -163,7 +186,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	defer lock.release()
 
-	st, err := openJobStore(ctx, warn)
+	st, err := openStore()
 	if err != nil {
 		return err
 	}
@@ -172,6 +195,22 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 			err = cerr
 		}
 	}()
+
+	// The cross-host fence is taken BEFORE the boot sweep, not after. The sweep's
+	// liveness test is host-local pid probing, so a standby that swept a live
+	// primary's replicated store would retire the primary's in-flight jobs as if
+	// their owner were dead. Refusing here — or taking a stale/forced lease —
+	// keeps a fenced-out daemon from touching another daemon's rows at all. The
+	// host-local flock above still guards a same-host double start.
+	fence, err := acquireLease(ctx, st, leaseHolderID(), opts.leaseTTL, opts.leaseRenew, opts.forceLease, out)
+	if err != nil {
+		return err
+	}
+	defer fence.release(context.WithoutCancel(ctx), warn)
+
+	if err := bootSweepJobs(ctx, st, warn); err != nil {
+		return err
+	}
 
 	if err := flagStaleLocks(ctx, st, warn); err != nil {
 		return err
@@ -308,6 +347,16 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	cordon.sched = s
 	_, _ = fmt.Fprintln(out, "scheduler started")
 
+	// The lease keeps this daemon's claim to be the active one alive. Losing it
+	// to a force-takeover stands the daemon down through the ordinary signal path
+	// (stop), so a resurrected primary that finds itself fenced out stops rather
+	// than racing the daemon that took over.
+	leaseDone := make(chan struct{})
+	go func() {
+		defer close(leaseDone)
+		fence.renewUntil(jobCtx, stop, warn)
+	}()
+
 	sweepDone := make(chan struct{})
 	go func() {
 		defer close(sweepDone)
@@ -341,7 +390,24 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	})
 	<-sweepDone
 	<-seqDone
+	<-leaseDone
 	return err
+}
+
+// bootSweepJobs retires the jobs a process that is gone left queued or running,
+// the same repair openJobStore runs for the CLIs — but serve runs it only after
+// the cross-host fence is held, so a fenced-out standby never sweeps a live
+// primary's rows. Its pid-liveness test is host-local by design (invariant 1:
+// one host owns the store at a time), which the lease now enforces across hosts.
+func bootSweepJobs(ctx context.Context, st *store.Store, warn io.Writer) error {
+	swept, err := st.SweepInterrupted(ctx)
+	if err != nil {
+		return err
+	}
+	if swept > 0 && warn != nil {
+		_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", swept)
+	}
+	return nil
 }
 
 // sequencerInterval is how often the daemon re-drives incomplete workflows, so

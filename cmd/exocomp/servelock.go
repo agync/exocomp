@@ -1,14 +1,18 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // serveLockName is the file a running daemon holds an exclusive lock on, in
@@ -115,4 +119,122 @@ func serveLockHeld(dir string) bool {
 	// what this process has no business keeping.
 	_ = syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
 	return false
+}
+
+// The cross-host active lease sits above the host-local flock. serve.lock stops
+// two daemons on ONE host but is meaningless across hosts sharing one replicated
+// store — a Litestream/restored copy, a shared volume — where two daemons could
+// each go active and split-brain the queue. The lease row in that shared store
+// is the missing cross-host guard: the active daemon holds and renews it, and a
+// starting daemon that finds it live refuses rather than double-activate. Both
+// guards stay: the flock is the cheap same-host answer, the lease the cross-host
+// one.
+
+// leaseHolderID names this daemon in the shared lease. Hostname and pid make it
+// legible to the operator a refusal names, and distinguish two hosts sharing one
+// store. Two daemons on one host share a hostname, but the flock stops the second
+// before the lease is consulted, so the pid only ever disambiguates them in a log.
+func leaseHolderID() string {
+	return fmt.Sprintf("%s/pid-%d", leaseHostname(), os.Getpid())
+}
+
+func leaseHostname() string {
+	host, err := os.Hostname()
+	if err != nil || host == "" {
+		return "unknown-host"
+	}
+	return host
+}
+
+// leaseHost is the host portion of a holder id. A lease still recorded to THIS
+// host is a dead predecessor's: the flock this process already holds proves no
+// live daemon on this host, so the row was left by a crash that could not
+// release it, and a restart may take it over without waiting out the TTL. Only a
+// lease held by ANOTHER host is the cross-host fence the TTL and --force-lease
+// govern.
+func leaseHost(holderID string) string {
+	host, _, _ := strings.Cut(holderID, "/pid-")
+	return host
+}
+
+// serveLease is a held cross-host lease. renewUntil keeps it live; release frees
+// it on a clean stop so a standby need not wait out the TTL.
+type serveLease struct {
+	store    *store.Store
+	holderID string
+	ttl      time.Duration
+	renew    time.Duration
+}
+
+// acquireLease takes the cross-host single-active lease. When another daemon's
+// lease is still live it refuses with a message naming the holder and when it was
+// last renewed — the split-brain the flock cannot see. force takes over a live
+// lease: the operator's explicit override for a holder known to be gone.
+func acquireLease(ctx context.Context, st *store.Store, holderID string, ttl, renew time.Duration, force bool, out io.Writer) (*serveLease, error) {
+	now := time.Now().UTC()
+
+	// A lease left by a same-host predecessor is taken over unconditionally: the
+	// flock already proves that daemon is gone, so a crash-restart must not be
+	// held off for a whole TTL. force keeps its meaning for a DIFFERENT host.
+	takeover := force
+	if !takeover {
+		if cur, gerr := st.GetLease(ctx); gerr == nil && leaseHost(cur.HolderID) == leaseHost(holderID) {
+			takeover = true
+		}
+	}
+
+	lease, err := st.AcquireLease(ctx, holderID, ttl, now, takeover)
+	if errors.Is(err, store.ErrLeaseHeld) {
+		ago := now.Sub(lease.RenewedAt).Round(time.Second)
+		return nil, fmt.Errorf(
+			"serve: the active lease is held by %q (last renewed %s, %s ago; ttl %s); "+
+				"refusing to become active — another daemon is serving this store. "+
+				"Pass --force-lease only once you are certain that holder is gone",
+			lease.HolderID, lease.RenewedAt.Format(time.RFC3339), ago, lease.TTL)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("serve: acquire active lease: %w", err)
+	}
+	if force {
+		_, _ = fmt.Fprintf(out, "WARNING: force-took the active lease; the previous holder must not be running\n")
+	}
+	_, _ = fmt.Fprintf(out, "active lease acquired (holder %q, ttl %s)\n", holderID, ttl)
+	return &serveLease{store: st, holderID: holderID, ttl: ttl, renew: renew}, nil
+}
+
+// renewUntil refreshes the lease on its period until ctx ends. Losing it to a
+// force-takeover is terminal: it calls standDown so this daemon begins the same
+// graceful stop a signal would — being fenced out means it is no longer active —
+// and returns. renew must stay well below ttl so a slow write does not let the
+// lease lapse under a daemon that is still serving.
+func (l *serveLease) renewUntil(ctx context.Context, standDown func(), warn io.Writer) {
+	ticker := time.NewTicker(l.renew)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		err := l.store.RenewLease(ctx, l.holderID, time.Now().UTC())
+		if errors.Is(err, store.ErrLeaseLost) {
+			_, _ = fmt.Fprintf(warn, "WARNING: active lease taken over by another daemon; standing down\n")
+			standDown()
+			return
+		}
+		if err != nil && ctx.Err() == nil {
+			_, _ = fmt.Fprintf(warn, "WARNING: renew active lease: %v\n", err)
+		}
+	}
+}
+
+// release frees the lease on a clean stop. It takes its own context because the
+// daemon's is already cancelled by the time shutdown runs, and a cancelled
+// context would turn the freeing write into a no-op that strands the fence for a
+// standby until the TTL lapses.
+func (l *serveLease) release(ctx context.Context, warn io.Writer) {
+	if err := l.store.ReleaseLease(ctx, l.holderID); err != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: release active lease: %v\n", err)
+	}
 }
