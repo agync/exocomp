@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -30,33 +29,6 @@ const bootstrapTrigger = "bootstrap"
 // bootstrapWorkflowKind is the wire envelope kind `--output json` emits when the
 // chain is composed and started.
 const bootstrapWorkflowKind = "bootstrap.workflow"
-
-// bootstrapCaptureVar carries the operator's --capture declarations from the CLI
-// to the daemon's ansible driver on the play step's job. store.JobArgs has no
-// capture field (the queue/store lane owns that shape), so the declarations ride
-// the one durable per-job map that exists — ExtraVars — under a reserved key the
-// driver strips before the play, keeping the play's own var namespace clean. The
-// value is JSON: a []executor.AnsibleCapture. Because rearmStep does not copy
-// ExtraVars, a play re-armed after a mid-run crash loses its captures; a
-// JobArgs.Captures field would fix that and is the follow-on this channel stands
-// in for.
-const bootstrapCaptureVar = "exocomp_bootstrap_captures"
-
-// bootstrapWorkflowVar carries the chain's workflow id to the play step's sealer
-// on the same channel, so the sealed rows and the ab:<workflow> binding derive
-// from the exact id the composer bound into the tofu step, with no coupling to
-// the queue's internal step-key format.
-const bootstrapWorkflowVar = "exocomp_bootstrap_workflow"
-
-// bootstrapStageFilesVar carries the env names a --capture-file declared onto
-// the TOFU step's reserved extra-vars, so the daemon's tofu driver stages those
-// run-secrets to files rather than injecting their values. It rides the tofu
-// step's ExtraVars for the same reason the play's captures ride the play step's
-// (store.JobArgs has no field for it); the tofu path never reads ExtraVars for
-// anything else, so the reserved key is inert there beyond this. The value is
-// JSON: a []string of env names. A play re-armed after a mid-run crash loses it
-// with the rest of ExtraVars — the same JobArgs-field follow-on Phase 2 noted.
-const bootstrapStageFilesVar = "exocomp_bootstrap_stage_files"
 
 func newBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
@@ -225,33 +197,20 @@ func parseCaptures(specs []string, asFile bool) ([]executor.AnsibleCapture, erro
 	return out, nil
 }
 
-// extractBootstrapCaptures pulls a bootstrap play's capture declarations and its
-// workflow id off the job's extra-vars — the channel composeBootstrapSteps
-// smuggled them through — and returns the extra-vars with those reserved keys
-// removed, so the play never sees exocomp internal wiring in its own var
-// namespace. A job with no reserved key (every non-bootstrap play) returns its
-// extra-vars unchanged and no captures.
-func extractBootstrapCaptures(extraVars map[string]string) ([]executor.AnsibleCapture, string, map[string]string) {
-	raw, ok := extraVars[bootstrapCaptureVar]
-	if !ok {
-		return nil, "", extraVars
+// bootstrapCaptureTargets reads a bootstrap play's declared captures and its
+// workflow id off the job's first-class Captures field, in the executor shape the
+// driver's sealer consumes. A job with no captures (every non-bootstrap play)
+// returns nil and an empty workflow. The play's own extra-vars are a separate
+// field now, so nothing has to be stripped: the play never sees this wiring.
+func bootstrapCaptureTargets(jc *store.JobCaptures) ([]executor.AnsibleCapture, string) {
+	if jc == nil {
+		return nil, ""
 	}
-	workflow := extraVars[bootstrapWorkflowVar]
-	var captures []executor.AnsibleCapture
-	// The composer wrote this JSON; a decode failure is a corrupted row, not
-	// operator input, so it drops the captures rather than failing the play.
-	_ = json.Unmarshal([]byte(raw), &captures)
-	filtered := make(map[string]string, len(extraVars))
-	for k, v := range extraVars {
-		if k == bootstrapCaptureVar || k == bootstrapWorkflowVar {
-			continue
-		}
-		filtered[k] = v
+	captures := make([]executor.AnsibleCapture, len(jc.Targets))
+	for i, t := range jc.Targets {
+		captures[i] = executor.AnsibleCapture{Name: t.Name, File: t.File, AsFile: t.AsFile}
 	}
-	if len(filtered) == 0 {
-		filtered = nil
-	}
-	return captures, workflow, filtered
+	return captures, jc.Workflow
 }
 
 // bootstrapWorkflowView is the `--output json` projection of a started chain: the
@@ -272,21 +231,23 @@ type bootstrapWorkflowView struct {
 // the same way every other play does.
 //
 // Without --capture the apply binds --run-secrets and reads its own pre-existing
-// credential (the Phase-0 shape). With --capture the play's declared outputs are
-// smuggled onto its step as reserved extra-vars (the daemon's driver seals them
-// under ab:<workflow>), and the apply binds that same ab:<workflow>, so the
-// captured value reaches the kubernetes/helm provider as env with nothing for an
-// operator to copy. The two credential sources are mutually exclusive (one
-// binding slot), enforced at the CLI.
+// credential (the Phase-0 shape). With --capture the play's declared outputs ride
+// the step's first-class Captures field (the daemon's driver seals them under
+// ab:<workflow>), and the apply binds that same ab:<workflow>, so the captured
+// value reaches the kubernetes/helm provider as env with nothing for an operator
+// to copy. The two credential sources are mutually exclusive (one binding slot),
+// enforced at the CLI.
+//
+// Both steps carry the same Captures value: the play seals every target, the
+// apply reads its --capture-file (AsFile) targets to know which bound values to
+// stage as files. A field, not a reserved extra-var, is what a step re-armed
+// after a crash keeps — rearmStep copies JobArgs.Captures.
 func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, workspace string, bs bootstrapSpec) []queue.Step {
-	var playExtraVars, tofuExtraVars map[string]string
+	var captures *store.JobCaptures
 	tofuBinding := bs.runSecrets
 	if len(bs.captures) > 0 {
-		playExtraVars = bootstrapCaptureVars(workflowID, bs.captures)
+		captures = bootstrapCaptureArgs(workflowID, bs.captures)
 		tofuBinding = executor.AnsibleOutputBinding(workflowID)
-		// A --capture-file capture tells the apply's tofu driver to stage that
-		// bound value to a tmpfs file and hand it over as a path, not a value.
-		tofuExtraVars = bootstrapStageFileVars(bs.captures)
 	}
 	return []queue.Step{
 		{
@@ -298,7 +259,7 @@ func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, work
 				Argv:         executor.AnsibleArgv(playbook, invPath),
 				VaultProject: bs.vaultProject,
 				Inventory:    invName,
-				ExtraVars:    playExtraVars,
+				Captures:     captures,
 				Timeout:      bs.timeout,
 			},
 		},
@@ -311,7 +272,7 @@ func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, work
 				Argv:             executor.TofuArgv("apply", "-auto-approve"),
 				Dir:              tofuDir,
 				RunSecretBinding: tofuBinding,
-				ExtraVars:        tofuExtraVars,
+				Captures:         captures,
 				ConcurrencyKey:   "tofu:" + workspace,
 				Timeout:          bs.timeout,
 			},
@@ -319,63 +280,40 @@ func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, work
 	}
 }
 
-// bootstrapStageFileVars encodes the env names of the file-delivery captures as
-// the tofu step's reserved extra-var, so the daemon stages exactly those bound
-// run-secrets to files. It returns nil when no capture asked for file delivery,
-// leaving the tofu step's ExtraVars unset (every capture then delivers as env,
-// the Phase-2 shape). An env name a capture folds to a non-POSIX identifier is
-// dropped here for the same reason the sealer refuses to bind it.
-func bootstrapStageFileVars(captures []executor.AnsibleCapture) map[string]string {
+// bootstrapCaptureArgs builds the chain's capture wiring as the first-class
+// JobArgs field both steps carry: the workflow id its sealer binds under and the
+// declared targets in the store shape. nil when the chain declared no captures.
+func bootstrapCaptureArgs(workflowID string, captures []executor.AnsibleCapture) *store.JobCaptures {
+	if len(captures) == 0 {
+		return nil
+	}
+	targets := make([]store.JobCapture, len(captures))
+	for i, c := range captures {
+		targets[i] = store.JobCapture{Name: c.Name, File: c.File, AsFile: c.AsFile}
+	}
+	return &store.JobCaptures{Workflow: workflowID, Targets: targets}
+}
+
+// bootstrapStagedFileEnvs derives the env names a bootstrap apply must receive as
+// tmpfs-staged files rather than values: the --capture-file (AsFile) targets,
+// folded to their env names, read off the tofu step's Captures field. nil for an
+// env-only chain and for every non-bootstrap apply. An env name a capture folds
+// to a non-POSIX identifier is dropped here for the same reason the sealer refuses
+// to bind it.
+func bootstrapStagedFileEnvs(jc *store.JobCaptures) []string {
+	if jc == nil {
+		return nil
+	}
 	var envs []string
-	for _, c := range captures {
-		if !c.AsFile {
+	for _, t := range jc.Targets {
+		if !t.AsFile {
 			continue
 		}
-		if env, ok := executor.AnsibleOutputEnvName(c.Name); ok {
+		if env, ok := executor.AnsibleOutputEnvName(t.Name); ok {
 			envs = append(envs, env)
 		}
 	}
-	if len(envs) == 0 {
-		return nil
-	}
-	blob, err := json.Marshal(envs)
-	if err != nil {
-		// Unreachable: envs is a slice of strings.
-		panic("bootstrap: encode stage-file envs: " + err.Error())
-	}
-	return map[string]string{bootstrapStageFilesVar: string(blob)}
-}
-
-// bootstrapStagedFileEnvs reads the tofu step's reserved stage-file env list off
-// its job extra-vars — the channel composeBootstrapSteps smuggled it through —
-// for the daemon to set as TofuOptions.RunSecretFiles. A job with no reserved key
-// (every non-bootstrap apply) returns nil. A corrupted value drops to nil rather
-// than failing the apply: the composer wrote this JSON, so a decode failure is a
-// damaged row, and the apply is better off env-only than refused.
-func bootstrapStagedFileEnvs(extraVars map[string]string) []string {
-	raw, ok := extraVars[bootstrapStageFilesVar]
-	if !ok {
-		return nil
-	}
-	var envs []string
-	_ = json.Unmarshal([]byte(raw), &envs)
 	return envs
-}
-
-// bootstrapCaptureVars encodes the play step's capture declarations and workflow
-// id as the reserved extra-vars the daemon's driver reads back and strips. It is
-// the only durable per-job carrier available without a JobArgs field (see the
-// reserved-key consts).
-func bootstrapCaptureVars(workflowID string, captures []executor.AnsibleCapture) map[string]string {
-	blob, err := json.Marshal(captures)
-	if err != nil {
-		// Unreachable: AnsibleCapture is two strings.
-		panic("bootstrap: encode captures: " + err.Error())
-	}
-	return map[string]string{
-		bootstrapCaptureVar:  string(blob),
-		bootstrapWorkflowVar: workflowID,
-	}
 }
 
 // runBootstrap defines the play->apply chain as a ledger workflow and starts it.

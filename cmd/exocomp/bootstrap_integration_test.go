@@ -46,17 +46,20 @@ func TestBootstrapComposesAnsibleFirst(t *testing.T) {
 		t.Errorf("the play step carried a run-secret binding %q, want none in Phase 0",
 			steps[0].Spec.RunSecretBinding)
 	}
-	// No --capture: the play carries no reserved capture vars.
-	if _, ok := steps[0].Spec.ExtraVars[bootstrapCaptureVar]; ok {
-		t.Errorf("the play step carried capture vars without --capture: %v", steps[0].Spec.ExtraVars)
+	// No --capture: neither step carries capture wiring.
+	if steps[0].Spec.Captures != nil {
+		t.Errorf("the play step carried captures without --capture: %+v", steps[0].Spec.Captures)
+	}
+	if steps[1].Spec.Captures != nil {
+		t.Errorf("the apply step carried captures without --capture: %+v", steps[1].Spec.Captures)
 	}
 }
 
 // TestBootstrapComposesCaptureBinding proves --capture rewires the chain: the
-// play step carries the declared captures and the workflow id as reserved
-// extra-vars (round-tripping through the driver's extractor), and the apply step
-// binds the same ab:<workflow> the play seals into — the closed env-decomposition
-// loop, with no value anywhere in the composed shape.
+// play step carries the declared captures and the workflow id on its first-class
+// Captures field (round-tripping through the driver's reader), the play's own
+// extra-vars stay empty, and the apply step binds the same ab:<workflow> the play
+// seals into — the closed env-decomposition loop, with no value anywhere.
 func TestBootstrapComposesCaptureBinding(t *testing.T) {
 	const wf = "bootstrap:wsp:42"
 	captures := []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig"}}
@@ -69,21 +72,17 @@ func TestBootstrapComposesCaptureBinding(t *testing.T) {
 		t.Errorf("apply binding %q, want %q", steps[1].Spec.RunSecretBinding, want)
 	}
 
-	// The play carries the reserved carriers, and they decode back to exactly the
-	// declared captures and workflow, with the reserved keys stripped from what the
-	// play would actually receive.
-	if steps[0].Spec.ExtraVars[bootstrapWorkflowVar] != wf {
-		t.Errorf("play workflow var %q, want %q", steps[0].Spec.ExtraVars[bootstrapWorkflowVar], wf)
+	// The play's Captures field reads back to exactly the declared captures and
+	// workflow, and the play's own extra-vars carry none of this wiring.
+	if len(steps[0].Spec.ExtraVars) != 0 {
+		t.Errorf("play extra-vars carried capture wiring: %v", steps[0].Spec.ExtraVars)
 	}
-	got, gotWF, rest := extractBootstrapCaptures(steps[0].Spec.ExtraVars)
+	got, gotWF := bootstrapCaptureTargets(steps[0].Spec.Captures)
 	if gotWF != wf {
-		t.Errorf("extracted workflow %q, want %q", gotWF, wf)
+		t.Errorf("captures workflow %q, want %q", gotWF, wf)
 	}
 	if len(got) != 1 || got[0] != captures[0] {
-		t.Errorf("extracted captures %v, want %v", got, captures)
-	}
-	if len(rest) != 0 {
-		t.Errorf("reserved keys survived into the play's vars: %v", rest)
+		t.Errorf("captures %v, want %v", got, captures)
 	}
 }
 
@@ -115,26 +114,23 @@ func TestParseCapturesRejectsBadSpecs(t *testing.T) {
 	}
 }
 
-// TestBootstrapComposesFileStaging proves --capture-file threads the env name to
-// the apply as the reserved stage-file var, and an env-only --capture leaves it
-// unset. The value never appears: only the env NAME to stage does.
+// TestBootstrapComposesFileStaging proves --capture-file marks the env name for
+// file staging on the apply, derived from the apply step's Captures field, and an
+// env-only --capture stages nothing. The value never appears: only the env NAME.
 func TestBootstrapComposesFileStaging(t *testing.T) {
 	const wf = "bootstrap:wsp:7"
 
 	fileSteps := composeBootstrapSteps(wf, "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
 		bootstrapSpec{captures: []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig", AsFile: true}}})
-	if envs := bootstrapStagedFileEnvs(fileSteps[1].Spec.ExtraVars); len(envs) != 1 || envs[0] != "KUBECONFIG" {
+	if envs := bootstrapStagedFileEnvs(fileSteps[1].Spec.Captures); len(envs) != 1 || envs[0] != "KUBECONFIG" {
 		t.Errorf("apply stage-file envs %v, want [KUBECONFIG]", envs)
 	}
 
-	// An env-only capture leaves the apply with no stage-file var, so every bound
-	// value delivers as env (the Phase-2 shape).
+	// An env-only capture stages no file, so every bound value delivers as env
+	// (the Phase-2 shape).
 	envSteps := composeBootstrapSteps(wf, "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
 		bootstrapSpec{captures: []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig"}}})
-	if _, ok := envSteps[1].Spec.ExtraVars[bootstrapStageFilesVar]; ok {
-		t.Errorf("an env-only --capture set the stage-file var: %v", envSteps[1].Spec.ExtraVars)
-	}
-	if envs := bootstrapStagedFileEnvs(envSteps[1].Spec.ExtraVars); len(envs) != 0 {
+	if envs := bootstrapStagedFileEnvs(envSteps[1].Spec.Captures); len(envs) != 0 {
 		t.Errorf("env-only capture staged files %v, want none", envs)
 	}
 }

@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — Bootstrap captures survive a crash+resume
+
+[operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained a
+resume-safety note: a bootstrap play the daemon re-arms after a mid-run crash keeps its
+`--capture`/`--capture-file` declarations and seals under the same `ab:<workflow>`, so the
+apply's binding is never left empty by the resume. This corrects the earlier implicit gap —
+the capture wiring rode the ExtraVars map under reserved keys, which the sequencer's re-arm
+did not copy, so a resumed play sealed nothing. The wiring is now a first-class job field the
+re-arm carries; behaviour of `--capture` and `--capture-file` is otherwise unchanged.
+
 ## 2026-08-23 — four pages and one comment caught up to the stdio removal
 
 [security/threat-model.md](security/threat-model.md), [architecture/overview.md](architecture/overview.md),

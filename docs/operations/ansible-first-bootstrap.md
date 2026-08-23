@@ -84,6 +84,11 @@ Rules that keep it safe and predictable:
   run-secret binding slot; `--capture` claims it for the chain's own
   `ab:<workflow>`. Bind pre-existing credentials this way only when the play does
   not produce them.
+- **A crash mid-play does not lose the captures.** The declarations and the
+  workflow id ride the job row as a first-class field, so a play the daemon
+  re-arms after a mid-run crash resumes with them intact — it seals under the same
+  `ab:<workflow>` the interrupted run would have, and the apply's binding is never
+  left empty by the resume.
 
 For a tool that reads a whole `KUBECONFIG` **file** rather than decomposed env
 fields (`kubectl`, `helm`, an exec-auth provider), use `--capture-file` — the next
