@@ -13,6 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -34,10 +35,15 @@ func newApprovalCmd() *cobra.Command {
 func newApprovalListCmd() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List approvals waiting on a decision",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List approvals waiting on a decision",
+		Example: "exocomp approval list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -47,6 +53,9 @@ func newApprovalListCmd() *cobra.Command {
 			rows, err := st.ListApprovals(cmd.Context(), !all)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindApprovalList, wire.NewApprovalList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

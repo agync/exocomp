@@ -10,6 +10,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -36,10 +37,15 @@ func newEventListCmd() *cobra.Command {
 	)
 
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List received events, newest first",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List received events, newest first",
+		Example: "exocomp event list --outcome fired --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			filter := store.EventFilter{Source: source, Limit: limit}
 			if outcome != "" {
 				if !knownOutcome(outcome) {
@@ -58,6 +64,9 @@ func newEventListCmd() *cobra.Command {
 			rows, err := st.ListEvents(cmd.Context(), filter)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindEventList, wire.NewEventList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

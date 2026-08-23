@@ -11,6 +11,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -149,10 +150,15 @@ func actionKinds() []string {
 
 func newRuleListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List rules with their guardrails",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List rules with their guardrails",
+		Example: "exocomp rule list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -162,6 +168,9 @@ func newRuleListCmd() *cobra.Command {
 			rows, err := st.ListRules(cmd.Context(), false)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindRuleList, wire.NewRuleList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

@@ -32,6 +32,8 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: false,
 	}
 
+	addOutputFlag(root)
+
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newDoctorCmd())
 	for _, f := range commandFactories {

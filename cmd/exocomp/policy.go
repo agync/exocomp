@@ -9,6 +9,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/policy"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -98,10 +99,15 @@ func newPolicyAddCmd() *cobra.Command {
 
 func newPolicyListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List plan policies with their workspace and action",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List plan policies with their workspace and action",
+		Example: "exocomp policy list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -111,6 +117,9 @@ func newPolicyListCmd() *cobra.Command {
 			rows, err := st.ListPlanPolicies(cmd.Context(), "", false)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindPolicyList, wire.NewPolicyList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

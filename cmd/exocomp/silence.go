@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -124,10 +125,15 @@ func scopeLabel(s store.Silence) string {
 func newSilenceListCmd() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List active silences",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List active silences",
+		Example: "exocomp silence list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -137,6 +143,9 @@ func newSilenceListCmd() *cobra.Command {
 			rows, err := st.ListSilences(cmd.Context(), !all)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindSilenceList, wire.NewSilenceList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

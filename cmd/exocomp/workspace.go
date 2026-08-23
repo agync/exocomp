@@ -21,6 +21,7 @@ import (
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -394,10 +395,15 @@ terraform {
 
 func newWorkspaceListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List registered workspaces",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List registered workspaces",
+		Example: "exocomp workspace list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -407,6 +413,9 @@ func newWorkspaceListCmd() *cobra.Command {
 			rows, err := st.ListWorkspaces(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindWorkspaceList, wire.NewWorkspaceList(rows))
 			}
 			out := cmd.OutOrStdout()
 			if len(rows) == 0 {

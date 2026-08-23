@@ -10,6 +10,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/web"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -91,10 +92,15 @@ func newTokenNewCmd() *cobra.Command {
 func newTokenListCmd() *cobra.Command {
 	var all bool
 	cmd := &cobra.Command{
-		Use:   "list",
-		Short: "List tokens (never the secret)",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List tokens (never the secret)",
+		Example: "exocomp token list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -104,6 +110,9 @@ func newTokenListCmd() *cobra.Command {
 			rows, err := st.ListTokens(cmd.Context(), all)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindTokenList, wire.NewTokenList(rows))
 			}
 			if len(rows) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no tokens")

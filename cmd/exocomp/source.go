@@ -13,6 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -193,9 +194,14 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 
 func newSourceListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List registered sources",
+		Use:     "list",
+		Short:   "List registered sources",
+		Example: "exocomp source list --output json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -204,6 +210,9 @@ func newSourceListCmd() *cobra.Command {
 			rows, err := st.ListSources(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindSourceList, wire.NewSourceList(rows))
 			}
 			if len(rows) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no sources")

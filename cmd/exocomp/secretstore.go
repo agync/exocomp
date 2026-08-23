@@ -14,6 +14,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -348,9 +349,14 @@ func expiryMarker(at *time.Time, now time.Time) string {
 
 func newSecretsListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List sealed secret names, sources, and expiry (never values)",
+		Use:     "list",
+		Short:   "List sealed secret names, sources, and expiry (never values)",
+		Example: "exocomp secrets list --output json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -359,6 +365,9 @@ func newSecretsListCmd() *cobra.Command {
 			rows, err := st.ListSecrets(cmd.Context())
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindSecretList, wire.NewSecretList(rows))
 			}
 			if len(rows) == 0 {
 				_, _ = fmt.Fprintln(cmd.OutOrStdout(), "no sealed secrets")

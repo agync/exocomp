@@ -16,6 +16,7 @@ import (
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // s3EnvKeys are the variables a restic_s3 target needs. They are read from the
@@ -103,10 +104,15 @@ func newBackupAddTargetCmd() *cobra.Command {
 
 func newBackupListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List targets and their last run",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List targets and their last run",
+		Example: "exocomp backup list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -116,6 +122,9 @@ func newBackupListCmd() *cobra.Command {
 			targets, err := st.ListBackupTargets(cmd.Context(), true)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindBackupList, wire.NewBackupTargetList(targets))
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)

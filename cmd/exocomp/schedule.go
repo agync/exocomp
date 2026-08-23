@@ -10,6 +10,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -162,10 +163,15 @@ func newScheduleAddCmd() *cobra.Command {
 
 func newScheduleListCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List schedules",
-		Args:  cobra.NoArgs,
+		Use:     "list",
+		Short:   "List schedules",
+		Example: "exocomp schedule list --output json",
+		Args:    cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -175,6 +181,9 @@ func newScheduleListCmd() *cobra.Command {
 			rows, err := st.ListSchedules(cmd.Context(), false)
 			if err != nil {
 				return err
+			}
+			if mode == outputJSON {
+				return emitJSON(cmd, wire.KindScheduleList, wire.NewScheduleList(rows))
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
