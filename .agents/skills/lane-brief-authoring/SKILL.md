@@ -29,10 +29,14 @@ clause is a defect, not a default.
    Siblings are live — "touch only your files" is not enough when the agent
    cannot see the other lanes; name the packages, migration numbers, and shared
    files that belong to someone else this round.
-2. **Worktree address.** Give the worktree path (`.worktrees/mNN-<lane>`), the
-   branch (`mNN/<lane>`), and the instruction to run all git as
-   `git -C <worktree>`. Never let a lane touch the repo root or another worktree
-   (AGENTS.md invariant 11).
+2. **Worktree address.** The orchestrator creates the lane's worktree BEFORE
+   dispatch — a lane that self-checks for its worktree, finds it missing, and
+   stops has burned a full round-trip for nothing. Give the worktree path
+   (`.worktrees/mNN-<lane>`), the branch (`mNN/<lane>`), and the instruction to
+   run all git as `git -C <worktree>`. Tell the lane to write only to absolute
+   paths inside that worktree — never the repo root or another lane's worktree
+   (AGENTS.md invariant 11); a verify-agent once leaked files into the repo
+   root this way and blocked the merge until a human ran `git clean`.
 3. **Test-first with REAL output.** Demand the test written before the fix and
    the actual pasted command output in the report — not a claim that it passes.
    Name the failure the test must first exhibit, so a vacuously-green test is
@@ -57,11 +61,16 @@ clause is a defect, not a default.
    `TestTofuPlanRunsOfflineFromPluginCache`, the plugin-cache/`unshare` exec race
    under concurrent gating); point the lane at it to tell a flake from a real
    failure. A second failure of the same check is a real failure.
-8. **Migration lanes: claim and re-check.** If the lane adds a store migration,
-   tell it to claim the NEXT FREE `internal/store/migrations/NNNN_name.sql`
-   number at start AND re-check it right before the merge — a sibling lane may
-   have taken the same number meanwhile, and `loadMigrations` rejects two files
-   that share a version (`store: migrations A and B share version N`). Point at
+8. **Migration lanes: claim now, final at merge.** If the lane adds a store
+   migration, tell it to claim the NEXT FREE
+   `internal/store/migrations/NNNN_name.sql` number at start — but the number
+   is only provisional until the lane merges. Parallel lanes routinely claim
+   the same number, since neither can see the other's worktree; that is
+   expected, not a mistake by either lane, and `loadMigrations` would reject
+   the resulting duplicate (`store: migrations A and B share version N`) if it
+   ever reached `main` unresolved. The `lane-integration` skill's integrator
+   catches this at merge and renumbers whichever lane lands second, so the
+   brief does not need the lane to preempt a collision it cannot see. Point at
    the `migration-authoring` skill for the file shape and the forward-only rule.
 
 ## After the lane reports
@@ -71,6 +80,11 @@ linear `main` and clears the integration gate is the `lane-integration` skill's
 job — hand the report and worktree to it. Reference that skill in the brief so
 the lane knows its commits will be replayed, not merged as-is, and keeps history
 clean enough to rebase.
+
+Dispatch the integrator only after the lane's WORKFLOW-COMPLETION
+notification — never off a mid-flight "clean" heartbeat snapshot. A lane can
+be transiently clean between two of its own commits while more work is still
+coming; merging off that snapshot integrates a lane that is not actually done.
 
 The fill-in skeleton, the report schema, and a worked ownership block are in
 `references/brief-template.md` — open it when you sit down to write a brief.

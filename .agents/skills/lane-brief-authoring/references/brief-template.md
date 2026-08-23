@@ -48,9 +48,10 @@ proof>. Full make check green. Report with the SCHEMA.
 
 Do NOT touch: <sibling paths by name — the packages, migrations, and shared
 files owned by other lanes this round>. If you add a migration, claim the NEXT
-FREE internal/store/migrations/NNNN_name.sql number now and RE-CHECK it right
-before you finish — a sibling may have taken it; loadMigrations refuses two
-files sharing a version. Retry a KNOWN flake once (see the flake-triage skill,
+FREE internal/store/migrations/NNNN_name.sql number now; it is provisional
+until merge — a sibling lane may claim the same number in parallel, and the
+integrator (lane-integration skill) renumbers whichever lane lands second, so
+you do not need to re-check it yourself. Retry a KNOWN flake once (see the flake-triage skill,
 this repo's flake source of truth — e.g. TestTofuPlanRunsOfflineFromPluginCache
 under concurrent gating); a second failure of the same check is real.
 ```
