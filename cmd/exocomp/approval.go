@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -10,11 +11,29 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/api"
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
+
+// kindApprovalDecision mirrors internal/web/api_write.go's kindDecision: the
+// same wire kind for the same shape, so a decision looks identical whether it
+// arrived over the HTTP API or this command. wire itself carries no write
+// projections yet (another lane's seam), which is why both surfaces define
+// their own copy of this shape rather than sharing an unexported one.
+const kindApprovalDecision = "approval.decision"
+
+// approvalDecisionView is the JSON body of a settled decision: which approval,
+// the outcome, and the terminal notice. Field-for-field identical to the API's
+// decisionView.
+type approvalDecisionView struct {
+	ApprovalID int64  `json:"approval_id"`
+	Outcome    string `json:"outcome,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
 
 func init() {
 	registerCommand(newApprovalCmd)
@@ -28,7 +47,7 @@ func newApprovalCmd() *cobra.Command {
 			"no worker can claim it until the decision arrives. The TTL fails closed — an " +
 			"unanswered approval is rejected, never eventually run.",
 	}
-	cmd.AddCommand(newApprovalListCmd(), newApprovalLinkCmd())
+	cmd.AddCommand(newApprovalListCmd(), newApprovalLinkCmd(), newApprovalDecideCmd())
 	return cmd
 }
 
@@ -166,6 +185,137 @@ func newApprovalLinkCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// newApprovalDecideCmd settles a pending approval from this box. There is no
+// --remote path here (unlike list/link): a decision is a write, and per
+// remote.go only reads are wired to the client yet. Locally it goes straight
+// at the same store list/link already open, deriving the SAME capability
+// token `approval link` prints rather than asking the operator to paste one
+// back in — this is an operator-authority action at the data dir, not a
+// bearer-link redemption.
+func newApprovalDecideCmd() *cobra.Command {
+	var approve, reject bool
+	cmd := &cobra.Command{
+		Use:   "decide <id> (--approve | --reject)",
+		Short: "Settle a pending approval",
+		Long: "Routes through the same fail-closed seam a decision link and the HTTP " +
+			"decision API use (reactive.Engine.Decide): the capability token is derived " +
+			"from the envelope and verified, then the TTL, then — for an approve — whether " +
+			"the plan is still current. A used, expired, or raced approval settles nothing " +
+			"further; this command reports that as a failure rather than a quiet no-op, so " +
+			"a script cannot mistake a stale decide for a fresh one.",
+		Example: "exocomp approval decide 5 --approve",
+		Args:    cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if approve == reject {
+				return errors.New("approval decide: give exactly one of --approve or --reject")
+			}
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
+			id, err := strconv.ParseInt(args[0], 10, 64)
+			if err != nil {
+				return fmt.Errorf("approval decide: %q is not an approval id", args[0])
+			}
+
+			dir, err := dataDir()
+			if err != nil {
+				return err
+			}
+			// A decide can release the gated job into queued, which is running
+			// jobs' entry point (queue.New below), so it opens through
+			// openJobStore like every other one: a concurrency key an abandoned
+			// process left held must clear before this release, not after.
+			st, err := openJobStore(cmd.Context(), cmd.ErrOrStderr())
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			approval, err := st.GetApproval(cmd.Context(), id)
+			if err != nil {
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
+				return fmt.Errorf("approval decide: %w", err)
+			}
+
+			env, err := secrets.Open(dir)
+			if err != nil {
+				return fmt.Errorf("approval decide: open envelope (run `exocomp init` first): %w", err)
+			}
+			defer func() { _ = env.Close() }()
+
+			token, _, err := reactive.ApprovalToken(env, approval.JobID)
+			if err != nil {
+				return fmt.Errorf("approval decide: %w", err)
+			}
+
+			// The queue this engine drives is enqueue-only (like workspace
+			// plan/apply's daemonEnqueuer): a decide settles the row and, for an
+			// approve, moves it from awaiting_approval to queued. It never runs a
+			// job itself — a running `exocomp serve` claims the released row on its
+			// own poll, same as any other CLI-side enqueue.
+			gate := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+			eng, err := reactive.New(reactive.Options{Store: st, Queue: gate, Deriver: env})
+			if err != nil {
+				return fmt.Errorf("approval decide: %w", err)
+			}
+
+			decision := reactive.DecisionReject
+			if approve {
+				decision = reactive.DecisionApprove
+			}
+
+			svc := service.New(st, dir, nil)
+			res, err := svc.DecideApproval(cmd.Context(), eng, service.DecideInput{
+				ApprovalID: id,
+				Decision:   decision,
+				Token:      token,
+				Via:        "cli",
+			})
+			if err != nil {
+				// The one case Decide itself refuses is a stale plan (ErrStalePlan);
+				// wire.ErrorFor maps it to CodeStalePlan. Everything else that settles
+				// nothing new (already-decided, expired) comes back with a nil error
+				// and is handled in the switch below.
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
+				return fmt.Errorf("approval decide: %w", err)
+			}
+
+			d := res.Decision
+			switch d.Outcome {
+			case reactive.DecisionOutcomeApproved, reactive.DecisionOutcomeRejected:
+				if mode == outputJSON {
+					return emitJSON(cmd, kindApprovalDecision, approvalDecisionView{
+						ApprovalID: d.Approval.ID, Outcome: d.Outcome, Message: d.Message,
+					})
+				}
+				_, err := fmt.Fprintln(cmd.OutOrStdout(), d.Message)
+				return err
+			default:
+				// Settled (already decided) or expired: the invariant this command
+				// shares with the phone link and the HTTP API is that a used/expired/
+				// raced decision is idempotent, never a second release — so nothing
+				// this call asked for happened, and it fails closed rather than
+				// exiting 0 on a no-op.
+				werr := fmt.Errorf("approval decide: %s", d.Message)
+				if mode == outputJSON {
+					cmd.SilenceErrors = true
+					_ = wire.WriteErrorValue(cmd.OutOrStdout(), wire.NewError(wire.CodeConflict, d.Message))
+					return werr
+				}
+				return werr
+			}
+		},
+	}
+	cmd.Flags().BoolVar(&approve, "approve", false, "approve the job and release it to the queue")
+	cmd.Flags().BoolVar(&reject, "reject", false, "reject the job; nothing is applied")
+	return cmd
 }
 
 // daemonBaseURL is the address the running daemon recorded. Without one the
