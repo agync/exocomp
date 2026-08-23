@@ -1,5 +1,9 @@
 # Threat model & red-team findings
 
+Second adversarial pass: 2026-08-23, against the agent-facing surface (write `/api/v1`,
+remote CLI client, MCP server) as it was built out under ADR 0014. Findings are ids
+`AI-1`..`AI-13`; the wave that closed them is [§ Agent-surface findings](#agent-surface-findings-ai-).
+
 First adversarial pass: 2026-08-22, against v1.0.0 (tag, HEAD 5d77dce), five lenses
 attacking a real freshly-built binary + data dir (see
 `.agents/workflows/post-red-team.js`). Every "exploited" finding was reproduced against
@@ -154,12 +158,80 @@ regression test, fixes it, and proves the exploit is dead.
      needs `--allow-unauthenticated`. The scrape/session derive purposes are operational
      (not on the recovery card) — add to secrets.Purposes() if card-reproducibility is wanted.
 
-**All six exploited HIGH findings (E1, E2, S1, S2, R1, B1) are now closed.** Remaining:
-medium/low defense-in-depth (S3, D2, D4, R4, S6, E4, U1) + the residuals noted above.
+5. **Agent surface — AI-1..AI-13 LANDED 2026-08-23** (branch `redteam-api`): every exploited
+   finding of the second pass closed, HIGH first, each one a failing-then-passing regression
+   test. See [§ Agent-surface findings](#agent-surface-findings-ai-) for the table and the
+   residuals.
+
+**All six exploited HIGH findings of the first pass (E1, E2, S1, S2, R1, B1) are now closed,
+as are all five of the second pass (AI-1..AI-5).** Remaining: medium/low defense-in-depth
+(S3, D2, D4, R4, S6, E4, U1) + the residuals noted above and in the agent-surface section.
 
 Each wave is a build+verify workflow that reproduces the finding as a failing test first,
 then fixes it, then proves the exploit no longer works (red-team's repro becomes a
 regression test). The red-team re-runs against each wave.
+
+## Agent-surface findings (AI-\*)
+
+Second pass, 2026-08-23, against the three programmatic faces ADR 0014 ratifies: the write
+half of `/api/v1`, `exocomp login` + `--remote`, and the stdio MCP server. Every finding
+below was reproduced against a real binary or the real handler; every one marked
+**exploited-then-closed** now has that repro as a failing-then-passing regression test.
+
+### HIGH — all five closed
+
+| id | finding | exploited | disposition |
+|---|---|---|---|
+| AI-1 | MCP stdio has no credential and no scope, yet advertised `approve_job`/`reject_job` beside `workspace_apply` — an agent gated its own destructive job and then approved it. Prompt injection amplifies it: `get_job_events`/`list_events` return attacker-posted webhook text to the same session that holds the release. | yes | **FIXED — exploited-then-closed.** The decision tools are gone from the stdio face; a gated job is decided from the browser/phone surface, the CLI, or an approve-scope `/api/v1` token. They return with a token-carrying HTTP/SSE transport (ADR 0014 §3's scope-gated visibility). |
+| AI-2 | `operator` satisfied both W and A: the only scope that can enqueue a gated apply could also settle its approval, so handing an agent the token it needs to plan/apply handed it the authority the gate exists to withhold. | yes | **FIXED — exploited-then-closed.** `/api/v1`'s decision route takes `approve` alone, and BOTH decision paths refuse a caller the gated job's ledger records as its actor. The browser surface keeps operator-or-approve for the human at the console. |
+| AI-3 | TOCTOU between `CreateArtifact` and the verdict event: an apply-by-id landing in the window read "no verdict" as "no policy" and enqueued plainly against a deny-all workspace. | yes | **FIXED — exploited-then-closed.** A plan on a workspace with enabled policies and no adjudication record is unconsumable on every face; the seal records a no-match adjudication so a legitimately unmatched plan still applies; and the daemon evaluates policy BEFORE it seals, so the remaining window is one event append. |
+| AI-4 | A fresh apply consulted no policy at all — omitting `plan` skipped the whole deny/require_approval machinery, so `policy add --action deny` protected only the plan→apply-by-id path. | yes | **FIXED — exploited-then-closed.** A fresh apply on a workspace with enabled plan policies is refused in the service verb, so every face inherits it; plan-then-apply-by-id is the adjudicable path. |
+| AI-5 | `--assume-yes` is a root persistent flag and the only way to pin at all on non-interactive stdin, and it also overrode the changed-fingerprint refusal — so the exact invocation every script/agent must use re-pinned to whatever certificate answered and handed it the bearer token. | yes | **FIXED — exploited-then-closed.** Replacing a CHANGED fingerprint, or re-pointing an alias at another endpoint, takes the login-only `--replace-pin`; `-y` alone refuses non-zero and leaves `hosts.toml` untouched. |
+
+### MEDIUM — all four closed
+
+| id | finding | exploited | disposition |
+|---|---|---|---|
+| AI-6 | `GET /api/v1/health` let a READONLY token fork eight PATH-resolved subprocesses and unwrap the keyring per request, at any rate — outside the one job queue and the KDF gate. | yes | **FIXED — exploited-then-closed.** The summary is served from a 10s cache whose refresh is serialized, so a flood of reads costs one probe. The bare-name PATH resolution and the per-probe `secrets.Open` live in `internal/health` and remain open (S6-adjacent) — see the residuals. |
+| AI-7 | `Idempotency-Key` was one global namespace: a planted key returned another token's job for a write that never enqueued, and wrote the caller's attribution onto a foreign ledger. | yes | **FIXED — exploited-then-closed.** Keys are namespaced by face, authenticated token id, and route before they reach the queue, which also puts the queue's reserved `wf:` step keys out of reach of any face. |
+| AI-8 | Cookie sessions were accepted on `/api/v1` WRITE routes with no CSRF token, no Origin/Referer check and no Content-Type check. SameSite=Strict is the whole mitigation, and it does not scope to a port. | yes | **FIXED — exploited-then-closed.** Write routes require an explicit bearer credential; reads still resolve a session, and the browser's own same-origin decide form is unchanged. |
+| AI-9 | A saved plan applied by id with no check that it belonged to the workspace in the path — one workspace's sealed plan ran in another, under that workspace's backend bearer and state passphrase, with the stale-plan serial read from a workspace the plan was never made against. | yes | **FIXED — exploited-then-closed.** The plan's owner is read back from its plan job's runbook and a mismatch is an `invalid_argument` before anything is enqueued or decrypted. |
+
+### LOW — all four closed
+
+| id | finding | exploited | disposition |
+|---|---|---|---|
+| AI-10 | A revoked token kept receiving an already-open SSE job stream: auth was resolved once, at attach. | yes | **FIXED — exploited-then-closed.** The tail re-resolves its token row on every poll (a row read, no KDF) and ends the stream when it stops authenticating, with a 12h hard lifetime as backstop. |
+| AI-11 | No rate limit, lockout or failure counter on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a 35× timing oracle for which token ids exist. | yes | **FIXED — exploited-then-closed.** Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run; every failure path now runs argon2id against a decoy hash. |
+| AI-12 | A `--source` playbook escaped the checkout (`../`, or an absolute path that was not rebased at all), so a run recorded against a signed source executed a tree the signature never covered. | yes | **FIXED — exploited-then-closed.** The joined path is resolved (symlinks included) and required to stay inside the checkout, an absolute playbook with `--source` is refused, and a source name is charset-validated before it is spliced into any path. |
+| AI-13 | MCP writes were wholly unattributed — an agent's write read off the ledger as the operator's own CLI run — and a `tools/call` sent as a JSON-RPC notification mutated state while writing zero bytes back. | yes | **FIXED — exploited-then-closed.** Writes record the `mcp` face, and a side-effecting method sent without an id is refused with `invalid_request` instead of executed. |
+
+### Residuals from this wave
+
+- **AI-1-resid** the stdio face still runs unauthenticated at the local operator's authority
+  for `workspace_plan`/`workspace_apply` — that is `cmd/exocomp/mcp.go`'s stated deferral, and
+  it is now bounded by the fact that the face cannot release its own gate. A token-scoped
+  MCP transport (env/handshake token, scope-gated `tools()`, per-call row re-check so a revoke
+  bites) is the follow-up ADR 0014 §3 actually promises.
+- **AI-2-resid** an operator driving a remote daemon needs an `approve`-scope token for
+  `approval decide --remote`; the operator token no longer settles approvals over `/api/v1`.
+  The self-approval refusal keys on the token NAME recorded in the ledger, so a revoked
+  name later reused by a new token would be treated as the same principal.
+- **AI-3-resid** the seal and the verdict are still two writes, not one transaction: the
+  window is now one `AppendJobEvent` wide and fail-closed covers it, but a store-level
+  transaction spanning `CreateArtifact` + the verdict event would close it structurally.
+  That needs the store seam, which this lane does not own.
+- **AI-6-resid** the fixes here are in `internal/web`. The probe itself still resolves seven
+  optional tools by BARE NAME on the ambient PATH (finding S6) and still calls
+  `secrets.Open(dataDir)` per run to mint the `/metrics` scrape token; deriving that once at
+  daemon start and pinning tool paths belong to `internal/health`.
+- **AI-7-resid** the recovered job's runbook/kind/argv are still not compared against the
+  request (`queue` is not this lane's file); with the namespace in place a recovered job can
+  only be the same principal's own earlier call to the same verb, so the mismatch case is a
+  retry with different arguments, which still returns the first job.
+- **AI-11-resid** the backoff is process state and per-source keys on `RemoteAddr` (D1/D4
+  adjacent: a proxy collapses sources). Failures are logged, not recorded on the token row,
+  so a guessing run is visible in the log but not in `token list`.
 
 ## Optional OpenBao Transit seal (ADR 0013)
 

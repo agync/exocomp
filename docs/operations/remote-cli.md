@@ -36,7 +36,7 @@ command off the box.
 | `playbook run` | Enqueues, then follows the job to its end and exits with the job's code. `--no-follow` prints the id and exits 0 |
 | `workspace plan` | Enqueues, prints the job id |
 | `workspace apply` | Enqueues, prints the job id — or the pending approval, its policy, deadline and TTL when the plan's verdict gates it |
-| `approval decide` | Settles the approval on the daemon, which derives the capability token itself |
+| `approval decide` | Settles the approval on the daemon, which derives the capability token itself. Needs an **`approve`-scope** token: `operator` may enqueue but may not settle what it enqueued (finding AI-2), and no token may decide an approval for a job it asked for itself |
 | `jobs follow <id>` | Streams the job's events and exits with the job's code |
 
 Every write accepts `--idempotency-key` (or `EXOCOMP_IDEMPOTENCY_KEY`), which travels as
