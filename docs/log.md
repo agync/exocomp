@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — machine-output.md's "read/list/status verbs support it" is now true
+
+[operations/machine-output.md](operations/machine-output.md) claimed blanket `--output json`
+coverage across read/list/status verbs while five held out as text-only: `mute list`,
+`litestream status`, `seal status`, `handoff status`, and `hooks show`. Correction of fact:
+the doc now names the five and their wire kinds explicitly, closed the same values-free way
+as every other verb — `internal/wire` gained `mute.list`, `litestream.status`, `seal.status`,
+`workflow.status`, and `hooks.show`, each a golden-tested projection that never carries a
+secret value or a credential-bearing target URI.
+
 ## 2026-08-23 — Bootstrap captures survive a crash+resume
 
 [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained a

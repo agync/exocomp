@@ -21,6 +21,14 @@ form. `exocomp commands --output json` dumps the whole command tree (name, path,
 description, example, flags, subcommands) so a harness discovers the CLI's surface in one
 call without scraping `--help`.
 
+Coverage is now total across every read/list/status verb; the last five gaps closed are
+`mute list` (`mute.list`), `litestream status` (`litestream.status`), `seal status`
+(`seal.status`), `handoff status` (`workflow.status`), and `hooks show` (`hooks.show`). Each
+follows the values-free discipline below: the text default is unchanged, and no secret
+value, ciphertext, or raw credential-bearing target URI ever reaches the JSON — `seal
+status` reports the transit key's address and name but never its token; `litestream status`
+reports a target's type but never its raw URI, which for `sftp://` can embed `user:pass`.
+
 ## The envelope
 
 ```json
