@@ -82,6 +82,11 @@ print its decision link with `exocomp approval link 5`
   plan is sealed **denied** (fail-closed): a plan no policy could examine is not
   allowed to apply unseen.
 - A workspace with no policies pays nothing — the plan is never even described.
-- An apply of an operator's own plan **file** (`--plan /path/to.tfplan`) carries
-  no recorded verdict and is not gated; the gate is on the plans exocomp sealed
-  by artifact id.
+- On a workspace **with enabled policies**, an apply of any plan that carries no
+  recorded verdict is refused — an operator's own plan **file**
+  (`--plan /path/to.tfplan`), or a sealed plan whose verdict has not landed yet.
+  "No verdict" is read as *not adjudicated*, never as *unpoliced*, so an apply
+  issued in the instant between the artifact row and the verdict record cannot
+  slip past a deny (finding AI-3, `docs/security/threat-model.md`). Re-plan and
+  apply that plan by id. On a workspace with no policies, a plan file applies as
+  before.

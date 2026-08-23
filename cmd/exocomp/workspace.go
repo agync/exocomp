@@ -492,7 +492,10 @@ func newWorkspaceApplyCmd() *cobra.Command {
 			"With --remote the apply is enqueued on that daemon and this command prints the " +
 			"job id, or the pending approval and its TTL when the plan's policy gates it; " +
 			"watch the job with `jobs follow`. --plan then names a saved plan by artifact id, " +
-			"since a path names a file on this machine.",
+			"since a path names a file on this machine.\n\n" +
+			"On a workspace with enabled plan policies, a --plan whose artifact carries no " +
+			"recorded policy verdict is refused rather than applied unpoliced: re-plan so the " +
+			"verdict is stamped on the artifact you apply.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			op := workspaceOp{workspace: args[0], op: "apply", planRef: planRef,
@@ -625,22 +628,21 @@ func runWorkspacePlan(ctx context.Context, svc *service.Service, enq service.Enq
 		final.ID, final.State, jobDuration(final))
 
 	if res.PlanPath != "" {
-		// Seal the plan, then evaluate the workspace's policies against the
-		// outcome the run already recorded and stamp the verdict onto the sealed
-		// artifact. A deny here is what makes the plan unconsumable.
+		// Evaluate the workspace's policies FIRST, then seal: the artifact id
+		// becomes addressable only once a verdict is ready to stamp on it, so the
+		// window in which an apply-by-id sees a sealed-but-undecided plan is one
+		// event append wide (finding AI-3; the apply gate fails closed on it).
+		pol, err := evalPlanPolicy(ctx, st, out, ws, final.ID)
+		if err != nil {
+			return 0, err
+		}
 		saved, err := recordPlan(ctx, st, env, out, final.ID, res.PlanPath)
 		if err != nil {
 			return 0, err
 		}
-		if saved != nil {
-			verdict, err := evalPlanPolicy(ctx, st, out, ws, final.ID)
-			if err != nil {
+		if saved != nil && pol.Evaluated {
+			if err := recordPlanOutcome(ctx, st, out, saved.JobID, saved.ID, pol); err != nil {
 				return 0, err
-			}
-			if verdict.Matched() {
-				if err := recordPlanVerdict(ctx, st, out, saved.JobID, saved.ID, verdict); err != nil {
-					return 0, err
-				}
 			}
 		}
 	}
@@ -664,15 +666,12 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 		if err != nil {
 			return 0, err
 		}
-		verdict, err := planVerdict(ctx, st, resolved)
+		saved = &resolved
+		// Fail-closed adjudication: a plan on a policied workspace with no
+		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		gate, err = svc.PlanGateForPlan(ctx, ws.Name, resolved)
 		if err != nil {
 			return 0, err
-		}
-		saved = &resolved
-		gate = service.PlanGate{
-			Deny:            verdict.Deny(),
-			RequireApproval: verdict.RequireApproval(),
-			Policy:          verdict.Policy,
 		}
 	}
 

@@ -103,10 +103,15 @@ type planPolicyVerdict struct {
 
 // PlanPolicyResult is the verdict a plan's policies produced. FailNotice is set
 // when evaluation could not complete and the plan was failed closed (sealed
-// denied); a face renders it and the verdict is a deny.
+// denied); a face renders it and the verdict is a deny. Evaluated reports that
+// the workspace HAD enabled policies and they ran — a caller must record the
+// outcome either way (RecordPlanVerdict on a match, RecordPlanAdjudication on
+// none), because an apply reads the absence of any record as "not adjudicated
+// yet" and refuses (finding AI-3).
 type PlanPolicyResult struct {
 	Verdict    policy.Verdict
 	FailNotice string
+	Evaluated  bool
 }
 
 var (
@@ -150,7 +155,7 @@ func (s *Service) EvalPlanPolicy(ctx context.Context, ws store.Workspace, jobID 
 	if err != nil {
 		return failClosed("evaluate policies", err), nil
 	}
-	return PlanPolicyResult{Verdict: verdict}, nil
+	return PlanPolicyResult{Verdict: verdict, Evaluated: true}, nil
 }
 
 // failClosed turns an evaluation that could not complete into a deny, so a plan
@@ -159,6 +164,7 @@ func failClosed(stage string, err error) PlanPolicyResult {
 	return PlanPolicyResult{
 		Verdict:    policy.Verdict{Policy: "policy-evaluation-failed", Action: store.PolicyDeny},
 		FailNotice: fmt.Sprintf("plan policy: could not %s (%v); sealing the plan denied", stage, err),
+		Evaluated:  true,
 	}
 }
 
@@ -216,17 +222,56 @@ func (s *Service) RecordPlanVerdict(ctx context.Context, jobID, artifactID int64
 	return msg, nil
 }
 
+// planActionNoMatch is the action of the adjudication record written when a
+// workspace's policies ran against a plan and none matched. It is deliberately
+// not a store.Policy* action: nothing routes on it, and PlanVerdict skips it, so
+// every existing consumer sees the same zero verdict it always did. Its only
+// reader is planAdjudicated, which needs to tell "policies ran, nothing matched"
+// apart from "the verdict has not been written yet" (finding AI-3).
+const planActionNoMatch = "no_match"
+
+// RecordPlanAdjudication records that a workspace's enabled policies were
+// evaluated against a sealed plan and none of them matched. Without it, a
+// legitimately-unmatched plan would be indistinguishable from a plan whose
+// verdict has not landed yet, and the fail-closed apply gate would refuse it.
+func (s *Service) RecordPlanAdjudication(ctx context.Context, jobID, artifactID int64) error {
+	payload, err := json.Marshal(map[string]planPolicyVerdict{
+		"plan_policy": {Action: planActionNoMatch, Artifact: artifactID},
+	})
+	if err != nil {
+		return fmt.Errorf("workspace: encode plan adjudication: %w", err)
+	}
+	if _, err := s.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: jobID, Level: store.LevelSystem,
+		Msg:     "plan policy: evaluated, no policy matched",
+		RawJSON: string(payload),
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
 // PlanVerdict reads back the policy verdict recorded on a sealed plan, or a zero
 // verdict when none was recorded (no policies, or a plan applied by a path this
 // control plane never sealed). It is what makes a deny plan unconsumable: the
 // apply consults it before it enqueues anything.
 func (s *Service) PlanVerdict(ctx context.Context, artifact store.Artifact) (policy.Verdict, error) {
+	rec, ok, err := s.planPolicyRecord(ctx, artifact)
+	if err != nil || !ok || rec.Action == planActionNoMatch {
+		return policy.Verdict{}, err
+	}
+	return policy.Verdict{Policy: rec.Policy, Action: rec.Action}, nil
+}
+
+// planPolicyRecord finds the plan_policy record keyed to one artifact, whether
+// it names a matched verdict or the no-match adjudication.
+func (s *Service) planPolicyRecord(ctx context.Context, artifact store.Artifact) (planPolicyVerdict, bool, error) {
 	if artifact.JobID == 0 {
-		return policy.Verdict{}, nil
+		return planPolicyVerdict{}, false, nil
 	}
 	events, err := s.store.ListJobEvents(ctx, artifact.JobID)
 	if err != nil {
-		return policy.Verdict{}, err
+		return planPolicyVerdict{}, false, err
 	}
 	for _, e := range events {
 		if e.RawJSON == "" {
@@ -241,9 +286,55 @@ func (s *Service) PlanVerdict(ctx context.Context, artifact store.Artifact) (pol
 		if envelope.PlanPolicy.Artifact != artifact.ID {
 			continue
 		}
-		return policy.Verdict{Policy: envelope.PlanPolicy.Policy, Action: envelope.PlanPolicy.Action}, nil
+		return *envelope.PlanPolicy, true, nil
 	}
-	return policy.Verdict{}, nil
+	return planPolicyVerdict{}, false, nil
+}
+
+// PlanUnadjudicatedError reports a saved plan that a workspace's enabled
+// policies have not decided: the seal wrote the artifact row but no verdict
+// record is on the plan job's timeline yet, or the plan was never adjudicated at
+// all (an operator's own plan file). Applying it would consult a policy set that
+// never saw it, so it is refused. It unwraps to the store's state-conflict
+// sentinel, so every face renders it as a conflict without its own mapping.
+type PlanUnadjudicatedError struct {
+	PlanArtifactID int64
+	Workspace      string
+}
+
+func (e *PlanUnadjudicatedError) Error() string {
+	return fmt.Sprintf("workspace apply: plan %d is unconsumable: workspace %q has enabled plan "+
+		"policies and this plan carries no recorded verdict; re-plan and apply that plan by id",
+		e.PlanArtifactID, e.Workspace)
+}
+
+func (e *PlanUnadjudicatedError) Unwrap() error { return store.ErrStateConflict }
+
+// PlanGateForPlan resolves the gate a saved plan's recorded verdict implies,
+// FAIL-CLOSED: on a workspace carrying enabled plan policies, a plan with no
+// adjudication record is refused rather than treated as unpoliced. That closes
+// the window between CreateArtifact and the verdict event, where an apply-by-id
+// issued against a freshly-sealed plan used to bypass deny/require_approval
+// entirely (finding AI-3). It is the one adjudication read every face uses.
+func (s *Service) PlanGateForPlan(ctx context.Context, workspace string, art store.Artifact) (PlanGate, error) {
+	rec, recorded, err := s.planPolicyRecord(ctx, art)
+	if err != nil {
+		return PlanGate{}, err
+	}
+	if !recorded {
+		policies, perr := s.store.ListPlanPolicies(ctx, workspace, true)
+		if perr != nil {
+			return PlanGate{}, perr
+		}
+		if len(policies) > 0 {
+			return PlanGate{}, &PlanUnadjudicatedError{PlanArtifactID: art.ID, Workspace: workspace}
+		}
+		return PlanGate{}, nil
+	}
+	if rec.Action == planActionNoMatch {
+		return PlanGate{}, nil
+	}
+	return PlanGateFor(policy.Verdict{Policy: rec.Policy, Action: rec.Action}), nil
 }
 
 // PlanGateFor reduces a plan's recorded verdict to the two outcomes that route

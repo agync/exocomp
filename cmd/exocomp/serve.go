@@ -839,14 +839,10 @@ func (d workspaceDriver) sealAPIPlan(ctx context.Context, job store.Job, ws stor
 		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelError, Msg: fmt.Sprintf(format, a...)})
 	}
 	svc := service.New(d.store, d.dirs.root, nil)
-	saved, err := svc.SealPlan(ctx, d.env, job.ID, planPath)
-	if err != nil {
-		emit("seal plan artifact: %v", err)
-		return
-	}
-	if saved == nil {
-		return
-	}
+	// Adjudicate BEFORE the artifact row exists: the id an apply can name becomes
+	// addressable only once the verdict is ready to stamp on it, so the window in
+	// which an apply-by-id sees a sealed-but-undecided plan is one event append
+	// wide (finding AI-3). The apply gate fails closed on what is left of it.
 	res, err := svc.EvalPlanPolicy(ctx, ws, job.ID)
 	if err != nil {
 		emit("evaluate plan policy: %v", err)
@@ -855,9 +851,24 @@ func (d workspaceDriver) sealAPIPlan(ctx context.Context, job store.Job, ws stor
 	if res.FailNotice != "" {
 		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelSystem, Msg: res.FailNotice})
 	}
-	if res.Verdict.Matched() {
+	saved, err := svc.SealPlan(ctx, d.env, job.ID, planPath)
+	if err != nil {
+		emit("seal plan artifact: %v", err)
+		return
+	}
+	if saved == nil {
+		return
+	}
+	switch {
+	case res.Verdict.Matched():
 		if _, err := svc.RecordPlanVerdict(ctx, saved.JobID, saved.ID, res.Verdict); err != nil {
 			emit("record plan verdict: %v", err)
+		}
+	case res.Evaluated:
+		// Policies ran and none matched: record that, or the plan would read as
+		// never-adjudicated and its apply would be refused.
+		if err := svc.RecordPlanAdjudication(ctx, saved.JobID, saved.ID); err != nil {
+			emit("record plan adjudication: %v", err)
 		}
 	}
 }

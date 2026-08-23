@@ -68,23 +68,23 @@ func TestEvalPlanPolicyDeniesDeleteOutcome(t *testing.T) {
 
 	ws, _ := st.WorkspaceByName(ctx, "homelab")
 	var log strings.Builder
-	v, err := evalPlanPolicy(ctx, st, &log, ws, jobID)
+	res, err := evalPlanPolicy(ctx, st, &log, ws, jobID)
 	if err != nil {
 		t.Fatalf("evalPlanPolicy: %v (%s)", err, log.String())
 	}
-	if !v.Deny() || v.Policy != "no-deletes" {
-		t.Fatalf("verdict = %+v, want deny by no-deletes", v)
+	if !res.Verdict.Deny() || res.Verdict.Policy != "no-deletes" {
+		t.Fatalf("verdict = %+v, want deny by no-deletes", res.Verdict)
 	}
 
 	if err := st.DeletePlanPolicy(ctx, "no-deletes"); err != nil {
 		t.Fatalf("delete policy: %v", err)
 	}
-	v, err = evalPlanPolicy(ctx, st, &log, ws, jobID)
+	res, err = evalPlanPolicy(ctx, st, &log, ws, jobID)
 	if err != nil {
 		t.Fatalf("evalPlanPolicy (no policy): %v", err)
 	}
-	if v.Matched() {
-		t.Fatalf("with no policy the verdict = %+v, want clean", v)
+	if res.Verdict.Matched() {
+		t.Fatalf("with no policy the verdict = %+v, want clean", res.Verdict)
 	}
 }
 
@@ -103,12 +103,12 @@ func TestEvalPlanPolicyCreateOnlyIsClean(t *testing.T) {
 		t.Fatalf("create policy: %v", err)
 	}
 	ws, _ := st.WorkspaceByName(ctx, "homelab")
-	v, err := evalPlanPolicy(ctx, st, &strings.Builder{}, ws, jobID)
+	res, err := evalPlanPolicy(ctx, st, &strings.Builder{}, ws, jobID)
 	if err != nil {
 		t.Fatalf("evalPlanPolicy: %v", err)
 	}
-	if v.Matched() {
-		t.Fatalf("verdict = %+v, want clean for a create-only plan", v)
+	if res.Verdict.Matched() {
+		t.Fatalf("verdict = %+v, want clean for a create-only plan", res.Verdict)
 	}
 }
 
@@ -129,12 +129,12 @@ func TestEvalPlanPolicyFailsClosedWithoutDetail(t *testing.T) {
 	}
 	ws, _ := st.WorkspaceByName(ctx, "homelab")
 	var log strings.Builder
-	v, err := evalPlanPolicy(ctx, st, &log, ws, jobID)
+	res, err := evalPlanPolicy(ctx, st, &log, ws, jobID)
 	if err != nil {
 		t.Fatalf("evalPlanPolicy: %v", err)
 	}
-	if !v.Deny() {
-		t.Fatalf("verdict = %+v, want a fail-closed deny; log: %s", v, log.String())
+	if !res.Verdict.Deny() {
+		t.Fatalf("verdict = %+v, want a fail-closed deny; log: %s", res.Verdict, log.String())
 	}
 }
 
@@ -145,11 +145,11 @@ func TestEvalPlanPolicyNoPoliciesSkips(t *testing.T) {
 	st, jobID := seedPlanWithOutcome(t, "homelab", executor.TofuPlanOutcome{Operation: "plan", Changes: false})
 	ctx := context.Background()
 	ws, _ := st.WorkspaceByName(ctx, "homelab")
-	v, err := evalPlanPolicy(ctx, st, &strings.Builder{}, ws, jobID)
+	res, err := evalPlanPolicy(ctx, st, &strings.Builder{}, ws, jobID)
 	if err != nil {
 		t.Fatalf("evalPlanPolicy: %v", err)
 	}
-	if v.Matched() {
-		t.Fatalf("verdict = %+v, want clean with no policies", v)
+	if res.Verdict.Matched() {
+		t.Fatalf("verdict = %+v, want clean with no policies", res.Verdict)
 	}
 }

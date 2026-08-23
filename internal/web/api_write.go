@@ -273,12 +273,13 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		saved = &art
-		verdict, verr := svc.PlanVerdict(r.Context(), art)
-		if verr != nil {
-			s.apiFail(w, verr)
+		// Fail-closed adjudication: a plan on a policied workspace with no
+		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		gate, err = svc.PlanGateForPlan(r.Context(), ws.Name, art)
+		if err != nil {
+			s.apiFail(w, err)
 			return
 		}
-		gate = service.PlanGateFor(verdict)
 	}
 
 	res, err := svc.ApplyWorkspace(r.Context(), s.enqueuer(), s.deriver, service.ApplyInput{

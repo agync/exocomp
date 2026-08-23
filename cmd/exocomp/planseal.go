@@ -30,19 +30,31 @@ func planEnvelope(env *secrets.Envelope) service.PlanEnvelope {
 }
 
 // evalPlanPolicy evaluates a workspace's enabled policies against a sealed
-// plan's outcome and returns the governing verdict, printing the fail-closed
-// notice when evaluation could not complete. The transport-free logic lives in
+// plan's outcome and returns the result, printing the fail-closed notice when
+// evaluation could not complete. The transport-free logic lives in
 // internal/service.
 func evalPlanPolicy(ctx context.Context, st *store.Store, out io.Writer,
-	ws store.Workspace, jobID int64) (policy.Verdict, error) {
+	ws store.Workspace, jobID int64) (service.PlanPolicyResult, error) {
 	res, err := service.New(st, "", nil).EvalPlanPolicy(ctx, ws, jobID)
 	if err != nil {
-		return policy.Verdict{}, err
+		return service.PlanPolicyResult{}, err
 	}
 	if res.FailNotice != "" {
 		_, _ = fmt.Fprintln(out, res.FailNotice)
 	}
-	return res.Verdict, nil
+	return res, nil
+}
+
+// recordPlanOutcome stamps an evaluation onto the sealed plan: the matched
+// policy's verdict, or the adjudication record that says the policies ran and
+// none matched. One of the two must land, because an apply reads a plan with
+// neither as not-yet-decided and refuses it (finding AI-3).
+func recordPlanOutcome(ctx context.Context, st *store.Store, out io.Writer,
+	jobID, artifactID int64, res service.PlanPolicyResult) error {
+	if res.Verdict.Matched() {
+		return recordPlanVerdict(ctx, st, out, jobID, artifactID, res.Verdict)
+	}
+	return service.New(st, "", nil).RecordPlanAdjudication(ctx, jobID, artifactID)
 }
 
 // recordPlanVerdict writes a matched policy's decision onto the plan job's

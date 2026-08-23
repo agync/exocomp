@@ -2,7 +2,6 @@ package mcp
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -147,7 +146,9 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (st
 			return "", nil, invalidArg("artifact " + args.Plan + " is not a plan")
 		}
 		saved = &art
-		if gate, err = s.planGate(ctx, art); err != nil {
+		// Fail-closed adjudication: a plan on a policied workspace with no
+		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		if gate, err = s.service().PlanGateForPlan(ctx, ws.Name, art); err != nil {
 			return "", nil, err
 		}
 	}
@@ -207,45 +208,6 @@ func (s *Server) approvalDeriver(saved *store.Artifact, gate service.PlanGate) (
 		return nil, nil, nil
 	}
 	return s.openEnvelope()
-}
-
-// planGate reads back the policy verdict a plan's seal recorded on the plan
-// job's timeline, reduced to the two outcomes that route an apply. It reads only
-// the values-free plan_policy audit envelope (name + action + artifact id),
-// never a plan attribute value — the same store read the HTTP write API's
-// planGate does.
-func (s *Server) planGate(ctx context.Context, art store.Artifact) (service.PlanGate, error) {
-	if art.JobID == 0 {
-		return service.PlanGate{}, nil
-	}
-	events, err := s.store.ListJobEvents(ctx, art.JobID)
-	if err != nil {
-		return service.PlanGate{}, err
-	}
-	for _, e := range events {
-		if e.RawJSON == "" {
-			continue
-		}
-		var env struct {
-			PlanPolicy *struct {
-				Action   string `json:"action"`
-				Policy   string `json:"policy"`
-				Artifact int64  `json:"artifact"`
-			} `json:"plan_policy"`
-		}
-		if err := json.Unmarshal([]byte(e.RawJSON), &env); err != nil || env.PlanPolicy == nil {
-			continue
-		}
-		if env.PlanPolicy.Artifact != art.ID {
-			continue
-		}
-		return service.PlanGate{
-			Deny:            env.PlanPolicy.Action == store.PolicyDeny,
-			RequireApproval: env.PlanPolicy.Action == store.PolicyRequireApproval,
-			Policy:          env.PlanPolicy.Policy,
-		}, nil
-	}
-	return service.PlanGate{}, nil
 }
 
 // There is deliberately no decide seam here. The stdio transport authenticates
