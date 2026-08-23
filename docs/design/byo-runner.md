@@ -2,10 +2,18 @@
 
 ## Status
 
-Draft · design proposal for the deferred `container` tier. **Not accepted.** This document
-argues that the status quo (nono/Landlock default, `container` tier deferred) is correct and
-should be *ratified*, and specifies the exact shape a bring-your-own-runner (BYO-runner)
-would take **if and when** a concrete need justifies building it.
+Draft · design proposal for the deferred `container` tier. **Not accepted** for the tier as a
+whole. This document argues that the status quo (nono/Landlock default, `container` tier
+deferred) is correct and should be *ratified*, and specifies the exact shape a
+bring-your-own-runner (BYO-runner) would take **if and when** a concrete need justifies
+building it.
+
+**Exception — Phase 1 (per-job resource caps) is accepted and BUILT (2026-08-24):** the owner
+approved caps with the opt-in root-in-container privilege model, following recommendation 2
+("if the need is caps only, build §6 instead of the tier"). Caps landed as cgroup v2 direct
+writes, **not** the systemd-scope sketch §6 first proposed (the runtime image has no systemd).
+See §6's "Built (2026-08-24)" subsection. The rest of the tier (BYO images, the podman socket,
+the build/cache machinery) remains deferred.
 
 > **Grounded vs inferred.** Two research lanes produced this synthesis with file:line and
 > nmem citations: *podman/OCI tooling + nesting* and *cache/lifecycle*. Those are grounded.
@@ -344,6 +352,53 @@ The host-level design above ships as written only for a non-containerized run of
 (development, a bare local install outside the packaged image) — not for the packaged
 Quadlet/compose deployment invariant 1 describes.
 
+### Built (2026-08-24): cgroup v2 direct writes, opt-in, fail-closed — validated on podman
+
+The owner said GO on per-job caps with the opt-in root-in-container privilege model, so the
+in-container path above is now built (`internal/executor/cgroup.go`), not just designed. It
+does **not** use `systemd-run`: the runtime image has no systemd, so the daemon writes the
+cgroup v2 files itself.
+
+Mechanism, per opted-in job:
+
+1. **Once at startup** the daemon prepares a delegated subtree. cgroup v2's *no-internal-
+   process* rule forbids a cgroup from both holding processes and distributing controllers,
+   so the daemon **vacates** its own base cgroup — moves every pid in `cgroup.procs` into a
+   child `exocomp.svc` leaf — and only then writes `+memory +cpu` into the base's
+   `cgroup.subtree_control`. Skipping the vacate yields `EBUSY` on that write, which is the
+   trap this step exists to avoid. A `exocomp.jobs` parent is created and made a distributor
+   too.
+2. **Per job** it `mkdir`s a child under `exocomp.jobs`, writes `memory.max`,
+   `memory.swap.max=0` (**required** — without it a job over `memory.max` swaps instead of
+   being OOM-killed, so the ceiling throttles rather than enforces), and `cpu.max`, then
+   places the job process into it at fork via clone3 `CLONE_INTO_CGROUP` (Go's
+   `SysProcAttr.UseCgroupFD`), so the ceiling is in force from the process's first
+   instruction. Teardown `cgroup.kill`s the subtree and `rmdir`s it with the job.
+3. **Fail-closed.** Caps requested with no delegated, writable subtree is refused, never run
+   uncapped — the same "never silently" posture ADR 0005 holds for the sandbox tier.
+   `exocomp doctor` reports availability under "per-job caps".
+
+**Real validation (podman 5.8.4 host + podman 5.8.1 lima, `--systemd=always`,
+root-in-container):**
+
+- *Memory:* a 200 MB allocation under a 50 MB cap was OOM-killed — process SIGKILLed
+  (`Result.ExitCode = -1`, `Signaled = true`; a shell reports 137), and the job cgroup's
+  `memory.events` showed `oom_kill 1`.
+- *CPU:* a fixed CPU workload under a 10%-of-one-core `cpu.max` took ~3.2 s wall for ~0.2 s
+  of work; `cpu.stat` showed `nr_throttled 33`, `throttled_usec 2929925`.
+
+**Privilege, as validated — the two options are not equivalent on podman 5.8.x:**
+
+- **root-in-container (chosen opt-in).** `PodmanArgs=--systemd=always` mounts
+  `/sys/fs/cgroup` read-write and runs PID 1 as uid 0 inside the rootless user namespace
+  (no host root). Full enforcement observed.
+- **keep-id delegated non-root (the rootless-preserving alternative) does NOT work out of
+  the box.** A `--userns=keep-id` non-root process is **denied** writes to `/sys/fs/cgroup`
+  even with `--systemd=always` (validated 2026-08-24). Making it work needs explicit cgroup
+  ownership delegation podman does not grant by default; unproven on this platform, so the
+  shipped opt-in is root-in-container. The default deployment stays rootless + keep-id +
+  **capless**.
+
 ---
 
 ## 7. Cache and lifecycle — port the uv-venv model to OCI images
@@ -484,14 +539,19 @@ container tier is never built**, because they close real gaps in the shipped sys
 - **Phase 0 — Bound the existing caches (no container tooling).** Add the `cache/python` prune
   job (§7.5) as a scheduled queue job on the restic-forget cadence. Closes an unbounded-growth
   gap that exists **today**. Depends on nothing.
-- **Phase 1 — systemd transient-scope resource caps (no socket). P1, blocked as written for
-  the packaged deployment (§6 validation).** Implement §6: wrap the job subprocess in
-  `systemd-run --user --scope -p MemoryMax=/CPUQuota=`, composed outside the nono wrapper.
-  Add doctor probes for `enable-linger`. Works unmodified only for a non-containerized run of
-  the binary; the packaged Quadlet/compose deployment needs the cgroup-v2-direct-write path
-  and its root-in-container-vs-keep-id-delegation decision first (held for the owner), not
-  just this wrapper. Depends on nothing container-related for the host-only case; blocked on
-  that decision for the packaged case.
+- **Phase 1 — per-job resource caps via cgroup v2 direct writes (no socket, no systemd-run).
+  BUILT 2026-08-24.** Not the `systemd-run --user --scope` wrapper originally sketched: the
+  runtime image has no systemd, so the daemon writes `memory.max`/`memory.swap.max=0`/
+  `cpu.max` into a per-job child of its own delegated cgroup subtree and places the process
+  with `CLONE_INTO_CGROUP` (`internal/executor/cgroup.go`). Opt-in and fail-closed: default
+  deployment stays rootless + capless, a capped job with no writable subtree is refused. The
+  owner-approved privilege is root-in-container (`PodmanArgs=--systemd=always`), documented in
+  `packaging/quadlet/exocomp.container`; the keep-id non-root delegation alternative is not
+  writable on podman 5.8.x and stays unbuilt. `exocomp doctor` reports availability. Enforced
+  behaviour (OOM-kill, CPU throttle) validated on real podman — see §6. **Not yet wired:** the
+  runner store already holds `memory_max`/`cpu_quota` verbatim, but the dispatch that carries a
+  runner's caps onto a job's `SandboxOptions` lives in the queue/service path and is a separate
+  lane; `ParseCaps` is the seam the store's syntax parses through.
 - **Phase 2 — doctor prerequisites probe for the container tier.** Add probes (rootless podman
   present, user socket reachable, subuid/subgid configured, SELinux booleans/label posture)
   that **assert rather than assume**, mirroring sandbox.go `Probe`/`RunCanary`. Gates every
@@ -528,7 +588,7 @@ container tier is never built**, because they close real gaps in the shipped sys
 | §3 tooling, docker-SDK-broken | **Grounded** | nmem podman-REST-not-BuildKit; go.mod; ADR 0006:58 |
 | §4 nesting decision | **Grounded** | execution.md:138, platform-contract.md:11, ADR 0005:18 |
 | §5 SELinux/hardening | **[inferred]** — SELinux lane stubbed | anchors: platform-contract.md:33-36, nmem relabel; assembly reconstructed |
-| §6 systemd scopes | **[inferred]** for the design; **Grounded** for the 2026-08-23 host-vs-in-container validation | anchor: platform-contract.md:10 (`MemoryMax=`); invocation reconstructed; validation checked against packaging/Containerfile + packaging/quadlet/exocomp.container |
+| §6 caps | **Grounded + BUILT** — cgroup v2 direct writes, real podman validation 2026-08-24 (OOM-kill, CPU throttle); the earlier systemd-scope sketch is superseded | internal/executor/cgroup.go; podman 5.8.4/5.8.1 runs; platform-contract.md:10 |
 | §7 cache/lifecycle | **Grounded** | venv.go, manifest.go:137-143, Containerfile, sched, restic.go:135, tofu.go:262-287 |
 | §8 recommendation | **Grounded** (synthesis) | follows from §1–§7 |
 | §9 phasing | **[inferred]** — integration lane stubbed | reconstructed from code seams |

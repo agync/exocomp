@@ -32,8 +32,27 @@ them never changes a runner's identity:
   Containerfile selects `onthefly` by default unless `--mode` is passed explicitly.
 
 Other flags: `--ansible-core <version>` (a per-project ansible-core pin), `--memory-max` /
-`--cpu-quota` (the resource ceilings a run *would* ask for, per design §6 — nothing enforces
-them today).
+`--cpu-quota` (the resource ceilings a run asks for, per design §6, in systemd syntax — `2G`,
+`200%`).
+
+## Resource caps enforcement (opt-in, cgroup v2)
+
+`--memory-max` / `--cpu-quota` are enforced by a per-job cgroup v2 subtree the daemon writes
+directly (`memory.max`, `memory.swap.max=0`, `cpu.max`), **not** by systemd-run — the runtime
+image ships no systemd. A job over its memory ceiling is OOM-killed (exit 137); a job over its
+CPU ceiling is throttled. `memory.swap.max` is pinned to 0 so an over-limit job is killed
+rather than silently swapped.
+
+Enforcement is **opt-in and fail-closed**, and OFF in the default deployment:
+
+- The default rootless, `UserNS=keep-id` container gets no writable cgroup subtree, so caps
+  are unavailable and a job that requests them is **refused, never run uncapped**.
+- To enable, switch the quadlet to the owner-approved root-in-container model documented in
+  `packaging/quadlet/exocomp.container` (`PodmanArgs=--systemd=always`, drop `UserNS=keep-id`).
+
+`exocomp doctor` reports the state under **per-job caps**: "available" when a capped runner
+would be enforced, or "unavailable — … a capped runner would be REFUSED (fail-closed)"
+otherwise. Check it before enqueuing a capped runner.
 
 `runner list` / `runner show <name>` / `runner rm <name>` round out the registry; `show`
 prints the bootstrap script body on the text path (`--output json` never carries it — the

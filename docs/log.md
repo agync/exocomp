@@ -6,6 +6,38 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — per-job resource caps: cgroup v2 direct writes (byo-runner Phase 1)
+
+The owner accepted per-job memory/CPU caps with the opt-in root-in-container privilege model,
+so byo-runner Phase 1 is built — and built the way the real runtime allows, not the way the
+design first sketched. `systemd-run` was ruled out on 2026-08-23 (the fedora-minimal image
+ships no systemd); the shipped path is **cgroup v2 direct writes**
+([design/byo-runner.md](design/byo-runner.md) §6 "Built", §9 Phase 1;
+[operations/runners.md](operations/runners.md) gained a caps-enforcement section). The daemon
+vacates its own cgroup (the v2 no-internal-process rule), enables the memory+cpu controllers,
+and per opted-in job writes `memory.max` / `memory.swap.max=0` / `cpu.max` into a child cgroup
+the job process is born into via `CLONE_INTO_CGROUP`. Opt-in and fail-closed: the default
+rootless + `keep-id` deployment stays capless and refuses a capped job rather than running it
+uncapped; `exocomp doctor` reports availability under "per-job caps".
+
+Two corrections of fact from validating on real podman (5.8.4 host, 5.8.1 lima), not from the
+design's theory:
+
+- **`noswap` tmpfs is refused on rootless mounts** ("only allowed with rootful tmpfs
+  mounts"). The Phase-3 run-dir mount in `packaging/quadlet/exocomp.container` carries
+  `,noswap` under a rootless `UserNS=keep-id` container, so as written it would stop the
+  container starting rootless. Flagged in the quadlet, held for the owner — not silently
+  changed.
+- **keep-id non-root cannot write `/sys/fs/cgroup`** even with `--systemd=always`, so the
+  rootless-preserving delegation alternative does not work out of the box on podman 5.8.x.
+  The shipped opt-in is root-in-container; the keep-id path stays unbuilt.
+
+Enforcement was observed, not assumed: a 200 MB allocation under a 50 MB cap was OOM-killed
+(`memory.events oom_kill 1`, SIGKILL → 137); a CPU workload under a 10% `cpu.max` throttled
+(`cpu.stat nr_throttled 33`). The runner→job dispatch that would carry a stored runner's
+`memory_max`/`cpu_quota` onto a job is a separate (queue/service) lane and is not yet wired;
+`executor.ParseCaps` is the parsing seam it will use.
+
 ## 2026-08-24 — Cross-host fence and a cold-standby failover runbook
 
 New page [operations/failover.md](operations/failover.md): the drilled cold-standby
