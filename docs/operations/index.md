@@ -23,6 +23,7 @@ Getting an install standing up, and getting it back after it falls over.
 | [Remote CLI](remote-access.md) | `exocomp login`'s TOFU certificate pinning, `--remote`/`EXOCOMP_REMOTE`/`--token` precedence, and which verbs are remoted today (reads only) |
 | [The API surface](api.md) | The `/api/v1` read and write routes on the ADR-0009 listener, the wire envelope, idempotency, and the error-code-to-HTTP-status table |
 | [Machine-readable output](machine-output.md) | `--output json`/`EXOCOMP_OUTPUT`, the envelope shape, the error taxonomy, the exit-code table and what of it actually reaches the process today, and `exocomp mcp` |
+| [The MCP surface](mcp.md) | `exocomp mcp` over stdio and `POST /mcp` on the ADR-0009 listener: connecting an agent, what each scope is advertised, why there is no session id, and what never travels |
 | [Runner definitions](runners.md) | `exocomp runner add/list/show/rm/import` — a database-backed registry for the deferred container tier; definitions only, nothing executes them yet |
 | [Governed CLI runs](cli-run.md) | `exocomp cli-tool` and `exocomp run-cli` — the run type for work that is neither ansible nor tofu: an allow-listed binary under the same queue, sandbox, run-secret and approval governance, with argv that is never a shell string |
 

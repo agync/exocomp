@@ -26,8 +26,13 @@ Tokens carry one of three scopes, checked **before any store read**:
 | `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run) |
 | `approve` | every `GET` route, plus `POST /approvals/{id}/decision` |
 
-`operator` also covers decisions (the same floor the browser's approve button enforces).
-An out-of-scope call gets `403 forbidden` before the request touches the store or queue.
+`operator` does **not** cover decisions on this face: a token that can enqueue a gated apply
+must not also settle its approval, so `POST /approvals/{id}/decision` takes the `approve`
+scope alone, and refuses even that token when the gated job's ledger records it as the
+principal that asked (threat model, findings AI-1/AI-2). The browser's approve button keeps
+its operator-or-approve floor — that is the human at the console, not a credential handed to
+an agent. An out-of-scope call gets `403 forbidden` before the request touches the store or
+queue.
 
 ## The envelope
 

@@ -24,10 +24,11 @@ func newMCPCmd() *cobra.Command {
 			"same internal service verbs and store reads the CLI and the HTTP API use, and " +
 			"emits the same values-free wire envelope. Writes enqueue through the one queue; " +
 			"a running `exocomp serve` claims and runs the queued row. Stdio runs at the " +
-			"local operator's authority (this process holds the data dir); a token-scoped " +
-			"HTTP/SSE transport is a follow-up. Because stdio carries no credential, it " +
-			"offers NO approval decision: a job this face gates is released from the " +
-			"browser/phone surface, the CLI, or an approve-scope /api/v1 token.",
+			"local operator's authority (this process holds the data dir). Because stdio " +
+			"carries no credential, it offers NO approval decision: a job this face gates is " +
+			"released from the browser/phone surface, the CLI, or an approve-scope token. " +
+			"For a remote or scope-limited agent, serve the token-gated HTTP transport " +
+			"instead: POST /mcp on the `exocomp serve --web-addr` listener.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			ctx, stop := signal.NotifyContext(cmd.Context(), syscall.SIGINT, syscall.SIGTERM)

@@ -112,16 +112,25 @@ fault carried per-entry rather than aborting the probe. `GET /api/v1/health` and
 
 ## `exocomp mcp`: the third face
 
-`exocomp mcp` speaks the Model Context Protocol over stdio: every tool call and resource
-read routes to the same `internal/service` verbs and marshals the same `wire` envelope the
-CLI and the API use, so a resource's MCP bytes match its `--output json` and `/api/v1`
-bytes. It runs at the local operator's authority (the process holds the data dir directly,
-the same trust boundary a local `exocomp` invocation has) — there is no per-call scope gate
-on stdio; a token-scoped HTTP/SSE transport is a follow-up, not shipped. Read tools cover
+exocomp speaks the Model Context Protocol over two transports: `exocomp mcp` over stdio, and
+`POST /mcp` on the ADR-0009 listener. Both run one catalog and one set of handlers, so every
+tool call and resource read routes to the same `internal/service` verbs and marshals the
+same `wire` envelope the CLI and the API use — a resource's MCP bytes match its
+`--output json` and `/api/v1` bytes.
+
+Stdio runs at the local operator's authority (the process holds the data dir directly, the
+same trust boundary a local `exocomp` invocation has) and has no per-call scope gate; the
+HTTP transport authenticates with a bearer token and filters both `tools/list` and every
+`tools/call` by its scope. Read tools cover
 jobs/workspaces/drift/approvals/sources/schedules/rules/events/secrets(metadata)/backups/
 health; `workspace_plan`/`workspace_apply` enqueue through the service exactly as the API
-does; `approve_job`/`reject_job` call `reactive.Decide` server-side rather than ever
-returning a decision link. `run_playbook` is deliberately not exposed yet — the inventory
-and `--source` path resolvers it would need are still CLI-resident.
+does; `approve_job`/`reject_job` exist only for an `approve`-scope token over HTTP, and call
+`reactive.Decide` server-side rather than ever returning a decision link. `run_playbook` is
+deliberately not exposed yet — the inventory and `--source` path resolvers it would need are
+still CLI-resident.
 
-Related: [Remote CLI](remote-access.md) · [The API surface](api.md).
+Full connection details, the per-scope catalog, and the transport's shape:
+[The MCP surface](mcp.md).
+
+Related: [The MCP surface](mcp.md) · [Remote CLI](remote-access.md) ·
+[The API surface](api.md).
