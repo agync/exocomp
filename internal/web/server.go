@@ -145,6 +145,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /policies", s.requireAuth(s.handlePolicies))
 	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
 
+	// The read-only operator HTTP/JSON API shares this listener and its auth;
+	// registerAPI adds /api/v1 GET routes (agent-interface §3.4).
+	s.registerAPI(mux)
+
 	return securityHeaders(mux)
 }
 

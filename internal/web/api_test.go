@@ -1,0 +1,292 @@
+package web
+
+import (
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
+)
+
+// bearerGet issues a GET with a bearer token and returns status, headers, body.
+func bearerGet(t *testing.T, base, path, token string) (int, http.Header, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, base+path, nil)
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, resp.Header, string(body)
+}
+
+// apiV1Paths is every read route this lane mounts. The list ones answer on an
+// empty store; that is the point — an empty collection must still be a 200 with
+// a wire envelope, not a 404.
+var apiV1Paths = []string{
+	"/api/v1/jobs",
+	"/api/v1/workspaces",
+	"/api/v1/sources",
+	"/api/v1/approvals",
+	"/api/v1/schedules",
+	"/api/v1/rules",
+	"/api/v1/silences",
+	"/api/v1/events",
+	"/api/v1/secrets",
+	"/api/v1/backups",
+}
+
+// TestAPIReadonlyGetsWireEnvelope: a readonly token gets 200 and a well-formed
+// wire success envelope (schema_version, a kind, a data field) on every list
+// route. This is the primary "the machine face answers" gate.
+func TestAPIReadonlyGetsWireEnvelope(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	for _, p := range apiV1Paths {
+		code, hdr, body := bearerGet(t, ts.URL, p, token)
+		if code != http.StatusOK {
+			t.Errorf("GET %s status = %d, want 200 (body: %s)", p, code, body)
+			continue
+		}
+		if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Errorf("GET %s content-type = %q, want application/json", p, ct)
+		}
+		var env struct {
+			SchemaVersion int             `json:"schema_version"`
+			Kind          string          `json:"kind"`
+			Data          json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(body), &env); err != nil {
+			t.Errorf("GET %s body is not JSON: %v (%s)", p, err, body)
+			continue
+		}
+		if env.SchemaVersion != wire.SchemaVersion {
+			t.Errorf("GET %s schema_version = %d, want %d", p, env.SchemaVersion, wire.SchemaVersion)
+		}
+		if env.Kind == "" || env.Kind == wire.KindError {
+			t.Errorf("GET %s kind = %q, want a success kind", p, env.Kind)
+		}
+		// An empty list renders "data":[], never null or absent.
+		if strings.TrimSpace(string(env.Data)) != "[]" {
+			t.Errorf("GET %s empty-store data = %s, want []", p, env.Data)
+		}
+	}
+}
+
+// TestAPINoTokenIsWireError: no token gets 401 AND a wire error envelope — not
+// HTML, not the browser's bare "unauthorized" string, not a 303 to /login.
+func TestAPINoTokenIsWireError(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	for _, p := range apiV1Paths {
+		code, hdr, body := bearerGet(t, ts.URL, p, "")
+		if code != http.StatusUnauthorized {
+			t.Errorf("GET %s (no token) status = %d, want 401", p, code)
+		}
+		if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+			t.Errorf("GET %s (no token) content-type = %q, want application/json", p, ct)
+		}
+		var env struct {
+			SchemaVersion int         `json:"schema_version"`
+			Kind          string      `json:"kind"`
+			Error         *wire.Error `json:"error"`
+		}
+		if err := json.Unmarshal([]byte(body), &env); err != nil {
+			t.Errorf("GET %s (no token) body is not a wire envelope: %v (%s)", p, err, body)
+			continue
+		}
+		if env.Kind != wire.KindError || env.Error == nil {
+			t.Errorf("GET %s (no token) is not an error envelope: %s", p, body)
+			continue
+		}
+		if env.Error.Code != wire.CodeUnauthenticated {
+			t.Errorf("GET %s (no token) code = %q, want %q", p, env.Error.Code, wire.CodeUnauthenticated)
+		}
+	}
+}
+
+// TestAPIWriteMethodIs405: a write HTTP method on an /api/v1 read path is
+// refused by the mux's method-aware routing. No mutating route exists in this
+// lane, so every non-GET is a 405.
+func TestAPIWriteMethodIs405(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete, http.MethodPatch} {
+		req, _ := http.NewRequest(method, ts.URL+"/api/v1/jobs", nil)
+		req.Header.Set("Authorization", "Bearer "+token)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("%s /api/v1/jobs: %v", method, err)
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Errorf("%s /api/v1/jobs status = %d, want 405", method, resp.StatusCode)
+		}
+	}
+}
+
+// TestAPIJobNotFound: a well-formed but unknown job id is a 404 carrying the
+// not_found wire error code, while a live job is a 200 with the job.get kind.
+func TestAPIJobNotFound(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/jobs/999999", token)
+	if code != http.StatusNotFound {
+		t.Fatalf("missing job status = %d, want 404 (%s)", code, body)
+	}
+	var env struct {
+		Kind  string     `json:"kind"`
+		Error wire.Error `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("404 body is not a wire envelope: %v (%s)", err, body)
+	}
+	if env.Kind != wire.KindError || env.Error.Code != wire.CodeNotFound {
+		t.Fatalf("404 envelope = %s, want error/not_found", body)
+	}
+
+	// A non-numeric id is a 400 (a malformed URL, not a missing row).
+	if code, _, _ := bearerGet(t, ts.URL, "/api/v1/jobs/not-a-number", token); code != http.StatusBadRequest {
+		t.Fatalf("non-numeric id status = %d, want 400", code)
+	}
+
+	// A real job answers 200 with the single-object kind.
+	job, err := h.queue.Enqueue(context.Background(), queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	code, _, body = bearerGet(t, ts.URL, "/api/v1/jobs/"+itoa64(job.ID), token)
+	if code != http.StatusOK {
+		t.Fatalf("job get status = %d, want 200 (%s)", code, body)
+	}
+	if !strings.Contains(body, `"kind":"`+wire.KindJob+`"`) {
+		t.Fatalf("job get kind missing: %s", body)
+	}
+}
+
+// TestAPIJobBytesMatchCLI proves the API body is byte-identical to what the CLI
+// emits for the same resource: both go through the shared wire projection and
+// marshaller. Asserting against wire.MarshalSuccess over the same store rows IS
+// asserting the shared projection the CLI's `--output json` uses.
+func TestAPIJobBytesMatchCLI(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+	ctx := context.Background()
+
+	// Enqueue through the queue and wait for each to settle, so the harness's
+	// live workers are done mutating the rows before we snapshot them — the same
+	// de-race the other post-v1 seed helpers use.
+	for i := 0; i < 3; i++ {
+		job, err := h.queue.Enqueue(ctx, queue.Spec{
+			Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+		})
+		if err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
+	}
+
+	// The list route.
+	rows, err := h.store.ListJobs(ctx, store.JobFilter{})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	want, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobList(rows))
+	if err != nil {
+		t.Fatalf("MarshalSuccess: %v", err)
+	}
+	_, _, body := bearerGet(t, ts.URL, "/api/v1/jobs", token)
+	if body != string(want) {
+		t.Fatalf("list bytes differ from CLI projection:\n api: %q\n cli: %q", body, want)
+	}
+
+	// The single-resource route.
+	job := rows[0]
+	want, err = wire.MarshalSuccess(wire.KindJob, wire.NewJobView(job))
+	if err != nil {
+		t.Fatalf("MarshalSuccess get: %v", err)
+	}
+	_, _, body = bearerGet(t, ts.URL, "/api/v1/jobs/"+itoa64(job.ID), token)
+	if body != string(want) {
+		t.Fatalf("get bytes differ from CLI projection:\n api: %q\n cli: %q", body, want)
+	}
+}
+
+// TestAPISecretsMetadataOnly seeds a secret with real nonce/ciphertext/AAD and
+// asserts none of it appears in the /api/v1/secrets response — the route reuses
+// the values-free SecretView, so a sealed value has no field to leak through.
+func TestAPISecretsMetadataOnly(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	nonce := "NONCE_c0ffee_do_not_leak"
+	ciphertext := "CIPHERTEXT_deadbeef_do_not_leak"
+	aad := "AAD_binding_do_not_leak"
+	if _, err := h.store.CreateSecret(context.Background(), store.SecretRow{
+		Name:       "prod/deploy-key",
+		Kind:       "ssh",
+		Nonce:      []byte(nonce),
+		Ciphertext: []byte(ciphertext),
+		AAD:        aad,
+		Source:     store.SecretSourceUser,
+		CreatedAt:  time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSecret: %v", err)
+	}
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/secrets", token)
+	if code != http.StatusOK {
+		t.Fatalf("secrets status = %d, want 200", code)
+	}
+	// The metadata is present...
+	if !strings.Contains(body, "prod/deploy-key") {
+		t.Fatalf("secrets response missing the metadata name: %s", body)
+	}
+	// ...but not one byte of the sealed value, its nonce, or its AAD.
+	for _, secret := range []string{nonce, ciphertext, aad} {
+		if strings.Contains(body, secret) {
+			t.Fatalf("secrets response leaked %q:\n%s", secret, body)
+		}
+	}
+	// Guard the base64 encodings too: JSON marshals []byte as base64, so a naive
+	// field would surface the value in that form, not as the raw string above.
+	for _, enc := range []string{b64(nonce), b64(ciphertext)} {
+		if strings.Contains(body, enc) {
+			t.Fatalf("secrets response leaked base64 of a sealed field:\n%s", body)
+		}
+	}
+}
+
+func b64(s string) string {
+	return base64.StdEncoding.EncodeToString([]byte(s))
+}
