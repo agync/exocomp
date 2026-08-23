@@ -23,7 +23,7 @@ Tokens carry one of three scopes, checked **before any store read**:
 | Scope | May |
 |---|---|
 | `readonly` | every `GET` route |
-| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run) |
+| `operator` | every `GET` route, plus every enqueuing `POST` (plan/apply/playbook run) and the maintenance cordon/uncordon |
 | `approve` | every `GET` route, plus `POST /approvals/{id}/decision` |
 
 `operator` does **not** cover decisions on this face: a token that can enqueue a gated apply
@@ -69,6 +69,8 @@ GET /api/v1/events/{id}
 GET /api/v1/secrets                             # metadata only — no field a value could occupy
 GET /api/v1/backups
 GET /api/v1/health                              # the same probe `doctor --output json` runs
+GET /api/v1/maintenance/readiness               # safe to reboot? (drain)
+GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted, newest first
 ```
 
 `jobs`/`events` have no cursor param beyond `since`/`limit`; there is no `?cursor=` yet —
@@ -82,7 +84,17 @@ the browser's own job page streams, so the two surfaces cannot diverge.
 POST /api/v1/workspaces/{name}/plan
 POST /api/v1/workspaces/{name}/apply
 POST /api/v1/playbooks/run
+POST /api/v1/maintenance/cordon                 # drain: stop new fires + claims
+POST /api/v1/maintenance/uncordon               # lift the cordon
 ```
+
+The `maintenance/*` routes drive a planned-reboot drain ([Draining for a planned
+reboot](drain-mode.md)): `cordon`/`uncordon` are `operator`-scoped and are **not** enqueues —
+a cordon is control-plane state, so there is no `queue.Spec` and no ledger row. All four
+return `maintenance.readiness: {cordoned, in_flight, safe_to_reboot}`, except the interrupted
+listing, which returns the ordinary `job.list`. A surface that runs no job queue (a
+standalone `exocomp web`) answers `503` rather than pretending to cordon a daemon it does not
+own.
 
 Every write is a **pure enqueue**: the route builds a `queue.Spec` through the same
 `internal/service` verb the CLI calls, inserts the row, and returns at once — it never runs

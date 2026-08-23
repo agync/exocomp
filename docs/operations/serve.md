@@ -125,6 +125,10 @@ the next boot's sweep to repair. Work that outlasts the grace window is cancelle
 than waited on forever, and a cancelled backup leg records `cancelled` — its
 `backup_run` row is closed under a context the cancellation cannot reach.
 
+For a *planned* reboot, do not lean on this grace window to cancel work: cordon the daemon
+first with `exocomp drain`, let in-flight jobs finish on their own, and reboot once it
+reports safe. See [Draining for a planned reboot](drain-mode.md).
+
 ## Schedules
 
 `schedule add` validates `--cron` with the same parser the daemon registers with (six

@@ -6,6 +6,7 @@ Getting an install standing up, and getting it back after it falls over.
 |---|---|
 | [Bootstrap](bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, and the adoption runbooks for an existing homelab |
 | [Running the daemon](serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and what the CLI does while a daemon is up |
+| [Draining for a planned reboot](drain-mode.md) | `exocomp drain` — cordon a running daemon so it fires no schedules and claims no new jobs while in-flight work finishes, poll "safe to reboot?", and list the jobs a reboot left interrupted |
 | [Upgrade and rollback](upgrade.md) | `exocomp upgrade`/`rollback` as a ledger choreography — snapshot, stage, verify, swap, health-check — rolling back to the snapshot and prior binary on any failed step; no sudo |
 | [Disaster recovery](disaster-recovery.md) | What is backed up, the three legs, the recovery chain, the runbook for a dead host, the recovery card, failure modes, RPO/RTO, and verification |
 | [Offline caches](offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
