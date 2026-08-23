@@ -51,10 +51,13 @@ func newSilenceAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if scope == store.ScopeGlobal && !yesReally {
-				return errors.New("silence add: --global swallows every event from every " +
-					"source; pass --yes-really to confirm (running jobs still finish and " +
-					"schedules still fire)")
+			if scope == store.ScopeGlobal {
+				if err := confirmDestructive(cmd, yesReally,
+					"silence add --global (the reactive kill switch swallows every event "+
+						"from every source; running jobs still finish and schedules still fire)",
+					"--yes-really"); err != nil {
+					return err
+				}
 			}
 			if duration <= 0 {
 				return errors.New("silence add: --for is mandatory and must be positive")
@@ -86,7 +89,8 @@ func newSilenceAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&alert, "alert", "", "silence one alert name")
 	cmd.Flags().StringVar(&host, "host", "", "silence one host")
 	cmd.Flags().BoolVar(&global, "global", false, "silence everything (the kill switch)")
-	cmd.Flags().BoolVar(&yesReally, "yes-really", false, "confirm a global silence")
+	cmd.Flags().BoolVar(&yesReally, "yes-really", false,
+		"confirm a global silence (deprecated: prefer the global --assume-yes)")
 	cmd.Flags().StringVar(&reason, "reason", "", "why, for the banner and the audit")
 	cmd.Flags().DurationVar(&duration, "for", 0, "how long it lasts (required)")
 	_ = cmd.MarkFlagRequired("for")

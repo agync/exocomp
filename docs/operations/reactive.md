@@ -99,10 +99,14 @@ exocomp silence add --global --for 90m --yes-really --reason "rack maintenance"
 ```
 
 `--for` is mandatory at every scope. The global scope is the kill switch and
-needs `--yes-really`: it swallows every event from every source. It does **not**
-stop running jobs finishing and it does **not** stop schedules firing — it stops
-events becoming new jobs. `silence list` shows what is active and how long is
-left; `silence rm <id>` lifts one early.
+must be confirmed: it swallows every event from every source. Confirm it with
+the global `--assume-yes` (`-y`); `--yes-really` still works as a deprecated
+alias. On a non-interactive session (`--no-input`, or a piped stdin) an
+unconfirmed global silence is refused with an actionable error rather than
+waiting on input. The kill switch does **not** stop running jobs finishing and
+it does **not** stop schedules firing — it stops events becoming new jobs.
+`silence list` shows what is active and how long is left; `silence rm <id>`
+lifts one early.
 
 ## Answering
 

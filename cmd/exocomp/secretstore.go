@@ -281,14 +281,17 @@ func newSecretsRmCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("secrets rm: %w", err)
 			}
-			if len(refs) > 0 && !force {
-				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"refusing to delete %q: still bound by %d run-secret(s):\n", name, len(refs))
-				for _, r := range refs {
-					_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  binding %q env %s\n", r.Binding, r.EnvName)
+			if len(refs) > 0 {
+				if err := confirmDestructive(cmd, force,
+					fmt.Sprintf("secrets rm %q (bound by %d run-secret(s))", name, len(refs)),
+					"--force"); err != nil {
+					_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
+						"refusing to delete %q: still bound by %d run-secret(s):\n", name, len(refs))
+					for _, r := range refs {
+						_, _ = fmt.Fprintf(cmd.ErrOrStderr(), "  binding %q env %s\n", r.Binding, r.EnvName)
+					}
+					return err
 				}
-				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "re-run with --force to delete anyway.")
-				return fmt.Errorf("secrets rm: %q is bound by %d run-secret(s)", name, len(refs))
 			}
 
 			if err := st.DeleteSecret(cmd.Context(), name); err != nil {
@@ -302,7 +305,9 @@ func newSecretsRmCmd() *cobra.Command {
 			return nil
 		},
 	}
-	rm.Flags().BoolVar(&force, "force", false, "delete even when run-secret bindings reference the secret")
+	rm.Flags().BoolVar(&force, "force", false,
+		"delete even when run-secret bindings reference the secret "+
+			"(deprecated: prefer the global --assume-yes)")
 	return rm
 }
 
