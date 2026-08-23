@@ -313,6 +313,23 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 		}
 		return specs, nil
 
+	case store.ScheduleDrill:
+		names, err := s.backupTargetNames(ctx, sc.Args.Target)
+		if err != nil {
+			return nil, err
+		}
+		specs := make([]queue.Spec, 0, len(names))
+		for _, name := range names {
+			specs = append(specs, queue.Spec{
+				Runbook:        sc.Name,
+				Kind:           backup.DrillJobKind,
+				Trigger:        Trigger,
+				Argv:           backup.DrillArgv(name),
+				ConcurrencyKey: backup.DrillConcurrencyKey(name),
+			})
+		}
+		return specs, nil
+
 	default:
 		return nil, fmt.Errorf("schedule %q: unknown kind %q", sc.Name, sc.Kind)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -20,9 +21,12 @@ const (
 )
 
 // NewDriver returns a Driver that dispatches on spec.Kind: KindShell to
-// shell, KindBackup to backup. A Queue takes exactly one Driver, but a
-// scheduler fires both argv jobs and backup jobs into the same queue, so
-// something has to route between the two underlying drivers.
+// shell, KindBackup and backup.DrillJobKind to backup. A Queue takes exactly
+// one Driver, but a scheduler fires argv jobs, backup jobs, and restore-drill
+// jobs into the same queue, so something has to route between the underlying
+// drivers. A drill routes to the same backup driver a real backup does — it
+// is a *backup.Runner underneath, and Runner.Run itself tells the two kinds
+// apart — so this router never grows a third slot for it.
 func NewDriver(shell, backup executor.Driver) executor.Driver {
 	return kindDriver{shell: shell, backup: backup}
 }
@@ -36,7 +40,7 @@ func (d kindDriver) Run(ctx context.Context, spec executor.Spec, sink executor.E
 	switch spec.Kind {
 	case KindShell:
 		return d.shell.Run(ctx, spec, sink)
-	case KindBackup:
+	case KindBackup, backup.DrillJobKind:
 		return d.backup.Run(ctx, spec, sink)
 	default:
 		return executor.Result{}, fmt.Errorf("sched: no driver for kind %q", spec.Kind)
