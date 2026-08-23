@@ -58,6 +58,9 @@ type adhocSpec struct {
 	requireApproval     bool
 	tolerateUnreachable bool
 	timeout             time.Duration
+	// idempotencyKey dedups a retried ad-hoc run to one job. Resolved from the
+	// global flag in runAdhocExit, empty on the unchanged path.
+	idempotencyKey string
 }
 
 func newAnsibleAdhocCmd() *cobra.Command {
@@ -198,6 +201,7 @@ func hasControl(s string) bool {
 // runAdhocExit runs the ad-hoc spec and translates its job outcome into the
 // process exit code, the same way `playbook run` does.
 func runAdhocExit(cmd *cobra.Command, spec adhocSpec) error {
+	spec.idempotencyKey = idempotencyKey(cmd)
 	code, err := runAdhoc(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), spec)
 	if err != nil {
 		return err
@@ -258,6 +262,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		RunSecretBinding:    spec.runSecrets,
 		Inventory:           invName,
 		TolerateUnreachable: spec.tolerateUnreachable,
+		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 	}
 

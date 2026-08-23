@@ -36,6 +36,7 @@ func newDevRunCmd() *cobra.Command {
 				argv:           args,
 				timeout:        timeout,
 				concurrencyKey: concurrencyKey,
+				idempotencyKey: idempotencyKey(cmd),
 			})
 		},
 	}
@@ -50,6 +51,8 @@ type devRunSpec struct {
 	argv           []string
 	timeout        time.Duration
 	concurrencyKey string
+	// idempotencyKey dedups a retried job to one row; empty on the unchanged path.
+	idempotencyKey string
 }
 
 func runDevRun(ctx context.Context, w io.Writer, spec devRunSpec) (err error) {
@@ -77,6 +80,7 @@ func runDevRun(ctx context.Context, w io.Writer, spec devRunSpec) (err error) {
 		Trigger:        "manual",
 		Argv:           spec.argv,
 		ConcurrencyKey: spec.concurrencyKey,
+		IdempotencyKey: spec.idempotencyKey,
 		Timeout:        spec.timeout,
 	})
 	if err != nil {

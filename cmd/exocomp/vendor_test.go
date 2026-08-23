@@ -23,7 +23,7 @@ func TestRunVendorInstallsCollectionsIntoTheCache(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	code, err := runVendor(context.Background(), &out, &out, requirements)
+	code, err := runVendor(context.Background(), &out, &out, requirements, "")
 	if err != nil {
 		t.Fatalf("vendor: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestRunVendorFailsWithTheJobOnABadRequirementsFile(t *testing.T) {
 	useDataDir(t, t.TempDir())
 
 	var out bytes.Buffer
-	code, err := runVendor(context.Background(), &out, &out, filepath.Join(t.TempDir(), "missing.yml"))
+	code, err := runVendor(context.Background(), &out, &out, filepath.Join(t.TempDir(), "missing.yml"), "")
 	if err != nil {
 		t.Fatalf("vendor: %v", err)
 	}

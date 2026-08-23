@@ -104,6 +104,7 @@ func newPlaybookCmd() *cobra.Command {
 				passthrough:         passthrough,
 				extraVars:           vars,
 				tolerateUnreachable: tolerateUnre,
+				idempotencyKey:      idempotencyKey(cmd),
 			})
 			if err != nil {
 				return err
@@ -165,6 +166,8 @@ type playbookSpec struct {
 	extraVars map[string]string
 	// tolerateUnreachable opts the run into the degraded outcome.
 	tolerateUnreachable bool
+	// idempotencyKey dedups a retried run to one job; empty on the unchanged path.
+	idempotencyKey string
 }
 
 // ansibleFlagValue is a shell-free argv token: no NUL or newline, which are the
@@ -293,6 +296,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		Inventory:           invName,
 		ExtraVars:           spec.extraVars,
 		TolerateUnreachable: spec.tolerateUnreachable,
+		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 	}
 

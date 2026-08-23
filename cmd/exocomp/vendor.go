@@ -47,7 +47,7 @@ func newPlaybookVendorCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("playbook vendor: resolve %s: %w", requirements, err)
 			}
-			code, err := runVendor(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), req)
+			code, err := runVendor(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), req, idempotencyKey(cmd))
 			if err != nil {
 				return err
 			}
@@ -66,7 +66,7 @@ func newPlaybookVendorCmd() *cobra.Command {
 
 // runVendor returns the job's exit code, and an error only when the job
 // could not be run at all.
-func runVendor(ctx context.Context, out, warn io.Writer, requirements string) (code int, err error) {
+func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey string) (code int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -91,10 +91,11 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements string) (c
 	}()
 
 	spec := queue.Spec{
-		Runbook: "playbook-vendor",
-		Kind:    vendorKind,
-		Trigger: "manual",
-		Argv:    []string{"ansible-galaxy", "collection", "install", "-r", requirements, "-p", cache},
+		Runbook:        "playbook-vendor",
+		Kind:           vendorKind,
+		Trigger:        "manual",
+		Argv:           []string{"ansible-galaxy", "collection", "install", "-r", requirements, "-p", cache},
+		IdempotencyKey: idemKey,
 	}
 
 	var final store.Job

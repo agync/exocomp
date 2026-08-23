@@ -446,7 +446,8 @@ func newWorkspacePlanCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets, timeout: timeout}))
+				workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets, timeout: timeout,
+					idempotencyKey: idempotencyKey(cmd)}))
 		},
 	}
 	plan.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
@@ -471,7 +472,8 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(),
-				workspaceOp{workspace: args[0], op: "apply", planRef: planRef, runSecrets: runSecrets, timeout: timeout}))
+				workspaceOp{workspace: args[0], op: "apply", planRef: planRef, runSecrets: runSecrets, timeout: timeout,
+					idempotencyKey: idempotencyKey(cmd)}))
 		},
 	}
 	apply.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
@@ -500,6 +502,9 @@ type workspaceOp struct {
 	planRef    string
 	runSecrets string
 	timeout    time.Duration
+	// idempotencyKey dedups a retried plan/apply to one job; empty on the
+	// unchanged path.
+	idempotencyKey string
 }
 
 // runWorkspaceOp runs one tofu operation through the queue and returns the
@@ -583,6 +588,7 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		Dir:              ws.TofuDir,
 		RunSecretBinding: op.runSecrets,
 		ConcurrencyKey:   "tofu:" + ws.Name,
+		IdempotencyKey:   op.idempotencyKey,
 		Timeout:          op.timeout,
 	}
 
@@ -855,6 +861,7 @@ func enqueueGatedApply(ctx context.Context, st *store.Store, env *secrets.Envelo
 		Dir:              ws.TofuDir,
 		RunSecretBinding: op.runSecrets,
 		ConcurrencyKey:   "tofu:" + ws.Name,
+		IdempotencyKey:   op.idempotencyKey,
 		Timeout:          op.timeout,
 	}
 	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
