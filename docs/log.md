@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — the daemon's apply seals tofu outputs too
+
+**Correction of fact.** [sealed-tofu-outputs.md](operations/sealed-tofu-outputs.md) and item D
+of [v1.1-roadmap.md](design/v1.1-roadmap.md) said the daemon's apply captures the inventory but
+does not seal sensitive outputs, because its `TofuOptions` left `OutputSealer` unset. It now
+sets the same `executor.EnvelopeOutputSealer` the daemonless `workspace apply` path does, so a
+scheduled, reactive, provision-chain, or serve-up apply binds `tf:<workspace>` identically to a
+CLI-inline one. Item D is landed on every apply path; the caveat is gone from both pages.
+
 ## 2026-08-23 — the `cli` kind routes through a running daemon
 
 `exocomp serve`'s kind router served only `tofu` and `ansible`; a queued `cli` job fell

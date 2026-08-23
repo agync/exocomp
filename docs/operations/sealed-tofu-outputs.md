@@ -98,13 +98,6 @@ exocomp run-secret rm tf:edge        # drop every pair the workspace bound
 
 ## Limits worth knowing
 
-- **The daemon's apply does not seal yet.** A daemonless `exocomp workspace
-  apply` captures, seals, and binds. An apply a running `exocomp serve`
-  executes — which is every `provision run`/`handoff run` step 1, every
-  scheduled or reactive apply, and `workspace apply` while the daemon is up —
-  still captures the inventory but does not seal, because the daemon's tofu
-  driver does not set the output sealer. The consumer half is live on every
-  path, so that one driver option finishes the loop.
 - **A removed or renamed output leaves its pair behind.** The binding is
   updated per apply, not reconciled against the module, so an output you delete
   keeps its `(env name -> secret name)` pair and its sealed row. Clear the
