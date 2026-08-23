@@ -1,6 +1,6 @@
 # ADR 0014 — Agent-facing surface: one core, three thin programmatic faces
 
-Status: Proposed · 2026-08-23
+Status: Accepted · 2026-08-23
 
 > **The open design question is now RESOLVED.** The one governance question this ADR carried —
 > whether the MCP surface keeps ambient local-operator authority or moves to a uniform ADR-0009

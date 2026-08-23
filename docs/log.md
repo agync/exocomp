@@ -981,3 +981,7 @@ bound to the workspace that produced it, a `--source` playbook is confined to it
 checkout, the health probe is cached instead of forking per request, failed
 bearer auth backs off with a constant-cost failure path, an open SSE stream ends
 when its token is revoked, and MCP writes are attributed and answerable.
+
+## 2026-08-23 — ADR-0014 ratified
+
+Owner accepted the reconciled one-MCP-HTTP-surface framing; status flipped to Accepted.
