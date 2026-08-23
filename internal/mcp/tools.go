@@ -138,7 +138,7 @@ func (s *Server) readTools() []tool {
 		{"list_workspaces", "List tofu workspaces.", object(nil), s.runListWorkspaces},
 		{"get_workspace", "Show one workspace by name.",
 			object(map[string]any{"name": strProp("the workspace name")}, "name"), s.runGetWorkspace},
-		{"get_drift", "Show the newest plan's drift and pending changes for a workspace (values suppressed).",
+		{"get_drift", "Show drift/pending changes from the workspace's last-run plan job — cached, not a fresh plan, so it can be stale; re-run workspace_plan to refresh. Values suppressed.",
 			object(map[string]any{"name": strProp("the workspace name")}, "name"), s.runGetDrift},
 		{"list_approvals", "List approvals; pending-only by default, all=true includes decided.",
 			object(map[string]any{"all": boolProp("include already-decided approvals")}), s.runListApprovals},
@@ -151,10 +151,10 @@ func (s *Server) readTools() []tool {
 				"outcome": strProp("only events with this outcome"),
 				"limit":   intProp("how many events (default 25)"),
 			}), s.runListEvents},
-		{"explain_event", "Explain why one event ended the way it did (values-free trace).",
-			object(map[string]any{"id": intProp("the event id")}, "id"), s.runExplainEvent},
+		{"explain_event", "Explain one INBOUND trigger event (id from list_events) — not a job. For a job's own execution log use get_job_events.",
+			object(map[string]any{"id": intProp("the inbound event id (from list_events), not a job id")}, "id"), s.runExplainEvent},
 		{"list_secrets", "List secret METADATA only — never a value or ciphertext.", object(nil), s.runListSecrets},
-		{"list_backups", "List backup targets.", object(nil), s.runListBackups},
+		{"list_backups", "List configured backup destinations (where snapshots are sent), not the snapshots themselves.", object(nil), s.runListBackups},
 		{"health", "Run the doctor subsystem probes and return a per-subsystem summary.", object(nil), s.runHealth},
 	}
 }
