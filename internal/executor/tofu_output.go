@@ -49,6 +49,10 @@ type InventoryCapture struct {
 	Captured   []string `json:"captured"`   // non-sensitive output names written
 	Suppressed []string `json:"suppressed"` // sensitive output names dropped (no sealer)
 	Sealed     []string `json:"sealed"`     // sensitive output names sealed as run-secrets
+	// Unbound reports sealed outputs the sealer did not bind to an env name,
+	// each with its reason. A name, never a value: the operator needs to know
+	// that DB_PASSWORD will not appear in the dependent play, and why.
+	Unbound []string `json:"unbound,omitempty"`
 }
 
 // InventoryHost is one host a materialized inventory names, reduced to the
@@ -152,14 +156,21 @@ func inventoryString(raw json.RawMessage) (string, bool) {
 	return s, true
 }
 
-// OutputSealer seals one sensitive tofu output so a downstream step can bind it
-// as a named-env run secret — the secrets twin of the inventory capture. The
-// value is plaintext held only for the duration of the call; an implementation
-// persists it sealed and MUST NOT log, event, or otherwise surface it. A nil
-// sealer restores the drop-on-capture behaviour: a sensitive output then lands
-// in Suppressed and reaches nothing.
+// OutputSealer seals one sensitive tofu output and binds it as a named-env run
+// secret for the dependent play — the secrets twin of the inventory capture.
+// The output is named as the module declared it; the implementation owns both
+// the secret name and the env name it derives. The value is plaintext held only
+// for the duration of the call; an implementation persists it sealed and MUST
+// NOT log, event, or otherwise surface it. A nil sealer restores the
+// drop-on-capture behaviour: a sensitive output then lands in Suppressed and
+// reaches nothing.
+//
+// The returned reason is non-empty when the value was sealed but NOT bound —
+// an output name that cannot become an env identifier, or an env name already
+// bound to something else. It is a report, not a run failure: the value is
+// stored either way, and only the automatic binding is missing.
 type OutputSealer interface {
-	SealOutput(ctx context.Context, name string, value []byte) error
+	SealOutput(ctx context.Context, output string, value []byte) (unbound string, err error)
 }
 
 // TofuOutputSecretName is the stable run-secret name a sealed sensitive output
@@ -197,7 +208,7 @@ func sensitiveOutputValue(raw json.RawMessage) []byte {
 // -json` prints every value — sensitive ones included — so its stdout must be
 // captured privately and filtered before any of it can become an event. This
 // mirrors driftShower, which likewise reads structured output in-process.
-func captureTofuInventory(ctx context.Context, bin, dir string, env []string, outPath, workspace string, sealer OutputSealer) (InventoryCapture, error) {
+func captureTofuInventory(ctx context.Context, bin, dir string, env []string, outPath string, sealer OutputSealer) (InventoryCapture, error) {
 	cmd := exec.CommandContext(ctx, bin, "output", "-json", "-no-color")
 	cmd.Dir = dir
 	cmd.Env = env
@@ -212,17 +223,21 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 	}
 
 	nonSensitive := make(map[string]json.RawMessage, len(outputs))
-	var captured, suppressed, sealed []string
+	var captured, suppressed, sealed, unbound []string
 	for name, out := range outputs {
 		if out.Sensitive {
 			// A sensitive output never reaches the inventory or an event. With a
-			// sealer it is routed into the envelope as a run-secret for a
-			// downstream bind; without one it is dropped, as before.
+			// sealer it is routed into the envelope as a run-secret bound to a
+			// named env for the dependent play; without one it is dropped, as before.
 			if sealer != nil {
-				if err := sealer.SealOutput(ctx, TofuOutputSecretName(workspace, name), sensitiveOutputValue(out.Value)); err != nil {
+				reason, err := sealer.SealOutput(ctx, name, sensitiveOutputValue(out.Value))
+				if err != nil {
 					return InventoryCapture{}, fmt.Errorf("executor: seal sensitive output %q: %w", name, err)
 				}
 				sealed = append(sealed, name)
+				if reason != "" {
+					unbound = append(unbound, reason)
+				}
 			} else {
 				suppressed = append(suppressed, name)
 			}
@@ -234,6 +249,7 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 	sort.Strings(captured)
 	sort.Strings(suppressed)
 	sort.Strings(sealed)
+	sort.Strings(unbound)
 
 	body, err := shapeInventory(nonSensitive)
 	if err != nil {
@@ -261,6 +277,7 @@ func captureTofuInventory(ctx context.Context, bin, dir string, env []string, ou
 		Captured:   captured,
 		Suppressed: suppressed,
 		Sealed:     sealed,
+		Unbound:    unbound,
 	}, nil
 }
 
@@ -316,6 +333,9 @@ func inventoryCaptureEvent(c InventoryCapture) Event {
 		len(c.Captured), c.Path, c.Hosts)
 	if len(c.Sealed) > 0 {
 		msg += fmt.Sprintf("; sealed %d sensitive output(s)", len(c.Sealed))
+	}
+	if len(c.Unbound) > 0 {
+		msg += fmt.Sprintf("; %d not bound to env (%s)", len(c.Unbound), strings.Join(c.Unbound, "; "))
 	}
 	if len(c.Suppressed) > 0 {
 		msg += fmt.Sprintf("; suppressed %d sensitive output(s)", len(c.Suppressed))

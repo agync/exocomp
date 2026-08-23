@@ -288,7 +288,7 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 // missing inventory surfaces when the dependent play cannot find it, not as a
 // false apply failure.
 func (t *Tofu) captureInventory(ctx context.Context, bin string, spec Spec, sink EventSink) {
-	capture, err := captureTofuInventory(ctx, bin, spec.Dir, spec.Env, t.opts.InventoryOut, t.opts.Workspace, t.opts.OutputSealer)
+	capture, err := captureTofuInventory(ctx, bin, spec.Dir, spec.Env, t.opts.InventoryOut, t.opts.OutputSealer)
 	if err != nil {
 		sink.Emit(Event{
 			Ts:    time.Now().UTC(),

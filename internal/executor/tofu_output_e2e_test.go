@@ -128,7 +128,9 @@ func TestTofuApplySealsSensitiveOutput(t *testing.T) {
 		PluginCacheDir:   tofuPluginCache(t),
 		OfflineProviders: true,
 		InventoryOut:     outPath,
-		OutputSealer:     executor.EnvelopeOutputSealer{Env: f.env, Store: f.store},
+		OutputSealer: executor.EnvelopeOutputSealer{
+			Env: f.env, Store: f.store, Workspace: f.workspace.Name,
+		},
 	})
 	// The redactor knows only the envelope material, deliberately NOT the
 	// sensitive value: its absence from the log must be the capture routing it
