@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
@@ -21,6 +22,11 @@ import (
 // It returns the plaintexts too, so the run's redactor scrubs them from events;
 // the values never touch the job row, which carries only the binding name.
 // A nil envelope yields nothing: without it no sealed value can be opened.
+//
+// Three sources, lowest precedence first: the workspace binding a `tf:` target
+// implies (see autoTofuOutputs), the explicitly named binding, then the dynamic
+// inventory's env_binding. An operator's explicit binding therefore wins over
+// one an apply produced, which is the way round that lets them override it.
 func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope,
 	binding, inventory string) (executor.RunSecrets, [][]byte, error) {
 	if env == nil || (binding == "" && inventory == "") {
@@ -54,6 +60,16 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		return nil
 	}
 
+	auto, err := autoTofuOutputs(ctx, st, inventory, binding)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range auto {
+		if err := add(p.EnvName, p.SecretName); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	if binding != "" {
 		pairs, err := st.RunSecretsByBinding(ctx, binding)
 		if err != nil {
@@ -85,6 +101,32 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		return nil, plaintexts, nil
 	}
 	return out, plaintexts, nil
+}
+
+// autoTofuOutputs returns the run-secrets a run inherits from the workspace it
+// is targeting: when the inventory is a workspace's standing `tf:<workspace>`
+// inventory, the binding of the same name — the sensitive tofu outputs that
+// workspace's last apply sealed and bound. This is what closes the loop the
+// sealing fold opened: the configure play in a workspace's own provision chain
+// receives $DB_PASSWORD with nothing copied by an operator.
+//
+// It is scoped by that target, not global. A run naming another inventory, a
+// static one, or none at all inherits nothing, so a workspace's sealed outputs
+// cannot reach a run that has nothing to do with it. An empty binding is not an
+// error either: most workspaces seal no outputs, and a run must not start
+// failing because one of them does not.
+func autoTofuOutputs(ctx context.Context, st *store.Store, inventory, binding string) ([]store.RunSecret, error) {
+	workspace, ok := strings.CutPrefix(inventory, handoffInventoryPrefix)
+	if !ok || workspace == "" {
+		return nil, nil
+	}
+	// The producer names the binding after the workspace, so derive it the same
+	// way rather than reusing the inventory name verbatim.
+	auto := executor.TofuOutputBinding(workspace)
+	if auto == binding {
+		return nil, nil // the explicit binding already covers it
+	}
+	return st.RunSecretsByBinding(ctx, auto)
 }
 
 // secretExpired reports whether a sealed secret's rotation deadline has passed.
