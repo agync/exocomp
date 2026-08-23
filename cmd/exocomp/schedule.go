@@ -62,7 +62,12 @@ func newScheduleAddCmd() *cobra.Command {
 			"whose only non-success is unreachable hosts settles degraded (not failed) and " +
 			"does not page, so a scheduled site.yml against a fleet with a laptop that sleeps " +
 			"keeps converging the online hosts instead of paging every night " +
-			"(docs/operations/adhoc-and-partial.md).",
+			"(docs/operations/adhoc-and-partial.md).\n\n" +
+			"Kind drill runs a restore drill against one target (--target), or every " +
+			"enabled target when --target is empty, each as its own job — the monthly " +
+			"dr-drill (docs/operations/disaster-recovery.md) as a cadence instead of a " +
+			"manual `exocomp backup drill`. A drill that finds a bad backup settles the " +
+			"job failed, which the job-failure sweep pages on like any other.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
@@ -110,9 +115,20 @@ func newScheduleAddCmd() *cobra.Command {
 					// ansible driver then emits the structured drift outcome.
 					scheduleArgs.Argv = append(scheduleArgs.Argv, "--check", "--diff")
 				}
+			case store.ScheduleDrill:
+				if len(argv) != 0 {
+					return errors.New("schedule add: kind drill takes no argv")
+				}
+				// A drill fire builds its own key per target ("drill:<target>"),
+				// the same reason kind backup refuses one here.
+				if concurrencyKey != "" {
+					return errors.New("schedule add: kind drill keys each fire by target; " +
+						"--concurrency-key applies to kind shell only")
+				}
+				scheduleArgs.Target = target
 			default:
-				return fmt.Errorf("schedule add: --kind must be %s, %s or %s",
-					store.ScheduleShell, store.ScheduleBackup, sched.KindPlay)
+				return fmt.Errorf("schedule add: --kind must be %s, %s, %s or %s",
+					store.ScheduleShell, store.ScheduleBackup, sched.KindPlay, store.ScheduleDrill)
 			}
 			if jitter < 0 {
 				return errors.New("schedule add: --jitter cannot be negative")
@@ -150,8 +166,8 @@ func newScheduleAddCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&cronExpr, "cron", "",
 		"cron expression: 6 fields (seconds first), or \"@every 5s\"")
-	cmd.Flags().StringVar(&kind, "kind", "", "shell|backup|play")
-	cmd.Flags().StringVar(&target, "target", "", "backup kind: target name (empty: every enabled target); play kind: standing inventory name")
+	cmd.Flags().StringVar(&kind, "kind", "", "shell|backup|play|drill")
+	cmd.Flags().StringVar(&target, "target", "", "backup/drill kind: target name (empty: every enabled target); play kind: standing inventory name")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "shell/play kinds: serialize against jobs sharing this key")
 	cmd.Flags().IntVar(&jitter, "jitter", 0, "sleep a random number of seconds up to this before enqueueing")
 	cmd.Flags().BoolVar(&check, "check", false, "play kind: run in ansible check mode (--check --diff) as the config-drift schedule")
