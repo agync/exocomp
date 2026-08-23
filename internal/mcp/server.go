@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"encoding/json"
-	"io"
 	"log/slog"
 	"time"
 
@@ -38,9 +37,9 @@ const serverInstructions = "exocomp MCP server: jobs, workspaces, secrets, and "
 // Server is the MCP adapter. It holds the same open store the CLI's local
 // commands hold and the data dir under it; the service verbs and the pure-enqueue
 // Enqueuer are built per call over these, exactly as the HTTP write API does.
-// It is transport-agnostic: stdio drives it through Serve, a mounted HTTP
-// transport through HandleMessage, and the two differ only in the Caller they
-// hand to the one dispatch.
+// The HTTP transport (internal/web/mcp_http.go) mounts on HandleMessage, the one
+// per-message dispatch seam, handing in the Caller it resolved from the bearer
+// token.
 type Server struct {
 	store   *store.Store
 	dataDir string
@@ -86,17 +85,10 @@ func (s *Server) SetLogger(l *slog.Logger) {
 	}
 }
 
-// Serve runs the MCP protocol over a stdio pair until in is exhausted or ctx is
-// cancelled. It is the one entry point `exocomp mcp` calls, and it runs as the
-// LocalCaller: the local operator's authority, with no approve capability.
-func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
-	return s.serve(ctx, LocalCaller(), in, out)
-}
-
 // UseDeriver supplies an already-open approval-capability deriver instead of
-// opening the secrets envelope per gated apply. A transport mounted inside a
-// process that already holds the envelope (the web listener) passes its own, so
-// the daemon does not unwrap the keyring a second time; stdio opens its own.
+// opening the secrets envelope per gated apply. The HTTP transport is mounted
+// inside a process that already holds the envelope (the web listener) and
+// passes its own, so the daemon does not unwrap the keyring a second time.
 func (s *Server) UseDeriver(d reactive.Deriver) {
 	if d == nil {
 		return
@@ -116,8 +108,8 @@ func (s *Server) service() *service.Service {
 // error envelope, not here.
 //
 // Everything past the handshake needs at least the read capability, checked on
-// every message rather than once per connection: the transports are stateless
-// and re-resolve the credential per request, so a revoked or downgraded token
+// every message rather than once per connection: the transport is stateless
+// and re-resolves the credential per request, so a revoked or downgraded token
 // stops working on its next call instead of at the end of its session (the same
 // property the SSE tail gained in finding AI-10).
 func (s *Server) dispatch(ctx context.Context, c Caller, method string, params json.RawMessage) (any, *rpcError) {

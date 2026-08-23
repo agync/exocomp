@@ -11,8 +11,8 @@ import (
 // A transport authenticates; this package authorizes. Every dispatch takes the
 // Caller the transport resolved, and the catalog a caller sees — plus the check
 // re-run on every tools/call — is derived from that one value. Nothing in here
-// reads process state, so the stdio face and a token-carrying HTTP face share
-// one set of handlers and differ only in the Caller they hand in (ADR 0014 §3).
+// reads process state: the HTTP transport resolves a bearer token to a Caller
+// per request and hands it straight in (ADR 0014 §3).
 
 // capability is what a tool needs of its caller. The three map 1:1 onto the
 // ADR-0009 scopes: R is readonly-or-higher, W is operator, A is approve.
@@ -86,18 +86,6 @@ func (c Caller) allows(need capability) bool {
 		return c.Scope == store.ScopeApprove && c.Decide != nil
 	}
 	return false
-}
-
-// LocalCaller is the principal the stdio transport runs as: the local operator,
-// who already holds the data dir this process opened. It is deliberately NOT an
-// approve caller — stdio authenticates nothing, so a face that can raise a gate
-// with workspace_apply must not hold its release (finding AI-1).
-func LocalCaller() Caller {
-	return Caller{
-		Scope:        store.ScopeOperator,
-		Actor:        service.Actor{Kind: service.ActorKindLocal, Name: "stdio", Face: faceName},
-		KeyNamespace: "stdio",
-	}
 }
 
 // TokenCaller is the principal behind a token-authenticated transport. Only the

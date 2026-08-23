@@ -2,10 +2,10 @@ package mcp_test
 
 import (
 	"context"
-	"encoding/json"
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/mcp"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -32,51 +32,34 @@ func seedGatedApproval(t *testing.T, st *store.Store) (store.Job, store.Approval
 	return job, approval
 }
 
-// TestDecisionToolsAbsentFromStdioFace is the AI-1 regression: the stdio face
-// carries no credential and no scope, so it must not carry the approval gate's
-// release either. approve_job/reject_job are not advertised and not callable;
-// the gated job stays in awaiting_approval and its approval stays pending.
-//
-// The REFUSAL SHAPE moved when the decision tools returned on the token-carrying
-// HTTP face: a call from stdio is now refused on the caller's scope (a forbidden
-// envelope naming the scope it would need) rather than as an unknown tool. What
-// the finding is about — that this face cannot release the gate it can raise —
-// is unchanged, and the assertions below are on the gate, not on the wording.
-func TestDecisionToolsAbsentFromStdioFace(t *testing.T) {
+// TestOperatorCannotReleaseTheGateItRaises is the AI-1 regression: the scope
+// that can raise the approval gate with workspace_apply (operator) must not
+// also hold its release. approve_job/reject_job are not advertised to an
+// operator token and not callable by one; the gated job stays in
+// awaiting_approval and its approval stays pending.
+func TestOperatorCannotReleaseTheGateItRaises(t *testing.T) {
 	srv, st := newTestServer(t)
 	job, approval := seedGatedApproval(t, st)
+	op := mcp.TokenCaller(store.ScopeOperator, "op", 1, nil)
 
-	resps := drive(t, srv,
-		req(1, "tools/list", "{}"),
-		req(2, "tools/call", `{"name":"approve_job","arguments":{"approval_id":1}}`),
-		req(3, "tools/call", `{"name":"reject_job","arguments":{"approval_id":1}}`),
-	)
-	if len(resps) != 3 {
-		t.Fatalf("want 3 responses, got %d", len(resps))
-	}
+	list := call(t, srv, op, req(1, "tools/list", "{}"))
+	approveResp := call(t, srv, op, req(2, "tools/call", `{"name":"approve_job","arguments":{"approval_id":1}}`))
+	rejectResp := call(t, srv, op, req(3, "tools/call", `{"name":"reject_job","arguments":{"approval_id":1}}`))
 
-	var list struct {
-		Tools []struct {
-			Name string `json:"name"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(resps[0].Result, &list); err != nil {
-		t.Fatalf("decode tools/list: %v", err)
-	}
-	for _, tl := range list.Tools {
-		if tl.Name == "approve_job" || tl.Name == "reject_job" {
-			t.Errorf("catalog advertises %q on the unauthenticated stdio face", tl.Name)
+	tools := toolNames(t, list.Result)
+	for _, name := range []string{"approve_job", "reject_job"} {
+		if tools[name] {
+			t.Errorf("catalog advertises %q to an operator-scope caller", name)
 		}
 	}
 
-	for i, name := range []string{"approve_job", "reject_job"} {
-		r := resps[i+1]
+	for _, r := range []rpcResp{approveResp, rejectResp} {
 		if r.Error != nil {
 			continue // refused at the protocol level
 		}
 		env, isErr := toolContent(t, r.Result)
 		if !isErr || env.Error == nil || env.Error.Code != "forbidden" {
-			t.Errorf("%s was dispatched on the stdio face: %s", name, r.Result)
+			t.Errorf("a decision tool was dispatched for an operator caller: %s", r.Result)
 		}
 	}
 
@@ -86,7 +69,7 @@ func TestDecisionToolsAbsentFromStdioFace(t *testing.T) {
 		t.Fatalf("GetJob: %v", err)
 	}
 	if after.State != store.StateAwaitingApproval {
-		t.Fatalf("gated job state = %q, want awaiting_approval — the gate was released from stdio", after.State)
+		t.Fatalf("gated job state = %q, want awaiting_approval — the gate was released by operator scope", after.State)
 	}
 	settled, err := st.GetApproval(ctx, approval.ID)
 	if err != nil {

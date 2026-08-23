@@ -1,7 +1,6 @@
 package mcp_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"path/filepath"
@@ -11,6 +10,14 @@ import (
 	"exocomp.dev/exocomp/internal/mcp"
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// driveCaller is the operator-scope principal these tests dispatch as: the
+// scope every pre-existing call site here expects (read tools plus the write
+// tools, no decisions). Tests that need a different scope build their own
+// Caller and drive through HandleMessage directly (see scope_test.go's call).
+func driveCaller() mcp.Caller {
+	return mcp.TokenCaller(store.ScopeOperator, "test", 1, nil)
+}
 
 // newTestServer opens a real store under a temp dir and seeds a workspace and a
 // secret, so the gate drives the same store reads and service enqueue the CLI
@@ -50,23 +57,20 @@ type rpcResp struct {
 	} `json:"error"`
 }
 
-// drive runs a batch of newline-delimited request lines through the real stdio
-// loop and returns the responses in order. Serve returns at EOF.
+// drive dispatches a batch of request lines through the per-message seam as
+// driveCaller and returns the responses in order, skipping any line that
+// draws none (a notification).
 func drive(t *testing.T, srv *mcp.Server, lines ...string) []rpcResp {
 	t.Helper()
-	in := strings.NewReader(strings.Join(lines, "\n") + "\n")
-	var out bytes.Buffer
-	if err := srv.Serve(context.Background(), in, &out); err != nil {
-		t.Fatalf("serve: %v", err)
-	}
 	var resps []rpcResp
-	for _, ln := range strings.Split(strings.TrimSpace(out.String()), "\n") {
-		if ln == "" {
+	for _, line := range lines {
+		raw, write := srv.HandleMessage(context.Background(), driveCaller(), []byte(line))
+		if !write {
 			continue
 		}
 		var r rpcResp
-		if err := json.Unmarshal([]byte(ln), &r); err != nil {
-			t.Fatalf("decode response %q: %v", ln, err)
+		if err := json.Unmarshal(raw, &r); err != nil {
+			t.Fatalf("decode response %q: %v", raw, err)
 		}
 		resps = append(resps, r)
 	}

@@ -1,19 +1,17 @@
 package mcp
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 )
 
-// The stdio transport frames each JSON-RPC 2.0 message as one line of JSON
-// (newline-delimited), the MCP 2024-11-05 stdio shape. We hand-roll it rather
-// than take an SDK dependency: the surface is initialize + five methods, the
-// framing is one ReadBytes('\n'), and keeping go.mod clean is a stated goal —
-// an SDK would be more code to audit than the loop below.
+// This file hand-rolls the JSON-RPC 2.0 message shape rather than taking an SDK
+// dependency: the surface is initialize + five methods, and keeping go.mod
+// clean is a stated goal — an SDK would be more code to audit than the
+// dispatch below. HandleMessage is the one per-message seam; the HTTP
+// transport (internal/web/mcp_http.go) frames a POST body around it.
 
 // JSON-RPC 2.0 error codes. The four standard codes plus the transport does not
 // invent any application codes: a tool/resource failure is carried inside a
@@ -26,11 +24,6 @@ const (
 	codeInvalidParams  = -32602
 	codeInternalError  = -32603
 )
-
-// maxLine bounds one framed message. Health and job-event lists are the largest
-// payloads and sit far under this; the cap only stops a runaway line from
-// exhausting memory.
-const maxLine = 8 << 20
 
 // rpcRequest is one decoded JSON-RPC message. A request carries an id and
 // expects a response; a notification omits id and gets none. Params and id stay
@@ -65,10 +58,10 @@ func (e *rpcError) Error() string { return e.Message }
 var nullID = json.RawMessage("null")
 
 // HandleMessage dispatches ONE framed JSON-RPC message for a caller and returns
-// the response bytes. It is the seam a non-stdio transport mounts on: the HTTP
-// face frames messages its own way but runs this exact dispatch, so there is one
-// catalog and one set of handlers behind both faces. write is false for a
-// notification, which by JSON-RPC gets no response at all.
+// the response bytes. It is the one per-message seam the HTTP transport mounts
+// on (internal/web/mcp_http.go), which frames a POST body around it but runs
+// this exact dispatch. write is false for a notification, which by JSON-RPC
+// gets no response at all.
 func (s *Server) HandleMessage(ctx context.Context, c Caller, msg []byte) (json.RawMessage, bool) {
 	resp, write := s.handleLine(ctx, c, msg)
 	if !write {
@@ -80,42 +73,6 @@ func (s *Server) HandleMessage(ctx context.Context, c Caller, msg []byte) (json.
 		return fallback, true
 	}
 	return bytes.TrimRight(buf.Bytes(), "\n"), true
-}
-
-// serve runs the read-dispatch-write loop over a line-delimited transport until
-// the reader is exhausted or ctx is cancelled. It is single-goroutine: every
-// write happens on this goroutine, so no output interleaving is possible.
-func (s *Server) serve(ctx context.Context, c Caller, in io.Reader, out io.Writer) error {
-	br := bufio.NewReaderSize(in, 64<<10)
-	bw := bufio.NewWriter(out)
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		line, err := readLine(br)
-		if len(line) == 0 && errors.Is(err, io.EOF) {
-			return nil
-		}
-		if len(bytes.TrimSpace(line)) == 0 {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			continue
-		}
-
-		resp, write := s.handleLine(ctx, c, line)
-		if write {
-			if werr := writeMessage(bw, resp); werr != nil {
-				return werr
-			}
-			if ferr := bw.Flush(); ferr != nil {
-				return ferr
-			}
-		}
-		if errors.Is(err, io.EOF) {
-			return nil
-		}
-	}
 }
 
 // handleLine decodes one framed message and dispatches it. It returns the
@@ -184,24 +141,4 @@ func writeMessage(w io.Writer, resp rpcResponse) error {
 	enc := json.NewEncoder(w)
 	enc.SetEscapeHTML(false)
 	return enc.Encode(resp)
-}
-
-// readLine reads one newline-terminated frame, tolerating a line longer than
-// the reader's buffer up to maxLine. It returns the bytes read and any
-// terminal error (io.EOF once the stream ends).
-func readLine(br *bufio.Reader) ([]byte, error) {
-	var buf []byte
-	for {
-		chunk, err := br.ReadSlice('\n')
-		buf = append(buf, chunk...)
-		if len(buf) > maxLine {
-			// Drain to the next newline is not attempted: a message this large is
-			// a broken peer, and returning stops the loop cleanly.
-			return buf[:maxLine], errors.New("mcp: message exceeds max line size")
-		}
-		if errors.Is(err, bufio.ErrBufferFull) {
-			continue
-		}
-		return buf, err
-	}
 }
