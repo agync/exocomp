@@ -18,8 +18,7 @@ import (
 // mutates, or shells out, and no POST/PUT/DELETE is registered (Wave 3).
 //
 // Deferred, not built here: GET /api/v1/health (waits on the doctor HealthView
-// landing in wire on main), GET /api/v1/jobs/{id}/stream (SSE follow-up), and
-// every write endpoint (Wave 3).
+// landing in wire on main) and every write endpoint (Wave 3).
 
 // codeInvalidArgument is the taxonomy code for a malformed request parameter (a
 // non-numeric id, an unknown filter value). The wire taxonomy has no store
@@ -36,6 +35,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/jobs", s.apiAuth(s.apiJobs))
 	mux.HandleFunc("GET /api/v1/jobs/{id}", s.apiAuth(s.apiJobGet))
 	mux.HandleFunc("GET /api/v1/jobs/{id}/events", s.apiAuth(s.apiJobEvents))
+	mux.HandleFunc("GET /api/v1/jobs/{id}/stream", s.apiAuth(s.apiJobStream))
 	mux.HandleFunc("GET /api/v1/workspaces", s.apiAuth(s.apiWorkspaces))
 	mux.HandleFunc("GET /api/v1/sources", s.apiAuth(s.apiSources))
 	mux.HandleFunc("GET /api/v1/approvals", s.apiAuth(s.apiApprovals))
@@ -238,6 +238,31 @@ func (s *Server) apiJobEvents(w http.ResponseWriter, r *http.Request) {
 		rows = kept
 	}
 	s.apiSuccess(w, wire.KindJobEvents, wire.NewJobEventList(rows))
+}
+
+// apiJobStream tails one job's events as SSE, gated by apiAuth instead of the
+// browser's requireAuth. It reuses tailJobEvents — the same append-only
+// job_event tail, monotonic Seq cursor, and done-on-terminal ending the
+// browser surface streams — so the two surfaces cannot diverge; only
+// existence and error rendering differ here (a wire envelope, not the
+// browser's 404/303).
+func (s *Server) apiJobStream(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "job id must be a positive integer")
+		return
+	}
+	if _, err := s.store.GetJob(r.Context(), id); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		s.apiError(w, http.StatusInternalServerError,
+			wire.NewError(wire.CodeInternal, "streaming unsupported"))
+		return
+	}
+	s.tailJobEvents(w, r, id, flusher)
 }
 
 // --- workspaces / sources ---------------------------------------------------

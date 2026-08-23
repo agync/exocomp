@@ -290,3 +290,71 @@ func TestAPISecretsMetadataOnly(t *testing.T) {
 func b64(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
 }
+
+// TestAPIJobStreamSSE proves the API follow route streams the same
+// text/event-stream body as the browser surface and ends on the terminal
+// event. The job is already terminal before the stream opens, so the tail's
+// first poll sees it, emits `done`, and returns — deterministic, no timing
+// race with the queue worker.
+func TestAPIJobStreamSSE(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	job, err := h.queue.Enqueue(context.Background(), queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/jobs/"+itoa64(job.ID)+"/stream", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("stream content-type = %q, want text/event-stream", ct)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read stream: %v", err)
+	}
+	if !strings.Contains(string(body), "event: done") {
+		t.Fatalf("stream on a terminal job never emitted done: %s", body)
+	}
+}
+
+// TestAPIJobStreamNoTokenIsWireError: the SSE route rejects an unauthenticated
+// request the same way every other /api/v1 route does — 401 and a wire error
+// envelope, never the browser's 303-to-login.
+func TestAPIJobStreamNoTokenIsWireError(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	code, hdr, body := bearerGet(t, ts.URL, "/api/v1/jobs/1/stream", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("no-token stream status = %d, want 401", code)
+	}
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("no-token stream content-type = %q, want application/json", ct)
+	}
+	var env struct {
+		Kind  string     `json:"kind"`
+		Error wire.Error `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("no-token stream body is not a wire envelope: %v (%s)", err, body)
+	}
+	if env.Kind != wire.KindError || env.Error.Code != wire.CodeUnauthenticated {
+		t.Fatalf("no-token stream envelope = %s, want error/unauthenticated", body)
+	}
+}
