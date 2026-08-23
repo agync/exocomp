@@ -26,6 +26,17 @@ const (
 // discards (ui-brief, approval surface contract 4).
 var ErrStalePlan = errors.New("reactive: the plan is stale")
 
+// SourceApproval attributes every notification about one approval — the opening
+// page and its reminder, and the resolve that closes it — to a single stable
+// identity, so a transport that models incidents (GoAlert) closes the incident
+// the page opened. The per-approval Host below makes each incident distinct.
+const SourceApproval = "approval"
+
+// approvalHost scopes the notification identity to one approval, so its resolve
+// closes exactly the incident its page opened and no other. It is the approval
+// id, never a hostname or anything the lock-screen contract withholds.
+func approvalHost(a store.Approval) string { return fmt.Sprintf("%d", a.ID) }
+
 // Decision is what happened to a decision link.
 type Decision struct {
 	Approval store.Approval
@@ -57,6 +68,10 @@ func (e *Engine) Decide(ctx context.Context, approvalID int64, decision, token, 
 	}
 
 	if approval.State != store.ApprovalPending {
+		// Already settled: close its incident, in case the page's opener never
+		// saw the transitions that settled it (a settle recorded on another path,
+		// or a delivery that failed then). The close is idempotent.
+		e.notify(ctx, decidedNotification(approval, DecisionOutcomeSettled))
 		return Decision{
 			Approval: approval,
 			Outcome:  DecisionOutcomeSettled,
@@ -101,7 +116,9 @@ func (e *Engine) Decide(ctx context.Context, approvalID int64, decision, token, 
 
 	decided, err := e.store.DecideApproval(ctx, approvalID, state, via, "")
 	if errors.Is(err, store.ErrApprovalDecided) {
-		// Two taps raced; the loser reports what the winner decided.
+		// Two taps raced; the loser reports what the winner decided and closes the
+		// incident, redundantly with the winner — the close is idempotent.
+		e.notify(ctx, decidedNotification(decided, DecisionOutcomeSettled))
 		return Decision{
 			Approval: decided,
 			Outcome:  DecisionOutcomeSettled,
@@ -294,14 +311,23 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 			{Label: "Approve", URL: DecisionURL(base, a.ID, DecisionApprove, token)},
 			{Label: "Reject", URL: DecisionURL(base, a.ID, DecisionReject, token)},
 		},
+		Source: SourceApproval,
+		Host:   approvalHost(a),
 	}
 }
 
+// decidedNotification tells the operator an approval settled and, carrying the
+// opening page's identity with Resolved set, closes the incident that page
+// opened on an incident-modelling transport. A fire-and-forget transport still
+// delivers it as an ordinary message.
 func decidedNotification(a store.Approval, outcome string) notify.Notification {
 	return notify.Notification{
 		Title:    "Approval " + outcome,
 		Body:     fmt.Sprintf("Approval %d was %s via %s.", a.ID, outcome, a.DecidedVia),
 		Priority: notify.PriorityDefault,
+		Source:   SourceApproval,
+		Host:     approvalHost(a),
+		Resolved: true,
 	}
 }
 
@@ -311,6 +337,9 @@ func expiredNotification(a store.Approval) notify.Notification {
 		Body:     fmt.Sprintf("Approval %d ran out its window and was rejected. Nothing was applied.", a.ID),
 		Priority: notify.PriorityHigh,
 		Tags:     []string{"hourglass"},
+		Source:   SourceApproval,
+		Host:     approvalHost(a),
+		Resolved: true,
 	}
 }
 
@@ -319,6 +348,9 @@ func withdrawnNotification(a store.Approval) notify.Notification {
 		Title:    "Approval withdrawn",
 		Body:     fmt.Sprintf("The condition cleared, so approval %d was withdrawn and its job cancelled.", a.ID),
 		Priority: notify.PriorityDefault,
+		Source:   SourceApproval,
+		Host:     approvalHost(a),
+		Resolved: true,
 	}
 }
 
