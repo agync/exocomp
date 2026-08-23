@@ -16,9 +16,11 @@ the docs-curator agent enforces it: one entry per event, dated). Two lanes each
 prepend a dated entry; the conflict is the two new blocks fighting for the top.
 
 Resolution: **keep both entries**, ordered newest-first by their dates, above
-the previously-latest entry. Never drop or merge two distinct entries into one —
-each records a separate event. Preserve each block's exact text and its trailing
-relative link line.
+the previously-latest entry. When both entries share the same date, that date
+alone does not order them: the later-integrating branch's entry goes on top,
+above the entries already on main. Never drop or merge two distinct entries
+into one — each records a separate event. Preserve each block's exact text and
+its trailing relative link line.
 
 ## The roadmap under `docs/design/` — union the rows
 
