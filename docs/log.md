@@ -22,6 +22,25 @@ between enqueue and claim. `run-cli` now enqueues for a running daemon and follo
 it creates, the shape `workspace apply`/`playbook run` already have.
 [operations/cli-run.md](operations/cli-run.md).
 
+## 2026-08-23 — sealed tofu outputs get an operations page
+
+**New page.** [sealed-tofu-outputs.md](operations/sealed-tofu-outputs.md) — the credential
+half of the Terraform→Ansible handoff, which had shipped as a capability with no page: a
+`sensitive = true` output sealed as `tf-output/<workspace>/<output>` and bound under
+`tf:<workspace>` to the output name upper-cased, resolved automatically by any run that
+targets that workspace's standing inventory and by nothing else. Documents the three
+deterministic names, the auto-versus-flag decision and its scoping rule, the two cases where
+an output is sealed but refused a binding, and the honest limit that the daemon's apply does
+not set the sealer yet.
+
+**Corrections of fact.** [terraform-ansible-handoff.md](operations/terraform-ansible-handoff.md)
+said a sensitive output "is dropped before anything is written or logged". It is never
+written or logged, but it is no longer dropped: on an apply path that wires the sealer it is
+sealed and bound. [provision-converge.md](operations/provision-converge.md)'s standing-
+inventory section gains what naming `tf:<workspace>` now also resolves, and
+[v1.1-roadmap.md](design/v1.1-roadmap.md)'s combined TF+Ansible table marks item D landed
+with its remaining daemon-side wiring named.
+
 ## 2026-08-23 — agent-interface docs debt closed: remote CLI, API, machine output, runners
 
 **Four new operations pages.** [remote-access.md](operations/remote-access.md) — `exocomp

@@ -128,6 +128,15 @@ tick converges the new host. Nothing about the schedule changes.
 fires, and everything after `--` is the playbook and its passthrough flags
 (`--check`, `--limit`, `--tags`).
 
+### It carries the workspace's sealed outputs too
+
+Naming `tf:<workspace>` also resolves the run-secret binding of that name: the
+workspace's `sensitive = true` outputs, sealed by the apply and bound to env
+names, reach the play as `$DB_PASSWORD` and friends. That holds for step 4 of
+this chain, for `playbook run --inventory tf:<workspace>`, and for the recurring
+converge above — and for nothing that does not name the inventory. See [sealed
+tofu outputs](sealed-tofu-outputs.md).
+
 ### It fails closed
 
 A fire whose inventory is unregistered, is not a materialized file, has lost its

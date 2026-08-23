@@ -19,7 +19,10 @@ secrets and generated passwords, so it is never read for inventory. At apply
 end exocomp runs `tofu output -json` inside the same sandboxed run that already
 holds the backend bearer and the pbkdf2 state passphrase, keeps only the
 **non-sensitive** outputs, and writes them to an inventory artifact. An output
-marked `sensitive = true` is dropped before anything is written or logged.
+marked `sensitive = true` never reaches the inventory or an event. On an apply
+path that wires the sealer it is sealed into the envelope and bound as named env
+for the dependent play instead of being dropped ([sealed tofu
+outputs](sealed-tofu-outputs.md)).
 
 ## Shaping the inventory
 
@@ -45,7 +48,9 @@ Two conventions, chosen by output name:
   becomes a var on the implicit `all` group. This is a valid but hostless
   inventory; declare an `ansible_inventory` output to target real hosts.
 
-Mark anything secret `sensitive = true` and it never leaves the apply run:
+Mark anything secret `sensitive = true` and it never leaves the apply run as a
+value — it travels to the dependent play as a sealed run-secret bound to an env
+name, never as inventory data:
 
 ```hcl
 output "db_password" {
