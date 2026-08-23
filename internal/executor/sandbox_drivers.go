@@ -233,6 +233,67 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	return drv.Run(ctx, spec, sink)
 }
 
+// sandboxedCLI runs a governed CLI job under the local-sandboxed tier.
+type sandboxedCLI struct {
+	opts    CLIOptions
+	sandbox SandboxOptions
+}
+
+// NewSandboxedCLI returns a CLI driver whose subprocess runs under nono. It is
+// the same driver as NewCLI with the sandbox spliced in underneath, so the
+// allow-list check, the environment allowlist, the run-secret injection, and
+// exit-code semantics are the ones already tested.
+func NewSandboxedCLI(opts CLIOptions, sandbox SandboxOptions) Driver {
+	return &sandboxedCLI{opts: opts, sandbox: sandbox}
+}
+
+// Run implements Driver.
+func (c *sandboxedCLI) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	job, cleanup, err := newJobDir(c.opts.PrivateDirRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	defer cleanup(sink)
+
+	opts := c.opts
+	opts.PrivateDirRoot = job.private
+	// The system temp dir is write-only under the sandbox and the real home is
+	// ungranted, so a tool staging a file or looking for a config directory gets
+	// the job's own tree for both. The home is empty by construction: a tool
+	// needing configuration takes it from the source checkout or from a bound
+	// run-secret, never from the operator's own dotfiles.
+	opts.Env = append(slices.Clone(opts.Env),
+		"TMPDIR="+job.tmp,
+		"HOME="+job.home,
+	)
+
+	if spec.Dir == "" {
+		spec.Dir = job.work
+	}
+
+	drv := NewCLI(opts)
+	drv.inner = NewSandbox(KindCLI, cliSandboxOptions(c.sandbox, c.opts, job), drv.inner)
+	return drv.Run(ctx, spec, sink)
+}
+
+// cliSandboxOptions is what one governed CLI run may touch: its own private,
+// work, and temp directories, and the tool tree the registered binary resolves
+// to. Nothing else — the source checkout, when a run names one, arrives as the
+// spec's working directory and is granted by Sandbox.Run, so a run with no
+// source reaches no repository at all.
+//
+// Egress is per registration rather than per kind: only a tool that declared
+// https gets a port, and it gets exactly 443.
+func cliSandboxOptions(base SandboxOptions, opts CLIOptions, job jobDir) SandboxOptions {
+	sb := base
+	sb.WritePaths = append(slices.Clone(base.WritePaths), job.grants()...)
+	sb.ReadPaths = append(slices.Clone(base.ReadPaths), toolGrant(opts.Binary, opts.Tool)...)
+	if opts.AllowHTTPS {
+		sb.ConnectPorts = append(slices.Clone(base.ConnectPorts), HTTPSPort)
+	}
+	return sb
+}
+
 // planOutPath returns the tofu plan output path named in a `-out=PATH` or
 // `-out PATH` argument, or "" when the argv writes no plan file.
 func planOutPath(argv []string) (string, []string) {

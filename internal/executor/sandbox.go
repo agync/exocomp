@@ -133,6 +133,13 @@ func ProfileFor(kind string, opts SandboxOptions) SandboxProfile {
 		p.ConnectPorts = append(p.ConnectPorts, SSHPort)
 	case KindTofu:
 		p.ConnectPorts = append(p.ConnectPorts, HTTPSPort)
+	case KindCLI:
+		// No egress for the kind, deliberately. ansible and tofu each speak one
+		// protocol, so a port belongs to the kind; the CLI kind is every
+		// allow-listed binary at once, and a kind-wide grant would hand each of
+		// them the widest posture any single registration asked for. A tool that
+		// declares egress gets its port added to its own run's profile by
+		// NewSandboxedCLI instead.
 	}
 	slices.Sort(p.ConnectPorts)
 	p.ConnectPorts = slices.Compact(p.ConnectPorts)
