@@ -1,0 +1,153 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"io"
+	"log/slog"
+	"time"
+
+	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
+	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/version"
+)
+
+// protocolVersion is the MCP revision this server speaks. initialize echoes it.
+const protocolVersion = "2024-11-05"
+
+// serverName is the MCP server identity a harness sees.
+const serverName = "exocomp"
+
+// Server is the stdio MCP adapter. It holds the same open store the CLI's local
+// commands hold and the data dir under it; the service verbs and the pure-enqueue
+// Enqueuer are built per call over these, exactly as the HTTP write API does.
+type Server struct {
+	store   *store.Store
+	dataDir string
+	now     func() time.Time
+	log     *slog.Logger
+
+	// newEnqueuer builds the pure-enqueue Enqueuer a write tool routes through.
+	// It is a field so a test can inject a real queue over its own store without
+	// this package reaching for process state.
+	newEnqueuer func() service.Enqueuer
+
+	// openEnvelope lazily opens the secrets envelope that mints approval-decision
+	// capabilities (reactive.Deriver). Only the gated apply and approve/reject
+	// need it; a plan and a fresh apply do not, so it is never opened for them.
+	// Injectable so a test can supply a deriver without a real keyring.
+	openEnvelope func() (reactive.Deriver, func(), error)
+}
+
+// New returns a Server over an already-open store and its data dir. A nil clock
+// defaults to time.Now in UTC.
+func New(st *store.Store, dataDir string, now func() time.Time) *Server {
+	if now == nil {
+		now = func() time.Time { return time.Now().UTC() }
+	}
+	s := &Server{store: st, dataDir: dataDir, now: now, log: slog.Default()}
+	s.newEnqueuer = func() service.Enqueuer {
+		return pureEnqueuer{q: queue.New(st, noRunDriver{}, queue.Options{Workers: 1})}
+	}
+	s.openEnvelope = func() (reactive.Deriver, func(), error) {
+		env, err := secrets.Open(dataDir)
+		if err != nil {
+			return nil, nil, err
+		}
+		return env, func() { _ = env.Close() }, nil
+	}
+	return s
+}
+
+// SetLogger overrides the diagnostic logger (it never carries payload values).
+func (s *Server) SetLogger(l *slog.Logger) {
+	if l != nil {
+		s.log = l
+	}
+}
+
+// Serve runs the MCP protocol over a stdio pair until in is exhausted or ctx is
+// cancelled. It is the one entry point `exocomp mcp` calls.
+func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
+	return s.serve(ctx, in, out)
+}
+
+// service builds the operational core over the server's store, data dir, and
+// clock — the same verbs the CLI drives, differing only in the Enqueuer.
+func (s *Server) service() *service.Service {
+	return service.New(s.store, s.dataDir, s.now)
+}
+
+// dispatch routes one JSON-RPC method to its handler. A protocol-level failure
+// (unknown method, malformed params) returns an *rpcError; a tool/resource
+// failure is carried inside the result as a wire error envelope, not here.
+func (s *Server) dispatch(ctx context.Context, method string, params json.RawMessage) (any, *rpcError) {
+	switch method {
+	case "initialize":
+		return s.handleInitialize(), nil
+	case "ping":
+		return struct{}{}, nil
+	case "tools/list":
+		return s.handleToolsList(), nil
+	case "tools/call":
+		return s.handleToolsCall(ctx, params)
+	case "resources/list":
+		return s.handleResourcesList(), nil
+	case "resources/templates/list":
+		return s.handleResourceTemplatesList(), nil
+	case "resources/read":
+		return s.handleResourcesRead(ctx, params)
+	default:
+		return nil, &rpcError{Code: codeMethodNotFound, Message: "method not found: " + method}
+	}
+}
+
+// handleInitialize advertises the protocol version, the tool and resource
+// capabilities, and the server identity.
+func (s *Server) handleInitialize() map[string]any {
+	return map[string]any{
+		"protocolVersion": protocolVersion,
+		"capabilities": map[string]any{
+			"tools":     map[string]any{},
+			"resources": map[string]any{},
+		},
+		"serverInfo": map[string]any{
+			"name":    serverName,
+			"version": version.String(),
+		},
+	}
+}
+
+// pureEnqueuer inserts the queued (or gated) row through the one queue and
+// returns at once. Its driver refuses to run: this process only enqueues, and a
+// running daemon claims and runs the row. It is the MCP analogue of the HTTP
+// write API's apiEnqueuer (internal/web/api_write.go).
+type pureEnqueuer struct{ q *queue.Queue }
+
+func (e pureEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return e.q.Enqueue(ctx, spec)
+}
+
+func (e pureEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return e.q.EnqueueGated(ctx, spec)
+}
+
+// noRunDriver is the driver of the enqueue-only queue. Refusing loudly keeps a
+// future caller from draining it and racing the daemon for the row.
+type noRunDriver struct{}
+
+func (noRunDriver) Run(context.Context, executor.Spec, executor.EventSink) (executor.Result, error) {
+	return executor.Result{}, errNoRun
+}
+
+var errNoRun = errInternal("mcp: the server only enqueues; the daemon runs the job")
+
+// errInternal is a tiny error type so the package's fixed strings need no
+// errors.New calls scattered through it.
+type errInternal string
+
+func (e errInternal) Error() string { return string(e) }
