@@ -12,6 +12,7 @@ import (
 	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -33,11 +34,16 @@ func newHooksCmd() *cobra.Command {
 
 func newHooksShowCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "show <source>",
-		Short: "Print the resolved hooks + gate for a source",
-		Args:  cobra.ExactArgs(1),
+		Use:     "show <source>",
+		Short:   "Print the resolved hooks + gate for a source",
+		Example: "exocomp hooks show web --output json",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			return showHooks(cmd.Context(), cmd.OutOrStdout(), args[0])
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
+			return showHooks(cmd, mode, args[0])
 		},
 	}
 }
@@ -59,16 +65,24 @@ func newHooksValidateCmd() *cobra.Command {
 // showHooks resolves and prints a source's lifecycle: which file is in effect,
 // the pre/post steps, and the gate probes. It is a dry lister — it reads the
 // resolved hooks and touches nothing.
-func showHooks(ctx context.Context, out io.Writer, sourceName string) (err error) {
+func showHooks(cmd *cobra.Command, mode, sourceName string) (err error) {
+	ctx := cmd.Context()
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	dir, err := dataDir()
 	if err != nil {
-		return fmt.Errorf("hooks: resolve data dir: %w", err)
+		err = fmt.Errorf("hooks: resolve data dir: %w", err)
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
+		return err
 	}
 	st, err := openStore()
 	if err != nil {
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
 		return err
 	}
 	defer func() {
@@ -79,30 +93,54 @@ func showHooks(ctx context.Context, out io.Writer, sourceName string) (err error
 
 	src, err := st.SourceByName(ctx, sourceName)
 	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("hooks: no source %q", sourceName)
+		nferr := notFoundf("hooks: no source %q", sourceName)
+		if mode == outputJSON {
+			return failJSON(cmd, nferr)
+		}
+		return nferr
 	}
 	if err != nil {
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
 		return err
 	}
 
 	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
 	if err != nil {
-		return fmt.Errorf("hooks: %w", err)
+		err = fmt.Errorf("hooks: %w", err)
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
+		return err
 	}
 
 	hk, prov, err := hooks.ResolveWithSource(loc.Root, hooksOverridePath(dir, src.Name))
 	if err != nil {
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
 		return err
 	}
 
+	if mode == outputJSON {
+		return emitJSON(cmd, wire.KindHooksShow, hooksView(src.Name, prov, hk))
+	}
+	printHooksText(cmd.OutOrStdout(), src.Name, prov, hk)
+	return nil
+}
+
+// printHooksText renders a source's resolved lifecycle exactly as showHooks
+// did before --output json existed.
+func printHooksText(out io.Writer, sourceName string, prov hooks.Source, hk hooks.Hooks) {
 	switch {
 	case prov.Path == "":
-		_, _ = fmt.Fprintf(out, "source %s: no hooks.yml (a run is just its play)\n", src.Name)
-		return nil
+		_, _ = fmt.Fprintf(out, "source %s: no hooks.yml (a run is just its play)\n", sourceName)
+		return
 	case prov.IsOverride:
-		_, _ = fmt.Fprintf(out, "source %s: hooks from operator override %s\n", src.Name, prov.Path)
+		_, _ = fmt.Fprintf(out, "source %s: hooks from operator override %s\n", sourceName, prov.Path)
 	default:
-		_, _ = fmt.Fprintf(out, "source %s: hooks from %s\n", src.Name, prov.Path)
+		_, _ = fmt.Fprintf(out, "source %s: hooks from %s\n", sourceName, prov.Path)
 	}
 	printHookList(out, "pre_run", hk.PreRun)
 	printHookList(out, "post_run", hk.PostRun)
@@ -115,7 +153,31 @@ func showHooks(ctx context.Context, out io.Writer, sourceName string) (err error
 	if hk.Empty() {
 		_, _ = fmt.Fprintln(out, "  (no steps, no gate)")
 	}
-	return nil
+}
+
+// hooksView projects a source's resolved lifecycle into the wire view. Slices
+// are always non-nil, so an empty phase renders "[]", not null.
+func hooksView(sourceName string, prov hooks.Source, hk hooks.Hooks) wire.HooksView {
+	v := wire.HooksView{
+		Source:   sourceName,
+		Override: prov.IsOverride,
+		PreRun:   make([]wire.HookStepView, len(hk.PreRun)),
+		PostRun:  make([]wire.HookStepView, len(hk.PostRun)),
+		Gate:     make([]wire.GateProbeView, len(hk.Gate)),
+	}
+	if prov.Path != "" {
+		v.HooksPath = prov.Path
+	}
+	for i, h := range hk.PreRun {
+		v.PreRun[i] = wire.HookStepView{Name: h.Name, Run: h.Run, Script: h.Script, Secret: h.Secret}
+	}
+	for i, h := range hk.PostRun {
+		v.PostRun[i] = wire.HookStepView{Name: h.Name, Run: h.Run, Script: h.Script, Secret: h.Secret}
+	}
+	for i, p := range hk.Gate {
+		v.Gate[i] = wire.GateProbeView{Name: p.Name, Kind: probeKind(p)}
+	}
+	return v
 }
 
 func printHookList(out io.Writer, phase string, list []hooks.Hook) {
