@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"strconv"
 
-	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -58,13 +57,21 @@ func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
 }
 
-// tools is the catalog: read tools (R), the cleanly-serviceable write tools (W),
-// and the two approval-gated decision tools (A). run_playbook is DEFERRED — a
-// server-side run must resolve an inventory name to a path and a --source
-// playbook onto its checkout, and those resolvers are still CLI-resident
-// (resolveInventoryArg/sourcePlaybook); exposing the tool without them would let
-// an agent's names miss their paths. The other mutating verbs (sync_source,
-// backup_run, schedule_*, secret_*) are out of this lane's scope by the task.
+// tools is the catalog: read tools (R) and the cleanly-serviceable write tools
+// (W). The approval-gated decision tools (A) are NOT here: the stdio transport
+// carries no credential and no scope, so a catalog holding both workspace_apply
+// and approve_job would let one principal raise a gate and release it — the one
+// human-in-the-loop control, closable by the actor it exists to stop (finding
+// AI-1). Decisions are made from the browser/phone surface, the CLI, or a
+// scope-checked /api/v1 token; an HTTP/SSE MCP transport may re-offer them once
+// it carries a token (ADR 0014 §3's scope-gated tool visibility).
+//
+// run_playbook is DEFERRED — a server-side run must resolve an inventory name to
+// a path and a --source playbook onto its checkout, and those resolvers are still
+// CLI-resident (resolveInventoryArg/sourcePlaybook); exposing the tool without
+// them would let an agent's names miss their paths. The other mutating verbs
+// (sync_source, backup_run, schedule_*, secret_*) are out of this lane's scope by
+// the task.
 func (s *Server) tools() []tool {
 	return []tool{
 		// --- read ---
@@ -117,12 +124,6 @@ func (s *Server) tools() []tool {
 				"timeout":         strProp("Go duration, e.g. 30m"),
 				"idempotency_key": strProp("dedup key so a retry does not double-enqueue"),
 			}, "name"), s.runWorkspaceApply},
-
-		// --- approve (reactive decide seam) ---
-		{"approve_job", "Approve a pending approval; releases its gated job. Decided server-side.",
-			object(map[string]any{"approval_id": intProp("the approval id")}, "approval_id"), s.runApprove},
-		{"reject_job", "Reject a pending approval; withdraws its gated job. Decided server-side.",
-			object(map[string]any{"approval_id": intProp("the approval id")}, "approval_id"), s.runReject},
 	}
 }
 
@@ -366,22 +367,6 @@ func (s *Server) runWorkspaceApply(ctx context.Context, args json.RawMessage) (s
 		return "", nil, err
 	}
 	return s.toolWorkspaceApply(ctx, a)
-}
-
-func (s *Server) runApprove(ctx context.Context, args json.RawMessage) (string, any, error) {
-	var a decideArgs
-	if err := decodeArgs(args, &a); err != nil {
-		return "", nil, err
-	}
-	return s.decide(ctx, reactive.DecisionApprove, a)
-}
-
-func (s *Server) runReject(ctx context.Context, args json.RawMessage) (string, any, error) {
-	var a decideArgs
-	if err := decodeArgs(args, &a); err != nil {
-		return "", nil, err
-	}
-	return s.decide(ctx, reactive.DecisionReject, a)
 }
 
 // decodeArgs unmarshals tool arguments, tolerating an absent arguments object (a

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
-	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
@@ -25,7 +24,6 @@ import (
 const (
 	kindJobEnqueued     = "job.enqueued"
 	kindApprovalPending = "approval.pending"
-	kindDecision        = "approval.decision"
 )
 
 type jobEnqueuedView struct {
@@ -44,12 +42,6 @@ type approvalPendingView struct {
 	TTLSeconds     int64  `json:"ttl_seconds,omitempty"`
 	Policy         string `json:"policy,omitempty"`
 	PlanArtifactID int64  `json:"plan_artifact_id,omitempty"`
-}
-
-type decisionView struct {
-	ApprovalID int64  `json:"approval_id"`
-	Outcome    string `json:"outcome,omitempty"`
-	Message    string `json:"message,omitempty"`
 }
 
 // errPlanDecryptUnsupported is the buildArgv refusal for a plain saved-plan
@@ -256,57 +248,7 @@ func (s *Server) planGate(ctx context.Context, art store.Artifact) (service.Plan
 	return service.PlanGate{}, nil
 }
 
-// decideArgs is the argument shape of approve_job / reject_job: an approval id.
-type decideArgs struct {
-	ApprovalID int64 `json:"approval_id"`
-}
-
-// decide resolves one approval through the reactive engine — the single
-// fail-closed place a human's answer enters the system (agent-interface §3.5).
-// The decision capability is derived SERVER-SIDE from the approval's job, never
-// carried by the caller and never returned: a scoped tool call is not a decision
-// link, so a low-authority agent cannot be silently promoted to approver. The
-// engine's queue is the pure-enqueue queue — an approved job is released to
-// queued and the daemon runs it.
-func (s *Server) decide(ctx context.Context, decision string, in decideArgs) (string, any, error) {
-	if in.ApprovalID <= 0 {
-		return "", nil, invalidArg("approval_id must be a positive integer")
-	}
-	approval, err := s.store.GetApproval(ctx, in.ApprovalID)
-	if err != nil {
-		return "", nil, err
-	}
-
-	deriver, closeEnv, err := s.openEnvelope()
-	if err != nil {
-		return "", nil, err
-	}
-	if closeEnv != nil {
-		defer closeEnv()
-	}
-
-	q := queue.New(s.store, noRunDriver{}, queue.Options{Workers: 1})
-	eng, err := reactive.New(reactive.Options{Store: s.store, Queue: q, Deriver: deriver})
-	if err != nil {
-		return "", nil, err
-	}
-
-	token, _, err := reactive.ApprovalToken(deriver, approval.JobID)
-	if err != nil {
-		return "", nil, err
-	}
-	res, err := s.service().DecideApproval(ctx, eng, service.DecideInput{
-		ApprovalID: in.ApprovalID,
-		Decision:   decision,
-		Token:      token,
-		Via:        "mcp",
-	})
-	if err != nil {
-		return "", nil, err
-	}
-	return kindDecision, decisionView{
-		ApprovalID: in.ApprovalID,
-		Outcome:    res.Decision.Outcome,
-		Message:    res.Decision.Message,
-	}, nil
-}
+// There is deliberately no decide seam here. The stdio transport authenticates
+// nothing, so an agent holding workspace_apply would also hold the release for
+// the gate that apply raises (finding AI-1). An approval is decided from the
+// browser/phone surface, the CLI, or the scope-checked /api/v1 decision route.

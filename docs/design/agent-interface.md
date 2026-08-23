@@ -294,6 +294,12 @@ single-use HMAC capability, and returning one to a low-scope agent silently prom
 approver (reactive/approval.go; cmd/exocomp/approval.go:92-99). Approve/reject are scoped tools
 that call `reactive.Decide` server-side instead.
 
+**The A column is gated on a scope, so it ships only on a transport that carries one.** The
+stdio face authenticates nothing, so `approve_job`/`reject_job` are absent from it entirely
+(finding AI-1, `docs/security/threat-model.md`): an agent that can raise a gate with
+`workspace_apply` must not hold its release. They return with the HTTP/SSE transport, behind
+the same bearer+scope check the write API uses.
+
 **Resources** (stable, cacheable context an agent fetches or subscribes to):
 `exocomp://workspaces`, `…/workspaces/{name}/drift`, `exocomp://jobs/{id}`,
 `exocomp://jobs/{id}/log` (append-only, `Seq`-cursorable), `exocomp://approvals/pending`,

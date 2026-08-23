@@ -151,8 +151,8 @@ func TestInitializeHandshake(t *testing.T) {
 	}
 }
 
-// TestToolsListCatalog asserts the catalog advertises the read, write, and
-// approve tools with input schemas, and that run_playbook is deferred.
+// TestToolsListCatalog asserts the catalog advertises the read and write tools
+// with input schemas, and that run_playbook is deferred.
 func TestToolsListCatalog(t *testing.T) {
 	srv, _ := newTestServer(t)
 	resps := drive(t, srv, req(1, "tools/list", "{}"))
@@ -177,7 +177,7 @@ func TestToolsListCatalog(t *testing.T) {
 		"list_jobs", "get_job", "get_job_events", "list_workspaces", "get_workspace",
 		"get_drift", "list_approvals", "list_sources", "list_schedules", "list_rules",
 		"list_events", "explain_event", "list_secrets", "list_backups", "health",
-		"workspace_plan", "workspace_apply", "approve_job", "reject_job",
+		"workspace_plan", "workspace_apply",
 	} {
 		if !have[want] {
 			t.Errorf("catalog missing tool %q", want)
