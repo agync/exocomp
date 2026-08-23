@@ -145,6 +145,13 @@ type TofuOptions struct {
 	// under the sandbox. Resolved by the caller from the envelope; the driver
 	// only injects it.
 	RunSecrets RunSecrets
+	// RunSecretFiles names the RunSecrets whose value must reach the tool as a
+	// FILE rather than an env value: each named env is materialized to a 0600
+	// file in the run's private tree and its env rewritten to that path, for a
+	// tool (kubectl/helm, an exec-auth provider) that wants a KUBECONFIG file.
+	// The private tree must be tmpfs or the run refuses to stage (Phase 3,
+	// docs/design/bootstrap-first.md); the value never touches argv or an event.
+	RunSecretFiles []string
 	// InventoryOut, when set and an apply succeeds, is the path this run writes
 	// the materialized Ansible inventory to: the declared, NON-sensitive tofu
 	// outputs captured by `tofu output -json` at apply end (story 5). It is the
@@ -232,7 +239,19 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	if err := t.linkModuleCache(dataDir, sink); err != nil {
 		return Result{}, err
 	}
-	env, err := t.env(dataDir, cliConfig)
+
+	// A run-secret that must reach the tool as a KUBECONFIG file is staged into
+	// the private dir (0600, torn down with it) and its env rewritten to the
+	// path. Staging asserts the private dir is tmpfs first and refuses otherwise,
+	// so a sealed bearer never lands on durable disk.
+	rs := t.opts.RunSecrets
+	if len(t.opts.RunSecretFiles) > 0 {
+		rs, err = StageRunSecretFiles(rs, t.opts.RunSecretFiles, private)
+		if err != nil {
+			return Result{}, err
+		}
+	}
+	env, err := t.env(dataDir, cliConfig, rs)
 	if err != nil {
 		return Result{}, err
 	}
@@ -622,7 +641,7 @@ func safeWorkspaceName(name string) bool {
 // env builds the child environment: the allowlist over the parent, then the
 // entries that make the run non-interactive, private, and encrypted.
 // cliConfig, when set, is the offline provider configuration's path.
-func (t *Tofu) env(dataDir, cliConfig string) ([]string, error) {
+func (t *Tofu) env(dataDir, cliConfig string, rs RunSecrets) ([]string, error) {
 	out := make([]string, 0, len(tofuEnvAllow)+8)
 	for _, kv := range os.Environ() {
 		name, _, ok := strings.Cut(kv, "=")
@@ -661,8 +680,9 @@ func (t *Tofu) env(dataDir, cliConfig string) ([]string, error) {
 
 	// The bound credentials go on last so a provider variable wins over an
 	// incidental one, and after TF_VAR_ inheritance so a bound TF_VAR_ is the
-	// one tofu reads.
-	secretEnv, err := runSecretEnv(t.opts.RunSecrets)
+	// one tofu reads. rs is the caller's RunSecrets after any file staging, so a
+	// file-staged name here already carries its path, not its value.
+	secretEnv, err := runSecretEnv(rs)
 	if err != nil {
 		return nil, err
 	}

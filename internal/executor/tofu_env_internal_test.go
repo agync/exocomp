@@ -9,7 +9,7 @@ import (
 // config as var.exocomp_workspace, the stand-in for terraform.workspace under
 // the HTTP backend (named-state multi-env).
 func TestTofuEnvInjectsWorkspaceVar(t *testing.T) {
-	env, err := (&Tofu{opts: TofuOptions{Workspace: "prod"}}).env(t.TempDir(), "")
+	env, err := (&Tofu{opts: TofuOptions{Workspace: "prod"}}).env(t.TempDir(), "", nil)
 	if err != nil {
 		t.Fatalf("env: %v", err)
 	}
@@ -18,7 +18,7 @@ func TestTofuEnvInjectsWorkspaceVar(t *testing.T) {
 	}
 
 	// No workspace name -> no injected var (nothing to name).
-	env2, err := (&Tofu{opts: TofuOptions{}}).env(t.TempDir(), "")
+	env2, err := (&Tofu{opts: TofuOptions{}}).env(t.TempDir(), "", nil)
 	if err != nil {
 		t.Fatalf("env (no workspace): %v", err)
 	}
