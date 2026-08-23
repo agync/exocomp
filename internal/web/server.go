@@ -11,6 +11,7 @@ import (
 	"github.com/a-h/templ"
 
 	"exocomp.dev/exocomp/internal/health"
+	"exocomp.dev/exocomp/internal/mcp"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -86,6 +87,10 @@ type Server struct {
 	// always uses internal/health.Probe.
 	probe  func(ctx context.Context) wire.HealthView
 	health healthCache
+	// mcpSrv is the MCP adapter the /mcp transport dispatches into. It is the
+	// same package `exocomp mcp` serves over stdio, so both faces run one
+	// catalog and one set of handlers (mcp_http.go).
+	mcpSrv *mcp.Server
 }
 
 // New returns a Server ready to be mounted.
@@ -122,6 +127,12 @@ func New(opts Options) (*Server, error) {
 	srv.probe = func(ctx context.Context) wire.HealthView {
 		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)
 	}
+	srv.mcpSrv = mcp.New(opts.Store, opts.DataDir, clock)
+	srv.mcpSrv.SetLogger(log)
+	// This process already holds the envelope, so a gated apply through the MCP
+	// face derives its approval capability from it rather than unwrapping the
+	// keyring a second time.
+	srv.mcpSrv.UseDeriver(opts.Deriver)
 	return srv, nil
 }
 
@@ -161,9 +172,13 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
 	mux.HandleFunc("GET /runners", s.requireAuth(s.handleRunners))
 
-	// The read-only operator HTTP/JSON API shares this listener and its auth;
-	// registerAPI adds /api/v1 GET routes (agent-interface §3.4).
+	// The operator HTTP/JSON API shares this listener and its auth; registerAPI
+	// adds the /api/v1 routes (agent-interface §3.4).
 	s.registerAPI(mux)
+
+	// The MCP transport rides the same listener and the same bearer+scope guard
+	// (agent-interface §3.5); registerMCP adds POST /mcp.
+	s.registerMCP(mux)
 
 	return securityHeaders(mux)
 }
