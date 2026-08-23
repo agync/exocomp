@@ -404,6 +404,15 @@ func newWorkspaceListCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				rows, err := rc.ListWorkspaces(cmd.Context())
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return renderRemoteWorkspaces(cmd, mode, rows)
+			}
 			st, err := openStore()
 			if err != nil {
 				return err

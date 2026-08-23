@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/client"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -51,6 +52,18 @@ func newJobsListCmd() *cobra.Command {
 					return fmt.Errorf("jobs list: --state %q is not a job state", s)
 				}
 				filter.States = append(filter.States, store.JobState(s))
+			}
+
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				rows, err := rc.ListJobs(cmd.Context(), client.JobFilter{
+					States: states, Runbook: runbook, ConcurrencyKey: concurrencyKey, Limit: limit,
+				})
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return renderRemoteJobsList(cmd, mode, rows)
 			}
 
 			st, err := openStore()
@@ -109,6 +122,16 @@ func newJobsGetCmd() *cobra.Command {
 				return fmt.Errorf("jobs get: %q is not a job id", args[0])
 			}
 
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				job, err := rc.GetJob(cmd.Context(), id)
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return renderRemoteJobGet(cmd, mode, job)
+			}
+
 			st, err := openStore()
 			if err != nil {
 				return err
@@ -155,6 +178,16 @@ func newJobsEventsCmd() *cobra.Command {
 			id, err := strconv.ParseInt(args[0], 10, 64)
 			if err != nil {
 				return fmt.Errorf("jobs events: %q is not a job id", args[0])
+			}
+
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				rows, err := rc.JobEvents(cmd.Context(), id, 0)
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return renderRemoteJobEvents(cmd, mode, rows)
 			}
 
 			st, err := openStore()

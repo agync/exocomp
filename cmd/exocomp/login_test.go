@@ -104,25 +104,27 @@ func TestLoginRequiresToken(t *testing.T) {
 
 func TestLoginChangedFingerprintWarns(t *testing.T) {
 	withConfigHome(t)
+	srv, realFP := loginTLSServer(t)
 
-	// First login against server A pins its fingerprint.
-	srvA, fpA := loginTLSServer(t)
-	if _, _, err := runLoginCmd(t,
-		[]string{"login", srvA.URL, "--name", "box", "--token", "t", "--assume-yes"}, ""); err != nil {
-		t.Fatalf("first login: %v", err)
+	// Pre-seed the alias with a DIFFERENT (stale) fingerprint, standing in for a
+	// previously-pinned cert. (httptest reuses one baked-in cert across servers,
+	// so a second server cannot produce a genuinely different fingerprint — the
+	// stale pin is injected directly instead.)
+	staleFP := "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"
+	if sameFP(staleFP, realFP) {
+		t.Fatal("baked-in cert unexpectedly matched the stale fingerprint")
+	}
+	seed := hostsConfig{Hosts: map[string]hostEntry{
+		"box": {Endpoint: srv.URL, Fingerprint: staleFP, Token: "t"},
+	}}
+	if err := saveHostsConfig(seed); err != nil {
+		t.Fatal(err)
 	}
 
-	// A DIFFERENT server (server B) reachable under the SAME alias: a fresh cert,
-	// so a different fingerprint. Re-login without --assume-yes must refuse.
-	srvB := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
-	defer srvB.Close()
-	fpB := client.Fingerprint(srvB.Certificate().Raw)
-	if sameFP(fpA, fpB) {
-		t.Skip("two httptest servers produced the same cert; cannot exercise the change path")
-	}
-
+	// Re-login: the presented cert differs from the pin, so without --assume-yes
+	// it must warn loudly and refuse.
 	_, errOut, err := runLoginCmd(t,
-		[]string{"login", srvB.URL, "--name", "box", "--token", "t"}, "y\n")
+		[]string{"login", srv.URL, "--name", "box", "--token", "t"}, "y\n")
 	if err == nil {
 		t.Fatal("changed fingerprint must refuse without --assume-yes")
 	}
@@ -132,17 +134,17 @@ func TestLoginChangedFingerprintWarns(t *testing.T) {
 
 	// The stored pin must be UNCHANGED after the refusal (fail-closed).
 	cfg, _ := loadHostsConfig()
-	if !sameFP(cfg.Hosts["box"].Fingerprint, fpA) {
+	if !sameFP(cfg.Hosts["box"].Fingerprint, staleFP) {
 		t.Errorf("refused login must not overwrite the pin: %+v", cfg.Hosts["box"])
 	}
 
-	// With --assume-yes the re-key is accepted and the pin advances.
+	// With --assume-yes the re-key is accepted and the pin advances to the real one.
 	if _, _, err := runLoginCmd(t,
-		[]string{"login", srvB.URL, "--name", "box", "--token", "t", "--assume-yes"}, ""); err != nil {
+		[]string{"login", srv.URL, "--name", "box", "--token", "t", "--assume-yes"}, ""); err != nil {
 		t.Fatalf("confirmed re-key: %v", err)
 	}
 	cfg, _ = loadHostsConfig()
-	if !sameFP(cfg.Hosts["box"].Fingerprint, fpB) {
+	if !sameFP(cfg.Hosts["box"].Fingerprint, realFP) {
 		t.Errorf("confirmed re-key should advance the pin: %+v", cfg.Hosts["box"])
 	}
 }

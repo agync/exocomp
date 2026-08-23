@@ -53,6 +53,19 @@ func newDoctorCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// In client mode doctor reports the REMOTE daemon's health summary
+			// (GET /api/v1/health), not this workstation's local environment: the
+			// operator asked about the box the other verbs target. The JSON is the
+			// same wire.HealthView the daemon's own `doctor --output json` emits.
+			if rc, ok, err := remoteClient(cmd); err != nil {
+				return err
+			} else if ok {
+				view, err := rc.Health(cmd.Context())
+				if err != nil {
+					return remoteFail(cmd, mode, err)
+				}
+				return renderRemoteHealth(cmd, mode, view)
+			}
 			if mode == outputJSON {
 				return emitJSON(cmd, wire.KindDoctor, doctorHealth(cmd.Context()))
 			}
