@@ -784,3 +784,17 @@ func backendPort(rawURL string) int {
 	}
 	return 0
 }
+
+// tofuEgressPorts is the egress a sandboxed tofu run may open, on top of the
+// HTTPS grant ProfileFor(KindTofu) adds for the kind: the loopback state
+// backend's port, and any operator-declared extra ports for the workspace. The
+// extras are additive and never replace the default grant, so a workspace with
+// none declared keeps exactly the 443-and-backend posture. ProfileFor sorts and
+// de-duplicates the final set.
+func tofuEgressPorts(base []int, backendURL string, extra []int) []int {
+	out := slices.Clone(base)
+	if port := backendPort(backendURL); port != 0 {
+		out = append(out, port)
+	}
+	return append(out, extra...)
+}

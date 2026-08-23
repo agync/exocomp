@@ -204,9 +204,7 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	if cache := moduleCacheDir(t.opts); cache != "" {
 		sb.WritePaths = append(sb.WritePaths, cache)
 	}
-	if port := backendPort(t.opts.BackendURL); port != 0 {
-		sb.ConnectPorts = append(slices.Clone(sb.ConnectPorts), port)
-	}
+	sb.ConnectPorts = tofuEgressPorts(sb.ConnectPorts, t.opts.BackendURL, t.opts.ExtraPorts)
 
 	// A `plan -out=` points at the data dir's artifacts tree, which the sandbox
 	// denies by design. Redirect it into the job's own private dir, which is

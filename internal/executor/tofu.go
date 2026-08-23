@@ -124,6 +124,14 @@ type TofuOptions struct {
 	// a default beside PluginCacheDir when both a plugin cache and a workspace
 	// name are set, and otherwise leaves modules per-run as before.
 	ModuleCacheDir string
+	// ExtraPorts are outbound TCP ports the operator declared for this
+	// workspace, granted additively to the built-in HTTPS-and-backend egress of
+	// a sandboxed tofu run. Empty keeps the default posture. It is the plumbing
+	// for a homelab whose kubernetes/helm providers must reach an API server on
+	// a non-443 port (a kubeadm cluster's 6443). Because Landlock filters by
+	// port and not destination, a granted port reaches any host on that port,
+	// not only the intended cluster (docs/operations/serve.md).
+	ExtraPorts []int
 	// OfflineProviders restricts provider resolution to PluginCacheDir alone:
 	// no registry, no network (design/amendments.md item 8). Set it only once
 	// the cache is known warm; a provider missing from it then fails the run
