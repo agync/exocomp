@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -289,6 +290,98 @@ func TestAPISecretsMetadataOnly(t *testing.T) {
 
 func b64(s string) string {
 	return base64.StdEncoding.EncodeToString([]byte(s))
+}
+
+// TestAPIHealthReadonlyGetsWireEnvelope: a readonly token gets 200 and a wire
+// envelope carrying the fixed set of subsystem entries doctor's JSON summary
+// projects — the same probe definition, so the two can never diverge.
+func TestAPIHealthReadonlyGetsWireEnvelope(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	code, hdr, body := bearerGet(t, ts.URL, "/api/v1/health", token)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/health status = %d, want 200 (body: %s)", code, body)
+	}
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("GET /api/v1/health content-type = %q, want application/json", ct)
+	}
+
+	var env struct {
+		SchemaVersion int    `json:"schema_version"`
+		Kind          string `json:"kind"`
+		Data          []struct {
+			Name   string `json:"name"`
+			Status string `json:"status"`
+			Detail string `json:"detail"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("GET /api/v1/health body is not an envelope: %v (%s)", err, body)
+	}
+	if env.SchemaVersion != wire.SchemaVersion || env.Kind != wire.KindDoctor {
+		t.Fatalf("bad envelope header: %+v", env)
+	}
+	wantSubsystems := []string{"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream"}
+	if len(env.Data) != len(wantSubsystems) {
+		t.Fatalf("subsystem count = %d, want %d: %s", len(env.Data), len(wantSubsystems), body)
+	}
+	for i, name := range wantSubsystems {
+		if env.Data[i].Name != name {
+			t.Errorf("entry %d name = %q, want %q (order must be stable): %s", i, env.Data[i].Name, name, body)
+		}
+	}
+}
+
+// TestAPIHealthNoTokenIsWireError: no token gets 401 and a wire error
+// envelope, the same as every other /api/v1 route.
+func TestAPIHealthNoTokenIsWireError(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/health", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/health (no token) status = %d, want 401 (%s)", code, body)
+	}
+	var env struct {
+		Kind  string     `json:"kind"`
+		Error wire.Error `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("no-token body is not a wire envelope: %v (%s)", err, body)
+	}
+	if env.Kind != wire.KindError || env.Error.Code != wire.CodeUnauthenticated {
+		t.Fatalf("no-token envelope = %s, want error/unauthenticated", body)
+	}
+}
+
+// TestAPIHealthNoScrapeTokenOrSecret seeds the real host key and scrape token
+// a self-observability probe would present as a bearer, and proves neither it
+// nor any sealed-column marker ever reaches the health response — the
+// HealthEntry projection is values-free (invariant 4), same as doctor's JSON.
+func TestAPIHealthNoScrapeTokenOrSecret(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	scrapeToken := metrics.ScrapeToken(h.env)
+	if scrapeToken == "" {
+		t.Fatal("expected a non-empty scrape token to check against")
+	}
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/health", token)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/health status = %d, want 200 (%s)", code, body)
+	}
+	for _, banned := range []string{scrapeToken, "Bearer", "nonce", "ciphertext", "aad"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("health response leaked %q: %s", banned, body)
+		}
+	}
 }
 
 // TestAPIJobStreamSSE proves the API follow route streams the same

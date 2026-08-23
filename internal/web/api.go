@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -17,8 +18,10 @@ import (
 // are identical. It is strictly additive and read-only: no route enqueues,
 // mutates, or shells out, and no POST/PUT/DELETE is registered (Wave 3).
 //
-// Deferred, not built here: GET /api/v1/health (waits on the doctor HealthView
-// landing in wire on main) and every write endpoint (Wave 3).
+// GET /api/v1/health calls internal/health.Probe — the same probe definition
+// `doctor --output json` calls — so the two summaries can never diverge.
+//
+// Deferred, not built here: every write endpoint (Wave 3).
 
 // codeInvalidArgument is the taxonomy code for a malformed request parameter (a
 // non-numeric id, an unknown filter value). The wire taxonomy has no store
@@ -47,6 +50,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/events/{id}", s.apiAuth(s.apiEventGet))
 	mux.HandleFunc("GET /api/v1/secrets", s.apiAuth(s.apiSecrets))
 	mux.HandleFunc("GET /api/v1/backups", s.apiAuth(s.apiBackups))
+	mux.HandleFunc("GET /api/v1/health", s.apiAuth(s.apiHealth))
 }
 
 // apiAuth wraps a JSON handler with the browser surface's own auth resolution.
@@ -408,6 +412,23 @@ func (s *Server) apiBackups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindBackupList, wire.NewBackupTargetList(rows))
+}
+
+// --- health -------------------------------------------------------------
+
+// apiHealth runs the same subsystem probes `doctor --output json` does and
+// returns the wire health view. It never fails: an unreachable subsystem is a
+// per-entry status, not an HTTP error, matching the CLI's fault-tolerant JSON
+// path (internal/health.Probe never short-circuits on a data-dir fault).
+func (s *Server) apiHealth(w http.ResponseWriter, r *http.Request) {
+	s.apiSuccess(w, wire.KindDoctor, health.Probe(r.Context(), s.dataDir, s.healthOpenStore))
+}
+
+// healthOpenStore hands internal/health the server's already-open store
+// rather than a fresh connection: the web API is a long-running daemon, not a
+// one-shot CLI invocation, so there is no connection to close per probe.
+func (s *Server) healthOpenStore() (health.Store, func() error, error) {
+	return s.store, func() error { return nil }, nil
 }
 
 // --- small validators (mirrors of the CLI's, using store constants) ---------
