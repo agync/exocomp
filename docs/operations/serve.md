@@ -172,6 +172,12 @@ Two daemons would fire every schedule twice and race for every queued job. The l
 belongs to the open descriptor, so it is released when the process ends however it ends —
 a killed daemon leaves nothing to clean up, and the pid in the file is informational.
 
+The `flock` is host-local: it says nothing about a daemon on **another** host sharing the
+same replicated store. That case is guarded separately by the cross-host active lease — a
+row in the store with a wall-clock TTL that the active daemon renews, and that a starting
+daemon on another host refuses to override. See [cold-standby failover](failover.md); the
+lease flags are `--lease-ttl`, `--lease-renew`, and `--force-lease`.
+
 Acquiring the lock retries for 250ms on `EWOULDBLOCK` before giving up. A CLI checking
 whether a daemon is up (below) takes only a shared, non-blocking probe of the same file
 and releases it immediately, but a starting daemon and a probe can still land on the file

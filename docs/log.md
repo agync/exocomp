@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Cross-host fence and a cold-standby failover runbook
+
+New page [operations/failover.md](operations/failover.md): the drilled cold-standby
+procedure — restic restore, optional Litestream fast-forward, deliberate `serve`, and the
+re-drive of interrupted work — plus the property behind it. The daemon now holds a
+cross-host **active lease** (a single row in the store with a wall-clock TTL) above the
+existing host-local `serve.lock` flock: the active daemon renews it, and a daemon starting
+on another host that finds a live lease refuses to become active, naming the holder and its
+last renew. A stale lease may be taken; force-taking a live one is the explicit
+`--force-lease`. This closes split-brain across two hosts sharing one replicated store,
+where the flock's pid-liveness is meaningless — notably the boot sweep, which is now run
+only after the fence is held so a fenced-out standby never retires a live primary's jobs.
+[operations/serve.md](operations/serve.md)'s "one daemon per data dir" section gained the
+cross-host half.
+
 ## 2026-08-24 — Composed-chain `--require-approval` is now durably gated mid-run
 
 [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) previously

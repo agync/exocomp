@@ -9,6 +9,7 @@ Getting an install standing up, and getting it back after it falls over.
 | [Draining for a planned reboot](drain-mode.md) | `exocomp drain` — cordon a running daemon so it fires no schedules and claims no new jobs while in-flight work finishes, poll "safe to reboot?", and list the jobs a reboot left interrupted |
 | [Upgrade and rollback](upgrade.md) | `exocomp upgrade`/`rollback` as a ledger choreography — snapshot, stage, verify, swap, health-check — rolling back to the snapshot and prior binary on any failed step; no sudo |
 | [Disaster recovery](disaster-recovery.md) | What is backed up, the three legs, the recovery chain, the runbook for a dead host, the recovery card, failure modes, RPO/RTO, and verification |
+| [Cold-standby failover](failover.md) | Taking over a replicated store on a standby host — restic restore, optional Litestream fast-forward, deliberate `serve`, and the cross-host active lease that keeps a resurrected primary from double-activating |
 | [Offline caches](offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
 | [Reacting to alerts](reactive.md) | Pointing a monitor at the hooks, sealing the push transport, writing rules, silencing, answering approvals, and asking why a rule did not fire |
 | [Gating tofu plans](plan-policy.md) | Writing CEL policies over a plan's `show -json`, denying a dangerous plan at seal so its apply refuses, and routing an apply through the approval gate |
