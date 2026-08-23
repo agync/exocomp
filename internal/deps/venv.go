@@ -7,11 +7,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 )
 
 // UVBinary is the resolver the control plane invokes for project dependencies.
@@ -64,6 +66,19 @@ type VenvSpec struct {
 	// lands on a granted, backed-up path instead of the daemon's home — which
 	// the sandbox does not grant. Empty leaves uv's default cache location.
 	UVCacheDir string
+	// KeepVenvs is the newest-N retention window PruneVenvs applies to this
+	// source's other venvs after a successful provision (the venv just built
+	// is protected outright, on top of naturally landing in this window).
+	// Zero uses DefaultKeepVenvs.
+	KeepVenvs int
+	// KeepVenvsSince bounds the retention window's other half: a venv built
+	// within KeepVenvsSince of now is kept regardless of KeepVenvs. Zero uses
+	// DefaultKeepVenvsSince.
+	KeepVenvsSince time.Duration
+	// Logger receives a warning if the post-provision prune fails; the
+	// failure never fails EnsureVenv itself (see pruneStaleVenvs). Nil uses
+	// slog.Default().
+	Logger *slog.Logger
 }
 
 // Venv is a provisioned per-source virtual environment.
@@ -85,6 +100,12 @@ type Venv struct {
 // touches no network. It is fail-closed: a provisioning failure removes the
 // half-built venv and returns an error, so a run never proceeds against
 // half-met dependencies (ADR 0011).
+//
+// A successful provision also prunes this source's other stale venvs
+// (PruneVenvs, keep-policy defaults DefaultKeepVenvs/DefaultKeepVenvsSince,
+// overridable via spec), protecting the hash just built — otherwise the
+// cache grows one directory per manifest hash forever. Pruning never fails
+// this call; see pruneStaleVenvs.
 func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 	if !spec.Manifest.HasDeps() {
 		return Venv{}, errors.New("deps: EnsureVenv called for a source with no declared dependencies")
@@ -110,6 +131,7 @@ func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 		return Venv{}, err
 	}
 	v.Created = true
+	pruneStaleVenvs(spec, spec.Manifest.Hash)
 	return v, nil
 }
 
