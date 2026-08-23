@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,7 +16,6 @@ import (
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/service"
-	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -372,9 +370,9 @@ func reportJobOutcome(out io.Writer, final store.Job) int {
 // resolveSourceHooks resolves a registered source's checkout root and its
 // lifecycle (with the override-wins precedence). It is the shared read
 // `playbook run` and `handoff run` use to decide whether a source's
-// `.exocomp/hooks.yml` turns a run into a lifecycle workflow. A malformed hooks
-// file is an error here, so a broken lifecycle fails before the run starts
-// rather than being silently skipped.
+// `.exocomp/hooks.yml` turns a run into a lifecycle workflow. The transport-free
+// logic lives in internal/service; this wrapper supplies the CLI's data dir,
+// store, and override-file path.
 func resolveSourceHooks(ctx context.Context, sourceName string) (hk hooks.Hooks, root string, err error) {
 	dir, err := dataDir()
 	if err != nil {
@@ -389,23 +387,7 @@ func resolveSourceHooks(ctx context.Context, sourceName string) (hk hooks.Hooks,
 			err = cerr
 		}
 	}()
-
-	src, err := st.SourceByName(ctx, sourceName)
-	if errors.Is(err, store.ErrNotFound) {
-		return hooks.Hooks{}, "", fmt.Errorf("no source %q", sourceName)
-	}
-	if err != nil {
-		return hooks.Hooks{}, "", err
-	}
-	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
-	if err != nil {
-		return hooks.Hooks{}, "", fmt.Errorf("source hooks: %w", err)
-	}
-	hk, err = hooks.Resolve(loc.Root, hooksOverridePath(dir, src.Name))
-	if err != nil {
-		return hooks.Hooks{}, "", err
-	}
-	return hk, loc.Root, nil
+	return service.New(st, dir, nil).ResolveSourceHooks(ctx, hooksOverridePath(dir, sourceName), sourceName)
 }
 
 // sourcePlaybook resolves whether a --source run is a hooked lifecycle and,
@@ -428,49 +410,11 @@ func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook strin
 
 // resolveInventoryArg turns a --inventory value into the path ansible targets
 // and, when it names a registered inventory, that inventory's name so its
-// env_binding resolves for a dynamic plugin. A value that matches no registered
-// inventory is treated as a filesystem path. An empty value targets localhost.
-// dataDir resolves a source-linked inventory's path against its source checkout.
+// env_binding resolves for a dynamic plugin. The transport-free resolution lives
+// in internal/service, so a CLI run and a server-side run turn an operator's
+// names into the same paths; this wrapper adapts the CLI's explicit store+dir.
 func resolveInventoryArg(ctx context.Context, st *store.Store, dataDir, value string) (path, name string, err error) {
-	if value == "" {
-		return "", "", nil
-	}
-	if inv, ierr := st.InventoryByName(ctx, value); ierr == nil {
-		resolved, rerr := resolveInventoryPath(ctx, st, dataDir, inv)
-		if rerr != nil {
-			return "", "", rerr
-		}
-		return resolved, inv.Name, nil
-	} else if !errors.Is(ierr, store.ErrNotFound) {
-		return "", "", ierr
-	}
-	abs, err := filepath.Abs(value)
-	if err != nil {
-		return "", "", fmt.Errorf("playbook: resolve inventory: %w", err)
-	}
-	return abs, "", nil
-}
-
-// resolveInventoryPath turns a registered inventory's stored path into the path
-// ansible targets. A source-linked inventory records its path relative to that
-// source's checkout (`inventory add --source S --path inventory.ini`), so it must
-// resolve against the source's materialized root — the same directory the play
-// runs from — not the process CWD. Resolving against the CWD is what made
-// `--inventory <name>` fail to parse for any caller not standing in the checkout.
-// An absolute path, or an inventory with no source, is returned as stored.
-func resolveInventoryPath(ctx context.Context, st *store.Store, dataDir string, inv store.Inventory) (string, error) {
-	if inv.Path == "" || filepath.IsAbs(inv.Path) || inv.SourceID == nil {
-		return inv.Path, nil
-	}
-	src, err := st.GetSource(ctx, *inv.SourceID)
-	if err != nil {
-		return "", fmt.Errorf("inventory %q: source: %w", inv.Name, err)
-	}
-	loc, err := source.Resolve(dataDir, src.Kind, src.Name, src.URI)
-	if err != nil {
-		return "", fmt.Errorf("inventory %q: %w", inv.Name, err)
-	}
-	return filepath.Join(loc.Root, inv.Path), nil
+	return service.New(st, dataDir, nil).ResolveInventory(ctx, value)
 }
 
 // runPlaybookInline enqueues the job and drains it in this process, which is
