@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,43 @@ import (
 	"strings"
 	"time"
 )
+
+// applyJobCaps sets up a per-job cgroup when the sandbox options ask for caps,
+// mutating spec so the subprocess is born inside it, and returns the teardown.
+// It is fail-closed on both edges ADR 0005's "never silently" cares about: caps
+// requested without a delegated controller is refused, and a controller that
+// cannot mint the cgroup is refused — a capped job never falls back to running
+// uncapped. Empty caps are the common path and cost nothing.
+func applyJobCaps(sb SandboxOptions, spec *Spec) (func(EventSink), error) {
+	if sb.Caps.Empty() {
+		return func(EventSink) {}, nil
+	}
+	if sb.Cgroup == nil {
+		return nil, errors.New("executor: caps: memory/cpu caps were requested but no cgroup " +
+			"subtree is delegated to this container; refusing to run the job uncapped — " +
+			"enable cgroup delegation (see packaging/quadlet/exocomp.container)")
+	}
+	jc, err := sb.Cgroup.NewJobCgroup(sb.Caps)
+	if err != nil {
+		return nil, err
+	}
+	spec.UseCgroup = true
+	spec.CgroupFD = jc.FD()
+	return func(sink EventSink) {
+		// The exit code is the arbiter (invariant 3); this only names the reason
+		// an OOM-killed job died 137, which the exit code alone cannot say.
+		if oom, oerr := jc.OOMKilled(); oerr == nil && oom {
+			sink.Emit(Event{
+				Ts:    time.Now().UTC(),
+				Level: LevelSystem,
+				Msg:   "job exceeded its memory cap and was OOM-killed",
+			})
+		}
+		if err := jc.Remove(); err != nil {
+			sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem, Msg: err.Error()})
+		}
+	}, nil
+}
 
 // jobDirPrefix names the per-job private directory the sandboxed tier creates
 // inside the private root. Each job gets its own so a grant covers one job's
@@ -106,6 +144,12 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	if spec.Dir == "" {
 		spec.Dir = job.work
 	}
+
+	capsTeardown, err := applyJobCaps(a.sandbox, &spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer capsTeardown(sink)
 
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
@@ -226,6 +270,12 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	}
 	spec.Argv = staged
 
+	capsTeardown, err := applyJobCaps(t.sandbox, &spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer capsTeardown(sink)
+
 	drv := NewTofu(opts)
 	drv.inner = NewSandbox(KindTofu, sb, drv.inner)
 	return drv.Run(ctx, spec, sink)
@@ -268,6 +318,12 @@ func (c *sandboxedCLI) Run(ctx context.Context, spec Spec, sink EventSink) (Resu
 	if spec.Dir == "" {
 		spec.Dir = job.work
 	}
+
+	capsTeardown, err := applyJobCaps(c.sandbox, &spec)
+	if err != nil {
+		return Result{}, err
+	}
+	defer capsTeardown(sink)
 
 	drv := NewCLI(opts)
 	drv.inner = NewSandbox(KindCLI, cliSandboxOptions(c.sandbox, c.opts, job), drv.inner)

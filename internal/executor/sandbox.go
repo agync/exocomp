@@ -101,6 +101,16 @@ type SandboxOptions struct {
 	// ConnectPorts are the outbound TCP ports the job may connect to. Empty
 	// denies egress entirely.
 	ConnectPorts []int
+	// Caps, when non-empty, caps the job's memory and cpu through a per-job
+	// cgroup (docs/design/byo-runner.md §6). Opt-in: the zero value runs the
+	// job uncapped, which is the default posture. When Caps is non-empty,
+	// Cgroup must be a prepared controller — a non-empty Caps with a nil Cgroup
+	// is a fail-closed refusal, never an uncapped run.
+	Caps Caps
+	// Cgroup is the delegated-subtree controller that mints each job's cgroup,
+	// prepared once at startup by PrepareCgroupController. Nil means the caps
+	// feature is off.
+	Cgroup *CgroupController
 }
 
 // SandboxProfile is one kind's resolved default-deny policy.

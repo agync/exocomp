@@ -78,6 +78,12 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 		// helpers its process started, and a shell that exec'd something else is
 		// only reachable by group.
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		// An opted-in job is born inside its per-job cgroup (CLONE_INTO_CGROUP),
+		// so its memory/cpu ceiling is in force from the first instruction rather
+		// than applied a moment after it already started allocating.
+		if spec.UseCgroup {
+			applyCgroupFD(cmd.SysProcAttr, spec.CgroupFD)
+		}
 		cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
 		cmd.Stdout, cmd.Stderr = stdoutW, stderrW
 

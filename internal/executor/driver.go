@@ -20,6 +20,13 @@ type Spec struct {
 	Dir     string   // working directory; empty means the caller's
 	Env     []string // nil inherits the caller's environment
 	Timeout time.Duration
+	// UseCgroup places the process into the cgroup named by CgroupFD at fork,
+	// so a capped job starts already inside its resource ceiling. Off by
+	// default: the zero-value Spec runs uncapped exactly as before. CgroupFD is
+	// consulted only when UseCgroup is true, which is why fd 0 is never mistaken
+	// for a cgroup.
+	UseCgroup bool
+	CgroupFD  int
 }
 
 // Result is what a driver reports about a process that ran to completion.
