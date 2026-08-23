@@ -131,6 +131,35 @@ Both modes feed the **same `runner-hash`** (§7), so switching `mode` never forc
 `bootstrap`/`packages` is Model A; `containerfile` is Model B; the presence of `containerfile`
 selects `onthefly` semantics by default.
 
+### Registration — server-level vs repo-side, DB-native
+
+A runner may be **server-level** (registered once, shared by many sources) or **repo-side**
+(the per-source `runner.yaml` above). The native home for a registered runner is the
+**database** — the same place sources, inventories, schedules, and plan-policies already live
+(`internal/store`), so it is backed up + audited with the data volume and reachable by the
+reactive/audit machinery. This is a two-tier model mirroring how dependencies already work
+(operator-registered vs repo-declared).
+
+- **Registered / global (DB)** — `exocomp runner add <name> --base … --bootstrap …` (also
+  `runner list|show|rm`). Named, operator-managed, shared across sources. A source references
+  it by name. Best for a handful of standard homelab runners.
+- **Repo-side (`.exocomp/runner.yaml`)** — per-source, self-contained, GitOps; travels with
+  the code.
+
+A source picks one; precedence: `--runner <name>` flag → the source's `.exocomp` declaration →
+a workspace/global default runner.
+
+On location: **`/etc/exocomp/runners` — no.** `/etc` implies a system-level, multi-user,
+root-managed daemon; exocomp is single-operator, rootless, no-sudo, one-container (invariants
+1/6), and has no `/etc` config model. **`~/.config/exocomp/runners/` — off-pattern:**
+exocomp's state lives in the backed-up data dir (`XDG_DATA_HOME`), not `~/.config` — which is
+used only for the remote CLI's *client-side* host pins/tokens (`hosts.toml`), the opposite
+direction (a workstation reaching a daemon, not the daemon's own registry). For file-based /
+declarative registration, prefer `exocomp runner import <dir>` loading YAML specs from a dir
+**under the data dir** into the DB — GitOps ergonomics without splitting state across
+`~/.config`. The runner **definition** (recipe) is backed up; the built **image** stays in the
+rebuildable cache (§7), reconstructable from the definition + `runner-lock.json`.
+
 ---
 
 ## 3. Tooling decision — podman-first, shell the CLI, no docker cruft
