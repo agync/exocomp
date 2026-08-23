@@ -14,7 +14,16 @@ exocomp --remote nibbler jobs list
 
 `login` pins the presented certificate's SHA-256 fingerprint and stores
 `{endpoint, fingerprint, token}` in `~/.config/exocomp/hosts.toml` (0600). Later calls
-verify the pin and refuse to connect if it changed; re-`login` to accept a re-key.
+verify the pin and refuse to connect if it changed.
+
+Accepting a **changed** fingerprint (or re-pointing an alias at a different endpoint) takes
+`--replace-pin`, and nothing else does it: `--assume-yes` pins a *first* fingerprint on
+non-interactive stdin but never replaces one. That split is deliberate — every script, CI
+step and agent harness must pass `--assume-yes` to pin at all, so if it also replaced pins,
+the one invocation automation always uses would re-pin to whatever certificate answered and
+hand it the bearer token (finding AI-5, [threat model](../security/threat-model.md)).
+Confirm the new fingerprint out of band first; a refusal exits non-zero and leaves
+`hosts.toml` untouched.
 
 A command with neither `--remote` nor `EXOCOMP_REMOTE` stays **local**, even when a default
 remote is stored: a stored default fills a valueless `--remote=`, it never redirects a bare

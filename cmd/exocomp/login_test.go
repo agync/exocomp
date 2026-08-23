@@ -121,12 +121,12 @@ func TestLoginChangedFingerprintWarns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Re-login: the presented cert differs from the pin, so without --assume-yes
+	// Re-login: the presented cert differs from the pin, so without --replace-pin
 	// it must warn loudly and refuse.
 	_, errOut, err := runLoginCmd(t,
 		[]string{"login", srv.URL, "--name", "box", "--token", "t"}, "y\n")
 	if err == nil {
-		t.Fatal("changed fingerprint must refuse without --assume-yes")
+		t.Fatal("changed fingerprint must refuse without --replace-pin")
 	}
 	if !strings.Contains(errOut, "CHANGED") {
 		t.Errorf("expected a loud CHANGED warning, got:\n%s", errOut)
@@ -138,9 +138,9 @@ func TestLoginChangedFingerprintWarns(t *testing.T) {
 		t.Errorf("refused login must not overwrite the pin: %+v", cfg.Hosts["box"])
 	}
 
-	// With --assume-yes the re-key is accepted and the pin advances to the real one.
+	// With --replace-pin the re-key is accepted and the pin advances to the real one.
 	if _, _, err := runLoginCmd(t,
-		[]string{"login", srv.URL, "--name", "box", "--token", "t", "--assume-yes"}, ""); err != nil {
+		[]string{"login", srv.URL, "--name", "box", "--token", "t", "--replace-pin"}, ""); err != nil {
 		t.Fatalf("confirmed re-key: %v", err)
 	}
 	cfg, _ = loadHostsConfig()
@@ -181,5 +181,71 @@ func TestDefaultAlias(t *testing.T) {
 		if got != want {
 			t.Errorf("defaultAlias(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// TestLoginAssumeYesCannotReplaceAPin is the AI-5 regression: --assume-yes is a
+// root persistent flag every script and agent harness must pass to pin at all on
+// non-interactive stdin, so it must NOT double as consent to overwrite a CHANGED
+// fingerprint. A machine-in-the-middle answering the endpoint gets a refusal and
+// an untouched hosts.toml; replacing a pin takes the separate --replace-pin.
+func TestLoginAssumeYesCannotReplaceAPin(t *testing.T) {
+	withConfigHome(t)
+	srv, realFP := loginTLSServer(t)
+
+	staleFP := "00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF"
+	seed := hostsConfig{Hosts: map[string]hostEntry{
+		"box": {Endpoint: srv.URL, Fingerprint: staleFP, Token: "old-token"},
+	}}
+	if err := saveHostsConfig(seed); err != nil {
+		t.Fatal(err)
+	}
+
+	_, errOut, err := runLoginCmd(t,
+		[]string{"login", srv.URL, "--name", "box", "--token", "new-token", "--assume-yes"}, "")
+	if err == nil {
+		t.Fatal("--assume-yes must not overwrite a changed fingerprint")
+	}
+	if !strings.Contains(errOut, "CHANGED") {
+		t.Errorf("expected a loud CHANGED warning, got:\n%s", errOut)
+	}
+	cfg, _ := loadHostsConfig()
+	if !sameFP(cfg.Hosts["box"].Fingerprint, staleFP) || cfg.Hosts["box"].Token != "old-token" {
+		t.Fatalf("refused login rewrote the entry: %+v", cfg.Hosts["box"])
+	}
+
+	// The deliberate, login-only consent replaces it.
+	if _, _, err := runLoginCmd(t,
+		[]string{"login", srv.URL, "--name", "box", "--token", "new-token", "--replace-pin"}, ""); err != nil {
+		t.Fatalf("--replace-pin re-key: %v", err)
+	}
+	cfg, _ = loadHostsConfig()
+	if !sameFP(cfg.Hosts["box"].Fingerprint, realFP) || cfg.Hosts["box"].Token != "new-token" {
+		t.Errorf("--replace-pin should advance the pin: %+v", cfg.Hosts["box"])
+	}
+}
+
+// TestLoginRefusesAliasEndpointChange: an alias already pinned to one endpoint
+// is not silently re-pointed at another host by a login that reuses its name
+// (AI-5's second half) — the same deliberate consent is required.
+func TestLoginRefusesAliasEndpointChange(t *testing.T) {
+	withConfigHome(t)
+	srv, fp := loginTLSServer(t)
+
+	seed := hostsConfig{Hosts: map[string]hostEntry{
+		"box": {Endpoint: "https://elsewhere.example:8443", Fingerprint: fp, Token: "old-token"},
+	}}
+	if err := saveHostsConfig(seed); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := runLoginCmd(t,
+		[]string{"login", srv.URL, "--name", "box", "--token", "new-token", "--assume-yes"}, "")
+	if err == nil {
+		t.Fatal("reusing an alias for a different endpoint must refuse")
+	}
+	cfg, _ := loadHostsConfig()
+	if cfg.Hosts["box"].Endpoint != "https://elsewhere.example:8443" {
+		t.Errorf("refused login rewrote the endpoint: %+v", cfg.Hosts["box"])
 	}
 }

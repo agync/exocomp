@@ -26,8 +26,9 @@ const (
 
 func newLoginCmd() *cobra.Command {
 	var (
-		name      string
-		noDefault bool
+		name       string
+		noDefault  bool
+		replacePin bool
 	)
 	cmd := &cobra.Command{
 		Use:   "login <endpoint>",
@@ -36,21 +37,26 @@ func newLoginCmd() *cobra.Command {
 			"fingerprint, shows it, and — on confirmation — records {endpoint, fingerprint, " +
 			"token} in ~/.config/exocomp/hosts.toml (0600), SSH-known-hosts style. Later remote " +
 			"commands verify the pinned fingerprint. Re-login updates the entry; a CHANGED " +
-			"fingerprint warns loudly and needs --assume-yes to overwrite (a re-key you confirmed " +
-			"out of band, or a machine-in-the-middle).",
+			"fingerprint (or an alias pointed at a different endpoint) warns loudly and is " +
+			"REFUSED unless --replace-pin is passed. --assume-yes never replaces a pin: it is " +
+			"the flag every script must already pass to pin at all, so accepting it as consent " +
+			"to re-pin would make a machine-in-the-middle a silent success.",
 		Example: "exocomp login nibbler.tailnet.ts.net:8443 --token exo_...",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runLogin(cmd, args[0], name, !noDefault)
+			return runLogin(cmd, args[0], name, !noDefault, replacePin)
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "alias to store the remote under (default: the endpoint's first host label)")
 	cmd.Flags().BoolVar(&noDefault, "no-default", false,
 		"do not adopt this as the default remote for a valueless --remote")
+	cmd.Flags().BoolVar(&replacePin, "replace-pin", false,
+		"replace an existing DIFFERENT fingerprint or endpoint for this alias (a re-key "+
+			"you confirmed out of band; --assume-yes does not grant this)")
 	return cmd
 }
 
-func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault bool) error {
+func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault, replacePin bool) error {
 	out := cmd.OutOrStdout()
 
 	alias := name
@@ -83,17 +89,30 @@ func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault bool) error
 	_, _ = fmt.Fprintf(out, "fingerprint %s\n", fp)
 
 	// The MITM guard: an alias already pinned to a DIFFERENT fingerprint is the
-	// dangerous case. Never overwrite silently — warn loudly and require an
-	// explicit --assume-yes, exactly as a changed SSH host key demands.
-	if had && existing.Fingerprint != "" && !sameFP(existing.Fingerprint, fp) {
+	// dangerous case. --assume-yes must not clear it: -y is a root persistent
+	// flag and the ONLY way to pin at all on non-interactive stdin, so every
+	// script, CI step and agent harness already passes it — accepting it as
+	// consent to re-pin would silently bless whatever certificate answers
+	// (finding AI-5). Replacing a pin takes the deliberate, login-only
+	// --replace-pin, exactly as a changed SSH host key takes a deliberate edit.
+	switch {
+	case had && existing.Fingerprint != "" && !sameFP(existing.Fingerprint, fp):
 		_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
 			"WARNING: the fingerprint for %q CHANGED\n  pinned:    %s\n  presented: %s\n"+
 				"this is a re-key you must confirm out of band, or a machine-in-the-middle.\n",
 			alias, existing.Fingerprint, fp)
-		if !boolFlag(cmd, assumeYesFlag) {
-			return fmt.Errorf("login: refusing to overwrite a changed fingerprint for %q without --assume-yes", alias)
+		if !replacePin {
+			return fmt.Errorf("login: refusing to overwrite the changed fingerprint pinned for %q; "+
+				"confirm the new fingerprint out of band and re-run with --replace-pin", alias)
 		}
-	} else if !boolFlag(cmd, assumeYesFlag) {
+	case had && existing.Endpoint != "" && existing.Endpoint != endpoint:
+		// An alias silently re-pointed at another host sends the stored token
+		// somewhere it was never minted for.
+		if !replacePin {
+			return fmt.Errorf("login: alias %q is pinned to %s, not %s; use --name for a new alias "+
+				"or --replace-pin to re-point this one", alias, existing.Endpoint, endpoint)
+		}
+	case !boolFlag(cmd, assumeYesFlag):
 		ok, err := confirmPin(cmd)
 		if err != nil {
 			return err
