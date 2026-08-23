@@ -49,6 +49,8 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/events", s.apiAuth(s.apiEvents))
 	mux.HandleFunc("GET /api/v1/events/{id}", s.apiAuth(s.apiEventGet))
 	mux.HandleFunc("GET /api/v1/secrets", s.apiAuth(s.apiSecrets))
+	mux.HandleFunc("GET /api/v1/runners", s.apiAuth(s.apiRunners))
+	mux.HandleFunc("GET /api/v1/runners/{name}", s.apiAuth(s.apiRunnerGet))
 	mux.HandleFunc("GET /api/v1/backups", s.apiAuth(s.apiBackups))
 	mux.HandleFunc("GET /api/v1/health", s.apiAuth(s.apiHealth))
 	s.registerWriteAPI(mux)
@@ -434,6 +436,34 @@ func (s *Server) apiBackups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindBackupList, wire.NewBackupTargetList(rows))
+}
+
+// --- runners (registered execution-environment recipes) ---------------------
+
+// apiRunners lists registered runner definitions (byo-runner.md §2). A runner
+// is registered for the deferred container tier; nothing here executes one.
+func (s *Server) apiRunners(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.store.ListRunners(r.Context())
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindRunnerList, wire.NewRunnerList(rows))
+}
+
+// apiRunnerGet returns one runner by name. An unknown name is 404.
+func (s *Server) apiRunnerGet(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		s.badRequest(w, "runner name must not be empty")
+		return
+	}
+	rn, err := s.store.RunnerByName(r.Context(), name)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindRunner, wire.NewRunnerView(rn))
 }
 
 // --- health -------------------------------------------------------------
