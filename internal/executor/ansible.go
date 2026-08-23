@@ -224,7 +224,12 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	// caller quarantines the host and requires an approved re-pin. The observer
 	// keeps only the banner lines; the run's streaming and exit code are
 	// untouched (invariant 3).
-	hk := &hostKeyObserver{inner: sink}
+	//
+	// The no-hosts observer sits beneath it so it sees every streamed event: a
+	// run whose inventory matched zero hosts exits 0 with an empty recap, and
+	// this is what surfaces that as a warning instead of a silent green.
+	nh := &noHostsObserver{inner: sink}
+	hk := &hostKeyObserver{inner: nh}
 	runSink := EventSink(hk)
 
 	// A check-mode run grows a structured drift event, and a tolerate-unreachable
@@ -244,6 +249,12 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	}
 	if err == nil && a.opts.TolerateUnreachable {
 		a.classifyDegraded(&res, recap.snapshot(), sink)
+	}
+	// A clean run that matched no hosts is warned about, not failed: the exit code
+	// stays whatever ansible returned (invariant 3), and only exit 0 can be the
+	// silent-green case this guards.
+	if err == nil && res.ExitCode == 0 && nh.matchedNoHosts() {
+		emitNoHostsOutcome(sink)
 	}
 	if m, ok := hk.mismatch(); ok {
 		sink.Emit(hostKeyMismatchEvent(m))
