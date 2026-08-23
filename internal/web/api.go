@@ -216,7 +216,13 @@ func (s *Server) apiJobs(w http.ResponseWriter, r *http.Request) {
 	s.apiSuccess(w, wire.KindJobList, wire.NewJobList(rows))
 }
 
-// apiJobGet returns one job. A well-formed but unknown id is 404.
+// apiJobGet returns one job. A well-formed but unknown id is 404. Plan is
+// populated from the job's own events (the same terminal plan/check event
+// executor.TofuPlanChanges/AnsibleCheckChanges read locally) so a remote
+// `workspace plan` can reproduce the local exit-2-on-changes decision without
+// the raw driver JSON, which never crosses this seam. A failure listing
+// events fails the whole request rather than silently omitting Plan, so a
+// caller never mistakes a store error for "no changes".
 func (s *Server) apiJobGet(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -228,7 +234,14 @@ func (s *Server) apiJobGet(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	s.apiSuccess(w, wire.KindJob, wire.NewJobView(job))
+	events, err := s.store.ListJobEvents(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	view := wire.NewJobView(job)
+	view.Plan = wire.NewPlanOutcomeView(events)
+	s.apiSuccess(w, wire.KindJob, view)
 }
 
 // apiJobEvents returns a job's append-only, already-redacted event log, exactly
