@@ -1,0 +1,66 @@
+package web
+
+// modeChip states a runner's build mode: cached builds the image once and
+// reuses it until the recipe changes (byo-runner.md §2 Model A, the fast
+// steady state); onthefly rebuilds every run against the layer cache (Model
+// B). Never colour-only — the label always names the mode.
+templ modeChip(r runnerRow) {
+	if r.OnTheFly() {
+		<span class="chip wait"><span class="dot"></span>ONTHEFLY</span>
+	} else {
+		<span class="chip ok"><span class="dot"></span>CACHED</span>
+	}
+}
+
+// runnersList is the runners surface: a read-only inventory of the registered
+// execution-environment recipes (byo-runner.md §2) — build mode, base image,
+// package/ansible-core pins, the resource caps the deferred container tier
+// would enforce, and the content hash that gates the build cache. A runner is
+// registered for that deferred tier and executes nothing today: the bootstrap
+// script body is deliberately absent from every row, and there is no
+// mutation control here — registration, import, and removal stay CLI verbs.
+templ runnersList(vm runnersVM) {
+	@layout(vm.Page) {
+		<h1>Runners</h1>
+		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Read-only · container tier deferred</div>
+			<h3>All runners</h3>
+			<p class="meta">Manage via <code>exocomp runner add|rm|import</code>. Container tier deferred — definitions only.</p>
+			if len(vm.Runners) == 0 {
+				<p class="meta">No runners registered. Add one with <code>exocomp runner add</code>.</p>
+			} else {
+				<div class="tablewrap stackable">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Name</th>
+								<th scope="col">Mode</th>
+								<th scope="col">Base</th>
+								<th scope="col">Packages</th>
+								<th scope="col">ansible-core</th>
+								<th scope="col">Caps</th>
+								<th scope="col">Hash</th>
+								<th scope="col">Created</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, rn := range vm.Runners {
+								<tr>
+									<td data-label="Name">{ rn.Name }</td>
+									<td data-label="Mode">@modeChip(rn)
+</td>
+									<td class="mono wrap" data-label="Base">{ orDash(rn.Base) }</td>
+									<td data-label="Packages">{ rn.PackagesSummary() }</td>
+									<td class="mono" data-label="ansible-core">{ orDash(rn.AnsibleCore) }</td>
+									<td data-label="Caps">{ rn.Caps() }</td>
+									<td class="mono" data-label="Hash">{ rn.Short() }</td>
+									<td class="mono" data-label="Created">{ rn.Created }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}

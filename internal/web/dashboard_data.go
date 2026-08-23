@@ -270,6 +270,28 @@ func (s *Server) policies(r *http.Request) ([]policyRow, error) {
 	return out, nil
 }
 
+// runners reads every registered runner definition (byo-runner.md §2). It is
+// read-only: registration, import, and removal stay CLI verbs. The bootstrap
+// script body is never read into the row — store.Runner carries it, but
+// nothing here forwards it onward.
+func (s *Server) runners(r *http.Request) ([]runnerRow, error) {
+	list, err := s.store.ListRunners(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	out := make([]runnerRow, 0, len(list))
+	for _, rn := range list {
+		out = append(out, runnerRow{
+			Name: rn.Name, Mode: rn.Mode, Base: rn.Base,
+			Packages: rn.Packages, AnsibleCore: rn.AnsibleCore,
+			MemoryMax: rn.MemoryMax, CPUQuota: rn.CPUQuota,
+			Hash:    rn.ContentHash,
+			Created: clock(rn.CreatedAt),
+		})
+	}
+	return out, nil
+}
+
 // secrets reads every sealed secret's lifecycle metadata and the run-secret
 // bindings that inject it. It NEVER reads or renders the sealed value, nonce, or
 // ciphertext — the SecretRow carries them but the row built here drops them

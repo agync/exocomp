@@ -144,6 +144,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /workflows/{id}", s.requireAuth(s.handleWorkflowDetail))
 	mux.HandleFunc("GET /policies", s.requireAuth(s.handlePolicies))
 	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
+	mux.HandleFunc("GET /runners", s.requireAuth(s.handleRunners))
 
 	// The read-only operator HTTP/JSON API shares this listener and its auth;
 	// registerAPI adds /api/v1 GET routes (agent-interface §3.4).

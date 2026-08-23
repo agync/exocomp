@@ -211,6 +211,16 @@ func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, policiesList(vm))
 }
 
+func (s *Server) handleRunners(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.runners(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := runnersVM{Page: s.pageFor(r, "Runners", "runners"), Runners: rows}
+	s.render(w, r, http.StatusOK, runnersList(vm))
+}
+
 func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.secrets(r)
 	if err != nil {

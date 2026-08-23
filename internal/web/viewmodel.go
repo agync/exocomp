@@ -179,6 +179,75 @@ type policiesVM struct {
 	Policies []policyRow
 }
 
+// runnersVM is the runners surface: a read-only inventory of the registered
+// execution-environment recipes (byo-runner.md §2). A runner is registered for
+// the deferred container tier and executes nothing today — registration,
+// import, and removal stay CLI verbs; there is no mutation control here.
+type runnersVM struct {
+	Page    page
+	Runners []runnerRow
+}
+
+// runnerRow is one registered runner's public face: its build mode, base
+// image, package/tool pins, resource caps, and content hash. The bootstrap
+// script body is deliberately absent — the row carries only what identifies
+// and sizes it (byo-runner.md §7.1); `exocomp runner show` is the surface that
+// prints a script body.
+type runnerRow struct {
+	Name        string
+	Mode        string // cached|onthefly
+	Base        string
+	Packages    []string
+	AnsibleCore string
+	MemoryMax   string
+	CPUQuota    string
+	Hash        string
+	Created     string
+}
+
+// OnTheFly reports whether the runner rebuilds every run (Model B) rather than
+// building once and reusing the image until the recipe changes (Model A).
+func (r runnerRow) OnTheFly() bool { return r.Mode == store.RunnerModeOnTheFly }
+
+// Short renders the content hash at the length a human scans, mirroring
+// sourceRow.Short for a sync sha.
+func (r runnerRow) Short() string {
+	if len(r.Hash) > 12 {
+		return r.Hash[:12]
+	}
+	return r.Hash
+}
+
+// PackagesSummary renders the package pin list at a glance: the packages
+// themselves when there are few, a count once the list would crowd the
+// column.
+func (r runnerRow) PackagesSummary() string {
+	if len(r.Packages) == 0 {
+		return "-"
+	}
+	if len(r.Packages) <= 3 {
+		return strings.Join(r.Packages, ", ")
+	}
+	return fmt.Sprintf("%d packages", len(r.Packages))
+}
+
+// Caps renders the design §6 resource ceilings the deferred container tier
+// would enforce — nothing executes them yet, so this is the recipe's stated
+// intent, not a running limit.
+func (r runnerRow) Caps() string {
+	var parts []string
+	if r.MemoryMax != "" {
+		parts = append(parts, "mem "+r.MemoryMax)
+	}
+	if r.CPUQuota != "" {
+		parts = append(parts, "cpu "+r.CPUQuota)
+	}
+	if len(parts) == 0 {
+		return "-"
+	}
+	return strings.Join(parts, " · ")
+}
+
 // secretsVM is the secrets surface: a read-only inventory of the sealed values
 // in the envelope. It carries only lifecycle metadata and the bindings that
 // inject each secret — never the value, nonce, or ciphertext, which never leave
