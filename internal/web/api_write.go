@@ -91,13 +91,32 @@ type decisionView struct {
 // method-mismatch rule, for free.
 func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/approvals/{id}/decision",
-		s.apiGuard(canApprove, "this token's scope may not decide approvals", s.apiApprovalDecision))
+		s.apiGuard(bearerOnly(canApprove), writeDeny("decide approvals", "approve"), s.apiApprovalDecision))
 	mux.HandleFunc("POST /api/v1/workspaces/{name}/plan",
-		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspacePlan))
+		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspacePlan))
 	mux.HandleFunc("POST /api/v1/workspaces/{name}/apply",
-		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspaceApply))
+		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspaceApply))
 	mux.HandleFunc("POST /api/v1/playbooks/run",
-		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiPlaybookRun))
+		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiPlaybookRun))
+}
+
+// bearerOnly narrows a scope predicate to callers presenting an explicit bearer
+// credential. A browser session is AMBIENT: the cookie rides any request the
+// browser is talked into making, and SameSite=Strict does not scope to a port,
+// so a second app on the same host, an XSS anywhere on it, or a local page under
+// --insecure-http could drive operator-scope writes with no CSRF token, no
+// Origin check and no preflight (finding AI-8). A machine face has no reason to
+// accept an ambient credential; the browser's own decide route (handlers.go) is
+// where a session acts, and it is same-origin form-driven.
+func bearerOnly(allow func(identity) bool) func(identity) bool {
+	return func(id identity) bool { return id.via == "bearer" && allow(id) }
+}
+
+// writeDeny is the refusal a write route renders, naming both conditions the
+// caller has to meet, since one predicate carries both.
+func writeDeny(verb, scope string) string {
+	return "this request may not " + verb + ": it needs an Authorization: Bearer token " +
+		"of the " + scope + " scope (a browser session may not drive machine writes)"
 }
 
 // enqueuer returns a PURE-ENQUEUE Enqueuer: it inserts the queued (or gated) row

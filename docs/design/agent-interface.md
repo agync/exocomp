@@ -316,6 +316,11 @@ resources are the "be aware of" surface.
   `nibbler`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
   `forbidden` **before any store touch**.
+- **`/api/v1` writes take a bearer credential only.** A browser session cookie authenticates
+  reads but is refused on every write route: an ambient credential rides whatever request a
+  browser is talked into making, and SameSite does not scope to a port, so a second app on
+  the same host could otherwise drive operator writes (finding AI-8). The browser's own
+  same-origin decide form is where a session acts.
 - **W and A are disjoint on the machine face.** `/api/v1`'s decision route takes the `approve`
   scope alone: the token that may enqueue a gated apply must not also carry its release
   (finding AI-2, `docs/security/threat-model.md`). The browser/phone surface keeps
