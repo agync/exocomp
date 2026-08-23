@@ -83,18 +83,25 @@ func New(st *store.Store, q Enqueuer, log *slog.Logger) *Scheduler {
 // backend that start with it.
 func (s *Scheduler) Start(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.cron != nil {
+		s.mu.Unlock()
 		return fmt.Errorf("sched: already started")
 	}
 
 	c, entries, fp, err := s.build(ctx)
 	if err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	s.runCtx, s.cancel = context.WithCancel(ctx)
 	s.cron, s.entries, s.fingerprint = c, entries, fp
 	s.cron.Start()
+	runCtx := s.runCtx
+	s.mu.Unlock()
+
+	// Catch up after the clock is running so a coalesced fire can read its own
+	// next scheduled time back off the live entry.
+	s.catchUp(runCtx)
 	return nil
 }
 
@@ -125,13 +132,14 @@ func (s *Scheduler) Stop() {
 // unregistering every schedule on the way to failing.
 func (s *Scheduler) Reload(ctx context.Context) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.cron == nil {
+		s.mu.Unlock()
 		return fmt.Errorf("sched: not started")
 	}
 
 	c, entries, fp, err := s.build(ctx)
 	if err != nil {
+		s.mu.Unlock()
 		return err
 	}
 	if fp == s.fingerprint {
@@ -139,6 +147,13 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 		// every entry's clock, which for a relative expression means the next
 		// fire is pushed out by one whole period on every reload.
 		c.Stop()
+		runCtx := s.runCtx
+		s.mu.Unlock()
+		// A schedule re-enabled while the daemon was down reaches a running
+		// daemon as a reload, not a start, so catch-up belongs here too. It is
+		// a no-op for the common case: last_run advancement leaves nothing to
+		// coalesce for a schedule that has been firing normally.
+		s.catchUp(runCtx)
 		return nil
 	}
 	old := s.cron
@@ -147,6 +162,10 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 	// Stop only fires no more; a fire already running keeps its goroutine and
 	// finishes against the entries this reload just installed.
 	old.Stop()
+	runCtx := s.runCtx
+	s.mu.Unlock()
+
+	s.catchUp(runCtx)
 	return nil
 }
 
@@ -192,10 +211,9 @@ func fingerprint(rows []store.Schedule) string {
 	return b.String()
 }
 
-// fire runs one schedule: it sleeps up to JitterS seconds, builds the specs
-// the schedule's kind produces, enqueues every one of them, and stamps the
-// schedule's last_job_id and next_at. It is a cron.Job's Run method, called
-// in its own goroutine by the cron package.
+// fire runs one schedule on its cron tick: it sleeps up to JitterS seconds,
+// then dispatches. It is a cron.Job's Run method, called in its own goroutine
+// by the cron package.
 func (s *Scheduler) fire(sc store.Schedule) {
 	s.mu.Lock()
 	ctx := s.runCtx
@@ -215,6 +233,59 @@ func (s *Scheduler) fire(sc store.Schedule) {
 		}
 	}
 
+	s.dispatch(ctx, sc, "")
+}
+
+// catchUp fires, once, every enabled schedule that a cron occurrence passed
+// between its last_run and now — the fires the daemon owed while it was down.
+// It coalesces: a schedule down for a week gets one fire, not one per missed
+// occurrence. A schedule with no last_run (brand-new) is left to fire forward
+// only, and a schedule whose last_run is recent enough that no occurrence was
+// missed does nothing. It runs after Start/Reload has released the lock and
+// started the clock, so a caught-up fire can read its live next-fire time.
+func (s *Scheduler) catchUp(ctx context.Context) {
+	if ctx == nil {
+		return
+	}
+	rows, err := s.store.ListSchedules(ctx, true)
+	if err != nil {
+		s.log.Error("sched: catch-up list", "err", err)
+		return
+	}
+	now := time.Now()
+	for _, sc := range rows {
+		if sc.LastRun == nil {
+			continue // Never fired: only ever schedule forward from now.
+		}
+		schedule, err := parser.Parse(sc.CronExpr)
+		if err != nil {
+			continue // build already logged the unregisterable row.
+		}
+		// The first occurrence strictly after last_run is the one owed. If it is
+		// still in the future nothing was missed; if it has passed, one coalesced
+		// fire settles however many occurrences went by.
+		if next := schedule.Next(*sc.LastRun); next.IsZero() || next.After(now) {
+			continue
+		}
+		s.dispatch(ctx, sc, catchUpKey(sc))
+	}
+}
+
+// catchUpKey is the idempotency key a coalesced catch-up fire enqueues under.
+// Anchoring it on last_run (not on now) makes the catch-up safe to retry: if
+// the daemon enqueues the fire but dies before advancing last_run, the next
+// boot recomputes the same key and the queue returns the existing job rather
+// than a second one. Two overlapping reloads racing the same stale last_run
+// collapse the same way.
+func catchUpKey(sc store.Schedule) string {
+	return fmt.Sprintf("sched-catchup:%d:%d", sc.ID, sc.LastRun.UnixMilli())
+}
+
+// dispatch builds a schedule's specs, enqueues each, and stamps last_run,
+// last_job_id, and next_at. idem is empty for a normal cron fire and set for a
+// catch-up, where it de-duplicates a fire the queue may already hold — a fan-out
+// kind's per-target concurrency key keeps each target's fire distinct.
+func (s *Scheduler) dispatch(ctx context.Context, sc store.Schedule, idem string) {
 	specs, err := s.buildSpecs(ctx, sc)
 	if err != nil {
 		s.log.Error("sched: build spec", "schedule", sc.Name, "err", err)
@@ -223,6 +294,12 @@ func (s *Scheduler) fire(sc store.Schedule) {
 
 	var lastJobID *int64
 	for _, spec := range specs {
+		if idem != "" {
+			spec.IdempotencyKey = idem
+			if spec.ConcurrencyKey != "" {
+				spec.IdempotencyKey += ":" + spec.ConcurrencyKey
+			}
+		}
 		job, err := s.queue.Enqueue(ctx, spec)
 		if err != nil {
 			s.log.Error("sched: enqueue", "schedule", sc.Name, "err", err)
