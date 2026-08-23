@@ -340,6 +340,19 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Whoever asked for the gated job may not release it, whatever their scope
+	// (finding AI-2): the gate exists to put a second principal in the path.
+	self, err := s.decidedBySelf(r.Context(), approval.JobID, ident)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if self {
+		http.Error(w, "this token asked for the gated job; it may not decide its own approval",
+			http.StatusForbidden)
+		return
+	}
+
 	token, _, err := reactive.ApprovalToken(s.deriver, approval.JobID)
 	if err != nil {
 		s.fail(w, r, err)

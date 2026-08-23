@@ -68,3 +68,26 @@ func (s *Service) recordActor(ctx context.Context, jobID int64, actor Actor) err
 	}
 	return nil
 }
+
+// JobActor reads back the actor recordActor wrote on a job's ledger, or the
+// zero Actor when the write was the local CLI operator's (which records
+// nothing). It is what lets a decision path refuse a principal settling the
+// approval for a job it asked for itself (finding AI-2): the ledger is already
+// the durable record of who asked, so no new column is needed to read it back.
+func (s *Service) JobActor(ctx context.Context, jobID int64) (Actor, error) {
+	events, err := s.store.ListJobEvents(ctx, jobID)
+	if err != nil {
+		return Actor{}, err
+	}
+	for _, e := range events {
+		if e.RawJSON == "" {
+			continue
+		}
+		var payload actorEventPayload
+		if err := json.Unmarshal([]byte(e.RawJSON), &payload); err != nil || payload.ActorKind == "" {
+			continue
+		}
+		return Actor{Kind: payload.ActorKind, Name: payload.ActorName}, nil
+	}
+	return Actor{}, nil
+}

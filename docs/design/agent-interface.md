@@ -275,7 +275,7 @@ bearer+scope check. Tool visibility is scope-gated: a `readonly` token advertise
 
 **Tools** (R = read, W = write/enqueues, A = approval-gated):
 
-| Read (readonly) | Write (operator) | Approve (approve/operator) |
+| Read (readonly) | Write (operator) | Approve (approve only) |
 |---|---|---|
 | list_sources, get_source | sync_source (W) | approve_job / reject_job (A) |
 | list_workspaces, get_workspace | workspace_plan (W) | list_pending_approvals |
@@ -314,6 +314,12 @@ resources are the "be aware of" surface.
   `nibbler`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
   `forbidden` **before any store touch**.
+- **W and A are disjoint on the machine face.** `/api/v1`'s decision route takes the `approve`
+  scope alone: the token that may enqueue a gated apply must not also carry its release
+  (finding AI-2, `docs/security/threat-model.md`). The browser/phone surface keeps
+  operator-or-approve — that is the human at the console — and both paths refuse a principal
+  deciding an approval for a job its own token asked for. An operator driving a remote daemon
+  with `approval decide --remote` needs an `approve`-scope token for that verb.
 - **Cert pinning for the bare tailnet.** The listener already prints its self-signed cert
   fingerprint for trust-on-first-use (ADR 0009 §4). `exocomp login` performs the TOFU pin and
   stores `{host, fingerprint, token}` in `~/.config/exocomp/hosts.toml` (SSH-known-hosts

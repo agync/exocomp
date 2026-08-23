@@ -29,8 +29,9 @@ import (
 // CLI's interactive enqueuer. A running daemon claims and runs the row.
 //
 // Scope is gated BEFORE any work (agent-interface §4): plan/apply need operator,
-// a decision needs approve-or-operator. An out-of-scope token is a wire
-// forbidden envelope before the input is even built.
+// a decision needs the approve scope — W and A are disjoint here, so a token
+// handed to an agent cannot both raise a gate and release it (finding AI-2). An
+// out-of-scope token is a wire forbidden envelope before the input is even built.
 //
 // POST /playbooks/run resolves an inventory name to its path (and a --source
 // playbook onto its checkout) through the SAME service resolvers the CLI uses,
@@ -367,6 +368,20 @@ func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
+
+	ident, _ := identityOf(r.Context())
+	self, err := s.decidedBySelf(r.Context(), approval.JobID, ident)
+	if err != nil {
+		s.log.Error("api: read job actor", "approval", id, "err", err)
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot read the job's actor"))
+		return
+	}
+	if self {
+		s.apiError(w, http.StatusForbidden, wire.NewError(wire.CodeForbidden,
+			"this token asked for the gated job; it may not decide its own approval"))
+		return
+	}
+
 	token, _, err := reactive.ApprovalToken(s.deriver, approval.JobID)
 	if err != nil {
 		s.log.Error("api: derive approval token", "approval", id, "err", err)
@@ -374,7 +389,6 @@ func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ident, _ := identityOf(r.Context())
 	result, derr := s.decider.Decide(r.Context(), id, req.Decision, token, "api:"+ident.token.Name)
 	if errors.Is(derr, reactive.ErrStalePlan) {
 		// A safety rejection, not a server fault: the workspace moved under the

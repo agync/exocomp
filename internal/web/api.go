@@ -123,10 +123,14 @@ func canWrite(id identity) bool {
 	return id.token.Scope == store.ScopeOperator
 }
 
-// canApprove reports whether a resolved scope may decide an approval. It is the
-// same floor mayApprove enforces on the browser surface — operator or approve,
-// never readonly — so the two decision paths share one rule.
-func canApprove(id identity) bool { return mayApprove(id) }
+// canApprove reports whether a resolved scope may decide an approval on the
+// MACHINE face. It is the approve scope alone: ADR 0014 §3 maps readonly/
+// operator/approve onto R/W/A, and a token that may enqueue a gated apply must
+// not also hold the release for the gate it raised (finding AI-2). The browser
+// surface keeps mayApprove's operator-or-approve floor — that is the human at
+// the console, not a credential handed to an agent — and both paths additionally
+// refuse a principal deciding its own write (decidedBySelf).
+func canApprove(id identity) bool { return id.token.Scope == store.ScopeApprove }
 
 // apiSuccess writes a 200 wire success envelope. It goes through the exact
 // wire.WriteSuccess the CLI uses, so the bytes match `--output json` for the

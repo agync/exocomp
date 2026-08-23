@@ -347,9 +347,10 @@ func TestAPIApplyDeniedIsConflict(t *testing.T) {
 	}
 }
 
-// TestAPIDecisionApproveReleases: an approve decision by an operator token
+// TestAPIDecisionApproveReleases: an approve decision by an approve-scope token
 // settles the approval through the reactive engine and releases the gated job,
-// which the running workers then run to success. A readonly token is forbidden.
+// which the running workers then run to success. A readonly token is forbidden;
+// so is an operator token (finding AI-2, api_decision_scope_test.go).
 func TestAPIDecisionApproveReleases(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -367,8 +368,8 @@ func TestAPIDecisionApproveReleases(t *testing.T) {
 		t.Fatalf("readonly decision envelope = %s, want error/forbidden", body)
 	}
 
-	// operator approves: 200, decision envelope, and the job releases and runs.
-	op := h.mint(t, "op", "operator")
+	// the approve scope approves: 200, decision envelope, job releases and runs.
+	op := h.mint(t, "approver", "approve")
 	code, _, body = bearerPost(t, ts.URL,
 		"/api/v1/approvals/"+itoa64(approval.ID)+"/decision", op, `{"decision":"approve"}`, nil)
 	if code != http.StatusOK {
@@ -391,7 +392,7 @@ func TestAPIDecisionBadBody(t *testing.T) {
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	_, approval := h.gatedJob(t, time.Hour)
-	op := h.mint(t, "op", "operator")
+	op := h.mint(t, "approver", "approve")
 
 	code, _, body := bearerPost(t, ts.URL,
 		"/api/v1/approvals/"+itoa64(approval.ID)+"/decision", op, `{"decision":"maybe"}`, nil)

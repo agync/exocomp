@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -236,10 +237,25 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// mayApprove reports whether a resolved scope is allowed to decide approvals.
-// readonly may not; operator and approve may.
+// mayApprove reports whether a resolved scope is allowed to decide approvals on
+// the BROWSER surface. readonly may not; operator and approve may — that surface
+// is the operator at the console. The machine API is stricter (canApprove: the
+// approve scope alone), because a bearer token is the thing handed to an agent.
 func mayApprove(id identity) bool {
 	return id.token.Scope == store.ScopeOperator || id.token.Scope == store.ScopeApprove
+}
+
+// decidedBySelf reports whether the caller is the principal a gated job's ledger
+// records as having asked for it. Separation of duty is the whole point of the
+// gate: whoever raised it may not release it (finding AI-2). A CLI-enqueued job
+// records no actor, so the local operator's own workflow is unchanged; only a
+// token-attributed write is bound by this.
+func (s *Server) decidedBySelf(ctx context.Context, jobID int64, id identity) (bool, error) {
+	actor, err := s.service().JobActor(ctx, jobID)
+	if err != nil {
+		return false, err
+	}
+	return actor.Kind == service.ActorKindToken && actor.Name == id.token.Name, nil
 }
 
 // RequireTokenForBind enforces ADR 0009 point 1: a non-loopback listener needs
