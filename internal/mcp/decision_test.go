@@ -36,6 +36,12 @@ func seedGatedApproval(t *testing.T, st *store.Store) (store.Job, store.Approval
 // carries no credential and no scope, so it must not carry the approval gate's
 // release either. approve_job/reject_job are not advertised and not callable;
 // the gated job stays in awaiting_approval and its approval stays pending.
+//
+// The REFUSAL SHAPE moved when the decision tools returned on the token-carrying
+// HTTP face: a call from stdio is now refused on the caller's scope (a forbidden
+// envelope naming the scope it would need) rather than as an unknown tool. What
+// the finding is about — that this face cannot release the gate it can raise —
+// is unchanged, and the assertions below are on the gate, not on the wording.
 func TestDecisionToolsAbsentFromStdioFace(t *testing.T) {
 	srv, st := newTestServer(t)
 	job, approval := seedGatedApproval(t, st)
@@ -65,7 +71,11 @@ func TestDecisionToolsAbsentFromStdioFace(t *testing.T) {
 
 	for i, name := range []string{"approve_job", "reject_job"} {
 		r := resps[i+1]
-		if r.Error == nil {
+		if r.Error != nil {
+			continue // refused at the protocol level
+		}
+		env, isErr := toolContent(t, r.Result)
+		if !isErr || env.Error == nil || env.Error.Code != "forbidden" {
 			t.Errorf("%s was dispatched on the stdio face: %s", name, r.Result)
 		}
 	}

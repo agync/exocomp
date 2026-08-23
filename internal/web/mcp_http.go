@@ -2,6 +2,7 @@ package web
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -70,7 +71,25 @@ func (s *Server) mcpCaller(r *http.Request) mcp.Caller {
 		// fallback fails closed rather than assuming a scope.
 		return mcp.Caller{}
 	}
-	return mcp.TokenCaller(ident.token.Scope, ident.token.Name, ident.token.ID, nil)
+	return mcp.TokenCaller(ident.token.Scope, ident.token.Name, ident.token.ID, s.mcpDecide(ident))
+}
+
+// mcpDecide adapts the shared decision path onto the MCP seam. It is the SAME
+// s.decideApproval the /api/v1 decision route calls, so both machine faces
+// derive the capability server-side and inherit the refusal of a principal
+// deciding the approval for a job it asked for itself (finding AI-2).
+func (s *Server) mcpDecide(ident identity) mcp.DecideFunc {
+	return func(ctx context.Context, approvalID int64, decision string) (mcp.Decision, error) {
+		view, err := s.decideApproval(ctx, approvalID, decision, ident)
+		if err != nil {
+			return mcp.Decision{}, err
+		}
+		return mcp.Decision{
+			ApprovalID: view.ApprovalID,
+			Outcome:    view.Outcome,
+			Message:    view.Message,
+		}, nil
+	}
 }
 
 // handleMCP dispatches the POSTed message (or batch) and writes the responses.

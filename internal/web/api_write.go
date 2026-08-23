@@ -386,11 +386,85 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 
 // --- approval decision ------------------------------------------------------
 
-// apiApprovalDecision resolves one approval through the reactive engine — the
-// single fail-closed place a human's answer enters the system, whatever surface
-// asked (the same s.decider.Decide the browser's handleDecide calls). The token
-// is derived server-side, never carried by the caller: a scope is not a
-// capability link. A stale plan is a 409 stale_plan, not a release.
+// apiFault is an error that names both its taxonomy code and its HTTP status.
+// The decision path's refusals (a scope-disjointness refusal, a surface with no
+// decider, a stale plan) have no store sentinel for wire.ErrorFor to map from,
+// so they carry the mapping themselves — which is what lets ONE decision
+// implementation serve two machine faces that render boundaries differently.
+type apiFault struct {
+	status int
+	err    wire.Error
+}
+
+func (f *apiFault) Error() string { return f.err.Message }
+
+// WireCode lets a non-HTTP face (the MCP tool seam) recover the taxonomy code
+// without knowing anything about HTTP status.
+func (f *apiFault) WireCode() string { return f.err.Code }
+
+func fault(status int, code, msg string) *apiFault {
+	return &apiFault{status: status, err: wire.NewError(code, msg)}
+}
+
+// decideApproval settles one approval through the reactive engine — the single
+// fail-closed place a human's answer enters the system, whatever surface asked
+// (the same s.decider.Decide the browser's handleDecide calls). The token is
+// derived server-side, never carried by the caller: a scope is not a capability
+// link, and returning one would silently promote its holder to approver.
+//
+// It is shared by every machine face — the /api/v1 decision route and the MCP
+// approve tools — so the separation-of-duty refusal below cannot hold on one
+// face and be forgotten on the other (finding AI-2). Scope is NOT checked here:
+// the caller's guard has already established that A was satisfied, and this is
+// the second, principal-level half of the same rule.
+func (s *Server) decideApproval(ctx context.Context, id int64, decision string, ident identity) (decisionView, error) {
+	if decision != reactive.DecisionApprove && decision != reactive.DecisionReject {
+		return decisionView{}, fault(http.StatusBadRequest, codeInvalidArgument,
+			"decision must be approve or reject")
+	}
+	if s.decider == nil {
+		return decisionView{}, fault(http.StatusServiceUnavailable, wire.CodeInternal,
+			"approvals cannot be decided from this surface")
+	}
+
+	approval, err := s.store.GetApproval(ctx, id)
+	if err != nil {
+		return decisionView{}, err
+	}
+
+	self, err := s.decidedBySelf(ctx, approval.JobID, ident)
+	if err != nil {
+		s.log.Error("api: read job actor", "approval", id, "err", err)
+		return decisionView{}, fault(http.StatusInternalServerError, wire.CodeInternal,
+			"cannot read the job's actor")
+	}
+	if self {
+		return decisionView{}, fault(http.StatusForbidden, wire.CodeForbidden,
+			"this token asked for the gated job; it may not decide its own approval")
+	}
+
+	token, _, err := reactive.ApprovalToken(s.deriver, approval.JobID)
+	if err != nil {
+		s.log.Error("api: derive approval token", "approval", id, "err", err)
+		return decisionView{}, fault(http.StatusInternalServerError, wire.CodeInternal,
+			"cannot derive approval token")
+	}
+
+	result, derr := s.decider.Decide(ctx, id, decision, token, "api:"+ident.token.Name)
+	if errors.Is(derr, reactive.ErrStalePlan) {
+		// A safety rejection, not a server fault: the workspace moved under the
+		// saved plan, so the job was not released.
+		return decisionView{}, &apiFault{status: http.StatusConflict, err: wire.ErrorFor(derr)}
+	}
+	if derr != nil {
+		s.log.Error("api: decide", "approval", id, "err", derr)
+		return decisionView{}, derr
+	}
+	return decisionView{ApprovalID: id, Outcome: result.Outcome, Message: result.Message}, nil
+}
+
+// apiApprovalDecision is the HTTP rendering of decideApproval: it parses the
+// path and body, then hands the whole decision to the shared path.
 func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -406,59 +480,19 @@ func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, "request body must be {\"decision\":\"approve\"|\"reject\"}")
 		return
 	}
-	if req.Decision != reactive.DecisionApprove && req.Decision != reactive.DecisionReject {
-		s.badRequest(w, "decision must be approve or reject")
-		return
-	}
-	if s.decider == nil {
-		s.apiError(w, http.StatusServiceUnavailable,
-			wire.NewError(wire.CodeInternal, "approvals cannot be decided from this surface"))
-		return
-	}
 
-	approval, err := s.store.GetApproval(r.Context(), id)
+	ident, _ := identityOf(r.Context())
+	view, err := s.decideApproval(r.Context(), id, req.Decision, ident)
 	if err != nil {
+		var f *apiFault
+		if errors.As(err, &f) {
+			s.apiError(w, f.status, f.err)
+			return
+		}
 		s.apiFail(w, err)
 		return
 	}
-
-	ident, _ := identityOf(r.Context())
-	self, err := s.decidedBySelf(r.Context(), approval.JobID, ident)
-	if err != nil {
-		s.log.Error("api: read job actor", "approval", id, "err", err)
-		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot read the job's actor"))
-		return
-	}
-	if self {
-		s.apiError(w, http.StatusForbidden, wire.NewError(wire.CodeForbidden,
-			"this token asked for the gated job; it may not decide its own approval"))
-		return
-	}
-
-	token, _, err := reactive.ApprovalToken(s.deriver, approval.JobID)
-	if err != nil {
-		s.log.Error("api: derive approval token", "approval", id, "err", err)
-		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot derive approval token"))
-		return
-	}
-
-	result, derr := s.decider.Decide(r.Context(), id, req.Decision, token, "api:"+ident.token.Name)
-	if errors.Is(derr, reactive.ErrStalePlan) {
-		// A safety rejection, not a server fault: the workspace moved under the
-		// saved plan, so the job was not released. 409 with the stale_plan code.
-		s.apiError(w, http.StatusConflict, wire.ErrorFor(derr))
-		return
-	}
-	if derr != nil {
-		s.log.Error("api: decide", "approval", id, "err", derr)
-		s.apiFail(w, derr)
-		return
-	}
-	s.apiSuccess(w, kindDecision, decisionView{
-		ApprovalID: id,
-		Outcome:    result.Outcome,
-		Message:    result.Message,
-	})
+	s.apiSuccess(w, kindDecision, view)
 }
 
 // --- playbook run -----------------------------------------------------------

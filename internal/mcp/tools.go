@@ -187,11 +187,6 @@ func (s *Server) writeTools() []tool {
 	}
 }
 
-// approveTools is the A column. It is empty until a transport carries both a
-// credential and a decision seam; stdio carries neither, so the face that can
-// raise a gate still cannot release it (finding AI-1).
-func (s *Server) approveTools() []tool { return nil }
-
 // handleToolsList projects the caller's slice of the catalog to the MCP
 // tools/list shape.
 func (s *Server) handleToolsList(c Caller) map[string]any {
