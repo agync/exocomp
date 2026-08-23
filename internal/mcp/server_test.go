@@ -151,6 +151,38 @@ func TestInitializeHandshake(t *testing.T) {
 	}
 }
 
+// TestInitializeInstructionsGlossary asserts the handshake carries a top-level
+// instructions string that distinguishes the two unrelated "event" families:
+// a job's own execution log vs. an inbound reactive trigger event. Finding
+// MCP-1: a cold agent reading only tool names conflates them.
+func TestInitializeInstructionsGlossary(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resps := drive(t, srv, req(1, "initialize", "{}"))
+	if len(resps) != 1 || resps[0].Error != nil {
+		t.Fatalf("initialize: %+v", resps)
+	}
+	var res struct {
+		Instructions string `json:"instructions"`
+	}
+	if err := json.Unmarshal(resps[0].Result, &res); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if res.Instructions == "" {
+		t.Fatal("initialize result has no instructions string")
+	}
+	if !strings.Contains(res.Instructions, "get_job_events") ||
+		!strings.Contains(res.Instructions, "execution log") {
+		t.Errorf("instructions missing the job-execution-log sense: %q", res.Instructions)
+	}
+	if !strings.Contains(res.Instructions, "list_events") &&
+		!strings.Contains(res.Instructions, "explain_event") {
+		t.Errorf("instructions missing the inbound-trigger-event sense: %q", res.Instructions)
+	}
+	if !strings.Contains(res.Instructions, "INBOUND") {
+		t.Errorf("instructions missing the two-id-spaces distinction: %q", res.Instructions)
+	}
+}
+
 // TestToolsListCatalog asserts the catalog advertises the read and write tools
 // with input schemas, and that run_playbook is deferred.
 func TestToolsListCatalog(t *testing.T) {

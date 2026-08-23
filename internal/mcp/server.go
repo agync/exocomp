@@ -22,6 +22,19 @@ const protocolVersion = "2024-11-05"
 // serverName is the MCP server identity a harness sees.
 const serverName = "exocomp"
 
+// serverInstructions is the MCP spec's optional top-level guidance string,
+// returned once at handshake. It exists to head off one specific
+// misreading: "event" names two unrelated id-spaces in this catalog, and a
+// cold agent that has not yet read every tool description tends to conflate
+// them.
+const serverInstructions = "exocomp MCP server: jobs, workspaces, secrets, and " +
+	"reactive triggers over the same store the CLI and HTTP API use. 'Event' " +
+	"names two unrelated things here: get_job_events reads a JOB's own " +
+	"execution log (its seq-cursor id-space, keyed by job id); " +
+	"list_events/explain_event read INBOUND trigger events (a separate " +
+	"id-space) that may enqueue jobs. Do not pass a job id to explain_event " +
+	"or an event id to get_job_events."
+
 // Server is the MCP adapter. It holds the same open store the CLI's local
 // commands hold and the data dir under it; the service verbs and the pure-enqueue
 // Enqueuer are built per call over these, exactly as the HTTP write API does.
@@ -146,6 +159,7 @@ func (s *Server) handleInitialize() map[string]any {
 			"name":    serverName,
 			"version": version.String(),
 		},
+		"instructions": serverInstructions,
 	}
 }
 

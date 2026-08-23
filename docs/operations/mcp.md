@@ -103,6 +103,10 @@ gate does not get its release. Decide from the browser/phone surface, the CLI, a
   downgraded token stops working on its very next call** rather than at the end of a
   long-lived session. Re-sending `initialize` costs nothing.
 - **Protocol version `2024-11-05`**, echoed by `initialize`.
+- **`initialize` returns an `instructions` string.** It carries one thing an agent
+  cannot get from tool names alone: "event" spans two unrelated id-spaces —
+  `get_job_events` reads a job's own execution log; `list_events`/`explain_event`
+  read inbound reactive trigger events. Do not conflate the two.
 
 ## Errors come at three levels
 

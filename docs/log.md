@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — MCP handshake gains an event-family glossary
+
+[operations/mcp.md](operations/mcp.md)'s handshake section notes the `initialize` result's
+new `instructions` string (MCP spec's server-instructions field): a 1-2 sentence glossary
+distinguishing `get_job_events` (a job's own execution log) from `list_events`/
+`explain_event` (inbound reactive trigger events) — two unrelated id-spaces that share the
+word "event" and that a cold agent otherwise conflates. No tool or field renamed.
+
 ## 2026-08-23 — schedules catch up after downtime
 
 [serve.md](operations/serve.md) gained a **Catch-up after downtime** subsection. The
