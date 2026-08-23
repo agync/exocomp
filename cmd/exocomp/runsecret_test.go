@@ -80,6 +80,57 @@ func TestResolveRunSecretsBindingAndInventory(t *testing.T) {
 	}
 }
 
+// TestResolveRunSecretsAnsibleOutputBinding proves the tofu step of a bootstrap
+// chain inherits its play's sealed captures as env through the ab:<workflow>
+// binding, empty-tolerantly: a workflow with a bound capture resolves it, and a
+// workflow whose binding is empty resolves to no env without the error a normal
+// explicit binding raises. This is the consumer half of the ansible->tofu loop.
+func TestResolveRunSecretsAnsibleOutputBinding(t *testing.T) {
+	dir := initForSource(t)
+	ctx := context.Background()
+
+	const kube = "KUBECONFIG-SENTINEL-9f3a1c-so-length-is-distinctive"
+	sealSecretDirect(t, dir, executor.AnsibleOutputSecretName("wf1", "KUBECONFIG"), kube)
+	if out, err := runRunSecret(t, "add", executor.AnsibleOutputBinding("wf1"),
+		"KUBECONFIG", executor.AnsibleOutputSecretName("wf1", "KUBECONFIG")); err != nil {
+		t.Fatalf("run-secret add: %v (%s)", err, out)
+	}
+
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	env, err := secrets.Open(dir)
+	if err != nil {
+		t.Fatalf("open envelope: %v", err)
+	}
+	defer func() { _ = env.Close() }()
+
+	// This workflow's tofu step names ab:wf1 and gets the sealed value as env.
+	rs, plain, err := resolveRunSecrets(ctx, st, env, executor.AnsibleOutputBinding("wf1"), "")
+	if err != nil {
+		t.Fatalf("resolveRunSecrets(ab:wf1): %v", err)
+	}
+	if rs["KUBECONFIG"] != kube {
+		t.Errorf("KUBECONFIG = %q, want the sealed capture", rs["KUBECONFIG"])
+	}
+	if len(plain) != 1 {
+		t.Errorf("plaintexts = %d, want 1 (scrubbed by the redactor)", len(plain))
+	}
+
+	// An unrelated workflow's binding is empty and MUST resolve to no env rather
+	// than the ErrNotFound a normal explicit binding raises: a Phase-0 chain, or a
+	// chain whose captures did not bind, must not fail its apply.
+	other, _, err := resolveRunSecrets(ctx, st, env, executor.AnsibleOutputBinding("wf-unrelated"), "")
+	if err != nil {
+		t.Fatalf("an empty ab: binding must be tolerated, got: %v", err)
+	}
+	if len(other) != 0 {
+		t.Errorf("an unrelated workflow inherited env %v, want none", other)
+	}
+}
+
 // TestAnsibleJobDriverBoundSecretReachesChildRedactedAndOffRow is the item-1
 // end-to-end proof through the real daemon driver: a job that names a
 // run_secret binding and a dynamic inventory gets both values as env in the

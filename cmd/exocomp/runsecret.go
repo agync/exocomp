@@ -23,10 +23,12 @@ import (
 // the values never touch the job row, which carries only the binding name.
 // A nil envelope yields nothing: without it no sealed value can be opened.
 //
-// Three sources, lowest precedence first: the workspace binding a `tf:` target
-// implies (see autoTofuOutputs), the explicitly named binding, then the dynamic
-// inventory's env_binding. An operator's explicit binding therefore wins over
-// one an apply produced, which is the way round that lets them override it.
+// Four sources, lowest precedence first: the workspace binding a `tf:` target
+// implies (see autoTofuOutputs), the `ab:<workflow>` binding a bootstrap chain's
+// play produced for its own tofu step (see autoAnsibleOutputs), the explicitly
+// named binding, then the dynamic inventory's env_binding. An operator's explicit
+// binding therefore wins over one an apply or a play produced, the way round that
+// lets them override it.
 func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope,
 	binding, inventory string) (executor.RunSecrets, [][]byte, error) {
 	if env == nil || (binding == "" && inventory == "") {
@@ -70,7 +72,21 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		}
 	}
 
-	if binding != "" {
+	ab, err := autoAnsibleOutputs(ctx, st, binding)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, p := range ab {
+		if err := add(p.EnvName, p.SecretName); err != nil {
+			return nil, nil, err
+		}
+	}
+
+	// An `ab:<workflow>` binding is an auto binding, resolved empty-tolerantly by
+	// autoAnsibleOutputs above; only a non-auto name is an operator's explicit
+	// binding that must exist. Resolving it here too would double-add its pairs and
+	// turn an empty capture (a play that sealed nothing) into a hard error.
+	if binding != "" && !strings.HasPrefix(binding, ansibleOutputBindingPrefix) {
 		pairs, err := st.RunSecretsByBinding(ctx, binding)
 		if err != nil {
 			return nil, nil, err
@@ -127,6 +143,30 @@ func autoTofuOutputs(ctx context.Context, st *store.Store, inventory, binding st
 		return nil, nil // the explicit binding already covers it
 	}
 	return st.RunSecretsByBinding(ctx, auto)
+}
+
+// ansibleOutputBindingPrefix marks a run-secret binding a bootstrap chain's play
+// produced: `ab:<workflow>`. It mirrors handoffInventoryPrefix ("tf:") and must
+// match executor.AnsibleOutputBinding, which builds "ab:"+workflow.
+const ansibleOutputBindingPrefix = "ab:"
+
+// autoAnsibleOutputs resolves the sealed captures a bootstrap chain's play bound
+// under ab:<workflow>, for the tofu step of that same chain and nothing else. The
+// composer names the tofu step's binding ab:<workflow> directly, so this
+// recognises that prefix and resolves it empty-tolerantly: a chain whose play
+// captured nothing, or whose captures folded to a non-POSIX env name and were not
+// bound, leaves the binding empty and the apply inherits no env — never an error,
+// exactly as autoTofuOutputs tolerates a workspace that sealed no outputs.
+//
+// Scope is the binding string itself: only a step whose binding is literally
+// ab:<this-workflow> resolves this workflow's captures, so an unrelated tofu run —
+// another workflow, a bare apply, none at all — inherits nothing. A binding
+// without the ab: prefix is an operator's explicit binding, not this to resolve.
+func autoAnsibleOutputs(ctx context.Context, st *store.Store, binding string) ([]store.RunSecret, error) {
+	if !strings.HasPrefix(binding, ansibleOutputBindingPrefix) {
+		return nil, nil
+	}
+	return st.RunSecretsByBinding(ctx, binding)
 }
 
 // secretExpired reports whether a sealed secret's rotation deadline has passed.
