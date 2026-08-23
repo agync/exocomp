@@ -14,7 +14,7 @@ templ schedulesList(vm schedulesVM) {
 			if len(vm.Schedules) == 0 {
 				<p class="meta">No schedules registered. Add one with <code>exocomp schedule add</code>.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
@@ -29,11 +29,11 @@ templ schedulesList(vm schedulesVM) {
 						<tbody>
 							for _, sc := range vm.Schedules {
 								<tr>
-									<td>{ sc.Name }</td>
-									<td class="mono">{ sc.Kind }</td>
-									<td class="mono">{ sc.Cron }</td>
-									<td class="mono">{ sc.Next }</td>
-									<td>
+									<td data-label="Schedule">{ sc.Name }</td>
+									<td class="mono" data-label="Kind">{ sc.Kind }</td>
+									<td class="mono" data-label="Cron">{ sc.Cron }</td>
+									<td class="mono" data-label="Next fire">{ sc.Next }</td>
+									<td data-label="Last outcome">
 										if sc.HasLast {
 											<a href={ templ.SafeURL("/jobs/" + itoa64(sc.LastJobID)) }>
 												@chip(sc.LastClass(), string(sc.LastState))
@@ -43,7 +43,7 @@ templ schedulesList(vm schedulesVM) {
 											<span class="meta">never fired</span>
 										}
 									</td>
-									<td>@enabledChip(sc.Enabled)</td>
+									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
 								</tr>
 							}
 						</tbody>

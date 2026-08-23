@@ -10,7 +10,7 @@ templ approvalsList(vm dashboardVM) {
 			if len(vm.NeedsYou) == 0 {
 				<p class="meta">Nothing is waiting on a decision.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr><th scope="col">Approval</th><th scope="col">Runbook</th><th scope="col">Workspace</th><th scope="col" class="right">Time left</th><th scope="col"></th></tr>
@@ -18,17 +18,17 @@ templ approvalsList(vm dashboardVM) {
 						<tbody>
 							for _, a := range vm.NeedsYou {
 								<tr>
-									<td class="num">#{ itoa(a.ID) }</td>
-									<td>{ a.Runbook }</td>
-									<td>{ orDash(a.Workspace) }</td>
-									<td class="right">
+									<td class="num" data-label="Approval">#{ itoa(a.ID) }</td>
+									<td data-label="Runbook">{ a.Runbook }</td>
+									<td data-label="Workspace">{ orDash(a.Workspace) }</td>
+									<td class="right" data-label="Time left">
 										if a.Expiring {
 											<span class="chip wait"><span class="dot"></span>{ a.Deadline }</span>
 										} else {
 											<span class="num">{ a.Deadline }</span>
 										}
 									</td>
-									<td class="right"><a class="btn primary" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
+									<td class="right" data-label=""><a class="btn primary" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
 								</tr>
 							}
 						</tbody>
