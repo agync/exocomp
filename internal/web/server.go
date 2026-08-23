@@ -41,10 +41,14 @@ type PlanOpener interface {
 
 // Options configures a Server.
 type Options struct {
-	Store    *store.Store
-	Deriver  Deriver
-	Decider  Decider
-	Plans    PlanOpener
+	Store   *store.Store
+	Deriver Deriver
+	Decider Decider
+	Plans   PlanOpener
+	// Maint drives the drain/cordon maintenance action. It is the running
+	// daemon's control seam; a nil Maint (a web-only process that runs no jobs
+	// and no scheduler) makes the maintenance routes answer "not available here".
+	Maint    Maintenance
 	Insecure bool
 	// Fingerprint is the LAN certificate's SHA-256, shown on the login screen
 	// for trust-on-first-use pinning. Empty under --insecure-http.
@@ -66,6 +70,7 @@ type Server struct {
 	deriver     Deriver
 	decider     Decider
 	plans       PlanOpener
+	maint       Maintenance
 	insecure    bool
 	fingerprint string
 	version     string
@@ -114,6 +119,7 @@ func New(opts Options) (*Server, error) {
 		deriver:     opts.Deriver,
 		decider:     opts.Decider,
 		plans:       opts.Plans,
+		maint:       opts.Maint,
 		insecure:    opts.Insecure,
 		fingerprint: opts.Fingerprint,
 		version:     opts.Version,

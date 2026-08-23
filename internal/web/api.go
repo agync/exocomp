@@ -60,6 +60,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/backups", s.apiAuth(s.apiBackups))
 	mux.HandleFunc("GET /api/v1/health", s.apiAuth(s.apiHealth))
 	s.registerWriteAPI(mux)
+	s.registerMaintenanceAPI(mux)
 }
 
 // apiAuth wraps a read JSON handler with the browser surface's own auth
