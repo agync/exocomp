@@ -80,6 +80,14 @@ type Queue struct {
 	// before a claim, never against a running job. Nil means always open.
 	claimGate func() bool
 
+	// approver arms the approval gate for a workflow step that requires one. It
+	// is the seam the Sequencer uses instead of releasing such a step: the
+	// reactive engine (which owns the deriver and the same CreateApproval path a
+	// single gated apply uses) registers itself here via SetStepApprover, so the
+	// queue package never imports it. Nil leaves a require-approval step parked
+	// with no way to advance — fail-closed — rather than released unapproved.
+	approver StepApprover
+
 	wake chan struct{}
 	wg   sync.WaitGroup
 
@@ -168,6 +176,36 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 	q.remember(job.ID)
 	q.notify()
 	return job, nil
+}
+
+// StepApprover arms the approval gate for a workflow step that requires one:
+// it creates the pending approval (minting its capability) exactly as a single
+// gated apply does, so the step is released only by the same DecideApproval
+// path. The queue package holds only this seam; the reactive engine, which owns
+// the deriver, provides the implementation, keeping the approval machinery in
+// one place and out of the queue's import graph.
+type StepApprover interface {
+	// ArmStepApproval ensures a pending approval exists for the gated job. It is
+	// idempotent: an approval already recorded for the job is a no-op, so a
+	// Sequencer that re-checks a parked step every pass mints and notifies once.
+	ArmStepApproval(ctx context.Context, jobID int64) error
+}
+
+// SetStepApprover registers the approval-arming seam. The daemon's reactive
+// engine calls it at construction (it already receives this queue), so the
+// Sequencer built later over the same queue arms gated steps without any
+// per-process wiring in the daemon's setup.
+func (q *Queue) SetStepApprover(a StepApprover) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.approver = a
+}
+
+// stepApprover returns the registered approver under the queue's lock.
+func (q *Queue) stepApprover() StepApprover {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.approver
 }
 
 // remember records a job this queue created, which is the set a Drain claims
@@ -287,7 +325,11 @@ func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, erro
 		// database cannot claim a key this one is holding.
 		err := q.store.ClaimJob(ctx, job.ID)
 		if err != nil {
-			if errors.Is(err, store.ErrStateConflict) || errors.Is(err, store.ErrConcurrencyHeld) {
+			// A pending approval refuses the claim exactly like a held concurrency
+			// key: skip the row and try the next, never run it. The gate holds even
+			// if a mis-release left the job queued with its approval undecided.
+			if errors.Is(err, store.ErrStateConflict) || errors.Is(err, store.ErrConcurrencyHeld) ||
+				errors.Is(err, store.ErrApprovalPending) {
 				continue
 			}
 			return store.Job{}, false, err

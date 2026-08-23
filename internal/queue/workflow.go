@@ -58,6 +58,11 @@ func workflowInlineOnly(steps []store.WorkflowStep) bool {
 type Step struct {
 	Kind string
 	Spec Spec
+	// RequireApproval gates this step behind an operator decision: the Sequencer
+	// arms a pending approval when the step becomes current and does NOT release
+	// it, so a running daemon cannot claim the step's job until the approval
+	// settles — the durable gate a single destructive apply already has.
+	RequireApproval bool
 }
 
 // Sequencer runs an ordered list of steps over the existing queue, one at a
@@ -114,10 +119,11 @@ func (s *Sequencer) Start(ctx context.Context, workflowID string, steps []Step) 
 		}
 		id := job.ID
 		ledger = append(ledger, store.NewWorkflowStep{
-			StepNo:         i + 1,
-			Kind:           step.Kind,
-			IdempotencyKey: spec.IdempotencyKey,
-			JobID:          &id,
+			StepNo:          i + 1,
+			Kind:            step.Kind,
+			IdempotencyKey:  spec.IdempotencyKey,
+			JobID:           &id,
+			RequireApproval: step.RequireApproval,
 		})
 	}
 	return s.q.store.CreateWorkflow(ctx, workflowID, ledger)
@@ -140,10 +146,23 @@ func (s *Sequencer) Run(ctx context.Context, workflowID string) error {
 			return nil // every step terminal: succeeded, or failed with the rest blocked
 		}
 		if err := s.runStep(ctx, workflowID, next); err != nil {
+			if errors.Is(err, errAwaitingApproval) {
+				// The current step is parked on an unsettled approval. Stop this
+				// pass rather than spin: the next drive re-checks, and an approve
+				// (which releases the job) or a reject (which cancels it) is what
+				// lets the step advance. The workflow is not terminal, only waiting.
+				return nil
+			}
 			return err
 		}
 	}
 }
+
+// errAwaitingApproval signals that runStep parked the current step on an
+// unsettled approval: it armed the gate and left the job awaiting_approval
+// rather than releasing it. Run treats it as "nothing more to do this pass",
+// not a failure.
+var errAwaitingApproval = errors.New("queue: workflow step awaiting approval")
 
 // ResumeAll continues every workflow the ledger still holds unfinished. It is
 // the boot-sweep extension: after the job sweep retires the rows a dead process
@@ -233,11 +252,19 @@ func (s *Sequencer) runStep(ctx context.Context, workflowID string, step store.W
 		return fmt.Errorf("queue: workflow %s step %d has no job to run", workflowID, step.StepNo)
 	}
 
-	// The job is gated or already queued. Release a gated one into the queue;
-	// one a crash left queued (released, but the ledger not yet advanced) is
-	// left where it is. Then mark the ledger running, unless a prior process
-	// already did.
+	// The job is gated or already queued. A gated step that requires operator
+	// approval is NOT released here: it is armed with a pending approval and left
+	// awaiting_approval, so only a DecideApproval settles it — the same gate a
+	// single destructive apply passes through, now honored mid-chain. Any other
+	// gated step is the Sequencer's own to release into the queue; one a crash
+	// left queued (released, but the ledger not yet advanced) is left where it is.
 	if job.State == store.StateAwaitingApproval {
+		if step.RequireApproval {
+			if err := s.armStepApproval(ctx, job.ID); err != nil {
+				return err
+			}
+			return errAwaitingApproval
+		}
 		if err := s.q.Release(ctx, job.ID); err != nil {
 			return err
 		}
@@ -256,6 +283,25 @@ func (s *Sequencer) runStep(ctx context.Context, workflowID string, step store.W
 		return err
 	}
 	return s.recordOutcome(ctx, workflowID, step, final)
+}
+
+// armStepApproval creates the pending approval a gated step waits on, through
+// the registered approver (the reactive engine's ArmStepApproval, which mints
+// the capability and records the approval the same way a single gated apply
+// does). It is idempotent, so a step re-checked every drive pass mints once.
+//
+// With no approver registered the step stays parked with no approval to settle
+// it — fail-closed. That is deliberate: releasing a require-approval step
+// because the arming seam is absent would be the very defeat this closes, so the
+// absence blocks the step rather than opening it.
+func (s *Sequencer) armStepApproval(ctx context.Context, jobID int64) error {
+	approver := s.q.stepApprover()
+	if approver == nil {
+		s.log.Warn("workflow step requires approval but no approver is registered; step is parked",
+			"job", jobID)
+		return nil
+	}
+	return approver.ArmStepApproval(ctx, jobID)
 }
 
 // nonDecision reports whether a terminal job ended without deciding the step's

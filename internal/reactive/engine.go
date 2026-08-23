@@ -130,7 +130,53 @@ func New(opts Options) (*Engine, error) {
 	if e.log == nil {
 		e.log = slog.Default()
 	}
+	// Register as the queue's step-approver so a Sequencer built over the same
+	// queue arms a gated workflow step through this same approval machinery. The
+	// queue is passed as the Gate interface; the concrete daemon queue also
+	// implements the setter, so this wires the daemon with no change at its call
+	// site. A queue that does not (a pure test Gate) simply is not registered.
+	if setter, ok := opts.Queue.(interface {
+		SetStepApprover(queue.StepApprover)
+	}); ok {
+		setter.SetStepApprover(e)
+	}
 	return e, nil
+}
+
+// ArmStepApproval creates the pending approval a gated composed-chain step waits
+// on, so the step is released only by the same DecideApproval path a single
+// destructive apply uses. It is the queue.StepApprover seam: the Sequencer calls
+// it when a require-approval step becomes current, and this mints the capability,
+// records the approval with a TTL starting now, and pages the operator.
+//
+// It is idempotent on the job: an approval already recorded for it is a no-op,
+// so the Sequencer re-checking a parked step each drive pass mints and notifies
+// exactly once. The TTL therefore starts when the step becomes current, not at
+// chain start — a slow predecessor cannot burn the window before the step is
+// even reached.
+func (e *Engine) ArmStepApproval(ctx context.Context, jobID int64) error {
+	if _, err := e.store.ApprovalByJob(ctx, jobID); err == nil {
+		return nil // already armed; do not re-mint or re-page
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
+
+	token, hash, err := ApprovalToken(e.deriver, jobID)
+	if err != nil {
+		return err
+	}
+	now := e.now()
+	approval, err := e.store.CreateApproval(ctx, store.Approval{
+		JobID:       jobID,
+		RequestedAt: now,
+		ExpiresAt:   now.Add(e.approvalTTL),
+		TokenHash:   hash,
+	})
+	if err != nil {
+		return err
+	}
+	e.notify(ctx, e.approvalNotification(approval, token, 1))
+	return nil
 }
 
 func (e *Engine) now() time.Time { return e.clock().UTC() }
