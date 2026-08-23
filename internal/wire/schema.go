@@ -1,8 +1,10 @@
 package wire
 
 import (
+	"slices"
 	"time"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -41,18 +43,25 @@ func rfc3339p(t *time.Time) *string {
 // JobView projects a job row: identifiers, state, exit code, and the lifecycle
 // timestamps. Args (which can carry operator-supplied values), dedup and
 // idempotency keys, and the owner pid are deliberately omitted.
+//
+// Plan is populated separately from the row — it comes from the job's own
+// events, not a store.Job column — so NewJobView alone always leaves it nil.
+// A caller that has the job's events attaches it with NewPlanOutcomeView (see
+// internal/web/api.go's apiJobGet, the primary seam a remote `workspace plan`
+// reads to reproduce the local exit-2-on-changes decision without RawJSON).
 type JobView struct {
-	ID             int64   `json:"id"`
-	Runbook        string  `json:"runbook,omitempty"`
-	Kind           string  `json:"kind,omitempty"`
-	Trigger        string  `json:"trigger,omitempty"`
-	State          string  `json:"state"`
-	ExitCode       *int    `json:"exit_code,omitempty"`
-	Partial        bool    `json:"partial,omitempty"`
-	ConcurrencyKey string  `json:"concurrency_key,omitempty"`
-	QueuedAt       string  `json:"queued_at,omitempty"`
-	StartedAt      *string `json:"started_at,omitempty"`
-	FinishedAt     *string `json:"finished_at,omitempty"`
+	ID             int64            `json:"id"`
+	Runbook        string           `json:"runbook,omitempty"`
+	Kind           string           `json:"kind,omitempty"`
+	Trigger        string           `json:"trigger,omitempty"`
+	State          string           `json:"state"`
+	ExitCode       *int             `json:"exit_code,omitempty"`
+	Partial        bool             `json:"partial,omitempty"`
+	ConcurrencyKey string           `json:"concurrency_key,omitempty"`
+	QueuedAt       string           `json:"queued_at,omitempty"`
+	StartedAt      *string          `json:"started_at,omitempty"`
+	FinishedAt     *string          `json:"finished_at,omitempty"`
+	Plan           *PlanOutcomeView `json:"plan,omitempty"`
 }
 
 // NewJobView projects one job.
@@ -82,12 +91,17 @@ func NewJobList(jobs []store.Job) []JobView {
 }
 
 // JobEventView projects one append-only, already-redacted job event. RawJSON is
-// omitted to stay low-token; msg is the redacted line the sink wrote.
+// omitted to stay low-token; msg is the redacted line the sink wrote. Plan is
+// the one deliberate exception: a plan/check outcome event's raw_json, reduced
+// to the same values-free PlanOutcomeView JobView.Plan carries, so a remote
+// reader tailing events sees the machine-parseable outcome without RawJSON.
+// It is nil for every event but the one carrying that payload.
 type JobEventView struct {
-	Seq   int64  `json:"seq"`
-	Ts    string `json:"ts"`
-	Level string `json:"level,omitempty"`
-	Msg   string `json:"msg,omitempty"`
+	Seq   int64            `json:"seq"`
+	Ts    string           `json:"ts"`
+	Level string           `json:"level,omitempty"`
+	Msg   string           `json:"msg,omitempty"`
+	Plan  *PlanOutcomeView `json:"plan,omitempty"`
 }
 
 // NewJobEventList projects a job's events in sequence order.
@@ -99,9 +113,98 @@ func NewJobEventList(events []store.JobEvent) []JobEventView {
 			Ts:    rfc3339(e.Ts),
 			Level: e.Level,
 			Msg:   e.Msg,
+			Plan:  planOutcomeFromRawJSON(e.RawJSON),
 		})
 	}
 	return out
+}
+
+// PlanOutcomeView is the values-free summary of a plan (tofu) or check
+// (ansible) job's outcome: whether the run found changes, and — when the
+// producing event carried resource/host detail — how many resources would be
+// added, changed, or destroyed (ansible has no add/destroy distinction, so a
+// host with drift counts as one Change) and their addresses. It mirrors
+// TofuPlanOutcome/AnsibleCheckOutcome's own values-free discipline exactly:
+// no field here could ever hold an attribute value, because none of the
+// structs it is built from carries one.
+type PlanOutcomeView struct {
+	Changes   bool     `json:"changes"`
+	Add       int      `json:"add,omitempty"`
+	Change    int      `json:"change,omitempty"`
+	Destroy   int      `json:"destroy,omitempty"`
+	Addresses []string `json:"addresses,omitempty"`
+}
+
+// NewPlanOutcomeView scans a job's events, oldest first, for the one event
+// carrying a plan or check outcome and projects it. It is the wire-side twin
+// of cmd/exocomp/workspace.go's planChanges: the same "read the terminal plan
+// event back out of the job's own events" lookup, so a remote client can
+// reach the same exit-2-on-changes verdict the local CLI reaches from RawJSON
+// directly. nil when no event in the job carries either payload (including
+// every non-plan, non-check job).
+func NewPlanOutcomeView(events []store.JobEvent) *PlanOutcomeView {
+	for _, e := range events {
+		if v := planOutcomeFromRawJSON(e.RawJSON); v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+// planOutcomeFromRawJSON tries one event's raw_json against both outcome
+// shapes a plan-family job can carry. Trying tofu first is not a behavioural
+// choice — the two envelope keys ("tofu" / "ansible_check") never both match
+// the same document, so the order cannot change which one is found, only
+// which unmarshal runs first.
+func planOutcomeFromRawJSON(rawJSON string) *PlanOutcomeView {
+	if outcome, ok := executor.TofuPlanOutcomeFor(rawJSON); ok {
+		return tofuPlanOutcomeView(outcome)
+	}
+	if outcome, ok := executor.AnsibleCheckChanges(rawJSON); ok {
+		return ansibleCheckOutcomeView(outcome)
+	}
+	return nil
+}
+
+// tofuPlanOutcomeView reduces a TofuPlanOutcome to its values-free wire
+// summary. A replace (actions ["delete","create"], either order) counts in
+// both Add and Destroy, matching tofu's own "N to add, M to change, K to
+// destroy" convention for a resource that is torn down and rebuilt.
+func tofuPlanOutcomeView(o executor.TofuPlanOutcome) *PlanOutcomeView {
+	v := &PlanOutcomeView{Changes: o.Changes}
+	deltas := make([]executor.ResourceDelta, 0, len(o.Drift)+len(o.Pending))
+	deltas = append(deltas, o.Drift...)
+	deltas = append(deltas, o.Pending...)
+	for _, d := range deltas {
+		v.Addresses = append(v.Addresses, d.Address)
+		add := slices.Contains(d.Actions, "create")
+		destroy := slices.Contains(d.Actions, "delete")
+		switch {
+		case add && destroy:
+			v.Add++
+			v.Destroy++
+		case add:
+			v.Add++
+		case destroy:
+			v.Destroy++
+		default:
+			v.Change++
+		}
+	}
+	return v
+}
+
+// ansibleCheckOutcomeView reduces an AnsibleCheckOutcome to its values-free
+// wire summary. Ansible's check mode has no add/destroy distinction — a task
+// either would change a host or would not — so every drifted host counts as
+// one Change, named by host rather than resource address.
+func ansibleCheckOutcomeView(o executor.AnsibleCheckOutcome) *PlanOutcomeView {
+	v := &PlanOutcomeView{Changes: o.Changes}
+	for _, d := range o.Drift {
+		v.Addresses = append(v.Addresses, d.Host)
+		v.Change++
+	}
+	return v
 }
 
 // WorkspaceView projects a workspace: name, id, the newest stored serial, and
