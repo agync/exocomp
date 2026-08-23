@@ -183,6 +183,28 @@ func reportRunDirTmpfs(w io.Writer) {
 	}
 }
 
+// reportCaps writes the doctor's per-job caps block: whether a delegated,
+// writable cgroup v2 subtree with the memory and cpu controllers is present, so
+// an operator knows before enqueuing a capped runner whether the ceiling would
+// actually be enforced or the job refused. Nothing here fails the check — the
+// feature is opt-in and off by default; the block only says whether turning it
+// on would work. It reports the daemon's own environment, so it is meaningful
+// only on the box the daemon runs on (empty on a bare client workstation).
+func reportCaps(w io.Writer) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("per-job caps:\n")
+
+	// Empty root uses the real cgroup mount; ProbeCaps changes nothing.
+	res := executor.ProbeCaps("")
+	if res.Available {
+		p("  %-18s available — memory/cpu caps enforce via a delegated cgroup v2 subtree\n", "cgroup v2")
+		p("  %-18s %s\n", "subtree", res.Base)
+	} else {
+		p("  %-18s unavailable — %s\n", "cgroup v2", res.Detail)
+		p("  %-18s a capped runner would be REFUSED (fail-closed), never run uncapped\n", "effect")
+	}
+}
+
 // sandboxOptions is the grant set every kind starts from. The data dir is named
 // so the profile guard can refuse a grant that would cover the database or the
 // keys, and the vendored collections are granted because a job that cannot read
