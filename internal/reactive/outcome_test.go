@@ -133,3 +133,55 @@ func TestTimedOutJobPages(t *testing.T) {
 		t.Fatalf("raised %d pages for a timed-out job, want 1", raised)
 	}
 }
+
+// TestInterruptedJobPagesOnce pins item 4: a job whose process vanished — a
+// crash or a daemon restart marks the running row interrupted — pages the
+// operator once, and a second sweep (a second restart) pages nothing, so a
+// restart that interrupts a row does not spam.
+func TestInterruptedJobPagesOnce(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.finishedJob(t, reactive.WorkspaceRunbook("prod"), store.StateInterrupted, "daemon restarted")
+
+	raised, err := h.engine.SweepJobOutcomes(ctx)
+	if err != nil {
+		t.Fatalf("sweep job outcomes: %v", err)
+	}
+	if raised != 1 {
+		t.Fatalf("raised %d pages for an interrupted job, want 1", raised)
+	}
+	if len(h.sent.sent) != 1 || !strings.Contains(h.sent.sent[0].Title, "job failed") {
+		t.Fatalf("interrupted job did not page as a failure: %+v", h.sent.sent)
+	}
+
+	again, err := h.engine.SweepJobOutcomes(ctx)
+	if err != nil {
+		t.Fatalf("second sweep: %v", err)
+	}
+	if again != 0 || len(h.sent.sent) != 1 {
+		t.Fatalf("a second sweep re-paged an interrupted job: raised=%d sent=%d", again, len(h.sent.sent))
+	}
+}
+
+// TestCancelledJobPagesNothing holds the line item 4 draws: a deliberate stop is
+// not an outcome to page on, so it stays excluded even as interrupted is added.
+func TestCancelledJobPagesNothing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.finishedJob(t, reactive.WorkspaceRunbook("prod"), store.StateCancelled, "")
+
+	raised, err := h.engine.SweepJobOutcomes(ctx)
+	if err != nil {
+		t.Fatalf("sweep job outcomes: %v", err)
+	}
+	if raised != 0 {
+		t.Fatalf("a cancelled job raised %d pages, want 0", raised)
+	}
+	if len(h.sent.sent) != 0 {
+		t.Fatalf("transport saw %d notifications for a cancelled job", len(h.sent.sent))
+	}
+}

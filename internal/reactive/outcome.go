@@ -19,10 +19,12 @@ const outcomeScan = 200
 const SourceJobOutcome = "job-outcome"
 
 // failedJobStates are the terminal states a job lands in when it did not
-// succeed and nobody chose to stop it. Cancelled is a deliberate stop and
-// interrupted is a process that went away — neither is an outcome to page on,
-// so both are left out.
-var failedJobStates = []store.JobState{store.StateFailed, store.StateTimedOut}
+// succeed and nobody chose to stop it: it failed, its own timeout killed it, or
+// its process vanished (a crash or a daemon restart marks the running row
+// interrupted). Cancelled is left out — a deliberate stop is not an outcome to
+// page on. The per-job dedup keeps a restart that interrupts many rows at once
+// from spamming: each job pages once, however many sweeps run.
+var failedJobStates = []store.JobState{store.StateFailed, store.StateTimedOut, store.StateInterrupted}
 
 // SweepJobOutcomes pages the operator once for every recently-finished job that
 // ended in a terminal failure and has not already been paged on. Today a failed
