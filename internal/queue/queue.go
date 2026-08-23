@@ -34,6 +34,10 @@ type Spec struct {
 	// carried to the job row so a daemon replays them and written to a file at
 	// run time, never onto the ansible process's argv.
 	ExtraVars map[string]string
+	// Captures carries a bootstrap chain's env-decomposition wiring (the play's
+	// capture targets and the workflow id) to the job row so a daemon that claims
+	// or re-arms the step keeps it. Names and files only, never a value.
+	Captures *store.JobCaptures
 	// TolerateUnreachable opts an ansible run into the degraded outcome: a run
 	// whose only non-success is unreachable hosts settles as a tolerated
 	// degradation, not a failure. Carried to the job row so a daemon that claims
@@ -143,6 +147,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			Inventory:           spec.Inventory,
 			ExtraVars:           spec.ExtraVars,
 			TolerateUnreachable: spec.TolerateUnreachable,
+			Captures:            spec.Captures,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,

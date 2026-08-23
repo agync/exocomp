@@ -92,6 +92,33 @@ type JobArgs struct {
 	// degradation instead of a failure. It lives on the row so a daemon that
 	// claims the job runs it under the same tolerance the operator asked for.
 	TolerateUnreachable bool `json:"tolerate_unreachable,omitempty"`
+	// Captures carries a bootstrap chain's env-decomposition wiring: the play
+	// step's declared capture targets and the workflow id their sealed rows and
+	// ab:<workflow> binding derive from. It is a first-class field precisely so a
+	// step re-armed after a mid-run crash keeps it — rearmStep copies JobArgs, and
+	// a play that lost its captures on resume would seal nothing and leave the
+	// dependent apply's binding empty. It names files and env keys, never values.
+	Captures *JobCaptures `json:"captures,omitempty"`
+}
+
+// JobCaptures is a bootstrap chain's capture wiring on a job row. Workflow is the
+// chain id both the play's sealer and the apply's ab:<workflow> binding derive
+// from; Targets are the operator's declared capture points. No secret value ever
+// lives here — only the file the play produced and the name it seals under.
+type JobCaptures struct {
+	Workflow string       `json:"workflow,omitempty"`
+	Targets  []JobCapture `json:"targets,omitempty"`
+}
+
+// JobCapture is one declared capture: the output Name its sealed row and env
+// binding derive from, the File (relative to the run's capture dir) the play
+// fetched it into, and AsFile asking the consuming step to receive the sealed
+// value as a path rather than an env value. It mirrors executor.AnsibleCapture,
+// which the store package must not import (executor depends on store).
+type JobCapture struct {
+	Name   string `json:"name"`
+	File   string `json:"file"`
+	AsFile bool   `json:"as_file,omitempty"`
 }
 
 // Duration is a time.Duration that marshals as a string ("30s") so job rows
