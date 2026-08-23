@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — the config-drift sweep landed
+
+**Correction to the entry below.** [architecture/reactive.md](architecture/reactive.md)
+said drift was a `tofu-plan` schedule's story; the sweep now covers both planes, and the
+Drift section records what changed. An ansible `--check` job whose recap reported changed
+tasks raises an `AnsibleDrift` event beside `TofuDrift`, pages on a stable identity, and is
+auto-closed by a later clean check — the step the entry below called remaining.
+
+The page also records the one thing the two planes do not share: what a drift subject is.
+Tofu keys by workspace; ansible has no such noun on the job row and keys by
+`<runbook>/<playbook base name>`, because the manual `playbook run` verb stamps every job
+with the same runbook.
+
 ## 2026-08-22 — playbook run flags and config-drift parity
 
 **New page: [operations/playbook-run.md](operations/playbook-run.md)** — `playbook run`

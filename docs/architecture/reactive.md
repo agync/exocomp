@@ -143,9 +143,33 @@ plan-outcome job event rather than a failed job. A sweep turns each such job
 into a `drift` event in the same pipeline, so a rule can gate an apply on drift
 alone.
 
+A `play --check` schedule is the config half, swept by the same loop. The driver
+attaches the check-mode outcome — per-host counts of tasks that would change — to
+a job event, and a check whose total is above zero becomes an `AnsibleDrift`
+event beside the tofu `TofuDrift`. Both carry `source: drift`, so one rule's
+source filter admits either.
+
 The event table is that sweep's own checkpoint: the drift event's dedup key
 names the job that found the drift, so a job already reported is skipped without
 a cursor to keep or state to lose on a restart.
+
+A drift subject is what the incident is opened against, and it differs by plane.
+Tofu's is the workspace, read off the job's `workspace:<name>` runbook. Ansible
+has no equivalent registered noun on the job row, so its subject is
+`<runbook>/<playbook base name>`: the runbook is a play schedule's own name, and
+the playbook is what keeps the manual `playbook run` verb — which stamps every
+job with the runbook `playbook` — from collapsing every hand-run check into one
+incident. Only the base name travels; the rest of the path moves between runs,
+and a subject that moves cannot close what it opened.
+
+The close is symmetric on both planes. A later clean dry run for the same
+subject pages once with the opening page's exact `Source`/`Host`, so a GoAlert
+transport closes the incident rather than opening a second one, and writes a
+clear checkpoint keyed by the OPENING job — one existence check answers "is this
+subject's latest drift still open", and a repeat sweep closes nothing. Only a
+dry run that finished and reached every host clears an incident: a failed check
+never enters the sweep, and a degraded one (tolerated unreachable hosts) saw
+nothing at all on the hosts it missed, so it leaves the incident open.
 
 ## Job failures
 
