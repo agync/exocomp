@@ -161,11 +161,14 @@ func (s *Store) DeleteSchedule(ctx context.Context, name string) error {
 	return nil
 }
 
-// RecordScheduleFire stamps the outcome of one cron fire. last_run always
-// advances to now — a fire happened, even one that enqueued nothing — so a
-// reboot's catch-up sees the schedule as current. lastJobID is nil when the
-// fire enqueued nothing (e.g. a backup schedule with no enabled targets);
-// nextAt is nil when the caller has no next-fire time to record.
+// RecordScheduleFire stamps the outcome of one cron fire whose occurrence was
+// safely enqueued (including a fire with no targets, which enqueues nothing but
+// still happened): last_run advances to now so a reboot's catch-up sees the
+// schedule as current. The scheduler withholds this call when an Enqueue failed,
+// leaving last_run where it was so catch-up re-fires the dropped occurrence
+// rather than skipping it. lastJobID is nil when the fire enqueued nothing (e.g.
+// a backup schedule with no enabled targets); nextAt is nil when the caller has
+// no next-fire time to record.
 func (s *Store) RecordScheduleFire(ctx context.Context, id int64, lastJobID *int64, nextAt *time.Time) error {
 	set := []string{"last_run = ?"}
 	args := []any{time.Now().UTC().UnixMilli()}

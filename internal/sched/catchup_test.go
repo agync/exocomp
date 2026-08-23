@@ -2,6 +2,8 @@ package sched
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +11,109 @@ import (
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// failingEnqueuer fails its first failFirst Enqueue calls, then behaves like
+// fakeEnqueuer. It models a transient enqueue error (a full or briefly
+// unavailable queue) hitting a scheduled fire.
+type failingEnqueuer struct {
+	store *store.Store
+
+	mu        sync.Mutex
+	calls     int
+	failFirst int
+}
+
+func (f *failingEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	f.mu.Lock()
+	f.calls++
+	fail := f.calls <= f.failFirst
+	f.mu.Unlock()
+	if fail {
+		return store.Job{}, errors.New("enqueue boom")
+	}
+	return f.store.CreateJob(ctx, store.NewJob{
+		Runbook: spec.Runbook, Kind: spec.Kind, Trigger: spec.Trigger,
+		Args: store.JobArgs{Argv: spec.Argv},
+	})
+}
+
+// TestFailedEnqueueReFiresOccurrenceExactlyOnce is the lost-fire gate: a normal
+// fire whose Enqueue fails must NOT advance last_run, so the occurrence stays
+// owed and the next reboot's catch-up re-fires it — exactly once, never zero
+// (silently dropped) and never twice.
+func TestFailedEnqueueReFiresOccurrenceExactlyOnce(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	sc := createShellSchedule(t, st, "transient", 0) // @every 1h
+
+	fake := &failingEnqueuer{store: st, failFirst: 1}
+	s := New(st, fake, testLogger())
+	if err := s.Start(context.Background()); err != nil { // last_run nil: no catch-up
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+
+	// A prior fire left last_run one occurrence back.
+	seedLastRun(t, st, sc.ID, time.Now().Add(-2*time.Hour))
+
+	// The normal fire's only Enqueue fails. last_run must stay put so the
+	// occurrence is still owed.
+	s.dispatch(context.Background(), sc, "")
+
+	// The next reboot's catch-up finds the occurrence still owed and re-fires it;
+	// this time the queue accepts it.
+	s.catchUp(context.Background())
+
+	jobs, err := st.ListJobs(t.Context(), store.JobFilter{Runbook: sc.Name})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("dropped-then-recovered fire produced %d jobs, want exactly 1", len(jobs))
+	}
+}
+
+// TestNormalFireDedupsCatchUpOfSameOccurrence is the double-fire gate: a normal
+// fire that enqueues successfully but crashes before stamping last_run must be
+// deduped when the next boot's catch-up re-fires the same occurrence. The normal
+// path now carries the occurrence idempotency key, so the two collapse to one
+// job. Uses a real queue so idempotency keys persist; the queue is never Run, so
+// the jobs stay queued to be counted.
+func TestNormalFireDedupsCatchUpOfSameOccurrence(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	q := queue.New(st, executor.NewShell(), queue.Options{})
+	sc := createShellSchedule(t, st, "crashy", 0)
+
+	s := New(st, q, testLogger())
+	if err := s.Start(context.Background()); err != nil { // last_run nil: no catch-up
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+
+	seeded := time.Now().Add(-2 * time.Hour)
+	seedLastRun(t, st, sc.ID, seeded)
+
+	// A normal fire enqueues job1 under its occurrence key and stamps last_run.
+	s.dispatch(context.Background(), sc, "")
+
+	// Model the crash "between a successful enqueue and the last_run stamp": the
+	// job committed but the stamp did not, so last_run is still the pre-fire value
+	// when the daemon comes back up.
+	seedLastRun(t, st, sc.ID, seeded)
+
+	// The next boot's catch-up re-fires the same owed occurrence. Its key must
+	// collapse onto job1 rather than making a second job.
+	s.catchUp(context.Background())
+
+	jobs, err := st.ListJobs(t.Context(), store.JobFilter{Runbook: sc.Name})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("crash-then-catchup produced %d jobs, want 1 (idempotent)", len(jobs))
+	}
+}
 
 // seedLastRun backdates a schedule's last_run to model a daemon that was last
 // up (and last fired this schedule) at t.
@@ -157,7 +262,7 @@ func TestCatchUpIsIdempotentWithARacingRefire(t *testing.T) {
 	// hit the queue's idempotency and return the first job, not make a second.
 	stale := sc
 	stale.LastRun = ptrTime(seeded)
-	s.dispatch(context.Background(), stale, catchUpKey(stale))
+	s.dispatch(context.Background(), stale, fireKey(stale))
 
 	jobs, err := st.ListJobs(t.Context(), store.JobFilter{Runbook: sc.Name})
 	if err != nil {

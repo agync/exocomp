@@ -304,24 +304,38 @@ func (s *Scheduler) catchUp(ctx context.Context) {
 		if next := schedule.Next(*sc.LastRun); next.IsZero() || next.After(now) {
 			continue
 		}
-		s.dispatch(ctx, sc, catchUpKey(sc))
+		s.dispatch(ctx, sc, fireKey(sc))
 	}
 }
 
-// catchUpKey is the idempotency key a coalesced catch-up fire enqueues under.
-// Anchoring it on last_run (not on now) makes the catch-up safe to retry: if
-// the daemon enqueues the fire but dies before advancing last_run, the next
-// boot recomputes the same key and the queue returns the existing job rather
-// than a second one. Two overlapping reloads racing the same stale last_run
-// collapse the same way.
-func catchUpKey(sc store.Schedule) string {
-	return fmt.Sprintf("sched-catchup:%d:%d", sc.ID, sc.LastRun.UnixMilli())
+// fireKey is the idempotency key a fire of sc's owed occurrence enqueues under,
+// anchored on that occurrence's scheduled instant — schedule.Next(last_run),
+// NOT on now. Both the normal fire path and a catch-up recovering the SAME
+// occurrence derive the identical key from the same stored last_run, so:
+//   - a crash between a successful enqueue and the last_run stamp collapses to
+//     one job when the next tick or reboot re-fires the occurrence; and
+//   - two overlapping reloads racing the same stale last_run collapse the same
+//     way.
+//
+// A schedule that has never fired (last_run nil) has no occurrence to anchor on
+// and no catch-up ever re-fires it, so it fires unkeyed.
+func fireKey(sc store.Schedule) string {
+	if sc.LastRun == nil {
+		return ""
+	}
+	schedule, err := parser.Parse(sc.CronExpr)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("sched-fire:%d:%d", sc.ID, schedule.Next(*sc.LastRun).UnixMilli())
 }
 
-// dispatch builds a schedule's specs, enqueues each, and stamps last_run,
-// last_job_id, and next_at. idem is empty for a normal cron fire and set for a
-// catch-up, where it de-duplicates a fire the queue may already hold — a fan-out
-// kind's per-target concurrency key keeps each target's fire distinct.
+// dispatch builds a schedule's specs, enqueues each, and — only when the whole
+// occurrence was safely enqueued — stamps last_run, last_job_id, and next_at.
+// idem is empty for a normal cron fire and set for a catch-up; either way every
+// spec carries the occurrence idempotency key so a fire and its later catch-up
+// of the same occurrence de-duplicate against each other. A fan-out kind's
+// per-target concurrency key keeps each target's fire distinct.
 func (s *Scheduler) dispatch(ctx context.Context, sc store.Schedule, idem string) {
 	specs, err := s.buildSpecs(ctx, sc)
 	if err != nil {
@@ -329,6 +343,17 @@ func (s *Scheduler) dispatch(ctx context.Context, sc store.Schedule, idem string
 		return
 	}
 
+	// A normal fire keys on its own occurrence, mirroring the catch-up key, so a
+	// crash between enqueue and the last_run stamp does not double-fire. Re-read
+	// last_run: the sc captured at registration is stale after earlier fires
+	// advanced it, and the key must anchor on the CURRENT occurrence.
+	if idem == "" {
+		if fresh, err := s.store.GetScheduleByID(ctx, sc.ID); err == nil {
+			idem = fireKey(fresh)
+		}
+	}
+
+	enqueued := true
 	var lastJobID *int64
 	for _, spec := range specs {
 		if idem != "" {
@@ -340,10 +365,21 @@ func (s *Scheduler) dispatch(ctx context.Context, sc store.Schedule, idem string
 		job, err := s.queue.Enqueue(ctx, spec)
 		if err != nil {
 			s.log.Error("sched: enqueue", "schedule", sc.Name, "err", err)
+			enqueued = false
 			continue
 		}
 		id := job.ID
 		lastJobID = &id
+	}
+
+	// Advance last_run only when every spec was safely enqueued. If any target's
+	// Enqueue failed, leave last_run where it was so catch-up re-fires this
+	// occurrence on the next tick or reboot rather than dropping it silently. The
+	// occurrence idempotency key makes that re-fire safe for a fan-out: targets
+	// that already succeeded collapse onto their existing jobs and only the
+	// failed target is let through — the lost fire is recovered, not doubled.
+	if !enqueued {
+		return
 	}
 
 	next := s.nextFireTime(sc.ID)
