@@ -375,3 +375,19 @@ func TestNotFoundToolError(t *testing.T) {
 		t.Fatalf("want not_found, got %+v", env.Error)
 	}
 }
+
+// TestListEventsRejectsUnknownOutcome asserts the handler enforces the outcome
+// enum the schema advertises: a value outside the store's outcome set is a
+// boundary error, not a silently-empty filter.
+func TestListEventsRejectsUnknownOutcome(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resps := drive(t, srv, req(1, "tools/call",
+		`{"name":"list_events","arguments":{"outcome":"bogus"}}`))
+	env, isErr := toolContent(t, resps[0].Result)
+	if !isErr {
+		t.Fatalf("want isError for unknown outcome")
+	}
+	if env.Error == nil || env.Error.Code != "invalid_argument" {
+		t.Fatalf("want invalid_argument, got %+v", env.Error)
+	}
+}
