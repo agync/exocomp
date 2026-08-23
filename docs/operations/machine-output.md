@@ -110,24 +110,28 @@ fault carried per-entry rather than aborting the probe. `GET /api/v1/health` and
 --remote <host>` call the identical probe, so the three surfaces cannot diverge. See
 [Remote CLI](remote-access.md) for the remote form.
 
-## `exocomp mcp`: the third face
+## MCP-over-HTTP: the third face
 
-exocomp speaks the Model Context Protocol over two transports: `exocomp mcp` over stdio, and
-`POST /mcp` on the ADR-0009 listener. Both run one catalog and one set of handlers, so every
-tool call and resource read routes to the same `internal/service` verbs and marshals the
-same `wire` envelope the CLI and the API use — a resource's MCP bytes match its
-`--output json` and `/api/v1` bytes.
+exocomp maintains exactly one agent MCP surface: `POST /mcp` on the ADR-0009 listener, the
+same one `/api/v1` rides. It runs one catalog and one set of handlers, so every tool call and
+resource read routes to the same `internal/service` verbs and marshals the same `wire`
+envelope the CLI and the API use — a resource's MCP bytes match its `--output json` and
+`/api/v1` bytes.
 
-Stdio runs at the local operator's authority (the process holds the data dir directly, the
-same trust boundary a local `exocomp` invocation has) and has no per-call scope gate; the
-HTTP transport authenticates with a bearer token and filters both `tools/list` and every
-`tools/call` by its scope. Read tools cover
-jobs/workspaces/drift/approvals/sources/schedules/rules/events/secrets(metadata)/backups/
-health; `workspace_plan`/`workspace_apply` enqueue through the service exactly as the API
-does; `approve_job`/`reject_job` exist only for an `approve`-scope token over HTTP, and call
+The transport authenticates with a bearer token and filters both `tools/list` and every
+`tools/call` by its scope; there is no ambient or unauthenticated path onto it. Read tools
+cover jobs/workspaces/drift/approvals/sources/schedules/rules/events/secrets(metadata)/
+backups/health; `workspace_plan`/`workspace_apply` enqueue through the service exactly as the
+API does; `approve_job`/`reject_job` exist only for an `approve`-scope token, and call
 `reactive.Decide` server-side rather than ever returning a decision link. `run_playbook` is
 deliberately not exposed yet — the inventory and `--source` path resolvers it would need are
 still CLI-resident.
+
+exocomp ships no stdio MCP server. A local agent working the filesystem alongside exocomp is
+the sanctioned LOCAL path and drives the agent-aware CLI directly (`--output json`, the
+exit-code table above) — no MCP hop needed. A harness that only speaks stdio MCP bridges to
+`POST /mcp` with an off-the-shelf http-to-stdio wrapper (`npx mcp-remote` or `supergateway`),
+carrying the same bearer; the bridge is the client's concern, not exocomp's code.
 
 Full connection details, the per-scope catalog, and the transport's shape:
 [The MCP surface](mcp.md).

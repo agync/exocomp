@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — four pages and one comment caught up to the stdio removal
+
+[security/threat-model.md](security/threat-model.md), [architecture/overview.md](architecture/overview.md),
+[operations/index.md](operations/index.md), and [operations/machine-output.md](operations/machine-output.md)
+still described the two-transport world after the stdio MCP server's removal. Corrections of
+fact: the AI-1-resid threat-model residual is now recorded CLOSED (the stdio face is gone
+entirely, not just its decision tools, so the token-scoped transport the residual called for
+is what shipped); the architecture overview's face-mapping table no longer names `exocomp mcp`
+as a face that enqueues, crediting MCP-over-HTTP as the agent-aware wrapper over `/api/v1`
+instead; the operations index's two link descriptions drop the stdio mention; and
+machine-output.md's "third face" section is rewritten around the one HTTP surface, the CLI as
+the local agent path, and the npx http-to-stdio bridge, cross-linking [operations/mcp.md](operations/mcp.md)
+rather than duplicating it. `internal/web/server.go`'s `mcpSrv` field comment is corrected to
+say it serves `POST /mcp`, not "the same package `exocomp mcp` serves over stdio".
+
 ## 2026-08-23 — `bootstrap run --capture-file`: KUBECONFIG file staging (Phase 3)
 
 [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) gained the

@@ -208,11 +208,12 @@ below was reproduced against a real binary or the real handler; every one marked
 
 ### Residuals from this wave
 
-- **AI-1-resid** the stdio face still runs unauthenticated at the local operator's authority
-  for `workspace_plan`/`workspace_apply` — that is `cmd/exocomp/mcp.go`'s stated deferral, and
-  it is now bounded by the fact that the face cannot release its own gate. A token-scoped
-  MCP transport (env/handshake token, scope-gated `tools()`, per-call row re-check so a revoke
-  bites) is the follow-up ADR 0014 §3 actually promises.
+- **AI-1-resid — CLOSED.** The stdio face itself is gone: `exocomp mcp` and the bespoke
+  stdio server were removed entirely (ADR 0014 §3), not just their decision tools. The one
+  remaining MCP surface is MCP-over-HTTP (`POST /mcp`), which authenticates with an ADR-0009
+  bearer token, scope-gates `tools/list` and every `tools/call`, and re-checks the token on
+  every call so a revoke bites on the next request — the token-scoped transport this residual
+  called for is what shipped, closing it structurally rather than leaving it bounded.
 - **AI-2-resid** an operator driving a remote daemon needs an `approve`-scope token for
   `approval decide --remote`; the operator token no longer settles approvals over `/api/v1`.
   The self-approval refusal keys on the token NAME recorded in the ledger, so a revoked
