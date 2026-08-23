@@ -38,10 +38,13 @@ import (
 // refused: that lifecycle is a composed workflow the CLI owns, not one queued
 // play.
 //
-// Deferred here, and why: applying a SAVED plan that carries no policy verdict
-// needs the sealed plan decrypted into a run-private plaintext copy
-// (openPlanForRun), still CLI-resident. A fresh apply and a require-approval /
-// deny plan need no decryption and are served here.
+// A saved plan applies by artifact id: the apply enqueues against the SEALED
+// plan path, and the daemon that claims the row decrypts it into a run-private
+// plaintext for the one run that consumes it (workspaceDriver), so this
+// pure-enqueue face never leaves a plaintext plan in the shared data dir. A plan
+// started through /workspaces/{name}/plan carries the "api" trigger, so the
+// daemon seals its -out into a consumable artifact and records its policy
+// verdict post-run — the id an apply-by-id then consults.
 
 // Write-response kinds. The wire package (owned elsewhere, not edited by this
 // lane) has no write projections yet, so these presentation-only shapes live
@@ -80,12 +83,6 @@ type decisionView struct {
 	Outcome    string `json:"outcome,omitempty"`
 	Message    string `json:"message,omitempty"`
 }
-
-// errPlanDecryptUnsupported is the buildArgv refusal for a plain saved-plan
-// apply: the decrypt-to-plaintext step is still CLI-resident, so rather than
-// enqueue an apply whose argv the daemon cannot read, the verb is refused.
-var errPlanDecryptUnsupported = errors.New(
-	"web: applying a saved plan without a policy verdict needs the plan-decrypt helper (not yet shared)")
 
 // registerWriteAPI mounts the /api/v1 POST routes. Go 1.22 method-aware routing
 // means a GET (or any non-POST) on one of these paths, and a POST on a GET-only
@@ -214,6 +211,9 @@ func (s *Server) apiWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 		RunSecrets:     req.RunSecrets,
 		IdempotencyKey: idempotencyKey(r),
 		Timeout:        timeout,
+		// The "api" trigger tells the daemon to seal this plan's -out file into a
+		// consumable artifact post-run; a CLI plan seals its own.
+		Trigger: service.TriggerAPI,
 	})
 	if err != nil {
 		s.apiFail(w, err)
@@ -239,6 +239,7 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	svc := s.service()
 	var saved *store.Artifact
 	var gate service.PlanGate
 	if req.Plan != "" {
@@ -257,13 +258,15 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		saved = &art
-		if gate, err = s.planGate(r.Context(), art); err != nil {
-			s.apiFail(w, err)
+		verdict, verr := svc.PlanVerdict(r.Context(), art)
+		if verr != nil {
+			s.apiFail(w, verr)
 			return
 		}
+		gate = service.PlanGateFor(verdict)
 	}
 
-	res, err := s.service().ApplyWorkspace(r.Context(), s.enqueuer(), s.deriver, service.ApplyInput{
+	res, err := svc.ApplyWorkspace(r.Context(), s.enqueuer(), s.deriver, service.ApplyInput{
 		Workspace:       ws.Name,
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
@@ -276,17 +279,17 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		if saved == nil {
 			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
 		}
-		return nil, nil, func() {}, errPlanDecryptUnsupported
+		// Enqueue the apply against the SEALED plan path; the daemon that claims
+		// the row decrypts it into a run-private plaintext for the one run that
+		// consumes it (workspaceDriver), so no plaintext plan is ever left in the
+		// shared data dir by this pure-enqueue face.
+		return executor.TofuArgv("apply", saved.Path), saved, func() {}, nil
 	})
 
 	var denied *service.PlanDeniedError
 	switch {
 	case errors.As(err, &denied):
 		s.apiError(w, http.StatusConflict, wire.NewError(wire.CodeConflict, err.Error()))
-		return
-	case errors.Is(err, errPlanDecryptUnsupported):
-		s.apiError(w, http.StatusNotImplemented,
-			wire.NewError(wire.CodeInternal, errPlanDecryptUnsupported.Error()))
 		return
 	case err != nil:
 		s.apiFail(w, err)
@@ -310,46 +313,6 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	run := res.Run
 	defer run.Release()
 	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: run.Job.ID, State: string(run.Job.State)})
-}
-
-// planGate reads back the policy verdict a plan's seal recorded on the plan job's
-// timeline, reduced to the two outcomes that route an apply. It reads only the
-// values-free plan_policy audit envelope (name + action + artifact id), never a
-// plan attribute value. A plan with no recorded verdict gates nothing. This
-// mirrors the CLI's planVerdict; it reads the store, so it is a lookup, not a
-// duplicated helper.
-func (s *Server) planGate(ctx context.Context, art store.Artifact) (service.PlanGate, error) {
-	if art.JobID == 0 {
-		return service.PlanGate{}, nil
-	}
-	events, err := s.store.ListJobEvents(ctx, art.JobID)
-	if err != nil {
-		return service.PlanGate{}, err
-	}
-	for _, e := range events {
-		if e.RawJSON == "" {
-			continue
-		}
-		var env struct {
-			PlanPolicy *struct {
-				Action   string `json:"action"`
-				Policy   string `json:"policy"`
-				Artifact int64  `json:"artifact"`
-			} `json:"plan_policy"`
-		}
-		if err := json.Unmarshal([]byte(e.RawJSON), &env); err != nil || env.PlanPolicy == nil {
-			continue
-		}
-		if env.PlanPolicy.Artifact != art.ID {
-			continue
-		}
-		return service.PlanGate{
-			Deny:            env.PlanPolicy.Action == store.PolicyDeny,
-			RequireApproval: env.PlanPolicy.Action == store.PolicyRequireApproval,
-			Policy:          env.PlanPolicy.Policy,
-		}, nil
-	}
-	return service.PlanGate{}, nil
 }
 
 // --- approval decision ------------------------------------------------------

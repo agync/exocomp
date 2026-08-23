@@ -21,6 +21,9 @@ type PlanInput struct {
 	RunSecrets     string
 	IdempotencyKey string
 	Timeout        time.Duration
+	// Trigger records who asked (TriggerManual/TriggerAPI); empty defaults to
+	// manual. The daemon reads it back to decide whether to seal the plan.
+	Trigger string
 }
 
 // PlanResult carries the enqueued job and the path the plan file will be
@@ -35,10 +38,14 @@ type PlanResult struct {
 func (s *Service) PlanWorkspace(ctx context.Context, enq Enqueuer, in PlanInput) (PlanResult, error) {
 	planPath := filepath.Join(in.ArtifactsDir,
 		fmt.Sprintf("%s-%d.tfplan", in.Workspace, s.now().UTC().UnixNano()))
+	trigger := in.Trigger
+	if trigger == "" {
+		trigger = TriggerManual
+	}
 	spec := queue.Spec{
 		Runbook:          WorkspaceRunbook(in.Workspace),
 		Kind:             executor.KindTofu,
-		Trigger:          "manual",
+		Trigger:          trigger,
 		Argv:             executor.TofuArgv("plan", "-out="+planPath),
 		Dir:              in.TofuDir,
 		RunSecretBinding: in.RunSecrets,

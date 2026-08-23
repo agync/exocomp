@@ -18,6 +18,16 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
+// TriggerManual is the trigger a CLI-initiated run records; TriggerAPI is the
+// one an HTTP API run records. The daemon reads the plan trigger back to decide
+// whether it, rather than the caller, must seal the plan into a consumable
+// artifact: a CLI run seals its own plan post-run, an API run cannot (it only
+// enqueues), so the daemon does it for the API's "api" trigger alone.
+const (
+	TriggerManual = "manual"
+	TriggerAPI    = "api"
+)
+
 // workspaceRunbookPrefix labels a queued tofu job with the workspace it belongs
 // to; it is the only record of that binding, so the daemon reads it back to
 // rebuild the job's driver. The CLI keeps its own copy of the literal — the two

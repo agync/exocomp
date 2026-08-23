@@ -26,6 +26,7 @@ import (
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/verify"
 )
@@ -767,6 +768,25 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 	d.server.BindJob(ws.Name, job.ID)
 	defer d.server.ReleaseJob(ws.Name)
 
+	op := tofuOp(spec.Argv)
+
+	// An apply of a sealed saved plan needs the plaintext for the one run that
+	// consumes it. A pure-enqueue face (the API) enqueues the sealed path because
+	// it cannot hold a decrypted copy until a later run reads it; the daemon opens
+	// it here, into the job's private dir, removed when the run ends.
+	if op == "apply" {
+		if plan, ok := applyPlanArg(spec.Argv); ok {
+			readable, release, oerr := service.OpenPlanForRun(d.env, d.dirs.private, plan)
+			if oerr != nil {
+				return executor.Result{}, oerr
+			}
+			defer release()
+			if readable != plan {
+				spec.Argv = setApplyPlanArg(spec.Argv, readable)
+			}
+		}
+	}
+
 	drv := tofuTierDriver(d.dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
 		BackendURL:      api.StateURL(d.server.Addr(), ws.Name),
@@ -784,7 +804,7 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 	material := append([][]byte{[]byte(token), stateKey, []byte(passphrase)}, secretPlain...)
 	redactor := secrets.NewRedactor(material)
 	res, err := drv.Run(ctx, spec, runSink{redactor: redactor, next: sink})
-	if err == nil && res.ExitCode == 0 && tofuOp(spec.Argv) == "apply" {
+	if err == nil && res.ExitCode == 0 && op == "apply" {
 		if recErr := recordInventoryArtifact(ctx, d.store, spec.JobID, ws.Name, d.dirs.root); recErr != nil {
 			sink.Emit(executor.Event{
 				Ts:    time.Now().UTC(),
@@ -793,7 +813,53 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 			})
 		}
 	}
+	// A plan the API asked for cannot be sealed by its caller, which only
+	// enqueued the row; the daemon seals its -out into a consumable artifact and
+	// records its policy verdict, so a later apply-by-id can consult it. A CLI
+	// plan carries the manual trigger and seals its own, so this runs for the
+	// "api" trigger alone.
+	if err == nil && op == "plan" && job.Trigger == service.TriggerAPI {
+		d.sealAPIPlan(ctx, job, ws, spec.Argv, sink)
+	}
 	return res, err
+}
+
+// sealAPIPlan seals an API-initiated plan's -out file into a consumable artifact
+// and records its policy verdict, through the same service verbs the CLI's
+// post-run half calls. A failure is loud but never fails the run: the plan
+// itself already succeeded (exit-code doctrine), so a seal fault must not turn a
+// good plan into a failed job — it only leaves the plan unconsumable by id.
+func (d workspaceDriver) sealAPIPlan(ctx context.Context, job store.Job, ws store.Workspace,
+	argv []string, sink executor.EventSink) {
+	planPath := planOutArg(argv)
+	if planPath == "" {
+		return
+	}
+	emit := func(format string, a ...any) {
+		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelError, Msg: fmt.Sprintf(format, a...)})
+	}
+	svc := service.New(d.store, d.dirs.root, nil)
+	saved, err := svc.SealPlan(ctx, d.env, job.ID, planPath)
+	if err != nil {
+		emit("seal plan artifact: %v", err)
+		return
+	}
+	if saved == nil {
+		return
+	}
+	res, err := svc.EvalPlanPolicy(ctx, ws, job.ID)
+	if err != nil {
+		emit("evaluate plan policy: %v", err)
+		return
+	}
+	if res.FailNotice != "" {
+		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelSystem, Msg: res.FailNotice})
+	}
+	if res.Verdict.Matched() {
+		if _, err := svc.RecordPlanVerdict(ctx, saved.JobID, saved.ID, res.Verdict); err != nil {
+			emit("record plan verdict: %v", err)
+		}
+	}
 }
 
 // tofuOp is the operation a tofu argv names, or "" when it names none.
@@ -802,6 +868,33 @@ func tofuOp(argv []string) string {
 		return ""
 	}
 	return argv[1]
+}
+
+// applyPlanArg reports the saved-plan file an `apply <planfile>` argv names, or
+// false for a bare `apply -auto-approve` or any other operation.
+func applyPlanArg(argv []string) (string, bool) {
+	if len(argv) >= 3 && argv[1] == "apply" && !strings.HasPrefix(argv[2], "-") {
+		return argv[2], true
+	}
+	return "", false
+}
+
+// setApplyPlanArg rewrites the plan file an apply reads, returning a copy so the
+// caller's slice is left alone.
+func setApplyPlanArg(argv []string, path string) []string {
+	out := append([]string(nil), argv...)
+	out[2] = path
+	return out
+}
+
+// planOutArg is the `-out=PATH` a plan argv writes to, or "" when it names none.
+func planOutArg(argv []string) string {
+	for _, a := range argv {
+		if v, ok := strings.CutPrefix(a, "-out="); ok {
+			return v
+		}
+	}
+	return ""
 }
 
 // runSink scrubs the material one run derives. The queue's own redactor is

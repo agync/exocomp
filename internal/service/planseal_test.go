@@ -82,6 +82,33 @@ func TestSealPlanMissingFileIsNil(t *testing.T) {
 	}
 }
 
+// TestPlanWorkspaceHonorsTrigger: the API plan carries the "api" trigger the
+// daemon reads to decide it must seal the plan, while a caller that sets none
+// keeps the manual default so a CLI plan seals its own.
+func TestPlanWorkspaceHonorsTrigger(t *testing.T) {
+	svc := service.New(nil, t.TempDir(), nil)
+
+	api := &fakeEnqueuer{}
+	if _, err := svc.PlanWorkspace(context.Background(), api, service.PlanInput{
+		Workspace: "web", ArtifactsDir: t.TempDir(), Trigger: service.TriggerAPI,
+	}); err != nil {
+		t.Fatalf("PlanWorkspace(api): %v", err)
+	}
+	if api.enqueued[0].Trigger != service.TriggerAPI {
+		t.Errorf("api plan trigger = %q, want %q", api.enqueued[0].Trigger, service.TriggerAPI)
+	}
+
+	def := &fakeEnqueuer{}
+	if _, err := svc.PlanWorkspace(context.Background(), def, service.PlanInput{
+		Workspace: "web", ArtifactsDir: t.TempDir(),
+	}); err != nil {
+		t.Fatalf("PlanWorkspace(default): %v", err)
+	}
+	if def.enqueued[0].Trigger != service.TriggerManual {
+		t.Errorf("default plan trigger = %q, want %q", def.enqueued[0].Trigger, service.TriggerManual)
+	}
+}
+
 const deleteRule = `plan.resource_changes.exists(c, c.change.actions.exists(a, a == "delete"))`
 
 // TestPlanPolicyRoundTrip: a deny policy over a delete matches, RecordPlanVerdict
