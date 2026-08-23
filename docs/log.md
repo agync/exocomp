@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — ADR-0014 reconciled to the single MCP-over-HTTP surface
+
+[adr/0014-agent-facing-surface.md](adr/0014-agent-facing-surface.md) and its design doc
+[design/agent-interface.md](design/agent-interface.md) were reconciled to the decided
+architecture. The open governance question — ambient stdio authority vs a uniform token — is
+resolved: exocomp maintains exactly one programmatic MCP surface, MCP over HTTP with an
+ADR-0009 bearer and the readonly/operator/approve scopes, mounted on the `/api/v1` listener; no
+maintained stdio server and no ambient-authority path. The local agent path is the agent-aware
+CLI; a stdio client bridges to `POST /mcp` with an off-the-shelf http-to-stdio wrapper.
+Corrections of fact: the remote selector is `--remote` / `EXOCOMP_REMOTE` (not `--host`), and
+`internal/service`, the write `/api/v1`, remote CLI client mode, and the HTTP MCP server have
+all shipped — the ADR now ratifies built reality, with the bespoke stdio server's removal as
+the one follow-on code change it ratifies. Status stays Proposed (ratification is the owner's
+act).
+
 ## 2026-08-23 — bootstrap-first B1 example fixed; lane skills updated
 
 [design/bootstrap-first.md](design/bootstrap-first.md)'s Option B1 signature no

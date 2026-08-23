@@ -74,7 +74,7 @@ To run ops from `lrrr` over the tailnet to `nibbler`, four things are missing:
    loopback; there is no `/api/v1/jobs`, `/workspaces`, `/approvals`. The web listener carries
    the right auth (ADR 0009) but emits HTML.
 2. **No remote CLI client mode.** The CLI always operates locally against the data dir. There
-   is no `--host` / `EXOCOMP_HOST` that makes it a thin HTTP client of a remote daemon.
+   is no `--remote` / `EXOCOMP_REMOTE` that makes it a thin HTTP client of a remote daemon.
 3. **No structured-output contract.** Nothing emits a stable, versioned, values-free JSON an
    agent or small model can branch on. Errors are flat `{"error": msg}` (internal/api/state.go)
    or free-text prose; there is no typed `{code, message, hint}`.
@@ -93,8 +93,8 @@ operator surface.
 ```
         lrrr (operator workstation / agent host)
         ┌───────────────┬──────────────┬───────────────┐
-        │ exocomp CLI   │ HTTP client  │ exocomp mcp    │
-        │ --host        │ (curl/SDK)   │ (stdio)        │
+        │ exocomp CLI   │ HTTP client  │ MCP client     │
+        │ (local/--remote)│ (curl/SDK) │ (bearer /mcp)  │
         └───────┬───────┴──────┬───────┴───────┬────────┘
                 │  tailnet (bearer token + pinned cert / Tailscale Serve TLS)
    nibbler ─────┼──────────────┼───────────────┼──────────────────────
@@ -102,7 +102,7 @@ operator surface.
         │  ADR-0009 token-gated listener (internal/web)  │  ← one auth story
         │  /            (HTML, existing)                 │
         │  /api/v1/...  (JSON, new)  ── requireAuth+scope │
-        │  exocomp mcp  (stdio, local; SSE opt-in here)  │
+        │  POST /mcp    (MCP over HTTP, bearer+scope)    │
         └───────────────────────┬────────────────────────┘
                                 ▼
                     internal/service  ← ALL business logic (verbs)
@@ -205,18 +205,20 @@ envelope — the difference is transport.
 ```
 exocomp login nibbler.tailnet.ts.net        # TOFU: fetches cert, shows fingerprint,
                                              # stores pinned fp + token (known-hosts style)
-exocomp --host nibbler jobs list --output json
-EXOCOMP_HOST=nibbler EXOCOMP_TOKEN=… EXOCOMP_OUTPUT=json exocomp workspace plan web
-exocomp --host nibbler approval decide 42 --approve
+exocomp --remote nibbler jobs list --output json
+EXOCOMP_REMOTE=nibbler EXOCOMP_TOKEN=… EXOCOMP_OUTPUT=json exocomp workspace plan web
+exocomp --remote nibbler approval decide 42 --approve
 ```
 
-- Config precedence: `--host` flag → `EXOCOMP_HOST` → `~/.config/exocomp/hosts.toml`. Token
-  from `--token` → `EXOCOMP_TOKEN` → the host entry. A bare `exocomp <cmd>` with no host stays
-  local against the data dir (unchanged), so nothing an operator on `nibbler` does today
-  breaks.
+- Config precedence: `--remote` flag → `EXOCOMP_REMOTE` → a valueless `--remote` fills from the
+  `~/.config/exocomp/hosts.toml` default. Token from `--token` → `EXOCOMP_TOKEN` → the host
+  entry. A bare `exocomp <cmd>` with neither flag nor env stays local against the data dir
+  (unchanged), so nothing an operator on `nibbler` does today breaks. The selector is `--remote`,
+  not `--host`: `--host` is already the ansible target pattern (`exocomp command --host …`), so
+  reusing it for the daemon would collide.
 - `internal/client` is the typed HTTP client (the `api/` "monorepo seam" package the layout
   reserves) generated from / kept in lockstep with the API's OpenAPI 3.1 spec.
-- New global flags land here and apply in both modes: `--output text|json`, `--host`,
+- New global flags land here and apply in both modes: `--output text|json`, `--remote`,
   `--token`, `--idempotency-key`, and the non-interactive contract (`--assume-yes`,
   `--no-input`, replacing the divergent `--force` / `--yes-really`).
 
@@ -268,12 +270,21 @@ queue's reserved `wf:` step keys are unaddressable from any face (finding AI-7).
 `wire` typed envelope. Apply applies the **saved** plan, not a fresh one — the plan→apply seam
 is two linked job rows and the approver sees the actual plan (overview.md:64-66).
 
-### 3.5 MCP face (`exocomp mcp`, stdio primary)
+### 3.5 MCP face (MCP over HTTP, `POST /mcp` on the ADR-0009 listener)
 
-`exocomp mcp` is a thin adapter that maps MCP tool calls to `internal/service` verbs and
-marshals the identical `wire` envelope. Stdio transport is the primary (local agent) case; an
-optional HTTP/SSE MCP endpoint mounts on the same ADR-0009 listener behind the same
-bearer+scope check. Tool visibility is scope-gated: a `readonly` token advertises only R tools.
+exocomp maintains exactly one programmatic MCP surface: MCP over HTTP, mounted at `POST /mcp`
+on the same ADR-0009 listener as `/api/v1`, behind the same bearer+scope guard
+(`internal/web/mcp_http.go`). It is a thin adapter that maps MCP tool calls to
+`internal/service` verbs and marshals the identical `wire` envelope — the agent-aware wrapper
+around the `/api/v1` bearer tokens, not a second server. Every MCP principal presents a scoped
+token; there is no ambient-authority MCP path. Tool visibility is scope-gated: a `readonly`
+token advertises only R tools.
+
+The LOCAL agent path is the CLI, which is already agent-aware (`--output json`, the exit-code
+table, the same `wire` envelope) — a local harness drives exocomp through the CLI, not through
+an MCP server of its own. exocomp ships and maintains no stdio MCP server; a harness that must
+speak stdio MCP runs an off-the-shelf http-to-stdio bridge (e.g. `npx mcp-remote` or
+`supergateway`) around `POST /mcp` with a bearer token.
 
 **Tools** (R = read, W = write/enqueues, A = approval-gated):
 
@@ -302,11 +313,13 @@ own CLI run; and `tools/call`/`resources/read` sent as a JSON-RPC *notification*
 with `invalid_request` rather than executed silently, because a mutation that writes no
 frame back leaves an audit wrapper nothing to record (finding AI-13).
 
-**The A column is gated on a scope, so it ships only on a transport that carries one.** The
-stdio face authenticates nothing, so `approve_job`/`reject_job` are absent from it entirely
-(finding AI-1, `docs/security/threat-model.md`): an agent that can raise a gate with
-`workspace_apply` must not hold its release. They return with the HTTP/SSE transport, behind
-the same bearer+scope check the write API uses.
+**The A column is gated on the `approve` scope alone, and W and A are disjoint.** Approval
+requires an explicitly minted `approve`-scope token; `approve_job`/`reject_job` are absent from
+the catalog a lesser scope sees, and the scope that enqueues a gated apply may not settle it —
+nor may any principal decide the approval for a job its own token asked for (findings AI-1,
+AI-2, `docs/security/threat-model.md`). Because every MCP principal presents a scoped token and
+none acts un-scoped, a face that raises a gate with `workspace_apply` can never also hold its
+release; there is no ambient approver.
 
 **Resources** (stable, cacheable context an agent fetches or subscribes to):
 `exocomp://workspaces`, `…/workspaces/{name}/drift`, `exocomp://jobs/{id}`,
@@ -397,16 +410,19 @@ resources are the "be aware of" surface.
 - **Wave 2 — Operator HTTP API (read).** JSON read endpoints on the ADR-0009 listener over the
   service verbs, typed `wire` errors, OpenAPI 3.1 spec + `internal/client`. SSE job-follow.
 - **Wave 3 — Remote CLI (the north star) + write API.** `exocomp login` (TOFU pinning) +
-  `--host`/`EXOCOMP_HOST` client mode; write/approval endpoints (plan/apply/run/decide) through
-  queue+gate. `lrrr → tailnet → nibbler` works end to end.
-- **Wave 4 — MCP face.** `exocomp mcp` (stdio) adapter over the service verbs, same envelope;
-  tool/resource catalog with scope gating; optional HTTP/SSE MCP mount.
+  `--remote`/`EXOCOMP_REMOTE` client mode; write/approval endpoints (plan/apply/run/decide)
+  through queue+gate. `lrrr → tailnet → nibbler` works end to end.
+- **Wave 4 — MCP face.** `POST /mcp` (MCP over HTTP) adapter over the service verbs, same
+  envelope; tool/resource catalog with scope gating, on the ADR-0009 bearer+scope guard. The
+  local agent path is the agent-aware CLI; exocomp ships no stdio MCP server (a stdio client
+  bridges to `POST /mcp` with an off-the-shelf http-to-stdio wrapper).
 
 ## 7. Risks and open decisions
 
 - **Charter scope.** No existing design doc names an agent/MCP/remote-CLI consumer as a
-  requirement; the operator-centric charter has not ratified agent-fit. Land an ADR proposing
-  it before Wave 1, so the surface is a decision with consequences, not an assumption.
+  requirement; the operator-centric charter did not ratify agent-fit on its own. ADR-0014 now
+  records that decision and its one resolved design question — a single MCP surface over HTTP
+  with no ambient authority — so the surface is a decision with consequences, not an assumption.
 - **Schema is a contract.** If the CLI and API/MCP envelopes ever diverge, or a field shape
   changes without a `schema_version` bump, agent parsers and prompt caches break silently. One
   shared `wire` marshaller under golden tests is the mitigation.

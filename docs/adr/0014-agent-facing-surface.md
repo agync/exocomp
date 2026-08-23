@@ -2,6 +2,13 @@
 
 Status: Proposed · 2026-08-23
 
+> **The open design question is now RESOLVED.** The one governance question this ADR carried —
+> whether the MCP surface keeps ambient local-operator authority or moves to a uniform ADR-0009
+> token — is settled: exocomp maintains exactly one programmatic MCP surface, MCP over HTTP with
+> a bearer token and the ADR-0009 scopes, and no ambient-authority MCP path. The surface this
+> ADR describes is built and hardened; the only remaining work is the stdio-server removal this
+> document ratifies. The ADR is ready to ratify at the owner's discretion.
+
 ## Context
 
 exocomp's charter is operator-centric: a human runs the CLI, the TUI, or the web/phone
@@ -11,11 +18,11 @@ gap was found by a design pass, not asked for by the charter. Ratifying agent-fi
 first-class concern — rather than leaving it as an unratified design doc — is the decision
 this ADR records (design doc §7).
 
-The concrete need is real and already partly built: run homelab-ansible operations from an
-operator workstation, over the tailnet, against a remote exocomp daemon — plan/apply a
-workspace, run a playbook, watch a job, decide an approval — without SSHing in or
-screen-scraping aligned text. The same surface must work for a small, local model that
-branches on integers and typed codes rather than parsing prose.
+The concrete need is real and now built: run homelab-ansible operations from an operator
+workstation, over the tailnet, against a remote exocomp daemon — plan/apply a workspace, run a
+playbook, watch a job, decide an approval — without SSHing in or screen-scraping aligned text.
+The same surface must work for a small, local model that branches on integers and typed codes
+rather than parsing prose.
 
 Two invariants bound the design space:
 
@@ -25,25 +32,29 @@ Two invariants bound the design space:
 - **Invariant 3** — subprocess correctness is decided by exit codes only. A machine face
   should get the same signal a human gets from a shell, not a parallel truth.
 
-Work toward this has already shipped ahead of ratification: `internal/wire` (the envelope
-package), `--output json` on read/list/status CLI verbs, `doctor --output json`, read-only
-`/api/v1` JSON endpoints on the ADR-0009 listener, cobra `Example` blocks, and
-`commands --output json` (the self-describing command tree). This ADR ratifies the direction
-that work is already taking, and scopes what remains.
+The whole surface has since shipped and been hardened. The contract foundation landed first
+(`internal/wire`, `--output json`, `doctor --output json`, read-only `/api/v1`, cobra
+`Example` blocks, `commands --output json`), and the session this ADR is reconciled against
+landed the rest: the `internal/service` verb layer, the write `/api/v1`, remote CLI client
+mode, and the HTTP MCP server — all through the red-team wave that closed findings
+AI-1..AI-13. This ADR therefore ratifies shipped reality, not a direction; the build-status
+detail is in Decision point 6, and the one code change that remains is the removal of the
+bespoke stdio MCP server (Decision point 3).
 
-**Correction from the design doc's own verification pass.** The design doc originally
+**On a correction the design doc's verification pass raised.** The design doc originally
 described `internal/api`'s `Mount(routes)` seam as something `/api/v1` could ride directly on
-`internal/web`. It cannot: `internal/web/server.go` had no route-extension hook of its own —
-that seam exists only on `internal/api`, the separate loopback tofu state backend. The web
-mount seam and `internal/service` are being *built* as part of this work, not reused as
-pre-existing infrastructure. This ADR ratifies the target, not a claim that the plumbing
-already existed.
+`internal/web`. It could not: `internal/web/server.go` had no route-extension hook of its own —
+that seam existed only on `internal/api`, the separate loopback tofu state backend. The web
+mount seam and `internal/service` were *built* as part of this work, not reused as
+pre-existing infrastructure — and they now exist, so `/api/v1` and the HTTP-MCP transport ride
+the ADR-0009 web listener as the target described.
 
 ## Decision
 
 **exocomp exposes its one operational core through three thin programmatic faces — CLI
-`--output json`, an HTTP `/api/v1`, and an MCP server — that share one contract and one
-execution path. No face is a second way to mutate state.**
+`--output json`, an HTTP `/api/v1`, and an MCP-over-HTTP surface — that share one contract and
+one execution path. No face is a second way to mutate state, and no face acts without a scoped
+credential.**
 
 1. **One core, thin faces.** Every face calls the same `internal/service` verbs; none reaches
    the store or the queue directly. `internal/service` imports queue/store/reactive/executor/
@@ -51,17 +62,58 @@ execution path. No face is a second way to mutate state.**
    machine callers, not just human ones — a bug or a shortcut in one face cannot bypass a
    guardrail another face enforces.
 
-2. **Every write routes through the one queue.** `PlanWorkspace`/`ApplyWorkspace` enqueue via
-   `queue.Enqueue`/`EnqueueGated`; nothing behind `/api/v1` or an MCP tool shells out or
-   mutates state directly. A destructive call lands in `awaiting_approval` the same way a CLI
-   invocation with `--require-approval` does — there is no faster, unguarded path for a
-   machine caller than the one a human already has.
+2. **Every managed-state and execution write routes through the one queue.**
+   `PlanWorkspace`/`ApplyWorkspace` enqueue via `queue.Enqueue`/`EnqueueGated`; nothing behind
+   `/api/v1` or an MCP tool shells out or mutates state directly. A destructive call lands in
+   `awaiting_approval` the same way a CLI invocation with `--require-approval` does — there is
+   no faster, unguarded path for a machine caller than the one a human already has. The
+   carve-out is narrow and not a side door: an *ephemeral control-plane* action — the
+   drain/maintenance cordon that stops new schedule fires and new job claims ahead of a planned
+   reboot — is an operator-scoped write that is deliberately NOT a queue job, because it toggles
+   transient daemon state, not managed state or execution. It touches no workspace, runs no
+   subprocess, and enqueues nothing (`internal/web/api_maintenance.go`). The invariant binds
+   managed-state and execution writes to the queue; it does not turn every control-plane toggle
+   into a job.
 
-3. **Auth reuses ADR-0009 tokens and its three scopes wholesale.** `readonly` / `operator` /
-   `approve` map 1:1 onto R / W / A across all three faces. No second session system, no
-   second credential type. A non-loopback bind still refuses without an active token; an
-   out-of-scope call is rejected before any store touch. MCP tool visibility is scope-gated —
-   a `readonly` token advertises only read tools.
+3. **One agent-aware MCP surface: HTTP + bearer + the ADR-0009 scopes.** exocomp maintains
+   exactly one programmatic MCP surface — MCP over HTTP, mounted on the same ADR-0009 listener
+   as `/api/v1` (`POST /mcp`, `internal/web/mcp_http.go`), behind the same `/api/v1` write
+   guard, stateless so a revoke bites on the next call. It is not a second server: there is one
+   MCP core — one tool/resource catalog, one set of handlers, one dispatch (`internal/mcp`) —
+   and it calls the same in-process `internal/service` verbs `/api/v1` calls. The MCP-HTTP face
+   is literally the agent-aware wrapper around the `/api/v1` bearer tokens: every MCP principal
+   presents a scoped token, and the three ADR-0009 scopes map 1:1 onto the capabilities the
+   catalog gates on — `readonly` / `operator` / `approve` are R / W / A (`internal/mcp/caller.go`).
+
+   **Scope-gated, with W and A disjoint.** MCP tool visibility is scope-gated on the token: a
+   `readonly` token advertises only read tools; an out-of-scope call is rejected before any
+   store touch. The write and approve floors are DISJOINT — the `operator` scope that enqueues a
+   gated apply cannot settle it, and no principal may decide an approval for a job its own token
+   asked for (finding AI-2). Approval is possible only with an explicitly minted `approve`-scope
+   token; `Caller.Decide` is non-nil only under that scope and the decision seam is dropped for
+   any other, so the disjointness holds at construction, not by every call site remembering it.
+   There is no ambient approver anywhere on the surface.
+
+   **The LOCAL path is the agent-aware CLI.** A local agent does not need an MCP server of its
+   own: the CLI is already agent-aware — `--output json`, the ratified exit-code table, and the
+   same `internal/wire` envelope the HTTP faces marshal. A local harness drives exocomp through
+   the CLI exactly as a human does, branching on codes rather than parsing prose.
+
+   **stdio is not a maintained exocomp surface.** exocomp ships and maintains no stdio MCP
+   server. A harness that must speak stdio MCP runs an off-the-shelf http-to-stdio bridge (e.g.
+   `npx mcp-remote` or `supergateway`) around `POST /mcp` with a bearer token; the bridge is the
+   client's concern, not exocomp's code. The bespoke stdio server that shipped earlier this
+   session (`exocomp mcp`) is being REMOVED in a follow-on code change, and this ADR ratifies
+   that end-state.
+
+   **Why this is the design.** There is one operational core, and MCP is a thin token-scoped
+   face over `/api/v1` — not a second server, and not an ambient-authority path. Keeping it to
+   one credential-bearing HTTP surface is what makes "a revoked token cuts off every programmatic
+   face" actually true: with no tokenless MCP path there is no face a revoke cannot reach.
+   Removing ambient authority also closes the self-approval class structurally — no principal
+   ever acts un-scoped, so an autonomous agent can never both raise a gate with `workspace_apply`
+   and hold its release (the ambient-self-approval concern behind finding AI-1). The security
+   property lives in "every principal presents a scoped token", not in policing two codebases.
 
 4. **The `internal/wire` envelope is the one contract all three faces marshal through.**
    Every success and every failure is one shape:
@@ -112,14 +164,30 @@ execution path. No face is a second way to mutate state.**
    and a closed, small error/exit-code vocabulary (so a weak model can dispatch on a handful
    of codes instead of pattern-matching prose).
 
-6. **What has already shipped is the realized foundation, not a promise:** `internal/wire`
-   envelope and schema, `--output json` on read/list/status CLI verbs, `doctor --output json`,
-   the read-only `/api/v1` endpoints on the ADR-0009 listener, cobra `Example` blocks on every
-   command, and `commands --output json`. **What remains proposed and unbuilt:** the
-   `internal/service` extraction (verbs are still reached through `RunE`/store/queue directly
-   for some paths), the write half of `/api/v1` (plan/apply/run/decide, idempotency-keyed,
-   gated), remote CLI client mode (`exocomp login`, `--host`/`EXOCOMP_HOST`), and the MCP
-   server. This ADR ratifies the whole direction; it does not claim the whole thing is built.
+6. **The surface is built — this ADR ratifies shipped reality, not a promise.** The contract
+   foundation landed first (`internal/wire` envelope and schema, `--output json` on
+   read/list/status CLI verbs, `doctor --output json`, the read-only `/api/v1` endpoints on the
+   ADR-0009 listener, cobra `Example` blocks on every command, and `commands --output json`),
+   and the rest — everything the earlier draft of this ADR listed as "proposed and unbuilt" —
+   has since shipped:
+
+   - `internal/service` is extracted and real (`internal/service/*.go`): the verb layer the
+     CLI, `/api/v1`, and MCP all call, none reaching the store or queue directly.
+   - the write half of `/api/v1` (plan/apply/run/decide, idempotency-keyed and namespaced per
+     token + route, gated) — `internal/web/api_write.go`.
+   - remote CLI client mode — `exocomp login` (TOFU cert pinning) and the `--remote` /
+     `EXOCOMP_REMOTE` selector, with `internal/client` as the typed HTTP client
+     (`cmd/exocomp/login.go`, `cmd/exocomp/remote.go`, `internal/client/*.go`). The selector is
+     `--remote`, NOT `--host`: `--host` is already the ansible target pattern
+     (`exocomp command --host <pattern>`) and reusing it for the daemon would collide.
+   - the HTTP MCP server — `internal/mcp` dispatch mounted at `POST /mcp` on the ADR-0009
+     listener (`internal/web/mcp_http.go`).
+
+   All of it passed through the red-team wave that closed findings AI-1..AI-13 (2026-08-23).
+   The one code change that remains is the REMOVAL of the bespoke stdio MCP server (`exocomp
+   mcp`, Decision point 3); this ADR ratifies that end-state — a single MCP surface, HTTP and
+   token-scoped, with an off-the-shelf bridge for any stdio client. Beyond that removal the
+   ADR records the direction the shipped code took; it no longer scopes unbuilt work.
 
 ## Consequences
 
@@ -129,15 +197,32 @@ execution path. No face is a second way to mutate state.**
 - The three faces are now bound to converge on one marshaller and one set of golden tests; a
   CLI JSON shape and an API JSON shape are the same commitment, not two contracts that can
   drift apart.
-- `internal/service` extraction stops being optional cleanup and becomes a prerequisite for
-  the write API and MCP faces — both need one verb layer to call without forking logic.
-- No new auth story is introduced; ADR-0009's tokens and scopes now cover CLI, HTTP, and MCP
-  identically, so a revoked token cuts off all three at once.
+- `internal/service` extraction was the prerequisite for the write API and MCP faces — both
+  needed one verb layer to call without forking logic — and it now exists, so the CLI,
+  `/api/v1`, and MCP share it rather than each reimplementing a verb.
+- **A revoked token cuts off every programmatic face at once — now true without caveat.** Every
+  programmatic face is token-bearing: the remote CLI (`--remote`), `/api/v1`, and MCP-HTTP each
+  present an ADR-0009 bearer, each is stateless and re-resolves the credential per call, and
+  there is no tokenless MCP path for a revoke to miss. So a revoke bites on the next request on
+  every face, not at session end. The old exception — a stdio server running at ambient
+  authority — is gone by construction, because exocomp maintains no such server; a stdio client
+  bridges to `POST /mcp` and carries the same bearer.
+- Removing ambient MCP authority closes the ambient-self-approval class structurally: no
+  principal ever acts un-scoped, W and A are disjoint, and approval requires an explicitly
+  minted `approve` token, so a face that raises a gate can never also settle it (finding AI-1,
+  AI-2).
+- One follow-on is deferred, not a blocker: OAuth 2.1 for the MCP-HTTP transport. The seam
+  exists (the transport already resolves a bearer per request through the hardened `/api/v1`
+  path), but token-issuance flows beyond ADR-0009 minting are not built; a harness that wants
+  OAuth today is served by the bearer it already carries.
 - The exit-code table and typed-error taxonomy are now a stable contract: a future change to
   either bumps `schema_version`, the same discipline already ratified for the envelope shape.
-- This ADR does not itself accept remote CLI client mode, the write API, or MCP as shipped —
-  each remains its own body of work, gated by the usual `make check` and (per invariant 8)
-  docs moving with the code that realizes it.
+- Remote CLI client mode, the write API, and the HTTP MCP server have shipped and been hardened
+  (each gated by the usual `make check` and, per invariant 8, docs moving with the code). The
+  open design question — a single MCP+HTTP surface with no ambient authority — is RESOLVED, so
+  this ADR is an accurate account of a built surface and is ready to ratify at the owner's
+  discretion. The only work it still ratifies rather than records is the stdio-server removal
+  (Decision point 3).
 
 See `docs/design/agent-interface.md` for the full proposal, the phased build plan, and the
 evidence trail this ADR ratifies the direction of.
