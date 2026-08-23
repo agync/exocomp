@@ -85,39 +85,66 @@ func TestPrependPath(t *testing.T) {
 }
 
 // TestWritePrivateForcesInterpreter proves the venv interpreter is written into
-// the extra-vars file (the highest-precedence var source) and merged with, not
-// substituted for, the caller's own extra-vars.
+// the extra-vars file (the highest-precedence var source) for a localhost-only
+// run and merged with, not substituted for, the caller's own extra-vars — while
+// a non-local run drops the interpreter and keeps only the caller's vars, so the
+// controller venv path never reaches a remote host.
 func TestWritePrivateForcesInterpreter(t *testing.T) {
-	dir := t.TempDir()
-	a := NewAnsible(AnsibleOptions{
-		Interpreter: "/data/cache/python/demo/abc/bin/python",
-		ExtraVars:   map[string]string{"region": "eu"},
-	})
-	args, err := a.writePrivate(dir)
-	if err != nil {
-		t.Fatalf("writePrivate: %v", err)
-	}
-	var path string
-	for i, arg := range args {
-		if arg == "--extra-vars" && i+1 < len(args) {
-			path = strings.TrimPrefix(args[i+1], "@")
+	const interp = "/data/cache/python/demo/abc/bin/python"
+	readExtraVars := func(t *testing.T, args []string) map[string]string {
+		t.Helper()
+		var path string
+		for i, arg := range args {
+			if arg == "--extra-vars" && i+1 < len(args) {
+				path = strings.TrimPrefix(args[i+1], "@")
+			}
 		}
+		if path == "" {
+			return nil
+		}
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read extra-vars: %v", err)
+		}
+		var vars map[string]string
+		if err := json.Unmarshal(body, &vars); err != nil {
+			t.Fatalf("decode extra-vars: %v", err)
+		}
+		return vars
 	}
-	if path == "" {
-		t.Fatalf("no --extra-vars written: %v", args)
+
+	newAnsible := func() *Ansible {
+		return NewAnsible(AnsibleOptions{
+			Interpreter: interp,
+			ExtraVars:   map[string]string{"region": "eu"},
+		})
 	}
-	body, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("read extra-vars: %v", err)
-	}
-	var vars map[string]string
-	if err := json.Unmarshal(body, &vars); err != nil {
-		t.Fatalf("decode extra-vars: %v", err)
-	}
-	if vars["ansible_python_interpreter"] != "/data/cache/python/demo/abc/bin/python" {
-		t.Errorf("interpreter not forced: %v", vars)
-	}
-	if vars["region"] != "eu" {
-		t.Errorf("caller extra-vars lost: %v", vars)
-	}
+
+	t.Run("local run forces the interpreter", func(t *testing.T) {
+		args, err := newAnsible().writePrivate(t.TempDir(), true)
+		if err != nil {
+			t.Fatalf("writePrivate: %v", err)
+		}
+		vars := readExtraVars(t, args)
+		if vars["ansible_python_interpreter"] != interp {
+			t.Errorf("interpreter not forced: %v", vars)
+		}
+		if vars["region"] != "eu" {
+			t.Errorf("caller extra-vars lost: %v", vars)
+		}
+	})
+
+	t.Run("non-local run drops the interpreter", func(t *testing.T) {
+		args, err := newAnsible().writePrivate(t.TempDir(), false)
+		if err != nil {
+			t.Fatalf("writePrivate: %v", err)
+		}
+		vars := readExtraVars(t, args)
+		if _, ok := vars["ansible_python_interpreter"]; ok {
+			t.Errorf("interpreter forced on a non-local run: %v", vars)
+		}
+		if vars["region"] != "eu" {
+			t.Errorf("caller extra-vars lost: %v", vars)
+		}
+	})
 }

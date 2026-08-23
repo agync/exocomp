@@ -2,6 +2,7 @@ package executor_test
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -146,6 +147,77 @@ env | sed 's/^/env:/'
 	if len(left) != 0 {
 		t.Errorf("private directory survived the run: %v", left)
 	}
+}
+
+// dumpExtraVars writes a fake ansible-playbook that prints the JSON body of the
+// --extra-vars @file the driver hands it, so a test can assert exactly which
+// variables a run forces on every host.
+func dumpExtraVars(t *testing.T) string {
+	t.Helper()
+	return fakeAnsible(t, `
+prev=""
+for a in "$@"; do
+	if [ "$prev" = "--extra-vars" ]; then
+		echo "extravars:$(cat "${a#@}")"
+	fi
+	prev="$a"
+done
+`)
+}
+
+// TestAnsibleInterpreterScopedToLocalConnection is the regression guard for the
+// remote rc-127 defect: the source venv interpreter is the controller's own and
+// must never be forced as a global ansible_python_interpreter that a remote host
+// would inherit — the remote has no such path. It stays forced for the built-in
+// localhost-over-local run, where the controller is the only target.
+func TestAnsibleInterpreterScopedToLocalConnection(t *testing.T) {
+	const venvPython = "/data/cache/python/homelab/abc123/bin/python"
+
+	inv := filepath.Join(t.TempDir(), "hosts.ini")
+	if err := os.WriteFile(inv, []byte("[nodes]\nnode0\n"), 0o600); err != nil {
+		t.Fatalf("write inventory: %v", err)
+	}
+
+	extraVarsOf := func(t *testing.T, argv []string) (string, bool) {
+		t.Helper()
+		_, sink := runAnsible(t, executor.AnsibleOptions{
+			Binary:         dumpExtraVars(t),
+			Interpreter:    venvPython,
+			PrivateDirRoot: t.TempDir(),
+		}, argv)
+		for _, l := range sink.msgs(executor.LevelInfo) {
+			if body, ok := strings.CutPrefix(l, "extravars:"); ok {
+				return body, true
+			}
+		}
+		return "", false
+	}
+
+	t.Run("remote inventory does not force the venv interpreter", func(t *testing.T) {
+		t.Parallel()
+		body, forced := extraVarsOf(t, executor.AnsibleArgv("/p/site.yml", inv))
+		if forced && strings.Contains(body, "ansible_python_interpreter") {
+			t.Errorf("remote run forced the controller venv as a global interpreter: %s", body)
+		}
+		if strings.Contains(body, venvPython) {
+			t.Errorf("controller venv path reached a remote run: %s", body)
+		}
+	})
+
+	t.Run("localhost run still uses the venv interpreter", func(t *testing.T) {
+		t.Parallel()
+		body, forced := extraVarsOf(t, executor.AnsibleArgv("/p/site.yml", ""))
+		if !forced {
+			t.Fatalf("localhost run wrote no extra-vars; interpreter not forced")
+		}
+		var got map[string]string
+		if err := json.Unmarshal([]byte(body), &got); err != nil {
+			t.Fatalf("extra-vars is not JSON: %q (%v)", body, err)
+		}
+		if got["ansible_python_interpreter"] != venvPython {
+			t.Errorf("localhost interpreter = %q, want %q", got["ansible_python_interpreter"], venvPython)
+		}
+	})
 }
 
 func TestAnsiblePrivateDirIsRemovedOnFailure(t *testing.T) {

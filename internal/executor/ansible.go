@@ -136,11 +136,13 @@ type AnsibleOptions struct {
 	// item 8) without discarding a path the operator already set. Empty
 	// leaves ANSIBLE_COLLECTIONS_PATH exactly as inherited.
 	CollectionsPath string
-	// Interpreter, when set, is the Python the run's modules execute under:
-	// the per-source uv venv's interpreter (ADR 0011). The driver forces it as
-	// ansible_python_interpreter through extra-vars so a module resolves the
-	// project's declared libraries rather than the bare image interpreter.
-	// Empty leaves interpreter discovery to ansible.
+	// Interpreter, when set, is the Python the controller's modules execute
+	// under: the per-source uv venv's interpreter (ADR 0011). The driver forces
+	// it as ansible_python_interpreter through extra-vars only for the built-in
+	// localhost-over-local run, where the controller is the sole host — the venv
+	// path is controller-side and would not exist on a remote target. A remote
+	// host keeps its own inventory-set or auto-discovered interpreter. Empty
+	// leaves interpreter discovery to ansible.
 	Interpreter string
 	// VenvBin, when set, is prepended to PATH so the venv's own console
 	// scripts and the interpreter's neighbours resolve first. Empty leaves PATH
@@ -196,7 +198,7 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 		return Result{}, fmt.Errorf("executor: ansible: private dir mode: %w", err)
 	}
 
-	extra, err := a.writePrivate(private)
+	extra, err := a.writePrivate(private, localOnlyTarget(spec.Argv))
 	if err != nil {
 		return Result{}, err
 	}
@@ -346,9 +348,35 @@ func (a *Ansible) vaultEntries() []VaultEntry {
 	return append(entries, a.opts.Vaults...)
 }
 
+// localOnlyTarget reports whether argv's sole inventory is exocomp's built-in
+// localhost-over-local target — the empty-inventory default from AnsibleArgv.
+// Only then is every host the controller itself, so the source venv interpreter
+// may be forced for all of them. A real inventory (a path, or the materialized
+// artifact that carries no inline --inventory) names hosts whose interpreter is
+// their own, never the controller's venv path, so it returns false and the
+// interpreter is left to the inventory or ansible's remote auto-discovery.
+func localOnlyTarget(argv []string) bool {
+	var inventories []string
+	for i := 0; i < len(argv); i++ {
+		switch {
+		case argv[i] == "--inventory" || argv[i] == "-i":
+			if i+1 < len(argv) {
+				inventories = append(inventories, argv[i+1])
+			}
+		case strings.HasPrefix(argv[i], "--inventory="):
+			inventories = append(inventories, strings.TrimPrefix(argv[i], "--inventory="))
+		case strings.HasPrefix(argv[i], "-i") && len(argv[i]) > 2:
+			inventories = append(inventories, argv[i][2:])
+		}
+	}
+	return len(inventories) == 1 && inventories[0] == "localhost,"
+}
+
 // writePrivate fills the private directory and returns the arguments pointing
-// at it.
-func (a *Ansible) writePrivate(dir string) ([]string, error) {
+// at it. localOnly gates whether the source venv interpreter is forced on every
+// host (see localOnlyTarget): the controller's venv python is only ever a valid
+// interpreter when the controller is the only target.
+func (a *Ansible) writePrivate(dir string, localOnly bool) ([]string, error) {
 	var args []string
 
 	// The materialized inventory is copied into the private dir before anything
@@ -393,13 +421,16 @@ func (a *Ansible) writePrivate(dir string) ([]string, error) {
 		args = append(args, "--vault-id", id+"@"+path)
 	}
 
-	// The interpreter is forced through extra-vars, the highest-precedence var
-	// source, so it beats any ansible_python_interpreter an inventory or play
-	// set: the run's modules must execute under the source's venv, not whatever
-	// discovery would otherwise pick (ADR 0011). It merges into the caller's own
-	// extra-vars rather than replacing them.
+	// The interpreter is forced through extra-vars only for the localhost-over-
+	// local run, where the controller is the only host: the source venv python is
+	// a controller-side path, so forcing it globally on a run that reaches a remote
+	// host makes that host's modules resolve a python that does not exist there
+	// (rc 127). A remote host takes its interpreter from the inventory or ansible's
+	// own discovery; a controller-side task delegated to localhost still resolves
+	// the venv because ansible itself runs under it (ADR 0011). The forced value
+	// merges into the caller's own extra-vars rather than replacing them.
 	extraVars := a.opts.ExtraVars
-	if a.opts.Interpreter != "" {
+	if a.opts.Interpreter != "" && localOnly {
 		merged := make(map[string]string, len(extraVars)+1)
 		for k, v := range extraVars {
 			merged[k] = v
