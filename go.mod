@@ -16,6 +16,7 @@ require (
 	github.com/google/cel-go v0.31.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	go.yaml.in/yaml/v3 v3.0.4
 	golang.org/x/crypto v0.54.0
 	golang.org/x/sys v0.47.0
@@ -50,7 +51,6 @@ require (
 	github.com/pires/go-proxyproto v0.12.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/sync v0.22.0 // indirect

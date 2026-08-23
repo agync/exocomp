@@ -126,8 +126,9 @@ func ruleLabel(name string) string {
 
 func newEventExplainCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "explain <id>",
-		Short: "Show the per-condition trace that decided an event",
+		Use:     "explain <id>",
+		Short:   "Show the per-condition trace that decided an event",
+		Example: "exocomp event explain 128",
 		Long: "The trace is read back as it was recorded, not recomputed: the ledgers it " +
 			"consulted have moved on since, and a replay would answer a different question " +
 			"than the one being asked.",

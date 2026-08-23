@@ -40,6 +40,8 @@ func newRootCmd() *cobra.Command {
 		root.AddCommand(f())
 	}
 
+	fillExamples(root)
+
 	return root
 }
 
