@@ -15,8 +15,14 @@ ansible-kind jobs through the one queue.
 
 ```
 exocomp provision run <workspace> <playbook> [--ssh-wait 5m] \
-    [--vault-project P] [--run-secrets B] [--onboard-playbook P] [--wait]
+    [--vault-project P] [--run-secrets B] [--onboard-playbook P] \
+    [--require-approval] [--wait]
 ```
+
+`--require-approval` gates the step-1 apply behind a durable operator approval
+the daemon honors mid-chain: no host is provisioned until `exocomp approval
+decide <id> --approve` releases it, the same gate a single destructive apply
+passes through.
 
 | Step | Kind | What it does |
 |---|---|---|

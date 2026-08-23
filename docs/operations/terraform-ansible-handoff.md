@@ -62,7 +62,7 @@ output "db_password" {
 ## Running the chain
 
 ```
-exocomp handoff run <workspace> <playbook> [--vault-project P] [--run-secrets B] [--wait]
+exocomp handoff run <workspace> <playbook> [--vault-project P] [--run-secrets B] [--require-approval] [--wait]
 ```
 
 This defines a two-step step-ledger workflow (ADR 0008): step 1 is the apply
@@ -80,6 +80,10 @@ daemon first; `handoff run` refuses when none is up.
 
 `--run-secrets` binds a sealed-secret set as provider/`TF_VAR_` env for the
 apply step only. `--vault-project` derives the play's vault password.
+`--require-approval` gates the apply behind a durable operator approval the
+daemon honors mid-chain: the apply step waits in `awaiting_approval` until
+`exocomp approval decide <id> --approve` releases it (or `--reject` cancels it
+and blocks the play), the same gate a single destructive apply passes through.
 
 ## What the play receives, and does not
 

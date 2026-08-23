@@ -136,7 +136,7 @@ delivers some values as env and others as a file in one chain.
 | `--capture NAME=FILE` | Seal a play-fetched file (`FILE`, relative to the run's capture dir) and hand it to the **apply** as `NAME` env. Repeatable. Mutually exclusive with `--run-secrets`. |
 | `--capture-file NAME=FILE` | Like `--capture`, but deliver the sealed value as a **file**: `NAME`=path to a `0600` tmpfs file for a tool that wants a `KUBECONFIG` file. Repeatable. Needs the run dir tmpfs. Mutually exclusive with `--run-secrets`. |
 | `--source <s>` | Wrap the chain in a registered source's `.exocomp/hooks.yml` lifecycle — pre-run hooks before the play, post-run hooks and the health gate after the apply — identically to `handoff run --source`. |
-| `--require-approval` | Gate the destructive chain: refuse to start unless `--assume-yes` is passed. |
+| `--require-approval` | Gate the destructive apply behind a durable operator approval the daemon honors mid-chain: the apply step waits in `awaiting_approval` until `exocomp approval decide` settles it. |
 | `--timeout <d>` | Per-step timeout (0: no limit). |
 | `--wait` | Follow the workflow to a terminal state. |
 | `--output json` | Emit the wire envelope for the started workflow instead of prose. |
@@ -145,17 +145,29 @@ delivers some values as env and others as a file in one chain.
 
 ### Gating the destructive apply
 
-The chain ends in a destructive `tofu apply`. `--require-approval` requires the
-operator to pre-approve it with `--assume-yes` rather than the chain starting
-unprompted; a non-interactive session with neither is refused, not blocked on a
-prompt.
+The chain ends in a destructive `tofu apply`. `--require-approval` gates that
+step behind the **same durable approval a single destructive apply passes
+through**: the Sequencer does not release the apply on its own. When the chain
+reaches it, the daemon arms a pending approval (minting the capability and
+paging the operator exactly as the reactive gate does) and leaves the job in
+`awaiting_approval`. The play (and any earlier step) has already run; nothing
+after the gated step runs until a decision settles it.
 
-Note the Phase-0 boundary: this is a **confirmation at the CLI**, not a durable
-per-step approval the daemon holds mid-chain. The Sequencer releases a gated
-workflow step on its own, so an approval recorded on step 2 would not stop it —
-enforcing a runtime, mid-chain approval for a composed chain needs Sequencer
-support and is out of scope for Phase 0. The CLI confirmation is the guardrail
-this phase ships.
+Settle it with the same seam every approval uses — `exocomp approval decide <id>
+--approve` / `--reject`, the phone/browser decision link, or an approve-scope
+`/api/v1` token:
+
+- **Approve** releases exactly that step into the queue; the running daemon
+  claims and applies it, and the chain continues.
+- **Reject** cancels the apply and blocks every step after it; the workflow ends
+  failed with the downstream steps `blocked` in the ledger.
+
+The gate is durable, not a CLI confirmation: it holds across a daemon restart
+(the requirement is a ledger property, re-armed when the step becomes current),
+and the claim path itself refuses a job whose approval is still pending, so a
+running daemon cannot run the apply until the operator answers. The approval's
+TTL starts when the step becomes current — a slow play cannot burn the window
+before the apply is even reached.
 
 ## Machine output
 

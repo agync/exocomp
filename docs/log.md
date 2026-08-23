@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Composed-chain `--require-approval` is now durably gated mid-run
+
+[operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) previously
+documented a Phase-0 boundary: `--require-approval` was a **CLI confirmation** (`--assume-yes`),
+not a durable per-step approval, because "the Sequencer releases a gated workflow step on its
+own." Correction of fact: that gap is closed. A composed-chain step marked `require_approval`
+is now held mid-run exactly as a single destructive apply is — the Sequencer arms a pending
+approval (the same `CreateApproval`/`DecideApproval` capability path) and leaves the job in
+`awaiting_approval` rather than releasing it, and `ClaimJob` refuses any queued job with a
+pending approval so a running daemon cannot claim an unsettled step. `bootstrap`, `handoff`,
+and `provision`'s `--require-approval` all gate their destructive apply this way; approve
+releases exactly that step, reject blocks the rest. The bootstrap, handoff, and provision
+operations pages were updated to describe the durable gate; the threat model records it as
+AI-14. New migration `0023_workflow_step_require_approval.sql` adds the ledger flag.
+
 ## 2026-08-24 — threat-model records E6: DEK reseal is now crash-safe
 
 [security/threat-model.md](security/threat-model.md) gained finding **E6** and its closure.
