@@ -26,7 +26,12 @@ this order:
    value as an argument; or a Q1/Q5 fail on a read tool where the reader
    would act on the wrong data (e.g. conflating two distinct return arrays).
    These can cause a wrong or unsafe action, not just a failed one. Highest
-   priority regardless of the other axes.
+   priority regardless of the other axes. The line for a read tool is whether
+   the misread would change what the agent does next: conflating `get_drift`'s
+   `drift` and `pending` fields is dangerous because it flips a remediation
+   decision, while a shape mix-up on a low-stakes listing like `list_backups`
+   is merely confusing when nothing downstream branches on the distinction —
+   score that Weak, not Dangerous.
 2. **Would-misroute** — a catalog reader (kind B) picks the wrong tool for a
    task, or an intent/when-to-call fail on a tool that has a look-alike sibling.
 3. **Would-fail-the-call** — an argument-construction fail: the agent tries the
