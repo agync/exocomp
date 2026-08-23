@@ -26,6 +26,9 @@ const (
 type Actor struct {
 	Kind string
 	Name string
+	// Face names the surface the write came in on ("api", "mcp"). Empty means
+	// the HTTP write API, which is where attribution started.
+	Face string
 }
 
 // actorEventPayload is the values-free structured payload recorded on the job
@@ -50,10 +53,14 @@ func (s *Service) recordActor(ctx context.Context, jobID int64, actor Actor) err
 	if actor.Kind == "" {
 		return nil
 	}
+	face := actor.Face
+	if face == "" {
+		face = "api"
+	}
 	payload, err := json.Marshal(actorEventPayload{
 		ActorKind: actor.Kind,
 		ActorName: actor.Name,
-		Face:      "api",
+		Face:      face,
 	})
 	if err != nil {
 		return fmt.Errorf("service: marshal actor payload: %w", err)
@@ -61,7 +68,7 @@ func (s *Service) recordActor(ctx context.Context, jobID int64, actor Actor) err
 	if _, err := s.store.AppendJobEvent(ctx, store.JobEvent{
 		JobID:   jobID,
 		Level:   store.LevelSystem,
-		Msg:     fmt.Sprintf("enqueued by %s %s via api", actor.Kind, actor.Name),
+		Msg:     fmt.Sprintf("enqueued by %s %s via %s", actor.Kind, actor.Name, face),
 		RawJSON: string(payload),
 	}); err != nil {
 		return fmt.Errorf("service: record actor: %w", err)

@@ -116,11 +116,21 @@ func (s *Server) handleLine(ctx context.Context, line []byte) (rpcResponse, bool
 		return errorResponse(req.ID, codeInvalidRequest, "invalid request"), true
 	}
 
-	result, rerr := s.dispatch(ctx, req.Method, req.Params)
 	if req.isNotification() {
-		// A notification gets no reply, even on error: there is no id to answer.
+		if sideEffecting(req.Method) {
+			// A method that can mutate state must be answerable: dispatched as a
+			// notification it used to enqueue a job and write ZERO bytes back,
+			// leaving nothing for the harness — or an audit wrapper sitting on
+			// the frames — to record (finding AI-13). Refuse instead, loudly.
+			return errorResponse(nullID, codeInvalidRequest,
+				"method "+req.Method+" must carry an id: a side-effecting call is not a notification"), true
+		}
+		// Any other notification gets no reply: there is no id to answer.
+		_, _ = s.dispatch(ctx, req.Method, req.Params)
 		return rpcResponse{}, false
 	}
+
+	result, rerr := s.dispatch(ctx, req.Method, req.Params)
 	if rerr != nil {
 		return rpcResponse{JSONRPC: "2.0", ID: req.ID, Error: rerr}, true
 	}
@@ -129,6 +139,17 @@ func (s *Server) handleLine(ctx context.Context, line []byte) (rpcResponse, bool
 		return errorResponse(req.ID, codeInternalError, "marshal result"), true
 	}
 	return rpcResponse{JSONRPC: "2.0", ID: req.ID, Result: raw}, true
+}
+
+// sideEffecting reports whether a method may change state or run work, and so
+// must carry an id the caller can be answered on.
+func sideEffecting(method string) bool {
+	switch method {
+	case "tools/call", "resources/read":
+		return true
+	default:
+		return false
+	}
 }
 
 func errorResponse(id json.RawMessage, code int, msg string) rpcResponse {

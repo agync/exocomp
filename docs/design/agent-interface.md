@@ -296,6 +296,12 @@ single-use HMAC capability, and returning one to a low-scope agent silently prom
 approver (reactive/approval.go; cmd/exocomp/approval.go:92-99). Approve/reject are scoped tools
 that call `reactive.Decide` server-side instead.
 
+**Every MCP write is attributed and answerable.** A write enqueued here records an actor
+naming the `mcp` face, so an agent's action is never read off the ledger as the operator's
+own CLI run; and `tools/call`/`resources/read` sent as a JSON-RPC *notification* are refused
+with `invalid_request` rather than executed silently, because a mutation that writes no
+frame back leaves an audit wrapper nothing to record (finding AI-13).
+
 **The A column is gated on a scope, so it ships only on a transport that carries one.** The
 stdio face authenticates nothing, so `approve_job`/`reject_job` are absent from it entirely
 (finding AI-1, `docs/security/threat-model.md`): an agent that can raise a gate with

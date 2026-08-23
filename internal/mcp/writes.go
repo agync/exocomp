@@ -50,6 +50,13 @@ type approvalPendingView struct {
 var errPlanDecryptUnsupported = errors.New(
 	"mcp: applying a saved plan without a policy verdict needs the plan-decrypt helper (not yet shared)")
 
+// mcpActor attributes every write this face enqueues. The HTTP API records the
+// token behind a write; stdio has no token, but recording nothing made an
+// agent's write indistinguishable in the ledger from the operator's own CLI run
+// (finding AI-13). The face marker is what an audit read needs to tell them
+// apart; when stdio grows a token, its name replaces "stdio" here.
+var mcpActor = service.Actor{Kind: service.ActorKindLocal, Name: "stdio", Face: "mcp"}
+
 // planWriteArgs is the shared argument shape for plan and apply. All optional; a
 // bare {name} is the common case.
 type planWriteArgs struct {
@@ -124,6 +131,7 @@ func (s *Server) toolWorkspacePlan(ctx context.Context, args planWriteArgs) (str
 		RunSecrets:     args.RunSecrets,
 		IdempotencyKey: idempotencyKey(toolPlanKey, args.IdempotencyKey),
 		Timeout:        timeout,
+		Actor:          mcpActor,
 	})
 	if err != nil {
 		return "", nil, err
@@ -194,6 +202,7 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, args planWriteArgs) (st
 		Timeout:         timeout,
 		SavedPlan:       saved,
 		Gate:            gate,
+		Actor:           mcpActor,
 	}, func(context.Context) ([]string, *store.Artifact, func(), error) {
 		if saved == nil {
 			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
