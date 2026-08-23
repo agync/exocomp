@@ -143,6 +143,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /workflows", s.requireAuth(s.handleWorkflows))
 	mux.HandleFunc("GET /workflows/{id}", s.requireAuth(s.handleWorkflowDetail))
 	mux.HandleFunc("GET /policies", s.requireAuth(s.handlePolicies))
+	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
 
 	return securityHeaders(mux)
 }

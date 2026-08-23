@@ -179,6 +179,45 @@ type policiesVM struct {
 	Policies []policyRow
 }
 
+// secretsVM is the secrets surface: a read-only inventory of the sealed values
+// in the envelope. It carries only lifecycle metadata and the bindings that
+// inject each secret — never the value, nonce, or ciphertext, which never leave
+// the envelope.
+type secretsVM struct {
+	Page    page
+	Secrets []secretRow
+}
+
+// secretRow is one sealed secret's public face: its name, kind, how it was
+// minted, its lifecycle timestamps, an expiry staleness marker, and the
+// run-secret bindings that inject it. The sealed material (value, nonce,
+// ciphertext) is deliberately absent — invariant 4: secrets never render.
+type secretRow struct {
+	Name     string
+	Kind     string
+	Source   string // generated|user
+	Created  string
+	Rotated  string // clock, or "never"
+	LastUsed string // clock, or "never"
+	Expiry   expiryMarker
+	Bindings []secretBindingRow
+}
+
+// secretBindingRow is one run-secret binding that injects a secret and the env
+// var name it maps the value to at execution time. It carries no value.
+type secretBindingRow struct {
+	Binding string
+	EnvName string
+}
+
+// expiryMarker is a secret's staleness state rendered as a labelled chip: an
+// expired secret is a loud failure, an approaching expiry a wait, a distant or
+// absent one dim. Never colour-only — the label always names the state.
+type expiryMarker struct {
+	Label string // EXPIRED | expires in Nd | no expiry
+	Class string // fail | wait | dim
+}
+
 // bannerVM carries the pause/silence/mute state that rides every screen until
 // it lifts, with the count of alerts swallowed while it was up. The three holds
 // are independent and align with the TUI's banner model: Paused is the reactive
@@ -430,6 +469,39 @@ func humanAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
+}
+
+// orNever renders an optional lifecycle timestamp, using "never" for the nil
+// case the rotate/last-used columns read.
+func orNever(t *time.Time) string {
+	if t == nil {
+		return "never"
+	}
+	return clock(*t)
+}
+
+// secretExpiry maps a secret's expiry to its staleness marker. A past expiry is
+// a loud EXPIRED failure; an expiry inside a week is a wait; a further-off or
+// absent one is dim. The label always names the state so the chip is never
+// colour-only.
+func secretExpiry(exp *time.Time, now time.Time) expiryMarker {
+	if exp == nil {
+		return expiryMarker{Label: "no expiry", Class: "dim"}
+	}
+	if !exp.After(now) {
+		return expiryMarker{Label: "EXPIRED", Class: "fail"}
+	}
+	d := exp.Sub(now)
+	days := int(d.Hours()) / 24
+	label := "expires in " + itoa(int64(days)) + "d"
+	if days < 1 {
+		label = "expires in <1d"
+	}
+	class := "dim"
+	if d < 7*24*time.Hour {
+		class = "wait"
+	}
+	return expiryMarker{Label: label, Class: class}
 }
 
 // backupFreshness maps an age to the 24h/48h ladder in the brief: quiet until

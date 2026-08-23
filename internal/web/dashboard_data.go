@@ -270,6 +270,47 @@ func (s *Server) policies(r *http.Request) ([]policyRow, error) {
 	return out, nil
 }
 
+// secrets reads every sealed secret's lifecycle metadata and the run-secret
+// bindings that inject it. It NEVER reads or renders the sealed value, nonce, or
+// ciphertext — the SecretRow carries them but the row built here drops them
+// (invariant 4). Read-only: creation, rotation and deletion stay CLI verbs.
+// Bindings are grouped once by secret name, so each row's "used by" lines come
+// from a map rather than a per-row query.
+func (s *Server) secrets(r *http.Request) ([]secretRow, error) {
+	list, err := s.store.ListSecrets(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	bindings, err := s.store.ListRunSecretBindings(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	byName := map[string][]secretBindingRow{}
+	for _, b := range bindings {
+		pairs, err := s.store.RunSecretsByBinding(r.Context(), b)
+		if err != nil {
+			return nil, err
+		}
+		for _, rs := range pairs {
+			byName[rs.SecretName] = append(byName[rs.SecretName],
+				secretBindingRow{Binding: rs.Binding, EnvName: rs.EnvName})
+		}
+	}
+	now := s.now()
+	var out []secretRow
+	for _, sec := range list {
+		out = append(out, secretRow{
+			Name: sec.Name, Kind: sec.Kind, Source: sec.Source,
+			Created:  clock(sec.CreatedAt),
+			Rotated:  orNever(sec.RotatedAt),
+			LastUsed: orNever(sec.LastUsedAt),
+			Expiry:   secretExpiry(sec.ExpiresAt, now),
+			Bindings: byName[sec.Name],
+		})
+	}
+	return out, nil
+}
+
 // selfObs builds the dashboard's self-observability row: the running binary
 // version (the upgrade target) and the Litestream replication RPO age. The RPO
 // read mirrors the metrics registry's litestream gauge exactly — read the
