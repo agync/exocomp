@@ -65,6 +65,39 @@ At execution the named set is resolved from the envelope, injected as env for th
 alone, and scrubbed from events by the redactor. Only the binding name travels on the job
 row — never the value.
 
+### Minting, rotating, and removing a secret
+
+```
+exocomp secrets add proxmox/token --generate --expires 720h
+exocomp secrets rotate proxmox/token --expires 720h
+exocomp secrets rm proxmox/token
+```
+
+`secrets add` seals a value read from stdin by default; `--generate` mints one instead (32
+random bytes, base64url-encoded) rather than asking the operator to invent one. `--kind`
+tags the secret for the AAD (default `generic`); `--expires` takes a Go duration (`720h`) or
+an RFC3339 timestamp and is recorded as an absolute instant.
+
+`secrets rotate <name>` reseals the value under the unchanged `name|kind` AAD, so every
+existing binding still opens it. A **generated** secret (or `rotate --generate`) mints a
+fresh random value automatically — nothing upstream holds the old one to re-enter; a **user**
+secret reads its replacement from stdin and prints a reminder that the previous value may
+still be live upstream and revoking it there is the operator's job. `--expires` on `rotate`
+re-sets the expiry (an empty value clears it); omitting the flag leaves the existing expiry
+untouched.
+
+`secrets rm <name>` is guarded: a secret still referenced by one or more `run-secret`
+bindings is refused unless `--assume-yes` (or `--force`, deprecated) forces past the
+binding list, which is printed first so nothing is deleted blind.
+
+**Expiry warns, it never blocks.** `secrets list` renders an `EXPIRED` / `expires in Nd`
+hygiene marker computed against the current time, and the TUI and web surfaces render the
+same marker as a chip — but expiry gates nothing in the envelope: a sealed value past its
+`expires_at` still decrypts exactly as before. A run that resolves a `run-secret` binding
+pointing at an expired secret still gets the value; the daemon logs a warning naming the
+secret and its expiry instant (never the value) and injects it anyway. Treat expiry as an
+operator-facing rotation reminder, not an access control.
+
 ## Inventories — static and dynamic
 
 Register an inventory so a run targets it by name:
