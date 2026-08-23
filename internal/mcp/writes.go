@@ -235,7 +235,9 @@ func (s *Server) approvalDeriver(saved *store.Artifact, gate service.PlanGate) (
 	return s.openEnvelope()
 }
 
-// There is deliberately no decide seam here. The stdio transport authenticates
-// nothing, so an agent holding workspace_apply would also hold the release for
-// the gate that apply raises (finding AI-1). An approval is decided from the
-// browser/phone surface, the CLI, or the scope-checked /api/v1 decision route.
+// There is deliberately no decide seam here. The decide seam is supplied by
+// the transport and is non-nil only for an approve-scope token (TokenCaller,
+// ADR 0014 §3) — there is no ambient path, so an agent holding workspace_apply
+// does not also hold the release for the gate that apply raises (finding
+// AI-1). An approval is decided from the browser/phone surface, the CLI, or
+// the scope-checked /api/v1 decision route.

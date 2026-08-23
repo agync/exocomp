@@ -10,7 +10,7 @@ import (
 )
 
 // call dispatches one JSON-RPC message for a caller through the exported
-// per-message seam a non-stdio transport mounts on.
+// per-message seam the HTTP transport mounts on.
 func call(t *testing.T, srv *mcp.Server, c mcp.Caller, line string) rpcResp {
 	t.Helper()
 	raw, write := srv.HandleMessage(context.Background(), c, []byte(line))
