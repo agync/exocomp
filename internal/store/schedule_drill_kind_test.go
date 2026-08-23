@@ -8,7 +8,7 @@ import (
 )
 
 // TestScheduleDrillKindValidates pins that the schedule table's kind CHECK
-// admits 'drill' (0019_schedule_drill.sql widened it), the same way every
+// admits 'drill' (0020_schedule_drill.sql widened it), the same way every
 // other schedule kind is proven insertable.
 func TestScheduleDrillKindValidates(t *testing.T) {
 	t.Parallel()
