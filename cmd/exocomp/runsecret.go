@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
@@ -31,6 +33,15 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		row, err := st.GetSecret(ctx, secretName)
 		if err != nil {
 			return fmt.Errorf("run secret %s -> %s: %w", envName, secretName, err)
+		}
+		// Warn, never block: an expired secret is still injected so the run gets
+		// its value. Blocking here would let clock skew strand a run over a
+		// deadline the operator can only see after the fact. The name and deadline
+		// are logged; the value never is (AGENTS.md invariant 4).
+		if secretExpired(row, time.Now().UTC()) {
+			slog.Warn("run secret is past its expiry but still injected; rotate it",
+				"secret", row.Name, "kind", row.Kind,
+				"expired_at", row.ExpiresAt.UTC().Format(time.RFC3339))
 		}
 		pt, err := env.OpenSecret(secrets.SealedSecret{
 			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
@@ -74,4 +85,10 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		return nil, plaintexts, nil
 	}
 	return out, plaintexts, nil
+}
+
+// secretExpired reports whether a sealed secret's rotation deadline has passed.
+// A secret with no deadline never expires.
+func secretExpired(row store.SecretRow, now time.Time) bool {
+	return row.ExpiresAt != nil && now.After(*row.ExpiresAt)
 }
