@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-23 — bootstrap-first design page (proposed)
+
+**New page.** [design/bootstrap-first.md](design/bootstrap-first.md) — a Proposed design for
+the mirror of the provision-first handoff (items A/D): an ansible-first-then-tofu chain for
+the Kubernetes persona (ansible bootstraps kubeadm nodes → tofu manages cluster resources).
+It names three confirmed gaps — no ansible-output→seal capture, no ansible-first chain
+exposed (though the Sequencer is order-agnostic), and env-only run-secrets vs a `KUBECONFIG`
+file — and specifies each fix as the mirror of a tested tofu-side feature. The KUBECONFIG
+file-vs-env question is left an open owner decision. Linked from
+[design/v1.1-roadmap.md](design/v1.1-roadmap.md) as a proposed follow-on. Design only; no code.
+
 ## 2026-08-23 — the daemon's apply seals tofu outputs too
 
 **Correction of fact.** [sealed-tofu-outputs.md](operations/sealed-tofu-outputs.md) and item D
