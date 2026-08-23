@@ -70,6 +70,11 @@ type Queue struct {
 	pollInterval   time.Duration
 	log            *slog.Logger
 	wrapSink       func(executor.EventSink) executor.EventSink
+	// claimGate reports whether NEW jobs may be claimed. A cordoned daemon
+	// closes it (returns false) to stop taking work ahead of a planned reboot,
+	// while jobs already launched run to completion — the gate is consulted only
+	// before a claim, never against a running job. Nil means always open.
+	claimGate func() bool
 
 	wake chan struct{}
 	wg   sync.WaitGroup
@@ -254,6 +259,12 @@ func (q *Queue) dispatch(ctx context.Context, claimAny bool) error {
 // concurrency key is already held are skipped, not waited for; so is every
 // row this queue did not enqueue when claimAny is false.
 func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, error) {
+	// A cordoned daemon claims nothing new: the row it would take stays queued
+	// until the cordon lifts (or the next boot sweeps it), so a planned reboot
+	// drains to empty instead of picking up more work.
+	if q.claimGate != nil && !q.claimGate() {
+		return store.Job{}, false, nil
+	}
 	jobs, err := q.store.ListJobs(ctx, store.JobFilter{
 		States: []store.JobState{store.StateQueued},
 		Limit:  512,
