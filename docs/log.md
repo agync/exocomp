@@ -16,6 +16,24 @@ daemon outage was silently dropped. Documents the coalesce (one fire, not one pe
 occurrence), the never-fired no-back-fire rule, and the `last_run`-anchored idempotency
 key.
 
+## 2026-08-23 — `bootstrap run`: the ansible-first chain (Phase 0)
+
+**New page.** [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) —
+the `exocomp bootstrap run <playbook> <workspace>` verb, Phase 0 of
+[design/bootstrap-first.md](design/bootstrap-first.md). It composes `[ansible-play, tofu-apply]`
+on the existing Sequencer — the handoff mirrored, play first — with no credential capture
+between the steps: the apply reads its own pre-existing `--run-secrets` binding, and any
+play-produced credential is handed over manually until the Phase-1 capture hook lands.
+
+Two spec notes for a future editor. First, the verb takes `--inventory` because the play runs
+before any apply, so there is no `tf:<workspace>` inventory to build its hosts from — a
+difference from `handoff run`, whose play consumes the apply's output. Second,
+`--require-approval` is a **CLI confirmation** (refuse the destructive chain without
+`--assume-yes`), not a durable per-step approval: the Sequencer releases a gated workflow step
+on its own, so a runtime mid-chain approval for a composed chain would need Sequencer support
+and is out of Phase-0 scope. The design's Phase-0 section did not enumerate `--inventory`,
+`--require-approval`, or `--output json`; they are additive here and this note records why.
+
 ## 2026-08-23 — bootstrap-first design page (proposed)
 
 **New page.** [design/bootstrap-first.md](design/bootstrap-first.md) — a Proposed design for
