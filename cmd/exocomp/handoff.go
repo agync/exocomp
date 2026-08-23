@@ -18,7 +18,27 @@ import (
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/verify"
+	"exocomp.dev/exocomp/internal/wire"
 )
+
+// notFoundError lets a hand-written "no such X" message still classify as
+// wire.CodeNotFound (process exit wire.ExitNotFound): its Unwrap resolves to
+// the store sentinel even though Error() never repeats the sentinel's own
+// text, so exitCodeFor sees store.ErrNotFound without the text a human reads
+// changing at all. The same technique already backs
+// internal/service.PlanUnadjudicatedError. Shared by handoff.go and hooks.go,
+// whose "no such <thing>" errors both predate --output json and both need
+// the same fix.
+type notFoundError struct{ msg string }
+
+func (e notFoundError) Error() string { return e.msg }
+func (e notFoundError) Unwrap() error { return store.ErrNotFound }
+
+// notFoundf builds a friendly not-found error whose exit code is correct on
+// both the text and JSON paths.
+func notFoundf(format string, a ...any) error {
+	return notFoundError{msg: fmt.Sprintf(format, a...)}
+}
 
 func init() {
 	registerCommand(newHandoffCmd)
@@ -104,13 +124,21 @@ func newHandoffRunCmd() *cobra.Command {
 
 func newHandoffStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status <workflow-id>",
-		Short: "Print a handoff workflow's steps from the ledger",
-		Args:  cobra.ExactArgs(1),
+		Use:     "status <workflow-id>",
+		Short:   "Print a handoff workflow's steps from the ledger",
+		Example: "exocomp handoff status handoff:web:1700000000 --output json",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
 			ctx := cmd.Context()
 			st, err := openStore()
 			if err != nil {
+				if mode == outputJSON {
+					return failJSON(cmd, err)
+				}
 				return err
 			}
 			defer func() {
@@ -118,6 +146,13 @@ func newHandoffStatusCmd() *cobra.Command {
 					err = cerr
 				}
 			}()
+			if mode == outputJSON {
+				steps, gerr := getWorkflowSteps(ctx, st, args[0])
+				if gerr != nil {
+					return failJSON(cmd, gerr)
+				}
+				return emitJSON(cmd, wire.KindWorkflow, wire.NewWorkflowView(args[0], steps))
+			}
 			return printWorkflow(ctx, st, cmd.OutOrStdout(), args[0])
 		},
 	}
@@ -329,14 +364,24 @@ func followWorkflow(ctx context.Context, st *store.Store, out io.Writer, dir, wo
 	}
 }
 
+// getWorkflowSteps reads a workflow's step ledger, wrapping a not-found ledger
+// in a friendly message while keeping the store.ErrNotFound classification
+// intact (via notFoundf) — printWorkflow's text error and `handoff status
+// --output json`'s exit code must agree this is exit wire.ExitNotFound, not a
+// generic failure.
+func getWorkflowSteps(ctx context.Context, st *store.Store, workflowID string) ([]store.WorkflowStep, error) {
+	steps, err := st.GetWorkflow(ctx, workflowID)
+	if errors.Is(err, store.ErrNotFound) {
+		return nil, notFoundf("handoff: no workflow %q", workflowID)
+	}
+	return steps, err
+}
+
 // printWorkflow renders a workflow's steps from the ledger: the step, its kind,
 // its status, and the job that ran it. A blocked step is the visible proof that
 // a failed predecessor retired the rest.
 func printWorkflow(ctx context.Context, st *store.Store, out io.Writer, workflowID string) error {
-	steps, err := st.GetWorkflow(ctx, workflowID)
-	if errors.Is(err, store.ErrNotFound) {
-		return fmt.Errorf("handoff: no workflow %q", workflowID)
-	}
+	steps, err := getWorkflowSteps(ctx, st, workflowID)
 	if err != nil {
 		return err
 	}
