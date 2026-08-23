@@ -3,7 +3,6 @@ package web
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -13,7 +12,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"exocomp.dev/exocomp/internal/service"
@@ -139,13 +137,18 @@ func (s *Server) authenticateToken(ctx context.Context, presented string, now ti
 func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, now time.Time) (store.APIToken, error) {
 	row, err := s.store.GetToken(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.APIToken{}, s.equalize(secret)
+		// No decoy KDF on the absent path: a missing id returns unauthenticated
+		// cheaply. The resulting live-vs-absent timing gap is accepted for a
+		// single-operator homelab — the fail counter and KDF gate (both in
+		// authenticateTokenGated) refuse a guessing run before it can turn that
+		// gap into an enumeration (finding AI-11 disposition).
+		return store.APIToken{}, ErrUnauthenticated
 	}
 	if err != nil {
 		return store.APIToken{}, err
 	}
 	if !row.Active(now) {
-		return store.APIToken{}, s.equalize(secret)
+		return store.APIToken{}, ErrUnauthenticated
 	}
 	if secret != "" {
 		ok, err := s.verify(secret, row.Hash)
@@ -158,49 +161,6 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 	}
 	return row, nil
 }
-
-// equalize pays the same argon2id a live row's verification would, so an
-// unknown or inactive token id is not distinguishable from a live one by
-// response time (finding AI-11: 18ms for a live row vs 513µs for a missing one
-// enumerated which rows existed). The session path presents no secret and runs
-// no KDF either way, so it is left alone.
-func (s *Server) equalize(secret string) error {
-	if secret != "" {
-		_, _ = s.verify(secret, decoyHash())
-	}
-	return ErrUnauthenticated
-}
-
-// decoyHash is a real argon2id PHC string with the production parameters, hashed
-// once from a random secret no caller can present.
-func decoyHash() string {
-	decoyOnce.Do(func() {
-		buf := make([]byte, 24)
-		if _, err := rand.Read(buf); err != nil {
-			// A decoy that cannot be minted still has to have the right shape;
-			// a fixed string keeps the failure path constant-cost.
-			decoy = fixedDecoyHash
-			return
-		}
-		h, err := hashSecret(base64.RawURLEncoding.EncodeToString(buf))
-		if err != nil {
-			decoy = fixedDecoyHash
-			return
-		}
-		decoy = h
-	})
-	return decoy
-}
-
-var (
-	decoyOnce sync.Once
-	decoy     string
-)
-
-// fixedDecoyHash is the fallback decoy: a valid PHC string over an unknowable
-// secret. verifySecret runs the same KDF against it as against a real row.
-const fixedDecoyHash = "$argon2id$v=19$m=65536,t=3,p=4$" +
-	"AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
 
 // authenticateTokenGated is authenticateToken behind the KDF concurrency gate.
 // A malformed token is rejected before a slot is taken — it never reaches the
