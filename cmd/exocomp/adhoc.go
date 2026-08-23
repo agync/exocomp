@@ -237,7 +237,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		}
 	}()
 
-	root, err := adhocSourceRoot(ctx, st, dir, spec.sourceName)
+	root, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, "command")
 	if err != nil {
 		return 0, err
 	}
@@ -282,47 +282,50 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 	return reportJobOutcome(out, final), nil
 }
 
-// adhocSourceRoot resolves the working directory an ad-hoc run executes in: a
-// named source's checkout (so the repo's ansible.cfg and inventory apply), or
-// empty for a localhost run that runs in the caller's own directory.
-func adhocSourceRoot(ctx context.Context, st *store.Store, dir, sourceName string) (string, error) {
+// sourceCheckoutRoot resolves the working directory a run executes in: a named
+// source's checkout (so the repo's own configuration applies), or empty for a
+// run that executes in the caller's own directory. verb prefixes the errors so
+// each command's refusals name the command the operator typed.
+func sourceCheckoutRoot(ctx context.Context, st *store.Store, dir, sourceName, verb string) (string, error) {
 	if sourceName == "" {
 		return "", nil
 	}
 	src, err := st.SourceByName(ctx, sourceName)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", fmt.Errorf("command: no source %q", sourceName)
+		return "", fmt.Errorf("%s: no source %q", verb, sourceName)
 	}
 	if err != nil {
 		return "", err
 	}
 	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
 	if err != nil {
-		return "", fmt.Errorf("command: %w", err)
+		return "", fmt.Errorf("%s: %w", verb, err)
 	}
 	return loc.Root, nil
 }
 
-// gateAdhoc routes a --require-approval ad-hoc job through the approval gate: it
-// lands in awaiting_approval where no worker can claim it, an approval that
-// releases it is created, and its decision link is pointed to. It reuses the same
-// gate and approval machinery a gated tofu apply does, so there is one gate.
-func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer) (int, error) {
+// gateJob routes a --require-approval job through the approval gate: it lands
+// in awaiting_approval where no worker can claim it, and an approval that
+// releases it is created. It is the same gate and approval machinery a gated
+// tofu apply uses, so there is one gate, and it returns the pair rather than
+// printing so every verb that gates can report in its own format.
+func gateJob(ctx context.Context, st *store.Store, dir string, spec queue.Spec) (
+	store.Job, store.Approval, error) {
 	env, err := secrets.Open(dir)
 	if err != nil {
-		return 0, fmt.Errorf("command: --require-approval needs the envelope: %w", err)
+		return store.Job{}, store.Approval{}, fmt.Errorf("--require-approval needs the envelope: %w", err)
 	}
 	defer func() { _ = env.Close() }()
 
 	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
 	job, err := q.EnqueueGated(ctx, spec)
 	if err != nil {
-		return 0, err
+		return store.Job{}, store.Approval{}, err
 	}
 
 	_, hash, err := reactive.ApprovalToken(env, job.ID)
 	if err != nil {
-		return 0, err
+		return store.Job{}, store.Approval{}, err
 	}
 	now := time.Now().UTC()
 	approval, err := st.CreateApproval(ctx, store.Approval{
@@ -332,11 +335,24 @@ func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec
 		TokenHash:   hash,
 	})
 	if err != nil {
-		return 0, err
+		return store.Job{}, store.Approval{}, err
 	}
+	return job, approval, nil
+}
 
+// printGatedJob is the shared text report for a job that landed in the gate.
+func printGatedJob(out io.Writer, job store.Job, approval store.Approval) {
 	_, _ = fmt.Fprintf(out, "job %d gated (awaiting_approval); approval %d expires %s\n",
 		job.ID, approval.ID, approval.ExpiresAt.Format("2006-01-02 15:04:05Z"))
 	_, _ = fmt.Fprintf(out, "it waits until decided; print its decision link with `exocomp approval link %d`\n", approval.ID)
+}
+
+// gateAdhoc gates an ad-hoc ansible job and points at its decision link.
+func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer) (int, error) {
+	job, approval, err := gateJob(ctx, st, dir, spec)
+	if err != nil {
+		return 0, fmt.Errorf("command: %w", err)
+	}
+	printGatedJob(out, job, approval)
 	return 0, nil
 }
