@@ -87,6 +87,12 @@ func (s *Server) apiGuard(allow func(identity) bool, denyMsg string, next http.H
 				w.Header().Set("Retry-After", "1")
 				s.apiError(w, http.StatusServiceUnavailable,
 					wire.NewError(wire.CodeKDFBusy, err.Error()))
+			case errors.Is(err, ErrAuthThrottled):
+				// Same "busy, retry later" code the taxonomy already carries
+				// (exit 7), with the status that names WHY: too many failures.
+				w.Header().Set("Retry-After", strconv.Itoa(int(authFailBase.Seconds())))
+				s.apiError(w, http.StatusTooManyRequests,
+					wire.NewError(wire.CodeKDFBusy, err.Error()))
 			case errors.Is(err, ErrUnauthenticated):
 				w.Header().Set("WWW-Authenticate", `Bearer realm="exocomp"`)
 				s.apiError(w, http.StatusUnauthorized,

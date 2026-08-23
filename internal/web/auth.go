@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"exocomp.dev/exocomp/internal/service"
@@ -35,6 +37,12 @@ const sessionPurpose = "web-session"
 
 // ErrUnauthenticated reports a request that carried no usable credential.
 var ErrUnauthenticated = errors.New("web: no valid session or token")
+
+// ErrAuthThrottled reports that this source (or this token row) has failed
+// authentication too many times in a row and is serving a backoff, so the
+// attempt was refused without running the KDF (finding AI-11). It is a
+// transient 429, not a permanent lockout.
+var ErrAuthThrottled = errors.New("web: too many failed authentications, retry later")
 
 // ErrKDFBusy reports that the pre-auth KDF gate is saturated: too many argon2id
 // verifications are already in flight, so this one was refused rather than run
@@ -131,13 +139,13 @@ func (s *Server) authenticateToken(ctx context.Context, presented string, now ti
 func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, now time.Time) (store.APIToken, error) {
 	row, err := s.store.GetToken(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
-		return store.APIToken{}, ErrUnauthenticated
+		return store.APIToken{}, s.equalize(secret)
 	}
 	if err != nil {
 		return store.APIToken{}, err
 	}
 	if !row.Active(now) {
-		return store.APIToken{}, ErrUnauthenticated
+		return store.APIToken{}, s.equalize(secret)
 	}
 	if secret != "" {
 		ok, err := s.verify(secret, row.Hash)
@@ -151,6 +159,49 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 	return row, nil
 }
 
+// equalize pays the same argon2id a live row's verification would, so an
+// unknown or inactive token id is not distinguishable from a live one by
+// response time (finding AI-11: 18ms for a live row vs 513µs for a missing one
+// enumerated which rows existed). The session path presents no secret and runs
+// no KDF either way, so it is left alone.
+func (s *Server) equalize(secret string) error {
+	if secret != "" {
+		_, _ = s.verify(secret, decoyHash())
+	}
+	return ErrUnauthenticated
+}
+
+// decoyHash is a real argon2id PHC string with the production parameters, hashed
+// once from a random secret no caller can present.
+func decoyHash() string {
+	decoyOnce.Do(func() {
+		buf := make([]byte, 24)
+		if _, err := rand.Read(buf); err != nil {
+			// A decoy that cannot be minted still has to have the right shape;
+			// a fixed string keeps the failure path constant-cost.
+			decoy = fixedDecoyHash
+			return
+		}
+		h, err := hashSecret(base64.RawURLEncoding.EncodeToString(buf))
+		if err != nil {
+			decoy = fixedDecoyHash
+			return
+		}
+		decoy = h
+	})
+	return decoy
+}
+
+var (
+	decoyOnce sync.Once
+	decoy     string
+)
+
+// fixedDecoyHash is the fallback decoy: a valid PHC string over an unknowable
+// secret. verifySecret runs the same KDF against it as against a real row.
+const fixedDecoyHash = "$argon2id$v=19$m=65536,t=3,p=4$" +
+	"AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
 // authenticateTokenGated is authenticateToken behind the KDF concurrency gate.
 // A malformed token is rejected before a slot is taken — it never reaches the
 // KDF — and a saturated gate returns ErrKDFBusy instead of running argon2id, so
@@ -160,12 +211,38 @@ func (s *Server) authenticateTokenGated(r *http.Request, presented string, now t
 	if err != nil {
 		return store.APIToken{}, err
 	}
+	// A source (or a token row) that has failed repeatedly is serving a backoff:
+	// refuse before the KDF, so a guessing run costs the daemon nothing and
+	// makes no progress (finding AI-11).
+	src, tok := failKeys(r, id)
+	if _, blocked := s.fails.blocked(now, src, tok); blocked {
+		return store.APIToken{}, ErrAuthThrottled
+	}
 	release, ok := s.kdf.acquire(sourceKey(r))
 	if !ok {
 		return store.APIToken{}, ErrKDFBusy
 	}
 	defer release()
-	return s.authenticateRow(r.Context(), id, secret, now)
+
+	row, err := s.authenticateRow(r.Context(), id, secret, now)
+	switch {
+	case errors.Is(err, ErrUnauthenticated):
+		if n := s.fails.fail(now, src, tok); n == authFailThreshold+1 {
+			// Once per run, not once per attempt: the operator should see a
+			// guessing run in the log without it becoming the log.
+			s.log.Warn("web: repeated authentication failures; backing off",
+				"source", sourceKey(r), "token_id", id, "failures", n)
+		}
+	case err == nil:
+		s.fails.succeed(src, tok)
+	}
+	return row, err
+}
+
+// failKeys are the two namespaces a failure counts against: the peer address and
+// the token row it was presented for.
+func failKeys(r *http.Request, id int64) (source, token string) {
+	return "src:" + sourceKey(r), "tok:" + strconv.FormatInt(id, 10)
 }
 
 // resolve authenticates a request by session cookie first, then by a bearer
@@ -215,6 +292,11 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 			if errors.Is(err, ErrKDFBusy) {
 				w.Header().Set("Retry-After", "1")
 				http.Error(w, "authentication busy, retry shortly", http.StatusServiceUnavailable)
+				return
+			}
+			if errors.Is(err, ErrAuthThrottled) {
+				w.Header().Set("Retry-After", strconv.Itoa(int(authFailBase.Seconds())))
+				http.Error(w, "too many failed authentications, retry later", http.StatusTooManyRequests)
 				return
 			}
 			if !errors.Is(err, ErrUnauthenticated) {

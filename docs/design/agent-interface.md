@@ -316,6 +316,11 @@ resources are the "be aware of" surface.
   `nibbler`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
   `forbidden` **before any store touch**.
+- **Bearer failures back off, and the failure path is constant-cost.** Consecutive failures
+  are counted per source and per token row; past a threshold the source serves a doubling
+  backoff (429, `Retry-After`) that costs no KDF, and the run is logged once. An unknown or
+  revoked token id pays the same argon2id a live one does, so response time is not an
+  existence oracle (finding AI-11).
 - **A revoked token cuts an OPEN stream too.** The SSE tail re-resolves its token row on
   every poll and ends the stream when the row stops authenticating, with a hard 12h lifetime
   as backstop — a revoke is not something a caller can outrun by holding a socket open
