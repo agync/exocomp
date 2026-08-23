@@ -138,7 +138,7 @@ func (s *Server) readTools() []tool {
 		{"list_workspaces", "List tofu workspaces.", object(nil), s.runListWorkspaces},
 		{"get_workspace", "Show one workspace by name.",
 			object(map[string]any{"name": strProp("the workspace name")}, "name"), s.runGetWorkspace},
-		{"get_drift", "Show drift/pending changes from the workspace's last-run plan job — cached, not a fresh plan, so it can be stale; re-run workspace_plan to refresh. Values suppressed.",
+		{"get_drift", "Show the workspace's last-run plan job as two DISTINCT arrays: drift (infra that moved since the last apply) and pending (this plan's own proposed changes) — cached, not a fresh plan, so it can be stale; re-run workspace_plan to refresh. Values suppressed.",
 			object(map[string]any{"name": strProp("the workspace name")}, "name"), s.runGetDrift},
 		{"list_approvals", "List approvals; pending-only by default, all=true includes decided.",
 			object(map[string]any{"all": boolProp("include already-decided approvals")}), s.runListApprovals},
