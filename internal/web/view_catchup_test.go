@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -34,16 +35,17 @@ func seedPostV1(t *testing.T, h *harness) {
 	if err != nil {
 		t.Fatalf("seed schedule: %v", err)
 	}
-	job, err := h.store.CreateJob(ctx, store.NewJob{Runbook: "plan-prod", Kind: "tofu", Trigger: "schedule"})
+	// Enqueued and run through the live queue, same as the daemon would, so
+	// nothing here hand-drives a state the harness's own q.Run(claimAny=true)
+	// is concurrently claiming.
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "plan-prod", Kind: "tofu", Trigger: "schedule",
+		Argv: []string{"/bin/sh", "-c", "exit 0"},
+	})
 	if err != nil {
 		t.Fatalf("seed schedule job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
-		t.Fatalf("job -> running: %v", err)
-	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {
-		t.Fatalf("job -> succeeded: %v", err)
-	}
+	job = h.waitJobState(t, job.ID, store.StateSucceeded, 2*time.Second)
 	next := time.Now().Add(15 * time.Minute).UTC()
 	if err := h.store.RecordScheduleFire(ctx, sc.ID, &job.ID, &next); err != nil {
 		t.Fatalf("record fire: %v", err)
