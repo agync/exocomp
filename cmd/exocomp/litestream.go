@@ -13,6 +13,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -144,67 +145,166 @@ func generateConfigFromStore(ctx context.Context, st *store.Store) (string, erro
 
 func newLitestreamStatusCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "status",
-		Short: "Report binary presence and replication freshness (RPO age)",
+		Use:     "status",
+		Short:   "Report binary presence and replication freshness (RPO age)",
+		Example: "exocomp litestream status --output json",
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return litestreamStatus(cmd.Context(), cmd.OutOrStdout())
+			mode, err := outputMode(cmd)
+			if err != nil {
+				return err
+			}
+			f, ferr := probeLitestreamLocal(cmd.Context())
+			if mode == outputJSON {
+				if ferr != nil {
+					return failJSON(cmd, ferr)
+				}
+				return emitJSON(cmd, wire.KindLitestreamStatus, litestreamStatusView(f))
+			}
+			printLitestreamStatusText(cmd.OutOrStdout(), f)
+			return ferr
 		},
 	}
 }
 
-// litestreamStatus prints the sidecar's honest state: whether the binary is
-// installed, what target is configured, and how fresh the replica is. It never
-// fails for want of the binary — an absent sidecar is a state to report, with
-// the one install step named, not an error.
-func litestreamStatus(ctx context.Context, w io.Writer) error {
-	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+// litestreamFacts is the sidecar's local status probe result — binary
+// presence, the persisted target, and replication freshness — captured once
+// so the text report and the --output json view derive from identical data
+// instead of two probes that could drift apart.
+type litestreamFacts struct {
+	binPath, version string
 
-	binPath, version := litestream.Presence()
-	switch {
-	case binPath == "":
-		p("binary:       not installed — %s\n", litestream.InstallHint)
-	case version == "":
-		p("binary:       %s (version probe failed)\n", binPath)
-	default:
-		p("binary:       %s (%s)\n", binPath, version)
-	}
+	storeErr error
+
+	targetErr error // a real (non-not-found) settings read failure
+	noTarget  bool
+	target    litestream.Target
+	targetRaw string
+	parseErr  error
+
+	freshOK    bool
+	freshMtime time.Time
+	freshErr   error
+}
+
+// probeLitestreamLocal gathers litestreamFacts from this box's own store and
+// binary presence. The returned error is only a genuine settings-read fault;
+// every other absence (no binary, no target, an unparseable target, an
+// unreadable freshness probe) is captured as a fact and reported, never
+// failed on — the sidecar is optional.
+func probeLitestreamLocal(ctx context.Context) (litestreamFacts, error) {
+	var f litestreamFacts
+	f.binPath, f.version = litestream.Presence()
 
 	st, err := openStore()
 	if err != nil {
-		p("target:       unknown (%v)\n", err)
-		return nil
+		f.storeErr = err
+		return f, nil
 	}
 	defer func() { _ = st.Close() }()
 
 	raw, err := st.GetSetting(ctx, litestream.SettingReplicaTarget)
 	if errors.Is(err, store.ErrNotFound) || raw == "" {
-		p("target:       none configured — `exocomp litestream target <uri>`\n")
-		p("replication:  unknown (no replica target)\n")
-		return nil
+		f.noTarget = true
+		return f, nil
 	}
 	if err != nil {
-		return err
+		f.targetErr = err
+		return f, err
 	}
+	f.targetRaw = raw
 	target, perr := litestream.ParseTarget(raw)
 	if perr != nil {
-		p("target:       %s (UNPARSEABLE: %v)\n", raw, perr)
-		return nil
+		f.parseErr = perr
+		return f, nil
 	}
-	p("target:       %s (%s)\n", target.Raw, target.Type)
+	f.target = target
 
 	_, mtime, ok, ferr := litestream.ReplicaFreshness(target, time.Now().UTC())
-	if ferr != nil {
-		p("replication:  unknown (%v)\n", ferr)
-		return nil
-	}
+	f.freshOK, f.freshMtime, f.freshErr = ok, mtime, ferr
+	return f, nil
+}
+
+// printLitestreamStatusText renders litestreamFacts exactly as the pre-JSON
+// litestreamStatus did — same lines, same order, same silent-return branches
+// — so the default text path is unchanged.
+func printLitestreamStatusText(w io.Writer, f litestreamFacts) {
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+
 	switch {
-	case ok:
-		age := time.Since(mtime).Truncate(time.Second)
-		p("replication:  last frame %s ago (RPO ~%s), replica %s\n", age, age, mtime.UTC().Format(time.RFC3339))
-	case target.Remote():
+	case f.binPath == "":
+		p("binary:       not installed — %s\n", litestream.InstallHint)
+	case f.version == "":
+		p("binary:       %s (version probe failed)\n", f.binPath)
+	default:
+		p("binary:       %s (%s)\n", f.binPath, f.version)
+	}
+
+	if f.storeErr != nil {
+		p("target:       unknown (%v)\n", f.storeErr)
+		return
+	}
+	if f.noTarget {
+		p("target:       none configured — `exocomp litestream target <uri>`\n")
+		p("replication:  unknown (no replica target)\n")
+		return
+	}
+	if f.targetErr != nil {
+		// Matches the pre-refactor behavior: a real settings-read fault prints
+		// nothing further here and fails the command via the returned error.
+		return
+	}
+	if f.parseErr != nil {
+		p("target:       %s (UNPARSEABLE: %v)\n", f.targetRaw, f.parseErr)
+		return
+	}
+	p("target:       %s (%s)\n", f.target.Raw, f.target.Type)
+
+	switch {
+	case f.freshErr != nil:
+		p("replication:  unknown (%v)\n", f.freshErr)
+	case f.freshOK:
+		age := time.Since(f.freshMtime).Truncate(time.Second)
+		p("replication:  last frame %s ago (RPO ~%s), replica %s\n", age, age, f.freshMtime.UTC().Format(time.RFC3339))
+	case f.target.Remote():
 		p("replication:  unknown — a remote replica's frame age needs the litestream binary to read\n")
 	default:
 		p("replication:  no replicated frames yet — sidecar not running?\n")
 	}
-	return nil
+}
+
+// litestreamStatusView projects litestreamFacts into the wire view. The
+// target's raw URI never travels (wire.LitestreamStatusView's doc explains
+// why); everything else mirrors the branch printLitestreamStatusText took.
+func litestreamStatusView(f litestreamFacts) wire.LitestreamStatusView {
+	v := wire.LitestreamStatusView{
+		BinaryPresent: f.binPath != "",
+	}
+	if f.version != "" {
+		v.BinaryVersion = f.version
+	}
+
+	switch {
+	case f.storeErr != nil, f.targetErr != nil:
+		v.ReplicationState = wire.LitestreamReplicationUnknown
+	case f.noTarget:
+		v.ReplicationState = wire.LitestreamReplicationNotConfigured
+	case f.parseErr != nil:
+		v.ReplicationState = wire.LitestreamReplicationUnparseable
+	default:
+		v.TargetConfigured = true
+		v.TargetType = string(f.target.Type)
+		v.TargetRemote = f.target.Remote()
+		switch {
+		case f.freshErr != nil:
+			v.ReplicationState = wire.LitestreamReplicationProbeFailed
+		case f.freshOK:
+			v.ReplicationState = wire.LitestreamReplicationFresh
+			v.ReplicaFreshAt = f.freshMtime.UTC().Format(time.RFC3339)
+		case f.target.Remote():
+			v.ReplicationState = wire.LitestreamReplicationRemoteUnknown
+		default:
+			v.ReplicationState = wire.LitestreamReplicationNoFrames
+		}
+	}
+	return v
 }

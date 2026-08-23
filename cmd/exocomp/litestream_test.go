@@ -3,9 +3,13 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/litestream"
 )
@@ -117,5 +121,93 @@ func TestLitestreamStatusHonestWithoutBinary(t *testing.T) {
 		if !strings.Contains(out, litestream.InstallHint) {
 			t.Errorf("status did not name the install step:\n%s", out)
 		}
+	}
+}
+
+// TestLitestreamStatusJSONNotConfigured proves the envelope shape and that
+// with no target configured the JSON facts match the text facts.
+func TestLitestreamStatusJSONNotConfigured(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	text, err := run(t, "litestream", "status")
+	if err != nil {
+		t.Fatalf("text status: %v (%s)", err, text)
+	}
+	if !strings.Contains(text, "none configured") {
+		t.Fatalf("text missing not-configured fact: %q", text)
+	}
+
+	out, err := run(t, "litestream", "status", "--output", "json")
+	if err != nil {
+		t.Fatalf("litestream status --output json: %v (%s)", err, out)
+	}
+	var env struct {
+		SchemaVersion int `json:"schema_version"`
+		Kind          string
+		Data          struct {
+			BinaryPresent    bool   `json:"binary_present"`
+			TargetConfigured bool   `json:"target_configured"`
+			ReplicationState string `json:"replication_state"`
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not an envelope: %v (%q)", err, out)
+	}
+	if env.SchemaVersion != 1 || env.Kind != "litestream.status" {
+		t.Fatalf("bad envelope header: %+v", env)
+	}
+	if env.Data.TargetConfigured || env.Data.ReplicationState != "not_configured" {
+		t.Fatalf("json facts do not match not-configured text: %+v", env.Data)
+	}
+}
+
+// TestLitestreamStatusJSONFreshLocalTarget seeds a local file replica with a
+// frame on disk, so the JSON facts land in the "fresh" state with an absolute
+// replica_fresh_at — the same event the text "last frame ... ago" line
+// reports, relative to now — and never leak the target's raw path.
+func TestLitestreamStatusJSONFreshLocalTarget(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	replica := t.TempDir()
+	if err := os.WriteFile(filepath.Join(replica, "generations.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatalf("seed replica frame: %v", err)
+	}
+	if out, err := run(t, "litestream", "target", replica); err != nil {
+		t.Fatalf("set target: %v (%s)", err, out)
+	}
+
+	text, err := run(t, "litestream", "status")
+	if err != nil {
+		t.Fatalf("text status: %v (%s)", err, text)
+	}
+	if !strings.Contains(text, "last frame") {
+		t.Fatalf("text did not report a fresh frame: %q", text)
+	}
+
+	out, err := run(t, "litestream", "status", "--output", "json")
+	if err != nil {
+		t.Fatalf("litestream status --output json: %v (%s)", err, out)
+	}
+	var env struct {
+		Kind string
+		Data struct {
+			TargetConfigured bool   `json:"target_configured"`
+			TargetType       string `json:"target_type"`
+			ReplicationState string `json:"replication_state"`
+			ReplicaFreshAt   string `json:"replica_fresh_at"`
+		}
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("not an envelope: %v (%q)", err, out)
+	}
+	if !env.Data.TargetConfigured || env.Data.TargetType != "file" ||
+		env.Data.ReplicationState != "fresh" || env.Data.ReplicaFreshAt == "" {
+		t.Fatalf("json facts do not match a fresh local target: %+v", env.Data)
+	}
+	if _, err := time.Parse(time.RFC3339, env.Data.ReplicaFreshAt); err != nil {
+		t.Fatalf("replica_fresh_at not RFC3339: %v", err)
+	}
+	if strings.Contains(out, replica) {
+		t.Fatalf("litestream status json leaked the target's raw path: %s", out)
 	}
 }
