@@ -18,7 +18,7 @@ import (
 // the apply carries the destructive shape (auto-approve, workspace concurrency
 // key, the --run-secrets binding).
 func TestBootstrapComposesAnsibleFirst(t *testing.T) {
-	steps := composeBootstrapSteps("/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
+	steps := composeBootstrapSteps("bootstrap:wsp:1", "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
 		bootstrapSpec{runSecrets: "kube"})
 
 	if len(steps) != 2 {
@@ -45,6 +45,62 @@ func TestBootstrapComposesAnsibleFirst(t *testing.T) {
 	if steps[0].Spec.RunSecretBinding != "" {
 		t.Errorf("the play step carried a run-secret binding %q, want none in Phase 0",
 			steps[0].Spec.RunSecretBinding)
+	}
+	// No --capture: the play carries no reserved capture vars.
+	if _, ok := steps[0].Spec.ExtraVars[bootstrapCaptureVar]; ok {
+		t.Errorf("the play step carried capture vars without --capture: %v", steps[0].Spec.ExtraVars)
+	}
+}
+
+// TestBootstrapComposesCaptureBinding proves --capture rewires the chain: the
+// play step carries the declared captures and the workflow id as reserved
+// extra-vars (round-tripping through the driver's extractor), and the apply step
+// binds the same ab:<workflow> the play seals into — the closed env-decomposition
+// loop, with no value anywhere in the composed shape.
+func TestBootstrapComposesCaptureBinding(t *testing.T) {
+	const wf = "bootstrap:wsp:42"
+	captures := []executor.AnsibleCapture{{Name: "KUBECONFIG", File: "kubeconfig"}}
+	steps := composeBootstrapSteps(wf, "/abs/site.yml", "/abs/inv", "tf:wsp", "/abs/tofu", "wsp",
+		bootstrapSpec{captures: captures})
+
+	// The apply inherits the chain's own ab:<workflow>, not a pre-existing binding.
+	want := executor.AnsibleOutputBinding(wf)
+	if steps[1].Spec.RunSecretBinding != want {
+		t.Errorf("apply binding %q, want %q", steps[1].Spec.RunSecretBinding, want)
+	}
+
+	// The play carries the reserved carriers, and they decode back to exactly the
+	// declared captures and workflow, with the reserved keys stripped from what the
+	// play would actually receive.
+	if steps[0].Spec.ExtraVars[bootstrapWorkflowVar] != wf {
+		t.Errorf("play workflow var %q, want %q", steps[0].Spec.ExtraVars[bootstrapWorkflowVar], wf)
+	}
+	got, gotWF, rest := extractBootstrapCaptures(steps[0].Spec.ExtraVars)
+	if gotWF != wf {
+		t.Errorf("extracted workflow %q, want %q", gotWF, wf)
+	}
+	if len(got) != 1 || got[0] != captures[0] {
+		t.Errorf("extracted captures %v, want %v", got, captures)
+	}
+	if len(rest) != 0 {
+		t.Errorf("reserved keys survived into the play's vars: %v", rest)
+	}
+}
+
+// TestParseCapturesRejectsBadSpecs proves the flag parser refuses a spec that is
+// not NAME=FILE and a FILE that could escape the capture dir.
+func TestParseCapturesRejectsBadSpecs(t *testing.T) {
+	for _, bad := range []string{"KUBECONFIG", "=kubeconfig", "KUBECONFIG=", "K=/etc/passwd", "K=../escape"} {
+		if _, err := parseCaptures([]string{bad}); err == nil {
+			t.Errorf("parseCaptures(%q) accepted a bad spec", bad)
+		}
+	}
+	got, err := parseCaptures([]string{"KUBECONFIG=kubeconfig", "TOKEN=sub/dir/token"})
+	if err != nil {
+		t.Fatalf("parseCaptures rejected valid specs: %v", err)
+	}
+	if len(got) != 2 || got[0].Name != "KUBECONFIG" || got[1].File != "sub/dir/token" {
+		t.Errorf("parseCaptures returned %v", got)
 	}
 }
 

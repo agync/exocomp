@@ -404,7 +404,9 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	if err != nil {
 		return store.Job{}, err
 	}
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable)
+	// The daemonless play path declares no captures: the bootstrap chain's capture
+	// seal runs only through the daemon's ansibleJobDriver, so this passes none.
+	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable, nil, nil)
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)

@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -29,6 +31,23 @@ const bootstrapTrigger = "bootstrap"
 // chain is composed and started.
 const bootstrapWorkflowKind = "bootstrap.workflow"
 
+// bootstrapCaptureVar carries the operator's --capture declarations from the CLI
+// to the daemon's ansible driver on the play step's job. store.JobArgs has no
+// capture field (the queue/store lane owns that shape), so the declarations ride
+// the one durable per-job map that exists — ExtraVars — under a reserved key the
+// driver strips before the play, keeping the play's own var namespace clean. The
+// value is JSON: a []executor.AnsibleCapture. Because rearmStep does not copy
+// ExtraVars, a play re-armed after a mid-run crash loses its captures; a
+// JobArgs.Captures field would fix that and is the follow-on this channel stands
+// in for.
+const bootstrapCaptureVar = "exocomp_bootstrap_captures"
+
+// bootstrapWorkflowVar carries the chain's workflow id to the play step's sealer
+// on the same channel, so the sealed rows and the ab:<workflow> binding derive
+// from the exact id the composer bound into the tofu step, with no coupling to
+// the queue's internal step-key format.
+const bootstrapWorkflowVar = "exocomp_bootstrap_workflow"
+
 func newBootstrapCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "bootstrap",
@@ -51,6 +70,7 @@ func newBootstrapRunCmd() *cobra.Command {
 		inventory       string
 		vaultProject    string
 		runSecrets      string
+		captureSpecs    []string
 		sourceName      string
 		requireApproval bool
 		timeout         time.Duration
@@ -83,12 +103,25 @@ func newBootstrapRunCmd() *cobra.Command {
 					return err
 				}
 			}
+			captures, err := parseCaptures(captureSpecs)
+			if err != nil {
+				return err
+			}
+			// The apply carries one run-secret binding. With --capture that slot is
+			// the chain's own ab:<workflow>; a pre-existing --run-secrets would have
+			// to share it, which one field cannot, so the two are refused together
+			// rather than one silently winning.
+			if len(captures) > 0 && runSecrets != "" {
+				return errors.New("bootstrap: --capture and --run-secrets are mutually " +
+					"exclusive; the apply's binding is the captured ab:<workflow>")
+			}
 			return runBootstrap(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), mode, bootstrapSpec{
 				playbook:     args[0],
 				workspace:    args[1],
 				inventory:    inventory,
 				vaultProject: vaultProject,
 				runSecrets:   runSecrets,
+				captures:     captures,
 				sourceName:   sourceName,
 				timeout:      timeout,
 				wait:         wait,
@@ -101,6 +134,9 @@ func newBootstrapRunCmd() *cobra.Command {
 		"derive the ansible-vault password for the bootstrap play from the envelope")
 	run.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as provider/TF_VAR_ env for the apply step")
+	run.Flags().StringArrayVar(&captureSpecs, "capture", nil,
+		"seal a play-fetched file as env for the apply: NAME=FILE, repeatable "+
+			"(NAME becomes the env var, FILE is fetched under the run's capture dir)")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
 	run.Flags().BoolVar(&requireApproval, "require-approval", false,
@@ -136,9 +172,59 @@ type bootstrapSpec struct {
 	inventory    string
 	vaultProject string
 	runSecrets   string
+	captures     []executor.AnsibleCapture
 	sourceName   string
 	timeout      time.Duration
 	wait         bool
+}
+
+// parseCaptures turns each --capture NAME=FILE into a declared capture target.
+// NAME is the output name the sealed row and its env binding derive from; FILE is
+// the path, relative to the run's capture dir, the play fetched the value into. A
+// FILE that is absolute or climbs out of the capture dir is refused: a declared
+// target must stay inside the private dir the driver reads back in-process.
+func parseCaptures(specs []string) ([]executor.AnsibleCapture, error) {
+	var out []executor.AnsibleCapture
+	for _, s := range specs {
+		name, file, ok := strings.Cut(s, "=")
+		if !ok || name == "" || file == "" {
+			return nil, fmt.Errorf("bootstrap: --capture %q: want NAME=FILE", s)
+		}
+		if filepath.IsAbs(file) || strings.HasPrefix(file, "..") || strings.Contains(file, "/../") {
+			return nil, fmt.Errorf("bootstrap: --capture %q: FILE must be a relative path inside the capture dir", s)
+		}
+		out = append(out, executor.AnsibleCapture{Name: name, File: file})
+	}
+	return out, nil
+}
+
+// extractBootstrapCaptures pulls a bootstrap play's capture declarations and its
+// workflow id off the job's extra-vars — the channel composeBootstrapSteps
+// smuggled them through — and returns the extra-vars with those reserved keys
+// removed, so the play never sees exocomp internal wiring in its own var
+// namespace. A job with no reserved key (every non-bootstrap play) returns its
+// extra-vars unchanged and no captures.
+func extractBootstrapCaptures(extraVars map[string]string) ([]executor.AnsibleCapture, string, map[string]string) {
+	raw, ok := extraVars[bootstrapCaptureVar]
+	if !ok {
+		return nil, "", extraVars
+	}
+	workflow := extraVars[bootstrapWorkflowVar]
+	var captures []executor.AnsibleCapture
+	// The composer wrote this JSON; a decode failure is a corrupted row, not
+	// operator input, so it drops the captures rather than failing the play.
+	_ = json.Unmarshal([]byte(raw), &captures)
+	filtered := make(map[string]string, len(extraVars))
+	for k, v := range extraVars {
+		if k == bootstrapCaptureVar || k == bootstrapWorkflowVar {
+			continue
+		}
+		filtered[k] = v
+	}
+	if len(filtered) == 0 {
+		filtered = nil
+	}
+	return captures, workflow, filtered
 }
 
 // bootstrapWorkflowView is the `--output json` projection of a started chain: the
@@ -154,12 +240,24 @@ type bootstrapWorkflowView struct {
 // composeBootstrapSteps builds the ansible-first chain: the bootstrap play, then
 // the workspace's tofu apply. It is the handoff's [tofu-apply, ansible-play] with
 // the order reversed, so the Sequencer runs the play first and the apply only if
-// the play succeeded. --run-secrets binds to the apply, mirroring the handoff:
-// the apply reads its own pre-existing credential (Phase 0 captures nothing from
-// the play). The play carries no inventory in its argv when one is named, so the
-// driver copies a registered inventory into the run's private dir the same way
-// every other play does.
-func composeBootstrapSteps(playbook, invPath, invName, tofuDir, workspace string, bs bootstrapSpec) []queue.Step {
+// the play succeeded. The play carries no inventory in its argv when one is
+// named, so the driver copies a registered inventory into the run's private dir
+// the same way every other play does.
+//
+// Without --capture the apply binds --run-secrets and reads its own pre-existing
+// credential (the Phase-0 shape). With --capture the play's declared outputs are
+// smuggled onto its step as reserved extra-vars (the daemon's driver seals them
+// under ab:<workflow>), and the apply binds that same ab:<workflow>, so the
+// captured value reaches the kubernetes/helm provider as env with nothing for an
+// operator to copy. The two credential sources are mutually exclusive (one
+// binding slot), enforced at the CLI.
+func composeBootstrapSteps(workflowID, playbook, invPath, invName, tofuDir, workspace string, bs bootstrapSpec) []queue.Step {
+	var playExtraVars map[string]string
+	tofuBinding := bs.runSecrets
+	if len(bs.captures) > 0 {
+		playExtraVars = bootstrapCaptureVars(workflowID, bs.captures)
+		tofuBinding = executor.AnsibleOutputBinding(workflowID)
+	}
 	return []queue.Step{
 		{
 			Kind: "ansible-play",
@@ -170,6 +268,7 @@ func composeBootstrapSteps(playbook, invPath, invName, tofuDir, workspace string
 				Argv:         executor.AnsibleArgv(playbook, invPath),
 				VaultProject: bs.vaultProject,
 				Inventory:    invName,
+				ExtraVars:    playExtraVars,
 				Timeout:      bs.timeout,
 			},
 		},
@@ -181,11 +280,27 @@ func composeBootstrapSteps(playbook, invPath, invName, tofuDir, workspace string
 				Trigger:          bootstrapTrigger,
 				Argv:             executor.TofuArgv("apply", "-auto-approve"),
 				Dir:              tofuDir,
-				RunSecretBinding: bs.runSecrets,
+				RunSecretBinding: tofuBinding,
 				ConcurrencyKey:   "tofu:" + workspace,
 				Timeout:          bs.timeout,
 			},
 		},
+	}
+}
+
+// bootstrapCaptureVars encodes the play step's capture declarations and workflow
+// id as the reserved extra-vars the daemon's driver reads back and strips. It is
+// the only durable per-job carrier available without a JobArgs field (see the
+// reserved-key consts).
+func bootstrapCaptureVars(workflowID string, captures []executor.AnsibleCapture) map[string]string {
+	blob, err := json.Marshal(captures)
+	if err != nil {
+		// Unreachable: AnsibleCapture is two strings.
+		panic("bootstrap: encode captures: " + err.Error())
+	}
+	return map[string]string{
+		bootstrapCaptureVar:  string(blob),
+		bootstrapWorkflowVar: workflowID,
 	}
 }
 
@@ -239,7 +354,11 @@ func runBootstrap(ctx context.Context, out, warn io.Writer, mode string, bs boot
 		return err
 	}
 
-	steps := composeBootstrapSteps(playbook, invPath, invName, ws.TofuDir, ws.Name, bs)
+	// The workflow id is fixed before the steps are composed: the play step's
+	// sealer and the apply step's ab:<workflow> binding both derive from it, so
+	// producer and consumer agree on the binding name without a round-trip.
+	workflowID := fmt.Sprintf("bootstrap:%s:%d", ws.Name, time.Now().UTC().UnixNano())
+	steps := composeBootstrapSteps(workflowID, playbook, invPath, invName, ws.TofuDir, ws.Name, bs)
 
 	// A named source's lifecycle wraps the play->apply chain exactly as it wraps
 	// the handoff: pre_run hooks before the play, post_run hooks and the health
@@ -267,7 +386,6 @@ func runBootstrap(ctx context.Context, out, warn io.Writer, mode string, bs boot
 		}
 	}
 
-	workflowID := fmt.Sprintf("bootstrap:%s:%d", ws.Name, time.Now().UTC().UnixNano())
 	seq := queue.NewSequencer(queue.New(st, enqueueOnly{}, queue.Options{Workers: 1}))
 	if err := seq.Start(ctx, workflowID, steps); err != nil {
 		return err

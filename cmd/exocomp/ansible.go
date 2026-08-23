@@ -23,7 +23,8 @@ const vaultPurpose = "ansible-vault"
 // cannot drift apart. An empty project runs without a vault password.
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
 	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv,
-	extraVars map[string]string, tolerateUnreachable bool) (executor.Driver, [][]byte) {
+	extraVars map[string]string, tolerateUnreachable bool,
+	captures []executor.AnsibleCapture, sealer executor.OutputSealer) (executor.Driver, [][]byte) {
 	opts := executor.AnsibleOptions{
 		VaultID:             executor.DefaultVaultID,
 		CollectionsPath:     filepath.Join(dataDir, collectionsCacheDir),
@@ -31,6 +32,11 @@ func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string
 		InventoryArtifact:   inventoryArtifact,
 		ExtraVars:           extraVars,
 		TolerateUnreachable: tolerateUnreachable,
+		// A bootstrap play's declared captures are sealed after a successful run.
+		// The sealer is nil for every other play, which drops any capture — the
+		// fail-safe direction (internal/executor/ansible.go: captureActive).
+		Captures:     captures,
+		OutputSealer: sealer,
 	}
 	// A source that declared Python dependencies runs inside its per-source uv
 	// venv (ADR 0011): the venv's ansible-playbook, interpreter, and PATH. A
@@ -100,7 +106,18 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 			Msg: "resolved project deps into " + venv.Dir})
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, job.Args.ExtraVars, job.Args.TolerateUnreachable)
+	// A bootstrap play carries its capture declarations and workflow id as reserved
+	// extra-vars the composer smuggled onto the job; extract and strip them so the
+	// play sees only its own vars, and build the sealer that binds each capture
+	// under ab:<workflow>. A play with no captures, or a driver with no envelope,
+	// gets a nil sealer and seals nothing.
+	captures, workflow, extraVars := extractBootstrapCaptures(job.Args.ExtraVars)
+	var sealer executor.OutputSealer
+	if len(captures) > 0 && d.env != nil {
+		sealer = executor.AnsibleOutputSealer{Env: d.env, Store: d.store, Workflow: workflow}
+	}
+
+	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, extraVars, job.Args.TolerateUnreachable, captures, sealer)
 	material := append(derived, secretPlain...)
 	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)
