@@ -13,10 +13,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -251,7 +251,10 @@ func ansiblePassthrough(limit, tags, skipTags string, check, diff bool, extraVar
 }
 
 // runPlaybook returns the job's exit code, and an error only when the job
-// could not be run at all.
+// could not be run at all. It resolves the run's inventory, then hands the
+// parsed input to the service verb, which assembles the spec and enqueues it
+// through the chosen Enqueuer; the CLI keeps the streaming and the exit-code
+// mapping.
 func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (code int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -284,32 +287,64 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		return 0, err
 	}
 
-	// The vault project and binding names travel with the job, not the material
-	// they resolve: a daemon that claims this row derives the same secrets.
-	queued := queue.Spec{
-		Runbook:             "playbook",
-		Kind:                executor.KindAnsible,
-		Trigger:             "manual",
-		Argv:                executor.AnsibleArgv(playbook, inventory, spec.passthrough...),
+	var enq service.Enqueuer
+	if daemonRunning(ctx, dir) {
+		enq = daemonEnqueuer{st: st, dir: dir, out: out}
+	} else {
+		enq = playbookInlineEnqueuer{st: st, dir: dir, out: out, warn: warn}
+	}
+
+	res, err := service.New(st, dir, nil).RunPlaybook(ctx, enq, service.PlaybookInput{
+		PlaybookPath:        playbook,
+		InventoryPath:       inventory,
+		InventoryName:       invName,
 		VaultProject:        spec.vaultProject,
-		RunSecretBinding:    spec.runSecrets,
-		Inventory:           invName,
+		RunSecrets:          spec.runSecrets,
+		Passthrough:         spec.passthrough,
 		ExtraVars:           spec.extraVars,
 		TolerateUnreachable: spec.tolerateUnreachable,
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
-	}
-
-	var final store.Job
-	if daemonRunning(ctx, dir) {
-		final, err = enqueueForDaemon(ctx, st, dir, queued, out)
-	} else {
-		final, err = runPlaybookInline(ctx, st, dir, queued, out, warn)
-	}
+	})
 	if err != nil {
 		return 0, err
 	}
-	return reportJobOutcome(out, final), nil
+	return reportJobOutcome(out, res.Job), nil
+}
+
+// daemonEnqueuer hands a spec to a running daemon and follows the job it creates
+// to a terminal state; the CLI does not drain, because two queues over one table
+// race for the row. Its EnqueueGated is an enqueue-only insert — a gated job
+// waits for a decision and is never driven here.
+type daemonEnqueuer struct {
+	st  *store.Store
+	dir string
+	out io.Writer
+}
+
+func (d daemonEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return enqueueForDaemon(ctx, d.st, d.dir, spec, d.out)
+}
+
+func (d daemonEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return queue.New(d.st, enqueueOnly{}, queue.Options{Workers: 1}).EnqueueGated(ctx, spec)
+}
+
+// playbookInlineEnqueuer drains the job in this process, which is what a host
+// with no daemon does. A playbook never gates, so EnqueueGated is present only
+// to satisfy the interface.
+type playbookInlineEnqueuer struct {
+	st        *store.Store
+	dir       string
+	out, warn io.Writer
+}
+
+func (e playbookInlineEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return runPlaybookInline(ctx, e.st, e.dir, spec, e.out, e.warn)
+}
+
+func (e playbookInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return queue.New(e.st, enqueueOnly{}, queue.Options{Workers: 1}).EnqueueGated(ctx, spec)
 }
 
 // reportJobOutcome prints the terminal job's one-line summary and maps it to a

@@ -18,8 +18,8 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
-	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -510,7 +510,9 @@ type workspaceOp struct {
 // runWorkspaceOp runs one tofu operation through the queue and returns the
 // exit code the shell should see. With a daemon up the job is enqueued for it
 // and followed to its end; without one this process serves the state backend
-// and drains the job itself, and the backend lives only as long as the run.
+// and drains the job itself, and the backend lives only as long as the run. The
+// spec assembly and the plan-gate routing live in the service verbs; the CLI
+// resolves the run's inputs, streams the job, and records its plan artifacts.
 func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (code int, err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -552,75 +554,50 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		return 0, err
 	}
 
-	// A saved plan carries the policy verdict its seal recorded. Consult it
-	// before anything is enqueued or decrypted: a deny plan is refused outright
-	// (unconsumable), a require_approval plan is routed through the gate rather
-	// than run. A fresh apply (no --plan) and an apply of an operator's own plan
-	// file carry no verdict and proceed.
-	if op.op == "apply" && op.planRef != "" {
-		saved, err := resolvePlan(ctx, st, op.planRef)
-		if err != nil {
-			return 0, err
-		}
-		verdict, err := planVerdict(ctx, st, saved)
-		if err != nil {
-			return 0, err
-		}
-		if verdict.Deny() {
-			return 0, fmt.Errorf("workspace apply: plan %s is unconsumable: denied by policy %q",
-				op.planRef, verdict.Policy)
-		}
-		if verdict.RequireApproval() {
-			return enqueueGatedApply(ctx, st, env, ws, op, saved, verdict.Policy, out)
-		}
-	}
-
-	argv, planPath, parent, cleanupPlan, err := opArgv(ctx, st, env, op, ws, dirs)
-	if err != nil {
-		return 0, err
-	}
-	defer cleanupPlan()
-	spec := queue.Spec{
-		Runbook:          workspaceRunbookPrefix + ws.Name,
-		Kind:             executor.KindTofu,
-		Trigger:          "manual",
-		Argv:             argv,
-		Dir:              ws.TofuDir,
-		RunSecretBinding: op.runSecrets,
-		ConcurrencyKey:   "tofu:" + ws.Name,
-		IdempotencyKey:   op.idempotencyKey,
-		Timeout:          op.timeout,
-	}
-
-	var final store.Job
+	svc := service.New(st, dir, nil)
+	var enq service.Enqueuer
 	if daemonRunning(ctx, dir) {
-		final, err = enqueueForDaemon(ctx, st, dir, spec, out)
+		enq = daemonEnqueuer{st: st, dir: dir, out: out}
 	} else {
-		final, err = runWorkspaceInline(ctx, st, env, dir, dirs, ws, spec, out, warn)
+		enq = workspaceInlineEnqueuer{st: st, env: env, dir: dir, dirs: dirs, ws: ws, out: out, warn: warn}
 	}
+
+	switch op.op {
+	case "plan":
+		return runWorkspacePlan(ctx, svc, enq, st, env, out, op, ws, dirs)
+	case "apply":
+		return runWorkspaceApply(ctx, svc, enq, st, env, out, op, ws, dirs)
+	default:
+		return 0, fmt.Errorf("workspace: unknown operation %q", op.op)
+	}
+}
+
+// runWorkspacePlan enqueues a plan through the service verb, then seals the plan
+// file the run wrote and records its policy verdict — the post-run half the CLI
+// keeps because it is presentation and audit, not the enqueue seam.
+func runWorkspacePlan(ctx context.Context, svc *service.Service, enq service.Enqueuer,
+	st *store.Store, env *secrets.Envelope, out io.Writer, op workspaceOp,
+	ws store.Workspace, dirs tofuPaths) (int, error) {
+	res, err := svc.PlanWorkspace(ctx, enq, service.PlanInput{
+		Workspace:      ws.Name,
+		TofuDir:        ws.TofuDir,
+		ArtifactsDir:   dirs.artifacts,
+		RunSecrets:     op.runSecrets,
+		IdempotencyKey: op.idempotencyKey,
+		Timeout:        op.timeout,
+	})
 	if err != nil {
 		return 0, err
 	}
+	final := res.Job
 	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
 		final.ID, final.State, jobDuration(final))
 
-	if parent != nil {
-		if _, err := st.CreateArtifact(ctx, store.Artifact{
-			JobID:  final.ID,
-			Kind:   planArtifactKind,
-			Path:   parent.Path,
-			SHA256: parent.SHA256,
-			Size:   parent.Size,
-		}); err != nil {
-			return 0, err
-		}
-		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", parent.ID, parent.JobID)
-	}
-	if planPath != "" {
+	if res.PlanPath != "" {
 		// Seal the plan, then evaluate the workspace's policies against the
 		// outcome the run already recorded and stamp the verdict onto the sealed
 		// artifact. A deny here is what makes the plan unconsumable.
-		saved, err := recordPlan(ctx, st, env, out, final.ID, planPath)
+		saved, err := recordPlan(ctx, st, env, out, final.ID, res.PlanPath)
 		if err != nil {
 			return 0, err
 		}
@@ -638,6 +615,109 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 	}
 
 	return workspaceExit(ctx, st, out, final, op.op)
+}
+
+// runWorkspaceApply resolves any saved plan's verdict, hands the apply to the
+// service verb (which refuses a deny, routes a require_approval through the gate,
+// or enqueues the plain run), then renders the result and links a consumed plan.
+func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.Enqueuer,
+	st *store.Store, env *secrets.Envelope, out io.Writer, op workspaceOp,
+	ws store.Workspace, dirs tofuPaths) (int, error) {
+	// A saved plan carries the policy verdict its seal recorded. Consult it
+	// before anything is enqueued or decrypted; a fresh apply and an apply of an
+	// operator's own plan file carry no verdict and proceed.
+	var saved *store.Artifact
+	var gate service.PlanGate
+	if op.planRef != "" {
+		resolved, err := resolvePlan(ctx, st, op.planRef)
+		if err != nil {
+			return 0, err
+		}
+		verdict, err := planVerdict(ctx, st, resolved)
+		if err != nil {
+			return 0, err
+		}
+		saved = &resolved
+		gate = service.PlanGate{
+			Deny:            verdict.Deny(),
+			RequireApproval: verdict.RequireApproval(),
+			Policy:          verdict.Policy,
+		}
+	}
+
+	res, err := svc.ApplyWorkspace(ctx, enq, env, service.ApplyInput{
+		Workspace:       ws.Name,
+		WorkspaceSerial: ws.Serial,
+		TofuDir:         ws.TofuDir,
+		RunSecrets:      op.runSecrets,
+		IdempotencyKey:  op.idempotencyKey,
+		Timeout:         op.timeout,
+		SavedPlan:       saved,
+		Gate:            gate,
+	}, func(ctx context.Context) ([]string, *store.Artifact, func(), error) {
+		return applyArgv(ctx, st, env, op, dirs)
+	})
+
+	var denied *service.PlanDeniedError
+	if errors.As(err, &denied) {
+		// Preserve the operator's own --plan reference in the message.
+		return 0, fmt.Errorf("workspace apply: plan %s is unconsumable: denied by policy %q",
+			op.planRef, denied.Policy)
+	}
+	if err != nil {
+		return 0, err
+	}
+
+	if res.Gated {
+		a := res.Approval
+		_, _ = fmt.Fprintf(out, "plan %d requires approval by policy %q\n", a.PlanArtifactID, a.Policy)
+		_, _ = fmt.Fprintf(out, "job %d gated (awaiting_approval); approval %d expires %s\n",
+			a.JobID, a.ApprovalID, a.ExpiresAt.Format("2006-01-02 15:04:05Z"))
+		_, _ = fmt.Fprintf(out, "print its decision link with `exocomp approval link %d`\n", a.ApprovalID)
+		return 0, nil
+	}
+
+	run := res.Run
+	defer run.Release()
+	final := run.Job
+	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
+		final.ID, final.State, jobDuration(final))
+
+	if run.Parent != nil {
+		if _, err := st.CreateArtifact(ctx, store.Artifact{
+			JobID:  final.ID,
+			Kind:   planArtifactKind,
+			Path:   run.Parent.Path,
+			SHA256: run.Parent.SHA256,
+			Size:   run.Parent.Size,
+		}); err != nil {
+			return 0, err
+		}
+		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", run.Parent.ID, run.Parent.JobID)
+	}
+
+	return workspaceExit(ctx, st, out, final, op.op)
+}
+
+// workspaceInlineEnqueuer serves the state backend in this process and drains
+// the one job it enqueues, which is what a host with no daemon does. Its
+// EnqueueGated is an enqueue-only insert: a gated apply waits for a decision and
+// never starts a backend or a driver here.
+type workspaceInlineEnqueuer struct {
+	st        *store.Store
+	env       *secrets.Envelope
+	dir       string
+	dirs      tofuPaths
+	ws        store.Workspace
+	out, warn io.Writer
+}
+
+func (e workspaceInlineEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return runWorkspaceInline(ctx, e.st, e.env, e.dir, e.dirs, e.ws, spec, e.out, e.warn)
+}
+
+func (e workspaceInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return queue.New(e.st, enqueueOnly{}, queue.Options{Workers: 1}).EnqueueGated(ctx, spec)
 }
 
 // runWorkspaceInline serves the state backend in this process and drains the
@@ -751,35 +831,28 @@ func startBackend(st *store.Store, env *secrets.Envelope, port int) (*api.Server
 	return srv, nil
 }
 
-// opArgv builds the tofu argv for the operation and reports the plan file it
-// will write and the saved plan it will consume.
-func opArgv(ctx context.Context, st *store.Store, env *secrets.Envelope, op workspaceOp,
-	ws store.Workspace, dirs tofuPaths) (
-	argv []string, planPath string, parent *store.Artifact, cleanup func(), err error) {
-	cleanup = func() {}
-	switch op.op {
-	case "plan":
-		planPath = filepath.Join(dirs.artifacts,
-			fmt.Sprintf("%s-%d.tfplan", ws.Name, time.Now().UTC().UnixNano()))
-		return executor.TofuArgv("plan", "-out="+planPath), planPath, nil, cleanup, nil
-	case "apply":
-		if op.planRef == "" {
-			return executor.TofuArgv("apply", "-auto-approve"), "", nil, cleanup, nil
-		}
-		saved, err := resolvePlan(ctx, st, op.planRef)
-		if err != nil {
-			return nil, "", nil, cleanup, err
-		}
-		// The stored plan is ciphertext; tofu reads the plaintext copy this
-		// run makes and the cleanup removes.
-		readable, release, err := openPlanForRun(env, dirs.private, saved.Path)
-		if err != nil {
-			return nil, "", nil, cleanup, err
-		}
-		return executor.TofuArgv("apply", readable), "", &saved, release, nil
-	default:
-		return nil, "", nil, cleanup, fmt.Errorf("workspace: unknown operation %q", op.op)
+// applyArgv builds the tofu apply argv and reports the saved plan it consumes.
+// A fresh apply auto-approves; an apply of a saved plan reads a plaintext copy
+// this run makes and the returned cleanup removes. It is deferred by the service
+// verb so the plaintext is decrypted only for an apply that will actually run —
+// never for one the gate holds for approval.
+func applyArgv(ctx context.Context, st *store.Store, env *secrets.Envelope, op workspaceOp,
+	dirs tofuPaths) (argv []string, parent *store.Artifact, release func(), err error) {
+	release = func() {}
+	if op.planRef == "" {
+		return executor.TofuArgv("apply", "-auto-approve"), nil, release, nil
 	}
+	saved, err := resolvePlan(ctx, st, op.planRef)
+	if err != nil {
+		return nil, nil, release, err
+	}
+	// The stored plan is ciphertext; tofu reads the plaintext copy this run
+	// makes and the cleanup removes.
+	readable, rel, err := openPlanForRun(env, dirs.private, saved.Path)
+	if err != nil {
+		return nil, nil, release, err
+	}
+	return executor.TofuArgv("apply", readable), &saved, rel, nil
 }
 
 // resolvePlan accepts either the artifact id a previous plan printed or a path
@@ -843,58 +916,6 @@ func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out
 	}
 	_, _ = fmt.Fprintf(out, "saved plan artifact %d at %s\n", saved.ID, saved.Path)
 	return &saved, nil
-}
-
-// enqueueGatedApply routes a require_approval plan's apply through the existing
-// approval gate instead of running it: the job lands in awaiting_approval, no
-// worker can claim it, and an approval that releases it is created and its link
-// pointed to. It reuses the gate and approval machinery the reactive engine
-// uses (EnqueueGated, ApprovalToken, CreateApproval), so there is one gate, not
-// a second one.
-func enqueueGatedApply(ctx context.Context, st *store.Store, env *secrets.Envelope,
-	ws store.Workspace, op workspaceOp, saved store.Artifact, policyName string, out io.Writer) (int, error) {
-	spec := queue.Spec{
-		Runbook:          workspaceRunbookPrefix + ws.Name,
-		Kind:             executor.KindTofu,
-		Trigger:          "manual",
-		Argv:             executor.TofuArgv("apply", saved.Path),
-		Dir:              ws.TofuDir,
-		RunSecretBinding: op.runSecrets,
-		ConcurrencyKey:   "tofu:" + ws.Name,
-		IdempotencyKey:   op.idempotencyKey,
-		Timeout:          op.timeout,
-	}
-	q := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
-	job, err := q.EnqueueGated(ctx, spec)
-	if err != nil {
-		return 0, err
-	}
-
-	token, hash, err := reactive.ApprovalToken(env, job.ID)
-	if err != nil {
-		return 0, err
-	}
-	_ = token // the capability is re-derived on demand by `approval link`, never printed here
-	now := time.Now().UTC()
-	artifactID := saved.ID
-	approval, err := st.CreateApproval(ctx, store.Approval{
-		JobID:        job.ID,
-		PlanArtifact: &artifactID,
-		Workspace:    ws.Name,
-		PlanSerial:   ws.Serial,
-		RequestedAt:  now,
-		ExpiresAt:    now.Add(reactive.DefaultApprovalTTL),
-		TokenHash:    hash,
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	_, _ = fmt.Fprintf(out, "plan %d requires approval by policy %q\n", saved.ID, policyName)
-	_, _ = fmt.Fprintf(out, "job %d gated (awaiting_approval); approval %d expires %s\n",
-		job.ID, approval.ID, approval.ExpiresAt.Format("2006-01-02 15:04:05Z"))
-	_, _ = fmt.Fprintf(out, "print its decision link with `exocomp approval link %d`\n", approval.ID)
-	return 0, nil
 }
 
 // workspaceExit reports the shell exit code, translating a plan that found
