@@ -92,9 +92,8 @@ type Server struct {
 	// always uses internal/health.Probe.
 	probe  func(ctx context.Context) wire.HealthView
 	health healthCache
-	// mcpSrv is the MCP adapter the /mcp transport dispatches into. It is the
-	// same package `exocomp mcp` serves over stdio, so both faces run one
-	// catalog and one set of handlers (mcp_http.go).
+	// mcpSrv is the MCP adapter that serves POST /mcp, the one agent MCP
+	// surface — HTTP and bearer-scoped, no ambient stdio path (mcp_http.go).
 	mcpSrv *mcp.Server
 }
 
