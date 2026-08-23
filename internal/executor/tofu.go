@@ -70,16 +70,28 @@ const tofuEventKey = "tofu"
 // TofuPlanChanges reports whether a job event's raw_json is a plan outcome and
 // whether that plan found changes.
 func TofuPlanChanges(rawJSON string) (changes, ok bool) {
-	if rawJSON == "" {
+	outcome, ok := TofuPlanOutcomeFor(rawJSON)
+	if !ok {
 		return false, false
+	}
+	return outcome.Changes, true
+}
+
+// TofuPlanOutcomeFor reads the full plan outcome back out of a job event's
+// raw_json — the detail twin of TofuPlanChanges, for a reader that wants the
+// resource-level drift/pending detail (values-free, per ResourceDelta) rather
+// than the bare bool. ok is false when the event carries no tofu payload.
+func TofuPlanOutcomeFor(rawJSON string) (outcome TofuPlanOutcome, ok bool) {
+	if rawJSON == "" {
+		return TofuPlanOutcome{}, false
 	}
 	var envelope struct {
 		Tofu *TofuPlanOutcome `json:"tofu"`
 	}
 	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil || envelope.Tofu == nil {
-		return false, false
+		return TofuPlanOutcome{}, false
 	}
-	return envelope.Tofu.Changes, true
+	return *envelope.Tofu, true
 }
 
 // TofuOptions configures the driver. Like AnsibleOptions it holds the material
