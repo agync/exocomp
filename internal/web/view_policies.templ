@@ -12,7 +12,7 @@ templ policiesList(vm policiesVM) {
 			if len(vm.Policies) == 0 {
 				<p class="meta">No plan policies. Applies are gated only by their workspace's own approval settings.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
@@ -26,11 +26,11 @@ templ policiesList(vm policiesVM) {
 						<tbody>
 							for _, p := range vm.Policies {
 								<tr>
-									<td>{ p.Name }</td>
-									<td class="mono">{ orDash(p.Workspace) }</td>
-									<td>@chip(p.ActionClass(), p.Action)</td>
-									<td class="mono">{ p.Expr }</td>
-									<td>
+									<td data-label="Policy">{ p.Name }</td>
+									<td class="mono" data-label="Workspace">{ orDash(p.Workspace) }</td>
+									<td data-label="On match">@chip(p.ActionClass(), p.Action)</td>
+									<td class="mono wrap" data-label="Expression">{ p.Expr }</td>
+									<td data-label="Enabled">
 										if p.Enabled {
 											<span class="chip ok"><span class="dot"></span>ENABLED</span>
 										} else {

@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -103,6 +104,84 @@ func TestFocusRingAndThemes(t *testing.T) {
 	// The palette moved out of app.css entirely — no theme block defined there.
 	if strings.Contains(app, `:root[data-theme="light"]`) || strings.Contains(app, `:root[data-theme="dark"]`) {
 		t.Error("app.css still defines the palette; tokens.css owns it")
+	}
+}
+
+// TestResponsiveTables is the responsiveness gate: wide tables carry the
+// stackable class and a data-label on every cell (so the phone stacked-card
+// pattern can label each value), while short and step-ledger tables are
+// deliberately left as plain scroll boxes, and the CSS carries the stacked-card
+// media block plus the desktop wrap cap.
+func TestResponsiveTables(t *testing.T) {
+	h := newHarness(t)
+	seedPostV1(t, h)
+	// A queued job so /jobs renders its stackable table, and an event so /events
+	// does the same.
+	if _, err := h.store.CreateJob(context.Background(), store.NewJob{
+		Runbook: "nightly", Kind: "shell", Trigger: "manual",
+	}); err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	if _, err := h.store.CreateEvent(context.Background(), store.Event{
+		Source: "prometheus", Outcome: store.OutcomeMatched, Reason: "matched a rule",
+	}); err != nil {
+		t.Fatalf("seed event: %v", err)
+	}
+	// A workspace so the dashboard drift table renders, and a gated job so the
+	// dashboard "Needs you" / approvals table renders.
+	if _, err := h.store.CreateWorkspace(context.Background(), store.Workspace{
+		Name: "prod", TofuDir: "prod",
+	}); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
+	h.gatedJob(t, 30*time.Minute)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// (a) Stackable tables carry class="stackable" and a data-label per cell.
+	stack := []struct {
+		path   string
+		labels []string
+	}{
+		{"/", []string{`class="tablewrap stackable"`, `data-label="Approval"`, `data-label="Job"`, `data-label="Workspace"`, `data-label="Signed"`, `data-label="Cron"`}},
+		{"/sources", []string{`class="tablewrap stackable"`, `data-label="Source"`, `data-label="URI"`, `data-label="Ref"`, `data-label="Trust"`, `data-label="Last sync"`, `data-label="Enabled"`}},
+		{"/policies", []string{`class="tablewrap stackable"`, `data-label="Policy"`, `data-label="On match"`, `data-label="Expression"`, `data-label="Enabled"`}},
+		{"/events", []string{`class="tablewrap stackable"`, `data-label="Event"`, `data-label="Source"`, `data-label="Outcome"`, `data-label="Received"`}},
+		{"/jobs", []string{`class="tablewrap stackable"`, `data-label="Job"`, `data-label="Kind"`, `data-label="Trigger"`, `data-label="Exit"`}},
+	}
+	for _, c := range stack {
+		_, page := getBody(t, client, ts.URL+c.path)
+		for _, want := range c.labels {
+			if !strings.Contains(page, want) {
+				t.Errorf("%s missing stackable marker %q", c.path, want)
+			}
+		}
+	}
+
+	// (d) Short / step-ledger tables were deliberately left non-stackable.
+	for _, path := range []string{"/workflows", "/workflows/provision-web-01"} {
+		_, page := getBody(t, client, ts.URL+path)
+		if !strings.Contains(page, `class="tablewrap"`) {
+			t.Errorf("%s should still render a plain tablewrap", path)
+		}
+		if strings.Contains(page, "stackable") {
+			t.Errorf("%s was stacked but should stay a plain scroll box", path)
+		}
+	}
+
+	// The CSS side: the stacked-card pattern, its data-label rendering, the
+	// <=560px card-padding reduction (F11), and the F7 desktop wrap cap.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		"@media (max-width: 560px)",
+		".tablewrap.stackable td",
+		"content: attr(data-label)",
+		"td.wrap { max-width: 32ch; overflow-wrap: anywhere; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing responsive rule %q", want)
+		}
 	}
 }
 

@@ -140,6 +140,11 @@ td.right, th.right { text-align: right; }
 
 .tablewrap { overflow-x: auto; }
 
+/* An unbounded mono value — a 70-char CEL expression, a long git URI or path —
+ * wraps inside a capped column instead of forcing the whole wide table to scroll
+ * sideways at desktop width. Short mono cells sit under the cap and are unaffected. */
+td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
+
 /* ---- State chips ---- */
 .chip {
   display: inline-flex; align-items: center; gap: 6px;
@@ -261,6 +266,65 @@ td.right, th.right { text-align: right; }
   .appbar .who { display: none; }
   .appbar .spacer { flex: 0 1 auto; }
 }
+/* Stacked label/value cards below phone width. A wide table (Sources, Policies,
+ * Events, Jobs, the dashboard's priority cards) becomes one bordered card per
+ * row: each cell is its own line labelled by the column name it carries in
+ * data-label, so a scrolled-right row never loses its header. thead is pulled
+ * from the visual flow but stays in the a11y tree. Only .stackable tables
+ * transform; a short, already-scannable table keeps the plain scroll box.
+ * Card padding drops here so a stacked row keeps usable width on a 380px screen. */
+@media (max-width: 560px) {
+  .card { padding: 16px 16px; }
+  .tablewrap.stackable table,
+  .tablewrap.stackable thead,
+  .tablewrap.stackable tbody,
+  .tablewrap.stackable tr,
+  .tablewrap.stackable td {
+    display: block;
+    width: 100%;
+  }
+  /* Visually hidden, still read by a screen reader (not display:none). */
+  .tablewrap.stackable thead {
+    position: absolute;
+    width: 1px; height: 1px;
+    margin: -1px; padding: 0; border: 0;
+    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tablewrap.stackable tr {
+    border: 1px solid var(--hairline-faint);
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+  .tablewrap.stackable tr:hover { background: var(--surface-card); }
+  .tablewrap.stackable td {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    max-width: none;
+    padding: 6px 0;
+    text-align: left;
+    border-bottom: 1px solid var(--hairline-faint);
+  }
+  .tablewrap.stackable td.right { text-align: left; }
+  .tablewrap.stackable tr td:last-child { border-bottom: none; }
+  .tablewrap.stackable td::before {
+    content: attr(data-label);
+    flex: none;
+    font: var(--type-keyword);
+    letter-spacing: 0.4px;
+    text-transform: uppercase;
+    color: var(--ink-400);
+  }
+  /* A cell with no column name (an action button, a lead status chip) fills the
+   * card row rather than leaving a dangling empty label. */
+  .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
+  .tablewrap.stackable td[data-label=""]::before { content: none; }
+}
+
 /* Never let the page scroll sideways; wide content scrolls in its own box
  * (.tablewrap, the nav). `clip` (not `hidden`) so it doesn't turn body into a
  * scroll container and break the sticky app bar. */

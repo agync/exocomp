@@ -26,7 +26,7 @@ templ dashboard(vm dashboardVM) {
 				if len(vm.NeedsYou) == 0 {
 					<p class="meta">Nothing is waiting on a decision.</p>
 				} else {
-					<div class="tablewrap">
+					<div class="tablewrap stackable">
 						<table>
 							<thead>
 								<tr><th scope="col">Approval</th><th scope="col">Runbook</th><th scope="col">Workspace</th><th scope="col" class="right">Time left</th><th scope="col"></th></tr>
@@ -34,17 +34,17 @@ templ dashboard(vm dashboardVM) {
 							<tbody>
 								for _, a := range vm.NeedsYou {
 									<tr>
-										<td class="num">#{ itoa(a.ID) }</td>
-										<td>{ a.Runbook }</td>
-										<td>{ orDash(a.Workspace) }</td>
-										<td class="right">
+										<td class="num" data-label="Approval">#{ itoa(a.ID) }</td>
+										<td data-label="Runbook">{ a.Runbook }</td>
+										<td data-label="Workspace">{ orDash(a.Workspace) }</td>
+										<td class="right" data-label="Time left">
 											if a.Expiring {
 												<span class="chip wait"><span class="dot"></span>{ a.Deadline }</span>
 											} else {
 												<span class="num">{ a.Deadline }</span>
 											}
 										</td>
-										<td class="right"><a class="btn" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
+										<td class="right" data-label=""><a class="btn" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
 									</tr>
 								}
 							</tbody>
@@ -59,7 +59,7 @@ templ dashboard(vm dashboardVM) {
 				if len(vm.Queue) == 0 {
 					<p class="meta">The queue is empty.</p>
 				} else {
-					<div class="tablewrap">
+					<div class="tablewrap stackable">
 						<table>
 							<thead>
 								<tr><th scope="col">Job</th><th scope="col">Runbook</th><th scope="col">State</th><th scope="col" class="right">Age</th></tr>
@@ -67,10 +67,10 @@ templ dashboard(vm dashboardVM) {
 							<tbody>
 								for _, j := range vm.Queue {
 									<tr>
-										<td class="num"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
-										<td>{ j.Runbook }</td>
-										<td>@chip(j.StateClass(), string(j.State))</td>
-										<td class="right num">{ j.Age }</td>
+										<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
+										<td data-label="Runbook">{ j.Runbook }</td>
+										<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
+										<td class="right num" data-label="Age">{ j.Age }</td>
 									</tr>
 								}
 							</tbody>
@@ -115,7 +115,7 @@ templ dashboard(vm dashboardVM) {
 				if len(vm.Workspaces) == 0 {
 					<p class="meta">No workspaces registered.</p>
 				} else {
-					<div class="tablewrap">
+					<div class="tablewrap stackable">
 						<table>
 							<thead>
 								<tr><th scope="col">Workspace</th><th scope="col" class="right">Serial</th><th scope="col">State</th><th scope="col">Last move</th></tr>
@@ -123,16 +123,16 @@ templ dashboard(vm dashboardVM) {
 							<tbody>
 								for _, w := range vm.Workspaces {
 									<tr>
-										<td>{ w.Name }</td>
-										<td class="right num">{ itoa64(w.Serial) }</td>
-										<td>
+										<td data-label="Workspace">{ w.Name }</td>
+										<td class="right num" data-label="Serial">{ itoa64(w.Serial) }</td>
+										<td data-label="State">
 											if w.Drift {
 												<span class="chip wait"><span class="dot"></span>DRIFT</span>
 											} else {
 												<span class="chip ok"><span class="dot"></span>IN SYNC</span>
 											}
 										</td>
-										<td class="meta">{ orDash(w.LastJob) }</td>
+										<td class="meta" data-label="Last move">{ orDash(w.LastJob) }</td>
 									</tr>
 								}
 							</tbody>
@@ -173,7 +173,7 @@ templ dashboard(vm dashboardVM) {
 				if len(vm.Sources) == 0 {
 					<p class="meta">No sources registered.</p>
 				} else {
-					<div class="tablewrap">
+					<div class="tablewrap stackable">
 						<table>
 							<thead>
 								<tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Signed</th><th scope="col" class="right">Sync</th></tr>
@@ -181,15 +181,15 @@ templ dashboard(vm dashboardVM) {
 							<tbody>
 								for _, sc := range vm.Sources {
 									<tr>
-										<td>
+										<td data-label="Source">
 											{ sc.Name }
 											if !sc.Enabled {
 												<span class="chip dim" style="margin-left:6px">disabled</span>
 											}
 										</td>
-										<td class="mono">{ sc.Kind }</td>
-										<td>@signedChip(sc)</td>
-										<td class="right mono">{ orDash(sc.Short()) }</td>
+										<td class="mono" data-label="Kind">{ sc.Kind }</td>
+										<td data-label="Signed">@signedChip(sc)</td>
+										<td class="right mono" data-label="Sync">{ orDash(sc.Short()) }</td>
 									</tr>
 								}
 							</tbody>
@@ -205,7 +205,7 @@ templ dashboard(vm dashboardVM) {
 				if len(vm.Schedules) == 0 {
 					<p class="meta">No schedules registered.</p>
 				} else {
-					<div class="tablewrap">
+					<div class="tablewrap stackable">
 						<table>
 							<thead>
 								<tr><th scope="col">Schedule</th><th scope="col">Cron</th><th scope="col">Last</th></tr>
@@ -213,14 +213,14 @@ templ dashboard(vm dashboardVM) {
 							<tbody>
 								for _, sc := range vm.Schedules {
 									<tr>
-										<td>
+										<td data-label="Schedule">
 											{ sc.Name }
 											if !sc.Enabled {
 												<span class="chip dim" style="margin-left:6px">disabled</span>
 											}
 										</td>
-										<td class="mono">{ sc.Cron }</td>
-										<td>
+										<td class="mono" data-label="Cron">{ sc.Cron }</td>
+										<td data-label="Last">
 											if sc.HasLast {
 												@chip(sc.LastClass(), string(sc.LastState))
 											} else {

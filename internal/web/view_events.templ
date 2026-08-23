@@ -9,7 +9,7 @@ templ eventsList(vm eventsVM) {
 			if len(vm.Events) == 0 {
 				<p class="meta">No events received yet.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
@@ -24,12 +24,12 @@ templ eventsList(vm eventsVM) {
 						<tbody>
 							for _, e := range vm.Events {
 								<tr>
-									<td class="num"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
-									<td class="mono">{ e.Source }</td>
-									<td>{ e.Name }</td>
-									<td>@chip(e.OutcomeClass(), string(e.Outcome))</td>
-									<td class="meta">{ e.Reason }</td>
-									<td class="right num">{ e.Received }</td>
+									<td class="num" data-label="Event"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
+									<td class="mono" data-label="Source">{ e.Source }</td>
+									<td data-label="Alert">{ e.Name }</td>
+									<td data-label="Outcome">@chip(e.OutcomeClass(), string(e.Outcome))</td>
+									<td class="meta" data-label="Reason">{ e.Reason }</td>
+									<td class="right num" data-label="Received">{ e.Received }</td>
 								</tr>
 							}
 						</tbody>

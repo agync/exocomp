@@ -10,7 +10,7 @@ templ jobsList(vm dashboardVM) {
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
@@ -26,13 +26,13 @@ templ jobsList(vm dashboardVM) {
 						<tbody>
 							for _, j := range vm.Queue {
 								<tr>
-									<td class="num"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
-									<td>{ j.Runbook }</td>
-									<td class="mono">{ j.Kind }</td>
-									<td class="mono">{ j.Trigger }</td>
-									<td>@chip(j.StateClass(), string(j.State))</td>
-									<td class="right num">{ j.ExitCode }</td>
-									<td class="right num">{ j.Age }</td>
+									<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
+									<td data-label="Runbook">{ j.Runbook }</td>
+									<td class="mono" data-label="Kind">{ j.Kind }</td>
+									<td class="mono" data-label="Trigger">{ j.Trigger }</td>
+									<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
+									<td class="right num" data-label="Exit">{ j.ExitCode }</td>
+									<td class="right num" data-label="Age">{ j.Age }</td>
 								</tr>
 							}
 						</tbody>

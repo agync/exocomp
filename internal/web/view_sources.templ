@@ -25,7 +25,7 @@ templ sourcesList(vm sourcesVM) {
 			if len(vm.Sources) == 0 {
 				<p class="meta">No sources registered. Register one with <code>exocomp source add</code>.</p>
 			} else {
-				<div class="tablewrap">
+				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
@@ -41,13 +41,13 @@ templ sourcesList(vm sourcesVM) {
 						<tbody>
 							for _, sc := range vm.Sources {
 								<tr>
-									<td>{ sc.Name }</td>
-									<td class="mono">{ sc.Kind }</td>
-									<td class="mono">{ orDash(sc.URI) }</td>
-									<td class="mono">{ orDash(sc.Ref) }</td>
-									<td>@signedChip(sc)</td>
-									<td class="right mono">{ orDash(sc.Short()) }</td>
-									<td>
+									<td data-label="Source">{ sc.Name }</td>
+									<td class="mono" data-label="Kind">{ sc.Kind }</td>
+									<td class="mono wrap" data-label="URI">{ orDash(sc.URI) }</td>
+									<td class="mono wrap" data-label="Ref">{ orDash(sc.Ref) }</td>
+									<td data-label="Trust">@signedChip(sc)</td>
+									<td class="right mono" data-label="Last sync">{ orDash(sc.Short()) }</td>
+									<td data-label="Enabled">
 										if sc.Enabled {
 											<span class="chip ok"><span class="dot"></span>ENABLED</span>
 										} else {
