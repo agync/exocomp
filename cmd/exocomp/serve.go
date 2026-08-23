@@ -432,8 +432,9 @@ func printHooks(out io.Writer, env *secrets.Envelope, base string) {
 // sweepReactive runs the clock-driven halves of the reactive layer: approvals
 // whose TTL ran out fail closed, approvals halfway through their window get
 // one more push, a scheduled plan that found changes becomes a drift event,
-// and a job that ended in a terminal failure pages the operator once. It runs
-// until the job context is cancelled.
+// a job that ended in a terminal failure pages the operator once, and a secret
+// past (or nearing) its expiry pages once. It runs until the job context is
+// cancelled.
 func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer, interval time.Duration) {
 	if interval <= 0 {
 		return
@@ -471,6 +472,14 @@ func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer,
 			}
 		} else if paged > 0 {
 			_, _ = fmt.Fprintf(warn, "job failures: %d paged\n", paged)
+		}
+
+		if paged, err := engine.SweepSecretExpiry(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: page secret expiry: %v\n", err)
+			}
+		} else if paged > 0 {
+			_, _ = fmt.Fprintf(warn, "secret expiry: %d paged\n", paged)
 		}
 	}
 }
