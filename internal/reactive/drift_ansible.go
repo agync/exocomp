@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,12 +17,17 @@ import (
 
 // A config-drift incident is per play subject, the way a tofu one is per
 // workspace: its GoAlert identity is Source=drift, Host=<subject>, stable across
-// every check that observes the same drift.
+// every check that observes the same drift and across the clean check that
+// clears it.
 //
-// ansibleDriftPrefix namespaces a check's open marker inside the drift ledger.
-// It is deliberately distinct from the tofu prefix ("drift:"): a workspace and a
-// play that happen to share a name must never read each other's markers.
-const ansibleDriftPrefix = "drift-play"
+// ansibleDriftPrefix namespaces a check's open marker inside the drift ledger,
+// and ansibleClearPrefix its close checkpoint. Both are deliberately distinct
+// from the tofu prefixes ("drift:" / "drift-clear:"): a workspace and a play
+// that happen to share a name must never resolve each other's incident.
+const (
+	ansibleDriftPrefix = "drift-play"
+	ansibleClearPrefix = "drift-play-clear"
+)
 
 // AnsibleSubjectOf names the scope one `--check` play covers — the config-drift
 // counterpart of a tofu job's workspace. A tofu job carries its workspace in the
@@ -54,8 +60,9 @@ func AnsibleSubjectOf(job store.Job) (string, bool) {
 }
 
 // sweepAnsibleCheck settles one finished ansible job: a `--check` play whose
-// recap reported changed tasks raises that subject's drift. It mirrors
-// sweepTofuPlan step for step, so the two halves of a homelab page the same way.
+// recap reported changed tasks raises that subject's drift, and a later clean
+// check clears the incident. It mirrors sweepTofuPlan step for step, so the two
+// halves of a homelab page and close the same way.
 func (e *Engine) sweepAnsibleCheck(ctx context.Context, job store.Job) (int, error) {
 	subject, ok := AnsibleSubjectOf(job)
 	if !ok {
@@ -76,7 +83,18 @@ func (e *Engine) sweepAnsibleCheck(ctx context.Context, job store.Job) (int, err
 	}
 
 	if !outcome.Changes {
-		return 0, nil
+		// A run that could not reach every host saw nothing at all on the ones
+		// it missed, so "no host reported a change" is not evidence the play is
+		// clean. A degraded check leaves the incident open rather than closing
+		// one on partial evidence.
+		if job.Partial {
+			return 0, nil
+		}
+		openJob, open, err := e.latestOpenAnsibleDrift(ctx, subject)
+		if err != nil || !open {
+			return 0, err
+		}
+		return 0, e.clearAnsibleDrift(ctx, subject, openJob, job)
 	}
 
 	// Page before the checkpoint lands, the same louder trade sweepTofuPlan
@@ -126,6 +144,62 @@ func ansibleDriftDedupKey(subject string, jobID int64) string {
 	return fmt.Sprintf("%s:%s:%d", ansibleDriftPrefix, subject, jobID)
 }
 
+// ansibleClearDedupKey names the open drift a clean check resolved — keyed by
+// the OPENING check's job, not the clean one, so "is this subject's latest drift
+// still open" is a single existence check.
+func ansibleClearDedupKey(subject string, openJobID int64) string {
+	return fmt.Sprintf("%s:%s:%d", ansibleClearPrefix, subject, openJobID)
+}
+
+// latestOpenAnsibleDrift reports the subject's most recent drift-open check and
+// whether that incident is still unresolved, the twin of latestOpenDrift over
+// the ansible markers.
+func (e *Engine) latestOpenAnsibleDrift(ctx context.Context, subject string) (openJobID int64, open bool, err error) {
+	events, err := e.store.ListEvents(ctx, store.EventFilter{Source: SourceDrift, Limit: driftScan})
+	if err != nil {
+		return 0, false, err
+	}
+
+	// Events come back newest first, so the first open marker for this subject
+	// is its latest drift.
+	prefix := fmt.Sprintf("%s:%s:", ansibleDriftPrefix, subject)
+	for _, ev := range events {
+		rest, ok := strings.CutPrefix(ev.DedupKey, prefix)
+		if !ok {
+			continue
+		}
+		jobID, convErr := strconv.ParseInt(rest, 10, 64)
+		if convErr != nil {
+			// A longer subject whose key merely starts with this one's prefix.
+			continue
+		}
+		cleared, err := e.store.CountEventsByDedupKey(ctx, ansibleClearDedupKey(subject, jobID))
+		if err != nil {
+			return 0, false, err
+		}
+		return jobID, cleared == 0, nil
+	}
+	return 0, false, nil
+}
+
+// clearAnsibleDrift closes a subject's open incident because a check came back
+// clean. It pages the resolve first, then writes the checkpoint — the same trade
+// clearDrift makes on the tofu side.
+func (e *Engine) clearAnsibleDrift(ctx context.Context, subject string, openJobID int64, cleanJob store.Job) error {
+	e.notify(ctx, ansibleDriftClearedNotification(subject))
+
+	_, err := e.store.CreateEvent(ctx, store.Event{
+		Source:     SourceDrift,
+		ReceivedAt: e.now(),
+		DedupKey:   ansibleClearDedupKey(subject, openJobID),
+		Outcome:    store.OutcomeMatched,
+		Reason: fmt.Sprintf("play %s drift cleared: check %d found nothing to change, "+
+			"closing the incident opened by check %d", subject, cleanJob.ID, openJobID),
+		JobID: &cleanJob.ID,
+	})
+	return err
+}
+
 // ansibleDriftEvent is what a check that found changes looks like once it is in
 // the pipeline: an alert named AnsibleDrift beside TofuDrift, so a CEL rule
 // gates a converge on config drift exactly as it gates an apply on tofu drift.
@@ -171,6 +245,19 @@ func ansibleDriftOpenNotification(subject string, job store.Job,
 		Tags:     []string{"warning"},
 		Source:   SourceDrift,
 		Host:     subject,
+	}
+}
+
+// ansibleDriftClearedNotification is the resolve: Resolved with the opening
+// page's exact identity, so GoAlert closes the incident the drift opened.
+func ansibleDriftClearedNotification(subject string) notify.Notification {
+	return notify.Notification{
+		Title:    "drift cleared: " + subject,
+		Body:     fmt.Sprintf("A later check found nothing to change on play %s.", subject),
+		Priority: notify.PriorityDefault,
+		Source:   SourceDrift,
+		Host:     subject,
+		Resolved: true,
 	}
 }
 

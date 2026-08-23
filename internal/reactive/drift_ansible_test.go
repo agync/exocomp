@@ -145,6 +145,164 @@ func TestACheckWithNoChangesRaisesNothing(t *testing.T) {
 	}
 }
 
+// TestAnsibleCheckDriftAutoCloses pins the other half: a later clean check for
+// the same subject closes the exact incident the drift opened, once.
+func TestAnsibleCheckDriftAutoCloses(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 3})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+	opens := driftPages(h.sent.sent)
+	if len(opens) != 1 {
+		t.Fatalf("open pages = %d, want 1", len(opens))
+	}
+
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", nil)
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (close): %v", err)
+	}
+
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 2 {
+		t.Fatalf("after the clean check there are %d pages, want 2 (open, close)", len(pages))
+	}
+	closing := pages[1]
+	if !closing.Resolved {
+		t.Fatalf("close page is not Resolved: %q", closing.Title)
+	}
+	if closing.Source != opens[0].Source || closing.Host != opens[0].Host {
+		t.Fatalf("close identity = %q/%q, want the opening %q/%q",
+			closing.Source, closing.Host, opens[0].Source, opens[0].Host)
+	}
+
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (idempotent): %v", err)
+	}
+	if again := driftPages(h.sent.sent); len(again) != 2 {
+		t.Fatalf("third sweep produced %d pages, want the same 2", len(again))
+	}
+}
+
+// TestCleanAnsibleCheckWithoutPriorDriftClosesNothing pins that a play that
+// never drifted raises no close.
+func TestCleanAnsibleCheckWithoutPriorDriftClosesNothing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", nil)
+
+	raised, err := h.engine.SweepDrift(ctx)
+	if err != nil {
+		t.Fatalf("sweep drift: %v", err)
+	}
+	if raised != 0 {
+		t.Fatalf("a clean check raised %d events", raised)
+	}
+	if pages := driftPages(h.sent.sent); len(pages) != 0 {
+		t.Fatalf("a clean check with no prior drift produced %d pages, want 0", len(pages))
+	}
+}
+
+// TestAnsibleDriftSubjectsDoNotCrossClose pins the reason the playbook is part
+// of the subject: every manual `playbook run` shares the runbook "playbook", so
+// a subject of runbook alone would let one play's clean check close another
+// play's incident.
+func TestAnsibleDriftSubjectsDoNotCrossClose(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "playbook", "/srv/a/site.yml", map[string]int{"nas": 1})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+	h.checkJob(t, "playbook", "/srv/b/other.yml", nil)
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (other play clean): %v", err)
+	}
+
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want only the one open page", len(pages))
+	}
+	if pages[0].Resolved {
+		t.Fatal("a clean check of a different play closed this play's incident")
+	}
+}
+
+// TestAnsibleRunWithoutCheckOutcomeIsNotDrift pins that an ordinary converge —
+// which carries no check payload — neither opens nor closes anything. A run
+// that was never a dry run is no evidence about drift.
+func TestAnsibleRunWithoutCheckOutcomeIsNotDrift(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 2})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "nightly-converge",
+		Kind:    executor.KindAnsible,
+		Trigger: "schedule",
+		Args:    store.JobArgs{Argv: executor.AnsibleArtifactArgv("playbooks/site.yml")},
+	})
+	if err != nil {
+		t.Fatalf("create converge job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start converge job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {
+		t.Fatalf("finish converge job: %v", err)
+	}
+
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (converge): %v", err)
+	}
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 1 || pages[0].Resolved {
+		t.Fatalf("a plain converge changed the incident: %d pages", len(pages))
+	}
+}
+
+// TestDegradedCleanCheckDoesNotClose pins that a check which could not reach
+// every host is not evidence of a clean play: it saw nothing at all on the
+// hosts it never reached, so the incident stays open.
+func TestDegradedCleanCheckDoesNotClose(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 2})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+
+	degraded := h.checkJob(t, "nightly-converge", "playbooks/site.yml", nil)
+	if err := h.store.SetJobPartial(ctx, degraded.ID, true); err != nil {
+		t.Fatalf("mark degraded: %v", err)
+	}
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (degraded): %v", err)
+	}
+
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want only the open page", len(pages))
+	}
+	if pages[0].Resolved {
+		t.Fatal("a degraded check closed the incident")
+	}
+}
+
 // TestAnsibleDriftGatesARule pins that an ansible drift reaches the same CEL
 // gate a tofu drift does, which is the point of routing it through Ingest.
 func TestAnsibleDriftGatesARule(t *testing.T) {
