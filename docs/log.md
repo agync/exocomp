@@ -622,3 +622,25 @@ reuses the drift sweep's event-table checkpoint unchanged — a `job-outcome`
 event whose dedup key names the job — so the same job never pages twice across
 repeated sweeps or a restart. [architecture/reactive.md](architecture/reactive.md),
 [operations/notifications.md](operations/notifications.md).
+
+## 2026-08-23 — Remote writes and live job follow
+
+The CLI's client mode gained the other half of the seam: with a remote selected,
+`playbook run`, `workspace plan|apply` and `approval decide` POST to that
+daemon's `/api/v1` write routes instead of touching a local data dir, and
+`jobs follow` watches a job's events over the SSE stream. A remote run follows
+the job to its end and exits with the job's own code — the same contract a local
+run gives a script — with `--no-follow` for the enqueue-and-walk-away shape.
+`--output json` re-emits the daemon's own `job.enqueued` / `approval.pending` /
+`approval.decision` envelope byte for byte, and `--idempotency-key` travels as
+the header, so a retry dedups to one job.
+
+Following is not a naive tail: the daemon's stream is authoritative only from the
+moment it attaches, so every attach is paired with a read of the append-only
+event log from the last sequence, deduped by sequence, and a dropped connection
+is re-established once from that cursor. Inputs that name a file on the calling
+machine — a playbook path with no `--source`, an inventory path, `-e @file`, a
+plan by path — are refused rather than sent to be resolved on the other box.
+`workspace plan`'s local exit-2-on-changes has no remote equivalent: it is read
+from the run's driver output, which the event projection does not carry.
+[operations/remote-cli.md](operations/remote-cli.md).
