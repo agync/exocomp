@@ -1,0 +1,420 @@
+package web
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
+	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/service"
+	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
+)
+
+// This file mounts the operator HTTP/JSON WRITE API (agent-interface §3.4) on
+// the SAME ADR-0009 listener as the reads. Every mutating route routes through
+// the SAME internal/service verbs the CLI calls, so no client has a divergent
+// execution path (AGENTS.md invariant 5): the verb assembles the queue.Spec and
+// makes the gate decision, and this face supplies a PURE-ENQUEUE Enqueuer —
+// queue the row and return its id at once, never inline-run or stream like the
+// CLI's interactive enqueuer. A running daemon claims and runs the row.
+//
+// Scope is gated BEFORE any work (agent-interface §4): plan/apply need operator,
+// a decision needs approve-or-operator. An out-of-scope token is a wire
+// forbidden envelope before the input is even built.
+//
+// Deferred here, and why (see the lane's concerns, all follow-ups that need a
+// CLI-resident helper moved to a shared package, never a helper duplicated into
+// web):
+//   - POST /playbooks/run: RunPlaybook is reachable, but resolving an inventory
+//     name to its path (and a --source playbook onto its checkout) lives in the
+//     CLI (resolveInventoryArg/sourcePlaybook). Without it a server-side run
+//     cannot safely turn an operator's names into paths.
+//   - Applying a SAVED plan that carries no policy verdict: the plain run needs
+//     the sealed plan decrypted into a run-private plaintext copy (openPlanForRun),
+//     still CLI-resident. A fresh apply and a require-approval / deny plan need
+//     no decryption and are served here.
+//   - Sealing an API-initiated plan into a consumable artifact + recording its
+//     policy verdict is a post-run step that lives only in the CLI (recordPlan/
+//     evalPlanPolicy); the daemon does not do it. So a plan enqueued here runs
+//     and reports drift, but cannot yet be applied by artifact id via the API.
+
+// Write-response kinds. The wire package (owned elsewhere, not edited by this
+// lane) has no write projections yet, so these presentation-only shapes live
+// here; they carry identifiers and states only, never values (invariant 4).
+const (
+	kindJobEnqueued     = "job.enqueued"
+	kindApprovalPending = "approval.pending"
+	kindDecision        = "approval.decision"
+)
+
+// jobEnqueuedView is the body of a clean enqueue: the job id an agent follows,
+// and its state at enqueue time (queued).
+type jobEnqueuedView struct {
+	JobID int64  `json:"job_id"`
+	State string `json:"state,omitempty"`
+}
+
+// approvalPendingView is the body of a gated apply: the job sits in
+// awaiting_approval and this approval releases it. ttl_seconds and expires_at
+// let an agent read the fail-closed rejection at TTL as intended, not as an
+// error (agent-interface §4).
+type approvalPendingView struct {
+	ApprovalID     int64  `json:"approval_id"`
+	JobID          int64  `json:"job_id"`
+	State          string `json:"state"`
+	ExpiresAt      string `json:"expires_at,omitempty"`
+	TTLSeconds     int64  `json:"ttl_seconds,omitempty"`
+	Policy         string `json:"policy,omitempty"`
+	PlanArtifactID int64  `json:"plan_artifact_id,omitempty"`
+}
+
+// decisionView is the outcome of a decision: which approval, the settled
+// outcome, and the terminal notice (one paragraph, values-free).
+type decisionView struct {
+	ApprovalID int64  `json:"approval_id"`
+	Outcome    string `json:"outcome,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+// errPlanDecryptUnsupported is the buildArgv refusal for a plain saved-plan
+// apply: the decrypt-to-plaintext step is still CLI-resident, so rather than
+// enqueue an apply whose argv the daemon cannot read, the verb is refused.
+var errPlanDecryptUnsupported = errors.New(
+	"web: applying a saved plan without a policy verdict needs the plan-decrypt helper (not yet shared)")
+
+// registerWriteAPI mounts the /api/v1 POST routes. Go 1.22 method-aware routing
+// means a GET (or any non-POST) on one of these paths, and a POST on a GET-only
+// read path, both fall through to the mux's own 405 — the contract's write/read
+// method-mismatch rule, for free.
+func (s *Server) registerWriteAPI(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/v1/approvals/{id}/decision",
+		s.apiGuard(canApprove, "this token's scope may not decide approvals", s.apiApprovalDecision))
+	mux.HandleFunc("POST /api/v1/workspaces/{name}/plan",
+		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspacePlan))
+	mux.HandleFunc("POST /api/v1/workspaces/{name}/apply",
+		s.apiGuard(canWrite, "this token's scope may not enqueue writes", s.apiWorkspaceApply))
+}
+
+// enqueuer returns a PURE-ENQUEUE Enqueuer: it inserts the queued (or gated) row
+// through the one queue and returns immediately. Its driver refuses to run —
+// this process only enqueues; the daemon that owns the real queue claims and
+// runs the row. It is the API analogue of the CLI's enqueueOnly path.
+func (s *Server) enqueuer() apiEnqueuer {
+	return apiEnqueuer{q: queue.New(s.store, apiNoRunDriver{}, queue.Options{Workers: 1})}
+}
+
+type apiEnqueuer struct{ q *queue.Queue }
+
+func (e apiEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return e.q.Enqueue(ctx, spec)
+}
+
+func (e apiEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
+	return e.q.EnqueueGated(ctx, spec)
+}
+
+// apiNoRunDriver is the driver of the API's enqueue-only queue. It is never
+// drained; refusing loudly keeps a future caller from draining it and racing the
+// daemon for the row.
+type apiNoRunDriver struct{}
+
+func (apiNoRunDriver) Run(context.Context, executor.Spec, executor.EventSink) (executor.Result, error) {
+	return executor.Result{}, errors.New("web: the API only enqueues; the daemon runs the job")
+}
+
+// service builds the operational core over the server's store, data dir, and
+// clock — the same verbs the CLI drives, differing only in the Enqueuer.
+func (s *Server) service() *service.Service {
+	return service.New(s.store, s.dataDir, s.clock)
+}
+
+// writeRequest is the optional JSON body a mutating request may carry. All
+// fields are optional; an empty body is the common case (a bare plan/apply).
+type writeRequest struct {
+	RunSecrets string `json:"run_secrets"`
+	Timeout    string `json:"timeout"`
+	// Plan names a saved plan artifact by id for apply --plan; empty is a fresh apply.
+	Plan string `json:"plan"`
+}
+
+// decodeWrite reads the optional JSON body and the parsed timeout. It renders
+// the 400 itself and reports ok=false when the body or the timeout is malformed.
+func (s *Server) decodeWrite(w http.ResponseWriter, r *http.Request) (writeRequest, time.Duration, bool) {
+	var req writeRequest
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			s.badRequest(w, "request body is not valid JSON")
+			return req, 0, false
+		}
+	}
+	var timeout time.Duration
+	if req.Timeout != "" {
+		d, err := time.ParseDuration(req.Timeout)
+		if err != nil {
+			s.badRequest(w, "timeout is not a valid Go duration")
+			return req, 0, false
+		}
+		timeout = d
+	}
+	return req, timeout, true
+}
+
+// idempotencyKey reads the caller-settable Idempotency-Key header. Threaded onto
+// the service Input, it dedups a retried request to one job (queue.go:117-126),
+// so a retrying agent never double-enqueues.
+func idempotencyKey(r *http.Request) string {
+	return r.Header.Get("Idempotency-Key")
+}
+
+// tofuArtifactsDir is where a plan's -out file lands, mirroring the CLI's
+// tofuDirs. It sits inside the 0700 data dir: plan files hold resource values in
+// the clear until they are sealed.
+func (s *Server) tofuArtifactsDir() (string, error) {
+	dir := filepath.Join(s.dataDir, "artifacts", "tofu")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+// --- workspace plan / apply -------------------------------------------------
+
+// apiWorkspacePlan enqueues a tofu plan for a workspace through PlanWorkspace and
+// returns the job id. The plan runs under a running daemon; sealing its output
+// into a consumable artifact is a CLI-resident post-run step (see this file's
+// header) and is not done here.
+func (s *Server) apiWorkspacePlan(w http.ResponseWriter, r *http.Request) {
+	req, timeout, ok := s.decodeWrite(w, r)
+	if !ok {
+		return
+	}
+	ws, err := s.store.WorkspaceByName(r.Context(), r.PathValue("name"))
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	artifacts, err := s.tofuArtifactsDir()
+	if err != nil {
+		s.log.Error("api: artifacts dir", "err", err)
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot prepare artifacts dir"))
+		return
+	}
+	res, err := s.service().PlanWorkspace(r.Context(), s.enqueuer(), service.PlanInput{
+		Workspace:      ws.Name,
+		TofuDir:        ws.TofuDir,
+		ArtifactsDir:   artifacts,
+		RunSecrets:     req.RunSecrets,
+		IdempotencyKey: idempotencyKey(r),
+		Timeout:        timeout,
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
+}
+
+// apiWorkspaceApply enqueues a tofu apply through ApplyWorkspace. A fresh apply
+// (no plan) auto-approves and enqueues plainly. With a saved plan named by
+// artifact id, the plan's recorded policy verdict routes it: a deny is refused
+// (409), a require_approval lands the job in awaiting_approval behind a fresh
+// approval (the pending envelope), and a plain saved-plan apply is refused for
+// now because its decrypt step is CLI-resident.
+func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
+	req, timeout, ok := s.decodeWrite(w, r)
+	if !ok {
+		return
+	}
+	ws, err := s.store.WorkspaceByName(r.Context(), r.PathValue("name"))
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+
+	var saved *store.Artifact
+	var gate service.PlanGate
+	if req.Plan != "" {
+		id, perr := strconv.ParseInt(req.Plan, 10, 64)
+		if perr != nil || id <= 0 {
+			s.badRequest(w, "plan must be a saved plan artifact id")
+			return
+		}
+		art, gerr := s.store.GetArtifact(r.Context(), id)
+		if gerr != nil {
+			s.apiFail(w, gerr)
+			return
+		}
+		if art.Kind != reactive.PlanArtifactKind {
+			s.badRequest(w, "artifact "+req.Plan+" is not a plan")
+			return
+		}
+		saved = &art
+		if gate, err = s.planGate(r.Context(), art); err != nil {
+			s.apiFail(w, err)
+			return
+		}
+	}
+
+	res, err := s.service().ApplyWorkspace(r.Context(), s.enqueuer(), s.deriver, service.ApplyInput{
+		Workspace:       ws.Name,
+		WorkspaceSerial: ws.Serial,
+		TofuDir:         ws.TofuDir,
+		RunSecrets:      req.RunSecrets,
+		IdempotencyKey:  idempotencyKey(r),
+		Timeout:         timeout,
+		SavedPlan:       saved,
+		Gate:            gate,
+	}, func(context.Context) ([]string, *store.Artifact, func(), error) {
+		if saved == nil {
+			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
+		}
+		return nil, nil, func() {}, errPlanDecryptUnsupported
+	})
+
+	var denied *service.PlanDeniedError
+	switch {
+	case errors.As(err, &denied):
+		s.apiError(w, http.StatusConflict, wire.NewError(wire.CodeConflict, err.Error()))
+		return
+	case errors.Is(err, errPlanDecryptUnsupported):
+		s.apiError(w, http.StatusNotImplemented,
+			wire.NewError(wire.CodeInternal, errPlanDecryptUnsupported.Error()))
+		return
+	case err != nil:
+		s.apiFail(w, err)
+		return
+	}
+
+	if res.Gated {
+		a := res.Approval
+		s.apiSuccess(w, kindApprovalPending, approvalPendingView{
+			ApprovalID:     a.ApprovalID,
+			JobID:          a.JobID,
+			State:          string(a.State),
+			ExpiresAt:      a.ExpiresAt.UTC().Format(time.RFC3339),
+			TTLSeconds:     int64(a.ExpiresAt.Sub(s.now()).Seconds()),
+			Policy:         a.Policy,
+			PlanArtifactID: a.PlanArtifactID,
+		})
+		return
+	}
+
+	run := res.Run
+	defer run.Release()
+	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: run.Job.ID, State: string(run.Job.State)})
+}
+
+// planGate reads back the policy verdict a plan's seal recorded on the plan job's
+// timeline, reduced to the two outcomes that route an apply. It reads only the
+// values-free plan_policy audit envelope (name + action + artifact id), never a
+// plan attribute value. A plan with no recorded verdict gates nothing. This
+// mirrors the CLI's planVerdict; it reads the store, so it is a lookup, not a
+// duplicated helper.
+func (s *Server) planGate(ctx context.Context, art store.Artifact) (service.PlanGate, error) {
+	if art.JobID == 0 {
+		return service.PlanGate{}, nil
+	}
+	events, err := s.store.ListJobEvents(ctx, art.JobID)
+	if err != nil {
+		return service.PlanGate{}, err
+	}
+	for _, e := range events {
+		if e.RawJSON == "" {
+			continue
+		}
+		var env struct {
+			PlanPolicy *struct {
+				Action   string `json:"action"`
+				Policy   string `json:"policy"`
+				Artifact int64  `json:"artifact"`
+			} `json:"plan_policy"`
+		}
+		if err := json.Unmarshal([]byte(e.RawJSON), &env); err != nil || env.PlanPolicy == nil {
+			continue
+		}
+		if env.PlanPolicy.Artifact != art.ID {
+			continue
+		}
+		return service.PlanGate{
+			Deny:            env.PlanPolicy.Action == store.PolicyDeny,
+			RequireApproval: env.PlanPolicy.Action == store.PolicyRequireApproval,
+			Policy:          env.PlanPolicy.Policy,
+		}, nil
+	}
+	return service.PlanGate{}, nil
+}
+
+// --- approval decision ------------------------------------------------------
+
+// apiApprovalDecision resolves one approval through the reactive engine — the
+// single fail-closed place a human's answer enters the system, whatever surface
+// asked (the same s.decider.Decide the browser's handleDecide calls). The token
+// is derived server-side, never carried by the caller: a scope is not a
+// capability link. A stale plan is a 409 stale_plan, not a release.
+func (s *Server) apiApprovalDecision(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "approval id must be a positive integer")
+		return
+	}
+
+	var req struct {
+		Decision string `json:"decision"`
+	}
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if err := json.Unmarshal(body, &req); err != nil {
+		s.badRequest(w, "request body must be {\"decision\":\"approve\"|\"reject\"}")
+		return
+	}
+	if req.Decision != reactive.DecisionApprove && req.Decision != reactive.DecisionReject {
+		s.badRequest(w, "decision must be approve or reject")
+		return
+	}
+	if s.decider == nil {
+		s.apiError(w, http.StatusServiceUnavailable,
+			wire.NewError(wire.CodeInternal, "approvals cannot be decided from this surface"))
+		return
+	}
+
+	approval, err := s.store.GetApproval(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	token, _, err := reactive.ApprovalToken(s.deriver, approval.JobID)
+	if err != nil {
+		s.log.Error("api: derive approval token", "approval", id, "err", err)
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot derive approval token"))
+		return
+	}
+
+	ident, _ := identityOf(r.Context())
+	result, derr := s.decider.Decide(r.Context(), id, req.Decision, token, "api:"+ident.token.Name)
+	if errors.Is(derr, reactive.ErrStalePlan) {
+		// A safety rejection, not a server fault: the workspace moved under the
+		// saved plan, so the job was not released. 409 with the stale_plan code.
+		s.apiError(w, http.StatusConflict, wire.ErrorFor(derr))
+		return
+	}
+	if derr != nil {
+		s.log.Error("api: decide", "approval", id, "err", derr)
+		s.apiFail(w, derr)
+		return
+	}
+	s.apiSuccess(w, kindDecision, decisionView{
+		ApprovalID: id,
+		Outcome:    result.Outcome,
+		Message:    result.Message,
+	})
+}

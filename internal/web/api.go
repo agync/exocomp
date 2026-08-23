@@ -51,16 +51,26 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/secrets", s.apiAuth(s.apiSecrets))
 	mux.HandleFunc("GET /api/v1/backups", s.apiAuth(s.apiBackups))
 	mux.HandleFunc("GET /api/v1/health", s.apiAuth(s.apiHealth))
+	s.registerWriteAPI(mux)
 }
 
-// apiAuth wraps a JSON handler with the browser surface's own auth resolution.
-// It is NOT a fork of the auth: it calls the same s.resolve requireAuth calls,
-// with the same KDF-gate and TouchToken behaviour. It differs from requireAuth
-// only in how it renders the boundary — a machine caller wants a wire error
-// envelope and a status code, never the browser's 303-to-login or plain-text
-// "unauthorized". The scope gate rejects a sub-readonly token before any store
-// read is issued (agent-interface §4).
+// apiAuth wraps a read JSON handler with the browser surface's own auth
+// resolution and the readonly-or-higher floor. It is apiGuard specialized to
+// canRead: every valid token may read.
 func (s *Server) apiAuth(next http.HandlerFunc) http.HandlerFunc {
+	return s.apiGuard(canRead, "this token's scope may not read", next)
+}
+
+// apiGuard wraps a JSON handler with the browser surface's own auth resolution
+// and a scope predicate. It is NOT a fork of the auth: it calls the same
+// s.resolve requireAuth calls, with the same KDF-gate and TouchToken behaviour.
+// It differs from requireAuth only in how it renders the boundary — a machine
+// caller wants a wire error envelope and a status code, never the browser's
+// 303-to-login or plain-text "unauthorized". The scope predicate rejects an
+// out-of-scope token with forbidden BEFORE any store read or token touch is
+// issued (agent-interface §4), so a write route never touches state for a
+// caller it will refuse.
+func (s *Server) apiGuard(allow func(identity) bool, denyMsg string, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		id, err := s.resolve(r)
 		if err != nil {
@@ -80,9 +90,9 @@ func (s *Server) apiAuth(next http.HandlerFunc) http.HandlerFunc {
 			}
 			return
 		}
-		if !canRead(id) {
+		if !allow(id) {
 			s.apiError(w, http.StatusForbidden,
-				wire.NewError(wire.CodeForbidden, "this token's scope may not read"))
+				wire.NewError(wire.CodeForbidden, denyMsg))
 			return
 		}
 		if err := s.store.TouchToken(r.Context(), id.token.ID); err != nil {
@@ -103,6 +113,18 @@ func canRead(id identity) bool {
 		return false
 	}
 }
+
+// canWrite reports whether a resolved scope may enqueue a mutating job. Only
+// the operator scope may; readonly and the approve-only scope may not. It is the
+// W floor for plan/apply/run (agent-interface §4).
+func canWrite(id identity) bool {
+	return id.token.Scope == store.ScopeOperator
+}
+
+// canApprove reports whether a resolved scope may decide an approval. It is the
+// same floor mayApprove enforces on the browser surface — operator or approve,
+// never readonly — so the two decision paths share one rule.
+func canApprove(id identity) bool { return mayApprove(id) }
 
 // apiSuccess writes a 200 wire success envelope. It goes through the exact
 // wire.WriteSuccess the CLI uses, so the bytes match `--output json` for the
