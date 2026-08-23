@@ -93,6 +93,9 @@ a:visited { color: var(--accent-text); }
   display: inline-flex; align-items: center; gap: 7px;
 }
 .themetoggle:hover { color: var(--ink-100); }
+.themetoggle .themeglyph { display: inline-flex; align-items: center; }
+.themetoggle .themeglyph[hidden] { display: none; }
+.themetoggle svg { display: block; }
 
 main { padding: var(--pad-page); max-width: 1100px; margin: 0 auto; }
 

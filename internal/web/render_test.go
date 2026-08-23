@@ -42,11 +42,12 @@ func TestDashboardA11y(t *testing.T) {
 			t.Errorf("dashboard missing a11y marker %q", want)
 		}
 	}
-	// The theme toggle names the destination theme (dynamic label) and its
-	// aria-label mirrors it, rather than a static "theme" string.
+	// The three-state theme toggle renders in the server-default "system" state,
+	// naming the current state and what a click does in the aria-label, with a
+	// dynamic visible label rather than a static "theme" string.
 	for _, want := range []string{
 		`id="themelabel"`,
-		`aria-label="Switch to light theme"`,
+		`aria-label="Theme: system. Switch to light."`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard toggle missing %q", want)
@@ -224,6 +225,75 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing responsive rule %q", want)
+		}
+	}
+}
+
+// TestThemeToggleThreeState asserts the toggle is a three-state control: the
+// SSR markup carries three distinct glyphs (system/light/dark), renders in the
+// server-default "system" state with a current-state aria-label, and the inline
+// script cycles system -> light -> dark -> system, clearing the stored
+// preference and data-theme for system and persisting a light/dark choice.
+func TestThemeToggleThreeState(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+
+	// (a) Three distinct glyphs, one per state, all present in SSR — the client
+	// only swaps which is visible, so the markup is correct before any script.
+	for _, want := range []string{
+		`data-glyph="system"`, `data-glyph="light"`, `data-glyph="dark"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("toggle missing glyph slot %q", want)
+		}
+	}
+	// Distinct SVG shapes: a monitor rect (system), a sun circle (light), a
+	// crescent path (dark). Three different marks, not one repeated.
+	for _, shape := range []string{"<rect ", "<circle ", "A5.6 5.6 0 1 1"} {
+		if !strings.Contains(page, shape) {
+			t.Errorf("toggle missing distinct glyph shape %q", shape)
+		}
+	}
+
+	// (b) SSR renders the server-default "system" state: the system glyph shown,
+	// the other two hidden, the visible label and aria-label naming system.
+	if !strings.Contains(page, `<span class="themeglyph" data-glyph="system" aria-hidden="true">`) {
+		t.Error("system glyph should be the shown one in SSR (no hidden attr)")
+	}
+	for _, hidden := range []string{
+		`data-glyph="light" aria-hidden="true" hidden`,
+		`data-glyph="dark" aria-hidden="true" hidden`,
+	} {
+		if !strings.Contains(page, hidden) {
+			t.Errorf("non-active glyph not hidden in SSR: %q", hidden)
+		}
+	}
+	if !strings.Contains(page, `aria-label="Theme: system. Switch to light."`) {
+		t.Error("SSR aria-label does not name the current state and the next")
+	}
+	if !strings.Contains(page, `<span id="themelabel">System</span>`) {
+		t.Error("SSR visible label does not name the current state")
+	}
+
+	// (c) The inline script cycles the three states and applies stored state:
+	// system clears both the attribute and storage; light/dark persist.
+	for _, want := range []string{
+		`{ system: "light", light: "dark", dark: "system" }`, // the cycle
+		`removeAttribute("data-theme")`,                      // system clears attr
+		`removeItem("exocomp-theme")`,                        // system clears storage
+		`setAttribute("data-theme", next)`,                   // light/dark pin attr
+		`setItem("exocomp-theme", next)`,                     // light/dark persist
+		`stored === "light" || stored === "dark"`,            // read applies stored
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("toggle script missing %q", want)
 		}
 	}
 }

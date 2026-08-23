@@ -36,9 +36,7 @@ templ layout(p page) {
 					if p.Who != "" {
 						<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
 					}
-					<button type="button" class="themetoggle" onclick="exoToggleTheme()" aria-label="Switch to light theme" id="themebtn">
-						<span id="themelabel">Light</span>
-					</button>
+					@themeToggle()
 				</header>
 				<main>
 					{ children... }
@@ -73,40 +71,81 @@ templ footer(s SignalLine) {
 }
 
 // themeInit applies the persisted theme before first paint so a light-mode
-// operator never sees a dark flash, and defines the toggle.
+// operator never sees a dark flash, and defines the three-state toggle: the
+// control cycles system -> light -> dark -> system. "system" follows
+// prefers-color-scheme with no data-theme and no stored preference; "light" and
+// "dark" pin the attribute and persist. Only a light/dark value is honoured on
+// read, so a cleared or garbage entry falls back to system.
 templ themeInit() {
 	<script>
 	(function () {
 		try {
 			var t = localStorage.getItem("exocomp-theme");
-			if (t) document.documentElement.setAttribute("data-theme", t);
+			if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
 		} catch (e) {}
 	})();
-	function exoToggleTheme() {
-		var el = document.documentElement;
-		var cur = el.getAttribute("data-theme");
-		if (!cur) {
-			cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-		}
-		var next = cur === "dark" ? "light" : "dark";
-		el.setAttribute("data-theme", next);
-		try { localStorage.setItem("exocomp-theme", next); } catch (e) {}
-		exoSyncThemeLabel();
+	// exoThemeState reads the state the same way in SSR (server has no
+	// data-theme, so "system") and after a click, straight from storage.
+	function exoThemeState() {
+		var stored = null;
+		try { stored = localStorage.getItem("exocomp-theme"); } catch (e) {}
+		return (stored === "light" || stored === "dark") ? stored : "system";
 	}
-	// The label names the theme a tap switches TO; the aria-label mirrors it.
-	// Null-safe so it is harmless before the button exists (it runs for real
-	// from the end-of-body script on load, and from the toggle thereafter).
-	function exoSyncThemeLabel() {
-		var lbl = document.getElementById("themelabel");
+	// exoNextTheme is the cycle order the button advances on each click.
+	function exoNextTheme(state) {
+		return { system: "light", light: "dark", dark: "system" }[state] || "light";
+	}
+	function exoCycleTheme() {
+		var next = exoNextTheme(exoThemeState());
+		var el = document.documentElement;
+		if (next === "system") {
+			el.removeAttribute("data-theme");
+			try { localStorage.removeItem("exocomp-theme"); } catch (e) {}
+		} else {
+			el.setAttribute("data-theme", next);
+			try { localStorage.setItem("exocomp-theme", next); } catch (e) {}
+		}
+		exoSyncThemeControl();
+	}
+	// exoSyncThemeControl shows the current state's glyph, names it in the
+	// visible label, and writes an aria-label naming the current state and what
+	// a click does. Null-safe so it is harmless before the button exists (it
+	// runs for real from the end-of-body script on load, and after each click).
+	function exoSyncThemeControl() {
 		var btn = document.getElementById("themebtn");
-		if (!lbl || !btn) return;
-		var cur = document.documentElement.getAttribute("data-theme");
-		if (!cur) cur = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-		var target = cur === "dark" ? "Light" : "Dark";
-		lbl.textContent = target;
-		btn.setAttribute("aria-label", "Switch to " + target.toLowerCase() + " theme");
+		if (!btn) return;
+		var state = exoThemeState();
+		var glyphs = btn.querySelectorAll(".themeglyph");
+		for (var i = 0; i < glyphs.length; i++) {
+			glyphs[i].hidden = glyphs[i].getAttribute("data-glyph") !== state;
+		}
+		var names = { system: "System", light: "Light", dark: "Dark" };
+		var lbl = document.getElementById("themelabel");
+		if (lbl) lbl.textContent = names[state];
+		btn.setAttribute("aria-label", "Theme: " + state + ". Switch to " + exoNextTheme(state) + ".");
 	}
 	</script>
+}
+
+// themeToggle is the three-state theme control. It renders in the server's
+// default state — "system", since the server sets no data-theme — with all
+// three glyphs in the DOM and only the active one shown, so the markup is
+// correct before any script runs and the client script only swaps which glyph
+// is visible. Each state has a distinct glyph: an auto/monitor mark for system,
+// a sun for light, a moon for dark.
+templ themeToggle() {
+	<button type="button" class="themetoggle" onclick="exoCycleTheme()" aria-label="Theme: system. Switch to light." id="themebtn">
+		<span class="themeglyph" data-glyph="system" aria-hidden="true">
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="1.5" y="2.5" width="13" height="9" rx="1"></rect><path d="M5.5 14h5M8 11.5V14"></path></svg>
+		</span>
+		<span class="themeglyph" data-glyph="light" aria-hidden="true" hidden>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="3"></circle><path d="M8 .9V2.4M8 13.6V15.1M2.6 2.6l1.1 1.1M12.3 12.3l1.1 1.1M.9 8H2.4M13.6 8H15.1M2.6 13.4l1.1-1.1M12.3 3.7l1.1-1.1"></path></svg>
+		</span>
+		<span class="themeglyph" data-glyph="dark" aria-hidden="true" hidden>
+			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 9.6A5.6 5.6 0 1 1 6.4 2.6a4.4 4.4 0 0 0 7 7z"></path></svg>
+		</span>
+		<span id="themelabel">System</span>
+	</button>
 }
 
 // layoutReady runs once the chrome is in the DOM: it syncs the theme-toggle
@@ -114,7 +153,7 @@ templ themeInit() {
 // current page is visible when the nav has scrolled off-screen on a phone.
 templ layoutReady() {
 	<script>
-	exoSyncThemeLabel();
+	exoSyncThemeControl();
 	document.querySelector('nav [aria-current="page"]')
 		?.scrollIntoView({ inline: "center", block: "nearest" });
 	</script>
