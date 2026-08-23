@@ -15,6 +15,12 @@ import (
 // simpler than a notify fan-out and costs nothing idle.
 const streamPoll = 300 * time.Millisecond
 
+// streamMaxLifetime bounds one attached stream regardless of the job, so a
+// credential that is never revoked still cannot hold a socket forever. A client
+// that still wants the tail re-attaches from its last sequence, which the
+// follow path already does on a drop.
+const streamMaxLifetime = 12 * time.Hour
+
 // handleJobStream tails one job's events over SSE for the browser surface. It
 // replays nothing the page already rendered: the client opens the stream after
 // the server-rendered tail, and the stream is authoritative from there. A
@@ -65,7 +71,26 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 	ticker := time.NewTicker(streamPoll)
 	defer ticker.Stop()
 
+	// The identity resolved at attach; each revalidation re-reads its row, so a
+	// revoke or an expiry ends the stream rather than being invisible to it.
+	ident, hasIdent := identityOf(r.Context())
+	deadline := s.now().Add(streamMaxLifetime)
+
 	for {
+		// Re-resolve before every read: auth used to be resolved once, at attach,
+		// so a leaked token's holder kept reading a job's log across the revoke
+		// meant to cut it off (finding AI-10). This is a token-row read with no
+		// KDF, so it costs one indexed SELECT per poll.
+		now := s.now()
+		if !now.Before(deadline) {
+			return
+		}
+		if hasIdent {
+			if _, err := s.authenticateRow(r.Context(), ident.token.ID, "", now); err != nil {
+				return
+			}
+		}
+
 		events, err := s.store.ListJobEvents(r.Context(), id)
 		if err != nil {
 			return

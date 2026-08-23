@@ -316,6 +316,10 @@ resources are the "be aware of" surface.
   `nibbler`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
   `forbidden` **before any store touch**.
+- **A revoked token cuts an OPEN stream too.** The SSE tail re-resolves its token row on
+  every poll and ends the stream when the row stops authenticating, with a hard 12h lifetime
+  as backstop — a revoke is not something a caller can outrun by holding a socket open
+  (finding AI-10).
 - **`/api/v1` writes take a bearer credential only.** A browser session cookie authenticates
   reads but is refused on every write route: an ambient credential rides whatever request a
   browser is talked into making, and SameSite does not scope to a port, so a second app on
