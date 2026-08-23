@@ -10,6 +10,10 @@
 //
 // It uses only net/http + crypto/tls: no third-party HTTP framework, and no
 // dependency on internal/store or internal/web, so it links into a workstation
-// build that has no data dir. Only reads are implemented here; the write and
-// SSE-follow surface waits on the write API (agent-interface §3.4, Wave 3).
+// build that has no data dir.
+//
+// The surface is read.go (the GET routes) and write.go (the POST routes — every
+// one ENQUEUES, returning identifiers and states, never values). A write threads
+// the caller's Idempotency-Key, so a retried request dedups to one job rather
+// than enqueuing a second.
 package client

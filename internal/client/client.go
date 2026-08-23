@@ -1,6 +1,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -42,6 +43,10 @@ type Client struct {
 	pin  string
 	tok  string
 	hc   *http.Client
+	// stream is the same pinned transport with NO client timeout: an SSE follow
+	// is open for as long as the job runs, and defaultTimeout would cut a long
+	// apply off mid-run. Its deadline is the caller's context instead.
+	stream *http.Client
 }
 
 // New builds a client for one remote. It requires an endpoint, a pinned
@@ -63,19 +68,18 @@ func New(cfg Config) (*Client, error) {
 		return nil, err
 	}
 	c := &Client{base: base, pin: cfg.Fingerprint, tok: cfg.Token}
-	c.hc = &http.Client{
-		Timeout: defaultTimeout,
-		Transport: &http.Transport{
-			// Standard chain verification is skipped on purpose: trust is the
-			// pinned leaf fingerprint (TOFU, ADR 0009 §4), not a CA. The pin is
-			// enforced in VerifyConnection below, which STILL runs when
-			// InsecureSkipVerify is set — so a wrong cert is refused there.
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true, //nolint:gosec // trust is the pinned fingerprint checked in VerifyConnection
-				VerifyConnection:   c.verifyPin,
-			},
+	transport := &http.Transport{
+		// Standard chain verification is skipped on purpose: trust is the
+		// pinned leaf fingerprint (TOFU, ADR 0009 §4), not a CA. The pin is
+		// enforced in VerifyConnection below, which STILL runs when
+		// InsecureSkipVerify is set — so a wrong cert is refused there.
+		TLSClientConfig: &tls.Config{
+			InsecureSkipVerify: true, //nolint:gosec // trust is the pinned fingerprint checked in VerifyConnection
+			VerifyConnection:   c.verifyPin,
 		},
 	}
+	c.hc = &http.Client{Timeout: defaultTimeout, Transport: transport}
+	c.stream = &http.Client{Transport: transport}
 	return c, nil
 }
 
@@ -96,17 +100,54 @@ func (c *Client) verifyPin(cs tls.ConnectionState) error {
 // typed APIError. A non-2xx without a decodable envelope becomes an APIError
 // carrying the status so the caller still exits sensibly.
 func (c *Client) get(ctx context.Context, path string, q url.Values, out any) error {
+	_, data, err := c.do(ctx, http.MethodGet, path, q, nil, "")
+	if err != nil {
+		return err
+	}
+	if out != nil {
+		if err := json.Unmarshal(data, out); err != nil {
+			return fmt.Errorf("client: decode %s payload: %w", path, err)
+		}
+	}
+	return nil
+}
+
+// do issues one request against a /api/v1 path and returns the wire success
+// envelope's kind and raw data. It is the single request path both the reads
+// (get) and the writes (post) run through, so a wire error envelope becomes the
+// same typed APIError whichever verb asked. A write needs the KIND back — an
+// apply answers either job.enqueued or approval.pending — which is why the
+// envelope is not decoded into a caller-chosen type here.
+func (c *Client) do(ctx context.Context, method, path string, q url.Values, body any,
+	idempotencyKey string) (string, json.RawMessage, error) {
 	u := *c.base
-	u.Path = strings.TrimRight(u.Path, "/") + path
+	setPath(&u, path)
 	if len(q) > 0 {
 		u.RawQuery = q.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
+
+	var payload io.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			return "", nil, fmt.Errorf("client: encode %s body: %w", path, err)
+		}
+		payload = bytes.NewReader(b)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, u.String(), payload)
 	if err != nil {
-		return fmt.Errorf("client: build request: %w", err)
+		return "", nil, fmt.Errorf("client: build request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.tok)
 	req.Header.Set("Accept", "application/json")
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if idempotencyKey != "" {
+		// The header the write API turns into Spec.IdempotencyKey, so a retried
+		// request dedups to the one job instead of enqueuing a second.
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 
 	resp, err := c.hc.Do(req)
 	if err != nil {
@@ -114,44 +155,44 @@ func (c *Client) get(ctx context.Context, path string, q url.Values, out any) er
 		// caller sees the terminal PinMismatchError, not a transport error.
 		var pin *PinMismatchError
 		if errors.As(err, &pin) {
-			return pin
+			return "", nil, pin
 		}
-		return fmt.Errorf("client: GET %s: %w", path, err)
+		return "", nil, fmt.Errorf("client: %s %s: %w", method, path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
-		return fmt.Errorf("client: read %s: %w", path, err)
+		return "", nil, fmt.Errorf("client: read %s: %w", path, err)
 	}
+	return decodeEnvelope(resp.StatusCode, raw)
+}
 
+// decodeEnvelope turns one response into the success envelope's kind and data,
+// or a typed error. A wire error envelope keeps its taxonomy code; a non-2xx
+// that is not an envelope at all (a proxy page, a bare 404) folds its status
+// into the closest code so exit codes stay meaningful.
+func decodeEnvelope(status int, raw []byte) (string, json.RawMessage, error) {
 	var env struct {
 		SchemaVersion int             `json:"schema_version"`
 		Kind          string          `json:"kind"`
 		Data          json.RawMessage `json:"data"`
 		Error         *wire.Error     `json:"error"`
 	}
-	if derr := json.Unmarshal(body, &env); derr != nil {
-		// Not a wire envelope at all (a proxy error page, a plain 404). Fold the
-		// status into a typed error so exit codes stay meaningful.
-		return statusError(resp.StatusCode, strings.TrimSpace(string(body)))
+	if derr := json.Unmarshal(raw, &env); derr != nil {
+		return "", nil, statusError(status, strings.TrimSpace(string(raw)))
 	}
 	if env.Kind == wire.KindError || env.Error != nil {
 		e := wire.Error{}
 		if env.Error != nil {
 			e = *env.Error
 		}
-		return &APIError{Status: resp.StatusCode, Code: e.Code, Message: e.Message, Hint: e.Hint}
+		return "", nil, &APIError{Status: status, Code: e.Code, Message: e.Message, Hint: e.Hint}
 	}
-	if resp.StatusCode != http.StatusOK {
-		return statusError(resp.StatusCode, strings.TrimSpace(string(body)))
+	if status < 200 || status > 299 {
+		return "", nil, statusError(status, strings.TrimSpace(string(raw)))
 	}
-	if out != nil {
-		if err := json.Unmarshal(env.Data, out); err != nil {
-			return fmt.Errorf("client: decode %s payload: %w", path, err)
-		}
-	}
-	return nil
+	return env.Kind, env.Data, nil
 }
 
 // statusError builds a typed APIError for a non-envelope HTTP failure, mapping
@@ -173,6 +214,24 @@ func statusError(status int, body string) *APIError {
 		msg = http.StatusText(status)
 	}
 	return &APIError{Status: status, Code: code, Message: fmt.Sprintf("remote returned HTTP %d: %s", status, msg)}
+}
+
+// pathEscape escapes a name being spliced into a path segment, so a workspace
+// whose name carries a slash or a space still addresses the row it names
+// instead of a different route.
+func pathEscape(s string) string { return url.PathEscape(s) }
+
+// setPath installs an already-escaped path on u. Assigning u.Path alone would
+// escape it a SECOND time (a %2F becoming %252F), so the escaped form is kept as
+// RawPath alongside its decoded Path — the pair net/url emits verbatim.
+func setPath(u *url.URL, path string) {
+	full := strings.TrimRight(u.Path, "/") + path
+	decoded, err := url.PathUnescape(full)
+	if err != nil {
+		u.Path, u.RawPath = full, ""
+		return
+	}
+	u.Path, u.RawPath = decoded, full
 }
 
 // baseURL normalizes an endpoint to an https base URL. A bare host or host:port
