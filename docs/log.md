@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — threat-model: AI-11 auth timing equalizer removed (S1)
+
+[security/threat-model.md](security/threat-model.md) revises the **AI-11** disposition. The
+finding had two halves; the rate half (per-source / per-token fail counter that backs a
+guessing run off before the KDF) is unchanged and remains the guard. The timing half — a
+decoy argon2id the absent/inactive verify path paid so its latency matched a live row's — is
+**removed** (simplification S1). Correction of fact: the equalizer never actually held (a live
+row hashes at `argonTime=1` while the decoy PHC hardcoded `t=3`, leaving a ~3× gap), and the
+oracle it targeted is accepted as out-of-threat-model for a single-operator homelab because
+the leak is only which row _ids_ exist (not secret bytes of a 128-bit token) and enumerating
+them still requires a guessing run the fail counter refuses pre-KDF. The verify path is now a
+plain lookup: absent / inactive / mismatch all return unauthenticated with no decoy KDF; the
+constant-time digest compare on a live row is untouched. `AI-11-resid` records the accepted
+timing gap and names `internal/web/auth.go` as its owner.
+
 ## 2026-08-24 — per-job resource caps: cgroup v2 direct writes (byo-runner Phase 1)
 
 The owner accepted per-job memory/CPU caps with the opt-in root-in-container privilege model,

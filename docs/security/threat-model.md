@@ -224,7 +224,7 @@ below was reproduced against a real binary or the real handler; every one marked
 | id | finding | exploited | disposition |
 |---|---|---|---|
 | AI-10 | A revoked token kept receiving an already-open SSE job stream: auth was resolved once, at attach. | yes | **FIXED — exploited-then-closed.** The tail re-resolves its token row on every poll (a row read, no KDF) and ends the stream when it stops authenticating, with a 12h hard lifetime as backstop. |
-| AI-11 | No rate limit, lockout or failure counter on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a 35× timing oracle for which token ids exist. | yes | **FIXED — exploited-then-closed.** Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run; every failure path now runs argon2id against a decoy hash. |
+| AI-11 | No rate limit, lockout or failure counter on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a 35× timing oracle for which token ids exist. | yes | **FIXED (rate half) + ACCEPTED (timing half).** Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run — this is the guard that bounds guessing and it stays. The timing equalizer (a decoy argon2id paid on the absent/inactive path so it matched a live row's latency) was **REMOVED** (simplification S1): it never held — a live row hashes at `argonTime=1` while the decoy PHC hardcoded `t=3`, so a ~3× gap survived (review finding #6) — and the side-channel it aimed at is out of the threat model for a single-operator homelab. Reasoning: the secret is a 128-bit bearer token, so the oracle only leaks which row _ids_ exist (small integers already implied by the id-in-the-clear scheme), not any secret bytes; and turning that leak into enumeration requires a guessing run, which the fail counter + KDF gate refuse **before the KDF runs** regardless of whether the id is live or absent (`TestGuessingRunRefusedBeforeKDF`). The verify path is now: look up the row; absent, inactive, or secret-mismatch all return unauthenticated with no decoy KDF; the constant-time digest compare on a live row is unchanged. |
 | AI-12 | A `--source` playbook escaped the checkout (`../`, or an absolute path that was not rebased at all), so a run recorded against a signed source executed a tree the signature never covered. | yes | **FIXED — exploited-then-closed.** The joined path is resolved (symlinks included) and required to stay inside the checkout, an absolute playbook with `--source` is refused, and a source name is charset-validated before it is spliced into any path. |
 | AI-13 | MCP writes were wholly unattributed — an agent's write read off the ledger as the operator's own CLI run — and a `tools/call` sent as a JSON-RPC notification mutated state while writing zero bytes back. | yes | **FIXED — exploited-then-closed.** Writes record the `mcp` face, and a side-effecting method sent without an id is refused with `invalid_request` instead of executed. |
 
@@ -254,7 +254,10 @@ below was reproduced against a real binary or the real handler; every one marked
   retry with different arguments, which still returns the first job.
 - **AI-11-resid** the backoff is process state and per-source keys on `RemoteAddr` (D1/D4
   adjacent: a proxy collapses sources). Failures are logged, not recorded on the token row,
-  so a guessing run is visible in the log but not in `token list`.
+  so a guessing run is visible in the log but not in `token list`. The absent-vs-live auth
+  timing gap is accepted, not closed (see the AI-11 row): the equalizer that tried to mask it
+  is gone because it did not hold and the leak (which row ids exist) is not secret material a
+  128-bit token defends. `internal/web/auth.go` owns the verify path.
 
 ## Optional OpenBao Transit seal (ADR 0013)
 
