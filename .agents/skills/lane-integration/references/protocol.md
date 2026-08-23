@@ -83,6 +83,12 @@ advanced under you (another integrator, or the rebase in step 2 did not actually
 put the lane ahead of `main`). Do not fall back to a real merge commit — that
 breaks invariant 11. Report and stop; the lane needs re-rebasing.
 
+A refusal quoting `untracked working tree files would be overwritten` is a
+different failure from a non-fast-forward `main` — **STOP** the same way, but
+report the exact paths it names. Never delete or overwrite them yourself: file
+deletion of repo content may be guarded, and clearing them is a human call, not
+an integrator one.
+
 ## 5. Run make check once
 
 ```sh
@@ -93,7 +99,13 @@ This is the same gate `.agents/hooks/pre-commit` runs (AGENTS.md invariant 12);
 run it explicitly here because a fast-forward creates no commit and so fires no
 hook. Full run is ~2.5 min solo.
 
-- **Green** → proceed to teardown.
+Run it to completion in the foreground, in this same turn, with a generous
+timeout (up to 600000 ms) — do not background it and pause to wait on it. An
+integrator agent does not reliably resume after a background pause, and a run
+stranded mid-check leaves teardown undone and the worktree lingering.
+
+- **Green** → proceed to teardown in this same turn — do not end the turn
+  between the gate passing and step 6's cleanup.
 - **Failure** → consult the flake-triage skill's flaky list. If, and only if,
   every failing test is on that list, re-run `make check` **once**. Still failing,
   or the failing test is not listed → **STOP**: report the full failing output.
