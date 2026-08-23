@@ -63,6 +63,11 @@ type Scheduler struct {
 	fingerprint string
 	runCtx      context.Context
 	cancel      context.CancelFunc
+	// paused suppresses firing without tearing the clock down: a cordoned daemon
+	// stops enqueueing scheduled work ahead of a planned reboot, and because a
+	// suppressed fire never stamps last_run, Resume's catch-up settles whatever
+	// occurrences were missed while paused — the same coalescing a downtime gets.
+	paused bool
 }
 
 // New returns a Scheduler over st and q. log defaults to slog.Default().
@@ -211,15 +216,47 @@ func fingerprint(rows []store.Schedule) string {
 	return b.String()
 }
 
+// Pause suppresses firing while leaving the clock running: cron entries keep
+// advancing, but a fire that lands while paused enqueues nothing and, crucially,
+// does not stamp last_run. It is the scheduler half of a cordon.
+func (s *Scheduler) Pause() {
+	s.mu.Lock()
+	s.paused = true
+	s.mu.Unlock()
+}
+
+// Resume re-enables firing and then runs catch-up, so any occurrence that passed
+// while paused fires once (coalesced), the same way a schedule caught up after
+// downtime. It is safe to call when not paused (catch-up is then a no-op) and
+// before Start (nothing to catch up).
+func (s *Scheduler) Resume() {
+	s.mu.Lock()
+	s.paused = false
+	ctx := s.runCtx
+	s.mu.Unlock()
+	s.catchUp(ctx)
+}
+
+// Paused reports whether firing is currently suppressed.
+func (s *Scheduler) Paused() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.paused
+}
+
 // fire runs one schedule on its cron tick: it sleeps up to JitterS seconds,
 // then dispatches. It is a cron.Job's Run method, called in its own goroutine
 // by the cron package.
 func (s *Scheduler) fire(sc store.Schedule) {
 	s.mu.Lock()
 	ctx := s.runCtx
+	paused := s.paused
 	s.mu.Unlock()
 	if ctx == nil {
 		return // Stop() raced this fire; nothing left to enqueue into.
+	}
+	if paused {
+		return // Cordoned: suppress the fire; last_run is left for Resume to catch up.
 	}
 
 	if sc.JitterS > 0 {
