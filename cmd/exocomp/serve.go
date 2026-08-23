@@ -854,6 +854,10 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		// deterministic so the dependent play resolves it, and each apply
 		// refreshes the same file.
 		InventoryOut: handoffInventoryPath(d.dirs.root, ws.Name),
+		// Sensitive outputs seal and bind the same way as the daemonless apply
+		// path (runWorkspaceInline): without this, a daemon-driven apply leaves
+		// the tf:<workspace> binding empty and the dependent play finds nothing.
+		OutputSealer: executor.EnvelopeOutputSealer{Env: d.env, Store: d.store, Workspace: ws.Name},
 	})
 	material := append([][]byte{[]byte(token), stateKey, []byte(passphrase)}, secretPlain...)
 	redactor := secrets.NewRedactor(material)
