@@ -8,30 +8,30 @@ import (
 	"time"
 )
 
-// TestMigration0021UpgradesFrom20 pins a database at user_version 20, seeds a
-// schedule under the pre-0021 schema (no last_run column), then opens it with
+// TestMigration0022UpgradesFrom21 pins a database at user_version 21, seeds a
+// schedule under the pre-0022 schema (no last_run column), then opens it with
 // this binary. An operator upgrading in place must get the new column defaulted
 // to NULL on the pre-existing row — so its first (re)load treats it as
 // never-fired and does not back-fire — and a usable schedule table afterward.
-func TestMigration0021UpgradesFrom20(t *testing.T) {
+func TestMigration0022UpgradesFrom21(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
 	dbPath := filepath.Join(t.TempDir(), "exocomp.db")
-	pinAtMigrations(t, dbPath, 20)
+	pinAtMigrations(t, dbPath, 21)
 
 	raw, err := sql.Open("sqlite", dsn(dbPath))
 	if err != nil {
 		t.Fatalf("open raw db: %v", err)
 	}
-	// The pre-0021 schedule row has no last_run column at all.
+	// The pre-0022 schedule row has no last_run column at all.
 	var cols int
 	if err := raw.QueryRowContext(ctx,
 		`SELECT count(*) FROM pragma_table_info('schedule') WHERE name = 'last_run'`).Scan(&cols); err != nil {
 		t.Fatalf("probe pre-migration schema: %v", err)
 	}
 	if cols != 0 {
-		t.Fatalf("last_run column exists at user_version 20, want it introduced by 0021")
+		t.Fatalf("last_run column exists at user_version 21, want it introduced by 0022")
 	}
 	if _, err := raw.ExecContext(ctx, `
 		INSERT INTO schedule (name, cron_expr, kind, args_json, concurrency_key, jitter_s, enabled)
@@ -44,7 +44,7 @@ func TestMigration0021UpgradesFrom20(t *testing.T) {
 
 	s, err := Open(dbPath)
 	if err != nil {
-		t.Fatalf("open at v20 for upgrade: %v", err)
+		t.Fatalf("open at v21 for upgrade: %v", err)
 	}
 	t.Cleanup(func() { _ = s.Close() })
 
@@ -52,8 +52,8 @@ func TestMigration0021UpgradesFrom20(t *testing.T) {
 	if err != nil {
 		t.Fatalf("schema version: %v", err)
 	}
-	if version < 21 {
-		t.Fatalf("schema version = %d after open, want >= 21", version)
+	if version < 22 {
+		t.Fatalf("schema version = %d after open, want >= 22", version)
 	}
 
 	legacy, err := s.GetSchedule(ctx, "legacy")
