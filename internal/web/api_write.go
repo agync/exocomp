@@ -164,6 +164,19 @@ func (s *Server) decodeWrite(w http.ResponseWriter, r *http.Request) (writeReque
 	return req, timeout, true
 }
 
+// actorFromRequest resolves the caller identity into the service.Actor a
+// write records on its job's event ledger — the durable record the approval
+// decision path already gets by threading identity into reactive.Decide
+// (apiApprovalDecision below). Only the token's NAME travels, never its
+// secret (AGENTS.md invariant 4).
+func actorFromRequest(r *http.Request) service.Actor {
+	ident, ok := identityOf(r.Context())
+	if !ok {
+		return service.Actor{}
+	}
+	return service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name}
+}
+
 // idempotencyKey reads the caller-settable Idempotency-Key header. Threaded onto
 // the service Input, it dedups a retried request to one job (queue.go:117-126),
 // so a retrying agent never double-enqueues.
@@ -214,6 +227,7 @@ func (s *Server) apiWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 		// The "api" trigger tells the daemon to seal this plan's -out file into a
 		// consumable artifact post-run; a CLI plan seals its own.
 		Trigger: service.TriggerAPI,
+		Actor:   actorFromRequest(r),
 	})
 	if err != nil {
 		s.apiFail(w, err)
@@ -275,6 +289,7 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		Timeout:         timeout,
 		SavedPlan:       saved,
 		Gate:            gate,
+		Actor:           actorFromRequest(r),
 	}, func(context.Context) ([]string, *store.Artifact, func(), error) {
 		if saved == nil {
 			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
@@ -478,6 +493,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		TolerateUnreachable: req.TolerateUnreachable,
 		IdempotencyKey:      idempotencyKey(r),
 		Timeout:             timeout,
+		Actor:               actorFromRequest(r),
 	})
 	if err != nil {
 		s.apiFail(w, err)
