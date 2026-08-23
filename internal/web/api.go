@@ -1,9 +1,12 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
+	"sync"
+	"time"
 
 	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/store"
@@ -19,7 +22,10 @@ import (
 // mutates, or shells out, and no POST/PUT/DELETE is registered (Wave 3).
 //
 // GET /api/v1/health calls internal/health.Probe — the same probe definition
-// `doctor --output json` calls — so the two summaries can never diverge.
+// `doctor --output json` calls — so the two summaries can never diverge. It is
+// served from a short-lived cache (healthCacheTTL): the probe forks a
+// subprocess per optional tool and opens the secrets envelope, and neither
+// belongs on a per-request path any token can drive (finding AI-6).
 //
 // Deferred, not built here: every write endpoint (Wave 3).
 
@@ -485,12 +491,46 @@ func (s *Server) apiRunnerGet(w http.ResponseWriter, r *http.Request) {
 
 // --- health -------------------------------------------------------------
 
-// apiHealth runs the same subsystem probes `doctor --output json` does and
-// returns the wire health view. It never fails: an unreachable subsystem is a
-// per-entry status, not an HTTP error, matching the CLI's fault-tolerant JSON
-// path (internal/health.Probe never short-circuits on a data-dir fault).
+// healthCacheTTL bounds how stale a served health summary may be. A doctor
+// probe forks a subprocess per optional tool and opens the secrets envelope, so
+// running it per request let the LOWEST scope drive unbounded process creation
+// and repeated keyring unwraps (finding AI-6). Ten seconds is shorter than any
+// human refresh and shorter than the scrape intervals an agent polls at, so the
+// summary a caller reads is still the current one.
+const healthCacheTTL = 10 * time.Second
+
+// healthCache holds the last probe and when it expires. The mutex is held for
+// the length of a probe, so concurrent readers share one run instead of each
+// forking their own.
+type healthCache struct {
+	mu       sync.Mutex
+	view     wire.HealthView
+	expires  time.Time
+	computed bool
+}
+
+// healthView returns the cached doctor summary, refreshing it when it has
+// expired.
+func (s *Server) healthView(ctx context.Context) wire.HealthView {
+	s.health.mu.Lock()
+	defer s.health.mu.Unlock()
+	now := s.now()
+	if s.health.computed && now.Before(s.health.expires) {
+		return s.health.view
+	}
+	s.health.view = s.probe(ctx)
+	s.health.expires = now.Add(healthCacheTTL)
+	s.health.computed = true
+	return s.health.view
+}
+
+// apiHealth returns the same subsystem summary `doctor --output json` does,
+// served from a short-lived cache (healthCacheTTL). It never fails: an
+// unreachable subsystem is a per-entry status, not an HTTP error, matching the
+// CLI's fault-tolerant JSON path (internal/health.Probe never short-circuits on
+// a data-dir fault).
 func (s *Server) apiHealth(w http.ResponseWriter, r *http.Request) {
-	s.apiSuccess(w, wire.KindDoctor, health.Probe(r.Context(), s.dataDir, s.healthOpenStore))
+	s.apiSuccess(w, wire.KindDoctor, s.healthView(r.Context()))
 }
 
 // healthOpenStore hands internal/health the server's already-open store

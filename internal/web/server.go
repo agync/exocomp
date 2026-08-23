@@ -10,8 +10,10 @@ import (
 
 	"github.com/a-h/templ"
 
+	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // Deriver is the slice of the secrets envelope the web surface needs: the
@@ -76,6 +78,11 @@ type Server struct {
 	// field only so a test can observe the KDF's concurrency; production always
 	// uses verifySecret.
 	verify func(secret, phc string) (bool, error)
+	// probe runs the doctor subsystem probes behind the health cache. It is a
+	// field only so a test can count how often it actually runs; production
+	// always uses internal/health.Probe.
+	probe  func(ctx context.Context) wire.HealthView
+	health healthCache
 }
 
 // New returns a Server ready to be mounted.
@@ -94,7 +101,7 @@ func New(opts Options) (*Server, error) {
 	if clock == nil {
 		clock = func() time.Time { return time.Now().UTC() }
 	}
-	return &Server{
+	srv := &Server{
 		store:       opts.Store,
 		deriver:     opts.Deriver,
 		decider:     opts.Decider,
@@ -107,7 +114,11 @@ func New(opts Options) (*Server, error) {
 		clock:       clock,
 		kdf:         newKDFGate(),
 		verify:      verifySecret,
-	}, nil
+	}
+	srv.probe = func(ctx context.Context) wire.HealthView {
+		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)
+	}
+	return srv, nil
 }
 
 func (s *Server) now() time.Time { return s.clock().UTC() }
