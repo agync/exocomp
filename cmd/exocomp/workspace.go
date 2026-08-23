@@ -895,36 +895,16 @@ func resolvePlan(ctx context.Context, st *store.Store, ref string) (store.Artifa
 
 // recordPlan registers the plan file a run wrote, encrypted at rest first. A
 // run that changed nothing still writes one, so its absence means the plan
-// never got that far. The digest recorded is of the ciphertext, because that
-// is what is on disk to check later.
+// never got that far. The seal-and-record logic lives in internal/service so
+// the daemon seals an API-initiated plan the same way; the CLI keeps the notice.
 func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out io.Writer,
 	jobID int64, path string) (*store.Artifact, error) {
-	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	path, err := sealArtifact(env, planArtifactKind, path)
-	if err != nil {
-		return nil, err
-	}
-	sum, size, err := fileDigest(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	saved, err := st.CreateArtifact(ctx, store.Artifact{
-		JobID:  jobID,
-		Kind:   planArtifactKind,
-		Path:   path,
-		SHA256: sum,
-		Size:   size,
-	})
-	if err != nil {
-		return nil, err
+	saved, err := service.New(st, "", nil).SealPlan(ctx, planEnvelope(env), jobID, path)
+	if err != nil || saved == nil {
+		return saved, err
 	}
 	_, _ = fmt.Fprintf(out, "saved plan artifact %d at %s\n", saved.ID, saved.Path)
-	return &saved, nil
+	return saved, nil
 }
 
 // workspaceExit reports the shell exit code, translating a plan that found
