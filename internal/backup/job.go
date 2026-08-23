@@ -56,6 +56,14 @@ type Runner struct {
 	store     *store.Store
 	run       runFunc
 	targetEnv func(store.BackupTarget) map[string]string
+	// env, stageRoot, and driver serve DrillJobKind only: a drill needs the
+	// live envelope to derive a target's restic password (LiveSource), a
+	// throwaway directory to restore into, and the subprocess driver — the
+	// same three Options the backup leg above gets through the Engine it
+	// closes over instead.
+	env       *secrets.Envelope
+	stageRoot string
+	driver    executor.Driver
 }
 
 // NewRunner returns a Runner over a store and an open envelope. targetEnv
@@ -63,7 +71,10 @@ type Runner struct {
 // restic cache dir); nil means no target gets extra environment.
 func NewRunner(st *store.Store, env *secrets.Envelope, opts Options, targetEnv func(store.BackupTarget) map[string]string) *Runner {
 	eng := New(st, env, opts)
-	return &Runner{store: st, run: eng.Run, targetEnv: targetEnv}
+	return &Runner{
+		store: st, run: eng.Run, targetEnv: targetEnv,
+		env: env, stageRoot: opts.StageRoot, driver: opts.Driver,
+	}
 }
 
 // Run implements executor.Driver. spec.Argv is the job's Argv (see Argv);
@@ -72,6 +83,10 @@ func NewRunner(st *store.Store, env *secrets.Envelope, opts Options, targetEnv f
 // invariant 3). The engine writes the target's backup_run row itself, so a
 // job succeeding or failing here always has one to show for it.
 func (r *Runner) Run(ctx context.Context, spec executor.Spec, sink executor.EventSink) (executor.Result, error) {
+	if spec.Kind == DrillJobKind {
+		return r.runDrill(ctx, spec, sink)
+	}
+
 	started := time.Now()
 
 	name, err := TargetOf(spec.Argv)
