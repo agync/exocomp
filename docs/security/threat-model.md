@@ -39,6 +39,7 @@ Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HAR
 |---|---|---|---|
 | E1 | Evil-maid: `host.key` is plaintext, no TPM/systemd-creds sealing is implemented, yet the UI claims "key sealed to this box". A data-dir read yields every secret with `age -d` + stdlib GCM. | yes | **FIX + DOC** — secure default per the decision above; correct the UI/ADR now. |
 | E2 | `identity migrate --drop-recipient` re-wraps the *same* DEK (no rotation); a dropped recipient with any retained `keyring.age` keeps decrypting everything, incl. secrets sealed after the drop. CLI says "dropped". | yes | **FIX** — rotate the DEK on drop (re-encrypt every row) or refuse and name rotation as the real revocation; reword output so it never implies revocation without rotation. |
+| E6 | The E2 DEK rotation re-encrypts rows one at a time and flips `keyring.age` only after the loop finishes. A crash or mid-loop error leaves some rows under the new DEK and the rest under the old while `keyring.age` still wraps the OLD DEK — and nothing reads the staged `keyring.age.next` to reconcile, so the next `Open` unwraps the OLD DEK and the already-moved rows fail to decrypt. Silent data loss on the exact path revocation serves. | yes (test) | **FIX** — stage the new keyring/metadata before any row moves, promote atomically with `keyring.age` renamed last, and reconcile a detected `keyring.age.next` to completion on the next Open (load both DEKs, re-seal every row under the new one, idempotently). |
 | S1 | Dependency resolution (`uv pip install`) runs **unsandboxed in the daemon context**, before the nono/Landlock job sandbox — a poisoned `pyproject.toml`/`requirements.txt` executes with daemon privileges. | analysis | **FIX** — run the resolver under the job sandbox tier; it is untrusted-source-derived code. |
 | S2 | Signed-ref gate falls back to ambient host git config when `allowed_signers` is empty (the migration-0014 fallback); an attacker-signed ref was accepted that way. | yes | **FIX** — `--signed` fails closed with no exocomp-owned allowed-signers; never trust ambient git config. (Residual gap in the M3d story-1 fix.) |
 | R1 | Dedup-anchor planting: an inert non-matching event becomes the dedup anchor, silently suppressing a later *actionable* alert. | yes | **FIX** — dedup keyed only on events that actually matched/fired, or scope the anchor. |
@@ -92,6 +93,26 @@ regression test, fixes it, and proves the exploit is dead.
      `systemd-creds`/rootless-podman path needs validation on a real host.
    - **E4** (keyring-version downgrade on an unauthenticated file) — still open; the DEK now
      rotates (E2), reducing its blast radius.
+   - **E6 FIXED — 2026-08-24** (dek-reseal lane): the E2 rotation is now crash-safe and
+     resumable, closing a silent data-loss window on the revocation path. `RotateDEK` stages
+     `keyring.age.next` + `recipients.next`/`keyring.version.next` (and `host.key.next` on a
+     host rotation) *before* any row moves, re-encrypts every row under the new DEK, then
+     promotes the staged files atomically with `keyring.age` renamed **last** — the single
+     commit point. `secrets.Reconcile` detects a leftover `keyring.age.next` and finishes the
+     interrupted migration on the next `Open`: it loads both DEKs (new from `keyring.age.next`,
+     old from `keyring.age` while it still opens), re-seals every row under the new DEK
+     decrypting each under whichever DEK holds it, and promotes — idempotent, so a crash
+     *during* reconciliation converges on the next call. Wired into `serve` startup and the CLI
+     rotate path; `RotateDEK` refuses to stack a fresh rotation on a pending one. The
+     `name|kind` AAD and every E1..E5 property are preserved. Repro: a crash after N of M rows
+     strands the moved rows on the old-DEK `Open` (failing test); after the fix every row opens
+     under the new DEK, `keyring.age.next` is gone, and disabling the reconciliation kills the
+     test (mutation-checked). Tests: `internal/secrets/reseal_crash_test.go`,
+     `cmd/exocomp/reseal_recovery_test.go`.
+     - **E6-resid** a transit-sealed store (auto-unseal, no host key on disk) with an
+       interrupted reseal cannot reconcile without the host key: reconciliation resolves the
+       DEKs through the age host-key path. The host-key path is the supported recovery; a
+       transit-native reconcile is a follow-up. Owner: `internal/secrets`.
 2. **Supply-chain / deps — S1/S2/S4/S5 LANDED 2026-08-22** (commits
    65690ce/8fa16f2/6a71495/532518f): **S1 FIXED** (the uv resolver runs under the job
    sandbox tier, not the daemon context — every uv invocation is wrapped in the nono

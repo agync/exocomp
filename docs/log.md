@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — threat-model records E6: DEK reseal is now crash-safe
+
+[security/threat-model.md](security/threat-model.md) gained finding **E6** and its closure.
+The E2 DEK rotation (recipient revocation) re-encrypted secret rows one at a time and flipped
+`keyring.age` only after the loop finished, so a crash mid-loop stranded some rows under the
+new DEK and the rest under the old while `keyring.age` still wrapped the OLD one — and nothing
+read the staged `keyring.age.next` to reconcile, so the next daemon `Open` silently failed to
+decrypt the already-moved rows. Correction of fact: the rotation is now staged-then-promoted
+(the new keyring and metadata land beside the live files before any row moves; `keyring.age`
+is renamed last as the single commit point) and a leftover `keyring.age.next` is reconciled to
+completion on the next `Open` — loading both DEKs and re-sealing every row under the new one,
+idempotently so repeated crashes converge. The `name|kind` AAD and every E1..E5 property are
+unchanged. The residual E6-resid (a transit-sealed store cannot reconcile without the host
+key) is recorded open.
+
 ## 2026-08-23 — machine-output.md's "read/list/status verbs support it" is now true
 
 [operations/machine-output.md](operations/machine-output.md) claimed blanket `--output json`
