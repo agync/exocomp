@@ -24,3 +24,4 @@ platform support tiers are in
 | [0011](0011-project-dependency-resolution.md) | Project deps from root requirements.txt/pyproject.toml, uv-resolved into hash-gated caches; uv ships at runtime |
 | [0012](0012-litestream.md) | Litestream as an optional fast-RPO sidecar replicating exocomp.db's WAL; restic stays authoritative; unencrypted-remote refused without ack; sidecar not embedded |
 | [0013](0013-openbao-transit-seal.md) | OpenBao Transit as an optional additive seal for the DEK (auto-unseal); keyring.age recovery preserved; unreachable is an explicit error, never silent fallback |
+| [0014](0014-agent-facing-surface.md) | Agent-facing surface ratified: one core, three thin faces (CLI --output json, HTTP /api/v1, MCP) sharing ADR-0009 auth, the one queue, and the internal/wire envelope contract | Proposed |
