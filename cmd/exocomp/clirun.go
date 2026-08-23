@@ -202,15 +202,13 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 	if spec.requireApproval {
 		return gateCLIRun(ctx, cmd, st, dir, queued, spec.json)
 	}
-	// The daemon's kind router does not serve this kind yet, and that file
-	// belongs to another lane. Refusing here is better than writing a row that
-	// dies on a worker: the operator is told what to do instead.
-	if daemonRunning(ctx, dir) {
-		return 0, errors.New("run-cli: a running daemon does not route the \"cli\" job kind yet; " +
-			"stop `exocomp serve` to run it in this process, or use --require-approval to gate it now")
-	}
 
-	final, err := cliRunInline(ctx, st, dir, tool, queued, events, warn)
+	var final store.Job
+	if daemonRunning(ctx, dir) {
+		final, err = enqueueForDaemon(ctx, st, dir, queued, events)
+	} else {
+		final, err = cliRunInline(ctx, st, dir, tool, queued, events, warn)
+	}
 	if err != nil {
 		return 0, err
 	}
