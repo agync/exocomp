@@ -52,6 +52,14 @@ const macSuffix = ".mac"
 // something that did not hold the DEK.
 var ErrManifestTampered = errors.New("backup: manifest does not authenticate")
 
+// ErrSnapshotCorrupt reports a snapshot whose files, once restored, do not
+// match the digests its own manifest lists. It is distinct from
+// ErrManifestTampered: that says the manifest itself was not written by
+// someone holding the DEK, this says the manifest is authentic but the bytes
+// beside it rotted or were swapped. A restore drill uses this distinction to
+// tell "found a bad backup" (this) from "could not reach a backup at all".
+var ErrSnapshotCorrupt = errors.New("backup: snapshot does not verify")
+
 // ErrManifestUnauthenticated reports a snapshot that carries no tag from a
 // target on record as authenticating its snapshots. A git target is encrypted
 // only to public recipients, so the DEK-keyed tag is the sole control binding a
@@ -258,20 +266,20 @@ func ReadManifest(dir string) (Manifest, error) {
 // restore that stops.
 func (m Manifest) Verify(dir string) error {
 	if len(m.Files) == 0 {
-		return fmt.Errorf("backup: manifest lists no files")
+		return fmt.Errorf("%w: manifest lists no files", ErrSnapshotCorrupt)
 	}
 	for _, want := range m.Files {
 		got, err := hashFile(filepath.Join(dir, want.Name))
 		if err != nil {
-			return err
+			return fmt.Errorf("%w: %s: %w", ErrSnapshotCorrupt, want.Name, err)
 		}
 		if got.SHA256 != want.SHA256 {
-			return fmt.Errorf("backup: %s is corrupt: sha256 %s, the manifest says %s",
-				want.Name, got.SHA256, want.SHA256)
+			return fmt.Errorf("%w: %s is corrupt: sha256 %s, the manifest says %s",
+				ErrSnapshotCorrupt, want.Name, got.SHA256, want.SHA256)
 		}
 		if got.Size != want.Size {
-			return fmt.Errorf("backup: %s is corrupt: %d bytes, the manifest says %d",
-				want.Name, got.Size, want.Size)
+			return fmt.Errorf("%w: %s is corrupt: %d bytes, the manifest says %d",
+				ErrSnapshotCorrupt, want.Name, got.Size, want.Size)
 		}
 	}
 	return nil
