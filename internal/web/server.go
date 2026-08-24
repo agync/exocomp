@@ -165,6 +165,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /approvals", s.requireAuth(s.handleApprovals))
 	mux.HandleFunc("GET /approvals/{id}", s.requireAuth(s.handleApprovalSurface))
 	mux.HandleFunc("POST /approvals/{id}/decide", s.requireAuth(s.handleDecide))
+	mux.HandleFunc("POST /kill", s.requireAuth(s.handleKill))
 	mux.HandleFunc("GET /events", s.requireAuth(s.handleEvents))
 	mux.HandleFunc("GET /events/{id}", s.requireAuth(s.handleEventTrace))
 
