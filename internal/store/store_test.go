@@ -256,7 +256,7 @@ func TestTransitionJobDetectsStateConflict(t *testing.T) {
 	}
 }
 
-func TestSweepInterrupted(t *testing.T) {
+func TestReconcileNonTerminal(t *testing.T) {
 	t.Parallel()
 	s, path := open(t)
 	ctx := context.Background()
@@ -366,11 +366,11 @@ func livePID(t *testing.T) int {
 	return cmd.Process.Pid
 }
 
-// TestSweepInterruptedUsesLivenessNotPIDEquality pins the two cases pid
+// TestReconcileNonTerminalUsesLivenessNotPIDEquality pins the two cases pid
 // equality gets wrong. A container restart reissues pid 1, so a row this
 // process "owns" can predate it; and another live process's rows are not ours
 // to terminate.
-func TestSweepInterruptedUsesLivenessNotPIDEquality(t *testing.T) {
+func TestReconcileNonTerminalUsesLivenessNotPIDEquality(t *testing.T) {
 	t.Parallel()
 	s, _ := open(t)
 	ctx := context.Background()

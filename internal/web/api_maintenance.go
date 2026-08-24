@@ -100,10 +100,10 @@ func (s *Server) apiReadiness(w http.ResponseWriter, r *http.Request) {
 	s.apiSuccess(w, wire.KindMaintenance, wire.NewMaintenanceView(st.Cordoned, st.InFlight))
 }
 
-// apiInterrupted lists the jobs SweepInterrupted retired to interrupted, newest
-// first — the post-reboot view an operator re-drives from. It reads the store
-// directly and needs no maintenance seam: an interrupted row is terminal
-// history, readable whether or not this surface owns the queue.
+// apiInterrupted lists the jobs ReconcileNonTerminal retired to interrupted,
+// newest first — the post-reboot view an operator re-drives from. It reads
+// the store directly and needs no maintenance seam: an interrupted row is
+// terminal history, readable whether or not this surface owns the queue.
 func (s *Server) apiInterrupted(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.store.ListInterruptedJobs(r.Context(), 0)
 	if err != nil {
