@@ -67,7 +67,9 @@ Two different holds, shown as distinct banner states on the dashboard and the TU
 
 A mute is always time-bounded — there is no indefinite mute, so a phone cannot go quiet
 the week the backups start failing. A scoped silence swallows a matching alert before it
-becomes a job; the global kill pauses every rule.
+becomes a job; the global kill pauses every rule. A scoped (non-global) silence shows a
+**SILENCED** banner — distinct from **PAUSED** and **MUTED** — carrying the count of alerts
+swallowed while it is active, and it lifts automatically at its expiry.
 
 ## Metrics
 
@@ -76,14 +78,10 @@ and the seeded alert rules. Point a scraper at it to alert on the control plane'
 freshness — the last successful backup, the oldest unanswered approval, and the like.
 `exocomp doctor` prints the same self-observability lines for a one-shot check.
 
-The loopback backend is reachable by tofu-tier jobs, so the scrape is **bearer-gated**
-(threat-model finding D3): every request must carry the `metrics-scrape` bearer, a token
+The loopback backend is reachable by tofu-tier jobs, so the scrape is **bearer-gated**:
+every request must carry the `metrics-scrape` bearer, a token
 derived from the envelope like the state backend's own (ADR 0004). Configure Prometheus
 with it as an `authorization` credential; an unauthenticated scrape is refused with `401`.
 
 Related: [Reacting to alerts](reactive.md) · [LAN access](lan-access.md) ·
 [Disaster recovery](disaster-recovery.md).
-
-A scoped (non-global) silence shows a **SILENCED** banner (distinct from the
-global-pause **PAUSED** and the notification **MUTED**), carrying the count of
-alerts swallowed while it is active; it lifts automatically at its expiry.

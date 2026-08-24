@@ -1,10 +1,10 @@
 # Remote CLI: driving a daemon over the tailnet
 
 `exocomp login` pins a remote daemon's certificate and a bearer token so the same CLI can
-read a box other than the one it runs on — the north star of
-[design/agent-interface.md](../design/agent-interface.md), ratified by
-[ADR 0014](../adr/0014-agent-facing-surface.md). Today this covers reads only; see
-[Which verbs are remoted](#which-verbs-are-remoted-today) below.
+drive a box other than the one it runs on — the remote surface specified in
+[the agent-interface design](../design/agent-interface.md), ratified by
+[ADR 0014](../adr/0014-agent-facing-surface.md). It covers reads and a growing set of
+writes; see [Which verbs are remoted](#which-verbs-are-remoted-today) below.
 
 ## Pinning a remote (TOFU)
 
@@ -64,26 +64,25 @@ daemon the CLI itself talks to. Reusing it would conflate the two.
 
 ## Which verbs are remoted today
 
-The client (`internal/client`) implements the read-only `/api/v1` surface (see
-[api.md](api.md)) and nothing else. In client mode these verbs re-render the daemon's
-`wire` bytes exactly — `--output json` in remote mode is byte-identical to
-`--output json` run locally against the same resource:
+The client (`internal/client`) implements the `/api/v1` read and write surface (see
+[api.md](api.md)). In client mode these verbs re-render the daemon's `wire` bytes exactly —
+`--output json` in remote mode is byte-identical to `--output json` run locally against the
+same resource:
 
 | Verb | Remoted |
 |---|---|
 | `exocomp doctor` | yes — shows the **remote** daemon's health summary, not this workstation's |
-| `exocomp jobs list` / `get` / `events` | yes |
-| `exocomp approval list` | yes |
-| `exocomp source list` | yes |
-| `exocomp workspace list` | yes |
+| `exocomp jobs list` / `get` / `events` / `follow` | yes |
+| `exocomp approval list` / `decide` | yes |
+| `exocomp source list`, `workspace list` | yes |
+| `exocomp workspace plan` / `apply` | yes — enqueues on the daemon and follows the job |
+| `exocomp playbook run` | yes — enqueues on the daemon and follows the job |
+| `exocomp drain` | yes — cordons the remote daemon ([drain mode](drain-mode.md)) |
 
-Everything else — `workspace plan`/`apply`, `playbook run`, `approval decide`, every
-`source`/`inventory`/`runsecret`/`schedule`/`secrets` write, `runner add`, `backup run` —
-runs **only** against the local data dir; there is no `--remote` path for them yet. Writes
-already exist on the wire (`POST /api/v1/...`, see [api.md](api.md)) — a script can drive
-them directly over HTTP with a pinned fingerprint and a bearer today — but the CLI's own
-client-mode plumbing has not been extended to call them. `approval decide` documents this
-explicitly in its own help text rather than leaving the gap silent.
+Still local-only: every `source`/`inventory`/`runsecret`/`schedule`/`secrets` write,
+`runner add`, and `backup run` run against the local data dir; there is no `--remote` path
+for them yet. See [Driving a remote daemon](remote-cli.md) for the write flow — what each
+write returns, idempotency, and the inputs that do not cross the wire.
 
 A remote failure surfaces the daemon's `wire` error envelope (preserving its taxonomy
 `code`, not just a status) on `--output json`, or the plain error on text; a certificate

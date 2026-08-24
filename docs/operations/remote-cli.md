@@ -19,9 +19,9 @@ verify the pin and refuse to connect if it changed.
 Accepting a **changed** fingerprint (or re-pointing an alias at a different endpoint) takes
 `--replace-pin`, and nothing else does it: `--assume-yes` pins a *first* fingerprint on
 non-interactive stdin but never replaces one. That split is deliberate — every script, CI
-step and agent harness must pass `--assume-yes` to pin at all, so if it also replaced pins,
+step and automated caller must pass `--assume-yes` to pin at all, so if it also replaced pins,
 the one invocation automation always uses would re-pin to whatever certificate answered and
-hand it the bearer token (finding AI-5, [threat model](../security/threat-model.md)).
+hand it the bearer token (see the [threat model](../security/threat-model.md)).
 Confirm the new fingerprint out of band first; a refusal exits non-zero and leaves
 `hosts.toml` untouched.
 
@@ -36,14 +36,14 @@ command off the box.
 | `playbook run` | Enqueues, then follows the job to its end and exits with the job's code. `--no-follow` prints the id and exits 0 |
 | `workspace plan` | Enqueues, prints the job id |
 | `workspace apply` | Enqueues, prints the job id — or the pending approval, its policy, deadline and TTL when the plan's verdict gates it |
-| `approval decide` | Settles the approval on the daemon, which derives the capability token itself. Needs an **`approve`-scope** token: `operator` may enqueue but may not settle what it enqueued (finding AI-2), and no token may decide an approval for a job it asked for itself |
+| `approval decide` | Settles the approval on the daemon, which derives the capability token itself. Needs an **`approve`-scope** token: `operator` may enqueue but may not settle what it enqueued, and no token may decide an approval for a job it asked for itself |
 | `jobs follow <id>` | Streams the job's events and exits with the job's code |
 
 Every write accepts `--idempotency-key` (or `EXOCOMP_IDEMPOTENCY_KEY`), which travels as
 the `Idempotency-Key` header: a retried request dedups to the one job instead of enqueuing
 a second. The daemon namespaces the key by the authenticated token and the route, so a key
 only ever dedups *your* retry of *that* verb — a guessable key chosen by one caller cannot
-swallow another's write (finding AI-7, [threat model](../security/threat-model.md)).
+swallow another's write (see the [threat model](../security/threat-model.md)).
 
 `--output json` re-emits the daemon's own envelope — `job.enqueued`, `approval.pending`,
 `approval.decision` — byte for byte. A *followed* run emits one document, the settled job,

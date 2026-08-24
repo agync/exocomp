@@ -8,7 +8,7 @@ rationale: [agent-interface.md §3.5](../design/agent-interface.md); ratified in
 
 There is no bespoke stdio MCP server, and none is coming back: a process running at the
 local operator's ambient authority with no credential and no scope is exactly the shape
-finding AI-1 broke (see [the threat model](../security/threat-model.md)). A stdio-only MCP
+the [threat model](../security/threat-model.md) ruled out. A stdio-only MCP
 client bridges to `POST /mcp` with an off-the-shelf http-to-stdio wrapper — see
 [Bridging a stdio client](#bridging-a-stdio-client) below. An agent working the local
 filesystem alongside exocomp is the sanctioned LOCAL path and drives the
@@ -73,7 +73,7 @@ gate with `workspace_apply` must not also hold its release, and a token that can
 gate must not be able to raise one. On top of that, a decision is refused when the gated
 job's ledger records the deciding token as the principal that asked for it. Both rules live
 in the one decision path `/api/v1` uses, so neither face can drift from the other. See
-[the threat model](../security/threat-model.md) (findings AI-1 and AI-2).
+[the threat model](../security/threat-model.md).
 
 Resources — `exocomp://workspaces`, `exocomp://jobs/{id}`, `exocomp://jobs/{id}/log`,
 `exocomp://workspaces/{name}/drift`, `exocomp://approvals/pending`, `exocomp://schedules`,

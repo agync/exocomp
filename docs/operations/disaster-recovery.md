@@ -147,7 +147,7 @@ sequenceDiagram
     Note over NH: installs podman + pulls the image<br/>NO exocompd running yet
     NH->>Op: prompt: backup target URI?
     Op->>NH: target URI from the kit
-    NH->>T: fetch keyring.age (credential supplied by the operator; on the kit from M2)
+    NH->>T: fetch keyring.age (credential supplied by the operator; on the kit)
     NH->>Op: prompt: paste or scan the recovery age key
     Op->>NH: AGE-SECRET-KEY-1…
     NH->>NH: age -d keyring.age → DEK
@@ -207,7 +207,7 @@ only `age`, `openssl`, and `restic`.
 **The card's literal command text is a build artifact, not documentation.** It is rendered
 by the kit renderer, and the exact rendered text is **executed in CI** on a clean image
 against a fixture backup, with the derived restic password diffed against `exocompd`'s own
-derivation. This rule exists because the pre-amendment card did not run as written — the
+derivation. This rule exists because an earlier card did not run as written — the
 pipeline fed an `openssl kdf` invocation that does not read stdin, and the `-kdfopt`
 spellings were mixed. A DR card whose commands do not run is worse than no card.
 
@@ -218,7 +218,7 @@ Treat the printed card as authoritative over this page. The chain it automates i
    `restic-repo:<target-id>` — 32 bytes, base64-encoded → `RESTIC_PASSWORD`. Both the salt
    and the target id are printed on the card, so the derivation is reproducible by hand.
 3. `restic -r <target URI> restore latest --target <data volume>`, using the read-only
-   storage credential you supply (printed on the card from M2, amendment 1).
+   storage credential you supply (printed on the card).
 4. Start the service, then `exocomp doctor`.
 
 The card also carries the QR-coded recovery key, the target URIs, the fingerprints of every
@@ -238,10 +238,10 @@ database has no recovery-kind keyring row.
 |---|---|
 | Host disk | The runbook above |
 | Host key, kit intact | The runbook above — the recovery key unwraps the DEK, a new host key is minted and the old one revoked |
-| Recovery kit lost, host alive | **M3.** `exocomp recovery-kit` only re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row. Re-keying and revocation are re-evaluated for M3 |
+| Recovery kit lost, host alive | **Not yet automated.** `exocomp recovery-kit` only re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row. Re-keying and revocation are not yet built |
 | Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has. The weekly single-recipient nag and the bootstrap wizard are still unbuilt |
-| DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot and refuses a destination that already holds a keyring. M1 has no `--snapshot <id>` selector or in-place restore, and startup `PRAGMA integrity_check` gating is still unbuilt |
-| One backup target unreachable | Others proceed and each gets its own `backup_run` row; per-target alerting and the doctor's last-success-age view are **M3** |
+| DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot and refuses a destination that already holds a keyring. There is no `--snapshot <id>` selector or in-place restore yet, and startup `PRAGMA integrity_check` gating is still unbuilt |
+| One backup target unreachable | Others proceed and each gets its own `backup_run` row; per-target alerting and the doctor's last-success-age view are not yet built |
 | `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
 ## RPO and RTO
