@@ -948,6 +948,7 @@ func TestServeShutdownRetiresADeadProcessRow(t *testing.T) {
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
+	runCLI(t, bin, "cli-tool", "add", "blocker", "--binary", "/bin/true", "--assume-yes")
 	// One at a time, by key: whatever the CLI enqueues under the same key
 	// cannot be claimed by anyone while the daemon's job runs.
 	runCLI(t, bin, "schedule", "add", "hold", "--cron", "@every 1s", "--kind", "shell",
@@ -959,14 +960,14 @@ func TestServeShutdownRetiresADeadProcessRow(t *testing.T) {
 		return len(jobsIn(t, store.StateRunning)) == 1
 	})
 
-	cli := exec.Command(bin, "devrun", "--concurrency-key", "held", "--", "/bin/true")
+	cli := exec.Command(bin, "run-cli", "blocker", "--concurrency-key", "held")
 	if err := cli.Start(); err != nil {
-		t.Fatalf("start devrun: %v", err)
+		t.Fatalf("start run-cli: %v", err)
 	}
 	var blocked int64
 	waitFor(t, "the CLI's row to be queued behind the key", 30*time.Second, func() bool {
 		for _, job := range jobsIn(t, store.StateQueued) {
-			if job.Runbook == "devrun" {
+			if job.Runbook == "cli:blocker" {
 				blocked = job.ID
 				return true
 			}
@@ -974,10 +975,10 @@ func TestServeShutdownRetiresADeadProcessRow(t *testing.T) {
 		return false
 	})
 	if err := cli.Process.Kill(); err != nil {
-		t.Fatalf("kill devrun: %v", err)
+		t.Fatalf("kill run-cli: %v", err)
 	}
 	if _, err := cli.Process.Wait(); err != nil {
-		t.Fatalf("reap devrun: %v", err)
+		t.Fatalf("reap run-cli: %v", err)
 	}
 
 	d.signal(t, syscall.SIGTERM)

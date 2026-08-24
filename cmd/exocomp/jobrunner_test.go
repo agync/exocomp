@@ -1,51 +1,27 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
+	"strings"
+	"testing"
 	"time"
-
-	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
-func init() {
-	registerCommand(newDevRunCmd)
-}
-
-// newDevRunCmd is M1 scaffolding: it exercises the store, the queue and the
-// shell driver end to end so M1b and M1c have something to verify against
-// before the service and its surfaces exist.
-func newDevRunCmd() *cobra.Command {
-	var (
-		timeout        time.Duration
-		concurrencyKey string
-	)
-
-	cmd := &cobra.Command{
-		Use:    "devrun -- <argv...>",
-		Short:  "Run one shell job through the queue",
-		Hidden: true,
-		Args:   cobra.MinimumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return runDevRun(cmd.Context(), cmd.OutOrStdout(), devRunSpec{
-				argv:           args,
-				timeout:        timeout,
-				concurrencyKey: concurrencyKey,
-				idempotencyKey: idempotencyKey(cmd),
-			})
-		},
-	}
-	cmd.Flags().DurationVar(&timeout, "timeout", 0,
-		"kill the job after this long (0: no limit)")
-	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "",
-		"serialize this job against others sharing the key")
-	return cmd
-}
+// runDevRun and devRunSpec were the M1 scaffolding command `exocomp devrun --
+// <argv...>`: an ungoverned, unsandboxed shell-argv verb with no reason to
+// ship (the nonfunctional review that removed it). The mechanism underneath —
+// open the store through the sweep, enqueue one shell job, drain it in this
+// process, print the outcome — is still what a handful of invariant tests
+// need to drive a real job through the real queue without a running daemon,
+// so it lives on here, test-only: nothing in this file is compiled into the
+// shipped binary, and no command wires it to a caller's input.
 
 type devRunSpec struct {
 	argv           []string
@@ -120,9 +96,35 @@ func printJob(w io.Writer, job store.Job, events []store.JobEvent) {
 	}
 }
 
-func jobDuration(job store.Job) string {
-	if job.StartedAt == nil || job.FinishedAt == nil {
-		return "-"
+func TestRunDevRunReportsFinalState(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	var out bytes.Buffer
+	err := runDevRun(context.Background(), &out, devRunSpec{argv: []string{"/bin/echo", "hello"}})
+	if err != nil {
+		t.Fatalf("devrun: %v", err)
 	}
-	return job.FinishedAt.Sub(*job.StartedAt).Round(time.Millisecond).String()
+
+	got := out.String()
+	for _, want := range []string{"state: succeeded", "exit: 0", "[info] hello"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("output %q does not contain %q", got, want)
+		}
+	}
+}
+
+func TestRunDevRunFailsWithTheJob(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	var out bytes.Buffer
+	err := runDevRun(context.Background(), &out, devRunSpec{
+		argv:    []string{"/bin/sleep", "30"},
+		timeout: 150 * time.Millisecond,
+	})
+	if err == nil {
+		t.Fatal("devrun returned nil for a timed-out job")
+	}
+	if !strings.Contains(out.String(), "state: timed_out") {
+		t.Errorf("output = %q", out.String())
+	}
 }

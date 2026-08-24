@@ -41,7 +41,7 @@ func runTUI(cmd *cobra.Command) (err error) {
 	dbPath := filepath.Join(dir, "exocomp.db")
 	if _, statErr := os.Stat(dbPath); statErr != nil {
 		if errors.Is(statErr, os.ErrNotExist) {
-			return fmt.Errorf("tui: no database at %s; run `exocomp init` or `exocomp devrun` first", dbPath)
+			return fmt.Errorf("tui: no database at %s; run `exocomp init` first", dbPath)
 		}
 		return fmt.Errorf("tui: stat %s: %w", dbPath, statErr)
 	}

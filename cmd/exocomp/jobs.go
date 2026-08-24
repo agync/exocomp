@@ -5,6 +5,7 @@ import (
 	"io"
 	"strconv"
 	"text/tabwriter"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -325,4 +326,14 @@ func exitCodeLabel(code *int) string {
 		return "-"
 	}
 	return strconv.Itoa(*code)
+}
+
+// jobDuration renders a local job's run time from its own timestamps, shared
+// by every verb that prints a finished job's report (playbook run, vendor,
+// workspace plan/apply). remoteJobDuration matches its output for the wire view.
+func jobDuration(job store.Job) string {
+	if job.StartedAt == nil || job.FinishedAt == nil {
+		return "-"
+	}
+	return job.FinishedAt.Sub(*job.StartedAt).Round(time.Millisecond).String()
 }

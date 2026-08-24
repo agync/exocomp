@@ -18,21 +18,22 @@ func TestTwoProcessesSerializeAConcurrencyKey(t *testing.T) {
 	bin := buildExocomp(t)
 
 	runCLI(t, bin, "init")
+	runCLI(t, bin, "cli-tool", "add", "sleeper", "--binary", "/bin/sleep", "--assume-yes")
 	// One job first, so both processes below meet a database that exists and
 	// is already migrated: what is under test is the claim, not the open.
-	runCLI(t, bin, "devrun", "--", "/bin/true")
+	runCLI(t, bin, "run-cli", "sleeper", "--", "0")
 
 	const key = "backup:nas"
 	done := make(chan error, 2)
 	for range 2 {
 		go func() {
-			done <- exec.Command(bin, "devrun", "--concurrency-key", key,
-				"--", "/bin/sleep", "2").Run()
+			done <- exec.Command(bin, "run-cli", "sleeper", "--concurrency-key", key,
+				"--", "2").Run()
 		}()
 	}
 	for range 2 {
 		if err := <-done; err != nil {
-			t.Fatalf("devrun: %v", err)
+			t.Fatalf("run-cli: %v", err)
 		}
 	}
 
