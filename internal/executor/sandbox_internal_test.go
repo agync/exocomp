@@ -3,6 +3,7 @@ package executor
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -211,3 +212,35 @@ func TestStagePlanInputCopiesIntoTheJobDir(t *testing.T) {
 type discardSink struct{}
 
 func (discardSink) Emit(Event) {}
+
+// TestAnsibleSourceDirsGrantsExtraVarsFile: a documented flag form,
+// `-e @vars.yaml` (resolved to an absolute path before it reaches the argv,
+// as AnsiblePassthrough does), must be read-granted like any other source
+// file the run names — the `@` prefix marks a file reference, not an
+// unreadable value.
+func TestAnsibleSourceDirsGrantsExtraVarsFile(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "vars.yaml")
+	if err := os.WriteFile(file, []byte("a: 1\n"), 0o600); err != nil {
+		t.Fatalf("write vars file: %v", err)
+	}
+
+	for _, argv := range [][]string{
+		{AnsibleBinary, "--inventory", "localhost,", "--connection", "local", "-e", "@" + file, "site.yml"},
+		{AnsibleBinary, "--inventory", "localhost,", "--extra-vars", "@" + file, "site.yml"},
+		{AnsibleBinary, "--inventory", "localhost,", "--extra-vars=@" + file, "site.yml"},
+	} {
+		dirs := ansibleSourceDirs(argv)
+		if !slices.Contains(dirs, dir) {
+			t.Errorf("ansibleSourceDirs(%v) = %v, want it to grant %s for -e @file", argv, dirs, dir)
+		}
+	}
+
+	// A plain key=val extra-var names no file and grants nothing extra.
+	inline := []string{AnsibleBinary, "--inventory", "localhost,", "-e", "proof=xyz", "site.yml"}
+	if dirs := ansibleSourceDirs(inline); slices.Contains(dirs, dir) {
+		t.Errorf("ansibleSourceDirs(%v) = %v, an inline -e must not grant a file", inline, dirs)
+	}
+}

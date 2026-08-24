@@ -157,10 +157,11 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 }
 
 // ansibleSourceDirs are the repository paths an ansible argv names: the
-// playbooks it runs and the inventory it reads. ansible-playbook's positional
-// arguments are playbook files and nothing else, and the inventory arrives
-// through one flag, so the argv says exactly which checkout the run needs —
-// there is no guessing and no wider grant than the files named.
+// playbooks it runs, the inventory it reads, and any `-e @file` extra-vars
+// file. ansible-playbook's positional arguments are playbook files and
+// nothing else, and the inventory and extra-vars file each arrive through one
+// flag, so the argv says exactly which checkout the run needs — there is no
+// guessing and no wider grant than the files named.
 func ansibleSourceDirs(argv []string) []string {
 	var dirs []string
 	add := func(p string) {
@@ -172,6 +173,14 @@ func ansibleSourceDirs(argv []string) []string {
 			return
 		}
 		dirs = append(dirs, filepath.Dir(p))
+	}
+	// addExtraVarsFile grants the file behind an `-e`/`--extra-vars` value
+	// when it names one (an "@path" reference); a "key=val" or inline
+	// JSON/YAML value names no file and is left alone.
+	addExtraVarsFile := func(v string) {
+		if p, ok := strings.CutPrefix(v, "@"); ok {
+			add(p)
+		}
 	}
 
 	for i := 1; i < len(argv); i++ {
@@ -185,10 +194,17 @@ func ansibleSourceDirs(argv []string) []string {
 					add(argv[i])
 				}
 			}
+		case arg == "-e" || arg == "--extra-vars":
+			if i+1 < len(argv) {
+				i++
+				addExtraVarsFile(argv[i])
+			}
 		case strings.HasPrefix(arg, "--inventory="):
 			if v := strings.TrimPrefix(arg, "--inventory="); !strings.HasSuffix(v, ",") {
 				add(v)
 			}
+		case strings.HasPrefix(arg, "--extra-vars="):
+			addExtraVarsFile(strings.TrimPrefix(arg, "--extra-vars="))
 		case strings.HasPrefix(arg, "-"):
 			// Flags this driver does not interpret; their values are never
 			// repository paths the run has to read.
