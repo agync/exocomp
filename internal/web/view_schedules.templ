@@ -5,14 +5,50 @@ package web
 // disabled schedule is dimmed, not hidden (the brief). A drift-check schedule
 // (a tofu-plan or play --check kind) reads its last drift result straight off
 // the last-job chip.
+//
+// Schedules carry no secret material, so — unlike tokens and secrets — the
+// write controls here are plain operator-scope: no reauth, no confirm_token.
 templ schedulesList(vm schedulesVM) {
 	@layout(vm.Page) {
 		<h1>Schedules</h1>
+		if vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Add a schedule</h3>
+				<p class="meta">Mirrors <code>exocomp schedule add</code>: kind decides which fields apply. Command is whitespace-split (no quoting) — a command needing quoted arguments still wants the CLI.</p>
+				<form method="post" action="/schedules/add" class="writeform">
+					<label for="sc-name">Name</label>
+					<input id="sc-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="sc-cron">Cron expression</label>
+					<input id="sc-cron" name="cron" type="text" required autocomplete="off" placeholder="0 */5 * * * * or @every 5m"/>
+					<label for="sc-kind">Kind</label>
+					<select id="sc-kind" name="kind">
+						<option value="shell">shell</option>
+						<option value="backup">backup</option>
+						<option value="play">play</option>
+						<option value="drill">drill</option>
+					</select>
+					<label for="sc-argv">Command (shell/play kinds)</label>
+					<input id="sc-argv" name="argv" type="text" autocomplete="off" placeholder="shell: the command; play: playbook.yml [--extra-vars ...]"/>
+					<label for="sc-target">Target (backup/drill: target name, empty = every enabled target; play: standing inventory name)</label>
+					<input id="sc-target" name="target" type="text" autocomplete="off"/>
+					<label for="sc-ck">Concurrency key (shell/play only)</label>
+					<input id="sc-ck" name="concurrency_key" type="text" autocomplete="off"/>
+					<label for="sc-jitter">Jitter seconds (optional)</label>
+					<input id="sc-jitter" name="jitter" type="number" min="0" autocomplete="off" placeholder="0"/>
+					<label class="checkline"><input type="checkbox" name="check" value="1"/> play kind: run in check mode (config-drift schedule)</label>
+					<label class="checkline"><input type="checkbox" name="tolerate_unreachable" value="1"/> play kind: tolerate unreachable hosts (roaming-fleet converge)</label>
+					<div class="actions"><button type="submit" class="btn primary">Add schedule</button></div>
+				</form>
+			</div>
+		}
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">Cron schedules</div>
 			<h3>All schedules</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing schedules needs an operator token.</p>
+			}
 			if len(vm.Schedules) == 0 {
-				<p class="meta">No schedules registered. Add one with <code>exocomp schedule add</code>.</p>
+				<p class="meta">No schedules registered.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>
@@ -24,6 +60,9 @@ templ schedulesList(vm schedulesVM) {
 								<th scope="col">Next fire</th>
 								<th scope="col">Last outcome</th>
 								<th scope="col">Enabled</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -44,6 +83,23 @@ templ schedulesList(vm schedulesVM) {
 										}
 									</td>
 									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											if sc.Enabled {
+												<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/disable") } style="display:inline">
+													<button type="submit" class="btn">Disable</button>
+												</form>
+											} else {
+												<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/enable") } style="display:inline">
+													<button type="submit" class="btn">Enable</button>
+												</form>
+											}
+											<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/rm") } style="display:inline">
+												<input type="hidden" name="confirmed" value="1"/>
+												<button type="submit" class="btn danger">Remove</button>
+											</form>
+										</td>
+									}
 								</tr>
 							}
 						</tbody>

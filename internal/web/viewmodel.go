@@ -164,6 +164,7 @@ type sourcesVM struct {
 
 type schedulesVM struct {
 	Page      page
+	Operator  bool
 	Schedules []scheduleRow
 }
 

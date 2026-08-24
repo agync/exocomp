@@ -165,7 +165,11 @@ func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := schedulesVM{Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows}
+	ident, _ := identityOf(r.Context())
+	vm := schedulesVM{
+		Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows,
+		Operator: canWrite(ident),
+	}
 	s.render(w, r, http.StatusOK, schedulesList(vm))
 }
 
