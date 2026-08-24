@@ -27,6 +27,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--drain-grace` | `30s` | How long jobs already running may finish after a signal before they are cancelled. Generous on purpose: a backup leg writes its own `backup_run` row at the end. |
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
 | `--sandbox` | `$EXOCOMP_SANDBOX`, else `auto` | Job isolation tier: `local`, `local-sandboxed`, or `auto`. See below. |
+| `--secret-staging` | `auto` | Where a run-secret staged as a file (`bootstrap run --capture-file`) lands: `auto`, `tmpfs`, or `disk`. See below. |
 
 ## Job isolation
 
@@ -61,6 +62,41 @@ Shell runbooks and backup legs still run at the `local` tier. The backup engine 
 `keyring.age` by design — it is what every target root gets a copy of — so a profile that
 denied it would deny the job its own work. Sandboxing those kinds needs a profile shaped
 around the backup engine's targets and is not part of this milestone.
+
+## Run-secret file staging
+
+A run-secret a tool must receive as a file rather than an env value (`bootstrap run
+--capture-file`, see [ansible-first-bootstrap.md](ansible-first-bootstrap.md)) is written
+to a `0600` file inside a per-instance session directory,
+`<root>/exocomp.<pid>.<rand>/`. `--secret-staging` chooses the root:
+
+- **`auto`** (default) — stage onto `/dev/shm` (RAM, present unconditionally in every
+  rootless podman container) when it is actually usable: present, backed by tmpfs, with
+  adequate free space. Otherwise fall back to the disk root (`<data dir>/run/`, the same
+  tree job private directories already use) — **loudly**: a `WARNING` in the daemon's own
+  log at startup, and a job event on every run that actually lands a secret there. Never a
+  silent downgrade.
+- **`tmpfs`** — force `/dev/shm`; refuse to start if it is unusable. The strict "never a
+  secret on disk" posture, enforced rather than merely attempted.
+- **`disk`** — force the disk root explicitly.
+
+Cleanup is three layers: the file is unlinked once the subprocess that read it exits; this
+instance's whole session directory is removed on a graceful stop; and a startup sweep
+removes any session directory whose owning process is no longer running — never one still
+alive, so it can never touch a concurrent sibling exocomp instance's in-flight secrets on a
+shared root.
+
+The disk backend's residual (a secret's bytes on durable storage, and so potentially in
+swap) is bounded the same way `/dev/shm` staging always was: best-effort `mlock` (a host
+that forbids it still stages, unlocked, with the residual reported), `0600` files inside
+`0700` session directories, and confirmation that `<data dir>/run/` sits outside every
+backup's captured set — `internal/backup`'s staging tree is built by writing four named
+files into a fresh temp dir, never by walking the data dir, so nothing under `run/` is ever
+swept into a backup or a restore.
+
+`exocomp doctor` reports the resolved backend, the tmpfs usability probe's own verdict, the
+disk residual posture when disk is in play, and the mlock posture under **run-secret file
+staging**.
 
 Denied everywhere: `exocomp.db`, `host.key`, `keyring.age`, `serve.lock`,
 `state-backend.addr`, and every other job's private directory. Grants are checked against

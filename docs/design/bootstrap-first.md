@@ -266,6 +266,34 @@ before exec) — a `/dev/shm` file has a real path the sandboxed tier can grant.
 run directory is ordinary storage on the data volume again; only the staged secret material
 moved to RAM.
 
+*2026-08-24 (later still): session directories, and a pluggable backend with a disk
+fallback.* Two further changes, both owner-approved. First, staging moved from individual
+files scattered directly under `/dev/shm` to a per-instance session directory,
+`<root>/exocomp.<pid>.<rand>/`: the old blind-prefix sweep (`exocomp-secret-*`) had no
+ownership check, so it could delete a concurrent sibling exocomp instance's in-flight
+secrets on a shared root, and it ran once at boot only. Cleanup is now three layers — a
+per-job unlink on `Close` (unchanged); a `RemoveAll` of the whole session directory on a
+graceful stop; and a liveness-checked startup sweep that parses each session directory's
+owning pid back out of its name and removes only the ones whose process is no longer
+running (`pidAlive`, mirroring `store.ownerAlive`'s existence-and-permission probe without
+importing `store`). A directory owned by a live pid is never touched.
+
+Second, the staging root is now a choice: `--secret-staging {auto,tmpfs,disk}`. `auto`
+(the default) stages onto `/dev/shm` when it is actually usable — present, backed by
+tmpfs, adequate free space — and falls back to the disk root (`<data-dir>/run/`, the same
+tree job private directories already use) otherwise, loudly: a warning on the daemon's own
+log and a job event on every run that actually lands a secret there. `tmpfs` forces
+`/dev/shm` and fails closed if it is unusable, restoring in full the strict posture this
+section's decision opened with ("the staged secret never touches durable disk") as
+something an operator can demand by name rather than merely hope `auto` provides. `disk`
+forces the disk root explicitly, for a host with no usable tmpfs at all. The disk
+backend's residual — the secret's bytes now on durable storage, and so in swap — is
+bounded the same way `/dev/shm` staging always was (best-effort mlock; the mmap approach
+turned out to be filesystem-agnostic, so no backend-specific mlock code was needed), plus
+0600 files inside 0700 session directories and confirmation that `<data-dir>/run/` sits
+outside every backup's captured set (`internal/backup`'s staging tree is built by writing
+four named files, never by walking the data dir — see `docs/log.md`).
+
 **Phase 4 (later) — generalize to `exocomp workflow` (Option B2)** if a third ordering
 appears. Pure composition over the same Sequencer; deferred until two concrete orderings
 justify the generic surface.

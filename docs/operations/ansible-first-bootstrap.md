@@ -103,22 +103,35 @@ exocomp bootstrap run site.yml wsp \
 
 `--capture-file NAME=FILE` seals a play-fetched file exactly as `--capture` does,
 but the apply receives it as a **file path** rather than an env value: the daemon
-writes the sealed bytes to a `0600` file under `/dev/shm` and sets `NAME` to that
-path (`KUBECONFIG=/dev/shm/exocomp-secret-…`). A tool that wants a config file
-gets one, with no field decomposition to map.
+writes the sealed bytes to a `0600` file inside this instance's own session
+directory and sets `NAME` to that path
+(`KUBECONFIG=/dev/shm/exocomp.<pid>.<rand>/exocomp-secret-…`). A tool that wants
+a config file gets one, with no field decomposition to map.
 
 The value only ever exists in that file — never in an argv, an event, or the
 ledger — and the file is unlinked once the apply's subprocess exits.
 
-**The staged file lives in RAM, unconditionally.** `/dev/shm` is present in every
-rootless podman container with no mount, no quadlet entry, and no capability
-needed — there is nothing here to fail closed on, unlike the tmpfs run-directory
-mount this replaced. Its bytes are additionally mlocked best-effort (there is no
-rootless swap-avoidance option for tmpfs itself); `exocomp doctor` reports the
-mlock posture under **run-secret file staging**, and a host that cannot mlock
-still stages, unlocked, with the residual reported rather than the apply refused.
-A startup sweep removes any orphaned staged file a broken cleanup path left
-behind. Env-decomposition (`--capture`) does not stage a file at all.
+**Where the file lands is a choice: `exocomp serve --secret-staging
+{auto,tmpfs,disk}`.** `auto` (the default) stages onto `/dev/shm` — RAM,
+present in every rootless podman container with no mount, no quadlet entry, and
+no capability needed — whenever it is actually usable, and falls back to the
+disk root (`<data-dir>/run/`) otherwise, **loudly**: a warning in the daemon's
+own log at startup, and a job event on every run that actually lands a secret
+on disk. `tmpfs` forces `/dev/shm` and refuses to start the daemon if it is
+unusable, for an operator who wants the strict "never a secret on disk"
+guarantee enforced rather than merely attempted. `disk` forces the disk root
+explicitly. Either way the bytes are additionally mlocked best-effort (there is
+no rootless swap-avoidance option for tmpfs itself, and the disk backend leans
+on the same mechanism for its own residual); `exocomp doctor` reports the
+resolved backend, the tmpfs usability probe, and the mlock posture under
+**run-secret file staging**, and a host that cannot mlock still stages,
+unlocked, with the residual reported rather than the apply refused. Cleanup is
+three layers: the file is unlinked once the apply's subprocess exits, this
+instance's whole session directory is removed on a graceful stop, and a
+liveness-checked startup sweep removes any session directory a broken cleanup
+path left behind — never one whose owning process is still running, so it can
+never touch a concurrent sibling instance's in-flight secrets. Env-decomposition
+(`--capture`) does not stage a file at all, on either backend.
 
 `--capture-file` shares every safety rule of `--capture` above (declare-only
 capture, POSIX-name skipping, values-free, re-run idempotence) and the same single

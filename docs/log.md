@@ -6,6 +6,54 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Run-secret staging: session dirs, pluggable backend
+
+Two changes to the `/dev/shm` staging path the entry below landed: a robust, liveness-aware
+cleanup scheme, and a pluggable staging backend with a disk fallback.
+
+Staging now goes into a per-instance session directory,
+`<root>/exocomp.<pid>.<rand>/`, instead of scattering files directly under the root. The
+scatter-plus-blind-prefix-sweep shape had two holes: the startup sweep matched every
+`exocomp-secret-*` file by name alone, so it would have deleted a concurrent sibling
+exocomp instance's in-flight secrets on a shared root, and it ran once at boot only, so a
+daemon that survived a broken cleanup path (a panic between staging and `Close`, a `kill
+-9`) accumulated orphans until its next restart. Cleanup is now three layers: a per-job
+unlink on `Close` (unchanged), a `RemoveAll` of the whole session directory on a graceful
+stop (`executor.CloseRunSecretStaging`, deferred in `runServe`), and a startup sweep
+(`executor.SweepOrphanRunSecretFiles`) that parses each session directory's own pid back
+out of its name and removes only the ones whose owning process is no longer running
+(`pidAlive`, a `syscall.Kill(pid, 0)` probe duplicated from `store.ownerAlive`'s shape
+rather than imported, to avoid a dependency from `executor` back onto `store`'s unexported
+liveness helper). A directory owned by a live pid is never touched, however old it looks.
+
+The staging root itself is now a choice, `--secret-staging {auto,tmpfs,disk}`
+(`store.SettingSecretStaging`, persisted the same way `--public-url` is): `auto` (default)
+uses `/dev/shm` when it is actually usable — present, backed by tmpfs (`statfs f_type ==
+TMPFS_MAGIC`), with adequate free space — and falls back to the disk root
+(`<data-dir>/run/`, the same tree job private directories already use) otherwise, loudly:
+a `WARNING` to the daemon's own log and a `LevelSystem` job event on every run that actually
+lands a secret there, never a silent downgrade (ADR 0005's posture). `tmpfs` forces
+`/dev/shm` and fails closed if it is unusable — the strict "never a secret on disk"
+posture an operator can ask for by name. `disk` forces the disk root explicitly. The
+`RunDirTmpfs`/`tmpfs_linux.go`/`tmpfs_other.go` statfs probe the entry below says was
+removed as "nothing left to fail closed on" is reintroduced, narrowed to a SELECTION probe
+(`tmpfsUsable`) feeding the auto/tmpfs decision, not a fail-closed assertion on every write.
+
+The disk backend's residual — a secret's bytes on durable storage, and so in swap — is
+bounded the same way `/dev/shm` staging always was: `secrets.LockBytes` best-effort mlock
+(the mmap approach is filesystem-agnostic, so no backend-specific code was needed), 0600
+files inside 0700 session directories, and unlinked at the end of every job. The disk root
+(`<data-dir>/run/`) was checked against `internal/backup`'s staging path
+(`internal/backup/engine.go`'s `stage`, which walks nothing — it writes exactly
+`snapshot.db`, `keyring.age`, `keyring.version`, and the manifest into a fresh temp dir it
+builds itself) and confirmed already outside every backup's captured set by construction;
+no exclude was added, since there was nothing to exclude from
+(`internal/backup/runsecret_staging_test.go` pins this).
+
+`cmd/exocomp doctor` reports the resolved backend, the tmpfs usability probe's own verdict
+independent of which backend is actually in effect, the disk residual posture when disk is
+in play, and the mlock posture, replacing the old `/dev/shm`-only, informational-only block.
+
 ## 2026-08-24 — lease: same-host takeover re-verified inside acquire transaction
 
 `cmd/exocomp`'s `acquireLease` decided a same-host restart's takeover from a separate,
