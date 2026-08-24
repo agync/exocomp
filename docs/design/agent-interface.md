@@ -2,12 +2,6 @@
 
 Status: proposal · needs an ADR to ratify agent-fit as a first-class charter surface (see §7)
 
-> **Verification note (2026-08-23).** A code audit checked the claims here against the implementation. Three corrections apply, and §3.4 depends on the first:
-> - **The web listener has no route-extension hook today.** `internal/web/server.go` exposes no `Mount`/registration seam; the `Mount(routes)` the doc leans on lives only on `internal/api.Server` — the *separate* loopback tofu backend. So §3.4's "`/api/v1` rides the existing web listener" is a *target*, not current fact: **Wave 2's first task is to add a small mount seam to `internal/web`** (mirroring `internal/api`'s), after which the JSON routes sit behind the same `requireAuth`+scope. Additive and sound — just not free.
-> - `internal/api` is not *only* the tofu backend: it already uses `Mount()` for the webhook ingress + `/metrics` on the loopback listener.
-> - Concurrency is enforced in `internal/store/job.go` (the `UPDATE … WHERE NOT EXISTS`), not in the queue caller.
-> - Watch the aspirational-vs-real seam in `docs/architecture/overview.md:93-104`: it describes `internal/service` as already owning "all business logic," but that package is a 3-line stub with zero callers — extracting it (Wave 1) is a rewrite, not a refactor. **Wave 0 does not depend on it** (the CLI `--output json` wraps store reads directly).
-
 ## 1. Vision
 
 `exocompd` is already designed as **one operational core with thin faces** — the
@@ -19,7 +13,7 @@ document adds the **programmatic faces a machine operator needs** — a remote C
 operator HTTP/JSON API, and an MCP server — as three thin reflections of the *same* core,
 never as parallel execution paths.
 
-The north star is concrete: **run homelab-ansible ops from an operator workstation, over
+The primary goal is concrete: **run homelab-ansible ops from an operator workstation, over
 the tailnet, against a remote host's exocomp API** — plan/apply a workspace,
 run a playbook, watch a job, decide an approval — without SSHing into that host and without
 scraping aligned text. The same surface must be **local-AI-friendly**: a weak, small-context
@@ -61,7 +55,7 @@ The **only** machine-readable HTTP is the loopback tofu state backend and metric
 (internal/service/doc.go); the logic lives inside cobra `RunE` bodies, the store, the queue,
 and reactive. `internal/api` is *only* the tofu backend, bound loopback-only.
 
-### 2.2 The gap to the north star
+### 2.2 The gap to the primary goal
 
 To run ops from `workstation` over the tailnet to `server`, four things are missing:
 
@@ -191,7 +185,7 @@ deliberately small; ratified in the same ADR as the contract:
 The JSON `error.code` and the process exit code are two views of the same taxonomy; a weak
 model can use either.
 
-### 3.3 Remote CLI client mode (the north star)
+### 3.3 Remote CLI client mode
 
 The CLI gains a **client mode**: when a host is configured it becomes a thin HTTP client of a
 remote daemon instead of operating on a local data dir. Same verbs, same `--output json`, same
@@ -223,8 +217,11 @@ The general API is **not** a new listener and **not** a second auth story. It is
 added to the existing token-gated web mux (internal/web/server.go:121-148), behind the same
 `requireAuth` + scope check, wrapped by the same `securityHeaders`. The web server already reads
 the store directly "so there is one authentication story (the LAN token), not two"
-(server.go:58-60) — the JSON API rides that exact seam. The loopback tofu backend stays as it
-is; this is orthogonal.
+(server.go:58-60) — the JSON API rides that exact seam. `internal/web` has no route-extension
+hook today (the `Mount` seam lives only on the separate loopback backend `internal/api`), so
+the first step is a small mount seam on `internal/web` mirroring it; after that the JSON routes
+sit behind the same `requireAuth`+scope. The loopback tofu backend stays as it is; this is
+orthogonal.
 
 Read endpoints (scope `readonly`+):
 
@@ -391,25 +388,29 @@ resources are the "be aware of" surface.
   workspace-state-only) and not a new listener — the JSON routes mount on the token-gated web
   listener that already carries ADR-0009 auth, keeping one auth story.
 
-## 6. Phased build plan
+## 6. Build order
 
-- **Wave 0 — Contract foundation (no network).** Ratifying ADR + `internal/wire` envelope,
-  error taxonomy, exit-code table + `--output json` on all read/list/status CLI verbs +
-  `EXOCOMP_OUTPUT`. Golden tests pin the schema. cobra `Example` on every command +
-  `exocomp commands --output json`. These ship value immediately (a local agent on `server`
-  can already branch on JSON) and lock the schema the later faces reuse.
-- **Wave 1 — Core + write ergonomics.** Extract `internal/service` from the `RunE`/store/queue
-  logic. Surface `--idempotency-key` on mutating paths. Land the non-interactive contract
-  (`--assume-yes`/`--no-input`, unify `--force`/`--yes-really`). doctor `--output json`/summary.
-- **Wave 2 — Operator HTTP API (read).** JSON read endpoints on the ADR-0009 listener over the
-  service verbs, typed `wire` errors, OpenAPI 3.1 spec + `internal/client`. SSE job-follow.
-- **Wave 3 — Remote CLI (the north star) + write API.** `exocomp login` (TOFU pinning) +
-  `--remote`/`EXOCOMP_REMOTE` client mode; write/approval endpoints (plan/apply/run/decide)
-  through queue+gate. `workstation → tailnet → server` works end to end.
-- **Wave 4 — MCP face.** `POST /mcp` (MCP over HTTP) adapter over the service verbs, same
-  envelope; tool/resource catalog with scope gating, on the ADR-0009 bearer+scope guard. The
-  local agent path is the agent-aware CLI; exocomp ships no stdio MCP server (a stdio client
-  bridges to `POST /mcp` with an off-the-shelf http-to-stdio wrapper).
+Each step is a self-contained unit; the earlier steps ship value on their own and lock the
+schema the later faces reuse. The `wire` contract and CLI JSON (step 1) do not depend on the
+service extraction (step 2), so they land first.
+
+1. **Contract foundation (no network).** Ratifying ADR + `internal/wire` envelope, error
+   taxonomy, exit-code table + `--output json` on all read/list/status CLI verbs +
+   `EXOCOMP_OUTPUT`. Golden tests pin the schema. cobra `Example` on every command +
+   `exocomp commands --output json`. A local agent on `server` can already branch on JSON.
+2. **Core + write ergonomics.** Extract `internal/service` from the `RunE`/store/queue logic
+   (today a stub with no callers, so this is a rewrite, not a refactor). Surface
+   `--idempotency-key` on mutating paths. Land the non-interactive contract
+   (`--assume-yes`/`--no-input`, unify `--force`/`--yes-really`). doctor `--output json`/summary.
+3. **Operator HTTP API (read).** JSON read endpoints on the ADR-0009 listener over the service
+   verbs, typed `wire` errors, OpenAPI 3.1 spec + `internal/client`. SSE job-follow.
+4. **Remote CLI + write API.** `exocomp login` (TOFU pinning) + `--remote`/`EXOCOMP_REMOTE`
+   client mode; write/approval endpoints (plan/apply/run/decide) through queue+gate.
+   `workstation → tailnet → server` works end to end.
+5. **MCP face.** `POST /mcp` (MCP over HTTP) adapter over the service verbs, same envelope;
+   tool/resource catalog with scope gating, on the ADR-0009 bearer+scope guard. The local
+   agent path is the agent-aware CLI; exocomp ships no stdio MCP server (a stdio client bridges
+   to `POST /mcp` with an off-the-shelf http-to-stdio wrapper).
 
 ## 7. Risks and open decisions
 
@@ -428,8 +429,7 @@ resources are the "be aware of" surface.
   redactor and the tofu backend's internal-hiding `fail()` discipline, or a verbose small model
   re-exposes what invariant 4 protects.
 - **Carve-outs stay read-only.** `restore` is deliberately outside the queue
-  (overview.md:77-80); recent milestone models (workflows/step-ledger, backups, drift
-  persistence) are maturing. MCP marks such carve-outs read-only rather than inventing a queued
+  (overview.md:77-80). MCP marks such carve-outs read-only rather than inventing a queued
   path the core does not have.
 
 ## 8. Evidence

@@ -1,360 +1,201 @@
 # Design — Bootstrap-first: the ansible→tofu mirror
 
-## Status
+## Scope
 
-Proposed · 2026-08-23; Phases 0–3 landed. It specifies the mirror image of the
-provision-first handoff (items A/D of [v1.1-roadmap.md](v1.1-roadmap.md)) that the
-Kubernetes persona interview surfaced. The shape was agreed here before it was built;
-Phases 0 (ansible-first chain), 1 (capture→seal), 2 (env-decomposition binding) and 3
-(`--capture-file` file staging) have since shipped — see §3 for what each touched.
+The ansible-first bootstrap chain: an `ansible-play` step followed by a `tofu-apply`
+step, with a credential captured from the play and handed to the apply. It is the mirror
+image of the provision-first handoff (items A/D of [v1.1-roadmap.md](v1.1-roadmap.md)),
+built for the case where **Ansible bootstraps `kubeadm` nodes, then Terraform manages
+cluster resources** through the `kubernetes`/`helm` providers — the reverse of the
+tofu-first chains, which run `tofu apply` first and hand its outputs to a play.
 
-The persona: **Ansible bootstraps `kubeadm` nodes, then Terraform manages cluster
-resources** through the `kubernetes`/`helm` providers. That is the reverse of every
-chain exocomp exposes today, which runs `tofu apply` first and hands its outputs to a
-play. The Sequencer already runs steps in any order; the gap is entirely in what the
-CLI exposes and in two missing pieces of plumbing, all of which have a tested twin on
-the tofu side to mirror.
+The Sequencer runs steps in list order regardless of kind (`Sequencer.Start` accepts any
+`[]Step`; `nextStep` walks to the first not-yet-succeeded step,
+`internal/queue/workflow.go:94, 186-197`), so the reverse ordering is a property of the
+step slice a verb builds, not a runtime capability. Two pieces of plumbing make the
+credential handoff work in this direction, each mirroring a tested tofu-side twin.
 
 ---
 
-## 1. Problem: exocomp is provision-first only
+## 1. The tofu-side twins this mirrors
 
-### 1.1 What exists (provision-first)
-
-Every composed chain today puts `tofu apply` first and an ansible play second:
-
-- `exocomp handoff run <ws> <playbook>` — steps `[tofu-apply, ansible-play]`
-  (`cmd/exocomp/handoff.go:190-216`).
-- `exocomp provision run <ws> <playbook>` — steps
-  `[tofu-apply, ssh-wait, host-onboard, ansible-play]` (`cmd/exocomp/provision.go:229-278`).
-- `exocomp run <source> <playbook>` — ansible-only: pre-hooks → play → post-hooks →
-  gate, with no tofu step at all (`cmd/exocomp/run.go:207-251`).
-
-The tofu→ansible handoff is backed by two tested capabilities:
+The tofu→ansible handoff rests on two capabilities the ansible-first chain reflects:
 
 - **Item A** — the durable apply→(onboard)→converge chain over the step-ledger Sequencer.
-- **Item D** — a `sensitive = true` tofu output sealed after a successful apply and
-  bound as a run-secret env for the dependent play: `captureTofuInventory` runs
-  post-apply (`internal/executor/tofu.go:276-278`), routing each sensitive output
-  through the `OutputSealer` interface (`internal/executor/tofu_output.go:172-174`),
-  whose one implementation `EnvelopeOutputSealer` seals under the envelope DEK and
-  binds `tf:<workspace>`→env (`internal/executor/tofu_seal.go:42-131`). It is wired on
-  both apply paths — daemon (`cmd/exocomp/serve.go:860`) and daemonless
-  (`cmd/exocomp/workspace.go:803`).
+- **Item D** — a `sensitive = true` tofu output sealed after a successful apply and bound
+  as a run-secret env for the dependent play. `captureTofuInventory` runs post-apply
+  (`internal/executor/tofu.go:276-278`), routing each sensitive output through the
+  `OutputSealer` interface (`internal/executor/tofu_output.go:172-174`), whose
+  implementation `EnvelopeOutputSealer` seals under the envelope DEK and binds
+  `tf:<workspace>`→env (`internal/executor/tofu_seal.go:42-131`), on both the daemon
+  (`cmd/exocomp/serve.go:860`) and daemonless (`cmd/exocomp/workspace.go:803`) apply paths.
 
-### 1.2 The three confirmed gaps
-
-**(a) No ansible-output→seal capture.** The tofu driver has a post-apply capture hook
-(`tofu.go:276-278`) that materializes an inventory and seals sensitive outputs. The
-ansible driver has no equivalent. `Ansible.Run` wraps its stream in observers —
-`hostKeyObserver`, `noHostsObserver`, `recapSink` (`internal/executor/ansible.go:231-244`)
-— but none of them capture an ansible fact or a fetched file into the secret store.
-There is no `SealOutput` twin for ansible, so a play that produces a kubeconfig (the
-`kubeadm init` output, or an `admin.conf` fetched from a control-plane node) has nowhere
-to put it that a following tofu step can read.
-
-**(b) No ansible-first-then-tofu chain is exposed, though the Sequencer supports it.**
-`Sequencer.Start` accepts any `[]Step` and runs them in list order — `nextStep` simply
-walks to the first not-yet-succeeded step (`internal/queue/workflow.go:94, 186-197`),
-with no compiled-in knowledge of tofu-before-ansible. The ordering is entirely a
-property of the step slices the CLI verbs build, and all three of those hard-code tofu
-first (§1.1) or omit tofu entirely. Nothing composes `[ansible-play, tofu-apply]`. The
-runtime is ready; the exposure is missing.
-
-**(c) Run-secrets are env-only; the kubernetes provider wants a `KUBECONFIG` file.**
-`runSecretEnv` renders a `RunSecrets` map to sorted `KEY=VALUE` env entries and nothing
-else (`internal/executor/runsecret.go:21-50`). There is no path that writes a sealed
-secret to a file. The `kubernetes` and `helm` providers can authenticate from
-env (`KUBE_HOST`, `KUBE_TOKEN`, `KUBE_CLIENT_CERT_DATA`, …), which the current binding
-already delivers — but the common, copy-paste configuration is a single
-`KUBECONFIG=/path/to/config`, and exocomp cannot produce that path today. The only place
-a run already stages 0600 secret material to disk is the ansible per-job private dir
-(`ansible.go:184-199, 390-465`, the vault-password and extra-vars files); the tofu run
-has no such staging.
+The default chains put `tofu apply` first: `exocomp handoff run` composes
+`[tofu-apply, ansible-play]` (`cmd/exocomp/handoff.go:190-216`), `exocomp provision run`
+composes `[tofu-apply, ssh-wait, host-onboard, ansible-play]`
+(`cmd/exocomp/provision.go:229-278`), and `exocomp run` is ansible-only. The bootstrap
+chain is the composition none of them build: `[ansible-play, tofu-apply]`.
 
 ---
 
-## 2. Design — the mirror of the tested features
+## 2. The ansible-output capture → seal hook
 
-Each piece below is specified as the reflection of a shipped, tested tofu-side feature,
-so it inherits the same doctrine (exit-code truth, values-free events, deterministic
-names, default-deny) rather than inventing a second model.
+The ansible driver captures a declared value from a successful play and seals it for a
+following step, mirroring `EnvelopeOutputSealer`/`captureTofuInventory` on the ansible side.
 
-### 2.1 (a) An ansible fact/fetched-file capture → seal hook
-
-Mirror `EnvelopeOutputSealer` and `captureTofuInventory` on the ansible side.
-
-- **New kind.** `SecretKindAnsibleOutput = "ansible-output"`, the ansible twin of
-  `SecretKindTofuOutput` (`tofu_seal.go:16`). It is bound into the sealed row's AAD
-  exactly as the tofu kind is (`tofu_seal.go:83`, `<name>|<kind>`), so the provenance is
-  part of what a moved ciphertext fails to open against. **AAD construction is unchanged**
-  — same `name|kind` shape, a new kind constant only.
-- **Capture surface.** After a play succeeds, read a declared capture target and seal
-  it. Two source shapes, both already idiomatic to ansible:
-  - a **registered fact** the play sets (e.g. `exocomp_capture: { KUBECONFIG: "{{ kubeconfig_b64 | b64decode }}" }`), read from a facts file the driver points the play at, the way extra-vars are staged into the private dir today; or
+- **Kind.** `SecretKindAnsibleOutput = "ansible-output"`, the ansible twin of
+  `SecretKindTofuOutput` (`tofu_seal.go:16`), bound into the sealed row's AAD exactly as
+  the tofu kind is — the AAD stays `name|kind` (`tofu_seal.go:83`), a new kind constant
+  only — so a moved ciphertext fails to open against a substituted provenance.
+- **Capture surface.** After a play succeeds, the driver reads a declared capture target
+  and seals it. Two source shapes, both idiomatic to ansible:
+  - a **registered fact** the play sets (e.g.
+    `exocomp_capture: { KUBECONFIG: "{{ kubeconfig_b64 | b64decode }}" }`), read from a
+    facts file the driver points the play at, the way extra-vars are staged into the
+    private dir; or
   - a **fetched file** the play `fetch`es into a known path under the run's private dir.
-  The driver reads the captured bytes in-process — never through the streaming event
-  sink — the same discipline `captureTofuInventory` uses because `tofu output -json`
-  prints secrets (`tofu_output.go:196-218`).
-- **Seal + bind.** An `AnsibleOutputSealer` mirrors `EnvelopeOutputSealer.SealOutput`
+
+  The driver reads the captured bytes in-process, never through the streaming event sink —
+  the discipline `captureTofuInventory` uses because `tofu output -json` prints secrets
+  (`tofu_output.go:196-218`).
+- **Seal and bind.** An `AnsibleOutputSealer` mirrors `EnvelopeOutputSealer.SealOutput`
   (`tofu_seal.go:62-90`): seal under the envelope DEK, upsert the row by a deterministic
   name (`ansible-output/<workflow-or-play-id>/<name>`), then add a run-secret binding the
-  dependent tofu step names ahead of time. The binding is `(env name → secret name)`
-  only; the value stays in the envelope and is opened per run (`tofu_seal.go:94-131`).
-- **Pre-binding for the dependent tofu step.** The producing play and the consuming
-  tofu-apply agree on a deterministic binding name up front — the mirror of how the
-  handoff publishes `tf:<workspace>` before the apply writes it (`handoff.go:184-187`).
-  A candidate: `ab:<workflow>` (ansible-bootstrap), resolved by the tofu step of the same
-  workflow and by nothing else.
+  dependent tofu step names ahead of time. The binding is `(env name → secret name)`; the
+  value stays in the envelope and is opened per run (`tofu_seal.go:94-131`).
+- **Pre-binding.** The producing play and consuming tofu-apply agree on a deterministic
+  binding name up front — `ab:<workflow>` (ansible-bootstrap), resolved by the tofu step
+  of the same workflow and by nothing else — the mirror of how the handoff publishes
+  `tf:<workspace>` before the apply writes it (`handoff.go:184-187`).
 
-Non-goals for this hook: it captures only what the operator **declares** as a capture
-target. It never scrapes stdout, never reads arbitrary facts, and a sensitive value that
-is not declared is not captured — the fail-safe direction.
+The hook captures only what the operator **declares** as a capture target. It never
+scrapes stdout, never reads arbitrary facts, and an undeclared sensitive value is never
+captured; a missing sealer drops the capture rather than leaking it (mirror of
+`tofu_output.go:163-167`).
 
-### 2.2 (b) An ordered-workflow composer / ansible-first handoff verb
+---
 
-The Sequencer is order-agnostic (`workflow.go:94, 186-197`), so this is a CLI-shape
-decision, not a runtime change. Two options, not mutually exclusive:
+## 3. The `bootstrap` verb
 
-**Option B1 — a focused `exocomp bootstrap` verb (recommended first).** The mirror of
-`handoff`, argument order reversed:
+`exocomp bootstrap run` composes `[ansible-play, tofu-apply]` on the Sequencer — the mirror
+of `handoff`, argument order reversed:
 
 ```
 exocomp bootstrap run <playbook> <workspace> \
-    [--vault-project P] [--run-secrets NAME] [--source S] [--timeout D] [--wait]
+    [--vault-project P] [--run-secrets NAME] [--source S] [--timeout D] [--wait] \
+    [--capture k=fact|@file ...] [--capture-file NAME=FILE ...] \
+    [--secret-staging {auto,tmpfs,disk}]
 ```
 
-Phase 0 (§3) ships this shape with no capture flag; Phase 2 adds
-`--capture k=fact|@file ...` once the capture hook (§2.1) exists.
+Step 1 runs the bootstrap play; its capture hook (§2) seals the credential and binds
+`ab:<workflow>`. Step 2 is a `tofu apply` whose `RunSecretBinding` is that same
+`ab:<workflow>`, so the sealed credential reaches the `kubernetes`/`helm` provider with
+nothing for an operator to copy between steps. Without a capture flag, the play runs and
+then a plain apply runs — for the case where the tofu step needs no bootstrap-produced
+credential (it reads its own pre-existing run-secret binding). The verb reuses the
+`queue.Step`/`queue.Spec` shapes, the `--source` hook-wrap (`handoff.go:257-292`), and the
+`--wait` follow (`handoff.go:297-330`) from `handoff.go`, and is a pure addition: the
+tofu-first chains are unchanged.
 
-Steps `[ansible-play, tofu-apply]`. Step 1 runs the bootstrap play; its capture hook
-(§2.1) seals the kubeconfig and binds `ab:<workflow>`. Step 2 is a `tofu apply` whose
-`RunSecretBinding` is that same `ab:<workflow>`, so the sealed kubeconfig reaches the
-`kubernetes`/`helm` provider as env with nothing for an operator to copy. This reuses the
-exact `queue.Step`/`queue.Spec` shapes `handoff.go` already builds and the same
-`--source` hook-wrap (`handoff.go:257-292`) and `--wait` follow (`handoff.go:297-330`).
+A generic `exocomp workflow` composer — an ordered list of typed steps from a small spec
+file (`- tofu-apply <ws>` / `- ansible-play <playbook>` / `- gate …`) straight onto the
+Sequencer — is a larger, more general surface that defers the capture-binding convention
+to the operator. It is deferred until a third concrete ordering justifies it.
 
-**Option B2 — a generic `exocomp workflow` composer.** An ordered list of typed steps
-from a small spec file (`- tofu-apply <ws>` / `- ansible-play <playbook>` / `- gate …`),
-composed straight onto the Sequencer. More general, larger surface, and it defers the
-capture-binding convention to the operator. Reasonable as a **later** generalization once
-B1's binding convention is proven; not the first cut.
+---
 
-Both are pure additions: no existing verb changes, and the tofu-first chains keep their
-behavior.
+## 4. KUBECONFIG delivery: env vs file
 
-### 2.3 (c) OWNER DECISION — KUBECONFIG file vs env-decomposition
+The `kubernetes`/`helm` providers authenticate either from decomposed env fields or from a
+single `KUBECONFIG` file path. exocomp supports both.
 
-**This section's "never touches durable disk" language describes the decision as it
-stood when Phase 3 shipped, not the current default.** A later owner-approved change
-(§3, "session directories, and a pluggable backend with a disk fallback") made the
-staging root a choice, `--secret-staging {auto,tmpfs,disk}`, and `auto` — the default —
-falls back to durable disk when `/dev/shm` is unusable. The strict guarantee this
-section opened with now holds unconditionally only under the explicit `tmpfs` backend.
-Read on for the rationale that motivated the original guarantee; see §3's later
-addendum for what actually ships today.
-
-This was a genuine fork with a real security tradeoff. **Both are now shipped:** C-env
-first (Phase 2), then C-file (Phase 3) once the owner chose it. The owner decided C-file
-**is worth building, on the hard condition that the staged secret never touches durable
-disk** — the value is staged as a 0600 file under `/dev/shm`, the RAM-backed tmpfs present
-unconditionally in every rootless podman container, never under the per-job run directory
-on the durable data volume (agentfs/CoW was evaluated for the backing store and rejected in
-favour of plain tmpfs; a `noswap` `Tmpfs=` quadlet mount on the run directory was the
-original design and was replaced — see "2026-08-24 (later): /dev/shm replaces the tmpfs
-run-dir mount" below — because that mount does not start under rootless podman at all).
-The fork below is kept for the rationale.
-
-**Option C-env (works today, zero new exposure).** Decompose the kubeconfig into the
-provider's env fields and bind them as run-secrets: `KUBE_HOST`, `KUBE_TOKEN` (or the
+**`--capture` (env decomposition).** Decompose the kubeconfig into the provider's env
+fields and bind them as run-secrets: `KUBE_HOST`, `KUBE_TOKEN` (or the
 `KUBE_CLIENT_CERT_DATA` / `KUBE_CLIENT_KEY_DATA` / `KUBE_CLUSTER_CA_CERT_DATA` triple),
-`KUBE_INSECURE`, etc. `runSecretEnv` already delivers exactly this shape
-(`runsecret.go:28-50`), and the `kubernetes`/`helm` providers read these names natively.
-No secret is ever written to a filesystem. Cost: the capture hook (§2.1) must seal several
-named fields, and an operator who thinks in whole kubeconfigs has to know the mapping.
+`KUBE_INSECURE`, and so on. `runSecretEnv` renders these as `KEY=VALUE` env entries
+(`runsecret.go:28-50`) and the providers read them natively. No secret is written to a
+filesystem. The capture hook seals several named fields, and an operator who thinks in
+whole kubeconfigs must know the mapping.
 
-**Option C-file (option #4: stage a KUBECONFIG file).** Materialize the sealed kubeconfig
-into the run's 0700 per-job private dir (0600, removed on process exit — the same
-lifecycle as the vault-password file, `ansible.go:184-199, 427-431`) and export
-`KUBECONFIG=<that path>` for the tofu step. This is the copy-paste-friendly form and needs
-no field decomposition. Cost: **it is a new exposure surface.** A plaintext bearer written
-to a file, even in an ephemeral private dir on tmpfs for the lifetime of one run, is a
-disk artifact that today's design deliberately avoids for run-secrets — env-only was the
-choice precisely so a sealed value never lands on a filesystem. It also means the tofu run
-gains a secret-file-staging step it does not have now (§1.2c), i.e. new plumbing on the
-tofu driver, not just the ansible one.
+**`--capture-file NAME=FILE` (file staging).** Deliver a captured value to the apply as a
+file path: the daemon writes the sealed bytes to a `0600` file and exports `NAME=<that
+path>` for the tofu step. This is the copy-paste form and the one exec-auth tools that
+read a file need; it needs no field decomposition. The value never reaches an argv, event,
+or the ledger, and the file is unlinked once the subprocess that read it exits. The tofu
+driver gains a secret-file staging step (`internal/executor/runsecret_file.go`:
+`StageRunSecretFiles`, `StagedRunSecretFile.Close`, `SweepOrphanRunSecretFiles`;
+`TofuOptions.RunSecretFiles` wired in `tofu.go` and `sandboxedTofu.Run`, which grants the
+staged path via `SandboxProfile.ReadFiles` so the sandboxed tier can read it).
 
-| | C-env (Phase 2) | C-file (Phase 3, as shipped) |
+| | `--capture` (env) | `--capture-file` (file) |
 |---|---|---|
-| Secret on disk | never | 0600 under `/dev/shm` (RAM), one run\* |
-| New code | capture hook seals N fields | capture hook + tofu-side file staging + `KUBECONFIG` export |
+| Secret on disk | never | 0600 staged file, one run |
+| Code | capture hook seals N fields | capture hook + tofu-side file staging + `KUBECONFIG` export |
 | Operator ergonomics | must map fields | paste a kubeconfig, get a path |
-| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer\* |
+| Exposure surface | env-only | a staged file holding a bearer |
 
-\* As Phase 3 shipped. The later pluggable-backend addendum (§3) means the *default*
-(`auto`) can fall back to a 0600 file on durable disk when `/dev/shm` is unusable —
-loudly, not silently — and the RAM-only guarantee this row describes now applies
-unconditionally only to the explicit `tmpfs` backend.
-
-**Decision:** the owner shipped **C-env first** (Phase 2 — no new exposure, unblocked the
-persona) and then approved **C-file** (Phase 3) as the follow-on, because field
-decomposition is too sharp an edge for the copy-paste `KUBECONFIG` case and for
-exec-auth tools that read a file. C-file's exposure is bounded to a `0600` file under
-`/dev/shm`, torn down (unlinked) once the subprocess that read it exits, with a startup
-sweep removing any orphan left by a broken cleanup path — so the "secret on disk" row was,
-as shipped in Phase 3, *RAM only, one run, never durable disk* (see §3 for the later
-revision to that guarantee).
+Env decomposition is the lower-exposure default; file staging is for the copy-paste
+`KUBECONFIG` case and exec-auth tools, with its exposure bounded by the staging design below.
 
 ---
 
-## 3. Phased implementation plan (smallest first, each shippable)
+## 5. Run-secret file staging
 
-Ordered so every phase is independently useful and independently reversible. Each names
-the files/verbs it touches and whether it reuses item A/D machinery or is new.
+A staged file holds a plaintext bearer, so its backing store is a run-secret's one point
+of filesystem exposure. Staging targets a per-instance session directory
+`<root>/exocomp.<pid>.<rand>/`, with 0600 files inside a 0700 directory, and the root is
+selected by `--secret-staging {auto,tmpfs,disk}`:
 
-**Phase 0 — the ansible-first chain, no capture (smallest).**
-A `bootstrap` verb that composes `[ansible-play, tofu-apply]` on the existing Sequencer,
-with no secret capture: the bootstrap play runs, then a plain apply. This alone exposes
-the ordering the Sequencer already supports and covers the case where the tofu step needs
-no bootstrap-produced credential (e.g. it reads its own `~/.kube/config` via a
-pre-existing run-secret binding).
-*Touches:* new `cmd/exocomp/bootstrap.go` (mirrors `handoff.go`).
-*Reuses:* the Sequencer (`workflow.go`), `queue.Step`/`Spec`, `--wait`/`--source` wrap
-(item A machinery), verbatim. *New:* one CLI file. Reversible: deleting the verb removes
-the feature; nothing else changes.
+- **`auto`** (default) stages onto `/dev/shm` when it is usable — present, backed by tmpfs,
+  adequate free space — and falls back to the disk root (`<data-dir>/run/`, the tree job
+  private directories already use) otherwise, with a warning on the daemon's log and a job
+  event on every run that lands a secret there.
+- **`tmpfs`** forces `/dev/shm` and fails closed if it is unusable — the strict "the staged
+  secret never touches durable disk" posture an operator can demand by name. `/dev/shm` is
+  RAM-backed unconditionally in every rootless podman container, needs no mount, quadlet
+  entry, or capability, and has a real path the sandboxed tier can grant (unlike a memfd,
+  which has no path a sandboxed child's `--read-file` grant can name, since `nono` closes
+  inherited fds before exec).
+- **`disk`** forces the disk root, for a host with no usable tmpfs.
 
-**Phase 1 — the ansible-output capture → seal hook (the item-D mirror).**
-`SecretKindAnsibleOutput`, an `AnsibleOutputSealer` mirroring `EnvelopeOutputSealer`, and
-a post-play capture that reads a declared fact/fetched-file in-process and seals+binds it.
-*Touches:* new `internal/executor/ansible_seal.go` (mirror of `tofu_seal.go`), a capture
-reader in `internal/executor/ansible.go`, wiring in `cmd/exocomp/ansible.go`'s driver
-build.
-*Reuses:* the envelope seal/upsert, the run-secret binding model, the AAD shape, and the
-redaction path (item D machinery). *New:* the capture surface (declared fact/fetched-file
-reader) — there is no ansible equivalent today. Reversible: a nil sealer restores
-drop-on-capture, exactly as the tofu path degrades with a nil `OutputSealer`
-(`tofu_output.go:163-167`).
+The staged bytes are mlocked best-effort — no rootless swap-avoidance option exists for
+tmpfs itself, so mlock is the only lever; a host that forbids it still stages, unlocked,
+with the residual reported by `exocomp doctor`. The mmap-based lock is filesystem-agnostic,
+so it covers both backends. `<data-dir>/run/` sits outside every backup's captured set:
+`internal/backup`'s staging tree is built by writing four named files, never by walking the
+data dir (see [log.md](../log.md)).
 
-**Phase 2 — pre-bind the capture into the bootstrap chain.**
-`bootstrap run --capture` publishes the `ab:<workflow>` binding up front and sets it as the
-tofu step's `RunSecretBinding`, closing the loop end-to-end under **Option C-env**.
-*Touches:* `cmd/exocomp/bootstrap.go` (bind + step wiring).
-*Reuses:* the run-secret env resolution (`resolveRunSecrets`, ansible.go:65) and the
-deterministic-name convention from the handoff (`handoff.go:184-187`). *New:* the
-`ab:<workflow>` naming convention. Reversible: without `--capture` the verb behaves as
-Phase 0.
+**Cleanup** is three layers: a per-job unlink on `Close`; a `RemoveAll` of the whole
+session directory on a graceful stop; and a liveness-checked startup sweep that parses each
+session directory's owning pid out of its name and removes only the ones whose process is
+no longer running (`pidAlive`, mirroring `store.ownerAlive`'s existence-and-permission
+probe without importing `store`). A directory owned by a live pid is never touched.
 
-**Phase 3 — `KUBECONFIG` file staging (LANDED, C-file chosen).**
-`bootstrap run --capture-file NAME=FILE` delivers a captured value to the apply as a file
-path instead of an env value: the daemon writes the sealed bytes to a `0600` file under
-`/dev/shm` (`exocomp-secret-<random>`) and exports `NAME=<that path>`. The value never
-reaches an argv, event, or the ledger; the file is unlinked once the subprocess that read
-it exits, and a startup sweep removes any orphan a broken cleanup path left behind.
-*Touches:* `internal/executor/runsecret_file.go` (the `StageRunSecretFiles` stager,
-`StagedRunSecretFile.Close`, and `SweepOrphanRunSecretFiles`), `TofuOptions.RunSecretFiles`
-+ its wiring in `tofu.go` and in `sandboxedTofu.Run` (`sandbox_drivers.go`, which grants the
-staged path via `SandboxProfile.ReadFiles` so the sandboxed tier can read it too),
-`AnsibleCapture.AsFile` and the `--capture-file` flag/composer wiring in
-`cmd/exocomp/bootstrap.go`, the daemon read in `cmd/exocomp/serve.go` (which also runs the
-startup sweep), and the doctor report in `cmd/exocomp/sandbox.go`.
-*New:* filesystem staging of a sealed value — the one new exposure surface, bounded by the
-hard requirement below. **As Phase 3 shipped, the staged file never touched durable
-disk** (see the later addendum below for the pluggable backend that revised this):
-`/dev/shm` is RAM-backed unconditionally, so there was nothing to assert or fail closed
-on at the time — this is strictly stronger than the original `noswap` `Tmpfs=` quadlet
-mount design, which does not
-start at all under rootless podman (`the 'noswap' option is only allowed with rootful tmpfs
-mounts`) and so never actually protected a rootless deployment. The bytes are additionally
-mlocked best-effort (no rootless swap-avoidance option exists for tmpfs itself, so mlock is
-the only lever left; a host that forbids it still stages, unlocked, with the residual
-reported by `exocomp doctor`). Env-decomposition (Phase 2) is unaffected and needs no
-`/dev/shm`.
-
-*2026-08-24 (later): `/dev/shm` replaces the tmpfs run-dir mount.* The original Phase 3
-design backed the per-job run directory itself with a `noswap` `Tmpfs=` quadlet mount and
-asserted `statfs f_type == TMPFS_MAGIC` on it before staging, refusing otherwise. That mount
-turned out to be unusable in the one deployment shape this project ships (rootless podman,
-`UserNS=keep-id`): podman refuses `noswap` on a rootless tmpfs mount outright, so the
-quadlet failed to start the container at all. `/dev/shm` needs no mount, no quadlet entry,
-and no capability, is present unconditionally in every rootless container, and — unlike a
-memfd-backed alternative that was spiked and rejected first (a memfd has no path a
-sandboxed child's `--read-file` grant can name, because real `nono` closes inherited fds
-before exec) — a `/dev/shm` file has a real path the sandboxed tier can grant. The per-job
-run directory is ordinary storage on the data volume again; only the staged secret material
-moved to RAM.
-
-*2026-08-24 (later still): session directories, and a pluggable backend with a disk
-fallback.* Two further changes, both owner-approved. First, staging moved from individual
-files scattered directly under `/dev/shm` to a per-instance session directory,
-`<root>/exocomp.<pid>.<rand>/`: the old blind-prefix sweep (`exocomp-secret-*`) had no
-ownership check, so it could delete a concurrent sibling exocomp instance's in-flight
-secrets on a shared root, and it ran once at boot only. Cleanup is now three layers — a
-per-job unlink on `Close` (unchanged); a `RemoveAll` of the whole session directory on a
-graceful stop; and a liveness-checked startup sweep that parses each session directory's
-owning pid back out of its name and removes only the ones whose process is no longer
-running (`pidAlive`, mirroring `store.ownerAlive`'s existence-and-permission probe without
-importing `store`). A directory owned by a live pid is never touched.
-
-Second, the staging root is now a choice: `--secret-staging {auto,tmpfs,disk}`. `auto`
-(the default) stages onto `/dev/shm` when it is actually usable — present, backed by
-tmpfs, adequate free space — and falls back to the disk root (`<data-dir>/run/`, the same
-tree job private directories already use) otherwise, loudly: a warning on the daemon's own
-log and a job event on every run that actually lands a secret there. `tmpfs` forces
-`/dev/shm` and fails closed if it is unusable, restoring in full the strict posture this
-section's decision opened with ("the staged secret never touches durable disk") as
-something an operator can demand by name rather than merely hope `auto` provides. `disk`
-forces the disk root explicitly, for a host with no usable tmpfs at all. The disk
-backend's residual — the secret's bytes now on durable storage, and so in swap — is
-bounded the same way `/dev/shm` staging always was (best-effort mlock; the mmap approach
-turned out to be filesystem-agnostic, so no backend-specific mlock code was needed), plus
-0600 files inside 0700 session directories and confirmation that `<data-dir>/run/` sits
-outside every backup's captured set (`internal/backup`'s staging tree is built by writing
-four named files, never by walking the data dir — see `docs/log.md`).
-
-**Honest residual, stated plainly:** the disk backend's crash-survival story is weaker
-than tmpfs's. On `tmpfs`, a hard crash (panic between staging and `Close`, `kill -9`) can
-leave a session directory behind, but a fresh container start clears `/dev/shm`
-unconditionally — the residual cannot outlive the container. On `disk`, the same crash
-leaves the 0600 session directory sitting on durable storage until the next startup
-sweep reaps it; a daemon that never restarts after such a crash leaves it there
-indefinitely. The file is still 0600 inside a 0700 directory and excluded from backups,
-but it is a real, not merely theoretical, residual — this is the cost of choosing `disk`
-(explicitly, or via `auto`'s fallback) over `tmpfs`. The sweep itself has one further
-acknowledged gap: it tells a live owner from a dead one by probing the session
-directory's own pid, and a container restart's small pid space means a fresh process can
-in principle reuse a dead pid's number before the sweep runs, reading a stale directory
-as "alive" and skipping it. This is bounded (best-effort, not a fail-open primitive
-anything security-relevant depends on) and documented at the code site
-(`internal/executor/pidalive.go`), not eliminated.
-
-**Phase 4 (later) — generalize to `exocomp workflow` (Option B2)** if a third ordering
-appears. Pure composition over the same Sequencer; deferred until two concrete orderings
-justify the generic surface.
-
-Item-A/D reuse vs new, at a glance: Phases 0 and 2 are almost entirely composition of
-existing machinery; Phase 1 reuses the seal/bind/redact plane but adds the one genuinely
-new primitive (an ansible capture surface); Phase 3 adds the only new exposure surface and
-is decision-gated.
+**Residuals.** On `disk`, a hard crash (a panic between staging and `Close`, a `kill -9`)
+leaves the 0600 session directory on durable storage until the next startup sweep reaps it;
+a daemon that never restarts leaves it indefinitely. On `tmpfs` the same crash can leave a
+directory, but a fresh container start clears `/dev/shm`, so the residual cannot outlive the
+container. The sweep tells a live owner from a dead one by pid, and a container restart's
+small pid space means a fresh process can in principle reuse a dead pid before the sweep
+runs, reading a stale directory as alive and skipping it — bounded (nothing security-relevant
+depends on it as a fail-open primitive) and documented at `internal/executor/pidalive.go`.
 
 ---
 
-## 4. Security notes
+## 6. Security notes
 
-- **Values-free everywhere.** The ansible sealer MUST NOT log, event, or otherwise
-  surface the kubeconfig, exactly as the `OutputSealer` contract requires of sensitive
-  tofu outputs (`tofu_output.go:159-174`) and as the capture summary carries names and
-  counts but never values (`InventoryCapture`, `tofu_output.go:44-56`). The captured bytes
-  are read in-process and never routed through the streaming event sink.
-- **Reuse the redaction path.** The ansible run already builds a `secrets.NewRedactor`
-  over the run's sealed material and vault-derived bytes (`cmd/exocomp/ansible.go:104-108`);
-  a captured/bound value joins that same material set so any incidental echo in a later
-  step's stream is scrubbed by the existing redactor, not a new one.
+- **Values-free everywhere.** The ansible sealer never logs, events, or otherwise surfaces
+  the captured value, as the `OutputSealer` contract requires of sensitive tofu outputs
+  (`tofu_output.go:159-174`); the capture summary carries names and counts, never values
+  (`InventoryCapture`, `tofu_output.go:44-56`). Captured bytes are read in-process, never
+  through the streaming event sink.
+- **Reuse the redaction path.** The ansible run builds a `secrets.NewRedactor` over the
+  run's sealed material and vault-derived bytes (`cmd/exocomp/ansible.go:104-108`); a
+  captured value joins that material set, so any incidental echo in a later step's stream is
+  scrubbed by the existing redactor.
 - **AAD unchanged.** The sealed row's AAD stays `name|kind` (`tofu_seal.go:83`); the only
-  change is a new `kind` constant (`ansible-output`), so a ciphertext still fails to open
-  against a moved name or a substituted kind. No new AAD construction, no envelope change.
-- **Default-deny.** The capture seals only operator-**declared** targets; an undeclared
-  sensitive fact is never captured. A missing sealer drops the capture rather than leaking
-  it (mirror of `tofu_output.go:163-167`). Under C-env no secret touches a filesystem;
-  under C-file the staged file is 0600 under `/dev/shm` — RAM, unconditionally, no mount
-  or assertion required — and unlinked once the subprocess that read it exits, so the one
-  new exposure the §2.3 decision is about is bounded to RAM for the lifetime of one run.
+  change is the `ansible-output` kind constant, so a ciphertext still fails to open against a
+  moved name or substituted kind.
+- **Default-deny.** The capture seals only operator-declared targets. Under `--capture` no
+  secret touches a filesystem; under `--capture-file` the staged file is bounded by the
+  staging design (§5) and unlinked once the reading subprocess exits.

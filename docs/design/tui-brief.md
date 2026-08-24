@@ -51,27 +51,23 @@ state inventory (loading / empty / populated / degraded-width).
 No box-drawing ornament beyond structural rules, no ASCII-art logos, no spinners
 faster than the data, no mouse-only affordances, nothing that breaks in tmux.
 
-## Settled by the design exploration (2026-08-22) — binding, with reconciliations
-
-The TUI canvas delivered every deliverable above. Adopted as implementation
-contract for the TUI work:
+## Settled decisions — binding
 
 - **Destroy-approval confirms by typing the workspace name** — the terminal's
   hold-to-confirm, mirroring the phone contract. Stale plans render with no
-  approve key at all ("fail closed — no approve key offered").
+  approve key at all (fail closed — no approve key offered).
 - **The keybinding map is the spec**: no F-keys, no Alt-combos, nothing tmux
   eats; one meaning per letter app-wide; reserved letters as listed; help-bar
-  renderings per screen. Two deltas from today's code to adopt: `q` quits only
-  at root (esc walks back), and `[0]` is the Home screen.
-- **The 16-color fallback table and no-color text forms** ship as part of the
-  theme implementation, not documentation.
-- **Wizard deltas**: setup collects an operator display name and generates the
-  ntfy topic (test message at step 4); nothing is written to disk until step 4
-  — stronger than today's immediate `init`, adopted as the `exocomp setup` flow.
+  renderings per screen. `q` quits only at root (esc walks back), and `[0]` is
+  the Home screen.
+- **The 16-color fallback table and no-color text forms** are part of the theme
+  implementation, not documentation.
+- **Wizard**: `exocomp setup` collects an operator display name and generates the
+  ntfy topic (test message at step 4); nothing is written to disk until step 4.
 
-Reconciliation the engine must answer:
+One engine requirement follows from the banner design:
 
 - The banner splits **PAUSED** (reactive jobs held) from **MUTED**
-  (notifications held, jobs still run). The engine has silences and the kill
-  switch but no notification-mute; adopt it as a notify-layer mute (mandatory
-  expiry, logged reason) so the banner's three variants are all real states.
+  (notifications held, jobs still run). Alongside silences and the kill switch,
+  the engine carries a notify-layer mute (mandatory expiry, logged reason) so the
+  banner's three variants are all real states.

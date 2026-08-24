@@ -2,26 +2,14 @@
 
 ## Status
 
-Draft · design proposal for the deferred `container` tier. **Not accepted** for the tier as a
-whole. This document argues that the status quo (nono/Landlock default, `container` tier
-deferred) is correct and should be *ratified*, and specifies the exact shape a
-bring-your-own-runner (BYO-runner) would take **if and when** a concrete need justifies
+The `container` tier stays deferred. The default and only shipped isolation is nono/Landlock
+(`local-sandboxed`); this document sets out why that is the right default and specifies the
+exact shape a bring-your-own-runner (BYO-runner) would take if a concrete need justifies
 building it.
 
-**Exception — Phase 1 (per-job resource caps) is accepted and BUILT (2026-08-24):** the owner
-approved caps with the opt-in root-in-container privilege model, following recommendation 2
-("if the need is caps only, build §6 instead of the tier"). Caps landed as cgroup v2 direct
-writes, **not** the systemd-scope sketch §6 first proposed (the runtime image has no systemd).
-See §6's "Built (2026-08-24)" subsection. The rest of the tier (BYO images, the podman socket,
-the build/cache machinery) remains deferred.
-
-> **Grounded vs inferred.** The podman/OCI tooling, nesting, and cache/lifecycle material
-> rests on direct file:line references and is grounded. The executor/queue integration wiring
-> and the SELinux operational detail (§5, §6, and the phasing of §9) were reconstructed from
-> the code (`internal/executor/sandbox.go`, `internal/deps/venv.go`, `internal/sched`,
-> `packaging/Containerfile`) and from platform-contract.md, and are marked **[inferred]** where
-> they rest on reconstruction rather than a cited source. Treat inferred claims as design
-> proposals to validate, not established facts.
+One slice of the tier's value ships without the tier: per-job memory/CPU caps, enforced by
+cgroup v2 direct writes with an opt-in root-in-container privilege model (§6). The rest of the
+tier — BYO images, the podman socket, the build/cache machinery — remains deferred.
 
 ---
 
@@ -78,8 +66,8 @@ deliberate deferral with a shipped alternative. Verified against the docs and th
    arbitrary baked-in system deps") and independent ansible/collection pins as a full image
    rather than a venv.
 2. **Hard per-job resource caps** — memory/CPU ceilings the kernel enforces (execution.md:147
-   names this as the container tier's other remaining justification). **[inferred]** §6
-   argues this half is better served by systemd transient scopes than by the container tier.
+   names this as the container tier's other remaining justification). This half needs no
+   image and no socket: it ships as cgroup v2 direct writes (§6).
 
 Net: with `local-sandboxed` shipped and uv-venv delivering per-project deps, the container
 tier's justification has **narrowed to BYO system-package images + hard caps** (execution.md:146-147).
@@ -87,7 +75,7 @@ That narrow remainder is what this document scopes.
 
 ---
 
-## 2. The owner's two runner models — one spec, two build modes
+## 2. Two runner models — one spec, two build modes
 
 An operator wants one of two things. Both are expressible with a single runner spec and a
 single hash-gate; they differ only in *when* the image is built.
@@ -169,15 +157,14 @@ rebuildable cache (§7), reconstructable from the definition + `runner-lock.json
 
 ---
 
-## 3. Tooling decision — podman-first, shell the CLI, no docker cruft
+## 3. Tooling — podman-first, shell the CLI
 
 **Decision: shell `podman` / `buildah bud` / `podman build --layers` / `podman pull`. Do
 NOT embed the buildah Go library, the containers/storage or containers/image libraries, or
 the podman Go bindings. Do NOT use the docker/docker Go SDK.**
 
-go.mod is clean today — `module exocomp.dev/exocomp`, go 1.26, 54 requires, **zero**
-docker / podman / buildah / containers/* / opencontainers / crun / containerd deps (verified
-by grep). Any choice here is greenfield, and shelling the CLI keeps it clean.
+go.mod carries no docker / podman / buildah / containers/* / opencontainers / crun /
+containerd dependency. Shelling the CLI keeps it that way.
 
 Rationale:
 
@@ -193,13 +180,12 @@ Rationale:
    exocompd's *own* podman surface is thin: build/pull a runner image, `podman run` a tofu
    job. Thin surface → shell it.
 
-**Why the docker SDK is not just wrong but functionally broken.** Podman implements the
-**Docker REST API** (e.g. `/v1.41/build`), **not Docker BuildKit's proprietary gRPC
-protocol**. The `github.com/docker/docker` client's modern build path targets BuildKit,
-so it does not merely offend a podman-first aesthetic — **builds fail or fall back mysteriously
-against `podman.sock`.** This is the same class of failure as compose `dockerfile_inline`
-against podman.sock. The mandate to reject the docker SDK is a **correctness constraint**, not
-a style preference.
+**Why the docker SDK does not work against podman.** Podman implements the **Docker REST
+API** (e.g. `/v1.41/build`), not Docker BuildKit's proprietary gRPC protocol. The
+`github.com/docker/docker` client's modern build path targets BuildKit, so builds fail or
+fall back unpredictably against `podman.sock` — the same class of failure as compose
+`dockerfile_inline` against podman.sock. Rejecting the docker SDK is a correctness
+constraint, not a style preference.
 
 Reserve the podman Go bindings (`pkg/bindings` over the API socket) **only** if a later need
 for streaming/events arises that the CLI cannot express cleanly. Do not adopt them
@@ -238,8 +224,8 @@ arbitrary host-user containers. Therefore:
   access anyway — sandbox.go grants no socket; execution.md:107-109 confirms no podman socket
   is mounted today).
 - Enabling it **materially lowers exocomp's own threat tier**, and should be treated and
-  documented as such. **[inferred]** `exocomp doctor` should assert the socket is reachable
-  *only* from the container tier's build/run path and never from a job profile.
+  documented as such. `exocomp doctor` asserts the socket is reachable *only* from the
+  container tier's build/run path and never from a job profile.
 
 This decision is *coupled* to the sandbox's only guarantee against local sockets: Landlock
 cannot refuse `connect(2)` on a pathname `AF_UNIX` socket (execution.md:103-112, ADR 0005:58-65),
@@ -249,11 +235,11 @@ be made together, not independently.
 
 ---
 
-## 5. SELinux / AppArmor / rootless on enforcing Fedora  **[largely inferred]**
+## 5. SELinux / AppArmor / rootless on enforcing Fedora
 
 The target is Fedora/RHEL **enforcing**; no example may depend on permissive mode
-(platform-contract.md:21-22). The grounded anchors are platform-contract.md:33-36 and the
-prior-art volume-relabel research; the operational assembly below is reconstructed.
+(platform-contract.md:21-22). The anchors are platform-contract.md:33-36 and the
+volume-relabel prior art.
 
 - **`label=disable` on the socket mount ONLY.** The deferred container driver's podman-socket
   mount needs `--security-opt label=disable` (or Quadlet `SecurityLabelDisable`) on *that
@@ -272,16 +258,15 @@ prior-art volume-relabel research; the operational assembly below is reconstruct
   configured `/etc/subuid` + `/etc/subgid` ranges for the operator.
   For host-volume sharing, use `--userns=keep-id:uid=1000,gid=1000` (keep-id preferred
   over entrypoint chown scripts) so runner-produced files map back to the operator's uid
-  without ACL surgery. **[inferred]** `exocomp doctor` should verify subuid/subgid ranges and
-  linger *before* the first job, mirroring how sandbox.go `Probe`/`RunCanary` assert rather
-  than assume.
-- **Run-secrets out of argv and correctly labeled. [inferred]** The `local` tier already
+  without ACL surgery. `exocomp doctor` verifies subuid/subgid ranges and linger *before* the
+  first job, mirroring how sandbox.go `Probe`/`RunCanary` assert rather than assume.
+- **Run-secrets out of argv and correctly labeled.** The `local` tier already
   writes secret material (vault password, backend bearer) into a **per-job 0700 private
   directory**, never argv/env (execution.md:46-49, 158-160). BYO-runner must preserve this:
   resolved secrets go to a private dir bind-mounted into the runner container `:Z`, passed via
   `--secret` or a file path — **never** on the `podman run` argv (invariant 4; the process
   table is world-readable). ansible-runner's `env/` + `--secret` plumbing is the existing seam.
-- **Hardening the runner container. [inferred]** `--read-only` rootfs with a tmpfs for
+- **Hardening the runner container.** `--read-only` rootfs with a tmpfs for
   scratch; `--security-opt no-new-privileges`; keep the default seccomp profile (do not
   `--privileged`, do not `--security-opt seccomp=unconfined`); `--cap-drop=ALL` and add back
   only what a play needs (usually nothing); `--network` scoped to match the Landlock
@@ -289,73 +274,17 @@ prior-art volume-relabel research; the operational assembly below is reconstruct
 
 ---
 
-## 6. Resource caps WITHOUT the socket — systemd transient scopes  **[inferred, grounded in platform-contract]**
+## 6. Resource caps without the socket — cgroup v2 direct writes
 
-The **one thing** nono + uv-venv does not provide is **hard per-job memory/CPU caps**
-(execution.md:147). It does **not** need the podman socket.
+The one thing nono + uv-venv does not provide is **hard per-job memory/CPU caps**
+(execution.md:147). It needs no podman socket, and it ships today.
 
-Use **systemd transient scopes** under the rootless user slice:
-
-```
-systemd-run --user --scope \
-  -p MemoryMax=2G -p MemorySwapMax=0 -p CPUQuota=200% \
-  -- <the job's existing subprocess argv>
-```
-
-- Needs **no socket, no sudo, no second container** — a rootless user can cap **its own**
-  slice under `enable-linger`.
-- Composes with the existing deployment: the platform already treats systemd/Quadlet as
-  first-class and puts `MemoryMax=` in the unit (platform-contract.md:10). This extends that
-  same mechanism per-job.
-- Splices in at the **same seam nono does** — sandbox.go wraps the driver's finished argv;
-  a `systemd-run --scope` wrapper composes *outside* the nono wrapper (scope → nono → tool),
-  so streaming, process groups (`Setpgid`), and exit-code semantics keep one implementation.
-
-**This likely retires the container tier's second justification for the single-operator
-case.** If caps are the real driver (not BYO system-package images), build this — it is far
-cheaper than the socket and does not lower the threat tier. **[inferred: validate that
-Landlock network filtering and a systemd scope compose cleanly under rootless.]**
-
-### Validation (2026-08-23): host-only as written, not inside exocompd's own container
-
-§1's whole premise is that exocompd runs as **one rootless container**
-(invariant 1; `packaging/quadlet/exocomp.container`). The wrapper above executes wherever
-the job subprocess executes — inside that same container, not on the operator's bare host —
-so it was checked against the shipped deployment, not just the host.
-
-- **On the host, unmodified, `systemd-run --user --scope` works** exactly as written: a
-  rootless user's own slice, `enable-linger`, no socket, no sudo.
-- **Inside exocompd's own container it does not.** The runtime image is
-  `registry.fedoraproject.org/fedora-minimal:44` (`packaging/Containerfile`); the runtime
-  layer installs `ca-certificates git-core openssh-clients` plus the pinned subprocess
-  tools, never a `systemd` package — there is no `systemd-run` binary and no `systemd
-  --user` manager to talk to. `packaging/quadlet/exocomp.container` also does not start the
-  container with `--systemd=always` or any cgroup delegation, so there would be no PID 1 to
-  hand a scope to even if the binary existed.
-- **The in-container path is cgroup v2 direct writes, not `systemd-run`**: writing
-  `memory.max`/`cpu.max` into the container's own delegated cgroup subtree. That needs two
-  things this document does not resolve:
-  1. A Quadlet change granting the delegation — `PodmanArgs=--systemd=always` (or
-     equivalent) plus a read-write cgroup mount — neither of which `exocomp.container` does
-     today.
-  2. A privilege-model decision: **root-in-container** (simplest cgroup writes, but
-     reintroduces root inside the one container the current `UserNS=keep-id` posture
-     avoids) versus **keep-id + delegation** (stays rootless, but needs podman to hand a
-     keep-id non-root user write access to its own delegated cgroup subtree — unverified on
-     this platform).
-- **Held for the owner.** Neither option is chosen here; §9 Phase 1 is downgraded
-  accordingly.
-
-The host-level design above ships as written only for a non-containerized run of the binary
-(development, a bare local install outside the packaged image) — not for the packaged
-Quadlet/compose deployment invariant 1 describes.
-
-### Built (2026-08-24): cgroup v2 direct writes, opt-in, fail-closed — validated on podman
-
-The owner said GO on per-job caps with the opt-in root-in-container privilege model, so the
-in-container path above is now built (`internal/executor/cgroup.go`), not just designed. It
-does **not** use `systemd-run`: the runtime image has no systemd, so the daemon writes the
-cgroup v2 files itself.
+The naive approach — `systemd-run --user --scope` under the rootless user slice — does not
+apply inside exocompd's own container: the runtime image
+(`registry.fedoraproject.org/fedora-minimal:44`, `packaging/Containerfile`) carries no
+`systemd` package, so there is no `systemd-run` binary and no `systemd --user` manager, and
+`packaging/quadlet/exocomp.container` starts no PID 1 to hand a scope to. Caps are therefore
+enforced by the daemon writing cgroup v2 files directly (`internal/executor/cgroup.go`).
 
 Mechanism, per opted-in job:
 
@@ -363,98 +292,53 @@ Mechanism, per opted-in job:
    process* rule forbids a cgroup from both holding processes and distributing controllers,
    so the daemon **vacates** its own base cgroup — moves every pid in `cgroup.procs` into a
    child `exocomp.svc` leaf — and only then writes `+memory +cpu` into the base's
-   `cgroup.subtree_control`. Skipping the vacate yields `EBUSY` on that write, which is the
-   trap this step exists to avoid. A `exocomp.jobs` parent is created and made a distributor
-   too.
+   `cgroup.subtree_control` (skipping the vacate yields `EBUSY` on that write). An
+   `exocomp.jobs` parent is created and made a distributor too.
 2. **Per job** it `mkdir`s a child under `exocomp.jobs`, writes `memory.max`,
    `memory.swap.max=0` (**required** — without it a job over `memory.max` swaps instead of
    being OOM-killed, so the ceiling throttles rather than enforces), and `cpu.max`, then
    places the job process into it at fork via clone3 `CLONE_INTO_CGROUP` (Go's
    `SysProcAttr.UseCgroupFD`), so the ceiling is in force from the process's first
    instruction. Teardown `cgroup.kill`s the subtree and `rmdir`s it with the job.
-3. **Fail-closed.** Caps requested with no delegated, writable subtree is refused, never run
+3. **Fail-closed.** Caps requested with no delegated, writable subtree are refused, never run
    uncapped — the same "never silently" posture ADR 0005 holds for the sandbox tier.
    `exocomp doctor` reports availability under "per-job caps".
 
-### Wired (2026-08-24): a job's `--runner` reaches `SandboxOptions.Caps`
+### A job selects caps by naming a runner
 
-The gap a follow-up review flagged as high-severity — `ParseCaps`/`PrepareCgroupController` built and
-unit-tested but never called from `cmd/exocomp`, so `sandboxOptions()` never set `Caps`/
-`Cgroup` and the fail-closed refusal above was unreachable in the shipped binary — is closed.
-There is still no job→runner *image* linkage (the container tier stays deferred, §1), but a
-job can now name a runner purely for its caps:
+A job names a runner purely for its caps via `--runner <name>` (there is no job→runner
+*image* linkage — the container tier stays deferred, §1). `store.JobArgs`/`queue.Spec` carry
+`RunnerName` as a JSON field on the existing `args_json` column (no migration). `--runner` is
+accepted on `playbook run`, `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`,
+`command`, and `ansible`; `--remote` carries it for the two verbs with a remote form
+(`workspace plan`/`apply`, `playbook run`), so a remote-submitted job takes the same
+dispatch-time path as a local one.
 
-- `store.JobArgs`/`queue.Spec` gained `RunnerName` (a JSON field on the existing `args_json`
-  blob column — no migration), threaded from a new `--runner <name>` flag on every job-creation
-  command that dispatches through `cmd/exocomp/serve.go`'s `kindRouter`: `playbook run`,
-  `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`, `command`, `ansible`.
-- `--remote` carries it too, for the two verbs that have a remote form at all: `workspace
-  plan`/`apply` (`client.WorkspaceRequest.Runner`, `internal/web/api_write.go`'s
-  `writeRequest.Runner`) and `playbook run` (`client.PlaybookRequest.Runner`,
-  `playbookRunRequest.Runner`). Each handler sets `RunnerName` on the `service.*Input` it
-  builds, so a remote-submitted job goes through the exact same dispatch-time
-  `resolveRunnerCaps` + fail-closed refusal as a local one. `run`, `run-cli`, `command`, and
-  `ansible` have no `--remote` form to thread through — `--runner` on those stays local-only
-  by construction, not by gap.
-- At dispatch — both the daemon's per-kind drivers (`ansibleJobDriver.Run`, `workspaceDriver.Run`,
-  `cliJobDriver.Run` in `cmd/exocomp/serve.go`/`ansible.go`) and every no-daemon inline path
-  (`runPlaybookInline`, `runWorkspaceInline`, `cliRunInline`) — `resolveRunnerCaps` looks the
-  named runner up and runs its `memory_max`/`cpu_quota` through `ParseCaps`, refusing the job
-  outright if the name does not resolve or the stored value no longer parses.
-- `ansibleTierDriver`/`tofuTierDriver`/`cliTierDriver` (`cmd/exocomp/sandbox.go`,`clirun.go`)
-  now take that `Caps` value and, when non-empty, call `withCaps`, which sets
-  `SandboxOptions.Caps` and prepares the daemon's `*executor.CgroupController` **lazily** —
-  only the first time some job actually asks for caps, via `sync.Once` (`capsController`) — so
-  a fleet that never uses `--runner` never has the daemon's own cgroup vacated/rearranged.
-  `withCaps`'s result is exactly what makes `applyJobCaps`'s fail-closed branch reachable: caps
-  set, `Cgroup` nil when preparation failed.
-- **A second fail-closed axis, found while wiring this in:** `applyJobCaps` only ever runs
-  inside the sandboxed drivers (`internal/executor/sandbox_drivers.go`) — a plain
-  `executor.NewAnsible`/`NewTofu`/`NewCLI` subprocess (the `local` tier, or an `auto` tier
-  degraded to it) never looks at `SandboxOptions.Caps` at all. Without a guard, a capped job
-  that fell back to the subprocess boundary would run **fully uncapped with no refusal** — the
-  exact silent failure this feature exists to prevent, on an axis the cgroup-availability check
-  alone does not cover. `requireSandboxedForCaps` closes it: a capped job refuses outright when
-  the effective tier is not `local-sandboxed`, before a plain driver is ever built.
-- `internal/executor/cgroup.go`'s `parseMemorySize` also gained an overflow guard
-  (`n * mult` on a huge digit string could wrap to a small or negative byte count and write the
-  wrong tiny cap) — a minor finding closed alongside the wiring.
+At dispatch — the daemon's per-kind drivers and every no-daemon inline path alike —
+`resolveRunnerCaps` looks the named runner up and runs its `memory_max`/`cpu_quota` through
+`ParseCaps`, refusing the job if the name or the caps do not resolve. `withCaps` then sets
+`SandboxOptions.Caps` and prepares the `*executor.CgroupController` lazily (via `sync.Once`)
+— only the first time a job actually asks for caps, so a fleet that never uses `--runner`
+never has the daemon's own cgroup rearranged. Two fail-closed axes guard enforcement:
+`applyJobCaps` refuses when the delegated subtree is not writable, and
+`requireSandboxedForCaps` refuses when the effective tier is not `local-sandboxed` — a plain
+subprocess never reads `SandboxOptions.Caps`, so a capped job that fell back to it would
+otherwise run uncapped. `parseMemorySize` guards against integer overflow on a large digit
+string that would otherwise wrap to a wrong tiny cap.
 
-Unit-tested in `cmd/exocomp/caps_test.go` (`resolveRunnerCaps`, both fail-closed axes,
-`withCaps` against a faked cgroup tree so no test touches the real host `/sys/fs/cgroup`) and
-`internal/queue` (`Spec.RunnerName` round-trips through `Enqueue`/`EnqueueGated` into the
-stored job row). What the mechanism does once caps genuinely reach a live cgroup — the actual
-`memory.max`/`cpu.max` writes, OOM-kill/throttle behaviour — is §6's own "Built" validation
-above and `internal/executor`'s existing cgroup tests; this wiring is the seam between "an
-operator named a runner with caps" and "`applyJobCaps` sees them", which is what was missing.
-The `--remote` half is tested the same way, one layer at a time: `internal/client/write_test.go`
-(`body()`/JSON carries `runner`), `internal/web/api_write_test.go` and `api_playbook_test.go`
-(a POSTed `runner` lands on `job.Args.RunnerName`, the same field the daemon's dispatch-time
-`resolveRunnerCaps` reads), and `cmd/exocomp/remotewrite_test.go` (the CLI's `--runner` flag
-reaches the wire request). No live daemon is required for any of this: the handler-level
-assertion that the spec carries the runner is the same seam the local path's caps enforcement
-already exercises past that point.
+### Enforcement and privilege model
 
-**Real validation (podman 5.8.4 host + podman 5.8.1 lima, `--systemd=always`,
-root-in-container):**
+Enforcement is verified on real podman (5.8.4 host, 5.8.1 lima), not assumed: a 200 MB
+allocation under a 50 MB cap is OOM-killed (`memory.events oom_kill 1`, SIGKILL → 137); a CPU
+workload under a 10%-of-one-core `cpu.max` throttles (`cpu.stat nr_throttled 33`).
 
-- *Memory:* a 200 MB allocation under a 50 MB cap was OOM-killed — process SIGKILLed
-  (`Result.ExitCode = -1`, `Signaled = true`; a shell reports 137), and the job cgroup's
-  `memory.events` showed `oom_kill 1`.
-- *CPU:* a fixed CPU workload under a 10%-of-one-core `cpu.max` took ~3.2 s wall for ~0.2 s
-  of work; `cpu.stat` showed `nr_throttled 33`, `throttled_usec 2929925`.
-
-**Privilege, as validated — the two options are not equivalent on podman 5.8.x:**
-
-- **root-in-container (chosen opt-in).** `PodmanArgs=--systemd=always` mounts
-  `/sys/fs/cgroup` read-write and runs PID 1 as uid 0 inside the rootless user namespace
-  (no host root). Full enforcement observed.
-- **keep-id delegated non-root (the rootless-preserving alternative) does NOT work out of
-  the box.** A `--userns=keep-id` non-root process is **denied** writes to `/sys/fs/cgroup`
-  even with `--systemd=always` (validated 2026-08-24). Making it work needs explicit cgroup
-  ownership delegation podman does not grant by default; unproven on this platform, so the
-  shipped opt-in is root-in-container. The default deployment stays rootless + keep-id +
-  **capless**.
+The privilege model is opt-in **root-in-container**: `PodmanArgs=--systemd=always` mounts
+`/sys/fs/cgroup` read-write and runs PID 1 as uid 0 inside the rootless user namespace (no
+host root). The rootless-preserving alternative, keep-id delegated non-root, does not work on
+podman 5.8.x — a `--userns=keep-id` non-root process is denied writes to `/sys/fs/cgroup`
+even with `--systemd=always`, and making it work needs explicit cgroup ownership delegation
+podman does not grant by default. The default deployment stays rootless + keep-id and
+**capless**; caps are opt-in.
 
 ---
 
@@ -480,7 +364,7 @@ and offline-restorable (`internal/deps/venv.go`). Reuse its exact shape.
   recomputed hash. A crashed build leaves a dangling image with no matching label → rebuilt,
   exactly the partial-venv removal semantics (venv.go:106-110, markerMatches venv.go:260-266).
 
-### 7.2 Base pinned by digest — the single highest-leverage correctness point
+### 7.2 Base pinned by digest
 
 The `Containerfile` **pins base images by mutable TAG** today
 (`fedora-minimal:44`, `golang:1.26`, `uv:0.9.7` — Containerfile:1,8,16,57,78) while pinning
@@ -561,10 +445,10 @@ is a *process* control, so it needs an explicit doctor assertion, not just a con
 
 ## 8. Recommendation
 
-1. **Ratify the status quo.** Keep nono/Landlock (`local-sandboxed`) as the **default and only
+1. **Keep the status quo.** nono/Landlock (`local-sandboxed`) stays the **default and only
    shipped** isolation. It is the correct podman-first-yet-no-podman-socket answer for a
-   single-container, no-sudo, DR-offline system. **go.mod's cleanliness is a feature, not a
-   TODO.** Do not build the container tier speculatively.
+   single-container, no-sudo, DR-offline system, and it keeps go.mod free of container
+   dependencies. Do not build the container tier speculatively.
 2. **Build BYO-runner only when a concrete need justifies it** — either (a) a real BYO
    execution-environment requirement (arbitrary baked-in **system packages** that uv-venv
    cannot provide, ADR 0011:86), or (b) **hard per-job resource caps**. If the need is caps
@@ -574,45 +458,34 @@ is a *process* control, so it needs an explicit doctor assertion, not just a con
    option (a) with `label=disable` on that mount (§4), the uv-venv-mirrored hash-gated cache
    with base-by-digest (§7), operator-initiated builds off the DR path (§7.7).
 
-### Open decisions the owner must make
+### Open questions
 
-- **Is there a real need at all?** If no runbook needs system packages and caps are unwanted,
-  the honest answer is to *never build this* and let §1's table stand.
-- **Caps via §6 or via the tier?** Deciding caps-only → systemd scopes may retire the tier.
+- **Is there a real need at all?** If no runbook needs system packages, and caps (§6) cover
+  the resource case, the tier need not be built and §1's table stands.
 - **How do EE images map to sources?** One runner per source (like venvs), or a shared runner
   pool? Affects the cache keyspace and prune policy.
 - **How is the socket mount fenced in code** so no job profile can reach it and the DR gate is
   enforced, not documentary? (execution.md:142 states intent; the enforcement is unbuilt.)
-- **Model A vs Model B default** — proposed `cached`; confirm.
+- **Model A vs Model B default** — `cached` proposed.
 - **`runner-lock.json` schema and location** relative to `MANIFEST.json`.
 
 ---
 
-## 9. Phased implementation plan (dependency-ordered, one phase each)  **[inferred]**
+## 9. Phased implementation plan (dependency-ordered, one phase each)
 
 Each phase is a self-contained unit of work. Phases 0–2 are worth doing **even if the
-container tier is never built**, because they close real gaps in the shipped system.
+container tier is never built**, because they close real gaps in the shipped system. Phase 1
+is done; the rest are a proposed order if the tier is built.
 
 - **Phase 0 — Bound the existing caches (no container tooling).** Add the `cache/python` prune
   job (§7.5) as a scheduled queue job on the restic-forget cadence. Closes an unbounded-growth
   gap that exists **today**. Depends on nothing.
-- **Phase 1 — per-job resource caps via cgroup v2 direct writes (no socket, no systemd-run).
-  BUILT 2026-08-24.** Not the `systemd-run --user --scope` wrapper originally sketched: the
-  runtime image has no systemd, so the daemon writes `memory.max`/`memory.swap.max=0`/
-  `cpu.max` into a per-job child of its own delegated cgroup subtree and places the process
-  with `CLONE_INTO_CGROUP` (`internal/executor/cgroup.go`). Opt-in and fail-closed: default
-  deployment stays rootless + capless, a capped job with no writable subtree is refused. The
-  owner-approved privilege is root-in-container (`PodmanArgs=--systemd=always`), documented in
-  `packaging/quadlet/exocomp.container`; the keep-id non-root delegation alternative is not
-  writable on podman 5.8.x and stays unbuilt. `exocomp doctor` reports availability. Enforced
-  behaviour (OOM-kill, CPU throttle) validated on real podman — see §6. **Wired 2026-08-24:**
-  a job now names a runner purely for its caps with `--runner <name>` on the job-creation
-  commands (`playbook run`, `run`, `workspace plan`/`apply`, `run-cli`, `command`, `ansible`),
-  and `--remote` carries it for the two verbs that have a remote form (`playbook run`,
-  `workspace plan`/`apply`); `resolveRunnerCaps` (`cmd/exocomp/sandbox.go`) runs the runner's stored
-  `memory_max`/`cpu_quota` through `ParseCaps` at dispatch and refuses the job if the runner or
-  its caps do not resolve. See §6 "Wired" for the full seam, including a second fail-closed
-  axis (the sandboxed tier itself not active) found while closing this gap.
+- **Phase 1 — per-job resource caps via cgroup v2 direct writes (done).** The daemon writes
+  `memory.max`/`memory.swap.max=0`/`cpu.max` into a per-job child of its own delegated cgroup
+  subtree and places the process with `CLONE_INTO_CGROUP` (`internal/executor/cgroup.go`).
+  Opt-in and fail-closed; the privilege model is root-in-container
+  (`PodmanArgs=--systemd=always`). A job selects caps by naming a runner (`--runner`). Full
+  mechanism, wiring, and enforcement in §6.
 - **Phase 2 — doctor prerequisites probe for the container tier.** Add probes (rootless podman
   present, user socket reachable, subuid/subgid configured, SELinux booleans/label posture)
   that **assert rather than assume**, mirroring sandbox.go `Probe`/`RunCanary`. Gates every
@@ -637,19 +510,3 @@ container tier is never built**, because they close real gaps in the shipped sys
 - **Phase 8 — DR-gate enforcement.** Make the doctor gate that refuses BYO-runner runbooks on
   the DR path **enforced, not documentary** (execution.md:142). Depends on P4/P5 existing to
   gate.
-
----
-
-## Appendix — grounded vs inferred, at a glance
-
-| Section | Status | Basis |
-|---|---|---|
-| §1 status, central finding | **Grounded** | ADR 0005, execution.md:34/146-147, ADR 0011, sandbox.go:21-30, go.mod grep |
-| §2 two models | **Grounded** | execution.md:129-131 (ansible-runner EE / tofu podman run) |
-| §3 tooling, docker-SDK-broken | **Grounded** | podman-REST-not-BuildKit; go.mod; ADR 0006:58 |
-| §4 nesting decision | **Grounded** | execution.md:138, platform-contract.md:11, ADR 0005:18 |
-| §5 SELinux/hardening | **[inferred]** | anchors: platform-contract.md:33-36, volume-relabel research; assembly reconstructed |
-| §6 caps | **Grounded + BUILT** — cgroup v2 direct writes, real podman validation 2026-08-24 (OOM-kill, CPU throttle); the earlier systemd-scope sketch is superseded | internal/executor/cgroup.go; podman 5.8.4/5.8.1 runs; platform-contract.md:10 |
-| §7 cache/lifecycle | **Grounded** | venv.go, manifest.go:137-143, Containerfile, sched, restic.go:135, tofu.go:262-287 |
-| §8 recommendation | **Grounded** (synthesis) | follows from §1–§7 |
-| §9 phasing | **[inferred]** | reconstructed from code seams |

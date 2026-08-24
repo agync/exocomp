@@ -98,10 +98,9 @@ state). No SPA. Type system: monospace-forward is native to this product's audie
 a mono for data/labels with a quiet UI sans is acceptable; pure-mono is on-brand.
 The TUI already establishes: one accent, dim-by-default, state-colored text.
 
-## Approval surface contract (settled in the design exploration, binding for v1.0)
+## Approval surface contract
 
-The phone approval flow's semantics, decided visually and adopted as implementation
-contract:
+The phone approval flow's semantics:
 
 1. **Terse lock screen**: notifications name no host, workspace, playbook, or
    resource — a count, a TTL, and "open to see what it wants to do." Notifications

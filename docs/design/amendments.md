@@ -1,19 +1,16 @@
 # Amendments
 
-Twelve changes made to the accepted candidate design in response to the adversarial review
-of that design ([critique](../history/design/critique.md)). Each is **normative** and
-overrides the candidate document where they differ.
-
-The gaps clustered at the *edges* — credentials to reach a backup, retention that reclaims
-space, upgrade rollback, host onboarding — which is exactly where homelab tooling actually
-fails.
+Twelve **normative** design decisions that override the candidate design
+([critique](../history/design/critique.md)) wherever they differ. They cluster at the
+*edges* — credentials to reach a backup, retention that reclaims space, upgrade rollback,
+host onboarding — which is where homelab tooling actually fails.
 
 ## 1. The recovery kit closes the credential loop
 
-All three candidate kits omitted the credentials needed to *reach* the backup: restic
-cannot open an S3 repository without an access key, and the key was inside the backup.
+The kit must carry the credentials needed to *reach* the backup: restic cannot open an S3
+repository without an access key, and that key would otherwise sit inside the backup.
 
-The kit now carries a **dedicated read-only storage credential per off-host leg** (S3 key
+The kit carries a **dedicated read-only storage credential per off-host leg** (S3 key
 scoped to GET/LIST; GitHub fine-grained PAT with read-only contents), the healthchecks ping
 URL, and the ansible-pull trust anchor fingerprint if pull mode is enabled. These are
 `secret` rows tagged `on_recovery_kit=true`; the renderer refuses to render without them,
@@ -86,9 +83,9 @@ migration path is a section rather than a footnote.
 
 ## 7. The printed card is tested code
 
-The candidate's manual-recovery one-liner did not run as written — `xxd` read nothing, the
-pipeline fed an `openssl kdf` invocation that does not consume stdin, and the `-kdfopt`
-spellings were mixed. A DR card whose commands do not run is worse than no card.
+A DR card whose commands do not run is worse than no card, and the failure modes are subtle
+and invisible on paper — a pipeline stage that reads nothing, a KDF invocation that does not
+consume stdin, mixed option spellings.
 
 Normative rule: **the exact rendered text of the recovery card is executed in CI** on a
 clean image against a fixture backup, and the derived restic password is diffed against
