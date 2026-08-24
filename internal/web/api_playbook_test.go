@@ -62,6 +62,33 @@ func TestAPIPlaybookRunEnqueuesThroughService(t *testing.T) {
 	}
 }
 
+// TestAPIPlaybookRunCarriesRunnerName: a run naming a runner sets
+// JobArgs.RunnerName on the enqueued row, the same seam workspace plan/apply use.
+func TestAPIPlaybookRunCarriesRunnerName(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/playbooks/run", token,
+		`{"playbook":"/srv/site.yml","runner":"fedora-ee"}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("run status = %d, want 200 (%s)", code, body)
+	}
+	_, _, data := decodeEnvelope(t, body)
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil || jv.JobID == 0 {
+		t.Fatalf("no job_id: %v (%s)", err, body)
+	}
+	job, err := h.store.GetJob(context.Background(), jv.JobID)
+	if err != nil {
+		t.Fatalf("GetJob: %v", err)
+	}
+	if job.Args.RunnerName != "fedora-ee" {
+		t.Fatalf("job.Args.RunnerName = %q, want fedora-ee", job.Args.RunnerName)
+	}
+}
+
 // TestAPIPlaybookRunInventoryByName: a run naming a registered inventory resolves
 // it server-side to its path (in argv) and records the name on the row so a
 // dynamic inventory's env_binding resolves when the daemon runs it.

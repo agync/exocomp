@@ -159,6 +159,10 @@ type writeRequest struct {
 	Timeout    string `json:"timeout"`
 	// Plan names a saved plan artifact by id for apply --plan; empty is a fresh apply.
 	Plan string `json:"plan"`
+	// Runner names a registered runner whose memory_max/cpu_quota the sandboxed
+	// execution path should enforce as a per-job cgroup cap, mirroring the
+	// local --runner flag. Empty is the default, uncapped path.
+	Runner string `json:"runner"`
 }
 
 // decodeWrite reads the optional JSON body and the parsed timeout. It renders
@@ -268,6 +272,7 @@ func (s *Server) apiWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   artifacts,
 		RunSecrets:     req.RunSecrets,
+		RunnerName:     req.Runner,
 		IdempotencyKey: idempotencyKey(r, routePlan),
 		Timeout:        timeout,
 		// The "api" trigger tells the daemon to seal this plan's -out file into a
@@ -339,6 +344,7 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      req.RunSecrets,
+		RunnerName:      req.Runner,
 		IdempotencyKey:  idempotencyKey(r, routeApply),
 		Timeout:         timeout,
 		SavedPlan:       saved,
@@ -517,6 +523,10 @@ type playbookRunRequest struct {
 	ExtraVars           []string `json:"extra_vars"`
 	TolerateUnreachable bool     `json:"tolerate_unreachable"`
 	Timeout             string   `json:"timeout"`
+	// Runner names a registered runner whose memory_max/cpu_quota the sandboxed
+	// execution path should enforce as a per-job cgroup cap, mirroring the
+	// local --runner flag. Empty is the default, uncapped path.
+	Runner string `json:"runner"`
 }
 
 // apiPlaybookRun enqueues an ansible playbook through RunPlaybook and returns the
@@ -607,6 +617,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		TolerateUnreachable: req.TolerateUnreachable,
 		IdempotencyKey:      idempotencyKey(r, routePlaybook),
 		Timeout:             timeout,
+		RunnerName:          req.Runner,
 		Actor:               actorFromRequest(r),
 	})
 	if err != nil {

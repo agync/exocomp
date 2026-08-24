@@ -110,6 +110,63 @@ func TestAPIPlanEnqueuesThroughService(t *testing.T) {
 	}
 }
 
+// TestAPIPlanCarriesRunnerName: a plan request naming a runner sets
+// JobArgs.RunnerName on the enqueued row, so the daemon's existing caps
+// resolution + fail-closed refusal applies to a remote-submitted job exactly as
+// it does for a local one.
+func TestAPIPlanCarriesRunnerName(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+	h.seedWorkspace(t, "web")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/workspaces/web/plan", token,
+		`{"runner":"fedora-ee"}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("plan status = %d, want 200 (%s)", code, body)
+	}
+	_, _, data := decodeEnvelope(t, body)
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil || jv.JobID == 0 {
+		t.Fatalf("plan data has no job_id: %v (%s)", err, body)
+	}
+	job, err := h.store.GetJob(context.Background(), jv.JobID)
+	if err != nil {
+		t.Fatalf("GetJob(%d): %v", jv.JobID, err)
+	}
+	if job.Args.RunnerName != "fedora-ee" {
+		t.Fatalf("job.Args.RunnerName = %q, want fedora-ee", job.Args.RunnerName)
+	}
+}
+
+// TestAPIApplyCarriesRunnerName: same as the plan case, for a fresh apply.
+func TestAPIApplyCarriesRunnerName(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+	h.seedWorkspace(t, "web")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/workspaces/web/apply", token,
+		`{"runner":"fedora-ee"}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("apply status = %d, want 200 (%s)", code, body)
+	}
+	_, _, data := decodeEnvelope(t, body)
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil || jv.JobID == 0 {
+		t.Fatalf("apply data has no job_id: %v (%s)", err, body)
+	}
+	job, err := h.store.GetJob(context.Background(), jv.JobID)
+	if err != nil {
+		t.Fatalf("GetJob(%d): %v", jv.JobID, err)
+	}
+	if job.Args.RunnerName != "fedora-ee" {
+		t.Fatalf("job.Args.RunnerName = %q, want fedora-ee", job.Args.RunnerName)
+	}
+}
+
 // TestAPIPlanScopeGate: a readonly token is forbidden (403 wire error) and no
 // token is unauthenticated (401), both before any job is created.
 func TestAPIPlanScopeGate(t *testing.T) {
