@@ -47,7 +47,7 @@ type DrillResult struct {
 
 // String renders a one-line summary. It exists so a future caller — doctor,
 // self-observability — can render a drill's outcome without depending on
-// its fields; nothing in this lane calls it yet.
+// its fields; nothing calls it yet.
 func (r DrillResult) String() string {
 	if r.OK {
 		return fmt.Sprintf("restore drill OK: %s snapshot %s, RPO %s, %d file(s) verified (%d bytes)",

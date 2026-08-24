@@ -67,8 +67,8 @@ func ManifestMACKey(dek []byte, target string) ([]byte, error) {
 // (name, kind) with secrets.AdditionalData. Same reason as ResticPassword —
 // after a restore there is no envelope yet, and this is the off-the-shelf path
 // the recovery card describes. It shares the envelope's AAD encoder so the two
-// cannot drift, and falls back to the legacy encoding so a row sealed before
-// E3 still restores.
+// cannot drift, and falls back to the legacy encoding so a row sealed under
+// the older AAD format still restores.
 func OpenSealed(dek []byte, name, kind string, nonce, ciphertext []byte) ([]byte, error) {
 	if len(dek) != dekLen {
 		return nil, fmt.Errorf("backup: dek is %d bytes, want %d", len(dek), dekLen)
