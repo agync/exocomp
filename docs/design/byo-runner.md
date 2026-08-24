@@ -390,7 +390,14 @@ job can now name a runner purely for its caps:
   blob column — no migration), threaded from a new `--runner <name>` flag on every job-creation
   command that dispatches through `cmd/exocomp/serve.go`'s `kindRouter`: `playbook run`,
   `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`, `command`, `ansible`.
-  `--remote` does not carry it yet (`client.WorkspaceRequest` and friends are untouched).
+- `--remote` carries it too, for the two verbs that have a remote form at all: `workspace
+  plan`/`apply` (`client.WorkspaceRequest.Runner`, `internal/web/api_write.go`'s
+  `writeRequest.Runner`) and `playbook run` (`client.PlaybookRequest.Runner`,
+  `playbookRunRequest.Runner`). Each handler sets `RunnerName` on the `service.*Input` it
+  builds, so a remote-submitted job goes through the exact same dispatch-time
+  `resolveRunnerCaps` + fail-closed refusal as a local one. `run`, `run-cli`, `command`, and
+  `ansible` have no `--remote` form to thread through — `--runner` on those stays local-only
+  by construction, not by gap.
 - At dispatch — both the daemon's per-kind drivers (`ansibleJobDriver.Run`, `workspaceDriver.Run`,
   `cliJobDriver.Run` in `cmd/exocomp/serve.go`/`ansible.go`) and every no-daemon inline path
   (`runPlaybookInline`, `runWorkspaceInline`, `cliRunInline`) — `resolveRunnerCaps` looks the
@@ -422,6 +429,13 @@ stored job row). What the mechanism does once caps genuinely reach a live cgroup
 `memory.max`/`cpu.max` writes, OOM-kill/throttle behaviour — is §6's own "Built" validation
 above and `internal/executor`'s existing cgroup tests; this wiring is the seam between "an
 operator named a runner with caps" and "`applyJobCaps` sees them", which is what was missing.
+The `--remote` half is tested the same way, one layer at a time: `internal/client/write_test.go`
+(`body()`/JSON carries `runner`), `internal/web/api_write_test.go` and `api_playbook_test.go`
+(a POSTed `runner` lands on `job.Args.RunnerName`, the same field the daemon's dispatch-time
+`resolveRunnerCaps` reads), and `cmd/exocomp/remotewrite_test.go` (the CLI's `--runner` flag
+reaches the wire request). No live daemon is required for any of this: the handler-level
+assertion that the spec carries the runner is the same seam the local path's caps enforcement
+already exercises past that point.
 
 **Real validation (podman 5.8.4 host + podman 5.8.1 lima, `--systemd=always`,
 root-in-container):**
@@ -595,8 +609,9 @@ container tier is never built**, because they close real gaps in the shipped sys
   writable on podman 5.8.x and stays unbuilt. `exocomp doctor` reports availability. Enforced
   behaviour (OOM-kill, CPU throttle) validated on real podman — see §6. **Wired 2026-08-24:**
   a job now names a runner purely for its caps with `--runner <name>` on the job-creation
-  commands (`playbook run`, `run`, `workspace plan`/`apply`, `run-cli`, `command`, `ansible`;
-  `--remote` not yet); `resolveRunnerCaps` (`cmd/exocomp/sandbox.go`) runs the runner's stored
+  commands (`playbook run`, `run`, `workspace plan`/`apply`, `run-cli`, `command`, `ansible`),
+  and `--remote` carries it for the two verbs that have a remote form (`playbook run`,
+  `workspace plan`/`apply`); `resolveRunnerCaps` (`cmd/exocomp/sandbox.go`) runs the runner's stored
   `memory_max`/`cpu_quota` through `ParseCaps` at dispatch and refuses the job if the runner or
   its caps do not resolve. See §6 "Wired" for the full seam, including a second fail-closed
   axis (the sandboxed tier itself not active) found while closing this gap.
