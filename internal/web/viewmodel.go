@@ -37,7 +37,7 @@ type dashboardVM struct {
 	Queue      []jobRow
 	Backups    []backupRow
 	Workspaces []workspaceRow
-	// Post-v1 surfacing: the capabilities shipped since M3b that the glance
+	// Post-v1 surfacing: the capabilities shipped after v1 that the glance
 	// screen had not kept pace with.
 	Sources   []sourceRow
 	Schedules []scheduleRow

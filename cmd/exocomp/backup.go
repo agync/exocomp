@@ -166,7 +166,7 @@ func newBackupRunCmd() *cobra.Command {
 }
 
 // runBackup enqueues one backup job per matching target — kind backup,
-// concurrency key "backup:<target>" — closing the M1 carve-out recorded in
+// concurrency key "backup:<target>" — closing the carve-out recorded in
 // docs/architecture/overview.md: a backup runs through the same queue as
 // everything else, not as a direct engine call. A running `exocomp serve`
 // claims and runs those jobs while this command follows them; with no daemon

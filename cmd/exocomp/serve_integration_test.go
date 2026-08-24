@@ -27,7 +27,7 @@ import (
 // are about is what a process does: signals, exit codes, and the rows left in
 // the database once it is gone. Nothing in here stands in for the daemon.
 
-// TestServeIsTheDaemon covers the M2b serve gate in one run: the state backend
+// TestServeIsTheDaemon covers the serve gate in one run: the state backend
 // answers, the boot sweep retires what a dead process left, a schedule keeps
 // firing while a workspace job runs, SIGHUP rebuilds the schedules, and
 // SIGTERM leaves nothing queued or running behind.

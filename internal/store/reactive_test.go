@@ -34,7 +34,7 @@ func TestMigrationAddsReactiveTables(t *testing.T) {
 	}
 
 	// The rebuilt schedule table has to keep the kinds it already served and
-	// admit the new one, or M2's rows stop firing.
+	// admit the new one, or the already-served rows stop firing.
 	for _, kind := range []string{store.ScheduleShell, store.ScheduleBackup, store.ScheduleTofuPlan} {
 		args := store.ScheduleArgs{Argv: []string{"true"}, Target: "prod"}
 		if _, err := st.CreateSchedule(ctx, store.NewSchedule{

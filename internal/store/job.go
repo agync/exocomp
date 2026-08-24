@@ -58,8 +58,8 @@ func (s JobState) Terminal() bool {
 	return !ok
 }
 
-// JobArgs is what a job needs to execute. It stands in for the M2 runbook
-// table: in M1 a job carries its own entrypoint. Secret material never goes
+// JobArgs is what a job needs to execute. It stands in for a future runbook
+// table: for now a job carries its own entrypoint. Secret material never goes
 // here — it is resolved at execution time and never written to the database.
 type JobArgs struct {
 	Argv    []string `json:"argv,omitempty"`

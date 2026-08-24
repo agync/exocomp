@@ -32,7 +32,7 @@ const pipeDrainGrace = 2 * time.Second
 // rather than surfacing a spurious start failure.
 const textBusyRetries = 12
 
-// Shell is the M1 local driver: one subprocess per job, output scanned line
+// Shell is the local driver: one subprocess per job, output scanned line
 // by line into events, exit code returned as-is.
 type Shell struct{}
 

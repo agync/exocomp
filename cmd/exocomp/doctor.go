@@ -92,7 +92,7 @@ func runDoctor(w io.Writer) error {
 
 	reportSecretsProtection(w, dataDir)
 
-	p("optional tools (M0 probe subset):\n")
+	p("optional tools (probe subset):\n")
 	for _, t := range health.OptionalTools {
 		_, text := health.ProbeToolResult(t)
 		p("  %-18s %s\n", t.Name, text)

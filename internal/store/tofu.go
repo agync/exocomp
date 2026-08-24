@@ -506,7 +506,7 @@ func (s *Store) ForceReleaseTFLock(ctx context.Context, workspaceID int64) (TFLo
 func scanWorkspace(row rowScanner) (Workspace, error) {
 	var (
 		w Workspace
-		// auto_apply is reserved for the M3 scheduled-drift work and is read
+		// auto_apply is reserved for future scheduled-drift work and is read
 		// only to consume the column; nothing sets it.
 		autoApply int64
 		egress    string

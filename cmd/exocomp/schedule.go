@@ -312,7 +312,7 @@ func newSchedulerCmd() *cobra.Command {
 	return cmd
 }
 
-// newSchedulerRunCmd keeps the M2a entry point working as an alias. Its own
+// newSchedulerRunCmd keeps the legacy entry point working as an alias. Its own
 // process — scheduler plus queue, without the state backend — is gone: one
 // daemon owns every surface, and two of them would fight over the same rows.
 func newSchedulerRunCmd() *cobra.Command {

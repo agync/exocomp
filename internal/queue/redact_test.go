@@ -118,7 +118,7 @@ func TestWithoutRedactorEventsAreVerbatim(t *testing.T) {
 	}
 }
 
-// TestVaultedPlaybookLeavesNoSecretInEvents is the M1b ansible gate: a real
+// TestVaultedPlaybookLeavesNoSecretInEvents is the ansible gate: a real
 // playbook decrypts a vaulted variable with the envelope-derived password and
 // prints it, and no job_event row holds the plaintext.
 func TestVaultedPlaybookLeavesNoSecretInEvents(t *testing.T) {

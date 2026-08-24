@@ -219,7 +219,7 @@ func TestDoctorTextRefactorPreservedBytes(t *testing.T) {
 		t.Errorf("data dir line changed:\n%s\nwant it to contain:\n%s", got, wantDataDir)
 	}
 
-	wantOptionalTools := "optional tools (M0 probe subset):\n" +
+	wantOptionalTools := "optional tools (probe subset):\n" +
 		"  ansible-playbook   MISSING\n" +
 		"  tofu               MISSING\n" +
 		"  restic             MISSING\n" +

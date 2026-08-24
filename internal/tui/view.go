@@ -13,7 +13,7 @@ func (m Model) View() tea.View {
 		return tea.NewView("")
 	}
 	// The v0.2 screens are full frames the fixture renderers draw end to end
-	// (their own header, rule, and help bar); the M1 screens still use the
+	// (their own header, rule, and help bar); the older screens still use the
 	// generic header/body/help chrome. A banner, when a hold is active, rides
 	// above whichever is showing.
 	if !m.tailing {

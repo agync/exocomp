@@ -14,7 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// runDevRun and devRunSpec were the M1 scaffolding command `exocomp devrun --
+// runDevRun and devRunSpec were the early scaffolding command `exocomp devrun --
 // <argv...>`: an ungoverned, unsandboxed shell-argv verb with no reason to
 // ship (the nonfunctional review that removed it). The mechanism underneath —
 // open the store through the sweep, enqueue one shell job, drain it in this

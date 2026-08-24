@@ -41,7 +41,7 @@ func newLoginCmd() *cobra.Command {
 			"REFUSED unless --replace-pin is passed. --assume-yes never replaces a pin: it is " +
 			"the flag every script must already pass to pin at all, so accepting it as consent " +
 			"to re-pin would make a machine-in-the-middle a silent success.",
-		Example: "exocomp login nibbler.tailnet.ts.net:8443 --token exo_...",
+		Example: "exocomp login hub.tailnet.ts.net:8443 --token exo_...",
 		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runLogin(cmd, args[0], name, !noDefault, replacePin)
@@ -158,7 +158,7 @@ func confirmPin(cmd *cobra.Command) (bool, error) {
 }
 
 // defaultAlias derives a short name from an endpoint: the first label of its
-// host (nibbler.tailnet.ts.net -> nibbler), or the whole host for an IP/short
+// host (hub.tailnet.ts.net -> hub), or the whole host for an IP/short
 // name. It exists so a login without --name still stores under a memorable key.
 func defaultAlias(endpoint string) (string, error) {
 	raw := strings.TrimSpace(endpoint)

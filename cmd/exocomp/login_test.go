@@ -167,10 +167,10 @@ func TestLoginRefusedOnDecline(t *testing.T) {
 
 func TestDefaultAlias(t *testing.T) {
 	cases := map[string]string{
-		"nibbler.tailnet.ts.net:8443":         "nibbler",
-		"https://nibbler.tailnet.ts.net:8443": "nibbler",
-		"box":                                 "box",
-		"10.0.0.5:8443":                       "10",
+		"hub.tailnet.ts.net:8443":         "hub",
+		"https://hub.tailnet.ts.net:8443": "hub",
+		"box":                             "box",
+		"10.0.0.5:8443":                   "10",
 	}
 	for in, want := range cases {
 		got, err := defaultAlias(in)

@@ -18,7 +18,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// TestSSHServeRendersTUIOverPublicKeyAuth is the scripted probe the M2a
+// TestSSHServeRendersTUIOverPublicKeyAuth is the scripted probe the ssh-serve
 // hardening gate asks for: a real `ssh` client, a real generated key pair, a
 // real authorized_keys file, against a real ssh-serve instance — proving the
 // TUI actually renders over the wish/bubbletea-v2 pairing rather than just

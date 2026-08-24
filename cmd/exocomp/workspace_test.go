@@ -6,8 +6,8 @@ import (
 )
 
 // TestWorkspaceAddPromisesNothingItCannotDo: --auto-apply named a behaviour
-// that does not exist — nothing reads the column, and scheduled drift lands in
-// M3. A flag an operator can set and nothing honours is worse than its absence.
+// that does not exist — nothing reads the column, and scheduled drift is not yet
+// honoured. A flag an operator can set and nothing honours is worse than its absence.
 func TestWorkspaceAddPromisesNothingItCannotDo(t *testing.T) {
 	add, _, err := newWorkspaceCmd().Find([]string{"add"})
 	if err != nil {

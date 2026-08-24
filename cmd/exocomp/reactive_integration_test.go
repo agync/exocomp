@@ -17,7 +17,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestReactivePipelineEndToEnd is the M3a reactive gate as one run of the real
+// TestReactivePipelineEndToEnd is the reactive gate as one run of the real
 // binary: an Alertmanager-shaped POST reaches the daemon's hook, a CEL rule
 // matches it, the guardrails gate the action behind an approval, the decision
 // link releases it, the daemon runs the job, and the funnel is readable off

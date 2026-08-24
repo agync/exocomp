@@ -12,14 +12,14 @@ import (
 // hosts.toml is the client-side, SSH-known-hosts-style record of remote daemons
 // `exocomp login` has pinned: for each named remote, where it is, the pinned
 // cert fingerprint, and the bearer token. It lives outside the data dir because
-// it is a workstation (lrrr) artifact, not daemon state, and it holds a token,
+// it is a workstation artifact, not daemon state, and it holds a token,
 // so it is written 0600 like ~/.ssh/known_hosts + a credential.
 //
 // The file format:
 //
-//	default = "nibbler"
-//	[hosts.nibbler]
-//	endpoint    = "https://nibbler.tailnet.ts.net:8443"
+//	default = "hub"
+//	[hosts.hub]
+//	endpoint    = "https://hub.tailnet.ts.net:8443"
 //	fingerprint = "AA:BB:...:99"
 //	token       = "exo_..."
 

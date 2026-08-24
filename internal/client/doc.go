@@ -1,5 +1,5 @@
 // Package client is the typed HTTP client the CLI uses in remote mode to drive a
-// remote exocompd over the tailnet (the lrrr -> nibbler path, agent-interface
+// remote exocompd over the tailnet (the workstation -> daemon path, agent-interface
 // §3.3). It targets the read-only /api/v1 surface (internal/web/api.go), sends
 // the ADR-0009 bearer token, and verifies the daemon's self-signed certificate
 // against a pinned SHA-256 fingerprint (trust-on-first-use, ADR 0009 §4) — never

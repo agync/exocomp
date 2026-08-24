@@ -11,7 +11,7 @@ import (
 )
 
 // JobKind is the queue.Spec/executor.Spec kind a backup job carries. Backups
-// running as queued jobs closes the M1 carve-out recorded in
+// running as queued jobs closes the carve-out recorded in
 // docs/architecture/overview.md: they go through the same guardrails as
 // every other execution path instead of being a direct CLI invocation.
 const JobKind = "backup"

@@ -426,7 +426,7 @@ func litestreamEntry(res LitestreamProbe) wire.HealthEntry {
 	}
 }
 
-// Tool is an optional tool exocompd shells out to. It is not required in M0.
+// Tool is an optional tool exocompd shells out to. It is not required.
 type Tool struct {
 	Name string
 	Args []string
@@ -470,7 +470,7 @@ func ProbeToolResult(t Tool) (found bool, text string) {
 }
 
 // optionalToolsEntry rolls every tool probe into one subsystem status: a
-// missing tool is a warn in M0 (every one of them is still optional), never a
+// missing tool is a warn (every one of them is still optional), never a
 // fail.
 func optionalToolsEntry() wire.HealthEntry {
 	var missing []string
