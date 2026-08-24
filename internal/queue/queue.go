@@ -38,6 +38,12 @@ type Spec struct {
 	// capture targets and the workflow id) to the job row so a daemon that claims
 	// or re-arms the step keeps it. Names and files only, never a value.
 	Captures *store.JobCaptures
+	// RunnerName names a registered runner whose MemoryMax/CPUQuota the
+	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
+	// is the default, uncapped path. Carried to the job row so whichever
+	// process claims it resolves the same runner (internal/store Runner) at
+	// execution time.
+	RunnerName string
 	// TolerateUnreachable opts an ansible run into the degraded outcome: a run
 	// whose only non-success is unreachable hosts settles as a tolerated
 	// degradation, not a failure. Carried to the job row so a daemon that claims
@@ -171,6 +177,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			ExtraVars:           spec.ExtraVars,
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
+			RunnerName:          spec.RunnerName,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,

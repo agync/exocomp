@@ -99,6 +99,13 @@ type JobArgs struct {
 	// a play that lost its captures on resume would seal nothing and leave the
 	// dependent apply's binding empty. It names files and env keys, never values.
 	Captures *JobCaptures `json:"captures,omitempty"`
+	// RunnerName names a registered Runner (internal/store Runner) whose
+	// MemoryMax/CPUQuota the sandboxed execution path should enforce as a
+	// per-job cgroup cap. Only the name travels here, mirroring Inventory and
+	// RunSecretBinding: the runner row (and whether its caps still parse) is
+	// resolved fresh at execution time, not cached onto the job. Empty is the
+	// default, uncapped path most jobs take.
+	RunnerName string `json:"runner_name,omitempty"`
 }
 
 // JobCaptures is a bootstrap chain's capture wiring on a job row. Workflow is the

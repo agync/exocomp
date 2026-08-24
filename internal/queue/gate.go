@@ -44,6 +44,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 			ExtraVars:           spec.ExtraVars,
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
+			RunnerName:          spec.RunnerName,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,

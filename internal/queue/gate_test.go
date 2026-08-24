@@ -136,3 +136,28 @@ func TestEnqueueGatedRefusesEmptyArgv(t *testing.T) {
 		t.Fatal("gated enqueue with no argv: want an error, got none")
 	}
 }
+
+// TestEnqueueGatedCarriesRunnerName is EnqueueGated's half of
+// TestEnqueueCarriesRunnerName (queue_test.go): a gated tofu apply also
+// resolves its runner's caps once released, so RunnerName must survive the
+// gate the same way Enqueue's does.
+func TestEnqueueGatedCarriesRunnerName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	spec := shellSpec("/bin/true")
+	spec.RunnerName = "capped-runner"
+	gated, err := q.EnqueueGated(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue gated: %v", err)
+	}
+
+	got, err := st.GetJob(ctx, gated.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if got.Args.RunnerName != "capped-runner" {
+		t.Errorf("stored RunnerName = %q, want %q", got.Args.RunnerName, "capped-runner")
+	}
+}

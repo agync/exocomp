@@ -108,6 +108,31 @@ func TestDrainRunsJobsToCompletion(t *testing.T) {
 	}
 }
 
+// TestEnqueueCarriesRunnerName proves Spec.RunnerName reaches the stored job
+// row: the seam a job-creation command's --runner flag depends on to reach
+// resolveRunnerCaps at dispatch time (cmd/exocomp). Empty is the default,
+// unaffected path most jobs take.
+func TestEnqueueCarriesRunnerName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	spec := shellSpec("/bin/true")
+	spec.RunnerName = "capped-runner"
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	got, err := st.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if got.Args.RunnerName != "capped-runner" {
+		t.Errorf("stored RunnerName = %q, want %q", got.Args.RunnerName, "capped-runner")
+	}
+}
+
 func TestDrainTimesOutJob(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
