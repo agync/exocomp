@@ -12,6 +12,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"exocomp.dev/exocomp/internal/naming"
 )
 
 // KindTofu is the Spec kind this driver serves.
@@ -615,27 +617,10 @@ func moduleCacheDir(opts TofuOptions) string {
 	if opts.ModuleCacheDir != "" {
 		return opts.ModuleCacheDir
 	}
-	if opts.PluginCacheDir == "" || !safeWorkspaceName(opts.Workspace) {
+	if opts.PluginCacheDir == "" || !naming.Component(opts.Workspace) {
 		return ""
 	}
 	return filepath.Join(filepath.Dir(opts.PluginCacheDir), "module-cache", opts.Workspace)
-}
-
-// safeWorkspaceName reports whether name is a single safe path component, so a
-// crafted workspace name cannot escape the module cache root.
-func safeWorkspaceName(name string) bool {
-	if name == "" || name == "." || name == ".." {
-		return false
-	}
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.':
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 // env builds the child environment: the allowlist over the parent, then the

@@ -17,6 +17,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/service"
@@ -329,6 +330,9 @@ func newWorkspaceAddCmd() *cobra.Command {
 			"its state encrypted and locked in exocomp while running plans itself.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := naming.ValidateComponent("workspace", args[0]); err != nil {
+				return fmt.Errorf("workspace add: %w", err)
+			}
 			if stateOnly {
 				return runWorkspaceAddStateOnly(cmd, args[0], address)
 			}

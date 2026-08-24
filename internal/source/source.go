@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+
+	"exocomp.dev/exocomp/internal/naming"
 )
 
 // Locality kinds mirror store's source kinds so the CLI can pass a source row's
@@ -65,7 +67,7 @@ func Resolve(dataDir, kind, name, uri string) (Locality, error) {
 		if dataDir == "" {
 			return Locality{}, fmt.Errorf("source %q: no data dir for the checkout", name)
 		}
-		if !safeName(name) {
+		if !naming.Component(name) {
 			return Locality{}, fmt.Errorf("source %q: name is not a safe directory component", name)
 		}
 		loc.Root = filepath.Join(dataDir, checkoutDir, name)
@@ -81,22 +83,4 @@ func Resolve(dataDir, kind, name, uri string) (Locality, error) {
 		return Locality{}, fmt.Errorf("source %q: unknown kind %q", name, kind)
 	}
 	return loc, nil
-}
-
-// safeName reports whether name is a single, safe path component: letters,
-// digits, dash, underscore, and dot, with no dot-only names that would climb
-// out of the sources directory.
-func safeName(name string) bool {
-	if name == "." || name == ".." {
-		return false
-	}
-	for _, r := range name {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
-		case r == '-' || r == '_' || r == '.':
-		default:
-			return false
-		}
-	}
-	return true
 }

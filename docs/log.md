@@ -6,6 +6,20 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — `internal/naming`: one path-component guard, enforced at creation
+
+`executor.safeWorkspaceName` and `source.safeName` were independently-written copies of
+the same rule (one safe filesystem path component), each reachable only as a
+defense-in-depth check deep in a `filepath.Join` call — so a name that reached
+`workspace add` or `source add` unvalidated still made it to disk. Both are replaced by
+`internal/naming.Component`/`ValidateComponent`, a single leaf package with no internal
+imports, and `workspace add` / `source add` now call it as the first thing they do,
+before any store write or filesystem side effect. A traversal-shaped name (`../..`,
+`a/b/c`, `.`, `..`, empty, NUL-bearing) is refused at the boundary; every downstream sink
+keyed on a workspace or source name (module cache dir, plan `-out` path, the tofu→ansible
+inventory handoff file, the git checkout root) is safe by construction rather than by
+each site remembering to re-check.
+
 ## 2026-08-24 — approval gate crash recovery consolidated
 
 [architecture/reactive.md](architecture/reactive.md) gained a "Crash recovery of

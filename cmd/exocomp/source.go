@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
@@ -122,6 +123,10 @@ type sourceAddSpec struct {
 }
 
 func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
+	if err := naming.ValidateComponent("source", name); err != nil {
+		return fmt.Errorf("source add: %w", err)
+	}
+
 	st, err := openStore()
 	if err != nil {
 		return err
