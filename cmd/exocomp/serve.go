@@ -264,7 +264,8 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		queue.WithRedactorProvider(func() *secrets.Redactor {
 			return secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))
 		}),
-		queue.WithClaimGate(cordon.claimAllowed))
+		queue.WithClaimGate(cordon.claimAllowed),
+		queue.WithoutDrainSet())
 
 	// The reactive surfaces are mounted on the one listener before it binds:
 	// routes are fixed at start, and a second listener would be a second

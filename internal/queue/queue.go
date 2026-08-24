@@ -91,7 +91,12 @@ type Queue struct {
 	wake chan struct{}
 	wg   sync.WaitGroup
 
-	mu       sync.Mutex
+	mu sync.Mutex
+	// enqueued is the set a Drain claims from and waits on (owns, mine). Run
+	// (claimAny=true) never consults it: claiming there ignores ownership by
+	// design, so a queue built with WithoutDrainSet leaves this nil and
+	// remember becomes a no-op, rather than accreting one entry per
+	// idempotency hit for the life of a daemon.
 	enqueued map[int64]bool
 	inflight int
 }
@@ -121,6 +126,16 @@ func New(st *store.Store, drv executor.Driver, opts Options, extra ...Option) *Q
 		opt(q)
 	}
 	return q
+}
+
+// WithoutDrainSet omits the ownership bookkeeping Drain uses to claim and
+// wait on only the jobs it enqueued. Pass it for a queue that will only ever
+// Run: claimAny=true claims the oldest claimable row regardless of who
+// enqueued it, so the daemon never reads the set, and a schedule that keeps
+// firing keeps hitting the same idempotency key long after this process last
+// claimed that job itself.
+func WithoutDrainSet() Option {
+	return func(q *Queue) { q.enqueued = nil }
 }
 
 // Enqueue records a job in the queued state. When the spec carries an
@@ -209,10 +224,16 @@ func (q *Queue) stepApprover() StepApprover {
 }
 
 // remember records a job this queue created, which is the set a Drain claims
-// from and waits on.
+// from and waits on. A nil set (WithoutDrainSet) means this queue only ever
+// Runs, so nothing will read it; remember is then a no-op rather than a
+// permanent entry for a job the daemon may never claim itself (already
+// claimed elsewhere, already terminal, or an idempotency hit on either).
 func (q *Queue) remember(id int64) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	if q.enqueued == nil {
+		return
+	}
 	q.enqueued[id] = true
 }
 

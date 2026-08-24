@@ -6,6 +6,22 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — queue: enqueued set scoped to Drain (S2)
+
+Simplification S2: the queue's in-memory ownership set (`remember`/`forget`/`owns`) exists
+only to let a one-shot `Drain` claim and wait on the jobs it enqueued itself; `Run`, the
+daemon's long-lived loop, claims any queued row regardless of who created it and never reads
+the set. It carried one anyway — every idempotency-key hit `remember`ed the job it deduped
+to, including one already terminal or already claimed elsewhere, and only a job this
+instance actually launched itself was ever `forget`ten. A schedule re-firing the same key for
+the life of the process leaked one entry per hit with no upper bound.
+
+`WithoutDrainSet` is the new construction option a `Run`-only queue passes: it leaves the set
+nil, `remember` becomes a no-op, and the daemon (`exocomp serve`'s queue) now carries no set
+at all rather than one that only ever grew. Drain-only queues are unchanged — the default
+still builds and populates the set, so claim filtering and the "every job I enqueued is
+terminal" wait are exactly as before.
+
 ## 2026-08-24 — `internal/naming`: one path-component guard, enforced at creation
 
 `executor.safeWorkspaceName` and `source.safeName` were independently-written copies of

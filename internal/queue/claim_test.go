@@ -2,6 +2,7 @@ package queue_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"path/filepath"
@@ -256,5 +257,103 @@ func TestTheClaimSetShrinksAsJobsEnd(t *testing.T) {
 
 	if got := q.TrackedJobs(); got != 0 {
 		t.Errorf("tracked jobs after every job ended = %d, want 0", got)
+	}
+}
+
+// TestWithoutDrainSetTracksNothing is the daemon's shape: a queue built with
+// WithoutDrainSet that only ever Runs. Its claim never consults the set, so
+// an idempotency hit on a job it will never itself claim — still queued,
+// already claimed by another process, or long since terminal — must leave
+// nothing behind; the old behavior remembered every one of these and only
+// ever forgot a job this instance actually launched, which is a leak with no
+// upper bound over a daemon's lifetime.
+func TestWithoutDrainSetTracksNothing(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := openStore(t, filepath.Join(t.TempDir(), "exocomp.db"))
+
+	q := queue.New(st, executor.NewShell(), queue.Options{
+		Workers:      2,
+		PollInterval: 10 * time.Millisecond,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	}, queue.WithoutDrainSet())
+
+	spec := shellSpec("/bin/true")
+	spec.IdempotencyKey = "sched-fire"
+	fresh, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs after a fresh enqueue = %d, want 0", got)
+	}
+
+	// The same schedule firing again before anything has claimed the row: an
+	// idempotency hit on a job still queued.
+	if _, err := q.Enqueue(ctx, spec); err != nil {
+		t.Fatalf("re-enqueue while queued: %v", err)
+	}
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs after a queued idempotency hit = %d, want 0", got)
+	}
+
+	// A row another process claimed: this instance's own claim loop, which
+	// only ever looks at queued rows, will never see it to forget it.
+	elsewhere, err := st.CreateJob(ctx, store.NewJob{
+		Runbook:        "devrun",
+		Kind:           "shell",
+		Trigger:        "schedule",
+		Args:           store.JobArgs{Argv: []string{"/bin/sleep", "30"}},
+		IdempotencyKey: "sched-elsewhere",
+	})
+	if err != nil {
+		t.Fatalf("create elsewhere job: %v", err)
+	}
+	if err := st.ClaimJob(ctx, elsewhere.ID); err != nil {
+		t.Fatalf("claim elsewhere job: %v", err)
+	}
+	elsewhereSpec := shellSpec("/bin/sleep", "30")
+	elsewhereSpec.IdempotencyKey = "sched-elsewhere"
+	if _, err := q.Enqueue(ctx, elsewhereSpec); err != nil {
+		t.Fatalf("enqueue hitting an elsewhere-claimed job: %v", err)
+	}
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs after an elsewhere-claimed idempotency hit = %d, want 0", got)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- q.Run(runCtx) }()
+
+	waitForState(t, st, fresh.ID, store.StateSucceeded)
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs once the daemon claimed and ran its own job = %d, want 0", got)
+	}
+
+	// The schedule keeps firing on the now-terminal key for the rest of the
+	// daemon's life: the case that leaked one entry per hit before.
+	for range 20 {
+		if _, err := q.Enqueue(ctx, spec); err != nil {
+			t.Fatalf("post-terminal re-enqueue: %v", err)
+		}
+	}
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs after 20 post-terminal idempotency hits = %d, want 0", got)
+	}
+
+	cancel()
+	select {
+	case err := <-done:
+		// A cancel landing between dispatch's own store call and the loop's
+		// ctx.Done() check surfaces as a wrapped context.Canceled; serve.go
+		// treats that the same as the clean nil return on shutdown.
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("run never returned after cancel")
+	}
+	if got := q.TrackedJobs(); got != 0 {
+		t.Fatalf("tracked jobs after the daemon stopped = %d, want 0", got)
 	}
 }
