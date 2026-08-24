@@ -59,7 +59,7 @@ type VenvSpec struct {
 	Offline bool
 	// Sandbox, when set, wraps every uv invocation in the job sandbox tier so
 	// the resolver — arbitrary code an untrusted manifest can steer — never
-	// runs in the daemon context (finding S1). Nil runs uv directly, which the
+	// runs in the daemon context. Nil runs uv directly, which the
 	// hermetic unit tests and a host with no sandbox both rely on.
 	Sandbox SandboxLauncher
 	// UVCacheDir, when set, is exported as UV_CACHE_DIR so uv's download cache
@@ -180,7 +180,7 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 // (AGENTS.md invariant 3); uv's stderr rides in the returned error for the
 // operator, never parsed for a verdict. When the spec carries a sandbox the uv
 // argv is wrapped in the launcher first, so a poisoned manifest's build backend
-// runs confined (finding S1) rather than with daemon privileges.
+// runs confined rather than with daemon privileges.
 func runUV(ctx context.Context, uv string, spec VenvSpec, workDir string, args ...string) error {
 	if spec.Offline {
 		args = append([]string{"--offline"}, args...)
@@ -269,7 +269,7 @@ func wrapAnsibleCoreConflict(err error, pinnedCore string) error {
 // -r for a requirements file, the extracted specifiers for a pyproject. uv
 // understands the manifest formats natively, so nothing here re-implements
 // resolution. The pyproject specifiers are passed after `--`, so a specifier
-// beginning with a dash cannot be read as a uv flag (finding S4); parse-time
+// beginning with a dash cannot be read as a uv flag; parse-time
 // validation already refuses one, and this is the defence-in-depth behind it.
 // The content was validated at discovery, so the parse here cannot fail.
 func installArgs(m PythonManifest) []string {

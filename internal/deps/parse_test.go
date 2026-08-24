@@ -106,7 +106,7 @@ func TestParsePyprojectMalformedIsError(t *testing.T) {
 }
 
 // A dependency specifier that begins with a dash is a flag smuggled through
-// [project].dependencies (finding S4): --index-url redirects the resolver's
+// [project].dependencies: --index-url redirects the resolver's
 // index, -e installs an editable path. Parsing must refuse it so it never
 // reaches uv as a flag, rather than dropping it silently.
 func TestParsePyprojectRejectsFlagSpecifier(t *testing.T) {

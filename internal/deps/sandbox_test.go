@@ -12,10 +12,11 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 )
 
-// TestResolverSandboxWrapsAndDeniesDataDir is the hermetic half of the S1 gate:
-// the launcher the resolver runs under wraps the uv argv, grants the venv cache
-// and HTTPS, and — the point of the finding — refuses to build a profile whose
-// grants would reach the data dir, so a resolver can never be handed the keys.
+// TestResolverSandboxWrapsAndDeniesDataDir is the hermetic half of the
+// resolver-confinement check: the launcher the resolver runs under wraps the
+// uv argv, grants the venv cache and HTTPS, and refuses to build a profile
+// whose grants would reach the data dir, so a resolver can never be handed
+// the keys.
 func TestResolverSandboxWrapsAndDeniesDataDir(t *testing.T) {
 	t.Parallel()
 
@@ -75,8 +76,9 @@ func flagValues(argv []string, name string) []string {
 
 // exfilUV writes a uv stand-in that models a poisoned manifest: on the pip
 // install step it tries to read exfil (a file inside the data dir). If it can,
-// it prints EXFIL-OK and exits 0 — the daemon-context exploit S1 describes; if
-// the read is refused it exits non-zero. On the venv step it lays down the
+// it prints EXFIL-OK and exits 0 — the daemon-context exploit the sandbox
+// exists to close; if the read is refused it exits non-zero. On the venv step
+// it lays down the
 // venv skeleton EnsureVenv checks for, so an *allowed* resolve still succeeds.
 func exfilUV(t *testing.T, exfil string) string {
 	t.Helper()
@@ -110,7 +112,7 @@ exit 0
 	return path
 }
 
-// TestResolverSandboxDeniesDataDirRead is the executable S1 exploit-then-refusal
+// TestResolverSandboxDeniesDataDirRead runs the exploit-then-refusal
 // against the real launcher: a manifest whose install step reads the data dir
 // succeeds when the resolver runs in the daemon context (no sandbox) and fails
 // when it runs under the resolver sandbox, because the read is denied.
@@ -129,7 +131,8 @@ func TestResolverSandboxDeniesDataDirRead(t *testing.T) {
 	uv := exfilUV(t, exfil)
 
 	// Before: no sandbox — the resolver runs in the daemon context and reads the
-	// sealed key straight out of the data dir. This is the finding.
+	// sealed key straight out of the data dir. This is what the sandbox exists
+	// to prevent.
 	unconfined := VenvSpec{CacheRoot: cache, Source: "demo", Manifest: m, UVBinary: uv, Offline: true}
 	if _, err := EnsureVenv(context.Background(), unconfined); err != nil {
 		t.Fatalf("unconfined resolve failed, so the exploit control is not proven: %v", err)
@@ -156,7 +159,7 @@ func TestResolverSandboxDeniesDataDirRead(t *testing.T) {
 		}),
 	}
 	if _, err := EnsureVenv(context.Background(), confined); err == nil {
-		t.Fatal("resolver read the data dir under the sandbox — S1 not closed")
+		t.Fatal("resolver read the data dir under the sandbox — denial not enforced")
 	}
 	if _, err := os.Stat(filepath.Join(confinedCache, "demo", m.Hash)); !os.IsNotExist(err) {
 		t.Errorf("a denied resolve left a venv behind (stat err = %v)", err)
@@ -168,7 +171,7 @@ func TestResolverSandboxDeniesDataDirRead(t *testing.T) {
 // absent while the pre-commit host (which has both) runs the real assertion.
 // The gate is functional: it stands up a denied file and a granted work dir and
 // requires nono to actually refuse the read, so a nono that is present but not
-// enforcing does not make the S1 test pass vacuously.
+// enforcing does not make the test above pass vacuously.
 func requireNono(t *testing.T) {
 	t.Helper()
 	nono, err := exec.LookPath(executor.NonoBinary)

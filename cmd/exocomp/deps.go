@@ -52,8 +52,8 @@ func resolveProjectVenv(ctx context.Context, dataDir, playbook string) (deps.Ven
 	}
 	// The resolver runs uv, and uv runs a manifest's build backend — code
 	// derived from an untrusted source. Under the sandbox tier it is confined to
-	// its venv cache and the manifest, denied the data dir and the keys (finding
-	// S1); the daemon-context resolve stays only where no sandbox can enforce it.
+	// its venv cache and the manifest, denied the data dir and the keys; the
+	// daemon-context resolve stays only where no sandbox can enforce it.
 	if sandboxed(ctx) {
 		uvCache := filepath.Join(cacheRoot, uvCacheSubdir)
 		read := executor.ToolGrants(deps.UVBinary, "python3")

@@ -71,7 +71,7 @@ func parsePyprojectDeps(body []byte) ([]string, error) {
 }
 
 // validateSpecifiers refuses a dependency specifier that would reach uv as a
-// flag rather than a package (finding S4). A PEP 508 requirement names a
+// flag rather than a package. A PEP 508 requirement names a
 // package first — it never begins with `-`, so a leading dash means a
 // `--index-url=…` redirect or a `-e /etc` editable smuggled through
 // `[project.dependencies]`, where pip options have no business. Rejecting it

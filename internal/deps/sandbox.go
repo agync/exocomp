@@ -4,7 +4,7 @@ import "exocomp.dev/exocomp/internal/executor"
 
 // SandboxLauncher wraps a resolver argv in a confinement launcher. EnsureVenv
 // calls it for every uv invocation when a spec carries one, so the resolver
-// runs under the job sandbox tier rather than the daemon context (finding S1).
+// runs under the job sandbox tier rather than the daemon context.
 // A poisoned pyproject.toml or requirements.txt makes uv run a build backend —
 // arbitrary code derived from an untrusted source — and that code must be
 // denied the data dir, the keys, and the hosts the daemon can otherwise reach.
