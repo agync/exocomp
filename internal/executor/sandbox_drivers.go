@@ -55,9 +55,6 @@ func applyJobCaps(sb SandboxOptions, spec *Spec) (func(EventSink), error) {
 // newJobDir explains.
 const jobDirPrefix = "job-"
 
-// shmDir is the POSIX shared-memory mount ansible's multiprocessing needs.
-const shmDir = "/dev/shm"
-
 // passwdFile is the local user database ssh reads to resolve the running uid.
 const passwdFile = "/etc/passwd"
 
@@ -121,7 +118,7 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	// ansible-core forks a worker per host and coordinates them with POSIX
 	// semaphores, which live in /dev/shm; without it the run dies at startup
 	// with "Unable to use multiprocessing".
-	sb.WritePaths = append(slices.Clone(sb.WritePaths), append(job.grants(), shmDir, ansibleHome)...)
+	sb.WritePaths = append(slices.Clone(sb.WritePaths), append(job.grants(), TmpfsRoot, ansibleHome)...)
 	// ssh resolves the local user through /etc/passwd on startup and aborts
 	// ("No user exists for uid N") when it cannot read it; nono does not grant
 	// it by default. It is a single file, world-readable in the normal case,
