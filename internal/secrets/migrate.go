@@ -70,7 +70,7 @@ func Migrate(dataDir string, opts MigrateOptions) (MigrateResult, error) {
 		return MigrateResult{}, errors.New("secrets: migrate: nothing to change")
 	}
 	// A drop must revoke, and re-wrapping the same DEK does not: the dropped
-	// recipient's retained keyring.age keeps unwrapping it (finding E2). Migrate
+	// recipient's retained keyring.age keeps unwrapping it. Migrate
 	// is the O(1) same-DEK re-wrap for adds and host rotations only; a drop goes
 	// through RotateDEK, which mints a new DEK and re-encrypts every secret.
 	if len(opts.Drop) > 0 {
@@ -160,7 +160,7 @@ const (
 	hostKeyAgeNextName     = hostKeyAgeFile + ".next"
 )
 
-// RotateDEK is revocation that actually revokes (finding E2). It mints a NEW
+// RotateDEK is revocation that actually revokes: it mints a new
 // DEK, re-wraps the keyring to the kept recipients only (applying opts.Drop,
 // opts.Add and opts.RotateHost), and bumps the generation — so a dropped
 // recipient's retained keyring.age unwraps only the OLD, now-unused DEK and
@@ -542,7 +542,7 @@ func ageRecipients(rs []Recipient) ([]age.Recipient, error) {
 
 // replaceHostKey writes the new host identity over the old one, in the same
 // at-rest tier the data dir already uses so a rotation never downgrades a
-// wrapped key to plaintext (finding E1). A systemd credential is provisioned
+// wrapped key to plaintext. A systemd credential is provisioned
 // outside this process, so rotating under it is refused with a pointer to the
 // re-provision step rather than silently writing a plaintext key beside it.
 func replaceHostKey(dataDir string, host *age.X25519Identity) error {

@@ -14,7 +14,7 @@ import (
 
 // Environment and file names for the host-key-at-rest tiers. The default
 // (non-TPM) story has to be genuinely secure: a stolen data volume must not
-// contain the key that unwraps the DEK (finding E1, operator decision).
+// contain the key that unwraps the DEK.
 const (
 	// EnvHostKeyPassphrase carries the operator passphrase that wraps host.key
 	// on the compose / non-systemd tier. It lives outside the data volume.

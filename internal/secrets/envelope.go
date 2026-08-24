@@ -115,7 +115,7 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		return nil, nil, err
 	}
 
-	// The default (non-TPM) story must be genuinely secure (finding E1): when an
+	// The default (non-TPM) story must be genuinely secure: when an
 	// operator passphrase is set, the host key is scrypt-wrapped and no
 	// plaintext key ever touches the data dir. Without one it is a bare
 	// plaintext file — the caller (init/setup) warns loudly and points at the
@@ -353,7 +353,7 @@ func (e *Envelope) KitStructure() *RecoveryKit {
 func (e *Envelope) MemoryLock() MemoryLock { return e.memLock }
 
 // lockDEK pins the DEK's pages into RAM. A host that forbids it still runs;
-// doctor reports the state either way (finding E5).
+// doctor reports the state either way.
 func (e *Envelope) lockDEK() {
 	if err := lockMemory(e.dek); err != nil {
 		e.memLock = MemoryLock{Locked: false, Err: err}
@@ -393,7 +393,7 @@ func (e *Envelope) aead() (cipher.AEAD, error) {
 // prefixing each field means no two distinct (name, kind) pairs share an
 // encoding — ("a", "b|c") and ("a|b", "c") differ here — so a ciphertext moved
 // to another row fails to open, the property the "name|kind" concatenation lost
-// to its unescaped separator (finding E3).
+// to its unescaped separator.
 //
 // It is exported because the offline restore path reproduces the envelope's
 // decryption without an envelope (internal/backup), and the two must bind the

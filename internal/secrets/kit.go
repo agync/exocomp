@@ -74,7 +74,7 @@ type KitTarget struct {
 	// has written the DEK-keyed manifest tag at least once. The card carries it
 	// out of band so a git restore can refuse a snapshot whose in-repo tag and
 	// AUTHENTICATED.mac marker an attacker stripped: the in-repo marker travels
-	// in the very ref the attacker controls, this line does not (finding B1). A
+	// in the very ref the attacker controls, this line does not. A
 	// restore of such a target passes `--target-authenticates` (or the CLI
 	// reads this line) so a stripped marker is caught as a downgrade, not
 	// trusted as a never-authenticated legacy target.

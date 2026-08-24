@@ -5,7 +5,7 @@ import "golang.org/x/sys/unix"
 // MemoryLock reports whether a secret buffer was pinned into RAM with mlock(2),
 // keeping it out of swap and core dumps, and why not when it was not. It is
 // what `exocomp doctor` reads to state the real posture rather than the ADR's
-// claim (finding E5).
+// claim.
 type MemoryLock struct {
 	Locked bool
 	// Err is the reason locking was not in effect: the mlock failure on a
