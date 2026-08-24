@@ -56,7 +56,7 @@ func newInitCmd() *cobra.Command {
 
 // warnIfPlaintextHostKey prints a loud, actionable warning when the host key
 // was left as a bare plaintext file in the data dir — the insecure default a
-// stolen data volume defeats (finding E1). The secure tiers say nothing.
+// stolen data volume defeats. The secure tiers say nothing.
 func warnIfPlaintextHostKey(prot secrets.HostKeyProtection, warn io.Writer) {
 	if prot != secrets.HostKeyPlaintext {
 		return

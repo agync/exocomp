@@ -394,9 +394,9 @@ func newIdentityMigrateCmd() *cobra.Command {
 
 			// A drop is a revocation, and re-wrapping the same DEK does not
 			// revoke: a dropped recipient's retained keyring.age keeps unwrapping
-			// it (finding E2). So a drop rotates the DEK, re-encrypting every
-			// sealed row, and only then is the recipient gone. Adds and host
-			// rotations without a drop stay the O(1) re-wrap.
+			// it. So a drop rotates the DEK, re-encrypting every sealed row, and
+			// only then is the recipient gone. Adds and host rotations without a
+			// drop stay the O(1) re-wrap.
 			var res secrets.MigrateResult
 			if len(drop) > 0 {
 				res, err = rotateDEKDroppingRecipients(cmd, dir, opts)
@@ -436,7 +436,7 @@ func newIdentityMigrateCmd() *cobra.Command {
 // rotateDEKDroppingRecipients performs the DEK rotation a drop requires: it
 // re-encrypts every sealed row under the new DEK as part of the same operation
 // that re-wraps the keyring to the remaining recipients, so the drop actually
-// revokes (finding E2).
+// revokes.
 func rotateDEKDroppingRecipients(cmd *cobra.Command, dir string, opts secrets.MigrateOptions) (secrets.MigrateResult, error) {
 	st, err := openStoreAt(dir)
 	if err != nil {

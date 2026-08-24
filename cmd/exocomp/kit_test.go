@@ -289,8 +289,8 @@ func TestIdentityMigrateRoundTrip(t *testing.T) {
 		t.Error("the added recipient derives a different restic password")
 	}
 
-	// Dropping is a revocation: it rotates the DEK (finding E2), so the report
-	// says "revoked" and names the rotation, and every derived key changes.
+	// Dropping is a revocation: it rotates the DEK, so the report says
+	// "revoked" and names the rotation, and every derived key changes.
 	dropped := run("migrate", "--drop-recipient", "laptop", "--rotate-host")
 	if !strings.Contains(dropped, "revoked  laptop") || !strings.Contains(dropped, "host identity rotated") {
 		t.Errorf("migrate did not report the revocation and the rotation: %q", dropped)

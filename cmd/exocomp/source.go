@@ -319,9 +319,9 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 		opts.DeployKeyPEM = key
 	}
 
-	// Pin the forge's host key from the recorded known_hosts store (ADR 0010,
-	// finding S5): without it the ssh transport trusts whatever key the forge
-	// presents on first contact. When the forge host has a recorded key, verify
+	// Pin the forge's host key from the recorded known_hosts store (ADR 0010):
+	// without it the ssh transport trusts whatever key the forge presents on
+	// first contact. When the forge host has a recorded key, verify
 	// against it strictly; a mismatch fails the sync rather than trusting a new
 	// key. A forge not yet recorded stays trust-on-first-use — record it (host
 	// onboard / ssh-keyscan into the store) to get the pin.
