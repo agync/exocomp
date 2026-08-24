@@ -59,3 +59,36 @@ func TestAddTargetStaysQuietWithoutCredentials(t *testing.T) {
 		t.Errorf("a credential-free uri warned anyway: %q", errOut.String())
 	}
 }
+
+// TestBackupListRedactsCredentialURI: a target registered with userinfo in its
+// uri is warned about once at add-target, but the row lives on in the store
+// forever after — `list` must never echo the credential back, in either output
+// mode, on every subsequent look.
+func TestBackupListRedactsCredentialURI(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	const sentinel = "s3kr1t-p4ss-9f2c" //nolint:gosec // test sentinel, not a real credential
+	if out, err := run(t, "backup", "add-target", "--name", "offsite", "--kind", "git",
+		"--uri", "https://bot:"+sentinel+"@git.invalid/backup.git"); err != nil {
+		t.Fatalf("add-target: %v (%s)", err, out)
+	}
+
+	textOut, err := run(t, "backup", "list")
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if strings.Contains(textOut, sentinel) {
+		t.Fatalf("list (text) leaked the credential: %q", textOut)
+	}
+	if !strings.Contains(textOut, "***") {
+		t.Errorf("list (text) did not show the redaction marker: %q", textOut)
+	}
+
+	jsonOut, err := run(t, "backup", "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("list --output json: %v", err)
+	}
+	if strings.Contains(jsonOut, sentinel) {
+		t.Fatalf("list --output json leaked the credential: %q", jsonOut)
+	}
+}

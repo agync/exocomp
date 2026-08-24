@@ -124,7 +124,14 @@ func newBackupListCmd() *cobra.Command {
 				return err
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindBackupList, wire.NewBackupTargetList(targets))
+				// wire.BackupTargetView carries the URI verbatim; scrub it here
+				// rather than growing the projection a redaction-aware branch.
+				scrubbed := make([]store.BackupTarget, len(targets))
+				copy(scrubbed, targets)
+				for i := range scrubbed {
+					scrubbed[i].URI = backup.ScrubURIUserinfo(scrubbed[i].URI)
+				}
+				return emitJSON(cmd, wire.KindBackupList, wire.NewBackupTargetList(scrubbed))
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -135,7 +142,7 @@ func newBackupListCmd() *cobra.Command {
 					return err
 				}
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-					t.Name, t.Kind, t.URI, retentionLabel(t.Retention),
+					t.Name, t.Kind, backup.ScrubURIUserinfo(t.URI), retentionLabel(t.Retention),
 					enabledLabel(t.Enabled), lastRunLabel(runs))
 			}
 			return w.Flush()
