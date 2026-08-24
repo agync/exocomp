@@ -6,22 +6,16 @@ After=exocomp.volume
 Image=localhost/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
-# The per-job run directory (dataDir/run) holds each job's private tree — where
-# a captured secret is staged to a 0600 KUBECONFIG file (bootstrap-first Phase
-# 3). A tmpfs mounted at this child of the data volume shadows the durable
-# volume for that subtree, so a staged bearer lives in RAM and never lands on
-# disk. noswap keeps it out of swap too; without it the RAM-only guarantee does
-# not hold. The daemon refuses file staging unless this mount is present, so it
-# is load-bearing, not an optimisation.
-#
-# CAVEAT (validated 2026-08-24, podman 5.8.1 lima + 5.8.4 host): the `noswap`
-# option is refused on ROOTLESS tmpfs mounts — podman errors "the 'noswap'
-# option is only allowed with rootful tmpfs mounts". With the rootless
-# UserNS=keep-id posture below, this line prevents the container from starting.
-# A rootless deployment must drop `,noswap` (the DEK mlock and at-rest
-# encryption remain), or run the unit rootful. Held for the owner; not silently
-# changed here so the RAM-only intent stays visible.
-Tmpfs=/var/lib/exocomp/run:size=16m,mode=0700,noswap
+# A captured secret that must reach a tool as a file (bootstrap-first Phase 3,
+# a KUBECONFIG above all) is staged to /dev/shm — the RAM-backed tmpfs every
+# rootless podman container has unconditionally — never under dataDir/run on
+# the durable volume above. No mount is needed here: unlike a `Tmpfs=` unit on
+# this path (podman errors "the 'noswap' option is only allowed with rootful
+# tmpfs mounts" under the rootless UserNS=keep-id posture below, so that line
+# used to prevent the container from starting at all), /dev/shm needs nothing
+# added to this unit. The per-job run directory itself is ordinary storage on
+# the data volume now; only the staged secret material lives in RAM, and its
+# bytes are additionally mlocked best-effort (see `exocomp doctor`).
 UserNS=keep-id
 # Per-job resource caps (docs/design/byo-runner.md §6) are OPT-IN and OFF in this
 # default deployment: it stays rootless and capless, and a job that requests caps

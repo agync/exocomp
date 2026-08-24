@@ -54,26 +54,19 @@ func TestQuadletNamesTheSubcommand(t *testing.T) {
 	}
 }
 
-// TestQuadletTmpfsBacksTheRunDir: the per-job run dir is a tmpfs child of the
-// data volume, so a staged KUBECONFIG file (bootstrap-first Phase 3) lives in
-// RAM. noswap is required — without it the RAM-only guarantee the file-staging
-// assertion depends on does not hold.
-func TestQuadletTmpfsBacksTheRunDir(t *testing.T) {
+// TestQuadletCarriesNoRunDirTmpfsMount: a staged KUBECONFIG file
+// (bootstrap-first Phase 3) lives under /dev/shm now — present unconditionally
+// in every rootless podman container — not under a `Tmpfs=` mount on the
+// per-job run dir. That mount's `noswap` option is refused on rootless tmpfs
+// (podman: "the 'noswap' option is only allowed with rootful tmpfs mounts"),
+// so a quadlet carrying it again would prevent the container from starting
+// under the rootless UserNS=keep-id posture this unit runs.
+func TestQuadletCarriesNoRunDirTmpfsMount(t *testing.T) {
 	body := readPackagingFile(t, "quadlet/exocomp.container")
 
-	var line string
 	for l := range strings.SplitSeq(body, "\n") {
-		if strings.HasPrefix(l, "Tmpfs=/var/lib/exocomp/run") {
-			line = l
-			break
-		}
-	}
-	if line == "" {
-		t.Fatal("the quadlet does not tmpfs-back the per-job run dir; a staged secret would land on the durable volume")
-	}
-	for _, opt := range []string{"noswap", "mode=0700"} {
-		if !strings.Contains(line, opt) {
-			t.Errorf("the run tmpfs mount %q lacks %q", line, opt)
+		if strings.HasPrefix(l, "Tmpfs=") {
+			t.Fatalf("the quadlet mounts a Tmpfs= again, which breaks rootless startup: %q", l)
 		}
 	}
 }
