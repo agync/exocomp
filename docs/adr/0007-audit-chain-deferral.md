@@ -6,8 +6,8 @@ Status: accepted · 2026-08-21
 
 The rejected hybrid candidate carried a hash-chained, tamper-evident audit table with
 restore-time chain verification. The accepted thin-core design dropped it without
-recording the decision — a process gap flagged by security-persona review. The
-substantive analysis: anyone able to rewrite `job_event`/audit rows owns the writing
+recording the decision — a gap in the decision record. The substance: anyone able
+to rewrite `job_event`/audit rows owns the writing
 uid and can rewrite an in-database chain head too, so an unanchored chain adds cost
 without adding evidence.
 

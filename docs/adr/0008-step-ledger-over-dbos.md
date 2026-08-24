@@ -34,7 +34,7 @@ DBOS is **deferred, not rejected**: even as the vendor default, its Go SQLite pa
 is one month past GA, ~90% of commits are one author's, and adopting it would place a second workflow runtime —
 its own schema, migrations, recovery semantics — beside a queue whose properties
 (SQL-enforced concurrency keys, redaction at persistence, exit-code doctrine,
-approval gating, crash sweeps) six milestones of gates have proven and no generic
+approval gating, crash sweeps) the test gates have proven and no generic
 engine provides.
 
 ## Consequences

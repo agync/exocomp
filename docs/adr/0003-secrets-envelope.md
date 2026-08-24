@@ -23,7 +23,7 @@ Two failure modes shaped the design:
   *only* inside the thing it protects.
 - **The circular dependency.** All three candidate kits omitted the credentials needed to
   *reach* the backup — restic cannot open an S3 repository without an access key, and the
-  key was in the backup. The critique's gap A1 called this out as a literal circle.
+  key was in the backup. The design critique called this out as a literal circle.
 
 Encrypting each secret directly to N age recipients would also work, but adding a
 recipient later forces a decrypt/re-encrypt of every row, and each secret carries ~200
@@ -74,7 +74,7 @@ whose password is derived from the DEK it wraps would be a perfect circle.
   one is not: re-wrapping the same DEK leaves the dropped recipient's retained `keyring.age`
   able to unwrap it forever, so a drop **rotates the DEK** (`identity migrate
   --drop-recipient` → `RotateDEK`), minting a new key, re-encrypting every sealed row under
-  it, and re-wrapping the keyring to the remaining recipients only (finding E2).
+  it, and re-wrapping the keyring to the remaining recipients only.
 - DEK rotation is the most dangerous operation in the system, because the derived subkeys
   change with it: restic repos must be re-keyed and OpenTofu state re-encrypted. The
   envelope-level rotation re-encrypts the sealed rows and bumps the generation; the derived

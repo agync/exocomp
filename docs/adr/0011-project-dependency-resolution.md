@@ -68,7 +68,7 @@ true and keeps the network off the steady-state job path.
 stage + `MANIFEST.json` pin `uv==0.9.7`); this ADR makes that load-bearing, not incidental.
 For a host (non-container) install, uv joins the pinned runtime tool set alongside
 ansible-core/tofu/restic/age/sops, and **`exocomp doctor` probes it** (today it probes
-ansible/tofu/restic/age/sops but not uv/git — pass 3 adds them).
+ansible/tofu/restic/age/sops but not uv/git — a later pass adds them).
 
 Boundary refinements to ADR 0006 (what stays true, what changes):
 

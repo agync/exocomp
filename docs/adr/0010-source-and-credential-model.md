@@ -4,12 +4,12 @@ Status: accepted · 2026-08-22
 
 ## Context
 
-M1/M2 shipped `playbook run <local-path>` and `workspace add --dir <local-dir>` —
+Early releases shipped `playbook run <local-path>` and `workspace add --dir <local-dir>` —
 runs point at a path on the box. That is a demo shape, not how Ansible and
 OpenTofu are actually operated. Real usage is git-source-centric and has three
 credential planes the current design under-specifies: git access, secret
-decryption, and reaching the managed fleet. The persona review already flagged
-fragments (inventory undesigned; host onboarding; per-host become/ssh).
+decryption, and reaching the managed fleet. Review already flagged fragments
+(inventory undesigned; host onboarding; per-host become/ssh).
 
 ## Decision — the real flows
 
@@ -21,7 +21,7 @@ fragments (inventory undesigned; host onboarding; per-host become/ssh).
    forge (or `--key <sealed-secret>` mounts an existing one, sealed into the
    envelope). It clones into the data volume and **auto-syncs** — on a schedule
    and/or a push webhook — pinning to a ref/tag the control plane advances only
-   after a gated run (the ansible-pull trust anchor from amendment 3).
+   after a gated run (the ansible-pull trust anchor).
 2. **Vault is registered, not passed.** Vaulted files live in the repo; the
    operator registers the vault-id password (`exocomp secrets add
    ansible-vault/<project>` or derives it) mapped to a `--vault-id label`.
@@ -73,10 +73,10 @@ for an ad-hoc in-container path.
 
 ## Consequences
 
-New surface, folded into M3b (`source add|list|sync|rm`, deploy-key + fleet-key
+New surface (`source add|list|sync|rm`, deploy-key + fleet-key
 generation, `known_hosts` store, the host-onboarding runbook, `workspace add
 --state-only` + backend-config emit) and the inventory/adoption docs. The
-`repo` table sketched in M1 is realised here. The local-path forms stay for
+`repo` table sketched earlier is realised here. The local-path forms stay for
 quick use and tests but are no longer the headline flow. This is a scope
-increase over the original M3b brief and is accepted as correctness, not
+increase over the original brief and is accepted as correctness, not
 gold-plating: the tool is not usable for real Ansible/Terraform without it.

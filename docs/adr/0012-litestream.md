@@ -16,9 +16,9 @@ a tighter RPO than a timer can give, without a second heavy service inside the
 container.
 
 Litestream ships a SQLite database's WAL frames to a replica target continuously,
-giving seconds-level RPO. The candidate thin-core design (§7.4) deferred it; the
-hybrid-candidate finding flagged the one property that constrains how it can be
-adopted here: **Litestream does not encrypt.** It streams WAL frames to the target as
+giving seconds-level RPO. An earlier design draft deferred it; review flagged the
+one property that constrains how it can be adopted here: **Litestream does not
+encrypt.** It streams WAL frames to the target as
 it reads them. That is safe to a LAN-local disk or an already-encrypted store, and
 unsafe to a plaintext bucket over the open internet.
 

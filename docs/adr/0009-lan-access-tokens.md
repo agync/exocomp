@@ -19,8 +19,9 @@ root of trust for minting network credentials.
    <name> [--scope operator|readonly|approve] [--expires <dur>]` prints the token
    exactly once (kit discipline); `token list` shows name, scope, expiry,
    last-used, and a non-secret prefix; `token revoke <name>` is immediate. At
-   rest: argon2id hashes in the existing secret store; lifecycle columns per
-   amendment 11. Minting requires the data dir — that is the "local auth".
+   rest: argon2id hashes in the existing secret store; lifecycle columns
+   (expiry, last-used, revocation). Minting requires the data dir — that is the
+   "local auth".
 3. **Browser sessions bootstrap from a token**: presented once, exchanged for an
    HttpOnly, SameSite=Strict session cookie bound to the token row — revoking the
    token invalidates its sessions. Approval callback links remain single-use HMAC
