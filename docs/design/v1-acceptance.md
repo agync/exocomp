@@ -1,12 +1,12 @@
 # v1.0 acceptance bar — core functionality must be reliable first
 
-v1.0 is not "the milestones shipped"; it is "these five end-to-end stories work reliably."
-The post-v1 program (Litestream, GoAlert, OpenBao) does not begin until this bar is met.
-Reliability of the core comes before breadth of features. Each story runs end-to-end on real
-infrastructure (a Lima Fedora node for the host-facing runs, real tofu/ansible/git/restic)
-behind its own gate script.
+v1.0 is not "the milestones shipped"; it is "the acceptance scenarios below work
+reliably end-to-end." The post-v1 program (Litestream, GoAlert, OpenBao) does not
+begin until this bar is met. Reliability of the core comes before breadth of
+features. Each scenario runs end-to-end on real infrastructure (a Lima Fedora node
+for the host-facing runs, real tofu/ansible/git/restic) behind its own gate script.
 
-## The acceptance stories (each must run end-to-end, gate-tested)
+## The acceptance scenarios (each must run end-to-end, gate-tested)
 
 1. **"Here is my git repo, go run my playbook regularly."** Register a git
    source, deploy key, auto-sync a signed ref, schedule the play; a bad commit
@@ -22,22 +22,24 @@ behind its own gate script.
 5. **"Run terraform, then trigger dynamic inventory FROM terraform for my
    ansible play and execute it."** The IaC→CM handoff, native: a workspace's
    encrypted tfstate is an inventory source for a play, in one process, without
-   leaking state secrets. This is the story exocomp can do that a hand-rolled
+   leaking state secrets. This is the scenario exocomp can do that a hand-rolled
    setup cannot — and the one that most justifies the whole tool.
 
 ## What gates the bar
 
 - The convergent credential-plane must-fix: sealed secrets bound to a run as named
-  env, so dynamic inventories and providers authenticate under the sandbox. Nothing
-  in stories 1–5 works without it.
-- The source-model work covers stories 1 and 4 and the ansible/tofu run fidelity.
-- Story 3 = the tofu-plan schedule kind + drift detail + notify (true-drift vs
-  pending-config split from `-refresh-only`).
-- Story 5 = a new native capability (see below).
-- Every story ships with an e2e gate script exercised on the Lima node, run from a
-  fresh clone in maintenance.
+  env, so dynamic inventories and providers authenticate under the sandbox. None
+  of the acceptance scenarios work without it.
+- The source-model work covers the git-source and host/in-container-path
+  scenarios, plus the ansible/tofu run fidelity.
+- The tofu-plan schedule kind + drift detail + notify (true-drift vs
+  pending-config split from `-refresh-only`) covers the drift-notification
+  scenario.
+- The Terraform→Ansible inventory handoff is a new native capability (see below).
+- Every scenario ships with an e2e gate script exercised on the Lima node, run
+  from a fresh clone in maintenance.
 
-## Story 5 — the Terraform→Ansible inventory handoff
+## The Terraform→Ansible inventory handoff
 
 exocomp uniquely holds the encrypted tfstate AND runs the ansible. The native design:
 
