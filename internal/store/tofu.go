@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"exocomp.dev/exocomp/internal/naming"
 )
 
 // ErrLocked reports that a workspace's state lock is held by someone else, or
@@ -89,7 +91,12 @@ type TFLock struct {
 const workspaceColumns = `id, name, tofu_dir, auto_apply, serial, extra_egress_ports`
 
 // CreateWorkspace inserts a workspace. A repeated name returns ErrDuplicate.
+// The name is validated here, not only at the CLI boundary, so a future
+// non-CLI creation path can't hand an unsafe name to the plan -out= sink.
 func (s *Store) CreateWorkspace(ctx context.Context, w Workspace) (Workspace, error) {
+	if err := naming.ValidateComponent("workspace", w.Name); err != nil {
+		return Workspace{}, fmt.Errorf("store: create workspace: %w", err)
+	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO workspace (name, tofu_dir, serial) VALUES (?, ?, 0)`,
 		w.Name, w.TofuDir)

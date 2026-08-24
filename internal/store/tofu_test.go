@@ -73,6 +73,17 @@ func TestWorkspaceCRUD(t *testing.T) {
 	}
 }
 
+func TestCreateWorkspaceRejectsUnsafeName(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+
+	for _, name := range []string{"../..", "a/b/c", ".", "", "evil\x00name"} {
+		if _, err := s.CreateWorkspace(ctx, store.Workspace{Name: name, TofuDir: "/srv/tofu/x"}); err == nil {
+			t.Errorf("CreateWorkspace(%q) = nil error, want a validation error", name)
+		}
+	}
+}
+
 func TestTFStateKeepsEverySerial(t *testing.T) {
 	s, _ := open(t)
 	ctx := context.Background()

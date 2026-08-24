@@ -110,6 +110,11 @@ keyed on a workspace or source name (module cache dir, plan `-out` path, the tof
 inventory handoff file, the git checkout root) is safe by construction rather than by
 each site remembering to re-check.
 
+The store layer itself was still asymmetric: `Store.CreateSource` had no first-party
+validation of its own either, but `Store.CreateWorkspace` was the one with no guard at
+all below the CLI boundary. It now calls `naming.ValidateComponent` too, so a future
+non-CLI creation path can't hand an unsafe name to the plan `-out=` sink.
+
 ## 2026-08-24 — approval gate crash recovery consolidated
 
 [architecture/reactive.md](architecture/reactive.md) gained a "Crash recovery of
