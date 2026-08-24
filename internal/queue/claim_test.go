@@ -235,6 +235,71 @@ func TestClaimRefusesAHeldConcurrencyKey(t *testing.T) {
 	}
 }
 
+// TestClaimSkipsPastAWindowOfBlockedRows is the starvation case: a run of
+// queued rows sharing one held concurrency key, wider than claim's one-page
+// scan, must not hide a runnable job sitting behind it. Before the fix, claim
+// fetched only the oldest ClaimPageSize queued rows and gave up once it had
+// tried every one of them — a window entirely filled with held-key rows meant
+// the runnable job past the window was never even looked at.
+func TestClaimSkipsPastAWindowOfBlockedRows(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	st := openStore(t, filepath.Join(t.TempDir(), "exocomp.db"))
+
+	blocked := store.NewJob{
+		Runbook: "backup", Kind: "backup", Trigger: "manual",
+		Args:           store.JobArgs{Argv: []string{"/bin/true"}},
+		ConcurrencyKey: "block",
+	}
+	holder, err := st.CreateJob(ctx, blocked)
+	if err != nil {
+		t.Fatalf("create holder: %v", err)
+	}
+	if err := st.ClaimJob(ctx, holder.ID); err != nil {
+		t.Fatalf("claim holder: %v", err)
+	}
+	// A full page of rows sharing the held key: every one of them refuses to
+	// claim, and never frees, for the life of this test.
+	for range queue.ClaimPageSize {
+		if _, err := st.CreateJob(ctx, blocked); err != nil {
+			t.Fatalf("create blocked row: %v", err)
+		}
+	}
+
+	q := queueOver(st, executor.NewShell(), 2)
+	runnable, err := q.Enqueue(ctx, shellSpec("/bin/true"))
+	if err != nil {
+		t.Fatalf("enqueue runnable: %v", err)
+	}
+
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan error, 1)
+	go func() { done <- q.Run(runCtx) }()
+
+	waitForState(t, st, runnable.ID, store.StateSucceeded)
+
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("run: %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("run never returned after cancel")
+	}
+
+	// The blocked rows were never candidates: the holder never finished.
+	for _, id := range []int64{holder.ID} {
+		got, err := st.GetJob(ctx, id)
+		if err != nil {
+			t.Fatalf("get holder: %v", err)
+		}
+		if got.State != store.StateRunning {
+			t.Errorf("holder %d state = %s, want still running", id, got.State)
+		}
+	}
+}
+
 // TestTheClaimSetShrinksAsJobsEnd: the daemon's queue enqueues every schedule
 // fire for as long as the process lives. A set that only grew would be a leak
 // measured in days.

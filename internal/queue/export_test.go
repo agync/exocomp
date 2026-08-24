@@ -8,3 +8,7 @@ func (q *Queue) TrackedJobs() int {
 	defer q.mu.Unlock()
 	return len(q.enqueued)
 }
+
+// ClaimPageSize is claim's page size, exported so a test can size a window of
+// blocked rows against the real value rather than a copy that could drift.
+const ClaimPageSize = claimPageSize

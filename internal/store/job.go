@@ -238,6 +238,11 @@ type JobFilter struct {
 	ConcurrencyKey string
 	Runbook        string
 	Limit          int
+	// Offset skips this many matching rows before Limit applies, for a caller
+	// paging past a window it already inspected (e.g. the queue's claim loop
+	// paging past blocked rows rather than being capped by Limit alone).
+	// Ignored when Limit is zero.
+	Offset int
 }
 
 // ListJobs returns jobs matching the filter, oldest queued first.
@@ -267,8 +272,8 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 	}
 	query += " ORDER BY queued_at, id"
 	if f.Limit > 0 {
-		query += " LIMIT ?"
-		args = append(args, f.Limit)
+		query += " LIMIT ? OFFSET ?"
+		args = append(args, f.Limit, f.Offset)
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)

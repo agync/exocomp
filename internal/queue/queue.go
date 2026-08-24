@@ -319,9 +319,18 @@ func (q *Queue) dispatch(ctx context.Context, claimAny bool) error {
 	return nil
 }
 
+// claimPageSize bounds one ListJobs call in claim. It is not the limit on how
+// much of the queue a single claim() considers: claim pages past a page that
+// yielded nothing claimable, so a run of blocked-but-older rows wider than one
+// page cannot indefinitely hide a runnable job sitting behind it.
+const claimPageSize = 512
+
 // claim moves the oldest runnable queued job to running. Jobs whose
 // concurrency key is already held are skipped, not waited for; so is every
-// row this queue did not enqueue when claimAny is false.
+// row this queue did not enqueue when claimAny is false. It pages through the
+// queued table oldest-first until it claims one or runs out of rows, so a
+// window of held-key rows older than one page cannot starve a runnable job
+// sitting behind it.
 func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, error) {
 	// A cordoned daemon claims nothing new: the row it would take stays queued
 	// until the cordon lifts (or the next boot sweeps it), so a planned reboot
@@ -329,35 +338,45 @@ func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, erro
 	if q.claimGate != nil && !q.claimGate() {
 		return store.Job{}, false, nil
 	}
-	jobs, err := q.store.ListJobs(ctx, store.JobFilter{
-		States: []store.JobState{store.StateQueued},
-		Limit:  512,
-	})
-	if err != nil {
-		return store.Job{}, false, err
-	}
 
-	for _, job := range jobs {
-		if !claimAny && !q.owns(job.ID) {
-			continue
-		}
-		// The store decides: the queued -> running move and the concurrency
-		// key check are one statement there, so a second process over the same
-		// database cannot claim a key this one is holding.
-		err := q.store.ClaimJob(ctx, job.ID)
+	for offset := 0; ; offset += claimPageSize {
+		jobs, err := q.store.ListJobs(ctx, store.JobFilter{
+			States: []store.JobState{store.StateQueued},
+			Limit:  claimPageSize,
+			Offset: offset,
+		})
 		if err != nil {
-			// A pending approval refuses the claim exactly like a held concurrency
-			// key: skip the row and try the next, never run it. The gate holds even
-			// if a mis-release left the job queued with its approval undecided.
-			if errors.Is(err, store.ErrStateConflict) || errors.Is(err, store.ErrConcurrencyHeld) ||
-				errors.Is(err, store.ErrApprovalPending) {
-				continue
-			}
 			return store.Job{}, false, err
 		}
-		return job, true, nil
+		if len(jobs) == 0 {
+			return store.Job{}, false, nil
+		}
+
+		for _, job := range jobs {
+			if !claimAny && !q.owns(job.ID) {
+				continue
+			}
+			// The store decides: the queued -> running move and the concurrency
+			// key check are one statement there, so a second process over the same
+			// database cannot claim a key this one is holding.
+			err := q.store.ClaimJob(ctx, job.ID)
+			if err != nil {
+				// A pending approval refuses the claim exactly like a held concurrency
+				// key: skip the row and try the next, never run it. The gate holds even
+				// if a mis-release left the job queued with its approval undecided.
+				if errors.Is(err, store.ErrStateConflict) || errors.Is(err, store.ErrConcurrencyHeld) ||
+					errors.Is(err, store.ErrApprovalPending) {
+					continue
+				}
+				return store.Job{}, false, err
+			}
+			return job, true, nil
+		}
+
+		if len(jobs) < claimPageSize {
+			return store.Job{}, false, nil
+		}
 	}
-	return store.Job{}, false, nil
 }
 
 func (q *Queue) owns(id int64) bool {
