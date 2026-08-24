@@ -3,8 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -128,12 +130,17 @@ func planSerialLabel(a store.Approval) string {
 // bearer capabilities: printing one is handing it out, which is why this is a
 // separate command rather than a column in `approval list`.
 func newApprovalLinkCmd() *cobra.Command {
-	return &cobra.Command{
+	var publicURL string
+	cmd := &cobra.Command{
 		Use:   "link <id>",
 		Short: "Print the decision links for a pending approval",
 		Long: "The links are single-use capabilities derived from the envelope, so they can " +
 			"be reprinted after a restart and are worthless to anyone without the data dir. " +
-			"Treat the output the way you would treat the recovery card.",
+			"Treat the output the way you would treat the recovery card.\n\n" +
+			"By default the link is rooted at the daemon's recorded loopback address, which " +
+			"is unreachable off-box and does not survive a restart. Pass --public-url (or set " +
+			"" + approvalPublicURLEnv + ") to the SAME value `exocomp serve --public-url` was " +
+			"started with, so the minted link is one an approver can actually open.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			id, err := strconv.ParseInt(args[0], 10, 64)
@@ -170,7 +177,7 @@ func newApprovalLinkCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			base, err := daemonBaseURL(dir)
+			base, err := linkBaseURL(dir, publicURL)
 			if err != nil {
 				return err
 			}
@@ -185,6 +192,10 @@ func newApprovalLinkCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().StringVar(&publicURL, "public-url", "",
+		"base URL the link is rooted at (or "+approvalPublicURLEnv+"); pass the same value "+
+			"`serve --public-url` used (default: the daemon's recorded loopback address)")
+	return cmd
 }
 
 // newApprovalDecideCmd settles a pending approval. With --remote it POSTs the
@@ -321,6 +332,32 @@ func newApprovalDecideCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&approve, "approve", false, "approve the job and release it to the queue")
 	cmd.Flags().BoolVar(&reject, "reject", false, "reject the job; nothing is applied")
 	return cmd
+}
+
+// approvalPublicURLEnv is the env-var counterpart to `approval link
+// --public-url`, named to match `serve --public-url` (which reads no env
+// itself — see linkBaseURL). Exporting it once alongside the flag means every
+// later `approval link` in that environment picks up the same value without
+// repeating it.
+const approvalPublicURLEnv = "EXOCOMP_PUBLIC_URL"
+
+// linkBaseURL is what a decision link is rooted at. `serve --public-url` sets
+// this same base for the PUSH decision-link path (engine.SetBaseURL in
+// serve.go), but that value lives only in the running daemon's memory
+// (internal/reactive.Engine.baseURL) — it is never persisted, so a separate
+// `approval link` invocation cannot read it back on its own. override (the
+// --public-url flag, or EXOCOMP_PUBLIC_URL) is how an operator supplies the
+// same value here; only when neither is set does this fall back to the
+// recorded loopback address, which is unreachable off-box and does not
+// survive a restart.
+func linkBaseURL(dir, override string) (string, error) {
+	if v := strings.TrimSpace(override); v != "" {
+		return v, nil
+	}
+	if v := strings.TrimSpace(os.Getenv(approvalPublicURLEnv)); v != "" {
+		return v, nil
+	}
+	return daemonBaseURL(dir)
 }
 
 // daemonBaseURL is the address the running daemon recorded. Without one the

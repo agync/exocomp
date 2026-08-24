@@ -115,6 +115,13 @@ exocomp approval list
 exocomp approval link 3      # prints the two decision URLs
 ```
 
+`serve --public-url` is what the daemon's own push notifications point at, but
+that value lives only in the running daemon's memory — `approval link` cannot
+read it back, so it defaults to the recorded loopback address, unreachable off
+the box. Behind a reverse proxy, pass the same value with `approval link 3
+--public-url https://exocomp.lan` (or export `EXOCOMP_PUBLIC_URL` once) so the
+printed link is one you can actually open.
+
 The links are single-use capabilities; printing one is handing it out. Tapping
 either from a phone, or `curl`-ing it, is the whole flow. A used or expired link
 answers with a terminal notice rather than an error, and an approval whose TTL

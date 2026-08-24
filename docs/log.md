@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — reactive: `approval link` needs its own --public-url
+
+[operations/reactive.md](operations/reactive.md) previously documented `serve --public-url`
+as what a decision link is rooted at without qualifying that this only holds for the daemon's
+own push notifications. `approval link` re-derives a link in a separate CLI invocation and had
+no way to read the running daemon's `--public-url` back (it lives in `reactive.Engine`'s
+in-memory base URL, never persisted), so it silently printed the loopback address recorded at
+daemon startup — unreachable off-box and stale after a restart. Correction of fact, plus the
+command's own `--public-url` / `EXOCOMP_PUBLIC_URL` documented as the fix: pass the same value
+`serve` was started with.
+
 ## 2026-08-24 — queue: enqueued set scoped to Drain (S2)
 
 Simplification S2: the queue's in-memory ownership set (`remember`/`forget`/`owns`) exists
