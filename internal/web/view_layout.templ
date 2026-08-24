@@ -37,6 +37,7 @@ templ layout(p page) {
 					<nav class="side-nav">
 						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard)
 						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs)
+						@navlink(p.Nav, "run", "/run", "Run", iconRun)
 						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces)
 						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals)
 						@navlink(p.Nav, "events", "/events", "Events", iconEvents)
@@ -121,6 +122,7 @@ templ navicon(d string) {
 const (
 	iconDashboard = "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"
 	iconJobs      = "M4 6h16M4 12h16M4 18h10"
+	iconRun       = "M8 5v14l11-7z"
 	iconApprovals = "M20 6L9 17l-5-5"
 	iconEvents    = "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0"
 	iconSources   = "M6 3v12M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9c0 6-6 3-6 9"
