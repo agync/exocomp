@@ -14,6 +14,18 @@ import (
 
 const kubeconfigSentinel = "apiVersion: v1\nkind: Config\ntoken: s3cr3t-bearer\n"
 
+// TestShmDirIsDevShm pins the literal value: every other test in this file
+// asserts a staged path is "under executor.ShmDir", which would pass
+// vacuously if ShmDir itself pointed somewhere durable. This is the one
+// assertion against the literal string, so a change to the constant is
+// caught here even though it would satisfy every relative check elsewhere.
+func TestShmDirIsDevShm(t *testing.T) {
+	t.Parallel()
+	if executor.ShmDir != "/dev/shm" {
+		t.Fatalf("executor.ShmDir = %q, want /dev/shm", executor.ShmDir)
+	}
+}
+
 // TestStageRunSecretFilesWritesShmFile proves the helper materializes a named
 // run-secret to a 0600 file under /dev/shm, rewrites that env to the file's
 // path, and leaves the other run-secrets as env values.
