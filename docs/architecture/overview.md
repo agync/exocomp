@@ -71,21 +71,20 @@ The alternative — an execution engine with its own scheduler and its own Run b
 dispatch paths the gate never sees. That is the structural flaw that eliminated two of the
 three candidate designs.
 
-**M2a closed half the carve-out.** `exocomp backup run` now enqueues one job per target
+**Backups run through the queue.** `exocomp backup run` enqueues one job per target
 (kind `backup`, concurrency key `backup:<target>`) and drains the queue in place: a backup
 goes through the same guardrails as everything else, and `exocomp schedule add --kind
 backup` puts it on a cron expression via `internal/sched` (`robfig/cron/v3`), rebuilt from
-the `schedule` table on every start. `exocomp restore` is still a direct CLI invocation,
+the `schedule` table on every start. `exocomp restore` remains a direct CLI invocation,
 outside the queue — restoring is an operator recovering from a cold start, not a target the
-scheduler already reaches, and it stays a carve-out until that changes.
+scheduler already reaches.
 
-**M3a closed the other half.** A webhook is now the fourth headless client of the same
-queue: `POST /hook/<derived token>` on the daemon's own listener, normalized onto one
-event shape, matched by `cel-go` rules, and gated by silence, dedup, cooldown, and daily
-cap before anything is enqueued. A destructive action becomes a `job` row in
-`awaiting_approval` — a state no claim statement admits — released only by a single-use
-HMAC decision link that fails closed on its TTL. Every event is persisted with its
-outcome, its reason, and the trace that produced them
+**Webhooks are the fourth headless client** of the same queue: `POST /hook/<derived token>`
+on the daemon's own listener, normalized onto one event shape, matched by `cel-go` rules,
+and gated by silence, dedup, cooldown, and daily cap before anything is enqueued. A
+destructive action becomes a `job` row in `awaiting_approval` — a state no claim statement
+admits — released only by a single-use HMAC decision link that fails closed on its TTL.
+Every event is persisted with its outcome, its reason, and the trace that produced them
 ([reactive layer](reactive.md)).
 
 ## Components

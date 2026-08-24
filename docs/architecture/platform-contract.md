@@ -1,8 +1,8 @@
 # Platform integration contract
 
 "Works with" is a tested contract, not an adjective. Each platform below has a tier; the
-CI enforcement named per row is **designed, not yet built** — the repository has no CI in
-M0, so until it lands these tiers are commitments the delivery plan must make true, not
+CI enforcement named per row is **designed, not yet built** — the repository has no CI
+yet, so until it lands these tiers are commitments the delivery plan must make true, not
 verified claims.
 
 | Platform | Tier | What makes it true |

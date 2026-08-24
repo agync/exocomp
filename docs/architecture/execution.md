@@ -30,8 +30,8 @@ Three tiers, in increasing isolation and increasing cost:
 | Tier | Status | Isolation mechanism |
 |---|---|---|
 | `local` | **shipped**, and the only topology bootstrap and DR require | subprocess boundary, rootless container, per-job 0700 private dir, env allowlists |
-| `local-sandboxed` | **shipped** (M3a; `nono`, Landlock), the default on Linux | the above plus a kernel default-deny sandbox per job subprocess |
-| `container` | designed, M3, deferred alongside Wails and OpenBao | per-job sibling containers |
+| `local-sandboxed` | **shipped** (`nono`, Landlock), the default on Linux | the above plus a kernel default-deny sandbox per job subprocess |
+| `container` | designed, deferred alongside Wails and OpenBao | per-job sibling containers |
 
 Under `local` a job is trust-equivalent to the daemon: isolation is process boundary and
 file permissions, not kernel policy, so anything a job subprocess's uid can reach, the

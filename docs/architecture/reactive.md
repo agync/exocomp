@@ -84,7 +84,7 @@ crash-loop restart does not hand a rule a fresh budget. A cap **throttles** the
 rule — it withholds the action but keeps the rule armed — and pages at max
 priority, once per rolling window. Disabling the rule instead would let a flood
 of matching events blind a security rule: it would go dark until a human
-re-enabled it, which is exactly what an attacker floods to achieve (finding R3).
+re-enabled it, which is exactly what an attacker floods to achieve.
 Throttling keeps the rule evaluating, so every over-cap event stays visible as a
 suppressed row naming the rule, the budget recovers on its own when the rolling
 window clears, and the loud page is throttled to one per window so the flood
@@ -133,7 +133,7 @@ raised the approval: the resolve must come from the same source, be admitted by
 that rule's source filter, and match the rule when its status is read as firing.
 A forged resolve that shares only the dedup key — stripped of the labels the
 rule fired on — matches no rule and cancels nothing; the approval then fails
-closed at its TTL. This is the R2 scoping.
+closed at its TTL.
 
 ### Crash recovery of the gate
 
