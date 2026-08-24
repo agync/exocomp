@@ -1,6 +1,6 @@
 # History
 
-Thirteen documents from the design process that produced this project, imported
+Fourteen documents from the design process that produced this project, imported
 **byte-identical** from the pre-repository design archive. They are provenance records, not
 living specs.
 
@@ -9,8 +9,9 @@ living specs.
 - **They mostly use the working name "control"** — daemon `controld`, database
   `control.db`, CLI `control`, domain `get.control.sh`. The project was renamed to
   **exocomp** after a collision check ([ADR 0002](../adr/0002-project-name-exocomp.md)).
-  Twelve records predate the rename; the post-decision addendum was written after it and
-  mixes both names (its nono section already says `exocomp.db` and `exocomp doctor`). Every occurrence of the old name maps mechanically: `controld` →
+  Twelve records predate the rename; two were written after it and use the exocomp name —
+  the post-decision addendum (its nono section says `exocomp.db` and `exocomp doctor`) and
+  the accepted master design `DESIGN.md`. Every occurrence of the old name maps mechanically: `controld` →
   `exocompd`, `control.db` → `exocomp.db`, `control <cmd>` → `exocomp <cmd>`.
   They are not rewritten, because rewriting a record is how a record stops being one.
 - **Two of them were rejected.** `candidate-compose-first.md` and `candidate-hybrid.md`
@@ -33,6 +34,7 @@ byte-for-byte copy of the archive original. The one relative cross-reference in 
 
 | Document | What it is |
 |---|---|
+| [DESIGN.md](design/DESIGN.md) | The accepted master technical design (v1): the decision and its rationale, architecture summary, the twelve amendments, bill of materials, delivery plan, risks, and the post-acceptance refinements (incl. §7.3 job sandboxing via nono). The authoritative source the curated design pages were distilled from |
 | [candidate-thin-core.md](design/candidate-thin-core.md) | The accepted architecture: one Go binary owning state, sequencing, keys and recovery. Full component tables, data model, and diagrams — the detail the curated pages summarise |
 | [candidate-compose-first.md](design/candidate-compose-first.md) | Rejected: Semaphore UI as the execution engine with a `ctl` companion for glue |
 | [candidate-hybrid.md](design/candidate-hybrid.md) | Rejected: Semaphore UI plus a `keel` supervisor owning keys and backup |
