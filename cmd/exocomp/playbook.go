@@ -11,7 +11,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/service"
@@ -331,45 +330,30 @@ func reportJobOutcome(out io.Writer, final store.Job) int {
 	}
 }
 
-// resolveSourceHooks resolves a registered source's checkout root and its
-// lifecycle (with the override-wins precedence). It is the shared read
-// `playbook run` and `handoff run` use to decide whether a source's
-// `.exocomp/hooks.yml` turns a run into a lifecycle workflow. The transport-free
-// logic lives in internal/service; this wrapper supplies the CLI's data dir,
-// store, and override-file path.
-func resolveSourceHooks(ctx context.Context, sourceName string) (hk hooks.Hooks, root string, err error) {
+// sourcePlaybook resolves whether a --source run is a hooked lifecycle and,
+// when it is not, the playbook path rebased onto the source checkout so a plain
+// play still runs from the source's own tree (loading its ./ansible.cfg). The
+// hooked case is handled by runWithHooks, which rebases the path itself.
+//
+// It delegates to internal/service.ResolveSourcePlaybook, the same verb a
+// --remote run resolves through, so a local CLI run confines the playbook to
+// the source checkout identically to the daemon: a bare filepath.Join here
+// would let `../` or an absolute path escape it.
+func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook string) (hooked bool, abs string, err error) {
 	dir, err := dataDir()
 	if err != nil {
-		return hooks.Hooks{}, "", fmt.Errorf("source hooks: resolve data dir: %w", err)
+		return false, "", fmt.Errorf("source playbook: resolve data dir: %w", err)
 	}
 	st, err := openStore()
 	if err != nil {
-		return hooks.Hooks{}, "", err
+		return false, "", err
 	}
 	defer func() {
 		if cerr := st.Close(); cerr != nil && err == nil {
 			err = cerr
 		}
 	}()
-	return service.New(st, dir, nil).ResolveSourceHooks(ctx, hooksOverridePath(dir, sourceName), sourceName)
-}
-
-// sourcePlaybook resolves whether a --source run is a hooked lifecycle and,
-// when it is not, the playbook path rebased onto the source checkout so a plain
-// play still runs from the source's own tree (loading its ./ansible.cfg). The
-// hooked case is handled by runWithHooks, which rebases the path itself.
-func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook string) (hooked bool, abs string, err error) {
-	hk, root, err := resolveSourceHooks(ctx, sourceName)
-	if err != nil {
-		return false, "", err
-	}
-	if !hk.Empty() {
-		return true, "", nil
-	}
-	if !filepath.IsAbs(playbook) {
-		playbook = filepath.Join(root, playbook)
-	}
-	return false, playbook, nil
+	return service.New(st, dir, nil).ResolveSourcePlaybook(ctx, hooksOverridePath(dir, sourceName), sourceName, playbook)
 }
 
 // resolveInventoryArg turns a --inventory value into the path ansible targets
