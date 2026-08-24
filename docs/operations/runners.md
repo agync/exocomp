@@ -1,13 +1,13 @@
-# Runner definitions (image build deferred; caps wired)
+# Runner definitions
 
 `exocomp runner` registers execution-environment **recipes** in the database. Registering
 one stores a definition; it does not build an image or call podman. Every runner verb
 repeats this plainly: **"registered for the deferred container tier; not yet executed."**
-The shape follows [design/byo-runner.md](../design/byo-runner.md) §2, which also argues the
-image-build deferral itself is correct, not just unfinished.
+The shape follows [design/byo-runner.md](../design/byo-runner.md) §2, which argues the
+image-build deferral is correct by design.
 
-A runner is two independent things a definition carries: the (still deferred) image recipe,
-and the (now wired) resource caps. `--memory-max`/`--cpu-quota` are enforced the moment a
+A runner is two independent things a definition carries: the image recipe (the deferred
+container tier) and the resource caps (enforced today). `--memory-max`/`--cpu-quota` are enforced the moment a
 job names the runner with `--runner <name>` — see
 [Resource caps enforcement](#resource-caps-enforcement-opt-in-cgroup-v2) below — with no
 image ever built. The rest of a runner's fields (`--base`, `--bootstrap-file`,
@@ -72,7 +72,7 @@ runner is completely unaffected — this never tightens the default, capless pat
 
 - **No delegated cgroup subtree.** The default rootless, `UserNS=keep-id` container gets no
   writable cgroup subtree, so caps are unavailable and a job that requests them is
-  **refused, never run uncapped**. To enable, switch the quadlet to the owner-approved
+  **refused, never run uncapped**. To enable, switch the quadlet to the
   root-in-container model documented in `packaging/quadlet/exocomp.container`
   (`PodmanArgs=--systemd=always`, drop `UserNS=keep-id`).
 - **The sandboxed tier itself is not active.** Caps only ever apply inside the
@@ -91,7 +91,7 @@ touched. Once prepared (or once found unavailable), the daemon reuses the same c
 `exocomp doctor` reports the state under **per-job caps**: "available" when a capped runner
 would be enforced, or "unavailable — … a capped runner would be REFUSED (fail-closed)"
 otherwise. Check it before enqueuing a capped runner. The daemon's own log also carries one
-line the first time a capped job is dispatched, successful or not — the same signal, not
+line the first time a capped job runs, successful or not — the same signal, not
 only on request.
 
 `runner list` / `runner show <name>` / `runner rm <name>` round out the registry; `show`

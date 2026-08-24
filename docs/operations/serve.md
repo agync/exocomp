@@ -61,7 +61,7 @@ What each kind of job may reach:
 Shell runbooks and backup legs still run at the `local` tier. The backup engine reads
 `keyring.age` by design — it is what every target root gets a copy of — so a profile that
 denied it would deny the job its own work. Sandboxing those kinds needs a profile shaped
-around the backup engine's targets and is not built yet.
+around the backup engine's targets, which does not exist.
 
 ## Run-secret file staging
 

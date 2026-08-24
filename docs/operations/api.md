@@ -7,11 +7,10 @@ listener, not a second auth story. Every route reuses the browser's own auth res
 envelope the CLI's `--output json` emits (see
 [Machine-readable output](machine-output.md)), so a resource's API bytes and its CLI bytes
 are identical. Design rationale: [agent-interface.md §3.4](../design/agent-interface.md);
-ratified in [ADR 0014](../adr/0014-agent-facing-surface.md).
+recorded in [ADR 0014](../adr/0014-agent-facing-surface.md).
 
 Both the read routes (`internal/web/api.go`) and the write routes
-(`internal/web/api_write.go`) are mounted today — plan/apply/run/decide are live, not a
-future wave.
+(`internal/web/api_write.go`) are mounted: plan/apply/run/decide are live.
 
 ## Auth: bearer + three scopes
 

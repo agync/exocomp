@@ -24,7 +24,7 @@ exocomp cli-tool add kubectl --binary kubectl \
 
 A name with no registration is refused **before anything is enqueued** — no job row, no
 worker, nothing to approve later. `run-cli` is therefore not "run any program under the
-sandbox": it is "run one of the programs this operator decided may run, under the sandbox".
+sandbox": it is "run one of the allow-listed programs, under the sandbox".
 
 Registering widens what this control plane can execute, so `cli-tool add` takes the
 destructive-confirm contract (`--assume-yes`, or a clear refusal on a non-interactive
