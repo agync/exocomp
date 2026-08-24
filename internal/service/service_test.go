@@ -306,6 +306,96 @@ func TestApplyWorkspaceRequireApprovalGates(t *testing.T) {
 	}
 }
 
+// TestApplyWorkspaceGatedIdempotencyReusesApproval is the resubmission case: a
+// client that retries a gated apply under the same idempotency key (a timeout,
+// a double-click) must land on the SAME approval, not a second pending row for
+// a job that already has one. EnqueueGated already dedups the job; gatedApply
+// must dedup the approval it points at, or the approval table's job_id UNIQUE
+// constraint turns the retry into an error instead of a no-op.
+func TestApplyWorkspaceGatedIdempotencyReusesApproval(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	q := queue.New(st, enqueueOnlyDriver{}, queue.Options{Workers: 1})
+	enq := &recordingEnqueuer{q: q}
+	svc := service.New(st, t.TempDir(), fixedClock())
+
+	planJob, err := q.Enqueue(ctx, queue.Spec{
+		Runbook: "workspace:web", Kind: executor.KindTofu, Trigger: "manual",
+		Argv: executor.TofuArgv("plan", "-out=/data/artifacts/web-9.tfplan"),
+	})
+	if err != nil {
+		t.Fatalf("seed plan job: %v", err)
+	}
+	saved, err := st.CreateArtifact(ctx, store.Artifact{
+		JobID: planJob.ID, Kind: "tofu-plan",
+		Path: "/data/artifacts/web-9.tfplan.age", SHA256: "deadbeef", Size: 10,
+	})
+	if err != nil {
+		t.Fatalf("seed plan artifact: %v", err)
+	}
+
+	in := service.ApplyInput{
+		Workspace:       "web",
+		WorkspaceSerial: 4,
+		TofuDir:         "/roots/web",
+		IdempotencyKey:  "resubmit-1",
+		SavedPlan:       &saved,
+		Gate:            service.PlanGate{RequireApproval: true, Policy: "prod-guard"},
+	}
+	buildArgv := func(context.Context) ([]string, *store.Artifact, func(), error) {
+		return nil, nil, func() {}, nil
+	}
+
+	first, err := svc.ApplyWorkspace(ctx, enq, fixedDeriver{}, in, buildArgv)
+	if err != nil {
+		t.Fatalf("first ApplyWorkspace: %v", err)
+	}
+	if !first.Gated {
+		t.Fatalf("first apply must gate: %+v", first)
+	}
+
+	second, err := svc.ApplyWorkspace(ctx, enq, fixedDeriver{}, in, buildArgv)
+	if err != nil {
+		t.Fatalf("resubmitted ApplyWorkspace under the same idempotency key errored: %v", err)
+	}
+	if !second.Gated {
+		t.Fatalf("resubmit must gate too: %+v", second)
+	}
+	if second.Approval.JobID != first.Approval.JobID {
+		t.Errorf("resubmit landed on job %d, want the original job %d",
+			second.Approval.JobID, first.Approval.JobID)
+	}
+	if second.Approval.ApprovalID != first.Approval.ApprovalID {
+		t.Errorf("resubmit minted approval %d, want the original approval %d reused",
+			second.Approval.ApprovalID, first.Approval.ApprovalID)
+	}
+
+	approvals, err := st.ListApprovals(ctx, false)
+	if err != nil {
+		t.Fatalf("ListApprovals: %v", err)
+	}
+	if len(approvals) != 1 {
+		t.Fatalf("approval rows = %d, want exactly 1", len(approvals))
+	}
+
+	eng, err := reactive.New(reactive.Options{Store: st, Queue: &engineGate{}, Deriver: fixedDeriver{}})
+	if err != nil {
+		t.Fatalf("new engine: %v", err)
+	}
+	token, _, err := reactive.ApprovalToken(fixedDeriver{}, first.Approval.JobID)
+	if err != nil {
+		t.Fatalf("approval token: %v", err)
+	}
+	if _, err := svc.DecideApproval(ctx, eng, service.DecideInput{
+		ApprovalID: first.Approval.ApprovalID,
+		Decision:   reactive.DecisionApprove,
+		Token:      token,
+		Via:        "cli",
+	}); err != nil {
+		t.Fatalf("deciding the reused approval failed: %v", err)
+	}
+}
+
 func openStore(t *testing.T) *store.Store {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "exocomp.db"))

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"time"
@@ -252,6 +253,28 @@ func (s *Service) gatedApply(ctx context.Context, enq Enqueuer, deriver reactive
 	// JobID, so the actor is read back through the job's own event ledger.
 	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return ApplyResult{}, err
+	}
+
+	// EnqueueGated dedups the JOB on the idempotency key but hands back the
+	// same job either way, fresh or not; job_id is UNIQUE on approval, so a
+	// resubmission that went on to mint a second approval would hit that
+	// constraint instead of being the no-op an idempotency key promises.
+	// Reusing whatever approval the job already has (if any) makes a retry
+	// land on the original pending approval rather than erroring.
+	if existing, aerr := s.store.ApprovalByJob(ctx, job.ID); aerr == nil {
+		return ApplyResult{
+			Gated: true,
+			Approval: GatedApproval{
+				ApprovalID:     existing.ID,
+				JobID:          existing.JobID,
+				State:          existing.State,
+				ExpiresAt:      existing.ExpiresAt,
+				Policy:         in.Gate.Policy,
+				PlanArtifactID: in.SavedPlan.ID,
+			},
+		}, nil
+	} else if !errors.Is(aerr, store.ErrNotFound) {
+		return ApplyResult{}, aerr
 	}
 
 	_, hash, err := reactive.ApprovalToken(deriver, job.ID)
