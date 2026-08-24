@@ -129,7 +129,7 @@ func (s *Store) ListRules(ctx context.Context, enabledOnly bool) ([]Rule, error)
 // SetRuleEnabled flips a rule's enabled flag by name — the manual
 // `rule enable`/`rule disable` path. A daily cap no longer calls this: the cap
 // throttles a rule (withholds the action, keeps it armed) rather than disabling
-// it, so a flood cannot blind a security rule (finding R3).
+// it, so a flood cannot blind a security rule.
 func (s *Store) SetRuleEnabled(ctx context.Context, name string, enabled bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE rule SET enabled = ? WHERE name = ?`, enabled, name)
 	if err != nil {
