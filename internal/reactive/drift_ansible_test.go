@@ -72,7 +72,7 @@ func (h *harness) checkJob(t *testing.T, runbook, playbook string, drift map[str
 	return job
 }
 
-// TestAnsibleCheckDriftPagesOnceWithStableIdentity is the gap this lane closes:
+// TestAnsibleCheckDriftPagesOnceWithStableIdentity closes a gap where
 // the ansible half of a homelab was invisible to the drift sweep, so a check
 // play that found changes paged nobody.
 func TestAnsibleCheckDriftPagesOnceWithStableIdentity(t *testing.T) {

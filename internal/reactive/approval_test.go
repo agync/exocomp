@@ -365,7 +365,7 @@ func TestResolveWithdrawsAPendingApproval(t *testing.T) {
 	}
 }
 
-// TestForgedResolveCannotWithdrawAnApproval is the R2 red-team repro: a
+// TestForgedResolveCannotWithdrawAnApproval proves that a
 // resolve event withdraws the approvals its firing raised, and the old path did
 // so on the dedup key alone, before any rule looked at it. An attacker who can
 // reach the hook forges a "resolved" that shares the key but carries none of

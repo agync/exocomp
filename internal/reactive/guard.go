@@ -214,8 +214,8 @@ const capWindow = 24 * time.Hour
 // guardDailyCap throttles a rule that has spent its budget: the action is
 // withheld, but the rule stays armed. Disabling it instead would let a flood of
 // matching events push a security rule into a silent dark state where later
-// real events are missed with no signal until a human re-enables it by hand
-// (finding R3). Throttling keeps the rule evaluating — every over-cap event is
+// real events are missed with no signal until a human re-enables it by hand.
+// Throttling keeps the rule evaluating — every over-cap event is
 // recorded as a suppressed row naming the rule, and the budget recovers on its
 // own when the rolling window clears — and pages loudly, once per window, so a
 // flood is loud rather than blinding.

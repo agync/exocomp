@@ -378,7 +378,7 @@ func (e *Engine) gateAction(ctx context.Context, ev Event, raw []byte, rule stor
 // carries no approval credential, so its authority is the rule that raised the
 // approval: the resolve must be admitted by that rule and match it as a firing.
 // A forged resolve that shares only the dedup key — stripped of the labels the
-// rule fired on — cannot cancel a remediation it never had a rule for (R2).
+// rule fired on — cannot cancel a remediation it never had a rule for.
 func (e *Engine) withdrawResolved(ctx context.Context, ev Event, trace *Trace) (int, error) {
 	pending, err := e.store.PendingApprovalsByDedupKey(ctx, ev.DedupKey)
 	if err != nil {

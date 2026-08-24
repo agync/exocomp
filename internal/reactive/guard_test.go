@@ -180,8 +180,8 @@ func TestDedupSwallowsARepeatInsideTheWindow(t *testing.T) {
 	}
 }
 
-// TestDedupAnchorIsNotPlantedByAnInertEvent is the R1 red-team repro: an
-// attacker pre-plants a benign event that matches no rule but carries the
+// TestDedupAnchorIsNotPlantedByAnInertEvent proves an
+// attacker cannot pre-plant a benign event that matches no rule but carries the
 // dedup key a real alert will share, hoping to have the real alert swallowed as
 // its "duplicate". The anchor must be an event that actually matched a rule, so
 // the inert plant cannot mute the alert that follows.
@@ -286,7 +286,7 @@ func TestCooldownReasonNamesTheNextEligibleTime(t *testing.T) {
 	}
 }
 
-// TestDailyCapThrottlesButKeepsTheRuleArmed is the R3 red-team repro: a flood
+// TestDailyCapThrottlesButKeepsTheRuleArmed proves a flood
 // of matching events must not push a security rule into a silent disabled state
 // where later real events are missed with no signal. A cap hit throttles the
 // action and pages loudly, but the rule stays armed — it keeps evaluating, each
