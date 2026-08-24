@@ -124,3 +124,23 @@ git branch -d <branch>
 Use `-d` (not `-D`): it refuses to delete a branch not merged into `main`, a last
 guard that you actually landed the work. If `-d` refuses, the fast-forward did
 not take — investigate, do not force with `-D`.
+
+## Builder notes
+
+Guidance for the lane building the work, not just the integrator landing it:
+
+- `make check` — via the pre-commit hook or run standalone — takes ~4 min
+  under the concurrent load several lanes gating at once impose (see
+  flake-triage's load ceiling; step 5 above quotes ~2.5 min solo). A builder
+  MUST run it in the FOREGROUND and must NOT background it and end the turn —
+  that leaves the lane in a half-gated state with the hook's outcome unknown.
+  Give the command a generous timeout; the harness default can be too short
+  for a concurrent-load run.
+- When renumbering a migration (step 3) or resolving a conflict mid-rebase,
+  chain the git commands with `&&` — `git add <paths> && git commit ...`, or
+  `git add <paths> && git rebase --continue` — so a partial-stage failure does
+  not silently fall through to a commit or continue that omits it.
+- When a lane's own report flags an expected `.go` union that git auto-merged
+  during rebase, VERIFY both sides actually landed in the merged file — read
+  it, don't trust the auto-merge blindly. A textual merge can silently keep
+  only one side's hunk when both lanes touched nearby lines.
