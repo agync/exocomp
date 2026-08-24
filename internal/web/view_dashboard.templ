@@ -21,7 +21,6 @@ templ dashboard(vm dashboardVM) {
 		<h1>Dashboard</h1>
 		<div class="cards" style="margin-top:18px">
 			<section class="card span2" aria-labelledby="needsyou-h">
-				<div class="kicker">Needs you</div>
 				<h3 id="needsyou-h">Pending approvals</h3>
 				if len(vm.NeedsYou) == 0 {
 					<p class="meta">Nothing is waiting on a decision.</p>
@@ -54,7 +53,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card" aria-labelledby="queue-h">
-				<div class="kicker">Everything is a job</div>
 				<h3 id="queue-h">Queue</h3>
 				if len(vm.Queue) == 0 {
 					<p class="meta">The queue is empty.</p>
@@ -80,7 +78,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card" aria-labelledby="backups-h">
-				<div class="kicker">Truth over reassurance</div>
 				<h3 id="backups-h">Backups</h3>
 				if len(vm.Backups) == 0 {
 					<p class="meta">No backup targets configured.</p>
@@ -142,7 +139,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card span2" aria-labelledby="flows-h">
-				<div class="kicker">Step ledgers</div>
 				<h3 id="flows-h">Workflows in flight</h3>
 				if len(vm.Workflows) == 0 {
 					<p class="meta">No workflows are running.</p>
@@ -168,7 +164,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card" aria-labelledby="sources-h">
-				<div class="kicker">Where runs come from</div>
 				<h3 id="sources-h">Sources</h3>
 				if len(vm.Sources) == 0 {
 					<p class="meta">No sources registered.</p>
@@ -200,7 +195,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card" aria-labelledby="sched-h">
-				<div class="kicker">Everything is a job</div>
 				<h3 id="sched-h">Schedules</h3>
 				if len(vm.Schedules) == 0 {
 					<p class="meta">No schedules registered.</p>
@@ -237,7 +231,6 @@ templ dashboard(vm dashboardVM) {
 			</section>
 
 			<section class="card span2" aria-labelledby="self-h">
-				<div class="kicker">Truth over reassurance</div>
 				<h3 id="self-h">This control plane</h3>
 				<div class="tablewrap">
 					<table>

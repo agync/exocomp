@@ -170,21 +170,22 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		}
 	}
 
-	// (b) Every list-page card now carries the kicker+<h3> header block.
+	// (b) Every list-page card carries an <h3> header; pages with a functional
+	// kicker (empty kicker = none expected) also render that kicker.
 	headers := []struct {
 		path, kicker, h3 string
 	}{
 		{"/sources", "Read-only · CLI-managed", "All sources"},
 		{"/schedules", "Cron schedules", "All schedules"},
-		{"/workflows", "Step ledgers", "All workflows"},
+		{"/workflows", "", "All workflows"},
 		{"/policies", "CEL gates", "All policies"},
-		{"/jobs", "Everything is a job", "All jobs"},
+		{"/jobs", "", "All jobs"},
 		{"/events", "Received alerts", "All events"},
 		{"/approvals", "Waiting on a human", "Pending approvals"},
 	}
 	for _, hd := range headers {
 		_, page := getBody(t, client, ts.URL+hd.path)
-		if !strings.Contains(page, `<div class="kicker">`+hd.kicker+`</div>`) {
+		if hd.kicker != "" && !strings.Contains(page, `<div class="kicker">`+hd.kicker+`</div>`) {
 			t.Errorf("%s missing kicker %q", hd.path, hd.kicker)
 		}
 		if !strings.Contains(page, "<h3>"+hd.h3+"</h3>") {

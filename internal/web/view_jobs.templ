@@ -7,7 +7,6 @@ templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<h1>Jobs</h1>
 		<div class="card span2" style="margin-top:18px">
-			<div class="kicker">Everything is a job</div>
 			<h3>All jobs</h3>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet.</p>

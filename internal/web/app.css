@@ -82,6 +82,9 @@ a:visited { color: var(--accent-text); }
   font: var(--type-button); flex: none; white-space: nowrap;
 }
 .appbar nav a[aria-current="page"] { background: var(--accent-tint); color: var(--accent-text); }
+/* Nav links are pill controls, not prose links: keep them underline-free on
+ * hover/focus (the global a:hover underline does not apply), showing a tint. */
+.appbar nav a:hover, .appbar nav a:focus-visible { text-decoration: none; background: var(--surface-tray); color: var(--ink-100); }
 .appbar .spacer { flex: 1; }
 .appbar .who { color: var(--ink-500); font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase; }
 
