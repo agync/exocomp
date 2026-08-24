@@ -6,6 +6,29 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — code review remediation: kill switch wired, devrun removed, setup honesty
+
+Closing out the three companion code reviews (`.claude/inbox/2026-08-24-*`). Structural /
+factual items not already logged by their own lanes:
+
+- The approval page's "Silence & global kill" form was dead — its `POST /kill` target had
+  no route. It now drives an operator-gated global silence (a `ScopeGlobal` `store.Silence`,
+  the same mechanism the PAUSED banner already reads), not a maintenance cordon: a cordon
+  stops schedules, which contradicts the form's own "Schedules still fire" copy, and is
+  absent in the standalone web process. Silence pauses reactive-rule firing and is
+  reversible.
+- `devrun` (an ungoverned arbitrary-exec CLI verb with no sandbox and the full daemon env)
+  is removed. Its enqueue-and-drain mechanism survives only as a test helper; the
+  cross-process invariant tests that used it now drive the governed `run-cli` path instead.
+- Setup's "nothing partial was left behind" promise is now true: a mid-`Commit` failure
+  after `host.key` was written rolls the host identity back (`secrets.Rollback`), so re-run
+  is possible and the message is honest.
+- A post-bind web-surface serve failure is now fatal to the daemon (`serveUntilSignal`
+  selects on the web error) instead of being silently swallowed while it prints "listening".
+
+Info-level findings are dispositioned in
+[security/review-2026-08-24-info-triage.md](security/review-2026-08-24-info-triage.md).
+
 ## 2026-08-24 — reactive: `approval link` needs its own --public-url
 
 [operations/reactive.md](operations/reactive.md) previously documented `serve --public-url`
