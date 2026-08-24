@@ -281,9 +281,15 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	// denies by design. Redirect it into the job's own private dir, which is
 	// granted, then relocate the finished plan to the requested path once the
 	// subprocess has exited — this driver runs unsandboxed, so it can write the
-	// data dir the job could not.
+	// data dir the job could not. The requested path travels in the job's own
+	// argv (queue.Spec, persisted independent of this driver), so it is
+	// checked against the artifacts tree before relocation: this driver's
+	// unsandboxed write must never land somewhere a crafted -out= chose.
 	planDst, argv := planOutPath(spec.Argv)
 	if planDst != "" {
+		if err := validatePlanArtifactPath(t.sandbox.DataDir, planDst); err != nil {
+			return Result{}, err
+		}
 		redirected := filepath.Join(job.private, "plan.tfplan")
 		spec.Argv = setPlanOutPath(argv, redirected)
 		defer relocatePlan(redirected, planDst, sink)
@@ -465,6 +471,59 @@ func relocatePlan(src, dst string, sink EventSink) {
 		return
 	}
 	_ = os.Remove(src)
+}
+
+// tofuArtifactsSubdir is the data-dir subtree a tofu plan artifact must
+// resolve within.
+const tofuArtifactsSubdir = "artifacts"
+
+// validatePlanArtifactPath confirms dst resolves inside dataDir's artifacts
+// tree, symlinks resolved on the deepest existing ancestor so a symlink
+// planted inside the tree cannot point the relocation back out of it. dataDir
+// (SandboxOptions.DataDir) holds the database and keys and is never granted
+// to a sandboxed job; this check runs before relocation, in the unsandboxed
+// driver, so a -out= naming a traversal never gets the chance to land there
+// or anywhere else outside the artifacts tree.
+func validatePlanArtifactPath(dataDir, dst string) error {
+	if dataDir == "" {
+		return errors.New("executor: sandbox: tofu plan relocation: no data dir configured")
+	}
+	root := filepath.Join(dataDir, tofuArtifactsSubdir)
+	realRoot, err := resolvePathAncestor(root)
+	if err != nil {
+		return fmt.Errorf("executor: sandbox: tofu plan relocation: %w", err)
+	}
+	target, err := resolvePathAncestor(dst)
+	if err != nil {
+		return fmt.Errorf("executor: sandbox: tofu plan relocation: %w", err)
+	}
+	rel, err := filepath.Rel(realRoot, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("executor: sandbox: tofu plan -out %q escapes the artifacts tree", dst)
+	}
+	return nil
+}
+
+// resolvePathAncestor resolves symlinks on the deepest existing ancestor of
+// path and re-appends the rest, so a not-yet-created plan file still gets a
+// real ancestor to compare against.
+func resolvePathAncestor(path string) (string, error) {
+	rest := ""
+	for {
+		resolved, err := filepath.EvalSymlinks(path)
+		if err == nil {
+			return filepath.Join(resolved, rest), nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return "", fmt.Errorf("cannot resolve %q", path)
+		}
+		rest = filepath.Join(filepath.Base(path), rest)
+		path = parent
+	}
 }
 
 func planRelocateFailed(dst string, err error) Event {

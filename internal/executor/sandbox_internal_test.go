@@ -1,6 +1,8 @@
 package executor
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -212,6 +214,64 @@ func TestStagePlanInputCopiesIntoTheJobDir(t *testing.T) {
 type discardSink struct{}
 
 func (discardSink) Emit(Event) {}
+
+// TestValidatePlanArtifactPathRefusesEscapes: the relocation target for a
+// sandboxed `plan -out=` must stay under the data dir's artifacts tree — the
+// only place the daemon has promised to write plan material to. A path
+// reaching outside it (the data dir root itself, a sibling directory, or
+// another tree entirely) is refused rather than silently honored.
+func TestValidatePlanArtifactPathRefusesEscapes(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(data, "artifacts", "tofu"), 0o700); err != nil {
+		t.Fatalf("mkdir artifacts: %v", err)
+	}
+
+	ok := filepath.Join(data, "artifacts", "tofu", "ws-1.tfplan")
+	if err := validatePlanArtifactPath(data, ok); err != nil {
+		t.Errorf("validatePlanArtifactPath(%q) = %v, want nil", ok, err)
+	}
+
+	for _, dst := range []string{
+		filepath.Join(data, "host.key"),
+		fmt.Sprintf("%s/artifacts/../host.key", data),
+		filepath.Join(filepath.Dir(data), "escaped.tfplan"),
+		"/etc/passwd",
+	} {
+		if err := validatePlanArtifactPath(data, dst); err == nil {
+			t.Errorf("validatePlanArtifactPath(%q) = nil, want a refusal", dst)
+		}
+	}
+}
+
+// TestSandboxedTofuRefusesPlanOutEscapingArtifacts pins the wiring: a `plan
+// -out=` whose relocation target escapes the artifacts tree fails the run
+// before any subprocess is started, not just the standalone helper.
+func TestSandboxedTofuRefusesPlanOutEscapingArtifacts(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(data, "artifacts", "tofu"), 0o700); err != nil {
+		t.Fatalf("mkdir artifacts: %v", err)
+	}
+	escaped := filepath.Join(data, "host.key.tfplan")
+
+	drv, ok := NewSandboxedTofu(TofuOptions{
+		PrivateDirRoot: t.TempDir(),
+	}, SandboxOptions{DataDir: data}).(*sandboxedTofu)
+	if !ok {
+		t.Fatal("NewSandboxedTofu did not return the sandboxed tofu driver")
+	}
+
+	_, err := drv.Run(context.Background(), Spec{
+		Kind: KindTofu,
+		Argv: []string{"tofu", "plan", "-out=" + escaped},
+	}, discardSink{})
+	if err == nil {
+		t.Fatal("Run with a plan -out escaping the artifacts tree did not fail")
+	}
+}
 
 // TestAnsibleSourceDirsGrantsExtraVarsFile: a documented flag form,
 // `-e @vars.yaml` (resolved to an absolute path before it reaches the argv,
