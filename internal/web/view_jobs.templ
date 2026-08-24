@@ -26,7 +26,7 @@ templ jobsList(vm dashboardVM) {
 						</thead>
 						<tbody>
 							for _, j := range vm.Queue {
-								<tr>
+								<tr data-href={ "/jobs/" + itoa(j.ID) }>
 									<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
 									<td data-label="Runbook">{ j.Runbook }</td>
 									<td class="mono" data-label="Kind">{ j.Kind }</td>

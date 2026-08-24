@@ -256,6 +256,16 @@ templ layoutReady() {
 	});
 	document.querySelector('.side-nav [aria-current="page"]')
 		?.scrollIntoView({ block: "center" });
+	// Clickable list rows: a mouse enhancement over the row's own #id link, so
+	// the whole row is an obvious click target. Clicks on a real link or button
+	// inside the row (the Review CTA, a nested job link, etc.) keep their own
+	// behaviour instead of triggering the row navigation.
+	document.querySelectorAll('tr[data-href]').forEach(function (tr) {
+		tr.addEventListener('click', function (e) {
+			if (e.target.closest('a,button')) return;
+			window.location.href = tr.getAttribute('data-href');
+		});
+	});
 	</script>
 }
 

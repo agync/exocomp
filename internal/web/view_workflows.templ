@@ -37,7 +37,7 @@ templ workflowsList(vm workflowsVM) {
 						</thead>
 						<tbody>
 							for _, f := range vm.Workflows {
-								<tr>
+								<tr data-href={ "/workflows/" + f.ID }>
 									<td class="mono"><a href={ templ.SafeURL("/workflows/" + f.ID) }>{ f.ID }</a></td>
 									<td>@chip(f.StateClass(), string(f.State))</td>
 									<td class="right num">{ f.Progress() }</td>

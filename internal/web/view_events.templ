@@ -25,7 +25,7 @@ templ eventsList(vm eventsVM) {
 						</thead>
 						<tbody>
 							for _, e := range vm.Events {
-								<tr>
+								<tr data-href={ "/events/" + itoa64(e.ID) }>
 									<td class="num" data-label="Event"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
 									<td class="mono" data-label="Source">{ e.Source }</td>
 									<td data-label="Alert">{ e.Name }</td>

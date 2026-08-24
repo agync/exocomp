@@ -220,6 +220,7 @@ thead th {
 tbody td { padding: 10px 8px; border-bottom: 1px solid var(--hairline-faint); color: var(--ink-200); }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: var(--surface-tray); }
+tr[data-href] { cursor: pointer; }
 td.right, th.right { text-align: right; }
 
 .tablewrap { overflow-x: auto; }

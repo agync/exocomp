@@ -64,7 +64,7 @@ templ dashboard(vm dashboardVM) {
 							</thead>
 							<tbody>
 								for _, j := range vm.Queue {
-									<tr>
+									<tr data-href={ "/jobs/" + itoa(j.ID) }>
 										<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
 										<td data-label="Runbook">{ j.Runbook }</td>
 										<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
@@ -120,7 +120,7 @@ templ dashboard(vm dashboardVM) {
 							</thead>
 							<tbody>
 								for _, f := range vm.Workflows {
-									<tr>
+									<tr data-href={ "/workflows/" + f.ID }>
 										<td class="mono"><a href={ templ.SafeURL("/workflows/" + f.ID) }>{ f.ID }</a></td>
 										<td>@chip(f.StateClass(), string(f.State))</td>
 										<td class="right num">{ f.Progress() }</td>
