@@ -45,3 +45,21 @@ func ProbeMemoryLock() MemoryLock {
 	_ = unlockMemory(probe)
 	return MemoryLock{Locked: true}
 }
+
+// LockBytes attempts to mlock an arbitrary secret buffer on behalf of a caller
+// outside this package, best-effort — the same fail-open, doctor-visible
+// pattern as the DEK's own lock (lockDEK). It exists for material this
+// package never opens: the executor's /dev/shm-staged run-secret files, whose
+// mmap'd bytes are the only rootless swap lever tmpfs offers (there is no
+// rootless `noswap` mount option).
+func LockBytes(b []byte) MemoryLock {
+	if err := lockMemory(b); err != nil {
+		return MemoryLock{Locked: false, Err: err}
+	}
+	return MemoryLock{Locked: true}
+}
+
+// UnlockBytes releases a lock taken by LockBytes.
+func UnlockBytes(b []byte) error {
+	return unlockMemory(b)
+}
