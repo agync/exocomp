@@ -15,14 +15,13 @@ writes, **not** the systemd-scope sketch §6 first proposed (the runtime image h
 See §6's "Built (2026-08-24)" subsection. The rest of the tier (BYO images, the podman socket,
 the build/cache machinery) remains deferred.
 
-> **Grounded vs inferred.** Two research lanes produced this synthesis with file:line and
-> nmem citations: *podman/OCI tooling + nesting* and *cache/lifecycle*. Those are grounded.
-> Two other lanes (the **integration** wiring into the executor/queue, and the **SELinux**
-> operational detail) degenerated to stubs; the material in §5, §6, and the phasing of §9 was
-> reconstructed from the code (`internal/executor/sandbox.go`, `internal/deps/venv.go`,
-> `internal/sched`, `packaging/Containerfile`) and from platform-contract.md, and is marked
-> **[inferred]** where it rests on reconstruction rather than a cited source. Treat inferred
-> claims as design proposals to validate, not established facts.
+> **Grounded vs inferred.** The podman/OCI tooling, nesting, and cache/lifecycle material
+> rests on direct file:line references and is grounded. The executor/queue integration wiring
+> and the SELinux operational detail (§5, §6, and the phasing of §9) were reconstructed from
+> the code (`internal/executor/sandbox.go`, `internal/deps/venv.go`, `internal/sched`,
+> `packaging/Containerfile`) and from platform-contract.md, and are marked **[inferred]** where
+> they rest on reconstruction rather than a cited source. Treat inferred claims as design
+> proposals to validate, not established facts.
 
 ---
 
@@ -37,7 +36,7 @@ it, with hard resource caps.* That is the `container` tier from
 rejecting the podman-socket path for v1.** This is not a gap waiting to be filled — it is a
 deliberate deferral with a shipped alternative. Verified against the docs and the tree:
 
-- **The `container` tier is *designed, M3, deferred*** (execution.md:34). It is not in the
+- **The `container` tier is *designed but deferred*** (execution.md:34). It is not in the
   code: `internal/executor/sandbox.go:21-30` defines only `TierLocal`, `TierLocalSandboxed`,
   and `TierAuto`. There is no `container` Tier constant. "Designed, deferred" is literally
   true.
@@ -196,8 +195,7 @@ Rationale:
 
 **Why the docker SDK is not just wrong but functionally broken.** Podman implements the
 **Docker REST API** (e.g. `/v1.41/build`), **not Docker BuildKit's proprietary gRPC
-protocol** (nmem *"Podman Socket Incompatibilities and SELinux Volume Mount
-Requirements"*). The `github.com/docker/docker` client's modern build path targets BuildKit,
+protocol**. The `github.com/docker/docker` client's modern build path targets BuildKit,
 so it does not merely offend a podman-first aesthetic — **builds fail or fall back mysteriously
 against `podman.sock`.** This is the same class of failure as compose `dockerfile_inline`
 against podman.sock. The mandate to reject the docker SDK is a **correctness constraint**, not
@@ -251,11 +249,11 @@ be made together, not independently.
 
 ---
 
-## 5. SELinux / AppArmor / rootless on enforcing Fedora  **[largely inferred — SELinux lane stubbed]**
+## 5. SELinux / AppArmor / rootless on enforcing Fedora  **[largely inferred]**
 
 The target is Fedora/RHEL **enforcing**; no example may depend on permissive mode
-(platform-contract.md:21-22). The grounded anchors are platform-contract.md:33-36 and the nmem
-volume-relabel entries; the operational assembly below is reconstructed.
+(platform-contract.md:21-22). The grounded anchors are platform-contract.md:33-36 and the
+prior-art volume-relabel research; the operational assembly below is reconstructed.
 
 - **`label=disable` on the socket mount ONLY.** The deferred container driver's podman-socket
   mount needs `--security-opt label=disable` (or Quadlet `SecurityLabelDisable`) on *that
@@ -265,14 +263,14 @@ volume-relabel entries; the operational assembly below is reconstructed.
   "jobs reach no local sockets." Getting this wrong yields either broken jobs (forgot it →
   AVC denials that look like generic podman failures) or weakened isolation (over-applied).
 - **`:z` / `:Z` on bind mounts.** Per-job workspace/data bind mounts need `:Z` (private
-  relabel) or `:z` (shared) on enforcing Fedora (nmem *AIO Sandbox*; platform-contract.md:25).
+  relabel) or `:z` (shared) on enforcing Fedora (platform-contract.md:25).
   **Caveat:** `:Z`/`:z` apply `container_file_t` **only at container start**, not to files
   added later, and **`:Z` fails on NFS/CIFS** — "the NAS leg is the sharp edge"
-  (platform-contract.md:27-28, nmem *Podman SELinux Volume Relabeling*). This constrains where
+  (platform-contract.md:27-28). This constrains where
   the image/build store lives (§7).
 - **Rootless userns / subuid-subgid.** Rootless podman requires `loginctl enable-linger` and
-  configured `/etc/subuid` + `/etc/subgid` ranges for the operator (nmem *AIO Sandbox*).
-  For host-volume sharing, use `--userns=keep-id:uid=1000,gid=1000` (nmem: keep-id preferred
+  configured `/etc/subuid` + `/etc/subgid` ranges for the operator.
+  For host-volume sharing, use `--userns=keep-id:uid=1000,gid=1000` (keep-id preferred
   over entrypoint chown scripts) so runner-produced files map back to the operator's uid
   without ACL surgery. **[inferred]** `exocomp doctor` should verify subuid/subgid ranges and
   linger *before* the first job, mirroring how sandbox.go `Probe`/`RunCanary` assert rather
@@ -380,7 +378,7 @@ Mechanism, per opted-in job:
 
 ### Wired (2026-08-24): a job's `--runner` reaches `SandboxOptions.Caps`
 
-The gap the round-2 re-review flagged HIGH — `ParseCaps`/`PrepareCgroupController` built and
+The gap a follow-up review flagged as high-severity — `ParseCaps`/`PrepareCgroupController` built and
 unit-tested but never called from `cmd/exocomp`, so `sandboxOptions()` never set `Caps`/
 `Cgroup` and the fail-closed refusal above was unreachable in the shipped binary — is closed.
 There is still no job→runner *image* linkage (the container tier stays deferred, §1), but a
@@ -420,7 +418,7 @@ job can now name a runner purely for its caps:
   the effective tier is not `local-sandboxed`, before a plain driver is ever built.
 - `internal/executor/cgroup.go`'s `parseMemorySize` also gained an overflow guard
   (`n * mult` on a huge digit string could wrap to a small or negative byte count and write the
-  wrong tiny cap) — the round-2 MINOR finding, closed alongside the wiring.
+  wrong tiny cap) — a minor finding closed alongside the wiring.
 
 Unit-tested in `cmd/exocomp/caps_test.go` (`resolveRunnerCaps`, both fail-closed axes,
 `withCaps` against a faked cgroup tree so no test touches the real host `/sys/fs/cgroup`) and
@@ -504,7 +502,7 @@ lock must record resolved versions or "reproducible" is skin-deep.
 - **Stage order: base → dnf packages → uv-cache warm → bootstrap LAST** (most-edited layer
   last), mirroring the Containerfile's own `COPY go.mod` → `go mod download` → `COPY source`
   ordering (Containerfile:3-5) that keeps the download cached.
-- `runner.build.no_cache` forces a clean build (CACHEBUST precedent, nmem *CACHEBUST Fix*).
+- `runner.build.no_cache` forces a clean build (CACHEBUST precedent).
 
 ### 7.4 Freshness — into the existing cron scheduler, no new subsystem
 
@@ -590,9 +588,9 @@ is a *process* control, so it needs an explicit doctor assertion, not just a con
 
 ---
 
-## 9. Phased implementation plan (dependency-ordered, one build-lane each)  **[inferred]**
+## 9. Phased implementation plan (dependency-ordered, one phase each)  **[inferred]**
 
-Each phase is scoped to be a single build lane. Phases 0–2 are worth doing **even if the
+Each phase is a self-contained unit of work. Phases 0–2 are worth doing **even if the
 container tier is never built**, because they close real gaps in the shipped system.
 
 - **Phase 0 — Bound the existing caches (no container tooling).** Add the `cache/python` prune
@@ -648,10 +646,10 @@ container tier is never built**, because they close real gaps in the shipped sys
 |---|---|---|
 | §1 status, central finding | **Grounded** | ADR 0005, execution.md:34/146-147, ADR 0011, sandbox.go:21-30, go.mod grep |
 | §2 two models | **Grounded** | execution.md:129-131 (ansible-runner EE / tofu podman run) |
-| §3 tooling, docker-SDK-broken | **Grounded** | nmem podman-REST-not-BuildKit; go.mod; ADR 0006:58 |
+| §3 tooling, docker-SDK-broken | **Grounded** | podman-REST-not-BuildKit; go.mod; ADR 0006:58 |
 | §4 nesting decision | **Grounded** | execution.md:138, platform-contract.md:11, ADR 0005:18 |
-| §5 SELinux/hardening | **[inferred]** — SELinux lane stubbed | anchors: platform-contract.md:33-36, nmem relabel; assembly reconstructed |
+| §5 SELinux/hardening | **[inferred]** | anchors: platform-contract.md:33-36, volume-relabel research; assembly reconstructed |
 | §6 caps | **Grounded + BUILT** — cgroup v2 direct writes, real podman validation 2026-08-24 (OOM-kill, CPU throttle); the earlier systemd-scope sketch is superseded | internal/executor/cgroup.go; podman 5.8.4/5.8.1 runs; platform-contract.md:10 |
 | §7 cache/lifecycle | **Grounded** | venv.go, manifest.go:137-143, Containerfile, sched, restic.go:135, tofu.go:262-287 |
 | §8 recommendation | **Grounded** (synthesis) | follows from §1–§7 |
-| §9 phasing | **[inferred]** — integration lane stubbed | reconstructed from code seams |
+| §9 phasing | **[inferred]** | reconstructed from code seams |

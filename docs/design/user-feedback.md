@@ -1,8 +1,8 @@
 # Persona review — findings and disposition
 
-Date: 2026-08-21. Four target-user personas evaluated the shipped M1/M2 feature set
-and the committed v1.0 scope, briefed to be adversarial adopters. Full transcripts are
-session artifacts; this page keeps what changes decisions.
+Date: 2026-08-21. Four target-user personas evaluated the shipped v0.1/v0.5 feature set
+and the committed v1.0 scope, briefed to be adversarial adopters. This page keeps what
+changes decisions.
 
 Personas: **Marcus** (veteran homelabber, 200-task Ansible repo, AWX refugee) ·
 **Priya** (staff SRE, Terraform-Cloud/Vault reflexes, refuses enterprise ops at home) ·
@@ -59,7 +59,7 @@ engineer, SELinux enforcing, reads ADRs and licenses).
 
 ## Disposition
 
-**Folded into M3 (v1.0) scope** — cheap, high-leverage, no new processes:
+**Folded into v1.0 scope** — cheap, high-leverage, no new processes:
 - Card prints the generalized derivation (any `info` string, vault-ids named) + test.
 - Keyring version counter + HKDF-derived HMAC over manifest and parts-manifest;
   restore refuses downgrades. (One subkey, existing machinery.)

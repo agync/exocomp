@@ -1,8 +1,7 @@
 # exocomp — UI design brief
 
 For a designer with no prior context. A visual design exploration against this
-brief is in flight (tracked outside the repository); its output feeds the web UI
-work in M3. Direction: clean, minimal, modern, functional,
+brief feeds the web UI work. Direction: clean, minimal, modern, functional,
 accessible. This brief covers the web UI (priority 2 surface) and the phone approval
 flow; the TUI exists and sets the tone — the web UI is its calmer sibling, not a
 marketing site.
@@ -51,8 +50,8 @@ No teams, no roles, no onboarding funnel, no persuasion. The UI never sells; it 
 | **Schedule** | name, cron expression, kind, enabled/disabled (disabled = dimmed, not hidden), next fire, last job outcome |
 | **Backup target** | name, kind (NAS / S3 / git), last run state, snapshot id, bytes added, **freshness age** with 24h/48h thresholds |
 | **Secret** | name, kind, created/rotated dates — **values never render anywhere, ever** |
-| **Approval** (M3) | what wants to run, why (triggering alert or plan diff), time left on the TTL, Approve / Reject |
-| **Event** (M3) | every received alert with its outcome: ignored / matched / suppressed / gated / fired — "why didn't it fire?" must be answerable by scanning |
+| **Approval** | what wants to run, why (triggering alert or plan diff), time left on the TTL, Approve / Reject |
+| **Event** | every received alert with its outcome: ignored / matched / suppressed / gated / fired — "why didn't it fire?" must be answerable by scanning |
 | **Recovery kit** | printable card: age secret key, recipient fingerprints, derivation recipe — print stylesheet matters more than screen styling |
 
 ## Operations, by frequency
@@ -99,7 +98,7 @@ state). No SPA. Type system: monospace-forward is native to this product's audie
 a mono for data/labels with a quiet UI sans is acceptable; pure-mono is on-brand.
 The TUI already establishes: one accent, dim-by-default, state-colored text.
 
-## Approval surface contract (settled in the design exploration, binding for M3)
+## Approval surface contract (settled in the design exploration, binding for v1.0)
 
 The phone approval flow's semantics, decided visually and adopted as implementation
 contract:

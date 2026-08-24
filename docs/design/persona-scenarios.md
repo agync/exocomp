@@ -54,7 +54,7 @@ Personas column = how many of the five raised it independently.
 
 Team-oriented extras from the SRE — incident/escalation with tiered on-call, break-glass
 runs, and audit-evidence export — are real but narrower; incident/escalation overlaps the
-already-planned [GoAlert post-v1 work](../../.agents/workflows/post-v1-plan.md).
+already-planned GoAlert-class escalation work deferred past v1.0.
 
 ### What the headline (hybrid) estate points at hardest
 
@@ -66,10 +66,10 @@ These are the sharpest "one control plane across all of it" gaps and rank high i
 
 Operator decision: **hold the v1 line, with one principled exception and four cheap folds.**
 
-- **v1 stays** = the five acceptance stories reliable + M3c (workflows, plan policy,
-  TF→Ansible handoff, upgrade/rollback) + the M3c pass-3 dependency & run-lifecycle work.
+- **v1 stays** = the five acceptance stories reliable, plus workflows, plan policy,
+  TF→Ansible handoff, upgrade/rollback, and the dependency & run-lifecycle work.
 - **Pulled INTO v1 on correctness grounds: capability #1, the post-run health/verification
-  gate.** The M3c workflows we already ship (chains, and any deploy/cutover) are unsafe
+  gate.** The workflows we already ship (chains, and any deploy/cutover) are unsafe
   with exit-code-only success — all five personas said so independently. A minimal probe
   step (a ledger step whose success is a declared HTTP/DNS/TLS/exit/metric check) makes
   the workflows we are *already building* safe. This is not gold-plating; it is the
@@ -81,7 +81,7 @@ Operator decision: **hold the v1 line, with one principled exception and four ch
   3. **Ansible `--check` drift signal** — extends story 3's structured-drift plumbing to
      the Ansible surface (90% of a homelabber's fleet).
   4. **Host-key re-pin runtime detection/quarantine** — extends the `ErrKnownHostChanged`
-     primitive already built in M3b maintenance; the CLI re-pin exists, the runtime
+     primitive already built for maintenance; the CLI re-pin exists, the runtime
      detect-and-quarantine + phone approval is the delta.
 - **Everything else → the ranked [v1.1 roadmap](v1.1-roadmap.md)**, topped by #2/#3/#4.
 

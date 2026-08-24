@@ -2,7 +2,7 @@
 
 Status: proposal · needs an ADR to ratify agent-fit as a first-class charter surface (see §7)
 
-> **Verification note (2026-08-23).** A code-audit pass classified the claims here 12 verified / 3 partial / 0 fabricated. Three corrections apply, and §3.4 depends on the first:
+> **Verification note (2026-08-23).** A code audit checked the claims here against the implementation. Three corrections apply, and §3.4 depends on the first:
 > - **The web listener has no route-extension hook today.** `internal/web/server.go` exposes no `Mount`/registration seam; the `Mount(routes)` the doc leans on lives only on `internal/api.Server` — the *separate* loopback tofu backend. So §3.4's "`/api/v1` rides the existing web listener" is a *target*, not current fact: **Wave 2's first task is to add a small mount seam to `internal/web`** (mirroring `internal/api`'s), after which the JSON routes sit behind the same `requireAuth`+scope. Additive and sound — just not free.
 > - `internal/api` is not *only* the tofu backend: it already uses `Mount()` for the webhook ingress + `/metrics` on the loopback listener.
 > - Concurrency is enforced in `internal/store/job.go` (the `UPDATE … WHERE NOT EXISTS`), not in the queue caller.
@@ -19,9 +19,9 @@ document adds the **programmatic faces a machine operator needs** — a remote C
 operator HTTP/JSON API, and an MCP server — as three thin reflections of the *same* core,
 never as parallel execution paths.
 
-The north star is concrete: **run homelab-ansible ops from `lrrr` (an operator
-workstation), over the tailnet, against `nibbler`'s exocomp API** — plan/apply a workspace,
-run a playbook, watch a job, decide an approval — without SSHing into `nibbler` and without
+The north star is concrete: **run homelab-ansible ops from an operator workstation, over
+the tailnet, against a remote host's exocomp API** — plan/apply a workspace,
+run a playbook, watch a job, decide an approval — without SSHing into that host and without
 scraping aligned text. The same surface must be **local-AI-friendly**: a weak, small-context
 model should be able to drive it by branching on integers and typed codes, not by parsing
 prose.
@@ -44,11 +44,6 @@ primitive we are exposing rather than inventing:
   anything runs; guardrails live in the queue, not in configuration (AGENTS.md invariant 5;
   docs/architecture/overview.md:48-72). Every new face **enqueues** — it never shells out.
 
-> **Note on inputs.** Two of the four research lanes feeding this synthesis (SURFACE-MAP and
-> REMOTE-CLI-OVER-TAILNET) returned empty stubs. Those angles were reconstructed directly
-> from the code and from docs/architecture/platform-contract.md + ADR 0009. The AGENT-FIT and
-> MCP lanes returned in full and are reconciled explicitly in §3 and §5.
-
 ## 2. Current-surface reality and the gap
 
 ### 2.1 What consumes exocomp today
@@ -68,7 +63,7 @@ and reactive. `internal/api` is *only* the tofu backend, bound loopback-only.
 
 ### 2.2 The gap to the north star
 
-To run ops from `lrrr` over the tailnet to `nibbler`, four things are missing:
+To run ops from `workstation` over the tailnet to `server`, four things are missing:
 
 1. **No general operator API.** The tofu backend speaks only tfstate/tflock and binds
    loopback; there is no `/api/v1/jobs`, `/workspaces`, `/approvals`. The web listener carries
@@ -91,13 +86,13 @@ operator surface.
 ## 3. Target architecture
 
 ```
-        lrrr (operator workstation / agent host)
+        workstation (operator workstation / agent host)
         ┌───────────────┬──────────────┬───────────────┐
         │ exocomp CLI   │ HTTP client  │ MCP client     │
         │ (local/--remote)│ (curl/SDK) │ (bearer /mcp)  │
         └───────┬───────┴──────┬───────┴───────┬────────┘
                 │  tailnet (bearer token + pinned cert / Tailscale Serve TLS)
-   nibbler ─────┼──────────────┼───────────────┼──────────────────────
+   server ─────┼──────────────┼───────────────┼──────────────────────
         ┌───────▼──────────────▼───────────────▼────────┐
         │  ADR-0009 token-gated listener (internal/web)  │  ← one auth story
         │  /            (HTML, existing)                 │
@@ -203,17 +198,17 @@ remote daemon instead of operating on a local data dir. Same verbs, same `--outp
 envelope — the difference is transport.
 
 ```
-exocomp login nibbler.tailnet.ts.net        # TOFU: fetches cert, shows fingerprint,
+exocomp login server.tailnet.ts.net        # TOFU: fetches cert, shows fingerprint,
                                              # stores pinned fp + token (known-hosts style)
-exocomp --remote nibbler jobs list --output json
-EXOCOMP_REMOTE=nibbler EXOCOMP_TOKEN=… EXOCOMP_OUTPUT=json exocomp workspace plan web
-exocomp --remote nibbler approval decide 42 --approve
+exocomp --remote server jobs list --output json
+EXOCOMP_REMOTE=server EXOCOMP_TOKEN=… EXOCOMP_OUTPUT=json exocomp workspace plan web
+exocomp --remote server approval decide 42 --approve
 ```
 
 - Config precedence: `--remote` flag → `EXOCOMP_REMOTE` → a valueless `--remote` fills from the
   `~/.config/exocomp/hosts.toml` default. Token from `--token` → `EXOCOMP_TOKEN` → the host
   entry. A bare `exocomp <cmd>` with neither flag nor env stays local against the data dir
-  (unchanged), so nothing an operator on `nibbler` does today breaks. The selector is `--remote`,
+  (unchanged), so nothing an operator on `server` does today breaks. The selector is `--remote`,
   not `--host`: `--host` is already the ansible target pattern (`exocomp command --host …`), so
   reusing it for the daemon would collide.
 - `internal/client` is the typed HTTP client (the `api/` "monorepo seam" package the layout
@@ -266,7 +261,7 @@ Conventions: every mutating request accepts an `Idempotency-Key` header →
 `Spec.IdempotencyKey` → `JobByIdempotencyKey` dedup (queue.go:117-126), so a retry never
 double-enqueues. The header is namespaced server-side by the authenticated token id and the
 route before it reaches the queue: the dedup space is per-principal, per-verb, and the
-queue's reserved `wf:` step keys are unaddressable from any face (finding AI-7). `httpError`'s flat `{"error":msg}` (state.go) is replaced everywhere by the
+queue's reserved `wf:` step keys are unaddressable from any face. `httpError`'s flat `{"error":msg}` (state.go) is replaced everywhere by the
 `wire` typed envelope. Apply applies the **saved** plan, not a fresh one — the plan→apply seam
 is two linked job rows and the approver sees the actual plan (overview.md:64-66).
 
@@ -311,13 +306,13 @@ that call `reactive.Decide` server-side instead.
 naming the `mcp` face, so an agent's action is never read off the ledger as the operator's
 own CLI run; and `tools/call`/`resources/read` sent as a JSON-RPC *notification* are refused
 with `invalid_request` rather than executed silently, because a mutation that writes no
-frame back leaves an audit wrapper nothing to record (finding AI-13).
+frame back leaves an audit wrapper nothing to record.
 
 **The A column is gated on the `approve` scope alone, and W and A are disjoint.** Approval
 requires an explicitly minted `approve`-scope token; `approve_job`/`reject_job` are absent from
 the catalog a lesser scope sees, and the scope that enqueues a gated apply may not settle it —
-nor may any principal decide the approval for a job its own token asked for (findings AI-1,
-AI-2, `docs/security/threat-model.md`). Because every MCP principal presents a scoped token and
+nor may any principal decide the approval for a job its own token asked for
+(`docs/security/threat-model.md`). Because every MCP principal presents a scoped token and
 none acts un-scoped, a face that raises a gate with `workspace_apply` can never also hold its
 release; there is no ambient approver.
 
@@ -332,26 +327,25 @@ resources are the "be aware of" surface.
 
 - **Reuse ADR 0009 tokens + three scopes.** `token new <name> --scope operator|readonly|approve`
   (store/token.go:13-17); argon2id-hashed at rest, revocable, minted only with the data dir on
-  `nibbler`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
+  `server`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
   `forbidden` **before any store touch**.
 - **Bearer failures back off, and the failure path is constant-cost.** Consecutive failures
   are counted per source and per token row; past a threshold the source serves a doubling
   backoff (429, `Retry-After`) that costs no KDF, and the run is logged once. An unknown or
   revoked token id pays the same argon2id a live one does, so response time is not an
-  existence oracle (finding AI-11).
+  existence oracle.
 - **A revoked token cuts an OPEN stream too.** The SSE tail re-resolves its token row on
   every poll and ends the stream when the row stops authenticating, with a hard 12h lifetime
-  as backstop — a revoke is not something a caller can outrun by holding a socket open
-  (finding AI-10).
+  as backstop — a revoke is not something a caller can outrun by holding a socket open.
 - **`/api/v1` writes take a bearer credential only.** A browser session cookie authenticates
   reads but is refused on every write route: an ambient credential rides whatever request a
   browser is talked into making, and SameSite does not scope to a port, so a second app on
-  the same host could otherwise drive operator writes (finding AI-8). The browser's own
+  the same host could otherwise drive operator writes. The browser's own
   same-origin decide form is where a session acts.
 - **W and A are disjoint on the machine face.** `/api/v1`'s decision route takes the `approve`
   scope alone: the token that may enqueue a gated apply must not also carry its release
-  (finding AI-2, `docs/security/threat-model.md`). The browser/phone surface keeps
+  (`docs/security/threat-model.md`). The browser/phone surface keeps
   operator-or-approve — that is the human at the console — and both paths refuse a principal
   deciding an approval for a job its own token asked for. An operator driving a remote daemon
   with `approval decide --remote` needs an `approve`-scope token for that verb.
@@ -379,17 +373,17 @@ resources are the "be aware of" surface.
 - **Kill switch is visible.** The global reactive silence (the one-row pause) is surfaced on
   `exocomp://health` / `/api/v1/health`, so an agent sees when the plane is paused.
 
-## 5. Reconciling the research angles
+## 5. Reconciling the design approaches
 
-- **"CLI `--json` first" (AGENT-FIT) vs "extract service first, then all three faces" (MCP).**
+- **CLI `--json` first vs extract the service first, then all three faces.**
   These are sequenced, not opposed. The `wire` contract and CLI `--output json` land **first**
   because they are a pure presentation projection over existing store read models — cheap,
   network-free, and they force the schema and error taxonomy to exist and be golden-tested. The
   service extraction proceeds in parallel and is the prerequisite for the **API and MCP** faces,
   which must not fork logic. The CLI's JSON path and the API/MCP path converge on the one `wire`
   marshaller, so they stay byte-identical.
-- **AGENT-FIT's caution about a general HTTP API** (risk of reintroducing the ADR-0001 bypass)
-  is honored by MCP's answer: the API is a thin reflection whose every write is `queue.Enqueue`
+- **The caution about a general HTTP API** (risk of reintroducing the ADR-0001 bypass)
+  is honored: the API is a thin reflection whose every write is `queue.Enqueue`
   / `EnqueueGated`. No endpoint shells out or mutates state directly; the queue remains the sole
   execution authority. The API also reuses the *existing* ADR-0009 listener and auth rather than
   standing up a second session system (which ADR 0001 explicitly rejected).
@@ -402,7 +396,7 @@ resources are the "be aware of" surface.
 - **Wave 0 — Contract foundation (no network).** Ratifying ADR + `internal/wire` envelope,
   error taxonomy, exit-code table + `--output json` on all read/list/status CLI verbs +
   `EXOCOMP_OUTPUT`. Golden tests pin the schema. cobra `Example` on every command +
-  `exocomp commands --output json`. These ship value immediately (a local agent on `nibbler`
+  `exocomp commands --output json`. These ship value immediately (a local agent on `server`
   can already branch on JSON) and lock the schema the later faces reuse.
 - **Wave 1 — Core + write ergonomics.** Extract `internal/service` from the `RunE`/store/queue
   logic. Surface `--idempotency-key` on mutating paths. Land the non-interactive contract
@@ -411,7 +405,7 @@ resources are the "be aware of" surface.
   service verbs, typed `wire` errors, OpenAPI 3.1 spec + `internal/client`. SSE job-follow.
 - **Wave 3 — Remote CLI (the north star) + write API.** `exocomp login` (TOFU pinning) +
   `--remote`/`EXOCOMP_REMOTE` client mode; write/approval endpoints (plan/apply/run/decide)
-  through queue+gate. `lrrr → tailnet → nibbler` works end to end.
+  through queue+gate. `workstation → tailnet → server` works end to end.
 - **Wave 4 — MCP face.** `POST /mcp` (MCP over HTTP) adapter over the service verbs, same
   envelope; tool/resource catalog with scope gating, on the ADR-0009 bearer+scope guard. The
   local agent path is the agent-aware CLI; exocomp ships no stdio MCP server (a stdio client

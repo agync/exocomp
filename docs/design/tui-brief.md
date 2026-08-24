@@ -19,7 +19,7 @@ in a terminal.
 - **Keyboard only.** Every action a key, every key visible in the help bar; no
   chords SSH clients eat; coherent map as screens grow.
 
-## M3 surfaces to design
+## Surfaces to design
 
 1. **Home `[0]`** — glance parity with the web dashboard's information: Needs-you
    (approvals + TTL, stale backup), queue with oldest-queued age, backup
@@ -54,7 +54,7 @@ faster than the data, no mouse-only affordances, nothing that breaks in tmux.
 ## Settled by the design exploration (2026-08-22) — binding, with reconciliations
 
 The TUI canvas delivered every deliverable above. Adopted as implementation
-contract for the M3 TUI work:
+contract for the TUI work:
 
 - **Destroy-approval confirms by typing the workspace name** — the terminal's
   hold-to-confirm, mirroring the phone contract. Stale plans render with no
@@ -69,7 +69,7 @@ contract for the M3 TUI work:
   ntfy topic (test message at step 4); nothing is written to disk until step 4
   — stronger than today's immediate `init`, adopted as the `exocomp setup` flow.
 
-Reconciliation the engine must answer (flagged to M3b):
+Reconciliation the engine must answer:
 
 - The banner splits **PAUSED** (reactive jobs held) from **MUTED**
   (notifications held, jobs still run). The engine has silences and the kill
