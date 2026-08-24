@@ -15,9 +15,9 @@ import (
 // resolveRunSecrets builds a run's credential-plane environment: the sealed
 // values a named run_secret binding maps to env names, plus a dynamic
 // inventory's env_binding, decrypted through the envelope at execution time.
-// This is the convergent must-fix (docs/design/expert-reviews.md) — the env a
-// provider or dynamic-inventory plugin authenticates from, injected for one run
-// so the sandbox allowlist that would otherwise strip it does not starve it.
+// It carries the env a provider or dynamic-inventory plugin authenticates
+// from, injected for one run so the sandbox allowlist that would otherwise
+// strip it does not starve it.
 //
 // It returns the plaintexts too, so the run's redactor scrubs them from events;
 // the values never touch the job row, which carries only the binding name.

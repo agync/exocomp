@@ -285,7 +285,7 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	// lockfile written online carries only zh: (registry) hashes; the mirror
 	// provides h1: hashes, so an offline init would fail verification against a
 	// zh:-only lock. Regenerate the lock from the mirror for this platform
-	// first, so init verifies with no network (expert-reviews.md #6).
+	// first, so init verifies with no network.
 	if t.opts.OfflineProviders {
 		res, lockErr := t.lockProvidersFromMirror(ctx, bin, spec, sink)
 		if lockErr != nil || res.ExitCode != 0 {

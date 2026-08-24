@@ -322,8 +322,8 @@ func (s *Store) ListTFStates(ctx context.Context, workspaceID int64, limit int) 
 // PruneTFStates deletes a workspace's old state versions under a keep policy:
 // the newest keepSerials versions are always retained, and so is every version
 // created at or after keepSince. A version is pruned only when it fails both —
-// old and beyond the serial window (expert-reviews.md #7: state grows unbounded
-// otherwise, and every backup copies all serials). The latest version is always
+// old and beyond the serial window (state grows unbounded otherwise, and
+// every backup copies all serials). The latest version is always
 // within the newest keepSerials, so a workspace never loses its current state.
 // keepSerials below 1 is treated as 1.
 func (s *Store) PruneTFStates(ctx context.Context, workspaceID int64, keepSerials int, keepSince time.Time) (int, error) {

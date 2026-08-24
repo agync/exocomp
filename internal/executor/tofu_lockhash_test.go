@@ -13,8 +13,8 @@ import (
 
 // TestTofuOfflineLocksProvidersBeforeInit proves the offline path regenerates
 // the provider lock from the filesystem mirror for the running platform before
-// it inits (expert-reviews.md #6): a `tofu providers lock -fs-mirror <cache>
-// -platform=<os_arch>` runs, and it runs before `init`, so the offline init
+// it inits: a `tofu providers lock -fs-mirror <cache> -platform=<os_arch>`
+// runs, and it runs before `init`, so the offline init
 // verifies against h1: hashes the mirror can satisfy rather than the zh: hashes
 // an online lock would carry. Hermetic: a fake tofu records each invocation.
 func TestTofuOfflineLocksProvidersBeforeInit(t *testing.T) {

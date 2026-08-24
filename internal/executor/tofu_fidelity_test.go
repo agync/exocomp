@@ -10,7 +10,7 @@ import (
 // TestTofuOperatorArgPassthrough proves the operator's own arguments reach tofu
 // verbatim: -var-file, -target, and -replace ride through TofuArgv and land
 // after the injected non-interactive flags but before any positional. This is
-// the tofu-fidelity must-fix (expert-reviews.md #4).
+// the tofu-fidelity requirement.
 func TestTofuOperatorArgPassthrough(t *testing.T) {
 	p := newProbe(t, map[string]int{"plan": 0, "apply": 0})
 

@@ -6,13 +6,12 @@ import (
 	"strings"
 )
 
-// RunSecrets is the convergent credential-plane binding (docs/design/
-// expert-reviews.md): a sealed-secret set resolved to named environment
-// variables for one run. It is what lets a dynamic-inventory plugin or a
-// provider authenticate under the sandbox — the token reaches the process as
-// an env var the allowlist would otherwise strip, because the driver injects
-// it explicitly for that run rather than inheriting it from the daemon's own
-// environment.
+// RunSecrets is the credential-plane binding: a sealed-secret set resolved
+// to named environment variables for one run. It is what lets a
+// dynamic-inventory plugin or a provider authenticate under the sandbox —
+// the token reaches the process as an env var the allowlist would otherwise
+// strip, because the driver injects it explicitly for that run rather than
+// inheriting it from the daemon's own environment.
 //
 // The map is env name -> value. Values are the plaintext of sealed secrets,
 // resolved by the caller from the envelope at execution time; the driver never
