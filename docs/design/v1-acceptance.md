@@ -68,5 +68,5 @@ is a step-ledger workflow (ADR 0008); an apply→play dependency edge is the min
 ## Sequencing
 
 Source model + credential plane + surfaces → upgrade/rollback + plan policy + step
-ledger + story-5 handoff → the v1.0 gate proving all five stories + maintenance →
-**declare v1.0** → THEN post-v1 (Litestream/GoAlert/OpenBao).
+ledger + the Terraform→Ansible inventory handoff → the v1.0 gate proving the full v1
+scope + maintenance → **declare v1.0** → THEN post-v1 (Litestream/GoAlert/OpenBao).
