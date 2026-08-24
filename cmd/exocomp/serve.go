@@ -913,7 +913,7 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 		cli:     cliJobDriver{store: st, env: env, dataDir: dir},
 		hook:    hookJobDriver{store: st, env: env, dataDir: dir},
 		verify:  verifyJobDriver{},
-		rest:    sched.NewDriver(executor.NewShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
+		rest:    sched.NewDriver(executor.NewScopedShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
 	}, nil
 }
 
