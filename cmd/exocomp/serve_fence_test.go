@@ -135,6 +135,32 @@ func TestServeLeaseFencesCrossHost(t *testing.T) {
 	_ = fenceA
 }
 
+// TestServeLeaseSameHostRestartReclaimsWithoutWaitingTTL proves a same-host
+// restart (a new pid after a crash) reclaims its predecessor's lease at once,
+// even though the lease is still well within TTL — the flock already proves
+// the predecessor is gone — and that a genuinely different host still cannot
+// clobber the reclaimed, live lease.
+func TestServeLeaseSameHostRestartReclaimsWithoutWaitingTTL(t *testing.T) {
+	ctx := context.Background()
+	st := openLeaseStore(t)
+
+	if _, err := acquireLease(ctx, st, "host-a/pid-1", time.Minute, 10*time.Second, false, io.Discard); err != nil {
+		t.Fatalf("host-a first instance acquire: %v", err)
+	}
+
+	// A restart under a new pid, same host, reclaims without waiting out the
+	// minute-long TTL.
+	if _, err := acquireLease(ctx, st, "host-a/pid-2", time.Minute, 10*time.Second, false, io.Discard); err != nil {
+		t.Fatalf("same-host restart reclaim: %v", err)
+	}
+
+	// A different host must still be refused: sameHost correctly says no for
+	// host-b against the freshly reclaimed, live lease.
+	if _, err := acquireLease(ctx, st, "host-b/pid-9", time.Minute, 10*time.Second, false, io.Discard); err == nil {
+		t.Fatal("a different host acquired a lease live under a same-host reclaim")
+	}
+}
+
 // TestServeLeaseTakenAfterRelease proves a standby becomes active once the
 // primary's lease is free: released on a clean stop (no TTL wait), and — the
 // ungraceful path — once it goes stale past its TTL.

@@ -71,14 +71,27 @@ func (s *Store) GetLease(ctx context.Context) (Lease, error) {
 // judged against now. It takes the lease when it is free, already this holder's,
 // or STALE (now past its expiry). It refuses with ErrLeaseHeld — returning the
 // live lease so the caller can name the holder — when a different holder's lease
-// is still LIVE, unless force is set. force takes it regardless: the operator's
-// explicit override for a holder known to be gone. acquired_at is preserved
-// while the same holder renews and reset to now on every takeover, so it always
-// reads as when the current holder became active.
+// is still LIVE, unless force is set or sameHolderHost says otherwise (see
+// below). force takes it regardless: the operator's explicit override for a
+// holder known to be gone. acquired_at is preserved while the same holder
+// renews and reset to now on every takeover, so it always reads as when the
+// current holder became active.
+//
+// sameHolderHost, when non-nil, is called with the current row's HolderID —
+// the one this call itself just read — and, if it reports true, takes over a
+// live lease exactly as force would (a same-host predecessor: the caller's own
+// flock already proves that daemon is gone, so a restart must not wait out a
+// whole TTL). Because it is evaluated against the freshly-read row inside this
+// call's own transaction rather than against any earlier read the caller made,
+// a takeover decision can never be stale: if the lease became a different,
+// live holder's between when the caller last looked and this call, that fresh
+// holder is what sameHolderHost sees, and a predicate scoped to the caller's
+// own host correctly says no. This is what keeps a fast restart from clobbering
+// a live lease a different host has since taken.
 //
 // The whole read-decide-write is one immediate transaction, so two daemons
 // racing to acquire the same free-or-stale lease cannot both win it.
-func (s *Store) AcquireLease(ctx context.Context, holderID string, ttl time.Duration, now time.Time, force bool) (Lease, error) {
+func (s *Store) AcquireLease(ctx context.Context, holderID string, ttl time.Duration, now time.Time, force bool, sameHolderHost func(currentHolderID string) bool) (Lease, error) {
 	if holderID == "" {
 		return Lease{}, errors.New("store: acquire lease: empty holder id")
 	}
@@ -96,12 +109,16 @@ func (s *Store) AcquireLease(ctx context.Context, holderID string, ttl time.Dura
 	row := tx.QueryRowContext(ctx,
 		`SELECT holder_id, acquired_at, renewed_at, ttl_ms FROM serve_lease WHERE id = ?`, leaseRowID)
 	current, err := scanLease(row)
+	takeover := force
+	if !takeover && err == nil && sameHolderHost != nil {
+		takeover = sameHolderHost(current.HolderID)
+	}
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		// Free: nobody holds it.
 	case err != nil:
 		return Lease{}, wrap("acquire lease", err)
-	case current.HolderID != holderID && current.Live(now) && !force:
+	case current.HolderID != holderID && current.Live(now) && !takeover:
 		return current, fmt.Errorf("store: acquire lease: %w", ErrLeaseHeld)
 	}
 

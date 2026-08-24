@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — lease: same-host takeover re-verified inside acquire transaction
+
+`cmd/exocomp`'s `acquireLease` decided a same-host restart's takeover from a separate,
+un-transacted `GetLease` read, then passed that decision into `AcquireLease` as an
+unconditional override. A lease that changed hands to a different, live host in the gap
+between that read and the write could be clobbered by a fast restart. `AcquireLease` now
+takes a `sameHolderHost` predicate and evaluates it against the row it reads inside its own
+transaction, so the takeover decision can never be stale — it always sees whichever holder is
+current at write time, not whichever the caller last happened to read.
+
 ## 2026-08-24 — lease: skew margin guards against reader clock drift
 
 `Lease.Live` compared a reader's wall clock straight against the holder's `RenewedAt` stamp,

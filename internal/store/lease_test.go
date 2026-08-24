@@ -4,7 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -54,7 +57,7 @@ func TestMigration0024UpgradesFrom22(t *testing.T) {
 		t.Fatalf("fresh lease table: %v, want ErrNotFound", err)
 	}
 	now := time.Now().UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, now, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, now, false, nil); err != nil {
 		t.Fatalf("acquire lease on migrated schema: %v", err)
 	}
 	got, err := s.GetLease(ctx)
@@ -71,7 +74,7 @@ func TestLeaseFreeAcquireAndRefuseLive(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	first, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false)
+	first, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil)
 	if err != nil {
 		t.Fatalf("acquire free lease: %v", err)
 	}
@@ -80,7 +83,7 @@ func TestLeaseFreeAcquireAndRefuseLive(t *testing.T) {
 	}
 
 	// A second host, while the first is live, is refused and told who holds it.
-	held, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(5*time.Second), false)
+	held, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(5*time.Second), false, nil)
 	if !errors.Is(err, ErrLeaseHeld) {
 		t.Fatalf("second acquire while live: %v, want ErrLeaseHeld", err)
 	}
@@ -106,12 +109,12 @@ func TestLeaseStaleIsTaken(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 
 	// One second before expiry it is still live and refuses.
-	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(29*time.Second), false); !errors.Is(err, ErrLeaseHeld) {
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(29*time.Second), false, nil); !errors.Is(err, ErrLeaseHeld) {
 		t.Fatalf("acquire just before expiry: %v, want ErrLeaseHeld", err)
 	}
 
@@ -119,7 +122,7 @@ func TestLeaseStaleIsTaken(t *testing.T) {
 	// without force. (Exactly at expiry is still within the skew margin — see
 	// TestLeaseSkewGuardKeepsLiveWithinMargin.)
 	takeover := t0.Add(30*time.Second + LeaseSkewMargin + time.Second)
-	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, takeover, false)
+	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, takeover, false, nil)
 	if err != nil {
 		t.Fatalf("acquire stale lease: %v", err)
 	}
@@ -136,16 +139,16 @@ func TestLeaseForceTakesLive(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 
 	// Without force, refused while live.
-	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), false); !errors.Is(err, ErrLeaseHeld) {
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), false, nil); !errors.Is(err, ErrLeaseHeld) {
 		t.Fatalf("force=false while live: %v, want ErrLeaseHeld", err)
 	}
 	// With force, taken over.
-	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), true)
+	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), true, nil)
 	if err != nil {
 		t.Fatalf("force acquire: %v", err)
 	}
@@ -162,10 +165,10 @@ func TestLeaseReacquireKeepsAcquiredAt(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
-	again, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0.Add(10*time.Second), false)
+	again, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0.Add(10*time.Second), false, nil)
 	if err != nil {
 		t.Fatalf("re-acquire own lease: %v", err)
 	}
@@ -186,7 +189,7 @@ func TestRenewGuardsHolder(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 	if err := s.RenewLease(ctx, "host-a/pid-1", t0.Add(5*time.Second)); err != nil {
@@ -194,7 +197,7 @@ func TestRenewGuardsHolder(t *testing.T) {
 	}
 
 	// Another host force-takes it; the original holder's renew now loses.
-	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(6*time.Second), true); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(6*time.Second), true, nil); err != nil {
 		t.Fatalf("force takeover: %v", err)
 	}
 	if err := s.RenewLease(ctx, "host-a/pid-1", t0.Add(7*time.Second)); !errors.Is(err, ErrLeaseLost) {
@@ -215,7 +218,7 @@ func TestReleaseFreesTheFence(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 	if err := s.ReleaseLease(ctx, "host-a/pid-1"); err != nil {
@@ -223,7 +226,7 @@ func TestReleaseFreesTheFence(t *testing.T) {
 	}
 
 	// Freed: the standby takes it immediately, still well within the TTL window.
-	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(time.Second), false, nil); err != nil {
 		t.Fatalf("acquire after release: %v", err)
 	}
 
@@ -247,14 +250,14 @@ func TestLeaseSkewGuardKeepsLiveWithinMargin(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 
 	// TTL expires at t0+30s; a reader within the skew margin past that must
 	// still refuse, as if the lease were live.
 	past := t0.Add(30*time.Second + LeaseSkewMargin - time.Second)
-	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false); !errors.Is(err, ErrLeaseHeld) {
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false, nil); !errors.Is(err, ErrLeaseHeld) {
 		t.Fatalf("acquire %s past expiry (within skew margin): %v, want ErrLeaseHeld", LeaseSkewMargin-time.Second, err)
 	}
 }
@@ -268,17 +271,121 @@ func TestLeaseSkewGuardStaleBeyondMargin(t *testing.T) {
 	s := openTestStore(t)
 
 	t0 := time.Unix(1_700_000_000, 0).UTC()
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
 
 	past := t0.Add(30*time.Second + LeaseSkewMargin + time.Second)
-	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false)
+	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false, nil)
 	if err != nil {
 		t.Fatalf("acquire past ttl+skew margin: %v", err)
 	}
 	if taken.HolderID != "host-b/pid-9" {
 		t.Fatalf("takeover holder = %q, want host-b/pid-9", taken.HolderID)
+	}
+}
+
+// TestAcquireLeaseSameHolderHostReclaimsStaleLeaseOnly proves sameHolderHost is
+// consulted against the row AcquireLease itself just read, inside its own
+// transaction — not against any belief the caller formed earlier. A restart
+// reclaiming what looks like its own predecessor's lease succeeds even though
+// the lease is still within TTL (the flock already proves that predecessor is
+// gone); the same predicate correctly refuses when the lease has since become a
+// DIFFERENT, live holder's, because the fresh row it is evaluated against says
+// so — there is no stale external read left to go wrong.
+func TestAcquireLeaseSameHolderHostReclaimsStaleLeaseOnly(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	sameHost := func(host string) func(string) bool {
+		return func(currentHolderID string) bool {
+			h, _, _ := strings.Cut(currentHolderID, "/pid-")
+			return h == host
+		}
+	}
+
+	t0 := time.Unix(1_700_000_000, 0).UTC()
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false, nil); err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	// A same-host restart reclaims at once: the lease is still well within TTL
+	// (t0+1s of a 30s lease), so only the sameHolderHost predicate — evaluated
+	// against the row just read — explains the takeover.
+	again, err := s.AcquireLease(ctx, "host-a/pid-2", 30*time.Second, t0.Add(time.Second), false, sameHost("host-a"))
+	if err != nil {
+		t.Fatalf("same-host reclaim of a live-by-TTL lease: %v", err)
+	}
+	if again.HolderID != "host-a/pid-2" {
+		t.Fatalf("reclaim holder = %q, want host-a/pid-2", again.HolderID)
+	}
+
+	// Now the lease is host-a/pid-2's. A DIFFERENT host racing in, whose
+	// predicate only matches "host-b", must not clobber it: the predicate sees
+	// the fresh holder (host-a/pid-2) and correctly says no.
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, t0.Add(2*time.Second), false, sameHost("host-b")); !errors.Is(err, ErrLeaseHeld) {
+		t.Fatalf("cross-host acquire against a live different holder: %v, want ErrLeaseHeld", err)
+	}
+	cur, err := s.GetLease(ctx)
+	if err != nil || cur.HolderID != "host-a/pid-2" {
+		t.Fatalf("lease after refused cross-host acquire = %+v, %v, want still host-a/pid-2", cur, err)
+	}
+}
+
+// TestAcquireLeaseConcurrentDoesNotClobberLiveDifferentHost is the TOCTOU
+// regression: many goroutines race AcquireLease for the same lease under
+// different holder identities and sameHolderHost predicates scoped to their
+// own host. Because the predicate is evaluated inside AcquireLease's own
+// transaction against the row it just read — never against a value any
+// goroutine read earlier — at most one holder is ever live at a time: no
+// goroutine's belief about who used to hold the lease can survive to overrule
+// what the transaction just saw.
+func TestAcquireLeaseConcurrentDoesNotClobberLiveDifferentHost(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	const hosts = 6
+	var (
+		start   sync.WaitGroup
+		workers sync.WaitGroup
+		mu      sync.Mutex
+		wins    []string
+	)
+	start.Add(1)
+	for i := range hosts {
+		host := fmt.Sprintf("host-%d", i)
+		sameHost := func(currentHolderID string) bool {
+			h, _, _ := strings.Cut(currentHolderID, "/pid-")
+			return h == host
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			start.Wait()
+			lease, err := s.AcquireLease(ctx, host+"/pid-1", time.Minute, time.Now().UTC(), false, sameHost)
+			if err == nil {
+				mu.Lock()
+				wins = append(wins, lease.HolderID)
+				mu.Unlock()
+			} else if !errors.Is(err, ErrLeaseHeld) {
+				t.Errorf("host %s acquire: unexpected error %v", host, err)
+			}
+		}()
+	}
+	start.Done()
+	workers.Wait()
+
+	if len(wins) != 1 {
+		t.Fatalf("acquires that reported success = %v, want exactly one winner", wins)
+	}
+	cur, err := s.GetLease(ctx)
+	if err != nil {
+		t.Fatalf("get lease: %v", err)
+	}
+	if cur.HolderID != wins[0] {
+		t.Fatalf("final lease holder = %q, want the sole reported winner %q", cur.HolderID, wins[0])
 	}
 }
 
@@ -290,10 +397,10 @@ func TestLeaseRejectsBadInput(t *testing.T) {
 	s := openTestStore(t)
 
 	now := time.Now().UTC()
-	if _, err := s.AcquireLease(ctx, "", 30*time.Second, now, false); err == nil {
+	if _, err := s.AcquireLease(ctx, "", 30*time.Second, now, false, nil); err == nil {
 		t.Error("acquired a lease with an empty holder id")
 	}
-	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 0, now, false); err == nil {
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 0, now, false, nil); err == nil {
 		t.Error("acquired a lease with a zero TTL")
 	}
 }

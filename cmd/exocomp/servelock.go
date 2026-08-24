@@ -176,14 +176,17 @@ func acquireLease(ctx context.Context, st *store.Store, holderID string, ttl, re
 	// A lease left by a same-host predecessor is taken over unconditionally: the
 	// flock already proves that daemon is gone, so a crash-restart must not be
 	// held off for a whole TTL. force keeps its meaning for a DIFFERENT host.
-	takeover := force
-	if !takeover {
-		if cur, gerr := st.GetLease(ctx); gerr == nil && leaseHost(cur.HolderID) == leaseHost(holderID) {
-			takeover = true
-		}
+	//
+	// sameHost is handed to AcquireLease rather than decided here from a
+	// GetLease read of our own: evaluated inside AcquireLease's own transaction
+	// against the row it just read, it can never go stale the way a read taken
+	// here and acted on afterward could — closing the gap where a fast restart
+	// might otherwise clobber a live lease a different host took in between.
+	sameHost := func(currentHolderID string) bool {
+		return leaseHost(currentHolderID) == leaseHost(holderID)
 	}
 
-	lease, err := st.AcquireLease(ctx, holderID, ttl, now, takeover)
+	lease, err := st.AcquireLease(ctx, holderID, ttl, now, force, sameHost)
 	if errors.Is(err, store.ErrLeaseHeld) {
 		ago := now.Sub(lease.RenewedAt).Round(time.Second)
 		return nil, fmt.Errorf(
