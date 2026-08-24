@@ -33,7 +33,7 @@ in flight**. A queued-but-unclaimed job does not block a reboot (it is swept to
 ## Driving it
 
 `drain` controls a **running** daemon, so it goes over the operator API, the same channel
-`--remote` uses for every other write ([Driving a remote daemon](remote-cli.md)). It needs
+`--remote` uses for every other write ([Driving a remote daemon](remote-access.md)). It needs
 a selected remote — the control node targets its own daemon:
 
 ```

@@ -22,9 +22,8 @@ Getting an install standing up, and getting it back after it falls over.
 | [Provision → onboard → converge](provision-converge.md) | `exocomp provision run` as one resumable four-step ledger chain — apply, bounded wait for SSH, seeded onboarding, configure play — and the standing `tf:<workspace>` inventory a `schedule --kind play` targets by name |
 | [Sources and credentials](sources.md) | Registering git/host/volume sources, inventories, and the run-secret credential binding; the fleet key, host onboarding, and known_hosts |
 | [LAN access](lan-access.md) | Minting bearer tokens and serving the TLS web + phone-approval surface, separate from the loopback state backend ([ADR 0009](../adr/0009-lan-access-tokens.md)) |
-| [Driving a remote daemon](remote-cli.md) | `exocomp login` and `--remote`: pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire |
+| [Driving a remote daemon](remote-access.md) | `exocomp login` and `--remote`: TOFU certificate pinning, `--remote`/`EXOCOMP_REMOTE`/`--token` precedence, pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire |
 | [Setup and notifications](notifications.md) | The first-run wizard, the ntfy push transport, the MUTED-vs-PAUSED holds, and the `/metrics` staleness gauges |
-| [Remote CLI](remote-access.md) | `exocomp login`'s TOFU certificate pinning, `--remote`/`EXOCOMP_REMOTE`/`--token` precedence, and which verbs are remoted today (reads only) |
 | [The API surface](api.md) | The `/api/v1` read and write routes on the ADR-0009 listener, the wire envelope, idempotency, and the error-code-to-HTTP-status table |
 | [Machine-readable output](machine-output.md) | `--output json`/`EXOCOMP_OUTPUT`, the envelope shape, the error taxonomy, the exit-code table and what of it actually reaches the process today, and MCP-over-HTTP as the third face |
 | [The MCP surface](mcp.md) | `POST /mcp` on the ADR-0009 listener, the one agent MCP surface: connecting an agent, what each scope is advertised, why there is no session id, and what never travels |
