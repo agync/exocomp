@@ -77,7 +77,7 @@ dir or any of the files above. That second check is the one that matters in prac
 the caches a job legitimately needs all live *inside* the data dir, so the mistake to
 catch is a grant one directory too high.
 
-Ansible and tofu jobs run under it. Shell runbooks and backup legs do not yet: the backup
+Ansible and tofu jobs run under it. Shell runbooks and backup legs do not: the backup
 engine reads `keyring.age` by design — it is the file every target root gets a copy of —
 so those kinds need a profile shaped around the engine's targets rather than the deny list
 above.
@@ -100,16 +100,15 @@ listening unix sockets, and a listening loopback TCP port, then runs a canary in
 sandbox granting none of them and requires the refusals. Live targets are the point — a
 refusal has to come from the kernel policy, not from there being nothing to reach.
 
-One assertion in [ADR 0005](../adr/0005-job-sandboxing-nono.md) did not survive contact
-with the kernel. **A `connect(2)` to a pathname `AF_UNIX` socket is not mediated by any
-Landlock ABI shipped so far**: Landlock hooks path opening, and connecting to a unix socket
-opens nothing. Abstract sockets, which Landlock does scope, are refused; pathname ones are
-not. The ADR's socket denial therefore holds by placement rather than by policy — exocomp
-ships no unix socket for a job to reach, its own surface is loopback TCP, and no podman
-socket is mounted into the container — and `doctor` prints the gap instead of implying a
-denial it cannot make. The CVE lesson behind the probe is unchanged and now better
-evidenced: it took an executed assertion to find this, which is exactly why the ADR
-required one.
+**A `connect(2)` to a pathname `AF_UNIX` socket is not mediated by any Landlock ABI shipped
+so far**: Landlock hooks path opening, and connecting to a unix socket opens nothing.
+Abstract sockets, which Landlock does scope, are refused; pathname ones are not. The socket
+denial in [ADR 0005](../adr/0005-job-sandboxing-nono.md) therefore holds by placement rather
+than by policy — exocomp ships no unix socket for a job to reach, its own surface is
+loopback TCP, and no podman socket is mounted into the container — and `doctor` prints the
+gap instead of implying a denial it cannot make. This is why the probe asserts against live
+targets rather than assuming kernel behavior: an assumption here would have hidden exactly
+this gap.
 
 The consequence that matters is unchanged: a playbook is arbitrary code from a git
 repository, and under this tier it cannot read the database, the host key, or the keyring.

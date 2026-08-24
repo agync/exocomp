@@ -30,8 +30,7 @@ a process boundary or does not ship.
 | `filippo.io/age` | 1.3.x | BSD-3 | envelope crypto as a library (recipients → DEK) |
 | Go stdlib `crypto` (GCM, `crypto/hkdf`) | 1.26 stdlib | BSD-3 | secret encryption and subkey derivation — zero novel crypto |
 | `robfig/cron/v3` | 3.0.x | MIT | schedules, rebuilt from the DB on boot |
-| `google/cel-go` | 0.2x | Apache-2.0 | sandboxed, non-Turing-complete event rules |
-| `containrrr/shoutrrr` | 0.8.x | MIT | notification fan-out (ntfy, gotify, SMTP, webhook) as a library |
+| `google/cel-go` | 0.31.x | Apache-2.0 | sandboxed, non-Turing-complete event rules |
 | `charm.land/bubbletea/v2` + `bubbles/v2` + `lipgloss/v2` | v2.0.x / v2.2.x / v2.0.x | MIT | TUI — the priority-1 interface. Not the `charmbracelet/*` v1 imports — Charm's tooling moved to the `charm.land` module path for the v2 line this project is on |
 | `charm.land/wish/v2` | 2.0.x | MIT | TUI over SSH, `exocomp ssh-serve` (`cmd/exocomp/ssh.go`). Not `charmbracelet/wish` v1.x — that major still pairs with Bubble Tea v1; `charm.land/wish/v2`'s `bubbletea` middleware is the release that targets Bubble Tea v2, which this project is on |
 | `a-h/templ` + htmx | 0.3.x / 2.x | MIT / 0BSD | server-rendered web UI via `go:embed`, no Node build |
@@ -77,7 +76,7 @@ glibc image — the Python requirement rules out distroless-static.
 | healthchecks (self-hosted or hosted) | BSD-3 | dead-man's switch; ping URL on the recovery kit | yes — backup honesty |
 | Prometheus + Alertmanager (existing) | Apache-2.0 | event source in; `/metrics` and seeded rules out | recommended |
 | NAS share (SMB/NFS) | — | restic leg 1 | ≥ 1 of the |
-| S3-compatible store (Garage/SeaweedFS/B2/R2 (MinIO CE archived 2026-04, see the MinIO assessment)) | varies | restic leg 2; optional Litestream target | three legs |
+| S3-compatible store (Garage/SeaweedFS/B2/R2 — MinIO CE archived 2026-04, see the [MinIO assessment](minio-assessment.md)) | varies | restic leg 2; optional Litestream target | three legs |
 | private GitHub/Gitea repo | — | leg 3: age-encrypted orphan-commit archives | required |
 | Git forge for ops repos | — | playbook and OpenTofu sources, bundled into every backup | yes |
 | Tailscale/WireGuard *(optional)* | BSD-3 | the specified remote-access path for approvals; Caddy (Apache-2.0) is the fallback | recommended |
