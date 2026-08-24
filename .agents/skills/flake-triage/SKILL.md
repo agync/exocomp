@@ -51,6 +51,13 @@ the code being gated.
   `parallel golangci-lint is running`. golangci-lint takes a machine-wide lock;
   when several worktrees hit the `lint` target at the same moment, all but one
   lose the lock. This is not a lint finding — the diff is clean.
+- **`TestSandboxedTofuReadsDevShmStagedSecret`** (`internal/executor`, the
+  real-`nono`/Landlock `/dev/shm` run-secret e2e; its sibling
+  `TestSandboxDeniesAnUngrantedDevShmFile` too). Exercises a real Landlock
+  self-restrict + `execve` of the sandboxed child; under full `-race ./...`
+  parallel load the scheduling jitter around the sandbox handshake occasionally
+  trips its deadline. Passes reliably in isolation and on retry. Multiple lanes
+  hit this once each during the round-2 wave.
 
 ## Fixed / root-caused
 
