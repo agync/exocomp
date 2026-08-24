@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — failover.md: lease fences only a shared file, not replica/restore
+
+Corrects the [cold-standby failover](operations/failover.md) runbook's claim that the active
+lease fences the Litestream-replica and restic-restore paths it documents. It does not: each
+is its own separate copy of `exocomp.db` that never shares the lease row, so a standby
+reading a stale replica can see no live lease and take over while the primary still holds
+one, and a resurrected primary serving its own restored copy never discovers a standby's
+lease at all. The lease only fences two daemons that open the SAME file (a shared volume or
+network filesystem); the runbook's own restic-restore / Litestream-fast-forward path relies
+on step 1 — the operator confirming the primary is stopped — which was always the real guard
+there.
+
 ## 2026-08-24 — Run-secret file staging moves to /dev/shm
 
 The Phase 3 `--capture-file` design (bootstrap-first.md §2.3) staged a KUBECONFIG-shaped

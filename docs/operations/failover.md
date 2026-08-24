@@ -1,37 +1,48 @@
 # Cold-standby failover
 
-The primary is down and you want a second host serving. This is the drilled procedure, and
-the property that makes it safe to run in a hurry: **two hosts sharing one replicated store
-can never both be active.** The [disaster-recovery](disaster-recovery.md) runbook rebuilds a
-dead host from a backup target; this page is the narrower case where a **standby** takes over
-a store both hosts can reach, and how the fence stops a split-brain when the primary is not as
-dead as you thought.
+The primary is down and you want a second host serving. This is the drilled procedure. The
+[disaster-recovery](disaster-recovery.md) runbook rebuilds a dead host from a backup target;
+this page is the narrower case where a **standby** takes over, and how a fence — the active
+lease — stops a split-brain **when both hosts open the same SQLite file**. This procedure's own
+restic-restore step gives the standby its own separate copy, not that same file (see below); for
+that path, and for the optional Litestream fast-forward, safety rests on step 1 — confirming the
+primary is truly stopped — not on the lease.
 
 ## Why a lease, on top of the lock
 
 `exocomp serve` has always held a host-local lock on `serve.lock` in the data dir (see
 [running the daemon](serve.md)): two daemons on **one** host cannot both start. That lock is a
 `flock` on a local file and a check that a local pid is alive — both meaningless across hosts.
-Two daemons on two hosts, sharing one replicated `exocomp.db` (a Litestream copy, a shared
-volume, a restic restore of the same snapshot), would each pass their own local lock and both
-go active: firing every schedule twice, racing for every queued job, and — worst — each running
-the boot sweep, whose pid-liveness is host-local and would retire the *other* host's in-flight
-jobs as though their owner had died.
+Two daemons on two hosts, opening the **same** `exocomp.db` — a shared volume or network
+filesystem both mount — would each pass their own local lock and both go active: firing every
+schedule twice, racing for every queued job, and — worst — each running the boot sweep, whose
+pid-liveness is host-local and would retire the *other* host's in-flight jobs as though their
+owner had died.
 
-The fence closes that. A single-row **active lease** lives in the store itself, with a
-wall-clock TTL. The active daemon holds it and renews it; a starting daemon that finds a **live**
-lease held by another holder refuses to become active and names who holds it. Both guards stay:
-the flock is the cheap same-host answer, the lease the cross-host one.
+The fence closes that literal case. A single-row **active lease** lives in the store itself, with
+a wall-clock TTL. The active daemon holds it and renews it; a starting daemon that finds a
+**live** lease held by another holder refuses to become active and names who holds it. Both
+guards stay: the flock is the cheap same-host answer, the lease the cross-host one.
 
 ```
 serve.lock (flock)   → one daemon per HOST
-serve_lease (row)    → one active daemon across all hosts sharing the store
+serve_lease (row)    → one active daemon across all hosts opening the SAME file
 ```
 
-The lease is not a power controller. It prevents two daemons from both **activating against the
-shared store**; it does not switch off a primary that is independently mutating external systems
-out of band. Making sure the primary is truly stopped is still yours — the fence is what keeps a
-mistake from corrupting the queue, not a substitute for confirming the mistake.
+**The lease does not reach a Litestream replica or a restic restore.** Each is its own separate
+copy of `exocomp.db` — the lease row travels with the bytes, but stops updating the instant the
+copy is made. A daemon reading a stale replica sees the primary's lease look expired (no fresh
+renewal ever arrives there) and takes over while the primary is still live; a primary restored
+from its own snapshot never sees a lease a standby acquired on its copy. Both of those paths —
+this runbook's own procedure included — depend entirely on step 1: the operator confirming the
+primary is stopped *before* the standby ever starts. The lease is a second, independent guard for
+the one-shared-file case; it is not a substitute for that confirmation anywhere else.
+
+The lease is not a power controller, even in the shared-file case it does cover. It prevents two
+daemons from both **activating against the same open file**; it does not switch off a primary
+that is independently mutating external systems out of band. Making sure the primary is truly
+stopped is still yours — the fence is what keeps a mistake from corrupting the queue, not a
+substitute for confirming the mistake.
 
 ## Procedure
 
@@ -116,17 +127,27 @@ sequenceDiagram
 
 ## A resurrected primary
 
-If the old primary comes back — a reboot, a healed partition — while the standby is active, it
-tries to renew or re-acquire the lease and finds the standby holding a live one. A **starting**
-primary refuses exactly as in step 4. A primary that was mid-renew when it was fenced (you ran
-`--force-lease`) discovers on its next renew that the lease is no longer its own and **stands
-down**, running the same graceful stop a `SIGTERM` triggers. Either way, only one daemon stays
-active against the store.
+This self-healing needs the primary and the standby to open the **same** `exocomp.db`. If the old
+primary comes back — a reboot, a healed partition — while the standby is active on that shared
+file, it tries to renew or re-acquire the lease and finds the standby holding a live one. A
+**starting** primary refuses exactly as in step 4. A primary that was mid-renew when it was
+fenced (you ran `--force-lease`) discovers on its next renew that the lease is no longer its own
+and **stands down**, running the same graceful stop a `SIGTERM` triggers. Either way, only one
+daemon stays active against the store.
 
-The TTL is the window this costs you: after an **ungraceful** primary loss the standby must wait
-for the lease to go stale before it can acquire without `--force-lease` (default TTL 30s, tunable
-with `--lease-ttl` / `--lease-renew`). A **clean** `serve` shutdown releases the lease on the way
-out, so a planned failover has no wait at all.
+**This runbook's own procedure does not share a file.** Step 2 restores a restic snapshot onto
+the standby's own data dir — a separate copy of `exocomp.db` with no lease row in common with
+whatever the primary is doing to its own. A resurrected primary serving *its own* store never
+queries the standby's lease and has no way to discover it; nothing here stands it down. The only
+guard against that is step 1 staying true after the fact: keep the old primary from restarting
+`serve` (disable the unit, don't just power it back on) until you deliberately reintegrate it.
+The lease protects the shared-file case above; it cannot protect a case where the two daemons
+never open the same file.
+
+The TTL is the window this costs you **in the shared-file case**: after an **ungraceful** primary
+loss the standby must wait for the lease to go stale before it can acquire without
+`--force-lease` (default TTL 30s, tunable with `--lease-ttl` / `--lease-renew`). A **clean**
+`serve` shutdown releases the lease on the way out, so a planned failover has no wait at all.
 
 ## Drilling it
 
