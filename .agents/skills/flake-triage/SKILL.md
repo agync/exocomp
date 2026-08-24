@@ -38,12 +38,6 @@ the code being gated.
   provider before the offline half runs. Under concurrent load the warm-up
   races provider download/network and the child's `unshare -rn` namespace
   setup, so it flakes on first attempt.
-- **`TestConcurrentMigrationAppliesOnce`** (`internal/store/migrate_test.go`).
-  Opens the same SQLite file from four goroutines, each its own `Open` handle.
-  The store sets `busy_timeout(5000)` (`internal/store/store.go`) so a handle
-  waits for the write lock instead of returning `SQLITE_BUSY` at once; when the
-  box is saturated by other lanes that 5s budget is exceeded and an opener
-  surfaces `SQLITE_BUSY`.
 - **serve integration timing** — the `TestServe*` / `TestDaemon*` cases in
   `cmd/exocomp/serve_integration_test.go`. They wait on daemon start-up, socket
   bind, and in-flight-job settling against real wall-clock deadlines that a
@@ -57,6 +51,24 @@ the code being gated.
   `parallel golangci-lint is running`. golangci-lint takes a machine-wide lock;
   when several worktrees hit the `lint` target at the same moment, all but one
   lose the lock. This is not a lint finding — the diff is clean.
+
+## Fixed / root-caused
+
+Previously flagged flaky here, now fixed. Listed so a future contributor does
+not re-flag either as flaky or paper over a real regression as one.
+
+- **`TestInterruptedListing`** (`internal/web`). Was a harness queue-runner
+  race: a live runner could claim the `queued` row before the test transitioned
+  it to `interrupted`. Fixed by creating the job via `store.CreateGatedJob`
+  (lands in `awaiting_approval`, which no worker claims) then transitioning it
+  to `interrupted` directly — race-free by construction, not a timing fix.
+- **`TestConcurrentMigrationAppliesOnce`** (`internal/store/migrate_test.go`).
+  Was not a product bug — a test-environment artifact of `make check`'s full
+  `go test -race ./...` running every package's race binary at once, where
+  SQLite's real write-lock handoff can exceed the production 5s
+  `busy_timeout`. Fixed by giving the test its own 30s busy_timeout budget (via
+  a factored `openDSN`; the production default stays 5s) and trimming its
+  openers from four to two, matching the documented CLI+daemon scenario.
 
 ## Load ceiling
 
