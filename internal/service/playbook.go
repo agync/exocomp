@@ -24,6 +24,10 @@ type PlaybookInput struct {
 	TolerateUnreachable bool
 	IdempotencyKey      string
 	Timeout             time.Duration
+	// RunnerName names a registered runner whose memory_max/cpu_quota the
+	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
+	// is the default, uncapped path.
+	RunnerName string
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -51,6 +55,7 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		TolerateUnreachable: in.TolerateUnreachable,
 		IdempotencyKey:      in.IdempotencyKey,
 		Timeout:             in.Timeout,
+		RunnerName:          in.RunnerName,
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {

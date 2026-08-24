@@ -22,6 +22,10 @@ type PlanInput struct {
 	RunSecrets     string
 	IdempotencyKey string
 	Timeout        time.Duration
+	// RunnerName names a registered runner whose memory_max/cpu_quota the
+	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
+	// is the default, uncapped path.
+	RunnerName string
 	// Trigger records who asked (TriggerManual/TriggerAPI); empty defaults to
 	// manual. The daemon reads it back to decide whether to seal the plan.
 	Trigger string
@@ -53,6 +57,7 @@ func (s *Service) PlanWorkspace(ctx context.Context, enq Enqueuer, in PlanInput)
 		Argv:             executor.TofuArgv("plan", "-out="+planPath),
 		Dir:              in.TofuDir,
 		RunSecretBinding: in.RunSecrets,
+		RunnerName:       in.RunnerName,
 		ConcurrencyKey:   workspaceConcurrencyKey(in.Workspace),
 		IdempotencyKey:   in.IdempotencyKey,
 		Timeout:          in.Timeout,
@@ -122,10 +127,14 @@ type ApplyInput struct {
 	WorkspaceSerial int64
 	TofuDir         string
 	RunSecrets      string
-	IdempotencyKey  string
-	Timeout         time.Duration
-	SavedPlan       *store.Artifact
-	Gate            PlanGate
+	// RunnerName names a registered runner whose memory_max/cpu_quota the
+	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
+	// is the default, uncapped path.
+	RunnerName     string
+	IdempotencyKey string
+	Timeout        time.Duration
+	SavedPlan      *store.Artifact
+	Gate           PlanGate
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger — recorded on the run when plain, or on the gated job a pending
 	// approval points at when gated (see recordActor).
@@ -205,6 +214,7 @@ func (s *Service) ApplyWorkspace(ctx context.Context, enq Enqueuer, deriver reac
 		Argv:             argv,
 		Dir:              in.TofuDir,
 		RunSecretBinding: in.RunSecrets,
+		RunnerName:       in.RunnerName,
 		ConcurrencyKey:   workspaceConcurrencyKey(in.Workspace),
 		IdempotencyKey:   in.IdempotencyKey,
 		Timeout:          in.Timeout,
@@ -241,6 +251,7 @@ func (s *Service) gatedApply(ctx context.Context, enq Enqueuer, deriver reactive
 		Argv:             executor.TofuArgv("apply", in.SavedPlan.Path),
 		Dir:              in.TofuDir,
 		RunSecretBinding: in.RunSecrets,
+		RunnerName:       in.RunnerName,
 		ConcurrencyKey:   workspaceConcurrencyKey(in.Workspace),
 		IdempotencyKey:   in.IdempotencyKey,
 		Timeout:          in.Timeout,
