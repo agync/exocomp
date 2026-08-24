@@ -1,7 +1,8 @@
 # Research addendum — Turso, PGlite, Ghostty
 
 Date: 2026-08-21 · Status: reviewed post-decision, against the accepted thin-core design
-(`../design/DESIGN.md`). Verdicts feed DESIGN.md §"deliberately not adopted".
+([`../../design/index.md`](../../design/index.md)). Verdicts feed the design's
+"deliberately not adopted" material.
 
 Evaluation frame — the five pillars any storage/UI component must survive:
 single container · no external services · `CGO_ENABLED=0` static builds (amd64+arm64) ·
