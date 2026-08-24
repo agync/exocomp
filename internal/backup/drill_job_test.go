@@ -32,6 +32,37 @@ func TestDrillTargetOfRejectsBadArgv(t *testing.T) {
 	}
 }
 
+// TestRunDrillScrubsCredentialSource proves the message runDrill hands to
+// sink.Emit never carries a target's embedded credential. DrillResult.Source
+// is built as "<kind>:<uri>" (drill.go) exactly like a git/restic leg's own
+// recorded output (git.go, restic.go), so a drill result for a cred-bearing
+// target must go through the same ScrubURIUserinfo before it reaches a
+// job_event row — a real restic_s3 target can carry userinfo in its endpoint
+// (resticRepo passes an "s3:https://user:pass@host/bucket" uri through
+// unparsed), which is what this reproduces without needing a reachable S3
+// endpoint.
+func TestRunDrillScrubsCredentialSource(t *testing.T) {
+	t.Parallel()
+	const sentinel = "s3kr1t-p4ss-6e21" //nolint:gosec // test sentinel, not a real credential
+	result := DrillResult{
+		OK:         true,
+		Source:     KindResticS3 + ":s3:https://bot:" + sentinel + "@s3.invalid/bucket",
+		SnapshotID: "2026-08-22T00:00:00Z",
+	}
+	raw := result.String()
+	if !strings.Contains(raw, sentinel) {
+		t.Fatalf("test setup: sentinel not present in the unscrubbed message: %q", raw)
+	}
+
+	msg := ScrubURIUserinfo(raw)
+	if strings.Contains(msg, sentinel) {
+		t.Fatalf("drill result message leaked the credential: %q", msg)
+	}
+	if !strings.Contains(msg, "***@") {
+		t.Errorf("scrubbed message missing the redaction marker: %q", msg)
+	}
+}
+
 func TestDrillConcurrencyKeyFormat(t *testing.T) {
 	t.Parallel()
 	if got := DrillConcurrencyKey("nas"); got != "drill:nas" {

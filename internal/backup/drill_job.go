@@ -120,6 +120,9 @@ func (r *Runner) runDrill(ctx context.Context, spec executor.Spec, sink executor
 		level = executor.LevelError
 		exitCode = 1
 	}
-	sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: level, Msg: result.String()})
+	// result.Source carries "<kind>:<uri>", and a git/restic target's uri can
+	// embed userinfo (add-target warns but does not refuse it) — scrub it the
+	// same way the git and restic legs scrub their own recorded output.
+	sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: level, Msg: ScrubURIUserinfo(result.String())})
 	return executor.Result{ExitCode: exitCode, Duration: time.Since(started)}, nil
 }
