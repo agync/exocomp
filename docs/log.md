@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — design system page and top-level README
+
+- **New page** [design/DESIGN.md](design/DESIGN.md): the web UI design system — color,
+  typography, spacing, and component tokens — sourced from `internal/web`. The architecture
+  technical-design that previously held this name moves to
+  [history/design/DESIGN.md](history/design/DESIGN.md) as provenance.
+- **New** repo-root `README.md`, current to shipped reality (OpenTofu, the single
+  MCP-over-HTTP surface, remote CLI, sandbox tiers).
+- **Voice.** Internal build codenames — milestone tags, finding and review ids, process
+  jargon — are removed across the docs and ADRs; pages describe current behaviour and read
+  harness-neutral.
+
 ## 2026-08-24 — Personas consolidated
 
 The four target-user personas now live as one crisp definitions page,
