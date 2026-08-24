@@ -1,6 +1,6 @@
 # Agent interface — one core, three programmatic faces
 
-Status: proposal · needs an ADR to ratify agent-fit as a first-class charter surface (see §7)
+Status: accepted — the decision is recorded in ADR-0014 (agent-facing surface)
 
 ## 1. Vision
 
@@ -169,7 +169,7 @@ Timestamps are fixed RFC3339 UTC (the store normalizes to UTC ms). Volatile fiel
 | `forbidden` | scope check (auth.go:241) | token scope too low for this verb |
 
 **Exit-code table** (the primary agent signal — codify what invariant 3 already gives). Kept
-deliberately small; ratified in the same ADR as the contract:
+deliberately small, and defined in the same ADR as the contract:
 
 | Code | Meaning |
 |---|---|
@@ -394,7 +394,7 @@ Each step is a self-contained unit; the earlier steps ship value on their own an
 schema the later faces reuse. The `wire` contract and CLI JSON (step 1) do not depend on the
 service extraction (step 2), so they land first.
 
-1. **Contract foundation (no network).** Ratifying ADR + `internal/wire` envelope, error
+1. **Contract foundation (no network).** The governing ADR + `internal/wire` envelope, error
    taxonomy, exit-code table + `--output json` on all read/list/status CLI verbs +
    `EXOCOMP_OUTPUT`. Golden tests pin the schema. cobra `Example` on every command +
    `exocomp commands --output json`. A local agent on `server` can already branch on JSON.
@@ -415,7 +415,7 @@ service extraction (step 2), so they land first.
 ## 7. Risks and open decisions
 
 - **Charter scope.** No existing design doc names an agent/MCP/remote-CLI consumer as a
-  requirement; the operator-centric charter did not ratify agent-fit on its own. ADR-0014 now
+  requirement; the original operator-centric charter did not name agent-fit as first-class. ADR-0014
   records that decision and its one resolved design question — a single MCP surface over HTTP
   with no ambient authority — so the surface is a decision with consequences, not an assumption.
 - **Schema is a contract.** If the CLI and API/MCP envelopes ever diverge, or a field shape

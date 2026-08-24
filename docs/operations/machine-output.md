@@ -2,7 +2,7 @@
 
 A structured-output contract (`internal/wire`) that the CLI, the HTTP API, and the MCP
 server all marshal through, so a resource's bytes are identical whichever face asked.
-Design rationale: [agent-interface.md §3.2](../design/agent-interface.md); ratified in
+Design rationale: [agent-interface.md §3.2](../design/agent-interface.md); recorded in
 [ADR 0014](../adr/0014-agent-facing-surface.md).
 
 ## Selecting JSON

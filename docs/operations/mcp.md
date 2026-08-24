@@ -3,7 +3,7 @@
 One MCP server, one transport. `POST /mcp` speaks it over HTTP on the same
 [ADR-0009](../adr/0009-lan-access-tokens.md) token-gated listener the browser surface and
 [`/api/v1`](api.md) already use — not a second listener, not a second auth story. Design
-rationale: [agent-interface.md §3.5](../design/agent-interface.md); ratified in
+rationale: [agent-interface.md §3.5](../design/agent-interface.md); recorded in
 [ADR 0014](../adr/0014-agent-facing-surface.md).
 
 There is no bespoke stdio MCP server, and none is coming back: a process running at the

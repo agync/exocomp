@@ -173,7 +173,7 @@ Backups must not let an attacker downgrade an authenticated target to an unauthe
 
 ## Agent surface (AI)
 
-The three programmatic faces ADR 0014 ratifies: the write half of `/api/v1`, `exocomp login`
+The three programmatic faces defined in ADR 0014: the write half of `/api/v1`, `exocomp login`
 + `--remote`, and the MCP-over-HTTP server. The threat here is a delegated agent or script —
 possibly reading attacker-influenced event text — exceeding its scope or slipping a write past
 the gate.
