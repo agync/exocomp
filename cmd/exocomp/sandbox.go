@@ -163,35 +163,54 @@ func newSandboxCanaryCmd() *cobra.Command {
 // behind that resolution, the disk residual posture when disk is in play, and
 // whether this process can mlock the bytes it writes either way.
 func reportRunSecretFileStaging(w io.Writer, dataDir string) {
-	printRunSecretFileStaging(w, dataDir, configuredSecretStagingBackend(dataDir))
+	backend, warning := configuredSecretStagingBackend(dataDir)
+	if warning != "" {
+		_, _ = fmt.Fprintf(w, "  WARNING: %s\n", warning)
+	}
+	printRunSecretFileStaging(w, dataDir, backend)
 }
 
 // configuredSecretStagingBackend reads the --secret-staging choice a daemon
 // persisted (store.SettingSecretStaging) back from the store, defaulting to
 // auto — the same default serve itself uses — when the data dir has no store
-// yet or the setting was never written. It stats the database file before
-// opening a store, so doctor never creates the data dir as a side effect of
-// reporting on it (TestDoctorDoesNotCreateTheDataDir), the same guard
-// internal/health.ProbeLitestream uses. Never fails doctor: a resolution
-// problem is reported by printRunSecretFileStaging instead.
-func configuredSecretStagingBackend(dataDir string) executor.StagingBackend {
+// yet, the setting was never written, or a stored value fails to parse. It
+// stats the database file before opening a store, so doctor never creates the
+// data dir as a side effect of reporting on it
+// (TestDoctorDoesNotCreateTheDataDir), the same guard internal/health.
+// ProbeLitestream uses. Never fails doctor: a resolution problem is reported
+// by printRunSecretFileStaging instead.
+//
+// This is the only place the persisted setting is read back — serve.go
+// writes it from the already-validated --secret-staging flag but never reads
+// it for its own operation, so the precedence for what a live daemon actually
+// uses is flag > persisted > default, and this function only serves `doctor`
+// reporting against a data dir that may belong to a stopped daemon. Because
+// ParseStagingBackend rejects anything outside {auto, tmpfs, disk}, a
+// corrupted or hand-edited stored value can never resolve to the disk
+// backend on its own — only an actually-persisted "disk" can. The returned
+// warning is non-empty exactly when a non-empty stored value failed to
+// parse, so the caller can surface the corruption instead of resolving to
+// the safe default silently.
+func configuredSecretStagingBackend(dataDir string) (backend executor.StagingBackend, warning string) {
 	if _, err := os.Stat(filepath.Join(dataDir, "exocomp.db")); err != nil {
-		return executor.StagingAuto
+		return executor.StagingAuto, ""
 	}
 	st, err := openStore()
 	if err != nil {
-		return executor.StagingAuto
+		return executor.StagingAuto, ""
 	}
 	defer func() { _ = st.Close() }()
 	raw, err := st.GetSetting(context.Background(), store.SettingSecretStaging)
 	if err != nil {
-		return executor.StagingAuto
+		return executor.StagingAuto, ""
 	}
-	backend, err := executor.ParseStagingBackend(raw)
+	backend, err = executor.ParseStagingBackend(raw)
 	if err != nil {
-		return executor.StagingAuto
+		return executor.StagingAuto, fmt.Sprintf(
+			"stored secret staging setting %q is not a known backend (want %s, %s, or %s); using %s",
+			raw, executor.StagingAuto, executor.StagingTmpfs, executor.StagingDisk, executor.StagingAuto)
 	}
-	return backend
+	return backend, ""
 }
 
 func printRunSecretFileStaging(w io.Writer, dataDir string, configured executor.StagingBackend) {
