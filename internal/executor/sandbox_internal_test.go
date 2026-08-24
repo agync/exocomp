@@ -244,3 +244,18 @@ func TestAnsibleSourceDirsGrantsExtraVarsFile(t *testing.T) {
 		t.Errorf("ansibleSourceDirs(%v) = %v, an inline -e must not grant a file", inline, dirs)
 	}
 }
+
+// TestAnsibleSourceDirsIgnoresAdhocHostPattern: an ad-hoc run's sole
+// positional (argv[1]) is a host PATTERN — a host, a group, or an expression
+// like `fedora:!nas` — never a filesystem path. A path-shaped pattern like
+// `/` must not read-grant the root it happens to resemble.
+func TestAnsibleSourceDirsIgnoresAdhocHostPattern(t *testing.T) {
+	t.Parallel()
+
+	argv := []string{AnsibleAdhocBinary, "/", "--inventory", "localhost,",
+		"--connection", "local", "--module-name", "command"}
+	dirs := ansibleSourceDirs(argv)
+	if len(dirs) != 0 {
+		t.Errorf("ansibleSourceDirs(%v) = %v, want no grants for a bare host pattern", argv, dirs)
+	}
+}

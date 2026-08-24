@@ -162,6 +162,12 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 // nothing else, and the inventory and extra-vars file each arrive through one
 // flag, so the argv says exactly which checkout the run needs — there is no
 // guessing and no wider grant than the files named.
+//
+// An ad-hoc run (argv[0] resolves to AnsibleAdhocBinary) carries a host
+// PATTERN as its sole positional, argv[1] — a host, a group, or an expression
+// like `fedora:!nas` — never a filesystem path, so it is skipped rather than
+// scanned: a path-shaped pattern such as `/` must not read-grant the root it
+// happens to resemble.
 func ansibleSourceDirs(argv []string) []string {
 	var dirs []string
 	add := func(p string) {
@@ -183,7 +189,12 @@ func ansibleSourceDirs(argv []string) []string {
 		}
 	}
 
-	for i := 1; i < len(argv); i++ {
+	start := 1
+	if len(argv) > 0 && filepath.Base(argv[0]) == AnsibleAdhocBinary {
+		start = 2
+	}
+
+	for i := start; i < len(argv); i++ {
 		arg := argv[i]
 		switch {
 		case arg == "-i" || arg == "--inventory" || arg == "--inventory-file":
