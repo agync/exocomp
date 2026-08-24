@@ -170,8 +170,24 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 		return fmt.Errorf("source add: %w", err)
 	}
 	secretName := deployKeySecretName(name)
+
+	// The source row is created first, so a duplicate name is refused here,
+	// before any secret material is ever sealed or stored — a colliding name
+	// must never leave a sealed deploy key with nothing referencing it (no
+	// recovery UI exists for that). If a later step fails, the row created
+	// here is rolled back on a best-effort basis.
+	row.Kind = store.SourceGit
+	row.URI = spec.url
+	row.DeployKeySecret = secretName
+	if _, err := st.CreateSource(cmd.Context(), row); err != nil {
+		return fmt.Errorf("source add: %w", err)
+	}
+
 	sealed, err := env.Seal(secretName, deployKeyKind, key.PrivatePEM)
 	if err != nil {
+		if derr := st.DeleteSource(cmd.Context(), name); derr != nil {
+			return fmt.Errorf("source add: seal deploy key: %w (rollback also failed: %v)", err, derr)
+		}
 		return fmt.Errorf("source add: seal deploy key: %w", err)
 	}
 	if _, err := st.CreateSecret(cmd.Context(), store.SecretRow{
@@ -181,14 +197,10 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 		Ciphertext: sealed.Ciphertext,
 		AAD:        sealed.Name + "|" + sealed.Kind,
 	}); err != nil {
+		if derr := st.DeleteSource(cmd.Context(), name); derr != nil {
+			return fmt.Errorf("source add: store deploy key: %w (rollback also failed: %v)", err, derr)
+		}
 		return fmt.Errorf("source add: store deploy key: %w", err)
-	}
-
-	row.Kind = store.SourceGit
-	row.URI = spec.url
-	row.DeployKeySecret = secretName
-	if _, err := st.CreateSource(cmd.Context(), row); err != nil {
-		return fmt.Errorf("source add: %w", err)
 	}
 
 	_, _ = fmt.Fprintf(out, "registered git source %q (%s, ref %s)\n", name, spec.url, spec.ref)

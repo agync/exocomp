@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -114,6 +115,35 @@ func TestSourceAddGitGeneratesAndSealsDeployKey(t *testing.T) {
 	}
 	if !bytes.Contains(pem, []byte("OPENSSH PRIVATE KEY")) {
 		t.Fatalf("sealed value is not an OpenSSH private key: %q", pem[:min(40, len(pem))])
+	}
+}
+
+// TestSourceAddDuplicateLeavesNoOrphanedSecret covers the name collision that
+// orphans a sealed deploy key: a git add's CreateSecret (a brand-new secret
+// name) can succeed while the subsequent CreateSource fails because the
+// source name itself already belongs to a different (here, path-kind)
+// source. The secret must not survive a source registration that never
+// landed — there is no recovery UI for a sealed row nothing references.
+func TestSourceAddDuplicateLeavesNoOrphanedSecret(t *testing.T) {
+	dir := initForSource(t)
+
+	if _, err := runSource(t, "add", "infra", "--path", "/mnt/infra", "--kind", "hostpath"); err != nil {
+		t.Fatalf("source add --path: %v", err)
+	}
+
+	_, err := runSource(t, "add", "infra", "--url", "git@forge:org/infra.git", "--ref", "main")
+	if err == nil {
+		t.Fatal("expected the duplicate source name to be refused")
+	}
+
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if _, err := st.GetSecret(context.Background(), "source/infra/deploy-key"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("deploy key secret = %v, want ErrNotFound (no orphan from the failed add)", err)
 	}
 }
 
