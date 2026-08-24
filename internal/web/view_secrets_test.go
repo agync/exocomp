@@ -134,16 +134,16 @@ func TestSecretsSurfaceGated(t *testing.T) {
 		}
 	}
 
-	// The read-only hint, no mutation control.
-	if !strings.Contains(page, "exocomp secrets add|rotate|rm") {
-		t.Error("/secrets missing the CLI-management hint")
-	}
-	// No mutation control: no form posts, and nothing targets a secrets verb.
-	if strings.Contains(page, "<form") || strings.Contains(page, `method="post"`) {
-		t.Error("/secrets must expose no mutation form")
-	}
-	if strings.Contains(page, `action="/secrets`) {
-		t.Error("/secrets must expose no mutation endpoint")
+	// Operator write surface: a gated seal form and per-row rotate/delete.
+	for _, want := range []string{
+		`action="/secrets/add"`,
+		`name="confirm_token"`, // add/rotate are re-auth gated
+		`/rotate"`,
+		`/rm"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets (operator) missing write control %q", want)
+		}
 	}
 
 	// The nav carries Secrets, marked current on this page.

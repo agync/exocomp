@@ -16,7 +16,10 @@ type page struct {
 	Who      string
 	Scope    string
 	Insecure bool
-	Signal   SignalLine
+	// Flash is a one-line operator-facing result from a redirect-after-POST
+	// (write.go). Never a secret value — those render once inline.
+	Flash  string
+	Signal SignalLine
 }
 
 // SignalLine is the always-on footer: the dead-man switch, push transport, disk
@@ -255,6 +258,10 @@ func (r runnerRow) Caps() string {
 type secretsVM struct {
 	Page    page
 	Secrets []secretRow
+	// Operator gates the write controls; SealAvailable is false on a web-only
+	// process with no envelope, disabling add/rotate with a note.
+	Operator      bool
+	SealAvailable bool
 }
 
 // secretRow is one sealed secret's public face: its name, kind, how it was

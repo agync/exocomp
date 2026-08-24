@@ -58,7 +58,7 @@ func newHarness(t *testing.T) *harness {
 	t.Cleanup(func() { cancel(); <-done })
 
 	srv, err := New(Options{
-		Store: st, Deriver: env, Decider: engine, Plans: env,
+		Store: st, Deriver: env, Decider: engine, Plans: env, Sealer: env,
 		Version: "test", DataDir: dir,
 	})
 	if err != nil {

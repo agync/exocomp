@@ -174,6 +174,7 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		Deriver:     env,
 		Decider:     decider,
 		Plans:       env,
+		Sealer:      env,
 		Maint:       maint,
 		Insecure:    insecure,
 		Fingerprint: fingerprint,

@@ -1,0 +1,113 @@
+package web
+
+// The tokens surface: an operator lists, mints, rotates, and revokes LAN access
+// tokens. Minting and rotating are gated — the form carries confirm_token, the
+// operator's own access token, re-verified server-side. The secret is shown once
+// by tokenResult and never persisted to this page again.
+
+templ tokensPage(vm tokensVM) {
+	@layout(vm.Page) {
+		<h1>Tokens</h1>
+		if !vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<div class="kicker">Read-only</div>
+				<h3>Access tokens</h3>
+				<p class="meta">Token management needs an operator-scoped token.</p>
+			</div>
+		} else {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Mint a token</h3>
+				<p class="meta">The secret is shown once. Confirm with your own access token.</p>
+				<form method="post" action="/tokens/new" class="writeform">
+					<label for="tk-name">Name</label>
+					<input id="tk-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="tk-scope">Scope</label>
+					<select id="tk-scope" name="scope">
+						<option value="operator">operator</option>
+						<option value="readonly">readonly</option>
+						<option value="approve">approve</option>
+					</select>
+					<label for="tk-exp">Expires (optional, e.g. 720h)</label>
+					<input id="tk-exp" name="expires" type="text" autocomplete="off" placeholder="never"/>
+					<label for="tk-cf">Confirm: your access token</label>
+					<input id="tk-cf" name="confirm_token" type="password" required autocomplete="off"/>
+					<div class="actions"><button type="submit" class="btn primary">Mint token</button></div>
+				</form>
+			</div>
+			<div class="card span2">
+				<h3>All tokens</h3>
+				if len(vm.Tokens) == 0 {
+					<p class="meta">No active tokens.</p>
+				} else {
+					<div class="tablewrap stackable">
+						<table>
+							<thead>
+								<tr><th scope="col">Name</th><th scope="col">Scope</th><th scope="col">Prefix</th><th scope="col">Expires</th><th scope="col">Last used</th><th scope="col">State</th><th scope="col">Actions</th></tr>
+							</thead>
+							<tbody>
+								for _, t := range vm.Tokens {
+									<tr>
+										<td data-label="Name">{ t.Name }</td>
+										<td data-label="Scope">{ t.Scope }</td>
+										<td data-label="Prefix" class="mono">{ t.Prefix }…</td>
+										<td data-label="Expires">{ t.Expires }</td>
+										<td data-label="Last used">{ t.LastUsed }</td>
+										<td data-label="State">@chip(tokenStateClass(t.State), t.State)</td>
+										<td data-label="Actions">
+											<details class="rowact">
+												<summary>Rotate</summary>
+												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform inline">
+													<input name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
+													<input name="confirm_token" type="password" required autocomplete="off" placeholder="your access token"/>
+													<button type="submit" class="btn">Rotate</button>
+												</form>
+											</details>
+											if !t.Self {
+												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline">
+													<input type="hidden" name="confirmed" value="1"/>
+													<button type="submit" class="btn danger">Revoke</button>
+												</form>
+											} else {
+												<span class="meta">this session</span>
+											}
+										</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
+			</div>
+		}
+	}
+}
+
+templ tokenResult(vm tokenResultVM) {
+	@layout(vm.Page) {
+		if vm.Rotated {
+			<h1>Rotated { vm.Name }</h1>
+		} else {
+			<h1>Minted { vm.Name }</h1>
+		}
+		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Copy it now — it is not shown again</div>
+			<h3>{ vm.Name } · scope { vm.Scope }</h3>
+			<pre class="secretbox" aria-label="new token">{ vm.Secret }</pre>
+			if vm.Expires != "—" {
+				<p class="meta">expires { vm.Expires }</p>
+			}
+			<p class="fingerprint">certificate SHA-256<br/>{ vm.Finger }</p>
+			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
+		</div>
+	}
+}
+
+templ tokensReauthNotice(p page) {
+	@layout(p) {
+		<h1>Confirm required</h1>
+		<div class="card span2" style="margin-top:18px">
+			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the write.</p>
+			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
+		</div>
+	}
+}

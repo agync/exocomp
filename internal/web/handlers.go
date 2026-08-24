@@ -227,7 +227,11 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := secretsVM{Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows}
+	ident, _ := identityOf(r.Context())
+	vm := secretsVM{
+		Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows,
+		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+	}
 	s.render(w, r, http.StatusOK, secretsList(vm))
 }
 

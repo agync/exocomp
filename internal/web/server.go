@@ -48,7 +48,11 @@ type Options struct {
 	// Maint drives the drain/cordon maintenance action. It is the running
 	// daemon's control seam; a nil Maint (a web-only process that runs no jobs
 	// and no scheduler) makes the maintenance routes answer "not available here".
-	Maint    Maintenance
+	Maint Maintenance
+	// Sealer seals plaintext into the envelope for the sensitive write surface
+	// (secrets add/rotate, a git source's deploy key). A nil Sealer (a web-only
+	// process holding no envelope) fail-closes those routes to a 503.
+	Sealer   Sealer
 	Insecure bool
 	// Fingerprint is the LAN certificate's SHA-256, shown on the login screen
 	// for trust-on-first-use pinning. Empty under --insecure-http.
@@ -71,6 +75,7 @@ type Server struct {
 	decider     Decider
 	plans       PlanOpener
 	maint       Maintenance
+	sealer      Sealer
 	insecure    bool
 	fingerprint string
 	version     string
@@ -119,6 +124,7 @@ func New(opts Options) (*Server, error) {
 		decider:     opts.Decider,
 		plans:       opts.Plans,
 		maint:       opts.Maint,
+		sealer:      opts.Sealer,
 		insecure:    opts.Insecure,
 		fingerprint: opts.Fingerprint,
 		version:     opts.Version,
@@ -178,6 +184,11 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
 	mux.HandleFunc("GET /runners", s.requireAuth(s.handleRunners))
 
+	// Browser write surface: each resource's mutating form POSTs (cookie-session,
+	// operator-scoped, same-origin) register through here so this file stays the
+	// read-surface map. Sensitive writes re-auth; see write.go.
+	s.registerWriteUI(mux)
+
 	// The operator HTTP/JSON API shares this listener and its auth; registerAPI
 	// adds the /api/v1 routes (agent-interface §3.4).
 	s.registerAPI(mux)
@@ -202,6 +213,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c te
 // the footer signal line.
 func (s *Server) pageFor(r *http.Request, title, nav string) page {
 	p := page{Title: title, Nav: nav, Insecure: s.insecure, Signal: s.signal(r.Context())}
+	p.Flash = r.URL.Query().Get("flash")
 	if id, ok := identityOf(r.Context()); ok {
 		p.Who = id.token.Name
 		p.Scope = id.token.Scope
