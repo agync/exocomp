@@ -1,8 +1,7 @@
 # Sources, inventories, and the credential plane
 
 How a run's tree arrives, what inventory it targets, and how it authenticates to the
-outside world. The model is [ADR 0010](../adr/0010-source-and-credential-model.md); the
-credential binding is settled in [the design reviews](../design/expert-reviews.md).
+outside world. The model is [ADR 0010](../adr/0010-source-and-credential-model.md).
 
 ## Sources — three localities
 
