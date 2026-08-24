@@ -8,10 +8,10 @@ import (
 // The KDF gate (kdfgate.go) bounds how many argon2id evaluations run at once. It
 // is explicitly not a rate limit, so a patient attacker could present wrong
 // secrets forever — 200 consecutive failures drew 200 plain 401s, with no
-// throttle, no lockout and nothing recorded (finding AI-11). This file adds the
-// missing half: consecutive failures are counted per source and per token row,
-// and past a threshold the source is backed off for a growing window and the
-// run is logged loudly.
+// throttle, no lockout and nothing recorded. This file adds the missing half:
+// consecutive failures are counted per source and per token row, and past a
+// threshold the source is backed off for a growing window and the run is
+// logged loudly.
 
 // authFailThreshold is how many consecutive failures one key may draw before the
 // backoff starts. It is generous enough that an operator fat-fingering a paste a

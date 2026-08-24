@@ -30,7 +30,7 @@ import (
 //
 // Scope is gated BEFORE any work (agent-interface §4): plan/apply need operator,
 // a decision needs the approve scope — W and A are disjoint here, so a token
-// handed to an agent cannot both raise a gate and release it (finding AI-2). An
+// handed to an agent cannot both raise a gate and release it. An
 // out-of-scope token is a wire forbidden envelope before the input is even built.
 //
 // POST /playbooks/run resolves an inventory name to its path (and a --source
@@ -47,9 +47,9 @@ import (
 // daemon seals its -out into a consumable artifact and records its policy
 // verdict post-run — the id an apply-by-id then consults.
 
-// Write-response kinds. The wire package (owned elsewhere, not edited by this
-// lane) has no write projections yet, so these presentation-only shapes live
-// here; they carry identifiers and states only, never values (invariant 4).
+// Write-response kinds. The wire package has no write projections yet, so
+// these presentation-only shapes live here; they carry identifiers and states
+// only, never values (invariant 4).
 const (
 	kindJobEnqueued     = "job.enqueued"
 	kindApprovalPending = "approval.pending"
@@ -105,7 +105,7 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 // browser is talked into making, and SameSite=Strict does not scope to a port,
 // so a second app on the same host, an XSS anywhere on it, or a local page under
 // --insecure-http could drive operator-scope writes with no CSRF token, no
-// Origin check and no preflight (finding AI-8). A machine face has no reason to
+// Origin check and no preflight. A machine face has no reason to
 // accept an ambient credential; the browser's own decide route (handlers.go) is
 // where a session acts, and it is same-origin form-driven.
 func bearerOnly(allow func(identity) bool) func(identity) bool {
@@ -218,7 +218,7 @@ const (
 // The namespace is the security half: the raw header is one global key space, so
 // a guessable key ("deploy-<date>", a ticket id) planted by one token silently
 // swallowed another token's write — the victim got a 200 naming a job it did not
-// create, its own write never enqueued (finding AI-7). Scoping by token id keeps
+// create, its own write never enqueued. Scoping by token id keeps
 // a caller's keys to itself; scoping by route keeps its own plan from swallowing
 // its own apply; and both prefixes make the queue's reserved `wf:` workflow step
 // keys unaddressable from this face.
@@ -324,13 +324,13 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		}
 		saved = &art
 		// Fail-closed adjudication: a plan on a policied workspace with no
-		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		// recorded verdict is unconsumable, not unpoliced.
 		gate, err = svc.PlanGateForPlan(r.Context(), ws.Name, art)
 		var mismatch *service.PlanWorkspaceMismatchError
 		switch {
 		case errors.As(err, &mismatch):
 			// A plan named for another workspace is a bad argument, refused
-			// before anything is enqueued or decrypted (finding AI-9).
+			// before anything is enqueued or decrypted.
 			s.badRequest(w, err.Error())
 			return
 		case err != nil:
@@ -420,7 +420,7 @@ func fault(status int, code, msg string) *apiFault {
 //
 // It is shared by every machine face — the /api/v1 decision route and the MCP
 // approve tools — so the separation-of-duty refusal below cannot hold on one
-// face and be forgotten on the other (finding AI-2). Scope is NOT checked here:
+// face and be forgotten on the other. Scope is NOT checked here:
 // the caller's guard has already established that A was satisfied, and this is
 // the second, principal-level half of the same rule.
 func (s *Server) decideApproval(ctx context.Context, id int64, decision string, ident identity) (decisionView, error) {
@@ -569,7 +569,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 	if req.Source != "" {
 		// Validate the NAME before it is spliced into any path: the override
 		// path below is built from it, ahead of the store lookup that would
-		// otherwise be what constrains it (finding AI-12).
+		// otherwise be what constrains it.
 		if err := service.ValidSourceName(req.Source); err != nil {
 			s.badRequest(w, err.Error())
 			return

@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// TestBearerFailuresBackOff is the AI-11 regression: 200 consecutive wrong-secret
+// TestBearerFailuresBackOff is a regression test: 200 consecutive wrong-secret
 // requests used to draw 200 plain 401s — no throttle, no backoff, no lockout,
 // nothing logged — because the only pre-auth control was the KDF concurrency
 // gate, a ceiling on parallelism rather than on rate. Repeated failures now back
@@ -55,12 +55,12 @@ func TestBearerFailuresBackOff(t *testing.T) {
 	}
 }
 
-// TestAbsentTokenRunsNoKDF pins the S1 simplification: the timing equalizer
+// TestAbsentTokenRunsNoKDF pins a simplification: the timing equalizer
 // (the decoy argon2id an unknown/inactive row used to pay so it looked like a
 // live one) is gone. An absent id now returns unauthenticated WITHOUT running
 // the KDF, while a live row's verification does run the real KDF. The resulting
-// live-vs-absent timing gap is accepted (finding AI-11 disposition): the fail
-// counter and KDF gate — not a decoy — bound an unauthenticated guessing run.
+// live-vs-absent timing gap is accepted: the fail counter and KDF gate — not a
+// decoy — bound an unauthenticated guessing run.
 func TestAbsentTokenRunsNoKDF(t *testing.T) {
 	h := newHarness(t)
 	var kdfRuns atomic.Int64
@@ -109,12 +109,12 @@ func TestAbsentTokenRunsNoKDF(t *testing.T) {
 	}
 }
 
-// TestGuessingRunRefusedBeforeKDF is the blue-team proof that removing the
-// equalizer did not weaken the guard that actually bounds guessing: once a
-// source has failed past the threshold, further attempts are refused with 429
-// BEFORE the KDF runs. This holds independently of whether the presented id is
-// live or absent — the fail counter keys on the source, not on row existence —
-// so an unauthenticated guessing run is refused pre-KDF either way.
+// TestGuessingRunRefusedBeforeKDF proves that removing the equalizer did not
+// weaken the guard that actually bounds guessing: once a source has failed past
+// the threshold, further attempts are refused with 429 BEFORE the KDF runs.
+// This holds independently of whether the presented id is live or absent — the
+// fail counter keys on the source, not on row existence — so an unauthenticated
+// guessing run is refused pre-KDF either way.
 func TestGuessingRunRefusedBeforeKDF(t *testing.T) {
 	run := func(t *testing.T, useLiveID bool) {
 		h := newHarness(t)

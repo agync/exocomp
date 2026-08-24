@@ -79,7 +79,7 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 	for {
 		// Re-resolve before every read: auth used to be resolved once, at attach,
 		// so a leaked token's holder kept reading a job's log across the revoke
-		// meant to cut it off (finding AI-10). This is a token-row read with no
+		// meant to cut it off. This is a token-row read with no
 		// KDF, so it costs one indexed SELECT per poll.
 		now := s.now()
 		if !now.Before(deadline) {

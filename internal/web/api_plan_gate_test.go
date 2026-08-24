@@ -46,11 +46,12 @@ func (h *harness) seedPlanArtifact(t *testing.T, ws string) store.Artifact {
 	return art
 }
 
-// TestAPIFreshApplyRefusedUnderPolicy is the AI-4 regression: omitting "plan"
-// used to skip the policy machinery entirely, so a workspace whose only policy
-// denies everything still enqueued `tofu apply -auto-approve`. A fresh apply on
-// a workspace with enabled plan policies is now refused — plan-then-apply-by-id
-// is the only path there, because that is the only one a policy can adjudicate.
+// TestAPIFreshApplyRefusedUnderPolicy proves a fresh apply cannot bypass plan
+// policy: omitting "plan" used to skip the policy machinery entirely, so a
+// workspace whose only policy denies everything still enqueued
+// `tofu apply -auto-approve`. A fresh apply on a workspace with enabled plan
+// policies is now refused — plan-then-apply-by-id is the only path there,
+// because that is the only one a policy can adjudicate.
 func TestAPIFreshApplyRefusedUnderPolicy(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -85,11 +86,12 @@ func TestAPIFreshApplyRefusedUnderPolicy(t *testing.T) {
 	}
 }
 
-// TestAPIApplyRefusesUnadjudicatedPlan is the AI-3 regression: between the
-// artifact row and the verdict event, an apply-by-id used to read "no verdict"
-// as "no policy" and enqueue plainly against a workspace whose policy denies
-// everything. A plan on a workspace with enabled policies and no recorded
-// adjudication is now unconsumable — 409, nothing enqueued.
+// TestAPIApplyRefusesUnadjudicatedPlan proves an apply cannot slip past an
+// unrecorded verdict: between the artifact row and the verdict event, an
+// apply-by-id used to read "no verdict" as "no policy" and enqueue plainly
+// against a workspace whose policy denies everything. A plan on a workspace
+// with enabled policies and no recorded adjudication is now unconsumable —
+// 409, nothing enqueued.
 func TestAPIApplyRefusesUnadjudicatedPlan(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

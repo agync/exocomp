@@ -38,13 +38,13 @@ var ErrUnauthenticated = errors.New("web: no valid session or token")
 
 // ErrAuthThrottled reports that this source (or this token row) has failed
 // authentication too many times in a row and is serving a backoff, so the
-// attempt was refused without running the KDF (finding AI-11). It is a
-// transient 429, not a permanent lockout.
+// attempt was refused before the KDF runs. It is a transient 429, not a
+// permanent lockout.
 var ErrAuthThrottled = errors.New("web: too many failed authentications, retry later")
 
 // ErrKDFBusy reports that the pre-auth KDF gate is saturated: too many argon2id
-// verifications are already in flight, so this one was refused rather than run
-// (finding D1). It is a transient 503, not an authentication failure.
+// verifications are already in flight, so this one was refused rather than run.
+// It is a transient 503, not an authentication failure.
 var ErrKDFBusy = errors.New("web: authentication is busy, retry shortly")
 
 // identity is the resolved caller behind a request: the token row that
@@ -139,8 +139,8 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 	if errors.Is(err, store.ErrNotFound) {
 		// No decoy KDF on the absent path: a missing id returns unauthenticated
 		// cheaply, leaving a live-vs-absent timing gap. Accepted for a
-		// single-operator homelab (finding AI-11 disposition) on the strength of
-		// authenticateTokenGated's two throttles, which are weaker than they
+		// single-operator homelab on the strength of authenticateTokenGated's
+		// two throttles, which are weaker than they
 		// sound: the fail counter (authfail.go) gives one source 5 free probes
 		// then a doubling backoff refused before the KDF runs, but it keys the
 		// token id too, and that key is fresh per id, so it does not throttle a
@@ -172,7 +172,7 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 // authenticateTokenGated is authenticateToken behind the KDF concurrency gate.
 // A malformed token is rejected before a slot is taken — it never reaches the
 // KDF — and a saturated gate returns ErrKDFBusy instead of running argon2id, so
-// an unauthenticated flood cannot amplify the KDF's memory cost (finding D1).
+// an unauthenticated flood cannot amplify the KDF's memory cost.
 func (s *Server) authenticateTokenGated(r *http.Request, presented string, now time.Time) (store.APIToken, error) {
 	id, secret, err := parseToken(presented)
 	if err != nil {
@@ -180,7 +180,7 @@ func (s *Server) authenticateTokenGated(r *http.Request, presented string, now t
 	}
 	// A source (or a token row) that has failed repeatedly is serving a backoff:
 	// refuse before the KDF, so a guessing run costs the daemon nothing and
-	// makes no progress (finding AI-11).
+	// makes no progress.
 	src, tok := failKeys(r, id)
 	if _, blocked := s.fails.blocked(now, src, tok); blocked {
 		return store.APIToken{}, ErrAuthThrottled
@@ -296,7 +296,7 @@ func mayApprove(id identity) bool {
 
 // decidedBySelf reports whether the caller is the principal a gated job's ledger
 // records as having asked for it. Separation of duty is the whole point of the
-// gate: whoever raised it may not release it (finding AI-2). A CLI-enqueued job
+// gate: whoever raised it may not release it. A CLI-enqueued job
 // records no actor, so the local operator's own workflow is unchanged; only a
 // token-attributed write is bound by this.
 func (s *Server) decidedBySelf(ctx context.Context, jobID int64, id identity) (bool, error) {

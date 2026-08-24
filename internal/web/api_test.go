@@ -34,7 +34,7 @@ func bearerGet(t *testing.T, base, path, token string) (int, http.Header, string
 	return resp.StatusCode, resp.Header, string(body)
 }
 
-// apiV1Paths is every read route this lane mounts. The list ones answer on an
+// apiV1Paths is every read route this file mounts. The list ones answer on an
 // empty store; that is the point — an empty collection must still be a 200 with
 // a wire envelope, not a 404.
 var apiV1Paths = []string{
@@ -126,7 +126,7 @@ func TestAPINoTokenIsWireError(t *testing.T) {
 
 // TestAPIWriteMethodIs405: a write HTTP method on an /api/v1 read path is
 // refused by the mux's method-aware routing. No mutating route exists in this
-// lane, so every non-GET is a 405.
+// file, so every non-GET is a 405.
 func TestAPIWriteMethodIs405(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

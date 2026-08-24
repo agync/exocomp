@@ -13,7 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestJobStreamEndsOnRevoke is the AI-10 regression: auth was resolved once, at
+// TestJobStreamEndsOnRevoke is a regression test: auth was resolved once, at
 // attach, and the tail then polled forever — so a leaked token's holder kept
 // reading a job's log across the revoke that was supposed to cut it off. The
 // tail now re-resolves the credential as it polls and ends the stream when the

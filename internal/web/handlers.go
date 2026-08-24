@@ -340,8 +340,8 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Whoever asked for the gated job may not release it, whatever their scope
-	// (finding AI-2): the gate exists to put a second principal in the path.
+	// Whoever asked for the gated job may not release it, whatever their scope:
+	// the gate exists to put a second principal in the path.
 	self, err := s.decidedBySelf(r.Context(), approval.JobID, ident)
 	if err != nil {
 		s.fail(w, r, err)

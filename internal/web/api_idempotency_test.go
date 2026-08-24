@@ -10,11 +10,12 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestIdempotencyKeyIsScopedToPrincipalAndRoute is the AI-7 regression: the
-// header used to be one global namespace, so a planted key silently swallowed
-// another token's write — the victim got a 200 naming the attacker's job, its
-// own apply never enqueued, and its name appended to a ledger it did not
-// create. The key is now namespaced by the authenticated token and the route.
+// TestIdempotencyKeyIsScopedToPrincipalAndRoute proves an idempotency key
+// cannot cross principals: the header used to be one global namespace, so a
+// planted key silently swallowed another token's write — the victim got a
+// 200 naming the attacker's job, its own apply never enqueued, and its name
+// appended to a ledger it did not create. The key is now namespaced by the
+// authenticated token and the route.
 func TestIdempotencyKeyIsScopedToPrincipalAndRoute(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

@@ -78,10 +78,10 @@ type Server struct {
 	log         *slog.Logger
 	clock       func() time.Time
 	// kdf bounds concurrent argon2id evaluations on the pre-auth path so a
-	// flood cannot amplify the KDF's memory cost (finding D1).
+	// flood cannot amplify the KDF's memory cost.
 	kdf *kdfGate
 	// fails counts consecutive authentication failures per source and per token
-	// row and backs a guessing run off (finding AI-11).
+	// row and backs a guessing run off.
 	fails *failGate
 	// verify checks a presented secret against a stored argon2id hash. It is a
 	// field only so a test can observe the KDF's concurrency; production always

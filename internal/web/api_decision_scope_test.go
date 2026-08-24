@@ -25,9 +25,9 @@ func decodeData(t *testing.T, body string, v any) {
 	}
 }
 
-// TestAPIDecisionRefusesOperatorScope is the AI-2 regression: the scope that may
-// enqueue a write must not also settle the approval that write raised. On the
-// machine API, A is the approve scope alone (ADR 0014 §3's R/W/A mapping), so an
+// TestAPIDecisionRefusesOperatorScope proves the scope that may enqueue a
+// write cannot also settle the approval that write raised. On the machine
+// API, A is the approve scope alone (ADR 0014 §3's R/W/A mapping), so an
 // operator token — the only scope that can plan/apply — is forbidden, and the
 // gated job stays parked.
 func TestAPIDecisionRefusesOperatorScope(t *testing.T) {
@@ -64,11 +64,12 @@ func TestAPIDecisionRefusesOperatorScope(t *testing.T) {
 	h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
 }
 
-// TestDecisionRefusesSelfApproval is the second half of AI-2: whatever the
-// scopes say, the principal recorded on a gated job's ledger as having asked for
-// it may not settle its own approval. The browser surface is the reachable case
-// — an operator token enqueues a gated apply over the API, then decides it from
-// its own session — and the refusal holds there.
+// TestDecisionRefusesSelfApproval proves the same self-approval refusal on
+// the browser surface: whatever the scopes say, the principal recorded on a
+// gated job's ledger as having asked for it may not settle its own approval.
+// The browser surface is the reachable case — an operator token enqueues a
+// gated apply over the API, then decides it from its own session — and the
+// refusal holds there.
 func TestDecisionRefusesSelfApproval(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

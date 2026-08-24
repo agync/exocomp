@@ -40,7 +40,7 @@ func seedRunners(t *testing.T, h *harness) {
 	}
 }
 
-// TestRunnersSurfaceGated is the lane GATE for the runners view: token-gated
+// TestRunnersSurfaceGated is the gate for the runners view: token-gated
 // (no session refused, session renders), shows every column, carries NO
 // bootstrap body anywhere on the page, and the nav carries Runners.
 func TestRunnersSurfaceGated(t *testing.T) {

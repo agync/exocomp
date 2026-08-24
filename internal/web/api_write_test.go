@@ -407,7 +407,8 @@ func TestAPIApplyDeniedIsConflict(t *testing.T) {
 // TestAPIDecisionApproveReleases: an approve decision by an approve-scope token
 // settles the approval through the reactive engine and releases the gated job,
 // which the running workers then run to success. A readonly token is forbidden;
-// so is an operator token (finding AI-2, api_decision_scope_test.go).
+// so is an operator token (see api_decision_scope_test.go): a token that may
+// raise the gate may not also release it.
 func TestAPIDecisionApproveReleases(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

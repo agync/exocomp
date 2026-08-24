@@ -17,17 +17,17 @@ import (
 // on the SAME ADR-0009 listener as the browser surface. Every route reuses the
 // browser's auth resolution (s.resolve, the same session/bearer + KDF-gate path
 // requireAuth uses) and marshals the SAME wire projections the CLI's
-// `--output json` emits (Wave 0), so a resource's API bytes and its CLI bytes
+// `--output json` emits, so a resource's API bytes and its CLI bytes
 // are identical. It is strictly additive and read-only: no route enqueues,
-// mutates, or shells out, and no POST/PUT/DELETE is registered (Wave 3).
+// mutates, or shells out, and no POST/PUT/DELETE is registered.
 //
 // GET /api/v1/health calls internal/health.Probe — the same probe definition
 // `doctor --output json` calls — so the two summaries can never diverge. It is
 // served from a short-lived cache (healthCacheTTL): the probe forks a
 // subprocess per optional tool and opens the secrets envelope, and neither
-// belongs on a per-request path any token can drive (finding AI-6).
+// belongs on a per-request path any token can drive.
 //
-// Deferred, not built here: every write endpoint (Wave 3).
+// Deferred, not built here: every write endpoint.
 
 // codeInvalidArgument is the taxonomy code for a malformed request parameter (a
 // non-numeric id, an unknown filter value). The wire taxonomy has no store
@@ -139,7 +139,7 @@ func canWrite(id identity) bool {
 // canApprove reports whether a resolved scope may decide an approval on the
 // MACHINE face. It is the approve scope alone: ADR 0014 §3 maps readonly/
 // operator/approve onto R/W/A, and a token that may enqueue a gated apply must
-// not also hold the release for the gate it raised (finding AI-2). The browser
+// not also hold the release for the gate it raised. The browser
 // surface keeps mayApprove's operator-or-approve floor — that is the human at
 // the console, not a credential handed to an agent — and both paths additionally
 // refuse a principal deciding its own write (decidedBySelf).
@@ -202,7 +202,7 @@ func (s *Server) badRequest(w http.ResponseWriter, msg string) {
 // apiJobs lists jobs with the same filters the CLI's `jobs list` supports
 // (JobFilter: state, runbook, concurrency_key, limit). JobFilter has no cursor
 // field, so cursor paging is not offered here — adding it would be a store
-// change, out of this read-only lane's scope.
+// change, out of scope for this read-only API.
 func (s *Server) apiJobs(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	filter := store.JobFilter{
@@ -501,9 +501,9 @@ func (s *Server) apiRunnerGet(w http.ResponseWriter, r *http.Request) {
 // healthCacheTTL bounds how stale a served health summary may be. A doctor
 // probe forks a subprocess per optional tool and opens the secrets envelope, so
 // running it per request let the LOWEST scope drive unbounded process creation
-// and repeated keyring unwraps (finding AI-6). Ten seconds is shorter than any
-// human refresh and shorter than the scrape intervals an agent polls at, so the
-// summary a caller reads is still the current one.
+// and repeated keyring unwraps. Ten seconds is shorter than any human refresh
+// and shorter than the scrape intervals an agent polls at, so the summary a
+// caller reads is still the current one.
 const healthCacheTTL = 10 * time.Second
 
 // healthCache holds the last probe and when it expires. The mutex is held for

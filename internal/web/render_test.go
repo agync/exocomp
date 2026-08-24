@@ -108,12 +108,13 @@ func TestFocusRingAndThemes(t *testing.T) {
 	}
 }
 
-// TestResponsiveTablesAndHeaders is the lane gate: wide tables carry the
-// stackable class and a data-label on every cell (so the phone stacked-card
-// pattern can label each value), short/step-ledger tables are deliberately left
-// plain, every list-page card grew the kicker+<h3> header the detail views
-// already use, and the extracted enabledChip renders byte-identically to the old
-// inline enabled/disabled conditional in both branches.
+// TestResponsiveTablesAndHeaders is the gate for the responsive layout: wide
+// tables carry the stackable class and a data-label on every cell (so the phone
+// stacked-card pattern can label each value), short/step-ledger tables are
+// deliberately left plain, every list-page card grew the kicker+<h3> header the
+// detail views already use, and the extracted enabledChip renders
+// byte-identically to the old inline enabled/disabled conditional in both
+// branches.
 func TestResponsiveTablesAndHeaders(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)

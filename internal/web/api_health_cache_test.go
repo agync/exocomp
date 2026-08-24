@@ -13,7 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
-// TestAPIHealthProbeIsCached is the AI-6 regression: GET /api/v1/health used to
+// TestAPIHealthProbeIsCached proves GET /api/v1/health is cached: it used to
 // run the full doctor probe per request — eight PATH-resolved subprocess forks
 // and a keyring unwrap — for any token including readonly, at whatever rate the
 // caller liked. The probe is now cached behind a short TTL, so a flood of reads

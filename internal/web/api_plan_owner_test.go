@@ -12,7 +12,8 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestAPIApplyRefusesForeignPlan is the AI-9 regression: the workspace came from
+// TestAPIApplyRefusesForeignPlan proves a plan cannot be applied against a
+// workspace other than the one that produced it: the workspace came from
 // the path and the plan from the body, checked only for its artifact KIND, so
 // one workspace's sealed plan could be applied inside another — under that
 // other workspace's backend bearer and state passphrase, and with the stale-plan

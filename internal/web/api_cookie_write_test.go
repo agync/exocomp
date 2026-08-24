@@ -11,12 +11,13 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestAPIWriteRejectsCookieAuth is the AI-8 regression: the machine API used to
-// accept the browser's ambient session on every POST, with no CSRF token, no
-// Origin check and no Content-Type check — so any same-site page (another app on
-// another port, an XSS, a local page under --insecure-http) could drive
-// operator-scope writes with the cookie the browser attaches for it. /api/v1
-// writes now require an explicit bearer credential.
+// TestAPIWriteRejectsCookieAuth proves the machine API cannot be driven by an
+// ambient browser session: it used to accept the browser's ambient session on
+// every POST, with no CSRF token, no Origin check and no Content-Type check —
+// so any same-site page (another app on another port, an XSS, a local page
+// under --insecure-http) could drive operator-scope writes with the cookie
+// the browser attaches for it. /api/v1 writes now require an explicit bearer
+// credential.
 func TestAPIWriteRejectsCookieAuth(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

@@ -10,14 +10,15 @@ import (
 	"testing"
 )
 
-// TestKillRefusesUnauthenticatedAndUnderScoped is the red-team repro for the
-// approval page's "Silence & global kill" form (view_approval.templ, action
-// "/kill"): the control is destructive (it pauses the reactive engine, the
-// dashboard's PAUSED state), so it must sit behind the SAME operator floor as
-// the rest of the write surface (canWrite, api.go), not merely behind login.
-// Both a caller with no session and a caller holding a readonly or approve
-// token must be refused AND must leave no global silence behind — the mutation
-// check (security-red-blue) reverts the scope check and watches this fail.
+// TestKillRefusesUnauthenticatedAndUnderScoped proves the approval page's
+// "Silence & global kill" form (view_approval.templ, action "/kill") sits
+// behind the operator floor: the control is destructive (it pauses the
+// reactive engine, the dashboard's PAUSED state), so it must sit behind the
+// SAME operator floor as the rest of the write surface (canWrite, api.go),
+// not merely behind login. Both a caller with no session and a caller
+// holding a readonly or approve token must be refused AND must leave no
+// global silence behind — a mutation check reverts the scope check and
+// watches this fail.
 func TestKillRefusesUnauthenticatedAndUnderScoped(t *testing.T) {
 	ctx := context.Background()
 
@@ -78,7 +79,7 @@ func TestKillRefusesUnauthenticatedAndUnderScoped(t *testing.T) {
 
 	// The approve scope may settle a gated approval but must not ALSO carry
 	// the write floor that fires the kill switch — the same disjointness the
-	// machine API's canWrite/canApprove split enforces (AI-2's pattern).
+	// machine API's canWrite/canApprove split enforces.
 	t.Run("approve scope is refused and mutates nothing", func(t *testing.T) {
 		h := newHarness(t)
 		ts := httptest.NewServer(h.server.Handler())

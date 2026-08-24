@@ -204,8 +204,8 @@ func postRunJobID(t *testing.T, base, token string, hdr map[string]string) int64
 	return jv.JobID
 }
 
-// TestAPIPlaybookRunRefusesEscapingSource is the AI-12 regression at the HTTP
-// seam: a --source playbook that resolves outside the checkout is an
+// TestAPIPlaybookRunRefusesEscapingSource proves the HTTP seam refuses a
+// path-escaping source: a --source playbook that resolves outside the checkout is an
 // invalid_argument, refused before anything is enqueued, so a run recorded
 // against a signed source can never execute a tree its signature never covered.
 func TestAPIPlaybookRunRefusesEscapingSource(t *testing.T) {

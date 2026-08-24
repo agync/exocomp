@@ -27,7 +27,7 @@ import (
 //   - No GET stream. Streamable-HTTP allows a client to open a long-lived GET for
 //     server→client messages; this server initiates none — it answers what it is
 //     asked, and job progress is already an SSE tail at /api/v1/jobs/{id}/stream
-//     with its own revoke-aware auth (finding AI-10). An idle stream would be a
+//     with its own revoke-aware auth. An idle stream would be a
 //     socket held open for nothing, so GET is a 405.
 //   - No sessions, and so no Mcp-Session-Id. A session id is state the server
 //     would have to trust between requests, and it is exactly the thing that
@@ -51,7 +51,7 @@ const mcpMaxBody = 8 << 20
 // server-initiated stream, no session to delete" behaviour, for free.
 //
 // The guard is the /api/v1 write guard: an explicit bearer (never the browser's
-// ambient session, finding AI-8) of a scope this surface recognizes. Anything
+// ambient session) of a scope this surface recognizes. Anything
 // finer is per-tool and belongs to internal/mcp, which re-checks it per call.
 func (s *Server) registerMCP(mux *http.ServeMux) {
 	mux.HandleFunc("POST "+mcpPath, s.apiGuard(bearerOnly(canRead),
@@ -63,7 +63,7 @@ func (s *Server) registerMCP(mux *http.ServeMux) {
 // authorizes against. Only the token's NAME and row id travel — never its secret
 // (invariant 4). The decision seam is attached under the approve scope alone;
 // TokenCaller drops it for any other scope, so the W and A floors cannot be
-// satisfied by one credential (finding AI-2).
+// satisfied by one credential.
 func (s *Server) mcpCaller(r *http.Request) mcp.Caller {
 	ident, ok := identityOf(r.Context())
 	if !ok {
@@ -77,7 +77,7 @@ func (s *Server) mcpCaller(r *http.Request) mcp.Caller {
 // mcpDecide adapts the shared decision path onto the MCP seam. It is the SAME
 // s.decideApproval the /api/v1 decision route calls, so both machine faces
 // derive the capability server-side and inherit the refusal of a principal
-// deciding the approval for a job it asked for itself (finding AI-2).
+// deciding the approval for a job it asked for itself.
 func (s *Server) mcpDecide(ident identity) mcp.DecideFunc {
 	return func(ctx context.Context, approvalID int64, decision string) (mcp.Decision, error) {
 		view, err := s.decideApproval(ctx, approvalID, decision, ident)

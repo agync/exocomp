@@ -63,7 +63,7 @@ func seedSecrets(t *testing.T, h *harness) {
 	}
 }
 
-// TestSecretsSurfaceGated is the lane GATE for the secrets view: it is
+// TestSecretsSurfaceGated is the gate for the secrets view: it is
 // token-gated (no session refused, session renders), it shows every lifecycle
 // field with its staleness marker and bindings, the nav carries Secrets, and it
 // NEVER renders the sealed value, nonce, or ciphertext.

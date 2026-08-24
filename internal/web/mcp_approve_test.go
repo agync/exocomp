@@ -12,7 +12,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestMCPScopesStayDisjoint is the AI-1/AI-2 regression on the MCP HTTP face: a
+// TestMCPScopesStayDisjoint is a regression test on the MCP HTTP face: a
 // token is advertised the write column or the approve column, never both, and
 // the per-call check refuses the other one anyway. An agent that can raise the
 // approval gate therefore cannot hold its release, and vice versa.

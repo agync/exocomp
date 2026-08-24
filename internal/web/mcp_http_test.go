@@ -108,9 +108,9 @@ func TestMCPRequiresBearer(t *testing.T) {
 	}
 }
 
-// TestMCPRejectsCookieAuth keeps the machine face free of ambient credentials
-// (finding AI-8): a browser session must not drive MCP tools, however the
-// browser was talked into sending it.
+// TestMCPRejectsCookieAuth keeps the machine face free of ambient credentials:
+// a browser session must not drive MCP tools, however the browser was talked
+// into sending it.
 func TestMCPRejectsCookieAuth(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -220,7 +220,7 @@ func TestMCPReadonlyTokenSeesNoWriteTools(t *testing.T) {
 // TestMCPWriteToolEnqueuesThroughService proves invariant 5 across the new
 // transport: an operator token's tool call lands a real queued row, carrying the
 // runbook and kind only the service verb's spec assembly sets, attributed to the
-// token behind it rather than to the local operator (finding AI-13).
+// token behind it rather than to the local operator.
 func TestMCPWriteToolEnqueuesThroughService(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -267,10 +267,10 @@ func TestMCPWriteToolEnqueuesThroughService(t *testing.T) {
 	}
 }
 
-// TestMCPRevokedTokenFailsOnNextCall mirrors the SSE tail's revoke behaviour
-// (finding AI-10) on this face: the transport is stateless and re-resolves the
-// credential per message, so a revoke bites on the very next call instead of at
-// the end of a long-lived session.
+// TestMCPRevokedTokenFailsOnNextCall mirrors the SSE tail's revoke behaviour on
+// this face: the transport is stateless and re-resolves the credential per
+// message, so a revoke bites on the very next call instead of at the end of a
+// long-lived session.
 func TestMCPRevokedTokenFailsOnNextCall(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
