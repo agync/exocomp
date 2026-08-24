@@ -146,7 +146,7 @@ func hasTag(argv []string, value string) bool {
 	return false
 }
 
-// TestResticRestoreScopesLatestToExocompTags pins finding B2: the backup leg
+// TestResticRestoreScopesLatestToExocompTags pins the tag scoping: the backup leg
 // tags every snapshot "exocomp" and its target name (resticLeg, "backup"),
 // so "restic restore latest" with no tag filter can resolve to a foreign
 // snapshot on a repository this program does not own exclusively, or to the

@@ -46,7 +46,7 @@ type Source struct {
 	AllowUnauthenticated bool
 	// Authenticates asserts, out of band, that this target authenticates its
 	// snapshots — the per-target fact the recovery kit records (section 6). It
-	// is the counter to the git-leg downgrade (finding B1): the in-repo
+	// is the counter to the git-leg downgrade: the in-repo
 	// AUTHENTICATED.mac marker travels in the very ref an attacker with git
 	// write controls, so stripping keyring.age and that marker together erases
 	// the only in-repo evidence the target ever authenticated, and an untagged
@@ -205,7 +205,7 @@ func install(from, dest string) error {
 // it restores, loudly, because refusing it would strand every backup written
 // before this shipped — unless the recovery kit records this target as
 // authenticating (authenticates), in which case a missing tag is the downgrade
-// finding B1 refuses.
+// this refuses.
 func authenticateSnapshot(dir string, dek []byte, target string, authenticates, allowUnauthenticated bool, warn func(string)) error {
 	if len(dek) != dekLen || target == "" {
 		if authenticates && !allowUnauthenticated {
@@ -456,7 +456,7 @@ func authenticateParts(dir string, body []byte, snapshot string, dek []byte, tar
 		// the same ref cannot be trusted to be present — its absence here is
 		// exactly the state the strip produces. The recovery kit's out-of-band
 		// record that this target authenticates is what still catches the
-		// downgrade (finding B1); without it a stripped keyring reads as a
+		// downgrade; without it a stripped keyring reads as a
 		// never-authenticated legacy target.
 		if authenticates && !allowUnauthenticated {
 			return fmt.Errorf("%w: %s carries no tag and the clone holds no %s to derive one, but the "+

@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// TestRestoreRefusesDowngradeWhenMarkerStripped is finding B1 end to end. The
-// git leg's AUTHENTICATED.mac marker travels in the same ref an attacker with
+// TestRestoreRefusesDowngradeWhenMarkerStripped covers the git-leg downgrade
+// end to end. The git leg's AUTHENTICATED.mac marker travels in the same ref an attacker with
 // git write controls. An attacker who holds the public recipients strips BOTH
 // keyring.age and the marker and plants a snapshot of their own with a
 // self-consistent, untagged parts manifest. With the marker and the keyring
@@ -109,7 +109,7 @@ func TestRestoreRefusesDowngradeWhenMarkerStripped(t *testing.T) {
 // generation file, and the AUTHENTICATED.mac marker, and writes a fresh,
 // untagged snapshot carrying attackerDB. The parts manifest is self-consistent
 // (so integrity passes), but it carries no .mac and there is no keyring to
-// derive one from — the exact state finding B1 is about.
+// derive one from — the exact state the git-leg downgrade is about.
 func plantForgedGitSnapshot(t *testing.T, bare string, f *fixture, attackerDB string) {
 	t.Helper()
 
