@@ -306,9 +306,20 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) (leg
 	defer cleanup()
 
 	restored := filepath.Join(work, "restic")
+	// "latest" must resolve only among exocomp's own snapshots: the backup
+	// leg tags every one --tag exocomp --tag <name> (resticLeg, "backup"),
+	// and an unfiltered "latest" on a repository holding a foreign or
+	// differently-named snapshot restores the wrong data. The name tag
+	// narrows further to this leg's own target, because nothing stops two
+	// targets from sharing a repository URI; it is added only when the
+	// target name is known here (the bare-password path has none).
+	argv := []string{"restic", "-r", repo, "restore", "latest", "--target", restored, "--tag", "exocomp"}
+	if leg.target != "" {
+		argv = append(argv, "--tag", leg.target)
+	}
 	res, err := runTool(ctx, src.Driver, executor.Spec{
 		Kind: "shell",
-		Argv: []string{"restic", "-r", repo, "restore", "latest", "--target", restored},
+		Argv: argv,
 		Env:  resticEnv(src.Env, passFile),
 	}, secrets.NewRedactor([][]byte{[]byte(password)}))
 	if err != nil {

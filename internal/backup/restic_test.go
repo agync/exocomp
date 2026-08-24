@@ -135,3 +135,93 @@ func within(dir, path string) bool {
 	rel, err := filepath.Rel(dir, path)
 	return err == nil && !strings.HasPrefix(rel, "..")
 }
+
+// hasTag reports whether argv carries "--tag <value>" as an adjacent pair.
+func hasTag(argv []string, value string) bool {
+	for i, a := range argv {
+		if a == "--tag" && i+1 < len(argv) && argv[i+1] == value {
+			return true
+		}
+	}
+	return false
+}
+
+// TestResticRestoreScopesLatestToExocompTags pins finding B2: the backup leg
+// tags every snapshot "exocomp" and its target name (resticLeg, "backup"),
+// so "restic restore latest" with no tag filter can resolve to a foreign
+// snapshot on a repository this program does not own exclusively, or to the
+// wrong target's snapshot on a repository URI shared between targets.
+func TestResticRestoreScopesLatestToExocompTags(t *testing.T) {
+	t.Parallel()
+
+	drv := &recordingDriver{}
+	src := Source{
+		Kind:      KindResticLocal,
+		URI:       filepath.Join(t.TempDir(), "repo"),
+		Name:      "nas",
+		Password:  "test-password",
+		Driver:    drv,
+		StageRoot: t.TempDir(),
+	}
+
+	// The fake driver writes nothing, so the restore leg fails past the
+	// restic invocation this test inspects; only the captured argv matters.
+	if _, err := restoreRestic(t.Context(), src, t.TempDir(), t.TempDir()); err == nil {
+		t.Fatal("restoreRestic succeeded against a driver that wrote no manifest")
+	}
+	if len(drv.specs) == 0 {
+		t.Fatal("restoreRestic ran no subprocess")
+	}
+
+	argv := drv.specs[0].Argv
+	if !slices.Contains(argv, "restore") {
+		t.Fatalf("first subprocess argv = %v, want a restic restore", argv)
+	}
+	if !hasTag(argv, "exocomp") {
+		t.Errorf("restore argv %v: missing --tag exocomp; an untagged latest "+
+			"can resolve to a foreign snapshot on a shared repository", argv)
+	}
+	if !hasTag(argv, "nas") {
+		t.Errorf("restore argv %v: missing --tag nas; a shared repository uri "+
+			"can hold more than one exocomp target's snapshots", argv)
+	}
+}
+
+// TestResticRestoreOmitsNameTagWhenTargetUnknown covers the bare-password
+// restore path (Source.Password set, Source.Name empty): the leg has no
+// target name to scope by, so it must still filter to exocomp's own
+// snapshots without inventing a name tag that would match nothing.
+func TestResticRestoreOmitsNameTagWhenTargetUnknown(t *testing.T) {
+	t.Parallel()
+
+	drv := &recordingDriver{}
+	src := Source{
+		Kind:      KindResticLocal,
+		URI:       filepath.Join(t.TempDir(), "repo"),
+		Password:  "test-password",
+		Driver:    drv,
+		StageRoot: t.TempDir(),
+	}
+
+	if _, err := restoreRestic(t.Context(), src, t.TempDir(), t.TempDir()); err == nil {
+		t.Fatal("restoreRestic succeeded against a driver that wrote no manifest")
+	}
+	if len(drv.specs) == 0 {
+		t.Fatal("restoreRestic ran no subprocess")
+	}
+
+	argv := drv.specs[0].Argv
+	if !hasTag(argv, "exocomp") {
+		t.Errorf("restore argv %v: missing --tag exocomp", argv)
+	}
+	count := 0
+	for i, a := range argv {
+		if a == "--tag" {
+			count++
+			_ = i
+		}
+	}
+	if count != 1 {
+		t.Errorf("restore argv %v: want exactly one --tag (exocomp) when the target name is unknown, got %d", argv, count)
+	}
+}
