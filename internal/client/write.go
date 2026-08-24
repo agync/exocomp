@@ -16,8 +16,8 @@ import (
 // The response shapes below are field-for-field the API's own write views, so a
 // decoded value re-emitted through wire.WriteSuccess reproduces the daemon's
 // bytes exactly; that is what keeps a remote `--output json` write identical to
-// the local one. wire itself carries no write projections yet (another lane's
-// seam), which is why the shapes are declared here rather than imported.
+// the local one. wire itself carries no write projections yet, which is why
+// the shapes are declared here rather than imported.
 
 // Write-response kinds, mirroring internal/web/api_write.go.
 const (

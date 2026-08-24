@@ -35,7 +35,7 @@ func envLines(t *testing.T, logPath string) []string {
 	return strings.Split(strings.TrimSpace(string(raw)), "\n")
 }
 
-// TestAnsibleRunSecretReachesChildNotParent is the credential-plane must-fix
+// TestAnsibleRunSecretReachesChildNotParent is the critical credential-plane
 // proof for ansible: a bound sealed secret arrives as named env, and the same
 // name set in the daemon's own environment cannot leak in its place.
 func TestAnsibleRunSecretReachesChild(t *testing.T) {

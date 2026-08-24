@@ -57,8 +57,8 @@ exit 0`)
 	}
 	assertNoSentinel(t, applyOut, "the apply's own output")
 
-	// The binding the daemon's apply must have sealed: the gap this lane
-	// closes is exactly this row staying absent.
+	// The binding the daemon's apply must have sealed: the bug this test
+	// closes was exactly this row staying absent.
 	listing, code := runCLIExit(t, bin, "run-secret", "list", "tf:wsp")
 	if code != 0 {
 		t.Fatalf("run-secret list exited %d:\n%s", code, listing)

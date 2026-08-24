@@ -418,7 +418,7 @@ func sealSecretForTest(t *testing.T, dir, name, value string) {
 	}
 }
 
-// TestIdentityMigrateDropRevokesViaRotation is the E2 red-team repro: a dropped
+// TestIdentityMigrateDropRevokesViaRotation proves a dropped
 // recipient that kept a copy of keyring.age from before the drop must not be
 // able to decrypt anything — neither a secret sealed before the drop (it is
 // re-encrypted under the new DEK) nor one sealed after. Before the fix, drop

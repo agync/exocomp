@@ -48,7 +48,7 @@ func evalPlanPolicy(ctx context.Context, st *store.Store, out io.Writer,
 // recordPlanOutcome stamps an evaluation onto the sealed plan: the matched
 // policy's verdict, or the adjudication record that says the policies ran and
 // none matched. One of the two must land, because an apply reads a plan with
-// neither as not-yet-decided and refuses it (finding AI-3).
+// neither as not-yet-decided and refuses it.
 func recordPlanOutcome(ctx context.Context, st *store.Store, out io.Writer,
 	jobID, artifactID int64, res service.PlanPolicyResult) error {
 	if res.Verdict.Matched() {

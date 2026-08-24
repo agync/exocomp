@@ -1189,7 +1189,7 @@ func (d workspaceDriver) sealAPIPlan(ctx context.Context, job store.Job, ws stor
 	// Adjudicate BEFORE the artifact row exists: the id an apply can name becomes
 	// addressable only once the verdict is ready to stamp on it, so the window in
 	// which an apply-by-id sees a sealed-but-undecided plan is one event append
-	// wide (finding AI-3). The apply gate fails closed on what is left of it.
+	// wide. The apply gate fails closed on what is left of it.
 	res, err := svc.EvalPlanPolicy(ctx, ws, job.ID)
 	if err != nil {
 		emit("evaluate plan policy: %v", err)

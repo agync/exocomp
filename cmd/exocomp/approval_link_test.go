@@ -62,8 +62,8 @@ func TestApprovalLinkPublicURLViaEnv(t *testing.T) {
 	}
 }
 
-// TestApprovalLinkUsesPersistedDaemonPublicURL proves the follow-up to the
-// creds-redact lane: a running `serve --public-url` daemon persists that base
+// TestApprovalLinkUsesPersistedDaemonPublicURL proves the follow-up fix: a
+// running `serve --public-url` daemon persists that base
 // as a store setting, so a separate `approval link` invocation with neither
 // the flag nor the env var set still mints a reachable link instead of
 // falling back to the recorded (unreachable off-box) loopback address.

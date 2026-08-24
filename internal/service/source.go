@@ -57,7 +57,7 @@ func (s *Service) ResolveSourcePlaybook(ctx context.Context, overridePath, sourc
 	// The rebase used to be a bare Join with no containment check, so
 	// `../../../attacker.yml` resolved outside the checkout and an ABSOLUTE
 	// playbook was not rebased at all: a run recorded against a signed source
-	// then executed a tree the signature never covered (finding AI-12). A
+	// then executed a tree the signature never covered. A
 	// --source run reads from that source's checkout and nowhere else.
 	if filepath.IsAbs(playbook) {
 		return false, "", fmt.Errorf("source %q: playbook %q must be relative to the checkout: %w",

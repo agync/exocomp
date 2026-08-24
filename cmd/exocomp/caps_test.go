@@ -13,7 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// This file proves the round-2 HIGH finding is closed: a runner's
+// This file proves a runner's caps configuration is enforced end to end: its
 // memory_max/cpu_quota now reaches executor.SandboxOptions.Caps at job
 // dispatch (resolveRunnerCaps), and a job that asks for caps but cannot get
 // them enforced is refused rather than silently run uncapped, on both axes

@@ -239,7 +239,7 @@ func renderRemoteApprovals(cmd *cobra.Command, mode string, rows []wire.Approval
 	}
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	// The remote list omits the local RUNBOOK column: it is a second per-row
-	// GetJob the read API does not fold in, and this lane does not add a store
+	// GetJob the read API does not fold in, and rendering here does not add a store
 	// round-trip the daemon did not already make.
 	_, _ = fmt.Fprintln(w, "ID\tSTATE\tJOB\tWORKSPACE\tPLAN SERIAL\tEXPIRES\tVIA")
 	for _, a := range rows {

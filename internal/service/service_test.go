@@ -167,7 +167,7 @@ func TestPlanWorkspaceAssemblesTofuPlanSpec(t *testing.T) {
 func TestApplyWorkspaceFreshEnqueuesPlain(t *testing.T) {
 	enq := &fakeEnqueuer{}
 	// A real store: the verb reads the workspace's plan policies before it lets a
-	// fresh apply through (finding AI-4), and this workspace has none.
+	// fresh apply through, and this workspace has none.
 	svc := service.New(openStore(t), t.TempDir(), fixedClock())
 	built := false
 

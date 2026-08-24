@@ -195,9 +195,9 @@ func TestSyncNeedsRef(t *testing.T) {
 
 func TestSyncSignedRefRefusesUnsigned(t *testing.T) {
 	repo, home, _ := originRepo(t)
-	// A valid allowed-signers file so the sync clears the S2 guard and reaches
-	// the signature check itself; the point here is the unsigned ref, not the
-	// missing signers file (that path is TestSyncSignedRefRefusesAmbientTrust).
+	// A valid allowed-signers file so the sync clears the ambient-trust guard and
+	// reaches the signature check itself; the point here is the unsigned ref, not
+	// the missing signers file (that path is TestSyncSignedRefRefusesAmbientTrust).
 	key, err := source.GenerateDeployKey("signer")
 	if err != nil {
 		t.Fatalf("generate signer: %v", err)
@@ -224,9 +224,10 @@ func TestSyncSignedRefRefusesUnsigned(t *testing.T) {
 	}
 }
 
-// TestSyncSignedRefRefusesAmbientTrust is the S2 gate: a --signed source with
-// no exocomp-owned allowed-signers must refuse, never fall back to the host git
-// config. The test first proves the fallback was a real hole — it stands up an
+// TestSyncSignedRefRefusesAmbientTrust proves a --signed source cannot fall
+// back to ambient trust: a --signed source with no exocomp-owned
+// allowed-signers must refuse, never fall back to the host git config. The
+// test first proves the fallback was a real hole — it stands up an
 // ambient git config that trusts an attacker key and shows git itself accepts
 // the attacker-signed tag under it — then shows the sync refuses that ref.
 func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
@@ -263,8 +264,8 @@ func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
 	}
 
 	// The ambient host git config trusts the attacker key — the exact fallback
-	// S2 closes. Prove git accepts the attacker tag under it, so the refusal
-	// below is closing a real hole rather than an imaginary one.
+	// the signed-source check closes. Prove git accepts the attacker tag under
+	// it, so the refusal below is closing a real hole rather than an imaginary one.
 	gitconfig := filepath.Join(home, ".gitconfig")
 	cfg := "[gpg]\n\tformat = ssh\n[gpg \"ssh\"]\n\tallowedSignersFile = " + allowedPath + "\n"
 	if err := os.WriteFile(gitconfig, []byte(cfg), 0o644); err != nil {
@@ -276,8 +277,9 @@ func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
 		t.Fatalf("ambient config did not accept the attacker tag, so the exploit control is not established: %v\n%s", err, out)
 	}
 
-	// The sync runs git under this same HOME; before S2 it verified against that
-	// ambient config and accepted the attacker tag. It must now refuse.
+	// The sync runs git under this same HOME; before this check existed it
+	// verified against that ambient config and accepted the attacker tag. It
+	// must now refuse.
 	t.Setenv("HOME", home)
 	_, err = source.Sync(context.Background(), source.SyncOptions{
 		Root:   filepath.Join(t.TempDir(), "sources", "infra"),
@@ -352,7 +354,7 @@ exec sh -c "$cmd"
 	return dir
 }
 
-// TestSyncPinsForgeHostKey is the S5 gate: with a known_hosts file the sync
+// TestSyncPinsForgeHostKey proves that with a known_hosts file the sync
 // verifies the forge host key strictly, so a key that does not match the pinned
 // one fails the clone; a matching pin clones cleanly. Without the pin the sync
 // would trust whatever key the forge presented (trust on first use).

@@ -184,7 +184,8 @@ func TestDefaultAlias(t *testing.T) {
 	}
 }
 
-// TestLoginAssumeYesCannotReplaceAPin is the AI-5 regression: --assume-yes is a
+// TestLoginAssumeYesCannotReplaceAPin proves --assume-yes cannot replace an
+// existing pin: it is a
 // root persistent flag every script and agent harness must pass to pin at all on
 // non-interactive stdin, so it must NOT double as consent to overwrite a CHANGED
 // fingerprint. A machine-in-the-middle answering the endpoint gets a refusal and
@@ -227,7 +228,8 @@ func TestLoginAssumeYesCannotReplaceAPin(t *testing.T) {
 
 // TestLoginRefusesAliasEndpointChange: an alias already pinned to one endpoint
 // is not silently re-pointed at another host by a login that reuses its name
-// (AI-5's second half) — the same deliberate consent is required.
+// — the same deliberate consent required to replace a changed fingerprint pin
+// is required here too.
 func TestLoginRefusesAliasEndpointChange(t *testing.T) {
 	withConfigHome(t)
 	srv, fp := loginTLSServer(t)

@@ -276,7 +276,7 @@ func TestSandboxGuardNamesTheFixForASourceAncestor(t *testing.T) {
 
 // TestSandboxGuardResolvesSymlinkedAncestor: the guard compares symlink-resolved
 // paths, so a grant that reaches the data dir only through a symlinked ancestor
-// is still refused. A lexical compare would wave it through.
+// is still refused. A lexical compare would let it through.
 func TestSandboxGuardResolvesSymlinkedAncestor(t *testing.T) {
 	t.Parallel()
 

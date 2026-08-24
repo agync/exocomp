@@ -10,8 +10,8 @@ import (
 	"exocomp.dev/exocomp/internal/version"
 )
 
-// commandFactories collects per-file subcommand constructors so parallel
-// lanes register commands without editing shared files.
+// commandFactories collects per-file subcommand constructors so each file can
+// register its own command without editing a shared list.
 var commandFactories []func() *cobra.Command
 
 func registerCommand(f func() *cobra.Command) {

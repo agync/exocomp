@@ -13,7 +13,7 @@ import (
 const GitBinary = "git"
 
 // ForgeHost returns the SSH host a git URL connects to, so a sync can pin that
-// host's key from the recorded known_hosts store (ADR 0010, finding S5). It
+// host's key from the recorded known_hosts store (ADR 0010). It
 // returns "" for a URL that reaches no SSH host — a local path, or an explicit
 // file/http/git transport — where there is no host key to verify. A port, when
 // present, is dropped: the store keys a host by name, matching how it is
@@ -169,7 +169,7 @@ func Sync(ctx context.Context, opts SyncOptions) (SyncResult, error) {
 // signature fails the sync — the bad commit cannot reach the fleet.
 func verifyRef(ctx context.Context, git string, opts SyncOptions, sshCommand string) error {
 	// Fail closed: a --signed source with no exocomp-owned allowed-signers must
-	// never fall back to the ambient host git config (finding S2). Whatever keys
+	// never fall back to the ambient host git config. Whatever keys
 	// that config happens to name — a permissive or attacker-influenced
 	// allowedSignersFile — would decide the verdict, so a ref an attacker signed
 	// gets accepted. Refuse rather than verify against trust exocomp does not own.

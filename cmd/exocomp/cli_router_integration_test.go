@@ -14,7 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// These tests close the gap the R1 lane deferred: the daemon's kindRouter did
+// These tests close a gap left by an earlier change: the daemon's kindRouter did
 // not serve executor.KindCLI, so a running `exocomp serve` both refused
 // `run-cli` outright and left an approved gated cli job stuck with
 // "sched: no driver for kind \"cli\"". They drive a built binary as a real
@@ -97,7 +97,7 @@ func TestDaemonRunsAnAllowListedCLITool(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
-// TestDaemonRunsAnApprovedCLIJob is the exact failure the R1 lane flagged: a
+// TestDaemonRunsAnApprovedCLIJob reproduces the exact failure this closes: a
 // --require-approval cli job, once approved, used to fail on the daemon with
 // `sched: no driver for kind "cli"` because the kindRouter fell through to the
 // scheduler's shell/backup driver. It must now run to success instead.

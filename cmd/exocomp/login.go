@@ -92,8 +92,8 @@ func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault, replacePin
 	// dangerous case. --assume-yes must not clear it: -y is a root persistent
 	// flag and the ONLY way to pin at all on non-interactive stdin, so every
 	// script, CI step and agent harness already passes it — accepting it as
-	// consent to re-pin would silently bless whatever certificate answers
-	// (finding AI-5). Replacing a pin takes the deliberate, login-only
+	// consent to re-pin would silently bless whatever certificate answers.
+	// Replacing a pin takes the deliberate, login-only
 	// --replace-pin, exactly as a changed SSH host key takes a deliberate edit.
 	switch {
 	case had && existing.Fingerprint != "" && !sameFP(existing.Fingerprint, fp):

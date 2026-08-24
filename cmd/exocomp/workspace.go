@@ -719,7 +719,7 @@ func runWorkspacePlan(ctx context.Context, svc *service.Service, enq service.Enq
 		// Evaluate the workspace's policies FIRST, then seal: the artifact id
 		// becomes addressable only once a verdict is ready to stamp on it, so the
 		// window in which an apply-by-id sees a sealed-but-undecided plan is one
-		// event append wide (finding AI-3; the apply gate fails closed on it).
+		// event append wide; the apply gate fails closed on it.
 		pol, err := evalPlanPolicy(ctx, st, out, ws, final.ID)
 		if err != nil {
 			return 0, err
@@ -756,7 +756,7 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 		}
 		saved = &resolved
 		// Fail-closed adjudication: a plan on a policied workspace with no
-		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		// recorded verdict is unconsumable, not unpoliced.
 		gate, err = svc.PlanGateForPlan(ctx, ws.Name, resolved)
 		if err != nil {
 			return 0, err

@@ -397,11 +397,12 @@ func TestRecipientsFileRoundTrips(t *testing.T) {
 	}
 }
 
-// TestOpenSecretRejectsAADCollision is the E3 red-team repro: with an
-// unescaped "name|kind" AAD, two distinct (name,kind) rows whose concatenation
-// with "|" coincides share the same additional data, so a ciphertext sealed
-// under one row opens under the other — defeating the "move a ciphertext, it
-// won't open" property. Sealed under ("a", "b|c"); opened under ("a|b", "c").
+// TestOpenSecretRejectsAADCollision proves an AAD collision is rejected: with
+// an unescaped "name|kind" AAD, two distinct (name,kind) rows whose
+// concatenation with "|" coincides share the same additional data, so a
+// ciphertext sealed under one row opens under the other — defeating the "move
+// a ciphertext, it won't open" property. Sealed under ("a", "b|c"); opened
+// under ("a|b", "c").
 func TestOpenSecretRejectsAADCollision(t *testing.T) {
 	env, _ := mustInit(t, t.TempDir(), nil)
 
@@ -418,8 +419,9 @@ func TestOpenSecretRejectsAADCollision(t *testing.T) {
 }
 
 // TestOpenSecretOpensLegacyAAD proves backward compatibility: a ciphertext
-// sealed under the pre-E3 "name|kind" AAD still opens after the encoding
-// changed, so existing rows are readable without a flag day.
+// sealed under the old, unescaped "name|kind" AAD still opens after the
+// encoding changed to close the collision above, so existing rows are
+// readable without a flag day.
 func TestOpenSecretOpensLegacyAAD(t *testing.T) {
 	env, _ := mustInit(t, t.TempDir(), nil)
 

@@ -108,7 +108,7 @@ type planPolicyVerdict struct {
 // the workspace HAD enabled policies and they ran — a caller must record the
 // outcome either way (RecordPlanVerdict on a match, RecordPlanAdjudication on
 // none), because an apply reads the absence of any record as "not adjudicated
-// yet" and refuses (finding AI-3).
+// yet" and refuses.
 type PlanPolicyResult struct {
 	Verdict    policy.Verdict
 	FailNotice string
@@ -228,7 +228,7 @@ func (s *Service) RecordPlanVerdict(ctx context.Context, jobID, artifactID int64
 // not a store.Policy* action: nothing routes on it, and PlanVerdict skips it, so
 // every existing consumer sees the same zero verdict it always did. Its only
 // reader is planAdjudicated, which needs to tell "policies ran, nothing matched"
-// apart from "the verdict has not been written yet" (finding AI-3).
+// apart from "the verdict has not been written yet".
 const planActionNoMatch = "no_match"
 
 // RecordPlanAdjudication records that a workspace's enabled policies were
@@ -352,12 +352,12 @@ func (s *Service) PlanOwner(ctx context.Context, art store.Artifact) (string, er
 // adjudication record is refused rather than treated as unpoliced. That closes
 // the window between CreateArtifact and the verdict event, where an apply-by-id
 // issued against a freshly-sealed plan used to bypass deny/require_approval
-// entirely (finding AI-3). It is the one adjudication read every face uses.
+// entirely. It is the one adjudication read every face uses.
 func (s *Service) PlanGateForPlan(ctx context.Context, workspace string, art store.Artifact) (PlanGate, error) {
 	// A plan is adjudicated for the workspace that produced it and no other:
 	// applying one workspace's sealed plan inside another runs it under the
 	// wrong backend bearer and state passphrase, and reads the stale-plan serial
-	// from a workspace the plan was never made against (finding AI-9).
+	// from a workspace the plan was never made against.
 	owner, err := s.PlanOwner(ctx, art)
 	if err != nil {
 		return PlanGate{}, err

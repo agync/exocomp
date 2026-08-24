@@ -89,7 +89,7 @@ func runLitestreamRestore(cmd *cobra.Command, a litestreamRestoreArgs) error {
 }
 
 // resolveReplica takes the replica url from the flag, or reads it from the
-// stored setting the replicate lane writes. It never invents one: an absent
+// stored setting the replicate command writes. It never invents one: an absent
 // replica is an honest refusal.
 func resolveReplica(cmd *cobra.Command, flag string) (string, error) {
 	if flag != "" {

@@ -70,7 +70,7 @@ func newSourceAddCmd() *cobra.Command {
 			}
 			// Fail closed at registration: a --signed source with no exocomp-owned
 			// signers would otherwise verify against the ambient host git config at
-			// sync (finding S2). Refuse now rather than record a source that can
+			// sync. Refuse now rather than record a source that can
 			// never sync — the trust must be exocomp's own.
 			if signed && allowed == "" {
 				return errors.New("source add: --signed requires --allowed-signers or --signer; " +
@@ -96,7 +96,7 @@ func newSourceAddCmd() *cobra.Command {
 
 // resolveAllowedSigners builds the stored allowed-signers content from a file
 // and/or inline --signer lines, in git's allowed-signers format. Empty when
-// neither is given, which a --signed source refuses at add time (finding S2).
+// neither is given, which a --signed source refuses at add time.
 func resolveAllowedSigners(file string, signers []string) (string, error) {
 	var b strings.Builder
 	if file != "" {

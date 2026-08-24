@@ -119,7 +119,7 @@ func TestResolveSourcePlaybookUnknownSource(t *testing.T) {
 	}
 }
 
-// TestResolveSourcePlaybookConfined is the AI-12 regression: the rebase was a
+// TestResolveSourcePlaybookConfined proves a rebase cannot escape the confined playbook path: the rebase was a
 // bare filepath.Join with no containment check, so `../../../../tmp/attacker.yml`
 // resolved outside the checkout and an absolute path was not rebased at all —
 // a run recorded against a signed source executed a tree the signature never
@@ -170,7 +170,7 @@ func TestResolveSourcePlaybookConfined(t *testing.T) {
 
 // TestResolveSourceNameCharset: a source name is validated before it is spliced
 // into any path, so a traversal in the NAME cannot reach a hooks override file
-// outside the data dir (AI-12, adjacent).
+// outside the data dir.
 func TestResolveSourceNameCharset(t *testing.T) {
 	svc := service.New(openStore(t), t.TempDir(), nil)
 	for _, name := range []string{"../../etc", "proj/../../x", "a b", "pro:j"} {

@@ -12,7 +12,7 @@ import (
 
 // TestPlanGateForPlanFailsClosed: on a workspace carrying enabled policies, a
 // sealed plan with no adjudication record — the state between CreateArtifact and
-// the verdict event — is unconsumable rather than unpoliced (finding AI-3), and
+// the verdict event — is unconsumable rather than unpoliced, and
 // the refusal reads as a conflict through the shared taxonomy.
 func TestPlanGateForPlanFailsClosed(t *testing.T) {
 	ctx := context.Background()

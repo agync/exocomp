@@ -236,8 +236,8 @@ func TestSourceSyncFromLocalRepo(t *testing.T) {
 	}
 }
 
-// TestSourceAddSignedRequiresOwnedSigners is the add-time half of S2: a
-// --signed git source with no --allowed-signers/--signer is refused at
+// TestSourceAddSignedRequiresOwnedSigners proves the add-time half of the
+// signer-trust invariant: a --signed git source with no --allowed-signers/--signer is refused at
 // registration, because a signed ref must verify against exocomp's own signers,
 // never the ambient host git config. Supplying an inline signer is accepted.
 func TestSourceAddSignedRequiresOwnedSigners(t *testing.T) {

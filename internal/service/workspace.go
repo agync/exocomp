@@ -191,7 +191,7 @@ func (s *Service) ApplyWorkspace(ctx context.Context, enq Enqueuer, deriver reac
 		}
 	} else {
 		// A fresh apply has no plan for a policy to read, so naming no plan used
-		// to skip the whole deny/require_approval machinery (finding AI-4). On a
+		// to skip the whole deny/require_approval machinery. On a
 		// workspace that HAS enabled policies, refuse: plan-then-apply-by-id is
 		// the only path a policy can adjudicate.
 		policies, err := s.store.ListPlanPolicies(ctx, in.Workspace, true)

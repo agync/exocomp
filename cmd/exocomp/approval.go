@@ -25,7 +25,7 @@ import (
 // kindApprovalDecision mirrors internal/web/api_write.go's kindDecision: the
 // same wire kind for the same shape, so a decision looks identical whether it
 // arrived over the HTTP API or this command. wire itself carries no write
-// projections yet (another lane's seam), which is why both surfaces define
+// projections yet, which is why both surfaces define
 // their own copy of this shape rather than sharing an unexported one.
 const kindApprovalDecision = "approval.decision"
 

@@ -42,7 +42,7 @@ func TestNonDecision(t *testing.T) {
 	}
 }
 
-// TestRearmStepCarriesCaptures is the crash-resume gate this lane closes: a
+// TestRearmStepCarriesCaptures proves crash-resume carries captures forward: a
 // bootstrap play step re-armed after a mid-run crash must keep its capture
 // wiring, or the resumed play seals nothing and the dependent apply's
 // ab:<workflow> binding stays empty. It drives rearmStep directly against a step
@@ -51,9 +51,8 @@ func TestNonDecision(t *testing.T) {
 // carries them identically.
 //
 // Mutation check: dropping `Captures: job.Args.Captures` from rearmStep's Spec
-// (the gap that existed before this lane) makes newJob.Args.Captures nil, tripping
-// the Captures assertion below — the exact loss a crashed-then-resumed bootstrap
-// play suffered.
+// makes newJob.Args.Captures nil, tripping the Captures assertion below — the
+// exact loss a crashed-then-resumed bootstrap play suffered.
 func TestRearmStepCarriesCaptures(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
@@ -87,8 +86,8 @@ func TestRearmStepCarriesCaptures(t *testing.T) {
 	}
 
 	// The gated job the ledger references already carries the wiring: the Spec
-	// threaded it through EnqueueGated onto the row (the store field this lane
-	// added), which is what a re-arm then has to preserve.
+	// threaded it through EnqueueGated onto the job row itself, which is what a
+	// re-arm then has to preserve.
 	step := mustSteps(t, st, wf)[0]
 	if step.JobID == nil {
 		t.Fatal("play step has no job id")

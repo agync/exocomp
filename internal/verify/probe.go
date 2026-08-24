@@ -2,8 +2,9 @@
 // success is a declared check — an HTTP status, a DNS resolution, a TLS
 // handshake with a not-after floor, or a numeric metric threshold — not merely
 // a process exit code. A gate FAILS an otherwise-zero-exit run and blocks the
-// rest of a workflow, which is what makes a cutover (the M3c chains, a
-// blue/green rollout) safe rather than "the tool exited 0, so it must be up".
+// rest of a workflow, which is what makes a cutover — a chained sequence of
+// gated steps, a blue/green rollout — safe rather than "the tool exited 0, so
+// it must be up".
 //
 // Probes run in the daemon over local or otherwise reachable endpoints — a
 // control-plane read, like drift collection — and never in a job subprocess:
