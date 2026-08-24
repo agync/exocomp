@@ -78,7 +78,10 @@ type Engine struct {
 
 	// republished remembers which approvals have had their 50%-TTL reminder.
 	// It is process state on purpose: the reminder is a nudge, and a daemon
-	// restart sending one more is better than a column that has to be swept.
+	// restart sending one more is better than a column in the store. Each
+	// SweepApprovals call prunes entries for approvals no longer pending, so
+	// this stays bounded by the current pending count rather than growing
+	// across the daemon's lifetime.
 	republished map[int64]bool
 
 	// capMu guards capPaged: the last time a rule's daily cap paged, so a flood

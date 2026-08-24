@@ -267,6 +267,7 @@ func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, 
 	if err != nil {
 		return expired, 0, err
 	}
+	e.pruneRepublished(pending)
 	for _, a := range pending {
 		half := a.RequestedAt.Add(a.ExpiresAt.Sub(a.RequestedAt) / 2)
 		if now.Before(half) || e.republished[a.ID] {
@@ -281,6 +282,21 @@ func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, 
 		republished++
 	}
 	return expired, republished, nil
+}
+
+// pruneRepublished evicts the reminder-sent marker for any approval no longer
+// pending — decided, withdrawn, or expired — so republished stays bounded by
+// the current pending count instead of growing across the daemon's lifetime.
+func (e *Engine) pruneRepublished(pending []store.Approval) {
+	live := make(map[int64]bool, len(pending))
+	for _, a := range pending {
+		live[a.ID] = true
+	}
+	for id := range e.republished {
+		if !live[id] {
+			delete(e.republished, id)
+		}
+	}
 }
 
 // DecisionLinks returns the two URLs for a pending approval, for the CLI and
