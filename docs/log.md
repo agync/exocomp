@@ -6,6 +6,46 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Run-secret file staging moves to /dev/shm
+
+The Phase 3 `--capture-file` design (bootstrap-first.md §2.3) staged a KUBECONFIG-shaped
+run-secret to a `0600` file backed by a `noswap` `Tmpfs=` quadlet mount on
+`/var/lib/exocomp/run`, asserting `statfs f_type == TMPFS_MAGIC` before writing and
+refusing otherwise. That mount does not start at all under this project's one deployment
+shape: podman refuses the `noswap` option on a rootless tmpfs mount ("only allowed with
+rootful tmpfs mounts"), so the container failed to start with the mount in place — flagged
+but held for the owner in the per-job-caps entry below, and now resolved by removing the
+mount rather than the `,noswap` option.
+
+Staging now targets `/dev/shm`: the RAM-backed tmpfs present unconditionally in every
+rootless podman container, no mount or quadlet entry required. A memfd-backed alternative
+was spiked first and rejected — real `nono` closes inherited file descriptors before exec,
+and a memfd has no path a sandboxed child's `--read-file` grant can name, so the sandboxed
+tier could never support it. `/dev/shm` has a real path, so the sandboxed drivers
+(`sandboxedTofu`) now stage before building the sandbox profile and grant the path through
+`SandboxProfile.ReadFiles` — proven against a real `nono` binary reading the staged secret
+through its granted path, with an ungranted `/dev/shm` file denied as the control.
+
+The staged file's bytes are mlocked best-effort (`secrets.LockBytes`/`UnlockBytes`, the
+same fail-open, doctor-visible pattern the DEK's own lock uses) — there is no rootless
+swap-avoidance option for tmpfs itself, so mlock is the only lever left, and a host that
+forbids it still stages, unlocked, with the residual reported rather than the apply
+refused. The file is unlinked once the subprocess that read it exits; a startup sweep
+(`executor.SweepOrphanRunSecretFiles`, run once in `runServe`) removes any orphan a broken
+cleanup path left behind. `internal/executor/tmpfs_linux.go`/`tmpfs_other.go` and the
+`RunDirTmpfs` assertion are removed — nothing is left to fail closed on. The quadlet's
+`Tmpfs=/var/lib/exocomp/run…` line is removed; the per-job run directory is ordinary
+storage on the data volume again.
+
+While fixing this, a latent aliasing bug surfaced in `Sandbox.Run`: it derives a per-call
+profile from a shallow copy of `s.profile`, and `slices.DeleteFunc` zeroes a slice's
+now-unused tail slots in place — without cloning first, that write landed in
+`s.profile.Read`'s own backing array. A `*Sandbox` is reused across repeated `Run` calls in
+the same job (the tofu driver's `init` then its operation), so a call whose working
+directory happened to already carry a Read grant corrupted the *next* call's grant list
+with a stray `""` entry. Fixed by cloning before the delete; a regression test pins two
+sequential calls on one `*Sandbox` instance.
+
 ## 2026-08-24 — code review remediation: kill switch wired, devrun removed, setup honesty
 
 Closing out the three companion code reviews (`.claude/inbox/2026-08-24-*`). Structural /

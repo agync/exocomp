@@ -103,22 +103,22 @@ exocomp bootstrap run site.yml wsp \
 
 `--capture-file NAME=FILE` seals a play-fetched file exactly as `--capture` does,
 but the apply receives it as a **file path** rather than an env value: the daemon
-writes the sealed bytes to a `0600` file inside the run's private tree and sets
-`NAME` to that path (`KUBECONFIG=/var/lib/exocomp/run/…/kubeconfig`). A tool that
-wants a config file gets one, with no field decomposition to map.
+writes the sealed bytes to a `0600` file under `/dev/shm` and sets `NAME` to that
+path (`KUBECONFIG=/dev/shm/exocomp-secret-…`). A tool that wants a config file
+gets one, with no field decomposition to map.
 
 The value only ever exists in that file — never in an argv, an event, or the
-ledger — and the file is removed when the job ends, along with the rest of the
-run's private tree.
+ledger — and the file is unlinked once the apply's subprocess exits.
 
-**The run directory must be tmpfs.** A staged file holds a plaintext bearer, so it
-must never touch durable disk. The daemon asserts the per-job run directory is a
-`tmpfs` mount (the quadlet mounts a `noswap` tmpfs at `/var/lib/exocomp/run`) and
-**refuses to stage — failing the apply with a clear error — when it is not**,
-rather than silently writing the secret to disk. `exocomp doctor` reports the run
-directory's backing under **job run dir**, so you can confirm the mount before you
-rely on `--capture-file`. Env-decomposition (`--capture`) does not stage a file and
-does not need tmpfs.
+**The staged file lives in RAM, unconditionally.** `/dev/shm` is present in every
+rootless podman container with no mount, no quadlet entry, and no capability
+needed — there is nothing here to fail closed on, unlike the tmpfs run-directory
+mount this replaced. Its bytes are additionally mlocked best-effort (there is no
+rootless swap-avoidance option for tmpfs itself); `exocomp doctor` reports the
+mlock posture under **run-secret file staging**, and a host that cannot mlock
+still stages, unlocked, with the residual reported rather than the apply refused.
+A startup sweep removes any orphaned staged file a broken cleanup path left
+behind. Env-decomposition (`--capture`) does not stage a file at all.
 
 `--capture-file` shares every safety rule of `--capture` above (declare-only
 capture, POSIX-name skipping, values-free, re-run idempotence) and the same single
@@ -134,7 +134,7 @@ delivers some values as env and others as a file in one chain.
 | `--vault-project <p>` | Derive the play's ansible-vault password from the envelope. |
 | `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. Mutually exclusive with `--capture`/`--capture-file`. |
 | `--capture NAME=FILE` | Seal a play-fetched file (`FILE`, relative to the run's capture dir) and hand it to the **apply** as `NAME` env. Repeatable. Mutually exclusive with `--run-secrets`. |
-| `--capture-file NAME=FILE` | Like `--capture`, but deliver the sealed value as a **file**: `NAME`=path to a `0600` tmpfs file for a tool that wants a `KUBECONFIG` file. Repeatable. Needs the run dir tmpfs. Mutually exclusive with `--run-secrets`. |
+| `--capture-file NAME=FILE` | Like `--capture`, but deliver the sealed value as a **file**: `NAME`=path to a `0600` file under `/dev/shm` for a tool that wants a `KUBECONFIG` file. Repeatable. Mutually exclusive with `--run-secrets`. |
 | `--source <s>` | Wrap the chain in a registered source's `.exocomp/hooks.yml` lifecycle — pre-run hooks before the play, post-run hooks and the health gate after the apply — identically to `handoff run --source`. |
 | `--require-approval` | Gate the destructive apply behind a durable operator approval the daemon honors mid-chain: the apply step waits in `awaiting_approval` until `exocomp approval decide` settles it. |
 | `--timeout <d>` | Per-step timeout (0: no limit). |

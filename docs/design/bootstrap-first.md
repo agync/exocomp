@@ -148,9 +148,13 @@ behavior.
 This was a genuine fork with a real security tradeoff. **Both are now shipped:** C-env
 first (Phase 2), then C-file (Phase 3) once the owner chose it. The owner decided C-file
 **is worth building, on the hard condition that the staged secret never touches durable
-disk** — a `noswap` tmpfs backs the per-job run directory, and the daemon fail-closed
-refuses to stage onto anything else (agentfs/CoW was evaluated for this and rejected in
-favour of plain tmpfs). The fork below is kept for the rationale.
+disk** — the value is staged as a 0600 file under `/dev/shm`, the RAM-backed tmpfs present
+unconditionally in every rootless podman container, never under the per-job run directory
+on the durable data volume (agentfs/CoW was evaluated for the backing store and rejected in
+favour of plain tmpfs; a `noswap` `Tmpfs=` quadlet mount on the run directory was the
+original design and was replaced — see "2026-08-24 (later): /dev/shm replaces the tmpfs
+run-dir mount" below — because that mount does not start under rootless podman at all).
+The fork below is kept for the rationale.
 
 **Option C-env (works today, zero new exposure).** Decompose the kubeconfig into the
 provider's env fields and bind them as run-secrets: `KUBE_HOST`, `KUBE_TOKEN` (or the
@@ -173,17 +177,18 @@ tofu driver, not just the ansible one.
 
 | | C-env (Phase 2) | C-file (Phase 3, as shipped) |
 |---|---|---|
-| Secret on disk | never | 0600 on a `noswap` tmpfs (RAM), one run — or the apply is refused |
-| New code | capture hook seals N fields | capture hook + tofu-side file staging + tmpfs assertion + `KUBECONFIG` export |
+| Secret on disk | never | 0600 under `/dev/shm` (RAM), one run |
+| New code | capture hook seals N fields | capture hook + tofu-side file staging + `KUBECONFIG` export |
 | Operator ergonomics | must map fields | paste a kubeconfig, get a path |
-| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer, fail-closed off tmpfs |
+| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer |
 
 **Decision:** the owner shipped **C-env first** (Phase 2 — no new exposure, unblocked the
 persona) and then approved **C-file** (Phase 3) as the follow-on, because field
 decomposition is too sharp an edge for the copy-paste `KUBECONFIG` case and for
-exec-auth tools that read a file. C-file's exposure is bounded to a `0600` file on a
-`noswap` tmpfs, torn down with the job, and the daemon refuses to stage anywhere else —
-so the "secret on disk" row is *RAM only, one run, or the run is refused*.
+exec-auth tools that read a file. C-file's exposure is bounded to a `0600` file under
+`/dev/shm`, torn down (unlinked) once the subprocess that read it exits, with a startup
+sweep removing any orphan left by a broken cleanup path — so the "secret on disk" row is
+*RAM only, one run, never durable disk*.
 
 ---
 
@@ -226,20 +231,40 @@ Phase 0.
 
 **Phase 3 — `KUBECONFIG` file staging (LANDED, C-file chosen).**
 `bootstrap run --capture-file NAME=FILE` delivers a captured value to the apply as a file
-path instead of an env value: the daemon writes the sealed bytes to a `0600` file in the
-tofu run's private tree and exports `NAME=<that path>`. The value never reaches an argv,
-event, or the ledger; the file is removed with the job's private tree.
-*Touches:* `internal/executor/runsecret_file.go` (the `StageRunSecretFiles` stager and the
-`RunDirTmpfs` assertion), `TofuOptions.RunSecretFiles` + its wiring in `tofu.go`,
+path instead of an env value: the daemon writes the sealed bytes to a `0600` file under
+`/dev/shm` (`exocomp-secret-<random>`) and exports `NAME=<that path>`. The value never
+reaches an argv, event, or the ledger; the file is unlinked once the subprocess that read
+it exits, and a startup sweep removes any orphan a broken cleanup path left behind.
+*Touches:* `internal/executor/runsecret_file.go` (the `StageRunSecretFiles` stager,
+`StagedRunSecretFile.Close`, and `SweepOrphanRunSecretFiles`), `TofuOptions.RunSecretFiles`
++ its wiring in `tofu.go` and in `sandboxedTofu.Run` (`sandbox_drivers.go`, which grants the
+staged path via `SandboxProfile.ReadFiles` so the sandboxed tier can read it too),
 `AnsibleCapture.AsFile` and the `--capture-file` flag/composer wiring in
-`cmd/exocomp/bootstrap.go`, the daemon read in `cmd/exocomp/serve.go`, the tmpfs mount in
-`packaging/quadlet/exocomp.container`, and the doctor report in `cmd/exocomp/sandbox.go`.
+`cmd/exocomp/bootstrap.go`, the daemon read in `cmd/exocomp/serve.go` (which also runs the
+startup sweep), and the doctor report in `cmd/exocomp/sandbox.go`.
 *New:* filesystem staging of a sealed value — the one new exposure surface, bounded by the
-hard requirement below. **The staged file never touches durable disk:** the per-job run
-directory is a `noswap` tmpfs, and staging asserts `statfs f_type == TMPFS_MAGIC` on it and
-**refuses (failing the apply) when it is not** — the never-silent-downgrade discipline
-(ADR 0005) applied to disk. agentfs/CoW was evaluated as the backing and rejected in favour
-of plain tmpfs. Env-decomposition (Phase 2) is unaffected and needs no tmpfs.
+hard requirement below. **The staged file never touches durable disk:** `/dev/shm` is
+RAM-backed unconditionally, so there is nothing to assert or fail closed on — this is
+strictly stronger than the original `noswap` `Tmpfs=` quadlet mount design, which does not
+start at all under rootless podman (`the 'noswap' option is only allowed with rootful tmpfs
+mounts`) and so never actually protected a rootless deployment. The bytes are additionally
+mlocked best-effort (no rootless swap-avoidance option exists for tmpfs itself, so mlock is
+the only lever left; a host that forbids it still stages, unlocked, with the residual
+reported by `exocomp doctor`). Env-decomposition (Phase 2) is unaffected and needs no
+`/dev/shm`.
+
+*2026-08-24 (later): `/dev/shm` replaces the tmpfs run-dir mount.* The original Phase 3
+design backed the per-job run directory itself with a `noswap` `Tmpfs=` quadlet mount and
+asserted `statfs f_type == TMPFS_MAGIC` on it before staging, refusing otherwise. That mount
+turned out to be unusable in the one deployment shape this project ships (rootless podman,
+`UserNS=keep-id`): podman refuses `noswap` on a rootless tmpfs mount outright, so the
+quadlet failed to start the container at all. `/dev/shm` needs no mount, no quadlet entry,
+and no capability, is present unconditionally in every rootless container, and — unlike a
+memfd-backed alternative that was spiked and rejected first (a memfd has no path a
+sandboxed child's `--read-file` grant can name, because real `nono` closes inherited fds
+before exec) — a `/dev/shm` file has a real path the sandboxed tier can grant. The per-job
+run directory is ordinary storage on the data volume again; only the staged secret material
+moved to RAM.
 
 **Phase 4 (later) — generalize to `exocomp workflow` (Option B2)** if a third ordering
 appears. Pure composition over the same Sequencer; deferred until two concrete orderings
@@ -269,8 +294,6 @@ is decision-gated.
 - **Default-deny.** The capture seals only operator-**declared** targets; an undeclared
   sensitive fact is never captured. A missing sealer drops the capture rather than leaking
   it (mirror of `tofu_output.go:163-167`). Under C-env no secret touches a filesystem;
-  under C-file the staged file inherits the 0600-in-0700, removed-on-exit lifecycle the
-  vault-password file already has (`ansible.go:184-199, 427-431`), and additionally must
-  live on a `noswap` tmpfs — staging asserts `statfs f_type == TMPFS_MAGIC` and refuses
-  otherwise, so the one new exposure the §2.3 decision is about is bounded to RAM for the
-  lifetime of one run, or the apply is refused rather than the secret written to disk.
+  under C-file the staged file is 0600 under `/dev/shm` — RAM, unconditionally, no mount
+  or assertion required — and unlinked once the subprocess that read it exits, so the one
+  new exposure the §2.3 decision is about is bounded to RAM for the lifetime of one run.
