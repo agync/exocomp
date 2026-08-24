@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — approval gate crash recovery consolidated
+
+[architecture/reactive.md](architecture/reactive.md) gained a "Crash recovery of
+the gate" subsection under Approvals. The per-state crash-recovery sweeps (a
+queued/running interrupted-sweep, and the approval TTL sweep) left two seams
+open: a job stuck `awaiting_approval` after a decided approval's release was
+interrupted, and a gated job with no approval row at all. Both are now closed by
+one idle-tick reconcile over every non-terminal job (`ReconcileNonTerminal`),
+described there.
+
 ## 2026-08-24 — Schedule catch-up: dropped and doubled fires closed
 
 Correction of fact in [operations/serve.md](operations/serve.md)'s "Catch-up after

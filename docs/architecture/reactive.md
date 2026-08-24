@@ -135,6 +135,24 @@ A forged resolve that shares only the dedup key — stripped of the labels the
 rule fired on — matches no rule and cancels nothing; the approval then fails
 closed at its TTL. This is the R2 scoping.
 
+### Crash recovery of the gate
+
+Arming a gate is two writes — the job row in `awaiting_approval`, then its
+approval — and deciding one is two more — the approval to a terminal state, then
+the job out of `awaiting_approval`. A crash between either pair strands a job: a
+decided approval whose release never landed leaves the job stuck
+`awaiting_approval` forever, and a job whose approval was never written can be
+decided by no one. `ReconcileNonTerminal` closes both by construction. It is one
+idle-tick pass over every non-terminal job that reconciles each to what its
+approval says it should be: a settled approval finishes its lost transition
+(approved → `queued`, otherwise → `cancelled`) regardless of who owns the job,
+because the human already answered; a gated job with no approval at all is
+retired to `interrupted` once its creator process is gone — fail-closed and
+re-drivable, never auto-released, because a destructive apply must not run
+without a decision. A row whose gate is still pending is the gate working and is
+left untouched. Every move is a guarded state transition, so the pass is
+idempotent and races the live decision path safely.
+
 ## Drift
 
 A `tofu-plan` schedule enqueues an ordinary tofu job keyed `tofu:<workspace>`.
