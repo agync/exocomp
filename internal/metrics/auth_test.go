@@ -18,8 +18,8 @@ func (d fakeDeriver) Derive(purpose, id string) []byte {
 	return sum[:]
 }
 
-// TestMetricsScrapeRequiresBearer is finding D3: the endpoint shares the
-// loopback state-backend listener that tofu-tier jobs can reach, so an
+// TestMetricsScrapeRequiresBearer covers the scrape bearer gate: the endpoint
+// shares the loopback state-backend listener that tofu-tier jobs can reach, so an
 // unauthenticated scrape — the shape a job or a webhook-fronting caller sends —
 // is refused, while a scrape carrying the derived bearer works.
 func TestMetricsScrapeRequiresBearer(t *testing.T) {

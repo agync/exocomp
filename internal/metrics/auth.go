@@ -30,8 +30,8 @@ func ScrapeToken(d Deriver) string {
 
 // Authenticated wraps a metrics handler so every scrape must present the scrape
 // bearer. The endpoint shares the loopback state-backend listener, which
-// tofu-tier jobs and anything fronting the webhook path can already reach
-// (finding D3), so it cannot be left open the way a dedicated bind might: a
+// tofu-tier jobs and anything fronting the webhook path can already reach,
+// so it cannot be left open the way a dedicated bind might: a
 // job could otherwise read the operator's whole staleness picture. The compare
 // is constant-time over the derived token; a nil deriver is a programming error
 // and fails every scrape closed rather than silently serving in the clear.
