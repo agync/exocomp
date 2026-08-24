@@ -155,14 +155,17 @@ func TestInterruptedListing(t *testing.T) {
 	defer ts.Close()
 	ctx := context.Background()
 
-	job, err := h.store.CreateJob(ctx, store.NewJob{
+	// CreateGatedJob lands the job in awaiting_approval, a state no worker
+	// claims, so the harness's live queue runner cannot race the transition
+	// below the way it would a job created straight into queued.
+	job, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "cut-off", Kind: "shell", Trigger: "manual",
 		Args: store.JobArgs{Argv: []string{"/bin/true"}},
 	})
 	if err != nil {
-		t.Fatalf("create job: %v", err)
+		t.Fatalf("create gated job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateInterrupted); err != nil {
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateAwaitingApproval, store.StateInterrupted); err != nil {
 		t.Fatalf("interrupt job: %v", err)
 	}
 
