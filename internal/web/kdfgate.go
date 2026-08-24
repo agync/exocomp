@@ -11,7 +11,7 @@ import (
 // kdfGate bounds concurrent argon2id evaluations on the pre-auth path. argon2id
 // is memory-hard by design — one verification allocates argonMemory (64 MiB) —
 // so an unauthenticated flood of /login or bearer requests, each triggering a
-// KDF, multiplies that into real memory pressure (finding D1). The gate caps
+// KDF, multiplies that into real memory pressure. The gate caps
 // how many KDFs run at once (a hard ceiling on the memory the KDF can hold) and
 // how many one source may hold at once (so a single flooding source cannot
 // starve a genuine login). A caller that cannot get a slot never runs the KDF,
@@ -90,8 +90,8 @@ func (g *kdfGate) acquire(source string) (release func(), ok bool) {
 // sourceKey identifies the origin of a request for the per-source cap. It is
 // the peer address only: X-Forwarded-For is deliberately ignored, since a
 // spoofed header would let a single attacker present as many sources (the
-// global cap still bounds total memory regardless — finding D4 tracks the
-// proxy case separately).
+// global cap still bounds total memory regardless; a reverse-proxy deployment
+// is tracked separately).
 func sourceKey(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {

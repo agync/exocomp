@@ -69,7 +69,7 @@ func TestKDFGateGlobalCap(t *testing.T) {
 
 // TestKDFGateBoundsConcurrentWork drives the gate the way a flood does — many
 // goroutines across many sources — and asserts the number of slots held at once
-// never exceeds the global ceiling. This is the memory bound finding D1 needs:
+// never exceeds the global ceiling. This is the memory bound the gate needs:
 // argon2id runs only while a slot is held, so a bounded slot count is a bounded
 // number of concurrent 64 MiB allocations.
 func TestKDFGateBoundsConcurrentWork(t *testing.T) {
@@ -108,8 +108,8 @@ func TestKDFGateBoundsConcurrentWork(t *testing.T) {
 	t.Logf("peak concurrent slots %d, ceiling %d", peak, g.capacity())
 }
 
-// TestLoginKDFNotAmplified is finding D1 at the HTTP boundary: a flood of
-// unauthenticated bearer requests that each land on a genuine token row (so the
+// TestLoginKDFNotAmplified covers the KDF amplification bound at the HTTP
+// boundary: a flood of unauthenticated bearer requests that each land on a genuine token row (so the
 // argon2id verify would run) is bounded by the gate — the KDF is never run
 // unboundedly in parallel, and the excess is refused with 503 having run no
 // KDF at all. A genuine login still succeeds.
