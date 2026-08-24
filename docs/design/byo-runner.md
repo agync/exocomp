@@ -378,6 +378,51 @@ Mechanism, per opted-in job:
    uncapped — the same "never silently" posture ADR 0005 holds for the sandbox tier.
    `exocomp doctor` reports availability under "per-job caps".
 
+### Wired (2026-08-24): a job's `--runner` reaches `SandboxOptions.Caps`
+
+The gap the round-2 re-review flagged HIGH — `ParseCaps`/`PrepareCgroupController` built and
+unit-tested but never called from `cmd/exocomp`, so `sandboxOptions()` never set `Caps`/
+`Cgroup` and the fail-closed refusal above was unreachable in the shipped binary — is closed.
+There is still no job→runner *image* linkage (the container tier stays deferred, §1), but a
+job can now name a runner purely for its caps:
+
+- `store.JobArgs`/`queue.Spec` gained `RunnerName` (a JSON field on the existing `args_json`
+  blob column — no migration), threaded from a new `--runner <name>` flag on every job-creation
+  command that dispatches through `cmd/exocomp/serve.go`'s `kindRouter`: `playbook run`,
+  `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`, `command`, `ansible`.
+  `--remote` does not carry it yet (`client.WorkspaceRequest` and friends are untouched).
+- At dispatch — both the daemon's per-kind drivers (`ansibleJobDriver.Run`, `workspaceDriver.Run`,
+  `cliJobDriver.Run` in `cmd/exocomp/serve.go`/`ansible.go`) and every no-daemon inline path
+  (`runPlaybookInline`, `runWorkspaceInline`, `cliRunInline`) — `resolveRunnerCaps` looks the
+  named runner up and runs its `memory_max`/`cpu_quota` through `ParseCaps`, refusing the job
+  outright if the name does not resolve or the stored value no longer parses.
+- `ansibleTierDriver`/`tofuTierDriver`/`cliTierDriver` (`cmd/exocomp/sandbox.go`,`clirun.go`)
+  now take that `Caps` value and, when non-empty, call `withCaps`, which sets
+  `SandboxOptions.Caps` and prepares the daemon's `*executor.CgroupController` **lazily** —
+  only the first time some job actually asks for caps, via `sync.Once` (`capsController`) — so
+  a fleet that never uses `--runner` never has the daemon's own cgroup vacated/rearranged.
+  `withCaps`'s result is exactly what makes `applyJobCaps`'s fail-closed branch reachable: caps
+  set, `Cgroup` nil when preparation failed.
+- **A second fail-closed axis, found while wiring this in:** `applyJobCaps` only ever runs
+  inside the sandboxed drivers (`internal/executor/sandbox_drivers.go`) — a plain
+  `executor.NewAnsible`/`NewTofu`/`NewCLI` subprocess (the `local` tier, or an `auto` tier
+  degraded to it) never looks at `SandboxOptions.Caps` at all. Without a guard, a capped job
+  that fell back to the subprocess boundary would run **fully uncapped with no refusal** — the
+  exact silent failure this feature exists to prevent, on an axis the cgroup-availability check
+  alone does not cover. `requireSandboxedForCaps` closes it: a capped job refuses outright when
+  the effective tier is not `local-sandboxed`, before a plain driver is ever built.
+- `internal/executor/cgroup.go`'s `parseMemorySize` also gained an overflow guard
+  (`n * mult` on a huge digit string could wrap to a small or negative byte count and write the
+  wrong tiny cap) — the round-2 MINOR finding, closed alongside the wiring.
+
+Unit-tested in `cmd/exocomp/caps_test.go` (`resolveRunnerCaps`, both fail-closed axes,
+`withCaps` against a faked cgroup tree so no test touches the real host `/sys/fs/cgroup`) and
+`internal/queue` (`Spec.RunnerName` round-trips through `Enqueue`/`EnqueueGated` into the
+stored job row). What the mechanism does once caps genuinely reach a live cgroup — the actual
+`memory.max`/`cpu.max` writes, OOM-kill/throttle behaviour — is §6's own "Built" validation
+above and `internal/executor`'s existing cgroup tests; this wiring is the seam between "an
+operator named a runner with caps" and "`applyJobCaps` sees them", which is what was missing.
+
 **Real validation (podman 5.8.4 host + podman 5.8.1 lima, `--systemd=always`,
 root-in-container):**
 
@@ -548,10 +593,13 @@ container tier is never built**, because they close real gaps in the shipped sys
   owner-approved privilege is root-in-container (`PodmanArgs=--systemd=always`), documented in
   `packaging/quadlet/exocomp.container`; the keep-id non-root delegation alternative is not
   writable on podman 5.8.x and stays unbuilt. `exocomp doctor` reports availability. Enforced
-  behaviour (OOM-kill, CPU throttle) validated on real podman — see §6. **Not yet wired:** the
-  runner store already holds `memory_max`/`cpu_quota` verbatim, but the dispatch that carries a
-  runner's caps onto a job's `SandboxOptions` lives in the queue/service path and is a separate
-  lane; `ParseCaps` is the seam the store's syntax parses through.
+  behaviour (OOM-kill, CPU throttle) validated on real podman — see §6. **Wired 2026-08-24:**
+  a job now names a runner purely for its caps with `--runner <name>` on the job-creation
+  commands (`playbook run`, `run`, `workspace plan`/`apply`, `run-cli`, `command`, `ansible`;
+  `--remote` not yet); `resolveRunnerCaps` (`cmd/exocomp/sandbox.go`) runs the runner's stored
+  `memory_max`/`cpu_quota` through `ParseCaps` at dispatch and refuses the job if the runner or
+  its caps do not resolve. See §6 "Wired" for the full seam, including a second fail-closed
+  axis (the sandboxed tier itself not active) found while closing this gap.
 - **Phase 2 — doctor prerequisites probe for the container tier.** Add probes (rootless podman
   present, user socket reachable, subuid/subgid configured, SELinux booleans/label posture)
   that **assert rather than assume**, mirroring sandbox.go `Probe`/`RunCanary`. Gates every

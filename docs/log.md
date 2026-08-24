@@ -6,6 +6,42 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Runner caps wired to job dispatch (byo-runner Phase 1, closed)
+
+The round-2 re-review's HIGH finding is closed: per-job cgroup caps
+(`internal/executor/cgroup.go`, "per-job resource caps" above) were built and unit-tested but
+never called from `cmd/exocomp` — `sandboxOptions()` never set `Caps`/`Cgroup`, so
+`applyJobCaps`'s documented fail-closed refusal ("caps set but no cgroup → refuse, never run
+uncapped") was unreachable in the shipped binary, and a runner's `memory_max`/`cpu_quota` did
+nothing regardless of what an operator set.
+
+A job now names a runner purely for its caps with a new `--runner <name>` flag —
+`playbook run`, `run` (the hooked workflow), `workspace plan`/`apply`, `run-cli`, `command`,
+`ansible`; `--remote` does not carry it yet. `store.JobArgs`/`queue.Spec` gained `RunnerName`
+(a field on the existing JSON `args_json` column, no migration). At dispatch — the daemon's
+per-kind drivers and every no-daemon inline path alike — `resolveRunnerCaps`
+(`cmd/exocomp/sandbox.go`) resolves the named runner and runs its stored caps through
+`ParseCaps`, refusing the job if the name or the caps do not resolve. `withCaps` then sets
+`SandboxOptions.Caps` and lazily prepares the daemon's `CgroupController` — only the first
+time a job actually asks for caps, so a fleet that never uses `--runner` never has its own
+cgroup layout touched — which is what finally makes `applyJobCaps`'s refusal reachable.
+
+A second, previously-unreachable-to-notice fail-closed gap surfaced while wiring this in:
+`applyJobCaps` only runs inside the sandboxed drivers, so a capped job that fell back to the
+plain subprocess boundary (the `local` tier, or `auto` degraded to it) would have run fully
+uncapped with no refusal at all. `requireSandboxedForCaps` closes it: a capped job now refuses
+outright when the sandboxed tier is not active, on the same "never silently" posture.
+
+Also fixed alongside (round-2 MINOR): `parseMemorySize`'s `n * mult` had no overflow guard, so
+a large enough digit string could wrap into a small or negative byte count and write the wrong
+tiny cap; and the `/dev/shm` path, previously a second literal in
+`internal/executor/sandbox_drivers.go` next to the run-secret staging root's `TmpfsRoot`
+constant, now references that one constant.
+
+[design/byo-runner.md](design/byo-runner.md) §6/§9 and
+[operations/runners.md](operations/runners.md) updated to match: the container-*image* tier
+stays deferred exactly as before, but the caps half of a runner definition is no longer inert.
+
 ## 2026-08-24 — Run-secret staging: session dirs, pluggable backend
 
 Two changes to the `/dev/shm` staging path the entry below landed: a robust, liveness-aware
