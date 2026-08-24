@@ -39,8 +39,10 @@ a {
   text-underline-offset: 2px;
   font-weight: 500;
 }
-a:hover:not(:has(.chip)),
-a:focus-visible {
+/* Nav and brand links are chrome controls, not prose: they opt out of the
+ * hover/focus underline (they signal state with a tint, not a rule). */
+a:hover:not(:has(.chip)):not(.navitem):not(.brandlink),
+a:focus-visible:not(.navitem):not(.brandlink) {
   text-decoration: underline;
   text-decoration-thickness: 1px;
 }
