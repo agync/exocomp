@@ -7,7 +7,7 @@ import (
 
 // TestQuadletLoadsTheHostKeyCredential: the primary systemd tier must deliver
 // host.key through an encrypted systemd credential, so a stolen data volume
-// does not contain a plaintext key that unwraps the DEK (finding E1). The
+// does not contain a plaintext key that unwraps the DEK. The
 // unwrap secret lives outside the volume by construction of systemd-creds.
 func TestQuadletLoadsTheHostKeyCredential(t *testing.T) {
 	body := readPackagingFile(t, "quadlet/exocomp.container")

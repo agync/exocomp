@@ -32,7 +32,7 @@ UserNS=keep-id
 # doctor` reports whether this is in effect under "per-job caps".
 # The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
 Environment=XDG_DATA_HOME=/var/lib
-# host.key at rest (finding E1): systemd decrypts the encrypted credential into
+# host.key at rest: systemd decrypts the encrypted credential into
 # $CREDENTIALS_DIRECTORY/host.key at start, using a secret
 # (/var/lib/systemd/credential.secret, or the TPM) that never enters the data
 # volume. A stolen volume holds only host.key.cred, which is useless without it.

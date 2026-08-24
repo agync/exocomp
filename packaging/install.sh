@@ -14,7 +14,7 @@ Modes (positional or flag form):
   restore | --restore    Restore state from a backup
   rollback | --rollback  Roll back to the previous release
   harden-host-key        Wrap host.key into a systemd credential (TPM-sealed
-                         when a TPM is present), off the data volume (finding E1)
+                         when a TPM is present), off the data volume
 
 Options:
   --from URI             With restore: target uri, or kind:uri
@@ -283,7 +283,7 @@ manual_restore() {
 }
 
 # wrap_host_key moves the host key off the data volume into a systemd credential
-# (finding E1). systemd-creds encrypts it with a host secret
+# systemd-creds encrypts it with a host secret
 # (/var/lib/systemd/credential.secret) or, when a TPM 2.0 is present, seals it to
 # the TPM (--with-key=host+tpm2) — neither of which lives in the data volume, so
 # a stolen volume holds only the opaque host.key.cred. The quadlet's
