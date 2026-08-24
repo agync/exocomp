@@ -266,7 +266,7 @@ func ProbeMetricsResult(ctx context.Context, dataDir string) (status, text strin
 	if err != nil {
 		return wire.HealthWarn, "unreachable (" + err.Error() + ")"
 	}
-	// /metrics is bearer-gated (finding D3); present the envelope-derived scrape
+	// /metrics is bearer-gated; present the envelope-derived scrape
 	// token so the probe reads gauges instead of a 401.
 	if env, oerr := secrets.Open(dataDir); oerr == nil {
 		req.Header.Set("Authorization", "Bearer "+metrics.ScrapeToken(env))
