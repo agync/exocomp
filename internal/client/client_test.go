@@ -1,11 +1,13 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/wire"
@@ -104,6 +106,28 @@ func TestErrorEnvelopeBecomesTypedError(t *testing.T) {
 	}
 	if apiErr.ExitCode() != wire.ExitNotFound {
 		t.Errorf("exit = %d, want %d", apiErr.ExitCode(), wire.ExitNotFound)
+	}
+}
+
+// An oversized response must fail with an explicit size error, not a
+// confusing decode error from a body the LimitReader silently truncated.
+func TestOversizedResponseReturnsSizeError(t *testing.T) {
+	srv, fp := tlsServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bytes.Repeat([]byte("a"), maxBody+1))
+	}))
+	c := newTestClient(t, srv, fp)
+
+	_, err := c.ListJobs(context.Background(), JobFilter{})
+	if err == nil {
+		t.Fatal("want an error for a response over the size limit")
+	}
+	if !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("want an explicit size-limit error, got: %v", err)
+	}
+	var apiErr *APIError
+	if errors.As(err, &apiErr) {
+		t.Fatalf("want a plain size error, not a decoded APIError: %v", apiErr)
 	}
 }
 

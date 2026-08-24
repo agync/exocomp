@@ -171,9 +171,12 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
 		return "", nil, fmt.Errorf("client: read %s: %w", path, err)
+	}
+	if len(raw) > maxBody {
+		return "", nil, fmt.Errorf("client: %s response exceeds %d MiB limit", path, maxBody>>20)
 	}
 	return decodeEnvelope(resp.StatusCode, raw)
 }
