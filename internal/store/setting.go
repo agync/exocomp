@@ -22,6 +22,12 @@ const (
 	// read it back — the running daemon's in-memory copy (reactive.Engine's
 	// baseURL) does not survive past that process.
 	SettingPublicURL = "daemon.public_url"
+	// SettingSecretStaging is the run-secret file staging backend
+	// `exocomp serve --secret-staging` was started with (auto, tmpfs, or
+	// disk), persisted so `exocomp doctor` reports the operator's configured
+	// choice even when run against a stopped daemon's data dir, not only the
+	// resolved posture a live process can probe.
+	SettingSecretStaging = "secret.staging_backend"
 )
 
 // PutSetting upserts a non-secret configuration value.
