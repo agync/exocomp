@@ -281,24 +281,24 @@ func TestSweepInterrupted(t *testing.T) {
 	}
 
 	// Rows owned by this live process are not orphans.
-	swept, err := s.SweepInterrupted(ctx)
+	rec, err := s.ReconcileNonTerminal(ctx)
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if swept != 0 {
-		t.Fatalf("sweep touched %d live rows, want 0", swept)
+	if rec.Total() != 0 {
+		t.Fatalf("sweep touched %d live rows, want 0", rec.Total())
 	}
 
 	// Reassign ownership to a pid this process cannot be, i.e. the previous
 	// exocompd, then sweep as a fresh boot would.
 	orphan(t, path, orphanRunning.ID, orphanQueued.ID)
 
-	swept, err = s.SweepInterrupted(ctx)
+	rec, err = s.ReconcileNonTerminal(ctx)
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if swept != 2 {
-		t.Fatalf("swept %d rows, want 2", swept)
+	if rec.Interrupted != 2 {
+		t.Fatalf("swept %d rows, want 2", rec.Interrupted)
 	}
 	for _, id := range []int64{orphanRunning.ID, orphanQueued.ID} {
 		job, err := s.GetJob(ctx, id)
@@ -402,12 +402,12 @@ func TestSweepInterruptedUsesLivenessNotPIDEquality(t *testing.T) {
 		t.Fatalf("create job: %v", err)
 	}
 
-	swept, err := s.SweepInterrupted(ctx)
+	rec, err := s.ReconcileNonTerminal(ctx)
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if swept != 1 {
-		t.Fatalf("swept %d rows, want 1 (the row left by the previous process at this pid)", swept)
+	if rec.Interrupted != 1 {
+		t.Fatalf("swept %d rows, want 1 (the row left by the previous process at this pid)", rec.Interrupted)
 	}
 
 	for id, want := range map[int64]store.JobState{

@@ -293,23 +293,29 @@ func openStoreAt(dir string) (*store.Store, error) {
 	return store.Open(filepath.Join(dir, "exocomp.db"))
 }
 
-// openJobStore opens the store for a command that runs jobs, first retiring
-// the rows a process that is no longer alive left queued or running. Every
-// such command sweeps, not just the first one anybody wrote: a job left
-// running by a killed process holds its concurrency key forever, and nothing
-// else in the system will ever move it.
+// openJobStore opens the store for a command that runs jobs, first reconciling
+// every non-terminal row a crash left stranded: rows a dead process left queued
+// or running, and gated rows whose approval decision was interrupted. Every such
+// command reconciles, not just the first one anybody wrote: a job left running by
+// a killed process holds its concurrency key forever, and nothing else in the
+// system will ever move it.
 func openJobStore(ctx context.Context, warn io.Writer) (*store.Store, error) {
 	st, err := openStore()
 	if err != nil {
 		return nil, err
 	}
-	swept, err := st.SweepInterrupted(ctx)
+	rec, err := st.ReconcileNonTerminal(ctx)
 	if err != nil {
 		_ = st.Close()
 		return nil, err
 	}
-	if swept > 0 && warn != nil {
-		_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", swept)
+	if warn != nil {
+		if gone := rec.Interrupted + rec.Orphaned; gone > 0 {
+			_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", gone)
+		}
+		if settled := rec.Released + rec.Cancelled; settled > 0 {
+			_, _ = fmt.Fprintf(warn, "reconciled %d job(s) whose approval decision was interrupted\n", settled)
+		}
 	}
 	return st, nil
 }

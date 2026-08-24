@@ -239,9 +239,9 @@ func TestSequencerResumesFromLedgerAfterRestart(t *testing.T) {
 		q, st := newSeqQueue(t, dbPath)
 		seq := NewSequencer(q)
 
-		// The boot job sweep retires the rows the dead process left, exactly as
-		// openJobStore does at daemon start.
-		if _, err := st.SweepInterrupted(ctx); err != nil {
+		// The boot job reconcile retires the rows the dead process left, exactly
+		// as openJobStore does at daemon start.
+		if _, err := st.ReconcileNonTerminal(ctx); err != nil {
 			t.Fatalf("boot sweep: %v", err)
 		}
 

@@ -129,6 +129,12 @@ func (e *Engine) Decide(ctx context.Context, approvalID int64, decision, token, 
 		return Decision{}, err
 	}
 
+	// DecideApproval has committed the human's answer; the queue transition below
+	// is the second, separate write. If it fails or the process dies between the
+	// two, the approval is terminal while the job is still awaiting_approval — the
+	// #3 window. The store's ReconcileNonTerminal is the backstop: it finds the
+	// settled approval on its next pass and applies the same transition, so the
+	// job is never stranded even though this call returns the error.
 	if state == store.ApprovalApproved {
 		if err := e.queue.Release(ctx, decided.JobID); err != nil {
 			return Decision{}, err

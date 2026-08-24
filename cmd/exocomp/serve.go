@@ -360,7 +360,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	sweepDone := make(chan struct{})
 	go func() {
 		defer close(sweepDone)
-		sweepReactive(jobCtx, engine, warn, opts.sweepInterval)
+		sweepReactive(jobCtx, st, engine, warn, opts.sweepInterval)
 	}()
 
 	// The step-ledger sequencer runs here, after the boot job-sweep (openJobStore
@@ -394,18 +394,24 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	return err
 }
 
-// bootSweepJobs retires the jobs a process that is gone left queued or running,
-// the same repair openJobStore runs for the CLIs — but serve runs it only after
-// the cross-host fence is held, so a fenced-out standby never sweeps a live
-// primary's rows. Its pid-liveness test is host-local by design (invariant 1:
+// bootSweepJobs reconciles every non-terminal job a crash stranded — rows a dead
+// process left queued or running, and gated rows whose approval decision was
+// interrupted — the same repair openJobStore runs for the CLIs, but serve runs it
+// only after the cross-host fence is held, so a fenced-out standby never sweeps a
+// live primary's rows. Its pid-liveness test is host-local by design (invariant 1:
 // one host owns the store at a time), which the lease now enforces across hosts.
 func bootSweepJobs(ctx context.Context, st *store.Store, warn io.Writer) error {
-	swept, err := st.SweepInterrupted(ctx)
+	rec, err := st.ReconcileNonTerminal(ctx)
 	if err != nil {
 		return err
 	}
-	if swept > 0 && warn != nil {
-		_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", swept)
+	if warn != nil {
+		if gone := rec.Interrupted + rec.Orphaned; gone > 0 {
+			_, _ = fmt.Fprintf(warn, "swept %d job(s) left by a process that is gone to interrupted\n", gone)
+		}
+		if settled := rec.Released + rec.Cancelled; settled > 0 {
+			_, _ = fmt.Fprintf(warn, "reconciled %d job(s) whose approval decision was interrupted\n", settled)
+		}
 	}
 	return nil
 }
@@ -514,13 +520,18 @@ func printHooks(out io.Writer, env *secrets.Envelope, base string) {
 	}
 }
 
-// sweepReactive runs the clock-driven halves of the reactive layer: approvals
-// whose TTL ran out fail closed, approvals halfway through their window get
-// one more push, a scheduled plan that found changes becomes a drift event,
-// a job that ended in a terminal failure pages the operator once, and a secret
-// past (or nearing) its expiry pages once. It runs until the job context is
-// cancelled.
-func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer, interval time.Duration) {
+// sweepReactive runs the clock-driven halves of the reactive layer: every
+// non-terminal job a crash stranded is reconciled, approvals whose TTL ran out
+// fail closed, approvals halfway through their window get one more push, a
+// scheduled plan that found changes becomes a drift event, a job that ended in a
+// terminal failure pages the operator once, and a secret past (or nearing) its
+// expiry pages once. It runs until the job context is cancelled.
+//
+// The job reconcile leads: it is what finishes an approval decision the reactive
+// half recorded but was interrupted before it could release or withdraw the job,
+// and it retires gated rows nothing can ever decide. It is idempotent, so running
+// it on the same tick as the approval sweep only ever settles what is stranded.
+func sweepReactive(ctx context.Context, st *store.Store, engine *reactive.Engine, warn io.Writer, interval time.Duration) {
 	if interval <= 0 {
 		return
 	}
@@ -532,6 +543,15 @@ func sweepReactive(ctx context.Context, engine *reactive.Engine, warn io.Writer,
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		}
+
+		if rec, err := st.ReconcileNonTerminal(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: reconcile jobs: %v\n", err)
+			}
+		} else if rec.Total() > 0 {
+			_, _ = fmt.Fprintf(warn, "reconciled jobs: %d interrupted, %d orphaned, %d released, %d cancelled\n",
+				rec.Interrupted, rec.Orphaned, rec.Released, rec.Cancelled)
 		}
 
 		if expired, republished, err := engine.SweepApprovals(ctx); err != nil {
@@ -748,9 +768,12 @@ func shutdownServe(ctx context.Context, out, warn io.Writer, sd shutdown) error 
 	// A CLI killed while its row waited on a key this daemon held leaves that
 	// row queued and owned by nobody. The daemon is the last process here that
 	// can see it; the next boot's sweep is too late to be the only answer.
-	swept, sweepErr := sd.store.SweepInterrupted(ctx)
-	if swept > 0 {
-		_, _ = fmt.Fprintf(out, "retired %d job(s) left by a process that is gone to interrupted\n", swept)
+	rec, sweepErr := sd.store.ReconcileNonTerminal(ctx)
+	if gone := rec.Interrupted + rec.Orphaned; gone > 0 {
+		_, _ = fmt.Fprintf(out, "retired %d job(s) left by a process that is gone to interrupted\n", gone)
+	}
+	if settled := rec.Released + rec.Cancelled; settled > 0 {
+		_, _ = fmt.Fprintf(out, "reconciled %d job(s) whose approval decision was interrupted\n", settled)
 	}
 
 	shutdownCtx, cancel := context.WithTimeout(ctx, shutdownGrace)

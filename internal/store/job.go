@@ -477,43 +477,170 @@ func ownerAlive(pid int, since time.Time) bool {
 	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
-// SweepInterrupted moves queued and running jobs whose owning process is gone
-// to interrupted, a terminal state that is never auto-retried. One operator
-// means one process runs jobs at a time (AGENTS.md invariant 1); this decides
-// "gone" by asking the kernel, not by comparing pids.
-func (s *Store) SweepInterrupted(ctx context.Context) (int, error) {
-	rows, err := s.ListJobs(ctx, JobFilter{States: []JobState{StateQueued, StateRunning}})
+// Reconciliation summarises what one ReconcileNonTerminal pass repaired. Each
+// count is a distinct class of stranded row the pass settled.
+type Reconciliation struct {
+	// Interrupted is queued/running rows whose owning process is gone.
+	Interrupted int
+	// Orphaned is awaiting_approval rows with no approval to decide them — the
+	// crash window between a gated job's insert and its approval — retired to
+	// interrupted once their creator is gone (finding #4).
+	Orphaned int
+	// Released is awaiting_approval rows whose approval settled approved but
+	// whose release into the queue never landed (finding #3).
+	Released int
+	// Cancelled is awaiting_approval rows whose approval settled against them
+	// (rejected, expired, withdrawn) but whose withdrawal never landed (#3).
+	Cancelled int
+}
+
+// Total is the number of rows the pass moved.
+func (r Reconciliation) Total() int {
+	return r.Interrupted + r.Orphaned + r.Released + r.Cancelled
+}
+
+// ReconcileNonTerminal is the idle-time repair for every job the state machine
+// still owes an answer for. It is one pass over queued, running, and
+// awaiting_approval rows that moves each to what it should be, replacing the
+// per-state crash-recovery sweeps:
+//
+//   - queued/running whose owning process is gone -> interrupted, terminal and
+//     never auto-retried (the boot/idle interrupted-sweep this subsumes);
+//   - awaiting_approval whose approval already settled but whose queue
+//     transition never landed -> queued (approved) or cancelled
+//     (rejected/expired/withdrawn), so a Decide interrupted after it recorded the
+//     human's answer still finishes rather than stranding the job (finding #3);
+//   - awaiting_approval with no approval row at all -> interrupted once its
+//     creator is gone, so a gated job nobody can ever decide is not stuck
+//     forever, yet a destructive apply is never auto-released (finding #4).
+//
+// A row whose gate is still pending is the gate working and is left alone; its
+// TTL is the reactive layer's to run. "Gone" is decided by asking the kernel
+// about the owning pid, not by pid equality (a container restart reissues pid 1).
+// Every move is a guarded transition, so the pass is idempotent and safe to run
+// on every idle tick: a row another process settles first is skipped, and a pass
+// with nothing to do changes nothing.
+func (s *Store) ReconcileNonTerminal(ctx context.Context) (Reconciliation, error) {
+	rows, err := s.ListJobs(ctx, JobFilter{States: []JobState{
+		StateQueued, StateRunning, StateAwaitingApproval}})
 	if err != nil {
-		return 0, err
+		return Reconciliation{}, err
 	}
 
-	swept := 0
+	var rec Reconciliation
 	for _, job := range rows {
-		since := job.QueuedAt
-		if job.StartedAt != nil {
-			since = *job.StartedAt
+		switch job.State {
+		case StateQueued, StateRunning:
+			moved, err := s.reconcileOwned(ctx, job)
+			if err != nil {
+				return rec, err
+			}
+			if moved {
+				rec.Interrupted++
+			}
+		case StateAwaitingApproval:
+			kind, err := s.reconcileGated(ctx, job)
+			if err != nil {
+				return rec, err
+			}
+			switch kind {
+			case reconcileOrphaned:
+				rec.Orphaned++
+			case reconcileReleased:
+				rec.Released++
+			case reconcileCancelled:
+				rec.Cancelled++
+			}
 		}
-		if ownerAlive(job.OwnerPID, since) {
-			continue
-		}
-		res, err := s.db.ExecContext(ctx, `
-			UPDATE job SET state = ?, finished_at = ?, owner_pid = 0
-			WHERE id = ? AND state = ?`,
-			string(StateInterrupted), time.Now().UTC().UnixMilli(), job.ID, string(job.State))
-		if err != nil {
-			return swept, wrap("sweep interrupted", err)
-		}
-		affected, err := res.RowsAffected()
-		if err != nil {
-			return swept, wrap("sweep interrupted", err)
-		}
-		swept += int(affected)
 	}
-	return swept, nil
+	return rec, nil
+}
+
+// reconcileKind is what reconcileGated did to one awaiting_approval row.
+type reconcileKind int
+
+const (
+	reconcileNone reconcileKind = iota
+	reconcileOrphaned
+	reconcileReleased
+	reconcileCancelled
+)
+
+// reconcileOwned retires a queued or running job to interrupted when its owning
+// process is gone, the crash-recovery the boot and idle sweeps have always run.
+func (s *Store) reconcileOwned(ctx context.Context, job Job) (bool, error) {
+	if ownerAlive(job.OwnerPID, jobClock(job)) {
+		return false, nil
+	}
+	return s.reconcileTransition(ctx, job.ID, job.State, StateInterrupted)
+}
+
+// reconcileGated settles one awaiting_approval row against its approval. A row
+// whose approval is still pending is the gate doing its job and is left alone; a
+// row whose approval already settled has its lost queue transition finished; a
+// row with no approval at all can be decided by no one and is retired to
+// interrupted once its creator is gone. It never releases a row without a
+// settled approval — a destructive apply is not run without a human's answer.
+func (s *Store) reconcileGated(ctx context.Context, job Job) (reconcileKind, error) {
+	approval, err := s.ApprovalByJob(ctx, job.ID)
+	if errors.Is(err, ErrNotFound) {
+		// A live creator may be between the gated insert and CreateApproval;
+		// racing it would strand a job it is about to gate, so wait for it to die.
+		if ownerAlive(job.OwnerPID, jobClock(job)) {
+			return reconcileNone, nil
+		}
+		moved, err := s.reconcileTransition(ctx, job.ID, StateAwaitingApproval, StateInterrupted)
+		if err != nil || !moved {
+			return reconcileNone, err
+		}
+		return reconcileOrphaned, nil
+	}
+	if err != nil {
+		return reconcileNone, err
+	}
+	if approval.State == ApprovalPending {
+		return reconcileNone, nil
+	}
+
+	to, kind := StateCancelled, reconcileCancelled
+	if approval.State == ApprovalApproved {
+		to, kind = StateQueued, reconcileReleased
+	}
+	moved, err := s.reconcileTransition(ctx, job.ID, StateAwaitingApproval, to)
+	if err != nil || !moved {
+		return reconcileNone, err
+	}
+	return kind, nil
+}
+
+// reconcileTransition applies one repair move through the same guarded
+// TransitionJob the live paths use, so the released/withdrawn/interrupted stamps
+// are identical to a settle that was not interrupted. A row another process
+// already moved (ErrStateConflict) is success, not a failure: the reconcile
+// races the real Decide path, and a healthy concurrent settle is exactly what it
+// exists to allow.
+func (s *Store) reconcileTransition(ctx context.Context, id int64, from, to JobState) (bool, error) {
+	err := s.TransitionJob(ctx, id, from, to)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, ErrStateConflict) {
+		return false, nil
+	}
+	return false, err
+}
+
+// jobClock is the row's own clock for a liveness test: started_at, or queued_at
+// for a row that never started.
+func jobClock(job Job) time.Time {
+	if job.StartedAt != nil {
+		return *job.StartedAt
+	}
+	return job.QueuedAt
 }
 
 // ListInterruptedJobs returns jobs retired to interrupted, most recent first.
-// Interrupted is terminal and never auto-retried (SweepInterrupted), so this is
+// Interrupted is terminal and never auto-retried (ReconcileNonTerminal), so this is
 // the post-reboot view an operator re-drives from: the runs a shutdown or a
 // crash cut off, newest at the top. limit <= 0 returns them all.
 func (s *Store) ListInterruptedJobs(ctx context.Context, limit int) ([]Job, error) {
