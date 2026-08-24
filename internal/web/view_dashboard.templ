@@ -77,38 +77,8 @@ templ dashboard(vm dashboardVM) {
 				}
 			</section>
 
-			<section class="card" aria-labelledby="backups-h">
-				<h3 id="backups-h">Backups</h3>
-				if len(vm.Backups) == 0 {
-					<p class="meta">No backup targets configured.</p>
-				} else {
-					<div class="tablewrap">
-						<table>
-							<thead>
-								<tr><th scope="col">Target</th><th scope="col">Snapshot</th><th scope="col" class="right">Age</th></tr>
-							</thead>
-							<tbody>
-								for _, b := range vm.Backups {
-									<tr>
-										<td>
-											{ b.Name }
-											if b.Drill {
-												<span class="chip dim" style="margin-left:6px">drill</span>
-											}
-										</td>
-										<td class="mono">{ orDash(b.Snapshot) }</td>
-										<td class="right">@chip(b.Freshness, b.Age)</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
 			<section class="card span2" aria-labelledby="ws-h">
-				<div class="kicker">Workspaces</div>
-				<h3 id="ws-h">OpenTofu drift</h3>
+				<h3 id="ws-h">Workspaces</h3>
 				if len(vm.Workspaces) == 0 {
 					<p class="meta">No workspaces registered.</p>
 				} else {
@@ -228,6 +198,35 @@ templ dashboard(vm dashboardVM) {
 					</div>
 				}
 				<p class="meta" style="margin-top:10px"><a href="/schedules">All schedules →</a></p>
+			</section>
+
+			<section class="card" aria-labelledby="backups-h">
+				<h3 id="backups-h">Backups</h3>
+				if len(vm.Backups) == 0 {
+					<p class="meta">No backup targets configured.</p>
+				} else {
+					<div class="tablewrap">
+						<table>
+							<thead>
+								<tr><th scope="col">Target</th><th scope="col">Snapshot</th><th scope="col" class="right">Age</th></tr>
+							</thead>
+							<tbody>
+								for _, b := range vm.Backups {
+									<tr>
+										<td>
+											{ b.Name }
+											if b.Drill {
+												<span class="chip dim" style="margin-left:6px">drill</span>
+											}
+										</td>
+										<td class="mono">{ orDash(b.Snapshot) }</td>
+										<td class="right">@chip(b.Freshness, b.Age)</td>
+									</tr>
+								}
+							</tbody>
+						</table>
+					</div>
+				}
 			</section>
 
 			<section class="card span2" aria-labelledby="self-h">
