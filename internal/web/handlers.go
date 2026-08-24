@@ -229,7 +229,11 @@ func (s *Server) handleRunners(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := runnersVM{Page: s.pageFor(r, "Runners", "runners"), Runners: rows}
+	ident, _ := identityOf(r.Context())
+	vm := runnersVM{
+		Page: s.pageFor(r, "Runners", "runners"), Runners: rows,
+		Operator: canWrite(ident),
+	}
 	s.render(w, r, http.StatusOK, runnersList(vm))
 }
 

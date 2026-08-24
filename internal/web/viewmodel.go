@@ -191,13 +191,15 @@ type policiesVM struct {
 	Operator bool
 }
 
-// runnersVM is the runners surface: a read-only inventory of the registered
+// runnersVM is the runners surface: an inventory of the registered
 // execution-environment recipes (byo-runner.md §2). A runner is registered for
-// the deferred container tier and executes nothing today — registration,
-// import, and removal stay CLI verbs; there is no mutation control here.
+// the deferred container tier and executes nothing today — registration
+// carries no secret material, so an operator can add or remove a definition
+// here (runners_write.go); `exocomp runner import` and `show` stay CLI-only.
 type runnersVM struct {
-	Page    page
-	Runners []runnerRow
+	Page     page
+	Operator bool
+	Runners  []runnerRow
 }
 
 // runnerRow is one registered runner's public face: its build mode, base

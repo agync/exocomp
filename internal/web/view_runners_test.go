@@ -104,15 +104,33 @@ func TestRunnersSurfaceGated(t *testing.T) {
 		}
 	}
 
-	// The read-only hint, no mutation control.
-	if !strings.Contains(page, "exocomp runner add|rm|import") {
-		t.Error("/runners missing the CLI-management hint")
+	// Operator write surface: an add form and per-row remove. Runner
+	// definitions hold no secret material, so this lane is operator-scope
+	// only — no confirm_token, unlike secrets/tokens.
+	for _, want := range []string{
+		`action="/runners/add"`,
+		`action="/runners/fedora-ee/rm"`,
+		`action="/runners/dev-shell/rm"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/runners (operator) missing write control %q", want)
+		}
 	}
-	if strings.Contains(page, "<form") || strings.Contains(page, `method="post"`) {
-		t.Error("/runners must expose no mutation form")
+	if strings.Contains(page, "confirm_token") {
+		t.Error("/runners must not be reauth-gated; it holds no secret material")
 	}
-	if strings.Contains(page, `action="/runners`) {
-		t.Error("/runners must expose no mutation endpoint")
+
+	// A readonly session gets no mutation control, only the CLI hint.
+	roClient := login(t, ts.URL, h.mint(t, "viewer", "readonly"))
+	roCode, roPage := getBody(t, roClient, ts.URL+"/runners")
+	if roCode != http.StatusOK {
+		t.Fatalf("/runners readonly = %d, want 200", roCode)
+	}
+	if strings.Contains(roPage, "<form") || strings.Contains(roPage, `method="post"`) {
+		t.Error("/runners (readonly) must expose no mutation form")
+	}
+	if !strings.Contains(roPage, "needs an operator token") {
+		t.Error("/runners (readonly) missing the read-only hint")
 	}
 
 	// The nav carries Runners, marked current on this page.

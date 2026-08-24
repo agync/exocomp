@@ -12,22 +12,57 @@ templ modeChip(r runnerRow) {
 	}
 }
 
-// runnersList is the runners surface: a read-only inventory of the registered
-// execution-environment recipes (byo-runner.md §2) — build mode, base image,
-// package/ansible-core pins, the resource caps the deferred container tier
-// would enforce, and the content hash that gates the build cache. A runner is
-// registered for that deferred tier and executes nothing today: the bootstrap
-// script body is deliberately absent from every row, and there is no
-// mutation control here — registration, import, and removal stay CLI verbs.
+// runnersList is the runners surface: the registered execution-environment
+// recipes (byo-runner.md §2) — build mode, base image, package/ansible-core
+// pins, the resource caps the deferred container tier would enforce, and the
+// content hash that gates the build cache. A runner definition holds no
+// secret material, so an operator gets add/rm controls here
+// (runners_write.go); the bootstrap script body is deliberately absent from
+// every row (`exocomp runner show` is the surface that prints it), and
+// `exocomp runner import` stays CLI-only. A runner is registered for the
+// deferred container tier and executes nothing today.
 templ runnersList(vm runnersVM) {
 	@layout(vm.Page) {
 		<h1>Runners</h1>
+		if vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Add a runner</h3>
+				<p class="meta">Mirrors <code>exocomp runner add</code>: a base image plus either a bootstrap script or a Containerfile path — not both. Container tier deferred: this registers a definition, nothing builds or runs it.</p>
+				<form method="post" action="/runners/add" class="writeform">
+					<label for="rn-name">Name</label>
+					<input id="rn-name" name="name" type="text" required autocomplete="off" pattern="[a-z0-9][a-z0-9._-]*"/>
+					<label for="rn-mode">Mode</label>
+					<select id="rn-mode" name="mode">
+						<option value="cached">cached</option>
+						<option value="onthefly">onthefly</option>
+					</select>
+					<label for="rn-base">Base image</label>
+					<input id="rn-base" name="base" type="text" required autocomplete="off" placeholder="registry.fedoraproject.org/fedora-minimal:44"/>
+					<label for="rn-bootstrap">Bootstrap script (Model A; excludes Containerfile)</label>
+					<textarea id="rn-bootstrap" name="bootstrap" rows="6" placeholder="#!/bin/sh&#10;dnf install -y sshpass rsync"></textarea>
+					<label for="rn-containerfile">Containerfile path (Model B; excludes bootstrap)</label>
+					<input id="rn-containerfile" name="containerfile" type="text" autocomplete="off"/>
+					<label for="rn-packages">Packages (comma-separated)</label>
+					<input id="rn-packages" name="packages" type="text" autocomplete="off" placeholder="sshpass, rsync"/>
+					<label for="rn-ansible-core">ansible-core version pin</label>
+					<input id="rn-ansible-core" name="ansible_core" type="text" autocomplete="off"/>
+					<label for="rn-memory-max">Memory ceiling</label>
+					<input id="rn-memory-max" name="memory_max" type="text" autocomplete="off" placeholder="2G"/>
+					<label for="rn-cpu-quota">CPU ceiling</label>
+					<input id="rn-cpu-quota" name="cpu_quota" type="text" autocomplete="off" placeholder="200%"/>
+					<div class="actions"><button type="submit" class="btn primary">Add runner</button></div>
+				</form>
+			</div>
+		}
 		<div class="card span2" style="margin-top:18px">
-			<div class="kicker">Read-only · container tier deferred</div>
+			<div class="kicker">Container tier deferred</div>
 			<h3>All runners</h3>
-			<p class="meta">Manage via <code>exocomp runner add|rm|import</code>. Container tier deferred — definitions only.</p>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing runners needs an operator token.</p>
+			}
+			<p class="meta">Full detail (bootstrap script body, import) stays on <code>exocomp runner show|import</code>. Container tier deferred — definitions only.</p>
 			if len(vm.Runners) == 0 {
-				<p class="meta">No runners registered. Add one with <code>exocomp runner add</code>.</p>
+				<p class="meta">No runners registered.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>
@@ -41,6 +76,9 @@ templ runnersList(vm runnersVM) {
 								<th scope="col">Caps</th>
 								<th scope="col">Hash</th>
 								<th scope="col">Created</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -55,6 +93,14 @@ templ runnersList(vm runnersVM) {
 									<td data-label="Caps">{ rn.Caps() }</td>
 									<td class="mono" data-label="Hash">{ rn.Short() }</td>
 									<td class="mono" data-label="Created">{ rn.Created }</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											<form method="post" action={ templ.SafeURL("/runners/" + rn.Name + "/rm") } style="display:inline">
+												<input type="hidden" name="confirmed" value="1"/>
+												<button type="submit" class="btn danger">Remove</button>
+											</form>
+										</td>
+									}
 								</tr>
 							}
 						</tbody>

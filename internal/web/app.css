@@ -281,11 +281,12 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 }
 .writeform { display: flex; flex-direction: column; gap: 6px; max-width: 34rem; margin-top: 12px; }
 .writeform label { color: var(--ink-400); font: var(--type-button); margin-top: 6px; }
-.writeform input, .writeform select {
+.writeform input, .writeform select, .writeform textarea {
   min-height: var(--row-h); padding: 0 12px;
   background: var(--surface-void); color: var(--ink-100);
   border: 1px solid var(--hairline); border-radius: var(--radius-control); font: var(--type-body);
 }
+.writeform textarea { min-height: 6rem; padding: 8px 12px; font: var(--type-log); resize: vertical; }
 .writeform.inline { flex-flow: row wrap; align-items: center; gap: 8px; max-width: none; margin-top: 8px; }
 .writeform.inline input { min-height: 36px; }
 .writeform .checkline { flex-flow: row wrap; align-items: center; gap: 8px; color: var(--ink-200); }
