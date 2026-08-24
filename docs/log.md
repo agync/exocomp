@@ -6,6 +6,20 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — Schedule catch-up: dropped and doubled fires closed
+
+Correction of fact in [operations/serve.md](operations/serve.md)'s "Catch-up after
+downtime". Two claims there were only half-true. The section said the catch-up idempotency
+key was anchored on `last_run` and that this covered "a restart between the enqueue and the
+`last_run` stamp" — but the **normal** fire path carried no key at all, so a crash in that
+window double-fired: the catch-up's `last_run`-anchored key never matched the un-keyed
+normal fire. And `last_run` advanced unconditionally after the enqueue loop, so a fire whose
+enqueue **failed** still stamped the schedule current and catch-up never re-fired it — a
+transient error silently dropped a scheduled window. Both are closed: every fire (normal and
+catch-up) now keys on the occurrence's own scheduled instant, so a fire and its catch-up of
+the same occurrence dedup against each other; and `last_run` advances only once the
+occurrence is safely enqueued, so a failed enqueue leaves it owed for the next catch-up.
+
 ## 2026-08-24 — threat-model: AI-11 auth timing equalizer removed (S1)
 
 [security/threat-model.md](security/threat-model.md) revises the **AI-11** disposition. The

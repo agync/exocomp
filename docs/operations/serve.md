@@ -155,9 +155,20 @@ schedule.
 The catch-up is coalesced, not replayed: a daemon down for a week fires one backup, never
 one per missed night. A schedule that has never fired (`last_run` unset) does not
 back-fire — it only ever schedules forward from now. A schedule whose `last_run` is recent
-enough that nothing was missed does nothing. The catch-up fire enqueues under an
-idempotency key anchored on `last_run`, so a reload racing another, or a restart between
-the enqueue and the `last_run` stamp, still yields exactly one job.
+enough that nothing was missed does nothing.
+
+Every fire — a normal cron fire and a catch-up alike — enqueues under an idempotency key
+anchored on the occurrence's own scheduled instant, so a normal fire and a catch-up that
+recovers the **same** occurrence collapse to one job. This closes the crash window between
+a successful enqueue and the `last_run` stamp: if the daemon dies there, the next boot's
+catch-up recomputes the identical key off the still-unadvanced `last_run` and the queue
+returns the existing job rather than a second one. Two overlapping reloads racing the same
+stale `last_run` collapse the same way. Conversely, `last_run` only advances once the fire
+is safely enqueued: if the enqueue fails, `last_run` is left untouched so the occurrence is
+still owed and catch-up re-fires it on the next tick or reboot — a transient enqueue error
+delays a scheduled window, it does not silently drop it. For a fan-out schedule (a backup
+with no explicit target), a partial failure withholds the stamp and the re-fire lets only
+the target that failed through: the occurrence key dedups the ones that already succeeded.
 
 ## One daemon per data dir
 
