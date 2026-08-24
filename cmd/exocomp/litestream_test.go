@@ -85,6 +85,30 @@ func TestLitestreamTargetLocalNoAck(t *testing.T) {
 	}
 }
 
+// TestLitestreamConfigWarnsCleartextCreds: a target with embedded userinfo
+// (an sftp password) gets the same cleartext-creds warning `backup add-target`
+// gives, at the point exocomp renders it — parity for a value stored the same
+// unencrypted way.
+func TestLitestreamConfigWarnsCleartextCreds(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	const sentinel = "s3kr1t-p4ss" //nolint:gosec // test sentinel, not a real credential
+	if out, err := runLitestream(t, "target", "sftp://replicator:"+sentinel+"@nas.local/db", "--ack-unencrypted"); err != nil {
+		t.Fatalf("set target: %v (%s)", err, out)
+	}
+
+	cfg, err := runLitestream(t, "config")
+	if err != nil {
+		t.Fatalf("config: %v (%s)", err, cfg)
+	}
+	if !strings.Contains(cfg, "WARNING") || !strings.Contains(cfg, "cleartext") {
+		t.Errorf("config did not warn about cleartext creds:\n%s", cfg)
+	}
+	if strings.Contains(cfg, sentinel) {
+		t.Errorf("config echoed the credential itself:\n%s", cfg)
+	}
+}
+
 // TestLitestreamConfigNoTarget: config refuses cleanly, naming the fix, when no
 // target is configured.
 func TestLitestreamConfigNoTarget(t *testing.T) {

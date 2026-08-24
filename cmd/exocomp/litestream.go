@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -98,7 +99,7 @@ func newLitestreamConfigCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
-			cfg, err := generateConfigFromStore(cmd.Context(), st)
+			cfg, err := generateConfigFromStore(cmd.Context(), st, cmd.ErrOrStderr())
 			if err != nil {
 				return err
 			}
@@ -120,13 +121,22 @@ func newLitestreamConfigCmd() *cobra.Command {
 // generateConfigFromStore assembles a Config from the persisted target and the
 // live DB path, then renders it. The ack is read back so a target persisted
 // with --ack-unencrypted keeps rendering without re-prompting.
-func generateConfigFromStore(ctx context.Context, st *store.Store) (string, error) {
+func generateConfigFromStore(ctx context.Context, st *store.Store, warn io.Writer) (string, error) {
 	raw, err := st.GetSetting(ctx, litestream.SettingReplicaTarget)
 	if errors.Is(err, store.ErrNotFound) || raw == "" {
 		return "", errors.New("no replica target configured — run `exocomp litestream target <uri>` first")
 	}
 	if err != nil {
 		return "", err
+	}
+	// A replica target may embed s3/sftp credentials (user:pass@host); it is
+	// persisted verbatim in the setting table, the same cleartext exposure
+	// `backup add-target` warns about at the point of storage.
+	if backup.HasURIUserinfo(raw) {
+		_, _ = fmt.Fprintf(warn,
+			"WARNING: replica target embeds credentials; they are stored in cleartext in the "+
+				"database. Prefer sidecar-launch secret injection, an SFTP key, or the "+
+				"target's own environment.\n")
 	}
 	target, err := litestream.ParseTarget(raw)
 	if err != nil {
