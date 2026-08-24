@@ -167,11 +167,12 @@ func TestCommitFailureAfterHostKeyLeavesRerunPossible(t *testing.T) {
 		t.Fatal("Commit succeeded despite the poisoned store path; test setup is wrong")
 	}
 
-	if _, statErr := os.Stat(filepath.Join(dir, "host.key")); statErr == nil {
-		if prov.AlreadyInitialized() {
-			t.Fatalf("Commit failed after writing host.key (err=%v) but left the host "+
-				"marked AlreadyInitialized — setup can never be re-run, yet nothing "+
-				"beyond the identity was actually persisted", err)
-		}
+	if _, statErr := os.Stat(filepath.Join(dir, "host.key")); !os.IsNotExist(statErr) {
+		t.Fatalf("host.key stat after rollback = %v, want IsNotExist (Rollback removes it)", statErr)
+	}
+	if prov.AlreadyInitialized() {
+		t.Fatalf("Commit failed after writing host.key (err=%v) but left the host "+
+			"marked AlreadyInitialized — setup can never be re-run, yet nothing "+
+			"beyond the identity was actually persisted", err)
 	}
 }
