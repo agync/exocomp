@@ -143,6 +143,34 @@ func TestRemotePinMismatchRefused(t *testing.T) {
 	}
 }
 
+// TestRemoteHTTPEndpointRefused: a pinned entry whose endpoint is http:// (a
+// manually edited hosts.toml, or an alias re-pointed by hand) is refused
+// before any request goes out — otherwise the bearer token and every
+// run-secret a remote apply carries would go out in cleartext. Enforced at
+// internal/client.baseURL, which remoteClient's call to client.New always
+// goes through: the one construction path every --remote verb shares.
+func TestRemoteHTTPEndpointRefused(t *testing.T) {
+	withConfigHome(t)
+	cfg := hostsConfig{Hosts: map[string]hostEntry{
+		"box": {
+			Endpoint:    "http://box.tailnet.ts.net:8443",
+			Fingerprint: "AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88",
+			Token:       "test-token",
+		},
+	}}
+	if err := saveHostsConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := runRoot(t, []string{"--remote", "box", "jobs", "list"})
+	if err == nil {
+		t.Fatal("http:// pinned endpoint must be refused, got nil error")
+	}
+	if !strings.Contains(err.Error(), "https") {
+		t.Errorf("expected an https refusal naming the reason, got %v", err)
+	}
+}
+
 // An unpinned selector (no login) is refused rather than silently connecting.
 func TestRemoteUnpinnedRefused(t *testing.T) {
 	withConfigHome(t)
