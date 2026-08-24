@@ -514,6 +514,7 @@ func newWorkspacePlanCmd() *cobra.Command {
 	var (
 		timeout    time.Duration
 		runSecrets string
+		runnerName string
 	)
 	plan := &cobra.Command{
 		Use:   "plan <name>",
@@ -526,11 +527,11 @@ func newWorkspacePlanCmd() *cobra.Command {
 			"With --remote the plan is enqueued on that daemon and this command prints the " +
 			"job id; watch it with `jobs follow <id>`. The exit-2-on-changes signal is a " +
 			"local reading of the run's own driver output, so a remote plan exits 0 once the " +
-			"job is queued.",
+			"job is queued. --runner is a local-only flag: a --remote plan does not carry it yet.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			op := workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets,
-				timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
+				runnerName: runnerName, timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
 			rc, remote, err := remoteClient(cmd)
 			if err != nil {
 				return err
@@ -544,6 +545,10 @@ func newWorkspacePlanCmd() *cobra.Command {
 	plan.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
 	plan.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
+	plan.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only, and only for a local run; refused, never run uncapped, "+
+			"if it cannot be enforced)")
 	return plan
 }
 
@@ -552,6 +557,7 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		timeout    time.Duration
 		planRef    string
 		runSecrets string
+		runnerName string
 	)
 	apply := &cobra.Command{
 		Use:   "apply <name>",
@@ -574,7 +580,8 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			op := workspaceOp{workspace: args[0], op: "apply", planRef: planRef,
-				runSecrets: runSecrets, timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
+				runSecrets: runSecrets, runnerName: runnerName, timeout: timeout,
+				idempotencyKey: idempotencyKey(cmd)}
 			rc, remote, err := remoteClient(cmd)
 			if err != nil {
 				return err
@@ -590,6 +597,10 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		"apply a saved plan, named by artifact id or by path")
 	apply.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
+	apply.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only, and only for a local run; refused, never run uncapped, "+
+			"if it cannot be enforced)")
 	return apply
 }
 
@@ -610,6 +621,7 @@ type workspaceOp struct {
 	op         string
 	planRef    string
 	runSecrets string
+	runnerName string
 	timeout    time.Duration
 	// idempotencyKey dedups a retried plan/apply to one job; empty on the
 	// unchanged path.
@@ -692,6 +704,7 @@ func runWorkspacePlan(ctx context.Context, svc *service.Service, enq service.Enq
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   dirs.artifacts,
 		RunSecrets:     op.runSecrets,
+		RunnerName:     op.runnerName,
 		IdempotencyKey: op.idempotencyKey,
 		Timeout:        op.timeout,
 	})
@@ -755,6 +768,7 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      op.runSecrets,
+		RunnerName:      op.runnerName,
 		IdempotencyKey:  op.idempotencyKey,
 		Timeout:         op.timeout,
 		SavedPlan:       saved,
@@ -857,7 +871,11 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 	known = append(known, []byte(token), stateKey, []byte(passphrase))
 	known = append(known, secretPlain...)
 
-	driver := tofuTierDriver(dirs.root, executor.TofuOptions{
+	caps, err := resolveRunnerCaps(ctx, st, spec.RunnerName)
+	if err != nil {
+		return store.Job{}, err
+	}
+	driver, err := tofuTierDriver(dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
 		BackendURL:      api.StateURL(addr, ws.Name),
 		BackendToken:    token,
@@ -875,7 +893,10 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		// through this same path captures nothing.
 		InventoryOut: handoffInventoryPath(dir, ws.Name),
 		OutputSealer: executor.EnvelopeOutputSealer{Env: env, Store: st, Workspace: ws.Name},
-	})
+	}, caps)
+	if err != nil {
+		return store.Job{}, err
+	}
 	q := queue.New(st, driver, queue.Options{
 		Workers:      1,
 		PollInterval: 50 * time.Millisecond,

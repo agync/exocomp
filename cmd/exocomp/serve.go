@@ -1038,12 +1038,19 @@ func (d cliJobDriver) Run(ctx context.Context, spec executor.Spec, sink executor
 		return executor.Result{}, err
 	}
 
-	drv := cliTierDriver(d.dataDir, executor.CLIOptions{
+	caps, err := resolveRunnerCaps(ctx, d.store, job.Args.RunnerName)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	drv, err := cliTierDriver(d.dataDir, executor.CLIOptions{
 		Tool:       tool.Name,
 		Binary:     tool.Binary,
 		RunSecrets: runSecrets,
 		AllowHTTPS: tool.Egress == store.CLIEgressHTTPS,
-	})
+	}, caps)
+	if err != nil {
+		return executor.Result{}, err
+	}
 	if len(secretPlain) == 0 {
 		return drv.Run(ctx, spec, sink)
 	}
@@ -1108,7 +1115,11 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		}
 	}
 
-	drv := tofuTierDriver(d.dirs.root, executor.TofuOptions{
+	caps, err := resolveRunnerCaps(ctx, d.store, job.Args.RunnerName)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	drv, err := tofuTierDriver(d.dirs.root, executor.TofuOptions{
 		Workspace:       ws.Name,
 		BackendURL:      api.StateURL(d.server.Addr(), ws.Name),
 		BackendToken:    token,
@@ -1133,7 +1144,10 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		// path (runWorkspaceInline): without this, a daemon-driven apply leaves
 		// the tf:<workspace> binding empty and the dependent play finds nothing.
 		OutputSealer: executor.EnvelopeOutputSealer{Env: d.env, Store: d.store, Workspace: ws.Name},
-	})
+	}, caps)
+	if err != nil {
+		return executor.Result{}, err
+	}
 	material := append([][]byte{[]byte(token), stateKey, []byte(passphrase)}, secretPlain...)
 	redactor := secrets.NewRedactor(material)
 	res, err := drv.Run(ctx, spec, runSink{redactor: redactor, next: sink})

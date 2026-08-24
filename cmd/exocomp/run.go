@@ -43,6 +43,7 @@ func newRunCmd() *cobra.Command {
 		inventory    string
 		vaultProject string
 		runSecrets   string
+		runnerName   string
 		timeout      time.Duration
 		wait         bool
 	)
@@ -63,6 +64,7 @@ func newRunCmd() *cobra.Command {
 				inventory:    inventory,
 				vaultProject: vaultProject,
 				runSecrets:   runSecrets,
+				runnerName:   runnerName,
 				timeout:      timeout,
 				wait:         wait,
 			})
@@ -74,6 +76,9 @@ func newRunCmd() *cobra.Command {
 		"derive the ansible-vault password for the play from the envelope")
 	cmd.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as named env for the play")
+	cmd.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
 
@@ -107,6 +112,7 @@ type runSpec struct {
 	inventory    string
 	vaultProject string
 	runSecrets   string
+	runnerName   string
 	timeout      time.Duration
 	wait         bool
 	// passthrough and extraVars carry `playbook run`'s ansible flags into the
@@ -223,6 +229,7 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 			Inventory:           invName,
 			ExtraVars:           rs.extraVars,
 			TolerateUnreachable: rs.tolerateUnreachable,
+			RunnerName:          rs.runnerName,
 			Timeout:             rs.timeout,
 		},
 	})

@@ -24,7 +24,8 @@ const vaultPurpose = "ansible-vault"
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
 	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv,
 	extraVars map[string]string, tolerateUnreachable bool,
-	captures []executor.AnsibleCapture, sealer executor.OutputSealer) (executor.Driver, [][]byte) {
+	captures []executor.AnsibleCapture, sealer executor.OutputSealer,
+	caps executor.Caps) (executor.Driver, [][]byte, error) {
 	opts := executor.AnsibleOptions{
 		VaultID:             executor.DefaultVaultID,
 		CollectionsPath:     filepath.Join(dataDir, collectionsCacheDir),
@@ -43,13 +44,15 @@ func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string
 	// zero venv leaves the driver on the image toolchain.
 	applyVenv(&opts, venv)
 	if env == nil || vaultProject == "" {
-		return ansibleTierDriver(dataDir, opts), nil
+		drv, err := ansibleTierDriver(dataDir, opts, caps)
+		return drv, nil, err
 	}
 
 	derived := env.Derive(vaultPurpose, vaultProject)
 	password := []byte(base64.StdEncoding.EncodeToString(derived))
 	opts.VaultPassword = password
-	return ansibleTierDriver(dataDir, opts), [][]byte{derived, password}
+	drv, err := ansibleTierDriver(dataDir, opts, caps)
+	return drv, [][]byte{derived, password}, err
 }
 
 // ansibleJobDriver runs a queued ansible job the daemon claimed. The password
@@ -117,7 +120,14 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		sealer = executor.AnsibleOutputSealer{Env: d.env, Store: d.store, Workflow: workflow}
 	}
 
-	drv, derived := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, job.Args.ExtraVars, job.Args.TolerateUnreachable, captures, sealer)
+	caps, err := resolveRunnerCaps(ctx, d.store, job.Args.RunnerName)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	drv, derived, err := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, job.Args.ExtraVars, job.Args.TolerateUnreachable, captures, sealer, caps)
+	if err != nil {
+		return executor.Result{}, err
+	}
 	material := append(derived, secretPlain...)
 	if len(material) == 0 {
 		return drv.Run(ctx, spec, sink)

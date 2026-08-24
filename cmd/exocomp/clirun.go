@@ -33,6 +33,7 @@ type cliRunSpec struct {
 	args            []string
 	sourceName      string
 	runSecrets      string
+	runnerName      string
 	concurrencyKey  string
 	requireApproval bool
 	timeout         time.Duration
@@ -46,6 +47,7 @@ func newRunCLICmd() *cobra.Command {
 	var (
 		sourceName      string
 		runSecrets      string
+		runnerName      string
 		concurrencyKey  string
 		requireApproval bool
 		timeout         time.Duration
@@ -96,6 +98,7 @@ func newRunCLICmd() *cobra.Command {
 				args:            toolArgs,
 				sourceName:      sourceName,
 				runSecrets:      runSecrets,
+				runnerName:      runnerName,
 				concurrencyKey:  concurrencyKey,
 				requireApproval: requireApproval,
 				timeout:         timeout,
@@ -107,6 +110,9 @@ func newRunCLICmd() *cobra.Command {
 		"run from this registered source's checkout; it is the only repository path the run may reach")
 	cmd.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as named env for the run (the provider token the tool authenticates with)")
+	cmd.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "",
 		"serialize this run against others holding the key (default: cli:<tool>; pass tofu:<workspace> to serialize with that workspace's runs)")
 	cmd.Flags().BoolVar(&requireApproval, "require-approval", false,
@@ -194,6 +200,7 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		Argv:             argv,
 		Dir:              root,
 		RunSecretBinding: spec.runSecrets,
+		RunnerName:       spec.runnerName,
 		ConcurrencyKey:   concurrency,
 		IdempotencyKey:   spec.idempotencyKey,
 		Timeout:          spec.timeout,
@@ -310,12 +317,19 @@ func cliRunInline(ctx context.Context, st *store.Store, dir string, tool store.C
 			"the run would authenticate with no credential", spec.RunSecretBinding)
 	}
 
-	driver := cliTierDriver(dir, executor.CLIOptions{
+	caps, err := resolveRunnerCaps(ctx, st, spec.RunnerName)
+	if err != nil {
+		return store.Job{}, fmt.Errorf("run-cli: %w", err)
+	}
+	driver, err := cliTierDriver(dir, executor.CLIOptions{
 		Tool:       tool.Name,
 		Binary:     tool.Binary,
 		RunSecrets: runSecrets,
 		AllowHTTPS: tool.Egress == store.CLIEgressHTTPS,
-	})
+	}, caps)
+	if err != nil {
+		return store.Job{}, fmt.Errorf("run-cli: %w", err)
+	}
 
 	var qopts []queue.Option
 	if env != nil {
@@ -338,13 +352,17 @@ func cliRunInline(ctx context.Context, st *store.Store, dir string, tool store.C
 	return st.GetJob(ctx, job.ID)
 }
 
-// cliTierDriver returns the CLI driver for the effective tier. Under the
-// sandbox the private directory moves inside the 0700 data dir, which is where
-// every other sandboxed kind puts it: the system temp dir is somewhere every
-// other process on the host can also name.
-func cliTierDriver(dataDir string, opts executor.CLIOptions) executor.Driver {
+// cliTierDriver returns the CLI driver for the effective tier, with caps
+// applied when non-empty. Under the sandbox the private directory moves
+// inside the 0700 data dir, which is where every other sandboxed kind puts
+// it: the system temp dir is somewhere every other process on the host can
+// also name.
+func cliTierDriver(dataDir string, opts executor.CLIOptions, caps executor.Caps) (executor.Driver, error) {
 	if !sandboxed(context.Background()) {
-		return executor.NewCLI(opts)
+		if err := requireSandboxedForCaps(context.Background(), caps); err != nil {
+			return nil, err
+		}
+		return executor.NewCLI(opts), nil
 	}
 	if opts.PrivateDirRoot == "" {
 		root := filepath.Join(dataDir, privateRunDir)
@@ -352,5 +370,5 @@ func cliTierDriver(dataDir string, opts executor.CLIOptions) executor.Driver {
 			opts.PrivateDirRoot = root
 		}
 	}
-	return executor.NewSandboxedCLI(opts, sandboxOptions(dataDir))
+	return executor.NewSandboxedCLI(opts, withCaps(sandboxOptions(dataDir), caps, os.Stderr)), nil
 }

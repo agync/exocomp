@@ -265,13 +265,111 @@ func sandboxOptions(dataDir string) executor.SandboxOptions {
 	return executor.SandboxOptions{DataDir: dataDir, ReadPaths: read}
 }
 
-// ansibleTierDriver returns the ansible driver for the effective tier. Under
-// the sandbox the private directory moves inside the 0700 data dir: the vault
-// password file is written there, and the system temp dir is somewhere every
-// other job on the host can also name.
-func ansibleTierDriver(dataDir string, opts executor.AnsibleOptions) executor.Driver {
+// jobCaps is the daemon-lifetime cgroup controller a capped job's
+// SandboxOptions is built against. It is prepared lazily, on the first job
+// that actually names a runner with caps set — most fleets never do, and
+// PrepareCgroupController vacates the daemon's own cgroup into a child leaf
+// (docs/design/byo-runner.md §6), a real, one-way change to the daemon's own
+// cgroup layout that a capless fleet should never pay for just by existing.
+// Once resolved (successfully or not) the same controller, or the same
+// failure, is reused for every later job: the subtree is a daemon-lifetime
+// resource, not a per-job one.
+var jobCaps struct {
+	once sync.Once
+	// root overrides the cgroup mount for tests; empty uses the real
+	// cgroupRoot PrepareCgroupController defaults to. Production code never
+	// sets this.
+	root string
+	ctrl *executor.CgroupController
+	err  error
+}
+
+// capsController returns the daemon's delegated cgroup controller, preparing
+// it on first use. A non-nil error means per-job caps cannot be enforced on
+// this host; the caller (withCaps, through applyJobCaps) refuses the capped
+// job rather than running it uncapped — ADR 0005's "never silently" posture,
+// extended from the sandbox tier to the caps feature. warn receives one line
+// the first time preparation is attempted, successful or not, so the
+// daemon's own log carries the same signal `exocomp doctor` reports under
+// "per-job caps" (reportCaps).
+func capsController(warn io.Writer) (*executor.CgroupController, error) {
+	jobCaps.once.Do(func() {
+		jobCaps.ctrl, jobCaps.err = executor.PrepareCgroupController(jobCaps.root)
+		if warn == nil {
+			return
+		}
+		if jobCaps.err != nil {
+			_, _ = fmt.Fprintf(warn, "WARNING: per-job caps requested but unavailable: %v; "+
+				"a job naming a runner with caps set is refused, never run uncapped\n", jobCaps.err)
+		} else {
+			_, _ = fmt.Fprintln(warn, "per-job caps: delegated cgroup v2 subtree prepared")
+		}
+	})
+	return jobCaps.ctrl, jobCaps.err
+}
+
+// resolveRunnerCaps looks up the caps a job's runner reference names, so the
+// execution path can carry them into SandboxOptions.Caps. An empty name is
+// the default, uncapped path most jobs take. A name that does not resolve to
+// a registered runner, or whose stored memory_max/cpu_quota no longer parse,
+// refuses the job outright: an operator who named a runner asked for its
+// caps, and silently dropping that ask because the row is gone or malformed
+// is exactly the "never silently" failure this feature exists to prevent.
+func resolveRunnerCaps(ctx context.Context, st *store.Store, runnerName string) (executor.Caps, error) {
+	if runnerName == "" {
+		return executor.Caps{}, nil
+	}
+	r, err := st.RunnerByName(ctx, runnerName)
+	if err != nil {
+		return executor.Caps{}, fmt.Errorf("runner %q: %w", runnerName, err)
+	}
+	caps, err := executor.ParseCaps(r.MemoryMax, r.CPUQuota)
+	if err != nil {
+		return executor.Caps{}, fmt.Errorf("runner %q: %w", runnerName, err)
+	}
+	return caps, nil
+}
+
+// requireSandboxedForCaps refuses a capped job outright when the effective
+// tier is not local-sandboxed. applyJobCaps (internal/executor/sandbox_drivers.go)
+// only runs inside the sandboxed drivers — a plain executor.NewAnsible/NewTofu
+// subprocess never looks at SandboxOptions.Caps at all — so a job with
+// non-empty caps that fell back to the bare subprocess boundary would
+// otherwise run fully uncapped with no refusal: a second "never silently" gap
+// alongside the cgroup-availability one applyJobCaps itself already closes.
+func requireSandboxedForCaps(ctx context.Context, caps executor.Caps) error {
+	if caps.Empty() || sandboxed(ctx) {
+		return nil
+	}
+	return fmt.Errorf("caps requested but the %s tier is not active on this host; "+
+		"refusing to run the job uncapped (see `exocomp doctor`'s sandbox block)",
+		executor.TierLocalSandboxed)
+}
+
+// withCaps augments sb with a job's resolved caps, preparing the daemon's
+// cgroup controller on first use. Empty caps are a no-op — most jobs carry
+// none, so nothing about the request or the daemon's cgroup layout changes
+// for them. Non-empty caps with no usable controller leave sb.Cgroup nil, so
+// applyJobCaps refuses the job rather than running it uncapped.
+func withCaps(sb executor.SandboxOptions, caps executor.Caps, warn io.Writer) executor.SandboxOptions {
+	if caps.Empty() {
+		return sb
+	}
+	sb.Caps = caps
+	sb.Cgroup, _ = capsController(warn)
+	return sb
+}
+
+// ansibleTierDriver returns the ansible driver for the effective tier, with
+// caps applied when non-empty. Under the sandbox the private directory moves
+// inside the 0700 data dir: the vault password file is written there, and the
+// system temp dir is somewhere every other job on the host can also name.
+func ansibleTierDriver(dataDir string, opts executor.AnsibleOptions, caps executor.Caps) (executor.Driver, error) {
 	if !sandboxed(context.Background()) {
-		return executor.NewAnsible(opts)
+		if err := requireSandboxedForCaps(context.Background(), caps); err != nil {
+			return nil, err
+		}
+		return executor.NewAnsible(opts), nil
 	}
 	if opts.PrivateDirRoot == "" {
 		root := filepath.Join(dataDir, privateRunDir)
@@ -279,15 +377,19 @@ func ansibleTierDriver(dataDir string, opts executor.AnsibleOptions) executor.Dr
 			opts.PrivateDirRoot = root
 		}
 	}
-	return executor.NewSandboxedAnsible(opts, sandboxOptions(dataDir))
+	return executor.NewSandboxedAnsible(opts, withCaps(sandboxOptions(dataDir), caps, os.Stderr)), nil
 }
 
-// tofuTierDriver returns the OpenTofu driver for the effective tier.
-func tofuTierDriver(dataDir string, opts executor.TofuOptions) executor.Driver {
+// tofuTierDriver returns the OpenTofu driver for the effective tier, with caps
+// applied when non-empty.
+func tofuTierDriver(dataDir string, opts executor.TofuOptions, caps executor.Caps) (executor.Driver, error) {
 	if !sandboxed(context.Background()) {
-		return executor.NewTofu(opts)
+		if err := requireSandboxedForCaps(context.Background(), caps); err != nil {
+			return nil, err
+		}
+		return executor.NewTofu(opts), nil
 	}
-	return executor.NewSandboxedTofu(opts, sandboxOptions(dataDir))
+	return executor.NewSandboxedTofu(opts, withCaps(sandboxOptions(dataDir), caps, os.Stderr)), nil
 }
 
 // reportSandbox writes the doctor's sandbox block: the launcher's version

@@ -27,6 +27,7 @@ func newPlaybookCmd() *cobra.Command {
 		inventory    string
 		vaultProject string
 		runSecrets   string
+		runnerName   string
 		sourceName   string
 		timeout      time.Duration
 		wait         bool
@@ -108,6 +109,7 @@ func newPlaybookCmd() *cobra.Command {
 						inventory:           inventory,
 						vaultProject:        vaultProject,
 						runSecrets:          runSecrets,
+						runnerName:          runnerName,
 						timeout:             timeout,
 						wait:                wait,
 						passthrough:         passthrough,
@@ -123,6 +125,7 @@ func newPlaybookCmd() *cobra.Command {
 				inventory:           inventory,
 				vaultProject:        vaultProject,
 				runSecrets:          runSecrets,
+				runnerName:          runnerName,
 				timeout:             timeout,
 				passthrough:         passthrough,
 				extraVars:           vars,
@@ -146,6 +149,9 @@ func newPlaybookCmd() *cobra.Command {
 		"derive the ansible-vault password for this project from the envelope")
 	run.Flags().StringVar(&runSecrets, "run-secrets", "",
 		"bind a run_secret set as named env for the run (a dynamic-inventory plugin or module authenticates from it)")
+	run.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"run from this registered source's checkout and honour its .exocomp/hooks.yml")
 	run.Flags().DurationVar(&timeout, "timeout", 0,
@@ -182,6 +188,7 @@ type playbookSpec struct {
 	inventory    string
 	vaultProject string
 	runSecrets   string
+	runnerName   string
 	timeout      time.Duration
 	// passthrough is the public ansible flags (--limit, --tags, --skip-tags,
 	// --check, --diff, -e @file) placed before the playbook in argv.
@@ -258,6 +265,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		TolerateUnreachable: spec.tolerateUnreachable,
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
+		RunnerName:          spec.runnerName,
 	})
 	if err != nil {
 		return 0, err
@@ -404,9 +412,16 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	if err != nil {
 		return store.Job{}, err
 	}
+	caps, err := resolveRunnerCaps(ctx, st, spec.RunnerName)
+	if err != nil {
+		return store.Job{}, err
+	}
 	// The daemonless play path declares no captures: the bootstrap chain's capture
 	// seal runs only through the daemon's ansibleJobDriver, so this passes none.
-	driver, derived := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable, nil, nil)
+	driver, derived, err := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable, nil, nil, caps)
+	if err != nil {
+		return store.Job{}, err
+	}
 	var qopts []queue.Option
 	if env != nil {
 		known := append(knownSecrets(ctx, st, env, warn), derived...)

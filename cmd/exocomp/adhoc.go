@@ -55,6 +55,7 @@ type adhocSpec struct {
 	become              bool
 	vaultProject        string
 	runSecrets          string
+	runnerName          string
 	requireApproval     bool
 	tolerateUnreachable bool
 	timeout             time.Duration
@@ -74,6 +75,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 		become              bool
 		vaultProject        string
 		runSecrets          string
+		runnerName          string
 		requireApproval     bool
 		tolerateUnreachable bool
 		timeout             time.Duration
@@ -114,6 +116,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 				become:              become,
 				vaultProject:        vaultProject,
 				runSecrets:          runSecrets,
+				runnerName:          runnerName,
 				requireApproval:     requireApproval,
 				tolerateUnreachable: tolerateUnreachable,
 				timeout:             timeout,
@@ -123,14 +126,14 @@ func newAnsibleAdhocCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&module, "module", "m", defaultAdhocModule, "ansible module to run")
 	cmd.Flags().StringVarP(&args, "args", "a", "", "module arguments (the -a string)")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
-		&vaultProject, &runSecrets, &requireApproval, &tolerateUnreachable, &timeout)
+		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &timeout)
 	return cmd
 }
 
 // addAdhocFlags registers the governance flags `command` and `ansible` share, so
 // the two verbs stay one skeleton with one set of names.
 func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *string,
-	become *bool, vaultProject, runSecrets *string, requireApproval, tolerateUnreachable *bool,
+	become *bool, vaultProject, runSecrets, runnerName *string, requireApproval, tolerateUnreachable *bool,
 	timeout *time.Duration) {
 	cmd.Flags().StringVarP(sourceName, "source", "s", "", "run from this registered source's checkout")
 	cmd.Flags().StringVar(host, "host", "", "ansible host pattern: a host, a group, or an expression like `fedora:!nas`")
@@ -139,6 +142,8 @@ func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *strin
 	cmd.Flags().BoolVar(become, "become", false, "run with privilege escalation (ansible --become)")
 	cmd.Flags().StringVar(vaultProject, "vault-project", "", "derive the ansible-vault password for this project from the envelope")
 	cmd.Flags().StringVar(runSecrets, "run-secrets", "", "bind a run_secret set as named env for the run")
+	cmd.Flags().StringVar(runnerName, "runner", "", "enforce this registered runner's memory_max/cpu_quota "+
+		"as a per-job cgroup cap (local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().BoolVar(requireApproval, "require-approval", false, "gate the run behind the approval gate; it waits in awaiting_approval until a decision")
 	cmd.Flags().BoolVar(tolerateUnreachable, "tolerate-unreachable", false, "a run whose only non-success is unreachable hosts settles degraded, not failed")
 	cmd.Flags().DurationVar(timeout, "timeout", 0, "kill the run after this long (0: no limit)")
@@ -262,6 +267,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		RunSecretBinding:    spec.runSecrets,
 		Inventory:           invName,
 		TolerateUnreachable: spec.tolerateUnreachable,
+		RunnerName:          spec.runnerName,
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 	}
