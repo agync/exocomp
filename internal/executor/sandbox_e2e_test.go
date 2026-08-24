@@ -327,8 +327,8 @@ func TestSandboxedTofuReadsDevShmStagedSecret(t *testing.T) {
 	if kubePath == "" {
 		t.Fatalf("KUBECONFIG did not reach the sandboxed child: %v", lines)
 	}
-	if !strings.HasPrefix(kubePath, executor.ShmDir+"/") {
-		t.Fatalf("staged path %q is not under %s", kubePath, executor.ShmDir)
+	if !strings.HasPrefix(kubePath, executor.TmpfsRoot+"/") {
+		t.Fatalf("staged path %q is not under %s", kubePath, executor.TmpfsRoot)
 	}
 	// The sandboxed child actually opened the granted file — not just saw the
 	// path — and read the sentinel back at 0600.
@@ -363,8 +363,8 @@ func TestSandboxDeniesAnUngrantedDevShmFile(t *testing.T) {
 	data := sandboxDataDir(t)
 	work := t.TempDir()
 
-	granted := filepath.Join(executor.ShmDir, "exocomp-secret-test-granted")
-	ungranted := filepath.Join(executor.ShmDir, "exocomp-secret-test-ungranted")
+	granted := filepath.Join(executor.TmpfsRoot, "exocomp-secret-test-granted")
+	ungranted := filepath.Join(executor.TmpfsRoot, "exocomp-secret-test-ungranted")
 	for _, p := range []string{granted, ungranted} {
 		if err := os.WriteFile(p, []byte("control-value"), 0o600); err != nil {
 			t.Fatalf("write %s: %v", p, err)

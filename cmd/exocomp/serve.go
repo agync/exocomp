@@ -96,6 +96,7 @@ type serveOptions struct {
 	sandbox        string
 	webAddr        string
 	webInsecure    bool
+	secretStaging  string
 }
 
 func defaultServeOptions() serveOptions {
@@ -107,6 +108,7 @@ func defaultServeOptions() serveOptions {
 		approvalTTL:    reactive.DefaultApprovalTTL,
 		leaseTTL:       defaultLeaseTTL,
 		leaseRenew:     defaultLeaseRenew,
+		secretStaging:  string(executor.StagingAuto),
 	}
 }
 
@@ -153,6 +155,8 @@ func newServeCmd() *cobra.Command {
 		"how often the active daemon renews the cross-host lease (keep well below --lease-ttl)")
 	cmd.Flags().BoolVar(&opts.forceLease, "force-lease", false,
 		"take over an active lease still held by another daemon; use only when that holder is truly gone")
+	cmd.Flags().StringVar(&opts.secretStaging, "secret-staging", opts.secretStaging,
+		"where a run-secret staged as a file lands: auto, tmpfs, or disk (auto falls back to disk, loudly, when tmpfs is unusable)")
 	return cmd
 }
 
@@ -186,16 +190,29 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	defer lock.release()
 
-	// Defense-in-depth for the /dev/shm run-secret staging path: the normal
-	// path already unlinks a staged file once its subprocess exits, but a
-	// daemon that survives a broken cleanup (a panic between staging and
-	// Close, a kill -9) would otherwise leave a stale bearer sitting in RAM
-	// indefinitely. Runs once per start, after the single-instance lock so
-	// two daemons never sweep concurrently.
-	if swept, err := executor.SweepOrphanRunSecretFiles(); err != nil {
-		_, _ = fmt.Fprintf(warn, "WARNING: startup sweep of orphan run-secret files: %v\n", err)
+	// secretStagingDiskRoot is the disk staging root regardless of which
+	// backend ends up resolved: the same "<data-dir>/run/" tree job private
+	// dirs already use (jobRunDir), reused rather than reinvented, and
+	// excluded from backup by the same construction that already excludes
+	// every other job-scratch path under it (docs/log.md).
+	secretStagingDiskRoot := filepath.Join(dir, privateRunDir)
+
+	// Defense-in-depth for the run-secret file staging path, third of the
+	// three cleanup layers (per-job unlink; whole-session RemoveAll on a
+	// graceful stop, below; this liveness-checked sweep for everything a
+	// broken cleanup path left behind — a panic between staging and Close, a
+	// kill -9). Both possible roots are swept unconditionally, independent of
+	// which backend --secret-staging resolves to this run: an operator who
+	// switched backends since the last start can still have orphans on the
+	// one no longer in use. A directory whose owning pid is still alive is
+	// never touched, so this can never delete a concurrent sibling instance's
+	// in-flight secrets. Runs once per start, after the single-instance lock
+	// so two daemons never sweep concurrently, and before the store opens —
+	// it needs no setting, only the two well-known roots.
+	if swept, err := executor.SweepOrphanRunSecretFiles(executor.TmpfsRoot, secretStagingDiskRoot); err != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: startup sweep of orphan run-secret staging dirs: %v\n", err)
 	} else if swept > 0 {
-		_, _ = fmt.Fprintf(out, "swept %d orphaned run-secret file(s) from %s\n", swept, executor.ShmDir)
+		_, _ = fmt.Fprintf(out, "swept %d orphaned run-secret staging dir(s)\n", swept)
 	}
 
 	st, err := openStore()
@@ -207,6 +224,30 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 			err = cerr
 		}
 	}()
+
+	secretStagingBackend, err := executor.ParseStagingBackend(opts.secretStaging)
+	if err != nil {
+		return fmt.Errorf("serve: --secret-staging: %w", err)
+	}
+	staging, err := executor.ConfigureRunSecretStaging(executor.StagingConfig{
+		Backend:  secretStagingBackend,
+		DiskRoot: secretStagingDiskRoot,
+		Warn:     warn,
+	})
+	if err != nil {
+		return fmt.Errorf("serve: %w", err)
+	}
+	// Removes this instance's whole staging session directory — the
+	// graceful-shutdown cleanup layer — once every other deferred shutdown
+	// step above it (jobs drained, queue stopped) has already run its own
+	// deferred cleanup, so nothing still using a staged file races the
+	// RemoveAll. A crash skips this defer entirely, which is exactly what the
+	// startup liveness sweep exists to reap on the next start.
+	defer func() { _ = executor.CloseRunSecretStaging() }()
+	if err := st.PutSetting(ctx, store.SettingSecretStaging, string(secretStagingBackend)); err != nil {
+		return fmt.Errorf("serve: persist --secret-staging: %w", err)
+	}
+	_, _ = fmt.Fprintf(out, "run-secret file staging: %s backend at %s\n", staging.Backend, staging.Root)
 
 	// The cross-host fence is taken BEFORE the boot sweep, not after. The sweep's
 	// liveness test is host-local pid probing, so a standby that swept a live
@@ -1076,8 +1117,9 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		PluginCacheDir:  d.dirs.pluginCache,
 		RunSecrets:      runSecrets,
 		// A bootstrap chain's --capture-file names, via the step's Captures field,
-		// the run-secrets the apply must receive as /dev/shm-staged files rather
-		// than env values. Empty for every other apply.
+		// the run-secrets the apply must receive as files staged through the
+		// resolved secret-staging backend (executor.ConfigureRunSecretStaging,
+		// above) rather than as env values. Empty for every other apply.
 		RunSecretFiles: bootstrapStagedFileEnvs(job.Args.Captures),
 		// The workspace's opt-in egress widening (docs/operations/serve.md);
 		// empty by default, so the daemon path keeps the 443-and-backend grant.

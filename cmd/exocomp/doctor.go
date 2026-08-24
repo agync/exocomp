@@ -100,7 +100,7 @@ func runDoctor(w io.Writer) error {
 
 	reportSandbox(context.Background(), w)
 	reportCaps(w)
-	reportRunSecretFileStaging(w)
+	reportRunSecretFileStaging(w, dataDir)
 	reportSelfObservability(context.Background(), w, dataDir)
 	reportLitestream(context.Background(), w, dataDir)
 	// The report prints first, so an operator sees why; then an explicit

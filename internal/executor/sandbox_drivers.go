@@ -268,10 +268,11 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 
 	// A run-secret bound to reach the tool as a file (KUBECONFIG, an
 	// exec-auth config) is staged here, before the profile is built, so its
-	// /dev/shm path can be granted to the sandbox — a sandboxed child cannot
-	// open a path nono was never told to allow. Staged before NewTofu(opts)
-	// runs and RunSecretFiles cleared on opts so the inner, unsandboxed Run
-	// does not try to stage it again from a value that is now a path.
+	// staging-backend path can be granted to the sandbox — a sandboxed child
+	// cannot open a path nono was never told to allow. Staged before
+	// NewTofu(opts) runs and RunSecretFiles cleared on opts so the inner,
+	// unsandboxed Run does not try to stage it again from a value that is now
+	// a path.
 	if len(t.opts.RunSecretFiles) > 0 {
 		rs, staged, err := StageRunSecretFiles(t.opts.RunSecrets, t.opts.RunSecretFiles)
 		if err != nil {
@@ -282,6 +283,7 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 				_ = staged[i].Close()
 			}
 		}()
+		noteDiskStagingResidual(sink, staged)
 		opts.RunSecrets = rs
 		opts.RunSecretFiles = nil
 		for _, sf := range staged {

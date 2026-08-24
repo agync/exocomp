@@ -2,7 +2,9 @@ package executor_test
 
 import (
 	"context"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -14,22 +16,23 @@ import (
 
 const kubeconfigSentinel = "apiVersion: v1\nkind: Config\ntoken: s3cr3t-bearer\n"
 
-// TestShmDirIsDevShm pins the literal value: every other test in this file
-// asserts a staged path is "under executor.ShmDir", which would pass
-// vacuously if ShmDir itself pointed somewhere durable. This is the one
+// TestTmpfsRootIsDevShm pins the literal value: every other test in this file
+// asserts a staged path is "under executor.TmpfsRoot", which would pass
+// vacuously if TmpfsRoot itself pointed somewhere durable. This is the one
 // assertion against the literal string, so a change to the constant is
 // caught here even though it would satisfy every relative check elsewhere.
-func TestShmDirIsDevShm(t *testing.T) {
+func TestTmpfsRootIsDevShm(t *testing.T) {
 	t.Parallel()
-	if executor.ShmDir != "/dev/shm" {
-		t.Fatalf("executor.ShmDir = %q, want /dev/shm", executor.ShmDir)
+	if executor.TmpfsRoot != "/dev/shm" {
+		t.Fatalf("executor.TmpfsRoot = %q, want /dev/shm", executor.TmpfsRoot)
 	}
 }
 
-// TestStageRunSecretFilesWritesShmFile proves the helper materializes a named
-// run-secret to a 0600 file under /dev/shm, rewrites that env to the file's
-// path, and leaves the other run-secrets as env values.
-func TestStageRunSecretFilesWritesShmFile(t *testing.T) {
+// TestStageRunSecretFilesWritesSessionDirFile proves the default (tmpfs)
+// backend materializes a named run-secret to a 0600 file inside this
+// process's own session directory under /dev/shm, rewrites that env to the
+// file's path, and leaves the other run-secrets as env values.
+func TestStageRunSecretFilesWritesSessionDirFile(t *testing.T) {
 	t.Parallel()
 
 	rs := executor.RunSecrets{
@@ -53,8 +56,14 @@ func TestStageRunSecretFilesWritesShmFile(t *testing.T) {
 	if staged[0].Path != path {
 		t.Errorf("staged path %q does not match the rewritten env %q", staged[0].Path, path)
 	}
-	if filepath.Dir(path) != executor.ShmDir {
-		t.Fatalf("staged path %q is not under %s", path, executor.ShmDir)
+	// The file lives inside a per-instance session directory, not directly
+	// under TmpfsRoot: TmpfsRoot/exocomp.<pid>.<rand>/exocomp-secret-<rand>.
+	sessionDir := filepath.Dir(path)
+	if filepath.Dir(sessionDir) != executor.TmpfsRoot {
+		t.Fatalf("staged path %q is not nested one level under %s", path, executor.TmpfsRoot)
+	}
+	if !strings.HasPrefix(filepath.Base(sessionDir), "exocomp.") {
+		t.Errorf("session dir %q does not carry the exocomp. prefix", sessionDir)
 	}
 	if !strings.HasPrefix(filepath.Base(path), "exocomp-secret-") {
 		t.Errorf("staged basename %q does not carry the exocomp-secret- prefix", filepath.Base(path))
@@ -74,6 +83,13 @@ func TestStageRunSecretFilesWritesShmFile(t *testing.T) {
 	if info.Mode().Perm() != 0o600 {
 		t.Errorf("staged file mode = %o, want 600", info.Mode().Perm())
 	}
+	dirInfo, err := os.Stat(sessionDir)
+	if err != nil {
+		t.Fatalf("stat session dir: %v", err)
+	}
+	if dirInfo.Mode().Perm() != 0o700 {
+		t.Errorf("session dir mode = %o, want 700", dirInfo.Mode().Perm())
+	}
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read staged file: %v", err)
@@ -83,9 +99,40 @@ func TestStageRunSecretFilesWritesShmFile(t *testing.T) {
 	}
 }
 
+// TestStageRunSecretFilesShareOneSessionDir proves two separate staging calls
+// in the same process land in the same session directory — the per-instance,
+// not per-job, directory this rework introduces.
+func TestStageRunSecretFilesShareOneSessionDir(t *testing.T) {
+	t.Parallel()
+
+	rs := executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel}
+	_, first, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"})
+	if err != nil {
+		t.Fatalf("stage first: %v", err)
+	}
+	t.Cleanup(func() { _ = first[0].Close() })
+
+	_, second, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"})
+	if err != nil {
+		t.Fatalf("stage second: %v", err)
+	}
+	t.Cleanup(func() { _ = second[0].Close() })
+
+	if filepath.Dir(first[0].Path) != filepath.Dir(second[0].Path) {
+		t.Errorf("two stagings in the same process used different session dirs: %q vs %q",
+			filepath.Dir(first[0].Path), filepath.Dir(second[0].Path))
+	}
+	if first[0].Path == second[0].Path {
+		t.Error("two staged files collided on the same path")
+	}
+}
+
 // TestStageRunSecretFilesNeverOnDurableDisk proves the bytes exist nowhere but
-// /dev/shm (RAM): staging never touches the current working directory or any
-// other path a caller might mistake for "the run's own tree".
+// /dev/shm (RAM) under the default (tmpfs) backend: staging never touches the
+// current working directory or any other path a caller might mistake for "the
+// run's own tree". This is the never-on-disk guarantee the tmpfs backend
+// still gives when nothing configures a different one — the same one this
+// path always had, preserved through the backend abstraction.
 func TestStageRunSecretFilesNeverOnDurableDisk(t *testing.T) {
 	t.Parallel()
 	wd, err := os.Getwd()
@@ -108,8 +155,11 @@ func TestStageRunSecretFilesNeverOnDurableDisk(t *testing.T) {
 	if strings.HasPrefix(path, wd) {
 		t.Fatalf("staged path %q landed under the working tree %q", path, wd)
 	}
-	if !strings.HasPrefix(path, executor.ShmDir+"/") {
-		t.Fatalf("staged path %q is not under %s", path, executor.ShmDir)
+	if !strings.HasPrefix(path, executor.TmpfsRoot+"/") {
+		t.Fatalf("staged path %q is not under %s", path, executor.TmpfsRoot)
+	}
+	if staged[0].Backend != executor.StagingTmpfs {
+		t.Errorf("staged file backend = %q, want %s", staged[0].Backend, executor.StagingTmpfs)
 	}
 }
 
@@ -152,37 +202,118 @@ func TestStageRunSecretFilesEmptyFileEnvIsNoop(t *testing.T) {
 	}
 }
 
-// TestSweepOrphanRunSecretFilesRemovesOrphans proves the startup sweep is the
-// defense-in-depth backstop for a broken cleanup path: a file left behind
-// under /dev/shm bearing the exocomp-secret- prefix — the shape a crash
-// between staging and Close would leave — is removed, while an unrelated
-// file with a different prefix (ansible's own POSIX semaphores, above all)
-// is left untouched.
-func TestSweepOrphanRunSecretFilesRemovesOrphans(t *testing.T) {
-	orphan := filepath.Join(executor.ShmDir, "exocomp-secret-orphan-test")
-	if err := os.WriteFile(orphan, []byte("leftover"), 0o600); err != nil {
-		t.Fatalf("write orphan: %v", err)
+// deadPid starts and waits out a trivial child process, returning a pid the
+// kernel has already reaped — a genuinely dead owner for the sweep's liveness
+// tests, the same technique pidalive_internal_test.go uses.
+func deadPid(t *testing.T) int {
+	t.Helper()
+	cmd := exec.Command("true")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(orphan) })
+	return cmd.Process.Pid
+}
 
-	unrelated := filepath.Join(executor.ShmDir, "not-exocomp-owned-test")
-	if err := os.WriteFile(unrelated, []byte("leave me alone"), 0o600); err != nil {
-		t.Fatalf("write unrelated: %v", err)
+// TestSweepOrphanRunSecretFilesRemovesDeadOwnerDirs proves the startup sweep
+// is the liveness-aware defense-in-depth backstop for a broken cleanup path: a
+// session directory owned by a pid that is no longer running is removed
+// entirely (including whatever files it still holds), while an unrelated
+// directory that does not match this package's own naming convention is left
+// untouched.
+func TestSweepOrphanRunSecretFilesRemovesDeadOwnerDirs(t *testing.T) {
+	root := t.TempDir()
+	pid := deadPid(t)
+
+	orphan := filepath.Join(root, fmt.Sprintf("exocomp.%d.deadbeef", pid))
+	if err := os.Mkdir(orphan, 0o700); err != nil {
+		t.Fatalf("mkdir orphan: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Remove(unrelated) })
+	if err := os.WriteFile(filepath.Join(orphan, "exocomp-secret-x"), []byte("leftover"), 0o600); err != nil {
+		t.Fatalf("write leftover: %v", err)
+	}
 
-	swept, err := executor.SweepOrphanRunSecretFiles()
+	unrelated := filepath.Join(root, "not-exocomp-owned")
+	if err := os.Mkdir(unrelated, 0o700); err != nil {
+		t.Fatalf("mkdir unrelated: %v", err)
+	}
+
+	swept, err := executor.SweepOrphanRunSecretFiles(root)
 	if err != nil {
 		t.Fatalf("sweep: %v", err)
 	}
-	if swept < 1 {
-		t.Errorf("swept = %d, want at least 1", swept)
+	if swept != 1 {
+		t.Errorf("swept = %d, want 1", swept)
 	}
 	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
-		t.Errorf("orphan survived the sweep: stat err = %v", err)
+		t.Errorf("dead-owned dir survived the sweep: stat err = %v", err)
 	}
 	if _, err := os.Stat(unrelated); err != nil {
-		t.Errorf("sweep removed a file outside its own prefix: %v", err)
+		t.Errorf("sweep removed a directory outside its own naming convention: %v", err)
+	}
+}
+
+// TestSweepOrphanRunSecretFilesPreservesLiveOwnerDir is the mutation guard:
+// a session directory whose owning pid is THIS still-running test process is
+// never swept, however it is named. Reverting the sweep to blind prefix
+// matching (dropping the pidAlive check) would delete it — proving the sweep
+// is liveness-gated and would never delete a concurrent sibling instance's
+// in-flight secrets, not merely a directory that happens to look old.
+func TestSweepOrphanRunSecretFilesPreservesLiveOwnerDir(t *testing.T) {
+	root := t.TempDir()
+	live := filepath.Join(root, fmt.Sprintf("exocomp.%d.alive0000", os.Getpid()))
+	if err := os.Mkdir(live, 0o700); err != nil {
+		t.Fatalf("mkdir live: %v", err)
+	}
+
+	swept, err := executor.SweepOrphanRunSecretFiles(root)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept != 0 {
+		t.Errorf("swept = %d, want 0 (a live-owned dir was removed)", swept)
+	}
+	if _, err := os.Stat(live); err != nil {
+		t.Errorf("live-owned dir was removed by the sweep: %v", err)
+	}
+}
+
+// TestSweepOrphanRunSecretFilesSweepsMultipleRoots proves one call covers
+// every named root: an operator who switched --secret-staging backends since
+// the daemon last started can still have orphans on the root no longer in
+// use, so cmd/exocomp's startup sweep always names both TmpfsRoot and the
+// disk root, regardless of which one is resolved this run.
+func TestSweepOrphanRunSecretFilesSweepsMultipleRoots(t *testing.T) {
+	rootA, rootB := t.TempDir(), t.TempDir()
+	pid := deadPid(t)
+	dirA := filepath.Join(rootA, fmt.Sprintf("exocomp.%d.aaaaaaaa", pid))
+	dirB := filepath.Join(rootB, fmt.Sprintf("exocomp.%d.bbbbbbbb", pid))
+	for _, d := range []string{dirA, dirB} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+
+	swept, err := executor.SweepOrphanRunSecretFiles(rootA, rootB)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept != 2 {
+		t.Errorf("swept = %d, want 2", swept)
+	}
+}
+
+// TestSweepOrphanRunSecretFilesMissingRootIsNotAnError proves a root that does
+// not exist (a non-Linux dev box's absent /dev/shm, or a disk root nothing has
+// ever staged into) is reported as nothing to sweep, not a failure.
+func TestSweepOrphanRunSecretFilesMissingRootIsNotAnError(t *testing.T) {
+	t.Parallel()
+	missing := filepath.Join(t.TempDir(), "does-not-exist")
+	swept, err := executor.SweepOrphanRunSecretFiles(missing)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept != 0 {
+		t.Errorf("swept = %d, want 0", swept)
 	}
 }
 
@@ -212,8 +343,9 @@ func fileStagerBin(t *testing.T, binName, dir string) (bin, logPath string) {
 
 // TestTofuFileStagedSecretReachesChildAsPath is the end-to-end proof: a run-
 // secret declared file-staged reaches tofu as KUBECONFIG=<path> whose 0600
-// file under /dev/shm holds the sentinel, the sentinel value never appears in
-// argv or an event, and the file is gone once the job ends.
+// file inside this process's session directory under /dev/shm holds the
+// sentinel, the sentinel value never appears in argv or an event, and the
+// file is gone once the job ends.
 func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 	// t.Setenv forbids t.Parallel.
 	t.Setenv("KUBECONFIG", "/leaked/from/parent")
@@ -263,8 +395,8 @@ func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 	if kubePath == "/leaked/from/parent" {
 		t.Fatal("the daemon's own KUBECONFIG leaked into the run")
 	}
-	if !strings.HasPrefix(kubePath, executor.ShmDir+"/") {
-		t.Errorf("staged path %q is not under %s", kubePath, executor.ShmDir)
+	if !strings.HasPrefix(kubePath, executor.TmpfsRoot+"/") {
+		t.Errorf("staged path %q is not under %s", kubePath, executor.TmpfsRoot)
 	}
 
 	// While it ran, the child read a 0600 file whose body was the sentinel.

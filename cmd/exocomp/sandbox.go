@@ -12,6 +12,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 func init() {
@@ -157,16 +158,69 @@ func newSandboxCanaryCmd() *cobra.Command {
 }
 
 // reportRunSecretFileStaging writes the doctor's run-secret-file-staging
-// block: where a captured value that must reach a tool as a file (bootstrap
-// --capture-file) lands, and whether this process can mlock the bytes it
-// writes there. /dev/shm is present unconditionally in every rootless podman
-// container — unlike the `Tmpfs=` quadlet mount it replaces, there is nothing
-// here to fail closed on — so the only variable posture left to report is the
-// best-effort swap defence.
-func reportRunSecretFileStaging(w io.Writer) {
+// block: which backend a captured value that must reach a tool as a file
+// (bootstrap --capture-file) resolves to right now, the tmpfs usability probe
+// behind that resolution, the disk residual posture when disk is in play, and
+// whether this process can mlock the bytes it writes either way.
+func reportRunSecretFileStaging(w io.Writer, dataDir string) {
+	printRunSecretFileStaging(w, dataDir, configuredSecretStagingBackend(dataDir))
+}
+
+// configuredSecretStagingBackend reads the --secret-staging choice a daemon
+// persisted (store.SettingSecretStaging) back from the store, defaulting to
+// auto — the same default serve itself uses — when the data dir has no store
+// yet or the setting was never written. It stats the database file before
+// opening a store, so doctor never creates the data dir as a side effect of
+// reporting on it (TestDoctorDoesNotCreateTheDataDir), the same guard
+// internal/health.ProbeLitestream uses. Never fails doctor: a resolution
+// problem is reported by printRunSecretFileStaging instead.
+func configuredSecretStagingBackend(dataDir string) executor.StagingBackend {
+	if _, err := os.Stat(filepath.Join(dataDir, "exocomp.db")); err != nil {
+		return executor.StagingAuto
+	}
+	st, err := openStore()
+	if err != nil {
+		return executor.StagingAuto
+	}
+	defer func() { _ = st.Close() }()
+	raw, err := st.GetSetting(context.Background(), store.SettingSecretStaging)
+	if err != nil {
+		return executor.StagingAuto
+	}
+	backend, err := executor.ParseStagingBackend(raw)
+	if err != nil {
+		return executor.StagingAuto
+	}
+	return backend
+}
+
+func printRunSecretFileStaging(w io.Writer, dataDir string, configured executor.StagingBackend) {
 	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
 	p("run-secret file staging:\n")
-	p("  %-18s %s\n", "path", executor.ShmDir)
+	p("  %-18s %s\n", "configured", configured)
+
+	diskRoot := filepath.Join(dataDir, privateRunDir)
+	res, err := executor.ResolveStaging(executor.StagingConfig{Backend: configured, DiskRoot: diskRoot})
+	switch {
+	case err != nil:
+		p("  %-18s REFUSED — %v\n", "resolved", err)
+	case res.FellBack:
+		p("  %-18s %s at %s — auto asked for tmpfs and fell back to disk (LOUD, not silent): %s\n",
+			"resolved", res.Backend, res.Root, res.TmpfsReason)
+	default:
+		p("  %-18s %s at %s\n", "resolved", res.Backend, res.Root)
+	}
+	if err == nil {
+		if res.TmpfsUsable {
+			p("  %-18s usable (%s)\n", "tmpfs", executor.TmpfsRoot)
+		} else {
+			p("  %-18s unusable — %s\n", "tmpfs", res.TmpfsReason)
+		}
+		if res.Backend == executor.StagingDisk {
+			p("  %-18s 0600 file, 0700 dir, best-effort mlock, excluded from backup (docs/operations/serve.md)\n",
+				"disk residual")
+		}
+	}
 
 	lock := secrets.ProbeMemoryLock()
 	if lock.Locked {

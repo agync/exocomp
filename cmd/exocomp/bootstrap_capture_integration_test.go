@@ -237,10 +237,10 @@ func TestBootstrapCaptureHandoffFile(t *testing.T) {
 	if kcfgPath == "" {
 		t.Fatalf("apply received no KUBECONFIG path:\n%s\n%s", kcfg, d.dump())
 	}
-	// The path is a file under /dev/shm (RAM), not a value and not under the
-	// daemon's own data dir.
-	if !strings.HasPrefix(kcfgPath, executor.ShmDir+"/") {
-		t.Errorf("KUBECONFIG path %q is not under %s", kcfgPath, executor.ShmDir)
+	// The path is a file under /dev/shm (RAM, the default tmpfs backend), not
+	// a value and not under the daemon's own data dir.
+	if !strings.HasPrefix(kcfgPath, executor.TmpfsRoot+"/") {
+		t.Errorf("KUBECONFIG path %q is not under %s", kcfgPath, executor.TmpfsRoot)
 	}
 	if !strings.HasPrefix(filepath.Base(kcfgPath), "exocomp-secret-") {
 		t.Errorf("staged file basename %q does not carry the exocomp-secret- prefix", filepath.Base(kcfgPath))

@@ -47,23 +47,41 @@ func TestDoctorReportsTheSandboxTier(t *testing.T) {
 	}
 }
 
-// TestDoctorReportsRunSecretFileStaging proves the doctor names where a
-// file-staged run-secret lands (/dev/shm) and the mlock posture for it — the
-// operator-facing surface of the /dev/shm staging path. Unlike the tmpfs
-// mount it replaces, there is no refusal path to report: /dev/shm is present
-// unconditionally, so the block is informational only.
+// TestDoctorReportsRunSecretFileStaging proves the doctor names the resolved
+// backend, where it lands, and the mlock posture — the operator-facing
+// surface of the staging path. In this environment /dev/shm is real,
+// unusable-sized tmpfs, so the auto default resolves to it with no fallback.
 func TestDoctorReportsRunSecretFileStaging(t *testing.T) {
 	var out bytes.Buffer
-	reportRunSecretFileStaging(&out)
+	printRunSecretFileStaging(&out, t.TempDir(), executor.StagingAuto)
 	report := out.String()
 	if !strings.Contains(report, "run-secret file staging:") {
 		t.Errorf("doctor did not report the run-secret file staging block:\n%s", report)
 	}
-	if !strings.Contains(report, executor.ShmDir) {
-		t.Errorf("doctor did not name %s:\n%s", executor.ShmDir, report)
+	if !strings.Contains(report, executor.TmpfsRoot) {
+		t.Errorf("doctor did not name %s:\n%s", executor.TmpfsRoot, report)
 	}
 	if !strings.Contains(report, "memlock") {
 		t.Errorf("doctor did not report the memlock posture:\n%s", report)
+	}
+	if !strings.Contains(report, string(executor.StagingAuto)) {
+		t.Errorf("doctor did not name the configured backend:\n%s", report)
+	}
+}
+
+// TestDoctorReportsDiskBackendResidual proves an explicit disk backend is
+// reported as resolved to the disk root with its residual posture named,
+// rather than silently reading like the tmpfs default.
+func TestDoctorReportsDiskBackendResidual(t *testing.T) {
+	var out bytes.Buffer
+	dataDir := t.TempDir()
+	printRunSecretFileStaging(&out, dataDir, executor.StagingDisk)
+	report := out.String()
+	if !strings.Contains(report, string(executor.StagingDisk)) {
+		t.Errorf("doctor did not name the disk backend:\n%s", report)
+	}
+	if !strings.Contains(report, "disk residual") {
+		t.Errorf("doctor did not report the disk residual posture:\n%s", report)
 	}
 }
 

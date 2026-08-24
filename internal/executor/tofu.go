@@ -149,7 +149,9 @@ type TofuOptions struct {
 	RunSecrets RunSecrets
 	// RunSecretFiles names the RunSecrets whose value must reach the tool as a
 	// FILE rather than an env value: each named env is materialized to a 0600
-	// file under ShmDir (/dev/shm) and its env rewritten to that path, for a
+	// file under the resolved secret-staging backend (TmpfsRoot by default,
+	// falling back to disk only when tmpfs is unusable — StageRunSecretFiles,
+	// ConfigureRunSecretStaging) and its env rewritten to that path, for a
 	// tool (kubectl/helm, an exec-auth provider) that wants a KUBECONFIG file
 	// (Phase 3, docs/design/bootstrap-first.md). The value never touches argv
 	// or an event, and the file is gone once this Run returns.
@@ -243,11 +245,13 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 	}
 
 	// A run-secret that must reach the tool as a KUBECONFIG file is staged as a
-	// 0600 file under ShmDir (/dev/shm — RAM, never durable disk) and its env
-	// rewritten to that path. Unset when a sandboxed caller (sandboxedTofu) has
-	// already staged it before this Run started, to grant the sandbox profile
-	// the path ahead of time; this is the plain-tier path, exercised directly
-	// or as the sandboxed driver's unsandboxed inner call.
+	// 0600 file under the resolved secret-staging backend (tmpfs by default;
+	// disk only when tmpfs is unusable and the backend is auto or disk) and
+	// its env rewritten to that path. Unset when a sandboxed caller
+	// (sandboxedTofu) has already staged it before this Run started, to grant
+	// the sandbox profile the path ahead of time; this is the plain-tier
+	// path, exercised directly or as the sandboxed driver's unsandboxed inner
+	// call.
 	rs := t.opts.RunSecrets
 	var staged []StagedRunSecretFile
 	if len(t.opts.RunSecretFiles) > 0 {
@@ -255,6 +259,7 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 		if err != nil {
 			return Result{}, err
 		}
+		noteDiskStagingResidual(sink, staged)
 	}
 	defer func() {
 		for i := range staged {
