@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -152,6 +153,14 @@ func parseMemorySize(s string) (int64, error) {
 	}
 	if n <= 0 {
 		return 0, errors.New("must be positive")
+	}
+	// n * mult can overflow int64 for a large enough digit string (mult is up
+	// to 1<<40 for "T"); an unchecked wraparound would silently produce a
+	// small or negative byte count, which memory.max would then write as a
+	// tiny cap that OOM-kills the operator's own job as soon as it starts —
+	// the opposite of what a wrap "under-capping" should ever do silently.
+	if mult != 1 && n > math.MaxInt64/mult {
+		return 0, fmt.Errorf("%s overflows a 64-bit byte count", s)
 	}
 	return n * mult, nil
 }

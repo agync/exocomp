@@ -31,6 +31,10 @@ func TestParseCaps(t *testing.T) {
 		{name: "zero mem", mem: "0", wantErr: true},
 		{name: "bad cpu", cpu: "abc%", wantErr: true},
 		{name: "zero cpu", cpu: "0%", wantErr: true},
+		// A digit string large enough that n*mult overflows int64 must error,
+		// not wrap into a small or negative byte count that memory.max would
+		// then write as a wrong, tiny cap (round-2 MINOR finding).
+		{name: "overflow mem", mem: "9223372036854775807T", wantErr: true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
