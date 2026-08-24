@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -310,6 +311,50 @@ func TestFollowJobHonoursContextCancel(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("want context.Canceled, got %v", err)
+	}
+}
+
+// A peer that accepts the TCP connection but never speaks TLS models a
+// blackholed / dead-tailnet path from the connect phase's point of view: the
+// handshake never completes. The stream client has no overall Timeout (a
+// legitimate follow can run for as long as the job does), so without a bound
+// on the connect phase itself this hangs forever instead of failing fast.
+func TestOpenStreamConnectIsBounded(t *testing.T) {
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			// Accept and hold the connection open without ever completing
+			// the TLS handshake — the same shape as a peer that swallows
+			// packets after the TCP handshake.
+			t.Cleanup(func() { _ = conn.Close() })
+		}
+	}()
+
+	c, err := New(Config{Endpoint: ln.Addr().String(), Fingerprint: "AA", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.openStream(context.Background(), 1, 0)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("want a connect error for a peer that never completes TLS, got nil")
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatal("openStream did not return within 15s: connect is not time-bounded")
 	}
 }
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,6 +25,13 @@ const maxBody = 8 << 20
 // defaultTimeout bounds a single request. A remote read is a small JSON fetch;
 // a hung tailnet path should fail a command, not wedge it.
 const defaultTimeout = 30 * time.Second
+
+// connectTimeout bounds the TCP dial and TLS handshake only. It applies to
+// BOTH hc and stream: stream has no overall Client.Timeout (a follow's body
+// read legitimately runs as long as the job does), so without this the
+// connect phase to a blackholed address would hang until the OS TCP retry
+// gives up, which can be minutes.
+const connectTimeout = 10 * time.Second
 
 // Config is what `exocomp login` stored for one remote and what the CLI resolves
 // per invocation: where the daemon is, the pinned cert fingerprint, and the
@@ -69,6 +77,8 @@ func New(cfg Config) (*Client, error) {
 	}
 	c := &Client{base: base, pin: cfg.Fingerprint, tok: cfg.Token}
 	transport := &http.Transport{
+		DialContext:         (&net.Dialer{Timeout: connectTimeout}).DialContext,
+		TLSHandshakeTimeout: connectTimeout,
 		// Standard chain verification is skipped on purpose: trust is the
 		// pinned leaf fingerprint (TOFU, ADR 0009 §4), not a CA. The pin is
 		// enforced in VerifyConnection below, which STILL runs when
