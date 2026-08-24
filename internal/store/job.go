@@ -573,6 +573,32 @@ const (
 
 // reconcileOwned retires a queued or running job to interrupted when its owning
 // process is gone, the crash-recovery the boot and idle sweeps have always run.
+//
+// A queued row's owner_pid is whoever last wrote the row (CreateJob,
+// CreateGatedJob, or Release, none of which touch it) — for the many ephemeral
+// CLI paths (queue.New(st, enqueueOnly{}, ...) in run.go, provision.go,
+// handoff.go, bootstrap.go, adhoc.go, playbook.go, workspace.go, backup.go,
+// vendor.go) that is the short-lived CLI, not the daemon that will eventually
+// ClaimJob it — and ClaimJob itself never checks owner_pid, so a queued row is
+// claimable by any worker regardless of who enqueued it. This looks like it
+// could retire a genuinely still-runnable row purely because its enqueuer
+// exited first. Verified: it is reachable (a CLI killed after Release, e.g.
+// Ctrl-C while its job sits queued behind a held concurrency key — the exact
+// case shutdownServe's own re-sweep handles), but it is not a hazard:
+//
+//   - a workflow step (queue.Sequencer) is self-healing: ResumeAll (driven
+//     every second by the daemon, see cmd/exocomp/serve.go's driveWorkflows)
+//     sees the ledger step still unfinished, and rearmStep re-enqueues it
+//     under a FRESH job whose CreateGatedJob stamps the calling (long-lived
+//     daemon) pid, which ownerAlive treats as always alive. No work is lost;
+//     see TestSequencerRearmsStepInterruptedWhileQueued.
+//   - a standalone job (no ledger) has no such backstop, but this is the
+//     deliberate contract, not an oversight: interrupted is terminal and never
+//     auto-retried (see ListInterruptedJobs), so the operator whose own CLI
+//     died before the daemon could claim the row gets an explicit, visible
+//     "this needs re-driving" rather than the daemon silently running a
+//     request nobody is left tracking. TestReconcilePreservesInterruptedSweep
+//     pins exactly this for a queued row.
 func (s *Store) reconcileOwned(ctx context.Context, job Job) (bool, error) {
 	if ownerAlive(job.OwnerPID, jobClock(job)) {
 		return false, nil

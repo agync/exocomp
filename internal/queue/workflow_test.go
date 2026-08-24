@@ -2,10 +2,12 @@ package queue
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -266,6 +268,129 @@ func TestSequencerResumesFromLedgerAfterRestart(t *testing.T) {
 	got := readMarkers(t, markers)
 	if len(got) != 2 || got[0] != "one" || got[1] != "two" {
 		t.Fatalf("markers = %v, want [one two] — step 1 re-run would repeat 'one'", got)
+	}
+}
+
+// TestSequencerRearmsStepInterruptedWhileQueued is the reachability-and-safety
+// proof for the info-level finding that ReconcileNonTerminal's owner-liveness
+// check might retire a legitimately-queued job whose enqueuing CLI exited: it
+// is reachable (a step Release'd into queued keeps the enqueuer's pid as
+// owner_pid until something claims it, so a reconcile that runs first retires
+// it), but it is not a hazard for a composed chain, because the ledger still
+// shows the step unfinished and ResumeAll's rearmStep re-enqueues it under a
+// fresh job before anything is lost.
+//
+// Mutation check: reverting workflow.go's nonDecision `case
+// store.StateInterrupted: return true` to false makes ResumeAll settle the
+// interrupted job as a decided (failed) step instead of re-arming it — this
+// test then fails at "workflow status = failed, want succeeded".
+func TestSequencerRearmsStepInterruptedWhileQueued(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "exocomp.db")
+	marker := filepath.Join(dir, "ran")
+
+	q, st := newSeqQueue(t, dbPath)
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	steps := []Step{step("shell", "/usr/bin/touch", marker)}
+	if err := seq.Start(ctx, "wf-heal", steps); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	job, err := st.JobByIdempotencyKey(ctx, stepKey("wf-heal", 1))
+	if err != nil {
+		t.Fatalf("find step job: %v", err)
+	}
+	// Release it into queued and mark the ledger running, exactly as runStep
+	// would, but do not wait on it: no daemon is running, so nothing claims
+	// this row yet.
+	if err := q.Release(ctx, job.ID); err != nil {
+		t.Fatalf("release: %v", err)
+	}
+	if err := st.StartStep(ctx, "wf-heal", 1, job.ID); err != nil {
+		t.Fatalf("start step: %v", err)
+	}
+	if got, err := st.GetJob(ctx, job.ID); err != nil || got.State != store.StateQueued {
+		t.Fatalf("job state = %v, %v, want queued", got.State, err)
+	}
+
+	// Simulate the enqueuing CLI dying before any daemon claims the row: stamp
+	// owner_pid to a pid that ran and already exited, as a reaped killed CLI's
+	// pid would read.
+	orphanJobOwner(t, dbPath, job.ID)
+
+	// The reconcile sweep the daemon runs on a schedule (and at boot/shutdown)
+	// finds the row's owner gone and retires it. No daemon is running yet, so
+	// this is not a race the reconcile happens to win — it is the worst case,
+	// where it always would.
+	rec, err := st.ReconcileNonTerminal(ctx)
+	if err != nil {
+		t.Fatalf("reconcile: %v", err)
+	}
+	if rec.Interrupted != 1 {
+		t.Fatalf("reconcile = %+v, want 1 interrupted", rec)
+	}
+	if got, err := st.GetJob(ctx, job.ID); err != nil || got.State != store.StateInterrupted {
+		t.Fatalf("job state = %v, %v, want interrupted", got.State, err)
+	}
+
+	// Now the daemon comes up and drives the ledger, exactly as
+	// cmd/exocomp/serve.go's driveWorkflows loop does every second.
+	_, cancel, done := runDaemon(t, q)
+	defer stopDaemon(t, cancel, done)
+
+	resumed, err := seq.ResumeAll(ctx)
+	if err != nil {
+		t.Fatalf("resume: %v", err)
+	}
+	if resumed != 1 {
+		t.Fatalf("resumed %d workflows, want 1", resumed)
+	}
+
+	waitForStep(t, st, "wf-heal", 1, store.StepSucceeded)
+
+	ledger := mustSteps(t, st, "wf-heal")
+	if got := store.WorkflowStatus(ledger); got != store.WorkflowSucceeded {
+		t.Fatalf("workflow status = %s, want succeeded (ledger: %+v)", got, ledger)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("step never ran: %v", err)
+	}
+
+	// The original interrupted row is left untouched as history; the step that
+	// actually ran is a different job the rearm created.
+	original, err := st.GetJob(ctx, job.ID)
+	if err != nil || original.State != store.StateInterrupted {
+		t.Fatalf("original job state = %v, %v, want left interrupted", original.State, err)
+	}
+	if ledger[0].JobID == nil || *ledger[0].JobID == job.ID {
+		t.Fatalf("ledger step job = %v, want a fresh id distinct from interrupted job %d",
+			ledger[0].JobID, job.ID)
+	}
+}
+
+// orphanJobOwner rewrites a job's owner_pid to one that ran and already
+// exited, simulating a CLI killed after it enqueued or released the row. The
+// store package's own SetOwnerPIDForTest is test-only and not linked into
+// other packages' test binaries, so this opens a second connection to the
+// same file and performs the same write directly.
+func orphanJobOwner(t *testing.T, dbPath string, jobID int64) {
+	t.Helper()
+	cmd := exec.Command("/bin/true")
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("run /bin/true: %v", err)
+	}
+	dead := cmd.Process.Pid
+
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`UPDATE job SET owner_pid = ? WHERE id = ?`, dead, jobID); err != nil {
+		t.Fatalf("orphan job owner: %v", err)
 	}
 }
 
