@@ -120,7 +120,7 @@ a:visited { color: var(--accent-text); }
 }
 .railtoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
 
-.content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.content-col { flex: 1; min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
 .mobilebar { display: none; }
 .scrim { display: none; }
 
@@ -178,7 +178,7 @@ a:visited { color: var(--accent-text); }
 .themetoggle .themeglyph[hidden] { display: none; }
 .themetoggle svg { display: block; }
 
-main { padding: var(--pad-page); max-width: 1100px; margin: 0 auto; }
+main { flex: 1; padding: var(--pad-page); max-width: none; }
 
 /* ---- Banner (pause / silence / insecure) ---- */
 .banner {
