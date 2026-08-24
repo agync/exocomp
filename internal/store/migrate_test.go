@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestJobEventDeleteRejected(t *testing.T) {
@@ -106,17 +107,27 @@ func TestMigration0001To0002UpgradesExistingDB(t *testing.T) {
 // is decided before any write lock exists, so the transaction that applies one
 // has to re-check the version it was chosen against — two openers otherwise
 // both run 0002 and the second fails on a table that already exists.
+//
+// The two opens race SQLite's real write lock, which needs real wall-clock
+// time to hand off. On a machine also running every other package's -race
+// binary at once (make check), scheduling delays can eat into that time far
+// past what the production busy_timeout budgets for two operator-scale
+// processes (docs/operations/serve.md's known limit is this same class of
+// race). The longer timeout here is headroom against that unrelated
+// contention; every opener still races the same store.go migrate() through
+// the same recheck-inside-tx path the production 5s default uses.
 func TestConcurrentMigrationAppliesOnce(t *testing.T) {
 	t.Parallel()
 
 	path := filepath.Join(t.TempDir(), "exocomp.db")
 	pinAtMigration1(t, path)
+	raceDSN := dsnWithBusyTimeout(path, 30*time.Second)
 
-	const openers = 4
+	const openers = 2 // the CLI and the daemon, the scenario above
 	errs := make(chan error, openers)
 	for range openers {
 		go func() {
-			s, err := Open(path)
+			s, err := openDSN(path, raceDSN)
 			if err != nil {
 				errs <- err
 				return

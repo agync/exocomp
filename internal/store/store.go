@@ -41,10 +41,23 @@ type Store struct {
 	db *sql.DB
 }
 
+// defaultBusyTimeout is how long a write waits for SQLite's lock before
+// returning SQLITE_BUSY: ample for the two operator-scale processes that
+// ever race a first open in practice (the CLI and the daemon), per
+// docs/operations/serve.md.
+const defaultBusyTimeout = 5 * time.Second
+
 // Open opens (creating if needed) the SQLite database at path and migrates it
 // to the current schema version.
 func Open(path string) (*Store, error) {
-	db, err := sql.Open("sqlite", dsn(path))
+	return openDSN(path, dsn(path))
+}
+
+// openDSN is Open with the connection string factored out, so a test can
+// open the same file with a longer busy_timeout than the production default
+// without duplicating the open sequence.
+func openDSN(path, dsnStr string) (*Store, error) {
+	db, err := sql.Open("sqlite", dsnStr)
 	if err != nil {
 		return nil, fmt.Errorf("store: open %s: %w", path, err)
 	}
@@ -73,8 +86,12 @@ func (s *Store) Close() error {
 }
 
 func dsn(path string) string {
+	return dsnWithBusyTimeout(path, defaultBusyTimeout)
+}
+
+func dsnWithBusyTimeout(path string, timeout time.Duration) string {
 	pragmas := []string{
-		"_pragma=busy_timeout(5000)",
+		fmt.Sprintf("_pragma=busy_timeout(%d)", timeout.Milliseconds()),
 		"_pragma=journal_mode(WAL)",
 		"_pragma=synchronous(NORMAL)",
 		"_pragma=foreign_keys(ON)",
