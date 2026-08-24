@@ -51,8 +51,8 @@ templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
 		<h1>Job #{ itoa64(vm.Job.ID) }</h1>
 		<p class="meta">
-			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
-			· @chip(vm.Job.StateClass(), string(vm.Job.State))
+			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span> ·
+			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
 		<div class="card" style="margin-top:14px">
 			<div class="kicker">Live tail</div>
@@ -70,14 +70,11 @@ templ jobDetail(vm jobDetailVM) {
 
 templ logLine(e eventLine) {
 	if e.Level == "error" {
-		<span class="err">{ e.Ts } { e.Msg }
-</span>
+		<span class="logln err"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
 	} else if e.Level == "system" {
-		<span class="sys">{ e.Ts } { e.Msg }
-</span>
+		<span class="logln sys"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
 	} else {
-		<span>{ e.Ts } { e.Msg }
-</span>
+		<span class="logln"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
 	}
 }
 
@@ -94,9 +91,12 @@ templ jobStream(id int64) {
 		es.addEventListener("line", function (ev) {
 			var d = JSON.parse(ev.data);
 			var span = document.createElement("span");
-			if (d.level === "error") span.className = "err";
-			else if (d.level === "system") span.className = "sys";
-			span.textContent = d.ts + " " + d.msg + "\n";
+			span.className = "logln" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
+			var ts = document.createElement("span");
+			ts.className = "ts";
+			ts.textContent = d.ts;
+			span.appendChild(ts);
+			span.appendChild(document.createTextNode(" " + d.msg));
 			log.appendChild(span);
 			log.scrollTop = log.scrollHeight;
 		});

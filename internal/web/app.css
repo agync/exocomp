@@ -77,12 +77,12 @@ a:visited { color: var(--accent-text); }
   display: flex; align-items: center; height: var(--header-h);
   padding: 0 16px; border-bottom: 1px solid var(--hairline-faint);
 }
-.brandlink {
+.brandlink, .brandlink:visited {
   display: inline-flex; align-items: center; gap: 10px; min-width: 0;
   color: var(--ink-100); text-decoration: none;
   font: var(--type-bar); letter-spacing: 0.3px;
 }
-.brandlink:hover, .brandlink:focus-visible { text-decoration: none; }
+.brandlink:hover, .brandlink:focus-visible { text-decoration: none; color: var(--ink-100); }
 .brandmark { color: var(--ink-100); flex: none; }
 .brandmark .cell { color: var(--accent-fill); }
 .brandlink .wordmark { white-space: nowrap; }
@@ -95,7 +95,7 @@ a:visited { color: var(--accent-text); }
 .navitem {
   display: flex; align-items: center; gap: 12px;
   height: 40px; padding: 0 12px; border-radius: var(--radius-chip);
-  color: var(--ink-400); font: var(--type-button); text-decoration: none;
+  color: var(--ink-200); font: var(--type-button); text-decoration: none;
   white-space: nowrap;
 }
 .navitem .navglyph { flex: none; }
@@ -110,13 +110,15 @@ a:visited { color: var(--accent-text); }
   flex-basis: 100%; color: var(--ink-500);
   font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
 }
+/* The two chrome controls (theme, collapse) are quiet icon buttons: same size,
+ * transparent until hovered, so they sit under the nav rather than competing. */
 .railtoggle {
-  margin-left: auto; width: 30px; height: 30px; flex: none;
+  margin-left: auto; width: 32px; height: 32px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--surface-control); color: var(--ink-400);
-  border: 1px solid var(--hairline); border-radius: 8px; cursor: pointer;
+  background: transparent; color: var(--ink-400);
+  border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
 }
-.railtoggle:hover { color: var(--ink-100); }
+.railtoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
 
 .content-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .mobilebar { display: none; }
@@ -132,8 +134,6 @@ a:visited { color: var(--accent-text); }
   :root[data-nav="rail"] .navitem span { display: none; }
   :root[data-nav="rail"] .side-foot { flex-direction: column; padding: 12px 0; }
   :root[data-nav="rail"] .side-foot .who { display: none; }
-  :root[data-nav="rail"] .themetoggle { width: 44px; min-width: 44px; padding: 0; justify-content: center; }
-  :root[data-nav="rail"] #themelabel { display: none; }
   :root[data-nav="rail"] .railtoggle { margin: 0; }
   :root[data-nav="rail"] .railchev { transform: rotate(180deg); }
 }
@@ -167,13 +167,13 @@ a:visited { color: var(--accent-text); }
 }
 
 .themetoggle {
-  height: 44px; min-width: 44px; padding: 0 14px;
-  background: var(--surface-control); color: var(--ink-200);
-  border: 1px solid var(--hairline); border-radius: 999px;
-  font: var(--type-button); cursor: pointer;
-  display: inline-flex; align-items: center; gap: 7px;
+  width: 32px; height: 32px; padding: 0;
+  background: transparent; color: var(--ink-400);
+  border: 1px solid var(--hairline-faint); border-radius: 9px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
 }
-.themetoggle:hover { color: var(--ink-100); }
+.themetoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
 .themetoggle .themeglyph { display: inline-flex; align-items: center; }
 .themetoggle .themeglyph[hidden] { display: none; }
 .themetoggle svg { display: block; }
@@ -278,7 +278,13 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
   max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
 }
+/* One event per line, its timestamp dimmed so the message carries the eye and a
+ * repeated stamp does not dominate the wall of output. */
+.log .logln { display: block; padding: 1px 0; }
+.log .logln + .logln { border-top: 1px solid transparent; }
+.log .ts { color: var(--ink-600); user-select: none; margin-right: 6px; }
 .log .err { color: var(--signal-fail); }
+.log .err .ts { color: var(--signal-fail); opacity: 0.55; }
 .log .sys { color: var(--ink-500); }
 
 .meta { color: var(--ink-500); font: var(--type-body); }

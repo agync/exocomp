@@ -42,11 +42,10 @@ func TestDashboardA11y(t *testing.T) {
 			t.Errorf("dashboard missing a11y marker %q", want)
 		}
 	}
-	// The three-state theme toggle renders in the server-default "system" state,
-	// naming the current state and what a click does in the aria-label, with a
-	// dynamic visible label rather than a static "theme" string.
+	// The three-state theme toggle renders in the server-default "system" state
+	// as an icon-only control, naming the current state and what a click does in
+	// the aria-label (no visible word label).
 	for _, want := range []string{
-		`id="themelabel"`,
 		`aria-label="Theme: system. Switch to light."`,
 	} {
 		if !strings.Contains(page, want) {
@@ -84,8 +83,9 @@ func TestFocusRingAndThemes(t *testing.T) {
 	if !strings.Contains(app, "text-decoration: underline;") {
 		t.Error("app.css: hover/focus underline affordance is missing")
 	}
-	// The toggle is a 44px pill (general-chrome tap size, not a third size).
-	for _, want := range []string{"height: 44px", "border-radius: 999px"} {
+	// The toggle is a compact icon button (32px, clears the WCAG AA 24px target
+	// floor) shared with the collapse control, not a labelled pill.
+	for _, want := range []string{"width: 32px; height: 32px", "border-radius: 9px"} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css: theme toggle missing %q", want)
 		}
@@ -279,9 +279,6 @@ func TestThemeToggleThreeState(t *testing.T) {
 	}
 	if !strings.Contains(page, `aria-label="Theme: system. Switch to light."`) {
 		t.Error("SSR aria-label does not name the current state and the next")
-	}
-	if !strings.Contains(page, `<span id="themelabel">System</span>`) {
-		t.Error("SSR visible label does not name the current state")
 	}
 
 	// (c) The inline script cycles the three states and applies stored state:

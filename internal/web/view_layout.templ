@@ -182,9 +182,6 @@ templ themeInit() {
 		for (var i = 0; i < glyphs.length; i++) {
 			glyphs[i].hidden = glyphs[i].getAttribute("data-glyph") !== state;
 		}
-		var names = { system: "System", light: "Light", dark: "Dark" };
-		var lbl = document.getElementById("themelabel");
-		if (lbl) lbl.textContent = names[state];
 		btn.setAttribute("aria-label", "Theme: " + state + ". Switch to " + exoNextTheme(state) + ".");
 	}
 	</script>
@@ -207,7 +204,6 @@ templ themeToggle() {
 		<span class="themeglyph" data-glyph="dark" aria-hidden="true" hidden>
 			<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M13.4 9.6A5.6 5.6 0 1 1 6.4 2.6a4.4 4.4 0 0 0 7 7z"></path></svg>
 		</span>
-		<span id="themelabel">System</span>
 	</button>
 }
 
