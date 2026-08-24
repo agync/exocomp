@@ -286,7 +286,11 @@ func (r *Registry) diskGauge() (gauge, bool) {
 		return gauge{}, false
 	}
 	used := float64(total-st.Bavail) / float64(total)
-	return gauge{name: "exocomp_disk_used_ratio", help: helpDisk, labels: map[string]string{"path": r.dataDir}, value: used}, true
+	// No path label: one operator, one container (AGENTS.md invariant 1) means
+	// one data dir, so a label would carry the absolute host path for no
+	// cardinality benefit — an identifying value on a channel anyone scraping
+	// the endpoint can read.
+	return gauge{name: "exocomp_disk_used_ratio", help: helpDisk, value: used}, true
 }
 
 func unix(t time.Time) float64 { return float64(t.UTC().UnixMilli()) / 1000 }

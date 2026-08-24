@@ -155,3 +155,27 @@ func TestHandlerServesText(t *testing.T) {
 		t.Fatalf("body missing exocomp_up\n%s", rec.Body.String())
 	}
 }
+
+// TestDiskGaugeCarriesNoPathLabel: the gauge reports free space for the one
+// data dir a homelab operator ever has, but the absolute host path it derives
+// that from must never ride along as a label value on a channel anyone who
+// can scrape /metrics can read.
+func TestDiskGaugeCarriesNoPathLabel(t *testing.T) {
+	st := testStore(t)
+	dir := t.TempDir()
+
+	r := New(st, dir)
+	out, err := r.Render(context.Background())
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	if !strings.Contains(out, "exocomp_disk_used_ratio") {
+		t.Fatalf("disk gauge did not render at all\n%s", out)
+	}
+	if strings.Contains(out, dir) {
+		t.Errorf("disk gauge leaked the data-dir path %q\n%s", dir, out)
+	}
+	if strings.Contains(out, `path="`) {
+		t.Errorf("disk gauge still carries a path label\n%s", out)
+	}
+}
