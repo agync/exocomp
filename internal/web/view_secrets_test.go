@@ -170,7 +170,7 @@ func TestSecretsNavElsewhere(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	_, page := getBody(t, client, ts.URL+"/")
-	if !strings.Contains(page, `href="/secrets"`) || !strings.Contains(page, ">Secrets</a>") {
+	if !strings.Contains(page, `href="/secrets"`) || !strings.Contains(page, ">Secrets</span>") {
 		t.Error("dashboard nav missing the Secrets link")
 	}
 }

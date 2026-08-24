@@ -16,33 +16,55 @@ templ layout(p page) {
 			<link rel="stylesheet" href="/assets/tokens.css"/>
 			<link rel="stylesheet" href="/assets/app.css"/>
 			@themeInit()
+			@navInit()
 		</head>
 		<body>
 			<div class="app">
-				<header class="appbar">
-					<span class="brand">exocomp</span>
-					<nav aria-label="Primary">
-						@navlink(p.Nav, "dashboard", "/", "Dashboard")
-						@navlink(p.Nav, "jobs", "/jobs", "Jobs")
-						@navlink(p.Nav, "approvals", "/approvals", "Approvals")
-						@navlink(p.Nav, "events", "/events", "Events")
-						@navlink(p.Nav, "sources", "/sources", "Sources")
-						@navlink(p.Nav, "schedules", "/schedules", "Schedules")
-						@navlink(p.Nav, "workflows", "/workflows", "Workflows")
-						@navlink(p.Nav, "policies", "/policies", "Policies")
-						@navlink(p.Nav, "secrets", "/secrets", "Secrets")
-						@navlink(p.Nav, "runners", "/runners", "Runners")
+				<div class="scrim" onclick="exoCloseNav()" aria-hidden="true"></div>
+				<aside class="sidebar" aria-label="Primary">
+					<div class="side-top">
+						<a class="brandlink" href="/">
+							@brandMark()
+							<span class="wordmark">exocomp</span>
+						</a>
+					</div>
+					<nav class="side-nav">
+						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard)
+						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs)
+						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals)
+						@navlink(p.Nav, "events", "/events", "Events", iconEvents)
+						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources)
+						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules)
+						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows)
+						@navlink(p.Nav, "policies", "/policies", "Policies", iconPolicies)
+						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets)
+						@navlink(p.Nav, "runners", "/runners", "Runners", iconRunners)
 					</nav>
-					<span class="spacer"></span>
-					if p.Who != "" {
-						<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
-					}
-					@themeToggle()
-				</header>
-				<main>
-					{ children... }
-					@footer(p.Signal)
-				</main>
+					<div class="side-foot">
+						if p.Who != "" {
+							<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
+						}
+						@themeToggle()
+						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail()" aria-label="Collapse sidebar">
+							<svg class="railchev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+						</button>
+					</div>
+				</aside>
+				<div class="content-col">
+					<header class="mobilebar">
+						<button type="button" class="hamburger" onclick="exoToggleDrawer()" aria-label="Open navigation">
+							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+						</button>
+						<a class="brandlink" href="/">
+							@brandMark()
+							<span class="wordmark">exocomp</span>
+						</a>
+					</header>
+					<main>
+						{ children... }
+						@footer(p.Signal)
+					</main>
+				</div>
 			</div>
 			@layoutReady()
 			<script src="/assets/htmx.min.js"></script>
@@ -50,13 +72,53 @@ templ layout(p page) {
 	</html>
 }
 
-templ navlink(active, key, href, label string) {
+// brandMark is the exocomp logo: a hexagonal power cell (the Exocomp's energy
+// core) with one orbiting node. The hex and node take currentColor (ink); the
+// cell is the accent fill.
+templ brandMark() {
+	<svg class="brandmark" width="22" height="22" viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d="M24 7l13 7.5v15L24 37l-13-7.5v-15z"></path>
+		<circle class="cell" cx="24" cy="22" r="4.6" fill="currentColor" stroke="none"></circle>
+		<circle cx="35.5" cy="12" r="3"></circle>
+	</svg>
+}
+
+// navlink renders one sidebar entry: a glyph plus its label. The active entry
+// keeps class before href so the rendered `href="/x" aria-current="page"` stays
+// contiguous (asserted by the render tests).
+templ navlink(active, key, href, label, icon string) {
 	if active == key {
-		<a href={ templ.SafeURL(href) } aria-current="page">{ label }</a>
+		<a class="navitem active" href={ templ.SafeURL(href) } aria-current="page">
+			@navicon(icon)
+			<span>{ label }</span>
+		</a>
 	} else {
-		<a href={ templ.SafeURL(href) }>{ label }</a>
+		<a class="navitem" href={ templ.SafeURL(href) } aria-label={ label }>
+			@navicon(icon)
+			<span>{ label }</span>
+		</a>
 	}
 }
+
+templ navicon(d string) {
+	<svg class="navglyph" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d={ d }></path>
+	</svg>
+}
+
+// Section glyphs, one path each so they collapse to an icon rail cleanly.
+const (
+	iconDashboard = "M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z"
+	iconJobs      = "M4 6h16M4 12h16M4 18h10"
+	iconApprovals = "M20 6L9 17l-5-5"
+	iconEvents    = "M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10 21a2 2 0 0 0 4 0"
+	iconSources   = "M6 3v12M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM18 9c0 6-6 3-6 9"
+	iconSchedules = "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8v4l3 2"
+	iconWorkflows = "M5 4h5v5H5zM14 15h5v5h-5zM10 6.5h4a3 3 0 0 1 3 3V15"
+	iconPolicies  = "M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6z"
+	iconSecrets   = "M12 3a4 4 0 0 0-4 4v3H6v11h12V10h-2V7a4 4 0 0 0-4-4zM10 10V7a2 2 0 1 1 4 0v3"
+	iconRunners   = "M6 6h12v12H6zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M18 9h3M3 15h3M18 15h3"
+)
 
 templ footer(s SignalLine) {
 	<div class="footer-signal" role="contentinfo">
@@ -152,11 +214,46 @@ templ themeToggle() {
 // layoutReady runs once the chrome is in the DOM: it syncs the theme-toggle
 // label to the active theme and scrolls the active nav item into view so the
 // current page is visible when the nav has scrolled off-screen on a phone.
+// navInit applies the persisted sidebar state before first paint (so a rail
+// user never sees the full width flash) and defines the rail/drawer controls.
+// Rail collapse is a desktop concern; the mobile drawer is a separate transient
+// state that never persists.
+templ navInit() {
+	<script>
+	(function () {
+		try { if (localStorage.getItem("exocomp-nav") === "rail") document.documentElement.setAttribute("data-nav", "rail"); } catch (e) {}
+	})();
+	function exoToggleRail() {
+		var r = document.documentElement, rail = r.getAttribute("data-nav") === "rail";
+		if (rail) { r.removeAttribute("data-nav"); try { localStorage.removeItem("exocomp-nav"); } catch (e) {} }
+		else { r.setAttribute("data-nav", "rail"); try { localStorage.setItem("exocomp-nav", "rail"); } catch (e) {} }
+		exoSyncRail();
+	}
+	function exoSyncRail() {
+		var b = document.getElementById("railbtn");
+		if (!b) return;
+		var rail = document.documentElement.getAttribute("data-nav") === "rail";
+		b.setAttribute("aria-label", rail ? "Expand sidebar" : "Collapse sidebar");
+	}
+	// The mobile drawer opens over the content; the scrim and any nav link close it.
+	function exoToggleDrawer() {
+		var r = document.documentElement;
+		if (r.getAttribute("data-drawer") === "open") r.removeAttribute("data-drawer");
+		else r.setAttribute("data-drawer", "open");
+	}
+	function exoCloseNav() { document.documentElement.removeAttribute("data-drawer"); }
+	</script>
+}
+
 templ layoutReady() {
 	<script>
 	exoSyncThemeControl();
-	document.querySelector('nav [aria-current="page"]')
-		?.scrollIntoView({ inline: "center", block: "nearest" });
+	exoSyncRail();
+	document.querySelectorAll('.side-nav .navitem').forEach(function (a) {
+		a.addEventListener('click', exoCloseNav);
+	});
+	document.querySelector('.side-nav [aria-current="page"]')
+		?.scrollIntoView({ block: "center" });
 	</script>
 }
 
@@ -178,7 +275,10 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 		<body>
 			<div class="login">
 				<div class="card">
-					<div class="kicker">exocomp</div>
+					<div class="loginbrand">
+						@brandMark()
+						<span class="wordmark">exocomp</span>
+					</div>
 					<h2>Sign in</h2>
 					<p class="meta">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>
 					if errMsg != "" {
