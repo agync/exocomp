@@ -158,8 +158,14 @@ func ResolveStaging(cfg StagingConfig) (*Staging, error) {
 
 // ensureSessionDir returns this instance's session directory, creating it
 // 0700 on first use. Concurrent jobs staging their first file at the same
-// moment race harmlessly: MkdirAll is idempotent, and only one of them
-// actually wins the atomic.Pointer swap that publishes the winning path.
+// moment race harmlessly: os.Mkdir tolerates EEXIST (treated as success, not
+// an error) so whichever goroutine loses the mkdir race simply reuses the
+// directory the winner just created, and only one of them actually wins the
+// atomic.Pointer swap that publishes the winning path. Treating EEXIST as
+// success is intentional here, not a masked bug: the directory name's random
+// suffix (randomSessionDirName, crypto/rand) makes a collision with anything
+// other than this same process's own concurrent call practically impossible,
+// so EEXIST in practice only ever means "this instance already created it."
 func (s *Staging) ensureSessionDir() (string, error) {
 	if p := s.sessionDir.Load(); p != nil {
 		return *p, nil
