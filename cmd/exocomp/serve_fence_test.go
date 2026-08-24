@@ -153,13 +153,15 @@ func TestServeLeaseTakenAfterRelease(t *testing.T) {
 	}
 
 	// Ungraceful loss: B holds a short-TTL lease and stops renewing (goroutine
-	// gone). Once past the TTL it is stale, and a standby takes it without force.
+	// gone). Once past the TTL — plus the skew guard's margin — it is stale, and
+	// a standby takes it without force.
+	const shortTTL = 150 * time.Millisecond
 	st2 := openLeaseStore(t)
-	if _, err := acquireLease(ctx, st2, "host-b/pid-2", 150*time.Millisecond, 50*time.Millisecond, false, io.Discard); err != nil {
+	if _, err := acquireLease(ctx, st2, "host-b/pid-2", shortTTL, 50*time.Millisecond, false, io.Discard); err != nil {
 		t.Fatalf("short-lease acquire: %v", err)
 	}
-	time.Sleep(250 * time.Millisecond)
+	time.Sleep(shortTTL + store.LeaseSkewMargin + 100*time.Millisecond)
 	if _, err := acquireLease(ctx, st2, "host-c/pid-3", time.Minute, 10*time.Second, false, io.Discard); err != nil {
-		t.Fatalf("standby acquire after TTL lapse: %v", err)
+		t.Fatalf("standby acquire after TTL+skew-margin lapse: %v", err)
 	}
 }

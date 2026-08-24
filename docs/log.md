@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-24 — lease: skew margin guards against reader clock drift
+
+`Lease.Live` compared a reader's wall clock straight against the holder's `RenewedAt` stamp,
+with no allowance for clock drift between hosts — a standby whose clock ran a little ahead
+could misjudge a still-renewing lease as expired and take over while the primary was live.
+`Live` now adds a `LeaseSkewMargin` (3s, generous next to the default 30s TTL) before judging
+a lease stale. The margin bounds this risk; NTP-synced hosts are still the recommendation, not
+the guard.
+
 ## 2026-08-24 — failover.md: lease fences only a shared file, not replica/restore
 
 Corrects the [cold-standby failover](operations/failover.md) runbook's claim that the active

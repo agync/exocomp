@@ -115,8 +115,10 @@ func TestLeaseStaleIsTaken(t *testing.T) {
 		t.Fatalf("acquire just before expiry: %v, want ErrLeaseHeld", err)
 	}
 
-	// At expiry it is stale: the next host takes it without force.
-	takeover := t0.Add(30 * time.Second)
+	// Past expiry plus the skew guard it is stale: the next host takes it
+	// without force. (Exactly at expiry is still within the skew margin — see
+	// TestLeaseSkewGuardKeepsLiveWithinMargin.)
+	takeover := t0.Add(30*time.Second + LeaseSkewMargin + time.Second)
 	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, takeover, false)
 	if err != nil {
 		t.Fatalf("acquire stale lease: %v", err)
@@ -232,6 +234,51 @@ func TestReleaseFreesTheFence(t *testing.T) {
 	cur, err := s.GetLease(ctx)
 	if err != nil || cur.HolderID != "host-b/pid-9" {
 		t.Fatalf("lease after stale release = %+v, %v, want still host-b/pid-9", cur, err)
+	}
+}
+
+// TestLeaseSkewGuardKeepsLiveWithinMargin proves a reader whose clock has
+// drifted ahead of the holder's stays within LeaseSkewMargin of the lease's
+// nominal expiry and still judges it live, so a same-margin-fast standby does
+// not take over a primary that is still renewing.
+func TestLeaseSkewGuardKeepsLiveWithinMargin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	t0 := time.Unix(1_700_000_000, 0).UTC()
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	// TTL expires at t0+30s; a reader within the skew margin past that must
+	// still refuse, as if the lease were live.
+	past := t0.Add(30*time.Second + LeaseSkewMargin - time.Second)
+	if _, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false); !errors.Is(err, ErrLeaseHeld) {
+		t.Fatalf("acquire %s past expiry (within skew margin): %v, want ErrLeaseHeld", LeaseSkewMargin-time.Second, err)
+	}
+}
+
+// TestLeaseSkewGuardStaleBeyondMargin proves a reader past TTL+LeaseSkewMargin
+// still judges the lease stale and takes over: the guard bounds the risk of a
+// fast reader clock without ever hiding a genuinely dead holder forever.
+func TestLeaseSkewGuardStaleBeyondMargin(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	t0 := time.Unix(1_700_000_000, 0).UTC()
+	if _, err := s.AcquireLease(ctx, "host-a/pid-1", 30*time.Second, t0, false); err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+
+	past := t0.Add(30*time.Second + LeaseSkewMargin + time.Second)
+	taken, err := s.AcquireLease(ctx, "host-b/pid-9", 30*time.Second, past, false)
+	if err != nil {
+		t.Fatalf("acquire past ttl+skew margin: %v", err)
+	}
+	if taken.HolderID != "host-b/pid-9" {
+		t.Fatalf("takeover holder = %q, want host-b/pid-9", taken.HolderID)
 	}
 }
 

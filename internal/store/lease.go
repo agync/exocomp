@@ -32,10 +32,23 @@ type Lease struct {
 	TTL        time.Duration
 }
 
-// Live reports whether the lease was still within its TTL at now. A lease that
-// is not Live is STALE and may be taken by any daemon.
+// LeaseSkewMargin bounds how far a reader's clock may run ahead of the
+// holder's without misjudging a still-live lease as stale. Live compares the
+// reader's now to the holder's own RenewedAt stamp — there is no monotonic
+// clock shared across hosts — so an unsynced reader clock is exactly the
+// failure this guards: a standby whose clock is a few seconds fast could
+// otherwise conclude a still-renewing primary's lease has expired and take
+// over while it is live. 3s is generous next to the default 30s TTL / 10s
+// renew (ordinary NTP drift is sub-second) without meaningfully widening the
+// window before a genuinely dead holder's lease goes stale. NTP-synced hosts
+// are recommended: the margin bounds this risk, it does not eliminate it.
+const LeaseSkewMargin = 3 * time.Second
+
+// Live reports whether the lease was still within its TTL, plus
+// LeaseSkewMargin, at now. A lease that is not Live is STALE and may be taken
+// by any daemon.
 func (l Lease) Live(now time.Time) bool {
-	return now.Before(l.Expiry())
+	return now.Before(l.Expiry().Add(LeaseSkewMargin))
 }
 
 // Expiry is when the lease goes stale unless it is renewed first.
