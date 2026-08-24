@@ -215,7 +215,11 @@ func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := policiesVM{Page: s.pageFor(r, "Plan policies", "policies"), Policies: rows}
+	ident, _ := identityOf(r.Context())
+	vm := policiesVM{
+		Page: s.pageFor(r, "Plan policies", "policies"), Policies: rows,
+		Operator: canWrite(ident),
+	}
 	s.render(w, r, http.StatusOK, policiesList(vm))
 }
 

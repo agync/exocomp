@@ -186,6 +186,9 @@ func (vm workflowVM) StateClass() string { return workflowStateClass(vm.State) }
 type policiesVM struct {
 	Page     page
 	Policies []policyRow
+	// Operator gates the add/rm controls (policies_write.go); readonly and
+	// approve scopes keep the plain read-only listing.
+	Operator bool
 }
 
 // runnersVM is the runners surface: a read-only inventory of the registered

@@ -3,14 +3,40 @@ package web
 // policiesList is the plan-policy surface: the CEL gates that decide what an
 // apply is allowed to do. A match either denies the plan outright or routes the
 // apply through the approval gate; the expression is shown verbatim so an
-// operator sees exactly what gates their applies. Read-only — policies are
-// authored via the CLI, which compiles and rejects a bad expression at write.
+// operator sees exactly what gates their applies. A policy carries no secret
+// material, so — like schedules — add/rm here are plain operator-scope: no
+// reauth, no confirm_token. add mirrors `exocomp policy add`: the expression is
+// compiled server-side, so a policy that could never decide is refused rather
+// than stored.
 templ policiesList(vm policiesVM) {
 	@layout(vm.Page) {
 		<h1>Plan policies</h1>
+		if vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Add a policy</h3>
+				<p class="meta">Mirrors <code>exocomp policy add</code>: the expression is compiled against the sealed plan (one variable, <code>plan</code>) before the policy is stored — one that cannot decide is refused now rather than failing silently at seal time.</p>
+				<form method="post" action="/policies/add" class="writeform">
+					<label for="pl-name">Name</label>
+					<input id="pl-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="pl-workspace">Workspace</label>
+					<input id="pl-workspace" name="workspace" type="text" required autocomplete="off"/>
+					<label for="pl-action">On match</label>
+					<select id="pl-action" name="action">
+						<option value="deny">deny — the sealed plan becomes unconsumable</option>
+						<option value="require_approval">require_approval — the apply is gated</option>
+					</select>
+					<label for="pl-expr">CEL expression</label>
+					<input id="pl-expr" name="expr" type="text" required autocomplete="off" placeholder="plan.resource_changes.exists(c, c.change.actions.exists(a, a == &#34;delete&#34;))"/>
+					<div class="actions"><button type="submit" class="btn primary">Add policy</button></div>
+				</form>
+			</div>
+		}
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">CEL gates</div>
 			<h3>All policies</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing policies needs an operator token.</p>
+			}
 			if len(vm.Policies) == 0 {
 				<p class="meta">No plan policies. Applies are gated only by their workspace's own approval settings.</p>
 			} else {
@@ -23,6 +49,9 @@ templ policiesList(vm policiesVM) {
 								<th scope="col">On match</th>
 								<th scope="col">Expression</th>
 								<th scope="col">Enabled</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -33,6 +62,14 @@ templ policiesList(vm policiesVM) {
 									<td data-label="On match">@chip(p.ActionClass(), p.Action)</td>
 									<td class="mono wrap" data-label="Expression">{ p.Expr }</td>
 									<td data-label="Enabled">@enabledChip(p.Enabled)</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											<form method="post" action={ templ.SafeURL("/policies/" + p.Name + "/rm") } style="display:inline">
+												<input type="hidden" name="confirmed" value="1"/>
+												<button type="submit" class="btn danger">Remove</button>
+											</form>
+										</td>
+									}
 								</tr>
 							}
 						</tbody>
