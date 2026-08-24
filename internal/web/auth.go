@@ -80,7 +80,10 @@ func (s *Server) mintSession(t store.APIToken, now time.Time) (value string, exp
 	if t.ExpiresAt != nil && t.ExpiresAt.Before(expiry) {
 		expiry = *t.ExpiresAt
 	}
-	payload := fmt.Sprintf("%d.%d", t.ID, expiry.UnixMilli())
+	// The credential epoch pins the session to the secret it was bootstrapped
+	// from: a rotate advances it, so the row no longer matches and the session
+	// dies (resolve checks this), the same way a revoke does.
+	payload := fmt.Sprintf("%d.%d.%d", t.ID, t.CredentialEpoch(), expiry.UnixMilli())
 	mac := s.signSession(payload)
 	return payload + "." + mac, expiry
 }
@@ -91,35 +94,39 @@ func (s *Server) signSession(payload string) string {
 	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-// resolveSession validates a cookie value and returns the token id it names.
-// The signature is checked before anything is parsed as a number, so a forged
-// cookie never reaches the database.
-func (s *Server) resolveSession(value string, now time.Time) (int64, error) {
+// resolveSession validates a cookie value and returns the token id it names and
+// the credential epoch it was minted against. The signature is checked before
+// anything is parsed as a number, so a forged cookie never reaches the database.
+func (s *Server) resolveSession(value string, now time.Time) (id, epoch int64, err error) {
 	i := strings.LastIndex(value, ".")
 	if i < 0 {
-		return 0, ErrUnauthenticated
+		return 0, 0, ErrUnauthenticated
 	}
 	payload, mac := value[:i], value[i+1:]
 	want := s.signSession(payload)
 	if subtle.ConstantTimeCompare([]byte(mac), []byte(want)) != 1 {
-		return 0, ErrUnauthenticated
+		return 0, 0, ErrUnauthenticated
 	}
-	fields := strings.SplitN(payload, ".", 2)
-	if len(fields) != 2 {
-		return 0, ErrUnauthenticated
+	fields := strings.SplitN(payload, ".", 3)
+	if len(fields) != 3 {
+		return 0, 0, ErrUnauthenticated
 	}
-	id, err := strconv.ParseInt(fields[0], 10, 64)
+	id, err = strconv.ParseInt(fields[0], 10, 64)
 	if err != nil {
-		return 0, ErrUnauthenticated
+		return 0, 0, ErrUnauthenticated
 	}
-	expMillis, err := strconv.ParseInt(fields[1], 10, 64)
+	epoch, err = strconv.ParseInt(fields[1], 10, 64)
 	if err != nil {
-		return 0, ErrUnauthenticated
+		return 0, 0, ErrUnauthenticated
+	}
+	expMillis, err := strconv.ParseInt(fields[2], 10, 64)
+	if err != nil {
+		return 0, 0, ErrUnauthenticated
 	}
 	if !now.Before(time.UnixMilli(expMillis)) {
-		return 0, ErrUnauthenticated
+		return 0, 0, ErrUnauthenticated
 	}
-	return id, nil
+	return id, epoch, nil
 }
 
 // authenticateToken resolves a presented bearer token to its row, verifying the
@@ -218,15 +225,17 @@ func failKeys(r *http.Request, id int64) (source, token string) {
 func (s *Server) resolve(r *http.Request) (identity, error) {
 	now := s.now()
 	if c, err := r.Cookie(sessionCookie); err == nil && c.Value != "" {
-		id, err := s.resolveSession(c.Value, now)
+		id, epoch, err := s.resolveSession(c.Value, now)
 		if err == nil {
 			// The session names a row; the row is the authority on whether it
-			// still authenticates, so a revoke reaches the cookie here.
+			// still authenticates, so a revoke reaches the cookie here. The epoch
+			// pins the session to the secret it was minted against, so a rotate
+			// (which advances the row's epoch) drops it too.
 			row, err := s.authenticateRow(r.Context(), id, "", now)
-			if err == nil {
+			if err == nil && row.CredentialEpoch() == epoch {
 				return identity{token: row, via: "session"}, nil
 			}
-			if !errors.Is(err, ErrUnauthenticated) {
+			if err != nil && !errors.Is(err, ErrUnauthenticated) {
 				return identity{}, err
 			}
 		}

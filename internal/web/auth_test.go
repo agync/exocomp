@@ -72,20 +72,23 @@ func TestSessionResolvesAndExpires(t *testing.T) {
 
 	now := time.Now().UTC()
 	value, _ := h.server.mintSession(row, now)
-	id, err := h.server.resolveSession(value, now)
+	id, epoch, err := h.server.resolveSession(value, now)
 	if err != nil {
 		t.Fatalf("resolveSession: %v", err)
 	}
 	if id != row.ID {
 		t.Fatalf("session resolved to token %d, want %d", id, row.ID)
 	}
+	if epoch != row.CredentialEpoch() {
+		t.Fatalf("session epoch = %d, want %d", epoch, row.CredentialEpoch())
+	}
 
 	// A tampered signature never resolves.
-	if _, err := h.server.resolveSession(value+"x", now); err == nil {
+	if _, _, err := h.server.resolveSession(value+"x", now); err == nil {
 		t.Fatal("a tampered session cookie must not resolve")
 	}
 	// An expired cookie never resolves.
-	if _, err := h.server.resolveSession(value, now.Add(2*sessionTTL)); err == nil {
+	if _, _, err := h.server.resolveSession(value, now.Add(2*sessionTTL)); err == nil {
 		t.Fatal("an expired session cookie must not resolve")
 	}
 }

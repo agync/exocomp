@@ -30,6 +30,7 @@ type APIToken struct {
 	ExpiresAt  *time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
+	RotatedAt  *time.Time
 }
 
 // Active reports whether the token authenticates at now: not revoked and not
@@ -44,8 +45,19 @@ func (t APIToken) Active(now time.Time) bool {
 	return true
 }
 
+// CredentialEpoch is the millisecond instant the row's current secret was
+// issued: the rotation time if the token has ever been rotated, else its
+// creation time. A browser session is pinned to this value, so a rotate (which
+// advances it) invalidates sessions minted against the superseded secret.
+func (t APIToken) CredentialEpoch() int64 {
+	if t.RotatedAt != nil {
+		return t.RotatedAt.UnixMilli()
+	}
+	return t.CreatedAt.UnixMilli()
+}
+
 const apiTokenColumns = `id, name, scope, prefix, hash, created_at,
-	expires_at, last_used_at, revoked_at`
+	expires_at, last_used_at, revoked_at, rotated_at`
 
 // CreateToken inserts a token row. A duplicate name returns ErrDuplicate.
 func (s *Store) CreateToken(ctx context.Context, t APIToken) (APIToken, error) {
@@ -183,14 +195,47 @@ func (s *Store) RevokeToken(ctx context.Context, name string) error {
 	return nil
 }
 
+// RotateToken reseals a fresh secret onto the existing named row: it replaces the
+// hash and prefix, advances rotated_at, clears any revocation, and resets the
+// last-used stamp — keeping the id, name, and scope so attribution stays
+// continuous. setExpiry replaces the expiry (nil clears it); when false the
+// existing expiry is left untouched. A missing name returns ErrNotFound. The
+// updated row is returned so the caller can format the new token string.
+func (s *Store) RotateToken(ctx context.Context, name, hash, prefix string, expiresAt *time.Time, setExpiry bool, now time.Time) (APIToken, error) {
+	if hash == "" {
+		return APIToken{}, errors.New("store: rotate token: no hash")
+	}
+	query := `UPDATE api_token SET hash = ?, prefix = ?, rotated_at = ?, revoked_at = NULL, last_used_at = NULL`
+	args := []any{hash, prefix, now.UTC().UnixMilli()}
+	if setExpiry {
+		query += `, expires_at = ?`
+		args = append(args, msPtr(expiresAt))
+	}
+	query += ` WHERE name = ?`
+	args = append(args, name)
+
+	res, err := s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return APIToken{}, wrap("rotate token", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return APIToken{}, wrap("rotate token", err)
+	}
+	if affected == 0 {
+		return APIToken{}, fmt.Errorf("store: rotate token %q: %w", name, ErrNotFound)
+	}
+	return s.GetTokenByName(ctx, name)
+}
+
 func scanToken(row rowScanner) (APIToken, error) {
 	var (
-		t                                APIToken
-		createdAt                        int64
-		expiresAt, lastUsedAt, revokedAt sql.NullInt64
+		t                                           APIToken
+		createdAt                                   int64
+		expiresAt, lastUsedAt, revokedAt, rotatedAt sql.NullInt64
 	)
 	err := row.Scan(&t.ID, &t.Name, &t.Scope, &t.Prefix, &t.Hash, &createdAt,
-		&expiresAt, &lastUsedAt, &revokedAt)
+		&expiresAt, &lastUsedAt, &revokedAt, &rotatedAt)
 	if err != nil {
 		return APIToken{}, err
 	}
@@ -198,5 +243,6 @@ func scanToken(row rowScanner) (APIToken, error) {
 	t.ExpiresAt = timePtr(expiresAt)
 	t.LastUsedAt = timePtr(lastUsedAt)
 	t.RevokedAt = timePtr(revokedAt)
+	t.RotatedAt = timePtr(rotatedAt)
 	return t, nil
 }

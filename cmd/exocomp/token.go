@@ -26,7 +26,7 @@ func newTokenCmd() *cobra.Command {
 			"argon2id-hashed at rest, and revocable. A browser session is bound to its " +
 			"token, so revoking the token kills its sessions.",
 	}
-	cmd.AddCommand(newTokenNewCmd(), newTokenListCmd(), newTokenRevokeCmd())
+	cmd.AddCommand(newTokenNewCmd(), newTokenListCmd(), newTokenRevokeCmd(), newTokenRotateCmd())
 	return cmd
 }
 
@@ -59,7 +59,7 @@ func newTokenNewCmd() *cobra.Command {
 
 			token, row, err := web.MintToken(cmd.Context(), st, name, scope, expires)
 			if errors.Is(err, store.ErrDuplicate) {
-				return fmt.Errorf("token new: a token named %q already exists", name)
+				return duplicateTokenError(cmd, st, name)
 			}
 			if err != nil {
 				return fmt.Errorf("token new: %w", err)
@@ -156,6 +156,79 @@ func newTokenRevokeCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+func newTokenRotateCmd() *cobra.Command {
+	var expires time.Duration
+	var setExpiry bool
+
+	cmd := &cobra.Command{
+		Use:   "rotate <name>",
+		Short: "Reseal a token with a fresh secret, keeping its name and scope",
+		Long: "Rotate issues a new secret for an existing token, keeping its id, name, " +
+			"and scope so audit and attribution stay continuous. The old secret stops " +
+			"working and its sessions are dropped; a revoked token is brought back live. " +
+			"This is the way to reuse a name — a revoked name stays reserved and cannot be " +
+			"re-minted.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			setExpiry = cmd.Flags().Changed("expires")
+
+			dir, err := dataDir()
+			if err != nil {
+				return err
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			token, row, err := web.RotateToken(cmd.Context(), st, name, expires, setExpiry)
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("token rotate: no token named %q; mint one with `exocomp token new %s`", name, name)
+			}
+			if err != nil {
+				return fmt.Errorf("token rotate: %w", err)
+			}
+
+			fingerprint, err := web.Fingerprint(dir)
+			if err != nil {
+				return fmt.Errorf("token rotate: %w", err)
+			}
+
+			out := cmd.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "rotated %q (scope %s) — copy the new secret now, it is not shown again:\n\n  %s\n\n",
+				row.Name, row.Scope, token)
+			if row.ExpiresAt != nil {
+				_, _ = fmt.Fprintf(out, "expires %s\n", row.ExpiresAt.Format(time.RFC3339))
+			}
+			_, _ = fmt.Fprintf(out, "certificate SHA-256 (pin this on first connect):\n  %s\n", fingerprint)
+			return nil
+		},
+	}
+	cmd.Flags().DurationVar(&expires, "expires", 0,
+		"reset how long the token is valid (0: never expires); omit to keep the current expiry")
+	return cmd
+}
+
+// duplicateTokenError explains a name collision on `token new`: the holder is
+// either an active token or a revoked one whose name stays reserved. Both point
+// at rotate as the way to reissue the name.
+func duplicateTokenError(cmd *cobra.Command, st *store.Store, name string) error {
+	existing, err := st.GetTokenByName(cmd.Context(), name)
+	if err != nil {
+		// Fall back to the plain message if the row cannot be read back.
+		return fmt.Errorf("token new: a token named %q already exists", name)
+	}
+	if existing.RevokedAt != nil {
+		return fmt.Errorf("token new: a revoked token named %q still holds the name "+
+			"(revoked names stay reserved for audit and attribution; see `exocomp token list --all`). "+
+			"Pick a different name, or `exocomp token rotate %s` to reissue it", name, name)
+	}
+	return fmt.Errorf("token new: a token named %q already exists; "+
+		"`exocomp token rotate %s` reissues its secret, or revoke it first", name, name)
 }
 
 func stampOrDash(t *time.Time) string {

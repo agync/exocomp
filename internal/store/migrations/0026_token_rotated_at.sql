@@ -1,0 +1,12 @@
+-- Token rotation. `token rotate <name>` reseals a fresh secret onto the existing
+-- row, keeping its id, name, and scope so audit rows and the self-approval /
+-- write-attribution checks — which key on the token name — stay continuous. This
+-- is why a name cannot simply be re-minted: reuse would have to resurrect the
+-- same principal, so rotation is the deliberate path.
+--
+-- rotated_at records the last reseal. The credential epoch a browser session is
+-- pinned to is COALESCE(rotated_at, created_at); the session cookie carries that
+-- epoch and the auth path rejects a session whose epoch no longer matches the
+-- row, so a rotate drops sessions bootstrapped from the superseded secret just as
+-- a revoke does — without deleting the row.
+ALTER TABLE api_token ADD COLUMN rotated_at INTEGER;
