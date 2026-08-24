@@ -45,8 +45,8 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | Tool | Pin | License | Role | Interface contract |
 |---|---|---|---|---|
 | uv | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: `exocompd` invokes uv to resolve project-declared Python deps (root `requirements.txt`/`pyproject.toml`) into hash-gated caches ([ADR 0011](../adr/0011-project-dependency-resolution.md)); the ansible-core toolchain switch stays an operator-only, doctor-gated escape hatch ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + runtime (project-dep vendoring) + operator shell |
-| ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | M1: direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
-| ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** M1 substituted a direct `ansible-playbook` driver — exit-code correctness, line-scanned output — and M2 confirmed staying direct rather than adopting ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | closed, v1.1 backlog |
+| ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
+| ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** The driver is a direct `ansible-playbook` subprocess — exit-code correctness, line-scanned output — rather than ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
 | OpenTofu | 1.11.5 (sha256-pinned) | MPL-2.0 | plan/apply/drift; native state encryption | `-json` UI stream; HTTP backend → `exocompd` |
 | restic | 0.19.1 (sha256-pinned) | BSD-2 | encrypted backup engine, all three legs | `--json`; exit codes only for correctness |
@@ -89,8 +89,8 @@ enforced by something.
 
 | Budget | Value | Enforced by |
 |---|---|---|
-| Image size | ≤ 800 MB | `make budgets` (592 MB measured at M3a) |
-| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | `make budgets` (17 MB measured at M3a) |
+| Image size | ≤ 800 MB | `make budgets` (592 MB measured) |
+| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | `make budgets` (17 MB measured) |
 | Container memory | `MemoryMax=1.5G` | the Quadlet unit |
 | Concurrent jobs | 2 by default, memory-derived | queue config |
 | Target hardware | 4 GB N100 / Raspberry Pi 4, amd64 + arm64 | reference benchmark in CI |

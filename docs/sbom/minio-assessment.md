@@ -1,11 +1,11 @@
 # MinIO assessment (2026-08-21)
 
-Role in this project, before the M2b swap below: **test fixture only** — an unmodified
+Role in this project, before the fixture swap below: **test fixture only** — an unmodified
 upstream container in `internal/backup/s3_test.go` and `test/e2e/m1-gate.sh`. Shipped
 code has zero MinIO references; the S3 leg is restic's generic `s3:` backend plus plain
 SigV4 requests.
 
-**Update (M2b):** the fixture is now SeaweedFS; see Decision below. This page stays as
+**Update:** the fixture is now SeaweedFS; see Decision below. This page stays as
 the license/health record that motivated the swap.
 
 ## License
@@ -25,7 +25,7 @@ repository archived (2026-04). License risk: none. Abandonment risk: total.
 
 ## Decision
 
-- **Done (M2b): the fixture is SeaweedFS** (Apache-2.0, active,
+- **Done: the fixture is SeaweedFS** (Apache-2.0, active,
   `docker.io/chrislusf/seaweedfs`, `weed server -s3`) in `internal/backup/s3_test.go` and
   `test/e2e/m1-gate.sh`. Verified against the real restic leg: init, backup, restore,
   and this repository's own hand-rolled SigV4 client (`internal/backup/s3.go`, used for

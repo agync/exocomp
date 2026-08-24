@@ -1,10 +1,8 @@
 # Code review 2026-08-24 — Info-level triage
 
-Disposition of the `## Info` findings from the full-codebase review
-(`.claude/inbox/2026-08-24-codebase-review.md`). The Moderate (#1–#9), Minor, all
-Simplification (S1–S4), and Non-functional findings were fixed and landed; this note
-records the Info-level items — each promoted to a fix, verified safe, or accepted with
-rationale.
+Disposition of the Info-level findings from a full-codebase review. The Moderate, Minor,
+Simplification, and Non-functional findings were fixed and landed; this note records the
+Info-level items — each promoted to a fix, verified safe, or accepted with rationale.
 
 ## Promoted to fixes during remediation
 - **`/kill` route never registered.** Fixed — `POST /kill` now drives an operator-gated
@@ -46,7 +44,7 @@ rationale.
 
 ## Deferred follow-ups (noted, not blocking this review)
 - Reactive/scheduled `shell` actions are now env-scoped (PATH-only) but still not routed
-  through the sandbox driver — routing them through it is a larger change flagged during the
-  m2b-client lane.
+  through the sandbox driver — routing them through it is a larger change flagged during
+  review.
 - `approval link` picks up the daemon's persisted `--public-url`; the value is written as a
   `setting` row at daemon startup. No further work needed, noted for provenance.

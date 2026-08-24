@@ -1,22 +1,23 @@
-# Threat model & red-team findings
+# Threat model & findings
 
-Second adversarial pass: 2026-08-23, against the agent-facing surface (write `/api/v1`,
-remote CLI client, MCP server) as it was built out under ADR 0014. Findings are ids
-`AI-1`..`AI-13`; the wave that closed them is [§ Agent-surface findings](#agent-surface-findings-ai-).
+This is exocomp's security posture of record: the threats considered, their disposition, and
+the residual gaps. Two rounds of adversarial review are recorded — one against the core
+(envelope, sources, reactive engine, backups), one against the agent-facing surface (the
+write half of `/api/v1`, the remote CLI client, and the MCP server) built out under ADR
+0014. The agent-surface findings are catalogued in
+[§ Agent-surface findings](#agent-surface-findings-ai-).
 
-First adversarial pass: 2026-08-22, against v1.0.0 (tag, HEAD 5d77dce), five lenses
-attacking a real freshly-built binary + data dir (see
-`.agents/workflows/post-red-team.js`). Every "exploited" finding was reproduced against
-a real binary, not read off the source. Ranked by realistic risk to a **solo homelab
-operator** running one container/host, not theoretical CVSS.
+Every exploited finding was reproduced against a real binary and data dir — not read off the
+source — and turned into a regression test. Findings are ranked by realistic risk to a
+**solo homelab operator** running one container on one host, not by theoretical CVSS.
 
 exocomp is not deployed anywhere yet, so this is *fix-before-anyone-runs-it*, not incident
-response. It is tracked here as the security posture of record and the blue-team backlog.
+response. The finding register below is the security backlog.
 
 ## Operator decisions
 
 - **host.key at rest (finding E1).** TPM sealing is an **enhancement**, not the default —
-  but **the default (non-TPM) story must be genuinely secure** (operator, 2026-08-22).
+  but **the default (non-TPM) story must be genuinely secure**.
   Resolution: `host.key` is never a bare plaintext file. Default at-rest protection is
   **systemd-creds host-key wrapping** (`LoadCredentialEncrypted=`, `--with-key=host`) on
   the primary Quadlet/systemd tier — the unwrap secret is `/var/lib/systemd/credential.secret`
@@ -30,7 +31,7 @@ response. It is tracked here as the security posture of record and the blue-team
 
 ## Findings
 
-Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HARDEN
+Severity is realistic solo-operator risk. Disposition: FIX, HARDEN
 (defense-in-depth), ACCEPT (documented residual), or DOC (honesty correction).
 
 ### HIGH
@@ -41,9 +42,9 @@ Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HAR
 | E2 | `identity migrate --drop-recipient` re-wraps the *same* DEK (no rotation); a dropped recipient with any retained `keyring.age` keeps decrypting everything, incl. secrets sealed after the drop. CLI says "dropped". | yes | **FIX** — rotate the DEK on drop (re-encrypt every row) or refuse and name rotation as the real revocation; reword output so it never implies revocation without rotation. |
 | E6 | The E2 DEK rotation re-encrypts rows one at a time and flips `keyring.age` only after the loop finishes. A crash or mid-loop error leaves some rows under the new DEK and the rest under the old while `keyring.age` still wraps the OLD DEK — and nothing reads the staged `keyring.age.next` to reconcile, so the next `Open` unwraps the OLD DEK and the already-moved rows fail to decrypt. Silent data loss on the exact path revocation serves. | yes (test) | **FIX** — stage the new keyring/metadata before any row moves, promote atomically with `keyring.age` renamed last, and reconcile a detected `keyring.age.next` to completion on the next Open (load both DEKs, re-seal every row under the new one, idempotently). |
 | S1 | Dependency resolution (`uv pip install`) runs **unsandboxed in the daemon context**, before the nono/Landlock job sandbox — a poisoned `pyproject.toml`/`requirements.txt` executes with daemon privileges. | analysis | **FIX** — run the resolver under the job sandbox tier; it is untrusted-source-derived code. |
-| S2 | Signed-ref gate falls back to ambient host git config when `allowed_signers` is empty (the migration-0014 fallback); an attacker-signed ref was accepted that way. | yes | **FIX** — `--signed` fails closed with no exocomp-owned allowed-signers; never trust ambient git config. (Residual gap in the M3d story-1 fix.) |
+| S2 | Signed-ref gate falls back to ambient host git config when `allowed_signers` is empty (the migration-0014 fallback); an attacker-signed ref was accepted that way. | yes | **FIX** — `--signed` fails closed with no exocomp-owned allowed-signers; never trust ambient git config. |
 | R1 | Dedup-anchor planting: an inert non-matching event becomes the dedup anchor, silently suppressing a later *actionable* alert. | yes | **FIX** — dedup keyed only on events that actually matched/fired, or scope the anchor. |
-| B1 | Git restore leg: removing `keyring.age` from the backup ref downgrades the `AUTHENTICATED.mac` forgery-refusal to a warning; an attacker snapshot restores. (Known M3a residual — the marker-in-repo gap.) | yes | **FIX** — out-of-band authenticated marker (recovery-kit per-target authenticates flag). |
+| B1 | Git restore leg: removing `keyring.age` from the backup ref downgrades the `AUTHENTICATED.mac` forgery-refusal to a warning; an attacker snapshot restores. | yes | **FIX** — out-of-band authenticated marker (recovery-kit per-target authenticates flag). |
 
 ### MEDIUM
 
@@ -68,13 +69,12 @@ Severity is realistic solo-operator risk. Disposition: FIX (blue-team wave), HAR
 - **S6** pinned tools resolved by bare name on ambient PATH — no absolute pin/checksum. HARDEN.
 - **U1** upgrade "verify" is a functional smoke test, not a staged-binary trust control (no signature/provenance). HARDEN — ties to the deferred cosign/SLSA supply-chain track.
 
-## Blue-team waves
+## Remediation status
 
-Grouped by domain, HIGH first. Each wave turns the red-team repro into a failing
-regression test, fixes it, and proves the exploit is dead.
+Grouped by domain, HIGH first. Each fix turns the reproduction into a failing
+regression test, then closes it.
 
-1. **Envelope — LANDED 2026-08-22** (commits 9cd6bb8/daca061/a7de445/88e23f1, merged
-   015ab68): **E1 FIXED** (host.key resolved by precedence — systemd credential →
+1. **Envelope — fixed.** **E1 FIXED** (host.key resolved by precedence — systemd credential →
    scrypt-passphrase-wrapped → plaintext-with-LOUD-warning; init never writes a plaintext
    key when a passphrase is set; doctor reports the real tier; Quadlet
    `LoadCredentialEncrypted` + install.sh `harden-host-key`; the false "sealed to this box"
@@ -93,7 +93,7 @@ regression test, fixes it, and proves the exploit is dead.
      `systemd-creds`/rootless-podman path needs validation on a real host.
    - **E4** (keyring-version downgrade on an unauthenticated file) — still open; the DEK now
      rotates (E2), reducing its blast radius.
-   - **E6 FIXED — 2026-08-24** (dek-reseal lane): the E2 rotation is now crash-safe and
+   - **E6 FIXED** (the DEK reseal path): the E2 rotation is now crash-safe and
      resumable, closing a silent data-loss window on the revocation path. `RotateDEK` stages
      `keyring.age.next` + `recipients.next`/`keyring.version.next` (and `host.key.next` on a
      host rotation) *before* any row moves, re-encrypts every row under the new DEK, then
@@ -112,9 +112,8 @@ regression test, fixes it, and proves the exploit is dead.
      - **E6-resid** a transit-sealed store (auto-unseal, no host key on disk) with an
        interrupted reseal cannot reconcile without the host key: reconciliation resolves the
        DEKs through the age host-key path. The host-key path is the supported recovery; a
-       transit-native reconcile is a follow-up. Owner: `internal/secrets`.
-2. **Supply-chain / deps — S1/S2/S4/S5 LANDED 2026-08-22** (commits
-   65690ce/8fa16f2/6a71495/532518f): **S1 FIXED** (the uv resolver runs under the job
+       transit-native reconcile is a follow-up.
+2. **Supply-chain / deps — S1/S2/S4/S5 fixed.** **S1 FIXED** (the uv resolver runs under the job
    sandbox tier, not the daemon context — every uv invocation is wrapped in the nono
    launcher, granted its venv cache, the manifest, and HTTPS, and denied the data dir and
    the keys by the profile guard; a manifest whose install step reads a denied path fails
@@ -136,8 +135,7 @@ regression test, fixes it, and proves the exploit is dead.
      forge key; recording is `host onboard`/`ssh-keyscan`, so a forge's first sync is still
      TOFU until its key is recorded. A non-standard forge SSH port needs its `known_host`
      row keyed as `[host]:port`.
-3. **Reactive / approval — R1/R2/R3 LANDED 2026-08-22** (commits
-   d0884b9/167f9d1/e719346): **R1 FIXED** (the dedup window anchors only on events
+3. **Reactive / approval — R1/R2/R3 fixed.** **R1 FIXED** (the dedup window anchors only on events
    that actually matched a rule and acted — `matched`/`gated`/`fired` — so an inert
    non-matching event planted first can no longer become the anchor that suppresses a
    later real alert sharing the key; legitimate dedup of a genuine repeat is preserved,
@@ -161,10 +159,8 @@ regression test, fixes it, and proves the exploit is dead.
      re-publish), so a daemon restart re-pages a still-capped rule once; louder than
      silent, but not a swept ledger. Stale "cap disables the rule" wording remains in
      `cmd/exocomp/rule.go` help, `internal/store/rule.go`'s `SetRuleEnabled` comment,
-     and `internal/notify/notify.go` — outside the reactive lane's owned files, left
-     for the integrator to correct.
-4. **Daemon / backup — B1/D1/D3 LANDED 2026-08-22** (commits 8073781/9e2c841/a90a3e4,
-   merged a90a3e4; CLI wiring + doctor follow-up on main): **B1 FIXED** (a per-target
+     and `internal/notify/notify.go` — still to be corrected.
+4. **Daemon / backup — B1/D1/D3 fixed.** **B1 FIXED** (a per-target
    `Authenticates` fact carried out-of-band on the recovery kit and honored at restore —
    a git snapshot whose in-repo tag + `AUTHENTICATED.mac` were stripped is refused as a
    downgrade, not trusted as a legacy target; `--allow-unauthenticated` is still the loud
@@ -179,32 +175,29 @@ regression test, fixes it, and proves the exploit is dead.
      needs `--allow-unauthenticated`. The scrape/session derive purposes are operational
      (not on the recovery card) — add to secrets.Purposes() if card-reproducibility is wanted.
 
-5. **Agent surface — AI-1..AI-13 LANDED 2026-08-23** (branch `redteam-api`): every exploited
-   finding of the second pass closed, HIGH first, each one a failing-then-passing regression
-   test. See [§ Agent-surface findings](#agent-surface-findings-ai-) for the table and the
+5. **Agent surface — AI-1..AI-13 fixed.** Every exploited finding of the agent-surface
+   review closed, HIGH first, each one a failing-then-passing regression test. See
+   [§ Agent-surface findings](#agent-surface-findings-ai-) for the table and the
    residuals.
 
-**All six exploited HIGH findings of the first pass (E1, E2, S1, S2, R1, B1) are now closed,
-as are all five of the second pass (AI-1..AI-5).** Remaining: medium/low defense-in-depth
-(S3, D2, D4, R4, S6, E4, U1) + the residuals noted above and in the agent-surface section.
-
-Each wave is a build+verify workflow that reproduces the finding as a failing test first,
-then fixes it, then proves the exploit no longer works (red-team's repro becomes a
-regression test). The red-team re-runs against each wave.
+**All six exploited HIGH findings of the core review (E1, E2, S1, S2, R1, B1) are now closed,
+as are all five HIGH agent-surface findings (AI-1..AI-5).** Remaining: medium/low
+defense-in-depth (S3, D2, D4, R4, S6, E4, U1) plus the residuals noted above and in the
+agent-surface section.
 
 ## Agent-surface findings (AI-\*)
 
-Second pass, 2026-08-23, against the three programmatic faces ADR 0014 ratifies: the write
-half of `/api/v1`, `exocomp login` + `--remote`, and the stdio MCP server. Every finding
-below was reproduced against a real binary or the real handler; every one marked
-**exploited-then-closed** now has that repro as a failing-then-passing regression test.
+Findings against the three programmatic faces ADR 0014 ratifies: the write half of
+`/api/v1`, `exocomp login` + `--remote`, and the (since-removed) stdio MCP server. Every
+finding below was reproduced against a real binary or handler; every one marked
+**exploited-then-closed** now has that reproduction as a regression test.
 
 ### HIGH — all six closed
 
 | id | finding | exploited | disposition |
 |---|---|---|---|
 | AI-1 | MCP stdio has no credential and no scope, yet advertised `approve_job`/`reject_job` beside `workspace_apply` — an agent gated its own destructive job and then approved it. Prompt injection amplifies it: `get_job_events`/`list_events` return attacker-posted webhook text to the same session that holds the release. | yes | **FIXED — exploited-then-closed.** The decision tools are gone from the stdio face; a gated job is decided from the browser/phone surface, the CLI, or an approve-scope `/api/v1` token. They return with a token-carrying HTTP/SSE transport (ADR 0014 §3's scope-gated visibility). |
-| AI-14 (2026-08-24, branch `composed-approval`) | A `--require-approval` step in a COMPOSED CHAIN was not durably gated mid-run: the Sequencer's `runStep` released an `awaiting_approval` workflow step unconditionally, and `ClaimJob` had no approval join, so a running daemon released and ran a gated step with no operator decision — the composed-chain twin of AI-1/AI-2, defeating the same gate a single apply passes. | yes | **FIXED — exploited-then-closed.** A gated step is marked `require_approval` in the ledger; the Sequencer arms a pending approval (the same `CreateApproval`/`DecideApproval` machinery a single gated apply uses) and parks the step in `awaiting_approval` instead of releasing it — approve releases exactly that step, reject cancels it and blocks downstream. `ClaimJob` now refuses any queued job carrying a pending approval, so the gate holds at the claim however a job reached queued. Both guards mutation-checked (`internal/queue/workflow_approval_test.go`, `internal/store/claim_approval_test.go`). |
+| AI-14 | A `--require-approval` step in a COMPOSED CHAIN was not durably gated mid-run: the Sequencer's `runStep` released an `awaiting_approval` workflow step unconditionally, and `ClaimJob` had no approval join, so a running daemon released and ran a gated step with no operator decision — the composed-chain twin of AI-1/AI-2, defeating the same gate a single apply passes. | yes | **FIXED — exploited-then-closed.** A gated step is marked `require_approval` in the ledger; the Sequencer arms a pending approval (the same `CreateApproval`/`DecideApproval` machinery a single gated apply uses) and parks the step in `awaiting_approval` instead of releasing it — approve releases exactly that step, reject cancels it and blocks downstream. `ClaimJob` now refuses any queued job carrying a pending approval, so the gate holds at the claim however a job reached queued. Both guards mutation-checked (`internal/queue/workflow_approval_test.go`, `internal/store/claim_approval_test.go`). |
 | AI-2 | `operator` satisfied both W and A: the only scope that can enqueue a gated apply could also settle its approval, so handing an agent the token it needs to plan/apply handed it the authority the gate exists to withhold. | yes | **FIXED — exploited-then-closed.** `/api/v1`'s decision route takes `approve` alone, and BOTH decision paths refuse a caller the gated job's ledger records as its actor. The browser surface keeps operator-or-approve for the human at the console. |
 | AI-3 | TOCTOU between `CreateArtifact` and the verdict event: an apply-by-id landing in the window read "no verdict" as "no policy" and enqueued plainly against a deny-all workspace. | yes | **FIXED — exploited-then-closed.** A plan on a workspace with enabled policies and no adjudication record is unconsumable on every face; the seal records a no-match adjudication so a legitimately unmatched plan still applies; and the daemon evaluates policy BEFORE it seals, so the remaining window is one event append. |
 | AI-4 | A fresh apply consulted no policy at all — omitting `plan` skipped the whole deny/require_approval machinery, so `policy add --action deny` protected only the plan→apply-by-id path. | yes | **FIXED — exploited-then-closed.** A fresh apply on a workspace with enabled plan policies is refused in the service verb, so every face inherits it; plan-then-apply-by-id is the adjudicable path. |
@@ -224,7 +217,7 @@ below was reproduced against a real binary or the real handler; every one marked
 | id | finding | exploited | disposition |
 |---|---|---|---|
 | AI-10 | A revoked token kept receiving an already-open SSE job stream: auth was resolved once, at attach. | yes | **FIXED — exploited-then-closed.** The tail re-resolves its token row on every poll (a row read, no KDF) and ends the stream when it stops authenticating, with a 12h hard lifetime as backstop. |
-| AI-11 | No rate limit, lockout or failure counter on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a 35× timing oracle for which token ids exist. | yes | **FIXED (rate half) + ACCEPTED (timing half).** Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run — this is the guard that bounds guessing and it stays. The timing equalizer (a decoy argon2id paid on the absent/inactive path so it matched a live row's latency) was **REMOVED** (simplification S1): it never held — a live row hashes at `argonTime=1` while the decoy PHC hardcoded `t=3`, so a ~3× gap survived (review finding #6) — and the side-channel it aimed at is out of the threat model for a single-operator homelab. Reasoning: the secret is a 128-bit bearer token, so the oracle only leaks which row _ids_ exist (small integers already implied by the id-in-the-clear scheme), not any secret bytes; and turning that leak into enumeration requires a guessing run, which the fail counter + KDF gate refuse **before the KDF runs** regardless of whether the id is live or absent (`TestGuessingRunRefusedBeforeKDF`). The verify path is now: look up the row; absent, inactive, or secret-mismatch all return unauthenticated with no decoy KDF; the constant-time digest compare on a live row is unchanged. |
+| AI-11 | No rate limit, lockout or failure counter on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a 35× timing oracle for which token ids exist. | yes | **FIXED (rate half) + ACCEPTED (timing half).** Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run — this is the guard that bounds guessing and it stays. The timing equalizer (a decoy argon2id paid on the absent/inactive path so it matched a live row's latency) was **REMOVED**: it never held — a live row hashes at `argonTime=1` while the decoy PHC hardcoded `t=3`, so a ~3× gap survived — and the side-channel it aimed at is out of the threat model for a single-operator homelab. Reasoning: the secret is a 128-bit bearer token, so the oracle only leaks which row _ids_ exist (small integers already implied by the id-in-the-clear scheme), not any secret bytes; and turning that leak into enumeration requires a guessing run, which the fail counter + KDF gate refuse **before the KDF runs** regardless of whether the id is live or absent (`TestGuessingRunRefusedBeforeKDF`). The verify path is now: look up the row; absent, inactive, or secret-mismatch all return unauthenticated with no decoy KDF; the constant-time digest compare on a live row is unchanged. |
 | AI-12 | A `--source` playbook escaped the checkout (`../`, or an absolute path that was not rebased at all), so a run recorded against a signed source executed a tree the signature never covered. | yes | **FIXED — exploited-then-closed.** The joined path is resolved (symlinks included) and required to stay inside the checkout, an absolute playbook with `--source` is refused, and a source name is charset-validated before it is spliced into any path. |
 | AI-13 | MCP writes were wholly unattributed — an agent's write read off the ledger as the operator's own CLI run — and a `tools/call` sent as a JSON-RPC notification mutated state while writing zero bytes back. | yes | **FIXED — exploited-then-closed.** Writes record the `mcp` face, and a side-effecting method sent without an id is refused with `invalid_request` instead of executed. |
 
@@ -243,13 +236,13 @@ below was reproduced against a real binary or the real handler; every one marked
 - **AI-3-resid** the seal and the verdict are still two writes, not one transaction: the
   window is now one `AppendJobEvent` wide and fail-closed covers it, but a store-level
   transaction spanning `CreateArtifact` + the verdict event would close it structurally.
-  That needs the store seam, which this lane does not own.
+  That needs the store seam.
 - **AI-6-resid** the fixes here are in `internal/web`. The probe itself still resolves seven
   optional tools by BARE NAME on the ambient PATH (finding S6) and still calls
   `secrets.Open(dataDir)` per run to mint the `/metrics` scrape token; deriving that once at
   daemon start and pinning tool paths belong to `internal/health`.
 - **AI-7-resid** the recovered job's runbook/kind/argv are still not compared against the
-  request (`queue` is not this lane's file); with the namespace in place a recovered job can
+  request (the queue is a separate seam); with the namespace in place a recovered job can
   only be the same principal's own earlier call to the same verb, so the mismatch case is a
   retry with different arguments, which still returns the first job.
 - **AI-11-resid** the backoff is process state and per-source keys on `RemoteAddr` (D1/D4
