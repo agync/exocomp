@@ -6,3 +6,5 @@ CLAUDE.md
 # Build artifacts
 /bin/
 /dist/
+# Generated ultracode workflow scripts (build-specs); keep .md notes tracked
+.agents/workflows/*.js
