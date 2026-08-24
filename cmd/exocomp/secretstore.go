@@ -36,6 +36,25 @@ func newSecretsCmd() *cobra.Command {
 // ASCII.
 const generatedValueBytes = 32
 
+// maxSecretValueBytes is the sealed-secret value size ceiling.
+const maxSecretValueBytes = 1 << 20
+
+// readSecretValue reads a secret value from r, refusing a value at or over
+// maxSecretValueBytes rather than silently sealing it truncated. It reads one
+// byte past the limit — bounding the buffer instead of reading unboundedly —
+// so the overrun is detected without ever holding more than the limit plus
+// one byte in memory.
+func readSecretValue(r io.Reader) ([]byte, error) {
+	value, err := io.ReadAll(io.LimitReader(r, maxSecretValueBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(value) > maxSecretValueBytes {
+		return nil, fmt.Errorf("value exceeds the %d-byte limit", maxSecretValueBytes)
+	}
+	return value, nil
+}
+
 // generateSecretValue mints a cryptographically-random secret value.
 func generateSecretValue() ([]byte, error) {
 	raw := make([]byte, generatedValueBytes)
@@ -105,7 +124,7 @@ func newSecretsAddCmd() *cobra.Command {
 				}
 				source = store.SecretSourceGenerated
 			} else {
-				value, err = io.ReadAll(io.LimitReader(cmd.InOrStdin(), 1<<20))
+				value, err = readSecretValue(cmd.InOrStdin())
 				if err != nil {
 					return fmt.Errorf("secrets add: read value from stdin: %w", err)
 				}
@@ -205,7 +224,7 @@ func newSecretsRotateCmd() *cobra.Command {
 					return fmt.Errorf("secrets rotate: %w", err)
 				}
 			default:
-				value, err = io.ReadAll(io.LimitReader(cmd.InOrStdin(), 1<<20))
+				value, err = readSecretValue(cmd.InOrStdin())
 				if err != nil {
 					return fmt.Errorf("secrets rotate: read value from stdin: %w", err)
 				}

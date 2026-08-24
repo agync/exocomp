@@ -159,6 +159,57 @@ func TestSecretsRotateUserEmptyStdinFails(t *testing.T) {
 	}
 }
 
+// TestSecretsAddRejectsOversizedValue: a value at or over the 1 MiB ceiling
+// must be refused, not silently sealed truncated. The refusal has to name the
+// limit so the operator understands why, and no secret row is left behind.
+func TestSecretsAddRejectsOversizedValue(t *testing.T) {
+	dir := initForSource(t)
+
+	oversized := strings.Repeat("x", (1<<20)+1)
+	out, err := runSecrets(t, oversized, "add", "too-big")
+	if err == nil {
+		t.Fatalf("add of an oversized value should fail; output = %q", out)
+	}
+	if !strings.Contains(err.Error(), "1048576") && !strings.Contains(out, "1048576") {
+		t.Errorf("refusal does not name the byte limit: err=%v out=%q", err, out)
+	}
+
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	if _, err := st.GetSecret(context.Background(), "too-big"); err == nil {
+		t.Error("an oversized value was sealed despite the refusal")
+	}
+}
+
+// TestSecretsRotateRejectsOversizedValue mirrors the add-path check for the
+// rotate call site: the existing value must survive an oversized rotate
+// attempt untouched.
+func TestSecretsRotateRejectsOversizedValue(t *testing.T) {
+	dir := initForSource(t)
+
+	if out, err := runSecrets(t, "small\n", "add", "cred"); err != nil {
+		t.Fatalf("add: %v (%s)", err, out)
+	}
+	before, _ := openSecretValue(t, dir, "cred")
+
+	oversized := strings.Repeat("y", (1<<20)+1)
+	out, err := runSecrets(t, oversized, "rotate", "cred")
+	if err == nil {
+		t.Fatalf("rotate with an oversized value should fail; output = %q", out)
+	}
+	if !strings.Contains(err.Error(), "1048576") && !strings.Contains(out, "1048576") {
+		t.Errorf("refusal does not name the byte limit: err=%v out=%q", err, out)
+	}
+
+	after, _ := openSecretValue(t, dir, "cred")
+	if after != before {
+		t.Error("rotate mutated the secret despite the refusal")
+	}
+}
+
 func TestSecretsRmGuardsBoundSecret(t *testing.T) {
 	dir := initForSource(t)
 	ctx := context.Background()
