@@ -72,6 +72,10 @@ type WorkspaceRequest struct {
 	Timeout        time.Duration
 	Plan           string
 	IdempotencyKey string
+	// Runner names a registered runner whose memory_max/cpu_quota the daemon
+	// should enforce as a per-job cgroup cap, mirroring the local --runner
+	// flag. Empty is the default, uncapped path.
+	Runner string
 }
 
 // body renders the request as the JSON the write API accepts. Timeout is a Go
@@ -86,6 +90,9 @@ func (r WorkspaceRequest) body() map[string]string {
 	}
 	if r.Plan != "" {
 		b["plan"] = r.Plan
+	}
+	if r.Runner != "" {
+		b["runner"] = r.Runner
 	}
 	return b
 }
@@ -147,6 +154,10 @@ type PlaybookRequest struct {
 	ExtraVars           []string `json:"extra_vars,omitempty"`
 	TolerateUnreachable bool     `json:"tolerate_unreachable,omitempty"`
 	Timeout             string   `json:"timeout,omitempty"`
+	// Runner names a registered runner whose memory_max/cpu_quota the daemon
+	// should enforce as a per-job cgroup cap, mirroring the local --runner
+	// flag. Empty is the default, uncapped path.
+	Runner string `json:"runner,omitempty"`
 	// IdempotencyKey travels as a header, not a body field.
 	IdempotencyKey string `json:"-"`
 }

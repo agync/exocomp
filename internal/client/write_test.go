@@ -36,6 +36,20 @@ func readBody(t *testing.T, r *http.Request) map[string]any {
 	return out
 }
 
+// TestWorkspaceRequestBodyCarriesRunner: body() carries "runner" when set and
+// omits it cleanly when empty, mirroring run_secrets/timeout/plan above.
+func TestWorkspaceRequestBodyCarriesRunner(t *testing.T) {
+	with := WorkspaceRequest{Runner: "fedora-ee"}.body()
+	if with["runner"] != "fedora-ee" {
+		t.Fatalf("body = %+v, want runner = fedora-ee", with)
+	}
+
+	without := WorkspaceRequest{}.body()
+	if _, ok := without["runner"]; ok {
+		t.Fatalf("body = %+v, want no runner key when unset", without)
+	}
+}
+
 func TestPlanWorkspacePostsAndDecodes(t *testing.T) {
 	var gotPath, gotMethod, gotIdem string
 	var gotBody map[string]any
@@ -120,6 +134,7 @@ func TestRunPlaybookPostsRequest(t *testing.T) {
 	got, err := c.RunPlaybook(context.Background(), PlaybookRequest{
 		Playbook: "site.yml", Source: "demo", Inventory: "lab",
 		Check: true, ExtraVars: []string{"marker=one"}, IdempotencyKey: "k",
+		Runner: "fedora-ee",
 	})
 	if err != nil {
 		t.Fatalf("RunPlaybook: %v", err)
@@ -131,7 +146,7 @@ func TestRunPlaybookPostsRequest(t *testing.T) {
 		t.Errorf("path = %q", gotPath)
 	}
 	if gotBody["playbook"] != "site.yml" || gotBody["source"] != "demo" ||
-		gotBody["inventory"] != "lab" || gotBody["check"] != true {
+		gotBody["inventory"] != "lab" || gotBody["check"] != true || gotBody["runner"] != "fedora-ee" {
 		t.Errorf("body = %+v", gotBody)
 	}
 	vars, _ := gotBody["extra_vars"].([]any)
