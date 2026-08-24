@@ -267,6 +267,50 @@ func TestStagingCloseIsIdempotent(t *testing.T) {
 	}
 }
 
+// TestNoteDiskStagingResidualOmitsSecretValue pins that the disk-residual
+// LevelSystem job event noteDiskStagingResidual builds never carries the
+// staged secret's own bytes — only the env name and a fixed, secret-free
+// description. The tmpfs path's no-secret-in-output property already has
+// end-to-end coverage (TestTofuFileStagedSecretReachesChildAsPath); this is
+// the disk-backend counterpart, pinning the event this package itself
+// constructs rather than relying on it never being exercised.
+func TestNoteDiskStagingResidualOmitsSecretValue(t *testing.T) {
+	t.Parallel()
+	diskRoot := t.TempDir()
+	st, err := ResolveStaging(StagingConfig{Backend: StagingDisk, DiskRoot: diskRoot})
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+
+	const sentinel = "s3cr3t-disk-residual-bearer"
+	_, staged, err := st.StageFiles(RunSecrets{"KUBECONFIG": sentinel}, []string{"KUBECONFIG"})
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	t.Cleanup(func() {
+		for i := range staged {
+			_ = staged[i].Close()
+		}
+	})
+
+	var events []Event
+	noteDiskStagingResidual(SinkFunc(func(e Event) { events = append(events, e) }), staged)
+
+	if len(events) != 1 {
+		t.Fatalf("noteDiskStagingResidual emitted %d events, want 1", len(events))
+	}
+	e := events[0]
+	if e.Level != LevelSystem {
+		t.Errorf("event level = %q, want %s", e.Level, LevelSystem)
+	}
+	if !strings.Contains(e.Msg, "staged to disk") {
+		t.Errorf("event does not name the disk residual: %q", e.Msg)
+	}
+	if strings.Contains(e.Msg, sentinel) || strings.Contains(e.RawJSON, sentinel) {
+		t.Errorf("the disk-residual event carried the secret's own bytes: %+v", e)
+	}
+}
+
 // TestConfigureRunSecretStagingOverridesTheFreeFunctionDefault proves
 // ConfigureRunSecretStaging is what StageRunSecretFiles' free-function form
 // actually consults: configuring the disk backend makes the very next
