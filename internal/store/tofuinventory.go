@@ -23,7 +23,7 @@ var (
 )
 
 // MaterializeInventory records — or refreshes — the static inventory a
-// workspace's tofu outputs were materialized into (story 5). It reuses the
+// workspace's tofu outputs were materialized into. It reuses the
 // existing inventory table's `static` kind rather than a new table: the row is
 // just a named path to the file an apply wrote, so a later `playbook run
 // --inventory <name>` can target it and the operator can list it.

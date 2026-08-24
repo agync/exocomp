@@ -20,7 +20,7 @@ import (
 // reach the materialized inventory or the durable event log.
 const sensitiveCanary = "exocomp-sensitive-output-9d3f1a"
 
-// TestTofuApplyCapturesInventory is the story-5 producer gate: a successful
+// TestTofuApplyCapturesInventory is the handoff producer gate: a successful
 // apply captures the workspace's declared, non-sensitive outputs into an
 // inventory artifact, the sensitive-marked output is absent from it, and no
 // event carries the sensitive value.
@@ -210,7 +210,7 @@ func TestTofuApplySealsSensitiveOutput(t *testing.T) {
 	}
 }
 
-// appendOutputs adds the story-5 outputs to the fixture's configuration: a
+// appendOutputs adds the handoff outputs to the fixture's configuration: a
 // non-sensitive ansible_inventory (host + group) and a sensitive password.
 func appendOutputs(t *testing.T, tofuDir string) {
 	t.Helper()

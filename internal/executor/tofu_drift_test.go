@@ -120,7 +120,7 @@ esac
 	return bin
 }
 
-// TestTofuPlanReportsDrift is the story-3 must-fix at the driver level: a plan
+// TestTofuPlanReportsDrift proves structured drift output at the driver level: a plan
 // that finds drift attaches resource addresses and attribute keys to its event,
 // distinct from a bare "changes" bool.
 func TestTofuPlanReportsDrift(t *testing.T) {

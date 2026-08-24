@@ -158,7 +158,7 @@ type TofuOptions struct {
 	RunSecretFiles []string
 	// InventoryOut, when set and an apply succeeds, is the path this run writes
 	// the materialized Ansible inventory to: the declared, NON-sensitive tofu
-	// outputs captured by `tofu output -json` at apply end (story 5). It is the
+	// outputs captured by `tofu output -json` at apply end. It is the
 	// producer half of the Terraform->Ansible handoff. Empty skips capture, so
 	// a plain apply is unchanged. The raw tfstate is never the source —
 	// declared outputs only, sensitive ones dropped (v1-acceptance.md).
@@ -322,7 +322,7 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 }
 
 // captureInventory materializes the workspace's declared, non-sensitive tofu
-// outputs as an Ansible inventory after a successful apply — the story-5
+// outputs as an Ansible inventory after a successful apply — the handoff
 // producer. It runs while the backend override and the passphrase env are still
 // live (their cleanups are deferred), so `tofu output -json` reads the state
 // the apply just wrote. A capture failure is loud but never fails the run: the

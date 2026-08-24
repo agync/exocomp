@@ -57,8 +57,8 @@ func AnsibleArgv(playbook, inventory string, passthrough ...string) []string {
 	return append(argv, playbook)
 }
 
-// AnsibleArtifactArgv builds the argv for a play whose inventory is a
-// materialized artifact (story 5): it carries no --inventory of its own,
+// AnsibleArtifactArgv builds the argv for a play whose inventory is the
+// handoff-materialized artifact: it carries no --inventory of its own,
 // because the driver copies AnsibleOptions.InventoryArtifact into the run's own
 // 0700 private directory and points ansible at that copy. Keeping the flag out
 // of the argv is what makes the private copy the sole inventory — the play
@@ -120,9 +120,9 @@ type AnsibleOptions struct {
 	// would otherwise strip. Resolved by the caller from the envelope; the
 	// driver only injects it.
 	RunSecrets RunSecrets
-	// InventoryArtifact is a materialized inventory file (story 5: the
-	// non-sensitive tofu outputs a prior apply captured) the run consumes as
-	// its inventory. The driver copies it into the run's own 0700 private
+	// InventoryArtifact is a materialized inventory file (the non-sensitive
+	// tofu outputs a prior apply captured) the run consumes as its
+	// inventory. The driver copies it into the run's own 0700 private
 	// directory and appends --inventory pointing at that copy, so the play
 	// reads an isolated copy and never the data-dir artifact — and its process
 	// carries no bearer, no state passphrase, and no tfstate. Empty leaves the

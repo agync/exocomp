@@ -12,7 +12,7 @@ import (
 
 // KindPlay is a recurring ansible play over a STANDING inventory: a registered
 // inventory the schedule names, rather than a host list frozen into the row.
-// Paired with the `tf:<workspace>` inventory a story-5 apply refreshes, it is
+// Paired with the `tf:<workspace>` inventory a handoff apply refreshes, it is
 // what makes a freshly provisioned host join the recurring converge without the
 // schedule being touched — the next fire reads whatever the last apply
 // materialized.
@@ -23,9 +23,9 @@ const KindPlay = "play"
 
 // playSpec builds the one job a play schedule fires. The play carries no
 // --inventory of its own: Spec.Inventory names the registered one, and the
-// daemon's ansible driver copies that file into the run's own 0700 private dir
-// (story 5), so a scheduled converge reaches the tofu-derived hosts under the
-// same boundary the handoff's play does.
+// daemon's ansible driver copies that file into the run's own 0700 private
+// dir, so a scheduled converge reaches the tofu-derived hosts under the same
+// boundary the handoff's play does.
 //
 // It fails closed. A schedule whose inventory is unregistered, not a
 // materialized file, gone from disk, or names no hosts enqueues NOTHING and

@@ -70,7 +70,7 @@ func handoffInventoryPath(dataDir, workspace string) string {
 func newHandoffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "handoff",
-		Short: "Run the Terraform->Ansible inventory handoff (story 5)",
+		Short: "Run the Terraform->Ansible inventory handoff",
 		Long: "Chains a tofu apply to an ansible play as one step-ledger workflow: the " +
 			"apply captures the workspace's declared, non-sensitive outputs into an " +
 			"inventory artifact, and the play consumes exactly that artifact — from its " +

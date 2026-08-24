@@ -25,7 +25,7 @@ const fakeTofuOutput = `{"ansible_inventory":{"sensitive":false,"value":` +
 	`"children":{"web":{"hosts":{"webnode":{}}}}}}},` +
 	`"db_password":{"sensitive":true,"value":"` + handoffSensitive + `"}}`
 
-// TestHandoffChainRunsAndIsolates is the story-5 chain end to end: an apply
+// TestHandoffChainRunsAndIsolates is the handoff chain end to end: an apply
 // captures the workspace's non-sensitive outputs into an inventory, and a
 // dependent play consumes exactly that inventory — from its own private dir,
 // with no bearer, no passphrase, and no tfstate in its environment.

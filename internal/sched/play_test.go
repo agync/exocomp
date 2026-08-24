@@ -65,8 +65,8 @@ func TestPlayScheduleTargetsTheStandingInventory(t *testing.T) {
 		t.Errorf("trigger = %q, want %q", spec.Trigger, Trigger)
 	}
 	// The argv carries no --inventory: the driver copies the materialized file
-	// into the run's own private dir (story 5), which is the only inventory the
-	// play sees.
+	// into the run's own private dir, which is the only inventory the play
+	// sees.
 	joined := strings.Join(spec.Argv, " ")
 	if strings.Contains(joined, "--inventory") || strings.Contains(joined, " -i ") {
 		t.Errorf("argv names an inventory itself: %q", joined)

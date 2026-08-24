@@ -78,9 +78,9 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 	}
 
 	// A play whose argv names no inventory but whose job names a registered
-	// static inventory (story 5: the tofu outputs a prior apply captured) reads
-	// it as a copy in the run's own private dir — no bearer, no passphrase, no
-	// tfstate near it. A play that already names an inventory keeps it as-is.
+	// static inventory (the tofu outputs a prior apply captured) reads it as a
+	// copy in the run's own private dir — no bearer, no passphrase, no tfstate
+	// near it. A play that already names an inventory keeps it as-is.
 	inventoryArtifact := ""
 	if !hasInventoryFlag(spec.Argv) {
 		inventoryArtifact, err = staticInventoryPath(ctx, d.store, job.Args.Inventory)

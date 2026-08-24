@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// TestWritePrivateCopiesInventoryArtifact proves the consumer half of story 5:
-// a materialized inventory is copied into the run's own private directory and
-// the run is pointed at that copy, never the source artifact.
+// TestWritePrivateCopiesInventoryArtifact proves the consumer half of the
+// handoff: a materialized inventory is copied into the run's own private
+// directory and the run is pointed at that copy, never the source artifact.
 func TestWritePrivateCopiesInventoryArtifact(t *testing.T) {
 	src := filepath.Join(t.TempDir(), "materialized.json")
 	body := []byte(`{"all":{"hosts":{"webnode":{}}}}`)

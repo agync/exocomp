@@ -428,7 +428,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// The step-ledger sequencer runs here, after the boot job-sweep (openJobStore
 	// retired interrupted rows) and after the queue's workers are draining: its
 	// first pass is ResumeAll, so a workflow a crash left mid-flight continues
-	// from the ledger, and it then keeps live workflows — the story-5 apply->play
+	// from the ledger, and it then keeps live workflows — the apply->play
 	// handoff — progressing. The queue stays the sole executor; this only
 	// releases each next step and records its outcome (ADR 0008).
 	seq := queue.NewSequencer(q)
@@ -1136,7 +1136,7 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		// empty by default, so the daemon path keeps the 443-and-backend grant.
 		ExtraPorts: ws.ExtraEgressPorts,
 		// Every successful apply materializes the workspace's declared,
-		// non-sensitive outputs as an inventory artifact (story 5). The path is
+		// non-sensitive outputs as an inventory artifact. The path is
 		// deterministic so the dependent play resolves it, and each apply
 		// refreshes the same file.
 		InventoryOut: handoffInventoryPath(d.dirs.root, ws.Name),

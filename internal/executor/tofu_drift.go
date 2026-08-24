@@ -9,8 +9,7 @@ import (
 // ResourceDelta is one resource that moved, named by address with the actions
 // tofu would take and the attribute KEYS involved. Values are deliberately
 // absent: an attribute value is often a secret or a generated password, a bare
-// count is unactionable, and the keys are what tell an operator what changed
-// (docs/design/expert-reviews.md, story 3).
+// count is unactionable, and the keys are what tell an operator what changed.
 type ResourceDelta struct {
 	Address  string   `json:"address"`
 	Actions  []string `json:"actions"`
@@ -21,7 +20,7 @@ type ResourceDelta struct {
 // separates true drift — the world changed under tofu, from `.resource_drift[]`
 // in a `-refresh-only` plan — from pending config changes — a `.tf` edit, from
 // `.resource_changes[]`. Today's bare `changes` bool conflated the two; the
-// JSON already separates them (story 3), so the outcome does too. Changes stays
+// JSON already separates them, so the outcome does too. Changes stays
 // for readers that only ask "did anything move".
 type TofuPlanOutcome struct {
 	Operation string          `json:"operation"`
