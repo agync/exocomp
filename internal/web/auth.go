@@ -138,10 +138,17 @@ func (s *Server) authenticateRow(ctx context.Context, id int64, secret string, n
 	row, err := s.store.GetToken(ctx, id)
 	if errors.Is(err, store.ErrNotFound) {
 		// No decoy KDF on the absent path: a missing id returns unauthenticated
-		// cheaply. The resulting live-vs-absent timing gap is accepted for a
-		// single-operator homelab — the fail counter and KDF gate (both in
-		// authenticateTokenGated) refuse a guessing run before it can turn that
-		// gap into an enumeration (finding AI-11 disposition).
+		// cheaply, leaving a live-vs-absent timing gap. Accepted for a
+		// single-operator homelab (finding AI-11 disposition) on the strength of
+		// authenticateTokenGated's two throttles, which are weaker than they
+		// sound: the fail counter (authfail.go) gives one source 5 free probes
+		// then a doubling backoff refused before the KDF runs, but it keys the
+		// token id too, and that key is fresh per id, so it does not throttle a
+		// run trying many ids from the same source as hard as it throttles
+		// repeated guesses at one id; and the KDF concurrency gate only bounds
+		// memory/concurrency, it does not slow enumeration at all. Neither
+		// throttle is per-attacker, so a distributed source is not
+		// rate-limited by either.
 		return store.APIToken{}, ErrUnauthenticated
 	}
 	if err != nil {
