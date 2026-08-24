@@ -84,13 +84,13 @@ print its decision link with `exocomp approval link 5`
 - A workspace with no policies pays nothing — the plan is never even described.
 - On a workspace **with enabled policies**, a **fresh** apply (no `--plan`) is
   refused: there is no plan for a policy to read, so allowing one would be a
-  bypass of the gate you installed (finding AI-4). Plan, then apply that plan by
+  bypass of the gate you installed. Plan, then apply that plan by
   id.
 - On a workspace **with enabled policies**, an apply of any plan that carries no
   recorded verdict is refused — an operator's own plan **file**
   (`--plan /path/to.tfplan`), or a sealed plan whose verdict has not landed yet.
   "No verdict" is read as *not adjudicated*, never as *unpoliced*, so an apply
   issued in the instant between the artifact row and the verdict record cannot
-  slip past a deny (finding AI-3, `docs/security/threat-model.md`). Re-plan and
+  slip past a deny (see the [threat model](../security/threat-model.md)). Re-plan and
   apply that plan by id. On a workspace with no policies, a plan file applies as
   before.

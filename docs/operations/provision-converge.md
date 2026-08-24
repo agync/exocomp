@@ -1,8 +1,8 @@
 # Provision → onboard → converge
 
 `exocomp provision run` turns "I made a VM" into "it is onboarded, configured,
-and stays converged". It is the [story-5
-handoff](terraform-ansible-handoff.md) extended by the two steps that stand
+and stays converged". It extends the [Terraform→Ansible
+handoff](terraform-ansible-handoff.md) by the two steps that stand
 between a finished `tofu apply` and a machine you can actually run plays
 against: waiting for its SSH to come up, and onboarding it.
 
@@ -26,7 +26,7 @@ passes through.
 
 | Step | Kind | What it does |
 |---|---|---|
-| 1 | `tofu-apply` | `tofu apply` plus the story-5 capture: the workspace's declared, **non-sensitive** outputs are materialized as `artifacts/inventory/<workspace>.json` and published as the `tf:<workspace>` inventory |
+| 1 | `tofu-apply` | `tofu apply` plus the output capture: the workspace's declared, **non-sensitive** outputs are materialized as `artifacts/inventory/<workspace>.json` and published as the `tf:<workspace>` inventory |
 | 2 | `ssh-wait` | The seeded `wait-ssh.yml` waits, bounded by `--ssh-wait`, for each derived host's SSH port to accept a connection |
 | 3 | `host-onboard` | The seeded `onboard.yml` creates the automation user, authorizes the fleet key, and grants passwordless become. The driver pins each host's key first |
 | 4 | `ansible-play` | Your configure play, against the same materialized inventory |

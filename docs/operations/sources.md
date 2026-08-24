@@ -2,8 +2,7 @@
 
 How a run's tree arrives, what inventory it targets, and how it authenticates to the
 outside world. The model is [ADR 0010](../adr/0010-source-and-credential-model.md); the
-credential binding is the convergent must-fix from
-[the expert reviews](../design/expert-reviews.md).
+credential binding is settled in [the design reviews](../design/expert-reviews.md).
 
 ## Sources — three localities
 
@@ -23,12 +22,12 @@ ref before a sync advances it, so a bad commit cannot reach the fleet. Signing t
 `--allowed-signers <file>` or one or more `--signer '<principal> <type> <key>'` lines, and
 is refused at `add` time without them. A `--signed` sync with no recorded signers fails
 closed rather than falling back to whatever `~/.gitconfig` happens to trust — the fallback
-that once let an attacker-signed ref through (finding S2).
+that once let an attacker-signed ref through.
 
 A `git` source over `ssh://` (or `user@host:path`) **pins the forge host key** from the
 recorded `known_host` store: when the forge host has a recorded key, `source sync` verifies
 it strictly (`UserKnownHostsFile` + `StrictHostKeyChecking=yes`), so a changed or attacker
-key fails the sync instead of being trusted on first contact (finding S5). A forge not yet
+key fails the sync instead of being trusted on first contact. A forge not yet
 recorded stays trust-on-first-use — record its key (`host onboard`, or `ssh-keyscan` into
 the store) so the next sync pins it.
 

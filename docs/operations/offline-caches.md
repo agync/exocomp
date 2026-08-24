@@ -1,8 +1,8 @@
 # Offline dependency caches
 
 Disaster recovery must not depend on Ansible Galaxy or `registry.opentofu.org` being
-reachable (design/amendments.md item 8). Two caches, both inside the 0700 data dir and
-both covered by the ordinary backup snapshot, make that true.
+reachable (see [the design amendments](../design/amendments.md)). Two caches, both inside
+the 0700 data dir and both covered by the ordinary backup snapshot, make that true.
 
 ## Ansible collections
 
@@ -59,7 +59,7 @@ way any job degrades there.
 first, never a dash. A specifier that begins with `-` is therefore a pip option
 smuggled into the dependency list (`--index-url=…` to redirect the resolver's
 index, `-e /path` to install an editable tree), and the vendoring step refuses
-it rather than pass it to uv as a flag (finding S4); the specifiers it does
+it rather than pass it to uv as a flag; the specifiers it does
 accept are handed to uv after a `--` separator as defence in depth, so nothing
 from the manifest is ever read as an option. A `requirements.txt`, by contrast,
 is uv's own input format and its in-file options are the operator's declaration,

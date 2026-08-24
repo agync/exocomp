@@ -25,7 +25,7 @@ inventory.
 With `--source`, the playbook path is **confined to that source's checkout**: it must be
 relative, and a path that resolves outside the tree (`../`, or through a symlink) is refused
 before the run is enqueued. That is what keeps a run recorded against a signed source from
-executing a tree the signature never covered (finding AI-12,
+executing a tree the signature never covered (see the
 [threat model](../security/threat-model.md)). Run a playbook from elsewhere without
 `--source`.
 

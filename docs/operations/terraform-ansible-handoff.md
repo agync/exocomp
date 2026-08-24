@@ -2,9 +2,8 @@
 
 The handoff runs `tofu apply`, captures the workspace's declared outputs, and
 feeds them to an Ansible play as its inventory — in one daemon, without ever
-handing the fleet-facing play a state key. This is story 5 of the v1 acceptance
-bar: the capability one tool holding both halves can make safe and a hand-rolled
-`terraform output | jq` cannot.
+handing the fleet-facing play a state key. This is a capability one tool holding
+both halves can make safe and a hand-rolled `terraform output | jq` cannot.
 
 For a workspace whose apply creates hosts that do not exist yet, the chain to
 reach for is [`provision run`](provision-converge.md): the same apply and
