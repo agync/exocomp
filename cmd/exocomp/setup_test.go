@@ -138,3 +138,40 @@ func TestSetupRealProvisionerDataDirEmptyUntilStep4(t *testing.T) {
 		t.Fatal("hand-over step produced no recovery kit text")
 	}
 }
+
+// TestCommitFailureAfterHostKeyLeavesRerunPossible reproduces finding #8:
+// secrets.Init lands host.key first, then Commit opens the store and persists
+// config. If that later step fails, host.key is already on disk. The "nothing
+// partial was left behind" promise requires either the identity to be rolled
+// back or the failure to leave the host genuinely re-runnable — not a state
+// that claims cleanliness while AlreadyInitialized blocks every retry.
+func TestCommitFailureAfterHostKeyLeavesRerunPossible(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-create exocomp.db as a directory so openStoreAt's store.Open fails
+	// with a real, unforced error — the store-open/persist step Commit runs
+	// after secrets.Init has already written host.key.
+	if err := os.Mkdir(filepath.Join(dir, "exocomp.db"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	prov := &dataDirProvisioner{dir: dir}
+	_, _, err := prov.Commit(context.Background(), setupInput{
+		machine:  "aurora",
+		operator: "Dana Kim",
+		topic:    "exo-aurora-abc",
+	})
+	if err == nil {
+		t.Fatal("Commit succeeded despite the poisoned store path; test setup is wrong")
+	}
+
+	if _, statErr := os.Stat(filepath.Join(dir, "host.key")); statErr == nil {
+		if prov.AlreadyInitialized() {
+			t.Fatalf("Commit failed after writing host.key (err=%v) but left the host "+
+				"marked AlreadyInitialized — setup can never be re-run, yet nothing "+
+				"beyond the identity was actually persisted", err)
+		}
+	}
+}

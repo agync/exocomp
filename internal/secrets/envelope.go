@@ -135,14 +135,8 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	}
 	// A half-written dir would fail every retry on the host key's O_EXCL, so
 	// roll back to an uninitialized dir instead.
-	rollback := func() {
-		_ = os.Remove(filepath.Join(dataDir, hostKeyFile))
-		_ = os.Remove(filepath.Join(dataDir, hostKeyAgeFile))
-		_ = os.Remove(filepath.Join(dataDir, recipientsFile))
-		_ = os.Remove(filepath.Join(dataDir, KeyringVersionName))
-	}
 	if err := os.WriteFile(filepath.Join(dataDir, recipientsFile), marshalRecipients(recipients), 0o644); err != nil {
-		rollback()
+		Rollback(dataDir)
 		return nil, nil, fmt.Errorf("secrets: write recipients: %w", err)
 	}
 	// Truncated to the second the file stores, so the envelope in memory and
@@ -152,12 +146,12 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 		Generated: time.Now().UTC().Truncate(time.Second),
 	}
 	if err := writeKeyringVersion(dataDir, version); err != nil {
-		rollback()
+		Rollback(dataDir)
 		return nil, nil, err
 	}
 	// Written last: the keyring's presence is what marks the dir initialized.
 	if err := os.WriteFile(filepath.Join(dataDir, keyringFile), keyring, 0o644); err != nil {
-		rollback()
+		Rollback(dataDir)
 		return nil, nil, fmt.Errorf("secrets: write keyring: %w", err)
 	}
 
@@ -174,6 +168,19 @@ func Init(dataDir string, extraRecipients []string) (*Envelope, *RecoveryKit, er
 	kit := env.KitStructure()
 	kit.AgeSecretKey = recovery.String()
 	return env, kit, nil
+}
+
+// Rollback removes every file a completed Init writes, restoring dataDir to an
+// uninitialized state. Init's own writes are already atomic — this is for a
+// caller whose "all or nothing" promise spans further than Init's return: if a
+// step it runs after a successful Init fails, the caller undoes the identity
+// with this rather than leaving a host that is on-disk-initialized but never
+// finished setup. Best-effort: removal errors are ignored, since a missing
+// file is already the desired end state.
+func Rollback(dataDir string) {
+	for _, name := range []string{hostKeyFile, hostKeyAgeFile, recipientsFile, KeyringVersionName, keyringFile} {
+		_ = os.Remove(filepath.Join(dataDir, name))
+	}
 }
 
 // Open loads the host identity from dataDir — from the systemd credential, a

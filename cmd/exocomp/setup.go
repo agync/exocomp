@@ -134,12 +134,14 @@ func (p *dataDirProvisioner) Commit(ctx context.Context, in setupInput) (string,
 
 	st, err := openStoreAt(p.dir)
 	if err != nil {
+		secrets.Rollback(p.dir)
 		return "", "", err
 	}
 	defer func() { _ = st.Close() }()
 
 	notifyStatus, err := persistOperatorConfig(ctx, st, env, in)
 	if err != nil {
+		secrets.Rollback(p.dir)
 		return "", "", err
 	}
 	return kit.Render(), notifyStatus, nil
