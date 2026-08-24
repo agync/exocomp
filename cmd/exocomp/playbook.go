@@ -82,6 +82,7 @@ func newPlaybookCmd() *cobra.Command {
 					skipTags: skipTags, extraVars: extraVars, check: check, diff: diff,
 					tolerateUnreachable: tolerateUnre, wait: wait, noFollow: noFollow,
 					timeout: timeout, idempotencyKey: idempotencyKey(cmd),
+					runnerName: runnerName,
 				}))
 			}
 			if noFollow {

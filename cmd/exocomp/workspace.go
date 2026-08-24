@@ -527,7 +527,8 @@ func newWorkspacePlanCmd() *cobra.Command {
 			"With --remote the plan is enqueued on that daemon and this command prints the " +
 			"job id; watch it with `jobs follow <id>`. The exit-2-on-changes signal is a " +
 			"local reading of the run's own driver output, so a remote plan exits 0 once the " +
-			"job is queued. --runner is a local-only flag: a --remote plan does not carry it yet.",
+			"job is queued. --runner travels with a --remote plan the same as a local one, " +
+			"enforced by the daemon that claims the job.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			op := workspaceOp{workspace: args[0], op: "plan", runSecrets: runSecrets,
@@ -547,8 +548,7 @@ func newWorkspacePlanCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	plan.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
-			"(local-sandboxed only, and only for a local run; refused, never run uncapped, "+
-			"if it cannot be enforced)")
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	return plan
 }
 
@@ -569,7 +569,8 @@ func newWorkspaceApplyCmd() *cobra.Command {
 			"With --remote the apply is enqueued on that daemon and this command prints the " +
 			"job id, or the pending approval and its TTL when the plan's policy gates it; " +
 			"watch the job with `jobs follow`. --plan then names a saved plan by artifact id, " +
-			"since a path names a file on this machine.\n\n" +
+			"since a path names a file on this machine. --runner travels with a --remote apply " +
+			"the same as a local one, enforced by the daemon that claims the job.\n\n" +
 			"A --plan must name a plan produced for THIS workspace: another workspace's " +
 			"sealed plan would run under the wrong backend bearer and state passphrase, so " +
 			"it is refused.\n\n" +
@@ -599,8 +600,7 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	apply.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
-			"(local-sandboxed only, and only for a local run; refused, never run uncapped, "+
-			"if it cannot be enforced)")
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	return apply
 }
 

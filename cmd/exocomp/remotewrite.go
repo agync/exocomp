@@ -190,6 +190,7 @@ type remotePlaybookOp struct {
 	noFollow            bool
 	timeout             time.Duration
 	idempotencyKey      string
+	runnerName          string
 }
 
 // runRemotePlaybook enqueues a playbook on the remote daemon and, unless
@@ -218,6 +219,7 @@ func runRemotePlaybook(cmd *cobra.Command, rc *client.Client, op remotePlaybookO
 		ExtraVars:           op.extraVars,
 		TolerateUnreachable: op.tolerateUnreachable,
 		IdempotencyKey:      op.idempotencyKey,
+		Runner:              op.runnerName,
 	}
 	if op.timeout > 0 {
 		req.Timeout = op.timeout.String()
@@ -255,6 +257,7 @@ func runRemoteWorkspace(cmd *cobra.Command, rc *client.Client, op workspaceOp) e
 		Timeout:        op.timeout,
 		Plan:           op.planRef,
 		IdempotencyKey: op.idempotencyKey,
+		Runner:         op.runnerName,
 	}
 
 	if op.op == "plan" {

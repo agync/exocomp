@@ -235,6 +235,7 @@ func TestRemoteWorkspacePlanEnqueues(t *testing.T) {
 	out, _, err := runRoot(t, []string{
 		"--remote", "box", "--idempotency-key", "plan-1",
 		"workspace", "plan", "edge", "--run-secrets", "aws", "--timeout", "90s",
+		"--runner", "fedora-ee",
 	})
 	if err != nil {
 		t.Fatalf("remote workspace plan: %v", err)
@@ -247,8 +248,34 @@ func TestRemoteWorkspacePlanEnqueues(t *testing.T) {
 	if stub.planBody["run_secrets"] != "aws" || stub.planBody["timeout"] != "1m30s" {
 		t.Fatalf("posted %+v", stub.planBody)
 	}
+	if stub.planBody["runner"] != "fedora-ee" {
+		t.Fatalf("posted %+v, want runner = fedora-ee", stub.planBody)
+	}
 	if stub.planIdem != "plan-1" {
 		t.Errorf("Idempotency-Key = %q", stub.planIdem)
+	}
+}
+
+// TestRemotePlaybookRunCarriesRunner: --runner on a remote playbook run travels
+// in the request body, the mirror of the workspace plan/apply seam above.
+func TestRemotePlaybookRunCarriesRunner(t *testing.T) {
+	stub := &writeAPIStub{}
+	pinnedRemote(t, stub.handler(t))
+
+	out, _, err := runRoot(t, []string{
+		"--remote", "box", "playbook", "run", "site.yml", "--source", "demo",
+		"--no-follow", "--runner", "fedora-ee",
+	})
+	if err != nil {
+		t.Fatalf("remote playbook run: %v", err)
+	}
+	if strings.TrimSpace(out) != "job 9 queued for the remote daemon" {
+		t.Fatalf("output = %q", out)
+	}
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if stub.runBody["runner"] != "fedora-ee" {
+		t.Fatalf("posted %+v, want runner = fedora-ee", stub.runBody)
 	}
 }
 
