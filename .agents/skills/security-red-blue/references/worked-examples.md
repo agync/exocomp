@@ -68,6 +68,26 @@ the authoritative record.
   pinning tool paths and deriving that token once at daemon start belong to
   `internal/health`, not this lane.
 
+## Layered guard mutation (illustrative)
+
+Not a specific closed finding — a generic shape for mutation-check.md's
+"Layered guards" case, concrete enough to apply.
+
+- **Hole.** An exploit that TWO independent guards each separately refuse —
+  e.g. a scope check and an actor check both stand between a caller and a
+  gated release.
+- **Guard.** Reverting only the nearer guard (say, the actor check) leaves the
+  farther guard (scope disjointness) still blocking the same attack path, so
+  a naive mutation test stays green — a false pass that looks like proof but
+  isn't.
+- **Test.** Mutate BOTH guards together (the true pre-fix state), or assert on
+  the guard-specific observable each layer alone controls (the actor check's
+  own error, not just "request refused") so each layer's mutation trips a
+  distinct, layer-specific assertion.
+- **Residual.** A single end-to-end assertion ("request was refused") can
+  never tell you which layer did the work; only a full pre-fix revert or
+  observable-per-layer assertions can.
+
 ## What each example shares
 
 A real hole with a reproduced exploit; a guard whose default is *refuse*; a test

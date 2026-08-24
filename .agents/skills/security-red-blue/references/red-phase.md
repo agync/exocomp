@@ -10,6 +10,16 @@ regression test.
   ./cmd/exocomp`). Init a throwaway data dir under a scratch `XDG_DATA_HOME` in
   a `mktemp` dir. Attack that instance; never sudo, never touch tracked files,
   never reach networks beyond what a normal run does.
+- For an in-process **web route** finding, the faithful substitute for a
+  subprocess binary is `httptest.NewServer(h.server.Handler())` plus the
+  existing test harness/login helpers — the route runs the real handler chain,
+  just without a subprocess. Reach for a built binary only when the finding is
+  about the binary's own bootstrap (CLI flags, daemon start-up, socket bind).
+- For an **internal-invariant** finding — one not reachable from the API, CLI,
+  or MCP surface — the faithful repro is a unit test against the real
+  components it threatens (e.g. store + queue), not a built binary. Do not
+  over-index on grading every finding against a running binary; grade against
+  whatever real surface the attacker would actually touch.
 - The surface under test is the three programmatic faces ADR 0014
   (`docs/adr/0014-agent-facing-surface.md`) ratifies:
   - the **write half of `/api/v1`** — the write routes in `internal/web`
@@ -70,8 +80,10 @@ Each finding is the object `.agents/workflows/post-red-team.js` mandates:
 When a finding is promoted into `docs/security/threat-model.md`, the table row
 carries `id` (`AI-N`), the one-line finding, `exploited`, and a **disposition**:
 FIX (blue-team wave), HARDEN (defense-in-depth), ACCEPT (documented residual),
-or DOC (honesty correction). Only FIX findings become a failing-then-passing
-test; HARDEN/ACCEPT/DOC are recorded, not necessarily tested.
+DOC (honesty correction), or CHANGE (a mitigation removed in favor of guards
+already retained — see blue-phase.md's "Removing a mitigation"). Only FIX
+findings become a failing-then-passing test; HARDEN/ACCEPT/DOC/CHANGE are
+recorded, not necessarily tested the same way.
 
 ## Ranking
 

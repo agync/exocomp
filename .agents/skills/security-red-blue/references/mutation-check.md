@@ -24,6 +24,36 @@ side-effect the mutation does not touch, the guard is duplicated elsewhere (find
 the real one), or the test exercises a different path than the exploit. Fix the
 test until the mutation kills it.
 
+## Layered guards
+
+Defense-in-depth means more than one guard can cover the same exploit. A naive
+mutation of guard A alone can leave the test green because guard B —
+unmutated — still blocks the attack: a false pass, not proof guard A is dead
+weight.
+
+- Mutate to the TRUE pre-fix state: revert every guard the fix added in the
+  same change, not just the one nearest the finding's `file:line`, or the
+  mutation is testing the wrong layer.
+- Where guards genuinely stack (each SHOULD independently refuse), assert on
+  the guard-specific observable instead of the shared end-effect — e.g. the
+  job's STATE stays `awaiting_approval`, not just "the write was refused" — so
+  each guard's mutation trips a distinct assertion instead of all of them
+  tripping the same top-level check.
+- A branch that refuses on N separate conditions needs N separate mutations,
+  each with a test that fails on THAT condition alone with the other N-1
+  intact. One mutation that flips the whole branch to allow proves the branch
+  exists, not that each condition is load-bearing.
+
+## Proving an omission is load-bearing
+
+Mutation usually reverts an added guard. The dual direction matters too:
+mutate a guard IN — add back an over-strict check the fix deliberately
+omitted — and confirm the test exercising the now-allowed case goes red. This
+proves the *absence* of that check is itself load-bearing (a legitimate case
+the strict version would have wrongly refused), not an oversight. Both
+directions are needed: reverting an added guard alone only proves the guard
+blocks the attack, not that omitting the stricter alternative was deliberate.
+
 ## Worked mutations (from the closed wave)
 
 - **Scopes disjoint (AI-2).** Guard: `operator` and `approve` are disjoint, and

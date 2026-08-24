@@ -42,6 +42,24 @@ a fix without a first-failing test cannot prove it addressed the attack.
   fresh apply AND a plan-then-apply-by-id, an operator token AND a self-approval,
   a relative escape AND an absolute path).
 
+## Removing a mitigation
+
+Not every blue-team change adds a guard — some remove one (a redundant check,
+a mitigation superseded by a better one). There is no new exploit to write for
+a deletion, so the per-finding sequence above does not apply as-is:
+
+1. Prove the RETAINED guards still bound the threat the deleted mitigation
+   covered — the existing regression test(s) for that threat must still pass
+   unmodified against the code with the mitigation removed.
+2. Mutation-test the RETAINED guard, not the deleted one — revert it and
+   confirm its test still goes red. A deletion that leaves the retained
+   guard's own mutation check green means the retained guard was never
+   carrying the weight the deletion assumed it was.
+3. Record the threat-model row as a disposition **CHANGE**: the finding is
+   neither newly FIXed nor freshly HARDENed, its guard shape changed. Name the
+   residual risk the deletion leaves (if any) and which file owns it, same as
+   any other disposition.
+
 ## Commit and gate
 
 - Logical-unit commits, one finding per unit where they are separable.
