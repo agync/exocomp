@@ -8,7 +8,7 @@ Newest first.
 
 ## 2026-08-24 — Runner caps wired to job dispatch (byo-runner Phase 1, closed)
 
-The round-2 re-review's HIGH finding is closed: per-job cgroup caps
+A follow-up review's high-severity finding is closed: per-job cgroup caps
 (`internal/executor/cgroup.go`, "per-job resource caps" above) were built and unit-tested but
 never called from `cmd/exocomp` — `sandboxOptions()` never set `Caps`/`Cgroup`, so
 `applyJobCaps`'s documented fail-closed refusal ("caps set but no cgroup → refuse, never run
@@ -32,7 +32,7 @@ plain subprocess boundary (the `local` tier, or `auto` degraded to it) would hav
 uncapped with no refusal at all. `requireSandboxedForCaps` closes it: a capped job now refuses
 outright when the sandboxed tier is not active, on the same "never silently" posture.
 
-Also fixed alongside (round-2 MINOR): `parseMemorySize`'s `n * mult` had no overflow guard, so
+Also fixed alongside (a minor finding): `parseMemorySize`'s `n * mult` had no overflow guard, so
 a large enough digit string could wrap into a small or negative byte count and write the wrong
 tiny cap; and the `/dev/shm` path, previously a second literal in
 `internal/executor/sandbox_drivers.go` next to the run-secret staging root's `TmpfsRoot`
@@ -163,8 +163,8 @@ sequential calls on one `*Sandbox` instance.
 
 ## 2026-08-24 — code review remediation: kill switch wired, devrun removed, setup honesty
 
-Closing out the three companion code reviews (`.claude/inbox/2026-08-24-*`). Structural /
-factual items not already logged by their own lanes:
+Closing out three companion code reviews. Structural /
+factual items not already logged elsewhere:
 
 - The approval page's "Silence & global kill" form was dead — its `POST /kill` target had
   no route. It now drives an operator-gated global silence (a `ScopeGlobal` `store.Silence`,
@@ -195,9 +195,9 @@ daemon startup — unreachable off-box and stale after a restart. Correction of 
 command's own `--public-url` / `EXOCOMP_PUBLIC_URL` documented as the fix: pass the same value
 `serve` was started with.
 
-## 2026-08-24 — queue: enqueued set scoped to Drain (S2)
+## 2026-08-24 — queue: enqueued set scoped to Drain
 
-Simplification S2: the queue's in-memory ownership set (`remember`/`forget`/`owns`) exists
+The queue's in-memory ownership set (`remember`/`forget`/`owns`) exists
 only to let a one-shot `Drain` claim and wait on the jobs it enqueued itself; `Run`, the
 daemon's long-lived loop, claims any queued row regardless of who created it and never reads
 the set. It carried one anyway — every idempotency-key hit `remember`ed the job it deduped
@@ -254,19 +254,19 @@ catch-up) now keys on the occurrence's own scheduled instant, so a fire and its 
 the same occurrence dedup against each other; and `last_run` advances only once the
 occurrence is safely enqueued, so a failed enqueue leaves it owed for the next catch-up.
 
-## 2026-08-24 — threat-model: AI-11 auth timing equalizer removed (S1)
+## 2026-08-24 — threat-model: auth timing equalizer removed
 
-[security/threat-model.md](security/threat-model.md) revises the **AI-11** disposition. The
+[security/threat-model.md](security/threat-model.md) revises the auth-timing disposition. The
 finding had two halves; the rate half (per-source / per-token fail counter that backs a
 guessing run off before the KDF) is unchanged and remains the guard. The timing half — a
 decoy argon2id the absent/inactive verify path paid so its latency matched a live row's — is
-**removed** (simplification S1). Correction of fact: the equalizer never actually held (a live
+**removed** (a simplification). Correction of fact: the equalizer never actually held (a live
 row hashes at `argonTime=1` while the decoy PHC hardcoded `t=3`, leaving a ~3× gap), and the
 oracle it targeted is accepted as out-of-threat-model for a single-operator homelab because
 the leak is only which row _ids_ exist (not secret bytes of a 128-bit token) and enumerating
 them still requires a guessing run the fail counter refuses pre-KDF. The verify path is now a
 plain lookup: absent / inactive / mismatch all return unauthenticated with no decoy KDF; the
-constant-time digest compare on a live row is untouched. `AI-11-resid` records the accepted
+constant-time digest compare on a live row is untouched. A residual note records the accepted
 timing gap and names `internal/web/auth.go` as its owner.
 
 ## 2026-08-24 — per-job resource caps: cgroup v2 direct writes (byo-runner Phase 1)
@@ -298,7 +298,7 @@ design's theory:
 Enforcement was observed, not assumed: a 200 MB allocation under a 50 MB cap was OOM-killed
 (`memory.events oom_kill 1`, SIGKILL → 137); a CPU workload under a 10% `cpu.max` throttled
 (`cpu.stat nr_throttled 33`). The runner→job dispatch that would carry a stored runner's
-`memory_max`/`cpu_quota` onto a job is a separate (queue/service) lane and is not yet wired;
+`memory_max`/`cpu_quota` onto a job is separate (queue/service) work and is not yet wired;
 `executor.ParseCaps` is the parsing seam it will use.
 
 ## 2026-08-24 — Cross-host fence and a cold-standby failover runbook
@@ -328,13 +328,12 @@ approval (the same `CreateApproval`/`DecideApproval` capability path) and leaves
 pending approval so a running daemon cannot claim an unsettled step. `bootstrap`, `handoff`,
 and `provision`'s `--require-approval` all gate their destructive apply this way; approve
 releases exactly that step, reject blocks the rest. The bootstrap, handoff, and provision
-operations pages were updated to describe the durable gate; the threat model records it as
-AI-14. New migration `0023_workflow_step_require_approval.sql` adds the ledger flag.
+operations pages were updated to describe the durable gate; the threat model records it. New migration `0023_workflow_step_require_approval.sql` adds the ledger flag.
 
-## 2026-08-24 — threat-model records E6: DEK reseal is now crash-safe
+## 2026-08-24 — threat-model: DEK reseal is now crash-safe
 
-[security/threat-model.md](security/threat-model.md) gained finding **E6** and its closure.
-The E2 DEK rotation (recipient revocation) re-encrypted secret rows one at a time and flipped
+[security/threat-model.md](security/threat-model.md) records this fix and its closure.
+The DEK rotation (recipient revocation) re-encrypted secret rows one at a time and flipped
 `keyring.age` only after the loop finished, so a crash mid-loop stranded some rows under the
 new DEK and the rest under the old while `keyring.age` still wrapped the OLD one — and nothing
 read the staged `keyring.age.next` to reconcile, so the next daemon `Open` silently failed to
@@ -342,8 +341,8 @@ decrypt the already-moved rows. Correction of fact: the rotation is now staged-t
 (the new keyring and metadata land beside the live files before any row moves; `keyring.age`
 is renamed last as the single commit point) and a leftover `keyring.age.next` is reconciled to
 completion on the next `Open` — loading both DEKs and re-sealing every row under the new one,
-idempotently so repeated crashes converge. The `name|kind` AAD and every E1..E5 property are
-unchanged. The residual E6-resid (a transit-sealed store cannot reconcile without the host
+idempotently so repeated crashes converge. The `name|kind` AAD and every prior envelope property are
+unchanged. The residual (a transit-sealed store cannot reconcile without the host
 key) is recorded open.
 
 ## 2026-08-23 — machine-output.md's "read/list/status verbs support it" is now true
@@ -371,7 +370,7 @@ re-arm carries; behaviour of `--capture` and `--capture-file` is otherwise uncha
 [security/threat-model.md](security/threat-model.md), [architecture/overview.md](architecture/overview.md),
 [operations/index.md](operations/index.md), and [operations/machine-output.md](operations/machine-output.md)
 still described the two-transport world after the stdio MCP server's removal. Corrections of
-fact: the AI-1-resid threat-model residual is now recorded CLOSED (the stdio face is gone
+fact: the stdio-face threat-model residual is now recorded CLOSED (the stdio face is gone
 entirely, not just its decision tools, so the token-scoped transport the residual called for
 is what shipped); the architecture overview's face-mapping table no longer names `exocomp mcp`
 as a face that enqueues, crediting MCP-over-HTTP as the agent-aware wrapper over `/api/v1`
@@ -430,19 +429,12 @@ all shipped — the ADR now ratifies built reality, with the bespoke stdio serve
 the one follow-on code change it ratifies. Status stays Proposed (ratification is the owner's
 act).
 
-## 2026-08-23 — bootstrap-first B1 example fixed; lane skills updated
+## 2026-08-23 — bootstrap-first Option B1 example fixed
 
 [design/bootstrap-first.md](design/bootstrap-first.md)'s Option B1 signature no
 longer shows `--capture` on the base command — that flag belongs to Phase 2,
 per the phased plan in §3; Phase 0 ships with no capture, matching what
-shipped. Also folded real lessons from this session's lane dispatch and
-integration work into `.agents/skills/lane-brief-authoring` (worktree created
-before dispatch, absolute-path-only writes, integrator dispatched only after
-WORKFLOW-COMPLETION, migration numbers final only at merge) and
-`.agents/skills/lane-integration` (run `make check` to completion in the
-integrator's own turn; stop and report on an "untracked working tree files"
-fast-forward refusal), and sharpened the dangerous-vs-confusing read-misread
-line in `.agents/skills/mcp-comprehension-audit`'s scoring rubric.
+shipped.
 
 ## 2026-08-23 — `bootstrap run --capture`: the ansible→tofu env handoff (Phase 2)
 
@@ -587,7 +579,7 @@ also separates the loopback tofu state backend (`internal/api`) from the operato
 `/api/v1` surface (`internal/web`), previously conflated as one row.
 [v1.1-roadmap.md](design/v1.1-roadmap.md)'s near-term table still priced gaps A and B as
 future work after its own "Landed since v1.0" section said they had landed; the table now
-marks A, B, and C (ansible drift parity, shipped this wave —
+marks A, B, and C (ansible drift parity, shipped in this pass —
 `internal/reactive/drift_ansible.go`) landed with pointers, leaving D open.
 [design/byo-runner.md](design/byo-runner.md) §6 proposed `systemd-run --user --scope` for
 per-job resource caps without checking it against exocompd's own deployment: validated
@@ -662,12 +654,12 @@ whitespace and an `authorized_keys` line has two spaces in it, so that command s
 `exocomp_fleet_pubkey` to the key *type* alone. It now prints — and the chain passes —
 the JSON `--extra-vars` form.
 
-## 2026-08-22 — M3c maintenance: lifecycle wiring, deps, packaging, docs
+## 2026-08-22 — v1.0 maintenance: lifecycle wiring, deps, packaging, docs
 
-The maintenance pass over merged M3c hardens the seams and links the operator pages the
-pass-2/pass-3 lanes had left unlinked.
+The maintenance pass over the merged v1.0 work hardens the seams and links the operator pages the
+earlier passes had left unlinked.
 
-**The operations index now links the M3c pages** that shipped without an index row:
+**The operations index now links the v1.0 pages** that shipped without an index row:
 [run-lifecycle.md](operations/run-lifecycle.md) (pre/post-run hooks and the health gate),
 [terraform-ansible-handoff.md](operations/terraform-ansible-handoff.md) (the story-5
 apply→play chain), and [upgrade.md](operations/upgrade.md) (upgrade/rollback as a ledger
@@ -700,7 +692,7 @@ steps (reusing the `internal/hooks` shape) so a live-DB snapshot is application-
 a failed pre-quiesce aborts the backup before any snapshot is taken (never a torn snapshot),
 and the un-quiesce always runs once the source was quiesced.
 
-## 2026-08-22 — M3c plan policy: one operator page added
+## 2026-08-22 — v1.0 plan policy: one operator page added
 
 [operations/plan-policy.md](operations/plan-policy.md) is new: the CEL gate over a
 workspace's `tofu show -json` plan. It documents the `plan` variable and the plan-show
@@ -713,7 +705,7 @@ backend or bearer, a workspace with no policies pays nothing, an unexaminable pl
 fail-closed denied, and a raw plan-file apply is not gated. Linked from the operations
 index between reacting-to-alerts and sources.
 
-## 2026-08-22 — M3a reactive: two pages added, overview's carve-out closed
+## 2026-08-22 — v1.0 reactive: two pages added, overview's carve-out closed
 
 [architecture/reactive.md](architecture/reactive.md) is new: the webhook ingress and its
 derived per-source path token, the one normalized event shape and why its dedup key
@@ -731,7 +723,7 @@ and why a bare public topic is refused rather than warned about; `rule`, `silenc
 [architecture/overview.md](architecture/overview.md) gained the paragraph closing the
 other half of the one-queue carve-out: guardrails and approvals are enforced at enqueue,
 and `awaiting_approval` is a state no claim statement admits rather than a UI convention.
-## 2026-08-22 — M3a security folds: keyring generations, manifest tags, kit CLI
+## 2026-08-22 — v1.0 security folds: keyring generations, manifest tags, kit CLI
 
 The five convergent findings of [design/user-feedback.md](design/user-feedback.md) that
 touch keys and backups are implemented; the pages describing them are corrected here.
@@ -753,7 +745,7 @@ snapshot restored with a loud warning — and a "Deriving without the daemon" se
 **The card takes the design handoff's section layout**, numbered 1-6 with the
 hand-written storage-credential box, the kit version line and the page digest. The
 handoff's section 7 (dead-man ping) is *not* rendered: nothing configures a dead-man ping
-yet, and a card section describing an unbuilt feature is the failure mode the M1 gate
+yet, and a card section describing an unbuilt feature is the failure mode the v0.1 gate
 corrections were about. It lands with the reactive layer. The derivation block renders
 from the salt and purpose table in code, as the design-handoff entry below records, and
 every command renders as `exocomp` ([ADR 0002](adr/0002-project-name-exocomp.md)).
@@ -767,7 +759,7 @@ The repository root gains a [DCO](../DCO); [AGENTS.md](../AGENTS.md) records tha
 contributing certifies it and that no sign-off trailer is used, invariant 9 admitting
 none.
 
-## 2026-08-22 — M2d reconciliation: serve, execution, and BOM corrected against code
+## 2026-08-22 — v0.5 reconciliation: serve, execution, and BOM corrected against code
 
 [operations/serve.md](operations/serve.md): the daemon-aware CLI list gained `backup
 run` and `playbook vendor`; the single-instance probe is now documented as shared and
@@ -780,22 +772,22 @@ daemon the directory; startup's stale-lock warning and a "Known limits" section
 states the one-shot-drain/no-daemon-rows rule and that `store.ClaimJob` enforces
 concurrency keys in one SQL statement, not an in-process map. The executor tier table
 now says what `local` actually ships (no per-job tmpfs, no separate executor UID) and
-marks `local-sandboxed`/`container` designed for M3, with the trust-equivalence
+marks `local-sandboxed`/`container` designed for v1.0, with the trust-equivalence
 consequence stated plainly. The stale-tflock paragraph flipped from aspiration to
 implemented (`workspace unlock`, audited system event).
 
 [adr/0004](adr/0004-opentofu-http-state-backend.md) gained a status note dating the
 stale-lock recovery landing. [operations/disaster-recovery.md](operations/disaster-recovery.md)
-re-dated its two lingering "M2" failure-mode rows to M3, neither matching a v1.1
+re-dated its two lingering "v0.5" failure-mode rows to v1.0, neither matching a v1.1
 backlog item. [sbom/bill-of-materials.md](sbom/bill-of-materials.md) refreshed
 drifted Go module rows against `go.mod` and closed the ansible-runner
 re-evaluation: staying with the direct driver, JSON callback plugin backlogged v1.1.
 
-[design/delivery.md](design/delivery.md) marks v0.5/M2 landed 2026-08-22
-(`test/e2e/m2-gate.sh`), splitting the full 8-screen TUI and wizard out to v1.0/M3
+[design/delivery.md](design/delivery.md) marks v0.5 landed 2026-08-22
+(`test/e2e/m2-gate.sh`), splitting the full 8-screen TUI and wizard out to v1.0
 now that both are designed.
 
-## 2026-08-21 — M2c: serve page added, backup run states corrected
+## 2026-08-21 — v0.5: serve page added, backup run states corrected
 
 [operations/serve.md](operations/serve.md) is new: `exocomp serve`'s flags
 (`--port`, `--drain-grace`, `--reload-interval`), the signal contract for `SIGHUP` and
@@ -812,7 +804,7 @@ twice that "`exocomp serve` currently serves the OpenTofu state backend and noth
 else"; that stopped being true when serve became the daemon, and both parentheticals are
 gone.
 
-## 2026-08-21 — M2b caches: offline-caches page added, MinIO assessment closed out
+## 2026-08-21 — v0.5 caches: offline-caches page added, MinIO assessment closed out
 
 [operations/offline-caches.md](operations/offline-caches.md) is new: `playbook vendor`
 and the ansible collections cache, the tofu plugin cache and its `OfflineProviders`
@@ -823,7 +815,7 @@ mode, and how to verify offline resolution for real. Linked from
 commands for sealing a `restic_s3` target's S3 credentials
 (`s3/<target>/access-key-id`/`secret-access-key`) — the row naming and fallback
 behavior were already documented, but not how an operator actually seals one; the
-backup lane shipped the mechanism without that step.
+backup work shipped the mechanism without that step.
 
 [sbom/minio-assessment.md](sbom/minio-assessment.md)'s decision section is no longer a
 backlog item: the S3 test fixture (`internal/backup/s3_test.go`,
@@ -834,7 +826,7 @@ request without a real `-s3.config` identity (anonymous mode is not viable for
 restic), and the mounted config needs world-readable permissions because rootless
 podman's UID remap does not preserve ownership into the container.
 
-## 2026-08-21 — M2a scheduler closes half the M1 backup carve-out
+## 2026-08-21 — v0.5 scheduler closes half the v0.1 backup carve-out
 
 `architecture/overview.md`'s "one queue, no side doors" section named `exocomp backup run`
 as a direct CLI invocation outside the queue, "because there is no scheduler yet to enqueue
@@ -844,17 +836,17 @@ gave no longer holds for backups. The paragraph now says what `backup run` and
 `schedule add --kind backup` actually do — one queued job per target, concurrency key
 `backup:<target>` — and narrows to `exocomp restore`, which stays a direct invocation:
 restoring is an operator action at a cold start, not something the scheduler reaches.
-## 2026-08-21 — M2a hardening lands git chunking and sealed S3 credentials
+## 2026-08-21 — v0.5 hardening lands git chunking and sealed S3 credentials
 
 `operations/disaster-recovery.md`'s leg table previously flagged the git leg's 90 MB
-chunking and 4 GB repo-size guard as not-yet-shipped M2 work (see the M1 gate corrections
+chunking and 4 GB repo-size guard as not-yet-shipped v0.5 work (see the v0.1 gate corrections
 entry below). Both now ship in `internal/backup/chunk.go`, so the row is corrected to
 describe the shipped mechanism instead of its absence. The S3 leg row gains the sealed
 credential resolution added alongside it: `s3/<target>/access-key-id` and
 `.../secret-access-key` rows, process-environment fallback with a logged warning. A new
 line documents `exocomp ssh-serve`, which was not previously mentioned anywhere in the
 bundle.
-## 2026-08-21 — M2a tofu corrections
+## 2026-08-21 — v0.5 tofu corrections
 
 Building the OpenTofu half found three claims in
 [ADR 0004](adr/0004-opentofu-http-state-backend.md) the shipped code does not
@@ -881,7 +873,7 @@ passphrase, the environment allowlist, and why two runs cannot share a workspace
 directory.
 
 Two rows of `operations/disaster-recovery.md` said `exocompd serve` "is not yet
-implemented", which the M1 corrections had made true. `exocomp serve` now exists and
+implemented", which the v0.1 corrections had made true. `exocomp serve` now exists and
 serves the state backend; the startup integrity gating, the single-recipient nag, and
 the bootstrap wizard those rows point at are still unbuilt, so the rows name that
 instead of the command.
@@ -930,7 +922,7 @@ page wins — history documents were not edited to stay consistent with later de
 twelve [amendments](design/amendments.md) override the accepted candidate design wherever
 they differ.
 
-## 2026-08-21 — M0 maintenance corrections
+## 2026-08-21 — Early maintenance corrections
 
 Adversarial review of the integrated bundle corrected these facts (code and the
 critique source win over curated prose):
@@ -949,7 +941,7 @@ critique source win over curated prose):
 - Effort figures: ADR 0001's comparison row now carries its units caveat;
   `delivery.md` explains the ~22 vs ~23 FTE-week split.
 
-## 2026-08-21 — M1a implementation landed
+## 2026-08-21 — v0.1: secrets envelope and store/queue core landed
 
 The secrets envelope and the store/queue core now exist in code; pages describing
 them are design-accurate but the implementation is authoritative:
@@ -966,7 +958,7 @@ them are design-accurate but the implementation is authoritative:
   implemented and race-tested as designed in
   [architecture/execution.md](architecture/execution.md).
 
-## 2026-08-21 — M1b implementation landed
+## 2026-08-21 — v0.1: executor, backup, and TUI landed
 
 - Ansible driver (`internal/executor/ansible.go`): env allowlist, per-job 0700
   private dir for vault-password and extra-vars files, `--vault-id` from the
@@ -977,23 +969,23 @@ them are design-accurate but the implementation is authoritative:
   MinIO-under-podman for S3; `keyring.age` + `RECOVERY.md` land at every target
   root outside the restic repo; `exocomp backup run` / `exocomp restore` live.
 - Correction: [operations/disaster-recovery.md](operations/disaster-recovery.md)
-  staging tree updated to the implemented M1 contents (snapshot.db, keyring.age,
+  staging tree updated to the implemented v0.1 contents (snapshot.db, keyring.age,
   MANIFEST.json); config/blobs/repo-bundle entries return with their features.
 - TUI (`internal/tui`): Jobs and Backups screens, `exocomp tui`.
 - `exocomp secrets add|list` seals values from stdin; playbook runs feed every
   sealed plaintext to the redactor.
-- Deferred to M2, tracked: amendment-2 git-leg chunking and repo-size guard;
+- Deferred to v0.5, tracked: amendment-2 git-leg chunking and repo-size guard;
   S3 credentials as sealed rows (amendment 1); systemd-creds TPM sealing;
   age-plugin-yubikey recipients.
 
-## 2026-08-21 — M1 security and DR corrections
+## 2026-08-21 — v0.1 security and DR corrections
 
-An adversarial review of the M1 code found claims the implementation did not
+An adversarial review of the v0.1 code found claims the implementation did not
 keep. Corrections, code first:
 
 - The recovery card told the operator to restore "using the read-only storage
   credential from this card". The card carries no such credential: per-target
-  read-only keys are [amendment 1](design/amendments.md), scheduled for M2. The
+  read-only keys are [amendment 1](design/amendments.md), scheduled for v0.5. The
   card now says the operator supplies the uri and its credential.
   [disaster-recovery.md](operations/disaster-recovery.md) still describes the
   amendment-1 end state, which is design, not current behaviour.
@@ -1007,66 +999,66 @@ keep. Corrections, code first:
   keyring.age is read from a local target root; an s3 or git target needs the
   operator to fetch keyring.age and pass `--keyring`.
 - `backup canary` is gone; `secrets add` supersedes it (it was listed above as
-  deferred to M2).
+  deferred to v0.5).
   age-plugin-yubikey recipients; `backup canary` removal in favor of `secrets add`.
 
-## 2026-08-21 — M1 gate corrections
+## 2026-08-21 — v0.1 gate corrections
 
-Adversarial review of the M1 gate found curated pages describing a not-yet-built
+Adversarial review of the v0.1 gate found curated pages describing a not-yet-built
 executor and CLI surface as though they already shipped (code wins, per
 [AGENTS.md](../AGENTS.md)):
 
 - **Executor substitution.** `requirements.md`, `overview.md` (the diagram node and
   a new explicit carve-out, below), `delivery.md`, and both affected
   `sbom/bill-of-materials.md` rows named `ansible-runner` with per-task JSON
-  events as the run engine. M1's actual executor
+  events as the run engine. v0.1's actual executor
   (`internal/executor/ansible.go`) is a direct `ansible-playbook` subprocess with
   stdout scanned line by line into events and exit-code-only correctness;
-  `ansible-runner` is unused in M1 and re-evaluated for M2.
+  `ansible-runner` is unused in v0.1 and re-evaluated for v0.5.
 - **`operations/disaster-recovery.md` legs and failure-mode tables.** The git
-  leg's 90 MB chunking and 4 GB size guard (amendment 2) are M2, not shipped —
+  leg's 90 MB chunking and 4 GB size guard (amendment 2) are v0.5, not shipped —
   `internal/backup/git.go` pushes the archive whole with no size guard. Every
   command in the failure-mode table now matches the shipped CLI: `exocomp
   restore` takes `--from`/`--dest`/`--identity` and restores latest only (no
   `--snapshot` selector, no in-place restore); `exocomp recovery-kit` only
   re-renders stored kit structure and cannot mint or revoke a recovery identity;
-  `exocompd serve` itself is not implemented in M1, so startup integrity
+  `exocompd serve` itself is not implemented in v0.1, so startup integrity
   gating, per-target alerting, the weekly recipient nag, and the bootstrap
-  wizard are all M2.
+  wizard are all v0.5.
 - **`architecture/overview.md`'s "one queue, no side doors" invariant.**
-  `exocomp backup run` and `exocomp restore` are direct CLI invocations in M1,
+  `exocomp backup run` and `exocomp restore` are direct CLI invocations in v0.1,
   outside the queue — there is no scheduler yet to enqueue them against, and
   the queue's guardrails do not apply to them. The page now states this
-  explicitly as an M1 carve-out rather than leaving the exception silent; they
-  become queued jobs once the M2 scheduler exists.
-- **`api/` lands in M2, not M1.** `AGENTS.md`'s layout table and
-  `internal/api/doc.go` both said the OpenAPI spec and typed client land in M1;
-  neither exists yet. Corrected to M2.
+  explicitly as a v0.1 carve-out rather than leaving the exception silent; they
+  become queued jobs once the v0.5 scheduler exists.
+- **`api/` lands in v0.5, not v0.1.** `AGENTS.md`'s layout table and
+  `internal/api/doc.go` both said the OpenAPI spec and typed client land in v0.1;
+  neither exists yet. Corrected to v0.5.
 
 ## 2026-08-21 — operations pages aligned with the shipped surface
 
 `doctor --deep`, `jobs list`, and the card-carried storage credential were still
-described as current in three spots the M1 corrections missed; each now names the
-shipped command or marks the capability M2.
+described as current in three spots the v0.1 corrections missed; each now names the
+shipped command or marks the capability v0.5.
 
 ## 2026-08-21 — MinIO assessment added
 
 [sbom/minio-assessment.md](sbom/minio-assessment.md): AGPL-as-test-fixture imposes no
 obligation; the real finding is CE's archival (2026-04). Fixture swap to SeaweedFS
-backlogged for M2b/M3; BOM's operator-store row no longer suggests MinIO for new
+backlogged for v0.5/v1.0; BOM's operator-store row no longer suggests MinIO for new
 deployments.
 
 ## 2026-08-21 — persona review synthesized
 
 [design/user-feedback.md](design/user-feedback.md): four adversarial persona reviews
 (veteran homelabber, SRE-at-home, time-poor generalist, security engineer). Five
-convergent findings folded into M3 scope; ranked v1.1 backlog established;
+convergent findings folded into v1.0 scope; ranked v1.1 backlog established;
 [ADR 0007](adr/0007-audit-chain-deferral.md) records the previously silent audit-chain
 deferral.
 
 ## 2026-08-21 — daemon redaction resolves per job
 
-The m2 gate caught the daemon snapshotting sealed secrets at startup: a secret
+The `m2-gate.sh` end-to-end gate caught the daemon snapshotting sealed secrets at startup: a secret
 sealed after `exocomp serve` started was not redacted until restart. The queue
 now takes a redactor provider resolved at job claim time
 ([operations/serve.md](operations/serve.md), "Redaction freshness").
@@ -1074,14 +1066,14 @@ now takes a redactor provider resolved at job claim time
 ## 2026-08-22 — approval surface contract adopted
 
 The design exploration settled the phone approval flow's semantics; the seven-point
-contract is recorded in [design/ui-brief.md](design/ui-brief.md) and binds the M3
+contract is recorded in [design/ui-brief.md](design/ui-brief.md) and binds the v1.0
 web/approvals implementation.
 
 ## 2026-08-22 — ADR 0008: step ledger over DBOS
 
 Durable-execution assessment recorded: DBOS Go+SQLite is the one invariant-
 compatible engine but is deferred (young SQLite path, single-maintainer, second
-runtime); M3 builds rotation/upgrade on a step-ledger extension of the job store.
+runtime); v1.0 builds rotation/upgrade on a step-ledger extension of the job store.
 
 ## 2026-08-22 — ADR 0008 fact corrected
 
@@ -1094,14 +1086,14 @@ distribution, which this project's invariants exclude. The deferral rationale
 
 Operator decision: LAN exposure is secured by bearer tokens minted and managed
 via local auth only, with default self-signed TLS and fingerprint pinning
-([ADR 0009](adr/0009-lan-access-tokens.md)). Binds the M3 web lane and adds four
+([ADR 0009](adr/0009-lan-access-tokens.md)). Binds the v1.0 web work and adds four
 v1.0 gate assertions.
 
 ## 2026-08-22 — design handoff v0.1 imported
 
 Tokens landed verbatim at `internal/web/tokens.css` (annotated contrast, split
 accent, signal system, type ramp). Artboard captures + the canvas PDF live under
-[design/reference](design/reference/). Two reconciliations recorded for M3:
+[design/reference](design/reference/). Two reconciliations recorded for v1.0:
 
 - **The printed card's derivation block must render from code, not the mock.**
   The design shows a per-install random salt (section 3) and `info =
@@ -1112,7 +1104,7 @@ accent, signal system, type ramp). Artboard captures + the canvas PDF live under
 - **The mock's `exo` command shorthand does not exist**: ADR 0002 forbids an
   `exo` alias (exo-lang collision). The kit/wizard commands render as `exocomp`;
   the new surfaces the design assumes — `kit derive [--list]`, `kit verify`,
-  `identity migrate` — are adopted into the M3 CLI scope.
+  `identity migrate` — are adopted into the v1.0 CLI scope.
 
 ## 2026-08-22 — TUI design settled
 
@@ -1125,7 +1117,7 @@ engine requirement (notification-mute) recorded in
 TUI round as text under [design/reference/tui](design/reference/tui/): frames,
 keymap, colors, copy, states — the authoritative artifacts (PNGs for looking
 only). The twelve frames are copied into `internal/tui/testdata/frames/` as
-golden fixtures the M3 TUI View() tests assert against; all pass their declared
+golden fixtures the v1.0 TUI View() tests assert against; all pass their declared
 width invariant (80/120/60). Canvas PDF v0.2 committed. Both standing
 corrections (`exocomp` not `exo`, derivation-from-code) honored by the handoff.
 Tokens refreshed from source.
@@ -1172,9 +1164,9 @@ Two practitioner reviews ([design/expert-reviews.md](design/expert-reviews.md))
 converge: the execution cores are correct but the credential plane binding sealed
 secrets to run env (provider env / plugin env / TF_VAR_) is missing, and the
 sandbox allowlist starves dynamic inventory and providers. v1 must-fixes fold into
-the M3b source-model scope; both lists recorded.
+the v1.0 source-model scope; both lists recorded.
 
-## 2026-08-22 — M3b glue: run-path credentials and v1 surfaces
+## 2026-08-22 — v1.0 glue: run-path credentials and v1 surfaces
 
 The credential-plane binding is wired end to end: a run carries its `run_secret`
 binding and inventory names on the job row and resolves them to named env at
@@ -1275,7 +1267,7 @@ sandbox profile is default-deny with **no** kind-wide egress: `ansible` and `tof
 speak one protocol, but the `cli` kind is every allow-listed binary at once, so a port is
 granted per registration to that run alone.
 
-Deferred: the daemon's kind router lives in a file another lane owns, so `run-cli` refuses
+Deferred: the daemon's kind router lives in a file owned by other work, so `run-cli` refuses
 while `exocomp serve` is up rather than writing a row that would die on a worker. The
 health-gate composition and the web/MCP surfaces for the kind are not built.
 [operations/cli-run.md](operations/cli-run.md).
@@ -1285,7 +1277,7 @@ health-gate composition and the web/MCP surfaces for the kind are not built.
 The second adversarial pass went at the three programmatic faces — the write
 `/api/v1`, `exocomp login` + `--remote`, and the stdio MCP server — and every
 exploited finding is closed, each one reproduced as a failing test first
-([security/threat-model.md](security/threat-model.md), AI-1..AI-13).
+([security/threat-model.md](security/threat-model.md)).
 
 Four operator-visible behaviours changed. Approvals over `/api/v1` now take an
 `approve`-scope token: the scope that enqueues a gated apply may not settle it,
