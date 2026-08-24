@@ -9,7 +9,7 @@ writes; see [Which verbs are remoted](#which-verbs-are-remoted-today) below.
 ## Pinning a remote (TOFU)
 
 ```
-exocomp login nibbler.tailnet.ts.net:8443 --token exo_...
+exocomp login server.tailnet.ts.net:8443 --token exo_...
 ```
 
 `login` connects over TLS, captures the daemon's self-signed certificate fingerprint (the
@@ -17,8 +17,8 @@ same SHA-256 hex `doctor` and the web login screen print), shows it, and — on 
 — records `{endpoint, fingerprint, token}` under an alias in
 `~/.config/exocomp/hosts.toml` (`0600`, atomic write via temp file + rename), the same
 trust-on-first-use discipline as `~/.ssh/known_hosts`. `--name` sets the alias explicitly;
-otherwise it is derived from the endpoint's first host label (`nibbler.tailnet.ts.net` →
-`nibbler`). The first login becomes the default remote unless `--no-default` is passed or a
+otherwise it is derived from the endpoint's first host label (`server.tailnet.ts.net` →
+`server`). The first login becomes the default remote unless `--no-default` is passed or a
 default is already set.
 
 **A changed fingerprint is refused, loudly.** If the alias is already pinned to a
@@ -42,7 +42,7 @@ Every command inherits two global flags plus the token flag:
 | neither | the command stays **local**, against the data dir, unchanged |
 | `--remote=` (empty value) | remote mode is active; resolves to the `hosts.toml` default |
 
-`<selector>` is either a stored alias (`nibbler`) or a raw `https://` endpoint that was
+`<selector>` is either a stored alias (`server`) or a raw `https://` endpoint that was
 pinned under some alias by an earlier `login` — an endpoint that was never logged in is
 refused (TOFU demands the pin exist first). The `hosts.toml` default is consulted **only**
 once remote mode is already active (via `--remote`/`EXOCOMP_REMOTE`); a bare command with
@@ -53,9 +53,9 @@ The bearer token resolves the same way `login` resolves it: `--token` flag → `
 a different-scoped token than the one pinned, without a re-login.
 
 ```
-exocomp --remote nibbler jobs list --output json
-EXOCOMP_REMOTE=nibbler EXOCOMP_TOKEN=exo_... exocomp doctor
-exocomp --remote https://nibbler.tailnet.ts.net:8443 workspace list
+exocomp --remote server jobs list --output json
+EXOCOMP_REMOTE=server EXOCOMP_TOKEN=exo_... exocomp doctor
+exocomp --remote https://server.tailnet.ts.net:8443 workspace list
 ```
 
 `--remote` is deliberately not `--host`: `--host` already names the ansible host *pattern*

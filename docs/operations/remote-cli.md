@@ -8,8 +8,8 @@ certificate pinned trust-on-first-use.
 ## Pinning a remote
 
 ```
-exocomp login nibbler.tailnet.ts.net:8443 --token exo_...
-exocomp --remote nibbler jobs list
+exocomp login server.tailnet.ts.net:8443 --token exo_...
+exocomp --remote server jobs list
 ```
 
 `login` pins the presented certificate's SHA-256 fingerprint and stores
