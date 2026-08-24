@@ -15,6 +15,8 @@ import (
 // field — never echoed, flashed, redirected, or logged (invariant 4). Delete is
 // guarded by the run-secret bindings that reference the secret.
 
+func init() { registerWrite((*Server).registerSecretWrite) }
+
 func (s *Server) registerSecretWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /secrets/add", s.requireAuth(s.handleSecretAdd))
 	mux.HandleFunc("POST /secrets/{name}/rotate", s.requireAuth(s.handleSecretRotate))

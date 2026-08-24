@@ -14,6 +14,8 @@ import (
 // A token list is operator-only. The plaintext of a new or rotated secret is
 // shown exactly once, inline — never redirected, flashed, or logged.
 
+func init() { registerWrite((*Server).registerTokenWrite) }
+
 func (s *Server) registerTokenWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /tokens", s.requireAuth(s.handleTokens))
 	mux.HandleFunc("POST /tokens/new", s.requireAuth(s.handleTokenNew))

@@ -105,10 +105,20 @@ func redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
 	http.Redirect(w, r, path+"?flash="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
-// registerWriteUI mounts every resource's write routes. Each resource lane adds
-// exactly one call here and defines its own registerXWrite in its own file, so
-// server.go and this dispatch list are the only shared edit points.
+// writeRegistrars collects each resource lane's route-registration func. A lane
+// adds itself with registerWrite in its own file's init(), so it never edits a
+// shared file — the same decoupling the CLI's registerCommand/init() gives.
+var writeRegistrars []func(*Server, *http.ServeMux)
+
+// registerWrite records a resource lane's write-route registrar. Called from a
+// lane file's init().
+func registerWrite(f func(*Server, *http.ServeMux)) {
+	writeRegistrars = append(writeRegistrars, f)
+}
+
+// registerWriteUI mounts every registered resource's write routes.
 func (s *Server) registerWriteUI(mux *http.ServeMux) {
-	s.registerTokenWrite(mux)
-	s.registerSecretWrite(mux)
+	for _, reg := range writeRegistrars {
+		reg(s, mux)
+	}
 }
