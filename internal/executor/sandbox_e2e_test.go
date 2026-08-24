@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/base64"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -262,5 +264,147 @@ func TestSandboxedTofuPlansAndApplies(t *testing.T) {
 	}
 	if strings.TrimSpace(string(body)) != "sandboxed-tofu-ok" {
 		t.Errorf("managed file holds %q", body)
+	}
+}
+
+// devShmSecretSentinel is the plaintext staged under /dev/shm by the tests
+// below — never checked into an event or an argv, only into the file a
+// sandboxed child reads back.
+const devShmSecretSentinel = "apiVersion: v1\nkind: Config\ntoken: sandboxed-devshm-bearer\n"
+
+// TestSandboxedTofuReadsDevShmStagedSecret is the win this rework exists for:
+// under real nono, with zero added capabilities, a sandboxed tofu child reads
+// a run-secret staged as a file under /dev/shm through the path granted to
+// it — the exact case the rejected memfd design could not support, because
+// real nono closes inherited fds before exec and a memfd has no path a
+// --read-file grant can name.
+func TestSandboxedTofuReadsDevShmStagedSecret(t *testing.T) {
+	requireNono(t)
+
+	data := sandboxDataDir(t)
+	// bin and its log both live inside the working directory the sandbox
+	// grants read+write on (Sandbox.Run adds spec.Dir to WritePaths); the
+	// tool's own directory is otherwise granted read-only, which would deny
+	// the script's own `>> log` append under the sandbox.
+	workDir := t.TempDir()
+	bin, logPath := fileStagerBin(t, executor.TofuBinary, workDir)
+
+	drv := executor.NewSandboxedTofu(executor.TofuOptions{
+		Binary:         bin,
+		Workspace:      "edge",
+		BackendURL:     "http://127.0.0.1:41111/api/v1/tf/state/edge",
+		BackendToken:   "tok",
+		PrivateDirRoot: shortPrivateRoot(t),
+		RunSecrets:     executor.RunSecrets{"KUBECONFIG": devShmSecretSentinel},
+		RunSecretFiles: []string{"KUBECONFIG"},
+	}, executor.SandboxOptions{DataDir: data})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	var sink collector
+	res, err := drv.Run(ctx, executor.Spec{
+		JobID: 1,
+		Kind:  executor.KindTofu,
+		Argv:  executor.TofuArgv("plan"),
+		Dir:   workDir,
+	}, &sink)
+	if err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("sandboxed tofu exited %d reading its granted /dev/shm secret:\n%s",
+			res.ExitCode, strings.Join(sink.msgs(""), "\n"))
+	}
+
+	lines := envLines(t, logPath)
+	var kubePath string
+	for _, l := range lines {
+		if v, ok := strings.CutPrefix(l, "env:KUBECONFIG="); ok {
+			kubePath = v
+			break
+		}
+	}
+	if kubePath == "" {
+		t.Fatalf("KUBECONFIG did not reach the sandboxed child: %v", lines)
+	}
+	if !strings.HasPrefix(kubePath, executor.ShmDir+"/") {
+		t.Fatalf("staged path %q is not under %s", kubePath, executor.ShmDir)
+	}
+	// The sandboxed child actually opened the granted file — not just saw the
+	// path — and read the sentinel back at 0600.
+	if !slices.Contains(lines, "kubeconfig-mode:600") {
+		t.Errorf("sandboxed child did not read a 0600 file: %v", lines)
+	}
+	wantBody := "kubeconfig-body:" + strings.ReplaceAll(devShmSecretSentinel, "\n", "~")
+	if !slices.Contains(lines, wantBody) {
+		t.Errorf("sandboxed child did not read the sentinel: %v", lines)
+	}
+	for _, e := range sink.events {
+		if strings.Contains(e.Msg, "sandboxed-devshm-bearer") || strings.Contains(e.RawJSON, "sandboxed-devshm-bearer") {
+			t.Errorf("the sentinel value reached a job event: %+v", e)
+		}
+	}
+
+	// The job is over: the staged file was unlinked once the sandboxed
+	// subprocess exited.
+	if _, err := os.Stat(kubePath); !os.IsNotExist(err) {
+		t.Errorf("staged file survived the job: stat err = %v", err)
+	}
+}
+
+// TestSandboxDeniesAnUngrantedDevShmFile is the control for the test above: a
+// /dev/shm file that was never granted through ReadFiles is denied under real
+// nono exactly as any other ungranted path would be — proving the read above
+// succeeded because of the grant, not because /dev/shm is somehow exempt from
+// the sandbox's default-deny.
+func TestSandboxDeniesAnUngrantedDevShmFile(t *testing.T) {
+	requireNono(t)
+
+	data := sandboxDataDir(t)
+	work := t.TempDir()
+
+	granted := filepath.Join(executor.ShmDir, "exocomp-secret-test-granted")
+	ungranted := filepath.Join(executor.ShmDir, "exocomp-secret-test-ungranted")
+	for _, p := range []string{granted, ungranted} {
+		if err := os.WriteFile(p, []byte("control-value"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", p, err)
+		}
+		t.Cleanup(func(p string) func() { return func() { _ = os.Remove(p) } }(p))
+	}
+
+	profile := executor.ProfileFor(executor.KindCLI, executor.SandboxOptions{
+		DataDir:    data,
+		WritePaths: []string{work},
+		ReadFiles:  []string{granted},
+	})
+
+	// CONTROL: the granted file reads fine, so a denial below is the sandbox's
+	// doing and not some other misconfiguration.
+	argv, err := profile.Command([]string{"cat", granted})
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	runIn := func(argv []string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Dir = work // nono refuses CWD access without a grant on it.
+		return cmd.CombinedOutput()
+	}
+	if out, err := runIn(argv); err != nil {
+		t.Fatalf("granted /dev/shm file was denied, so the control is broken: %v\n%s", err, out)
+	}
+
+	// TEST: the ungranted file, sitting in the very same directory, is denied.
+	argv, err = profile.Command([]string{"cat", ungranted})
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
+	out, err := runIn(argv)
+	if err == nil {
+		t.Fatalf("an ungranted /dev/shm file was read under the sandbox:\n%s", out)
+	}
+	if !strings.Contains(string(out), "Permission denied") {
+		t.Errorf("the read failed for a reason other than the sandbox: %v\n%s", err, out)
 	}
 }

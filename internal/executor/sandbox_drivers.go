@@ -265,6 +265,29 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 	sb := t.sandbox
 	sb.WritePaths = append(slices.Clone(sb.WritePaths), append(job.grants(), tfConfig)...)
 	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), toolGrant(t.opts.Binary, TofuBinary)...)
+
+	// A run-secret bound to reach the tool as a file (KUBECONFIG, an
+	// exec-auth config) is staged here, before the profile is built, so its
+	// /dev/shm path can be granted to the sandbox — a sandboxed child cannot
+	// open a path nono was never told to allow. Staged before NewTofu(opts)
+	// runs and RunSecretFiles cleared on opts so the inner, unsandboxed Run
+	// does not try to stage it again from a value that is now a path.
+	if len(t.opts.RunSecretFiles) > 0 {
+		rs, staged, err := StageRunSecretFiles(t.opts.RunSecrets, t.opts.RunSecretFiles)
+		if err != nil {
+			return Result{}, err
+		}
+		defer func() {
+			for i := range staged {
+				_ = staged[i].Close()
+			}
+		}()
+		opts.RunSecrets = rs
+		opts.RunSecretFiles = nil
+		for _, sf := range staged {
+			sb.ReadFiles = append(slices.Clone(sb.ReadFiles), sf.Path)
+		}
+	}
 	if t.opts.PluginCacheDir != "" {
 		// An online init downloads into the cache, so read-only is not enough.
 		sb.WritePaths = append(sb.WritePaths, t.opts.PluginCacheDir)

@@ -72,10 +72,10 @@ type AnsibleCapture struct {
 	Name string
 	File string
 	// AsFile asks the consuming step to receive the sealed value as a FILE (its
-	// env rewritten to a 0600 path in the run's tmpfs private tree) rather than as
-	// an env value — for a tool that wants a KUBECONFIG file. It is a consumer
-	// concern only: the seal is identical either way, so this field never affects
-	// how captureAnsibleOutputs reads or seals the value.
+	// env rewritten to a 0600 path under /dev/shm) rather than as an env value —
+	// for a tool that wants a KUBECONFIG file. It is a consumer concern only: the
+	// seal is identical either way, so this field never affects how
+	// captureAnsibleOutputs reads or seals the value.
 	AsFile bool `json:"as_file,omitempty"`
 }
 

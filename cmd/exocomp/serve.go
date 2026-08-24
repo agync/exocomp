@@ -186,6 +186,18 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	defer lock.release()
 
+	// Defense-in-depth for the /dev/shm run-secret staging path: the normal
+	// path already unlinks a staged file once its subprocess exits, but a
+	// daemon that survives a broken cleanup (a panic between staging and
+	// Close, a kill -9) would otherwise leave a stale bearer sitting in RAM
+	// indefinitely. Runs once per start, after the single-instance lock so
+	// two daemons never sweep concurrently.
+	if swept, err := executor.SweepOrphanRunSecretFiles(); err != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: startup sweep of orphan run-secret files: %v\n", err)
+	} else if swept > 0 {
+		_, _ = fmt.Fprintf(out, "swept %d orphaned run-secret file(s) from %s\n", swept, executor.ShmDir)
+	}
+
 	st, err := openStore()
 	if err != nil {
 		return err
@@ -1064,8 +1076,8 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		PluginCacheDir:  d.dirs.pluginCache,
 		RunSecrets:      runSecrets,
 		// A bootstrap chain's --capture-file names, via the step's Captures field,
-		// the run-secrets the apply must receive as tmpfs-staged files rather than
-		// env values. Empty for every other apply.
+		// the run-secrets the apply must receive as /dev/shm-staged files rather
+		// than env values. Empty for every other apply.
 		RunSecretFiles: bootstrapStagedFileEnvs(job.Args.Captures),
 		// The workspace's opt-in egress widening (docs/operations/serve.md);
 		// empty by default, so the daemon path keeps the 443-and-backend grant.

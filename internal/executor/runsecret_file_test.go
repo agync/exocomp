@@ -12,72 +12,40 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 )
 
-// tmpfsDir returns a fresh directory on a tmpfs mount, or skips: the file-
-// staging path only writes onto RAM-only storage, so its success cases need a
-// real tmpfs. /dev/shm is tmpfs on a normal Linux host; where it is not (a
-// stripped container, a non-Linux runner) the test says so and skips rather than
-// asserting against durable disk.
-func tmpfsDir(t *testing.T) string {
-	t.Helper()
-	const base = "/dev/shm"
-	ok, err := executor.RunDirTmpfs(base)
-	if err != nil || !ok {
-		t.Skipf("no tmpfs at %s (tmpfs=%v, err=%v)", base, ok, err)
-	}
-	dir, err := os.MkdirTemp(base, "exocomp-p3-")
-	if err != nil {
-		t.Fatalf("mkdir tmpfs dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
-}
-
-// durableDir returns a fresh directory on the durable filesystem the checkout
-// lives on, or skips when even that is tmpfs (some dev boxes mount the whole
-// tree in RAM). It is the honest stand-in for a run dir the deployment forgot to
-// tmpfs-back: the refusal path must trigger on exactly this.
-func durableDir(t *testing.T) string {
-	t.Helper()
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	dir, err := os.MkdirTemp(wd, "exocomp-p3-durable-")
-	if err != nil {
-		t.Fatalf("mkdir durable dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	ok, err := executor.RunDirTmpfs(dir)
-	if err != nil {
-		t.Skipf("cannot probe %s: %v", dir, err)
-	}
-	if ok {
-		t.Skipf("%s is tmpfs; the refusal path cannot be exercised here", dir)
-	}
-	return dir
-}
-
 const kubeconfigSentinel = "apiVersion: v1\nkind: Config\ntoken: s3cr3t-bearer\n"
 
-// TestStageRunSecretFilesWritesTmpfsFile proves the helper materializes a named
-// run-secret to a 0600 file on tmpfs, rewrites that env to the file's path, and
-// leaves the other run-secrets as env values.
-func TestStageRunSecretFilesWritesTmpfsFile(t *testing.T) {
+// TestStageRunSecretFilesWritesShmFile proves the helper materializes a named
+// run-secret to a 0600 file under /dev/shm, rewrites that env to the file's
+// path, and leaves the other run-secrets as env values.
+func TestStageRunSecretFilesWritesShmFile(t *testing.T) {
 	t.Parallel()
-	dir := tmpfsDir(t)
 
 	rs := executor.RunSecrets{
 		"KUBECONFIG": kubeconfigSentinel,
 		"KUBE_HOST":  "https://api.example:6443",
 	}
-	out, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"}, dir)
+	out, staged, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"})
 	if err != nil {
 		t.Fatalf("stage: %v", err)
 	}
+	t.Cleanup(func() {
+		for i := range staged {
+			_ = staged[i].Close()
+		}
+	})
 
+	if len(staged) != 1 {
+		t.Fatalf("staged = %d files, want 1", len(staged))
+	}
 	path := out["KUBECONFIG"]
-	if filepath.Dir(path) != dir {
-		t.Fatalf("staged path %q is not under the run dir %q", path, dir)
+	if staged[0].Path != path {
+		t.Errorf("staged path %q does not match the rewritten env %q", staged[0].Path, path)
+	}
+	if filepath.Dir(path) != executor.ShmDir {
+		t.Fatalf("staged path %q is not under %s", path, executor.ShmDir)
+	}
+	if !strings.HasPrefix(filepath.Base(path), "exocomp-secret-") {
+		t.Errorf("staged basename %q does not carry the exocomp-secret- prefix", filepath.Base(path))
 	}
 	if out["KUBE_HOST"] != "https://api.example:6443" {
 		t.Errorf("an env-valued run-secret was rewritten: %q", out["KUBE_HOST"])
@@ -103,72 +71,118 @@ func TestStageRunSecretFilesWritesTmpfsFile(t *testing.T) {
 	}
 }
 
-// TestStageRunSecretFilesRefusesNonTmpfs proves the fail-closed assertion: on a
-// durable filesystem the helper stages NOTHING and returns a clear error, so a
-// sealed bearer never lands on disk (ADR 0005, never a silent downgrade).
-func TestStageRunSecretFilesRefusesNonTmpfs(t *testing.T) {
+// TestStageRunSecretFilesNeverOnDurableDisk proves the bytes exist nowhere but
+// /dev/shm (RAM): staging never touches the current working directory or any
+// other path a caller might mistake for "the run's own tree".
+func TestStageRunSecretFilesNeverOnDurableDisk(t *testing.T) {
 	t.Parallel()
-	dir := durableDir(t)
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 
 	rs := executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel}
-	out, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"}, dir)
-	if err == nil {
-		t.Fatal("staging onto a non-tmpfs dir must be refused")
-	}
-	if !strings.Contains(err.Error(), "tmpfs") {
-		t.Errorf("refusal error does not name the cause: %v", err)
-	}
-	if out != nil {
-		t.Errorf("a refused staging returned a map: %v", out)
-	}
-	// Nothing was written: the directory the helper refused stays empty.
-	entries, err := os.ReadDir(dir)
+	_, staged, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"})
 	if err != nil {
-		t.Fatalf("read dir: %v", err)
+		t.Fatalf("stage: %v", err)
 	}
-	if len(entries) != 0 {
-		t.Errorf("refused staging left %d file(s) on durable disk", len(entries))
+	t.Cleanup(func() {
+		for i := range staged {
+			_ = staged[i].Close()
+		}
+	})
+
+	path := staged[0].Path
+	if strings.HasPrefix(path, wd) {
+		t.Fatalf("staged path %q landed under the working tree %q", path, wd)
+	}
+	if !strings.HasPrefix(path, executor.ShmDir+"/") {
+		t.Fatalf("staged path %q is not under %s", path, executor.ShmDir)
 	}
 }
 
-// TestTofuFileStagingRefusesNonTmpfs proves the driver wires the fail-closed
-// assertion: with RunSecretFiles set and the private root on durable disk, Run
-// returns a tmpfs error, stages nothing, and never launches the tool.
-func TestTofuFileStagingRefusesNonTmpfs(t *testing.T) {
+// TestStagedRunSecretFileCloseUnlinks proves Close removes the staged file:
+// the secret is gone once the caller is done with it, the same lifecycle the
+// job's own private tree had before this rework.
+func TestStagedRunSecretFileCloseUnlinks(t *testing.T) {
 	t.Parallel()
-	privateRoot := durableDir(t)
-	bin, logPath := envDumper(t, executor.TofuBinary)
+	rs := executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel}
+	_, staged, err := executor.StageRunSecretFiles(rs, []string{"KUBECONFIG"})
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	path := staged[0].Path
 
-	_, err := executor.NewTofu(executor.TofuOptions{
-		Binary:         bin,
-		Workspace:      "edge",
-		BackendURL:     "http://127.0.0.1:41111/api/v1/tf/state/edge",
-		BackendToken:   "tok",
-		PrivateDirRoot: privateRoot,
-		RunSecrets:     executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel},
-		RunSecretFiles: []string{"KUBECONFIG"},
-	}).Run(context.Background(), executor.Spec{
-		JobID: 1, Kind: executor.KindTofu, Argv: executor.TofuArgv("plan"), Dir: t.TempDir(),
-	}, &collector{})
-	if err == nil {
-		t.Fatal("file staging onto a non-tmpfs private root must be refused")
+	if err := staged[0].Close(); err != nil {
+		t.Fatalf("close: %v", err)
 	}
-	if !strings.Contains(err.Error(), "tmpfs") {
-		t.Errorf("refusal error does not name tmpfs: %v", err)
-	}
-	// The tool never ran: the refusal is before tofu init, so its env log — which
-	// the script only creates on execution — does not exist.
-	if _, statErr := os.Stat(logPath); statErr == nil {
-		t.Error("the tool ran despite the staging refusal")
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("staged file survived Close: stat err = %v", err)
 	}
 }
 
-// fileStagerBin writes a fake tofu that records its whole environment, its args,
-// and — while the file still exists — the mode and body of $KUBECONFIG, so a
-// test can prove the child saw a path whose file held the sentinel at 0600.
-func fileStagerBin(t *testing.T, binName string) (bin, logPath string) {
+// TestStageRunSecretFilesEmptyFileEnvIsNoop proves an empty fileEnv list
+// stages nothing and returns the input map unmodified — no allocation, no
+// files, matching the empty-tolerance rule the ab:<workflow> resolution
+// takes elsewhere.
+func TestStageRunSecretFilesEmptyFileEnvIsNoop(t *testing.T) {
+	t.Parallel()
+	rs := executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel}
+	out, staged, err := executor.StageRunSecretFiles(rs, nil)
+	if err != nil {
+		t.Fatalf("stage: %v", err)
+	}
+	if staged != nil {
+		t.Errorf("staged = %v, want nil", staged)
+	}
+	if out["KUBECONFIG"] != kubeconfigSentinel {
+		t.Errorf("out = %v, want the input map unchanged", out)
+	}
+}
+
+// TestSweepOrphanRunSecretFilesRemovesOrphans proves the startup sweep is the
+// defense-in-depth backstop for a broken cleanup path: a file left behind
+// under /dev/shm bearing the exocomp-secret- prefix — the shape a crash
+// between staging and Close would leave — is removed, while an unrelated
+// file with a different prefix (ansible's own POSIX semaphores, above all)
+// is left untouched.
+func TestSweepOrphanRunSecretFilesRemovesOrphans(t *testing.T) {
+	orphan := filepath.Join(executor.ShmDir, "exocomp-secret-orphan-test")
+	if err := os.WriteFile(orphan, []byte("leftover"), 0o600); err != nil {
+		t.Fatalf("write orphan: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(orphan) })
+
+	unrelated := filepath.Join(executor.ShmDir, "not-exocomp-owned-test")
+	if err := os.WriteFile(unrelated, []byte("leave me alone"), 0o600); err != nil {
+		t.Fatalf("write unrelated: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(unrelated) })
+
+	swept, err := executor.SweepOrphanRunSecretFiles()
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if swept < 1 {
+		t.Errorf("swept = %d, want at least 1", swept)
+	}
+	if _, err := os.Stat(orphan); !os.IsNotExist(err) {
+		t.Errorf("orphan survived the sweep: stat err = %v", err)
+	}
+	if _, err := os.Stat(unrelated); err != nil {
+		t.Errorf("sweep removed a file outside its own prefix: %v", err)
+	}
+}
+
+// fileStagerBin writes a fake tofu inside dir that records its whole
+// environment, its args, and — while the file still exists — the mode and
+// body of $KUBECONFIG, so a test can prove the child saw a path whose file
+// held the sentinel at 0600. Both the binary and its log live in dir, so a
+// caller running it under the sandbox can pass a directory the profile
+// already grants read+write (the job's working directory), rather than the
+// tool's own directory, which is granted read-only.
+func fileStagerBin(t *testing.T, binName, dir string) (bin, logPath string) {
 	t.Helper()
-	dir := t.TempDir()
 	bin = filepath.Join(dir, binName)
 	logPath = filepath.Join(dir, "run.log")
 	script := "#!/bin/sh\n" +
@@ -185,15 +199,14 @@ func fileStagerBin(t *testing.T, binName string) (bin, logPath string) {
 }
 
 // TestTofuFileStagedSecretReachesChildAsPath is the end-to-end proof: a run-
-// secret declared file-staged reaches tofu as KUBECONFIG=<path> whose 0600 file
-// holds the sentinel, the sentinel value never appears in argv or an event, and
-// the file is gone once the job ends (the private dir's RemoveAll ran).
+// secret declared file-staged reaches tofu as KUBECONFIG=<path> whose 0600
+// file under /dev/shm holds the sentinel, the sentinel value never appears in
+// argv or an event, and the file is gone once the job ends.
 func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 	// t.Setenv forbids t.Parallel.
 	t.Setenv("KUBECONFIG", "/leaked/from/parent")
 
-	privateRoot := tmpfsDir(t)
-	bin, logPath := fileStagerBin(t, executor.TofuBinary)
+	bin, logPath := fileStagerBin(t, executor.TofuBinary, t.TempDir())
 
 	var sink collector
 	res, err := executor.NewTofu(executor.TofuOptions{
@@ -201,7 +214,7 @@ func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 		Workspace:      "edge",
 		BackendURL:     "http://127.0.0.1:41111/api/v1/tf/state/edge",
 		BackendToken:   "tok",
-		PrivateDirRoot: privateRoot,
+		PrivateDirRoot: t.TempDir(),
 		RunSecrets:     executor.RunSecrets{"KUBECONFIG": kubeconfigSentinel},
 		RunSecretFiles: []string{"KUBECONFIG"},
 	}).Run(context.Background(), executor.Spec{
@@ -220,8 +233,8 @@ func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 
 	lines := envLines(t, logPath)
 
-	// The child saw KUBECONFIG as a path under the run's private tree, not the
-	// value, and not the daemon's own inherited KUBECONFIG.
+	// The child saw KUBECONFIG as a path under /dev/shm, not the value, and
+	// not the daemon's own inherited KUBECONFIG.
 	var kubePath string
 	for _, l := range lines {
 		if v, ok := strings.CutPrefix(l, "env:KUBECONFIG="); ok {
@@ -238,11 +251,8 @@ func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 	if kubePath == "/leaked/from/parent" {
 		t.Fatal("the daemon's own KUBECONFIG leaked into the run")
 	}
-	if !strings.HasPrefix(kubePath, privateRoot) {
-		t.Errorf("staged path %q is not under the run's private root %q", kubePath, privateRoot)
-	}
-	if filepath.Base(kubePath) != "kubeconfig" {
-		t.Errorf("staged file basename = %q, want kubeconfig", filepath.Base(kubePath))
+	if !strings.HasPrefix(kubePath, executor.ShmDir+"/") {
+		t.Errorf("staged path %q is not under %s", kubePath, executor.ShmDir)
 	}
 
 	// While it ran, the child read a 0600 file whose body was the sentinel.
@@ -266,7 +276,7 @@ func TestTofuFileStagedSecretReachesChildAsPath(t *testing.T) {
 		}
 	}
 
-	// The job is over: the private dir was removed, so the staged file is gone.
+	// The job is over: the staged file was unlinked when Run returned.
 	if _, err := os.Stat(kubePath); !os.IsNotExist(err) {
 		t.Errorf("staged file survived the job: stat err = %v", err)
 	}

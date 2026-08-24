@@ -174,24 +174,6 @@ func TestBootstrapCaptureHandoffEnv(t *testing.T) {
 	assertNothingLeftRunning(t, d)
 }
 
-// shmDataDir returns a data dir on a tmpfs mount, or skips: the file-staging
-// path (Phase 3) refuses to run unless the per-job run dir is tmpfs, so an e2e
-// that exercises it needs the daemon's data dir — and thus its run/ subtree — on
-// RAM-only storage. /dev/shm is tmpfs on a normal Linux host.
-func shmDataDir(t *testing.T) string {
-	t.Helper()
-	const base = "/dev/shm"
-	if ok, err := executor.RunDirTmpfs(base); err != nil || !ok {
-		t.Skipf("no tmpfs at %s (tmpfs=%v, err=%v)", base, ok, err)
-	}
-	dir, err := os.MkdirTemp(base, "exocomp-p3-data-")
-	if err != nil {
-		t.Fatalf("mkdir tmpfs data dir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	return dir
-}
-
 // fakeApplyRecordingFile is a stand-in tofu that, on apply, records the KUBECONFIG
 // PATH it received, that file's mode and byte length, and whether its contents
 // equal the sentinel — a 1/0, never the value. `output -json` is an empty object.
@@ -216,14 +198,13 @@ exit 0`, kcfgLog, kcfgLog, kcfgLog, kubeCaptureSentinel, kcfgLog, kcfgLog, kcfgL
 
 // TestBootstrapCaptureHandoffFile is the Phase-3 gate: a bootstrap chain whose
 // play fetches a sentinel kubeconfig, declared with --capture-file, delivers it
-// to the apply as KUBECONFIG=<path> — a 0600 file on the tmpfs run/ tree whose
+// to the apply as KUBECONFIG=<path> — a 0600 file under /dev/shm whose
 // contents are the sentinel — with the value absent from every argv and event,
 // and the file gone once the job ends.
 func TestBootstrapCaptureHandoffFile(t *testing.T) {
-	dataRoot := shmDataDir(t)
+	dataRoot := t.TempDir()
 	useDataDir(t, dataRoot)
 	bin := buildExocomp(t)
-	dataDir := filepath.Join(dataRoot, "exocomp")
 
 	kcfgLog := t.TempDir() + "/apply-kcfg.log"
 	ansibleLog := fakeCapturePlay(t, "kubeconfig")
@@ -256,12 +237,13 @@ func TestBootstrapCaptureHandoffFile(t *testing.T) {
 	if kcfgPath == "" {
 		t.Fatalf("apply received no KUBECONFIG path:\n%s\n%s", kcfg, d.dump())
 	}
-	// The path is a file in the run's tmpfs private tree, not a value.
-	if !strings.HasPrefix(kcfgPath, filepath.Join(dataDir, "run")) {
-		t.Errorf("KUBECONFIG path %q is not under the tmpfs run dir %q", kcfgPath, filepath.Join(dataDir, "run"))
+	// The path is a file under /dev/shm (RAM), not a value and not under the
+	// daemon's own data dir.
+	if !strings.HasPrefix(kcfgPath, executor.ShmDir+"/") {
+		t.Errorf("KUBECONFIG path %q is not under %s", kcfgPath, executor.ShmDir)
 	}
-	if filepath.Base(kcfgPath) != "kubeconfig" {
-		t.Errorf("staged file basename = %q, want kubeconfig", filepath.Base(kcfgPath))
+	if !strings.HasPrefix(filepath.Base(kcfgPath), "exocomp-secret-") {
+		t.Errorf("staged file basename %q does not carry the exocomp-secret- prefix", filepath.Base(kcfgPath))
 	}
 	// The file the apply read was 0600, the sentinel's length, and its contents.
 	if !strings.Contains(kcfg, "KCFG_MODE=600") {

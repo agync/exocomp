@@ -118,7 +118,7 @@ func newBootstrapRunCmd() *cobra.Command {
 			"(NAME becomes the env var, FILE is fetched under the run's capture dir)")
 	run.Flags().StringArrayVar(&captureFileSpecs, "capture-file", nil,
 		"like --capture but deliver the sealed value as a FILE: NAME=FILE, repeatable "+
-			"(NAME=<tmpfs path> for a tool that wants a KUBECONFIG file; needs the run dir tmpfs)")
+			"(NAME=<path under /dev/shm> for a tool that wants a KUBECONFIG file)")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"wrap the chain in this registered source's .exocomp/hooks.yml lifecycle")
 	run.Flags().BoolVar(&requireApproval, "require-approval", false,
@@ -289,12 +289,12 @@ func bootstrapCaptureArgs(workflowID string, captures []executor.AnsibleCapture)
 	return &store.JobCaptures{Workflow: workflowID, Targets: targets}
 }
 
-// bootstrapStagedFileEnvs derives the env names a bootstrap apply must receive as
-// tmpfs-staged files rather than values: the --capture-file (AsFile) targets,
-// folded to their env names, read off the tofu step's Captures field. nil for an
-// env-only chain and for every non-bootstrap apply. An env name a capture folds
-// to a non-POSIX identifier is dropped here for the same reason the sealer refuses
-// to bind it.
+// bootstrapStagedFileEnvs derives the env names a bootstrap apply must receive
+// as /dev/shm-staged files rather than values: the --capture-file (AsFile)
+// targets, folded to their env names, read off the tofu step's Captures
+// field. nil for an env-only chain and for every non-bootstrap apply. An env
+// name a capture folds to a non-POSIX identifier is dropped here for the same
+// reason the sealer refuses to bind it.
 func bootstrapStagedFileEnvs(jc *store.JobCaptures) []string {
 	if jc == nil {
 		return nil
