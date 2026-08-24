@@ -94,6 +94,21 @@ backup's captured set — `internal/backup`'s staging tree is built by writing f
 files into a fresh temp dir, never by walking the data dir, so nothing under `run/` is ever
 swept into a backup or a restore.
 
+**A hard crash's residual differs by backend.** On `tmpfs`, a container restart clears
+`/dev/shm` unconditionally, so a session directory a broken cleanup path left behind
+cannot outlive the container even before the startup sweep runs. On `disk`, the same
+session directory sits on durable storage until the daemon's next startup sweep — a
+daemon that never restarts after such a crash leaves it there. The sweep also has a
+bounded, acknowledged gap: it tells a live session directory from an orphaned one by
+probing the owning pid, and a low pid space after a container restart can in principle
+let a fresh process reuse a dead pid's number before the sweep runs, so a stale
+directory reads as still-owned and is skipped. Best-effort, not eliminated — see
+`internal/executor/pidalive.go`.
+
+To get the strict "never a secret on durable disk" guarantee unconditionally, choose
+`--secret-staging tmpfs` explicitly; `auto`'s disk fallback is loud (warning, job event,
+doctor report) but is still a fallback, not a refusal.
+
 `exocomp doctor` reports the resolved backend, the tmpfs usability probe's own verdict, the
 disk residual posture when disk is in play, and the mlock posture under **run-secret file
 staging**.

@@ -145,6 +145,15 @@ behavior.
 
 ### 2.3 (c) OWNER DECISION — KUBECONFIG file vs env-decomposition
 
+**This section's "never touches durable disk" language describes the decision as it
+stood when Phase 3 shipped, not the current default.** A later owner-approved change
+(§3, "session directories, and a pluggable backend with a disk fallback") made the
+staging root a choice, `--secret-staging {auto,tmpfs,disk}`, and `auto` — the default —
+falls back to durable disk when `/dev/shm` is unusable. The strict guarantee this
+section opened with now holds unconditionally only under the explicit `tmpfs` backend.
+Read on for the rationale that motivated the original guarantee; see §3's later
+addendum for what actually ships today.
+
 This was a genuine fork with a real security tradeoff. **Both are now shipped:** C-env
 first (Phase 2), then C-file (Phase 3) once the owner chose it. The owner decided C-file
 **is worth building, on the hard condition that the staged secret never touches durable
@@ -177,18 +186,24 @@ tofu driver, not just the ansible one.
 
 | | C-env (Phase 2) | C-file (Phase 3, as shipped) |
 |---|---|---|
-| Secret on disk | never | 0600 under `/dev/shm` (RAM), one run |
+| Secret on disk | never | 0600 under `/dev/shm` (RAM), one run\* |
 | New code | capture hook seals N fields | capture hook + tofu-side file staging + `KUBECONFIG` export |
 | Operator ergonomics | must map fields | paste a kubeconfig, get a path |
-| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer |
+| Exposure surface | unchanged (env-only) | new: a RAM-only file holding a bearer\* |
+
+\* As Phase 3 shipped. The later pluggable-backend addendum (§3) means the *default*
+(`auto`) can fall back to a 0600 file on durable disk when `/dev/shm` is unusable —
+loudly, not silently — and the RAM-only guarantee this row describes now applies
+unconditionally only to the explicit `tmpfs` backend.
 
 **Decision:** the owner shipped **C-env first** (Phase 2 — no new exposure, unblocked the
 persona) and then approved **C-file** (Phase 3) as the follow-on, because field
 decomposition is too sharp an edge for the copy-paste `KUBECONFIG` case and for
 exec-auth tools that read a file. C-file's exposure is bounded to a `0600` file under
 `/dev/shm`, torn down (unlinked) once the subprocess that read it exits, with a startup
-sweep removing any orphan left by a broken cleanup path — so the "secret on disk" row is
-*RAM only, one run, never durable disk*.
+sweep removing any orphan left by a broken cleanup path — so the "secret on disk" row was,
+as shipped in Phase 3, *RAM only, one run, never durable disk* (see §3 for the later
+revision to that guarantee).
 
 ---
 
@@ -243,9 +258,11 @@ staged path via `SandboxProfile.ReadFiles` so the sandboxed tier can read it too
 `cmd/exocomp/bootstrap.go`, the daemon read in `cmd/exocomp/serve.go` (which also runs the
 startup sweep), and the doctor report in `cmd/exocomp/sandbox.go`.
 *New:* filesystem staging of a sealed value — the one new exposure surface, bounded by the
-hard requirement below. **The staged file never touches durable disk:** `/dev/shm` is
-RAM-backed unconditionally, so there is nothing to assert or fail closed on — this is
-strictly stronger than the original `noswap` `Tmpfs=` quadlet mount design, which does not
+hard requirement below. **As Phase 3 shipped, the staged file never touched durable
+disk** (see the later addendum below for the pluggable backend that revised this):
+`/dev/shm` is RAM-backed unconditionally, so there was nothing to assert or fail closed
+on at the time — this is strictly stronger than the original `noswap` `Tmpfs=` quadlet
+mount design, which does not
 start at all under rootless podman (`the 'noswap' option is only allowed with rootful tmpfs
 mounts`) and so never actually protected a rootless deployment. The bytes are additionally
 mlocked best-effort (no rootless swap-avoidance option exists for tmpfs itself, so mlock is
@@ -293,6 +310,22 @@ turned out to be filesystem-agnostic, so no backend-specific mlock code was need
 0600 files inside 0700 session directories and confirmation that `<data-dir>/run/` sits
 outside every backup's captured set (`internal/backup`'s staging tree is built by writing
 four named files, never by walking the data dir — see `docs/log.md`).
+
+**Honest residual, stated plainly:** the disk backend's crash-survival story is weaker
+than tmpfs's. On `tmpfs`, a hard crash (panic between staging and `Close`, `kill -9`) can
+leave a session directory behind, but a fresh container start clears `/dev/shm`
+unconditionally — the residual cannot outlive the container. On `disk`, the same crash
+leaves the 0600 session directory sitting on durable storage until the next startup
+sweep reaps it; a daemon that never restarts after such a crash leaves it there
+indefinitely. The file is still 0600 inside a 0700 directory and excluded from backups,
+but it is a real, not merely theoretical, residual — this is the cost of choosing `disk`
+(explicitly, or via `auto`'s fallback) over `tmpfs`. The sweep itself has one further
+acknowledged gap: it tells a live owner from a dead one by probing the session
+directory's own pid, and a container restart's small pid space means a fresh process can
+in principle reuse a dead pid's number before the sweep runs, reading a stale directory
+as "alive" and skipping it. This is bounded (best-effort, not a fail-open primitive
+anything security-relevant depends on) and documented at the code site
+(`internal/executor/pidalive.go`), not eliminated.
 
 **Phase 4 (later) — generalize to `exocomp workflow` (Option B2)** if a third ordering
 appears. Pure composition over the same Sequencer; deferred until two concrete orderings
