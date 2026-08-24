@@ -377,7 +377,14 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		driveWorkflows(jobCtx, seq, out, warn)
 	}()
 
-	serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval)
+	var webErr <-chan error
+	if surface != nil {
+		webErr = surface.serveErr
+	}
+	webFailure := serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval, webErr)
+	if webFailure != nil {
+		_, _ = fmt.Fprintf(warn, "WARNING: web surface failed: %v\n", webFailure)
+	}
 	_, _ = fmt.Fprintln(out, "shutting down")
 
 	err = shutdownServe(finalCtx, out, warn, shutdown{
@@ -392,6 +399,9 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	<-sweepDone
 	<-seqDone
 	<-leaseDone
+	if err == nil {
+		err = webFailure
+	}
 	return err
 }
 
@@ -617,9 +627,13 @@ func flagStaleLocks(ctx context.Context, st *store.Store, warn io.Writer) error 
 
 // serveUntilSignal blocks until SIGINT or SIGTERM, rebuilding the schedules on
 // SIGHUP and on the reload interval meanwhile. A schedule added, enabled, or
-// disabled through the CLI reaches a running daemon exactly here.
+// disabled through the CLI reaches a running daemon exactly here. webErr is
+// the web surface's serve-error channel (nil when no web surface was
+// started): a post-bind failure there — a bad TLS config, a lost listener —
+// is fatal, not something to keep running past, so it ends the wait and
+// returns the error instead of the normal nil.
 func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
-	hup <-chan os.Signal, s *sched.Scheduler, interval time.Duration) {
+	hup <-chan os.Signal, s *sched.Scheduler, interval time.Duration, webErr <-chan error) error {
 	var tick <-chan time.Time
 	if interval > 0 {
 		ticker := time.NewTicker(interval)
@@ -630,7 +644,12 @@ func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
 	for {
 		select {
 		case <-sigCtx.Done():
-			return
+			return nil
+		case err := <-webErr:
+			if err == nil || errors.Is(err, http.ErrServerClosed) {
+				continue
+			}
+			return err
 		case <-hup:
 			if err := s.Reload(jobCtx); err != nil {
 				_, _ = fmt.Fprintf(warn, "WARNING: reload schedules: %v\n", err)
