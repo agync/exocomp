@@ -16,16 +16,65 @@ templ signedChip(sc sourceRow) {
 
 // sourcesList is the run-tree sources surface (ADR 0010): where every run's
 // tree comes from, its trust posture (signed / allowed-signers), and the commit
-// its last sync landed on. Read-only — registration stays a CLI-and-local-auth
-// path, so there is no mutation control here.
+// its last sync landed on. An operator gets add/enable/disable/rm controls
+// (sources_write.go); a signed/allowed-signers posture and `source sync` stay
+// CLI-only (the latter has no queued job kind yet — see sources_write.go).
 templ sourcesList(vm sourcesVM) {
 	@layout(vm.Page) {
 		<h1>Sources</h1>
+		if vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Add a path source</h3>
+				<p class="meta">A tree already on the box: bind-mounted read-only (hostpath) or in the data volume (volpath).</p>
+				<form method="post" action="/sources/add-path" class="writeform">
+					<label for="sp-name">Name</label>
+					<input id="sp-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="sp-kind">Kind</label>
+					<select id="sp-kind" name="kind">
+						<option value="hostpath">hostpath</option>
+						<option value="volpath">volpath</option>
+					</select>
+					<label for="sp-path">Path</label>
+					<input id="sp-path" name="path" type="text" required autocomplete="off" placeholder="/abs/or/relative/path"/>
+					<div class="actions"><button type="submit" class="btn primary">Add path source</button></div>
+				</form>
+			</div>
+			<div class="card span2" style="margin-top:18px">
+				<details>
+					<summary><h3 style="display:inline">Add a git source</h3></summary>
+					if !vm.SealAvailable {
+						<p class="meta">Sealing is not available on this surface (this process holds no envelope).</p>
+					} else {
+						<p class="meta">
+							Generates a deploy key sealed into the envelope; the public half is
+							shown once — add it to the forge as a read-only key, then sync it
+							with <code>exocomp source sync</code>. Confirm with your own access token.
+						</p>
+						<form method="post" action="/sources/add-git" class="writeform">
+							<label for="sg-name">Name</label>
+							<input id="sg-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+							<label for="sg-url">Git URL</label>
+							<input id="sg-url" name="url" type="text" required autocomplete="off"/>
+							<label for="sg-ref">Ref</label>
+							<input id="sg-ref" name="ref" type="text" autocomplete="off" placeholder="main"/>
+							<label for="sg-cf">Confirm: your access token</label>
+							<input id="sg-cf" name="confirm_token" type="password" required autocomplete="off"/>
+							<div class="actions"><button type="submit" class="btn primary">Add git source</button></div>
+						</form>
+					}
+				</details>
+			</div>
+		}
 		<div class="card span2" style="margin-top:18px">
-			<div class="kicker">Read-only · CLI-managed</div>
+			if !vm.Operator {
+				<div class="kicker">Read-only · CLI-managed</div>
+			}
 			<h3>All sources</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing sources needs an operator token.</p>
+			}
 			if len(vm.Sources) == 0 {
-				<p class="meta">No sources registered. Register one with <code>exocomp source add</code>.</p>
+				<p class="meta">No sources registered.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>
@@ -38,6 +87,9 @@ templ sourcesList(vm sourcesVM) {
 								<th scope="col">Trust</th>
 								<th scope="col" class="right">Last sync</th>
 								<th scope="col">Enabled</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -50,12 +102,55 @@ templ sourcesList(vm sourcesVM) {
 									<td data-label="Trust">@signedChip(sc)</td>
 									<td class="right mono" data-label="Last sync">{ orDash(sc.Short()) }</td>
 									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											if sc.Enabled {
+												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/disable") } style="display:inline">
+													<button type="submit" class="btn">Disable</button>
+												</form>
+											} else {
+												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/enable") } style="display:inline">
+													<button type="submit" class="btn">Enable</button>
+												</form>
+											}
+											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } style="display:inline">
+												<input type="hidden" name="confirmed" value="1"/>
+												<button type="submit" class="btn danger">Delete</button>
+											</form>
+										</td>
+									}
 								</tr>
 							}
 						</tbody>
 					</table>
 				</div>
 			}
+		</div>
+	}
+}
+
+// sourceGitResult shows a freshly generated deploy key's public half once — the
+// operator copies it to the forge as a read-only key. The private half is
+// already sealed into the envelope and never appears here.
+templ sourceGitResult(vm sourceGitResultVM) {
+	@layout(vm.Page) {
+		<h1>Registered { vm.Name }</h1>
+		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Add this deploy key to the forge — it is not shown again</div>
+			<h3>{ vm.Name } · { vm.URL } (ref { vm.Ref })</h3>
+			<pre class="secretbox" aria-label="deploy key">{ vm.PublicAuthorizedKey }</pre>
+			<p class="meta">Add it as a read-only deploy key on the forge, then sync with <code>exocomp source sync { vm.Name }</code>.</p>
+			<div class="actions"><a class="btn" href="/sources">Back to sources</a></div>
+		</div>
+	}
+}
+
+templ sourceReauthNotice(p page) {
+	@layout(p) {
+		<h1>Confirm required</h1>
+		<div class="card span2" style="margin-top:18px">
+			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p>
+			<div class="actions"><a class="btn" href="/sources">Back to sources</a></div>
 		</div>
 	}
 }

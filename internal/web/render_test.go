@@ -175,7 +175,11 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 	headers := []struct {
 		path, kicker, h3 string
 	}{
-		{"/sources", "Read-only · CLI-managed", "All sources"},
+		// /sources' "Read-only · CLI-managed" kicker only renders for a
+		// non-operator now that an operator gets write controls instead
+		// (sources_write.go); the operator client this test logs in with sees
+		// no kicker here, same as /jobs.
+		{"/sources", "", "All sources"},
 		{"/schedules", "Cron schedules", "All schedules"},
 		{"/workflows", "", "All workflows"},
 		{"/policies", "CEL gates", "All policies"},

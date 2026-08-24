@@ -155,6 +155,11 @@ type selfObs struct {
 type sourcesVM struct {
 	Page    page
 	Sources []sourceRow
+	// Operator gates the write controls (sources_write.go); SealAvailable is
+	// false on a web-only surface holding no envelope, which the add-git form
+	// needs to seal the generated deploy key.
+	Operator      bool
+	SealAvailable bool
 }
 
 type schedulesVM struct {

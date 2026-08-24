@@ -151,7 +151,11 @@ func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := sourcesVM{Page: s.pageFor(r, "Sources", "sources"), Sources: rows}
+	ident, _ := identityOf(r.Context())
+	vm := sourcesVM{
+		Page: s.pageFor(r, "Sources", "sources"), Sources: rows,
+		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+	}
 	s.render(w, r, http.StatusOK, sourcesList(vm))
 }
 
