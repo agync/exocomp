@@ -13,6 +13,12 @@ templ layout(p page) {
 			<link rel="preconnect" href="https://fonts.googleapis.com"/>
 			<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"/>
+			<style>
+				html{background:#0A0C0D}
+				@media (prefers-color-scheme: light){html:not([data-theme="dark"]){background:#F5F2EC}}
+				html[data-theme="light"]{background:#F5F2EC}
+				html[data-theme="dark"]{background:#0A0C0D}
+			</style>
 			<link rel="stylesheet" href="/assets/tokens.css"/>
 			<link rel="stylesheet" href="/assets/app.css"/>
 			@themeInit()
@@ -264,6 +270,12 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 			<meta name="viewport" content="width=device-width, initial-scale=1"/>
 			<title>Sign in · exocomp</title>
 			<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap"/>
+			<style>
+				html{background:#0A0C0D}
+				@media (prefers-color-scheme: light){html:not([data-theme="dark"]){background:#F5F2EC}}
+				html[data-theme="light"]{background:#F5F2EC}
+				html[data-theme="dark"]{background:#0A0C0D}
+			</style>
 			<link rel="stylesheet" href="/assets/tokens.css"/>
 			<link rel="stylesheet" href="/assets/app.css"/>
 			@themeInit()
