@@ -9,14 +9,14 @@ import (
 
 // The A column: approve_job and reject_job. They exist only for a caller whose
 // scope is `approve` AND whose transport supplied a decision seam, which today
-// means the token-carrying HTTP face — stdio has neither (finding AI-1).
+// means the token-carrying HTTP face — stdio has neither.
 //
 // Two properties make this safe to offer at all, and both are structural rather
 // than a rule this file remembers:
 //
 //   - W and A are DISJOINT scopes (Caller.allows). A caller advertised these
 //     tools is advertised no write tool, so no principal can raise a gate with
-//     workspace_apply and then release it here (finding AI-2).
+//     workspace_apply and then release it here.
 //   - The decision itself is NOT implemented here. Caller.Decide is the same
 //     fail-closed path the HTTP write API's decision route runs, which derives
 //     the single-use capability server-side and refuses a principal the gated

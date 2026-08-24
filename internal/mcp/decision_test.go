@@ -11,7 +11,7 @@ import (
 
 // seedGatedApproval writes a job straight into awaiting_approval with a pending
 // approval bound to it — the shape a require_approval plan policy or a reactive
-// gate produces, and the state finding AI-1 attacked.
+// gate produces.
 func seedGatedApproval(t *testing.T, st *store.Store) (store.Job, store.Approval) {
 	t.Helper()
 	ctx := context.Background()
@@ -32,7 +32,7 @@ func seedGatedApproval(t *testing.T, st *store.Store) (store.Job, store.Approval
 	return job, approval
 }
 
-// TestOperatorCannotReleaseTheGateItRaises is the AI-1 regression: the scope
+// TestOperatorCannotReleaseTheGateItRaises proves the scope
 // that can raise the approval gate with workspace_apply (operator) must not
 // also hold its release. approve_job/reject_job are not advertised to an
 // operator token and not callable by one; the gated job stays in

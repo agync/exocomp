@@ -111,7 +111,7 @@ func (s *Server) service() *service.Service {
 // every message rather than once per connection: the transport is stateless
 // and re-resolves the credential per request, so a revoked or downgraded token
 // stops working on its next call instead of at the end of its session (the same
-// property the SSE tail gained in finding AI-10).
+// property the SSE tail carries).
 func (s *Server) dispatch(ctx context.Context, c Caller, method string, params json.RawMessage) (any, *rpcError) {
 	switch method {
 	case "initialize":

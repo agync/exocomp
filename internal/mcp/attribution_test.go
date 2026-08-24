@@ -9,8 +9,8 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestWriteToolIsAttributed is the AI-13 regression: an MCP-enqueued write set no
-// Actor at all, so the job ledger read exactly like a local CLI run by the
+// TestWriteToolIsAttributed proves an MCP-enqueued write carries an Actor.
+// Without one the job ledger would read exactly like a local CLI run by the
 // operator — an agent's action attributed to the human. Every MCP write now
 // names the face that asked.
 func TestWriteToolIsAttributed(t *testing.T) {
@@ -42,7 +42,7 @@ func TestWriteToolIsAttributed(t *testing.T) {
 	}
 }
 
-// TestNotificationCannotMutate is the second half of AI-13: a tools/call sent as
+// TestNotificationCannotMutate proves a tools/call sent as
 // a JSON-RPC NOTIFICATION enqueued the job and wrote zero bytes back, so a
 // mutation happened with nothing for the harness — or an audit wrapper on the
 // frames — to record. A side-effecting method must carry an id.

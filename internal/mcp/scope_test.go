@@ -113,7 +113,7 @@ func TestUnknownScopeReadsNothing(t *testing.T) {
 // TestDecisionSeamNeedsBothScopeAndTransport asserts a decision capability is
 // attached only under the approve scope: handing TokenCaller a decide seam with
 // an operator scope drops it, so a write-capable token can never carry the
-// release for the gate it raises (finding AI-2).
+// release for the gate it raises.
 func TestDecisionSeamNeedsBothScopeAndTransport(t *testing.T) {
 	decide := func(context.Context, int64, string) (mcp.Decision, error) {
 		t.Fatal("the decision seam ran for a non-approve scope")

@@ -93,10 +93,10 @@ func (s *Server) handleLine(ctx context.Context, c Caller, line []byte) (rpcResp
 
 	if req.isNotification() {
 		if sideEffecting(req.Method) {
-			// A method that can mutate state must be answerable: dispatched as a
+			// A method that can mutate state must be answerable: sent as a
 			// notification it used to enqueue a job and write ZERO bytes back,
-			// leaving nothing for the harness — or an audit wrapper sitting on
-			// the frames — to record (finding AI-13). Refuse instead, loudly.
+			// leaving nothing for the caller — or an audit wrapper sitting on
+			// the frames — to record. Refuse instead, loudly.
 			return errorResponse(nullID, codeInvalidRequest,
 				"method "+req.Method+" must carry an id: a side-effecting call is not a notification"), true
 		}

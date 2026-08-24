@@ -49,7 +49,7 @@ type Decision struct {
 // DecideFunc settles one approval on behalf of the caller. It is supplied by the
 // transport, not built here: the only implementation is the hardened decision
 // path the HTTP write API already uses, so both machine faces enforce the same
-// separation of duty (finding AI-2) through one body of code.
+// separation of duty through one body of code.
 type DecideFunc func(ctx context.Context, approvalID int64, decision string) (Decision, error)
 
 // Caller is the authenticated principal behind one MCP request.
@@ -58,10 +58,10 @@ type Caller struct {
 	// unrecognized value authorizes nothing, so a zero Caller is inert.
 	Scope string
 	// Actor is what a write records on the job's event ledger, so an agent's
-	// write is never read off the ledger as the operator's own run (finding AI-13).
+	// write is never read off the ledger as the operator's own run.
 	Actor service.Actor
 	// KeyNamespace scopes caller-chosen idempotency keys to this principal, so a
-	// guessable key cannot swallow another caller's write (finding AI-7).
+	// guessable key cannot swallow another caller's write.
 	KeyNamespace string
 	// Decide settles an approval. It is non-nil only on a transport that carries
 	// a credential AND only for the approve scope; TokenCaller enforces that.
@@ -70,7 +70,7 @@ type Caller struct {
 
 // allows reports whether this caller may exercise a capability. The write and
 // approve floors are DISJOINT: the scope that can raise a gate cannot release
-// it, whichever face it comes in on (finding AI-2).
+// it, whichever face it comes in on.
 func (c Caller) allows(need capability) bool {
 	switch need {
 	case capRead:

@@ -65,7 +65,7 @@ type planWriteArgs struct {
 // caller-chosen key is scoped to this face, the authenticated principal, and the
 // tool that used it, so an agent's guessable key ("deploy-<date>", a ticket id)
 // cannot collide with another caller's write or address the queue's reserved
-// `wf:` workflow step keys (finding AI-7).
+// `wf:` workflow step keys.
 const (
 	toolPlanKey  = "workspace.plan"
 	toolApplyKey = "workspace.apply"
@@ -165,11 +165,11 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, c Caller, args planWrit
 		}
 		saved = &art
 		// Fail-closed adjudication: a plan on a policied workspace with no
-		// recorded verdict is unconsumable, not unpoliced (finding AI-3).
+		// recorded verdict is unconsumable, not unpoliced.
 		gate, err = s.service().PlanGateForPlan(ctx, ws.Name, art)
 		var mismatch *service.PlanWorkspaceMismatchError
 		if errors.As(err, &mismatch) {
-			// A plan named for another workspace is a bad argument (finding AI-9).
+			// A plan named for another workspace is a bad argument.
 			return "", nil, invalidArg(err.Error())
 		}
 		if err != nil {
@@ -238,6 +238,6 @@ func (s *Server) approvalDeriver(saved *store.Artifact, gate service.PlanGate) (
 // There is deliberately no decide seam here. The decide seam is supplied by
 // the transport and is non-nil only for an approve-scope token (TokenCaller,
 // ADR 0014 §3) — there is no ambient path, so an agent holding workspace_apply
-// does not also hold the release for the gate that apply raises (finding
-// AI-1). An approval is decided from the browser/phone surface, the CLI, or
-// the scope-checked /api/v1 decision route.
+// does not also hold the release for the gate that apply raises. An approval
+// is decided from the browser/phone surface, the CLI, or the scope-checked
+// /api/v1 decision route.

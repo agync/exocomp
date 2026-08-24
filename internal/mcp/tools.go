@@ -83,7 +83,7 @@ func boolProp(desc string) map[string]any {
 // The W and A columns are DISJOINT by construction (Caller.allows): no scope
 // satisfies both, so no principal can raise the approval gate with
 // workspace_apply and then release it with approve_job — the human-in-the-loop
-// control closed by the actor it exists to stop (findings AI-1 and AI-2).
+// control closed by the actor it exists to stop.
 func (s *Server) tools(c Caller) []tool {
 	var out []tool
 	if c.allows(capRead) {
@@ -170,7 +170,7 @@ func (s *Server) readTools() []tool {
 // a path and a --source playbook onto its checkout, and those resolvers are still
 // CLI-resident (resolveInventoryArg/sourcePlaybook); exposing the tool without
 // them would let an agent's names miss their paths. The other mutating verbs
-// (sync_source, backup_run, schedule_*, secret_*) are out of this lane's scope.
+// (sync_source, backup_run, schedule_*, secret_*) are out of scope here.
 func (s *Server) writeTools() []tool {
 	return []tool{
 		{"workspace_plan", "Enqueue a tofu plan for a workspace; returns the job id.",

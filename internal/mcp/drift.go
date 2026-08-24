@@ -65,7 +65,7 @@ func (s *Server) readDrift(ctx context.Context, name string) (string, any, error
 // planOutcome reads the structured plan outcome the tofu driver recorded on a
 // plan job — the resource-level drift and pending changes it parsed from
 // `tofu show -json`, values already suppressed. It mirrors the CLI's planOutcome
-// read (a store read of the job event), which this lane may not call directly.
+// read (a store read of the job event), which this package may not call directly.
 func (s *Server) planOutcome(ctx context.Context, jobID int64) (executor.TofuPlanOutcome, bool, error) {
 	events, err := s.store.ListJobEvents(ctx, jobID)
 	if err != nil {
