@@ -305,6 +305,50 @@ func TestAnsibleSourceDirsGrantsExtraVarsFile(t *testing.T) {
 	}
 }
 
+// TestSandboxRunDoesNotCorruptReadAcrossCalls: a *Sandbox is reused across
+// repeated Run calls in the same job (the tofu driver runs init, then the
+// operation, through the same instance). Run derives a per-call profile from
+// s.profile by a shallow struct copy, so profile.Read shares s.profile.Read's
+// backing array; slices.DeleteFunc zeroes that array's now-unused tail slots
+// in place. Without cloning first, a call whose spec.Dir happens to already
+// carry a Read grant (a tool's own directory reused as the job's working
+// directory, which ToolGrants and a caller-supplied Dir can coincide on)
+// leaves a corrupted "" entry sitting in s.profile.Read for every call after
+// it — this proves a second call sees the same, uncorrupted grant the first
+// one did.
+func TestSandboxRunDoesNotCorruptReadAcrossCalls(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	work := t.TempDir()
+	// The Read grant deliberately equals the working directory Run will add
+	// to Write, the exact overlap that exposes the aliasing bug.
+	sb := NewSandbox(KindCLI, SandboxOptions{DataDir: data, ReadPaths: []string{work}}, recordingDriver{})
+
+	for i := range 2 {
+		spec := Spec{Dir: work, Argv: []string{"true"}}
+		if _, err := sb.Run(context.Background(), spec, discardSink{}); err != nil {
+			t.Fatalf("call %d: %v", i, err)
+		}
+	}
+
+	for _, r := range sb.Profile().Read {
+		if r == "" {
+			t.Fatalf("s.profile.Read carries a corrupted empty entry after repeated Run calls: %v",
+				sb.Profile().Read)
+		}
+	}
+}
+
+// recordingDriver is a no-op inner Driver: the aliasing bug above lives
+// entirely in Sandbox.Run's own profile bookkeeping, so the wrapped driver
+// only needs to succeed without inspecting argv.
+type recordingDriver struct{}
+
+func (recordingDriver) Run(context.Context, Spec, EventSink) (Result, error) {
+	return Result{}, nil
+}
+
 // TestAnsibleSourceDirsIgnoresAdhocHostPattern: an ad-hoc run's sole
 // positional (argv[1]) is a host PATTERN — a host, a group, or an expression
 // like `fedora:!nas` — never a filesystem path. A path-shaped pattern like

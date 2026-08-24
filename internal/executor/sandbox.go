@@ -366,7 +366,16 @@ func (s *Sandbox) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 		// The launcher refuses a working directory it holds no grant on, and
 		// a run's own directory is a grant it always needs.
 		profile.Write = normalizePaths(append(slices.Clone(profile.Write), spec.Dir))
-		profile.Read = slices.DeleteFunc(profile.Read,
+		// slices.Clone first: profile is a shallow copy of s.profile, so
+		// profile.Read shares s.profile.Read's backing array. DeleteFunc
+		// zeroes the array's now-unused tail slots in place to drop
+		// references for GC — without the clone, that write lands in
+		// s.profile.Read's own storage, and the *Sandbox is reused across
+		// repeated Run calls on the same instance (the tofu driver's init
+		// then op), so a later call would silently see a corrupted (and
+		// wrongly non-empty, "") grant list built from a previous one's
+		// working directory.
+		profile.Read = slices.DeleteFunc(slices.Clone(profile.Read),
 			func(r string) bool { return slices.Contains(profile.Write, r) })
 	}
 
