@@ -1,29 +1,10 @@
 # v1.0 acceptance bar — core functionality must be reliable first
 
-Operator directive (2026-08-22): v1.0 is not "the milestones shipped"; it is
-"these end-to-end stories work reliably." The post-v1 program (Litestream, GoAlert,
-OpenBao) does NOT begin until this bar is met. Reliability of the core over
-breadth of features.
-
-## RESULT — v1.0 MET (2026-08-22)
-
-**All five stories pass end-to-end. `test/e2e/v1-acceptance-gate.sh`: 6 passed, 0
-skipped, 0 failed.** Each story has its own gate, exercised on real infra (a Lima
-Fedora node for the host-facing runs, real tofu/ansible/git/restic throughout):
-
-| Story | Gate | Verdict |
-|---|---|---|
-| 1 · git repo → run playbook regularly (signed ref) | `test/e2e/m3d-story1-gate.sh` | PASS |
-| 2 · on event/alert → run X | `test/e2e/m3d-story2-gate.sh` | PASS |
-| 3 · run terraform regularly, notify drift | `test/e2e/m3d-story3-gate.sh` | PASS |
-| 4 · load working dir → run ansible/terraform | `test/e2e/m1-gate.sh` (Lima) + `m2-gate.sh` | PASS |
-| 5 · terraform → dynamic inventory FROM terraform → play | `test/e2e/m3c-story5-gate.sh` | PASS |
-
-The four capability gates (`m3c-{policy,upgrade,lifecycle}-gate.sh`) and the
-backup/DR + daemon coverage in the `m1`/`m2` gates also pass. Story 1's trust anchor
-gap found late — trusted signers came from ambient git config, not exocomp — was fixed
-(exocomp-owned `--allowed-signers`, migration 0014). **v1.0 is declared; the post-v1
-program may begin.**
+v1.0 is not "the milestones shipped"; it is "these five end-to-end stories work reliably."
+The post-v1 program (Litestream, GoAlert, OpenBao) does not begin until this bar is met.
+Reliability of the core comes before breadth of features. Each story runs end-to-end on real
+infrastructure (a Lima Fedora node for the host-facing runs, real tofu/ansible/git/restic)
+behind its own gate script.
 
 ## The acceptance stories (each must run end-to-end, gate-tested)
 
@@ -46,21 +27,19 @@ program may begin.**
 
 ## What gates the bar
 
-- The convergent credential-plane must-fix (expert-reviews.md): sealed secrets
-  bound to a run as named env, so dynamic inventories and providers authenticate
-  under the sandbox. Nothing in stories 1–5 works without it.
+- The convergent credential-plane must-fix: sealed secrets bound to a run as named
+  env, so dynamic inventories and providers authenticate under the sandbox. Nothing
+  in stories 1–5 works without it.
 - The source-model work covers stories 1 and 4 and the ansible/tofu run fidelity.
-- Story 3 = the tofu-plan schedule kind + drift detail + notify (fold the
-  -refresh-only true-drift split forward from v1.1 if needed for reliability).
-- Story 5 = a new native capability (see below), designed from the experts'
-  "how do you do it today" answers.
-- Every story ships with an e2e gate script (like m1/m2-gate.sh) exercised on
-  the lima node, run from a fresh clone in maintenance.
+- Story 3 = the tofu-plan schedule kind + drift detail + notify (true-drift vs
+  pending-config split from `-refresh-only`).
+- Story 5 = a new native capability (see below).
+- Every story ships with an e2e gate script exercised on the Lima node, run from a
+  fresh clone in maintenance.
 
-## Story 5 — the Terraform→Ansible inventory handoff (design pending experts)
+## Story 5 — the Terraform→Ansible inventory handoff
 
-exocomp uniquely holds the encrypted tfstate AND runs the ansible. The native
-design (finalised from both experts, who disagreed on a security-critical point):
+exocomp uniquely holds the encrypted tfstate AND runs the ansible. The native design:
 
 **Governing rule — never expose raw state.** A tfstate embeds every resource
 attribute in the clear, including provider secrets and generated passwords. So
@@ -84,8 +63,7 @@ state key to the consumer.
   sensitive-marked attributes.
 
 The chain — apply succeeds → outputs captured → inventory refreshes → play runs —
-is a step-ledger workflow (ADR 0008); an apply→play dependency edge is the
-minimum. Materialization and capture are neither built today.
+is a step-ledger workflow (ADR 0008); an apply→play dependency edge is the minimum.
 
 ## Sequencing
 
