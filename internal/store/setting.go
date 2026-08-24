@@ -17,6 +17,11 @@ const (
 	// SettingNtfyTopic is the generated ntfy topic label, kept so the surfaces
 	// and a re-run can show the same channel the wizard minted.
 	SettingNtfyTopic = "notify.ntfy_topic"
+	// SettingPublicURL is the base URL `exocomp serve --public-url` was
+	// started with, persisted so a separate `approval link` invocation can
+	// read it back — the running daemon's in-memory copy (reactive.Engine's
+	// baseURL) does not survive past that process.
+	SettingPublicURL = "daemon.public_url"
 )
 
 // PutSetting upserts a non-secret configuration value.

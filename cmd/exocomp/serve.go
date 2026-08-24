@@ -308,6 +308,14 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err := api.WriteAddress(filepath.Join(dir, api.AddressFile), srv.Addr()); err != nil {
 		return err
 	}
+	// Persisted so a separate `approval link` invocation can read the same
+	// base back (internal/reactive.Engine.SetBaseURL below only holds it in
+	// this process's memory).
+	if opts.publicURL != "" {
+		if err := st.PutSetting(jobCtx, store.SettingPublicURL, opts.publicURL); err != nil {
+			return err
+		}
+	}
 	base := opts.publicURL
 	if base == "" {
 		base = "http://" + srv.Addr()

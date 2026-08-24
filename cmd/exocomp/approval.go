@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -177,7 +178,7 @@ func newApprovalLinkCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			base, err := linkBaseURL(dir, publicURL)
+			base, err := linkBaseURL(cmd.Context(), st, dir, publicURL)
 			if err != nil {
 				return err
 			}
@@ -341,20 +342,24 @@ func newApprovalDecideCmd() *cobra.Command {
 // repeating it.
 const approvalPublicURLEnv = "EXOCOMP_PUBLIC_URL"
 
-// linkBaseURL is what a decision link is rooted at. `serve --public-url` sets
-// this same base for the PUSH decision-link path (engine.SetBaseURL in
-// serve.go), but that value lives only in the running daemon's memory
-// (internal/reactive.Engine.baseURL) — it is never persisted, so a separate
-// `approval link` invocation cannot read it back on its own. override (the
-// --public-url flag, or EXOCOMP_PUBLIC_URL) is how an operator supplies the
-// same value here; only when neither is set does this fall back to the
-// recorded loopback address, which is unreachable off-box and does not
-// survive a restart.
-func linkBaseURL(dir, override string) (string, error) {
+// linkBaseURL is what a decision link is rooted at, preferring, in order: the
+// override (the --public-url flag, or EXOCOMP_PUBLIC_URL) an operator passes
+// explicitly; the same base a running `serve --public-url` daemon persisted
+// (store.SettingPublicURL, written in serve.go alongside api.WriteAddress);
+// and only then the recorded loopback address, which is unreachable off-box
+// and does not survive a restart.
+func linkBaseURL(ctx context.Context, st *store.Store, dir, override string) (string, error) {
 	if v := strings.TrimSpace(override); v != "" {
 		return v, nil
 	}
 	if v := strings.TrimSpace(os.Getenv(approvalPublicURLEnv)); v != "" {
+		return v, nil
+	}
+	if v, err := st.GetSetting(ctx, store.SettingPublicURL); err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			return "", err
+		}
+	} else if v = strings.TrimSpace(v); v != "" {
 		return v, nil
 	}
 	return daemonBaseURL(dir)
