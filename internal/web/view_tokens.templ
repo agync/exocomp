@@ -92,8 +92,10 @@ templ tokensPage(vm tokensVM) {
 templ tokenResult(vm tokenResultVM) {
 	@layout(vm.Page) {
 		if vm.Rotated {
+			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Rotated " + vm.Name})
 			<h1>Rotated { vm.Name }</h1>
 		} else {
+			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Minted " + vm.Name})
 			<h1>Minted { vm.Name }</h1>
 		}
 		<div class="card span2" style="margin-top:18px">
@@ -111,7 +113,6 @@ templ tokenResult(vm tokenResultVM) {
 				@templ.Raw(vm.QRSVG)
 			</button>
 			<p class="meta">The code carries: this control plane's URL ({ vm.BaseURL }), the token above, the certificate fingerprint, and the { vm.Scope } scope. Anyone who scans it holds the token — treat it like the secret.</p>
-			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
 			@modal("qr-lightbox", "Scan to pair a device") {
 				<div class="qr-big">@templ.Raw(vm.QRSVG)</div>
 			}
@@ -121,10 +122,10 @@ templ tokenResult(vm tokenResultVM) {
 
 templ tokensReauthNotice(p page) {
 	@layout(p) {
+		@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Confirm"})
 		<h1>Confirm required</h1>
 		<div class="card span2" style="margin-top:18px">
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the write.</p>
-			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
 		</div>
 	}
 }
