@@ -5,9 +5,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -123,5 +125,158 @@ func TestWorkspacesPageListsSeeded(t *testing.T) {
 	}
 	if !strings.Contains(body, "web") {
 		t.Fatal("workspaces page did not list the seeded workspace")
+	}
+}
+
+// TestWorkspacesPageLabelledOpenTofuState: the surface's user-facing label is
+// "Workspaces" (the h1/title), even though the surface manages OpenTofu state
+// "workspaces" — the DR-critical store/API name is unchanged (AGENTS.md).
+func TestWorkspacesPageLabelledOpenTofuState(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "Workspaces") {
+		t.Fatal("workspaces page does not render the Workspaces label")
+	}
+	if !strings.Contains(body, "<title>Workspaces") {
+		t.Fatalf("workspaces page title not set to Workspaces: %s", body)
+	}
+}
+
+// TestWorkspacesPageDistinguishesType: a state-only row (empty TofuDir) shows
+// as "state-only" and a runs-in-server row (TofuDir set) shows as "runs in
+// server" — the reframed Type column.
+func TestWorkspacesPageDistinguishesType(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "runsinserver")
+	if _, err := h.store.CreateWorkspace(context.Background(), store.Workspace{Name: "stateonly"}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "state-only") {
+		t.Fatal("workspaces page did not mark the state-only row")
+	}
+	if !strings.Contains(body, "runs in server") {
+		t.Fatal("workspaces page did not mark the runs-in-server row")
+	}
+}
+
+// TestWorkspacesPageBackendConfigModal: the per-row backend-config modal
+// carries a ready-to-paste `backend "http"` block, computed the same way the
+// CLI's `workspace add --state-only` computes it (api.NewBackendBlock) once a
+// state backend address is recorded.
+func TestWorkspacesPageBackendConfigModal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	if err := api.WriteAddress(filepath.Join(h.dir, api.AddressFile), "127.0.0.1:9443"); err != nil {
+		t.Fatalf("WriteAddress: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	// The page HTML-escapes the block's text content, so the quoted
+	// `backend "http"` reads as `backend &#34;http&#34;` on the wire; check for
+	// that plus the surrounding HCL shape rather than the raw Go string.
+	if !strings.Contains(body, "backend &#34;http&#34;") {
+		t.Fatal("workspaces page did not render a backend config block")
+	}
+	if !strings.Contains(body, "lock_address") || !strings.Contains(body, "Authorization") {
+		t.Fatal("backend config block missing lock_address or Authorization header")
+	}
+	want := api.NewBackendBlock(h.server.deriver, "127.0.0.1:9443", "web")
+	if !strings.Contains(body, want.Address) {
+		t.Fatal("backend config block did not carry the computed state address")
+	}
+	if !strings.Contains(body, want.Token) {
+		t.Fatal("backend config block did not carry the computed bearer")
+	}
+}
+
+// TestWorkspaceCreateStateOnly: an operator's "New state" form registers a
+// state-only workspace (empty TofuDir), the same store path `workspace add
+// --state-only` uses, and redirects back to /workspaces.
+func TestWorkspaceCreateStateOnly(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("workspace create = %d, want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/workspaces") {
+		t.Fatalf("workspace create redirected to %q, want /workspaces", loc)
+	}
+	ws, err := h.store.WorkspaceByName(context.Background(), "newstate")
+	if err != nil {
+		t.Fatalf("created workspace not found: %v", err)
+	}
+	if ws.TofuDir != "" {
+		t.Fatalf("state-only create set TofuDir = %q, want empty", ws.TofuDir)
+	}
+}
+
+func TestWorkspaceCreateReadonlyForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly workspace create = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestWorkspaceCreateCrossOriginForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}},
+		map[string]string{"Sec-Fetch-Site": "cross-site"})
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-origin workspace create = %d, want 403", resp.StatusCode)
 	}
 }

@@ -1,36 +1,61 @@
 package web
 
-// workspacesList is the workspace write surface: every registered tofu root
-// with its dir and newest stored tfstate serial (the state marker), plus
-// per-row Plan and Apply forms for an operator. A plan runs through
-// PlanWorkspace with the "api" trigger, exactly as a bearer-token plan does,
-// so its -out file is sealed into a consumable artifact post-run; the
+// workspacesList is the Workspaces write surface (managed OpenTofu state): every registered state
+// (store.Workspace under the hood — the DR-critical name stays internal) with
+// its type — state-only (TofuDir empty, exocomp is just the encrypted http
+// backend for an external tofu) or runs-in-server (exocomp also plans/applies
+// it) — and its newest stored tfstate serial, plus per-row Plan and Apply
+// forms for runs-in-server rows. Every row also gets a Backend config action:
+// the same ready-to-paste `backend "http"` block `workspace add --state-only`
+// prints, computed the identical way (api.NewBackendBlock). A plan runs
+// through PlanWorkspace with the "api" trigger, exactly as a bearer-token plan
+// does, so its -out file is sealed into a consumable artifact post-run; the
 // resulting artifact id can be fed into a later apply's optional plan field to
 // consume that saved plan's recorded policy verdict. An apply with no plan id
 // is a fresh apply — auto-approved unless the workspace has enabled plan
 // policies, in which case it is refused (there is nothing for a policy to
-// read). Workspaces carry no secret material, so — like run and schedules —
-// the controls here are plain operator-scope: no reauth, no confirm_token.
+// read). Workspaces carry no secret material of their own — the backend
+// config block does, but it is shown to an operator exactly as the CLI would
+// print it to them, never logged — so, like run and schedules, the controls
+// here are plain operator-scope: no reauth, no confirm_token.
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
-		<h1>Workspaces</h1>
+		<div class="pageheader">
+			<h1>Workspaces</h1>
+			if vm.Operator {
+				@addButton("ws-new", "state")
+			}
+		</div>
+		<p class="meta" style="margin-bottom:16px">
+			Managed OpenTofu state. exocomp holds each workspace's encrypted <code>tfstate</code> and serves it as an HTTP backend your own <code>tofu</code> can point at. Open a row's <b>Backend config</b> to get the ready-to-paste block. A state-only workspace is just the backend; one with a root module also runs plan/apply here.
+		</p>
+		if vm.Operator {
+			@modal("ws-new", "Register a new state") {
+				<p class="meta">Registers a state-only entry: no tofu dir, no plan/apply here — exocomp is just the encrypted state store for an external `tofu`. Equivalent to `workspace add --state-only`.</p>
+				<form method="post" action="/workspaces" class="writeform">
+					<label for="ws-new-name">Name</label>
+					<input id="ws-new-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._/-]+"/>
+					<div class="actions"><button type="submit" class="btn primary">Register</button></div>
+				</form>
+			}
+		}
 		<div class="card span2" style="margin-top:18px">
 			if !vm.Operator {
 				<div class="kicker">Read-only</div>
 			}
-			<h3>All workspaces</h3>
+			<h3>All state</h3>
 			if !vm.Operator {
-				<p class="meta">Read-only: planning or applying a workspace needs an operator token.</p>
+				<p class="meta">Read-only: registering state, planning, or applying needs an operator token.</p>
 			}
 			if len(vm.Workspaces) == 0 {
-				<p class="meta">No workspaces registered.</p>
+				<p class="meta">No state registered.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>
 						<thead>
 							<tr>
-								<th scope="col">Workspace</th>
-								<th scope="col">Tofu dir</th>
+								<th scope="col">Name</th>
+								<th scope="col">Type</th>
 								<th scope="col">State</th>
 								if vm.Operator {
 									<th scope="col">Actions</th>
@@ -40,18 +65,21 @@ templ workspacesList(vm workspacesVM) {
 						<tbody>
 							for _, wsr := range vm.Workspaces {
 								<tr>
-									<td data-label="Workspace">{ wsr.Name }</td>
-									<td class="mono wrap" data-label="Tofu dir">{ wsr.TofuDir }</td>
+									<td data-label="Name">{ wsr.Name }</td>
+									<td data-label="Type">@chip(wsr.TypeClass(), wsr.TypeLabel())</td>
 									<td data-label="State">@chip(wsr.StateClass(), wsr.StateLabel())</td>
 									if vm.Operator {
 										<td data-label="Actions">
-											<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } style="display:inline">
-												<button type="submit" class="btn">Plan</button>
-											</form>
-											<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } style="display:inline">
-												<input type="number" name="plan" min="1" placeholder="plan id (optional)" style="width:8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
-												<button type="submit" class="btn primary">Apply</button>
-											</form>
+											if !wsr.StateOnly() {
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } style="display:inline">
+													<button type="submit" class="btn">Plan</button>
+												</form>
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } style="display:inline">
+													<input type="number" name="plan" min="1" placeholder="plan id (optional)" style="width:8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
+													<button type="submit" class="btn primary">Apply</button>
+												</form>
+											}
+											<button type="button" class="btn" data-modal-open={ "ws-backend-" + wsr.Name }>Backend config</button>
 										</td>
 									}
 								</tr>
@@ -61,5 +89,17 @@ templ workspacesList(vm workspacesVM) {
 				</div>
 			}
 		</div>
+		if vm.Operator {
+			for _, wsr := range vm.Workspaces {
+				@modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name) {
+					if wsr.Backend.Address == "" {
+						<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
+					} else {
+						<p class="meta">Paste into an external tofu config, then run `tofu init`.</p>
+						<pre class="secretbox" aria-label="backend config">{ wsr.Backend.HCL() }</pre>
+					}
+				}
+			}
+		}
 	}
 }

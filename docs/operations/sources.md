@@ -151,6 +151,9 @@ exocomp playbook run site.yml --vault-project homelab
 
 ## OpenTofu state backends
 
+The web UI presents these under "Workspaces" as managed OpenTofu state (with a paste-ready backend config); the CLI verb and
+the `workspace` store/API stay as they are.
+
 Two first-class modes ([ADR 0010](../adr/0010-source-and-credential-model.md)):
 
 - **Mode A — state store only.** `exocomp workspace add <name> --state-only` emits a

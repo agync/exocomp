@@ -433,34 +433,19 @@ func runWorkspaceAddStateOnly(cmd *cobra.Command, name, address string) (err err
 		return err
 	}
 
-	token := api.WorkspaceToken(env, ws.Name)
-	url := api.StateURL(address, ws.Name)
-	return writeStateOnlyBackend(out, ws.Name, url, token)
+	block := api.NewBackendBlock(env, address, ws.Name)
+	return writeStateOnlyBackend(out, block)
 }
 
-// writeStateOnlyBackend prints the mode-A backend block. The address, lock and
-// unlock URLs are one and the same (the SQLite backend serves LOCK/UNLOCK on
-// the state path); the header carries the bearer inline so the block pastes as
-// one unit.
-func writeStateOnlyBackend(w io.Writer, name, url, token string) error {
+// writeStateOnlyBackend prints the mode-A backend block, computed the same
+// way the web surface's backend-config helper computes it (api.BackendBlock).
+func writeStateOnlyBackend(w io.Writer, block api.BackendBlock) error {
 	_, err := fmt.Fprintf(w, `# exocomp workspace %q — mode A (secure state store only).
 # One exocomp workspace = one state = one backend URL. `+"`tofu workspace new`"+`
 # and `+"`tofu workspace select`"+` are unsupported against this backend: use a
 # separate exocomp workspace per environment. State lands encrypted and locked
 # in exocomp; exocomp does not run your plan in this mode.
-terraform {
-  backend "http" {
-    address        = %[2]q
-    lock_address   = %[2]q
-    unlock_address = %[2]q
-    lock_method    = "LOCK"
-    unlock_method  = "UNLOCK"
-    headers = {
-      Authorization = "Bearer %[3]s"
-    }
-  }
-}
-`, name, url, token)
+%s`, block.Workspace, block.HCL())
 	return err
 }
 

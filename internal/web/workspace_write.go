@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
+	"strings"
 
+	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
@@ -25,6 +29,7 @@ func init() { registerWrite((*Server).registerWorkspaceWrite) }
 
 func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces", s.requireAuth(s.handleWorkspaces))
+	mux.HandleFunc("POST /workspaces", s.requireAuth(s.handleWorkspaceCreate))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
 }
@@ -36,21 +41,45 @@ type workspacesVM struct {
 }
 
 // workspaceWriteRow is one tofu workspace on the write surface: its name, root
-// dir, and the newest tfstate serial stored for it (0 means no state has ever
-// been pushed) — the "state marker" the list shows.
+// dir, the newest tfstate serial stored for it (0 means no state has ever
+// been pushed), and its backend config block (empty Address when the state
+// backend's address is not yet recorded).
 type workspaceWriteRow struct {
 	Name    string
 	TofuDir string
 	Serial  int64
+	Backend api.BackendBlock
+}
+
+// StateOnly reports the "state-only" surface distinction: an empty TofuDir
+// means exocomp only stores this workspace's state — an external tofu plans
+// and applies it. A non-empty TofuDir means exocomp runs it (Plan/Apply
+// below).
+func (r workspaceWriteRow) StateOnly() bool { return r.TofuDir == "" }
+
+// TypeLabel and TypeClass render the state-only/runs-in-server distinction as
+// a labelled chip, never colour-only.
+func (r workspaceWriteRow) TypeLabel() string {
+	if r.StateOnly() {
+		return "state-only"
+	}
+	return "runs in server"
+}
+
+func (r workspaceWriteRow) TypeClass() string {
+	if r.StateOnly() {
+		return "dim"
+	}
+	return "ok"
 }
 
 // StateLabel and StateClass render the serial as a labelled chip, never
 // colour-only: no state pushed yet is dim, a pushed serial is ok.
 func (r workspaceWriteRow) StateLabel() string {
 	if r.Serial == 0 {
-		return "no state"
+		return "no state yet"
 	}
-	return "serial " + itoa(r.Serial)
+	return "version " + itoa(r.Serial)
 }
 
 func (r workspaceWriteRow) StateClass() string {
@@ -68,10 +97,52 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	// The backend config block needs the state backend's own bound address,
+	// recorded the same way the CLI reads it (api.ReadAddress): the file a
+	// running `exocomp serve` writes into the data dir. Empty when the backend
+	// has never bound (e.g. this process is web-only) — the row then shows a
+	// note instead of a block.
+	addr, err := api.ReadAddress(filepath.Join(s.dataDir, api.AddressFile))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	for _, ws := range list {
-		vm.Workspaces = append(vm.Workspaces, workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial})
+		row := workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial}
+		if addr != "" {
+			row.Backend = api.NewBackendBlock(s.deriver, addr, ws.Name)
+		}
+		vm.Workspaces = append(vm.Workspaces, row)
 	}
 	s.render(w, r, http.StatusOK, workspacesList(vm))
+}
+
+// handleWorkspaceCreate registers a state-only workspace — the web
+// equivalent of `workspace add --state-only`, through the same
+// store.CreateWorkspace path (empty TofuDir). No secret material is written
+// here (the bearer is derived, not stored), so this is plain operator-scope
+// like Plan/Apply above.
+func (s *Server) handleWorkspaceCreate(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if err := naming.ValidateComponent("workspace", name); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	ws, err := s.store.CreateWorkspace(r.Context(), store.Workspace{Name: name})
+	if errors.Is(err, store.ErrDuplicate) {
+		http.Error(w, "a state named "+name+" already exists", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: workspace create state-only", "workspace", ws.Name, "by", ident.token.Name)
+	redirectFlash(w, r, "/workspaces", "registered "+ws.Name)
 }
 
 // handleWorkspacePlan mirrors apiWorkspacePlan (api_write.go): the same
