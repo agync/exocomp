@@ -551,6 +551,12 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		return nil, fmt.Errorf("serve: %w", err)
 	}
 	if ntfyT != nil {
+		// An unset or unrecognized value stays the documented default
+		// (descriptive): GetSetting's error on an absent key is not this
+		// function's to report, only to fall back from.
+		if raw, err := st.GetSetting(ctx, store.SettingNtfyDetail); err == nil {
+			ntfyT.SetDetail(notify.Detail(raw))
+		}
 		transports = append(transports, ntfyT)
 	}
 

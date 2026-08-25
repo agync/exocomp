@@ -40,6 +40,44 @@ func isPublicNtfyHost(host string) bool {
 // a guardrail decision open.
 const ntfyTimeout = 10 * time.Second
 
+// Detail controls how much an ntfy push names. A push transits a relay —
+// third-party or self-hosted — that exocomp does not control, so the title
+// and body it carries are deliberately never the vehicle for a notification's
+// detail: the actual plan, diff, log line, or error stays behind the deep
+// link, fetched over the authenticated /api/v1 when the operator opens it.
+type Detail string
+
+const (
+	// DetailDescriptive is the default: the push names what needs attention —
+	// the notification's own title, e.g. "job failed: nightly-backup" or
+	// "1 approval waiting" — alongside the deep link.
+	DetailDescriptive Detail = "descriptive"
+	// DetailTerse drops even that summary: a fixed, generic title and body
+	// plus the deep link, for an operator who does not trust their relay with
+	// any identifying text at all.
+	DetailTerse Detail = "terse"
+)
+
+// terseTitle and terseBody are the fixed strings a DetailTerse push carries.
+// They identify the product, not the condition: what needs attention is
+// behind the tap.
+const (
+	terseTitle = "exocomp"
+	terseBody  = "exocomp: action required"
+)
+
+// normalizeDetail resolves an operator-supplied Detail to a valid one. Unset
+// or unrecognized (a stale build, a typo in the setting table) falls back to
+// DetailDescriptive, the documented default — a free-text setting must not be
+// able to silently pick DetailTerse's stricter behavior, or silently escape
+// it, by accident.
+func normalizeDetail(d Detail) Detail {
+	if d == DetailTerse {
+		return DetailTerse
+	}
+	return DetailDescriptive
+}
+
 // SecretLookup returns a sealed secret's plaintext by name, or an error when
 // the secret is absent or will not open.
 type SecretLookup func(ctx context.Context, name string) ([]byte, error)
@@ -50,6 +88,7 @@ type Ntfy struct {
 	topic  string
 	token  string
 	client *http.Client
+	detail Detail
 }
 
 // NtfyOptions configures the transport.
@@ -62,6 +101,9 @@ type NtfyOptions struct {
 	Token string
 	// Client overrides the HTTP client, for tests.
 	Client *http.Client
+	// Detail controls how much a push names. Empty behaves as
+	// DetailDescriptive.
+	Detail Detail
 }
 
 // NewNtfy returns an ntfy transport, refusing a configuration whose approval
@@ -96,8 +138,16 @@ func NewNtfy(opts NtfyOptions) (*Ntfy, error) {
 	if client == nil {
 		client = &http.Client{Timeout: ntfyTimeout}
 	}
-	return &Ntfy{base: base, topic: opts.Topic, token: opts.Token, client: client}, nil
+	return &Ntfy{
+		base: base, topic: opts.Topic, token: opts.Token, client: client,
+		detail: normalizeDetail(opts.Detail),
+	}, nil
 }
+
+// SetDetail overrides how much a push names, after construction. LoadNtfy
+// builds the transport from sealed secrets alone, so a caller that also has
+// the operator's Detail setting (store.SettingNtfyDetail) applies it here.
+func (n *Ntfy) SetDetail(d Detail) { n.detail = normalizeDetail(d) }
 
 // LoadNtfy builds the transport from sealed secrets. An absent URL or topic
 // means the operator has not configured push at all, which is not an error:
@@ -150,10 +200,11 @@ type ntfyAction struct {
 
 // Publish implements Transport.
 func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
+	title, body := n.render(note)
 	msg := ntfyMessage{
 		Topic:    n.topic,
-		Title:    note.Title,
-		Message:  note.Body,
+		Title:    title,
+		Message:  body,
 		Priority: int(note.Priority),
 		Tags:     note.Tags,
 	}
@@ -163,11 +214,11 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 		})
 	}
 
-	body, err := json.Marshal(msg)
+	encoded, err := json.Marshal(msg)
 	if err != nil {
 		return fmt.Errorf("notify: encode ntfy message: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.base.String(), bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.base.String(), bytes.NewReader(encoded))
 	if err != nil {
 		return fmt.Errorf("notify: ntfy request: %w", err)
 	}
@@ -189,4 +240,20 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 		return fmt.Errorf("notify: ntfy answered %s", resp.Status)
 	}
 	return nil
+}
+
+// render resolves the title and body a push carries. DetailTerse ignores the
+// notification entirely: the fixed strings carry no condition, no
+// identifier, nothing an unread relay could learn from. DetailDescriptive
+// passes the notification's own title and body through — every builder in
+// this codebase already composes them as the non-sensitive summary the
+// platform contract requires (an approval names a count and a TTL, never a
+// host; a job or drift page names the workspace or runbook, never a diff or a
+// secret) — Ntfy is not the place to second-guess that, only to give an
+// operator who does not trust it a way to opt out of it.
+func (n *Ntfy) render(note Notification) (title, body string) {
+	if n.detail == DetailTerse {
+		return terseTitle, terseBody
+	}
+	return note.Title, note.Body
 }

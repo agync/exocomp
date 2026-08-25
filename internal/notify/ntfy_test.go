@@ -87,6 +87,161 @@ func TestNtfyPublishesTitleActionsAndPriority(t *testing.T) {
 	}
 }
 
+// TestNtfyDescriptiveDetailNamesTheConditionNotTheSecrets is the default
+// (Detail unset, i.e. DetailDescriptive): the push carries the notification's
+// own non-sensitive identifier and its deep link, the way every builder in
+// internal/reactive already composes one — but the transport's own secrets,
+// the relay bearer token and the capability token folded into the deep link,
+// must appear only where they belong (the Authorization header, the action
+// URL) and never get duplicated into the human-readable title or body.
+func TestNtfyDescriptiveDetailNamesTheConditionNotTheSecrets(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	const relayToken = "relay_bearer_secret"
+	const capToken = "approval_capability_secret"
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Token: relayToken, Client: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+
+	deepLink := "https://exocomp.lan/approval/7/approve?t=" + capToken
+	err = transport.Publish(context.Background(), notify.Notification{
+		Title:    "job failed: nightly-backup",
+		Body:     "Job 7 (tofu) ended failed.",
+		Priority: notify.PriorityHigh,
+		Actions:  []notify.Action{{Label: "Open", URL: deepLink}},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	if len(*seen) != 1 {
+		t.Fatalf("server saw %d publishes, want 1", len(*seen))
+	}
+	got := (*seen)[0]
+	if got.body["title"] != "job failed: nightly-backup" {
+		t.Fatalf("title = %v, want the notification's own identifier", got.body["title"])
+	}
+	if got.body["message"] != "Job 7 (tofu) ended failed." {
+		t.Fatalf("message = %v, want the notification's own summary", got.body["message"])
+	}
+	actions, ok := got.body["actions"].([]any)
+	if !ok || len(actions) != 1 {
+		t.Fatalf("actions = %v, want the one deep link", got.body["actions"])
+	}
+	first, _ := actions[0].(map[string]any)
+	if first["url"] != deepLink {
+		t.Fatalf("action url = %v, want the deep link", first["url"])
+	}
+
+	raw, _ := json.Marshal(got.body)
+	published := string(raw)
+	if strings.Contains(published, relayToken) {
+		t.Fatalf("published body leaks the relay bearer token: %s", published)
+	}
+	if got.auth != "Bearer "+relayToken {
+		t.Fatalf("Authorization = %q, want the bearer token there instead", got.auth)
+	}
+	if strings.Count(published, capToken) != 1 {
+		t.Fatalf("capability token should appear exactly once, in the action url: %s", published)
+	}
+}
+
+// TestNtfyTerseDetailDropsTheSummary pins DetailTerse: whatever the
+// notification names, the push is the fixed generic phrase and nothing else —
+// only the deep link survives, for an operator who does not trust their relay
+// with any identifying text.
+func TestNtfyTerseDetailDropsTheSummary(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(), Detail: notify.DetailTerse,
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+
+	deepLink := "https://exocomp.lan/approval/7/approve?t=tok"
+	err = transport.Publish(context.Background(), notify.Notification{
+		Title:    "job failed: nightly-backup",
+		Body:     "Job 7 (tofu) ended failed. Last error: apply exited 1",
+		Priority: notify.PriorityHigh,
+		Tags:     []string{"rotating_light"},
+		Actions:  []notify.Action{{Label: "Open", URL: deepLink}},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	if len(*seen) != 1 {
+		t.Fatalf("server saw %d publishes, want 1", len(*seen))
+	}
+	got := (*seen)[0]
+	if got.body["title"] != "exocomp" {
+		t.Fatalf("title = %v, want the fixed generic title", got.body["title"])
+	}
+	if got.body["message"] != "exocomp: action required" {
+		t.Fatalf("message = %v, want the fixed generic body", got.body["message"])
+	}
+	if got.body["priority"] != float64(notify.PriorityHigh) {
+		t.Fatalf("priority = %v, want it preserved so the phone still buzzes right", got.body["priority"])
+	}
+	actions, ok := got.body["actions"].([]any)
+	if !ok || len(actions) != 1 {
+		t.Fatalf("actions = %v, want the deep link preserved", got.body["actions"])
+	}
+	first, _ := actions[0].(map[string]any)
+	if first["url"] != deepLink {
+		t.Fatalf("action url = %v, want the deep link preserved", first["url"])
+	}
+
+	raw, _ := json.Marshal(got.body)
+	published := string(raw)
+	for _, leaked := range []string{"nightly-backup", "Job 7", "apply exited 1"} {
+		if strings.Contains(published, leaked) {
+			t.Fatalf("terse push leaks %q: %s", leaked, published)
+		}
+	}
+}
+
+// TestNtfySetDetailOverridesAfterConstruction is the LoadNtfy path: the
+// transport is built from sealed secrets alone, and the operator's Detail
+// setting is applied afterward.
+func TestNtfySetDetailOverridesAfterConstruction(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+	transport.SetDetail(notify.DetailTerse)
+
+	if err := transport.Publish(context.Background(), notify.Notification{Title: "x", Body: "y"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if (*seen)[0].body["title"] != "exocomp" {
+		t.Fatalf("title = %v, want SetDetail's terse override applied", (*seen)[0].body["title"])
+	}
+
+	// An unrecognized value (a stale build, a typo) falls back to the
+	// documented default rather than silently keeping whatever was set before.
+	transport.SetDetail(notify.Detail("bogus"))
+	if err := transport.Publish(context.Background(), notify.Notification{Title: "x", Body: "y"}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if (*seen)[1].body["title"] != "x" {
+		t.Fatalf("title = %v, want an unrecognized Detail to fall back to descriptive", (*seen)[1].body["title"])
+	}
+}
+
 func TestNtfyReportsAServerRefusal(t *testing.T) {
 	t.Parallel()
 	srv, _ := ntfyServer(t, http.StatusForbidden)
