@@ -80,17 +80,21 @@ a:visited { color: var(--accent-text); }
   position: sticky; top: 0; height: calc(100vh - var(--powerline-h));
 }
 .side-top {
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  display: flex; align-items: center; position: relative;
   height: var(--header-h);
-  padding: 0 12px; border-bottom: 1px solid var(--hairline-faint);
+  padding: 0 12px 0 0; border-bottom: 1px solid var(--hairline-faint);
 }
 .brandlink, .brandlink:visited {
-  display: inline-flex; align-items: center; gap: 10px; min-width: 0;
+  display: inline-flex; align-items: center; gap: 2px; min-width: 0;
   color: var(--ink-100); text-decoration: none;
   font: var(--type-bar); letter-spacing: 0.3px;
 }
 .brandlink:hover, .brandlink:focus-visible { text-decoration: none; color: var(--ink-100); }
-.brandmark { color: var(--ink-100); flex: none; }
+/* The mark sits in a fixed 64px column — the rail's own width — centered, so its
+ * center lands on the nav-glyph column below it and it never shifts or resizes
+ * between the expanded sidebar and the collapsed rail. */
+.brand-slot { width: 64px; flex: none; display: flex; align-items: center; justify-content: center; }
+.brandmark { color: var(--ink-100); flex: none; width: 26px; height: 26px; }
 .brandmark .cell { color: var(--accent-fill); }
 .brandlink .wordmark { white-space: nowrap; }
 
@@ -122,14 +126,13 @@ a:visited { color: var(--accent-text); }
  * Gemini-style: a quiet icon button, transparent until hovered. In the
  * collapsed rail it reveals an "Open sidebar" label on hover. */
 .railtoggle {
-  position: relative;
+  position: relative; margin-left: auto;
   width: 32px; height: 32px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-400);
   border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
 }
 .railtoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
-.railmark { display: none; align-items: center; justify-content: center; color: var(--ink-100); }
 .raillabel {
   display: none;
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
@@ -148,17 +151,26 @@ a:visited { color: var(--accent-text); }
  * chevron and its "Open sidebar" flyout. Nav labels hide. */
 @media (min-width: 821px) {
   :root[data-nav="rail"] .sidebar { width: 64px; }
-  :root[data-nav="rail"] .side-top { justify-content: center; padding: 0; }
-  :root[data-nav="rail"] .brandlink { display: none; }
-  :root[data-nav="rail"] .railtoggle { border-color: transparent; background: transparent; }
-  :root[data-nav="rail"] .railmark { display: inline-flex; }
-  :root[data-nav="rail"] .railchev { display: none; }
-  :root[data-nav="rail"] .railtoggle:hover,
-  :root[data-nav="rail"] .railtoggle:focus-visible { border-color: var(--hairline-faint); background: var(--surface-tray); }
-  :root[data-nav="rail"] .railtoggle:hover .railmark,
-  :root[data-nav="rail"] .railtoggle:focus-visible .railmark { display: none; }
-  :root[data-nav="rail"] .railtoggle:hover .railchev,
-  :root[data-nav="rail"] .railtoggle:focus-visible .railchev { display: block; transform: rotate(180deg); }
+  :root[data-nav="rail"] .side-top { padding: 0; }
+  /* Collapsed: the brand mark rests centered (same 64px slot, same size as the
+   * expanded sidebar — no shift). Hovering or focusing the top fades in the open
+   * toggle over the same spot, so it never moves the mark. */
+  :root[data-nav="rail"] .brandlink { transition: opacity .12s ease; }
+  :root[data-nav="rail"] .brandlink .wordmark { display: none; }
+  :root[data-nav="rail"] .railtoggle {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    margin: 0; opacity: 0; border-color: transparent; background: transparent;
+    transition: opacity .12s ease;
+  }
+  :root[data-nav="rail"] .railchev { transform: rotate(180deg); }
+  :root[data-nav="rail"] .side-top:hover .brandlink,
+  :root[data-nav="rail"] .side-top:focus-within .brandlink { opacity: 0; }
+  :root[data-nav="rail"] .side-top:hover .railtoggle,
+  :root[data-nav="rail"] .side-top:focus-within .railtoggle {
+    opacity: 1; border-color: var(--hairline-faint); background: var(--surface-tray);
+  }
+  :root[data-nav="rail"] .railtoggle:hover .raillabel,
+  :root[data-nav="rail"] .railtoggle:focus-visible .raillabel { display: block; }
   :root[data-nav="rail"] .side-nav { padding: 10px 0; align-items: center; }
   :root[data-nav="rail"] .navitem { width: 44px; justify-content: center; padding: 0; gap: 0; }
   :root[data-nav="rail"] .navitem span { display: none; }
