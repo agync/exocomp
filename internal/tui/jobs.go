@@ -17,6 +17,7 @@ type jobsTable struct {
 func jobsColumns() []table.Column {
 	return []table.Column{
 		{Title: "ID", Width: 6},
+		{Title: "SOURCE", Width: 12},
 		{Title: "KIND", Width: 12},
 		{Title: "STATE", Width: 12},
 		{Title: "QUEUED", Width: 10},
@@ -51,6 +52,7 @@ func jobRows(jobs []store.Job) []table.Row {
 	for i, j := range jobs {
 		rows[i] = table.Row{
 			strconv.FormatInt(j.ID, 10),
+			orDash(j.Args.Source),
 			j.Kind,
 			renderState(string(j.State)),
 			formatTime(j.QueuedAt),
