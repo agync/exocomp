@@ -73,6 +73,7 @@ GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-
 GET /api/v1/schedules
 GET /api/v1/rules
 GET /api/v1/silences?all=                       # active-only unless all=true
+GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
 GET /api/v1/events?source=&outcome=&limit=
 GET /api/v1/events/{id}
 GET /api/v1/secrets                             # metadata only — no field a value could occupy
@@ -106,7 +107,20 @@ POST /api/v1/workspaces/{name}/apply
 POST /api/v1/playbooks/run
 POST /api/v1/maintenance/cordon                 # drain: stop new fires + claims
 POST /api/v1/maintenance/uncordon               # lift the cordon
+POST   /api/v1/mutes                            # hold notifications for a scope
+DELETE /api/v1/mutes/{id}                       # lift a mute before it expires
 ```
+
+`POST /mutes` and `DELETE /mutes/{id}` write the notify-layer mute over the same
+`store.NotifyMute` the CLI's `mute add`/`rm` and the web banner use — the job still runs;
+only its announcement is held (distinct from a silence, which suppresses the rule). The body
+is `{scope_kind, scope_value, reason, for | expires_at}`: the scope ladder is `alert`
+(this-alert), `host` (one-host), or `global`, and a non-`global` scope needs a `scope_value`.
+Exactly one of `for` (a positive Go duration) or `expires_at` (an absolute RFC3339 time in
+the future) is required — the store refuses a mute with no future expiry. The create returns
+one `mute.get` object `{id, scope_kind, scope_value, reason, created_via, expires_at}`; the
+delete returns `204`, and an unknown id is `404`. Both writes are `operator`-scoped (a
+bearer, not a browser session); `GET /mutes` is readable by any authed token.
 
 The `maintenance/*` routes drive a planned-reboot drain ([Draining for a planned
 reboot](drain-mode.md)): `cordon`/`uncordon` are `operator`-scoped and are **not** enqueues —

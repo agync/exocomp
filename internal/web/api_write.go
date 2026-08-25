@@ -57,6 +57,9 @@ const (
 	// kindSilence names one created silence, mirroring wire.KindJob's "job.get"
 	// singular next to the plural KindSilenceList the read side already emits.
 	kindSilence = "silence.get"
+	// kindMute names one created notification mute, the singular next to the
+	// plural wire.KindMuteList the read side emits.
+	kindMute = "mute.get"
 )
 
 // jobEnqueuedView is the body of a clean enqueue: the job id an agent follows,
@@ -107,6 +110,10 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("create silences", "operator"), s.apiSilenceCreate))
 	mux.HandleFunc("DELETE /api/v1/silences/{id}",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("lift silences", "operator"), s.apiSilenceDelete))
+	mux.HandleFunc("POST /api/v1/mutes",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("create mutes", "operator"), s.apiMuteCreate))
+	mux.HandleFunc("DELETE /api/v1/mutes/{id}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("lift mutes", "operator"), s.apiMuteDelete))
 }
 
 // bearerOnly narrows a scope predicate to callers presenting an explicit bearer
@@ -745,6 +752,116 @@ func (s *Server) apiSilenceDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteSilence(r.Context(), id); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- mutes (create / lift) --------------------------------------------------
+
+// muteCreateRequest is the JSON body of a POST /mutes. It mirrors the CLI's
+// `mute add`: the scope ladder the phone's mute sheet offers — this-alert
+// (alert), one-host (host), global — and a mandatory expiry. The expiry may be
+// given as a positive duration in `for` (e.g. "2h") or as an absolute
+// `expires_at` (RFC3339); one is required, since the store refuses a mute with
+// no future expiry (a mute the operator forgets is how a phone goes quiet the
+// week the backups fail).
+type muteCreateRequest struct {
+	ScopeKind  string `json:"scope_kind"`
+	ScopeValue string `json:"scope_value"`
+	Reason     string `json:"reason"`
+	For        string `json:"for"`
+	ExpiresAt  string `json:"expires_at"`
+}
+
+// apiMuteCreate holds notifications for a scope until a deadline, through the
+// SAME store.CreateNotifyMute the CLI's `mute add` and the web banner write. A
+// mute lets the job run and only holds the message that would have announced it
+// — distinct from a silence, which stops the event ever becoming a job. The
+// scope and its value are validated here so a bad scope is a 400, not the 500
+// the store's untyped validation error would otherwise map to.
+func (s *Server) apiMuteCreate(w http.ResponseWriter, r *http.Request) {
+	var req muteCreateRequest
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			s.badRequest(w, "request body is not valid JSON")
+			return
+		}
+	}
+	switch req.ScopeKind {
+	case store.ScopeAlert, store.ScopeHost, store.ScopeGlobal:
+	default:
+		s.badRequest(w, "scope_kind must be alert, host, or global")
+		return
+	}
+	if req.ScopeKind != store.ScopeGlobal && req.ScopeValue == "" {
+		s.badRequest(w, "scope_kind "+req.ScopeKind+" needs a scope_value")
+		return
+	}
+
+	now := s.now()
+	expires, ok := s.muteExpiry(w, req, now)
+	if !ok {
+		return
+	}
+
+	m, err := s.store.CreateNotifyMute(r.Context(), store.NotifyMute{
+		ScopeKind:  req.ScopeKind,
+		ScopeValue: req.ScopeValue,
+		Reason:     req.Reason,
+		CreatedAt:  now,
+		ExpiresAt:  expires,
+		CreatedVia: "api",
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, kindMute, wire.NewMuteList([]store.NotifyMute{m})[0])
+}
+
+// muteExpiry resolves the mute's deadline from either `for` (a positive
+// duration) or `expires_at` (an absolute RFC3339 time in the future), rendering
+// the 400 itself and reporting ok=false when neither is usable. Exactly one is
+// required; `for` wins if both are set.
+func (s *Server) muteExpiry(w http.ResponseWriter, req muteCreateRequest, now time.Time) (time.Time, bool) {
+	switch {
+	case req.For != "":
+		dur, err := time.ParseDuration(req.For)
+		if err != nil || dur <= 0 {
+			s.badRequest(w, "for must be a positive Go duration (e.g. 2h)")
+			return time.Time{}, false
+		}
+		return now.Add(dur), true
+	case req.ExpiresAt != "":
+		t, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			s.badRequest(w, "expires_at must be an RFC3339 timestamp")
+			return time.Time{}, false
+		}
+		if !t.After(now) {
+			s.badRequest(w, "expires_at must be in the future")
+			return time.Time{}, false
+		}
+		return t.UTC(), true
+	default:
+		s.badRequest(w, "a mute never expires-never: set for (e.g. 2h) or expires_at")
+		return time.Time{}, false
+	}
+}
+
+// apiMuteDelete lifts a mute before it expires, through the SAME
+// store.DeleteNotifyMute the CLI's `mute rm` calls. An unknown id is a 404
+// (store.ErrNotFound), never a silent success.
+func (s *Server) apiMuteDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "mute id must be a positive integer")
+		return
+	}
+	if err := s.store.DeleteNotifyMute(r.Context(), id); err != nil {
 		s.apiFail(w, err)
 		return
 	}

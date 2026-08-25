@@ -65,6 +65,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/schedules", s.apiAuth(s.apiSchedules))
 	mux.HandleFunc("GET /api/v1/rules", s.apiAuth(s.apiRules))
 	mux.HandleFunc("GET /api/v1/silences", s.apiAuth(s.apiSilences))
+	mux.HandleFunc("GET /api/v1/mutes", s.apiAuth(s.apiMutes))
 	mux.HandleFunc("GET /api/v1/events", s.apiAuth(s.apiEvents))
 	mux.HandleFunc("GET /api/v1/events/{id}", s.apiAuth(s.apiEventGet))
 	mux.HandleFunc("GET /api/v1/secrets", s.apiAuth(s.apiSecrets))
@@ -545,6 +546,19 @@ func (s *Server) apiSilences(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindSilenceList, wire.NewSilenceList(rows))
+}
+
+// apiMutes lists notification mutes. Like `mute list`, it shows active-only by
+// default; ?all=true includes expired mutes. A mute is the notify-layer hold
+// (the job still runs; only its announcement is held) — distinct from a
+// silence, which suppresses the rule.
+func (s *Server) apiMutes(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.store.ListNotifyMutes(r.Context(), !queryTrue(r, "all"))
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindMuteList, wire.NewMuteList(rows))
 }
 
 // --- events -----------------------------------------------------------------

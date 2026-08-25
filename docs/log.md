@@ -12,6 +12,11 @@ Newest first.
   (`internal/version`) and its host ride the identity reflection, so the Connect screen can
   render `exocompd <version> · <hostname>` without fishing the host out of the URL. Both
   fields are omitempty; a missing hostname degrades the line, never the request.
+- **`GET`/`POST`/`DELETE /api/v1/mutes`** expose the notify-layer mute (`store.NotifyMute`)
+  the CLI's `mute add/list/rm` already drives: the job still runs, only its announcement is
+  held (distinct from a silence, which suppresses the rule). The write takes the scope ladder
+  the phone's mute sheet offers — `alert`/`host`/`global` — and either a `for` duration or an
+  absolute `expires_at`; writes are operator-scoped, the list readable by any authed token.
 
 ## 2026-08-25 — QR pairing, schedule detail, sidebar logo
 
