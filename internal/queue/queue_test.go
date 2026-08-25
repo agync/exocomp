@@ -182,6 +182,142 @@ func TestEnqueueCarriesSource(t *testing.T) {
 	}
 }
 
+// TestRunningEventRendersSource proves the "running" event names the source
+// and relativizes its argv against Dir, with no absolute checkout path left
+// in the rendered line.
+func TestRunningEventRendersSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	dir := t.TempDir()
+	spec := queue.Spec{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Argv:   []string{"/bin/true", "--limit", "nibbler", "--check", filepath.Join(dir, "playbooks/upgrade.yml")},
+		Dir:    dir,
+		Source: "my-fleet",
+	}
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	drain(t, q)
+
+	msg := firstSystemEvent(ctx, t, st, job.ID)
+	want := "running my-fleet: /bin/true --limit nibbler --check playbooks/upgrade.yml"
+	if msg != want {
+		t.Errorf("running event = %q, want %q", msg, want)
+	}
+	if strings.Contains(msg, dir) {
+		t.Errorf("running event %q still carries the absolute dir %q", msg, dir)
+	}
+}
+
+// TestRunningEventRelativizesWithNoSource proves a sourceless job with a Dir
+// still strips the absolute checkout path from its "running" event, without
+// fabricating a source name it was never given.
+func TestRunningEventRelativizesWithNoSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	dir := t.TempDir()
+	spec := queue.Spec{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/true", filepath.Join(dir, "playbooks/upgrade.yml")},
+		Dir:  dir,
+	}
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	drain(t, q)
+
+	msg := firstSystemEvent(ctx, t, st, job.ID)
+	want := "running /bin/true playbooks/upgrade.yml"
+	if msg != want {
+		t.Errorf("running event = %q, want %q", msg, want)
+	}
+	if strings.Contains(msg, dir) {
+		t.Errorf("running event %q still carries the absolute dir %q", msg, dir)
+	}
+}
+
+// TestRunningEventRawArgvWhenNeitherSet proves a job with no Source and no Dir
+// keeps its raw argv unchanged, exactly as before this field existed.
+func TestRunningEventRawArgvWhenNeitherSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	job, err := q.Enqueue(ctx, shellSpec("/bin/true", "--flag", "value"))
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	drain(t, q)
+
+	msg := firstSystemEvent(ctx, t, st, job.ID)
+	want := "running /bin/true --flag value"
+	if msg != want {
+		t.Errorf("running event = %q, want %q", msg, want)
+	}
+}
+
+// firstSystemEvent returns the message of the first system-level event a job
+// recorded, which is always the "running" line dispatch emits.
+func firstSystemEvent(ctx context.Context, t *testing.T, st *store.Store, jobID int64) string {
+	t.Helper()
+	events, err := st.ListJobEvents(ctx, jobID)
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, e := range events {
+		if e.Level == store.LevelSystem {
+			return e.Msg
+		}
+	}
+	t.Fatalf("job %d recorded no system event", jobID)
+	return ""
+}
+
+// TestRelativizeArgv unit-tests the argv rewrite the "running" event and
+// every future path-scrubbing event line share: a token under dir becomes
+// relative to it, and an unrelated token (a flag, a bare word, a path outside
+// dir) is returned unchanged.
+func TestRelativizeArgv(t *testing.T) {
+	t.Parallel()
+	dir := "/data/checkouts/my-fleet"
+
+	got := queue.RelativizeArgv([]string{
+		"ansible-playbook",
+		"--limit", "nibbler",
+		"--check",
+		"/data/checkouts/my-fleet/playbooks/upgrade.yml",
+		"/etc/ansible/other.yml",
+		dir,
+	}, dir)
+	want := []string{
+		"ansible-playbook",
+		"--limit", "nibbler",
+		"--check",
+		"playbooks/upgrade.yml",
+		"/etc/ansible/other.yml",
+		".",
+	}
+	if len(got) != len(want) {
+		t.Fatalf("relativizeArgv(%v) = %v, want %v", want, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("token %d = %q, want %q", i, got[i], want[i])
+		}
+	}
+
+	if got := queue.RelativizeArgv([]string{"/etc/ansible/other.yml"}, ""); got[0] != "/etc/ansible/other.yml" {
+		t.Errorf("empty dir must leave argv unchanged, got %v", got)
+	}
+}
+
 // recordingDriver captures the last Spec it was handed, so a test can assert
 // what the queue built from a job row reached the driver.
 type recordingDriver struct{ last executor.Spec }

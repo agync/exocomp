@@ -12,3 +12,6 @@ func (q *Queue) TrackedJobs() int {
 // ClaimPageSize is claim's page size, exported so a test can size a window of
 // blocked rows against the real value rather than a copy that could drift.
 const ClaimPageSize = claimPageSize
+
+// RelativizeArgv exports relativizeArgv for its own unit test.
+func RelativizeArgv(argv []string, dir string) []string { return relativizeArgv(argv, dir) }

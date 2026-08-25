@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -422,6 +423,56 @@ func (q *Queue) launch(ctx context.Context, job store.Job) {
 	}()
 }
 
+// runningMsg renders the "running" event line. A job that named a Source
+// shows it plus its argv, relativized against Dir (the checkout root) so an
+// operator reads a source name and a repo-relative command instead of an
+// absolute checkout path. A sourceless job with a Dir still relativizes
+// against it, for the same reason, with no source name to show. A job with
+// neither carries its argv unchanged, exactly as before this field existed.
+func runningMsg(args store.JobArgs) string {
+	argv := args.Argv
+	if args.Dir != "" {
+		argv = relativizeArgv(argv, args.Dir)
+	}
+	if args.Source == "" {
+		return "running " + strings.Join(argv, " ")
+	}
+	return "running " + args.Source + ": " + strings.Join(argv, " ")
+}
+
+// relativizeArgv rewrites every argv token that names a path under dir to
+// that path relative to dir, leaving every other token (a flag, a host
+// pattern, a token outside dir) unchanged. It never fails: a token that does
+// not clean into a relative path is returned as it was.
+func relativizeArgv(argv []string, dir string) []string {
+	if dir == "" {
+		return argv
+	}
+	dir = filepath.Clean(dir)
+	out := make([]string, len(argv))
+	for i, tok := range argv {
+		out[i] = relativizeToken(tok, dir)
+	}
+	return out
+}
+
+// relativizeToken rebases one argv token onto dir when it names a path at or
+// under it; any other token is returned unchanged.
+func relativizeToken(tok, dir string) string {
+	clean := filepath.Clean(tok)
+	if clean == dir {
+		return "."
+	}
+	if !strings.HasPrefix(clean, dir+string(filepath.Separator)) {
+		return tok
+	}
+	rel, err := filepath.Rel(dir, clean)
+	if err != nil {
+		return tok
+	}
+	return rel
+}
+
 func (q *Queue) execute(ctx context.Context, job store.Job) {
 	var sink executor.EventSink = newStoreSink(q.store, job.ID, q.log)
 	if q.wrapSink != nil {
@@ -429,7 +480,7 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 	}
 	sink.Emit(executor.Event{
 		Level: executor.LevelSystem,
-		Msg:   "running " + strings.Join(job.Args.Argv, " "),
+		Msg:   runningMsg(job.Args),
 	})
 	// A privileged job runs with no kernel sandbox; record that at the point of
 	// execution so the ledger carries it on every path (daemon or inline drain),
