@@ -77,7 +77,7 @@ func TestScheduledTolerateUnreachablePlaySettlesPartial(t *testing.T) {
 	runCLI(t, bin, "schedule", "add", "roam", "--kind", "play",
 		"--target", "tf:roamlab", "--tolerate-unreachable", "--cron", "@every 3s", "--", play)
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	var degraded store.Job

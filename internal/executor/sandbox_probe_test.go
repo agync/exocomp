@@ -44,7 +44,7 @@ func TestProbeAssertsTheSandbox(t *testing.T) {
 	requireNono(t)
 	t.Setenv(canaryEnv, "1")
 
-	res := executor.Probe(context.Background(), executor.TierAuto, executor.ProbeOptions{
+	res := executor.Probe(context.Background(), executor.TierOpportunistic, executor.ProbeOptions{
 		Canary: os.Args[0],
 	})
 	if res.Degraded() {
@@ -64,11 +64,11 @@ func TestProbeAssertsTheSandbox(t *testing.T) {
 }
 
 // TestProbeRefusesTheTierWithoutALauncher: a missing or unusable nono is a loud
-// degradation to plain local, never a silent pass.
+// degradation to the disabled tier, never a silent pass.
 func TestProbeRefusesTheTierWithoutALauncher(t *testing.T) {
 	t.Setenv(canaryEnv, "1")
 
-	res := executor.Probe(context.Background(), executor.TierLocalSandboxed, executor.ProbeOptions{
+	res := executor.Probe(context.Background(), executor.TierEnforcing, executor.ProbeOptions{
 		Binary: "exocomp-no-such-launcher",
 		Canary: os.Args[0],
 	})
@@ -78,8 +78,8 @@ func TestProbeRefusesTheTierWithoutALauncher(t *testing.T) {
 	if res.Reason == "" {
 		t.Error("degradation carries no reason")
 	}
-	if res.Effective != executor.TierLocal {
-		t.Errorf("effective tier = %s, want %s", res.Effective, executor.TierLocal)
+	if res.Effective != executor.TierDisabled {
+		t.Errorf("effective tier = %s, want %s", res.Effective, executor.TierDisabled)
 	}
 }
 

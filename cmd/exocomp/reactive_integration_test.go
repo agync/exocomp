@@ -35,7 +35,7 @@ func TestReactivePipelineEndToEnd(t *testing.T) {
 		"--", "/usr/bin/touch", marker)
 
 	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0",
-		"--approval-ttl", "10m", "--dedup-window", "5m")
+		"--sandbox", "opportunistic", "--approval-ttl", "10m", "--dedup-window", "5m")
 	line := d.waitForLine(t, &d.stdout, "state backend listening on http://", 30*time.Second)
 	addr := strings.TrimPrefix(strings.TrimSpace(line), "state backend listening on http://")
 	hook := d.waitForLine(t, &d.stdout, "hook alertmanager", 10*time.Second)
@@ -154,7 +154,7 @@ func TestGlobalSilenceSwallowsAndSaysSo(t *testing.T) {
 	runCLI(t, bin, "silence", "add", "--global", "--for", "1h", "--yes-really",
 		"--reason", "rebooting the rack")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "opportunistic")
 	d.waitForLine(t, &d.stdout, "state backend listening on http://", 30*time.Second)
 	hook := d.waitForLine(t, &d.stdout, "hook alertmanager", 10*time.Second)
 	hookURL := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(hook), "hook alertmanager"))

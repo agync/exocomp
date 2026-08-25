@@ -116,13 +116,13 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   by opening the data dir directly, bypassing every HTTP guard. Under the sandboxed tier this fails
   closed by the same guard as T6: the profile never grants the data dir and name-denies
   `exocomp.db`, `host.key`, and `keyring.age`, so an invoked CLI cannot open the store or the
-  envelope — no token mints, no secret unwraps. **Residual:** under `TierLocal` (explicit
-  `--sandbox local`, or the `auto` tier degraded on a host without Landlock) there is no kernel
-  policy, so a local-exec step runs with the daemon's own filesystem access and *can* mint an
-  operator token or read `host.key`. `TierLocal` is therefore a trusted-playbook tier; the
-  `auto`→`local` degradation is loud in the daemon log and `doctor` but invisible to a playbook
-  author, and must be treated as a security-relevant downgrade. Untrusted playbooks require the
-  sandboxed tier.
+  envelope — no token mints, no secret unwraps. **Residual:** under `TierDisabled` (explicit
+  `--sandbox disabled`, or the `opportunistic` tier degraded on a host without Landlock) there is
+  no kernel policy, so a local-exec step runs with the daemon's own filesystem access and *can*
+  mint an operator token or read `host.key`. `TierDisabled` is therefore a trusted-playbook tier;
+  the `opportunistic`→`disabled` degradation is loud in the daemon log and `doctor` but invisible
+  to a playbook author, and must be treated as a security-relevant downgrade. Untrusted playbooks
+  require the sandboxed tier.
 
 ## Reactive engine and approvals
 

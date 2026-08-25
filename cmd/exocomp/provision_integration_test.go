@@ -60,7 +60,7 @@ exit 0`)
 	playbook := module + "/converge.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "provision", "run", "edge", playbook, "--wait")
@@ -142,7 +142,7 @@ exit 0`)
 	playbook := module + "/converge.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, _ := runCLIExit(t, bin, "provision", "run", "edge", playbook, "--wait")

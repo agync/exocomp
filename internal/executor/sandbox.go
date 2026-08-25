@@ -19,34 +19,46 @@ import (
 // Tier names how much isolation a job subprocess runs under
 // (docs/architecture/execution.md).
 const (
-	// TierLocal is the subprocess-boundary tier: no kernel policy.
-	TierLocal Tier = "local"
-	// TierLocalSandboxed wraps every job subprocess in a default-deny nono
-	// sandbox (ADR 0005).
-	TierLocalSandboxed Tier = "local-sandboxed"
-	// TierAuto asks for TierLocalSandboxed and accepts a loud degradation to
-	// TierLocal when the host cannot enforce it.
-	TierAuto Tier = "auto"
+	// TierDisabled is the subprocess-boundary tier: a subprocess boundary and a
+	// per-job 0700 private dir, but no kernel policy. Unsandboxed by explicit
+	// choice.
+	TierDisabled Tier = "disabled"
+	// TierEnforcing wraps every job subprocess in a default-deny nono sandbox
+	// (ADR 0005) and fails closed at startup when the host cannot enforce it.
+	TierEnforcing Tier = "enforcing"
+	// TierOpportunistic asks for TierEnforcing and accepts a loud degradation to
+	// TierDisabled when the host cannot enforce it.
+	TierOpportunistic Tier = "opportunistic"
 )
 
 // Tier is one of the constants above.
 type Tier string
 
-// ParseTier reads a tier name. Empty means TierAuto: a host that can sandbox
-// does, and one that cannot says so.
+// ParseTier reads a tier name. Empty means TierEnforcing, the secure-by-default
+// tier: a host that cannot enforce the sandbox fails closed at startup rather
+// than running jobs unsandboxed. The three former names — local,
+// local-sandboxed, auto — are accepted as silent back-compat aliases that
+// canonicalize to the current Tier value, so existing $EXOCOMP_SANDBOX settings
+// and scripts keep working.
 func ParseTier(s string) (Tier, error) {
 	switch t := Tier(strings.TrimSpace(s)); t {
 	case "":
-		return TierAuto, nil
-	case TierLocal, TierLocalSandboxed, TierAuto:
+		return TierEnforcing, nil
+	case TierDisabled, TierEnforcing, TierOpportunistic:
 		return t, nil
+	case "local":
+		return TierDisabled, nil
+	case "local-sandboxed":
+		return TierEnforcing, nil
+	case "auto":
+		return TierOpportunistic, nil
 	default:
 		return "", fmt.Errorf("executor: unknown tier %q (want %s, %s, or %s)",
-			s, TierLocal, TierLocalSandboxed, TierAuto)
+			s, TierOpportunistic, TierEnforcing, TierDisabled)
 	}
 }
 
-// NonoBinary is the sandbox launcher the local-sandboxed tier runs jobs under.
+// NonoBinary is the sandbox launcher the enforcing tier runs jobs under.
 const NonoBinary = "nono"
 
 // NonoMinVersion is the floor ADR 0005 pins: CVE-2026-47128 — an escape via a
@@ -339,7 +351,7 @@ func covers(dir, path string) bool {
 	return strings.HasPrefix(path, dir+sep)
 }
 
-// Sandbox runs a spec under the local-sandboxed tier: it rewrites the argv into
+// Sandbox runs a spec under the enforcing tier: it rewrites the argv into
 // a launcher invocation and hands the result to the driver underneath, so
 // streaming, process groups, and exit-code handling keep one implementation.
 type Sandbox struct {
@@ -579,7 +591,7 @@ type ProbeResult struct {
 
 // Degraded reports whether the effective tier is weaker than the one asked for.
 func (r ProbeResult) Degraded() bool {
-	return r.Requested != TierLocal && r.Effective != TierLocalSandboxed
+	return r.Requested != TierDisabled && r.Effective != TierEnforcing
 }
 
 // ProbeOptions configures the startup probe.
@@ -625,8 +637,8 @@ const probeTimeout = 30 * time.Second
 // canary to report the refusals. Every target is live — a refusal has to come
 // from the kernel policy, not from there being nothing to reach.
 func Probe(ctx context.Context, want Tier, opts ProbeOptions) ProbeResult {
-	res := ProbeResult{Requested: want, Effective: TierLocal}
-	if want == TierLocal {
+	res := ProbeResult{Requested: want, Effective: TierDisabled}
+	if want == TierDisabled {
 		return res
 	}
 
@@ -665,7 +677,7 @@ func Probe(ctx context.Context, want Tier, opts ProbeOptions) ProbeResult {
 
 	res.Enforced = true
 	res.PathnameSocketMediated = strings.Contains(report, "pathname-socket=denied")
-	res.Effective = TierLocalSandboxed
+	res.Effective = TierEnforcing
 	return res
 }
 

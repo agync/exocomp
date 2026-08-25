@@ -26,7 +26,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 | `--port` | `0` | Loopback port for the state backend; `0` takes an ephemeral one. The bound address is written to `<data dir>/state-backend.addr`, which is how a CLI finds it. The backend binds `127.0.0.1` only ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)) — remote access is a reverse proxy's job, never a bind address. |
 | `--drain-grace` | `30s` | How long jobs already running may finish after a signal before they are cancelled. Generous on purpose: a backup leg writes its own `backup_run` row at the end. |
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
-| `--sandbox` | `$EXOCOMP_SANDBOX`, else `auto` | Job isolation tier: `local`, `local-sandboxed`, or `auto`. See below. |
+| `--sandbox` | `$EXOCOMP_SANDBOX`, else `enforcing` | Job isolation tier: `opportunistic`, `enforcing`, or `disabled`. See below. |
 | `--secret-staging` | `auto` | Where a run-secret staged as a file (`bootstrap run --capture-file`) lands: `auto`, `tmpfs`, or `disk`. See below. |
 
 ## Job isolation
@@ -36,16 +36,18 @@ Every job subprocess runs under a kernel sandbox where the host supports one
 printed:
 
 ```
-job isolation tier: local-sandboxed
+job isolation tier: enforcing
 ```
 
-`auto` — the default — asks for `local-sandboxed` and accepts plain `local` when the host
-cannot enforce it: a degradation is a `WARNING` on stderr and a line in `exocomp doctor`,
-never a silent downgrade. `local` skips the probe entirely, which is the honest way to run
-on a kernel without Landlock. `local-sandboxed` asks for the sandbox by name, and a name is
-a policy: when the host cannot enforce it, `exocomp serve` and `exocomp doctor` refuse
-rather than run the fleet's jobs unsandboxed. Pass `--sandbox auto` to accept the
-subprocess boundary instead.
+`enforcing` — the default — requires the sandbox: when the host cannot enforce it,
+`exocomp serve` and `exocomp doctor` refuse rather than run the fleet's jobs unsandboxed.
+That is secure-by-default, and it applies to the empty-flag default as much as to an
+explicit `--sandbox enforcing`. `opportunistic` asks for the same sandbox but accepts plain
+`disabled` when the host cannot enforce it: a degradation is a `WARNING` on stderr and a
+line in `exocomp doctor`, never a silent downgrade. `disabled` skips the probe entirely,
+which is the honest way to run on a kernel without Landlock. Pass `--sandbox opportunistic`
+to accept the subprocess boundary on degradation, or `--sandbox disabled` for no sandbox at
+all.
 
 The probe is an assertion, not a version check. It stands up a file standing in for
 `host.key`, two listening unix sockets, and a listening loopback TCP port, runs a canary
@@ -58,7 +60,7 @@ What each kind of job may reach:
 | ansible | the job's private dir, the playbooks and inventory its argv names, the vendored collections, the tool tree, `/dev/shm`, `~/.ansible` under the redirected home, the single file `/etc/passwd` (ssh resolves the local user through it) | TCP 22 |
 | tofu | the job's private dir, the workspace directory, the provider cache, the tool tree | TCP 443 and the state backend's loopback port, plus any extra ports the workspace declared (below) |
 
-Shell runbooks and backup legs still run at the `local` tier. The backup engine reads
+Shell runbooks and backup legs still run at the `disabled` tier. The backup engine reads
 `keyring.age` by design — it is what every target root gets a copy of — so a profile that
 denied it would deny the job its own work. Sandboxing those kinds needs a profile shaped
 around the backup engine's targets, which does not exist.
@@ -148,8 +150,8 @@ This is a deliberate widening, and its limit is the same one the section above s
 open 6443 to *any* host, not only the intended cluster — the grant cannot be scoped to the
 API server's address. Declare only the ports a workspace's providers genuinely need, and
 keep host-level restriction a network-layer job. The grant also only means anything under
-the sandbox: a fleet degraded to the `local` tier enforces no egress port limit at all, so
-this declaration is inert there.
+the sandbox: a fleet degraded to the `disabled` tier enforces no egress port limit at all,
+so this declaration is inert there.
 
 **A pathname unix socket is not covered.** Landlock mediates path opening, and
 `connect(2)` on an `AF_UNIX` socket opens nothing, so no Landlock ABI shipped so far can
@@ -318,4 +320,4 @@ unaffected.
 A job's `HOME` is redirected into its own private directory under the sandboxed tier, so
 an operator's `~/.ansible.cfg` or `~/.terraformrc` does not apply to a queued run. That is
 the intent — a job row is meant to record everything a run depended on — but it is a
-behaviour difference from the `local` tier worth knowing before comparing two runs.
+behaviour difference from the `disabled` tier worth knowing before comparing two runs.

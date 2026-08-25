@@ -95,7 +95,7 @@ func TestScheduledCheckPlayFiresAndEmitsDrift(t *testing.T) {
 	runCLI(t, bin, "schedule", "add", "drift", "--kind", "play",
 		"--target", "tf:driftlab", "--cron", "@every 3s", "--", play, "--check")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	// A fast cron keeps enqueueing, so any single job's events are the proof —

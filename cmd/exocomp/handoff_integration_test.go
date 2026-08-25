@@ -57,7 +57,7 @@ exit 0`)
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "handoff", "run", "wsp", playbook, "--wait")
@@ -136,7 +136,7 @@ func TestHandoffBlocksPlayWhenApplyFails(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, _ := runCLIExit(t, bin, "handoff", "run", "wsp", playbook, "--wait")
@@ -185,7 +185,7 @@ func TestHandoffResumesAfterDaemonRestart(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d1 := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d1 := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d1.waitForLine(t, &d1.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "handoff", "run", "wsp", playbook)
@@ -210,7 +210,7 @@ func TestHandoffResumesAfterDaemonRestart(t *testing.T) {
 	// Let the play through once it is restarted.
 	writeFile(t, gate, "go\n")
 
-	d2 := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d2 := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d2.waitForLine(t, &d2.stdout, "scheduler started", 30*time.Second)
 
 	waitFor(t, "the workflow to finish after the restart", 60*time.Second, func() bool {

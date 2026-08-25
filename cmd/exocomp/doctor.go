@@ -103,8 +103,8 @@ func runDoctor(w io.Writer) error {
 	reportRunSecretFileStaging(w, dataDir)
 	reportSelfObservability(context.Background(), w, dataDir)
 	reportLitestream(context.Background(), w, dataDir)
-	// The report prints first, so an operator sees why; then an explicit
-	// local-sandboxed request that cannot be enforced is a failing check.
+	// The report prints first, so an operator sees why; then an enforcing
+	// request that cannot be enforced is a failing check.
 	return enforceSandboxTier(context.Background())
 }
 

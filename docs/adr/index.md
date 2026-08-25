@@ -10,7 +10,7 @@ of fact land in [the evolution log](../log.md).
 | [0002](0002-project-name-exocomp.md) | Project name **exocomp**, after the Control D `ctrld` collision ruled out the working name | Accepted |
 | [0003](0003-secrets-envelope.md) | Secrets envelope: age recipients → DEK → HKDF subkeys, with a recovery kit that closes the credential loop | Accepted |
 | [0004](0004-opentofu-http-state-backend.md) | OpenTofu HTTP state backend implemented in SQLite, sidestepping the S3 conditional-write gap | Accepted |
-| [0005](0005-job-sandboxing-nono.md) | Job sandboxing via nono's `local-sandboxed` tier; jobs are denied every powerful local socket | Accepted |
+| [0005](0005-job-sandboxing-nono.md) | Job sandboxing via nono's `enforcing` tier; jobs are denied every powerful local socket | Accepted |
 | [0006](0006-uv-toolchain-escape-hatch.md) | uv build-time Python toolchain plus a doctor-gated operator escape hatch in the data volume | Accepted |
 | [0007](0007-audit-chain-deferral.md) | Audit hash chain deferred; revival requires an off-host-anchored head | Accepted |
 | [0008](0008-step-ledger-over-dbos.md) | Multi-step choreography via a step ledger on the job store; DBOS deferred | Accepted |

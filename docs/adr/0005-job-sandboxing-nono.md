@@ -1,4 +1,4 @@
-# ADR 0005 — Job sandboxing: the `local-sandboxed` tier via nono
+# ADR 0005 — Job sandboxing: the `enforcing` tier via nono
 
 ## Status
 
@@ -9,11 +9,11 @@ Accepted · 2026-08-21
 Jobs execute through an `ExecutorDriver` interface with two tiers designed
 ([execution](../architecture/execution.md)):
 
-- **`local`** — pinned tools in the image, subprocess boundary, per-job tmpfs, separate
+- **`disabled`** — pinned tools in the image, subprocess boundary, per-job tmpfs, separate
   executor UID. The only topology bootstrap and DR require.
 - **`container`** — per-job sibling containers, deferred post-v1.
 
-The gap between them is real. Under `local`, a playbook — arbitrary code from a git repo —
+The gap between them is real. Under `disabled`, a playbook — arbitrary code from a git repo —
 shares a namespace with the mlocked DEK, the per-job ssh-agent, and the API socket. The
 `container` tier closes that, but it costs `exocompd` a mounted podman socket (effectively
 host-user power: the sensitive capability moves rather than disappears) and it puts
@@ -25,7 +25,9 @@ Adopt **nono** (Apache-2.0, Rust; Landlock on Linux, Seatbelt on macOS, seccomp
 user-notification network filtering, unprivileged self-restriction — so it works under
 rootless podman) as a middle tier.
 
-**`local-sandboxed` is the default executor on Linux** wherever the kernel supports it.
+**`enforcing` is the default executor on Linux**, secure-by-default: where the kernel
+cannot enforce it, `serve` and `doctor` fail closed rather than run the fleet's jobs
+unsandboxed (the `opportunistic` tier is the opt-in that degrades loudly instead).
 Every job subprocess runs under `nono run --profile job-<kind>` with default-deny
 filesystem:
 
@@ -63,8 +65,9 @@ Version floor **≥ 0.55.0**, sha256-pinned like restic.
   into the container. `doctor` prints the gap rather than implying a denial it cannot make.
   Recorded in [log.md](../log.md); the requirement to assert instead of assume is what
   surfaced it, and stands.
-- `doctor` probes the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7) and degrades
-  **loudly** to plain `local` with a warning on older kernels — never silently.
+- `doctor` probes the Landlock ABI (network rules need ABI v4+, kernel ≥ 6.7); under the
+  `opportunistic` tier it degrades **loudly** to plain `disabled` with a warning on older
+  kernels — never silently — while the default `enforcing` tier fails closed instead.
 - Landlock stacks with SELinux (stackable LSM; policies AND together). This is asserted in
   the enforcing CI job, not assumed.
 - Fallback seam if the dependency sours: in-process `go-landlock` self-restriction applied

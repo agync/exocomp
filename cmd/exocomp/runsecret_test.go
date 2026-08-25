@@ -16,14 +16,14 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// forceLocalTier pins the job tier to local for one test, so a run does not
-// depend on nono/Landlock being enforceable in the test environment. The
+// forceDisabledTier pins the job tier to disabled for one test, so a run does
+// not depend on nono/Landlock being enforceable in the test environment. The
 // sandbox decision is a process global memoized behind a sync.Once; the test
 // resets it and restores it so a later test re-probes.
-func forceLocalTier(t *testing.T) {
+func forceDisabledTier(t *testing.T) {
 	t.Helper()
 	sandbox.once = sync.Once{}
-	sandbox.requested = executor.TierLocal
+	sandbox.requested = executor.TierDisabled
 	t.Cleanup(func() {
 		sandbox.once = sync.Once{}
 		sandbox.requested = ""
@@ -137,7 +137,7 @@ func TestResolveRunSecretsAnsibleOutputBinding(t *testing.T) {
 // child process, while the job row carries only the binding names and the
 // events never carry the secret values.
 func TestAnsibleJobDriverBoundSecretReachesChildRedactedAndOffRow(t *testing.T) {
-	forceLocalTier(t)
+	forceDisabledTier(t)
 	dir := initForSource(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()

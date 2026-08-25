@@ -6,6 +6,20 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — sandbox tiers renamed, secure-by-default
+
+- **Tiers renamed and the default flipped.** The job-sandbox tiers are now `opportunistic` /
+  `enforcing` / `disabled` (was `auto` / `local-sandboxed` / `local`), and the default — an
+  empty `--sandbox`/`$EXOCOMP_SANDBOX` — is now `enforcing`: a host that cannot enforce the
+  sandbox fails closed at `serve`/`doctor` startup rather than running jobs unsandboxed.
+  `opportunistic` is the opt-in that degrades loudly to `disabled` instead, and `disabled` is
+  the explicit unsandboxed tier. The three old names stay accepted as silent back-compat
+  aliases. Terminology reconciled across [architecture/execution.md](architecture/execution.md),
+  [operations/serve.md](operations/serve.md), [design/byo-runner.md](design/byo-runner.md),
+  [security/threat-model.md](security/threat-model.md),
+  [adr/0005-job-sandboxing-nono.md](adr/0005-job-sandboxing-nono.md), and the index, runners,
+  cli-run, provision-converge, and SBOM pages.
+
 ## 2026-08-25 — access-token and inventory hardening
 
 - **Confused-deputy guard.** `resolveRunSecrets` refuses to inject a sealed value shaped

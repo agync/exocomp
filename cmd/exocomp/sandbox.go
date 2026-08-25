@@ -20,8 +20,8 @@ func init() {
 }
 
 // sandboxTierEnv selects the isolation tier when no flag names one:
-// local | local-sandboxed | auto. Auto is the default and means "sandbox where
-// the kernel allows it, and say so loudly where it does not" (ADR 0005).
+// opportunistic | enforcing | disabled. Enforcing is the default and fails
+// closed where the kernel cannot enforce the sandbox (ADR 0005).
 const sandboxTierEnv = "EXOCOMP_SANDBOX"
 
 // sandboxCanarySubcommand is the argv the probe re-enters this binary with.
@@ -83,8 +83,8 @@ func sandboxTier(ctx context.Context) executor.ProbeResult {
 		if want == "" {
 			parsed, err := executor.ParseTier(os.Getenv(sandboxTierEnv))
 			if err != nil {
-				_, _ = fmt.Fprintf(warn, "WARNING: %v; using %s\n", err, executor.TierAuto)
-				parsed = executor.TierAuto
+				_, _ = fmt.Fprintf(warn, "WARNING: %v; using %s\n", err, executor.TierEnforcing)
+				parsed = executor.TierEnforcing
 			}
 			want = parsed
 		}
@@ -99,7 +99,7 @@ func sandboxTier(ctx context.Context) executor.ProbeResult {
 		if sandbox.result.Degraded() {
 			_, _ = fmt.Fprintf(warn,
 				"WARNING: job sandbox unavailable — jobs run at the %s tier instead of %s: %s\n",
-				executor.TierLocal, executor.TierLocalSandboxed, sandbox.result.Reason)
+				executor.TierDisabled, executor.TierEnforcing, sandbox.result.Reason)
 		}
 	})
 	return sandbox.result
@@ -107,21 +107,22 @@ func sandboxTier(ctx context.Context) executor.ProbeResult {
 
 // sandboxed reports whether jobs run under the kernel sandbox.
 func sandboxed(ctx context.Context) bool {
-	return sandboxTier(ctx).Effective == executor.TierLocalSandboxed
+	return sandboxTier(ctx).Effective == executor.TierEnforcing
 }
 
 // enforceSandboxTier fails closed when the sandbox was asked for by name and
-// the host cannot provide it. TierAuto degrades to the subprocess boundary with
-// a warning — that is what "auto" means. An explicit local-sandboxed request is
-// a policy, not a preference: running the fleet's jobs unsandboxed is not what
-// was asked for, so the daemon and the doctor refuse rather than quietly
-// downgrade (ADR 0005, "never silently").
+// the host cannot provide it. TierOpportunistic degrades to the subprocess
+// boundary with a warning — that is what "opportunistic" means. An explicit
+// enforcing request is a policy, not a preference: running the fleet's jobs
+// unsandboxed is not what was asked for, so the daemon and the doctor refuse
+// rather than quietly downgrade (ADR 0005, "never silently"). Enforcing is also
+// the secure-by-default tier, so an empty flag reaches this same refusal.
 func enforceSandboxTier(ctx context.Context) error {
 	res := sandboxTier(ctx)
-	if res.Requested == executor.TierLocalSandboxed && res.Degraded() {
+	if res.Requested == executor.TierEnforcing && res.Degraded() {
 		return fmt.Errorf("sandbox: %s was requested but cannot be enforced here: %s; "+
-			"pass --sandbox %s to accept the subprocess boundary instead",
-			executor.TierLocalSandboxed, res.Reason, executor.TierAuto)
+			"pass --sandbox %s to accept a loud degradation, or --sandbox %s for no sandbox",
+			executor.TierEnforcing, res.Reason, executor.TierOpportunistic, executor.TierDisabled)
 	}
 	return nil
 }
@@ -350,7 +351,7 @@ func resolveRunnerCaps(ctx context.Context, st *store.Store, runnerName string) 
 }
 
 // requireSandboxedForCaps refuses a capped job outright when the effective
-// tier is not local-sandboxed. applyJobCaps (internal/executor/sandbox_drivers.go)
+// tier is not enforcing. applyJobCaps (internal/executor/sandbox_drivers.go)
 // only runs inside the sandboxed drivers — a plain executor.NewAnsible/NewTofu
 // subprocess never looks at SandboxOptions.Caps at all — so a job with
 // non-empty caps that fell back to the bare subprocess boundary would
@@ -362,7 +363,7 @@ func requireSandboxedForCaps(ctx context.Context, caps executor.Caps) error {
 	}
 	return fmt.Errorf("caps requested but the %s tier is not active on this host; "+
 		"refusing to run the job uncapped (see `exocomp doctor`'s sandbox block)",
-		executor.TierLocalSandboxed)
+		executor.TierEnforcing)
 }
 
 // withCaps augments sb with a job's resolved caps, preparing the daemon's
@@ -439,10 +440,10 @@ func reportSandbox(ctx context.Context, w io.Writer) {
 	switch {
 	case res.Enforced:
 		p("  %-18s enforced — key read, abstract socket, and ungranted TCP all refused\n", "probe")
-	case res.Requested == executor.TierLocal:
-		p("  %-18s not run — %s tier requested\n", "probe", executor.TierLocal)
+	case res.Requested == executor.TierDisabled:
+		p("  %-18s not run — %s tier requested\n", "probe", executor.TierDisabled)
 	default:
-		p("  %-18s DEGRADED to %s: %s\n", "probe", executor.TierLocal, res.Reason)
+		p("  %-18s DEGRADED to %s: %s\n", "probe", executor.TierDisabled, res.Reason)
 	}
 	if res.Enforced && !res.PathnameSocketMediated {
 		p("  %-18s pathname AF_UNIX connect is not mediated by any Landlock ABI;\n",

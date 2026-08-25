@@ -76,8 +76,8 @@ runner is completely unaffected — this never tightens the default, capless pat
   root-in-container model documented in `packaging/quadlet/exocomp.container`
   (`PodmanArgs=--systemd=always`, drop `UserNS=keep-id`).
 - **The sandboxed tier itself is not active.** Caps only ever apply inside the
-  `local-sandboxed` tier (the cgroup placement happens where the sandboxed drivers run); a
-  job with caps that would otherwise fall back to the plain `local` subprocess boundary is
+  `enforcing` tier (the cgroup placement happens where the sandboxed drivers run); a
+  job with caps that would otherwise fall back to the plain `disabled` subprocess boundary is
   refused for the same reason — an uncapped fallback would defeat the ceiling silently.
 - **The named runner does not exist, or its stored `memory_max`/`cpu_quota` no longer
   parse.** Refused at dispatch, before the job runs, rather than silently treated as no

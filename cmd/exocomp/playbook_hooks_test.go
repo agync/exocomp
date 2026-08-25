@@ -36,7 +36,7 @@ func TestPlaybookRunHonorsSourceHooks(t *testing.T) {
 		"pre_run:\n  - name: prep\n    run: \"echo ran > "+prehook+"\"\n")
 	runCLI(t, bin, "source", "add", "infra", "--path", srcRoot)
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "playbook", "run", "--source", "infra", "site.yml", "--wait")

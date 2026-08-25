@@ -177,7 +177,7 @@ func TestBootstrapChainRunsAnsibleThenTofu(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--wait")
@@ -224,7 +224,7 @@ func TestBootstrapBlocksApplyWhenPlayFails(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, _ := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--wait")
@@ -263,7 +263,7 @@ func TestBootstrapOutputJSON(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp", "--output", "json")
@@ -324,7 +324,7 @@ func TestBootstrapRequireApprovalGates(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	// Start the chain. It composes with the apply gated; the play runs, then the

@@ -3,7 +3,7 @@
 ## Status
 
 The `container` tier stays deferred. The default and only shipped isolation is nono/Landlock
-(`local-sandboxed`); this document sets out why that is the right default and specifies the
+(`enforcing`); this document sets out why that is the right default and specifies the
 exact shape a bring-your-own-runner (BYO-runner) would take if a concrete need justifies
 building it.
 
@@ -25,8 +25,8 @@ rejecting the podman-socket path for v1.** This is not a gap waiting to be fille
 deliberate deferral with a shipped alternative. Verified against the docs and the tree:
 
 - **The `container` tier is *designed but deferred*** (execution.md:34). It is not in the
-  code: `internal/executor/sandbox.go:21-30` defines only `TierLocal`, `TierLocalSandboxed`,
-  and `TierAuto`. There is no `container` Tier constant. "Designed, deferred" is literally
+  code: `internal/executor/sandbox.go:21-32` defines only `TierDisabled`, `TierEnforcing`,
+  and `TierOpportunistic`. There is no `container` Tier constant. "Designed, deferred" is literally
   true.
 - **[ADR 0005](../adr/0005-job-sandboxing-nono.md) adopted nono/Landlock precisely to
   capture most of the container tier's prize without the socket.** Its Context (0005:16-21)
@@ -69,7 +69,7 @@ deliberate deferral with a shipped alternative. Verified against the docs and th
    names this as the container tier's other remaining justification). This half needs no
    image and no socket: it ships as cgroup v2 direct writes (§6).
 
-Net: with `local-sandboxed` shipped and uv-venv delivering per-project deps, the container
+Net: with `enforcing` shipped and uv-venv delivering per-project deps, the container
 tier's justification has **narrowed to BYO system-package images + hard caps** (execution.md:146-147).
 That narrow remainder is what this document scopes.
 
@@ -260,7 +260,7 @@ volume-relabel prior art.
   over entrypoint chown scripts) so runner-produced files map back to the operator's uid
   without ACL surgery. `exocomp doctor` verifies subuid/subgid ranges and linger *before* the
   first job, mirroring how sandbox.go `Probe`/`RunCanary` assert rather than assume.
-- **Run-secrets out of argv and correctly labeled.** The `local` tier already
+- **Run-secrets out of argv and correctly labeled.** The `disabled` tier already
   writes secret material (vault password, backend bearer) into a **per-job 0700 private
   directory**, never argv/env (execution.md:46-49, 158-160). BYO-runner must preserve this:
   resolved secrets go to a private dir bind-mounted into the runner container `:Z`, passed via
@@ -321,7 +321,7 @@ At dispatch — the daemon's per-kind drivers and every no-daemon inline path al
 — only the first time a job actually asks for caps, so a fleet that never uses `--runner`
 never has the daemon's own cgroup rearranged. Two fail-closed axes guard enforcement:
 `applyJobCaps` refuses when the delegated subtree is not writable, and
-`requireSandboxedForCaps` refuses when the effective tier is not `local-sandboxed` — a plain
+`requireSandboxedForCaps` refuses when the effective tier is not `enforcing` — a plain
 subprocess never reads `SandboxOptions.Caps`, so a capped job that fell back to it would
 otherwise run uncapped. `parseMemorySize` guards against integer overflow on a large digit
 string that would otherwise wrap to a wrong tiny cap.
@@ -445,7 +445,7 @@ is a *process* control, so it needs an explicit doctor assertion, not just a con
 
 ## 8. Recommendation
 
-1. **Keep the status quo.** nono/Landlock (`local-sandboxed`) stays the **default and only
+1. **Keep the status quo.** nono/Landlock (`enforcing`) stays the **default and only
    shipped** isolation. It is the correct podman-first-yet-no-podman-socket answer for a
    single-container, no-sudo, DR-offline system, and it keeps go.mod free of container
    dependencies. Do not build the container tier speculatively.

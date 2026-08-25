@@ -161,10 +161,10 @@ captured 2 output(s) to inventory /…/edge.json naming 0 host(s)
 
 ## Limits worth knowing
 
-- **Sandbox egress is port 22.** The `local-sandboxed` tier grants an ansible
+- **Sandbox egress is port 22.** The `enforcing` tier grants an ansible
   job outbound TCP on 22 only, and grants no path outside the data dir. A host
   on a non-standard SSH port, or a connection using a key file elsewhere on the
-  box, needs the `local` tier today ([ADR 0005](../adr/0005-job-sandboxing-nono.md)).
+  box, needs the `disabled` tier today ([ADR 0005](../adr/0005-job-sandboxing-nono.md)).
   Cloud VMs on port 22 with credentials from the vault or a run-secret are
   unaffected.
 - **The recorded `known_hosts` is not yet what the run verifies against.** The

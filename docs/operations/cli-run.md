@@ -84,7 +84,7 @@ table exposes) and never in a job event.
 
 ## What the sandbox grants
 
-Under the `local-sandboxed` tier the profile is default-deny, like every other kind, and a
+Under the `enforcing` tier the profile is default-deny, like every other kind, and a
 CLI run may touch:
 
 - its own per-job private, work, and temp directories (`TMPDIR` is redirected into them);

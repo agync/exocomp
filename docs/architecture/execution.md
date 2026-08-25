@@ -29,16 +29,21 @@ Three tiers, in increasing isolation and increasing cost:
 
 | Tier | Status | Isolation mechanism |
 |---|---|---|
-| `local` | **shipped**, and the only topology bootstrap and DR require | subprocess boundary, rootless container, per-job 0700 private dir, env allowlists |
-| `local-sandboxed` | **shipped** (`nono`, Landlock), the default on Linux | the above plus a kernel default-deny sandbox per job subprocess |
+| `disabled` | **shipped**, and the only topology bootstrap and DR require | subprocess boundary, rootless container, per-job 0700 private dir, env allowlists |
+| `enforcing` | **shipped** (`nono`, Landlock), the **default** on Linux | the above plus a kernel default-deny sandbox per job subprocess |
 | `container` | designed, deferred alongside Wails and OpenBao | per-job sibling containers |
 
-Under `local` a job is trust-equivalent to the daemon: isolation is process boundary and
-file permissions, not kernel policy, so anything a job subprocess's uid can reach, the
-daemon's own code could reach too. `local-sandboxed` is what breaks that equivalence, and
-it is the default wherever the kernel supports it.
+Selecting a tier is `--sandbox`/`$EXOCOMP_SANDBOX`, defaulting to `enforcing`. A third
+name, `opportunistic`, is not an isolation mechanism of its own: it asks for `enforcing`
+and accepts a loud degradation to `disabled` where the host cannot deliver the sandbox.
 
-## `local`
+Under `disabled` a job is trust-equivalent to the daemon: isolation is process boundary and
+file permissions, not kernel policy, so anything a job subprocess's uid can reach, the
+daemon's own code could reach too. `enforcing` is what breaks that equivalence, and it is
+the default wherever the kernel supports it — a host that cannot deliver it fails closed at
+startup rather than running the fleet's jobs unsandboxed.
+
+## `disabled`
 
 Pinned tools in the image, one subprocess per job, run in its own process group
 (`Setpgid`) so a cancel or timeout signals the whole tree rather than one pid a shell may
@@ -54,7 +59,7 @@ directory and the argv it was given. One image plus one volume is a working syst
 Nothing else has to be pulled at restore time — which is exactly why this tier, and not a
 fancier one, is what the DR path is allowed to use.
 
-## `local-sandboxed`
+## `enforcing`
 
 Every job subprocess runs under `nono run` (Landlock on Linux, Apache-2.0, ≥ 0.55.0
 sha256-pinned) with a default-deny filesystem policy built per job kind. The sandbox is
@@ -90,10 +95,11 @@ wrong for provider signature verification.
 
 `exocomp doctor` reports the launcher version against the floor, the kernel's Landlock ABI
 (network rules need ABI v4+, kernel ≥ 6.7), the tier in effect, and what the startup probe
-asserted — and under `auto` the daemon degrades **loudly** to `local`, never silently, on a
-kernel or a launcher that cannot deliver it. A tier named explicitly is a policy, not a
-preference: `local-sandboxed` that cannot be enforced makes `serve` and `doctor` refuse
-rather than degrade, since running the fleet's jobs unsandboxed is not what was asked for.
+asserted — and under `opportunistic` the daemon degrades **loudly** to `disabled`, never
+silently, on a kernel or a launcher that cannot deliver it. `enforcing` — the secure default
+— is a policy, not a preference: an `enforcing` request (including the empty-flag default)
+that cannot be enforced makes `serve` and `doctor` refuse rather than degrade, since running
+the fleet's jobs unsandboxed is not what was asked for.
 
 The probe asserts rather than assumes: it stands up a file standing in for `host.key`, two
 listening unix sockets, and a listening loopback TCP port, then runs a canary inside a
@@ -138,11 +144,11 @@ The trades are stated so the choice is informed, not assumed:
   sensitive capability **moves rather than disappears**.
 - EE images become a restore-time dependency. Any EE used by a runbook on the DR path must
   be rebuildable from the ops repo or mirrored in the data volume. The default is stricter:
-  DR-path runbooks are `local`-only, enforced by the doctor.
+  DR-path runbooks are `disabled`-only, enforced by the doctor.
 - Per-project tool versions widen the golden-file test matrix, so EEs are tested
   per-project, not globally.
 
-With `local-sandboxed` shipped, the remaining justification for this tier narrows to
+With `enforcing` shipped, the remaining justification for this tier narrows to
 per-project EE versioning and hard per-job resource caps, so it stays deferred alongside
 Wails and OpenBao.
 

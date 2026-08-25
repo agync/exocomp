@@ -84,7 +84,7 @@ func TestBootstrapCaptureHandoffEnv(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	// --- Run 1: capture -> seal -> apply inherits it as env. ---
@@ -217,7 +217,7 @@ func TestBootstrapCaptureHandoffFile(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	out, code := runCLIExit(t, bin, "bootstrap", "run", playbook, "wsp",
@@ -307,7 +307,7 @@ func TestBootstrapCaptureNonPosixSkipped(t *testing.T) {
 	playbook := module + "/site.yml"
 	writeFile(t, playbook, "- hosts: all\n")
 
-	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
+	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "disabled")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
 
 	// "kube-config" folds to "KUBE-CONFIG", not a POSIX identifier.

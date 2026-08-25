@@ -28,7 +28,7 @@ Six accepted ADRs — [adr/index.md](adr/index.md)
 | [0002](adr/0002-project-name-exocomp.md) | The name **exocomp** on `exocomp.dev`, after Control D's `ctrld` ruled out the working name |
 | [0003](adr/0003-secrets-envelope.md) | age recipients → DEK → HKDF subkeys, so one printed secret recovers everything — with the read-only storage credential on the kit |
 | [0004](adr/0004-opentofu-http-state-backend.md) | OpenTofu's HTTP state backend implemented in SQLite, sidestepping the MinIO/Garage conditional-write gap and giving state version history for free |
-| [0005](adr/0005-job-sandboxing-nono.md) | nono's `local-sandboxed` tier as the Linux default; every job is denied the database, the keys, and every powerful local socket |
+| [0005](adr/0005-job-sandboxing-nono.md) | nono's `enforcing` tier as the Linux default; every job is denied the database, the keys, and every powerful local socket |
 | [0006](adr/0006-uv-toolchain-escape-hatch.md) | uv builds the Python layer, and `UV_TOOL_DIR` in the data volume turns that into a doctor-gated operator escape hatch |
 
 ## Architecture
@@ -40,7 +40,7 @@ How it is assembled, and which support claims are contractual —
 |---|---|
 | [Overview](architecture/overview.md) | Component map, the one-queue convergence property, state layout, standing commitments |
 | [Platform contract](architecture/platform-contract.md) | Tiers for systemd/Quadlet, rootless podman, docker-compose, and SELinux enforcing; the specified remote-access path |
-| [Execution](architecture/execution.md) | `ExecutorDriver` tiers `local` / `local-sandboxed` / `container`, offline-restorable job dependencies, boot-time reconciliation |
+| [Execution](architecture/execution.md) | `ExecutorDriver` tiers `disabled` / `enforcing` / `container`, offline-restorable job dependencies, boot-time reconciliation |
 | [Reactive layer](architecture/reactive.md) | Webhook ingress, one event shape, CEL rules, the guardrails in ledger order, approvals, drift as an event |
 
 ## Design

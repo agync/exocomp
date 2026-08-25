@@ -148,7 +148,7 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&opts.webInsecure, "web-insecure-http", false,
 		"serve the web surface as cleartext HTTP (loud, never the documented path)")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
-		"job isolation tier: local, local-sandboxed, or auto (default: $"+sandboxTierEnv+", else auto)")
+		"job isolation tier: opportunistic, enforcing, or disabled (default: $"+sandboxTierEnv+", else enforcing)")
 	cmd.Flags().DurationVar(&opts.leaseTTL, "lease-ttl", opts.leaseTTL,
 		"how long the cross-host active lease stays live without a renew")
 	cmd.Flags().DurationVar(&opts.leaseRenew, "lease-renew", opts.leaseRenew,

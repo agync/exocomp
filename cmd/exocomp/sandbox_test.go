@@ -13,7 +13,7 @@ import (
 )
 
 // useDataDir points this process — and every child it starts — at a scratch
-// data dir, and pins the plain local tier.
+// data dir, and pins the disabled tier.
 //
 // Pinning is deliberate. Under the sandboxed tier a job may write only inside
 // its own private directory and the paths its profile names, and the stand-in
@@ -25,7 +25,7 @@ import (
 func useDataDir(t *testing.T, dir string) {
 	t.Helper()
 	t.Setenv("XDG_DATA_HOME", dir)
-	t.Setenv(sandboxTierEnv, string(executor.TierLocal))
+	t.Setenv(sandboxTierEnv, string(executor.TierDisabled))
 }
 
 // TestDoctorReportsTheSandboxTier: doctor names the launcher, the kernel's
@@ -145,18 +145,18 @@ func TestConfiguredSecretStagingBackendValidatesPersistedValue(t *testing.T) {
 	}
 }
 
-// TestPinnedLocalTierSkipsTheProbe: asking for plain local is a decision, not a
-// degradation, and it must not be reported as one.
-func TestPinnedLocalTierSkipsTheProbe(t *testing.T) {
+// TestPinnedDisabledTierSkipsTheProbe: asking for the disabled tier is a
+// decision, not a degradation, and it must not be reported as one.
+func TestPinnedDisabledTierSkipsTheProbe(t *testing.T) {
 	resetSandboxDecision(t)
-	t.Setenv(sandboxTierEnv, string(executor.TierLocal))
+	t.Setenv(sandboxTierEnv, string(executor.TierDisabled))
 
 	res := sandboxTier(context.Background())
-	if res.Effective != executor.TierLocal {
-		t.Errorf("effective tier = %s, want %s", res.Effective, executor.TierLocal)
+	if res.Effective != executor.TierDisabled {
+		t.Errorf("effective tier = %s, want %s", res.Effective, executor.TierDisabled)
 	}
 	if res.Degraded() {
-		t.Error("a pinned local tier is reported as a degradation")
+		t.Error("a pinned disabled tier is reported as a degradation")
 	}
 	if res.Enforced {
 		t.Error("the probe ran even though no sandbox was asked for")
@@ -186,37 +186,38 @@ func resetSandboxDecision(t *testing.T) {
 	t.Cleanup(undecide)
 }
 
-// TestExplicitSandboxFailsClosed: a named local-sandboxed request that the host
+// TestExplicitSandboxFailsClosed: a named enforcing request that the host
 // cannot enforce is a refusal, not a silent downgrade — running the fleet's
 // jobs unsandboxed is not what was asked for.
 func TestExplicitSandboxFailsClosed(t *testing.T) {
 	resetSandboxDecision(t)
-	sandbox.requested = executor.TierLocalSandboxed
+	sandbox.requested = executor.TierEnforcing
 	sandbox.result = executor.ProbeResult{
-		Requested: executor.TierLocalSandboxed,
-		Effective: executor.TierLocal,
+		Requested: executor.TierEnforcing,
+		Effective: executor.TierDisabled,
 		Reason:    "Landlock unavailable on this kernel",
 	}
 	sandbox.once.Do(func() {})
 
 	if err := enforceSandboxTier(context.Background()); err == nil {
-		t.Fatal("an unenforceable explicit local-sandboxed request was allowed to run")
+		t.Fatal("an unenforceable explicit enforcing request was allowed to run")
 	}
 }
 
-// TestAutoTierDegradesWithoutRefusing: auto means "sandbox where the kernel
-// allows it, and say so loudly where it does not", so a degraded auto tier runs.
-func TestAutoTierDegradesWithoutRefusing(t *testing.T) {
+// TestOpportunisticTierDegradesWithoutRefusing: opportunistic means "sandbox
+// where the kernel allows it, and say so loudly where it does not", so a
+// degraded opportunistic tier runs.
+func TestOpportunisticTierDegradesWithoutRefusing(t *testing.T) {
 	resetSandboxDecision(t)
-	sandbox.requested = executor.TierAuto
+	sandbox.requested = executor.TierOpportunistic
 	sandbox.result = executor.ProbeResult{
-		Requested: executor.TierAuto,
-		Effective: executor.TierLocal,
+		Requested: executor.TierOpportunistic,
+		Effective: executor.TierDisabled,
 		Reason:    "Landlock unavailable on this kernel",
 	}
 	sandbox.once.Do(func() {})
 
 	if err := enforceSandboxTier(context.Background()); err != nil {
-		t.Fatalf("auto tier refused to degrade: %v", err)
+		t.Fatalf("opportunistic tier refused to degrade: %v", err)
 	}
 }

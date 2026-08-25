@@ -118,48 +118,48 @@ var capsFromRunner = executor.Caps{MemoryMaxBytes: 512 << 20}
 // TestTierDriversRefuseCapsWhenNotSandboxed covers the fail-closed axis
 // applyJobCaps itself cannot see: it only runs inside the sandboxed drivers,
 // so a job with non-empty caps that fell back to the plain subprocess
-// boundary (tier pinned local, or degraded) must be refused before a plain
+// boundary (tier pinned disabled, or degraded) must be refused before a plain
 // executor.NewAnsible/NewTofu/NewCLI driver is ever built — otherwise the job
 // would run fully uncapped with no refusal at all, silently.
 func TestTierDriversRefuseCapsWhenNotSandboxed(t *testing.T) {
 	dir := t.TempDir()
-	useDataDir(t, dir) // pins TierLocal — no sandbox, deterministic
+	useDataDir(t, dir) // pins TierDisabled — no sandbox, deterministic
 
 	if _, err := ansibleTierDriver(dir, executor.AnsibleOptions{}, capsFromRunner); err == nil {
-		t.Error("ansibleTierDriver ran capped at the local tier instead of refusing")
-	} else if !strings.Contains(err.Error(), "local-sandboxed") {
+		t.Error("ansibleTierDriver ran capped at the disabled tier instead of refusing")
+	} else if !strings.Contains(err.Error(), "enforcing") {
 		t.Errorf("ansibleTierDriver error %q does not name the required tier", err)
 	}
 
 	if _, err := tofuTierDriver(dir, executor.TofuOptions{}, capsFromRunner); err == nil {
-		t.Error("tofuTierDriver ran capped at the local tier instead of refusing")
-	} else if !strings.Contains(err.Error(), "local-sandboxed") {
+		t.Error("tofuTierDriver ran capped at the disabled tier instead of refusing")
+	} else if !strings.Contains(err.Error(), "enforcing") {
 		t.Errorf("tofuTierDriver error %q does not name the required tier", err)
 	}
 
 	if _, err := cliTierDriver(dir, executor.CLIOptions{}, capsFromRunner); err == nil {
-		t.Error("cliTierDriver ran capped at the local tier instead of refusing")
-	} else if !strings.Contains(err.Error(), "local-sandboxed") {
+		t.Error("cliTierDriver ran capped at the disabled tier instead of refusing")
+	} else if !strings.Contains(err.Error(), "enforcing") {
 		t.Errorf("cliTierDriver error %q does not name the required tier", err)
 	}
 }
 
-// TestTierDriversRunUncappedAtLocalTierByDefault is the non-regression
+// TestTierDriversRunUncappedAtDisabledTierByDefault is the non-regression
 // counterpart: a job that names no runner (Empty caps, the overwhelming
-// common case) must keep working exactly as before at the local tier — the
+// common case) must keep working exactly as before at the disabled tier — the
 // new refusal is scoped to an actual caps request, not a blanket tightening.
-func TestTierDriversRunUncappedAtLocalTierByDefault(t *testing.T) {
+func TestTierDriversRunUncappedAtDisabledTierByDefault(t *testing.T) {
 	dir := t.TempDir()
 	useDataDir(t, dir)
 
 	if _, err := ansibleTierDriver(dir, executor.AnsibleOptions{}, executor.Caps{}); err != nil {
-		t.Errorf("ansibleTierDriver with no caps refused at the local tier: %v", err)
+		t.Errorf("ansibleTierDriver with no caps refused at the disabled tier: %v", err)
 	}
 	if _, err := tofuTierDriver(dir, executor.TofuOptions{}, executor.Caps{}); err != nil {
-		t.Errorf("tofuTierDriver with no caps refused at the local tier: %v", err)
+		t.Errorf("tofuTierDriver with no caps refused at the disabled tier: %v", err)
 	}
 	if _, err := cliTierDriver(dir, executor.CLIOptions{}, executor.Caps{}); err != nil {
-		t.Errorf("cliTierDriver with no caps refused at the local tier: %v", err)
+		t.Errorf("cliTierDriver with no caps refused at the disabled tier: %v", err)
 	}
 }
 
