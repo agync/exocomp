@@ -123,7 +123,18 @@ POST /api/v1/maintenance/cordon                 # drain: stop new fires + claims
 POST /api/v1/maintenance/uncordon               # lift the cordon
 POST   /api/v1/mutes                            # hold notifications for a scope
 DELETE /api/v1/mutes/{id}                       # lift a mute before it expires
+POST   /api/v1/jobs/{id}/notify                 # page once when the job goes terminal
 ```
+
+`POST /jobs/{id}/notify` arms a one-shot, attributed page: the daemon notifies once when the
+job reaches its terminal state — a clean finish included, which the failure sweep never pages
+on — so the phone learns the outcome even if the app was killed. It enqueues and runs
+nothing; it records one durable, audited row (attributed to the calling token) in the event
+ledger, and the reactive daemon's terminal-state sweep raises the single page, sharing the
+job-failure sweep's checkpoint so a job that also fails is never paged twice. A repeat request
+for the same job is idempotent. A job that is **already terminal** is a `409` — there is
+nothing to wait for; read its terminal state instead. An unknown id is a `404`. Like the
+other job write, it takes the `operator` scope as a bearer, not a browser session.
 
 `POST /mutes` and `DELETE /mutes/{id}` write the notify-layer mute over the same
 `store.NotifyMute` the CLI's `mute add`/`rm` and the web banner use — the job still runs;

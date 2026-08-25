@@ -657,6 +657,16 @@ func sweepReactive(ctx context.Context, st *store.Store, engine *reactive.Engine
 			_, _ = fmt.Fprintf(warn, "job failures: %d paged\n", paged)
 		}
 
+		// After the failure sweep, so a requested job that also failed is already
+		// checkpointed and this one stays silent rather than paging it twice.
+		if paged, err := engine.SweepJobNotifyRequests(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: page notify requests: %v\n", err)
+			}
+		} else if paged > 0 {
+			_, _ = fmt.Fprintf(warn, "notify requests: %d paged\n", paged)
+		}
+
 		if paged, err := engine.SweepSecretExpiry(ctx); err != nil {
 			if ctx.Err() == nil {
 				_, _ = fmt.Fprintf(warn, "WARNING: page secret expiry: %v\n", err)

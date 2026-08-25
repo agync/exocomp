@@ -60,6 +60,8 @@ const (
 	// kindMute names one created notification mute, the singular next to the
 	// plural wire.KindMuteList the read side emits.
 	kindMute = "mute.get"
+	// kindJobNotify names a registered one-shot notify request.
+	kindJobNotify = "job.notify"
 )
 
 // jobEnqueuedView is the body of a clean enqueue: the job id an agent follows,
@@ -106,6 +108,8 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiPlaybookRun))
 	mux.HandleFunc("POST /api/v1/jobs/{id}/cancel",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("cancel jobs", "operator"), s.apiJobCancel))
+	mux.HandleFunc("POST /api/v1/jobs/{id}/notify",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("request job notifications", "operator"), s.apiJobNotify))
 	mux.HandleFunc("POST /api/v1/silences",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("create silences", "operator"), s.apiSilenceCreate))
 	mux.HandleFunc("DELETE /api/v1/silences/{id}",
@@ -685,6 +689,70 @@ func (s *Server) apiJobCancel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindJob, wire.NewJobView(cancelled))
+}
+
+// --- job notify (one-shot) --------------------------------------------------
+
+// jobNotifyView is the body of a registered one-shot notify request: the job it
+// watches and the state it stood at when the request was recorded.
+type jobNotifyView struct {
+	JobID      int64  `json:"job_id"`
+	State      string `json:"state"`
+	Registered bool   `json:"registered"`
+}
+
+// apiJobNotify registers an attributed, durable request to page the operator
+// once when a job reaches its terminal state — the server-side half of the
+// phone's "Notify me", so the daemon pages even if the app was killed. It
+// enqueues and runs nothing: it writes one row to the event ledger (the durable,
+// audited record, attributed to the calling token), and the reactive daemon's
+// SweepJobNotifyRequests raises the single page on terminal, sharing the failure
+// sweep's checkpoint so a job that also fails is never paged twice.
+//
+// A job that is ALREADY terminal is a 409: there is nothing to wait for, and the
+// caller should read the job's terminal state directly rather than arm a page
+// that would fire on the next sweep for an outcome already settled. An unknown
+// id is a 404. A second request for the same job is idempotent — the same
+// registration, not a second page.
+func (s *Server) apiJobNotify(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "job id must be a positive integer")
+		return
+	}
+	job, err := s.store.GetJob(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	if job.State.Terminal() {
+		s.apiError(w, http.StatusConflict, wire.NewError(wire.CodeConflict,
+			"job "+itoa64(id)+" is already "+string(job.State)+
+				"; read its terminal state, there is nothing to wait for"))
+		return
+	}
+
+	key := reactive.NotifyRequestDedupKey(id)
+	seen, err := s.store.CountEventsByDedupKey(r.Context(), key)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	if seen == 0 {
+		actor := actorFromRequest(r)
+		if _, err := s.store.CreateEvent(r.Context(), store.Event{
+			Source:     reactive.SourceNotifyRequest,
+			ReceivedAt: s.now(),
+			DedupKey:   key,
+			Outcome:    store.OutcomeMatched,
+			Reason:     "one-shot notify request by " + actor.Name + " for job " + itoa64(id),
+			JobID:      &id,
+		}); err != nil {
+			s.apiFail(w, err)
+			return
+		}
+	}
+	s.apiSuccess(w, kindJobNotify, jobNotifyView{JobID: id, State: string(job.State), Registered: true})
 }
 
 // --- silences (create / lift) -----------------------------------------------

@@ -25,6 +25,12 @@ Newest first.
   store — a new `store.ApprovalStaleness` returns the movement structurally, and provenance
   reads the event-ledger row that named the job — never by parsing a rendered sentence, and
   both carry identifiers only, never a plan attribute value.
+- **One-shot `POST /jobs/{id}/notify`.** Arms an attributed, durable request to page once when
+  a job reaches a terminal state — a clean finish included — so the phone's "Notify me" works
+  even if the app was killed. The web route records one event-ledger row and runs nothing; the
+  reactive daemon's new `SweepJobNotifyRequests` raises the page, sharing `SweepJobOutcomes`'
+  checkpoint so a job that also fails is never paged twice. An already-terminal job is a `409`;
+  a repeat request is idempotent.
 
 ## 2026-08-25 — QR pairing, schedule detail, sidebar logo
 
