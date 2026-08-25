@@ -40,7 +40,7 @@ func TestSourcePlaybookRefusesEscape(t *testing.T) {
 		"../../../etc/x.yml",
 		outside,
 	} {
-		hooked, abs, err := sourcePlaybook(ctx, io.Discard, "proj", playbook)
+		hooked, abs, _, _, err := sourcePlaybook(ctx, io.Discard, "proj", playbook)
 		if err == nil {
 			t.Errorf("playbook %q resolved to hooked=%v abs=%q, want a refusal outside the checkout",
 				playbook, hooked, abs)
@@ -71,7 +71,7 @@ func TestSourcePlaybookResolvesRelative(t *testing.T) {
 		t.Fatalf("write playbook: %v", err)
 	}
 
-	hooked, abs, err := sourcePlaybook(ctx, io.Discard, "proj", "site.yml")
+	hooked, abs, root, readOnly, err := sourcePlaybook(ctx, io.Discard, "proj", "site.yml")
 	if err != nil {
 		t.Fatalf("sourcePlaybook: %v", err)
 	}
@@ -80,5 +80,14 @@ func TestSourcePlaybookResolvesRelative(t *testing.T) {
 	}
 	if want := filepath.Join(checkout, "site.yml"); abs != want {
 		t.Fatalf("playbook = %q, want %q", abs, want)
+	}
+	// The run's working directory is the checkout root, so ansible loads the
+	// tree's own ./ansible.cfg; a path source is read-only by default, and that
+	// posture rides through so the sandbox grants the tree read, never write.
+	if root != checkout {
+		t.Errorf("checkout root = %q, want %q", root, checkout)
+	}
+	if !readOnly {
+		t.Errorf("a path source is read-only by default; readOnly = false")
 	}
 }

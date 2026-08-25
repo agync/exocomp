@@ -97,8 +97,10 @@ func newPlaybookCmd() *cobra.Command {
 			// A named source's lifecycle applies no matter which command runs the
 			// play: when it declares hooks or a gate, defer to the one workflow
 			// composition `exocomp run` owns rather than the plain queued play.
+			var sourceDir string
+			var sourceReadOnly bool
 			if sourceName != "" {
-				hooked, pb, err := sourcePlaybook(cmd.Context(), warn, sourceName, args[0])
+				hooked, pb, root, readOnly, err := sourcePlaybook(cmd.Context(), warn, sourceName, args[0])
 				if err != nil {
 					return err
 				}
@@ -118,6 +120,12 @@ func newPlaybookCmd() *cobra.Command {
 					})
 				}
 				args[0] = pb
+				// The run executes from the source checkout so its ./ansible.cfg
+				// (and the relative inventory, roles, collections that file names)
+				// resolve, with the source's read-only posture carried through —
+				// the same working-directory grant the lifecycle `exocomp run` path
+				// gives its play step.
+				sourceDir, sourceReadOnly = root, readOnly
 			}
 
 			code, err := runPlaybook(cmd.Context(), out, warn, playbookSpec{
@@ -131,6 +139,8 @@ func newPlaybookCmd() *cobra.Command {
 				extraVars:           vars,
 				tolerateUnreachable: tolerateUnre,
 				idempotencyKey:      idempotencyKey(cmd),
+				dir:                 sourceDir,
+				dirReadOnly:         sourceReadOnly,
 			})
 			if err != nil {
 				return err
@@ -190,6 +200,12 @@ type playbookSpec struct {
 	runSecrets   string
 	runnerName   string
 	timeout      time.Duration
+	// dir is the run's working directory: a --source run's checkout root, so
+	// ansible loads that tree's own ./ansible.cfg (and its relative inventory,
+	// roles, collections). Empty on the raw-path form, where the executor picks
+	// the working directory. dirReadOnly carries the source's read-only posture.
+	dir         string
+	dirReadOnly bool
 	// passthrough is the public ansible flags (--limit, --tags, --skip-tags,
 	// --check, --diff, -e @file) placed before the playbook in argv.
 	passthrough []string
@@ -266,6 +282,8 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 		RunnerName:          spec.runnerName,
+		Dir:                 spec.dir,
+		DirReadOnly:         spec.dirReadOnly,
 	})
 	if err != nil {
 		return 0, err
@@ -331,29 +349,39 @@ func reportJobOutcome(out io.Writer, final store.Job) int {
 }
 
 // sourcePlaybook resolves whether a --source run is a hooked lifecycle and,
-// when it is not, the playbook path rebased onto the source checkout so a plain
-// play still runs from the source's own tree (loading its ./ansible.cfg). The
-// hooked case is handled by runWithHooks, which rebases the path itself.
+// when it is not, the playbook path rebased onto the source checkout plus the
+// checkout root and its read-only posture — so a plain play runs from the
+// source's own tree, its working directory set to that root, and loads the
+// tree's ./ansible.cfg (and the relative inventory, roles, collections it
+// names). The hooked case is handled by runWithHooks, which rebases the path
+// and sets the working directory itself.
 //
-// It delegates to internal/service.ResolveSourcePlaybook, the same verb a
-// --remote run resolves through, so a local CLI run confines the playbook to
+// The rebase delegates to internal/service.ResolveSourcePlaybook, the same verb
+// a --remote run resolves through, so a local CLI run confines the playbook to
 // the source checkout identically to the daemon: a bare filepath.Join here
-// would let `../` or an absolute path escape it.
-func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook string) (hooked bool, abs string, err error) {
+// would let `../` or an absolute path escape it. The root and read-only posture
+// come from sourceCheckoutRoot, the helper the run-cli and ad-hoc paths resolve
+// their working directory through.
+func sourcePlaybook(ctx context.Context, _ io.Writer, sourceName, playbook string) (hooked bool, abs, root string, readOnly bool, err error) {
 	dir, err := dataDir()
 	if err != nil {
-		return false, "", fmt.Errorf("source playbook: resolve data dir: %w", err)
+		return false, "", "", false, fmt.Errorf("source playbook: resolve data dir: %w", err)
 	}
 	st, err := openStore()
 	if err != nil {
-		return false, "", err
+		return false, "", "", false, err
 	}
 	defer func() {
 		if cerr := st.Close(); cerr != nil && err == nil {
 			err = cerr
 		}
 	}()
-	return service.New(st, dir, nil).ResolveSourcePlaybook(ctx, hooksOverridePath(dir, sourceName), sourceName, playbook)
+	root, readOnly, err = sourceCheckoutRoot(ctx, st, dir, sourceName, "playbook run")
+	if err != nil {
+		return false, "", "", false, err
+	}
+	hooked, abs, err = service.New(st, dir, nil).ResolveSourcePlaybook(ctx, hooksOverridePath(dir, sourceName), sourceName, playbook)
+	return hooked, abs, root, readOnly, err
 }
 
 // resolveInventoryArg turns a --inventory value into the path ansible targets

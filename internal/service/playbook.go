@@ -24,6 +24,15 @@ type PlaybookInput struct {
 	TolerateUnreachable bool
 	IdempotencyKey      string
 	Timeout             time.Duration
+	// Dir is the run's working directory: a --source run's checkout root, so
+	// ansible loads the tree's own ./ansible.cfg and its relative inventory,
+	// roles, and collections. Empty leaves the working directory to the executor
+	// (the sandboxed tier's per-job scratch dir), which is the raw-path form's
+	// behavior. DirReadOnly carries the source's read-only posture: a read-only
+	// checkout is granted read, never write, so the run reads the tree but cannot
+	// write back to it (the sandbox enforces this in executor.Sandbox.Run).
+	Dir         string
+	DirReadOnly bool
 	// RunnerName names a registered runner whose memory_max/cpu_quota the
 	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
 	// is the default, uncapped path.
@@ -48,6 +57,8 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		Kind:                executor.KindAnsible,
 		Trigger:             "manual",
 		Argv:                executor.AnsibleArgv(in.PlaybookPath, in.InventoryPath, in.Passthrough...),
+		Dir:                 in.Dir,
+		DirReadOnly:         in.DirReadOnly,
 		VaultProject:        in.VaultProject,
 		RunSecretBinding:    in.RunSecrets,
 		Inventory:           in.InventoryName,

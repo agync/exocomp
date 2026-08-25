@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -414,6 +415,65 @@ func TestSandboxReadOnlyDirGrant(t *testing.T) {
 			t.Fatalf("a writable source dir was also read-granted (--read %s), which nono rejects: %v", work, drv.argv)
 		}
 	})
+}
+
+// TestAnsibleScratchEnvRedirectsOffTheSourceTree proves the sandboxed ansible
+// run's temp, remote-temp and ssh ControlPath directory all resolve inside the
+// per-job granted tree and never under the run's working directory. That is
+// what makes a read-only source checkout as cwd safe: even if the checkout's
+// ansible.cfg sets a relative local_tmp or control_path_dir, these env vars win
+// and the writes land somewhere the sandbox granted, not on the read-only tree.
+func TestAnsibleScratchEnvRedirectsOffTheSourceTree(t *testing.T) {
+	t.Parallel()
+
+	// A stand-in read-only source checkout: nothing the scratch env names may
+	// resolve under it.
+	sourceDir := "/checkout/read-only-source"
+	job := jobDir{
+		private: "/jobs/job-1/p",
+		work:    "/jobs/job-1/w",
+		tmp:     "/jobs/job-1/t",
+		home:    "/jobs/job-1/h",
+	}
+	controlPath := filepath.Join(job.home, ".ansible", "cp")
+
+	env := ansibleScratchEnv(job, controlPath)
+	get := func(key string) (string, bool) {
+		for _, kv := range env {
+			if v, ok := strings.CutPrefix(kv, key+"="); ok {
+				return v, true
+			}
+		}
+		return "", false
+	}
+
+	// Every path ansible writes temp to has to be granted and writable, so it
+	// must live under a job grant, and never under the source checkout.
+	granted := []string{job.private, job.work, job.tmp} // jobDir.grants()
+	for _, key := range []string{"ANSIBLE_LOCAL_TEMP", "ANSIBLE_REMOTE_TMP", "ANSIBLE_SSH_CONTROL_PATH_DIR", "TMPDIR"} {
+		val, ok := get(key)
+		if !ok {
+			t.Errorf("%s not set", key)
+			continue
+		}
+		if strings.HasPrefix(val, sourceDir) {
+			t.Errorf("%s=%q resolves under the read-only source %q", key, val, sourceDir)
+		}
+		under := false
+		for _, g := range append(granted, controlPath) {
+			if val == g || strings.HasPrefix(val, g+"/") {
+				under = true
+			}
+		}
+		if !under {
+			t.Errorf("%s=%q is not under a granted writable job dir", key, val)
+		}
+	}
+	// The control path is pinned explicitly (not left to ansible.cfg discovery),
+	// and it is the granted directory the caller passed.
+	if val, _ := get("ANSIBLE_SSH_CONTROL_PATH_DIR"); val != controlPath {
+		t.Errorf("ANSIBLE_SSH_CONTROL_PATH_DIR=%q, want the granted control path %q", val, controlPath)
+	}
 }
 
 // TestAnsibleSourceDirsIgnoresAdhocHostPattern: an ad-hoc run's sole

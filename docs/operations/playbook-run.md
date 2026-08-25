@@ -29,6 +29,19 @@ executing a tree the signature never covered (see the
 [threat model](../security/threat-model.md)). Run a playbook from elsewhere without
 `--source`.
 
+A `--source` run also executes **with the checkout as its working directory**, so the
+tree's own `./ansible.cfg` — and the relative `inventory`, `roles_path`, and
+`collections_path` it names — resolve exactly as a bare `ansible-playbook` from that
+directory would. This is the same working-directory grant the lifecycle
+[`exocomp run`](run-lifecycle.md) path gives its play step, and it carries the source's
+read-only posture: a read-only checkout is granted read, never write, so the run reads its
+own tree but cannot write back to it. The sandbox redirects ansible's scratch (local temp,
+remote temp, and the ssh control-path directory) into the per-job private tree, so a repo
+`ansible.cfg` with a relative `local_tmp` or `control_path_dir` still writes somewhere
+granted rather than onto the read-only checkout. A run with no `--source` keeps today's
+behavior: it executes in the executor's per-job scratch directory, and ansible discovers
+its own configuration from there.
+
 ## Extra vars, and where their values live
 
 `-e/--extra-var` is repeatable and takes two forms:

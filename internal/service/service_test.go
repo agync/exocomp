@@ -117,6 +117,43 @@ func TestRunPlaybookAssemblesAnsibleSpec(t *testing.T) {
 	}
 }
 
+// TestRunPlaybookCarriesSourceDir proves a --source run's checkout root and its
+// read-only posture reach the enqueued spec as Dir/DirReadOnly, so the executor
+// runs ansible from that tree (loading its ./ansible.cfg) and grants it read,
+// not write. A raw-path run names no Dir, leaving the working directory to the
+// executor's per-job scratch — the pre-fix behavior it must not regress.
+func TestRunPlaybookCarriesSourceDir(t *testing.T) {
+	svc := service.New(nil, t.TempDir(), fixedClock())
+
+	t.Run("source run carries the checkout root read-only", func(t *testing.T) {
+		enq := &fakeEnqueuer{}
+		if _, err := svc.RunPlaybook(context.Background(), enq, service.PlaybookInput{
+			PlaybookPath: "/checkout/site.yml",
+			Dir:          "/checkout",
+			DirReadOnly:  true,
+		}); err != nil {
+			t.Fatalf("RunPlaybook: %v", err)
+		}
+		spec := enq.enqueued[0]
+		if spec.Dir != "/checkout" || !spec.DirReadOnly {
+			t.Errorf("Dir/DirReadOnly not carried: Dir=%q DirReadOnly=%v", spec.Dir, spec.DirReadOnly)
+		}
+	})
+
+	t.Run("raw-path run names no working directory", func(t *testing.T) {
+		enq := &fakeEnqueuer{}
+		if _, err := svc.RunPlaybook(context.Background(), enq, service.PlaybookInput{
+			PlaybookPath: "/abs/site.yml",
+		}); err != nil {
+			t.Fatalf("RunPlaybook: %v", err)
+		}
+		spec := enq.enqueued[0]
+		if spec.Dir != "" || spec.DirReadOnly {
+			t.Errorf("a raw-path run set a working directory: Dir=%q DirReadOnly=%v", spec.Dir, spec.DirReadOnly)
+		}
+	})
+}
+
 func TestRunPlaybookPropagatesEnqueueError(t *testing.T) {
 	enq := &fakeEnqueuer{err: errors.New("boom")}
 	svc := service.New(nil, t.TempDir(), fixedClock())

@@ -6,6 +6,24 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — `playbook run --source` honors the checkout's ansible.cfg
+
+- **A `--source` playbook run now executes with the checkout as its working directory.**
+  Before, the hookless `--source` branch rebased the playbook onto the checkout but left the
+  run's `Dir` empty, so the sandboxed job fell back to its scratch dir and the checkout's
+  `./ansible.cfg` (and its relative `inventory`, `roles_path`, `collections_path`) was never
+  discovered — inventory came up empty and roles read as "not found". `service.PlaybookInput`
+  now carries `Dir`/`DirReadOnly`, resolved from the same `sourceCheckoutRoot` helper the
+  run-cli and ad-hoc paths use, so the CLI grants exactly what the lifecycle `exocomp run`
+  play step already grants: read on a read-only tree, read+write on a writable one.
+  [operations/playbook-run.md](operations/playbook-run.md) documents the new posture.
+- **Ansible scratch is pinned off the (read-only) source tree.** The sandboxed ansible driver
+  now also exports `ANSIBLE_SSH_CONTROL_PATH_DIR` (alongside the existing
+  `ANSIBLE_LOCAL_TEMP`/`ANSIBLE_REMOTE_TMP`/`TMPDIR`) into the per-job granted tree, so a repo
+  `ansible.cfg` with a relative `local_tmp` or `control_path_dir` cannot force a write onto a
+  read-only checkout — the env vars win over `ansible.cfg`. The data-dir/keys guard is
+  unchanged: the checkout grant never extends to the database, `host.key`, or `keyring.age`.
+
 ## 2026-08-25 — phone-companion API round 2
 
 - **`GET /whoami` now carries `server: {version, hostname}`.** The daemon's build version

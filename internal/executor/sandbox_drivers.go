@@ -94,15 +94,6 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 
 	opts := a.opts
 	opts.PrivateDirRoot = job.private
-	// Ansible's own scratch defaults under $HOME and /tmp, and the sandbox
-	// grants neither: /tmp is write-only under nono's system profile, so a
-	// module that writes a payload there cannot read it back.
-	opts.Env = append(slices.Clone(opts.Env),
-		"ANSIBLE_LOCAL_TEMP="+job.tmp,
-		"ANSIBLE_REMOTE_TMP="+job.tmp,
-		"TMPDIR="+job.tmp,
-		"HOME="+job.home,
-	)
 
 	// ansible reads and writes ~/.ansible on every run — the ssh connection
 	// plugin puts its ControlPath sockets under ~/.ansible/cp — and reports a
@@ -113,6 +104,26 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	if err != nil {
 		return Result{}, err
 	}
+	// The ssh ControlPath directory is pinned explicitly under the granted home
+	// rather than left to ansible.cfg. cwd is the source checkout, and a read-only
+	// checkout whose ansible.cfg sets a RELATIVE control_path_dir (or local_tmp)
+	// would resolve that write under the read-only tree and fail; the env var wins
+	// over ansible.cfg, so the sockets land in this granted, writable, short path
+	// regardless of what the checkout configures. It stays under ~/.ansible/cp,
+	// where the sockets already went by default, so the AF_UNIX 108-byte budget is
+	// unchanged.
+	controlPath := filepath.Join(ansibleHome, "cp")
+	if err := os.Mkdir(controlPath, 0o700); err != nil {
+		return Result{}, fmt.Errorf("executor: sandbox: control path dir: %w", err)
+	}
+
+	// Ansible's own scratch defaults under $HOME and /tmp, and the sandbox
+	// grants neither: /tmp is write-only under nono's system profile, so a
+	// module that writes a payload there cannot read it back. The scratch env
+	// redirects every temp path ansible uses into the per-job granted tree, so a
+	// run whose working directory is a read-only source checkout still writes its
+	// temp, remote-temp and control sockets somewhere the kernel allows.
+	opts.Env = append(slices.Clone(opts.Env), ansibleScratchEnv(job, controlPath)...)
 
 	sb := a.sandbox
 	// ansible-core forks a worker per host and coordinates them with POSIX
@@ -151,6 +162,24 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
 	return drv.Run(ctx, spec, sink)
+}
+
+// ansibleScratchEnv redirects every scratch path an ansible run writes into the
+// per-job granted tree: local and remote temp, the ssh ControlPath directory,
+// TMPDIR, and HOME. Each target is a child of the job dir the sandbox grants
+// writable (job.tmp and job.home, plus controlPath under the granted
+// ~/.ansible), and none is under the run's working directory — so when that
+// working directory is a read-only source checkout, a relative local_tmp or
+// control_path_dir in the checkout's ansible.cfg cannot force a write onto the
+// read-only tree: these env vars take precedence over ansible.cfg.
+func ansibleScratchEnv(job jobDir, controlPath string) []string {
+	return []string{
+		"ANSIBLE_LOCAL_TEMP=" + job.tmp,
+		"ANSIBLE_REMOTE_TMP=" + job.tmp,
+		"ANSIBLE_SSH_CONTROL_PATH_DIR=" + controlPath,
+		"TMPDIR=" + job.tmp,
+		"HOME=" + job.home,
+	}
 }
 
 // ansibleSourceDirs are the repository paths an ansible argv names: the
