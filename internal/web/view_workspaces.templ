@@ -1,0 +1,65 @@
+package web
+
+// workspacesList is the workspace write surface: every registered tofu root
+// with its dir and newest stored tfstate serial (the state marker), plus
+// per-row Plan and Apply forms for an operator. A plan runs through
+// PlanWorkspace with the "api" trigger, exactly as a bearer-token plan does,
+// so its -out file is sealed into a consumable artifact post-run; the
+// resulting artifact id can be fed into a later apply's optional plan field to
+// consume that saved plan's recorded policy verdict. An apply with no plan id
+// is a fresh apply — auto-approved unless the workspace has enabled plan
+// policies, in which case it is refused (there is nothing for a policy to
+// read). Workspaces carry no secret material, so — like run and schedules —
+// the controls here are plain operator-scope: no reauth, no confirm_token.
+templ workspacesList(vm workspacesVM) {
+	@layout(vm.Page) {
+		<h1>Workspaces</h1>
+		<div class="card span2" style="margin-top:18px">
+			if !vm.Operator {
+				<div class="kicker">Read-only</div>
+			}
+			<h3>All workspaces</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: planning or applying a workspace needs an operator token.</p>
+			}
+			if len(vm.Workspaces) == 0 {
+				<p class="meta">No workspaces registered.</p>
+			} else {
+				<div class="tablewrap stackable">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Workspace</th>
+								<th scope="col">Tofu dir</th>
+								<th scope="col">State</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
+							</tr>
+						</thead>
+						<tbody>
+							for _, wsr := range vm.Workspaces {
+								<tr>
+									<td data-label="Workspace">{ wsr.Name }</td>
+									<td class="mono wrap" data-label="Tofu dir">{ wsr.TofuDir }</td>
+									<td data-label="State">@chip(wsr.StateClass(), wsr.StateLabel())</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } style="display:inline">
+												<button type="submit" class="btn">Plan</button>
+											</form>
+											<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } style="display:inline">
+												<input type="number" name="plan" min="1" placeholder="plan id (optional)" style="width:8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
+												<button type="submit" class="btn primary">Apply</button>
+											</form>
+										</td>
+									}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
