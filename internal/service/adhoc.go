@@ -44,6 +44,10 @@ type AdhocInput struct {
 	TolerateUnreachable bool
 	IdempotencyKey      string
 	Timeout             time.Duration
+	// Privileged asks that the run execute UNSANDBOXED (the disabled tier). It
+	// is operator-gated at the calling face; the verb only carries it onto the
+	// spec and records the escalation. Off by default is normal tiering.
+	Privileged bool
 	// Actor identifies a non-CLI caller (an API/web token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -152,6 +156,7 @@ func (s *Service) RunAdhoc(ctx context.Context, enq Enqueuer, deriver reactive.D
 		RunnerName:          in.RunnerName,
 		IdempotencyKey:      in.IdempotencyKey,
 		Timeout:             in.Timeout,
+		Privileged:          in.Privileged,
 	}
 
 	if in.RequireApproval {
@@ -164,6 +169,11 @@ func (s *Service) RunAdhoc(ctx context.Context, enq Enqueuer, deriver reactive.D
 	}
 	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return AdhocResult{}, err
+	}
+	if in.Privileged {
+		if err := s.recordPrivileged(ctx, job.ID, in.Actor); err != nil {
+			return AdhocResult{}, err
+		}
 	}
 	return AdhocResult{Run: &RunResult{Job: job}}, nil
 }
@@ -182,6 +192,11 @@ func (s *Service) gatedAdhoc(ctx context.Context, enq Enqueuer, deriver reactive
 	}
 	if err := s.recordActor(ctx, job.ID, actor); err != nil {
 		return AdhocResult{}, err
+	}
+	if spec.Privileged {
+		if err := s.recordPrivileged(ctx, job.ID, actor); err != nil {
+			return AdhocResult{}, err
+		}
 	}
 
 	if existing, aerr := s.store.ApprovalByJob(ctx, job.ID); aerr == nil {

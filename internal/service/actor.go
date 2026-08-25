@@ -76,6 +76,34 @@ func (s *Service) recordActor(ctx context.Context, jobID int64, actor Actor) err
 	return nil
 }
 
+// recordPrivileged appends a system job_event naming that a run was requested
+// UNSANDBOXED, attributed to whoever asked (the same actor recordActor
+// records). It is the attributed, enqueue-time half of the audit; the queue
+// emits a second event at execution time on every path. Reusing the ledger
+// keeps this a plain job fact with no schema change, and — unlike recordActor —
+// it records the local CLI operator too (a zero actor), because a privileged
+// run is a deliberate escalation worth naming whoever the face attributes it
+// to. A failed append is returned, not swallowed: this is the durable evidence
+// the run was authorised to skip the sandbox.
+func (s *Service) recordPrivileged(ctx context.Context, jobID int64, actor Actor) error {
+	who := "local CLI operator"
+	if actor.Kind != "" {
+		face := actor.Face
+		if face == "" {
+			face = "api"
+		}
+		who = fmt.Sprintf("%s %s via %s", actor.Kind, actor.Name, face)
+	}
+	if _, err := s.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: jobID,
+		Level: store.LevelSystem,
+		Msg:   "run requested UNSANDBOXED (privileged) by " + who,
+	}); err != nil {
+		return fmt.Errorf("service: record privileged: %w", err)
+	}
+	return nil
+}
+
 // JobActor reads back the actor recordActor wrote on a job's ledger, or the
 // zero Actor when the write was the local CLI operator's (which records
 // nothing). It is what lets a decision path refuse a principal settling the

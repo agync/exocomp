@@ -310,6 +310,35 @@ func TestRunCLIHonoursTheRegistration(t *testing.T) {
 	}
 }
 
+// TestRunCLIPrivilegedMarksTheRow proves the --privileged flag threads onto the
+// job spec and lands on the row, and that the queue records the unsandboxed
+// execution on the ledger. The tool still runs (a privileged job at the disabled
+// tier is the same plain path an ordinary run takes there), so the assertion is
+// the persisted marker and the audit event, not the tier probe.
+func TestRunCLIPrivilegedMarksTheRow(t *testing.T) {
+	initForSource(t)
+	registerFakeTool(t, "vendorctl", "exit 0\n")
+
+	if _, err := cliRun(cliRunCmd(t), cliRunSpec{tool: "vendorctl", privileged: true}); err != nil {
+		t.Fatalf("run-cli: %v", err)
+	}
+
+	st := openTestStore(t)
+	jobs, err := st.ListJobs(context.Background(), store.JobFilter{Limit: 100})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("expected one job row, got %d", len(jobs))
+	}
+	if !jobs[0].Args.Privileged {
+		t.Error("the --privileged flag did not reach the job row")
+	}
+	if events := jobEventText(t, jobs[0].ID); !strings.Contains(events, "UNSANDBOXED") {
+		t.Errorf("no unsandboxed audit event on the ledger:\n%s", events)
+	}
+}
+
 // TestRunCLIIdempotencyKeyDedupsToOneJob: a retried run with the same key must
 // resolve to the job the first call created, not a second one.
 func TestRunCLIIdempotencyKeyDedupsToOneJob(t *testing.T) {

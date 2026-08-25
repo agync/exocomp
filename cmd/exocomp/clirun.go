@@ -36,8 +36,10 @@ type cliRunSpec struct {
 	runnerName      string
 	concurrencyKey  string
 	requireApproval bool
-	timeout         time.Duration
-	idempotencyKey  string
+	// privileged runs the job unsandboxed (the disabled tier), full host access.
+	privileged     bool
+	timeout        time.Duration
+	idempotencyKey string
 	// json switches the report to the wire envelope and keeps the run's event
 	// stream off stdout, so the envelope is the only thing printed there.
 	json bool
@@ -50,6 +52,7 @@ func newRunCLICmd() *cobra.Command {
 		runnerName      string
 		concurrencyKey  string
 		requireApproval bool
+		privileged      bool
 		timeout         time.Duration
 	)
 
@@ -101,6 +104,7 @@ func newRunCLICmd() *cobra.Command {
 				runnerName:      runnerName,
 				concurrencyKey:  concurrencyKey,
 				requireApproval: requireApproval,
+				privileged:      privileged,
 				timeout:         timeout,
 				json:            mode == outputJSON,
 			})
@@ -117,6 +121,8 @@ func newRunCLICmd() *cobra.Command {
 		"serialize this run against others holding the key (default: cli:<tool>; pass tofu:<workspace> to serialize with that workspace's runs)")
 	cmd.Flags().BoolVar(&requireApproval, "require-approval", false,
 		"gate the run behind the approval gate; it waits in awaiting_approval until a decision")
+	cmd.Flags().BoolVar(&privileged, "privileged", false,
+		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
 	return cmd
 }
@@ -149,6 +155,9 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		ctx = context.Background()
 	}
 	out, warn := cmd.OutOrStdout(), cmd.ErrOrStderr()
+	if spec.privileged {
+		warnPrivileged(warn)
+	}
 	// On the JSON path the envelope is the only thing on stdout, so the run's
 	// streamed events go nowhere rather than interleaving with it.
 	events := out
@@ -203,6 +212,7 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		RunSecretBinding: spec.runSecrets,
 		RunnerName:       spec.runnerName,
 		ConcurrencyKey:   concurrency,
+		Privileged:       spec.privileged,
 		IdempotencyKey:   spec.idempotencyKey,
 		Timeout:          spec.timeout,
 	}

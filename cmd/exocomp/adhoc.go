@@ -58,7 +58,9 @@ type adhocSpec struct {
 	runnerName          string
 	requireApproval     bool
 	tolerateUnreachable bool
-	timeout             time.Duration
+	// privileged runs the job unsandboxed (the disabled tier), full host access.
+	privileged bool
+	timeout    time.Duration
 	// idempotencyKey dedups a retried ad-hoc run to one job. Resolved from the
 	// global flag in runAdhocExit, empty on the unchanged path.
 	idempotencyKey string
@@ -78,6 +80,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 		runnerName          string
 		requireApproval     bool
 		tolerateUnreachable bool
+		privileged          bool
 		timeout             time.Duration
 	)
 
@@ -119,6 +122,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 				runnerName:          runnerName,
 				requireApproval:     requireApproval,
 				tolerateUnreachable: tolerateUnreachable,
+				privileged:          privileged,
 				timeout:             timeout,
 			})
 		},
@@ -126,14 +130,14 @@ func newAnsibleAdhocCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&module, "module", "m", defaultAdhocModule, "ansible module to run")
 	cmd.Flags().StringVarP(&args, "args", "a", "", "module arguments (the -a string)")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
-		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &timeout)
+		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
 	return cmd
 }
 
 // addAdhocFlags registers the governance flags `command` and `ansible` share, so
 // the two verbs stay one skeleton with one set of names.
 func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *string,
-	become *bool, vaultProject, runSecrets, runnerName *string, requireApproval, tolerateUnreachable *bool,
+	become *bool, vaultProject, runSecrets, runnerName *string, requireApproval, tolerateUnreachable, privileged *bool,
 	timeout *time.Duration) {
 	cmd.Flags().StringVarP(sourceName, "source", "s", "", "run from this registered source's checkout")
 	cmd.Flags().StringVar(host, "host", "", "ansible host pattern: a host, a group, or an expression like `fedora:!nas`")
@@ -146,6 +150,8 @@ func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *strin
 		"as a per-job cgroup cap (local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().BoolVar(requireApproval, "require-approval", false, "gate the run behind the approval gate; it waits in awaiting_approval until a decision")
 	cmd.Flags().BoolVar(tolerateUnreachable, "tolerate-unreachable", false, "a run whose only non-success is unreachable hosts settles degraded, not failed")
+	cmd.Flags().BoolVar(privileged, "privileged", false,
+		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 	cmd.Flags().DurationVar(timeout, "timeout", 0, "kill the run after this long (0: no limit)")
 }
 
@@ -207,6 +213,9 @@ func hasControl(s string) bool {
 // process exit code, the same way `playbook run` does.
 func runAdhocExit(cmd *cobra.Command, spec adhocSpec) error {
 	spec.idempotencyKey = idempotencyKey(cmd)
+	if spec.privileged {
+		warnPrivileged(cmd.ErrOrStderr())
+	}
 	code, err := runAdhoc(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), spec)
 	if err != nil {
 		return err
@@ -269,6 +278,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		Inventory:           invName,
 		TolerateUnreachable: spec.tolerateUnreachable,
 		RunnerName:          spec.runnerName,
+		Privileged:          spec.privileged,
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 	}

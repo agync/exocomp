@@ -114,6 +114,43 @@ func TestRunAdhocGuardsModuleArgs(t *testing.T) {
 	}
 }
 
+// TestRunAdhocPrivilegedMarksSpecAndLedger proves the operator-gated privileged
+// request reaches the spec and is recorded, attributed, on the job ledger — the
+// durable evidence a run was authorised to skip the sandbox.
+func TestRunAdhocPrivilegedMarksSpecAndLedger(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	q := queue.New(st, enqueueOnlyDriver{}, queue.Options{Workers: 1})
+	enq := &recordingEnqueuer{q: q}
+	svc := service.New(st, t.TempDir(), fixedClock())
+
+	res, err := svc.RunAdhoc(ctx, enq, fixedDeriver{}, service.AdhocInput{
+		Pattern:    "web",
+		Args:       "uptime",
+		Privileged: true,
+		Actor:      service.Actor{Kind: service.ActorKindToken, Name: "ops-token", Face: "api"},
+	})
+	if err != nil {
+		t.Fatalf("RunAdhoc: %v", err)
+	}
+	if len(enq.enqueued) != 1 || !enq.enqueued[0].Privileged {
+		t.Fatalf("privileged did not reach the spec: %+v", enq.enqueued)
+	}
+	events, err := st.ListJobEvents(ctx, res.Run.Job.ID)
+	if err != nil {
+		t.Fatalf("ListJobEvents: %v", err)
+	}
+	var found bool
+	for _, e := range events {
+		if strings.Contains(e.Msg, "UNSANDBOXED (privileged)") && strings.Contains(e.Msg, "ops-token") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no attributed privileged event on the ledger: %+v", events)
+	}
+}
+
 func TestRunAdhocPropagatesEnqueueError(t *testing.T) {
 	enq := &fakeEnqueuer{err: errors.New("boom")}
 	svc := service.New(nil, t.TempDir(), fixedClock())

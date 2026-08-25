@@ -38,6 +38,7 @@ func newPlaybookCmd() *cobra.Command {
 		diff         bool
 		tolerateUnre bool
 		noFollow     bool
+		privileged   bool
 	)
 
 	run := &cobra.Command{
@@ -71,6 +72,13 @@ func newPlaybookCmd() *cobra.Command {
 			rc, remote, err := remoteClient(cmd)
 			if err != nil {
 				return err
+			}
+			if privileged && remote {
+				return errors.New("playbook run: --privileged applies to a local run; " +
+					"a --remote run's tier is the daemon's, set on that host")
+			}
+			if privileged {
+				warnPrivileged(warn)
 			}
 			if remote {
 				// The remote run enqueues over HTTP and follows the job the daemon
@@ -117,6 +125,7 @@ func newPlaybookCmd() *cobra.Command {
 						passthrough:         passthrough,
 						extraVars:           vars,
 						tolerateUnreachable: tolerateUnre,
+						privileged:          privileged,
 					})
 				}
 				args[0] = pb
@@ -141,6 +150,7 @@ func newPlaybookCmd() *cobra.Command {
 				idempotencyKey:      idempotencyKey(cmd),
 				dir:                 sourceDir,
 				dirReadOnly:         sourceReadOnly,
+				privileged:          privileged,
 			})
 			if err != nil {
 				return err
@@ -184,6 +194,8 @@ func newPlaybookCmd() *cobra.Command {
 		"with --remote: print the enqueued job id and exit 0 instead of following the job to its end")
 	run.Flags().BoolVar(&tolerateUnre, "tolerate-unreachable", false,
 		"a run whose only non-success is unreachable hosts settles degraded, not failed, and does not page (a task failure on a reachable host still fails)")
+	run.Flags().BoolVar(&privileged, "privileged", false,
+		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -191,6 +203,15 @@ func newPlaybookCmd() *cobra.Command {
 	}
 	cmd.AddCommand(run, newPlaybookVendorCmd())
 	return cmd
+}
+
+// warnPrivileged prints the one-line, loud notice that a run was asked to skip
+// the sandbox. It is stderr, not a job event: the ledger record is written by
+// the service and the queue; this is the operator's own immediate confirmation
+// that they opted a run out of the sandbox at the keyboard.
+func warnPrivileged(warn io.Writer) {
+	_, _ = fmt.Fprintln(warn, "WARNING: --privileged: this run executes UNSANDBOXED "+
+		"(no kernel sandbox, full host access). Operator-only, audited.")
 }
 
 type playbookSpec struct {
@@ -214,6 +235,8 @@ type playbookSpec struct {
 	extraVars map[string]string
 	// tolerateUnreachable opts the run into the degraded outcome.
 	tolerateUnreachable bool
+	// privileged runs the job unsandboxed (the disabled tier), full host access.
+	privileged bool
 	// idempotencyKey dedups a retried run to one job; empty on the unchanged path.
 	idempotencyKey string
 }
@@ -284,6 +307,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		RunnerName:          spec.runnerName,
 		Dir:                 spec.dir,
 		DirReadOnly:         spec.dirReadOnly,
+		Privileged:          spec.privileged,
 	})
 	if err != nil {
 		return 0, err

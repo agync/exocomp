@@ -46,6 +46,7 @@ func newRunCmd() *cobra.Command {
 		runnerName   string
 		timeout      time.Duration
 		wait         bool
+		privileged   bool
 	)
 	cmd := &cobra.Command{
 		Use:   "run <source> <playbook>",
@@ -58,6 +59,9 @@ func newRunCmd() *cobra.Command {
 			"source checkout.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if privileged {
+				warnPrivileged(cmd.ErrOrStderr())
+			}
 			return runWithHooks(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), runSpec{
 				sourceName:   args[0],
 				playbook:     args[1],
@@ -67,6 +71,7 @@ func newRunCmd() *cobra.Command {
 				runnerName:   runnerName,
 				timeout:      timeout,
 				wait:         wait,
+				privileged:   privileged,
 			})
 		},
 	}
@@ -81,6 +86,8 @@ func newRunCmd() *cobra.Command {
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
+	cmd.Flags().BoolVar(&privileged, "privileged", false,
+		"run the play step UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 
 	cmd.AddCommand(newRunStatusCmd())
 	return cmd
@@ -122,6 +129,9 @@ type runSpec struct {
 	extraVars   map[string]string
 	// tolerateUnreachable opts the play step into the degraded outcome.
 	tolerateUnreachable bool
+	// privileged runs the play step unsandboxed (the disabled tier). Only the
+	// play carries it; the hook and gate steps keep the daemon's tier.
+	privileged bool
 }
 
 // runWithHooks resolves a source's hooks + gate and composes them with the main
@@ -231,6 +241,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 			ExtraVars:           rs.extraVars,
 			TolerateUnreachable: rs.tolerateUnreachable,
 			RunnerName:          rs.runnerName,
+			Privileged:          rs.privileged,
 			Timeout:             rs.timeout,
 		},
 	})

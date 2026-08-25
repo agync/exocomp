@@ -37,6 +37,10 @@ type PlaybookInput struct {
 	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
 	// is the default, uncapped path.
 	RunnerName string
+	// Privileged asks that the run execute UNSANDBOXED (the disabled tier). It
+	// is operator-gated at the calling face; the verb only carries it onto the
+	// spec and records the escalation. Off by default is normal tiering.
+	Privileged bool
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -67,6 +71,7 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		IdempotencyKey:      in.IdempotencyKey,
 		Timeout:             in.Timeout,
 		RunnerName:          in.RunnerName,
+		Privileged:          in.Privileged,
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {
@@ -74,6 +79,11 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 	}
 	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
 		return RunResult{}, err
+	}
+	if in.Privileged {
+		if err := s.recordPrivileged(ctx, job.ID, in.Actor); err != nil {
+			return RunResult{}, err
+		}
 	}
 	return RunResult{Job: job}, nil
 }

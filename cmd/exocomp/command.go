@@ -31,6 +31,7 @@ func newCommandCmd() *cobra.Command {
 		runnerName          string
 		requireApproval     bool
 		tolerateUnreachable bool
+		privileged          bool
 		timeout             time.Duration
 	)
 
@@ -85,13 +86,14 @@ func newCommandCmd() *cobra.Command {
 				runnerName:          runnerName,
 				requireApproval:     requireApproval,
 				tolerateUnreachable: tolerateUnreachable,
+				privileged:          privileged,
 				timeout:             timeout,
 			})
 		},
 	}
 	cmd.Flags().BoolVar(&shell, "shell", false, "run through the shell module so a pipe or redirect works")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
-		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &timeout)
+		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
 	return cmd
 }
 
