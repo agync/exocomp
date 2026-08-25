@@ -117,7 +117,7 @@ func dashboard(vm dashboardVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " <h1>Dashboard</h1><div class=\"cards\" style=\"margin-top:18px\"><section class=\"card span2\" aria-labelledby=\"needsyou-h\"><h3 id=\"needsyou-h\">Pending approvals</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, " <h1>Dashboard</h1><div class=\"cards\" style=\"margin-top:18px\"><section class=\"card\" aria-labelledby=\"needsyou-h\"><h3 id=\"needsyou-h\">Pending approvals</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -333,7 +333,7 @@ func dashboard(vm dashboardVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</section><section class=\"card span2\" aria-labelledby=\"ws-h\"><h3 id=\"ws-h\">Workspaces</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</section><section class=\"card\" aria-labelledby=\"ws-h\"><h3 id=\"ws-h\">Workspaces</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -412,7 +412,7 @@ func dashboard(vm dashboardVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</section><section class=\"card span2\" aria-labelledby=\"flows-h\"><h3 id=\"flows-h\">Workflows in flight</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</section><section class=\"card\" aria-labelledby=\"flows-h\"><h3 id=\"flows-h\">Workflows in flight</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

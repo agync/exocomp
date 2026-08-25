@@ -196,8 +196,17 @@ main { flex: 1; padding: var(--pad-page); max-width: none; }
 .banner.fail .keyword { color: var(--signal-fail); }
 .banner .count { color: var(--ink-400); }
 
-/* ---- Cards & grid ---- */
-.cards { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--gap-card); }
+/* ---- Cards & grid ----
+ * Cards pack into as many equal columns as the width fits and size to their own
+ * content (align-items:start), so a sparse card stays compact instead of a
+ * half-empty full-width row. A span2 card takes the whole width for genuinely
+ * wide content (the control-plane version table). */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: var(--gap-card);
+  align-items: start;
+}
 .card {
   background: var(--surface-card);
   border: 1px solid var(--hairline-faint);
