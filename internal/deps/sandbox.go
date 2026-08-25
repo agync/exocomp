@@ -1,6 +1,11 @@
 package deps
 
-import "exocomp.dev/exocomp/internal/executor"
+import (
+	"os"
+	"path/filepath"
+
+	"exocomp.dev/exocomp/internal/executor"
+)
 
 // SandboxLauncher wraps a resolver argv in a confinement launcher. EnsureVenv
 // calls it for every uv invocation when a spec carries one, so the resolver
@@ -62,10 +67,34 @@ func NewResolverSandbox(opts ResolverSandboxOptions) SandboxLauncher {
 		Binary:       opts.Binary,
 		DataDir:      opts.DataDir,
 		ReadPaths:    opts.ReadPaths,
+		ReadFiles:    uvConfigFiles(),
 		WritePaths:   write,
 		ConnectPorts: ports,
 	})
 	return resolverSandbox{profile: profile}
+}
+
+// uvConfigFiles returns the uv configuration files that exist on the host, so
+// the confined resolver can read them instead of dying with EACCES. uv's config
+// discovery is mandatory and treats an unreadable config as fatal (exit 2,
+// "failed to open file `/etc/uv/uv.toml`: Permission denied"), so the
+// default-deny profile must grant the system and user uv.toml the operator
+// already trusts (host root is out of scope, threat-model). Only existing files
+// are granted — a grant on a missing path is not one the launcher should carry.
+func uvConfigFiles() []string {
+	candidates := []string{"/etc/uv/uv.toml"}
+	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
+		candidates = append(candidates, filepath.Join(xdg, "uv", "uv.toml"))
+	} else if home, err := os.UserHomeDir(); err == nil {
+		candidates = append(candidates, filepath.Join(home, ".config", "uv", "uv.toml"))
+	}
+	var out []string
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // resolverSandbox adapts an executor profile to SandboxLauncher.
