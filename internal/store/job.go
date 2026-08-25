@@ -84,6 +84,12 @@ type JobArgs struct {
 	// env_binding is resolved into the run's credential env alongside
 	// RunSecretBinding. The name is public; the values it binds are not.
 	Inventory string `json:"inventory,omitempty"`
+	// Source names the registered source (ADR 0010) this run executed from,
+	// when one was named. It is a display fact only — Dir already carries the
+	// checkout path a claiming process needs — recorded so the job event
+	// stream and every job face can show which source ran rather than an
+	// absolute checkout path. Empty on a raw-path or ad-hoc run.
+	Source string `json:"source,omitempty"`
 	// ExtraVars are an ansible run's operator-supplied `-e key=val` variables.
 	// They live on the row rather than in Argv so a daemon that claims the job
 	// replays them, and they never reach the ansible process's own argv: the

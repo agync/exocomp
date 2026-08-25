@@ -34,6 +34,12 @@ type Spec struct {
 	// the job runs and never written to the row.
 	RunSecretBinding string
 	Inventory        string
+	// Source names the registered source this run executes from, when one was
+	// named. It carries to the job row as a display fact — the "running" event
+	// and every job face read it back to name the source rather than dumping
+	// Dir, the checkout path it already resolved to. Empty on a raw-path or
+	// ad-hoc run.
+	Source string
 	// ExtraVars are an ansible run's operator-supplied `-e key=val` variables,
 	// carried to the job row so a daemon replays them and written to a file at
 	// run time, never onto the ansible process's argv.
@@ -184,6 +190,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			VaultProject:        spec.VaultProject,
 			RunSecretBinding:    spec.RunSecretBinding,
 			Inventory:           spec.Inventory,
+			Source:              spec.Source,
 			ExtraVars:           spec.ExtraVars,
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,

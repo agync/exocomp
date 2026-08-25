@@ -157,6 +157,31 @@ func TestEnqueueCarriesPrivileged(t *testing.T) {
 	}
 }
 
+// TestEnqueueCarriesSource proves Spec.Source reaches the stored job row, the
+// seam a --source run's job event line and every job face read the source
+// name back from. Empty is the default, unaffected path a raw-path or ad-hoc
+// run takes.
+func TestEnqueueCarriesSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	spec := shellSpec("/bin/true")
+	spec.Source = "my-fleet"
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	got, err := st.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if got.Args.Source != "my-fleet" {
+		t.Errorf("stored Source = %q, want %q", got.Args.Source, "my-fleet")
+	}
+}
+
 // recordingDriver captures the last Spec it was handed, so a test can assert
 // what the queue built from a job row reached the driver.
 type recordingDriver struct{ last executor.Spec }
