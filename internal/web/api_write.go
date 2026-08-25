@@ -54,6 +54,9 @@ const (
 	kindJobEnqueued     = "job.enqueued"
 	kindApprovalPending = "approval.pending"
 	kindDecision        = "approval.decision"
+	// kindSilence names one created silence, mirroring wire.KindJob's "job.get"
+	// singular next to the plural KindSilenceList the read side already emits.
+	kindSilence = "silence.get"
 )
 
 // jobEnqueuedView is the body of a clean enqueue: the job id an agent follows,
@@ -98,6 +101,12 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspaceApply))
 	mux.HandleFunc("POST /api/v1/playbooks/run",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiPlaybookRun))
+	mux.HandleFunc("POST /api/v1/jobs/{id}/cancel",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("cancel jobs", "operator"), s.apiJobCancel))
+	mux.HandleFunc("POST /api/v1/silences",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("create silences", "operator"), s.apiSilenceCreate))
+	mux.HandleFunc("DELETE /api/v1/silences/{id}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("lift silences", "operator"), s.apiSilenceDelete))
 }
 
 // bearerOnly narrows a scope predicate to callers presenting an explicit bearer
@@ -625,4 +634,119 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
+}
+
+// --- job cancel -------------------------------------------------------------
+
+// apiJobCancel cancels a non-terminal job by moving it to cancelled through the
+// SAME store transition the reactive gate uses to cancel a rejected approval's
+// job (internal/queue/gate.go). It enqueues nothing and runs nothing — this
+// pure-enqueue face never claims the row; a daemon that owns a running row sees
+// the cancelled state and its own finalize transition (running -> terminal)
+// harmlessly conflicts. A terminal job is a 409 (never a silent success), an
+// unknown id a 404, and a state that raced under the read is a 409 through the
+// store's own from-state guard.
+func (s *Server) apiJobCancel(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "job id must be a positive integer")
+		return
+	}
+	job, err := s.store.GetJob(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	if job.State.Terminal() {
+		s.apiError(w, http.StatusConflict, wire.NewError(wire.CodeConflict,
+			"job "+itoa64(id)+" is already "+string(job.State)+"; nothing to cancel"))
+		return
+	}
+	if err := s.store.TransitionJob(r.Context(), id, job.State, store.StateCancelled); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	cancelled, err := s.store.GetJob(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindJob, wire.NewJobView(cancelled))
+}
+
+// --- silences (create / lift) -----------------------------------------------
+
+// silenceCreateRequest is the JSON body of a POST /silences. It mirrors the
+// CLI's `silence add`: a scope (alert/host/global) and a mandatory positive
+// duration — a silence has no never-expires form, so `for` is required.
+type silenceCreateRequest struct {
+	ScopeKind  string `json:"scope_kind"`
+	ScopeValue string `json:"scope_value"`
+	Reason     string `json:"reason"`
+	For        string `json:"for"`
+}
+
+// apiSilenceCreate mutes matching events until a deadline, through the SAME
+// store.CreateSilence the CLI and the web kill switch already write. The scope
+// and its value are validated here so a bad scope is a 400, not the 500 the
+// store's untyped validation error would otherwise map to.
+func (s *Server) apiSilenceCreate(w http.ResponseWriter, r *http.Request) {
+	var req silenceCreateRequest
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(body)) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			s.badRequest(w, "request body is not valid JSON")
+			return
+		}
+	}
+	switch req.ScopeKind {
+	case store.ScopeAlert, store.ScopeHost, store.ScopeGlobal:
+	default:
+		s.badRequest(w, "scope_kind must be alert, host, or global")
+		return
+	}
+	if req.ScopeKind != store.ScopeGlobal && req.ScopeValue == "" {
+		s.badRequest(w, "scope_kind "+req.ScopeKind+" needs a scope_value")
+		return
+	}
+	if req.For == "" {
+		s.badRequest(w, "for is required: a silence never expires-never (e.g. 2h)")
+		return
+	}
+	dur, err := time.ParseDuration(req.For)
+	if err != nil || dur <= 0 {
+		s.badRequest(w, "for must be a positive Go duration (e.g. 2h)")
+		return
+	}
+
+	now := s.now()
+	sil, err := s.store.CreateSilence(r.Context(), store.Silence{
+		ScopeKind:  req.ScopeKind,
+		ScopeValue: req.ScopeValue,
+		Reason:     req.Reason,
+		CreatedAt:  now,
+		ExpiresAt:  now.Add(dur),
+		CreatedVia: "api",
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, kindSilence, wire.NewSilenceList([]store.Silence{sil})[0])
+}
+
+// apiSilenceDelete lifts a silence before it expires, through the SAME
+// store.DeleteSilence the CLI's `silence rm` calls. An unknown id is a 404
+// (store.ErrNotFound), never a silent success.
+func (s *Server) apiSilenceDelete(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "silence id must be a positive integer")
+		return
+	}
+	if err := s.store.DeleteSilence(r.Context(), id); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

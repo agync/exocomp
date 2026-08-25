@@ -41,6 +41,7 @@ const codeInvalidArgument = "invalid_argument"
 // the mux's own 405 (Go 1.22 method-aware routing), which is what the gate
 // asserts.
 func (s *Server) registerAPI(mux *http.ServeMux) {
+	mux.HandleFunc("GET /api/v1/whoami", s.apiAuth(s.apiWhoami))
 	mux.HandleFunc("GET /api/v1/jobs", s.apiAuth(s.apiJobs))
 	mux.HandleFunc("GET /api/v1/jobs/{id}", s.apiAuth(s.apiJobGet))
 	mux.HandleFunc("GET /api/v1/jobs/{id}/events", s.apiAuth(s.apiJobEvents))
@@ -49,6 +50,12 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/sources", s.apiAuth(s.apiSources))
 	mux.HandleFunc("GET /api/v1/approvals", s.apiAuth(s.apiApprovals))
 	mux.HandleFunc("GET /api/v1/approvals/{id}", s.apiAuth(s.apiApprovalGet))
+	// The plan diff carries resource values, so it sits behind the plan-view
+	// floor (mayApprove: operator or approve), NOT the readonly floor the rest
+	// of the reads use — the same scope the browser approval surface renders it
+	// behind.
+	mux.HandleFunc("GET /api/v1/approvals/{id}/plan",
+		s.apiGuard(mayApprove, "this token's scope may not read plan diffs", s.apiApprovalPlan))
 	mux.HandleFunc("GET /api/v1/schedules", s.apiAuth(s.apiSchedules))
 	mux.HandleFunc("GET /api/v1/rules", s.apiAuth(s.apiRules))
 	mux.HandleFunc("GET /api/v1/silences", s.apiAuth(s.apiSilences))
@@ -195,6 +202,42 @@ func httpStatusForCode(code string) int {
 // badRequest writes a 400 with the invalid-argument code and a caller message.
 func (s *Server) badRequest(w http.ResponseWriter, msg string) {
 	s.apiError(w, http.StatusBadRequest, wire.NewError(codeInvalidArgument, msg))
+}
+
+// --- whoami -----------------------------------------------------------------
+
+// kindWhoami names the identity-reflection payload.
+const kindWhoami = "whoami"
+
+// whoamiView reflects the calling token back to itself: enough for a phone
+// companion to show who it is signed in as and how much scope it holds, never
+// any secret material (the token string authenticated the request; it is not
+// echoed).
+type whoamiView struct {
+	ID        int64   `json:"id"`
+	Name      string  `json:"name"`
+	Scope     string  `json:"scope"`
+	Via       string  `json:"via,omitempty"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
+}
+
+// apiWhoami returns the calling token's own identity. Any authenticated token
+// may call it: it reflects only the caller the guard already resolved, reads no
+// other row, and reveals nothing a token does not already know about itself.
+func (s *Server) apiWhoami(w http.ResponseWriter, r *http.Request) {
+	id, ok := identityOf(r.Context())
+	if !ok {
+		// apiAuth put the identity on the context before dispatching here; its
+		// absence is a wiring fault, not a caller error.
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "no resolved identity"))
+		return
+	}
+	view := whoamiView{ID: id.token.ID, Name: id.token.Name, Scope: id.token.Scope, Via: id.via}
+	if id.token.ExpiresAt != nil {
+		exp := id.token.ExpiresAt.UTC().Format(time.RFC3339)
+		view.ExpiresAt = &exp
+	}
+	s.apiSuccess(w, kindWhoami, view)
 }
 
 // --- jobs -------------------------------------------------------------------
@@ -368,6 +411,56 @@ func (s *Server) apiApprovalGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindApproval, wire.NewApprovalView(a))
+}
+
+// kindApprovalPlan names the raw-plan-text payload.
+const kindApprovalPlan = "approval.plan"
+
+// approvalPlanView carries the approval's plan diff as raw text; the client
+// renders it (owner decision), so no structured projection is imposed here.
+type approvalPlanView struct {
+	Plan string `json:"plan"`
+}
+
+// apiApprovalPlan returns an approval's sealed plan opened as raw text. It uses
+// the SAME decrypt path the browser approval surface renders through — the
+// PlanOpener's OpenSealedFile (approval_data.go's renderPlan) — and is gated by
+// the same plan-view scope (mayApprove). No new value is exposed that the web
+// plan view does not already show behind the same floor; this only serves it as
+// text instead of a parsed diff. A surface with no opener is 503 and an approval
+// with no plan is 404, matching what the web path shows in each case.
+func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		s.badRequest(w, "approval id must be a positive integer")
+		return
+	}
+	a, err := s.store.GetApproval(r.Context(), id)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	if s.plans == nil {
+		s.apiError(w, http.StatusServiceUnavailable, wire.NewError(wire.CodeInternal,
+			"this surface holds no envelope; plan diffs cannot be opened here"))
+		return
+	}
+	if a.PlanArtifact == nil {
+		s.apiError(w, http.StatusNotFound, wire.NewError(wire.CodeNotFound, "this approval carries no plan"))
+		return
+	}
+	art, err := s.store.GetArtifact(r.Context(), *a.PlanArtifact)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	blob, err := s.plans.OpenSealedFile(art.Path)
+	if err != nil {
+		s.log.Error("api: open sealed plan", "approval", id, "err", err)
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot open the sealed plan"))
+		return
+	}
+	s.apiSuccess(w, kindApprovalPlan, approvalPlanView{Plan: string(blob)})
 }
 
 // --- schedules / rules / silences -------------------------------------------
