@@ -60,6 +60,7 @@ GET /api/v1/workspaces
 GET /api/v1/sources
 GET /api/v1/approvals?all=                      # pending-only unless all=true
 GET /api/v1/approvals/{id}
+GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
 GET /api/v1/rules
 GET /api/v1/silences?all=                       # active-only unless all=true
@@ -76,6 +77,11 @@ GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted
 that would be a store change, out of scope for the read routes. `GET /jobs/{id}/stream` reuses
 the same append-only `job_event` tail, monotonic `Seq` cursor, and `done`-on-terminal ending
 the browser's own job page streams, so the two surfaces cannot diverge.
+
+`GET /approvals/stream` has no per-job terminal state to end on — the pending set itself is
+the resource — so it sends one `event: approvals` snapshot on connect (the same
+`[]ApprovalView` `GET /approvals` returns, even when empty), then another only when that
+projection changes, replacing a phone's poll of `GET /approvals` with one open connection.
 
 ## Write endpoints (`operator`)
 

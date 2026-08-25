@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // streamPoll is how often the tail re-reads job_event. The events table is
@@ -21,6 +23,14 @@ const streamPoll = 300 * time.Millisecond
 // that still wants the tail re-attaches from its last sequence, which the
 // follow path already does on a drop.
 const streamMaxLifetime = 12 * time.Hour
+
+// sseTS formats a timestamp identically to the wire layer's own rfc3339
+// (internal/wire/schema.go: t.UTC().Format(time.RFC3339)), so a client parsing
+// both an SSE line and the REST job/event views it mirrors uses one timestamp
+// parser instead of two. It duplicates the one-line format rather than
+// exporting wire's helper — the wire package's job is projecting rows, not
+// serving SSE frames.
+func sseTS(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
 // handleJobStream tails one job's events over SSE for the browser surface. It
 // replays nothing the page already rendered: the client opens the stream after
@@ -109,7 +119,7 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 			}
 			cursor = e.Seq
 			payload, _ := json.Marshal(map[string]any{
-				"seq": e.Seq, "ts": clock(e.Ts), "level": e.Level, "msg": e.Msg,
+				"seq": e.Seq, "ts": sseTS(e.Ts), "level": e.Level, "msg": e.Msg,
 			})
 			if _, err := fmt.Fprintf(w, "event: line\ndata: %s\n\n", payload); err != nil {
 				return
@@ -123,6 +133,70 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 			return
 		}
 		flusher.Flush()
+
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+// tailApprovals streams the pending-approvals list as SSE, the approvals
+// analogue of tailJobEvents: the same re-resolve-identity-per-poll revocation
+// property, poll ticker, and streamMaxLifetime deadline. Unlike a job there is
+// no terminal state to end the stream on — it lives until the client leaves or
+// the lifetime cap fires. Existence has nothing to check (there is no single
+// resource, only the pending set) and there is no ?since= cursor to seed from,
+// so — unlike tailJobEvents — this owns setting the SSE headers itself; the
+// caller (apiApprovalStream) only checks the ResponseWriter can flush.
+func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher http.Flusher) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
+	ticker := time.NewTicker(streamPoll)
+	defer ticker.Stop()
+
+	ident, hasIdent := identityOf(r.Context())
+	deadline := s.now().Add(streamMaxLifetime)
+
+	// last is the previously sent payload; comparing the full projected bytes
+	// (rather than just ids/states) means a field-only change — a decision
+	// clock ticking a plan_serial, a reason edit — still counts as a change,
+	// not just membership in the pending set. nil (not "[]") until the first
+	// send, so an empty pending set still produces the one initial snapshot.
+	var last []byte
+	for {
+		now := s.now()
+		if !now.Before(deadline) {
+			return
+		}
+		if hasIdent {
+			if _, err := s.authenticateRow(r.Context(), ident.token.ID, "", now); err != nil {
+				return
+			}
+		}
+
+		rows, err := s.store.ListApprovals(r.Context(), true)
+		if err != nil {
+			return
+		}
+		// The same projection apiApprovals serves, so a phone that already
+		// parses GET /api/v1/approvals reuses that parsing here: no secrets,
+		// no plan text, just approval metadata.
+		payload, err := json.Marshal(wire.NewApprovalList(rows))
+		if err != nil {
+			return
+		}
+		if last == nil || !bytes.Equal(payload, last) {
+			last = payload
+			if _, err := fmt.Fprintf(w, "event: approvals\ndata: %s\n\n", payload); err != nil {
+				return
+			}
+			flusher.Flush()
+		}
 
 		select {
 		case <-r.Context().Done():

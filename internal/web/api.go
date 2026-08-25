@@ -49,6 +49,10 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/workspaces", s.apiAuth(s.apiWorkspaces))
 	mux.HandleFunc("GET /api/v1/sources", s.apiAuth(s.apiSources))
 	mux.HandleFunc("GET /api/v1/approvals", s.apiAuth(s.apiApprovals))
+	// A literal segment takes precedence over the {id} wildcard at the same
+	// position (net/http ServeMux's own precedence rule), so this can neither
+	// be shadowed by nor shadow /api/v1/approvals/{id}.
+	mux.HandleFunc("GET /api/v1/approvals/stream", s.apiAuth(s.apiApprovalStream))
 	mux.HandleFunc("GET /api/v1/approvals/{id}", s.apiAuth(s.apiApprovalGet))
 	// The plan diff carries resource values, so it sits behind the plan-view
 	// floor (mayApprove: operator or approve), NOT the readonly floor the rest
@@ -411,6 +415,22 @@ func (s *Server) apiApprovalGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindApproval, wire.NewApprovalView(a))
+}
+
+// apiApprovalStream streams the pending-approvals list as SSE, gated by the
+// same read scope as apiApprovals (apiAuth), so the phone companion can
+// replace polling GET /api/v1/approvals with one open connection. It reuses
+// tailApprovals — the same re-resolved-identity poll and lifetime cap
+// tailJobEvents has — for the same reason apiJobStream reuses tailJobEvents:
+// one implementation, so the two approvals surfaces cannot diverge.
+func (s *Server) apiApprovalStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		s.apiError(w, http.StatusInternalServerError,
+			wire.NewError(wire.CodeInternal, "streaming unsupported"))
+		return
+	}
+	s.tailApprovals(w, r, flusher)
 }
 
 // kindApprovalPlan names the raw-plan-text payload.

@@ -3,6 +3,7 @@ package web
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -12,6 +13,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // waitJobEvent polls until an event whose Msg contains want exists, returning
@@ -146,6 +148,75 @@ func TestJobStreamNoSinceKeepsOldBehavior(t *testing.T) {
 	}
 	if !waitFor(lines, "after-connect", 3*time.Second) {
 		t.Fatal("stream with no since stopped delivering new events")
+	}
+}
+
+// TestJobStreamTsMatchesRESTFormat is the fix-1 regression test: the SSE
+// `line` event used to format ts with clock() ("2006-01-02 15:04:05Z"), a
+// different shape than the REST job/event views (RFC3339 via wire's rfc3339).
+// A phone client parsing both surfaces needs one timestamp parser, so the SSE
+// ts for an event must equal what /api/v1/jobs/{id}/events reports for that
+// exact same event.
+func TestJobStreamTsMatchesRESTFormat(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
+
+	token := h.mint(t, "agent", "readonly")
+
+	_, _, restBody := bearerGet(t, ts.URL, "/api/v1/jobs/"+itoa64(job.ID)+"/events", token)
+	var restEnv struct {
+		Data []wire.JobEventView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(restBody), &restEnv); err != nil {
+		t.Fatalf("REST events body is not JSON: %v (%s)", err, restBody)
+	}
+	if len(restEnv.Data) == 0 {
+		t.Fatal("job produced no events to compare")
+	}
+	want := restEnv.Data[0]
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/jobs/"+itoa64(job.ID)+"/stream?since=0", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	scan := bufio.NewScanner(resp.Body)
+	var gotTs string
+	for scan.Scan() {
+		line := scan.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		var evt struct {
+			Seq int64  `json:"seq"`
+			Ts  string `json:"ts"`
+		}
+		if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &evt); err != nil {
+			continue
+		}
+		if evt.Seq == want.Seq {
+			gotTs = evt.Ts
+			break
+		}
+	}
+	if gotTs == "" {
+		t.Fatalf("stream never emitted seq %d", want.Seq)
+	}
+	if gotTs != want.Ts {
+		t.Fatalf("SSE ts = %q, REST ts = %q, want equal", gotTs, want.Ts)
 	}
 }
 
