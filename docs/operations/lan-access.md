@@ -50,4 +50,7 @@ cookie bound to the token row. `--insecure-http` exists, is loud at startup and 
 footer, and is never the documented path — front the surface with Tailscale Serve or
 Caddy+ACME where available.
 
+To hand a token to a phone by scanning instead of pasting, see
+[Device pairing (QR)](pairing.md).
+
 Related: [Running the daemon](serve.md) · [Reacting to alerts](reactive.md).

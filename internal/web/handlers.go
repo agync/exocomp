@@ -139,8 +139,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 // handleSystem renders the control plane's view of itself: version + Litestream
 // RPO and backup freshness (moved off the dashboard and the powerline).
 func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
-	vm := systemVM{Page: s.pageFor(r, "System", "system")}
+	ident, _ := identityOf(r.Context())
+	vm := systemVM{Page: s.pageFor(r, "System", "system"), Operator: canWrite(ident)}
 	vm.Self = s.selfObs(r.Context())
+	if v, err := s.store.GetSetting(r.Context(), store.SettingPublicURL); err == nil {
+		vm.PublicURL = v
+	}
 
 	backups, err := s.backups(r)
 	if err != nil {

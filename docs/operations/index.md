@@ -22,6 +22,7 @@ Getting an install standing up, and getting it back after it falls over.
 | [Provision → onboard → converge](provision-converge.md) | `exocomp provision run` as one resumable four-step ledger chain — apply, bounded wait for SSH, seeded onboarding, configure play — and the standing `tf:<workspace>` inventory a `schedule --kind play` targets by name |
 | [Sources and credentials](sources.md) | Registering git/host/volume sources, inventories, and the run-secret credential binding; the fleet key, host onboarding, and known_hosts |
 | [LAN access](lan-access.md) | Minting bearer tokens and serving the TLS web + phone-approval surface, separate from the loopback state backend ([ADR 0009](../adr/0009-lan-access-tokens.md)) |
+| [Device pairing (QR)](pairing.md) | The phone-companion pairing payload a QR carries — url, token, fingerprint, scope, name — rendered on the token-result page and by `token new`, plus setting the public URL |
 | [Driving a remote daemon](remote-access.md) | `exocomp login` and `--remote`: TOFU certificate pinning, `--remote`/`EXOCOMP_REMOTE`/`--token` precedence, pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire |
 | [Setup and notifications](notifications.md) | The first-run wizard, the ntfy push transport, the MUTED-vs-PAUSED holds, and the `/metrics` staleness gauges |
 | [The API surface](api.md) | The `/api/v1` read and write routes on the ADR-0009 listener, the wire envelope, idempotency, and the error-code-to-HTTP-status table |

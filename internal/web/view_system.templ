@@ -31,6 +31,24 @@ templ systemPage(vm systemVM) {
 				</div>
 			</section>
 
+			<section class="card span2" aria-labelledby="pub-h">
+				<h3 id="pub-h">Public URL</h3>
+				<p class="meta">The base URL a phone companion dials, and the root of an approval link. It seeds the pairing QR on the tokens page; when unset, pairing falls back to the address the browser reached this page on.</p>
+				if vm.PublicURL != "" {
+					<p>Current: <span class="mono">{ vm.PublicURL }</span></p>
+				} else {
+					<p class="meta">Not set. <code>exocomp serve --public-url</code> also sets this.</p>
+				}
+				if vm.Operator {
+					<form method="post" action="/system/public-url" class="writeform">
+						<label for="pub-url">Public URL</label>
+						<input id="pub-url" name="url" type="url" required autocomplete="off" placeholder="https://exocomp.example.ts.net" value={ vm.PublicURL }/>
+						<div class="actions"><button type="submit" class="btn primary">Save</button></div>
+					</form>
+					<p class="meta"><code>exocomp serve --public-url</code> also sets this.</p>
+				}
+			</section>
+
 			<section class="card span2" aria-labelledby="backups-h">
 				<h3 id="backups-h">Backups</h3>
 				if len(vm.Backups) == 0 {

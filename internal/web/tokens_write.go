@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -35,11 +36,15 @@ type tokenRow struct {
 }
 
 // tokenResultVM shows a freshly minted or rotated secret once. Secret is the
-// only place a token plaintext exists on this surface.
+// only place a token plaintext exists on this surface. BaseURL and QRSVG carry
+// the device-pairing view: the QR encodes the same token, so it is as sensitive
+// as Secret and equally never logged or persisted past this render.
 type tokenResultVM struct {
 	Page                                 page
 	Rotated                              bool
 	Name, Scope, Secret, Expires, Finger string
+	BaseURL                              string
+	QRSVG                                string
 }
 
 func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
@@ -72,17 +77,36 @@ func (s *Server) handleTokenNew(w http.ResponseWriter, r *http.Request) {
 		s.render(w, r, http.StatusOK, tokensReauthNotice(s.pageFor(r, "Tokens", "tokens")))
 		return
 	}
-	name := r.PostFormValue("name")
+	name := strings.TrimSpace(r.PostFormValue("name"))
 	scope := formScope(r)
 	expires, err := formExpires(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	secret, row, err := MintToken(r.Context(), s.store, name, scope, expires)
-	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a token named "+name+" already exists; rotate it instead, or pick another name", http.StatusConflict)
-		return
+	// A blank name is a device pairing: auto-generate a friendly unique name,
+	// retrying on a racing duplicate. A supplied name mints once and reports a
+	// collision, unchanged.
+	autogen := name == ""
+	var secret string
+	var row store.APIToken
+	for attempt := 0; ; attempt++ {
+		want := name
+		if autogen {
+			if want, err = s.autoDeviceName(r.Context()); err != nil {
+				s.fail(w, r, err)
+				return
+			}
+		}
+		secret, row, err = MintToken(r.Context(), s.store, want, scope, expires)
+		if errors.Is(err, store.ErrDuplicate) {
+			if autogen && attempt < 4 {
+				continue
+			}
+			http.Error(w, "a token named "+want+" already exists; rotate it instead, or pick another name", http.StatusConflict)
+			return
+		}
+		break
 	}
 	if err != nil {
 		s.fail(w, r, err)
@@ -147,10 +171,17 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) renderTokenResult(w http.ResponseWriter, r *http.Request, row store.APIToken, secret string, rotated bool) {
+	base := s.publicBaseURL(r)
+	_, qr, err := s.pairingSVG(base, secret, row.Scope, row.Name)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	vm := tokenResultVM{
 		Page: s.pageFor(r, "Tokens", "tokens"), Rotated: rotated,
 		Name: row.Name, Scope: row.Scope, Secret: secret, Finger: s.fingerprint,
 		Expires: stampOrDashWeb(row.ExpiresAt),
+		BaseURL: base, QRSVG: qr,
 	}
 	s.render(w, r, http.StatusOK, tokenResult(vm))
 }

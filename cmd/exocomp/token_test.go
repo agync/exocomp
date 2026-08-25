@@ -77,6 +77,36 @@ func TestTokenNewListRevoke(t *testing.T) {
 	}
 }
 
+func TestTokenNewPrintsPairingQR(t *testing.T) {
+	initForToken(t)
+
+	out, _, err := runToken(t, "new", "pixel-8", "--scope", "operator")
+	if err != nil {
+		t.Fatalf("token new: %v", err)
+	}
+	if !strings.Contains(out, "Scan to pair a device") {
+		t.Fatalf("token new did not offer a pairing QR:\n%s", out)
+	}
+	// The half-block QR must actually render module glyphs, not just a caption.
+	if !strings.ContainsAny(out, "█▀▄") {
+		t.Fatalf("pairing QR block is empty:\n%s", out)
+	}
+	for _, want := range []string{"url:", "fingerprint:", "scope:", "name:", "pixel-8"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("pairing summary missing %q:\n%s", want, out)
+		}
+	}
+
+	// --qr=false suppresses the QR while still minting.
+	out, _, err = runToken(t, "new", "other", "--qr=false")
+	if err != nil {
+		t.Fatalf("token new --qr=false: %v", err)
+	}
+	if strings.Contains(out, "Scan to pair a device") {
+		t.Fatalf("--qr=false still printed a QR:\n%s", out)
+	}
+}
+
 func TestTokenNewRejectsBadScope(t *testing.T) {
 	initForToken(t)
 	if _, _, err := runToken(t, "new", "x", "--scope", "root"); err == nil {

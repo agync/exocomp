@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/pairing"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/web"
 	"exocomp.dev/exocomp/internal/wire"
@@ -33,10 +34,11 @@ func newTokenCmd() *cobra.Command {
 func newTokenNewCmd() *cobra.Command {
 	var scope string
 	var expires time.Duration
+	var showQR bool
 
 	cmd := &cobra.Command{
 		Use:   "new <name>",
-		Short: "Mint a token and print it once",
+		Short: "Mint a token and print it once, with a pairing QR",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
@@ -79,6 +81,12 @@ func newTokenNewCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(out, "expires %s\n", row.ExpiresAt.Format(time.RFC3339))
 			}
 			_, _ = fmt.Fprintf(out, "certificate SHA-256 (pin this on first connect):\n  %s\n", fingerprint)
+
+			if showQR {
+				if err := printPairingQR(cmd, st, token, row, fingerprint); err != nil {
+					return err
+				}
+			}
 			return nil
 		},
 	}
@@ -86,7 +94,44 @@ func newTokenNewCmd() *cobra.Command {
 		"token scope: operator, readonly, or approve")
 	cmd.Flags().DurationVar(&expires, "expires", 0,
 		"how long the token is valid (0: never expires)")
+	cmd.Flags().BoolVar(&showQR, "qr", true,
+		"print a scannable pairing QR for the phone companion (--qr=false to omit)")
 	return cmd
+}
+
+// pairURLPlaceholder stands in the pairing payload when daemon.public_url is
+// unset: the QR still encodes, and the operator edits the host after scanning.
+const pairURLPlaceholder = "https://EXOCOMP-PUBLIC-URL-NOT-SET"
+
+// printPairingQR renders the same device-pairing payload the web result page
+// shows as a scannable terminal QR plus the essentials in text. The payload
+// carries the token, so it is never logged — only written to the command's
+// output for the operator at the keyboard.
+func printPairingQR(cmd *cobra.Command, st *store.Store, token string, row store.APIToken, fingerprint string) error {
+	base, err := st.GetSetting(cmd.Context(), store.SettingPublicURL)
+	unset := false
+	if errors.Is(err, store.ErrNotFound) || base == "" {
+		base, unset = pairURLPlaceholder, true
+	} else if err != nil {
+		return fmt.Errorf("token new: %w", err)
+	}
+
+	p := pairing.New(base, token, fingerprint, row.Scope, row.Name)
+	qr, err := p.Terminal()
+	if err != nil {
+		return fmt.Errorf("token new: %w", err)
+	}
+
+	out := cmd.OutOrStdout()
+	_, _ = fmt.Fprintf(out, "\nScan to pair a device (%s scope):\n\n%s\n", row.Scope, qr)
+	_, _ = fmt.Fprintf(out, "  url:         %s\n", base)
+	if unset {
+		_, _ = fmt.Fprintln(out, "               (daemon.public_url unset — set it with `exocomp serve --public-url` or on /system)")
+	}
+	_, _ = fmt.Fprintf(out, "  fingerprint: %s\n", fingerprint)
+	_, _ = fmt.Fprintf(out, "  scope:       %s\n", row.Scope)
+	_, _ = fmt.Fprintf(out, "  name:        %s\n", row.Name)
+	return nil
 }
 
 func newTokenListCmd() *cobra.Command {

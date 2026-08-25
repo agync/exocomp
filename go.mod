@@ -15,6 +15,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/google/cel-go v0.31.0
 	github.com/robfig/cron/v3 v3.0.1
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	go.yaml.in/yaml/v3 v3.0.4

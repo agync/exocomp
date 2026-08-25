@@ -20,14 +20,14 @@ templ tokensPage(vm tokensVM) {
 				<p class="meta">Token management needs an operator-scoped token.</p>
 			</div>
 		} else {
-			@modal("tokens-mint", "Mint a token") {
-				<p class="meta">The secret is shown once. Confirm with your own access token.</p>
+			@modal("tokens-mint", "Pair a device / mint a token") {
+				<p class="meta">The secret is shown once, with a QR to pair a phone. Confirm with your own access token.</p>
 				<form method="post" action="/tokens/new" class="writeform">
-					<label for="tk-name">Name</label>
-					<input id="tk-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="tk-name">Device name (optional)</label>
+					<input id="tk-name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9._-]+" placeholder="e.g. pixel-8 — blank to auto-generate"/>
 					<label for="tk-scope">Scope</label>
 					<select id="tk-scope" name="scope">
-						<option value="operator">operator</option>
+						<option value="operator" selected>operator</option>
 						<option value="readonly">readonly</option>
 						<option value="approve">approve</option>
 					</select>
@@ -96,11 +96,16 @@ templ tokenResult(vm tokenResultVM) {
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">Copy it now — it is not shown again</div>
 			<h3>{ vm.Name } · scope { vm.Scope }</h3>
-			<pre class="secretbox" aria-label="new token">{ vm.Secret }</pre>
+			@codeblock("new token", vm.Secret)
 			if vm.Expires != "—" {
 				<p class="meta">expires { vm.Expires }</p>
 			}
 			<p class="fingerprint">certificate SHA-256<br/>{ vm.Finger }</p>
+		</div>
+		<div class="card span2">
+			<h3>Scan to pair a device</h3>
+			<div class="pairqr">@templ.Raw(vm.QRSVG)</div>
+			<p class="meta">The code carries: this control plane's URL ({ vm.BaseURL }), the token above, the certificate fingerprint, and the { vm.Scope } scope. Anyone who scans it holds the token — treat it like the secret.</p>
 			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
 		</div>
 	}

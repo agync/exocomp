@@ -429,6 +429,17 @@ td .btn {
 .copybtn.copied .copy-i { display: none; }
 .copybtn.copied .copy-ok { display: block; }
 
+/* The pairing QR always renders dark modules on a white backing so a phone
+ * camera reads it in either page theme; the surrounding card adapts. currentColor
+ * (the module fill) resolves to the dark ink set here. */
+.pairqr {
+  display: inline-block; line-height: 0; margin: 4px 0 12px;
+  background: #ffffff; color: #0b0b0c;
+  padding: 12px; border-radius: var(--radius-chip);
+  border: 1px solid var(--hairline-faint);
+}
+.pairqr svg { display: block; width: 180px; height: 180px; }
+
 /* ---- Page header + add button ----
  * The compact "+" affordance that sits beside a list surface's <h1> and opens
  * that surface's add-form modal (moved out of an always-visible inline card). */

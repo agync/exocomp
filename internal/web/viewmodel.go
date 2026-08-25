@@ -51,9 +51,11 @@ type dashboardVM struct {
 // freshness. Both moved off the glance dashboard (and the version off the
 // powerline) so the dashboard stays the managed-estate view.
 type systemVM struct {
-	Page    page
-	Self    selfObs
-	Backups []backupRow
+	Page      page
+	Self      selfObs
+	Backups   []backupRow
+	Operator  bool
+	PublicURL string // daemon.public_url, "" when unset
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
