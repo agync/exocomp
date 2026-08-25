@@ -147,7 +147,7 @@ templ sourcesList(vm sourcesVM) {
 						<tbody>
 							for _, sc := range vm.Sources {
 								<tr>
-									<td data-label="Source">{ sc.Name }</td>
+									<td data-label="Source"><a href={ templ.SafeURL("/sources/" + sc.Name) }>{ sc.Name }</a></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono wrap" data-label="URI">{ orDash(sc.URI) }</td>
 									<td class="mono wrap" data-label="Ref">{ orDash(sc.Ref) }</td>
@@ -156,6 +156,7 @@ templ sourcesList(vm sourcesVM) {
 									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
 									if vm.Operator {
 										<td data-label="Actions">
+											<a class="btn primary" href={ templ.SafeURL("/sources/" + sc.Name) }>Open</a>
 											if sc.Enabled {
 												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/disable") } style="display:inline">
 													<button type="submit" class="btn">Disable</button>

@@ -57,9 +57,7 @@ templ jobDetail(vm jobDetailVM) {
 		if vm.Operator && vm.Job.State.Terminal() {
 			<div class="actions" style="margin:14px 0">
 				if vm.Source != "" {
-					<a class="btn" href={ templ.SafeURL("/run?source=" + urlEscape(vm.Source)) }>Run again</a>
-				} else {
-					<a class="btn" href="/run">Run again</a>
+					<a class="btn" href={ templ.SafeURL("/sources/" + vm.Source) }>Run again</a>
 				}
 				if vm.CanSchedule {
 					<button type="button" class="btn" data-modal-open="job-schedule">Schedule…</button>

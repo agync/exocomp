@@ -363,6 +363,25 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 /* The open modal owns scroll; the page behind it must not also scroll. */
 :root[data-modal-open] body { overflow: hidden; }
 
+/* ---- Source detail: meta chips, key/value, launcher tabs ----
+ * The source detail page (view_source_detail.templ) shows a chip row and a
+ * key/value block in its header, then a tabbed launcher whose Playbook/Command
+ * panels the tab row switches with a few lines of vanilla JS (hidden toggling +
+ * aria-selected), mirroring the theme toggle's house style. */
+.detailmeta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.kv { margin: 0; display: grid; gap: 10px; }
+.kv > div { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.kv dt { flex: none; min-width: 5rem; color: var(--ink-400); font: var(--type-button); }
+.kv dd { margin: 0; color: var(--ink-200); }
+.tabs { display: flex; gap: 4px; margin: 14px 0 4px; border-bottom: 1px solid var(--hairline-faint); }
+.tab {
+  padding: 8px 14px; background: transparent; color: var(--ink-400);
+  border: none; border-bottom: 2px solid transparent; cursor: pointer;
+  font: var(--type-button); margin-bottom: -1px;
+}
+.tab:hover { color: var(--ink-100); }
+.tab[aria-selected="true"] { color: var(--accent-text); border-bottom-color: var(--accent-fill); }
+
 /* ---- Log tail ---- */
 .log {
   background: var(--surface-void); border: 1px solid var(--hairline);

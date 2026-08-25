@@ -181,8 +181,8 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	opClient := login(t, ts.URL, op)
 	_, body := getBody(t, opClient, ts.URL+"/jobs/"+itoa64(job.ID))
-	if !strings.Contains(body, `href="/run"`) {
-		t.Error("operator's job detail must show a Run again link")
+	if strings.Contains(body, "Run again") {
+		t.Error("a job with no source has nowhere to relaunch — no Run again link")
 	}
 	if !strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("operator's job detail must show a Schedule… trigger")
@@ -234,8 +234,8 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	if strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("a source-context job must not offer Schedule…")
 	}
-	if !strings.Contains(body, `href="/run?source=tree"`) {
-		t.Error("Run again must scope to the reverse-mapped source")
+	if !strings.Contains(body, `href="/sources/tree"`) {
+		t.Error("Run again must link to the reverse-mapped source's launcher")
 	}
 }
 

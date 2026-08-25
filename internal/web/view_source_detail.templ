@@ -1,0 +1,139 @@
+package web
+
+// sourceDetail is a single source's page: a read-only header (kind, writable
+// posture, trust, ref, last sync) everyone sees, and — for an operator — a
+// launcher card with a Playbook | Command tab pair. Both tabs POST to a
+// source-scoped run route (/sources/{name}/run/*), so every browser run reads
+// from a registered source's own tree. The tabs are switched by a few lines of
+// vanilla JS (hidden toggling + aria-selected); the server picks the first tab
+// and prefills the playbook from the query string, so the page is deep-linkable
+// (?tab=playbook&playbook=site.yml). With JS off the deep-linked tab is the one
+// shown, which is still a usable launcher.
+templ sourceDetail(vm sourceDetailVM) {
+	@layout(vm.Page) {
+		<div class="pageheader">
+			<h1>{ vm.Source.Name }</h1>
+			<a class="btn" href="/sources">All sources</a>
+		</div>
+		<div class="card span2" style="margin-top:18px">
+			<div class="detailmeta">
+				<span class="chip"><span class="dot"></span>{ vm.Source.Kind }</span>
+				if vm.Source.Kind == "path" {
+					if vm.Writable {
+						<span class="chip"><span class="dot"></span>WRITABLE</span>
+					} else {
+						<span class="chip dim"><span class="dot"></span>READ-ONLY</span>
+					}
+				}
+				@signedChip(vm.Source)
+				@enabledChip(vm.Source.Enabled)
+			</div>
+			<dl class="kv">
+				<div><dt>URI</dt><dd class="mono wrap">{ orDash(vm.Source.URI) }</dd></div>
+				<div><dt>Ref</dt><dd class="mono">{ orDash(vm.Source.Ref) }</dd></div>
+				<div><dt>Last sync</dt><dd class="mono">{ orDash(vm.Source.Short()) }</dd></div>
+			</dl>
+		</div>
+		if !vm.Operator {
+			<div class="card span2" style="margin-top:18px">
+				<div class="kicker">Read-only</div>
+				<h3>Launch a run</h3>
+				<p class="meta">Enqueuing a run from this source needs an operator-scoped token.</p>
+			</div>
+		} else {
+			<div class="card span2" style="margin-top:18px">
+				<h3>Launch a run</h3>
+				<p class="meta">Resolves the playbook against this source's checkout (loading its ./ansible.cfg), then enqueues through the one queue.</p>
+				<div class="tabs" role="tablist" aria-label="Launcher">
+					<button
+						type="button"
+						class="tab"
+						id="tab-playbook"
+						role="tab"
+						data-tab="playbook"
+						aria-controls="panel-playbook"
+						aria-selected={ boolAttr(vm.Tab == "playbook") }
+					>Playbook</button>
+					<button
+						type="button"
+						class="tab"
+						id="tab-command"
+						role="tab"
+						data-tab="command"
+						aria-controls="panel-command"
+						aria-selected={ boolAttr(vm.Tab == "command") }
+					>Command</button>
+				</div>
+				<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
+					<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook") } class="writeform">
+						<label for="rp-select">Playbook</label>
+						<select id="rp-select" name="playbook">
+							<option value="">— choose a discovered playbook —</option>
+							for _, pb := range vm.Playbooks {
+								if vm.PlaybookKnown() && pb == vm.Playbook {
+									<option value={ pb } selected>{ pb }</option>
+								} else {
+									<option value={ pb }>{ pb }</option>
+								}
+							}
+							<option value="__other__">other path…</option>
+						</select>
+						if len(vm.Playbooks) == 0 {
+							<p class="meta">No playbooks discovered in the checkout (an unsynced source, or an unusual layout). Use the path below.</p>
+						}
+						<label for="rp-path">Or a path relative to the checkout</label>
+						<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
+						<label for="rp-inventory">Inventory</label>
+						<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
+						<label for="rp-limit">Limit</label>
+						<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
+						<label for="rp-tags">Tags</label>
+						<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
+						<label for="rp-secrets">Run secrets binding</label>
+						<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
+						<label class="checkline"><input type="checkbox" name="check" value="1"/> check mode (dry run)</label>
+						<label class="checkline"><input type="checkbox" name="diff" value="1"/> show diff</label>
+						<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
+						<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+						<div class="actions"><button type="submit" class="btn primary">Run playbook</button></div>
+					</form>
+				</div>
+				<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
+					<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/command") } class="writeform">
+						<label for="rc-host">Host pattern</label>
+						<input id="rc-host" name="host" type="text" required autocomplete="off" placeholder="web or fedora:!nas"/>
+						<label for="rc-command">Command</label>
+						<input id="rc-command" name="command" type="text" required autocomplete="off" placeholder="systemctl status nginx"/>
+						<label class="checkline"><input type="checkbox" name="shell" value="1"/> run through the shell module (pipes/redirects)</label>
+						<label class="checkline"><input type="checkbox" name="become" value="1"/> become (privilege escalation)</label>
+						<label for="rc-inventory">Inventory</label>
+						<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
+						<label for="rc-secrets">Run secrets binding</label>
+						<input id="rc-secrets" name="run_secrets" type="text" autocomplete="off"/>
+						<label class="checkline"><input type="checkbox" name="require_approval" value="1"/> require approval before it runs</label>
+						<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>
+						<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+						<div class="actions"><button type="submit" class="btn primary">Run command</button></div>
+					</form>
+				</div>
+				<script>
+				(function () {
+					var tabs = Array.prototype.slice.call(document.querySelectorAll('.tabs [role="tab"]'));
+					if (tabs.length === 0) return;
+					function select(key) {
+						tabs.forEach(function (t) {
+							var on = t.getAttribute("data-tab") === key;
+							t.setAttribute("aria-selected", on ? "true" : "false");
+							var panel = document.getElementById(t.getAttribute("aria-controls"));
+							if (panel) panel.hidden = !on;
+						});
+					}
+					tabs.forEach(function (t) {
+						t.addEventListener("click", function () { select(t.getAttribute("data-tab")); });
+					});
+				})();
+				</script>
+			</div>
+		}
+	}
+}
