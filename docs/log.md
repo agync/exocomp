@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-26 — UnifiedPush per-device push endpoints
+
+- New v1.1 push path: a device registers its UnifiedPush distributor URL over
+  `POST/GET/DELETE /api/v1/notify/endpoints` (operator write; register/delete scoped to the
+  owning token). New `push_endpoint` store table + CRUD (migration 0028), `wire.PushEndpointView`
+  (`notify.endpoint`), and a store-backed `notify.UnifiedPush` transport wired into the serve-path
+  Notifier alongside ntfy/goalert.
+- The endpoint URL is client-supplied and the daemon POSTs to it, so SSRF is guarded in two layers:
+  registration rejects non-https/credentialed/private-resolving URLs (`400`), and the transport's
+  HTTP client dials through a `net.Dialer.Control` hook that re-checks the actual connected IP —
+  the layer that defeats DNS rebinding. Added to threat-model as T16.
+
 ## 2026-08-25 — per-run privileged (unsandboxed) tier option
 
 - **A single run can now opt out of the job sandbox.** `--privileged` on the run verbs

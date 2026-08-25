@@ -188,6 +188,32 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
 - **Hook allowlist behind proxy —** the `--hook-allow` CIDR allowlist is nullified behind a
   reverse proxy that sets X-Forwarded-For. Documented limitation.
 
+## Outbound push endpoints (SSRF)
+
+A device registers the URL of its UnifiedPush distributor over `POST /api/v1/notify/endpoints`
+and the daemon POSTs each approval/job notification to it. The destination is **client-supplied**
+and the daemon is the one making the request, so a registered endpoint is a server-side request
+forgery vector: pointed at an internal address it would turn the daemon into a proxy for the LAN,
+the loopback listeners (the daemon's own API, `/metrics`), or the cloud instance-metadata service.
+
+| id | threat | mitigation in place |
+|---|---|---|
+| T16 | A registered push endpoint names an internal address (loopback, RFC1918/ULA, link-local, `169.254.169.254`), so the daemon's own POST reaches a service the registrant cannot reach directly — SSRF, including via DNS rebinding after registration. | Two independent layers. **Registration:** the URL must be `https`, carry no credentials, and its host must resolve *exclusively* to public addresses; a literal private IP or a hostname that resolves to loopback/private/link-local/ULA/metadata/multicast/unspecified/broadcast is refused `400` before any row is stored. **Send time (load-bearing):** the transport's HTTP client dials through a `net.Dialer.Control` hook that re-checks the **actual connected IP** against the same deny-list and refuses the socket — so a name re-pointed at a private address *after* registration (rebinding) is still blocked, because the check is on the address dialed, not the name stored. Per-token endpoint caps bound outbound fan-out; a `404`/`410` self-prunes the endpoint; per-endpoint failures are isolated. |
+
+Why a registered endpoint cannot make the daemon reach internal services: the registration check
+stops the obvious literals and the current resolution, and the dial-time check stops everything the
+registration check cannot — a TTL-0 record that resolves public once (to pass registration) and
+private thereafter never gets a socket, because `Control` runs on the concrete post-resolution IP of
+every connection attempt, registration-time or not.
+
+**Accepted residuals.**
+
+- **Public-but-sensitive destinations —** the deny-list is address-class based (private/loopback/
+  link-local/metadata), not a destination allowlist, so a registered endpoint may still point at any
+  *public* host. The body carried is the same values-free notification the other transports send (a
+  title, a deep link, non-sensitive tags — never a plan, a secret, or a decision token), so the blast
+  radius of a hostile-but-public endpoint is a spurious push, not a disclosure.
+
 ## Backup and recovery
 
 Backups must not let an attacker downgrade an authenticated target to an unauthenticated one.

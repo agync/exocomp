@@ -74,6 +74,7 @@ GET /api/v1/schedules
 GET /api/v1/rules
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
+GET /api/v1/notify/endpoints                     # this token's own registered push endpoints
 GET /api/v1/events?source=&outcome=&limit=
 GET /api/v1/events/summary                     # funnel counts by outcome, all-time
 GET /api/v1/events/{id}
@@ -132,6 +133,8 @@ POST /api/v1/maintenance/uncordon               # lift the cordon
 POST   /api/v1/mutes                            # hold notifications for a scope
 DELETE /api/v1/mutes/{id}                       # lift a mute before it expires
 POST   /api/v1/jobs/{id}/notify                 # page once when the job goes terminal
+POST   /api/v1/notify/endpoints                 # register a UnifiedPush endpoint for this token
+DELETE /api/v1/notify/endpoints/{id}            # unregister one of this token's endpoints
 ```
 
 `POST /jobs/{id}/notify` arms a one-shot, attributed page: the daemon notifies once when the
@@ -154,6 +157,26 @@ the future) is required — the store refuses a mute with no future expiry. The 
 one `mute.get` object `{id, scope_kind, scope_value, reason, created_via, expires_at}`; the
 delete returns `204`, and an unknown id is `404`. Both writes are `operator`-scoped (a
 bearer, not a browser session); `GET /mutes` is readable by any authed token.
+
+`POST /notify/endpoints` registers the URL of a device's UnifiedPush distributor so the daemon
+delivers approvals and job pages to it; the body is `{endpoint, label?}`. The create returns one
+`notify.endpoint` object `{id, endpoint, label?, created_at}` — no token material is echoed. `GET
+/notify/endpoints` lists the caller's own endpoints, and `DELETE /notify/endpoints/{id}` unregisters
+one; both are scoped to the registering token, so a device sees and drops only what it registered
+(an id owned by another token reads as `404`, never a cross-device probe or drop). An unknown id is a
+`404`, and a token at its endpoint cap gets a `409`. Registration and deletion are `operator`-scoped
+(a bearer, not a browser session), matching the other writes.
+
+The endpoint URL is **client-supplied and the daemon POSTs to it**, so it is guarded against SSRF in
+two layers. At registration the URL must be `https`, must not carry credentials, and its host must
+resolve **exclusively** to public addresses — any host (literal or DNS) that resolves to loopback, an
+RFC1918/ULA private range, link-local (`169.254/16`, `fe80::/10`), the cloud metadata address
+(`169.254.169.254`), a multicast, or the unspecified/broadcast address is a `400`. At send time the
+transport dials through a `net.Dialer.Control` hook that re-checks the **actual connected IP** against
+the same deny-list and refuses the socket — the check registration alone cannot make, because DNS can
+be re-pointed at a private address after the URL is stored (rebinding). A distributor that answers
+`404`/`410` has dropped the subscription, so the endpoint self-prunes; other per-endpoint failures are
+isolated and recorded on the row, never blocking the other endpoints or the other transports.
 
 The `maintenance/*` routes drive a planned-reboot drain ([Draining for a planned
 reboot](drain-mode.md)): `cordon`/`uncordon` are `operator`-scoped and are **not** enqueues —
