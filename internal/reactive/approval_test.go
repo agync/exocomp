@@ -3,6 +3,9 @@ package reactive_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -103,6 +106,59 @@ func TestApprovalHappyPath(t *testing.T) {
 	}
 	if released.State != store.StateQueued {
 		t.Fatalf("approved job is %s, want queued", released.State)
+	}
+}
+
+// TestApprovalNotificationCarriesClickAndTags pins the structured extras a
+// subscriber renders from instead of parsing the capability action URL: a
+// deep link naming only the approval id, and tags naming the id and how long
+// is left. The single-use decision token lives only in the Actions' URLs, and
+// must never leak into either.
+func TestApprovalNotificationCarriesClickAndTags(t *testing.T) {
+	t.Parallel()
+
+	h := newHarness(t, harnessOptions{approvalTTL: 30 * time.Minute})
+	h.addRule(t, gatedRule("restart"))
+	_, approval, _ := h.gate(t, "DiskFull", "web-01")
+
+	if len(h.sent.sent) != 1 {
+		t.Fatalf("sent %d notifications, want 1", len(h.sent.sent))
+	}
+	note := h.sent.sent[0]
+
+	wantClick := fmt.Sprintf("exocomp://approvals/%d", approval.ID)
+	if note.Click != wantClick {
+		t.Fatalf("click = %q, want %q", note.Click, wantClick)
+	}
+
+	wantIDTag := fmt.Sprintf("id:%d", approval.ID)
+	if !slices.Contains(note.Tags, wantIDTag) {
+		t.Fatalf("tags = %v, want %q", note.Tags, wantIDTag)
+	}
+	if !slices.ContainsFunc(note.Tags, func(tag string) bool { return strings.HasPrefix(tag, "ttl:") }) {
+		t.Fatalf("tags = %v, want a ttl:<seconds> tag", note.Tags)
+	}
+
+	if len(note.Actions) != 2 {
+		t.Fatalf("actions = %d, want approve and reject", len(note.Actions))
+	}
+	for _, action := range note.Actions {
+		u, err := url.Parse(action.URL)
+		if err != nil {
+			t.Fatalf("parse action url %q: %v", action.URL, err)
+		}
+		token := u.Query().Get("t")
+		if token == "" {
+			t.Fatalf("action url %q carries no capability token to check against", action.URL)
+		}
+		if strings.Contains(note.Click, token) {
+			t.Fatalf("click %q leaks the capability token", note.Click)
+		}
+		for _, tag := range note.Tags {
+			if strings.Contains(tag, token) {
+				t.Fatalf("tag %q leaks the capability token", tag)
+			}
+		}
 	}
 }
 

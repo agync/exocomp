@@ -121,7 +121,8 @@ func jobFailedNotification(job store.Job, host, lastErr string) notify.Notificat
 		Title:    "job failed: " + name,
 		Body:     body,
 		Priority: notify.PriorityHigh,
-		Tags:     []string{"rotating_light"},
+		Tags:     []string{"rotating_light", fmt.Sprintf("id:%d", job.ID), "kind:job"},
+		Click:    fmt.Sprintf("exocomp://jobs/%d", job.ID),
 		Source:   job.Runbook,
 		Host:     host,
 	}

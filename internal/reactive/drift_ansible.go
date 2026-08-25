@@ -186,7 +186,7 @@ func (e *Engine) latestOpenAnsibleDrift(ctx context.Context, subject string) (op
 // clean. It pages the resolve first, then writes the checkpoint — the same trade
 // clearDrift makes on the tofu side.
 func (e *Engine) clearAnsibleDrift(ctx context.Context, subject string, openJobID int64, cleanJob store.Job) error {
-	e.notify(ctx, ansibleDriftClearedNotification(subject))
+	e.notify(ctx, ansibleDriftClearedNotification(subject, cleanJob))
 
 	_, err := e.store.CreateEvent(ctx, store.Event{
 		Source:     SourceDrift,
@@ -242,7 +242,8 @@ func ansibleDriftOpenNotification(subject string, job store.Job,
 		Body: fmt.Sprintf("Check %d found %d task(s) that would change on %s.",
 			job.ID, changedTasks(o), strings.Join(driftedHosts(o), ", ")),
 		Priority: notify.PriorityHigh,
-		Tags:     []string{"warning"},
+		Tags:     []string{"warning", fmt.Sprintf("id:%d", job.ID), "kind:drift"},
+		Click:    fmt.Sprintf("exocomp://jobs/%d", job.ID),
 		Source:   SourceDrift,
 		Host:     subject,
 	}
@@ -250,11 +251,17 @@ func ansibleDriftOpenNotification(subject string, job store.Job,
 
 // ansibleDriftClearedNotification is the resolve: Resolved with the opening
 // page's exact identity, so GoAlert closes the incident the drift opened.
-func ansibleDriftClearedNotification(subject string) notify.Notification {
+// cleanJob is the check that found nothing to change; a play has no
+// standalone resource of its own to link to, so the click names the check
+// that cleared it, the same as the open notification names the one that
+// raised it.
+func ansibleDriftClearedNotification(subject string, cleanJob store.Job) notify.Notification {
 	return notify.Notification{
 		Title:    "drift cleared: " + subject,
 		Body:     fmt.Sprintf("A later check found nothing to change on play %s.", subject),
 		Priority: notify.PriorityDefault,
+		Tags:     []string{fmt.Sprintf("id:%d", cleanJob.ID), "kind:drift"},
+		Click:    fmt.Sprintf("exocomp://jobs/%d", cleanJob.ID),
 		Source:   SourceDrift,
 		Host:     subject,
 		Resolved: true,

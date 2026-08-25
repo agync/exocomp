@@ -41,8 +41,17 @@ type Notification struct {
 	Title    string
 	Body     string
 	Priority Priority
-	Tags     []string
-	Actions  []Action
+	// Tags are structured, non-sensitive extras a subscriber renders from
+	// instead of parsing a capability URL: an id, a ttl in seconds, a kind —
+	// alongside any ntfy emoji shortcode a transport also reads them as (e.g.
+	// "warning"). Never a secret, a plan, or the decision token.
+	Tags []string
+	// Click is the deep link a subscriber opens on tap of the notification
+	// itself, e.g. "exocomp://approvals/42" or "exocomp://jobs/7". Like Tags
+	// it names only a non-sensitive identifier — never the capability action
+	// URL an Action carries, which is a single-use bearer token.
+	Click   string
+	Actions []Action
 	// Source and Host attribute the notification so a scoped mute can hold it.
 	// They are optional: an unattributed notification is held only by a global
 	// mute, never by an alert- or host-scoped one.

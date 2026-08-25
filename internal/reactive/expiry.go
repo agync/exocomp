@@ -65,7 +65,7 @@ func (e *Engine) SweepSecretExpiry(ctx context.Context) (int, error) {
 			continue
 		}
 
-		e.notify(ctx, secretExpiryNotification(sec, phase))
+		e.notify(ctx, secretExpiryNotification(sec, phase, now))
 
 		// The checkpoint row is written after the page, so a crash between the
 		// two re-pages once on the next sweep — louder than a lost alert, the
@@ -107,14 +107,19 @@ func secretExpiryDedupKey(phase, name string, expiresAt time.Time) string {
 // secretExpiryNotification is the page a deadline raises: high priority once the
 // secret has expired, lower for the lead warning, attributed by secret name so a
 // scoped mute can hold it. It names the secret and its deadline, never its value.
-func secretExpiryNotification(sec store.SecretRow, phase string) notify.Notification {
+// now is the sweep's own clock, so the ttl tag reflects the engine's fake clock
+// under test rather than the wall clock.
+func secretExpiryNotification(sec store.SecretRow, phase string, now time.Time) notify.Notification {
 	when := sec.ExpiresAt.UTC().Format("2006-01-02 15:04 UTC")
+	click := fmt.Sprintf("exocomp://secrets/%s", sec.Name)
+	idTag := fmt.Sprintf("id:%s", sec.Name)
 	if phase == expiryPhaseExpired {
 		return notify.Notification{
 			Title:    "secret expired: " + sec.Name,
 			Body:     fmt.Sprintf("Secret %q (%s) expired at %s. Rotate or remove it.", sec.Name, sec.Kind, when),
 			Priority: notify.PriorityHigh,
-			Tags:     []string{"rotating_light"},
+			Tags:     []string{"rotating_light", idTag, "ttl:0", "kind:expiry"},
+			Click:    click,
 			Source:   SourceSecretExpiry,
 			Host:     sec.Name,
 		}
@@ -123,8 +128,21 @@ func secretExpiryNotification(sec store.SecretRow, phase string) notify.Notifica
 		Title:    "secret expiring: " + sec.Name,
 		Body:     fmt.Sprintf("Secret %q (%s) expires at %s. Rotate it before then.", sec.Name, sec.Kind, when),
 		Priority: notify.PriorityLow,
-		Tags:     []string{"hourglass"},
-		Source:   SourceSecretExpiry,
-		Host:     sec.Name,
+		Tags: []string{"hourglass", idTag,
+			fmt.Sprintf("ttl:%d", ttlSeconds(*sec.ExpiresAt, now)), "kind:expiry"},
+		Click:  click,
+		Source: SourceSecretExpiry,
+		Host:   sec.Name,
 	}
+}
+
+// ttlSeconds renders how long is left until deadline, clamped at zero: a
+// notification's ttl tag is never negative even if the sweep is running a
+// beat behind the clock.
+func ttlSeconds(deadline, now time.Time) int64 {
+	left := int64(deadline.Sub(now).Seconds())
+	if left < 0 {
+		return 0
+	}
+	return left
 }

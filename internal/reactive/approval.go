@@ -37,6 +37,19 @@ const SourceApproval = "approval"
 // id, never a hostname or anything the lock-screen contract withholds.
 func approvalHost(a store.Approval) string { return fmt.Sprintf("%d", a.ID) }
 
+// approvalClick is the deep link every notification about one approval opens:
+// an id, nothing more — the same withholding the lock screen already applies
+// to Title and Body (ui-brief, approval surface contract 1).
+func approvalClick(a store.Approval) string {
+	return fmt.Sprintf("exocomp://approvals/%d", a.ID)
+}
+
+// approvalIDTag is the structured id tag every approval notification carries,
+// so a subscriber renders "approval 42" without parsing the capability URL.
+func approvalIDTag(a store.Approval) string {
+	return fmt.Sprintf("id:%d", a.ID)
+}
+
 // Decision is what happened to a decision link.
 type Decision struct {
 	Approval store.Approval
@@ -323,13 +336,18 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 		priority = notify.PriorityMax
 	}
 	left := humanDuration(a.ExpiresAt.Sub(e.now()))
+	ttl := int64(a.ExpiresAt.Sub(e.now()).Seconds())
+	if ttl < 0 {
+		ttl = 0
+	}
 	base := e.base()
 
 	return notify.Notification{
 		Title:    title,
 		Body:     fmt.Sprintf("%s left, then it auto-rejects — open to see what it wants to do.", left),
 		Priority: priority,
-		Tags:     []string{"warning"},
+		Tags:     []string{"warning", approvalIDTag(a), fmt.Sprintf("ttl:%d", ttl), "kind:approval"},
+		Click:    approvalClick(a),
 		Actions: []notify.Action{
 			{Label: "Approve", URL: DecisionURL(base, a.ID, DecisionApprove, token)},
 			{Label: "Reject", URL: DecisionURL(base, a.ID, DecisionReject, token)},
@@ -348,6 +366,8 @@ func decidedNotification(a store.Approval, outcome string) notify.Notification {
 		Title:    "Approval " + outcome,
 		Body:     fmt.Sprintf("Approval %d was %s via %s.", a.ID, outcome, a.DecidedVia),
 		Priority: notify.PriorityDefault,
+		Tags:     []string{approvalIDTag(a), "kind:approval"},
+		Click:    approvalClick(a),
 		Source:   SourceApproval,
 		Host:     approvalHost(a),
 		Resolved: true,
@@ -359,7 +379,8 @@ func expiredNotification(a store.Approval) notify.Notification {
 		Title:    "Approval expired",
 		Body:     fmt.Sprintf("Approval %d ran out its window and was rejected. Nothing was applied.", a.ID),
 		Priority: notify.PriorityHigh,
-		Tags:     []string{"hourglass"},
+		Tags:     []string{"hourglass", approvalIDTag(a), "kind:approval"},
+		Click:    approvalClick(a),
 		Source:   SourceApproval,
 		Host:     approvalHost(a),
 		Resolved: true,
@@ -371,6 +392,8 @@ func withdrawnNotification(a store.Approval) notify.Notification {
 		Title:    "Approval withdrawn",
 		Body:     fmt.Sprintf("The condition cleared, so approval %d was withdrawn and its job cancelled.", a.ID),
 		Priority: notify.PriorityDefault,
+		Tags:     []string{approvalIDTag(a), "kind:approval"},
+		Click:    approvalClick(a),
 		Source:   SourceApproval,
 		Host:     approvalHost(a),
 		Resolved: true,

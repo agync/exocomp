@@ -14,8 +14,10 @@ import (
 )
 
 type publishRecord struct {
-	auth string
-	body map[string]any
+	auth  string
+	body  map[string]any
+	click string
+	tags  string
 }
 
 func ntfyServer(t *testing.T, status int) (*httptest.Server, *[]publishRecord) {
@@ -30,7 +32,10 @@ func ntfyServer(t *testing.T, status int) (*httptest.Server, *[]publishRecord) {
 		if err := json.Unmarshal(raw, &body); err != nil {
 			t.Errorf("decode publish body %q: %v", raw, err)
 		}
-		seen = append(seen, publishRecord{auth: r.Header.Get("Authorization"), body: body})
+		seen = append(seen, publishRecord{
+			auth: r.Header.Get("Authorization"), body: body,
+			click: r.Header.Get("X-Click"), tags: r.Header.Get("X-Tags"),
+		})
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"id":"abc"}`))
 	}))
@@ -84,6 +89,101 @@ func TestNtfyPublishesTitleActionsAndPriority(t *testing.T) {
 	first, _ := actions[0].(map[string]any)
 	if first["label"] != "Approve" || first["action"] != "view" {
 		t.Fatalf("first action = %v", first)
+	}
+}
+
+// TestNtfyPublishesClickAndTagsHeaders is the deliverable: an approval-shaped
+// notification's deep link and structured extras ride as ntfy's own X-Click
+// and X-Tags headers, alongside the existing JSON body, so a subscriber
+// renders from fields instead of parsing the capability action URL. Neither
+// header may carry the capability token or anything else the action URL
+// alone should hold.
+func TestNtfyPublishesClickAndTagsHeaders(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+
+	const capToken = "approval_capability_secret"
+	err = transport.Publish(context.Background(), notify.Notification{
+		Title:    "1 approval waiting",
+		Body:     "10m left, then it auto-rejects — open to see what it wants to do.",
+		Priority: notify.PriorityHigh,
+		Tags:     []string{"warning", "id:42", "ttl:600", "kind:approval"},
+		Click:    "exocomp://approvals/42",
+		Actions: []notify.Action{
+			{Label: "Approve", URL: "https://exocomp.lan/approval/42/approve?t=" + capToken},
+			{Label: "Reject", URL: "https://exocomp.lan/approval/42/reject?t=" + capToken},
+		},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	if len(*seen) != 1 {
+		t.Fatalf("server saw %d publishes, want 1", len(*seen))
+	}
+	got := (*seen)[0]
+	if got.click != "exocomp://approvals/42" {
+		t.Fatalf("X-Click = %q, want exocomp://approvals/42", got.click)
+	}
+	if !strings.Contains(got.tags, "id:42") || !strings.Contains(got.tags, "ttl:600") {
+		t.Fatalf("X-Tags = %q, want the id and ttl tags", got.tags)
+	}
+	// The existing capability action url must still work: the button is not
+	// removed, only supplemented.
+	actions, ok := got.body["actions"].([]any)
+	if !ok || len(actions) != 2 {
+		t.Fatalf("actions = %v, want the two capability buttons preserved", got.body["actions"])
+	}
+
+	for _, leak := range []string{got.click, got.tags} {
+		if strings.Contains(leak, capToken) {
+			t.Fatalf("structured extras leak the capability token: click=%q tags=%q", got.click, got.tags)
+		}
+	}
+}
+
+// TestNtfyClickAndTagsRideInTerseMode pins that the structured extras are not
+// gated by Detail the way Title and Body are: they carry only non-sensitive
+// identifiers, so an operator who does not trust the relay with any
+// identifying text still gets them, while the free-text body stays generic.
+func TestNtfyClickAndTagsRideInTerseMode(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(), Detail: notify.DetailTerse,
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+
+	err = transport.Publish(context.Background(), notify.Notification{
+		Title:    "1 approval waiting",
+		Body:     "10m left, then it auto-rejects — open to see what it wants to do.",
+		Priority: notify.PriorityHigh,
+		Tags:     []string{"warning", "id:42", "ttl:600"},
+		Click:    "exocomp://approvals/42",
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	got := (*seen)[0]
+	if got.body["title"] != "exocomp" || got.body["message"] != "exocomp: action required" {
+		t.Fatalf("terse push named the condition: title=%v message=%v", got.body["title"], got.body["message"])
+	}
+	if got.click != "exocomp://approvals/42" {
+		t.Fatalf("X-Click = %q, want it to survive terse detail", got.click)
+	}
+	if !strings.Contains(got.tags, "id:42") {
+		t.Fatalf("X-Tags = %q, want the id tag to survive terse detail", got.tags)
 	}
 }
 

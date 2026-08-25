@@ -226,6 +226,17 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 	if n.token != "" {
 		req.Header.Set("Authorization", "Bearer "+n.token)
 	}
+	// X-Click and X-Tags are the structured, machine-readable signal: a
+	// subscriber renders the deep link and the id/ttl tags from these headers
+	// instead of parsing the capability action URL an Action carries. They
+	// carry only non-sensitive identifiers, so unlike Title/Body they are not
+	// gated by Detail — a terse operator still gets them.
+	if note.Click != "" {
+		req.Header.Set("X-Click", note.Click)
+	}
+	if len(note.Tags) > 0 {
+		req.Header.Set("X-Tags", strings.Join(note.Tags, ","))
+	}
 
 	resp, err := n.client.Do(req)
 	if err != nil {

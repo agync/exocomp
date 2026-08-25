@@ -71,7 +71,7 @@ func (e *Engine) latestOpenDrift(ctx context.Context, workspace string) (openJob
 // job in its key so latestOpenDrift sees the incident resolved; it records the
 // clean job that cleared it for the audit trail.
 func (e *Engine) clearDrift(ctx context.Context, workspace string, openJobID int64, cleanJob store.Job) error {
-	e.notify(ctx, driftClearedNotification(workspace))
+	e.notify(ctx, driftClearedNotification(workspace, cleanJob))
 
 	_, err := e.store.CreateEvent(ctx, store.Event{
 		Source:     SourceDrift,
@@ -94,20 +94,32 @@ func driftOpenNotification(workspace string, job store.Job) notify.Notification 
 		Title:    "workspace drifted: " + workspace,
 		Body:     fmt.Sprintf("Plan %d found changes on workspace %s.", job.ID, workspace),
 		Priority: notify.PriorityHigh,
-		Tags:     []string{"warning"},
+		Tags:     []string{"warning", fmt.Sprintf("id:%d", job.ID), "kind:drift"},
+		Click:    driftClick(workspace),
 		Source:   SourceDrift,
 		Host:     workspace,
 	}
 }
 
+// driftClick is the deep link every notification about one workspace's drift
+// opens, matching the workspace-drift resource the MCP surface already
+// exposes (exocomp://workspaces/{name}/drift) — an identifier, never the plan
+// itself.
+func driftClick(workspace string) string {
+	return fmt.Sprintf("exocomp://workspaces/%s/drift", workspace)
+}
+
 // driftClearedNotification is the resolve: Resolved with the opening page's
 // exact identity, so GoAlert closes the incident the drift opened and ntfy gets
-// a terse "drift cleared".
-func driftClearedNotification(workspace string) notify.Notification {
+// a terse "drift cleared". cleanJob is the plan that found nothing to change;
+// it names the notification's id tag.
+func driftClearedNotification(workspace string, cleanJob store.Job) notify.Notification {
 	return notify.Notification{
 		Title:    "drift cleared: " + workspace,
 		Body:     fmt.Sprintf("A later plan found no changes on workspace %s.", workspace),
 		Priority: notify.PriorityDefault,
+		Tags:     []string{fmt.Sprintf("id:%d", cleanJob.ID), "kind:drift"},
+		Click:    driftClick(workspace),
 		Source:   SourceDrift,
 		Host:     workspace,
 		Resolved: true,
