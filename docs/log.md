@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — QR pairing, schedule detail, sidebar logo
+
+- **QR device pairing.** The token-mint result (web) and `exocomp token new` (CLI) render a
+  pairing QR carrying `{v, url, token, fingerprint, scope, name}` — a phone scans it to
+  connect and TOFU-pin the certificate. A shared `internal/pairing` package renders an SVG
+  for the web and a half-block terminal QR for the CLI; the base URL resolves from
+  `daemon.public_url` (set by `serve --public-url` or the System page) else the request
+  host. New [operations/pairing.md](operations/pairing.md) documents the payload contract.
+- **Schedule detail.** A schedule row opens a spec modal — kind, cron, command, target,
+  concurrency key, jitter, enabled, next/last fire, and last outcome.
+- **Sidebar brand mark** is rendered once, in a fixed column centered on the nav-glyph
+  column, so it no longer shifts or resizes between the expanded sidebar and the rail.
+
 ## 2026-08-25 — phone-companion API surface
 
 - **Four new `/api/v1` endpoints** land the mobile handoff: `GET /whoami` reflects the
