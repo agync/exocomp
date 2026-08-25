@@ -10,10 +10,14 @@ package web
 // than stored.
 templ policiesList(vm policiesVM) {
 	@layout(vm.Page) {
-		<h1>Plan policies</h1>
+		<div class="pageheader">
+			<h1>Plan policies</h1>
+			if vm.Operator {
+				@addButton("policies-add", "policy")
+			}
+		</div>
 		if vm.Operator {
-			<div class="card span2" style="margin-top:18px">
-				<h3>Add a policy</h3>
+			@modal("policies-add", "Add a policy") {
 				<p class="meta">Mirrors <code>exocomp policy add</code>: the expression is compiled against the sealed plan (one variable, <code>plan</code>) before the policy is stored — one that cannot decide is refused now rather than failing silently at seal time.</p>
 				<form method="post" action="/policies/add" class="writeform">
 					<label for="pl-name">Name</label>
@@ -29,7 +33,7 @@ templ policiesList(vm policiesVM) {
 					<input id="pl-expr" name="expr" type="text" required autocomplete="off" placeholder="plan.resource_changes.exists(c, c.change.actions.exists(a, a == &#34;delete&#34;))"/>
 					<div class="actions"><button type="submit" class="btn primary">Add policy</button></div>
 				</form>
-			</div>
+			}
 		}
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">CEL gates</div>
