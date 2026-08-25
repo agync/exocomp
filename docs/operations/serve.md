@@ -49,6 +49,19 @@ which is the honest way to run on a kernel without Landlock. Pass `--sandbox opp
 to accept the subprocess boundary on degradation, or `--sandbox disabled` for no sandbox at
 all.
 
+**Per-run privileged override.** The tier above is the daemon's default for every job. One
+run can opt out of the sandbox for itself with `--privileged` (on `playbook run`, `run`,
+`ansible`/`command`, and `run-cli`), or the "Run unsandboxed (privileged)" checkbox on a
+source's web launcher: that one job runs at the `disabled` tier — no kernel policy, full host
+access — even when the daemon default is `enforcing`. It is for trusted, operator-authored
+work that genuinely needs host access, and it is operator-only (the web and API faces refuse
+a readonly or approve token; the local CLI operator is already trusted), off by default, and
+audited: the marker is persisted on the job row, an attributed ledger event records who asked,
+and the queue records the unsandboxed execution. A privileged job can reach the data dir,
+`host.key`, `keyring.age`, and the database, and mint tokens via the local CLI — the same
+trusted-playbook posture the `disabled` tier documents, so never run an untrusted playbook
+privileged (see [security/threat-model.md](../security/threat-model.md)).
+
 The probe is an assertion, not a version check. It stands up a file standing in for
 `host.key`, two listening unix sockets, and a listening loopback TCP port, runs a canary
 inside a sandbox that grants none of them, and requires the refusals.

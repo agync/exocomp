@@ -123,6 +123,20 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   the `opportunistic`→`disabled` degradation is loud in the daemon log and `doctor` but invisible
   to a playbook author, and must be treated as a security-relevant downgrade. Untrusted playbooks
   require the sandboxed tier.
+- **Per-run privileged (unsandboxed) escape hatch —** a single run can opt out of the kernel
+  sandbox for one job (`--privileged` on the run verbs; a "Run unsandboxed (privileged)" checkbox
+  on the source launcher), which runs that job at `TierDisabled` even when the daemon default is
+  `enforcing`. This is the same trusted-playbook posture as a `disabled`-tier daemon, scoped to one
+  job: the privileged job *can* reach the data dir, `host.key`, `keyring.age`, and the database, and
+  can mint tokens via the local CLI. It exists for trusted, operator-authored work that legitimately
+  needs host access, and is gated accordingly — **secure by default** (absent the explicit request
+  nothing changes; the default stays `enforcing`), **operator-scoped only** (the web and API write
+  faces refuse a readonly or approve token by the same operator-scope guard every run passes; the
+  local CLI operator is already trusted), **explicit and loud** (the CLI prints an unsandboxed
+  warning; the web control is a deliberately-warned, non-default checkbox), and **attributed +
+  audited** (the marker is persisted on the job row, an attributed ledger event records who
+  requested it, and the queue records the unsandboxed execution on every path). It never weakens the
+  guard for a non-privileged run. An untrusted playbook must not be run privileged.
 
 ## Reactive engine and approvals
 

@@ -6,6 +6,26 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — per-run privileged (unsandboxed) tier option
+
+- **A single run can now opt out of the job sandbox.** `--privileged` on the run verbs
+  (`playbook run`, `run`, `ansible`/`command`, `run-cli`) and a "Run unsandboxed (privileged)"
+  checkbox on a source's web launcher run one job at the `disabled` tier — no kernel policy,
+  full host access — even when the daemon default is `enforcing`. It is a per-spec override
+  layered on top of the process-global tier resolver, not a change to it: the marker rides the
+  job row's typed `Args` blob (no schema migration), the queue threads it onto the
+  `executor.Spec`, and the three sandboxed drivers honour it by running their plain inner driver
+  instead of wrapping it in nono. A privileged run that also named a `--runner` is refused —
+  caps need the sandbox — never run silently uncapped.
+- **Gated, off by default, audited.** Secure-by-default (absent the flag nothing changes;
+  the default stays `enforcing`). Operator-scoped only: the web and API write faces refuse a
+  readonly or approve token by the same operator-scope guard every run passes; the local CLI
+  operator is already trusted. Loud: the CLI prints an unsandboxed warning, the web control is
+  a deliberately-warned non-default checkbox. Attributed: an enqueue-time ledger event names who
+  asked, and the queue records the unsandboxed execution on every path.
+  [security/threat-model.md](security/threat-model.md) documents the escape hatch and its gating;
+  [operations/serve.md](operations/serve.md) documents the per-run override alongside the tier.
+
 ## 2026-08-25 — `GET /api/v1/events/summary`
 
 - **Event funnel as one object.** Tallies every stored event by outcome —

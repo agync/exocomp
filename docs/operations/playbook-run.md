@@ -42,6 +42,11 @@ granted rather than onto the read-only checkout. A run with no `--source` keeps 
 behavior: it executes in the executor's per-job scratch directory, and ansible discovers
 its own configuration from there.
 
+`--privileged` runs the job **unsandboxed** — the `disabled` tier, full host access — even when
+the daemon default is `enforcing`. It is operator-only, off by default, and audited; use it only
+for trusted, operator-authored work that genuinely needs host access. See the per-run override in
+[serve.md](serve.md) and [security/threat-model.md](../security/threat-model.md).
+
 ## Extra vars, and where their values live
 
 `-e/--extra-var` is repeatable and takes two forms:
