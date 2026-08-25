@@ -6,6 +6,13 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — breadcrumb navigation
+
+- **Back-nav buttons replaced with breadcrumbs.** Source detail, token mint/rotate result,
+  approval decided/expired, source git-key result, and the secrets/sources/tokens reauth
+  notices now show a shared `breadcrumb` trail (`view_layout.templ`) above the page content
+  instead of an inline "back to X" button.
+
 ## 2026-08-25 — `playbook run --source` honors the checkout's ansible.cfg
 
 - **A `--source` playbook run now executes with the checkout as its working directory.**
