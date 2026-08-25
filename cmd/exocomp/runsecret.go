@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,6 +30,20 @@ import (
 // named binding, then the dynamic inventory's env_binding. An operator's explicit
 // binding therefore wins over one an apply or a play produced, the way round that
 // lets them override it.
+// looksLikeAccessToken reports whether v has the shape of an exocomp LAN access
+// token, exo_<id>_<secret> (mirrors the web package's token format). A sealed
+// secret value never legitimately looks like this, so a match means an operator
+// bound the daemon's own credential as a run-secret — which the injection path
+// refuses.
+func looksLikeAccessToken(v string) bool {
+	parts := strings.SplitN(v, "_", 3)
+	if len(parts) != 3 || parts[0] != "exo" || parts[2] == "" {
+		return false
+	}
+	id, err := strconv.ParseInt(parts[1], 10, 64)
+	return err == nil && id > 0
+}
+
 func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelope,
 	binding, inventory string) (executor.RunSecrets, [][]byte, error) {
 	if env == nil || (binding == "" && inventory == "") {
@@ -56,6 +71,14 @@ func resolveRunSecrets(ctx context.Context, st *store.Store, env *secrets.Envelo
 		})
 		if err != nil {
 			return fmt.Errorf("run secret %s: %w", envName, err)
+		}
+		// Refuse to hand a job the daemon's own access token. A value shaped like
+		// exo_<id>_<secret> bound as a run-secret would inject an API credential
+		// into the run's env — a confused-deputy path a sandboxed job could use to
+		// drive the daemon's API (see the threat model). The value itself is never
+		// named in the error (AGENTS.md invariant 4).
+		if looksLikeAccessToken(string(pt)) {
+			return fmt.Errorf("run secret %s -> %s: refusing to inject a value shaped like an exocomp access token; an API token must not be bound as a run-secret", envName, secretName)
 		}
 		out[envName] = string(pt)
 		plaintexts = append(plaintexts, pt)

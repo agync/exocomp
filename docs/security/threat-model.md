@@ -146,7 +146,11 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
   collapses sources; the global ceiling still bounds total KDF memory behind a proxy.
 - **D2 —** sandbox egress is filtered by port, not destination, so a job can reach any host on
   22/443. Accepted for v1 with the posture documented; a destination allowlist is future
-  hardening.
+  hardening. The one combination this would otherwise open — a job reaching the API port and
+  holding a token to drive it — is closed on the credential side: a job receives no access
+  token by default, and the run-secret resolver refuses to inject a sealed value shaped like
+  one (`exo_<id>_<secret>`), so an operator cannot bind the daemon's own credential into a
+  run's env and turn the job into a deputy for the API.
 - **D4 —** the `--hook-allow` CIDR allowlist is nullified behind a reverse proxy that sets
   X-Forwarded-For. Documented limitation.
 
