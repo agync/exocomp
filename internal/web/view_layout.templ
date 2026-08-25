@@ -35,7 +35,7 @@ templ layout(p page) {
 							<span class="brand-slot">@brandMark()</span>
 							<span class="wordmark">exocomp</span>
 						</a>
-						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail()" aria-label="Collapse sidebar" title="Collapse sidebar">
+						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail(event)" aria-label="Collapse sidebar" title="Collapse sidebar">
 							<svg class="railchev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
 							<span class="raillabel">Open sidebar</span>
 						</button>
@@ -242,10 +242,17 @@ templ navInit() {
 	(function () {
 		try { if (localStorage.getItem("exocomp-nav") === "rail") document.documentElement.setAttribute("data-nav", "rail"); } catch (e) {}
 	})();
-	function exoToggleRail() {
+	function exoToggleRail(ev) {
 		var r = document.documentElement, rail = r.getAttribute("data-nav") === "rail";
 		if (rail) { r.removeAttribute("data-nav"); try { localStorage.removeItem("exocomp-nav"); } catch (e) {} }
-		else { r.setAttribute("data-nav", "rail"); try { localStorage.setItem("exocomp-nav", "rail"); } catch (e) {} }
+		else {
+			r.setAttribute("data-nav", "rail"); try { localStorage.setItem("exocomp-nav", "rail"); } catch (e) {}
+			// A pointer click leaves the button focused, so :focus-within keeps the
+			// mark hidden until the next click. Blur on pointer-collapse so the mark
+			// shows at once; keyboard activation (detail 0) keeps focus to reveal
+			// the reopen control.
+			if (ev && ev.detail > 0) { var b = document.getElementById("railbtn"); if (b) b.blur(); }
+		}
 		exoSyncRail();
 	}
 	function exoSyncRail() {

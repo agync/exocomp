@@ -99,7 +99,7 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span class=\"wordmark\">exocomp</span></a> <button type=\"button\" class=\"railtoggle\" id=\"railbtn\" onclick=\"exoToggleRail()\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\"><svg class=\"railchev\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M10 3L5 8l5 5\"></path></svg> <span class=\"raillabel\">Open sidebar</span></button></div><nav class=\"side-nav\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</span> <span class=\"wordmark\">exocomp</span></a> <button type=\"button\" class=\"railtoggle\" id=\"railbtn\" onclick=\"exoToggleRail(event)\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\"><svg class=\"railchev\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M10 3L5 8l5 5\"></path></svg> <span class=\"raillabel\">Open sidebar</span></button></div><nav class=\"side-nav\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -678,7 +678,7 @@ func navInit() templ.Component {
 			templ_7745c5c3_Var25 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<script>\n\t(function () {\n\t\ttry { if (localStorage.getItem(\"exocomp-nav\") === \"rail\") document.documentElement.setAttribute(\"data-nav\", \"rail\"); } catch (e) {}\n\t})();\n\tfunction exoToggleRail() {\n\t\tvar r = document.documentElement, rail = r.getAttribute(\"data-nav\") === \"rail\";\n\t\tif (rail) { r.removeAttribute(\"data-nav\"); try { localStorage.removeItem(\"exocomp-nav\"); } catch (e) {} }\n\t\telse { r.setAttribute(\"data-nav\", \"rail\"); try { localStorage.setItem(\"exocomp-nav\", \"rail\"); } catch (e) {} }\n\t\texoSyncRail();\n\t}\n\tfunction exoSyncRail() {\n\t\tvar b = document.getElementById(\"railbtn\");\n\t\tif (!b) return;\n\t\tvar rail = document.documentElement.getAttribute(\"data-nav\") === \"rail\";\n\t\tb.setAttribute(\"aria-label\", rail ? \"Expand sidebar\" : \"Collapse sidebar\");\n\t\tb.setAttribute(\"title\", rail ? \"Open sidebar\" : \"Collapse sidebar\");\n\t}\n\t// The mobile drawer opens over the content; the scrim and any nav link close it.\n\tfunction exoToggleDrawer() {\n\t\tvar r = document.documentElement;\n\t\tif (r.getAttribute(\"data-drawer\") === \"open\") r.removeAttribute(\"data-drawer\");\n\t\telse r.setAttribute(\"data-drawer\", \"open\");\n\t}\n\tfunction exoCloseNav() { document.documentElement.removeAttribute(\"data-drawer\"); }\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<script>\n\t(function () {\n\t\ttry { if (localStorage.getItem(\"exocomp-nav\") === \"rail\") document.documentElement.setAttribute(\"data-nav\", \"rail\"); } catch (e) {}\n\t})();\n\tfunction exoToggleRail(ev) {\n\t\tvar r = document.documentElement, rail = r.getAttribute(\"data-nav\") === \"rail\";\n\t\tif (rail) { r.removeAttribute(\"data-nav\"); try { localStorage.removeItem(\"exocomp-nav\"); } catch (e) {} }\n\t\telse {\n\t\t\tr.setAttribute(\"data-nav\", \"rail\"); try { localStorage.setItem(\"exocomp-nav\", \"rail\"); } catch (e) {}\n\t\t\t// A pointer click leaves the button focused, so :focus-within keeps the\n\t\t\t// mark hidden until the next click. Blur on pointer-collapse so the mark\n\t\t\t// shows at once; keyboard activation (detail 0) keeps focus to reveal\n\t\t\t// the reopen control.\n\t\t\tif (ev && ev.detail > 0) { var b = document.getElementById(\"railbtn\"); if (b) b.blur(); }\n\t\t}\n\t\texoSyncRail();\n\t}\n\tfunction exoSyncRail() {\n\t\tvar b = document.getElementById(\"railbtn\");\n\t\tif (!b) return;\n\t\tvar rail = document.documentElement.getAttribute(\"data-nav\") === \"rail\";\n\t\tb.setAttribute(\"aria-label\", rail ? \"Expand sidebar\" : \"Collapse sidebar\");\n\t\tb.setAttribute(\"title\", rail ? \"Open sidebar\" : \"Collapse sidebar\");\n\t}\n\t// The mobile drawer opens over the content; the scrim and any nav link close it.\n\tfunction exoToggleDrawer() {\n\t\tvar r = document.documentElement;\n\t\tif (r.getAttribute(\"data-drawer\") === \"open\") r.removeAttribute(\"data-drawer\");\n\t\telse r.setAttribute(\"data-drawer\", \"open\");\n\t}\n\tfunction exoCloseNav() { document.documentElement.removeAttribute(\"data-drawer\"); }\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -779,7 +779,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/tokens.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 493, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 500, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 		if templ_7745c5c3_Err != nil {
@@ -792,7 +792,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/app.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 494, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 501, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -826,7 +826,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 507, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 514, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -850,7 +850,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(next)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 513, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 520, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -868,7 +868,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 521, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 528, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
