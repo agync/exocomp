@@ -58,15 +58,15 @@ templ tokensPage(vm tokensVM) {
 										<td data-label="Last used">{ t.LastUsed }</td>
 										<td data-label="State">@chip(tokenStateClass(t.State), t.State)</td>
 										<td data-label="Actions">
-											<details class="rowact">
-												<summary>Rotate</summary>
-												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform inline">
-													<input name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
-													<input name="confirm_token" type="password" required autocomplete="off" placeholder="your access token"/>
-													<button type="submit" class="btn">Rotate</button>
-												</form>
-											</details>
 											if !t.Self {
+												<details class="rowact">
+													<summary>Rotate</summary>
+													<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform inline">
+														<input name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
+														<input name="confirm_token" type="password" required autocomplete="off" placeholder="your access token"/>
+														<button type="submit" class="btn">Rotate</button>
+													</form>
+												</details>
 												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline">
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>

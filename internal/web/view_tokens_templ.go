@@ -175,25 +175,25 @@ func tokensPage(vm tokensVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td data-label=\"Actions\"><details class=\"rowact\"><summary>Rotate</summary><form method=\"post\" action=\"")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var9 templ.SafeURL
-						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/tokens/" + t.Name + "/rotate"))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_tokens.templ`, Line: 63, Col: 87}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "\" class=\"writeform inline\"><input name=\"expires\" type=\"text\" autocomplete=\"off\" placeholder=\"keep expiry\"> <input name=\"confirm_token\" type=\"password\" required autocomplete=\"off\" placeholder=\"your access token\"> <button type=\"submit\" class=\"btn\">Rotate</button></form></details> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</td><td data-label=\"Actions\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if !t.Self {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<form method=\"post\" action=\"")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<details class=\"rowact\"><summary>Rotate</summary><form method=\"post\" action=\"")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var9 templ.SafeURL
+							templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/tokens/" + t.Name + "/rotate"))
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_tokens.templ`, Line: 64, Col: 88}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" class=\"writeform inline\"><input name=\"expires\" type=\"text\" autocomplete=\"off\" placeholder=\"keep expiry\"> <input name=\"confirm_token\" type=\"password\" required autocomplete=\"off\" placeholder=\"your access token\"> <button type=\"submit\" class=\"btn\">Rotate</button></form></details><form method=\"post\" action=\"")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}

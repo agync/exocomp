@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -63,4 +65,97 @@ func TestRotateDropsOldSessionsAndSecret(t *testing.T) {
 	if got.ID != row.ID {
 		t.Fatalf("new secret resolved to token %d, want %d", got.ID, row.ID)
 	}
+}
+
+// TestRotateSelfRefused: mirrors the revoke self-guard — a session cannot
+// rotate the token it is authenticated with, since rotation invalidates the
+// secret currently authenticating the request.
+func TestRotateSelfRefused(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	op := h.mint(t, "abn", "operator")
+	client := login(t, ts.URL, op)
+
+	before, err := h.store.GetTokenByName(ctx, "abn")
+	if err != nil {
+		t.Fatalf("GetTokenByName: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/tokens/abn/rotate",
+		url.Values{"confirm_token": {op}}, nil)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("self rotate = %d, want 409; body=%s", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "refusing to rotate") {
+		t.Fatalf("body missing refusal message: %s", body)
+	}
+
+	after, err := h.store.GetTokenByName(ctx, "abn")
+	if err != nil {
+		t.Fatalf("GetTokenByName after: %v", err)
+	}
+	if after.Prefix != before.Prefix || after.Hash != before.Hash {
+		t.Fatal("self token was rotated despite the self-guard")
+	}
+
+	// The session's own token still authenticates: the refusal did not
+	// consume the reauth path or otherwise disturb the token.
+	if _, err := h.server.authenticateToken(ctx, op, time.Now().UTC()); err != nil {
+		t.Fatalf("session token no longer authenticates after refused self-rotate: %v", err)
+	}
+}
+
+// TestTokensPageSuppressesRotateForSelf: the current-session row must not
+// offer Rotate or Revoke, while another operator's row still offers both.
+func TestTokensPageSuppressesRotateForSelf(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	op := h.mint(t, "abn", "operator")
+	_ = h.mint(t, "other", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/tokens")
+	if err != nil {
+		t.Fatalf("GET /tokens: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /tokens = %d, want 200", resp.StatusCode)
+	}
+
+	selfRow := rowFor(t, body, "abn")
+	if strings.Contains(selfRow, "Rotate") || strings.Contains(selfRow, "Revoke") {
+		t.Fatalf("self row still offers Rotate/Revoke: %s", selfRow)
+	}
+	if !strings.Contains(selfRow, "this session") {
+		t.Fatalf("self row missing 'this session' marker: %s", selfRow)
+	}
+
+	otherRow := rowFor(t, body, "other")
+	if !strings.Contains(otherRow, "Rotate") || !strings.Contains(otherRow, "Revoke") {
+		t.Fatalf("other row missing Rotate/Revoke controls: %s", otherRow)
+	}
+}
+
+// rowFor extracts the <tr>...</tr> segment naming the given token on a
+// rendered tokens page.
+func rowFor(t *testing.T, body, name string) string {
+	t.Helper()
+	marker := `data-label="Name">` + name + `</td>`
+	i := strings.Index(body, marker)
+	if i < 0 {
+		t.Fatalf("token %q not found in page", name)
+	}
+	start := strings.LastIndex(body[:i], "<tr>")
+	end := strings.Index(body[i:], "</tr>")
+	if start < 0 || end < 0 {
+		t.Fatalf("could not bound row for %q", name)
+	}
+	return body[start : i+end]
 }

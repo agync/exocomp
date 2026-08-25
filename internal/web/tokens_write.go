@@ -97,11 +97,15 @@ func (s *Server) handleTokenRotate(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
+	if name == ident.token.Name {
+		http.Error(w, "refusing to rotate the token this session is bound to; use another operator token", http.StatusConflict)
+		return
+	}
 	if err := s.reauth(r); err != nil {
 		s.render(w, r, http.StatusOK, tokensReauthNotice(s.pageFor(r, "Tokens", "tokens")))
 		return
 	}
-	name := r.PathValue("name")
 	expires, err := formExpires(r)
 	if err != nil {
 		s.fail(w, r, err)
