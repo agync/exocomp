@@ -9,6 +9,11 @@
 
 * { box-sizing: border-box; }
 
+/* Layout constant local to this file (the palette/type/space scale is tokens.css).
+ * The powerline is a fixed status bar at the viewport bottom; the sidebar ends
+ * above it and main pads its content clear of it. */
+:root { --powerline-h: 34px; }
+
 html { -webkit-text-size-adjust: 100%; }
 
 body {
@@ -62,20 +67,21 @@ a:visited { color: var(--accent-text); }
 .app { min-height: 100vh; display: flex; }
 
 /* ---- Sidebar (primary nav) ----
- * A fixed-width left rail: brand up top, the section list in the middle, the
- * operator identity + theme + collapse control at the foot. It collapses to an
- * icon-only rail on desktop (data-nav="rail", persisted) and becomes an
- * off-canvas drawer below 820px (data-drawer="open", transient). */
+ * A fixed-width left rail: the collapse toggle + brand up top, the section list
+ * in the middle, the theme control alone at the foot (a stable position, since
+ * the toggle no longer shares it). It collapses to an icon-only rail on desktop
+ * (data-nav="rail", persisted) and becomes an off-canvas drawer below 820px
+ * (data-drawer="open", transient). It ends above the fixed powerline. */
 .sidebar {
   flex: none; width: 232px;
   display: flex; flex-direction: column;
   background: var(--surface-rail);
   border-right: 1px solid var(--hairline-faint);
-  position: sticky; top: 0; height: 100vh;
+  position: sticky; top: 0; height: calc(100vh - var(--powerline-h));
 }
 .side-top {
-  display: flex; align-items: center; height: var(--header-h);
-  padding: 0 16px; border-bottom: 1px solid var(--hairline-faint);
+  display: flex; align-items: center; gap: 8px; height: var(--header-h);
+  padding: 0 12px; border-bottom: 1px solid var(--hairline-faint);
 }
 .brandlink, .brandlink:visited {
   display: inline-flex; align-items: center; gap: 10px; min-width: 0;
@@ -102,40 +108,53 @@ a:visited { color: var(--accent-text); }
 .navitem:hover, .navitem:focus-visible { text-decoration: none; background: var(--surface-tray); color: var(--ink-100); }
 .navitem.active { background: var(--accent-tint); color: var(--accent-text); }
 
+.navdivider {
+  height: 1px; margin: 8px 8px;
+  background: var(--hairline-faint);
+}
+
 .side-foot {
-  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  display: flex; align-items: center; gap: 8px;
   padding: 12px 14px; border-top: 1px solid var(--hairline-faint);
 }
-.side-foot .who {
-  flex-basis: 100%; color: var(--ink-500);
-  font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
-}
-/* The two chrome controls (theme, collapse) are quiet icon buttons: same size,
- * transparent until hovered, so they sit under the nav rather than competing. */
+/* The rail collapse toggle sits at the TOP of the sidebar (by the brand),
+ * Gemini-style: a quiet icon button, transparent until hovered. In the
+ * collapsed rail it reveals an "Open sidebar" label on hover. */
 .railtoggle {
-  margin-left: auto; width: 32px; height: 32px; flex: none;
+  position: relative;
+  width: 32px; height: 32px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-400);
   border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
 }
 .railtoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
+.raillabel {
+  display: none;
+  position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
+  white-space: nowrap; padding: 4px 10px; border-radius: 8px;
+  background: var(--surface-tray); color: var(--ink-100);
+  border: 1px solid var(--hairline); font: var(--type-button);
+  pointer-events: none; z-index: 60;
+}
 
 .content-col { flex: 1; min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
 .mobilebar { display: none; }
 .scrim { display: none; }
 
-/* Desktop rail: icon-only, labels and identity hidden, chevron flips. */
+/* Desktop rail: icon-only. The brand collapses to the toggle alone up top (which
+ * reveals "Open sidebar" on hover), nav labels hide, the chevron flips. */
 @media (min-width: 821px) {
   :root[data-nav="rail"] .sidebar { width: 64px; }
   :root[data-nav="rail"] .side-top { justify-content: center; padding: 0; }
-  :root[data-nav="rail"] .brandlink .wordmark { display: none; }
+  :root[data-nav="rail"] .brandlink { display: none; }
   :root[data-nav="rail"] .side-nav { padding: 10px 0; align-items: center; }
   :root[data-nav="rail"] .navitem { width: 44px; justify-content: center; padding: 0; gap: 0; }
   :root[data-nav="rail"] .navitem span { display: none; }
-  :root[data-nav="rail"] .side-foot { flex-direction: column; padding: 12px 0; }
-  :root[data-nav="rail"] .side-foot .who { display: none; }
-  :root[data-nav="rail"] .railtoggle { margin: 0; }
+  :root[data-nav="rail"] .navdivider { width: 24px; margin: 8px auto; }
+  :root[data-nav="rail"] .side-foot { justify-content: center; padding: 12px 0; }
   :root[data-nav="rail"] .railchev { transform: rotate(180deg); }
+  :root[data-nav="rail"] .railtoggle:hover .raillabel,
+  :root[data-nav="rail"] .railtoggle:focus-visible .raillabel { display: block; }
 }
 
 /* Mobile: the sidebar is an off-canvas drawer behind a slim top bar. */
@@ -178,7 +197,7 @@ a:visited { color: var(--accent-text); }
 .themetoggle .themeglyph[hidden] { display: none; }
 .themetoggle svg { display: block; }
 
-main { flex: 1; padding: var(--pad-page); max-width: none; }
+main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h) + 22px); max-width: none; }
 
 /* ---- Banner (pause / silence / insecure) ---- */
 .banner {
@@ -282,6 +301,15 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .btn.danger  { background: var(--fail-tint); color: var(--signal-fail); border-color: var(--fail-border); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
+/* Row-action buttons live in a table cell (Revoke, the inline Rotate submit, the
+ * dashboard Review CTA) and read at row scale, not as a full-height form button
+ * — a Revoke that towers over its sibling Rotate text-link. Still clears the
+ * WCAG target-size floor (30px tall, wider than 24px). */
+td .btn {
+  min-height: 30px; height: 30px; padding: 0 12px;
+  border-radius: 9px;
+}
+
 /* ---- Write surface: flash, forms, one-time secret ---- */
 .flash {
   margin: 0 0 18px; padding: 12px 16px; border-radius: var(--radius-card);
@@ -294,6 +322,14 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
   min-height: var(--row-h); padding: 0 12px;
   background: var(--surface-void); color: var(--ink-100);
   border: 1px solid var(--hairline); border-radius: var(--radius-control); font: var(--type-body);
+}
+/* The native select keeps its own arrow (appearance:auto) and matches the input
+ * height exactly, so a Scope/Kind dropdown aligns with the fields above it and
+ * opens correctly inside the top-layer dialog. */
+.writeform select {
+  appearance: auto;
+  height: var(--row-h); padding: 0 10px 0 12px;
+  cursor: pointer;
 }
 .writeform textarea { min-height: 6rem; padding: 8px 12px; font: var(--type-log); resize: vertical; }
 .writeform.inline { flex-flow: row wrap; align-items: center; gap: 8px; max-width: none; margin-top: 8px; }
@@ -312,10 +348,12 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 /* ---- Page header + add button ----
  * The compact "+" affordance that sits beside a list surface's <h1> and opens
  * that surface's add-form modal (moved out of an always-visible inline card). */
-.pageheader { display: flex; align-items: center; gap: 10px; }
-.pageheader h1 { margin: 0; }
+.pageheader { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+/* line-height:1 removes the display font's half-leading so the "+" centers on
+ * the cap height of the title, not the taller line box. */
+.pageheader h1 { margin: 0; line-height: 1; }
 .addbtn {
-  width: 32px; height: 32px; padding: 0; flex: none;
+  width: 32px; height: 32px; padding: 0; flex: none; align-self: center;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--accent-text);
   border: 1px solid var(--hairline); border-radius: 9px; cursor: pointer;
@@ -323,33 +361,28 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .addbtn:hover { color: var(--accent-text); background: var(--accent-tint); }
 
 /* ---- Modal ----
- * A custom, non-native <dialog> built on the same data-attribute + hand-rolled
- * JS house style as the mobile drawer (.scrim/data-drawer) and theme toggle
- * (data-theme): modalInit() in view_layout.templ drives open/close, focus
- * save/restore, and the Tab focus trap. `[hidden]` (not display:none via a
- * class alone) keeps a closed modal out of the a11y tree; it is restated below
- * because `.modal{display:flex}` would otherwise outrank the UA [hidden] rule.
- * The panel scrolls its own content if the form is taller than the viewport
- * allows, so the backdrop and page behind it never move. Motion (if any is
- * added here later) is already covered by tokens.css's blanket
- * prefers-reduced-motion rule (`* { transition:none !important }`). */
+ * The native <dialog>. showModal() renders it in the browser TOP LAYER, so it is
+ * structurally immune to the overlay/stacking and pointer-events failures a
+ * hand-rolled fixed overlay is prone to (a <select> that would not open, inputs
+ * that would not focus). The element handles focus trapping, Esc, background
+ * inertness, and scroll locking; modalInit()/layoutReady() only open, close, and
+ * close on a backdrop click. Centered by position+margin, capped in height with
+ * the body scrolling inside so a tall form never pushes the dialog off-screen.
+ * Motion is covered by tokens.css's blanket prefers-reduced-motion rule. */
 .modal {
-  position: fixed; inset: 0; z-index: 50;
-  display: flex; align-items: center; justify-content: center; padding: 24px;
-}
-.modal[hidden] { display: none; }
-.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
-.modal-panel {
-  position: relative; z-index: 1;
-  width: min(34rem, 100%);
+  position: fixed; inset: 0; margin: auto;
+  width: min(34rem, calc(100vw - 32px));
   max-height: calc(100vh - 64px);
-  overflow: auto;
   display: flex; flex-direction: column; gap: 12px;
+  padding: var(--pad-card);
   background: var(--surface-card);
+  color: var(--ink-200);
   border: 1px solid var(--hairline-faint);
   border-radius: var(--radius-card);
-  padding: var(--pad-card);
+  overflow: hidden;
 }
+.modal:not([open]) { display: none; }
+.modal::backdrop { background: rgba(0,0,0,.5); }
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .modal-head h2 { margin: 0; }
 .modal-close {
@@ -359,9 +392,8 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
   border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
 }
 .modal-close:hover { color: var(--ink-100); background: var(--surface-tray); }
+.modal-body { min-height: 0; overflow-y: auto; }
 .modal-body .writeform { margin-top: 0; }
-/* The open modal owns scroll; the page behind it must not also scroll. */
-:root[data-modal-open] body { overflow: hidden; }
 
 /* ---- Source detail: meta chips, key/value, launcher tabs ----
  * The source detail page (view_source_detail.templ) shows a chip row and a
@@ -398,12 +430,26 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .log .sys { color: var(--ink-500); }
 
 .meta { color: var(--ink-500); font: var(--type-body); }
-.footer-signal {
-  margin-top: 26px; padding-top: 14px; border-top: 1px solid var(--hairline-faint);
+
+/* ---- Powerline (fixed-bottom status bar) ----
+ * Always at the viewport bottom, spanning the full width beneath the sidebar
+ * (which is shortened by --powerline-h to sit above it). Thin, muted, mono: the
+ * dead-man / ntfy / disk signals, then the signed-in operator pushed right.
+ * main carries bottom padding so no content hides behind it. */
+.powerline {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+  height: var(--powerline-h);
+  display: flex; align-items: center; gap: 20px;
+  padding: 0 16px;
+  background: var(--surface-rail);
+  border-top: 1px solid var(--hairline-faint);
   color: var(--ink-500); font: var(--type-log);
-  display: flex; flex-wrap: wrap; gap: 18px;
 }
-.footer-signal .warn { color: var(--signal-fail); }
+.powerline .pl-item.warn { color: var(--signal-fail); }
+.powerline .pl-who {
+  margin-left: auto; color: var(--ink-400);
+  font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
+}
 
 /* ---- Phone approval surface (390px) ---- */
 .phone {

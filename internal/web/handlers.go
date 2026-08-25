@@ -105,13 +105,6 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		vm.Queue = append(vm.Queue, s.jobRow(j, now))
 	}
 
-	backups, err := s.backups(r)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	vm.Backups = backups
-
 	ws, err := s.workspaces(r, pending)
 	if err != nil {
 		s.fail(w, r, err)
@@ -140,9 +133,23 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Workflows = flows
 
+	s.render(w, r, http.StatusOK, dashboard(vm))
+}
+
+// handleSystem renders the control plane's view of itself: version + Litestream
+// RPO and backup freshness (moved off the dashboard and the powerline).
+func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
+	vm := systemVM{Page: s.pageFor(r, "System", "system")}
 	vm.Self = s.selfObs(r.Context())
 
-	s.render(w, r, http.StatusOK, dashboard(vm))
+	backups, err := s.backups(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Backups = backups
+
+	s.render(w, r, http.StatusOK, systemPage(vm))
 }
 
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {

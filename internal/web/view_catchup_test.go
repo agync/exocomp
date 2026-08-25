@@ -74,8 +74,9 @@ func seedPostV1(t *testing.T, h *harness) {
 }
 
 // TestDashboardPostV1Sections is the GATE: the dashboard surfaces the seeded
-// source, schedule, in-flight workflow, and the upgrade/litestream self rows,
-// each on the shipped table chrome with its a11y attributes.
+// source, schedule, and in-flight workflow, each on the shipped table chrome
+// with its a11y attributes. Control-plane health moved to /system (asserted
+// separately) and no longer renders here.
 func TestDashboardPostV1Sections(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
@@ -92,22 +93,49 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		`aria-labelledby="sources-h"`,
 		`aria-labelledby="sched-h"`,
 		`aria-labelledby="flows-h"`,
-		`aria-labelledby="self-h"`,
 		`scope="col"`,
 		// seeded rows
 		"infra",
 		"SIGNED · SIGNERS",
 		"drift-check",
 		"provision-web-01",
-		// self-observability row
-		"Running version",
-		"Litestream RPO",
-		"no replica configured",
 		// step rail on the in-flight workflow
 		`aria-label="workflow steps"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
+		}
+	}
+	// The control-plane health card left the dashboard for /system.
+	if strings.Contains(page, `aria-labelledby="self-h"`) {
+		t.Error("control-plane health card should have left the dashboard for /system")
+	}
+}
+
+// TestSystemPageHealth is the GATE for /system: the control-plane health card
+// (running version + Litestream RPO) and the backups card, moved off the
+// dashboard and the powerline, render on the shipped table chrome.
+func TestSystemPageHealth(t *testing.T) {
+	h := newHarness(t)
+	seedPostV1(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("system status = %d", code)
+	}
+	for _, want := range []string{
+		`aria-labelledby="self-h"`,
+		`aria-labelledby="backups-h"`,
+		`scope="col"`,
+		"Running version",
+		"Litestream RPO",
+		"no replica configured",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("system page missing %q", want)
 		}
 	}
 }

@@ -30,6 +30,10 @@ templ layout(p page) {
 				<div class="scrim" onclick="exoCloseNav()" aria-hidden="true"></div>
 				<aside class="sidebar" aria-label="Primary">
 					<div class="side-top">
+						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail()" aria-label="Collapse sidebar" title="Collapse sidebar">
+							<svg class="railchev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
+							<span class="raillabel">Open sidebar</span>
+						</button>
 						<a class="brandlink" href="/">
 							@brandMark()
 							<span class="wordmark">exocomp</span>
@@ -37,26 +41,22 @@ templ layout(p page) {
 					</div>
 					<nav class="side-nav">
 						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard)
-						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs)
-						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces)
 						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals)
 						@navlink(p.Nav, "events", "/events", "Events", iconEvents)
-						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources)
-						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules)
-						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows)
+						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs)
 						@navlink(p.Nav, "policies", "/policies", "Policies", iconPolicies)
-						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets)
-						@navlink(p.Nav, "tokens", "/tokens", "Tokens", iconTokens)
 						@navlink(p.Nav, "runners", "/runners", "Runners", iconRunners)
+						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules)
+						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets)
+						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources)
+						@navlink(p.Nav, "tokens", "/tokens", "Tokens", iconTokens)
+						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows)
+						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces)
+						<div class="navdivider" role="separator" aria-hidden="true"></div>
+						@navlink(p.Nav, "system", "/system", "System", iconSystem)
 					</nav>
 					<div class="side-foot">
-						if p.Who != "" {
-							<span class="who" title="signed in">{ p.Who } · { p.Scope }</span>
-						}
 						@themeToggle()
-						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail()" aria-label="Collapse sidebar">
-							<svg class="railchev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
-						</button>
 					</div>
 				</aside>
 				<div class="content-col">
@@ -74,10 +74,10 @@ templ layout(p page) {
 							<p class="flash" role="status">{ p.Flash }</p>
 						}
 						{ children... }
-						@footer(p.Signal)
 					</main>
 				</div>
 			</div>
+			@powerline(p)
 			@layoutReady()
 			<script src={ AssetURL("/assets/htmx.min.js") }></script>
 		</body>
@@ -132,19 +132,27 @@ const (
 	iconRunners   = "M6 6h12v12H6zM9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M18 9h3M3 15h3M18 15h3"
 	iconWorkspaces = "M4 6c0-1.7 3.6-3 8-3s8 1.3 8 3-3.6 3-8 3-8-1.3-8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"
 	iconTokens     = "M14 8a4 4 0 1 0-5.5 3.7L4 16v4h4v-2h2v-2h2l1.5-1.5A4 4 0 0 0 14 8z"
+	iconSystem     = "M4 4h16v6H4zM4 14h16v6H4zM7.5 7h.01M7.5 17h.01"
 )
 
-templ footer(s SignalLine) {
-	<div class="footer-signal" role="contentinfo">
-		<span>dead-man { s.DeadMan }</span>
-		<span>ntfy { s.Ntfy }</span>
-		if s.Warn {
-			<span class="warn">disk { s.Disk }</span>
+// powerline is the fixed-bottom status strip: the is-the-control-plane-alive
+// signals (dead-man, ntfy, disk) and who is signed in. It sits in the viewport's
+// bottom edge, not at end-of-content, so it is always visible; main carries
+// bottom padding so no content hides behind it. Minimal by intent — the server
+// version lives on /system, not here.
+templ powerline(p page) {
+	<footer class="powerline" role="contentinfo">
+		<span class="pl-item">dead-man { p.Signal.DeadMan }</span>
+		<span class="pl-item">ntfy { p.Signal.Ntfy }</span>
+		if p.Signal.Warn {
+			<span class="pl-item warn">disk { p.Signal.Disk }</span>
 		} else {
-			<span>disk { s.Disk }</span>
+			<span class="pl-item">disk { p.Signal.Disk }</span>
 		}
-		<span>{ s.Version }</span>
-	</div>
+		if p.Who != "" {
+			<span class="pl-who" title="signed in">{ p.Who } · { p.Scope }</span>
+		}
+	</footer>
 }
 
 // themeInit applies the persisted theme before first paint so a light-mode
@@ -244,6 +252,7 @@ templ navInit() {
 		if (!b) return;
 		var rail = document.documentElement.getAttribute("data-nav") === "rail";
 		b.setAttribute("aria-label", rail ? "Expand sidebar" : "Collapse sidebar");
+		b.setAttribute("title", rail ? "Open sidebar" : "Collapse sidebar");
 	}
 	// The mobile drawer opens over the content; the scrim and any nav link close it.
 	function exoToggleDrawer() {
@@ -275,15 +284,17 @@ templ layoutReady() {
 		});
 	});
 	// Modal open/dismiss is one delegated listener for the whole page: any
-	// [data-modal-open] opens its target, any [data-modal-dismiss] inside an
-	// open panel (the backdrop, the × button) closes it.
+	// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×
+	// button) closes its enclosing dialog; and a click landing on the dialog
+	// element itself is the backdrop region (real form content reports its own
+	// target), which closes the modal. Esc is the element's own behaviour.
 	document.addEventListener('click', function (e) {
 		var opener = e.target.closest('[data-modal-open]');
 		if (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }
 		var dismiss = e.target.closest('[data-modal-dismiss]');
-		if (dismiss) {
-			var m = dismiss.closest('.modal');
-			if (m) exoModalClose(m.id);
+		if (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }
+		if (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {
+			e.target.close();
 		}
 	});
 	</script>

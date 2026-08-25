@@ -1,8 +1,9 @@
 package web
 
 // dashboard is the glance screen. It answers "is everything OK?" without
-// scrolling: banner state, what needs a human, the queue, backup freshness,
-// and workspace drift. Healthy is quiet; waiting-on-human and stale are loud.
+// scrolling: banner state, what needs a human, the queue, and workspace drift.
+// Healthy is quiet; waiting-on-human and stale are loud. Control-plane health
+// and backup freshness live on /system, not here.
 templ dashboard(vm dashboardVM) {
 	@layout(vm.Page) {
 		if vm.Page.Insecure {
@@ -198,58 +199,6 @@ templ dashboard(vm dashboardVM) {
 					</div>
 				}
 				<p class="meta" style="margin-top:10px"><a href="/schedules">All schedules →</a></p>
-			</section>
-
-			<section class="card" aria-labelledby="backups-h">
-				<h3 id="backups-h">Backups</h3>
-				if len(vm.Backups) == 0 {
-					<p class="meta">No backup targets configured.</p>
-				} else {
-					<div class="tablewrap">
-						<table>
-							<thead>
-								<tr><th scope="col">Target</th><th scope="col">Snapshot</th><th scope="col" class="right">Age</th></tr>
-							</thead>
-							<tbody>
-								for _, b := range vm.Backups {
-									<tr>
-										<td>
-											{ b.Name }
-											if b.Drill {
-												<span class="chip dim" style="margin-left:6px">drill</span>
-											}
-										</td>
-										<td class="mono">{ orDash(b.Snapshot) }</td>
-										<td class="right">@chip(b.Freshness, b.Age)</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
-			<section class="card span2" aria-labelledby="self-h">
-				<h3 id="self-h">This control plane</h3>
-				<div class="tablewrap">
-					<table>
-						<thead>
-							<tr><th scope="col">Signal</th><th scope="col">State</th><th scope="col">Detail</th></tr>
-						</thead>
-						<tbody>
-							<tr>
-								<td>Running version</td>
-								<td class="mono">{ vm.Self.Version }</td>
-								<td class="meta">the binary an upgrade replaces</td>
-							</tr>
-							<tr>
-								<td>Litestream RPO</td>
-								<td>@chip(vm.Self.LSClass, vm.Self.LSAge)</td>
-								<td class="meta">{ vm.Self.LSDetail }</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
 			</section>
 		</div>
 	}

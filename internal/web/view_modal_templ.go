@@ -8,17 +8,17 @@ package web
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// modal is the shared dialog shape every "+" add-form (and the job-detail
-// "Schedule" action) opens into. It renders `hidden` by default — the native
-// attribute, not a CSS class, so a closed modal is dropped from the
-// accessibility tree and tab order for free — and is otherwise inert markup:
-// all open/close behaviour comes from the data-attribute convention modalInit()
-// wires up once in view_layout.templ. Any element carrying
-// data-modal-open="<id>" opens #<id>; any element carrying data-modal-dismiss
-// inside the open panel (the backdrop, the close button) closes it, as does Esc
-// or a backdrop click. The panel itself — not a guessed first field — takes
-// focus on open, since the seven forms this wraps have no consistent "obviously
-// first" field and a wrong guess would skip announcing the dialog's own title.
+// modal is the shared dialog every "+" add-form (and the job-detail "Schedule"
+// action) opens into. It is a native <dialog>: closed markup is inert and out
+// of the a11y tree with no `open` attribute, and showModal() promotes it to the
+// browser TOP LAYER — structurally immune to the overlay/stacking and
+// pointer-events failures a hand-rolled fixed-overlay modal is prone to (a
+// closed <select> would not open, inputs would not focus). The children are the
+// caller's real POST forms, so there is deliberately no `method="dialog"`
+// wrapper around the body. All open/close wiring is the data-attribute
+// convention modalInit() defines and layoutReady() delegates:
+// data-modal-open="<id>" opens #<id>; data-modal-dismiss (the × button) closes
+// the enclosing dialog; a backdrop click or Esc closes natively.
 func modal(id, title string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -40,40 +40,40 @@ func modal(id, title string) templ.Component {
 			templ_7745c5c3_Var1 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"modal\" id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<dialog class=\"modal\" id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var2 string
 		templ_7745c5c3_Var2, templ_7745c5c3_Err = templ.JoinStringErrs(id)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 15, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 15, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var2))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" hidden><div class=\"modal-backdrop\" data-modal-dismiss=\"1\"></div><div class=\"modal-panel\" role=\"dialog\" aria-modal=\"true\" aria-labelledby=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "\" aria-labelledby=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var3 string
 		templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(id + "-title")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 17, Col: 90}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 15, Col: 64}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\" tabindex=\"-1\"><div class=\"modal-head\"><h2 id=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "\"><div class=\"modal-head\"><h2 id=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var4 string
 		templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(id + "-title")
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 19, Col: 26}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 17, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 		if templ_7745c5c3_Err != nil {
@@ -86,13 +86,13 @@ func modal(id, title string) templ.Component {
 		var templ_7745c5c3_Var5 string
 		templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 19, Col: 36}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_modal.templ`, Line: 17, Col: 35}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</h2><button type=\"button\" class=\"modal-close\" data-modal-dismiss=\"1\" aria-label=\"Close\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3 3l10 10M13 3L3 13\"></path></svg></button></div><div class=\"modal-body\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "</h2><button type=\"button\" class=\"modal-close\" data-modal-dismiss aria-label=\"Close\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3 3l10 10M13 3L3 13\"></path></svg></button></div><div class=\"modal-body\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -100,7 +100,7 @@ func modal(id, title string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></div></div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</div></dialog>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -108,12 +108,14 @@ func modal(id, title string) templ.Component {
 	})
 }
 
-// modalInit defines the shared modal mechanics — open/close, focus save and
-// restore, Esc-to-close, and a Tab/Shift+Tab focus trap scoped to the open
-// panel — once, for every modal on the page. The click delegation that
-// triggers open/dismiss is attached in layoutReady() (it needs the DOM the
-// page body renders), mirroring how navInit() defines functions here and
-// layoutReady() wires the listeners that depend on rendered content.
+// modalInit reduces the modal mechanics to the native <dialog> methods and
+// defines them once for every page. exoModalOpen/exoModalClose stay named
+// functions because a surface drives them directly — view_schedules re-opens
+// its add form after a server-side validation error. The click delegation that
+// binds data-modal-open/data-modal-dismiss and the backdrop click lives in
+// layoutReady(), which runs against the rendered body. Focus trapping, Esc, and
+// scroll locking are the element's own behaviour now, so no hand-rolled handler
+// remains.
 func modalInit() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -135,7 +137,7 @@ func modalInit() templ.Component {
 			templ_7745c5c3_Var6 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<script>\n\tvar exoModalReturnFocus = null;\n\tvar exoModalKeyHandler = null;\n\n\t// exoModalOpen shows #id, remembers the element that had focus so it can be\n\t// restored on close, focuses the panel itself, and installs a keydown\n\t// listener that closes on Esc and traps Tab/Shift+Tab inside the panel.\n\tfunction exoModalOpen(id) {\n\t\tvar m = document.getElementById(id);\n\t\tif (!m) return;\n\t\tvar panel = m.querySelector(\".modal-panel\");\n\t\texoModalReturnFocus = document.activeElement;\n\t\tm.hidden = false;\n\t\tdocument.documentElement.setAttribute(\"data-modal-open\", id);\n\t\tif (panel) panel.focus();\n\t\texoModalKeyHandler = function (e) {\n\t\t\tif (e.key === \"Escape\") { e.preventDefault(); exoModalClose(id); return; }\n\t\t\tif (e.key !== \"Tab\" || !panel) return;\n\t\t\tvar focusables = panel.querySelectorAll(\n\t\t\t\t'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex=\"-1\"])'\n\t\t\t);\n\t\t\tif (focusables.length === 0) { e.preventDefault(); return; }\n\t\t\tvar first = focusables[0], last = focusables[focusables.length - 1];\n\t\t\tif (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }\n\t\t\telse if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }\n\t\t};\n\t\tdocument.addEventListener(\"keydown\", exoModalKeyHandler);\n\t}\n\n\t// exoModalClose re-hides #id, tears down the trap listener, and restores\n\t// focus to whatever opened the modal.\n\tfunction exoModalClose(id) {\n\t\tvar m = document.getElementById(id);\n\t\tif (m) m.hidden = true;\n\t\tdocument.documentElement.removeAttribute(\"data-modal-open\");\n\t\tif (exoModalKeyHandler) { document.removeEventListener(\"keydown\", exoModalKeyHandler); exoModalKeyHandler = null; }\n\t\tif (exoModalReturnFocus && exoModalReturnFocus.focus) exoModalReturnFocus.focus();\n\t\texoModalReturnFocus = null;\n\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<script>\n\t// exoModalOpen promotes #id to the top layer; native focus, Esc-to-cancel,\n\t// and background inertness come with the element. Null- and state-safe so a\n\t// missing id or an already-open dialog never throws.\n\tfunction exoModalOpen(id) {\n\t\tvar m = document.getElementById(id);\n\t\tif (m && m.showModal && !m.open) m.showModal();\n\t}\n\tfunction exoModalClose(id) {\n\t\tvar m = document.getElementById(id);\n\t\tif (m && m.close && m.open) m.close();\n\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

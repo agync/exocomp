@@ -22,13 +22,13 @@ type page struct {
 	Signal SignalLine
 }
 
-// SignalLine is the always-on footer: the dead-man switch, push transport, disk
-// headroom, and version. It is the "is the control plane itself alive" strip.
+// SignalLine is the always-on powerline: the dead-man switch, push transport,
+// and disk headroom. It is the "is the control plane itself alive" strip; the
+// running version is a /system concern, not a status-bar one.
 type SignalLine struct {
 	DeadMan string
 	Ntfy    string
 	Disk    string
-	Version string
 	Warn    bool
 }
 
@@ -38,14 +38,22 @@ type dashboardVM struct {
 	Banner     bannerVM
 	NeedsYou   []approvalRow
 	Queue      []jobRow
-	Backups    []backupRow
 	Workspaces []workspaceRow
 	// Post-v1 surfacing: the capabilities shipped after v1 that the glance
 	// screen had not kept pace with.
 	Sources   []sourceRow
 	Schedules []scheduleRow
 	Workflows []workflowRow // in-flight chains on the dashboard
-	Self      selfObs
+}
+
+// systemVM is the /system surface: the control plane's health of itself — the
+// running binary version and Litestream replication RPO — plus backup
+// freshness. Both moved off the glance dashboard (and the version off the
+// powerline) so the dashboard stays the managed-estate view.
+type systemVM struct {
+	Page    page
+	Self    selfObs
+	Backups []backupRow
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a

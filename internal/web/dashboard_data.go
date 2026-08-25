@@ -393,13 +393,10 @@ func rpoFreshness(age time.Duration) string {
 	}
 }
 
-// signal builds the footer's is-the-control-plane-alive strip: newest backup
-// age (the dead-man), push transport presence, disk headroom, and version.
+// signal builds the powerline's is-the-control-plane-alive strip: newest backup
+// age (the dead-man), push transport presence, and disk headroom.
 func (s *Server) signal(ctx context.Context) SignalLine {
-	sig := SignalLine{Version: s.version, DeadMan: "—", Ntfy: "off", Disk: "—"}
-	if sig.Version == "" {
-		sig.Version = "dev"
-	}
+	sig := SignalLine{DeadMan: "—", Ntfy: "off", Disk: "—"}
 
 	if age, ok := s.newestBackupAge(ctx); ok {
 		sig.DeadMan = humanAge(age)

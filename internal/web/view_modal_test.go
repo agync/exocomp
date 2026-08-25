@@ -24,21 +24,19 @@ func renderModal(t *testing.T, id, title, childHTML string) string {
 }
 
 // TestModalRendersHiddenAndAccessible asserts the modal component's a11y
-// contract: closed by default via the native hidden attribute (not just a CSS
-// class, so it drops out of the tab order and a11y tree for free), the dialog
-// role/aria-modal/aria-labelledby wiring, a close control, and the children
-// slot carrying the caller's form content through unmodified.
+// contract: it is a native <dialog>, closed by default (no `open` attribute, so
+// it drops out of the tab order and a11y tree for free and stays out of the top
+// layer until showModal), labelled by its own title, with a close control and
+// the children slot carrying the caller's form content through unmodified.
 func TestModalRendersHiddenAndAccessible(t *testing.T) {
 	out := renderModal(t, "widgets-add", "Add a widget", `<p id="marker">form goes here</p>`)
 
 	for _, want := range []string{
-		`id="widgets-add"`,
-		` hidden`,
-		`role="dialog"`,
-		`aria-modal="true"`,
+		`<dialog class="modal" id="widgets-add"`,
 		`aria-labelledby="widgets-add-title"`,
 		`id="widgets-add-title"`,
 		`Add a widget`,
+		`class="modal-body"`,
 		`data-modal-dismiss`,
 		`aria-label="Close"`,
 		`id="marker"`,
@@ -49,14 +47,14 @@ func TestModalRendersHiddenAndAccessible(t *testing.T) {
 		}
 	}
 
-	// hidden must land on the outer .modal container, not just the panel —
-	// otherwise the backdrop would still paint over the page while "closed".
-	openIdx := strings.Index(out, `class="modal"`)
-	hiddenIdx := strings.Index(out, ` hidden`)
-	panelIdx := strings.Index(out, `class="modal-panel"`)
-	inOrder := openIdx != -1 && hiddenIdx != -1 && panelIdx != -1 && openIdx < hiddenIdx && hiddenIdx < panelIdx
-	if !inOrder {
-		t.Errorf("hidden attribute is not on the outer .modal container: %s", out)
+	// Closed by default: a native dialog is hidden until showModal() unless it
+	// carries `open`. It must not, or every modal would render open on the page.
+	if strings.Contains(out, "open") {
+		t.Errorf("modal must render closed (no open attribute): %s", out)
+	}
+	// The old hand-rolled overlay is gone — the top layer handles the backdrop.
+	if strings.Contains(out, "modal-backdrop") || strings.Contains(out, "modal-panel") {
+		t.Errorf("modal still carries the old overlay markup: %s", out)
 	}
 }
 
@@ -80,12 +78,12 @@ func TestAddButtonHelper(t *testing.T) {
 	}
 }
 
-// TestModalInitWiredAndFocusTrapScoped asserts modalInit() is wired once into
-// the shared layout (so every page gets it for free) and that its focus trap
-// re-queries focusable elements scoped to the open .modal-panel — never the
-// whole document — so a rowact <details> dropdown elsewhere on the page (e.g.
-// Secrets'/Tokens' rotate controls) can never be caught by a modal's trap.
-func TestModalInitWiredAndFocusTrapScoped(t *testing.T) {
+// TestModalInitWiredNative asserts modalInit() is wired once into the shared
+// layout (so every page gets it for free) and that open/close reduce to the
+// native <dialog> methods, with the delegated backdrop-click close. The
+// element owns focus trapping, Esc, and scroll locking now — no hand-rolled
+// keydown handler or panel-scoped focus query remains.
+func TestModalInitWiredNative(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -98,28 +96,37 @@ func TestModalInitWiredAndFocusTrapScoped(t *testing.T) {
 	for _, want := range []string{
 		"function exoModalOpen(id)",
 		"function exoModalClose(id)",
+		"m.showModal()",
+		"m.close()",
 		"data-modal-open",
 		"data-modal-dismiss",
-		`document.addEventListener("keydown", exoModalKeyHandler)`,
-		// The trap query is rooted at panel (the open .modal-panel), not
-		// document — so a <details> dropdown elsewhere on the page (e.g.
-		// Secrets'/Tokens' rowact rotate controls) is never caught by a
-		// modal's own trap.
-		"panel.querySelectorAll(",
+		// The backdrop region reports the dialog element as the click target.
+		"e.target.tagName === 'DIALOG'",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("layout missing modalInit wiring %q", want)
+			t.Errorf("layout missing native modal wiring %q", want)
+		}
+	}
+	// The hand-rolled trap and its keydown handler are gone.
+	for _, gone := range []string{"exoModalKeyHandler", "panel.querySelectorAll("} {
+		if strings.Contains(page, gone) {
+			t.Errorf("layout still carries removed modal internals %q", gone)
 		}
 	}
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
-		".modal {", ".modal[hidden] { display: none; }",
-		".modal-backdrop", ".modal-panel", ".modal-close", ".addbtn",
-		".pageheader", `[data-modal-open] body { overflow: hidden; }`,
+		".modal {", ".modal:not([open]) { display: none; }",
+		".modal::backdrop", ".modal-close", ".addbtn", ".pageheader",
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing modal rule %q", want)
+		}
+	}
+	// The old overlay rules are gone.
+	for _, gone := range []string{".modal-backdrop", ".modal-panel", `[data-modal-open] body`} {
+		if strings.Contains(app, gone) {
+			t.Errorf("app.css still carries removed modal rule %q", gone)
 		}
 	}
 }
