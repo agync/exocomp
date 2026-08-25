@@ -416,14 +416,18 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "<h1>Registered ")
+			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Registered " + vm.Name}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " <h1>Registered ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 190, Col: 26}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 191, Col: 26}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -436,7 +440,7 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 193, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 194, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
@@ -449,7 +453,7 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 			var templ_7745c5c3_Var19 string
 			templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(vm.URL)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 193, Col: 30}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 194, Col: 30}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 			if templ_7745c5c3_Err != nil {
@@ -462,7 +466,7 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 			var templ_7745c5c3_Var20 string
 			templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Ref)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 193, Col: 46}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 194, Col: 46}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 			if templ_7745c5c3_Err != nil {
@@ -475,7 +479,7 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(vm.PublicAuthorizedKey)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 194, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 195, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
@@ -488,13 +492,13 @@ func sourceGitResult(vm sourceGitResultVM) templ.Component {
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 195, Col: 116}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_sources.templ`, Line: 196, Col: 116}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</code>.</p><div class=\"actions\"><a class=\"btn\" href=\"/sources\">Back to sources</a></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</code>.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -541,7 +545,11 @@ func sourceReauthNotice(p page) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<h1>Confirm required</h1><div class=\"card span2\" style=\"margin-top:18px\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p><div class=\"actions\"><a class=\"btn\" href=\"/sources\">Back to sources</a></div></div>")
+			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Confirm"}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " <h1>Confirm required</h1><div class=\"card span2\" style=\"margin-top:18px\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
