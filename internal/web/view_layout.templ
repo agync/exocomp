@@ -23,6 +23,7 @@ templ layout(p page) {
 			<link rel="stylesheet" href="/assets/app.css"/>
 			@themeInit()
 			@navInit()
+			@modalInit()
 		</head>
 		<body>
 			<div class="app">
@@ -274,6 +275,18 @@ templ layoutReady() {
 			if (e.target.closest('a,button')) return;
 			window.location.href = tr.getAttribute('data-href');
 		});
+	});
+	// Modal open/dismiss is one delegated listener for the whole page: any
+	// [data-modal-open] opens its target, any [data-modal-dismiss] inside an
+	// open panel (the backdrop, the × button) closes it.
+	document.addEventListener('click', function (e) {
+		var opener = e.target.closest('[data-modal-open]');
+		if (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }
+		var dismiss = e.target.closest('[data-modal-dismiss]');
+		if (dismiss) {
+			var m = dismiss.closest('.modal');
+			if (m) exoModalClose(m.id);
+		}
 	});
 	</script>
 }

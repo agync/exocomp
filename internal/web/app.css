@@ -309,6 +309,60 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
   color: var(--ink-100); word-break: break-all; user-select: all;
 }
 
+/* ---- Page header + add button ----
+ * The compact "+" affordance that sits beside a list surface's <h1> and opens
+ * that surface's add-form modal (moved out of an always-visible inline card). */
+.pageheader { display: flex; align-items: center; gap: 10px; }
+.pageheader h1 { margin: 0; }
+.addbtn {
+  width: 32px; height: 32px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--accent-text);
+  border: 1px solid var(--hairline); border-radius: 9px; cursor: pointer;
+}
+.addbtn:hover { color: var(--accent-text); background: var(--accent-tint); }
+
+/* ---- Modal ----
+ * A custom, non-native <dialog> built on the same data-attribute + hand-rolled
+ * JS house style as the mobile drawer (.scrim/data-drawer) and theme toggle
+ * (data-theme): modalInit() in view_layout.templ drives open/close, focus
+ * save/restore, and the Tab focus trap. `[hidden]` (not display:none via a
+ * class alone) keeps a closed modal out of the a11y tree; it is restated below
+ * because `.modal{display:flex}` would otherwise outrank the UA [hidden] rule.
+ * The panel scrolls its own content if the form is taller than the viewport
+ * allows, so the backdrop and page behind it never move. Motion (if any is
+ * added here later) is already covered by tokens.css's blanket
+ * prefers-reduced-motion rule (`* { transition:none !important }`). */
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.modal[hidden] { display: none; }
+.modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,.5); }
+.modal-panel {
+  position: relative; z-index: 1;
+  width: min(34rem, 100%);
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  display: flex; flex-direction: column; gap: 12px;
+  background: var(--surface-card);
+  border: 1px solid var(--hairline-faint);
+  border-radius: var(--radius-card);
+  padding: var(--pad-card);
+}
+.modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.modal-head h2 { margin: 0; }
+.modal-close {
+  flex: none; width: 32px; height: 32px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ink-400);
+  border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
+}
+.modal-close:hover { color: var(--ink-100); background: var(--surface-tray); }
+.modal-body .writeform { margin-top: 0; }
+/* The open modal owns scroll; the page behind it must not also scroll. */
+:root[data-modal-open] body { overflow: hidden; }
+
 /* ---- Log tail ---- */
 .log {
   background: var(--surface-void); border: 1px solid var(--hairline);

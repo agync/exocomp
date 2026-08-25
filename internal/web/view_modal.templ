@@ -1,0 +1,80 @@
+package web
+
+// modal is the shared dialog shape every "+" add-form (and the job-detail
+// "Schedule" action) opens into. It renders `hidden` by default — the native
+// attribute, not a CSS class, so a closed modal is dropped from the
+// accessibility tree and tab order for free — and is otherwise inert markup:
+// all open/close behaviour comes from the data-attribute convention modalInit()
+// wires up once in view_layout.templ. Any element carrying
+// data-modal-open="<id>" opens #<id>; any element carrying data-modal-dismiss
+// inside the open panel (the backdrop, the close button) closes it, as does Esc
+// or a backdrop click. The panel itself — not a guessed first field — takes
+// focus on open, since the seven forms this wraps have no consistent "obviously
+// first" field and a wrong guess would skip announcing the dialog's own title.
+templ modal(id, title string) {
+	<div class="modal" id={ id } hidden>
+		<div class="modal-backdrop" data-modal-dismiss="1"></div>
+		<div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby={ id + "-title" } tabindex="-1">
+			<div class="modal-head">
+				<h2 id={ id + "-title" }>{ title }</h2>
+				<button type="button" class="modal-close" data-modal-dismiss="1" aria-label="Close">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+						<path d="M3 3l10 10M13 3L3 13"></path>
+					</svg>
+				</button>
+			</div>
+			<div class="modal-body">
+				{ children... }
+			</div>
+		</div>
+	</div>
+}
+
+// modalInit defines the shared modal mechanics — open/close, focus save and
+// restore, Esc-to-close, and a Tab/Shift+Tab focus trap scoped to the open
+// panel — once, for every modal on the page. The click delegation that
+// triggers open/dismiss is attached in layoutReady() (it needs the DOM the
+// page body renders), mirroring how navInit() defines functions here and
+// layoutReady() wires the listeners that depend on rendered content.
+templ modalInit() {
+	<script>
+	var exoModalReturnFocus = null;
+	var exoModalKeyHandler = null;
+
+	// exoModalOpen shows #id, remembers the element that had focus so it can be
+	// restored on close, focuses the panel itself, and installs a keydown
+	// listener that closes on Esc and traps Tab/Shift+Tab inside the panel.
+	function exoModalOpen(id) {
+		var m = document.getElementById(id);
+		if (!m) return;
+		var panel = m.querySelector(".modal-panel");
+		exoModalReturnFocus = document.activeElement;
+		m.hidden = false;
+		document.documentElement.setAttribute("data-modal-open", id);
+		if (panel) panel.focus();
+		exoModalKeyHandler = function (e) {
+			if (e.key === "Escape") { e.preventDefault(); exoModalClose(id); return; }
+			if (e.key !== "Tab" || !panel) return;
+			var focusables = panel.querySelectorAll(
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			);
+			if (focusables.length === 0) { e.preventDefault(); return; }
+			var first = focusables[0], last = focusables[focusables.length - 1];
+			if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+			else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+		};
+		document.addEventListener("keydown", exoModalKeyHandler);
+	}
+
+	// exoModalClose re-hides #id, tears down the trap listener, and restores
+	// focus to whatever opened the modal.
+	function exoModalClose(id) {
+		var m = document.getElementById(id);
+		if (m) m.hidden = true;
+		document.documentElement.removeAttribute("data-modal-open");
+		if (exoModalKeyHandler) { document.removeEventListener("keydown", exoModalKeyHandler); exoModalKeyHandler = null; }
+		if (exoModalReturnFocus && exoModalReturnFocus.focus) exoModalReturnFocus.focus();
+		exoModalReturnFocus = null;
+	}
+	</script>
+}
