@@ -71,9 +71,28 @@ func TestComposeRunStepsNoHooksIsJustPlay(t *testing.T) {
 func TestHookStepSecretBinding(t *testing.T) {
 	// A hook's secret binding NAME travels on the spec; the value is resolved at
 	// execution time, never stored on the row.
-	step := hookStep("/src", false, hooks.Hook{Name: "auth", Run: "true", Secret: "proxmox"}, 0)
+	step := hookStep("/src", false, hooks.Hook{Name: "auth", Run: "true", Secret: "proxmox"}, "", 0)
 	if step.Spec.RunSecretBinding != "proxmox" {
 		t.Fatalf("secret binding not carried: %+v", step.Spec)
+	}
+}
+
+// TestComposeRunStepsCarriesSource proves a --source run's every step (hooks,
+// play, gate) carries the source name onto its spec, so the "running" event
+// and every job face can show it rather than the checkout path.
+func TestComposeRunStepsCarriesSource(t *testing.T) {
+	hk := hooks.Hooks{
+		PreRun: []hooks.Hook{{Name: "prep", Run: "true"}},
+		Gate:   []verify.Probe{{Name: "web", HTTP: &verify.HTTPProbe{URL: "http://127.0.0.1:9/"}}},
+	}
+	steps, err := composeRunSteps("/src", false, "/src/site.yml", "", "", runSpec{sourceName: "infra"}, hk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, s := range steps {
+		if s.Spec.Source != "infra" {
+			t.Errorf("step %d (%s) Source = %q, want %q", i, s.Kind, s.Spec.Source, "infra")
+		}
 	}
 }
 

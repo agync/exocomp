@@ -30,6 +30,7 @@ func TestRunAdhocAssemblesAnsibleSpec(t *testing.T) {
 		InventoryName:  "prod",
 		VaultProject:   "vault-a",
 		RunSecrets:     "aws",
+		Source:         "my-fleet",
 		IdempotencyKey: "idem-1",
 		Timeout:        30 * time.Second,
 	})
@@ -52,6 +53,9 @@ func TestRunAdhocAssemblesAnsibleSpec(t *testing.T) {
 	if spec.Dir != "/srv/checkout" || spec.VaultProject != "vault-a" ||
 		spec.RunSecretBinding != "aws" || spec.Inventory != "prod" {
 		t.Errorf("bindings lost: %+v", spec)
+	}
+	if spec.Source != "my-fleet" {
+		t.Errorf("spec.Source = %q, want %q", spec.Source, "my-fleet")
 	}
 	if spec.IdempotencyKey != "idem-1" || spec.Timeout != 30*time.Second {
 		t.Errorf("run options lost: %+v", spec)

@@ -84,6 +84,7 @@ func TestRunPlaybookAssemblesAnsibleSpec(t *testing.T) {
 		InventoryName:       "prod",
 		VaultProject:        "vault-a",
 		RunSecrets:          "aws",
+		Source:              "my-fleet",
 		Passthrough:         []string{"--limit", "hostA"},
 		ExtraVars:           map[string]string{"proof": "xyz"},
 		TolerateUnreachable: true,
@@ -108,6 +109,9 @@ func TestRunPlaybookAssemblesAnsibleSpec(t *testing.T) {
 	if spec.VaultProject != "vault-a" || spec.RunSecretBinding != "aws" || spec.Inventory != "prod" {
 		t.Errorf("secret/inventory bindings lost: %+v", spec)
 	}
+	if spec.Source != "my-fleet" {
+		t.Errorf("spec.Source = %q, want %q", spec.Source, "my-fleet")
+	}
 	if spec.ExtraVars["proof"] != "xyz" || !spec.TolerateUnreachable ||
 		spec.IdempotencyKey != "idem-1" || spec.Timeout != 30*time.Second {
 		t.Errorf("run options lost: %+v", spec)
@@ -131,12 +135,16 @@ func TestRunPlaybookCarriesSourceDir(t *testing.T) {
 			PlaybookPath: "/checkout/site.yml",
 			Dir:          "/checkout",
 			DirReadOnly:  true,
+			Source:       "my-fleet",
 		}); err != nil {
 			t.Fatalf("RunPlaybook: %v", err)
 		}
 		spec := enq.enqueued[0]
 		if spec.Dir != "/checkout" || !spec.DirReadOnly {
 			t.Errorf("Dir/DirReadOnly not carried: Dir=%q DirReadOnly=%v", spec.Dir, spec.DirReadOnly)
+		}
+		if spec.Source != "my-fleet" {
+			t.Errorf("Source not carried: %q, want %q", spec.Source, "my-fleet")
 		}
 	})
 
@@ -150,6 +158,9 @@ func TestRunPlaybookCarriesSourceDir(t *testing.T) {
 		spec := enq.enqueued[0]
 		if spec.Dir != "" || spec.DirReadOnly {
 			t.Errorf("a raw-path run set a working directory: Dir=%q DirReadOnly=%v", spec.Dir, spec.DirReadOnly)
+		}
+		if spec.Source != "" {
+			t.Errorf("a raw-path run named a source: %q", spec.Source)
 		}
 	})
 }

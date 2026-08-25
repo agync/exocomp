@@ -211,6 +211,7 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		DirReadOnly:      rootReadOnly,
 		RunSecretBinding: spec.runSecrets,
 		RunnerName:       spec.runnerName,
+		Source:           spec.sourceName,
 		ConcurrencyKey:   concurrency,
 		Privileged:       spec.privileged,
 		IdempotencyKey:   spec.idempotencyKey,

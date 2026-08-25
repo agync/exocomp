@@ -143,6 +143,7 @@ func newPlaybookCmd() *cobra.Command {
 				vaultProject:        vaultProject,
 				runSecrets:          runSecrets,
 				runnerName:          runnerName,
+				sourceName:          sourceName,
 				timeout:             timeout,
 				passthrough:         passthrough,
 				extraVars:           vars,
@@ -220,7 +221,10 @@ type playbookSpec struct {
 	vaultProject string
 	runSecrets   string
 	runnerName   string
-	timeout      time.Duration
+	// sourceName names the registered source this run executes from, carried
+	// onto the job row for display; empty on the raw-path form.
+	sourceName string
+	timeout    time.Duration
 	// dir is the run's working directory: a --source run's checkout root, so
 	// ansible loads that tree's own ./ansible.cfg (and its relative inventory,
 	// roles, collections). Empty on the raw-path form, where the executor picks
@@ -305,6 +309,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 		RunnerName:          spec.runnerName,
+		Source:              spec.sourceName,
 		Dir:                 spec.dir,
 		DirReadOnly:         spec.dirReadOnly,
 		Privileged:          spec.privileged,

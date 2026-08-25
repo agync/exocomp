@@ -638,6 +638,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		InventoryName:       invName,
 		VaultProject:        req.VaultProject,
 		RunSecrets:          req.RunSecrets,
+		Source:              req.Source,
 		Passthrough:         passthrough,
 		ExtraVars:           vars,
 		TolerateUnreachable: req.TolerateUnreachable,

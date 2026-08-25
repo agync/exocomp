@@ -37,6 +37,10 @@ type PlaybookInput struct {
 	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
 	// is the default, uncapped path.
 	RunnerName string
+	// Source names the registered source this run executes from, carried onto
+	// the job row for the "running" event and every job face to display.
+	// Empty on a raw-path run.
+	Source string
 	// Privileged asks that the run execute UNSANDBOXED (the disabled tier). It
 	// is operator-gated at the calling face; the verb only carries it onto the
 	// spec and records the escalation. Off by default is normal tiering.
@@ -66,6 +70,7 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		VaultProject:        in.VaultProject,
 		RunSecretBinding:    in.RunSecrets,
 		Inventory:           in.InventoryName,
+		Source:              in.Source,
 		ExtraVars:           in.ExtraVars,
 		TolerateUnreachable: in.TolerateUnreachable,
 		IdempotencyKey:      in.IdempotencyKey,

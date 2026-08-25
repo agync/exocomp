@@ -206,6 +206,7 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		InventoryPath:  invPath,
 		InventoryName:  invName,
 		RunSecrets:     r.PostFormValue("run_secrets"),
+		Source:         name,
 		Passthrough:    passthrough,
 		ExtraVars:      vars,
 		Privileged:     privileged,
@@ -286,6 +287,7 @@ func (s *Server) handleSourceRunCommand(w http.ResponseWriter, r *http.Request) 
 		InventoryPath:   invPath,
 		InventoryName:   invName,
 		RunSecrets:      r.PostFormValue("run_secrets"),
+		Source:          name,
 		RequireApproval: r.Form.Has("require_approval"),
 		// Operator-only, gated by writeGuard above just like every other control
 		// on this surface; the checkbox only reaches here past that scope check.

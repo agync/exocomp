@@ -276,6 +276,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		VaultProject:        spec.vaultProject,
 		RunSecretBinding:    spec.runSecrets,
 		Inventory:           invName,
+		Source:              spec.sourceName,
 		TolerateUnreachable: spec.tolerateUnreachable,
 		RunnerName:          spec.runnerName,
 		Privileged:          spec.privileged,

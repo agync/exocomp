@@ -223,7 +223,7 @@ func runWithHooks(ctx context.Context, out, warn io.Writer, rs runSpec) (err err
 func composeRunSteps(root string, readOnly bool, playbook, invPath, invName string, rs runSpec, hk hooks.Hooks) ([]queue.Step, error) {
 	var steps []queue.Step
 	for _, h := range hk.PreRun {
-		steps = append(steps, hookStep(root, readOnly, h, rs.timeout))
+		steps = append(steps, hookStep(root, readOnly, h, rs.sourceName, rs.timeout))
 	}
 
 	steps = append(steps, queue.Step{
@@ -238,6 +238,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 			VaultProject:        rs.vaultProject,
 			RunSecretBinding:    rs.runSecrets,
 			Inventory:           invName,
+			Source:              rs.sourceName,
 			ExtraVars:           rs.extraVars,
 			TolerateUnreachable: rs.tolerateUnreachable,
 			RunnerName:          rs.runnerName,
@@ -247,7 +248,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 	})
 
 	for _, h := range hk.PostRun {
-		steps = append(steps, hookStep(root, readOnly, h, rs.timeout))
+		steps = append(steps, hookStep(root, readOnly, h, rs.sourceName, rs.timeout))
 	}
 
 	if len(hk.Gate) > 0 {
@@ -262,6 +263,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 				Kind:    verify.JobKind,
 				Trigger: "run",
 				Argv:    argv,
+				Source:  rs.sourceName,
 				Timeout: rs.timeout,
 			},
 		})
@@ -273,7 +275,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 // path run under the shell, with the checkout as the working directory and the
 // hook's optional run_secret binding carried so the daemon resolves it to named
 // env at execution time.
-func hookStep(root string, readOnly bool, h hooks.Hook, timeout time.Duration) queue.Step {
+func hookStep(root string, readOnly bool, h hooks.Hook, sourceName string, timeout time.Duration) queue.Step {
 	argv := []string{hookShell, "-c", h.Run}
 	if h.Script != "" {
 		argv = []string{hookShell, filepath.Join(root, h.Script)}
@@ -287,6 +289,7 @@ func hookStep(root string, readOnly bool, h hooks.Hook, timeout time.Duration) q
 			Argv:             argv,
 			Dir:              root,
 			DirReadOnly:      readOnly,
+			Source:           sourceName,
 			RunSecretBinding: h.Secret,
 			Timeout:          timeout,
 		},

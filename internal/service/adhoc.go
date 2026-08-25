@@ -34,12 +34,16 @@ type AdhocInput struct {
 	Dir    string
 	// DirReadOnly grants Dir read access only under the sandbox — set for a
 	// read-only path source so the run cannot write back to its tree.
-	DirReadOnly         bool
-	InventoryPath       string
-	InventoryName       string
-	VaultProject        string
-	RunSecrets          string
-	RunnerName          string
+	DirReadOnly   bool
+	InventoryPath string
+	InventoryName string
+	VaultProject  string
+	RunSecrets    string
+	RunnerName    string
+	// Source names the registered source this run executes from, carried onto
+	// the job row for the "running" event and every job face to display.
+	// Empty on a run with no --source.
+	Source              string
 	RequireApproval     bool
 	TolerateUnreachable bool
 	IdempotencyKey      string
@@ -152,6 +156,7 @@ func (s *Service) RunAdhoc(ctx context.Context, enq Enqueuer, deriver reactive.D
 		VaultProject:        in.VaultProject,
 		RunSecretBinding:    in.RunSecrets,
 		Inventory:           in.InventoryName,
+		Source:              in.Source,
 		TolerateUnreachable: in.TolerateUnreachable,
 		RunnerName:          in.RunnerName,
 		IdempotencyKey:      in.IdempotencyKey,

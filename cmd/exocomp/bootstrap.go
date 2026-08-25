@@ -389,7 +389,7 @@ func runBootstrap(ctx context.Context, out, warn io.Writer, mode string, bs boot
 		if serr != nil {
 			return serr
 		}
-		if steps, serr = wrapWithHooks(loc.Root, loc.ReadOnly, hk, steps, bs.timeout); serr != nil {
+		if steps, serr = wrapWithHooks(loc.Root, loc.ReadOnly, hk, steps, bs.sourceName, bs.timeout); serr != nil {
 			return fmt.Errorf("bootstrap: %w", serr)
 		}
 	}

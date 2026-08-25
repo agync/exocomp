@@ -70,6 +70,16 @@ func TestPlaybookRunHonorsSourceHooks(t *testing.T) {
 		t.Errorf("the play did not run:\n%s", d.dump())
 	}
 
+	// The play step's job carries the source name, the fact the "running" event
+	// and every job face read back rather than the checkout's absolute path.
+	if steps[1].JobID == nil {
+		t.Fatalf("play step has no job id:\n%s", d.dump())
+	}
+	playJob := getJob(t, *steps[1].JobID)
+	if playJob.Args.Source != "infra" {
+		t.Errorf("play job Args.Source = %q, want %q", playJob.Args.Source, "infra")
+	}
+
 	d.signal(t, syscall.SIGTERM)
 	d.waitExit(t, 60*time.Second)
 	assertNothingLeftRunning(t, d)
@@ -88,7 +98,7 @@ func TestWrapWithHooksOrder(t *testing.T) {
 		PostRun: []hooks.Hook{{Name: "notify", Run: "true"}},
 		Gate:    []verify.Probe{{Name: "web", HTTP: &verify.HTTPProbe{URL: "http://127.0.0.1:9/"}}},
 	}
-	steps, err := wrapWithHooks("/src", true, hk, main, 0)
+	steps, err := wrapWithHooks("/src", true, hk, main, "infra", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,13 +119,19 @@ func TestWrapWithHooksOrder(t *testing.T) {
 	if !steps[0].Spec.DirReadOnly || !steps[3].Spec.DirReadOnly {
 		t.Fatalf("read-only source did not mark its hook steps read-only: %+v", steps)
 	}
+	// The hook and gate steps this wrapper adds carry the source name; the
+	// caller's own main steps are untouched (they may run against something
+	// other than this source's checkout, e.g. handoff's apply/play chain).
+	if steps[0].Spec.Source != "infra" || steps[3].Spec.Source != "infra" || steps[4].Spec.Source != "infra" {
+		t.Fatalf("wrapper steps did not carry the source name: %+v", steps)
+	}
 }
 
 // TestWrapWithHooksEmptyIsUnchanged: a source with no hooks leaves the main
 // chain exactly as it was — the "behaves exactly as today" guarantee.
 func TestWrapWithHooksEmptyIsUnchanged(t *testing.T) {
 	main := []queue.Step{{Kind: "tofu-apply"}, {Kind: "ansible-play"}}
-	steps, err := wrapWithHooks("/src", false, hooks.Hooks{}, main, 0)
+	steps, err := wrapWithHooks("/src", false, hooks.Hooks{}, main, "infra", 0)
 	if err != nil {
 		t.Fatal(err)
 	}

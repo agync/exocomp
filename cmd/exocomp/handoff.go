@@ -281,7 +281,7 @@ func runHandoff(ctx context.Context, out, warn io.Writer, hs handoffSpec) (err e
 		if serr != nil {
 			return serr
 		}
-		if steps, serr = wrapWithHooks(loc.Root, loc.ReadOnly, hk, steps, hs.timeout); serr != nil {
+		if steps, serr = wrapWithHooks(loc.Root, loc.ReadOnly, hk, steps, hs.sourceName, hs.timeout); serr != nil {
 			return fmt.Errorf("handoff: %w", serr)
 		}
 	}
@@ -306,17 +306,17 @@ func runHandoff(ctx context.Context, out, warn io.Writer, hs handoffSpec) (err e
 // compose a hook identically, and it appends the same declared-probe gate step.
 // An empty Hooks returns main unchanged, which is what keeps a source with no
 // lifecycle behaving exactly as it did before.
-func wrapWithHooks(root string, readOnly bool, hk hooks.Hooks, main []queue.Step, timeout time.Duration) ([]queue.Step, error) {
+func wrapWithHooks(root string, readOnly bool, hk hooks.Hooks, main []queue.Step, sourceName string, timeout time.Duration) ([]queue.Step, error) {
 	if hk.Empty() {
 		return main, nil
 	}
 	steps := make([]queue.Step, 0, len(hk.PreRun)+len(main)+len(hk.PostRun)+1)
 	for _, h := range hk.PreRun {
-		steps = append(steps, hookStep(root, readOnly, h, timeout))
+		steps = append(steps, hookStep(root, readOnly, h, sourceName, timeout))
 	}
 	steps = append(steps, main...)
 	for _, h := range hk.PostRun {
-		steps = append(steps, hookStep(root, readOnly, h, timeout))
+		steps = append(steps, hookStep(root, readOnly, h, sourceName, timeout))
 	}
 	if len(hk.Gate) > 0 {
 		argv, err := verify.Encode(hk.Gate)
@@ -330,6 +330,7 @@ func wrapWithHooks(root string, readOnly bool, hk hooks.Hooks, main []queue.Step
 				Kind:    verify.JobKind,
 				Trigger: "handoff",
 				Argv:    argv,
+				Source:  sourceName,
 				Timeout: timeout,
 			},
 		})
