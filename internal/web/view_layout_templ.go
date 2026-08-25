@@ -235,9 +235,10 @@ func layout(p page) templ.Component {
 	})
 }
 
-// brandMark is the exocomp logo: a hexagonal power cell (the Exocomp's energy
-// core) with one orbiting node. The hex and node take currentColor (ink); the
-// cell is the accent fill.
+// brandMark is the exocomp mark from the design system (Foundations §01,
+// "Carapace and pin"): a four-sided shell with one corner cut away — the tool
+// bay — holding a single pin. The shell is ink and never changes; the pin
+// (.cell) is the accent fill, the mark's one live element.
 func brandMark() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -259,7 +260,7 @@ func brandMark() templ.Component {
 			templ_7745c5c3_Var7 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<svg class=\"brandmark\" width=\"22\" height=\"22\" viewBox=\"0 0 48 48\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.6\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M24 7l13 7.5v15L24 37l-13-7.5v-15z\"></path> <circle class=\"cell\" cx=\"24\" cy=\"22\" r=\"4.6\" fill=\"currentColor\" stroke=\"none\"></circle> <circle cx=\"35.5\" cy=\"12\" r=\"3\"></circle></svg>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<svg class=\"brandmark\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z\"></path> <circle class=\"cell\" cx=\"9.4\" cy=\"14.6\" r=\"2.1\" fill=\"currentColor\" stroke=\"none\"></circle></svg>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

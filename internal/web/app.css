@@ -96,7 +96,9 @@ a:visited { color: var(--accent-text); }
 .brand-slot { width: 64px; flex: none; display: flex; align-items: center; justify-content: center; }
 .brandmark { color: var(--ink-100); flex: none; width: 26px; height: 26px; }
 .brandmark .cell { color: var(--accent-fill); }
-.brandlink .wordmark { white-space: nowrap; }
+/* The wordmark is set in the mono face (Foundations Wordmark card): 600 weight,
+ * tight negative tracking — the machine face is the identity, not the UI sans. */
+.brandlink .wordmark { white-space: nowrap; font: 600 15px/1 var(--font-mono); letter-spacing: -0.4px; }
 
 .side-nav {
   flex: 1; min-height: 0; overflow-y: auto;
