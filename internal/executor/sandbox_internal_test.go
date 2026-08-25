@@ -349,6 +349,73 @@ func (recordingDriver) Run(context.Context, Spec, EventSink) (Result, error) {
 	return Result{}, nil
 }
 
+// capturingDriver keeps the launcher argv Sandbox.Run rewrote its spec into, so
+// a test can read back which grants (--read vs --allow) the sandbox handed the
+// working directory.
+type capturingDriver struct{ argv []string }
+
+func (d *capturingDriver) Run(_ context.Context, spec Spec, _ EventSink) (Result, error) {
+	d.argv = spec.Argv
+	return Result{}, nil
+}
+
+// grantedAs reports whether argv carries `flag dir` as an adjacent pair — the
+// shape SandboxProfile.Command emits each grant in (`--read <dir>`,
+// `--allow <dir>`).
+func grantedAs(argv []string, flag, dir string) bool {
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] == flag && argv[i+1] == dir {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSandboxReadOnlyDirGrant is the security proof that Source.Writable is
+// honest: a read-only source's working directory is granted --read, never
+// --allow, so a job cannot write back to a tree the operator marked read-only;
+// a writable source's directory keeps its --allow (write) grant. Before this,
+// Sandbox.Run write-granted spec.Dir unconditionally, so the RO bit was defined
+// but never enforced.
+func TestSandboxReadOnlyDirGrant(t *testing.T) {
+	t.Parallel()
+
+	data := t.TempDir()
+	work := t.TempDir()
+
+	t.Run("read-only source is read-granted, not write-granted", func(t *testing.T) {
+		t.Parallel()
+		drv := &capturingDriver{}
+		sb := NewSandbox(KindAnsible, SandboxOptions{DataDir: data}, drv)
+		if _, err := sb.Run(context.Background(),
+			Spec{Dir: work, DirReadOnly: true, Argv: []string{"true"}}, discardSink{}); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		if grantedAs(drv.argv, "--allow", work) {
+			t.Fatalf("a read-only source dir was write-granted (--allow %s): %v", work, drv.argv)
+		}
+		if !grantedAs(drv.argv, "--read", work) {
+			t.Fatalf("a read-only source dir was not read-granted (--read %s): %v", work, drv.argv)
+		}
+	})
+
+	t.Run("writable source is write-granted", func(t *testing.T) {
+		t.Parallel()
+		drv := &capturingDriver{}
+		sb := NewSandbox(KindAnsible, SandboxOptions{DataDir: data}, drv)
+		if _, err := sb.Run(context.Background(),
+			Spec{Dir: work, DirReadOnly: false, Argv: []string{"true"}}, discardSink{}); err != nil {
+			t.Fatalf("run: %v", err)
+		}
+		if !grantedAs(drv.argv, "--allow", work) {
+			t.Fatalf("a writable source dir was not write-granted (--allow %s): %v", work, drv.argv)
+		}
+		if grantedAs(drv.argv, "--read", work) {
+			t.Fatalf("a writable source dir was also read-granted (--read %s), which nono rejects: %v", work, drv.argv)
+		}
+	})
+}
+
 // TestAnsibleSourceDirsIgnoresAdhocHostPattern: an ad-hoc run's sole
 // positional (argv[1]) is a host PATTERN — a host, a group, or an expression
 // like `fedora:!nas` — never a filesystem path. A path-shaped pattern like

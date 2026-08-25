@@ -23,7 +23,7 @@ func TestResolveInventoryByNameSourceRelative(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(checkout, "inventory.ini"), []byte("[all]\nnode0\n"), 0o644); err != nil {
 		t.Fatalf("write inventory: %v", err)
 	}
-	src, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true})
+	src, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true})
 	if err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}
@@ -92,7 +92,7 @@ func TestResolveSourcePlaybookRebasesPath(t *testing.T) {
 	dataDir := t.TempDir()
 
 	checkout := t.TempDir()
-	if _, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true}); err != nil {
+	if _, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true}); err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestResolveSourcePlaybookConfined(t *testing.T) {
 		t.Fatalf("write attacker playbook: %v", err)
 	}
 	if _, err := st.CreateSource(ctx, store.Source{
-		Name: "signed-proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+		Name: "signed-proj", Kind: store.SourcePath, URI: checkout, Enabled: true,
 	}); err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}

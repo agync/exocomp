@@ -43,7 +43,7 @@ func newSourceAddCmd() *cobra.Command {
 		url         string
 		ref         string
 		path        string
-		kind        string
+		writable    bool
 		signed      bool
 		signersFile string
 		signers     []string
@@ -53,9 +53,9 @@ func newSourceAddCmd() *cobra.Command {
 		Short: "Register a git repo (--url) or a path (--path) as a source",
 		Long: "A git source generates an ed25519 deploy key sealed into the envelope and " +
 			"prints the public half to add to the forge; `source sync` clones and pins it. " +
-			"A path source (--path, --kind hostpath|volpath) points at a tree already on the " +
-			"box. The credential planes are identical across kinds; only how the tree arrives " +
-			"differs.",
+			"A path source (--path) points at a tree already on the box: an absolute path, or " +
+			"a path relative to the data volume. A path source is read-only unless --writable. " +
+			"The credential planes are identical across kinds; only how the tree arrives differs.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if (url == "") == (path == "") {
@@ -77,15 +77,16 @@ func newSourceAddCmd() *cobra.Command {
 					"exocomp verifies a signed ref against its own signers, never the host git config")
 			}
 			return runSourceAdd(cmd, args[0], sourceAddSpec{
-				url: url, ref: ref, path: path, kind: kind, signed: signed, allowedSigners: allowed,
+				url: url, ref: ref, path: path, writable: writable, signed: signed, allowedSigners: allowed,
 			})
 		},
 	}
 	add.Flags().StringVar(&url, "url", "", "git clone URL for a git source")
 	add.Flags().StringVar(&ref, "ref", "main", "ref/tag a git source pins to")
-	add.Flags().StringVar(&path, "path", "", "tree path for a hostpath/volpath source")
-	add.Flags().StringVar(&kind, "kind", store.SourceHostPath,
-		"path source kind: hostpath (bind-mounted, read-only) or volpath (in the data volume)")
+	add.Flags().StringVar(&path, "path", "",
+		"tree path for a path source: absolute, or relative to the data volume")
+	add.Flags().BoolVar(&writable, "writable", false,
+		"grant a path source a read+write working directory (default: read-only)")
 	add.Flags().BoolVar(&signed, "signed", false, "require a verified signature on the pinned ref before a sync advances")
 	add.Flags().StringVar(&signersFile, "allowed-signers", "",
 		"SSH allowed-signers file whose keys a --signed ref is verified against (exocomp-owned trust, not the host git config)")
@@ -117,9 +118,10 @@ func resolveAllowedSigners(file string, signers []string) (string, error) {
 }
 
 type sourceAddSpec struct {
-	url, ref, path, kind string
-	signed               bool
-	allowedSigners       string
+	url, ref, path string
+	writable       bool
+	signed         bool
+	allowedSigners string
 }
 
 func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
@@ -137,20 +139,22 @@ func runSourceAdd(cmd *cobra.Command, name string, spec sourceAddSpec) error {
 	out := cmd.OutOrStdout()
 
 	if spec.path != "" {
-		if spec.kind != store.SourceHostPath && spec.kind != store.SourceVolPath {
-			return fmt.Errorf("source add: --kind must be %s or %s", store.SourceHostPath, store.SourceVolPath)
-		}
-		abs, err := filepath.Abs(spec.path)
-		if err != nil {
-			return fmt.Errorf("source add: resolve path: %w", err)
-		}
-		row.Kind = spec.kind
-		row.URI = abs
+		// An absolute path is cleaned as-is; a relative path is kept verbatim
+		// (cleaned) so it resolves against the data volume at run time. filepath.Abs
+		// would bind a relative path to the CLI's cwd, defeating that.
+		uri := filepath.Clean(spec.path)
+		row.Kind = store.SourcePath
+		row.URI = uri
+		row.Writable = spec.writable
 		row.Ref = ""
 		if _, err := st.CreateSource(cmd.Context(), row); err != nil {
 			return fmt.Errorf("source add: %w", err)
 		}
-		_, _ = fmt.Fprintf(out, "registered %s source %q at %s\n", spec.kind, name, abs)
+		access := "read-only"
+		if spec.writable {
+			access = "writable"
+		}
+		_, _ = fmt.Fprintf(out, "registered %s path source %q at %s\n", access, name, uri)
 		return nil
 	}
 
@@ -251,6 +255,13 @@ func newSourceListCmd() *cobra.Command {
 					pin = fmt.Sprintf("%s@%s", s.Ref, short(s.LastSyncSHA))
 				}
 				flags := ""
+				if s.Kind == store.SourcePath {
+					if s.Writable {
+						flags += " rw"
+					} else {
+						flags += " ro"
+					}
+				}
 				if s.Signed {
 					flags += " signed"
 				}
@@ -299,7 +310,7 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 	if err != nil {
 		return err
 	}
-	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
 		return fmt.Errorf("source sync: %w", err)
 	}

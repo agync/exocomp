@@ -11,12 +11,12 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// seedVolpathSource registers a volpath source rooted at root, so `hooks show`
+// seedPathSource registers a path source rooted at root, so `hooks show`
 // resolves it without a daemon, a checkout, or network access.
-func seedVolpathSource(t *testing.T, st *store.Store, name, root string) {
+func seedPathSource(t *testing.T, st *store.Store, name, root string) {
 	t.Helper()
 	if _, err := st.CreateSource(context.Background(), store.Source{
-		Name: name, Kind: "volpath", URI: root, Enabled: true,
+		Name: name, Kind: store.SourcePath, URI: root, Enabled: true,
 	}); err != nil {
 		t.Fatalf("create source: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestHooksShowTextUnchanged(t *testing.T) {
 		0o644); err != nil {
 		t.Fatalf("write hooks.yml: %v", err)
 	}
-	seedVolpathSource(t, st, "web", root)
+	seedPathSource(t, st, "web", root)
 
 	bare, err := run(t, "hooks", "show", "web")
 	if err != nil {
@@ -75,7 +75,7 @@ func TestHooksShowJSON(t *testing.T) {
 		0o644); err != nil {
 		t.Fatalf("write hooks.yml: %v", err)
 	}
-	seedVolpathSource(t, st, "web", root)
+	seedPathSource(t, st, "web", root)
 
 	out, err := run(t, "hooks", "show", "web", "--output", "json")
 	if err != nil {
@@ -131,7 +131,7 @@ func TestHooksShowJSON(t *testing.T) {
 // a well-formed envelope with empty (never null) phase lists.
 func TestHooksShowJSONNoHooksFile(t *testing.T) {
 	st := seedStore(t)
-	seedVolpathSource(t, st, "bare", t.TempDir())
+	seedPathSource(t, st, "bare", t.TempDir())
 
 	out, err := run(t, "hooks", "show", "bare", "--output", "json")
 	if err != nil {

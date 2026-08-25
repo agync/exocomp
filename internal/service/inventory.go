@@ -49,7 +49,7 @@ func (s *Service) resolveInventoryPath(ctx context.Context, inv store.Inventory)
 	if err != nil {
 		return "", fmt.Errorf("inventory %q: source: %w", inv.Name, err)
 	}
-	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
 		return "", fmt.Errorf("inventory %q: %w", inv.Name, err)
 	}

@@ -154,7 +154,7 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dir, err := s.resolveSourceCheckout(r.Context(), r.PostFormValue("source"))
+	dir, dirReadOnly, err := s.resolveSourceCheckout(r.Context(), r.PostFormValue("source"))
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -182,6 +182,7 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		Args:            command,
 		Become:          r.Form.Has("become"),
 		Dir:             dir,
+		DirReadOnly:     dirReadOnly,
 		InventoryPath:   invPath,
 		InventoryName:   invName,
 		RunSecrets:      r.PostFormValue("run_secrets"),
@@ -214,25 +215,26 @@ func (s *Server) handleRunCommand(w http.ResponseWriter, r *http.Request) {
 		"job "+strconv.FormatInt(res.Run.Job.ID, 10)+" enqueued")
 }
 
-// resolveSourceCheckout resolves a registered source's checkout root, the web
-// mirror of cmd/exocomp/adhoc.go's sourceCheckoutRoot: an empty name runs in
-// the caller's own directory (no --source).
-func (s *Server) resolveSourceCheckout(ctx context.Context, name string) (string, error) {
+// resolveSourceCheckout resolves a registered source's checkout root and whether
+// a run may write to it, the web mirror of cmd/exocomp/adhoc.go's
+// sourceCheckoutRoot: an empty name runs in the caller's own directory
+// (no --source), which is writable.
+func (s *Server) resolveSourceCheckout(ctx context.Context, name string) (root string, readOnly bool, err error) {
 	if name == "" {
-		return "", nil
+		return "", false, nil
 	}
 	if err := service.ValidSourceName(name); err != nil {
-		return "", err
+		return "", false, err
 	}
 	src, err := s.store.SourceByName(ctx, name)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	return loc.Root, nil
+	return loc.Root, loc.ReadOnly, nil
 }
 
 // parseOptionalDuration parses a form field as a Go duration; an empty value

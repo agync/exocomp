@@ -170,8 +170,8 @@ func TestSourcesGolden(t *testing.T) {
 		rows: []sourceRow{
 			{name: "core-infra", kind: "git", ref: "refs/heads/main", sync: "a1b2c3d4e5f6", trust: "SIGNED · SIGNERS", enabled: "yes"},
 			{name: "playbooks", kind: "git", ref: "refs/tags/v3", sync: "9f8e7d6c5b4a", trust: "SIGNED", enabled: "yes"},
-			{name: "host-media", kind: "hostpath", ref: "-", sync: "-", trust: "unsigned", enabled: "yes"},
-			{name: "vol-scratch", kind: "volpath", ref: "-", sync: "-", trust: "unsigned", enabled: "no"},
+			{name: "host-media", kind: "path", ref: "-", sync: "-", trust: "unsigned", enabled: "yes"},
+			{name: "vol-scratch", kind: "path", ref: "-", sync: "-", trust: "unsigned", enabled: "no"},
 		},
 	}
 	assertFrame(t, "sources-120", renderSourcesScreen(m))

@@ -45,26 +45,33 @@ func runCobra(t *testing.T, factory func() *cobra.Command, args ...string) (stri
 func TestSourceAddPathAndList(t *testing.T) {
 	initForSource(t)
 
-	out, err := runSource(t, "add", "nas", "--path", "/mnt/nas/infra", "--kind", "hostpath")
+	out, err := runSource(t, "add", "nas", "--path", "/mnt/nas/infra")
 	if err != nil {
 		t.Fatalf("source add --path: %v (%s)", err, out)
 	}
-	if !strings.Contains(out, "registered hostpath source") {
+	// A path source is read-only by default.
+	if !strings.Contains(out, "registered read-only path source") {
 		t.Fatalf("add output = %q", out)
+	}
+
+	// --writable opts into a read+write tree.
+	wout, err := runSource(t, "add", "scratch", "--path", "/mnt/scratch", "--writable")
+	if err != nil {
+		t.Fatalf("source add --path --writable: %v (%s)", err, wout)
+	}
+	if !strings.Contains(wout, "registered writable path source") {
+		t.Fatalf("writable add output = %q", wout)
 	}
 
 	list, err := runSource(t, "list")
 	if err != nil {
 		t.Fatalf("source list: %v", err)
 	}
-	if !strings.Contains(list, "nas") || !strings.Contains(list, "hostpath") {
+	if !strings.Contains(list, "nas") || !strings.Contains(list, "path") ||
+		!strings.Contains(list, "ro") || !strings.Contains(list, "rw") {
 		t.Fatalf("list = %q", list)
 	}
 
-	// A bad path kind is refused.
-	if _, err := runSource(t, "add", "bad", "--path", "/x", "--kind", "git"); err == nil {
-		t.Fatal("expected --kind git to be rejected for a path source")
-	}
 	// Naming both --url and --path is refused.
 	if _, err := runSource(t, "add", "both", "--path", "/x", "--url", "git@f:o/r.git"); err == nil {
 		t.Fatal("expected --url with --path to be rejected")
@@ -127,7 +134,7 @@ func TestSourceAddGitGeneratesAndSealsDeployKey(t *testing.T) {
 func TestSourceAddDuplicateLeavesNoOrphanedSecret(t *testing.T) {
 	dir := initForSource(t)
 
-	if _, err := runSource(t, "add", "infra", "--path", "/mnt/infra", "--kind", "hostpath"); err != nil {
+	if _, err := runSource(t, "add", "infra", "--path", "/mnt/infra"); err != nil {
 		t.Fatalf("source add --path: %v", err)
 	}
 

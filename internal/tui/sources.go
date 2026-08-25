@@ -6,7 +6,7 @@ package tui
 // CLI-and-local-auth path, so this screen carries no mutation.
 type sourceRow struct {
 	name    string // "core-infra"
-	kind    string // git|hostpath|volpath
+	kind    string // git|path
 	ref     string // "refs/heads/main"
 	sync    string // short last-sync sha
 	trust   string // "SIGNED · SIGNERS", "SIGNED", "unsigned"

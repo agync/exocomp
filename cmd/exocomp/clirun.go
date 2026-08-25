@@ -180,7 +180,7 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		return 0, err
 	}
 
-	root, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, "run-cli")
+	root, rootReadOnly, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, "run-cli")
 	if err != nil {
 		return 0, err
 	}
@@ -199,6 +199,7 @@ func cliRun(cmd *cobra.Command, spec cliRunSpec) (code int, err error) {
 		Trigger:          "manual",
 		Argv:             argv,
 		Dir:              root,
+		DirReadOnly:      rootReadOnly,
 		RunSecretBinding: spec.runSecrets,
 		RunnerName:       spec.runnerName,
 		ConcurrencyKey:   concurrency,

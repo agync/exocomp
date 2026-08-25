@@ -26,7 +26,7 @@ func TestSourcePlaybookRefusesEscape(t *testing.T) {
 	ctx := context.Background()
 	checkout := t.TempDir()
 	if _, err := st.CreateSource(ctx, store.Source{
-		Name: "proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+		Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true,
 	}); err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}
@@ -63,7 +63,7 @@ func TestSourcePlaybookResolvesRelative(t *testing.T) {
 	ctx := context.Background()
 	checkout := t.TempDir()
 	if _, err := st.CreateSource(ctx, store.Source{
-		Name: "proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+		Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true,
 	}); err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}

@@ -29,7 +29,7 @@ func TestResolveInventoryArgSourceRelative(t *testing.T) {
 	defer func() { _ = st.Close() }()
 
 	ctx := context.Background()
-	src, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true})
+	src, err := st.CreateSource(ctx, store.Source{Name: "proj", Kind: store.SourcePath, URI: checkout, Enabled: true})
 	if err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}

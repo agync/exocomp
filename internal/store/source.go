@@ -9,12 +9,11 @@ import (
 )
 
 // Source kinds (ADR 0010). git is the managed, auto-synced, deploy-keyed
-// locality; hostpath is a tree bind-mounted from the host; volpath is a tree
-// already in the data volume.
+// locality; path is a tree already on the box (absolute, or relative to the
+// data volume). Read/write is not the kind's business — it is the Writable bit.
 const (
-	SourceGit      = "git"
-	SourceHostPath = "hostpath"
-	SourceVolPath  = "volpath"
+	SourceGit  = "git"
+	SourcePath = "path"
 )
 
 // Inventory kinds. A static inventory is a file inside a source; a dynamic one
@@ -40,8 +39,12 @@ type Source struct {
 	// its pinned ref against — exocomp-owned trust, materialized to a 0700 file at
 	// sync. Empty falls back to git's own configuration.
 	AllowedSigners string
-	Enabled        bool
-	CreatedAt      time.Time
+	// Writable opts a path source into a read+write working directory. It
+	// defaults false: a run reads the tree but the sandbox denies writes to it.
+	// Ignored for a git source, whose managed checkout is always writable.
+	Writable  bool
+	Enabled   bool
+	CreatedAt time.Time
 }
 
 // Inventory is what an ansible run targets. For a dynamic inventory EnvBinding
@@ -68,7 +71,7 @@ type RunSecret struct {
 }
 
 const sourceColumns = `id, name, kind, uri, ref, deploy_key_secret,
-	last_sync_sha, signed, allowed_signers, enabled, created_at`
+	last_sync_sha, signed, allowed_signers, writable, enabled, created_at`
 
 // CreateSource inserts a source. A repeated name returns ErrDuplicate.
 func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
@@ -77,11 +80,11 @@ func (s *Store) CreateSource(ctx context.Context, src Source) (Source, error) {
 	}
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO source (name, kind, uri, ref, deploy_key_secret,
-		                    last_sync_sha, signed, allowed_signers, enabled, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                    last_sync_sha, signed, allowed_signers, writable, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		src.Name, src.Kind, src.URI, src.Ref, src.DeployKeySecret,
-		src.LastSyncSHA, boolInt(src.Signed), src.AllowedSigners, boolInt(src.Enabled),
-		src.CreatedAt.UnixMilli())
+		src.LastSyncSHA, boolInt(src.Signed), src.AllowedSigners, boolInt(src.Writable),
+		boolInt(src.Enabled), src.CreatedAt.UnixMilli())
 	if err != nil {
 		return Source{}, wrap("create source", err)
 	}
@@ -340,15 +343,17 @@ func (s *Store) DeleteRunSecretBinding(ctx context.Context, binding string) erro
 
 func scanSource(row rowScanner) (Source, error) {
 	var (
-		src             Source
-		signed, enabled int64
-		createdAt       int64
+		src                       Source
+		signed, writable, enabled int64
+		createdAt                 int64
 	)
 	if err := row.Scan(&src.ID, &src.Name, &src.Kind, &src.URI, &src.Ref,
-		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &src.AllowedSigners, &enabled, &createdAt); err != nil {
+		&src.DeployKeySecret, &src.LastSyncSHA, &signed, &src.AllowedSigners,
+		&writable, &enabled, &createdAt); err != nil {
 		return Source{}, err
 	}
 	src.Signed = signed != 0
+	src.Writable = writable != 0
 	src.Enabled = enabled != 0
 	src.CreatedAt = time.UnixMilli(createdAt).UTC()
 	return src, nil

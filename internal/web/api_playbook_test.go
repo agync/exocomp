@@ -217,7 +217,7 @@ func TestAPIPlaybookRunRefusesEscapingSource(t *testing.T) {
 
 	checkout := t.TempDir()
 	if _, err := h.store.CreateSource(ctx, store.Source{
-		Name: "signed-proj", Kind: store.SourceHostPath, URI: checkout, Enabled: true,
+		Name: "signed-proj", Kind: store.SourcePath, URI: checkout, Enabled: true,
 	}); err != nil {
 		t.Fatalf("CreateSource: %v", err)
 	}

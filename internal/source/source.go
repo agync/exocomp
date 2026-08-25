@@ -1,8 +1,8 @@
 // Package source resolves where an Ansible or OpenTofu run's tree comes from
 // and keeps a git source synced to a pinned ref (ADR 0010). A source is one of
-// three localities — a registered git repo, a host path bind-mounted into the
-// container, or an in-container path in the data volume — and the credential
-// planes are identical across all three; only how the tree arrives differs.
+// two localities — a registered git repo, or a path already on the box
+// (absolute, or relative to the data volume) — and the credential planes are
+// identical across both; only how the tree arrives differs.
 //
 // The package shells out to the pinned git binary and never reads the store or
 // the secrets envelope: the caller resolves the deploy key from the envelope
@@ -21,9 +21,8 @@ import (
 // Locality kinds mirror store's source kinds so the CLI can pass a source row's
 // kind straight through.
 const (
-	KindGit      = "git"
-	KindHostPath = "hostpath"
-	KindVolPath  = "volpath"
+	KindGit  = "git"
+	KindPath = "path"
 )
 
 // checkoutDir is the subdirectory of the data dir git sources are cloned into.
@@ -40,20 +39,23 @@ type Locality struct {
 	// Root is the checkout root a run uses as its working directory (spec.Dir),
 	// so the repo's own ./ansible.cfg loads (the expert-review must-fix).
 	Root string
-	// ReadOnly is true for a host path: the operator owns the tree and the
-	// sandbox bind-mounts it read-only by default.
+	// ReadOnly is true when the sandbox must grant the tree read access only.
+	// A path source is read-only unless registered --writable; a git checkout
+	// is always writable.
 	ReadOnly bool
 }
 
-// Resolve turns a source's kind, name, and uri into a Locality. dataDir is the
-// 0700 data volume; a git source is cloned under it, a volpath is expected to
-// already live there, and a hostpath is wherever the operator mounted it.
+// Resolve turns a source's kind, name, uri, and writable bit into a Locality.
+// dataDir is the 0700 data volume; a git source is cloned under it, and a path
+// source is either an absolute tree or a path relative to the data volume.
 //
 // A git source's checkout root is derived from the source name, never from the
-// URI, so a crafted URI cannot escape the sources directory. Path localities
-// are cleaned and required to be absolute: a relative source path would mean
-// "wherever the daemon happens to run", which the sandbox guard also refuses.
-func Resolve(dataDir, kind, name, uri string) (Locality, error) {
+// URI, so a crafted URI cannot escape the sources directory. A path source is
+// read-only unless writable; an absolute path is cleaned as-is (the sandbox
+// guard still refuses an ancestor of the data dir), and a relative path is
+// rejected if it is empty, ".", or escapes with "..", then joined under dataDir
+// and asserted to stay strictly beneath it.
+func Resolve(dataDir, kind, name, uri string, writable bool) (Locality, error) {
 	if strings.TrimSpace(name) == "" {
 		return Locality{}, fmt.Errorf("source: empty name")
 	}
@@ -71,16 +73,45 @@ func Resolve(dataDir, kind, name, uri string) (Locality, error) {
 			return Locality{}, fmt.Errorf("source %q: name is not a safe directory component", name)
 		}
 		loc.Root = filepath.Join(dataDir, checkoutDir, name)
-	case KindHostPath:
-		loc.ReadOnly = true
-		fallthrough
-	case KindVolPath:
-		if !filepath.IsAbs(uri) {
-			return Locality{}, fmt.Errorf("source %q: %s path %q must be absolute", name, kind, uri)
+	case KindPath:
+		loc.ReadOnly = !writable
+		if filepath.IsAbs(uri) {
+			loc.Root = filepath.Clean(uri)
+			break
 		}
-		loc.Root = filepath.Clean(uri)
+		root, err := resolveRelative(dataDir, name, uri)
+		if err != nil {
+			return Locality{}, err
+		}
+		loc.Root = root
 	default:
 		return Locality{}, fmt.Errorf("source %q: unknown kind %q", name, kind)
 	}
 	return loc, nil
+}
+
+// resolveRelative joins a relative path source under the data volume. It rejects
+// an empty or "." path (which would name the data dir itself) and any ".."
+// component (which would climb out), then asserts the cleaned join stays
+// strictly under dataDir — a structural guarantee that a relative source can
+// never be, nor escape, the data dir.
+func resolveRelative(dataDir, name, uri string) (string, error) {
+	if dataDir == "" {
+		return "", fmt.Errorf("source %q: no data dir for a relative path", name)
+	}
+	clean := filepath.Clean(uri)
+	if clean == "." || clean == "" {
+		return "", fmt.Errorf("source %q: relative path is empty", name)
+	}
+	for _, part := range strings.Split(clean, string(filepath.Separator)) {
+		if part == ".." {
+			return "", fmt.Errorf("source %q: relative path %q escapes the data volume", name, uri)
+		}
+	}
+	root := filepath.Join(dataDir, clean)
+	base := filepath.Clean(dataDir)
+	if root == base || !strings.HasPrefix(root, base+string(filepath.Separator)) {
+		return "", fmt.Errorf("source %q: relative path %q does not stay under the data volume", name, uri)
+	}
+	return root, nil
 }

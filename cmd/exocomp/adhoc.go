@@ -242,7 +242,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		}
 	}()
 
-	root, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, "command")
+	root, rootReadOnly, err := sourceCheckoutRoot(ctx, st, dir, spec.sourceName, "command")
 	if err != nil {
 		return 0, err
 	}
@@ -263,6 +263,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		Trigger:             "manual",
 		Argv:                executor.AnsibleAdhocArgv(spec.pattern, invPath, spec.module, spec.args, passthrough...),
 		Dir:                 root,
+		DirReadOnly:         rootReadOnly,
 		VaultProject:        spec.vaultProject,
 		RunSecretBinding:    spec.runSecrets,
 		Inventory:           invName,
@@ -288,26 +289,27 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 	return reportJobOutcome(out, final), nil
 }
 
-// sourceCheckoutRoot resolves the working directory a run executes in: a named
-// source's checkout (so the repo's own configuration applies), or empty for a
-// run that executes in the caller's own directory. verb prefixes the errors so
-// each command's refusals name the command the operator typed.
-func sourceCheckoutRoot(ctx context.Context, st *store.Store, dir, sourceName, verb string) (string, error) {
+// sourceCheckoutRoot resolves the working directory a run executes in and
+// whether it is read-only: a named source's checkout (so the repo's own
+// configuration applies), or empty for a run that executes in the caller's own
+// directory (writable). verb prefixes the errors so each command's refusals name
+// the command the operator typed.
+func sourceCheckoutRoot(ctx context.Context, st *store.Store, dir, sourceName, verb string) (root string, readOnly bool, err error) {
 	if sourceName == "" {
-		return "", nil
+		return "", false, nil
 	}
 	src, err := st.SourceByName(ctx, sourceName)
 	if errors.Is(err, store.ErrNotFound) {
-		return "", fmt.Errorf("%s: no source %q", verb, sourceName)
+		return "", false, fmt.Errorf("%s: no source %q", verb, sourceName)
 	}
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
-	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
-		return "", fmt.Errorf("%s: %w", verb, err)
+		return "", false, fmt.Errorf("%s: %w", verb, err)
 	}
-	return loc.Root, nil
+	return loc.Root, loc.ReadOnly, nil
 }
 
 // gateJob routes a --require-approval job through the approval gate: it lands

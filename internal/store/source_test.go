@@ -73,10 +73,46 @@ func TestSourceCRUD(t *testing.T) {
 
 func TestSourceKindConstraint(t *testing.T) {
 	s, _ := open(t)
-	if _, err := s.CreateSource(context.Background(), store.Source{
+	ctx := context.Background()
+	if _, err := s.CreateSource(ctx, store.Source{
 		Name: "bad", Kind: "svn", Enabled: true,
 	}); err == nil {
 		t.Fatal("want CHECK constraint rejection for kind svn, got nil")
+	}
+	// The collapsed model no longer admits the old kind names.
+	for _, kind := range []string{"hostpath", "volpath"} {
+		if _, err := s.CreateSource(ctx, store.Source{Name: kind, Kind: kind, Enabled: true}); err == nil {
+			t.Fatalf("want CHECK rejection for retired kind %q, got nil", kind)
+		}
+	}
+}
+
+func TestSourcePathWritableRoundTrips(t *testing.T) {
+	s, _ := open(t)
+	ctx := context.Background()
+
+	ro, err := s.CreateSource(ctx, store.Source{
+		Name: "ro", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create read-only path source: %v", err)
+	}
+	if ro.Kind != store.SourcePath || ro.Writable {
+		t.Fatalf("read-only path source = %+v, want kind path writable false", ro)
+	}
+
+	rw, err := s.CreateSource(ctx, store.Source{
+		Name: "rw", Kind: store.SourcePath, URI: "checkouts/app", Writable: true, Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create writable path source: %v", err)
+	}
+	got, err := s.SourceByName(ctx, "rw")
+	if err != nil {
+		t.Fatalf("source by name: %v", err)
+	}
+	if !got.Writable || got.URI != "checkouts/app" {
+		t.Fatalf("writable did not round-trip: %+v (created %+v)", got, rw)
 	}
 }
 

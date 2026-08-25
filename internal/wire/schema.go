@@ -235,8 +235,11 @@ type SourceView struct {
 	Ref         string `json:"ref,omitempty"`
 	LastSyncSHA string `json:"last_sync_sha,omitempty"`
 	Signed      bool   `json:"signed,omitempty"`
-	Enabled     bool   `json:"enabled"`
-	CreatedAt   string `json:"created_at,omitempty"`
+	// Writable reports whether a path source's tree is granted a read+write
+	// working directory. Always false for a git source.
+	Writable  bool   `json:"writable,omitempty"`
+	Enabled   bool   `json:"enabled"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // NewSourceList projects sources in store order.
@@ -245,7 +248,7 @@ func NewSourceList(sources []store.Source) []SourceView {
 	for _, s := range sources {
 		out = append(out, SourceView{
 			ID: s.ID, Name: s.Name, Kind: s.Kind, URI: s.URI, Ref: s.Ref,
-			LastSyncSHA: s.LastSyncSHA, Signed: s.Signed, Enabled: s.Enabled,
+			LastSyncSHA: s.LastSyncSHA, Signed: s.Signed, Writable: s.Writable, Enabled: s.Enabled,
 			CreatedAt: rfc3339(s.CreatedAt),
 		})
 	}

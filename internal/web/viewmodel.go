@@ -53,7 +53,7 @@ type dashboardVM struct {
 // sync landed on. Read-only — registration stays a CLI-and-local-auth path.
 type sourceRow struct {
 	Name    string
-	Kind    string // git|hostpath|volpath
+	Kind    string // git|path
 	URI     string
 	Ref     string
 	SyncSHA string

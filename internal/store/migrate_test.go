@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -149,6 +150,106 @@ func TestConcurrentMigrationAppliesOnce(t *testing.T) {
 	if _, err := s.CreateJob(context.Background(),
 		NewJob{Runbook: "after", Kind: "shell", Trigger: "manual"}); err != nil {
 		t.Errorf("the migrated database is unusable: %v", err)
+	}
+}
+
+// TestMigration0027CollapsesSourceKinds pins a database just before 0027, seeds
+// the three legacy kinds plus inventories referencing them, then opens with the
+// current binary and confirms 0027 mapped hostpath->path/read-only and
+// volpath->path/writable, left git untouched, and preserved every inventory
+// (the table rebuild must not let the ON DELETE CASCADE drop them).
+func TestMigration0027CollapsesSourceKinds(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 27)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	seed := `
+INSERT INTO source (name, kind, uri, signed, allowed_signers, enabled, created_at)
+VALUES ('host', 'hostpath', '/srv/host', 0, '', 1, 0),
+       ('vol',  'volpath',  '/data/vol', 0, '', 1, 0),
+       ('repo', 'git',      'git@f:o/r.git', 0, '', 1, 0);
+INSERT INTO inventory (name, source_id, path, kind, env_binding_json, created_at)
+VALUES ('host-inv', (SELECT id FROM source WHERE name='host'), 'hosts.ini', 'static', '{}', 0),
+       ('vol-inv',  (SELECT id FROM source WHERE name='vol'),  'hosts.ini', 'static', '{}', 0),
+       ('free-inv', NULL, 'hosts.ini', 'static', '{}', 0);
+`
+	if _, err := raw.ExecContext(ctx, seed); err != nil {
+		t.Fatalf("seed legacy rows: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open for 0027 upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	want := map[string]struct {
+		kind     string
+		writable bool
+	}{
+		"host": {SourcePath, false},
+		"vol":  {SourcePath, true},
+		"repo": {SourceGit, false},
+	}
+	for name, w := range want {
+		got, err := s.SourceByName(ctx, name)
+		if err != nil {
+			t.Fatalf("source %q after 0027: %v", name, err)
+		}
+		if got.Kind != w.kind || got.Writable != w.writable {
+			t.Fatalf("source %q = kind %q writable %v, want kind %q writable %v",
+				name, got.Kind, got.Writable, w.kind, w.writable)
+		}
+	}
+
+	invs, err := s.ListInventories(ctx)
+	if err != nil {
+		t.Fatalf("list inventories after 0027: %v", err)
+	}
+	if len(invs) != 3 {
+		t.Fatalf("0027 lost inventories: have %d, want 3 (the cascade must not fire): %+v", len(invs), invs)
+	}
+}
+
+// pinBeforeMigration writes a database holding every embedded migration below
+// version, leaving that version and everything after it for a later Open to
+// apply.
+func pinBeforeMigration(t *testing.T, path string, version int) {
+	t.Helper()
+	ctx := context.Background()
+
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	applied := 0
+	for _, m := range migrations {
+		if m.version >= version {
+			break
+		}
+		if _, err := raw.ExecContext(ctx, m.body); err != nil {
+			t.Fatalf("apply migration %s: %v", m.name, err)
+		}
+		applied = m.version
+	}
+	if _, err := raw.ExecContext(ctx, "PRAGMA user_version = "+strconv.Itoa(applied)); err != nil {
+		t.Fatalf("set user_version to %d: %v", applied, err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
 	}
 }
 

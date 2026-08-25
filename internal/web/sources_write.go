@@ -10,8 +10,8 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// A path source (hostpath/volpath) is a plain registration: no secret material,
-// so add-path/enable/disable/rm are operator-gated only, like a source's other
+// A path source is a plain registration: no secret material, so
+// add-path/enable/disable/rm are operator-gated only, like a source's other
 // non-sensitive edits. A git source's add generates and seals a deploy key
 // (mirrors cmd/exocomp/source.go's `source add --url`), so it needs the Sealer
 // (nil -> 503) and reauth, the same shape as secrets add. The generated public
@@ -58,23 +58,18 @@ func (s *Server) handleSourceAddPath(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	kind := r.PostFormValue("kind")
-	if kind != store.SourceHostPath && kind != store.SourceVolPath {
-		http.Error(w, "kind must be "+store.SourceHostPath+" or "+store.SourceVolPath, http.StatusBadRequest)
-		return
-	}
 	rawPath := r.PostFormValue("path")
 	if rawPath == "" {
 		http.Error(w, "path is required", http.StatusBadRequest)
 		return
 	}
-	abs, err := filepath.Abs(rawPath)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
+	// An absolute path is cleaned as-is; a relative path is kept verbatim
+	// (cleaned) so it resolves against the data volume at run time, mirroring the
+	// CLI. Read/write is the writable checkbox, defaulting off (read-only).
+	uri := filepath.Clean(rawPath)
+	writable := r.PostFormValue("writable") == "on"
 	if _, err := s.store.CreateSource(r.Context(), store.Source{
-		Name: name, Kind: kind, URI: abs, Enabled: true,
+		Name: name, Kind: store.SourcePath, URI: uri, Writable: writable, Enabled: true,
 	}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
 			http.Error(w, "a source named "+name+" already exists", http.StatusConflict)
@@ -83,7 +78,7 @@ func (s *Server) handleSourceAddPath(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	s.log.Info("web: source add-path", "source", name, "kind", kind, "by", ident.token.Name)
+	s.log.Info("web: source add-path", "source", name, "writable", writable, "by", ident.token.Name)
 	redirectFlash(w, r, "/sources", "registered "+name)
 }
 

@@ -3,16 +3,22 @@
 How a run's tree arrives, what inventory it targets, and how it authenticates to the
 outside world. The model is [ADR 0010](../adr/0010-source-and-credential-model.md).
 
-## Sources — three localities
+## Sources — two localities
 
 A source is where a run's tree comes from. The credential planes below are identical
-across all three; only how the tree arrives and stays fresh differs.
+across both; only how the tree arrives and stays fresh differs.
 
 | Kind | Register | Freshness |
 |---|---|---|
 | `git` | `exocomp source add <name> --url git@forge:org/repo.git --ref main` | Auto-synced, pinned to a ref a gated run advances; generates a sealed deploy key |
-| `hostpath` | `exocomp source add <name> --path <dir> --kind hostpath` | A tree bind-mounted from the host, read-only by default; the operator's own `git pull` |
-| `volpath` | `exocomp source add <name> --path <dir> --kind volpath` | A tree in the data volume, seeded by a runbook or edited in place |
+| `path` | `exocomp source add <name> --path <dir>` | A tree already on the box: an absolute path, or a path relative to the data volume. Read-only by default; `--writable` grants the run a read+write working directory |
+
+`--path` takes one argument. An absolute path is used as-is; a relative path resolves
+against the data volume at run time (so a bare `--path checkouts/app` means
+`<data-dir>/checkouts/app`), and a relative path may not contain `..`. A path source is
+read-only unless registered `--writable` — the common case, running playbooks out of a
+tree, needs only read, and the read-only default is the least-privilege posture the
+sandbox actually enforces (a read-only tree is granted read, never write).
 
 A git source prints an ed25519 deploy key to add to the forge as a read-only key;
 `source sync` clones and pins it. `--signed` requires a verified signature on the pinned
@@ -30,15 +36,15 @@ key fails the sync instead of being trusted on first contact. A forge not yet
 recorded stays trust-on-first-use — record its key (`host onboard`, or `ssh-keyscan` into
 the store) so the next sync pins it.
 
-**Keep a source tree outside the data dir.** A run's tree is granted read (host paths)
-or read+write (volume paths) into the sandbox, while the data dir — `exocomp.db`,
-`host.key`, `keyring.age` — is denied to every job. Those two rules collide if a source
-path is an *ancestor* of the data dir: the sandbox refuses to grant a directory that
-contains the keys it must also deny, so the run fails to start. A `volpath` source
-therefore lives in its own subtree of the data volume (e.g. `/var/lib/exocomp/sources/…`,
-where `source add` clones git sources), never at the data-dir root; a `hostpath` source is
-any tree on the host that is not a parent of the data dir. Put playbooks and workspaces in
-their own directory, not the one holding the database and keys.
+**Keep a source tree outside the data dir.** A run's tree is granted read (read-only
+sources) or read+write (`--writable` sources) into the sandbox, while the data dir —
+`exocomp.db`, `host.key`, `keyring.age` — is denied to every job. Those two rules collide
+if a source path is an *ancestor* of the data dir: the sandbox refuses to grant a directory
+that contains the keys it must also deny, so the run fails to start. A relative path source
+lives in its own subtree of the data volume (e.g. `/var/lib/exocomp/sources/…`, where
+`source add` clones git sources) and is structurally guaranteed to stay under it; an
+absolute path source is any tree that is not a parent of the data dir. Put playbooks and
+workspaces in their own directory, not the one holding the database and keys.
 
 ## The credential plane — sealed secrets as run env
 

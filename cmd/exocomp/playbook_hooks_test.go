@@ -24,7 +24,7 @@ func TestPlaybookRunHonorsSourceHooks(t *testing.T) {
 
 	runCLI(t, bin, "init")
 
-	// A volpath source carrying a playbook and a pre_run hook that leaves a
+	// A path source carrying a playbook and a pre_run hook that leaves a
 	// marker, so the test can prove the hook ran and ran before the play.
 	srcRoot := t.TempDir()
 	writeFile(t, srcRoot+"/site.yml", "- hosts: all\n")
@@ -34,7 +34,7 @@ func TestPlaybookRunHonorsSourceHooks(t *testing.T) {
 	prehook := t.TempDir() + "/prehook.ran"
 	writeFile(t, srcRoot+"/.exocomp/hooks.yml",
 		"pre_run:\n  - name: prep\n    run: \"echo ran > "+prehook+"\"\n")
-	runCLI(t, bin, "source", "add", "infra", "--path", srcRoot, "--kind", "volpath")
+	runCLI(t, bin, "source", "add", "infra", "--path", srcRoot)
 
 	d := startDaemon(t, bin, "serve", "--port", "0", "--reload-interval", "0", "--sandbox", "local")
 	d.waitForLine(t, &d.stdout, "scheduler started", 30*time.Second)
@@ -88,7 +88,7 @@ func TestWrapWithHooksOrder(t *testing.T) {
 		PostRun: []hooks.Hook{{Name: "notify", Run: "true"}},
 		Gate:    []verify.Probe{{Name: "web", HTTP: &verify.HTTPProbe{URL: "http://127.0.0.1:9/"}}},
 	}
-	steps, err := wrapWithHooks("/src", hk, main, 0)
+	steps, err := wrapWithHooks("/src", true, hk, main, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,13 +104,18 @@ func TestWrapWithHooksOrder(t *testing.T) {
 	if !verify.IsGateArgv(steps[4].Spec.Argv) {
 		t.Fatal("the final step is not the health gate")
 	}
+	// A read-only source marks its hook steps read-only too, so a hook cannot
+	// write back to the checkout under the sandbox.
+	if !steps[0].Spec.DirReadOnly || !steps[3].Spec.DirReadOnly {
+		t.Fatalf("read-only source did not mark its hook steps read-only: %+v", steps)
+	}
 }
 
 // TestWrapWithHooksEmptyIsUnchanged: a source with no hooks leaves the main
 // chain exactly as it was — the "behaves exactly as today" guarantee.
 func TestWrapWithHooksEmptyIsUnchanged(t *testing.T) {
 	main := []queue.Step{{Kind: "tofu-apply"}, {Kind: "ansible-play"}}
-	steps, err := wrapWithHooks("/src", hooks.Hooks{}, main, 0)
+	steps, err := wrapWithHooks("/src", false, hooks.Hooks{}, main, 0)
 	if err != nil {
 		t.Fatal(err)
 	}

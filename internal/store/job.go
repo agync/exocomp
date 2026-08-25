@@ -62,9 +62,14 @@ func (s JobState) Terminal() bool {
 // table: for now a job carries its own entrypoint. Secret material never goes
 // here — it is resolved at execution time and never written to the database.
 type JobArgs struct {
-	Argv    []string `json:"argv,omitempty"`
-	Dir     string   `json:"dir,omitempty"`
-	Timeout Duration `json:"timeout,omitempty"`
+	Argv []string `json:"argv,omitempty"`
+	Dir  string   `json:"dir,omitempty"`
+	// DirReadOnly grants Dir read access only under the sandbox — how a
+	// read-only path source (Source.Writable false) denies a run writes to its
+	// tree. Off by default, so an existing job row without the field runs with a
+	// writable working directory exactly as before.
+	DirReadOnly bool     `json:"dir_read_only,omitempty"`
+	Timeout     Duration `json:"timeout,omitempty"`
 	// VaultProject names the envelope derivation an ansible job's vault
 	// password comes from. The project name is public; the password it
 	// derives is resolved when the job runs and never written here.

@@ -363,18 +363,23 @@ func (s *Sandbox) Profile() SandboxProfile { return s.profile }
 func (s *Sandbox) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
 	profile := s.profile
 	if spec.Dir != "" {
-		// The launcher refuses a working directory it holds no grant on, and
-		// a run's own directory is a grant it always needs.
-		profile.Write = normalizePaths(append(slices.Clone(profile.Write), spec.Dir))
-		// slices.Clone first: profile is a shallow copy of s.profile, so
-		// profile.Read shares s.profile.Read's backing array. DeleteFunc
-		// zeroes the array's now-unused tail slots in place to drop
-		// references for GC — without the clone, that write lands in
-		// s.profile.Read's own storage, and the *Sandbox is reused across
-		// repeated Run calls on the same instance (the tofu driver's init
-		// then op), so a later call would silently see a corrupted (and
-		// wrongly non-empty, "") grant list built from a previous one's
-		// working directory.
+		// The launcher refuses a working directory it holds no grant on, and a
+		// run's own directory is a grant it always needs. A read-only source
+		// (DirReadOnly) gets that grant as read, not write, so the run may load
+		// the tree but the kernel denies writing back to it; a writable source
+		// keeps the read+write grant. slices.Clone first: profile is a shallow
+		// copy of s.profile, so a mutation without the clone lands in
+		// s.profile's own backing array, and the *Sandbox is reused across
+		// repeated Run calls (the tofu driver's init then op), so a later call
+		// would see a grant list corrupted by an earlier working directory.
+		if spec.DirReadOnly {
+			profile.Read = normalizePaths(append(slices.Clone(profile.Read), spec.Dir))
+			profile.Write = slices.Clone(profile.Write)
+		} else {
+			profile.Write = normalizePaths(append(slices.Clone(profile.Write), spec.Dir))
+		}
+		// A path granted read+write does not also need the read-only grant, and
+		// nono reports the narrower one as insufficient rather than merging them.
 		profile.Read = slices.DeleteFunc(slices.Clone(profile.Read),
 			func(r string) bool { return slices.Contains(profile.Write, r) })
 	}

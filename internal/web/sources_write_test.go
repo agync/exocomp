@@ -19,7 +19,7 @@ func TestSourceAddPathReadonlyForbidden(t *testing.T) {
 	client := login(t, ts.URL, ro)
 
 	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "kind": {"hostpath"}, "path": {"/srv/tree"}}, nil)
+		url.Values{"name": {"tree"}, "path": {"/srv/tree"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("readonly add-path = %d, want 403", resp.StatusCode)
@@ -34,7 +34,7 @@ func TestSourceAddPathCrossOriginForbidden(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "kind": {"hostpath"}, "path": {"/srv/tree"}},
+		url.Values{"name": {"tree"}, "path": {"/srv/tree"}},
 		map[string]string{"Sec-Fetch-Site": "cross-site"})
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
@@ -50,7 +50,7 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "kind": {"hostpath"}, "path": {"/srv/tree"}}, nil)
+		url.Values{"name": {"tree"}, "path": {"/srv/tree"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("add-path = %d, want 303", resp.StatusCode)
@@ -59,8 +59,24 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("source not created: %v", err)
 	}
-	if src.Kind != "hostpath" || src.URI != "/srv/tree" || !src.Enabled {
+	// A path source defaults to read-only (Writable false).
+	if src.Kind != store.SourcePath || src.URI != "/srv/tree" || src.Writable || !src.Enabled {
 		t.Fatalf("unexpected source row: %+v", src)
+	}
+
+	// The writable checkbox opts a path source into a read+write tree.
+	resp = postForm(t, client, ts.URL+"/sources/add-path",
+		url.Values{"name": {"rwtree"}, "path": {"/srv/rw"}, "writable": {"on"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("writable add-path = %d, want 303", resp.StatusCode)
+	}
+	rw, err := h.store.SourceByName(context.Background(), "rwtree")
+	if err != nil {
+		t.Fatalf("writable source not created: %v", err)
+	}
+	if rw.Kind != store.SourcePath || !rw.Writable {
+		t.Fatalf("unexpected writable source row: %+v", rw)
 	}
 }
 
@@ -72,7 +88,7 @@ func TestSourceEnableDisable(t *testing.T) {
 	client := login(t, ts.URL, op)
 	ctx := context.Background()
 
-	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: "hostpath", URI: "/srv/tree", Enabled: true}); err != nil {
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
 
@@ -111,7 +127,7 @@ func TestSourceRm(t *testing.T) {
 	client := login(t, ts.URL, op)
 	ctx := context.Background()
 
-	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: "hostpath", URI: "/srv/tree", Enabled: true}); err != nil {
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
 

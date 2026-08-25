@@ -30,7 +30,7 @@ func (s *Service) ResolveSourceHooks(ctx context.Context, overridePath, sourceNa
 	if err != nil {
 		return hooks.Hooks{}, "", err
 	}
-	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
 		return hooks.Hooks{}, "", fmt.Errorf("source hooks: %w", err)
 	}

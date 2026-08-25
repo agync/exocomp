@@ -14,12 +14,17 @@ const (
 
 // Spec is one unit of work handed to a driver.
 type Spec struct {
-	JobID   int64
-	Kind    string   // shell|ansible|tofu
-	Argv    []string // Argv[0] is the executable
-	Dir     string   // working directory; empty means the caller's
-	Env     []string // nil inherits the caller's environment
-	Timeout time.Duration
+	JobID int64
+	Kind  string   // shell|ansible|tofu
+	Argv  []string // Argv[0] is the executable
+	Dir   string   // working directory; empty means the caller's
+	// DirReadOnly grants Dir read access only under the sandbox, instead of the
+	// read+write a working directory otherwise gets. It is how a read-only path
+	// source (store.Source.Writable false) denies a run writes to its tree. Off
+	// by default: the zero-value Spec write-grants its own directory as before.
+	DirReadOnly bool
+	Env         []string // nil inherits the caller's environment
+	Timeout     time.Duration
 	// UseCgroup places the process into the cgroup named by CgroupFD at fork,
 	// so a capped job starts already inside its resource ceiling. Off by
 	// default: the zero-value Spec runs uncapped exactly as before. CgroupFD is

@@ -21,6 +21,10 @@ type Spec struct {
 	Trigger string
 	Argv    []string
 	Dir     string
+	// DirReadOnly grants Dir read access only under the sandbox — how a
+	// read-only path source denies a run writes to its tree. Carried to the job
+	// row so whichever process claims the job enforces the same posture.
+	DirReadOnly bool
 	// VaultProject names the envelope derivation an ansible job's vault
 	// password comes from, so whichever process claims the job can derive it.
 	VaultProject string
@@ -170,6 +174,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 		Args: store.JobArgs{
 			Argv:                spec.Argv,
 			Dir:                 spec.Dir,
+			DirReadOnly:         spec.DirReadOnly,
 			Timeout:             store.Duration(spec.Timeout),
 			VaultProject:        spec.VaultProject,
 			RunSecretBinding:    spec.RunSecretBinding,
@@ -420,11 +425,12 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 	}
 
 	res, runErr := q.driver.Run(ctx, executor.Spec{
-		JobID:   job.ID,
-		Kind:    job.Kind,
-		Argv:    job.Args.Argv,
-		Dir:     job.Args.Dir,
-		Timeout: timeout,
+		JobID:       job.ID,
+		Kind:        job.Kind,
+		Argv:        job.Args.Argv,
+		Dir:         job.Args.Dir,
+		DirReadOnly: job.Args.DirReadOnly,
+		Timeout:     timeout,
 	}, sink)
 
 	// The job's own outcome must be recorded even when the queue is shutting

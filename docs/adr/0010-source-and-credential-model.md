@@ -1,6 +1,6 @@
 # ADR 0010 — Source and credential model (git-centric, real usage)
 
-Status: accepted · 2026-08-22
+Status: accepted · 2026-08-22 · amended 2026-08-25 (source-kind collapse, see addendum)
 
 ## Context
 
@@ -80,3 +80,31 @@ generation, `known_hosts` store, the host-onboarding runbook, `workspace add
 quick use and tests but are no longer the headline flow. This is a scope
 increase over the original brief and is accepted as correctness, not
 gold-plating: the tool is not usable for real Ansible/Terraform without it.
+
+## Addendum — 2026-08-25: two kinds, writable as its own bit
+
+The three source kinds collapse to two: `git` and a single `path`. `hostpath`
+and `volpath` never described a behavioural difference — outside a container
+there is no bind mount, and inside one a host path *is* the data volume — and the
+code confirmed it: the read-only flag the original text promised for host paths
+was defined but never enforced (the sandbox write-granted every source tree
+unconditionally). A `path` source takes one `--path` argument, absolute or
+relative to the data volume, and read/write is now a first-class `writable`
+column rather than a side effect of the kind name. It defaults read-only: the
+least-privilege posture, matching that the old `--kind` default was already the
+read-only one, so running playbooks out of a tree keeps working unchanged while
+write becomes an explicit `--writable`.
+
+The read-only default is now honestly enforced: a read-only source's working
+directory is granted read, never write, in the sandbox profile — closing the gap
+the original text described but the executor never held. The one genuine safety
+rule, that a source path may not be an ancestor of the data dir, is unchanged;
+a relative path resolves under the data volume and is structurally guaranteed to
+stay inside it (empty, `.`, and any `..` component are rejected).
+
+Migration 0027 rebuilds the `source` table, narrowing the kind CHECK to
+(`git`, `path`) and mapping existing rows: `hostpath` → `path` read-only,
+`volpath` → `path` writable, `git` unchanged. Because `inventory` references
+`source` with `ON DELETE CASCADE` and foreign keys cannot be disabled inside a
+migration transaction, the rebuild renames the old table aside and rebuilds
+`inventory` too, so the cascade never fires and no inventory is lost.

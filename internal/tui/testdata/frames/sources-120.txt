@@ -3,7 +3,7 @@ sources · 4 registered                                                         
  SOURCE             KIND       REF                  LAST SYNC       TRUST                               ENABLED
  core-infra         git        refs/heads/main      a1b2c3d4e5f6    SIGNED · SIGNERS                    yes
  playbooks          git        refs/tags/v3         9f8e7d6c5b4a    SIGNED                              yes
- host-media         hostpath   -                    -               unsigned                            yes
- vol-scratch        volpath    -                    -               unsigned                            no
+ host-media         path       -                    -               unsigned                            yes
+ vol-scratch        path       -                    -               unsigned                            no
 
 read-only · register with exocomp source add                                                               [0-9] screens

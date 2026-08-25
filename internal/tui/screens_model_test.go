@@ -116,9 +116,9 @@ func TestSourcesScreenRendersLive(t *testing.T) {
 		t.Fatalf("create signed source: %v", err)
 	}
 	if _, err := st.CreateSource(ctx, store.Source{
-		Name: "host-media", Kind: store.SourceHostPath, URI: "/srv/media", Enabled: false,
+		Name: "host-media", Kind: store.SourcePath, URI: "/srv/media", Enabled: false,
 	}); err != nil {
-		t.Fatalf("create hostpath source: %v", err)
+		t.Fatalf("create path source: %v", err)
 	}
 
 	m := New(st)
@@ -132,7 +132,7 @@ func TestSourcesScreenRendersLive(t *testing.T) {
 	view := m.View().Content
 	for _, want := range []string{
 		"sources · 2 registered", "core-infra", "git", "refs/heads/main",
-		"a1b2c3d4e5f6", "SIGNED · SIGNERS", "host-media", "hostpath", "unsigned", "no",
+		"a1b2c3d4e5f6", "SIGNED · SIGNERS", "host-media", "path", "unsigned", "no",
 	} {
 		if !strings.Contains(view, want) {
 			t.Errorf("sources view missing %q, view:\n%s", want, view)

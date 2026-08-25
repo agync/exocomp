@@ -106,7 +106,7 @@ func showHooks(cmd *cobra.Command, mode, sourceName string) (err error) {
 		return err
 	}
 
-	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
 		err = fmt.Errorf("hooks: %w", err)
 		if mode == outputJSON {

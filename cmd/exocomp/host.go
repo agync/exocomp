@@ -266,7 +266,8 @@ func sshKeyFingerprint(base64Key string) string {
 }
 
 // seedOnboardRunbook writes the embedded onboarding playbook into the data
-// volume (a volpath source) so it runs through the queue like any other play.
+// volume (a path source in the data volume) so it runs through the queue like
+// any other play.
 func seedOnboardRunbook(dir string) (string, error) {
 	return seedRunbook(dir, "onboard.yml", onboardRunbook)
 }

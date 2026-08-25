@@ -157,7 +157,7 @@ func runWithHooks(ctx context.Context, out, warn io.Writer, rs runSpec) (err err
 		return err
 	}
 
-	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI)
+	loc, err := source.Resolve(dir, src.Kind, src.Name, src.URI, src.Writable)
 	if err != nil {
 		return fmt.Errorf("run: %w", err)
 	}
@@ -177,7 +177,7 @@ func runWithHooks(ctx context.Context, out, warn io.Writer, rs runSpec) (err err
 		return err
 	}
 
-	steps, err := composeRunSteps(loc.Root, playbook, invPath, invName, rs, hk)
+	steps, err := composeRunSteps(loc.Root, loc.ReadOnly, playbook, invPath, invName, rs, hk)
 	if err != nil {
 		return err
 	}
@@ -210,10 +210,10 @@ func runWithHooks(ctx context.Context, out, warn io.Writer, rs runSpec) (err err
 // post_run hooks, then the gate. Each hook is a sandboxed shell step; the play
 // is an ordinary ansible job; the gate is one verify step whose success is the
 // declared probes, not an exit code.
-func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hooks.Hooks) ([]queue.Step, error) {
+func composeRunSteps(root string, readOnly bool, playbook, invPath, invName string, rs runSpec, hk hooks.Hooks) ([]queue.Step, error) {
 	var steps []queue.Step
 	for _, h := range hk.PreRun {
-		steps = append(steps, hookStep(root, h, rs.timeout))
+		steps = append(steps, hookStep(root, readOnly, h, rs.timeout))
 	}
 
 	steps = append(steps, queue.Step{
@@ -224,6 +224,7 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 			Trigger:             "run",
 			Argv:                executor.AnsibleArgv(playbook, invPath, rs.passthrough...),
 			Dir:                 root,
+			DirReadOnly:         readOnly,
 			VaultProject:        rs.vaultProject,
 			RunSecretBinding:    rs.runSecrets,
 			Inventory:           invName,
@@ -235,7 +236,7 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 	})
 
 	for _, h := range hk.PostRun {
-		steps = append(steps, hookStep(root, h, rs.timeout))
+		steps = append(steps, hookStep(root, readOnly, h, rs.timeout))
 	}
 
 	if len(hk.Gate) > 0 {
@@ -261,7 +262,7 @@ func composeRunSteps(root, playbook, invPath, invName string, rs runSpec, hk hoo
 // path run under the shell, with the checkout as the working directory and the
 // hook's optional run_secret binding carried so the daemon resolves it to named
 // env at execution time.
-func hookStep(root string, h hooks.Hook, timeout time.Duration) queue.Step {
+func hookStep(root string, readOnly bool, h hooks.Hook, timeout time.Duration) queue.Step {
 	argv := []string{hookShell, "-c", h.Run}
 	if h.Script != "" {
 		argv = []string{hookShell, filepath.Join(root, h.Script)}
@@ -274,6 +275,7 @@ func hookStep(root string, h hooks.Hook, timeout time.Duration) queue.Step {
 			Trigger:          "run",
 			Argv:             argv,
 			Dir:              root,
+			DirReadOnly:      readOnly,
 			RunSecretBinding: h.Secret,
 			Timeout:          timeout,
 		},

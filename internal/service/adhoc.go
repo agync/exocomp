@@ -28,10 +28,13 @@ type AdhocInput struct {
 	Pattern string
 	// Module defaults to "command" (no shell) when empty; "shell" switches to
 	// the shell module so a pipe or redirect works.
-	Module              string
-	Args                string
-	Become              bool
-	Dir                 string
+	Module string
+	Args   string
+	Become bool
+	Dir    string
+	// DirReadOnly grants Dir read access only under the sandbox — set for a
+	// read-only path source so the run cannot write back to its tree.
+	DirReadOnly         bool
 	InventoryPath       string
 	InventoryName       string
 	VaultProject        string
@@ -141,6 +144,7 @@ func (s *Service) RunAdhoc(ctx context.Context, enq Enqueuer, deriver reactive.D
 		Trigger:             TriggerManual,
 		Argv:                executor.AnsibleAdhocArgv(in.Pattern, in.InventoryPath, module, in.Args, passthrough...),
 		Dir:                 in.Dir,
+		DirReadOnly:         in.DirReadOnly,
 		VaultProject:        in.VaultProject,
 		RunSecretBinding:    in.RunSecrets,
 		Inventory:           in.InventoryName,

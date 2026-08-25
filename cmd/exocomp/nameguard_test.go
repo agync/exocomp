@@ -120,7 +120,7 @@ func TestSourceAddRefusesUnsafeNames(t *testing.T) {
 	for _, tc := range unsafeNames {
 		t.Run(tc.label+"/path", func(t *testing.T) {
 			dir := initForSource(t)
-			out, err := runSource(t, "add", tc.name, "--path", "/mnt/x", "--kind", "hostpath")
+			out, err := runSource(t, "add", tc.name, "--path", "/mnt/x")
 			if err == nil {
 				t.Fatalf("source add %q --path: want error, got success: %s", tc.name, out)
 			}

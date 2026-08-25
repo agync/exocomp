@@ -19,19 +19,36 @@ func TestResolve(t *testing.T) {
 
 	cases := []struct {
 		name, kind, srcName, uri string
+		writable                 bool
 		wantRoot                 string
 		wantReadOnly             bool
 		wantErr                  bool
 	}{
 		{name: "git under data dir", kind: source.KindGit, srcName: "infra",
 			uri: "git@forge:org/infra.git", wantRoot: "/data/sources/infra"},
-		{name: "hostpath is read-only", kind: source.KindHostPath, srcName: "nas",
+		{name: "git checkout stays writable", kind: source.KindGit, srcName: "infra",
+			uri: "git@forge:org/infra.git", writable: false,
+			wantRoot: "/data/sources/infra", wantReadOnly: false},
+		{name: "absolute path read-only by default", kind: source.KindPath, srcName: "nas",
 			uri: "/mnt/nas/infra", wantRoot: "/mnt/nas/infra", wantReadOnly: true},
-		{name: "volpath in the volume", kind: source.KindVolPath, srcName: "seeded",
-			uri: "/data/checkouts/seeded", wantRoot: "/data/checkouts/seeded"},
+		{name: "absolute path writable when opted in", kind: source.KindPath, srcName: "seeded",
+			uri: "/data/checkouts/seeded", writable: true,
+			wantRoot: "/data/checkouts/seeded", wantReadOnly: false},
+		{name: "relative path resolves under data dir", kind: source.KindPath, srcName: "rel",
+			uri: "checkouts/app", wantRoot: "/data/checkouts/app", wantReadOnly: true},
+		{name: "relative path writable", kind: source.KindPath, srcName: "rel",
+			uri: "checkouts/app", writable: true, wantRoot: "/data/checkouts/app", wantReadOnly: false},
+		{name: "relative path is cleaned", kind: source.KindPath, srcName: "rel",
+			uri: "checkouts/./app/", wantRoot: "/data/checkouts/app", wantReadOnly: true},
 		{name: "git needs a url", kind: source.KindGit, srcName: "x", uri: "", wantErr: true},
-		{name: "path must be absolute", kind: source.KindVolPath, srcName: "x",
-			uri: "relative/path", wantErr: true},
+		{name: "relative dot names the data dir", kind: source.KindPath, srcName: "x",
+			uri: ".", wantErr: true},
+		{name: "relative empty is refused", kind: source.KindPath, srcName: "x",
+			uri: "", wantErr: true},
+		{name: "relative dotdot escapes", kind: source.KindPath, srcName: "x",
+			uri: "../../etc", wantErr: true},
+		{name: "relative dotdot mid-path escapes", kind: source.KindPath, srcName: "x",
+			uri: "checkouts/../../etc", wantErr: true},
 		{name: "unknown kind", kind: "svn", srcName: "x", uri: "y", wantErr: true},
 		{name: "name cannot climb out", kind: source.KindGit, srcName: "../evil",
 			uri: "git@f:o/r.git", wantErr: true},
@@ -40,7 +57,7 @@ func TestResolve(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			loc, err := source.Resolve(data, tc.kind, tc.srcName, tc.uri)
+			loc, err := source.Resolve(data, tc.kind, tc.srcName, tc.uri, tc.writable)
 			if tc.wantErr {
 				if err == nil {
 					t.Fatalf("Resolve(%q) = %+v, want error", tc.srcName, loc)

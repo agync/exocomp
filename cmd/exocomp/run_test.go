@@ -19,7 +19,7 @@ func TestComposeRunStepsOrder(t *testing.T) {
 		PostRun: []hooks.Hook{{Name: "notify", Script: "notify.sh"}},
 		Gate:    []verify.Probe{{Name: "web", HTTP: &verify.HTTPProbe{URL: "http://127.0.0.1:9/"}}},
 	}
-	steps, err := composeRunSteps("/src", "/src/site.yml", "", "", runSpec{}, hk)
+	steps, err := composeRunSteps("/src", true, "/src/site.yml", "", "", runSpec{}, hk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,6 +33,11 @@ func TestComposeRunStepsOrder(t *testing.T) {
 		if steps[i].Kind != k {
 			t.Fatalf("step %d kind = %q, want %q", i+1, steps[i].Kind, k)
 		}
+	}
+	// A read-only source marks its play and hook steps read-only; the gate step
+	// has no working directory to grant.
+	if !steps[0].Spec.DirReadOnly || !steps[1].Spec.DirReadOnly || !steps[2].Spec.DirReadOnly {
+		t.Fatalf("read-only source did not propagate to the run steps: %+v", steps)
 	}
 
 	// The pre-hook is an inline shell command; the post-hook a script under the
@@ -54,7 +59,7 @@ func TestComposeRunStepsOrder(t *testing.T) {
 }
 
 func TestComposeRunStepsNoHooksIsJustPlay(t *testing.T) {
-	steps, err := composeRunSteps("/src", "/src/site.yml", "", "", runSpec{}, hooks.Hooks{})
+	steps, err := composeRunSteps("/src", false, "/src/site.yml", "", "", runSpec{}, hooks.Hooks{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +71,7 @@ func TestComposeRunStepsNoHooksIsJustPlay(t *testing.T) {
 func TestHookStepSecretBinding(t *testing.T) {
 	// A hook's secret binding NAME travels on the spec; the value is resolved at
 	// execution time, never stored on the row.
-	step := hookStep("/src", hooks.Hook{Name: "auth", Run: "true", Secret: "proxmox"}, 0)
+	step := hookStep("/src", false, hooks.Hook{Name: "auth", Run: "true", Secret: "proxmox"}, 0)
 	if step.Spec.RunSecretBinding != "proxmox" {
 		t.Fatalf("secret binding not carried: %+v", step.Spec)
 	}

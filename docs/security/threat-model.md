@@ -101,7 +101,7 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
 - **S1 —** the resolver profile's grant set is validated against the sandbox by unit test
   with a stand-in `uv`; a live `uv` resolve under the sandbox on a real host — fetching a real
   index, seeding a real interpreter — still needs on-host validation.
-- **S3 —** unsigned is the default; hostpath/volpath sources have no signature gate. Accepted
+- **S3 —** unsigned is the default; path sources have no signature gate. Accepted
   for now with the trust posture documented; a signed-source opt-in for local trees is future
   hardening.
 - **S5 —** the pin consumes the `known_host` store but does not itself record the forge key
