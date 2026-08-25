@@ -47,6 +47,7 @@ templ approvalsList(vm dashboardVM) {
 templ approvalSurface(vm approvalVM) {
 	@layout(vm.Page) {
 		<div class="phone">
+			@breadcrumb(breadcrumbCrumb{Label: "Approvals", Href: "/approvals"}, breadcrumbCrumb{Label: "#" + itoa(vm.ID)})
 			<h1>Approve run</h1>
 			<p class="meta">{ vm.Runbook } · <span class="mono">{ vm.Kind }</span>{ workspaceSuffix(vm.Workspace) }</p>
 
@@ -54,13 +55,11 @@ templ approvalSurface(vm approvalVM) {
 				<div class="approve-block" role="status">
 					<span class="keyword">{ vm.Outcome }</span>
 					<p>{ vm.Notice }</p>
-					<a class="btn" href="/approvals">Back to approvals</a>
 				</div>
 			} else if vm.Expired {
 				<div class="approve-block destroy" role="alert">
 					<span class="keyword">Expired</span>
 					<p>This decision window closed. The job was rejected and nothing was applied.</p>
-					<a class="btn" href="/approvals">Back to approvals</a>
 				</div>
 			} else {
 				<!-- (2) state + fail-closed countdown -->
