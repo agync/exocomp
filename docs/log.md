@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — browser management surface documented
+
+[operations/serve.md](operations/serve.md) gains a "The browser surface" section: the web UI
+is no longer view-only — an operator runs playbooks/commands, plans/applies workspaces, and
+manages sources, secrets, tokens, schedules, policies, and runners from the browser. Sensitive
+writes re-confirm with the operator's access token; these session form posts stay distinct
+from the bearer-only `/api/v1`.
+
 ## 2026-08-24 — design system page and top-level README
 
 - **New page** [design/DESIGN.md](design/DESIGN.md): the web UI design system — color,

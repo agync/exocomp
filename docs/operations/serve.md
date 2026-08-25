@@ -268,6 +268,32 @@ before they are written, so the tail the CLI prints is already scrubbed.
 If the daemon disappears while a command is following its job, the command stops with an
 error naming the job rather than waiting on a row nothing will move.
 
+## The browser surface
+
+`--web-addr` serves a browser surface behind the ADR-0009 token→session exchange, with the
+token's scope deciding what it may do. It is not view-only: an `operator`-scoped session
+manages the daemon from the browser, not just the CLI.
+
+- **Run** a source's playbook or an ad-hoc command; **plan** and **apply** a workspace —
+  each enqueues through the same service verbs the CLI uses and follows the job.
+- **Sources**: add a path source, enable/disable, remove, or add a git source (which seals
+  its deploy key and shows the public key once).
+- **Secrets**: seal, rotate, delete. **Tokens**: mint, rotate, revoke.
+- **Schedules**, **policies**, and **runners**: add and remove; schedules also enable/disable.
+- **Approvals**: decide a pending job, as before.
+
+The sensitive writes — sealing or rotating a secret, minting or rotating a token, sealing a
+git deploy key — require re-entering your own access token to confirm. A cookie alone cannot
+drive them: the confirm proves possession of the token secret, which an ambient cross-site
+request never holds. A `readonly` session keeps the read-only view; `approve` keeps the
+decide-only surface.
+
+These browser writes are same-origin form posts authenticated by the session, distinct from
+the machine `/api/v1`, which stays bearer-only and refuses an ambient cookie
+([API](api.md)). A process serving the surface without an open envelope (no key material)
+disables the routes that seal — secret add/rotate and git-source add — with a clear notice,
+rather than failing at submit.
+
 ## Redaction freshness
 
 The daemon resolves the known-secret set per job at claim time, so a secret
