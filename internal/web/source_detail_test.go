@@ -68,6 +68,28 @@ func TestSourceDetailRendersLauncherForOperator(t *testing.T) {
 	}
 }
 
+// TestSourceDetailRendersBreadcrumb: the source detail page carries a
+// Sources / <name> breadcrumb above the header and no longer the old "All
+// sources" button beside the <h1>.
+func TestSourceDetailRendersBreadcrumb(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	code, body := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("source detail = %d, want 200", code)
+	}
+	if !strings.Contains(body, `<nav class="breadcrumb" aria-label="Breadcrumb"> <a href="/sources">Sources</a><span class="crumb-sep" aria-hidden="true">/</span> <span aria-current="page">tree</span></nav>`) {
+		t.Errorf("source detail missing Sources / tree breadcrumb, got:\n%s", body)
+	}
+	if strings.Contains(body, `class="btn" href="/sources"`) {
+		t.Error("source detail must not render the old All sources button")
+	}
+}
+
 // TestSourceDetailUnknownSource: a detail page for a source that does not exist
 // is a 404, not a render.
 func TestSourceDetailUnknownSource(t *testing.T) {
