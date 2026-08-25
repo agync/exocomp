@@ -20,11 +20,11 @@ templ tokensPage(vm tokensVM) {
 				<p class="meta">Token management needs an operator-scoped token.</p>
 			</div>
 		} else {
-			@modal("tokens-mint", "Pair a device / mint a token") {
+			@modal("tokens-mint", "Mint a token") {
 				<p class="meta">The secret is shown once, with a QR to pair a phone. Confirm with your own access token.</p>
 				<form method="post" action="/tokens/new" class="writeform">
-					<label for="tk-name">Device name (optional)</label>
-					<input id="tk-name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9._-]+" placeholder="e.g. pixel-8 — blank to auto-generate"/>
+					<label for="tk-name">Token name</label>
+					<input id="tk-name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9._-]+" placeholder="blank to auto-generate"/>
 					<label for="tk-scope">Scope</label>
 					<select id="tk-scope" name="scope">
 						<option value="operator" selected>operator</option>
@@ -59,14 +59,17 @@ templ tokensPage(vm tokensVM) {
 										<td data-label="State">@chip(tokenStateClass(t.State), t.State)</td>
 										<td data-label="Actions">
 											if !t.Self {
-												<details class="rowact">
-													<summary>Rotate</summary>
-													<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform inline">
-														<input name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
-														<input name="confirm_token" type="password" required autocomplete="off" placeholder="your access token"/>
-														<button type="submit" class="btn">Rotate</button>
+												<button type="button" class="btn" data-modal-open={ "tk-rotate-" + t.Name }>Rotate</button>
+												@modal("tk-rotate-"+t.Name, "Rotate "+t.Name) {
+													<p class="meta">Reseals a fresh secret onto this token — same id, name, and scope — and drops the old secret and any sessions it holds.</p>
+													<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform">
+														<label for={ "tk-rot-exp-" + t.Name }>New expiry (optional)</label>
+														<input id={ "tk-rot-exp-" + t.Name } name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
+														<label for={ "tk-rot-ct-" + t.Name }>Confirm: your access token</label>
+														<input id={ "tk-rot-ct-" + t.Name } name="confirm_token" type="password" required autocomplete="off"/>
+														<div class="actions"><button type="submit" class="btn primary">Rotate</button></div>
 													</form>
-												</details>
+												}
 												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline">
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>

@@ -39,8 +39,8 @@ inline SVG on the web token-result page and a half-block QR in the terminal.
 
 ## From the browser
 
-On the tokens page, "Pair a device / mint a token" mints a token and shows the
-secret once, a copy control, and the pairing QR. Leave the device name blank to
+On the tokens page, the "Mint a token" action mints a token and shows the
+secret once, a copy control, and the pairing QR. Leave the token name blank to
 auto-generate a unique `device-<hex>` name; pick a scope (operator is the
 default); confirm with your own access token. A rotated token shows the QR too.
 
