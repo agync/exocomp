@@ -451,6 +451,20 @@ td .btn {
 }
 .qr-big svg { display: block; width: min(340px, 72vw); height: auto; color: #0b0b0c; }
 
+/* ---- Breadcrumb ----
+ * The trail above a detail/result page's content, replacing the old "back to
+ * X" button beside its <h1>. Muted throughout; the trailing (current) segment
+ * steps up to body ink and carries no link. Wraps on narrow screens instead
+ * of overflowing. */
+.breadcrumb {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: 6px; font: var(--type-body); color: var(--ink-400);
+  margin-bottom: 10px;
+}
+.breadcrumb a { color: var(--ink-400); font-weight: 500; }
+.breadcrumb [aria-current="page"] { color: var(--ink-200); }
+.crumb-sep { color: var(--ink-600); }
+
 /* ---- Page header + add button ----
  * The compact "+" affordance that sits beside a list surface's <h1> and opens
  * that surface's add-form modal (moved out of an always-visible inline card). */

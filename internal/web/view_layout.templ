@@ -85,6 +85,32 @@ templ layout(p page) {
 	</html>
 }
 
+// breadcrumbCrumb is one segment of a breadcrumb trail: a link when Href is
+// set, or the trailing current page when it is empty.
+type breadcrumbCrumb struct {
+	Label string
+	Href  string
+}
+
+// breadcrumb replaces the ad-hoc "back to X" buttons that used to sit beside a
+// detail/result page's <h1>: a trail above the page content, ending in the
+// current page (unlinked, aria-current). Render at the top of a page's
+// content, above its .pageheader.
+templ breadcrumb(crumbs ...breadcrumbCrumb) {
+	<nav class="breadcrumb" aria-label="Breadcrumb">
+		for i, c := range crumbs {
+			if i > 0 {
+				<span class="crumb-sep" aria-hidden="true">/</span>
+			}
+			if c.Href != "" {
+				<a href={ templ.SafeURL(c.Href) }>{ c.Label }</a>
+			} else {
+				<span aria-current="page">{ c.Label }</span>
+			}
+		}
+	</nav>
+}
+
 // brandMark is the exocomp mark from the design system (Foundations §01,
 // "Carapace and pin"): a four-sided shell with one corner cut away — the tool
 // bay — holding a single pin. The shell is ink and never changes; the pin
