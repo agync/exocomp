@@ -111,6 +111,18 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   `[host]:port`.
 - **Tool-path pinning —** pinned tools are resolved by bare name on the ambient PATH, with no
   absolute pin or checksum. Future hardening.
+- **Local-exec to the `exocomp` CLI —** a playbook (`command`/`shell`/`local_action`) or a tofu
+  `local-exec` step can invoke the local `exocomp` binary, which mints tokens and unwraps secrets
+  by opening the data dir directly, bypassing every HTTP guard. Under the sandboxed tier this fails
+  closed by the same guard as T6: the profile never grants the data dir and name-denies
+  `exocomp.db`, `host.key`, and `keyring.age`, so an invoked CLI cannot open the store or the
+  envelope — no token mints, no secret unwraps. **Residual:** under `TierLocal` (explicit
+  `--sandbox local`, or the `auto` tier degraded on a host without Landlock) there is no kernel
+  policy, so a local-exec step runs with the daemon's own filesystem access and *can* mint an
+  operator token or read `host.key`. `TierLocal` is therefore a trusted-playbook tier; the
+  `auto`→`local` degradation is loud in the daemon log and `doctor` but invisible to a playbook
+  author, and must be treated as a security-relevant downgrade. Untrusted playbooks require the
+  sandboxed tier.
 
 ## Reactive engine and approvals
 
@@ -154,7 +166,11 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
   the API port and holding a token to drive it — is closed on the credential side: a job
   receives no access token by default, and the run-secret resolver refuses to inject a sealed
   value shaped like one (`exo_<id>_<secret>`), so an operator cannot bind the daemon's own
-  credential into a run's env and turn the job into a deputy for the API.
+  credential into a run's env and turn the job into a deputy for the API. Token minting over HTTP
+  exists only on the browser surface (`POST /tokens/new`), gated by an operator cookie session
+  **and** same-origin (`Sec-Fetch-Site`) **and** a proof-of-possession re-auth — none of which a
+  non-browser job can present; `/api/v1` and `/mcp` expose no mint at all. (The local `exocomp`
+  binary does mint, but a job reaching it is the local-exec vector above, not an HTTP path.)
 - **Hook allowlist behind proxy —** the `--hook-allow` CIDR allowlist is nullified behind a
   reverse proxy that sets X-Forwarded-For. Documented limitation.
 
