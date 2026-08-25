@@ -92,7 +92,7 @@ a:visited { color: var(--accent-text); }
   display: flex; flex-direction: column; gap: 2px;
   padding: 10px; scrollbar-width: thin;
 }
-.navitem {
+.navitem, .navitem:visited {
   display: flex; align-items: center; gap: 12px;
   height: 40px; padding: 0 12px; border-radius: var(--radius-chip);
   color: var(--ink-200); font: var(--type-button); text-decoration: none;
