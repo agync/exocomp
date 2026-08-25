@@ -6,6 +6,83 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — phone-companion API surface
+
+- **Four new `/api/v1` endpoints** land the mobile handoff: `GET /whoami` reflects the
+  caller's own token; `GET /approvals/{id}/plan` opens the sealed plan as raw text through
+  the same `PlanOpener.OpenSealedFile` the web approval surface uses, gated by the
+  plan-view floor; `POST /jobs/{id}/cancel` moves a non-terminal job to `cancelled` (409
+  terminal, 404 unknown); `POST`/`DELETE /silences` mute/unmute through the store. All four
+  are operator, bearer-only.
+- **Approvals SSE.** `GET /api/v1/approvals/stream` mirrors the job stream's
+  registration/gating and per-poll revocation check, but has no terminal state — it sends
+  one snapshot on connect and another only when the pending set changes, replacing a
+  phone's poll of `GET /approvals`. SSE `ts` now formats with the same RFC3339 the REST
+  views use, so one parser covers both. [operations/api.md](operations/api.md) updated.
+- **ntfy privacy toggle.** A `notify.ntfy_detail` setting switches the ntfy transport
+  between `descriptive` (today's title/body/deep-link) and `terse` (a fixed generic
+  phrase) for operators who don't trust their relay.
+
+## 2026-08-25 — job detail live-update fix
+
+- **SSE backfill.** The job-detail stream started its cursor at the latest event on
+  connect, skipping everything written between page render and connect — a fast job stuck
+  on QUEUED with no lines until reload. The client now passes `?since=<last-rendered-seq>`
+  to backfill the gap, and reloads on `done` to render the true terminal status, full log,
+  and actions.
+- **Schedule button** moves from an always-shown page action to a small icon button in the
+  header, enabled only after a successful run.
+
+## 2026-08-25 — TUI palette matches design
+
+The TUI color table realigns to the design handoff: magenta accent for keys/links/the
+active tab (was terminal blue), green for both succeeded and running, a new yellow for
+`awaiting_approval`, and the design's fail/heading/dim hexes. Truecolor values with
+lipgloss's ANSI fallback; color stays a hint — every state still reads as its word.
+
+## 2026-08-25 — web UI: themed select, dialog modal, System page
+
+- **Themed `<select>`.** Every `.writeform` select gets an accessible themed listbox
+  overlay (native select kept as the real form field and the JS-off fallback), so option
+  lists follow the app theme cross-browser instead of the OS default.
+- **Dialog modal rebuild.** The modal moves onto the native `<dialog>` element (top
+  layer), fixing an overlay pointer-events bug that blocked opening a select, focusing
+  inputs, and backdrop/close-button dismissal.
+- **System page.** A new `/system` page holds the control-plane health card, backups, and
+  the server version — moved off the dashboard and the old footer. A fixed-bottom
+  powerline replaces the end-of-content footer, carrying the liveness signals and the
+  signed-in operator. Nav reorders Dashboard-first then alphabetical, with a divider
+  before System.
+- **Sidebar collapse toggle** moves to the top of the sidebar (Gemini-style); expanded, it
+  sits at the right edge, and the collapsed rail rests on the exocomp brand mark —
+  hovering or focusing swaps the mark for the open-chevron affordance, with the mark
+  living inside the toggle button so the control stays keyboard-reachable.
+- **Workspaces Configure modal.** The page-level how-to card and inline "add state" form
+  are dropped; a Configure modal presents OpenTofu/Terraform tabs with a single generic
+  intro (stable modal size across tabs) instead of per-tab prose, and each backend-config
+  code block scrolls inside its own box (a long address no longer widens the modal) with a
+  copy-to-clipboard button. The list section renames to "States"; registering a
+  state-only workspace from the web is retired — `workspace add --state-only` is CLI-only
+  now.
+
+## 2026-08-25 — dependency resolver sandbox grants uv config
+
+`uv`'s config discovery is mandatory and treats an unreadable config as fatal; the
+default-deny resolver sandbox profile hid the host's `/etc/uv/uv.toml`, so a job's
+`uv venv` died with EACCES. The sandbox now grants the existing system/user `uv.toml`
+read-only (host root stays out of scope), so the resolver reads the config the operator
+already trusts instead of failing closed on it.
+
+## 2026-08-25 — threat model: local-exec CLI residual
+
+[security/threat-model.md](security/threat-model.md) corrects the token-mint boundary: a
+job can reach the `exocomp` CLI via an ansible `command`/`local_action` or a tofu
+`local-exec`; under the sandboxed tier the data-dir/keys denial (T6) fails it closed, but
+under `TierLocal` (explicit or auto-degraded) it can mint an operator token or read
+`host.key` — documented as a trusted-playbook tier. Also notes the web `POST /tokens/new`
+mint route exists, gated by cookie-session + same-origin + reauth; `/api/v1` and `/mcp`
+expose no mint.
+
 ## 2026-08-25 — sandbox tiers renamed, secure-by-default
 
 - **Tiers renamed and the default flipped.** The job-sandbox tiers are now `opportunistic` /
