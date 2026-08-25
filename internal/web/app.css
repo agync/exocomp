@@ -205,7 +205,7 @@ main { flex: 1; padding: var(--pad-page); max-width: none; }
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: var(--gap-card);
-  align-items: start;
+  align-items: stretch;
 }
 .card {
   background: var(--surface-card);
