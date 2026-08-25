@@ -14,9 +14,10 @@ templ jobsList(vm dashboardVM) {
 				<div class="tablewrap stackable">
 					<table>
 						<thead>
-							<tr>
+						<tr>
 								<th scope="col">Job</th>
 								<th scope="col">Runbook</th>
+								<th scope="col">Source</th>
 								<th scope="col">Kind</th>
 								<th scope="col">Trigger</th>
 								<th scope="col">State</th>
@@ -29,6 +30,7 @@ templ jobsList(vm dashboardVM) {
 								<tr data-href={ "/jobs/" + itoa(j.ID) }>
 									<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
 									<td data-label="Runbook">{ j.Runbook }</td>
+									<td class="mono" data-label="Source">{ j.Source }</td>
 									<td class="mono" data-label="Kind">{ j.Kind }</td>
 									<td class="mono" data-label="Trigger">{ j.Trigger }</td>
 									<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
@@ -75,7 +77,11 @@ templ jobDetail(vm jobDetailVM) {
 			}
 		</div>
 		<p class="meta">
-			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span> ·
+			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
+			if vm.Source != "" {
+				· source <span class="mono">{ vm.Source }</span>
+			}
+			·
 			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
 		if vm.Operator && vm.CanSchedule {

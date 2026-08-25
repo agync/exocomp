@@ -385,10 +385,13 @@ type approvalRow struct {
 
 // jobRow is one job in the queue/jobs list.
 type jobRow struct {
-	ID       int64
-	Runbook  string
-	Kind     string
-	Trigger  string
+	ID      int64
+	Runbook string
+	Kind    string
+	Trigger string
+	// Source is the persisted job.Args.Source: the registered source this run
+	// executed from, empty for a raw-path or ad-hoc run.
+	Source   string
 	State    store.JobState
 	Age      string // oldest-queued age for queued rows; runtime otherwise
 	ExitCode string
@@ -439,10 +442,12 @@ type jobDetailVM struct {
 	Job      jobRow
 	Events   []eventLine
 	Operator bool
-	// Source is the registered source name a Dir→source reverse lookup
-	// resolved the job's working directory to, empty when the job ran with no
-	// --source or the lookup found no match — "Run again" links to /run
-	// (optionally scoped to that source) rather than fabricating one.
+	// Source is the registered source name this job ran from: the persisted
+	// job.Args.Source when the row carries it, falling back to a Dir→source
+	// reverse lookup for an old row that predates the field. Empty when the
+	// job ran with no --source or the lookup found no match — "Run again"
+	// links to /run (optionally scoped to that source) rather than
+	// fabricating one.
 	Source string
 	// CanSchedule gates the "Schedule" action: true only for a terminal
 	// ansible job with no source working directory, the one shape a "shell"

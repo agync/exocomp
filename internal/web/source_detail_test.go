@@ -173,6 +173,9 @@ func TestSourceRunPlaybookEnqueues(t *testing.T) {
 	if !strings.Contains(strings.Join(jobs[0].Args.Argv, " "), "site.yml") {
 		t.Errorf("argv = %v, want the resolved playbook path", jobs[0].Args.Argv)
 	}
+	if jobs[0].Args.Source != name {
+		t.Errorf("Args.Source = %q, want %q", jobs[0].Args.Source, name)
+	}
 }
 
 // TestSourceRunPrivilegedRefusedForReadonly: a readonly token asking for a
@@ -315,6 +318,9 @@ func TestSourceRunCommandEnqueues(t *testing.T) {
 	argv := strings.Join(jobs[0].Args.Argv, " ")
 	if !strings.Contains(argv, "web") || !strings.Contains(argv, "uptime") {
 		t.Errorf("argv = %v, want the host pattern and command", jobs[0].Args.Argv)
+	}
+	if jobs[0].Args.Source != name {
+		t.Errorf("Args.Source = %q, want %q", jobs[0].Args.Source, name)
 	}
 }
 

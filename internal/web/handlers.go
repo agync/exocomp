@@ -298,7 +298,12 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ident, _ := identityOf(r.Context())
-	source, _ := s.sourceForDir(r.Context(), job.Args.Dir)
+	source := job.Args.Source
+	if source == "" {
+		// An old row that predates Args.Source: fall back to the reverse
+		// Dir→source lookup so "Run again" still resolves.
+		source, _ = s.sourceForDir(r.Context(), job.Args.Dir)
+	}
 	vm := jobDetailVM{
 		Page: s.pageFor(r, "Job #"+itoa64(id), "jobs"), Job: s.jobRow(job, s.now()),
 		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
@@ -471,8 +476,11 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 	row := jobRow{
-		ID: j.ID, Runbook: j.Runbook, Kind: j.Kind, Trigger: j.Trigger,
+		ID: j.ID, Runbook: j.Runbook, Kind: j.Kind, Trigger: j.Trigger, Source: "-",
 		State: j.State, Age: jobAge(j, now), ExitCode: "-", Argv: j.Args.Argv,
+	}
+	if j.Args.Source != "" {
+		row.Source = j.Args.Source
 	}
 	if j.ExitCode != nil {
 		row.ExitCode = strconv.Itoa(*j.ExitCode)

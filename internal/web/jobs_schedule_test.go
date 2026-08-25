@@ -240,6 +240,39 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	if !strings.Contains(body, `href="/sources/tree"`) {
 		t.Error("Run again must link to the reverse-mapped source's launcher")
 	}
+	if !strings.Contains(body, `source <span class="mono">tree</span>`) {
+		t.Error("job detail must show the (here, reverse-derived) source name in its meta line")
+	}
+}
+
+// TestJobDetailShowsPersistedSource proves a job whose row carries Args.Source
+// shows that name directly — no reverse Dir lookup needed — in both the jobs
+// list's Source column and the job detail meta line.
+func TestJobDetailShowsPersistedSource(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}, Source: "my-fleet"},
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	_, list := getBody(t, client, ts.URL+"/jobs")
+	if !strings.Contains(list, `data-label="Source">my-fleet<`) {
+		t.Errorf("jobs list did not show the persisted source:\n%s", list)
+	}
+
+	_, detail := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(detail, `source <span class="mono">my-fleet</span>`) {
+		t.Errorf("job detail did not show the persisted source:\n%s", detail)
+	}
 }
 
 // TestJobDetailScheduleDisabledForFailedJob: a failed job is still the
