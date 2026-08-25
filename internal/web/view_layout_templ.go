@@ -747,7 +747,7 @@ func layoutReady() templ.Component {
 			templ_7745c5c3_Var27 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar b = e.target.closest('.copybtn');\n\t\tif (!b || !navigator.clipboard) return;\n\t\tvar pre = b.parentNode.querySelector('pre');\n\t\tif (!pre) return;\n\t\tnavigator.clipboard.writeText(pre.textContent).then(function () {\n\t\t\tb.classList.add('copied');\n\t\t\tsetTimeout(function () { b.classList.remove('copied'); }, 1200);\n\t\t});\n\t});\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -786,7 +786,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var29 string
 		templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/tokens.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 474, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 485, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 		if templ_7745c5c3_Err != nil {
@@ -799,7 +799,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var30 string
 		templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/app.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 475, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 486, Col: 60}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 		if templ_7745c5c3_Err != nil {
@@ -833,7 +833,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 488, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 499, Col: 44}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -857,7 +857,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		var templ_7745c5c3_Var32 string
 		templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(next)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 494, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 505, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 		if templ_7745c5c3_Err != nil {
@@ -875,7 +875,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 502, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 513, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {

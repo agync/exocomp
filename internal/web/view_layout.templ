@@ -451,6 +451,17 @@ templ layoutReady() {
 			e.target.close();
 		}
 	});
+	// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.
+	document.addEventListener('click', function (e) {
+		var b = e.target.closest('.copybtn');
+		if (!b || !navigator.clipboard) return;
+		var pre = b.parentNode.querySelector('pre');
+		if (!pre) return;
+		navigator.clipboard.writeText(pre.textContent).then(function () {
+			b.classList.add('copied');
+			setTimeout(function () { b.classList.remove('copied'); }, 1200);
+		});
+	});
 	</script>
 }
 

@@ -227,76 +227,66 @@ func workspacesList(vm workspacesVM) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p class=\"meta\">exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Point a <code>backend \"http\"</code> block at the address below, then initialise. Each row's <b>Backend config</b> gives that workspace's exact block (address and bearer).</p><div class=\"tabs\" role=\"tablist\" aria-label=\"State tool\" id=\"ws-cfg-tabs\"><button type=\"button\" class=\"tab\" id=\"ws-cfg-tab-tofu\" role=\"tab\" data-tab=\"tofu\" aria-controls=\"ws-cfg-tofu\" aria-selected=\"true\">OpenTofu</button> <button type=\"button\" class=\"tab\" id=\"ws-cfg-tab-terraform\" role=\"tab\" data-tab=\"terraform\" aria-controls=\"ws-cfg-terraform\" aria-selected=\"false\">Terraform</button></div><div id=\"ws-cfg-tofu\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"ws-cfg-tab-tofu\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p class=\"meta\">exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Add the <code>backend \"http\"</code> block to your config (replace <code>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var8 string
+					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(configExampleWorkspace)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 83, Col: 228}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</code> with the workspace name), then initialise. The block is identical for OpenTofu and Terraform; only the init CLI differs. Each row's <b>Backend config</b> gives that workspace's exact block (address and bearer).</p><div class=\"tabs\" role=\"tablist\" aria-label=\"State tool\" id=\"ws-cfg-tabs\"><button type=\"button\" class=\"tab\" id=\"ws-cfg-tab-tofu\" role=\"tab\" data-tab=\"tofu\" aria-controls=\"ws-cfg-tofu\" aria-selected=\"true\">OpenTofu</button> <button type=\"button\" class=\"tab\" id=\"ws-cfg-tab-terraform\" role=\"tab\" data-tab=\"terraform\" aria-controls=\"ws-cfg-terraform\" aria-selected=\"false\">Terraform</button></div><div id=\"ws-cfg-tofu\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"ws-cfg-tab-tofu\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.Config.Address == "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<p class=\"meta\">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<p class=\"meta\">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<p class=\"meta\">Add to your OpenTofu config (replace <code>")
+						templ_7745c5c3_Err = codeblock("OpenTofu backend config", vm.Config.HCL()).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var8 string
-						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(configExampleWorkspace)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 92, Col: 89}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, " ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</code> with the workspace name):</p><pre class=\"secretbox\" aria-label=\"OpenTofu backend config\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var9 string
-						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Config.HCL())
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 93, Col: 83}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</pre><p class=\"meta\">Then initialise the backend:</p><pre class=\"secretbox\" aria-label=\"tofu init\">tofu init</pre>")
+						templ_7745c5c3_Err = codeblock("tofu init", "tofu init").Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</div><div id=\"ws-cfg-terraform\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"ws-cfg-tab-terraform\" hidden>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</div><div id=\"ws-cfg-terraform\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"ws-cfg-tab-terraform\" hidden>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.Config.Address == "" {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<p class=\"meta\">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<p class=\"meta\">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<p class=\"meta\">The block is identical under Terraform — the same <code>terraform</code> / <code>backend \"http\"</code> stanza; only the CLI differs:</p><pre class=\"secretbox\" aria-label=\"Terraform backend config\">")
+						templ_7745c5c3_Err = codeblock("Terraform backend config", vm.Config.HCL()).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var10 string
-						templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Config.HCL())
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 103, Col: 84}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, " ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</pre><p class=\"meta\">Then initialise the backend:</p><pre class=\"secretbox\" aria-label=\"terraform init\">terraform init</pre>")
+						templ_7745c5c3_Err = codeblock("terraform init", "terraform init").Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar scope = document.getElementById(\"ws-cfg-tabs\");\n\t\t\t\t\tif (!scope) return;\n\t\t\t\t\tvar tabs = Array.prototype.slice.call(scope.querySelectorAll('[role=\"tab\"]'));\n\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\tt.addEventListener(\"click\", function () {\n\t\t\t\t\t\t\ttabs.forEach(function (o) {\n\t\t\t\t\t\t\t\tvar on = o === t;\n\t\t\t\t\t\t\t\to.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");\n\t\t\t\t\t\t\t\tvar panel = document.getElementById(o.getAttribute(\"aria-controls\"));\n\t\t\t\t\t\t\t\tif (panel) panel.hidden = !on;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t});\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t\t</script>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</div><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar scope = document.getElementById(\"ws-cfg-tabs\");\n\t\t\t\t\tif (!scope) return;\n\t\t\t\t\tvar tabs = Array.prototype.slice.call(scope.querySelectorAll('[role=\"tab\"]'));\n\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\tt.addEventListener(\"click\", function () {\n\t\t\t\t\t\t\ttabs.forEach(function (o) {\n\t\t\t\t\t\t\t\tvar on = o === t;\n\t\t\t\t\t\t\t\to.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");\n\t\t\t\t\t\t\t\tvar panel = document.getElementById(o.getAttribute(\"aria-controls\"));\n\t\t\t\t\t\t\t\tif (panel) panel.hidden = !on;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t});\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t\t</script>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -307,7 +297,7 @@ func workspacesList(vm workspacesVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				for _, wsr := range vm.Workspaces {
-					templ_7745c5c3_Var11 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_Var9 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 						if !templ_7745c5c3_IsBuffer {
@@ -320,32 +310,23 @@ func workspacesList(vm workspacesVM) templ.Component {
 						}
 						ctx = templ.InitializeContext(ctx)
 						if wsr.Backend.Address == "" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<p class=\"meta\">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<p class=\"meta\">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						} else {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<p class=\"meta\">Paste into an external tofu config, then run `tofu init`.</p><pre class=\"secretbox\" aria-label=\"backend config\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<p class=\"meta\">Paste into an external tofu/terraform config, then run `tofu init` / `terraform init`.</p>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var12 string
-							templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(wsr.Backend.HCL())
-							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 132, Col: 76}
-							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-							if templ_7745c5c3_Err != nil {
-								return templ_7745c5c3_Err
-							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</pre>")
+							templ_7745c5c3_Err = codeblock("backend config", wsr.Backend.HCL()).Render(ctx, templ_7745c5c3_Buffer)
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var11), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var9), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -354,6 +335,65 @@ func workspacesList(vm workspacesVM) templ.Component {
 			return nil
 		})
 		templ_7745c5c3_Err = layout(vm.Page).Render(templ.WithChildren(ctx, templ_7745c5c3_Var2), templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// codeblock renders a copyable, horizontally-scrolling code/secret block: the
+// pre keeps its formatting and scrolls inside its own box (so a long backend
+// address never widens the modal), with a copy-to-clipboard button wired by the
+// delegated handler in layoutReady().
+func codeblock(label, content string) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var10 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var10 == nil {
+			templ_7745c5c3_Var10 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<div class=\"codeblock\"><pre class=\"secretbox code\" aria-label=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var11 string
+		templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(label)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 142, Col: 48}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var12 string
+		templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(content)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 142, Col: 60}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</pre><button type=\"button\" class=\"copybtn\" aria-label=\"Copy to clipboard\" title=\"Copy\"><svg class=\"copy-i\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"></rect><path d=\"M5 15V5a2 2 0 0 1 2-2h10\"></path></svg> <svg class=\"copy-ok\" width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M20 6L9 17l-5-5\"></path></svg></button></div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

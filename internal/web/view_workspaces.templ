@@ -80,7 +80,7 @@ templ workspacesList(vm workspacesVM) {
 		</div>
 		if vm.Operator {
 			@modal("ws-configure", "Configure remote state backend") {
-				<p class="meta">exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Point a <code>backend "http"</code> block at the address below, then initialise. Each row's <b>Backend config</b> gives that workspace's exact block (address and bearer).</p>
+				<p class="meta">exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Add the <code>backend "http"</code> block to your config (replace <code>{ configExampleWorkspace }</code> with the workspace name), then initialise. The block is identical for OpenTofu and Terraform; only the init CLI differs. Each row's <b>Backend config</b> gives that workspace's exact block (address and bearer).</p>
 				<div class="tabs" role="tablist" aria-label="State tool" id="ws-cfg-tabs">
 					<button type="button" class="tab" id="ws-cfg-tab-tofu" role="tab" data-tab="tofu" aria-controls="ws-cfg-tofu" aria-selected="true">OpenTofu</button>
 					<button type="button" class="tab" id="ws-cfg-tab-terraform" role="tab" data-tab="terraform" aria-controls="ws-cfg-terraform" aria-selected="false">Terraform</button>
@@ -89,20 +89,16 @@ templ workspacesList(vm workspacesVM) {
 					if vm.Config.Address == "" {
 						<p class="meta">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
 					} else {
-						<p class="meta">Add to your OpenTofu config (replace <code>{ configExampleWorkspace }</code> with the workspace name):</p>
-						<pre class="secretbox" aria-label="OpenTofu backend config">{ vm.Config.HCL() }</pre>
-						<p class="meta">Then initialise the backend:</p>
-						<pre class="secretbox" aria-label="tofu init">tofu init</pre>
+						@codeblock("OpenTofu backend config", vm.Config.HCL())
+						@codeblock("tofu init", "tofu init")
 					}
 				</div>
 				<div id="ws-cfg-terraform" class="tabpanel" role="tabpanel" aria-labelledby="ws-cfg-tab-terraform" hidden>
 					if vm.Config.Address == "" {
 						<p class="meta">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
 					} else {
-						<p class="meta">The block is identical under Terraform — the same <code>terraform</code> / <code>backend "http"</code> stanza; only the CLI differs:</p>
-						<pre class="secretbox" aria-label="Terraform backend config">{ vm.Config.HCL() }</pre>
-						<p class="meta">Then initialise the backend:</p>
-						<pre class="secretbox" aria-label="terraform init">terraform init</pre>
+						@codeblock("Terraform backend config", vm.Config.HCL())
+						@codeblock("terraform init", "terraform init")
 					}
 				</div>
 				<script>
@@ -128,11 +124,25 @@ templ workspacesList(vm workspacesVM) {
 					if wsr.Backend.Address == "" {
 						<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
 					} else {
-						<p class="meta">Paste into an external tofu config, then run `tofu init`.</p>
-						<pre class="secretbox" aria-label="backend config">{ wsr.Backend.HCL() }</pre>
+						<p class="meta">Paste into an external tofu/terraform config, then run `tofu init` / `terraform init`.</p>
+						@codeblock("backend config", wsr.Backend.HCL())
 					}
 				}
 			}
 		}
 	}
+}
+
+// codeblock renders a copyable, horizontally-scrolling code/secret block: the
+// pre keeps its formatting and scrolls inside its own box (so a long backend
+// address never widens the modal), with a copy-to-clipboard button wired by the
+// delegated handler in layoutReady().
+templ codeblock(label, content string) {
+	<div class="codeblock">
+		<pre class="secretbox code" aria-label={ label }>{ content }</pre>
+		<button type="button" class="copybtn" aria-label="Copy to clipboard" title="Copy">
+			<svg class="copy-i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+			<svg class="copy-ok" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+		</button>
+	</div>
 }

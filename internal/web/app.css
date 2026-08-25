@@ -399,7 +399,23 @@ td .btn {
   background: var(--surface-void); border: 1px solid var(--accent-border);
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 6px 0 14px;
   color: var(--ink-100); word-break: break-all; user-select: all;
+  overflow-x: auto; max-width: 100%;
 }
+/* A code block keeps its formatting and scrolls inside its own box — a long
+ * backend address never widens the modal — leaving room for the copy button. */
+.secretbox.code { white-space: pre; word-break: normal; padding-right: 44px; margin: 0; }
+.codeblock { position: relative; margin: 6px 0 14px; }
+.copybtn {
+  position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--surface-tray); color: var(--ink-400);
+  border: 1px solid var(--hairline-faint); border-radius: 7px; cursor: pointer;
+}
+.copybtn:hover { color: var(--ink-100); }
+.copybtn .copy-ok { display: none; }
+.copybtn.copied { color: var(--accent-text); border-color: var(--accent-border); }
+.copybtn.copied .copy-i { display: none; }
+.copybtn.copied .copy-ok { display: block; }
 
 /* ---- Page header + add button ----
  * The compact "+" affordance that sits beside a list surface's <h1> and opens
