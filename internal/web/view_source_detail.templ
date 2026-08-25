@@ -91,11 +91,11 @@ templ sourceDetail(vm sourceDetailVM) {
 						<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
 						<label for="rp-secrets">Run secrets binding</label>
 						<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
-						<label class="checkline"><input type="checkbox" name="check" value="1"/> check mode (dry run)</label>
-						<label class="checkline"><input type="checkbox" name="diff" value="1"/> show diff</label>
+						@toggle("check", "check mode (dry run)", false, false)
+						@toggle("diff", "show diff", false, false)
 						<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
 						<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
-						<label class="checkline warn"><input type="checkbox" name="privileged" value="1"/> Run unsandboxed (privileged)</label>
+						@toggle("privileged", "Run unsandboxed (privileged)", false, true)
 						<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 						<div class="actions"><button type="submit" class="btn primary">Run playbook</button></div>
 					</form>
@@ -106,16 +106,16 @@ templ sourceDetail(vm sourceDetailVM) {
 						<input id="rc-host" name="host" type="text" required autocomplete="off" placeholder="web or fedora:!nas"/>
 						<label for="rc-command">Command</label>
 						<input id="rc-command" name="command" type="text" required autocomplete="off" placeholder="systemctl status nginx"/>
-						<label class="checkline"><input type="checkbox" name="shell" value="1"/> run through the shell module (pipes/redirects)</label>
-						<label class="checkline"><input type="checkbox" name="become" value="1"/> become (privilege escalation)</label>
+						@toggle("shell", "run through the shell module (pipes/redirects)", false, false)
+						@toggle("become", "become (privilege escalation)", false, false)
 						<label for="rc-inventory">Inventory</label>
 						<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
 						<label for="rc-secrets">Run secrets binding</label>
 						<input id="rc-secrets" name="run_secrets" type="text" autocomplete="off"/>
-						<label class="checkline"><input type="checkbox" name="require_approval" value="1"/> require approval before it runs</label>
+						@toggle("require_approval", "require approval before it runs", false, false)
 						<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>
 						<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
-						<label class="checkline warn"><input type="checkbox" name="privileged" value="1"/> Run unsandboxed (privileged)</label>
+						@toggle("privileged", "Run unsandboxed (privileged)", false, true)
 						<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 						<div class="actions"><button type="submit" class="btn primary">Run command</button></div>
 					</form>

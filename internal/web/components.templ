@@ -23,3 +23,21 @@ templ addButton(target, label string) {
 		</svg>
 	</button>
 }
+
+// toggle is the run-option switch shared by the source launcher and the job
+// rerun modal, replacing the plain checklines so every boolean run-option reads
+// as one consistent control. The real <input type="checkbox" role="switch"> is
+// the form field AND the JS-off fallback (it submits name=value=1 when on,
+// nothing when off, exactly like the checkbox it replaces); the track is pure
+// CSS on top, driven by :checked, so no script is needed. role="switch" maps
+// checked→aria-checked for assistive tech, the label wraps the control so its
+// text is the accessible name and a click toggles, and the focus ring lands on
+// the track via :focus-visible. warn tints the on-state with the fail signal for
+// the privileged (unsandboxed) escalation.
+templ toggle(name, label string, checked, warn bool) {
+	<label class={ "toggle", templ.KV("warn", warn) }>
+		<input type="checkbox" role="switch" name={ name } value="1" class="toggle-cb" checked?={ checked }/>
+		<span class="toggle-track" aria-hidden="true"><span class="toggle-thumb"></span></span>
+		<span class="toggle-text">{ label }</span>
+	</label>
+}

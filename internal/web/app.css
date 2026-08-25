@@ -407,6 +407,37 @@ td .btn {
 .writeform .checkline { flex-flow: row wrap; align-items: center; gap: 8px; color: var(--ink-200); }
 .writeform .checkline input { min-height: 0; }
 .writeform .checkline.warn { color: var(--signal-fail); font-weight: 600; }
+
+/* ---- Toggle switch (progressive enhancement over a real checkbox) ----
+ * The <input type="checkbox" role="switch"> stays the form field and the JS-off
+ * fallback; this is pure CSS on top, driven by :checked, so no script runs. The
+ * input sits transparent over the track (still focusable, keyboard-operable, and
+ * the pointer target), and the track + its focus ring reflect the input's state
+ * through sibling selectors. accent for the on-state; the .warn variant uses the
+ * fail signal for the privileged (unsandboxed) escalation. */
+.toggle {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  margin-top: 6px; cursor: pointer; color: var(--ink-200); font: var(--type-body);
+}
+.toggle-cb {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 40px; height: 24px; margin: 0; opacity: 0; cursor: pointer;
+}
+.toggle-track {
+  flex: none; position: relative; width: 40px; height: 24px; border-radius: 999px;
+  background: var(--surface-control); border: 1px solid var(--hairline);
+  transition: background .15s ease, border-color .15s ease;
+}
+.toggle-thumb {
+  position: absolute; top: 50%; left: 3px; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 50%; background: var(--ink-400);
+  transition: transform .15s ease, background .15s ease;
+}
+.toggle-cb:checked ~ .toggle-track { background: var(--accent-fill); border-color: transparent; }
+.toggle-cb:checked ~ .toggle-track .toggle-thumb { transform: translate(16px, -50%); background: var(--accent-on); }
+.toggle-cb:focus-visible ~ .toggle-track { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.toggle.warn { color: var(--signal-fail); font-weight: 600; }
+.toggle.warn .toggle-cb:checked ~ .toggle-track { background: var(--signal-fail); }
 .rowact { display: inline-block; margin-right: 8px; }
 .rowact > summary { cursor: pointer; color: var(--accent-text); font: var(--type-button); list-style: none; }
 .rowact[open] > summary { margin-bottom: 6px; }
