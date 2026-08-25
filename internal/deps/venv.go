@@ -149,6 +149,15 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
 		return fmt.Errorf("deps: cache dir: %w", err)
 	}
+	// uv creates its download cache subtree itself, but under the sandbox tier a
+	// Landlock write grant attaches only to a path that already exists, and uv's
+	// own mkdir of the leaf would need write on the ungranted parent cache tree.
+	// Create the granted cache dir here in the daemon so uv fills its subtree.
+	if spec.UVCacheDir != "" {
+		if err := os.MkdirAll(spec.UVCacheDir, 0o700); err != nil {
+			return fmt.Errorf("deps: uv cache dir: %w", err)
+		}
+	}
 	// A leftover partial from an earlier failed attempt must not confuse uv.
 	if err := os.RemoveAll(dir); err != nil {
 		return fmt.Errorf("deps: clear stale venv: %w", err)

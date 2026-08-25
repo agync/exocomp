@@ -42,7 +42,11 @@ func TestVenvRunImportsDeclaredDep(t *testing.T) {
 		t.Fatalf("kind = %q", manifest.Kind)
 	}
 	source := deps.SourceKey(manifest.Root)
-	spec := deps.VenvSpec{CacheRoot: cache, Source: source, Manifest: manifest}
+	// UVCacheDir is granted write under the sandbox tier, where a Landlock rule
+	// can only attach to a path that already exists — so EnsureVenv must create
+	// it before invoking uv. Point it at a subdir that does not pre-exist.
+	uvCache := filepath.Join(cache, "uv-cache")
+	spec := deps.VenvSpec{CacheRoot: cache, Source: source, Manifest: manifest, UVCacheDir: uvCache}
 
 	venv, err := deps.EnsureVenv(context.Background(), spec)
 	if err != nil {
@@ -50,6 +54,9 @@ func TestVenvRunImportsDeclaredDep(t *testing.T) {
 	}
 	if !venv.Created {
 		t.Fatal("first ensure did not provision")
+	}
+	if fi, err := os.Stat(uvCache); err != nil || !fi.IsDir() {
+		t.Fatalf("UVCacheDir not pre-created before uv ran: %v", err)
 	}
 	// The interpreter must live under cache/python/<source>/<hash>.
 	wantPrefix := filepath.Join(cache, source, manifest.Hash)
