@@ -161,3 +161,28 @@ func TestEnqueueGatedCarriesRunnerName(t *testing.T) {
 		t.Errorf("stored RunnerName = %q, want %q", got.Args.RunnerName, "capped-runner")
 	}
 }
+
+// TestEnqueueGatedCarriesSource is EnqueueGated's half of
+// TestEnqueueCarriesSource (queue_test.go): a `run --source`'s workflow steps
+// are gated jobs (queue.NewSequencer over EnqueueGated), so Source must
+// survive the gate the same way Enqueue's does.
+func TestEnqueueGatedCarriesSource(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	spec := shellSpec("/bin/true")
+	spec.Source = "my-fleet"
+	gated, err := q.EnqueueGated(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue gated: %v", err)
+	}
+
+	got, err := st.GetJob(ctx, gated.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if got.Args.Source != "my-fleet" {
+		t.Errorf("stored Source = %q, want %q", got.Args.Source, "my-fleet")
+	}
+}

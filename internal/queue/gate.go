@@ -41,6 +41,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 			VaultProject:        spec.VaultProject,
 			RunSecretBinding:    spec.RunSecretBinding,
 			Inventory:           spec.Inventory,
+			Source:              spec.Source,
 			ExtraVars:           spec.ExtraVars,
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
