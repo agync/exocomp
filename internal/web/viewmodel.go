@@ -455,6 +455,11 @@ type jobDetailVM struct {
 	// validation in handleJobSchedule is authoritative; this only hides the
 	// button when it would just fail.
 	CanSchedule bool
+	// Rerunnable gates the "Run again" resubmit modal: true for any terminal job
+	// that carries an argv to clone (a succeeded run included, an ad-hoc job
+	// included — it does not depend on Source). Rerun holds the prefill.
+	Rerunnable bool
+	Rerun      jobRerunVM
 	// LastSeq is the Seq of the last event this render included (0 when
 	// none), passed to jobStream as ?since= so the SSE cursor picks up
 	// exactly where the server-rendered tail left off instead of skipping
@@ -467,6 +472,23 @@ type eventLine struct {
 	Ts    string
 	Level string
 	Msg   string
+}
+
+// jobRerunVM prefills the "Run again" resubmit modal from the original job. The
+// three toggles carry the original run's flags (Check/Diff detected in the
+// stored argv, Privileged from Args.Privileged); Limit/Tags are the editable
+// values pulled from the argv's two-token flags. Command/Inventory/ExtraVars are
+// the read-only identity — the run's own resolved command line and the names it
+// carried, never a secret value.
+type jobRerunVM struct {
+	Check      bool
+	Diff       bool
+	Privileged bool
+	Limit      string
+	Tags       string
+	Command    string
+	Inventory  string
+	ExtraVars  []string
 }
 
 // approvalVM is the phone approval surface: the seven-point contract rendered.

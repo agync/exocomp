@@ -55,8 +55,8 @@ templ jobDetail(vm jobDetailVM) {
 			<h1>Job #{ itoa64(vm.Job.ID) }</h1>
 			if vm.Operator && vm.Job.State.Terminal() {
 				<div class="actions" style="margin-left:auto">
-					if vm.Source != "" {
-						<a class="btn" href={ templ.SafeURL("/sources/" + vm.Source) }>Run again</a>
+					if vm.Rerunnable {
+						<button type="button" class="btn" data-modal-open="job-rerun">Run again</button>
 					}
 					if vm.CanSchedule {
 						<button
@@ -84,6 +84,38 @@ templ jobDetail(vm jobDetailVM) {
 			·
 			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
+		if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
+			@modal("job-rerun", "Run again") {
+				<p class="meta">Resubmits this run through the one queue. The identity below is fixed; toggle the drift/diff flags, retarget with limit/tags, or change the sandbox tier before submitting. A plain submit repeats the original run.</p>
+				<form method="post" action={ rerunAction(vm.Job.ID) } class="writeform">
+					if vm.Source != "" {
+						<label>Source (read-only)</label>
+						<p class="meta mono">{ vm.Source }</p>
+					}
+					<label>Command (read-only, from this run)</label>
+					<p class="meta mono">{ vm.Rerun.Command }</p>
+					if vm.Rerun.Inventory != "" {
+						<label>Inventory (read-only)</label>
+						<p class="meta mono">{ vm.Rerun.Inventory }</p>
+					}
+					if len(vm.Rerun.ExtraVars) > 0 {
+						<label>Extra vars (read-only)</label>
+						for _, ev := range vm.Rerun.ExtraVars {
+							<p class="meta mono">{ ev }</p>
+						}
+					}
+					@toggle("check", "check mode (dry run / drift)", vm.Rerun.Check, false)
+					@toggle("diff", "show diff", vm.Rerun.Diff, false)
+					<label for="jr-limit">Limit</label>
+					<input id="jr-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value={ vm.Rerun.Limit }/>
+					<label for="jr-tags">Tags</label>
+					<input id="jr-tags" name="tags" type="text" autocomplete="off" value={ vm.Rerun.Tags }/>
+					@toggle("privileged", "Run unsandboxed (privileged)", vm.Rerun.Privileged, true)
+					<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
+					<div class="actions"><button type="submit" class="btn primary">Resubmit</button></div>
+				</form>
+			}
+		}
 		if vm.Operator && vm.CanSchedule {
 			@modal("job-schedule", "Schedule this job") {
 				<p class="meta">Creates a recurring <span class="mono">shell</span> schedule that replays this job's exact command on a cron. Kind is fixed at shell — a schedule keeps no vault, run-secrets, or working-directory binding a playbook/command job may have used.</p>

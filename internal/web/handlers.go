@@ -307,6 +307,19 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	vm := jobDetailVM{
 		Page: s.pageFor(r, "Job #"+itoa64(id), "jobs"), Job: s.jobRow(job, s.now()),
 		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
+		Rerunnable: len(job.Args.Argv) > 0,
+	}
+	if vm.Rerunnable {
+		vm.Rerun = jobRerunVM{
+			Check:      hasFlag(job.Args.Argv, "--check"),
+			Diff:       hasFlag(job.Args.Argv, "--diff"),
+			Privileged: job.Args.Privileged,
+			Limit:      flagValue(job.Args.Argv, "--limit"),
+			Tags:       flagValue(job.Args.Argv, "--tags"),
+			Command:    joinArgv(job.Args.Argv),
+			Inventory:  job.Args.Inventory,
+			ExtraVars:  extraVarLines(job.Args.ExtraVars),
+		}
 	}
 	for _, e := range events {
 		vm.Events = append(vm.Events, eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg})

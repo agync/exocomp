@@ -3,6 +3,7 @@ package web
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -61,6 +62,31 @@ func joinArgv(argv []string) string { return strings.Join(argv, " ") }
 // scheduleAction is the POST target for turning a job into a shell schedule.
 func scheduleAction(id int64) templ.SafeURL {
 	return templ.SafeURL("/jobs/" + strconv.FormatInt(id, 10) + "/schedule")
+}
+
+// rerunAction is the POST target for resubmitting a finished job with tweaks.
+func rerunAction(id int64) templ.SafeURL {
+	return templ.SafeURL("/jobs/" + strconv.FormatInt(id, 10) + "/rerun")
+}
+
+// extraVarLines renders a job's stored extra-vars as sorted "key=val" lines for
+// the rerun modal's read-only preview. Order is stable (sorted by key) so the
+// render is deterministic. Only operator-typed vars live here — a sealed secret
+// never does (store.JobArgs.ExtraVars) — so showing the value is safe.
+func extraVarLines(vars map[string]string) []string {
+	if len(vars) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(vars))
+	for k := range vars {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		out = append(out, k+"="+vars[k])
+	}
+	return out
 }
 
 // boolAttr renders a Go bool as the string an ARIA state attribute expects

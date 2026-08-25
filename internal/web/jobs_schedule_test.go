@@ -169,8 +169,9 @@ func TestJobScheduleRefusesSourceJob(t *testing.T) {
 }
 
 // TestJobDetailShowsScheduleAndRunAgain: a terminal, schedulable ansible job
-// renders "Run again" and "Schedule…" for an operator, with the job's argv
-// shown read-only in the schedule modal; a readonly viewer sees neither.
+// renders "Run again" and "Schedule…" for an operator; the "Run again" resubmit
+// is a modal trigger (not a source link) even for a job with no source, since an
+// ad-hoc job with an argv can rerun too. A readonly viewer sees neither.
 func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -181,8 +182,11 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	opClient := login(t, ts.URL, op)
 	_, body := getBody(t, opClient, ts.URL+"/jobs/"+itoa64(job.ID))
-	if strings.Contains(body, "Run again") {
-		t.Error("a job with no source has nowhere to relaunch — no Run again link")
+	if !strings.Contains(body, `data-modal-open="job-rerun"`) {
+		t.Error("a terminal job with an argv must offer the Run again resubmit modal")
+	}
+	if !strings.Contains(body, `action="/jobs/`+itoa64(job.ID)+`/rerun"`) {
+		t.Error("rerun form must post to this job's own rerun route")
 	}
 	if !strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("operator's job detail must show a Schedule… trigger")
@@ -208,7 +212,7 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 // TestJobDetailHidesScheduleForSourceJob: a job that ran against a --source
 // working directory cannot be replayed as a shell schedule (no Dir field on
 // ScheduleArgs), so the Schedule… trigger must not render for it, though Run
-// again still does, scoped to the reverse-mapped source.
+// again still does — now a resubmit modal that names the reverse-mapped source.
 func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -237,8 +241,11 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	if strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("a source-context job must not offer Schedule…")
 	}
-	if !strings.Contains(body, `href="/sources/tree"`) {
-		t.Error("Run again must link to the reverse-mapped source's launcher")
+	if !strings.Contains(body, `data-modal-open="job-rerun"`) {
+		t.Error("Run again must open the resubmit modal")
+	}
+	if !strings.Contains(body, `<label>Source (read-only)</label><p class="meta mono">tree</p>`) {
+		t.Error("rerun modal must name the reverse-mapped source")
 	}
 	if !strings.Contains(body, `source <span class="mono">tree</span>`) {
 		t.Error("job detail must show the (here, reverse-derived) source name in its meta line")

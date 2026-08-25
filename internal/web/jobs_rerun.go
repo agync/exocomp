@@ -165,6 +165,27 @@ func setFlagValue(argv []string, flag, value string) []string {
 	return out
 }
 
+// hasFlag reports whether a valueless flag is present, for prefilling a toggle.
+func hasFlag(argv []string, flag string) bool {
+	for _, a := range argv {
+		if a == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// flagValue returns the token after the first occurrence of a two-token flag, or
+// "" — the prefill for the modal's limit/tags fields.
+func flagValue(argv []string, flag string) string {
+	for i := 0; i < len(argv)-1; i++ {
+		if argv[i] == flag {
+			return argv[i+1]
+		}
+	}
+	return ""
+}
+
 // validRerunValue mirrors the launcher's own flag-value guard: a limit/tags
 // override may not carry a newline or NUL. An empty value is fine — it removes
 // the flag.
