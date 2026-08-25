@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — source kinds collapsed; runs move to the source page
+
+- **Source kinds** are now `git` and a single `path` (an absolute path, or one relative to the
+  data volume), with a `writable` flag (default read-only, now enforced in the sandbox). The
+  `hostpath`/`volpath` split is gone. [operations/sources.md](operations/sources.md) and the
+  [ADR 0010](adr/0010-source-and-credential-model.md) addendum carry the model.
+- **Runs are launched from a source's page.** Each source has a playbook/command launcher; the
+  standalone run surface is retired. Reflected in [operations/serve.md](operations/serve.md).
+
 ## 2026-08-25 — browser management surface documented
 
 [operations/serve.md](operations/serve.md) gains a "The browser surface" section: the web UI

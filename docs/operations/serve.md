@@ -274,7 +274,8 @@ error naming the job rather than waiting on a row nothing will move.
 token's scope deciding what it may do. It is not view-only: an `operator`-scoped session
 manages the daemon from the browser, not just the CLI.
 
-- **Run** a source's playbook or an ad-hoc command; **plan** and **apply** a workspace —
+- **Run** a source's playbook or an ad-hoc command from that source's page (each source has
+  a launcher with a discovered-playbook list); **plan** and **apply** a workspace —
   each enqueues through the same service verbs the CLI uses and follows the job.
 - **Sources**: add a path source, enable/disable, remove, or add a git source (which seals
   its deploy key and shows the public key once).
