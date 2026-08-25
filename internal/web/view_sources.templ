@@ -21,49 +21,101 @@ templ signedChip(sc sourceRow) {
 // CLI-only (the latter has no queued job kind yet — see sources_write.go).
 templ sourcesList(vm sourcesVM) {
 	@layout(vm.Page) {
-		<h1>Sources</h1>
+		<div class="pageheader">
+			<h1>Sources</h1>
+			if vm.Operator {
+				@addButton("sources-add", "source")
+			}
+		</div>
 		if vm.Operator {
-			<div class="card span2" style="margin-top:18px">
-				<h3>Add a path source</h3>
-				<p class="meta">A tree already on the box: bind-mounted read-only (hostpath) or in the data volume (volpath).</p>
-				<form method="post" action="/sources/add-path" class="writeform">
-					<label for="sp-name">Name</label>
-					<input id="sp-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="sp-kind">Kind</label>
-					<select id="sp-kind" name="kind">
-						<option value="hostpath">hostpath</option>
-						<option value="volpath">volpath</option>
-					</select>
-					<label for="sp-path">Path</label>
-					<input id="sp-path" name="path" type="text" required autocomplete="off" placeholder="/abs/or/relative/path"/>
-					<div class="actions"><button type="submit" class="btn primary">Add path source</button></div>
+			@modal("sources-add", "Add a source") {
+				<p class="meta">
+					A path is read directly (writable is opt-in); a git URL is cloned and
+					pinned to a ref via a generated deploy key sealed into the envelope.
+				</p>
+				<form method="post" action="/sources/add" class="writeform" id="src-add-form">
+					<label for="src-name">Name</label>
+					<input id="src-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="src-location">Path or git URL</label>
+					<input
+						id="src-location"
+						name="location"
+						type="text"
+						required
+						autocomplete="off"
+						placeholder="/abs/or/relative/path · git@host:org/repo.git · https://host/org/repo.git"
+					/>
+					<p class="meta" id="src-hint"></p>
+					<div id="src-path-fields">
+						<label class="checkline"><input type="checkbox" name="writable" id="src-writable"/> writable (default is read-only)</label>
+					</div>
+					<div id="src-git-fields" hidden>
+						<label for="src-ref">Ref</label>
+						<input id="src-ref" name="ref" type="text" autocomplete="off" placeholder="main"/>
+						if !vm.SealAvailable {
+							<p class="meta">Sealing is not available on this surface (this process holds no envelope).</p>
+						} else {
+							<p class="meta">
+								A deploy key is generated and sealed into the envelope; its public
+								half is shown once — add it to the forge as a read-only key, then
+								sync with <code>exocomp source sync</code>.
+							</p>
+							<button type="button" class="btn" id="src-confirm-open">Add access token to confirm</button>
+							<div id="src-confirm-panel" hidden>
+								<label for="src-cf">Confirm: your access token</label>
+								<input id="src-cf" name="confirm_token" type="password" autocomplete="off"/>
+							</div>
+						}
+					</div>
+					<div class="actions"><button type="submit" class="btn primary">Add source</button></div>
 				</form>
-			</div>
-			<div class="card span2" style="margin-top:18px">
-				<details>
-					<summary><h3 style="display:inline">Add a git source</h3></summary>
-					if !vm.SealAvailable {
-						<p class="meta">Sealing is not available on this surface (this process holds no envelope).</p>
-					} else {
-						<p class="meta">
-							Generates a deploy key sealed into the envelope; the public half is
-							shown once — add it to the forge as a read-only key, then sync it
-							with <code>exocomp source sync</code>. Confirm with your own access token.
-						</p>
-						<form method="post" action="/sources/add-git" class="writeform">
-							<label for="sg-name">Name</label>
-							<input id="sg-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-							<label for="sg-url">Git URL</label>
-							<input id="sg-url" name="url" type="text" required autocomplete="off"/>
-							<label for="sg-ref">Ref</label>
-							<input id="sg-ref" name="ref" type="text" autocomplete="off" placeholder="main"/>
-							<label for="sg-cf">Confirm: your access token</label>
-							<input id="sg-cf" name="confirm_token" type="password" required autocomplete="off"/>
-							<div class="actions"><button type="submit" class="btn primary">Add git source</button></div>
-						</form>
+				<script>
+				(function () {
+					var loc = document.getElementById("src-location");
+					var hint = document.getElementById("src-hint");
+					var pathFields = document.getElementById("src-path-fields");
+					var gitFields = document.getElementById("src-git-fields");
+					var confirmOpen = document.getElementById("src-confirm-open");
+					var confirmPanel = document.getElementById("src-confirm-panel");
+					if (!loc || !hint || !pathFields || !gitFields) return;
+
+					// Mirrors source.LooksLikeGitURL loosely: an explicit scheme, or
+					// scp-like [user@]host:path. Progressive disclosure only — the
+					// server re-derives this from the same field and is authoritative.
+					function looksLikeGitURL(raw) {
+						var u = (raw || "").trim();
+						if (u === "") return false;
+						if (/^(https?|ssh|git|ftps?):\/\//i.test(u)) return true;
+						var colon = u.indexOf(":");
+						if (colon < 0) return false;
+						var slash = u.indexOf("/");
+						if (slash >= 0 && slash < colon) return false;
+						var host = u.slice(0, colon);
+						var at = host.lastIndexOf("@");
+						if (at >= 0) return true;
+						return host.length > 1 && (host.indexOf(".") >= 0 || host === "localhost");
 					}
-				</details>
-			</div>
+
+					function refresh() {
+						var isGit = looksLikeGitURL(loc.value);
+						pathFields.hidden = isGit;
+						gitFields.hidden = !isGit;
+						hint.textContent = loc.value.trim() === "" ? "" : (isGit ? "→ git source (a deploy key will be generated)" : "→ path source");
+					}
+					loc.addEventListener("input", refresh);
+					refresh();
+
+					if (confirmOpen && confirmPanel) {
+						confirmOpen.addEventListener("click", function () {
+							confirmPanel.hidden = false;
+							confirmOpen.hidden = true;
+							var cf = document.getElementById("src-cf");
+							if (cf) cf.focus();
+						});
+					}
+				})();
+				</script>
+			}
 		}
 		<div class="card span2" style="margin-top:18px">
 			if !vm.Operator {

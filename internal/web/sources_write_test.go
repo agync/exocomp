@@ -18,11 +18,11 @@ func TestSourceAddPathReadonlyForbidden(t *testing.T) {
 	ro := h.mint(t, "ro", "readonly")
 	client := login(t, ts.URL, ro)
 
-	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "path": {"/srv/tree"}}, nil)
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"tree"}, "location": {"/srv/tree"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("readonly add-path = %d, want 403", resp.StatusCode)
+		t.Fatalf("readonly add = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -33,12 +33,12 @@ func TestSourceAddPathCrossOriginForbidden(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "path": {"/srv/tree"}},
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"tree"}, "location": {"/srv/tree"}},
 		map[string]string{"Sec-Fetch-Site": "cross-site"})
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-origin add-path = %d, want 403", resp.StatusCode)
+		t.Fatalf("cross-origin add = %d, want 403", resp.StatusCode)
 	}
 }
 
@@ -49,11 +49,11 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"tree"}, "path": {"/srv/tree"}}, nil)
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"tree"}, "location": {"/srv/tree"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("add-path = %d, want 303", resp.StatusCode)
+		t.Fatalf("add = %d, want 303", resp.StatusCode)
 	}
 	src, err := h.store.SourceByName(context.Background(), "tree")
 	if err != nil {
@@ -65,11 +65,11 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	}
 
 	// The writable checkbox opts a path source into a read+write tree.
-	resp = postForm(t, client, ts.URL+"/sources/add-path",
-		url.Values{"name": {"rwtree"}, "path": {"/srv/rw"}, "writable": {"on"}}, nil)
+	resp = postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"rwtree"}, "location": {"/srv/rw"}, "writable": {"on"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("writable add-path = %d, want 303", resp.StatusCode)
+		t.Fatalf("writable add = %d, want 303", resp.StatusCode)
 	}
 	rw, err := h.store.SourceByName(context.Background(), "rwtree")
 	if err != nil {
@@ -153,11 +153,11 @@ func TestSourceAddGitNoSealer503(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/sources/add-git",
-		url.Values{"name": {"infra"}, "url": {"git@example.com:infra.git"}, "confirm_token": {op}}, nil)
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"infra"}, "location": {"git@example.com:infra.git"}, "confirm_token": {op}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("add-git with nil Sealer = %d, want 503", resp.StatusCode)
+		t.Fatalf("add git-looking location with nil Sealer = %d, want 503", resp.StatusCode)
 	}
 }
 
@@ -168,14 +168,14 @@ func TestSourceAddGitSealsDeployKey(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/sources/add-git",
-		url.Values{"name": {"infra"}, "url": {"git@example.com:infra.git"}, "confirm_token": {op}}, nil)
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"infra"}, "location": {"git@example.com:infra.git"}, "confirm_token": {op}}, nil)
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("add-git = %d, want 200: %s", resp.StatusCode, body)
+		t.Fatalf("add git-looking location = %d, want 200: %s", resp.StatusCode, body)
 	}
 	if want := "ssh-ed25519"; !strings.Contains(body, want) {
-		t.Fatalf("add-git result did not show the deploy public key once: %s", body)
+		t.Fatalf("add result did not show the deploy public key once: %s", body)
 	}
 	src, err := h.store.SourceByName(context.Background(), "infra")
 	if err != nil {
@@ -186,5 +186,61 @@ func TestSourceAddGitSealsDeployKey(t *testing.T) {
 	}
 	if _, err := h.store.GetSecret(context.Background(), src.DeployKeySecret); err != nil {
 		t.Fatalf("deploy key not sealed: %v", err)
+	}
+}
+
+// TestSourceAddRoutesOnLocation proves the single POST /sources/add endpoint
+// dispatches on source.LooksLikeGitURL(location): a plain filesystem path
+// lands on addPathSource (no reauth needed, no deploy key), and a git-looking
+// location lands on addGitSource (requires reauth, seals a deploy key) —
+// through the same route, without a kind field telling it which.
+func TestSourceAddRoutesOnLocation(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	// A plain path routes to addPathSource: no confirm_token needed, and the
+	// row lands as a path source, not git.
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"pathy"}, "location": {"/srv/pathy"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("path-looking add = %d, want 303", resp.StatusCode)
+	}
+	pathSrc, err := h.store.SourceByName(context.Background(), "pathy")
+	if err != nil {
+		t.Fatalf("path source not created: %v", err)
+	}
+	if pathSrc.Kind != store.SourcePath {
+		t.Fatalf("path-looking location routed to kind %q, want %q", pathSrc.Kind, store.SourcePath)
+	}
+
+	// A git-looking location routes to addGitSource: it is gated on reauth
+	// (missing/wrong confirm_token bounces to the reauth notice) and, once
+	// confirmed, lands as a git source with a sealed deploy key.
+	resp = postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"gitty"}, "location": {"git@example.com:gitty.git"}, "confirm_token": {"wrong"}}, nil)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "did not match this session") {
+		t.Fatalf("git-looking add with wrong confirm_token = %d, want the reauth notice: %s", resp.StatusCode, body)
+	}
+	if _, err := h.store.SourceByName(context.Background(), "gitty"); err == nil {
+		t.Fatal("git source created despite failed reauth")
+	}
+
+	resp = postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"gitty"}, "location": {"git@example.com:gitty.git"}, "confirm_token": {op}}, nil)
+	body = readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("git-looking add = %d, want 200: %s", resp.StatusCode, body)
+	}
+	gitSrc, err := h.store.SourceByName(context.Background(), "gitty")
+	if err != nil {
+		t.Fatalf("git source not created: %v", err)
+	}
+	if gitSrc.Kind != store.SourceGit || gitSrc.DeployKeySecret == "" {
+		t.Fatalf("git-looking location routed to unexpected row: %+v", gitSrc)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/source"
@@ -33,8 +34,7 @@ const deployKeyKind = "deploy-key"
 func sourceDeployKeySecretName(name string) string { return "source/" + name + "/deploy-key" }
 
 func (s *Server) registerSourceWrite(mux *http.ServeMux) {
-	mux.HandleFunc("POST /sources/add-path", s.requireAuth(s.handleSourceAddPath))
-	mux.HandleFunc("POST /sources/add-git", s.requireAuth(s.handleSourceAddGit))
+	mux.HandleFunc("POST /sources/add", s.requireAuth(s.handleSourceAdd))
 	mux.HandleFunc("POST /sources/{name}/enable", s.requireAuth(s.handleSourceSetEnabled(true)))
 	mux.HandleFunc("POST /sources/{name}/disable", s.requireAuth(s.handleSourceSetEnabled(false)))
 	mux.HandleFunc("POST /sources/{name}/rm", s.requireAuth(s.handleSourceRm))
@@ -48,7 +48,12 @@ type sourceGitResultVM struct {
 	PublicAuthorizedKey string
 }
 
-func (s *Server) handleSourceAddPath(w http.ResponseWriter, r *http.Request) {
+// handleSourceAdd is the single "Add a source" entry point: it reads the one
+// "Path or git URL" field the form submits and routes on
+// source.LooksLikeGitURL, so the operator never has to pick a kind up front.
+// The guard, reauth, and sealer checks the git branch needs stay inside
+// addGitSource — a path add never touches them.
+func (s *Server) handleSourceAdd(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
 		return
@@ -58,11 +63,22 @@ func (s *Server) handleSourceAddPath(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	rawPath := r.PostFormValue("path")
-	if rawPath == "" {
-		http.Error(w, "path is required", http.StatusBadRequest)
+	location := strings.TrimSpace(r.PostFormValue("location"))
+	if location == "" {
+		http.Error(w, "path or git URL is required", http.StatusBadRequest)
 		return
 	}
+	if source.LooksLikeGitURL(location) {
+		s.addGitSource(w, r, ident, name, location)
+		return
+	}
+	s.addPathSource(w, r, ident, name, location)
+}
+
+// addPathSource registers a plain path source: no secret material, so it is
+// operator-gated only (handleSourceAdd's writeGuard), like the source's other
+// non-sensitive edits.
+func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident identity, name, rawPath string) {
 	// An absolute path is cleaned as-is; a relative path is kept verbatim
 	// (cleaned) so it resolves against the data volume at run time, mirroring the
 	// CLI. Read/write is the writable checkbox, defaulting off (read-only).
@@ -82,27 +98,17 @@ func (s *Server) handleSourceAddPath(w http.ResponseWriter, r *http.Request) {
 	redirectFlash(w, r, "/sources", "registered "+name)
 }
 
-func (s *Server) handleSourceAddGit(w http.ResponseWriter, r *http.Request) {
-	ident, ok := s.writeGuard(w, r)
-	if !ok {
-		return
-	}
+// addGitSource registers a git source: it generates and seals a deploy key
+// (mirrors cmd/exocomp/source.go's `source add --url`), so it needs the
+// Sealer (nil -> 503) and reauth, the same shape as secrets add. The generated
+// public key is shown exactly once, inline, never redirected or logged.
+func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident identity, name, url string) {
 	if s.sealer == nil {
 		http.Error(w, "sealing is not available on this surface", http.StatusServiceUnavailable)
 		return
 	}
 	if err := s.reauth(r); err != nil {
 		s.render(w, r, http.StatusOK, sourceReauthNotice(s.pageFor(r, "Sources", "sources")))
-		return
-	}
-	name := r.PostFormValue("name")
-	if err := naming.ValidateComponent("source", name); err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	url := r.PostFormValue("url")
-	if url == "" {
-		http.Error(w, "url is required", http.StatusBadRequest)
 		return
 	}
 	ref := r.PostFormValue("ref")

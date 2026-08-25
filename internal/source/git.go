@@ -57,6 +57,65 @@ func ForgeHost(rawURL string) string {
 	return host
 }
 
+// gitSchemes are the explicit transports git itself understands. A string
+// starting (case-insensitively) with one of these is unambiguously a git URL —
+// no local path begins with a "scheme://" prefix.
+var gitSchemes = []string{"https://", "http://", "ssh://", "git://", "ftp://", "ftps://"}
+
+// LooksLikeGitURL classifies raw as a git remote (true) or a filesystem path
+// (false), so the single "Path or git URL" add-source field can route to the
+// right handler without asking the operator to pick a kind. The rule, same
+// idiom as ForgeHost above:
+//
+//  1. an explicit scheme prefix (https://, http://, ssh://, git://, ftp://,
+//     ftps://), case-insensitively — always a URL; or
+//  2. scp-like syntax [user@]host:path — a colon appears before any slash (so
+//     an absolute path like /data/repo, or a relative one like a/b, never
+//     matches: their first colon, if any, comes after a slash or not at all),
+//     and the host-looking part before that colon either carries a "user@"
+//     login (git@host:org/repo.git, the canonical case) or, with no "@",
+//     contains a "." or is exactly "localhost" and is more than one
+//     character (rules out a single drive-letter-like token before a colon).
+//
+// Everything else — empty string, a bare name, an absolute or relative path —
+// is a path source.
+//
+// Known accepted false positive, documented rather than special-cased: a local
+// path with no slash before a colon, whose pre-colon segment contains a dot
+// (e.g. "notes.txt:backup"), misclassifies as a git URL. This is rare on Linux
+// paths and fails safe — the operator sees the git-only fields appear instead
+// of the path field and can fall back to an unambiguous absolute path.
+func LooksLikeGitURL(raw string) bool {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return false
+	}
+	lower := strings.ToLower(u)
+	for _, scheme := range gitSchemes {
+		if strings.HasPrefix(lower, scheme) {
+			return true
+		}
+	}
+
+	colon := strings.IndexByte(u, ':')
+	if colon < 0 {
+		return false
+	}
+	if slash := strings.IndexByte(u, '/'); slash >= 0 && slash < colon {
+		return false
+	}
+
+	host := u[:colon]
+	if at := strings.LastIndex(host, "@"); at >= 0 {
+		// A login prefix (git@host) is the canonical scp-like form regardless
+		// of what the host part looks like.
+		return true
+	} else if len(host) > 1 && (strings.Contains(host, ".") || host == "localhost") {
+		return true
+	}
+	return false
+}
+
 // SyncOptions drives one sync of a git source to a pinned ref.
 type SyncOptions struct {
 	// Root is the checkout directory in the data volume (Locality.Root).
