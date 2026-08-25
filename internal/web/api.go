@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"time"
 
 	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/version"
 	"exocomp.dev/exocomp/internal/wire"
 )
 
@@ -216,13 +218,24 @@ const kindWhoami = "whoami"
 // whoamiView reflects the calling token back to itself: enough for a phone
 // companion to show who it is signed in as and how much scope it holds, never
 // any secret material (the token string authenticated the request; it is not
-// echoed).
+// echoed). Server carries the daemon's own identity so the Connect screen can
+// show "exocompd <version> · <hostname>" without fishing the host out of the URL.
 type whoamiView struct {
-	ID        int64   `json:"id"`
-	Name      string  `json:"name"`
-	Scope     string  `json:"scope"`
-	Via       string  `json:"via,omitempty"`
-	ExpiresAt *string `json:"expires_at,omitempty"`
+	ID        int64      `json:"id"`
+	Name      string     `json:"name"`
+	Scope     string     `json:"scope"`
+	Via       string     `json:"via,omitempty"`
+	ExpiresAt *string    `json:"expires_at,omitempty"`
+	Server    serverView `json:"server"`
+}
+
+// serverView is the daemon's own identity: the build version (internal/version,
+// the one source the rest of the app reports) and the host it runs on. Both are
+// omitempty so a build with no version stamp or a host that cannot report its
+// name renders an honest empty field rather than a placeholder.
+type serverView struct {
+	Version  string `json:"version,omitempty"`
+	Hostname string `json:"hostname,omitempty"`
 }
 
 // apiWhoami returns the calling token's own identity. Any authenticated token
@@ -236,12 +249,25 @@ func (s *Server) apiWhoami(w http.ResponseWriter, r *http.Request) {
 		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "no resolved identity"))
 		return
 	}
-	view := whoamiView{ID: id.token.ID, Name: id.token.Name, Scope: id.token.Scope, Via: id.via}
+	view := whoamiView{
+		ID: id.token.ID, Name: id.token.Name, Scope: id.token.Scope, Via: id.via,
+		Server: serverView{Version: version.Version, Hostname: hostname()},
+	}
 	if id.token.ExpiresAt != nil {
 		exp := id.token.ExpiresAt.UTC().Format(time.RFC3339)
 		view.ExpiresAt = &exp
 	}
 	s.apiSuccess(w, kindWhoami, view)
+}
+
+// hostname reports the host the daemon runs on, or the empty string when the OS
+// cannot answer — a degraded identity line, never a failed request.
+func hostname() string {
+	h, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return h
 }
 
 // --- jobs -------------------------------------------------------------------

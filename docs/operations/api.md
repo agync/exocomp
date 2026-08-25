@@ -59,6 +59,7 @@ projection types have no field they could occupy).
 ## Read endpoints (`readonly`+)
 
 ```
+GET /api/v1/whoami                              # the calling token's own identity + server identity
 GET /api/v1/jobs?state=&runbook=&concurrency_key=&limit=
 GET /api/v1/jobs/{id}
 GET /api/v1/jobs/{id}/events?since=<seq>
@@ -80,6 +81,12 @@ GET /api/v1/health                              # the same probe `doctor --outpu
 GET /api/v1/maintenance/readiness               # safe to reboot? (drain)
 GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted, newest first
 ```
+
+`GET /whoami` reflects the calling token — `{id, name, scope, via, expires_at}` — and adds
+`server: {version, hostname}`: the daemon's own build version (`internal/version`) and the
+host it runs on, so an identity line reads `exocompd 0.7.4 · pve-01.lan` without probing.
+Either server field is omitted when the build carries no version stamp or the host cannot
+report its name; the request never fails on a missing hostname.
 
 `jobs`/`events` have no cursor param beyond `since`/`limit`; there is no `?cursor=` yet —
 that would be a store change, out of scope for the read routes. `GET /jobs/{id}/stream` reuses

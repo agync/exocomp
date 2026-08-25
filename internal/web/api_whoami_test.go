@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"exocomp.dev/exocomp/internal/version"
 )
 
 // TestAPIWhoami covers the identity-reflection endpoint: unauthenticated is 401,
@@ -39,5 +41,11 @@ func TestAPIWhoami(t *testing.T) {
 	}
 	if v.ID == 0 {
 		t.Fatalf("whoami has no token id (%s)", body)
+	}
+	// The server identity block rides every whoami. Hostname is the OS's, which a
+	// container or CI box may report empty, so it is not asserted non-empty; the
+	// version is the build's internal/version stamp ("dev" in a test binary).
+	if v.Server.Version != version.Version {
+		t.Fatalf("whoami server.version = %q, want %q", v.Server.Version, version.Version)
 	}
 }

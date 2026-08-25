@@ -6,6 +6,13 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — phone-companion API round 2
+
+- **`GET /whoami` now carries `server: {version, hostname}`.** The daemon's build version
+  (`internal/version`) and its host ride the identity reflection, so the Connect screen can
+  render `exocompd <version> · <hostname>` without fishing the host out of the URL. Both
+  fields are omitempty; a missing hostname degrades the line, never the request.
+
 ## 2026-08-25 — QR pairing, schedule detail, sidebar logo
 
 - **QR device pairing.** The token-mint result (web) and `exocomp token new` (CLI) render a
