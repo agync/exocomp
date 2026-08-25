@@ -6,6 +6,71 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — access-token and inventory hardening
+
+- **Confused-deputy guard.** `resolveRunSecrets` refuses to inject a sealed value shaped
+  like an exocomp access token (`exo_<id>_<secret>`) into a job's env, closing the path
+  where an operator binds the daemon's own credential as a run-secret and turns a job into
+  a deputy for the API. One choke point covers every job driver.
+  [security/threat-model.md](security/threat-model.md) D2 updated.
+- **Threat model renumbered.** The internal E/S/R/D/B/U/AI finding-id families (gaps,
+  out-of-order entries, orphan residual refs) are replaced by a single sequential T1-T29
+  catalog in document reading order; residual bullets lead with a short descriptive phrase
+  instead of a dangling id.
+- **Empty `--inventory` defers to ansible.** `AnsibleArgv`/`AnsibleAdhocArgv` no longer add
+  `--inventory` when none is given, so ansible discovers its own (the checkout's
+  `ansible.cfg`, then its default hosts file) instead of being pinned to `localhost,`. The
+  venv-interpreter force now applies only to an explicit `localhost,` inline inventory.
+  [operations/adhoc-and-partial.md](operations/adhoc-and-partial.md) and
+  [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) updated.
+- **Token rotate refuses self.** Mirrors the existing revoke self-guard: rotating the token
+  that authenticates the current session is rejected with 409 before reauth, since rotation
+  would invalidate the secret making the request.
+- **Cache-busted assets.** `/assets/*` links carry a content-hash version query
+  (`app.css?v=<hash>`), so a browser holding a prior build's CSS under `max-age` no longer
+  renders fresh markup against stale styles.
+
+## 2026-08-25 — sidebar nav, dashboard, and shared modal
+
+- **Sidebar nav.** The horizontal title-bar nav (trailing items scrolled off behind a fade)
+  is replaced by a left sidebar with a logo mark, a glyph per section, a desktop icon-rail
+  collapse (persisted), and an off-canvas drawer under 820px. Marketing tagline kickers
+  ("Needs you", "Everything is a job", etc.) are dropped in favor of the section's own
+  heading; functional kickers stay. Nav and brand links no longer take the visited-link
+  purple or a hover underline — ink stays the resting/visited color, accent marks only the
+  current or hovered item.
+- **Dashboard.** Cards pack into an auto-fill responsive grid instead of a fixed 2-column
+  layout that left sparse cards as half-empty rows, and cards in a row stretch to equal
+  height. Card order now leads with infra actions (approvals, queue, workspaces, workflows,
+  sources, schedules); backups and the control-plane health card move to the bottom, and the
+  OpenTofu-drift card is renamed Workspaces so ansible and tofu read as equal citizens. Rows
+  in the Queue/Workflows/Jobs/Events lists carry `data-href`, so a click anywhere in the row
+  navigates, without disturbing the existing id link or keyboard access.
+- **Chrome fixes.** The theme ground (`html{background}`) now paints from an inline
+  pre-CSS `<style>` so the browser's white default never flashes during the load gap; `main`
+  fills the content column at full width instead of capping at 1100px and leaving side
+  gutters; the job-detail live tail renders one event per line with a dimmed timestamp
+  instead of walling repeated stamps; the theme toggle becomes a compact icon button
+  matching the sidebar collapse control.
+- **Shared modal.** A `<dialog>`-style modal component (focus trap, save/restore, a `+`
+  button beside a list page's `<h1>`) replaces the always-visible inline add-form card on
+  secrets, tokens, runners, policies, and schedules. Source add collapses to one
+  auto-detecting field (`source.LooksLikeGitURL` routes to the path or git body); a job's
+  detail page gains Schedule (prefilled from the job's own runbook/kind/argv) and Run-again
+  actions.
+- **Workspaces reframed.** The Workspaces page becomes a managed-OpenTofu-state view: an
+  explainer, a per-row Backend config modal with a paste-ready backend `http` block, and a
+  state-only add form (`POST /workspaces`, matching `workspace add --state-only`).
+  [operations/sources.md](operations/sources.md) notes the web UI names this "Workspaces"
+  while the CLI verb and store/API keep their existing shape.
+- **CLI.** `--help` groups the ~48 top-level verbs into seven titled sections (run, sources,
+  secrets, automation, hosts, backup, service) — presentation only, the `commands` machine
+  tree is unchanged. `token rotate <name>` reseals a fresh secret onto the existing row
+  (keeping id/name/scope for audit continuity) and drops sessions from the old secret; the
+  `token new` name-collision error now names the revoked holder and points at `rotate` and
+  `token list --all`. A new `RunAdhoc` service verb assembles the ansible ad-hoc queue spec
+  and gates it through approval like `ApplyWorkspace`.
+
 ## 2026-08-25 — source kinds collapsed; runs move to the source page
 
 - **Source kinds** are now `git` and a single `path` (an absolute path, or one relative to the
