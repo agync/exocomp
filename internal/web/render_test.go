@@ -30,8 +30,8 @@ func TestDashboardA11y(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`href="/assets/tokens.css"`,
-		`href="/assets/app.css"`,
+		`href="/assets/tokens.css?v=`,
+		`href="/assets/app.css?v=`,
 		`aria-current="page"`,
 		`scope="col"`,
 		`<main>`,
@@ -105,6 +105,37 @@ func TestFocusRingAndThemes(t *testing.T) {
 	// The palette moved out of app.css entirely — no theme block defined there.
 	if strings.Contains(app, `:root[data-theme="light"]`) || strings.Contains(app, `:root[data-theme="dark"]`) {
 		t.Error("app.css still defines the palette; tokens.css owns it")
+	}
+}
+
+// TestAssetsAreCacheBusted asserts the stylesheet links carry a version query
+// and that the exact versioned URL the page emits actually serves the asset — so
+// a new build's CSS is fetched at once rather than served stale from a browser
+// cache that still holds the prior build's bytes.
+func TestAssetsAreCacheBusted(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/")
+	marker := `href="/assets/app.css?v=`
+	i := strings.Index(page, marker)
+	if i < 0 {
+		t.Fatalf("app.css link is not cache-busted: %s", page[:min(len(page), 600)])
+	}
+	rest := page[i+len(`href="`):]
+	href := rest[:strings.IndexByte(rest, '"')]
+	if !strings.HasPrefix(href, "/assets/app.css?v=") || href == "/assets/app.css?v=" {
+		t.Fatalf("app.css version query is empty: %q", href)
+	}
+
+	code, css := getBody(t, client, ts.URL+href)
+	if code != 200 {
+		t.Fatalf("versioned app.css = %d, want 200", code)
+	}
+	if !strings.Contains(css, ".modal") {
+		t.Fatalf("versioned URL did not serve app.css content")
 	}
 }
 

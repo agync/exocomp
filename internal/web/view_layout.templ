@@ -19,8 +19,8 @@ templ layout(p page) {
 				html[data-theme="light"]{background:#F5F2EC}
 				html[data-theme="dark"]{background:#0A0C0D}
 			</style>
-			<link rel="stylesheet" href="/assets/tokens.css"/>
-			<link rel="stylesheet" href="/assets/app.css"/>
+			<link rel="stylesheet" href={ AssetURL("/assets/tokens.css") }/>
+			<link rel="stylesheet" href={ AssetURL("/assets/app.css") }/>
 			@themeInit()
 			@navInit()
 			@modalInit()
@@ -79,7 +79,7 @@ templ layout(p page) {
 				</div>
 			</div>
 			@layoutReady()
-			<script src="/assets/htmx.min.js"></script>
+			<script src={ AssetURL("/assets/htmx.min.js") }></script>
 		</body>
 	</html>
 }
@@ -306,8 +306,8 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 				html[data-theme="light"]{background:#F5F2EC}
 				html[data-theme="dark"]{background:#0A0C0D}
 			</style>
-			<link rel="stylesheet" href="/assets/tokens.css"/>
-			<link rel="stylesheet" href="/assets/app.css"/>
+			<link rel="stylesheet" href={ AssetURL("/assets/tokens.css") }/>
+			<link rel="stylesheet" href={ AssetURL("/assets/app.css") }/>
 			@themeInit()
 		</head>
 		<body>

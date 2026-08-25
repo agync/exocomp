@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -151,6 +153,28 @@ func (s *Server) now() time.Time { return s.clock().UTC() }
 
 //go:embed tokens.css app.css htmx.min.js
 var assetFS embed.FS
+
+// assetVer is a short content hash of the embedded stylesheets, appended to
+// their URLs as a cache-busting query. The assets carry max-age (cacheControl),
+// so without this a browser keeps a prior build's app.css until it expires —
+// rendering fresh markup and inline JS against stale CSS. Hashing the content
+// means the query changes exactly when the CSS does, so a new build is fetched
+// at once while an unchanged one still caches.
+var assetVer = func() string {
+	h := sha256.New()
+	for _, name := range []string{"tokens.css", "app.css"} {
+		b, err := assetFS.ReadFile(name)
+		if err != nil {
+			return "dev"
+		}
+		h.Write(b)
+	}
+	return hex.EncodeToString(h.Sum(nil))[:12]
+}()
+
+// AssetURL renders an embedded asset path with the cache-busting version query,
+// so templates never hardcode the bare path.
+func AssetURL(path string) string { return path + "?v=" + assetVer }
 
 // Handler returns the routed surface. Login and assets are open; everything
 // else is behind requireAuth. It is a plain http.Handler, so the daemon can
