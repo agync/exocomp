@@ -449,7 +449,11 @@ func secretReauthNotice(p page) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<h1>Confirm required</h1><div class=\"card span2\" style=\"margin-top:18px\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p><div class=\"actions\"><a class=\"btn\" href=\"/secrets\">Back to secrets</a></div></div>")
+			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Secrets", Href: "/secrets"}, breadcrumbCrumb{Label: "Confirm"}).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, " <h1>Confirm required</h1><div class=\"card span2\" style=\"margin-top:18px\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
