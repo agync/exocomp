@@ -632,6 +632,20 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A --source run executes from its checkout so the checkout's ./ansible.cfg
+	// (and the relative inventory/roles it declares) is honored, mirroring the
+	// CLI and the browser launcher; without it the run falls back to the job
+	// scratch dir and the config is never discovered.
+	var dir string
+	var dirReadOnly bool
+	if req.Source != "" {
+		dir, dirReadOnly, err = s.resolveSourceCheckout(r.Context(), req.Source)
+		if err != nil {
+			s.apiFail(w, err)
+			return
+		}
+	}
+
 	res, err := svc.RunPlaybook(r.Context(), s.enqueuer(), service.PlaybookInput{
 		PlaybookPath:        playbook,
 		InventoryPath:       invPath,
@@ -639,6 +653,8 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		VaultProject:        req.VaultProject,
 		RunSecrets:          req.RunSecrets,
 		Source:              req.Source,
+		Dir:                 dir,
+		DirReadOnly:         dirReadOnly,
 		Passthrough:         passthrough,
 		ExtraVars:           vars,
 		TolerateUnreachable: req.TolerateUnreachable,

@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -59,6 +61,51 @@ func TestAPIPlaybookRunEnqueuesThroughService(t *testing.T) {
 	// A key=val extra-var never rides ansible's argv (it is written to a run file).
 	if strings.Contains(argv, "proof") {
 		t.Errorf("extra-var value leaked onto argv: %v", job.Args.Argv)
+	}
+}
+
+// TestAPIPlaybookRunSourceCarriesCheckoutDir: a --source run over the API must
+// set the job's working Dir to the source checkout so the checkout's
+// ./ansible.cfg (relative inventory/roles) is honored — the API path once set
+// Source without Dir, so the run fell back to the scratch dir and read no config.
+func TestAPIPlaybookRunSourceCarriesCheckoutDir(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "playbooks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "playbooks", "site.yml"), []byte("- hosts: all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "fleet", Kind: store.SourcePath, URI: root, Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/playbooks/run", token,
+		`{"source":"fleet","playbook":"playbooks/site.yml","check":true}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("run status = %d, want 200 (%s)", code, body)
+	}
+	_, _, data := decodeEnvelope(t, body)
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil || jv.JobID == 0 {
+		t.Fatalf("no job_id: %v (%s)", err, body)
+	}
+	job, err := h.store.GetJob(context.Background(), jv.JobID)
+	if err != nil {
+		t.Fatalf("GetJob: %v", err)
+	}
+	if job.Args.Dir != root {
+		t.Errorf("job Dir = %q, want checkout root %q", job.Args.Dir, root)
+	}
+	if job.Args.Source != "fleet" {
+		t.Errorf("job Source = %q, want fleet", job.Args.Source)
 	}
 }
 

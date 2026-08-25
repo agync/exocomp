@@ -196,6 +196,16 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Run from the source checkout so its ./ansible.cfg (and the relative
+	// inventory/roles it declares) is honored — the same working directory the
+	// CLI and the ad-hoc handler grant. Without it the run falls back to the job
+	// scratch dir and the checkout's config is never discovered.
+	root, readOnly, err := s.resolveSourceCheckout(r.Context(), name)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
 	// The privileged (unsandboxed) tier is reachable only through this
 	// operator-scoped write handler (writeGuard already refused a readonly or
 	// approve token above), so the checkbox inherits that gate — the same
@@ -207,6 +217,8 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		InventoryName:  invName,
 		RunSecrets:     r.PostFormValue("run_secrets"),
 		Source:         name,
+		Dir:            root,
+		DirReadOnly:    readOnly,
 		Passthrough:    passthrough,
 		ExtraVars:      vars,
 		Privileged:     privileged,
