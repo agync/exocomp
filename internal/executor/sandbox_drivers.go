@@ -48,6 +48,23 @@ func applyJobCaps(sb SandboxOptions, spec *Spec) (func(EventSink), error) {
 	}, nil
 }
 
+// runUnsandboxed executes spec through the plain driver a privileged job asked
+// for: an explicit, operator-gated opt-out of the kernel sandbox for one run,
+// the same unsandboxed path a disabled-tier daemon takes. It is the single
+// place a sandboxed driver honours Spec.Privileged, so all three kinds skip the
+// sandbox the same way. Caps cannot be enforced without the sandbox
+// (applyJobCaps runs only inside it), so a privileged job that also named a
+// runner is refused rather than run silently uncapped — ADR 0005's "never
+// silently", the same posture requireSandboxedForCaps takes for the disabled
+// tier.
+func runUnsandboxed(ctx context.Context, plain Driver, caps Caps, spec Spec, sink EventSink) (Result, error) {
+	if !caps.Empty() {
+		return Result{}, errors.New("executor: a privileged (unsandboxed) run cannot also enforce " +
+			"per-job caps: caps need the sandbox; drop --privileged or --runner")
+	}
+	return plain.Run(ctx, spec, sink)
+}
+
 // jobDirPrefix names the per-job private directory the sandboxed tier creates
 // inside the private root. Each job gets its own so a grant covers one job's
 // material and not the material of every job sharing that root — "other jobs'
@@ -86,6 +103,9 @@ func NewSandboxedAnsible(opts AnsibleOptions, sandbox SandboxOptions) Driver {
 
 // Run implements Driver.
 func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	if spec.Privileged {
+		return runUnsandboxed(ctx, NewAnsible(a.opts), a.sandbox.Caps, spec, sink)
+	}
 	job, cleanup, err := newJobDir(a.opts.PrivateDirRoot)
 	if err != nil {
 		return Result{}, err
@@ -266,6 +286,9 @@ func NewSandboxedTofu(opts TofuOptions, sandbox SandboxOptions) Driver {
 
 // Run implements Driver.
 func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	if spec.Privileged {
+		return runUnsandboxed(ctx, NewTofu(t.opts), t.sandbox.Caps, spec, sink)
+	}
 	job, cleanup, err := newJobDir(t.opts.PrivateDirRoot)
 	if err != nil {
 		return Result{}, err
@@ -381,6 +404,9 @@ func NewSandboxedCLI(opts CLIOptions, sandbox SandboxOptions) Driver {
 
 // Run implements Driver.
 func (c *sandboxedCLI) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
+	if spec.Privileged {
+		return runUnsandboxed(ctx, NewCLI(c.opts), c.sandbox.Caps, spec, sink)
+	}
 	job, cleanup, err := newJobDir(c.opts.PrivateDirRoot)
 	if err != nil {
 		return Result{}, err
