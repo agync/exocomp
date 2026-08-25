@@ -107,9 +107,14 @@ templ tokenResult(vm tokenResultVM) {
 		</div>
 		<div class="card span2">
 			<h3>Scan to pair a device</h3>
-			<div class="pairqr">@templ.Raw(vm.QRSVG)</div>
+			<button type="button" class="pairqr" data-modal-open="qr-lightbox" title="Tap to enlarge" aria-label="Enlarge the pairing QR">
+				@templ.Raw(vm.QRSVG)
+			</button>
 			<p class="meta">The code carries: this control plane's URL ({ vm.BaseURL }), the token above, the certificate fingerprint, and the { vm.Scope } scope. Anyone who scans it holds the token — treat it like the secret.</p>
 			<div class="actions"><a class="btn" href="/tokens">Back to tokens</a></div>
+			@modal("qr-lightbox", "Scan to pair a device") {
+				<div class="qr-big">@templ.Raw(vm.QRSVG)</div>
+			}
 		</div>
 	}
 }

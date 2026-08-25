@@ -432,13 +432,22 @@ td .btn {
 /* The pairing QR always renders dark modules on a white backing so a phone
  * camera reads it in either page theme; the surrounding card adapts. currentColor
  * (the module fill) resolves to the dark ink set here. */
+/* The pairing QR is centered and a button: tap it to open the lightbox for an
+ * easier scan. White backing (fixed, not themed) keeps scanner contrast. */
 .pairqr {
-  display: inline-block; line-height: 0; margin: 4px 0 12px;
+  display: block; line-height: 0; margin: 4px auto 12px; width: fit-content;
   background: #ffffff; color: #0b0b0c;
   padding: 12px; border-radius: var(--radius-chip);
-  border: 1px solid var(--hairline-faint);
+  border: 1px solid var(--hairline-faint); cursor: pointer;
 }
+.pairqr:hover, .pairqr:focus-visible { border-color: var(--accent-border); }
 .pairqr svg { display: block; width: 180px; height: 180px; }
+/* Lightbox: the same QR, larger, centered on a white backing. */
+.qr-big {
+  display: flex; justify-content: center; margin: 4px 0;
+  background: #ffffff; padding: 20px; border-radius: var(--radius-chip);
+}
+.qr-big svg { display: block; width: min(340px, 72vw); height: auto; color: #0b0b0c; }
 
 /* ---- Page header + add button ----
  * The compact "+" affordance that sits beside a list surface's <h1> and opens
