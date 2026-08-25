@@ -175,6 +175,73 @@ func TestSourceRunPlaybookEnqueues(t *testing.T) {
 	}
 }
 
+// TestSourceRunPrivilegedRefusedForReadonly: a readonly token asking for a
+// privileged (unsandboxed) run is refused by the same operator-scope gate every
+// run on this surface passes, and enqueues nothing.
+func TestSourceRunPrivilegedRefusedForReadonly(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}, "privileged": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly privileged run = %d, want 403", resp.StatusCode)
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a refused privileged run still enqueued %d job(s)", len(jobs))
+	}
+}
+
+// TestSourceRunPlaybookPrivilegedMarksJob: an operator's privileged run sets the
+// marker on the row; a run without the box left unchecked stays sandboxed
+// (secure default).
+func TestSourceRunPlaybookPrivilegedMarksJob(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}, "privileged": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("operator privileged run = %d, want 303", resp.StatusCode)
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 || !jobs[0].Args.Privileged {
+		t.Fatalf("operator privileged run did not mark the row: %+v", jobs)
+	}
+
+	// The box unchecked stays sandboxed: a second run with no privileged field
+	// lands a distinct, non-privileged job (secure default).
+	resp = postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}}, nil)
+	_ = resp.Body.Close()
+	plain, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	for _, j := range plain {
+		if j.ID != jobs[0].ID && j.Args.Privileged {
+			t.Errorf("a run with the box unchecked defaulted to privileged: %+v", j)
+		}
+	}
+}
+
 // TestSourceRunPlaybookFreePath: the free-path input covers a playbook discovery
 // missed; it is resolved against the checkout the same way.
 func TestSourceRunPlaybookFreePath(t *testing.T) {

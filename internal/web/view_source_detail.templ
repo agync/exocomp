@@ -95,6 +95,8 @@ templ sourceDetail(vm sourceDetailVM) {
 						<label class="checkline"><input type="checkbox" name="diff" value="1"/> show diff</label>
 						<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
 						<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+						<label class="checkline warn"><input type="checkbox" name="privileged" value="1"/> Run unsandboxed (privileged)</label>
+						<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 						<div class="actions"><button type="submit" class="btn primary">Run playbook</button></div>
 					</form>
 				</div>
@@ -113,6 +115,8 @@ templ sourceDetail(vm sourceDetailVM) {
 						<label class="checkline"><input type="checkbox" name="require_approval" value="1"/> require approval before it runs</label>
 						<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>
 						<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+						<label class="checkline warn"><input type="checkbox" name="privileged" value="1"/> Run unsandboxed (privileged)</label>
+						<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 						<div class="actions"><button type="submit" class="btn primary">Run command</button></div>
 					</form>
 				</div>

@@ -196,6 +196,11 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// The privileged (unsandboxed) tier is reachable only through this
+	// operator-scoped write handler (writeGuard already refused a readonly or
+	// approve token above), so the checkbox inherits that gate — the same
+	// session/token scope every other run control on this surface checks.
+	privileged := r.Form.Has("privileged")
 	res, err := svc.RunPlaybook(r.Context(), s.enqueuer(), service.PlaybookInput{
 		PlaybookPath:   playbook,
 		InventoryPath:  invPath,
@@ -203,6 +208,7 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		RunSecrets:     r.PostFormValue("run_secrets"),
 		Passthrough:    passthrough,
 		ExtraVars:      vars,
+		Privileged:     privileged,
 		IdempotencyKey: idempotencyKey(r, routePlaybook),
 		Timeout:        timeout,
 		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
@@ -211,7 +217,8 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		s.fail(w, r, err)
 		return
 	}
-	s.log.Info("web: run playbook", "job", res.Job.ID, "source", name, "playbook", playbook, "by", ident.token.Name)
+	s.log.Info("web: run playbook", "job", res.Job.ID, "source", name, "playbook", playbook,
+		"privileged", privileged, "by", ident.token.Name)
 	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10), "job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
 }
 
@@ -280,9 +287,12 @@ func (s *Server) handleSourceRunCommand(w http.ResponseWriter, r *http.Request) 
 		InventoryName:   invName,
 		RunSecrets:      r.PostFormValue("run_secrets"),
 		RequireApproval: r.Form.Has("require_approval"),
-		IdempotencyKey:  idempotencyKey(r, routeCommand),
-		Timeout:         timeout,
-		Actor:           service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
+		// Operator-only, gated by writeGuard above just like every other control
+		// on this surface; the checkbox only reaches here past that scope check.
+		Privileged:     r.Form.Has("privileged"),
+		IdempotencyKey: idempotencyKey(r, routeCommand),
+		Timeout:        timeout,
+		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrSourcePathEscape) {

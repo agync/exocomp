@@ -406,6 +406,7 @@ td .btn {
 .writeform.inline input { min-height: 36px; }
 .writeform .checkline { flex-flow: row wrap; align-items: center; gap: 8px; color: var(--ink-200); }
 .writeform .checkline input { min-height: 0; }
+.writeform .checkline.warn { color: var(--signal-fail); font-weight: 600; }
 .rowact { display: inline-block; margin-right: 8px; }
 .rowact > summary { cursor: pointer; color: var(--accent-text); font: var(--type-button); list-style: none; }
 .rowact[open] > summary { margin-bottom: 6px; }
