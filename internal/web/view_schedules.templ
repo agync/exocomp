@@ -74,7 +74,7 @@ templ schedulesList(vm schedulesVM) {
 						</thead>
 						<tbody>
 							for _, sc := range vm.Schedules {
-								<tr>
+								<tr data-modal-row={ "sched-" + sc.Name }>
 									<td data-label="Schedule">{ sc.Name }</td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
@@ -114,5 +114,36 @@ templ schedulesList(vm schedulesVM) {
 				</div>
 			}
 		</div>
+		for _, sc := range vm.Schedules {
+			@modal("sched-"+sc.Name, "Schedule — "+sc.Name) {
+				<dl class="kv">
+					<div><dt>Kind</dt><dd class="mono">{ sc.Kind }</dd></div>
+					<div><dt>Cron</dt><dd class="mono">{ sc.Cron }</dd></div>
+					<div><dt>Command</dt><dd class="mono wrap">{ orDash(joinArgv(sc.Argv)) }</dd></div>
+					<div><dt>Target</dt><dd class="mono">{ orDash(sc.Target) }</dd></div>
+					<div><dt>Concurrency key</dt><dd class="mono">{ orDash(sc.ConcurrencyKey) }</dd></div>
+					<div><dt>Jitter</dt><dd class="mono">{ itoa(int64(sc.JitterS)) }s</dd></div>
+					if sc.Kind == "play" {
+						<div><dt>Tolerate unreachable</dt><dd>{ yesNo(sc.TolerateUnreachable) }</dd></div>
+					}
+					<div><dt>Enabled</dt><dd>@enabledChip(sc.Enabled)</dd></div>
+					<div><dt>Next fire</dt><dd class="mono">{ sc.Next }</dd></div>
+					<div><dt>Last fired</dt><dd class="mono">{ sc.LastRun }</dd></div>
+					<div>
+						<dt>Last outcome</dt>
+						<dd>
+							if sc.HasLast {
+								<a href={ templ.SafeURL("/jobs/" + itoa64(sc.LastJobID)) }>
+									@chip(sc.LastClass(), string(sc.LastState))
+								</a>
+								<span class="meta">{ workspaceSuffix(sc.LastRunbook) }</span>
+							} else {
+								<span class="meta">never fired</span>
+							}
+						</dd>
+					</div>
+				</dl>
+			}
+		}
 	}
 }

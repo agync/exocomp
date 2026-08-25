@@ -436,6 +436,15 @@ templ layoutReady() {
 			window.location.href = tr.getAttribute('data-href');
 		});
 	});
+	// Same affordance, but opens a modal instead of navigating — the Schedules
+	// row's spec detail, with the same exclusion for nested links/buttons
+	// (Enable/Disable/Remove, the Last outcome link).
+	document.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {
+		tr.addEventListener('click', function (e) {
+			if (e.target.closest('a,button')) return;
+			exoModalOpen(tr.getAttribute('data-modal-row'));
+		});
+	});
 	// Modal open/dismiss is one delegated listener for the whole page: any
 	// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×
 	// button) closes its enclosing dialog; and a click landing on the dialog

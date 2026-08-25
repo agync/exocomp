@@ -178,10 +178,16 @@ func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
 	for _, sc := range list {
 		row := scheduleRow{
 			Name: sc.Name, Kind: sc.Kind, Cron: sc.CronExpr,
-			Enabled: sc.Enabled, Next: "-",
+			Enabled: sc.Enabled, Next: "-", LastRun: "-",
+			Argv: sc.Args.Argv, Target: sc.Args.Target,
+			ConcurrencyKey: sc.ConcurrencyKey, JitterS: sc.JitterS,
+			TolerateUnreachable: sc.Args.TolerateUnreachable,
 		}
 		if sc.NextAt != nil {
 			row.Next = clock(*sc.NextAt)
+		}
+		if sc.LastRun != nil {
+			row.LastRun = clock(*sc.LastRun)
 		}
 		if sc.LastJobID != nil {
 			if job, err := s.store.GetJob(r.Context(), *sc.LastJobID); err == nil {

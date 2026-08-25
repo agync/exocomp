@@ -80,17 +80,25 @@ func (r sourceRow) Short() string {
 
 // scheduleRow is one cron schedule: its kind, expression, next/last fire, and
 // the outcome of the job its last fire enqueued — so a drift-check schedule's
-// last drift result reads at a glance.
+// last drift result reads at a glance. Argv/Target/ConcurrencyKey/JitterS/
+// TolerateUnreachable and LastRun are the rest of the row's spec, shown only
+// in its detail modal (schedulesList) — the table itself stays scannable.
 type scheduleRow struct {
-	Name        string
-	Kind        string // shell|backup|tofu-plan|play|… (free kind string)
-	Cron        string
-	Next        string
-	LastRunbook string
-	LastState   store.JobState
-	LastJobID   int64
-	HasLast     bool
-	Enabled     bool
+	Name                string
+	Kind                string // shell|backup|tofu-plan|play|… (free kind string)
+	Cron                string
+	Next                string
+	LastRunbook         string
+	LastState           store.JobState
+	LastJobID           int64
+	HasLast             bool
+	Enabled             bool
+	Argv                []string
+	Target              string
+	ConcurrencyKey      string
+	JitterS             int
+	TolerateUnreachable bool
+	LastRun             string
 }
 
 func (r scheduleRow) LastClass() string { return stateClass(r.LastState) }

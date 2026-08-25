@@ -176,6 +176,50 @@ func TestScheduleRm(t *testing.T) {
 	}
 }
 
+// TestScheduleDetailModalRendersSpec: the Schedules page renders each row's
+// full spec into a per-row modal — reachable by a readonly identity, since
+// viewing a schedule's spec needs only auth, not an operator token.
+func TestScheduleDetailModalRendersSpec(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly-drift", CronExpr: "@every 6h", Kind: store.ScheduleShell,
+		Args:           store.ScheduleArgs{Argv: []string{"echo", "hi"}, Target: "prod"},
+		ConcurrencyKey: "drift-lock", JitterS: 30,
+	}); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	code, body := getBody(t, client, ts.URL+"/schedules")
+	if code != http.StatusOK {
+		t.Fatalf("GET /schedules = %d, want 200", code)
+	}
+	if !strings.Contains(body, `data-modal-row="sched-nightly-drift"`) {
+		t.Error("schedule row is not wired to open its spec modal")
+	}
+	if !strings.Contains(body, `id="sched-nightly-drift"`) {
+		t.Error("schedule spec modal was not rendered")
+	}
+	if !strings.Contains(body, "@every 6h") {
+		t.Error("modal does not render the cron expression")
+	}
+	if !strings.Contains(body, "echo hi") {
+		t.Error("modal does not render the command")
+	}
+	if !strings.Contains(body, store.ScheduleShell) {
+		t.Error("modal does not render the kind")
+	}
+	if !strings.Contains(body, "drift-lock") {
+		t.Error("modal does not render the concurrency key")
+	}
+}
+
 // newTogglerSchedule is a minimal valid shell schedule shared by the
 // enable/disable/rm tests, which do not exercise /schedules/add itself.
 func newTogglerSchedule() store.NewSchedule {
