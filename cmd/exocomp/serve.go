@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -568,8 +569,18 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		transports = append(transports, goalertT)
 	}
 
+	// The silent-phone warning is about the SEALED transports: UnifiedPush needs
+	// no secret and registers its targets at runtime, so its presence must not
+	// mask an operator who sealed neither ntfy nor goalert.
+	sealed := len(transports)
+
+	// UnifiedPush is always wired: its endpoints are rows a device registers over
+	// the API, so it is store-backed rather than sealed. With zero endpoints its
+	// Publish is a clean no-op, so wiring it costs nothing until a device registers.
+	transports = append(transports, notify.NewUnifiedPush(st, slog.Default()))
+
 	notifier := notify.New(nil, transports...)
-	if len(transports) == 0 {
+	if sealed == 0 {
 		_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed "+
 			"(ntfy: %s, %s; goalert: %s, %s); approvals and job failures will alert silently\n",
 			notify.SecretNtfyURL, notify.SecretNtfyTopic,
