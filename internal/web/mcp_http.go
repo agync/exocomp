@@ -14,9 +14,8 @@ import (
 // This file mounts the MCP transport on the SAME ADR-0009 listener as /api/v1
 // and the browser surface — one listener, one authentication story (ADR 0014 §3;
 // agent-interface.md §3.5). It is a TRANSPORT only: the catalog, the handlers,
-// and the scope floors all live in internal/mcp, and stdio runs the identical
-// dispatch. The two faces differ in exactly two things — how a message is framed,
-// and which Caller it is dispatched for.
+// and the scope floors all live in internal/mcp; this file supplies the framing
+// (one POST, one JSON-RPC message or batch) and the Caller it dispatches for.
 //
 // Shape: the streamable-HTTP single endpoint. One POST carries one client→server
 // JSON-RPC message (or a batch of them) and the response comes back in that
@@ -42,8 +41,8 @@ import (
 // mcpPath is the single streamable-HTTP endpoint.
 const mcpPath = "/mcp"
 
-// mcpMaxBody bounds one POSTed message. It matches the ceiling the stdio framer
-// enforces per line, so neither transport accepts a message the other would not.
+// mcpMaxBody bounds one POSTed message to a sane ceiling for a single
+// JSON-RPC frame.
 const mcpMaxBody = 8 << 20
 
 // registerMCP mounts the MCP endpoint. Registering POST alone means Go's
