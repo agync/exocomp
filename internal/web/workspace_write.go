@@ -6,11 +6,9 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
-	"strings"
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
-	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
@@ -29,7 +27,6 @@ func init() { registerWrite((*Server).registerWorkspaceWrite) }
 
 func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces", s.requireAuth(s.handleWorkspaces))
-	mux.HandleFunc("POST /workspaces", s.requireAuth(s.handleWorkspaceCreate))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
 }
@@ -115,34 +112,6 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		vm.Workspaces = append(vm.Workspaces, row)
 	}
 	s.render(w, r, http.StatusOK, workspacesList(vm))
-}
-
-// handleWorkspaceCreate registers a state-only workspace — the web
-// equivalent of `workspace add --state-only`, through the same
-// store.CreateWorkspace path (empty TofuDir). No secret material is written
-// here (the bearer is derived, not stored), so this is plain operator-scope
-// like Plan/Apply above.
-func (s *Server) handleWorkspaceCreate(w http.ResponseWriter, r *http.Request) {
-	ident, ok := s.writeGuard(w, r)
-	if !ok {
-		return
-	}
-	name := strings.TrimSpace(r.PostFormValue("name"))
-	if err := naming.ValidateComponent("workspace", name); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	ws, err := s.store.CreateWorkspace(r.Context(), store.Workspace{Name: name})
-	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a state named "+name+" already exists", http.StatusConflict)
-		return
-	}
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	s.log.Info("web: workspace create state-only", "workspace", ws.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/workspaces", "registered "+ws.Name)
 }
 
 // handleWorkspacePlan mirrors apiWorkspacePlan (api_write.go): the same

@@ -225,58 +225,27 @@ func TestWorkspacesPageBackendConfigModal(t *testing.T) {
 	}
 }
 
-// TestWorkspaceCreateStateOnly: an operator's "New state" form registers a
-// state-only workspace (empty TofuDir), the same store path `workspace add
-// --state-only` uses, and redirects back to /workspaces.
-func TestWorkspaceCreateStateOnly(t *testing.T) {
+// TestWorkspacesPageHowTo: the page opens with a concise how-to section
+// pointing operators at a row's Backend config for the paste-ready block.
+func TestWorkspacesPageHowTo(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("workspace create = %d, want 303", resp.StatusCode)
-	}
-	if loc := resp.Header.Get("Location"); !strings.HasPrefix(loc, "/workspaces") {
-		t.Fatalf("workspace create redirected to %q, want /workspaces", loc)
-	}
-	ws, err := h.store.WorkspaceByName(context.Background(), "newstate")
+	resp, err := client.Get(ts.URL + "/workspaces")
 	if err != nil {
-		t.Fatalf("created workspace not found: %v", err)
+		t.Fatalf("GET /workspaces: %v", err)
 	}
-	if ws.TofuDir != "" {
-		t.Fatalf("state-only create set TofuDir = %q, want empty", ws.TofuDir)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
 	}
-}
-
-func TestWorkspaceCreateReadonlyForbidden(t *testing.T) {
-	h := newHarness(t)
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	ro := h.mint(t, "ro", "readonly")
-	client := login(t, ts.URL, ro)
-
-	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("readonly workspace create = %d, want 403", resp.StatusCode)
+	if !strings.Contains(body, "Using exocomp as your OpenTofu/Terraform state backend") {
+		t.Fatal("workspaces page missing the state-backend how-to section")
 	}
-}
-
-func TestWorkspaceCreateCrossOriginForbidden(t *testing.T) {
-	h := newHarness(t)
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	op := h.mint(t, "laptop", "operator")
-	client := login(t, ts.URL, op)
-
-	resp := postForm(t, client, ts.URL+"/workspaces", url.Values{"name": {"newstate"}},
-		map[string]string{"Sec-Fetch-Site": "cross-site"})
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("cross-origin workspace create = %d, want 403", resp.StatusCode)
+	if !strings.Contains(body, "Backend config") {
+		t.Fatal("workspaces page how-to does not point at a row's Backend config")
 	}
 }

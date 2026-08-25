@@ -1,44 +1,40 @@
 package web
 
-// workspacesList is the Workspaces write surface (managed OpenTofu state): every registered state
-// (store.Workspace under the hood — the DR-critical name stays internal) with
-// its type — state-only (TofuDir empty, exocomp is just the encrypted http
-// backend for an external tofu) or runs-in-server (exocomp also plans/applies
-// it) — and its newest stored tfstate serial, plus per-row Plan and Apply
-// forms for runs-in-server rows. Every row also gets a Backend config action:
-// the same ready-to-paste `backend "http"` block `workspace add --state-only`
-// prints, computed the identical way (api.NewBackendBlock). A plan runs
-// through PlanWorkspace with the "api" trigger, exactly as a bearer-token plan
-// does, so its -out file is sealed into a consumable artifact post-run; the
-// resulting artifact id can be fed into a later apply's optional plan field to
-// consume that saved plan's recorded policy verdict. An apply with no plan id
-// is a fresh apply — auto-approved unless the workspace has enabled plan
-// policies, in which case it is refused (there is nothing for a policy to
-// read). Workspaces carry no secret material of their own — the backend
-// config block does, but it is shown to an operator exactly as the CLI would
-// print it to them, never logged — so, like run and schedules, the controls
-// here are plain operator-scope: no reauth, no confirm_token.
+// workspacesList is the Workspaces write surface (managed OpenTofu state): a
+// how-to card explaining that exocomp itself is the state backend (there is
+// no "add state" flow — a workspace's row config IS the how-to), then every
+// registered state (store.Workspace under the hood — the DR-critical name
+// stays internal) with its type — state-only (TofuDir empty, exocomp is just
+// the encrypted http backend for an external tofu) or runs-in-server (exocomp
+// also plans/applies it) — and its newest stored tfstate serial, plus per-row
+// Plan and Apply forms for runs-in-server rows. Every row also gets a Backend
+// config action: the same ready-to-paste `backend "http"` block `workspace
+// add --state-only` prints, computed the identical way (api.NewBackendBlock).
+// A plan runs through PlanWorkspace with the "api" trigger, exactly as a
+// bearer-token plan does, so its -out file is sealed into a consumable
+// artifact post-run; the resulting artifact id can be fed into a later
+// apply's optional plan field to consume that saved plan's recorded policy
+// verdict. An apply with no plan id is a fresh apply — auto-approved unless
+// the workspace has enabled plan policies, in which case it is refused (there
+// is nothing for a policy to read). Workspaces carry no secret material of
+// their own — the backend config block does, but it is shown to an operator
+// exactly as the CLI would print it to them, never logged — so, like run and
+// schedules, the controls here are plain operator-scope: no reauth, no
+// confirm_token.
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
 		<div class="pageheader">
 			<h1>Workspaces</h1>
-			if vm.Operator {
-				@addButton("ws-new", "state")
-			}
+		</div>
+		<div class="card span2" style="margin-bottom:18px">
+			<h3>Using exocomp as your OpenTofu/Terraform state backend</h3>
+			<p class="meta">
+				exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Point a <code>backend "http"</code> block in your tofu config at the address in a row's <b>Backend config</b> below, then run <code>tofu init</code>.
+			</p>
 		</div>
 		<p class="meta" style="margin-bottom:16px">
-			Managed OpenTofu state. exocomp holds each workspace's encrypted <code>tfstate</code> and serves it as an HTTP backend your own <code>tofu</code> can point at. Open a row's <b>Backend config</b> to get the ready-to-paste block. A state-only workspace is just the backend; one with a root module also runs plan/apply here.
+			A state-only row is just the backend for an external <code>tofu</code>; one with a root module also runs plan/apply here.
 		</p>
-		if vm.Operator {
-			@modal("ws-new", "Register a new state") {
-				<p class="meta">Registers a state-only entry: no tofu dir, no plan/apply here — exocomp is just the encrypted state store for an external `tofu`. Equivalent to `workspace add --state-only`.</p>
-				<form method="post" action="/workspaces" class="writeform">
-					<label for="ws-new-name">Name</label>
-					<input id="ws-new-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._/-]+"/>
-					<div class="actions"><button type="submit" class="btn primary">Register</button></div>
-				</form>
-			}
-		}
 		<div class="card span2" style="margin-top:18px">
 			if !vm.Operator {
 				<div class="kicker">Read-only</div>
