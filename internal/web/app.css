@@ -430,6 +430,11 @@ td .btn {
 main > .pageheader { margin-bottom: 12px; }
 main > .pageheader + .card,
 main > .pageheader + dialog + .card { margin-top: 0 !important; }
+/* An .actions group inside a pageheader is a top-right button row, not the
+ * form-actions block .actions .btn's width:100% is meant for — keep it
+ * compact and un-stacked. */
+.pageheader .actions { margin-top: 0; }
+.pageheader .actions .btn { width: auto; }
 .addbtn {
   width: 32px; height: 32px; padding: 0; flex: none; align-self: center;
   display: inline-flex; align-items: center; justify-content: center;

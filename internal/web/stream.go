@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -62,9 +63,16 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	// The page rendered every event up to now; the stream carries what follows.
+	// The client passes the Seq of the last event its own render included
+	// (?since=); the stream backfills everything after that, not just what is
+	// newest at connect time — the gap between page-render and SSE-connect is
+	// exactly what a fast-terminating job falls into otherwise. A missing or
+	// unparseable since (the API follow route, older clients) falls back to
+	// the latest event at connect, unchanged from before.
 	var cursor int64
-	if events, err := s.store.ListJobEvents(r.Context(), id); err == nil && len(events) > 0 {
+	if since := r.URL.Query().Get("since"); since != "" {
+		cursor, _ = strconv.ParseInt(since, 10, 64)
+	} else if events, err := s.store.ListJobEvents(r.Context(), id); err == nil && len(events) > 0 {
 		cursor = events[len(events)-1].Seq
 	}
 

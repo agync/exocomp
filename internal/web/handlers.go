@@ -302,6 +302,9 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	for _, e := range events {
 		vm.Events = append(vm.Events, eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg})
 	}
+	if len(vm.Events) > 0 {
+		vm.LastSeq = vm.Events[len(vm.Events)-1].Seq
+	}
 	s.render(w, r, http.StatusOK, jobDetail(vm))
 }
 

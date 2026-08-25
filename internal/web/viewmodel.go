@@ -390,6 +390,20 @@ type jobRow struct {
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
 
+// Succeeded gates the Schedule button: a schedule replays a job's exact
+// command, so offering it for anything short of a clean run would let an
+// operator schedule a command already known to fail.
+func (j jobRow) Succeeded() bool { return j.State == store.StateSucceeded }
+
+// scheduleTitle is the Schedule button's tooltip: why it's disabled, or what
+// it does when it isn't.
+func scheduleTitle(j jobRow) string {
+	if j.Succeeded() {
+		return "Schedule this job to run on a cron"
+	}
+	return "Schedule available after a successful run"
+}
+
 // backupRow is one target's freshness on the dashboard.
 type backupRow struct {
 	Name      string
@@ -426,6 +440,11 @@ type jobDetailVM struct {
 	// validation in handleJobSchedule is authoritative; this only hides the
 	// button when it would just fail.
 	CanSchedule bool
+	// LastSeq is the Seq of the last event this render included (0 when
+	// none), passed to jobStream as ?since= so the SSE cursor picks up
+	// exactly where the server-rendered tail left off instead of skipping
+	// events written between render and connect.
+	LastSeq int64
 }
 
 type eventLine struct {

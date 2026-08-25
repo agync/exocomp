@@ -187,6 +187,9 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	if !strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("operator's job detail must show a Schedule… trigger")
 	}
+	if strings.Contains(body, `data-modal-open="job-schedule" disabled`) {
+		t.Error("Schedule must be enabled for a succeeded job")
+	}
 	if !strings.Contains(body, "/bin/true ok") {
 		t.Error("schedule modal must preview the job's own argv")
 	}
@@ -236,6 +239,25 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	}
 	if !strings.Contains(body, `href="/sources/tree"`) {
 		t.Error("Run again must link to the reverse-mapped source's launcher")
+	}
+}
+
+// TestJobDetailScheduleDisabledForFailedJob: a failed job is still the
+// schedulable shape (ansible, no source dir, has argv), so CanSchedule shows
+// the button, but replaying a command already known to fail must not be one
+// click away — the button renders disabled.
+func TestJobDetailScheduleDisabledForFailedJob(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedSchedulableJob(t, h, []string{"/bin/false"})
+	h.waitJobState(t, job.ID, store.StateFailed, 3*time.Second)
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `data-modal-open="job-schedule" disabled`) {
+		t.Error("Schedule must render disabled for a failed job")
 	}
 }
 
