@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -77,7 +78,9 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 // renderPlan reads a sealed plan artifact through the envelope — never the raw
 // ciphertext — and splits it into the lines that destroy (rendered first, in
 // red) and the rest. Secret-backed attributes are marked redacted, never
-// carried with their value.
+// carried with their value. The classification and redaction come from the
+// shared classifyPlan core, so the browser plan view and the /api/v1 plan diff
+// cannot diverge; renderPlan keeps only the fields the HTML template consumes.
 func (s *Server) renderPlan(r *http.Request, artifactID int64) (destroys, changes []planLine, ok bool) {
 	art, err := s.store.GetArtifact(r.Context(), artifactID)
 	if err != nil {
@@ -88,39 +91,125 @@ func (s *Server) renderPlan(r *http.Request, artifactID int64) (destroys, change
 		s.log.Warn("web: open sealed plan", "artifact", artifactID, "err", err)
 		return nil, nil, false
 	}
-
-	var plan struct {
-		ResourceChanges []struct {
-			Address string `json:"address"`
-			Change  struct {
-				Actions         []string        `json:"actions"`
-				AfterSensitive  json.RawMessage `json:"after_sensitive"`
-				BeforeSensitive json.RawMessage `json:"before_sensitive"`
-			} `json:"change"`
-		} `json:"resource_changes"`
-	}
-	if err := json.Unmarshal(blob, &plan); err != nil {
+	resources, ok := classifyPlan(blob)
+	if !ok {
 		return nil, nil, false
 	}
-
-	for _, rc := range plan.ResourceChanges {
-		action := classifyActions(rc.Change.Actions)
-		if action == "no-op" || action == "read" {
-			continue
-		}
-		line := planLine{
-			Action:   action,
-			Address:  rc.Address,
-			Detail:   action,
-			Redacted: hasSensitive(rc.Change.AfterSensitive) || hasSensitive(rc.Change.BeforeSensitive),
-		}
-		if action == "delete" || action == "replace" {
+	for _, rc := range resources {
+		line := planLine{Action: rc.Action, Address: rc.Address, Detail: rc.Action, Redacted: rc.Redacted}
+		if rc.Action == "delete" || rc.Action == "replace" {
 			destroys = append(destroys, line)
 		} else {
 			changes = append(changes, line)
 		}
 	}
 	return destroys, changes, true
+}
+
+// planResource is one classified, redacted resource line of a sealed plan: the
+// projection shared by the web approval surface (renderPlan) and the /api/v1
+// plan endpoint (apiApprovalPlan). Redacted marks a resource whose sealed plan
+// flags anything secret; its Attrs then carry redactedValue in place of every
+// attribute value, so a secret-backed value is never carried with its plaintext.
+type planResource struct {
+	Action   string
+	Address  string
+	Redacted bool
+	Attrs    []planAttr
+}
+
+// planAttr is one post-apply attribute row. Value is redactedValue, never the
+// plaintext, whenever the owning resource is redacted.
+type planAttr struct {
+	Name     string
+	Value    string
+	Redacted bool
+}
+
+// redactedValue is the marker shown in place of a secret-backed value, the same
+// text the web plan view renders (view_approval.templ planDetail).
+const redactedValue = "[redacted · secret]"
+
+// classifyPlan parses a decrypted tofu plan blob into the ordered, classified,
+// redacted resource list both surfaces build from. It is the one place the
+// sensitivity decision (hasSensitive over the *_sensitive trees) and the action
+// classification (classifyActions) live; no-op and read resources are dropped
+// exactly as renderPlan dropped them. A blob that will not parse yields
+// ok=false — the same soft failure renderPlan returned.
+func classifyPlan(blob []byte) (resources []planResource, ok bool) {
+	var plan struct {
+		ResourceChanges []struct {
+			Address string `json:"address"`
+			Change  struct {
+				Actions         []string        `json:"actions"`
+				After           map[string]any  `json:"after"`
+				AfterSensitive  json.RawMessage `json:"after_sensitive"`
+				BeforeSensitive json.RawMessage `json:"before_sensitive"`
+			} `json:"change"`
+		} `json:"resource_changes"`
+	}
+	if err := json.Unmarshal(blob, &plan); err != nil {
+		return nil, false
+	}
+	for _, rc := range plan.ResourceChanges {
+		action := classifyActions(rc.Change.Actions)
+		if action == "no-op" || action == "read" {
+			continue
+		}
+		redacted := hasSensitive(rc.Change.AfterSensitive) || hasSensitive(rc.Change.BeforeSensitive)
+		resources = append(resources, planResource{
+			Action:   action,
+			Address:  rc.Address,
+			Redacted: redacted,
+			Attrs:    planAttrs(rc.Change.After, redacted),
+		})
+	}
+	return resources, true
+}
+
+// planAttrs projects a resource's post-apply attribute map into stable-ordered
+// rows. When the resource is redacted every value becomes redactedValue — the
+// coarse, resource-granular decision hasSensitive already makes for the whole
+// line — so a secret-backed value never appears with its plaintext. A value
+// shown only when the resource carries nothing sensitive is a value the web
+// would also show.
+func planAttrs(after map[string]any, redacted bool) []planAttr {
+	if len(after) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(after))
+	for k := range after {
+		names = append(names, k)
+	}
+	sort.Strings(names)
+	attrs := make([]planAttr, 0, len(names))
+	for _, name := range names {
+		a := planAttr{Name: name, Redacted: redacted}
+		if redacted {
+			a.Value = redactedValue
+		} else {
+			a.Value = attrValue(after[name])
+		}
+		attrs = append(attrs, a)
+	}
+	return attrs
+}
+
+// attrValue renders a non-redacted attribute value as a compact string: a
+// string verbatim, a null as empty, anything structured as its JSON encoding.
+func attrValue(v any) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case nil:
+		return ""
+	default:
+		b, err := json.Marshal(t)
+		if err != nil {
+			return ""
+		}
+		return string(b)
+	}
 }
 
 // classifyActions maps a tofu action set to one risk-ordered word.

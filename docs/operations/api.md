@@ -33,6 +33,13 @@ its operator-or-approve floor — that is the human at the console, not a creden
 an agent. An out-of-scope call gets `403 forbidden` before the request touches the store or
 queue.
 
+`GET /approvals/{id}/plan` is the one `GET` route above the `readonly` floor: it opens the
+sealed plan, so it takes the same plan-view scope (operator or approve) the browser renders it
+behind. It returns a structured, redacted diff — `{destroys, changes, creates, summary,
+line_count, artifact_id}`, destroys first — classified through the same core the web plan view
+uses, so a secret-backed attribute value the web shows as `[redacted · secret]` is redacted
+here too, never carried as plaintext.
+
 ## The envelope
 
 Every response — success or failure — is one shape:
@@ -60,6 +67,7 @@ GET /api/v1/workspaces
 GET /api/v1/sources
 GET /api/v1/approvals?all=                      # pending-only unless all=true
 GET /api/v1/approvals/{id}
+GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
 GET /api/v1/rules

@@ -22,8 +22,10 @@ Newest first.
 ## 2026-08-25 — phone-companion API surface
 
 - **Four new `/api/v1` endpoints** land the mobile handoff: `GET /whoami` reflects the
-  caller's own token; `GET /approvals/{id}/plan` opens the sealed plan as raw text through
-  the same `PlanOpener.OpenSealedFile` the web approval surface uses, gated by the
+  caller's own token; `GET /approvals/{id}/plan` opens the sealed plan and returns it as a
+  structured, redacted diff (`destroys`/`changes`/`creates`) through the same
+  `PlanOpener.OpenSealedFile` + `classifyPlan` core the web approval surface renders, so a
+  secret-backed value the web redacts is never carried as plaintext, gated by the
   plan-view floor; `POST /jobs/{id}/cancel` moves a non-terminal job to `cancelled` (409
   terminal, 404 unknown); `POST`/`DELETE /silences` mute/unmute through the store. All four
   are operator, bearer-only.

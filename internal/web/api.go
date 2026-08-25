@@ -433,22 +433,15 @@ func (s *Server) apiApprovalStream(w http.ResponseWriter, r *http.Request) {
 	s.tailApprovals(w, r, flusher)
 }
 
-// kindApprovalPlan names the raw-plan-text payload.
-const kindApprovalPlan = "approval.plan"
-
-// approvalPlanView carries the approval's plan diff as raw text; the client
-// renders it (owner decision), so no structured projection is imposed here.
-type approvalPlanView struct {
-	Plan string `json:"plan"`
-}
-
-// apiApprovalPlan returns an approval's sealed plan opened as raw text. It uses
-// the SAME decrypt path the browser approval surface renders through — the
-// PlanOpener's OpenSealedFile (approval_data.go's renderPlan) — and is gated by
-// the same plan-view scope (mayApprove). No new value is exposed that the web
-// plan view does not already show behind the same floor; this only serves it as
-// text instead of a parsed diff. A surface with no opener is 503 and an approval
-// with no plan is 404, matching what the web path shows in each case.
+// apiApprovalPlan returns an approval's sealed plan as a structured, redacted
+// diff — never the raw blob, which can carry secret-backed attribute values the
+// web approval surface redacts. It opens the plan through the SAME decrypt path
+// the browser renders through (PlanOpener.OpenSealedFile) and classifies it
+// through the SAME shared core (classifyPlan, which renderPlan also uses), so a
+// value the web shows redacted is redacted here too and the two surfaces cannot
+// diverge. It is gated by the same plan-view scope (mayApprove). A surface with
+// no opener is 503 and an approval with no plan is 404, matching what the web
+// path shows in each case.
 func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -480,7 +473,21 @@ func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
 		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot open the sealed plan"))
 		return
 	}
-	s.apiSuccess(w, kindApprovalPlan, approvalPlanView{Plan: string(blob)})
+	resources, ok := classifyPlan(blob)
+	if !ok {
+		s.log.Error("api: parse sealed plan", "approval", id)
+		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot parse the sealed plan"))
+		return
+	}
+	rows := make([]wire.PlanResourceView, 0, len(resources))
+	for _, rc := range resources {
+		row := wire.PlanResourceView{Address: rc.Address, Action: rc.Action, Redacted: rc.Redacted}
+		for _, at := range rc.Attrs {
+			row.Attrs = append(row.Attrs, wire.PlanAttrView{Name: at.Name, Value: at.Value, Redacted: at.Redacted})
+		}
+		rows = append(rows, row)
+	}
+	s.apiSuccess(w, wire.KindApprovalPlan, wire.NewApprovalPlanView(rows, *a.PlanArtifact))
 }
 
 // --- schedules / rules / silences -------------------------------------------

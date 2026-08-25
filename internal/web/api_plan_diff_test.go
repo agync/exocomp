@@ -6,12 +6,14 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // sealedPlanApproval seals planJSON into an artifact and binds a pending
@@ -56,17 +58,17 @@ func (h *harness) sealedPlanApproval(t *testing.T, planJSON string) store.Approv
 	return approval
 }
 
-// TestAPIApprovalPlan covers the raw-plan-text endpoint: unauthenticated is 401,
-// the readonly scope is forbidden (the plan diff sits behind the plan-view floor
-// — operator or approve, the same the browser surface renders it behind), and an
-// operator gets the sealed plan opened as raw text through the SAME OpenSealedFile
-// path the web approval surface uses.
+// TestAPIApprovalPlan covers the structured plan-diff endpoint's scope gate and
+// shape: unauthenticated is 401, the readonly scope is forbidden (the plan diff
+// sits behind the plan-view floor — operator or approve, the same the browser
+// surface renders it behind), and an operator gets the classified diff through
+// the SAME OpenSealedFile + classifyPlan path the web approval surface uses.
 func TestAPIApprovalPlan(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 
-	const planJSON = `{"resource_changes":[{"address":"null_resource.x","change":{"actions":["create"]}}]}`
+	const planJSON = `{"resource_changes":[{"address":"null_resource.x","change":{"actions":["create"],"after":{"triggers":"go"}}}]}`
 	approval := h.sealedPlanApproval(t, planJSON)
 	path := "/api/v1/approvals/" + itoa64(approval.ID) + "/plan"
 
@@ -85,20 +87,107 @@ func TestAPIApprovalPlan(t *testing.T) {
 		t.Fatalf("readonly plan error code = %q, want forbidden (%s)", ecode, body)
 	}
 
-	// (c) happy path: an operator reads the plan back as raw text.
+	// (c) happy path: an operator reads the structured, classified diff.
 	op := h.mint(t, "op", "operator")
 	code, _, body = bearerGet(t, ts.URL, path, op)
 	if code != http.StatusOK {
 		t.Fatalf("operator plan status = %d, want 200 (%s)", code, body)
 	}
 	kind, _, _ := decodeEnvelope(t, body)
-	if kind != kindApprovalPlan {
-		t.Fatalf("plan kind = %q, want %q (%s)", kind, kindApprovalPlan, body)
+	if kind != wire.KindApprovalPlan {
+		t.Fatalf("plan kind = %q, want %q (%s)", kind, wire.KindApprovalPlan, body)
 	}
-	var v approvalPlanView
+	var v wire.ApprovalPlanView
 	decodeData(t, body, &v)
-	if v.Plan != planJSON {
-		t.Fatalf("plan text = %q, want the sealed plan opened verbatim", v.Plan)
+	if len(v.Creates) != 1 || v.Creates[0].Address != "null_resource.x" {
+		t.Fatalf("creates = %+v, want the one created resource", v.Creates)
+	}
+	if v.LineCount != 1 {
+		t.Fatalf("line_count = %d, want 1", v.LineCount)
+	}
+	if v.ArtifactID != *approval.PlanArtifact {
+		t.Fatalf("artifact_id = %d, want %d", v.ArtifactID, *approval.PlanArtifact)
+	}
+	if v.Summary == "" {
+		t.Fatalf("summary is empty, want a counted summary")
+	}
+}
+
+// TestAPIApprovalPlanRedaction is the security gate: a plan whose classification
+// includes a secret-backed attribute must reach the phone with that value
+// redacted exactly as the web renders it — never its plaintext — while an
+// ordinary attribute keeps its value. The sensitive attribute is seeded the way
+// the web classifier reads sensitivity: an `after_sensitive` tree marking the
+// attribute true (renderPlan's hasSensitive), so the parity is real.
+func TestAPIApprovalPlanRedaction(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	// Three resources: a delete (destroy bucket), a redacted update whose
+	// after_sensitive flags `password`, and a plain create whose value shows.
+	const planJSON = `{"resource_changes":[
+		{"address":"null_resource.gone","change":{"actions":["delete"]}},
+		{"address":"vault_secret.db","change":{"actions":["update"],"after":{"password":"hunter2","name":"db"},"after_sensitive":{"password":true}}},
+		{"address":"null_resource.pub","change":{"actions":["create"],"after":{"region":"eu-west-1"}}}
+	]}`
+	approval := h.sealedPlanApproval(t, planJSON)
+	path := "/api/v1/approvals/" + itoa64(approval.ID) + "/plan"
+
+	op := h.mint(t, "op", "operator")
+	code, _, body := bearerGet(t, ts.URL, path, op)
+	if code != http.StatusOK {
+		t.Fatalf("operator plan status = %d, want 200 (%s)", code, body)
+	}
+
+	// (a) the structure is destroys / changes / creates / summary.
+	var v wire.ApprovalPlanView
+	decodeData(t, body, &v)
+	if len(v.Destroys) != 1 || v.Destroys[0].Address != "null_resource.gone" {
+		t.Fatalf("destroys = %+v, want the one deleted resource", v.Destroys)
+	}
+	if len(v.Changes) != 1 || v.Changes[0].Address != "vault_secret.db" {
+		t.Fatalf("changes = %+v, want the one updated resource", v.Changes)
+	}
+	if len(v.Creates) != 1 || v.Creates[0].Address != "null_resource.pub" {
+		t.Fatalf("creates = %+v, want the one created resource", v.Creates)
+	}
+	if v.Summary == "" {
+		t.Fatalf("summary is empty, want a counted summary")
+	}
+
+	// (b) destroys come first in the wire bytes, before changes and creates.
+	di, ci, cr := strings.Index(body, `"destroys"`), strings.Index(body, `"changes"`), strings.Index(body, `"creates"`)
+	if di < 0 || di >= ci || ci >= cr {
+		t.Fatalf("key order destroys(%d) changes(%d) creates(%d), want destroys first", di, ci, cr)
+	}
+
+	// (c) the sensitive attribute's PLAINTEXT never appears anywhere in the JSON.
+	if strings.Contains(body, "hunter2") {
+		t.Fatalf("secret value leaked into the plan diff: %s", body)
+	}
+	// The redacted resource is flagged and its value is the web's marker.
+	upd := v.Changes[0]
+	if !upd.Redacted {
+		t.Fatalf("updated resource with a sensitive attr is not flagged redacted: %+v", upd)
+	}
+	var pw *wire.PlanAttrView
+	for i := range upd.Attrs {
+		if upd.Attrs[i].Name == "password" {
+			pw = &upd.Attrs[i]
+		}
+	}
+	if pw == nil || pw.Value != redactedValue || !pw.Redacted {
+		t.Fatalf("password attr = %+v, want value %q and redacted", pw, redactedValue)
+	}
+
+	// (d) a non-sensitive attribute keeps its value.
+	if !strings.Contains(body, "eu-west-1") {
+		t.Fatalf("non-sensitive value was dropped from the plan diff: %s", body)
+	}
+	crt := v.Creates[0]
+	if len(crt.Attrs) != 1 || crt.Attrs[0].Name != "region" || crt.Attrs[0].Value != "eu-west-1" || crt.Attrs[0].Redacted {
+		t.Fatalf("region attr = %+v, want it shown verbatim", crt.Attrs)
 	}
 }
 
