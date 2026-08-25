@@ -145,10 +145,10 @@ func renderRemoteJobsList(cmd *cobra.Command, mode string, rows []wire.JobView) 
 		return nil
 	}
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tKIND\tTRIGGER\tEXIT\tQUEUED")
+	_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 	for _, j := range rows {
-		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Kind),
+		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
 			dashIfEmpty(j.Trigger), exitCodeLabelPtr(j.ExitCode), fmtWireTS(j.QueuedAt))
 	}
 	return w.Flush()
@@ -163,6 +163,7 @@ func renderRemoteJobGet(cmd *cobra.Command, mode string, j wire.JobView) error {
 	_, _ = fmt.Fprintf(w, "id\t%d\n", j.ID)
 	_, _ = fmt.Fprintf(w, "state\t%s\n", j.State)
 	_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(j.Runbook))
+	_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(j.Source))
 	_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(j.Kind))
 	_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(j.Trigger))
 	_, _ = fmt.Fprintf(w, "exit\t%s\n", exitCodeLabelPtr(j.ExitCode))

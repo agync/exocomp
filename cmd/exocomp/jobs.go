@@ -168,10 +168,10 @@ func newJobsListCmd() *cobra.Command {
 				return nil
 			}
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tKIND\tTRIGGER\tEXIT\tQUEUED")
+			_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 			for _, j := range rows {
-				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Kind),
+				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+					j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
 					dashIfEmpty(j.Trigger), exitCodeLabel(j.ExitCode),
 					j.QueuedAt.UTC().Format("2006-01-02 15:04:05Z"))
 			}
@@ -233,6 +233,7 @@ func newJobsGetCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(w, "id\t%d\n", job.ID)
 			_, _ = fmt.Fprintf(w, "state\t%s\n", job.State)
 			_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(job.Runbook))
+			_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(job.Args.Source))
 			_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(job.Kind))
 			_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(job.Trigger))
 			_, _ = fmt.Fprintf(w, "exit\t%s\n", exitCodeLabel(job.ExitCode))

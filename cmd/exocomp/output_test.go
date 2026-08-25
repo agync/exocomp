@@ -154,6 +154,7 @@ func TestJobsListTextAndJSONSeeded(t *testing.T) {
 	st := seedStore(t)
 	if _, err := st.CreateJob(context.Background(), store.NewJob{
 		Runbook: "web", Kind: "tofu.plan", Trigger: "manual", ConcurrencyKey: "workspace:web",
+		Args: store.JobArgs{Source: "my-fleet"},
 	}); err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
@@ -165,6 +166,9 @@ func TestJobsListTextAndJSONSeeded(t *testing.T) {
 	if !strings.Contains(text, "ID") || !strings.Contains(text, "STATE") || !strings.Contains(text, "queued") {
 		t.Fatalf("jobs list text missing header/row: %q", text)
 	}
+	if !strings.Contains(text, "SOURCE") || !strings.Contains(text, "my-fleet") {
+		t.Fatalf("jobs list text missing SOURCE column/value: %q", text)
+	}
 
 	jsonOut, err := run(t, "jobs", "list", "--output", "json")
 	if err != nil {
@@ -174,6 +178,7 @@ func TestJobsListTextAndJSONSeeded(t *testing.T) {
 		Kind string `json:"kind"`
 		Data []struct {
 			Runbook string `json:"runbook"`
+			Source  string `json:"source"`
 			State   string `json:"state"`
 		} `json:"data"`
 	}
@@ -182,5 +187,8 @@ func TestJobsListTextAndJSONSeeded(t *testing.T) {
 	}
 	if e.Kind != "job.list" || len(e.Data) != 1 || e.Data[0].Runbook != "web" || e.Data[0].State != "queued" {
 		t.Fatalf("unexpected job list json: %s", jsonOut)
+	}
+	if e.Data[0].Source != "my-fleet" {
+		t.Fatalf("job list json source = %q, want %q", e.Data[0].Source, "my-fleet")
 	}
 }

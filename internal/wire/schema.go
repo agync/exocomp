@@ -51,10 +51,14 @@ func rfc3339p(t *time.Time) *string {
 // internal/web/api.go's apiJobGet, the primary seam a remote `workspace plan`
 // reads to reproduce the local exit-2-on-changes decision without RawJSON).
 type JobView struct {
-	ID             int64            `json:"id"`
-	Runbook        string           `json:"runbook,omitempty"`
-	Kind           string           `json:"kind,omitempty"`
-	Trigger        string           `json:"trigger,omitempty"`
+	ID      int64  `json:"id"`
+	Runbook string `json:"runbook,omitempty"`
+	Kind    string `json:"kind,omitempty"`
+	Trigger string `json:"trigger,omitempty"`
+	// Source is the registered source this job ran from (job.Args.Source),
+	// unlike the rest of Args it is a display fact, not operator-supplied
+	// material, so it is projected here rather than omitted with the row.
+	Source         string           `json:"source,omitempty"`
 	State          string           `json:"state"`
 	ExitCode       *int             `json:"exit_code,omitempty"`
 	Partial        bool             `json:"partial,omitempty"`
@@ -72,6 +76,7 @@ func NewJobView(j store.Job) JobView {
 		Runbook:        j.Runbook,
 		Kind:           j.Kind,
 		Trigger:        j.Trigger,
+		Source:         j.Args.Source,
 		State:          string(j.State),
 		ExitCode:       j.ExitCode,
 		Partial:        j.Partial,
