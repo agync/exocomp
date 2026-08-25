@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 
 	"github.com/a-h/templ"
 )
@@ -44,3 +45,14 @@ func decideAction(id int64) templ.SafeURL {
 }
 
 func urlEscape(s string) string { return url.QueryEscape(s) }
+
+// joinArgv renders a job's argv as the one-line command an operator recognizes
+// (the read-only preview on the job-schedule modal and the run form) — plain
+// whitespace join, the same shape formScheduleArgs expects back on a "shell"
+// schedule's argv field.
+func joinArgv(argv []string) string { return strings.Join(argv, " ") }
+
+// scheduleAction is the POST target for turning a job into a shell schedule.
+func scheduleAction(id int64) templ.SafeURL {
+	return templ.SafeURL("/jobs/" + strconv.FormatInt(id, 10) + "/schedule")
+}

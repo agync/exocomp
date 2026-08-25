@@ -192,3 +192,60 @@ func TestRunFormRendersByScope(t *testing.T) {
 		t.Error("readonly's /run page must not render the write forms")
 	}
 }
+
+// TestRunFormPrefillsSource: GET /run?source=<name> prefills both write
+// forms' source field, the "Run again" link's mechanism.
+func TestRunFormPrefillsSource(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	_, body := getBody(t, client, ts.URL+"/run?source=tree")
+	if !strings.Contains(body, `id="rp-source" name="source" type="text" autocomplete="off" placeholder="registered source name" value="tree"`) {
+		t.Error("playbook form's source field was not prefilled")
+	}
+	if !strings.Contains(body, `id="rc-source" name="source" type="text" autocomplete="off" placeholder="registered source name" value="tree"`) {
+		t.Error("command form's source field was not prefilled")
+	}
+}
+
+// TestSourceForDir: the Dir→source reverse map job detail's "Run again" link
+// uses to name the source a job's working directory came from.
+func TestSourceForDir(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "nested", Kind: store.SourcePath, URI: "/srv/tree/nested", Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+
+	cases := []struct {
+		name   string
+		dir    string
+		want   string
+		wantOK bool
+	}{
+		{"empty dir", "", "", false},
+		{"exact root", "/srv/tree", "tree", true},
+		{"inside root", "/srv/tree/roles/foo", "tree", true},
+		{"longest match wins", "/srv/tree/nested/x", "nested", true},
+		{"no match", "/elsewhere", "", false},
+		{"prefix but not a path component", "/srv/tree-other", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, ok := h.server.sourceForDir(ctx, tc.dir)
+			if ok != tc.wantOK || got != tc.want {
+				t.Fatalf("sourceForDir(%q) = (%q, %v), want (%q, %v)", tc.dir, got, ok, tc.want, tc.wantOK)
+			}
+		})
+	}
+}

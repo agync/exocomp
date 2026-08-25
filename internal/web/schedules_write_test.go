@@ -5,8 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -180,5 +182,85 @@ func newTogglerSchedule() store.NewSchedule {
 	return store.NewSchedule{
 		Name: "toggler", CronExpr: "@every 5m", Kind: store.ScheduleShell,
 		Args: store.ScheduleArgs{Argv: []string{"true"}},
+	}
+}
+
+// TestSchedulesFromJobPrefill: GET /schedules?from_job=<id> prefills the add
+// form's kind/argv from that job's own stored Argv, and auto-opens the modal.
+func TestSchedulesFromJobPrefill(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	job, err := h.store.CreateJob(context.Background(), store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"ansible-playbook", "site.yml"}},
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	_, body := getBody(t, client, ts.URL+"/schedules?from_job="+itoa64(job.ID))
+	if !strings.Contains(body, `value="ansible-playbook site.yml"`) {
+		t.Errorf("argv field not prefilled from job, body:\n%s", body)
+	}
+	if !strings.Contains(body, `option value="shell" selected`) {
+		t.Error("kind select did not default to shell for the derived prefill")
+	}
+	if !strings.Contains(body, `exoModalOpen("schedules-add")`) {
+		t.Error("add-schedule modal did not auto-open for a from_job deep link")
+	}
+}
+
+// TestSchedulesFromJobPrefillIgnoresUnschedulable: a from_job id that does not
+// resolve to a schedulable job (here, a tofu job) is ignored, not an error —
+// the operator lands on a plain, unprefilled add form.
+func TestSchedulesFromJobPrefillIgnoresUnschedulable(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	job, err := h.store.CreateJob(context.Background(), store.NewJob{
+		Runbook: "prod-plan", Kind: executor.KindTofu, Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"tofu", "plan"}},
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	code, body := getBody(t, client, ts.URL+"/schedules?from_job="+itoa64(job.ID))
+	if code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", code)
+	}
+	if strings.Contains(body, `exoModalOpen("schedules-add")`) {
+		t.Error("modal should not auto-open for an unschedulable from_job")
+	}
+}
+
+// TestSchedulesExplicitPrefill: explicit ?kind=&argv=&target= query params
+// prefill the add form directly, without a from_job lookup.
+func TestSchedulesExplicitPrefill(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	_, body := getBody(t, client, ts.URL+"/schedules?kind=play&argv=site.yml&target=fleet&name=nightly")
+	if !strings.Contains(body, `value="nightly"`) {
+		t.Error("name field not prefilled")
+	}
+	if !strings.Contains(body, `value="site.yml"`) {
+		t.Error("argv field not prefilled")
+	}
+	if !strings.Contains(body, `value="fleet"`) {
+		t.Error("target field not prefilled")
+	}
+	if !strings.Contains(body, `option value="play" selected`) {
+		t.Error("kind select did not honor the explicit kind param")
 	}
 }

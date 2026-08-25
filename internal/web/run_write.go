@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/service"
@@ -33,6 +34,10 @@ func (s *Server) registerRunWrite(mux *http.ServeMux) {
 type runVM struct {
 	Page     page
 	Operator bool
+	// Source prefills the source field on both forms — job detail's "Run
+	// again" links here with ?source=<name> when the job it re-runs resolved
+	// to one (sourceForDir), so the operator does not have to retype it.
+	Source string
 }
 
 // routeCommand namespaces an ad-hoc command run's idempotency key, alongside
@@ -41,7 +46,10 @@ const routeCommand = "command.run"
 
 func (s *Server) handleRunForm(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
-	vm := runVM{Page: s.pageFor(r, "Run", "run"), Operator: canWrite(ident)}
+	vm := runVM{
+		Page: s.pageFor(r, "Run", "run"), Operator: canWrite(ident),
+		Source: r.URL.Query().Get("source"),
+	}
 	s.render(w, r, http.StatusOK, runPage(vm))
 }
 
@@ -235,6 +243,39 @@ func (s *Server) resolveSourceCheckout(ctx context.Context, name string) (root s
 		return "", false, err
 	}
 	return loc.Root, loc.ReadOnly, nil
+}
+
+// sourceForDir reverse-maps a job's stored working directory back to the
+// registered source it came from, for job detail's "Run again" link: the job
+// row keeps only the resolved checkout path (Args.Dir), never which source
+// name a --source <name> resolved from, so naming it again means resolving
+// every registered source and matching by root. A checkout nested inside
+// another source's root takes the longest (most specific) matching root; no
+// match reports ok=false rather than guessing.
+func (s *Server) sourceForDir(ctx context.Context, dir string) (name string, ok bool) {
+	if dir == "" {
+		return "", false
+	}
+	dir = filepath.Clean(dir)
+	srcs, err := s.store.ListSources(ctx)
+	if err != nil {
+		return "", false
+	}
+	var bestRoot string
+	for _, src := range srcs {
+		loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
+		if err != nil {
+			continue
+		}
+		root := filepath.Clean(loc.Root)
+		if root != dir && !strings.HasPrefix(dir, root+string(filepath.Separator)) {
+			continue
+		}
+		if len(root) > len(bestRoot) {
+			bestRoot, name, ok = root, src.Name, true
+		}
+	}
+	return name, ok
 }
 
 // parseOptionalDuration parses a form field as a Go duration; an empty value

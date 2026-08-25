@@ -166,6 +166,7 @@ type schedulesVM struct {
 	Page      page
 	Operator  bool
 	Schedules []scheduleRow
+	Prefill   schedulePrefill
 }
 
 type workflowsVM struct {
@@ -373,6 +374,10 @@ type jobRow struct {
 	State    store.JobState
 	Age      string // oldest-queued age for queued rows; runtime otherwise
 	ExitCode string
+	// Argv is the job's own resolved command line — populated for jobDetail's
+	// "Run again"/"Schedule" actions and their read-only argv preview; the
+	// plain jobsList table never renders it.
+	Argv []string
 }
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
@@ -398,9 +403,21 @@ type workspaceRow struct {
 
 // jobDetailVM is the streamed job view: its header plus the events seen so far.
 type jobDetailVM struct {
-	Page   page
-	Job    jobRow
-	Events []eventLine
+	Page     page
+	Job      jobRow
+	Events   []eventLine
+	Operator bool
+	// Source is the registered source name a Dir→source reverse lookup
+	// resolved the job's working directory to, empty when the job ran with no
+	// --source or the lookup found no match — "Run again" links to /run
+	// (optionally scoped to that source) rather than fabricating one.
+	Source string
+	// CanSchedule gates the "Schedule" action: true only for a terminal
+	// ansible job with no source working directory, the one shape a "shell"
+	// schedule can honestly replay (see jobs_schedule.go). Server-side
+	// validation in handleJobSchedule is authoritative; this only hides the
+	// button when it would just fail.
+	CanSchedule bool
 }
 
 type eventLine struct {

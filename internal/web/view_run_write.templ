@@ -23,7 +23,7 @@ templ runPage(vm runVM) {
 					<label for="rp-playbook">Playbook path</label>
 					<input id="rp-playbook" name="playbook" type="text" required autocomplete="off" placeholder="site.yml or /abs/path/site.yml"/>
 					<label for="rp-source">Source (optional)</label>
-					<input id="rp-source" name="source" type="text" autocomplete="off" placeholder="registered source name"/>
+					<input id="rp-source" name="source" type="text" autocomplete="off" placeholder="registered source name" value={ vm.Source }/>
 					<label for="rp-inventory">Inventory</label>
 					<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
 					<label for="rp-limit">Limit</label>
@@ -50,7 +50,7 @@ templ runPage(vm runVM) {
 					<label class="checkline"><input type="checkbox" name="shell" value="1"/> run through the shell module (pipes/redirects)</label>
 					<label class="checkline"><input type="checkbox" name="become" value="1"/> become (privilege escalation)</label>
 					<label for="rc-source">Source (optional)</label>
-					<input id="rc-source" name="source" type="text" autocomplete="off" placeholder="registered source name"/>
+					<input id="rc-source" name="source" type="text" autocomplete="off" placeholder="registered source name" value={ vm.Source }/>
 					<label for="rc-inventory">Inventory</label>
 					<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
 					<label for="rc-secrets">Run secrets binding</label>

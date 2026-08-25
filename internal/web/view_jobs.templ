@@ -54,6 +54,34 @@ templ jobDetail(vm jobDetailVM) {
 			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span> ·
 			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
+		if vm.Operator && vm.Job.State.Terminal() {
+			<div class="actions" style="margin:14px 0">
+				if vm.Source != "" {
+					<a class="btn" href={ templ.SafeURL("/run?source=" + urlEscape(vm.Source)) }>Run again</a>
+				} else {
+					<a class="btn" href="/run">Run again</a>
+				}
+				if vm.CanSchedule {
+					<button type="button" class="btn" data-modal-open="job-schedule">Schedule…</button>
+				}
+			</div>
+		}
+		if vm.Operator && vm.CanSchedule {
+			@modal("job-schedule", "Schedule this job") {
+				<p class="meta">Creates a recurring <span class="mono">shell</span> schedule that replays this job's exact command on a cron. Kind is fixed at shell — a schedule keeps no vault, run-secrets, or working-directory binding a playbook/command job may have used.</p>
+				<form method="post" action={ scheduleAction(vm.Job.ID) } class="writeform">
+					<label for="js-name">Name</label>
+					<input id="js-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="js-cron">Cron expression</label>
+					<input id="js-cron" name="cron" type="text" required autocomplete="off" placeholder="0 */5 * * * * or @every 5m"/>
+					<label>Kind</label>
+					<p class="meta mono">shell</p>
+					<label>Command (read-only, from this job)</label>
+					<p class="meta mono">{ joinArgv(vm.Job.Argv) }</p>
+					<div class="actions"><button type="submit" class="btn primary">Add schedule</button></div>
+				</form>
+			}
+		}
 		<div class="card" style="margin-top:14px">
 			<div class="kicker">Live tail</div>
 			<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">

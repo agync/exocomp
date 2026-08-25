@@ -166,6 +166,63 @@ func formScheduleArgs(r *http.Request, kind string) (store.ScheduleArgs, error) 
 	return args, nil
 }
 
+// schedulePrefill carries optional add-form field values for a deep link into
+// the schedules surface, so "Schedule…" elsewhere in the UI can land here with
+// the fields already filled instead of the operator retyping a command. Open
+// reports whether any prefill was given, so the surface auto-opens the add
+// modal instead of leaving the operator to notice the "+" button.
+type schedulePrefill struct {
+	Name   string
+	Kind   string
+	Argv   string
+	Target string
+	Open   bool
+}
+
+// schedulePrefillFor builds a schedulePrefill from a GET request's query
+// params. ?from_job=<id> derives Kind/Argv from that job's own stored
+// Kind/Argv the same way handleJobSchedule does (a form convenience only —
+// the real validation is on POST /schedules/add, exactly as if the operator
+// had typed the fields by hand); an id that does not resolve to a schedulable
+// job is ignored rather than failing the page. Explicit ?name=&kind=&argv=&
+// target= set the corresponding fields directly and win over any from_job
+// derivation; ?runbook= is a fallback name suggestion when ?name= is absent.
+func (s *Server) schedulePrefillFor(r *http.Request) schedulePrefill {
+	q := r.URL.Query()
+	var p schedulePrefill
+
+	if idStr := q.Get("from_job"); idStr != "" {
+		if id, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+			if job, err := s.store.GetJob(r.Context(), id); err == nil && canScheduleJob(job) {
+				p.Kind = store.ScheduleShell
+				p.Argv = strings.Join(job.Args.Argv, " ")
+				p.Open = true
+			}
+		}
+	}
+	if v := q.Get("runbook"); v != "" {
+		p.Name = v
+		p.Open = true
+	}
+	if v := q.Get("name"); v != "" {
+		p.Name = v
+		p.Open = true
+	}
+	if v := q.Get("kind"); v != "" {
+		p.Kind = v
+		p.Open = true
+	}
+	if v := q.Get("argv"); v != "" {
+		p.Argv = v
+		p.Open = true
+	}
+	if v := q.Get("target"); v != "" {
+		p.Target = v
+		p.Open = true
+	}
+	return p
+}
+
 // formJitter parses the optional jitter-seconds field.
 func formJitter(r *http.Request) (int, error) {
 	v := r.PostFormValue("jitter")

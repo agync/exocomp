@@ -168,7 +168,7 @@ func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
 	vm := schedulesVM{
 		Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows,
-		Operator: canWrite(ident),
+		Operator: canWrite(ident), Prefill: s.schedulePrefillFor(r),
 	}
 	s.render(w, r, http.StatusOK, schedulesList(vm))
 }
@@ -286,7 +286,12 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm := jobDetailVM{Page: s.pageFor(r, "Job #"+itoa64(id), "jobs"), Job: s.jobRow(job, s.now())}
+	ident, _ := identityOf(r.Context())
+	source, _ := s.sourceForDir(r.Context(), job.Args.Dir)
+	vm := jobDetailVM{
+		Page: s.pageFor(r, "Job #"+itoa64(id), "jobs"), Job: s.jobRow(job, s.now()),
+		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
+	}
 	for _, e := range events {
 		vm.Events = append(vm.Events, eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg})
 	}
@@ -453,7 +458,7 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 	row := jobRow{
 		ID: j.ID, Runbook: j.Runbook, Kind: j.Kind, Trigger: j.Trigger,
-		State: j.State, Age: jobAge(j, now), ExitCode: "-",
+		State: j.State, Age: jobAge(j, now), ExitCode: "-", Argv: j.Args.Argv,
 	}
 	if j.ExitCode != nil {
 		row.ExitCode = strconv.Itoa(*j.ExitCode)

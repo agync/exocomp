@@ -21,20 +21,20 @@ templ schedulesList(vm schedulesVM) {
 				<p class="meta">Mirrors <code>exocomp schedule add</code>: kind decides which fields apply. Command is whitespace-split (no quoting) — a command needing quoted arguments still wants the CLI.</p>
 				<form method="post" action="/schedules/add" class="writeform">
 					<label for="sc-name">Name</label>
-					<input id="sc-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<input id="sc-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+" value={ vm.Prefill.Name }/>
 					<label for="sc-cron">Cron expression</label>
 					<input id="sc-cron" name="cron" type="text" required autocomplete="off" placeholder="0 */5 * * * * or @every 5m"/>
 					<label for="sc-kind">Kind</label>
 					<select id="sc-kind" name="kind">
-						<option value="shell">shell</option>
-						<option value="backup">backup</option>
-						<option value="play">play</option>
-						<option value="drill">drill</option>
+						<option value="shell" selected?={ vm.Prefill.Kind == "" || vm.Prefill.Kind == "shell" }>shell</option>
+						<option value="backup" selected?={ vm.Prefill.Kind == "backup" }>backup</option>
+						<option value="play" selected?={ vm.Prefill.Kind == "play" }>play</option>
+						<option value="drill" selected?={ vm.Prefill.Kind == "drill" }>drill</option>
 					</select>
 					<label for="sc-argv">Command (shell/play kinds)</label>
-					<input id="sc-argv" name="argv" type="text" autocomplete="off" placeholder="shell: the command; play: playbook.yml [--extra-vars ...]"/>
+					<input id="sc-argv" name="argv" type="text" autocomplete="off" placeholder="shell: the command; play: playbook.yml [--extra-vars ...]" value={ vm.Prefill.Argv }/>
 					<label for="sc-target">Target (backup/drill: target name, empty = every enabled target; play: standing inventory name)</label>
-					<input id="sc-target" name="target" type="text" autocomplete="off"/>
+					<input id="sc-target" name="target" type="text" autocomplete="off" value={ vm.Prefill.Target }/>
 					<label for="sc-ck">Concurrency key (shell/play only)</label>
 					<input id="sc-ck" name="concurrency_key" type="text" autocomplete="off"/>
 					<label for="sc-jitter">Jitter seconds (optional)</label>
@@ -43,6 +43,9 @@ templ schedulesList(vm schedulesVM) {
 					<label class="checkline"><input type="checkbox" name="tolerate_unreachable" value="1"/> play kind: tolerate unreachable hosts (roaming-fleet converge)</label>
 					<div class="actions"><button type="submit" class="btn primary">Add schedule</button></div>
 				</form>
+			}
+			if vm.Prefill.Open {
+				<script>exoModalOpen("schedules-add");</script>
 			}
 		}
 		<div class="card span2" style="margin-top:18px">
