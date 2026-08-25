@@ -92,3 +92,26 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 	}
 	return RunResult{Job: job}, nil
 }
+
+// Reenqueue enqueues an already-assembled spec and records who asked — the same
+// attribution tail RunPlaybook and RunAdhoc run. It is the primitive the web
+// "Run again" resubmit is built on: the calling face reconstructs the spec by
+// cloning a finished job's stored args and applying the modal's overrides, and
+// this lands the actor and, for a privileged spec, the escalation on the job
+// ledger. Enqueue-time gating (an escalation must pass the operator scope) is the
+// caller's, exactly as it is for every other run verb here.
+func (s *Service) Reenqueue(ctx context.Context, enq Enqueuer, spec queue.Spec, actor Actor) (RunResult, error) {
+	job, err := enq.Enqueue(ctx, spec)
+	if err != nil {
+		return RunResult{}, err
+	}
+	if err := s.recordActor(ctx, job.ID, actor); err != nil {
+		return RunResult{}, err
+	}
+	if spec.Privileged {
+		if err := s.recordPrivileged(ctx, job.ID, actor); err != nil {
+			return RunResult{}, err
+		}
+	}
+	return RunResult{Job: job}, nil
+}
