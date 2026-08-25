@@ -80,7 +80,8 @@ a:visited { color: var(--accent-text); }
   position: sticky; top: 0; height: calc(100vh - var(--powerline-h));
 }
 .side-top {
-  display: flex; align-items: center; gap: 8px; height: var(--header-h);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  height: var(--header-h);
   padding: 0 12px; border-bottom: 1px solid var(--hairline-faint);
 }
 .brandlink, .brandlink:visited {
@@ -333,13 +334,58 @@ td .btn {
   background: var(--surface-void); color: var(--ink-100);
   border: 1px solid var(--hairline); border-radius: var(--radius-control); font: var(--type-body);
 }
-/* The native select keeps its own arrow (appearance:auto) and matches the input
- * height exactly, so a Scope/Kind dropdown aligns with the fields above it and
- * opens correctly inside the top-layer dialog. */
+/* With JS off the native select keeps its own arrow (appearance:auto) and
+ * matches the input height, so a Scope/Kind dropdown aligns with the fields
+ * above it. With JS on, exoEnhanceSelects() replaces it with the themed listbox
+ * below and hides this one. */
 .writeform select {
   appearance: auto;
   height: var(--row-h); padding: 0 10px 0 12px;
   cursor: pointer;
+}
+
+/* ---- Themed select (progressive enhancement over .writeform select) ----
+ * A native <select>'s option list renders as the un-themeable OS menu.
+ * exoEnhanceSelects() keeps the real <select> as the form field and the JS-off
+ * fallback (visually hidden, out of the tab order) and drives it from this
+ * trigger + role="listbox" panel, built in our own tokens. Absolutely
+ * positioned, so it also opens correctly inside the top-layer <dialog>. */
+.xselect { position: relative; display: block; }
+.xselect-trigger {
+  width: 100%; min-height: var(--row-h);
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  /* right padding keeps the chevron off the edge (the reported alignment fix) */
+  padding: 0 12px;
+  background: var(--surface-void); color: var(--ink-100);
+  border: 1px solid var(--hairline); border-radius: var(--radius-control);
+  font: var(--type-body); text-align: left; cursor: pointer;
+}
+.xselect-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.xselect-chev { flex: none; color: var(--ink-400); transition: transform .15s ease; }
+.xselect-trigger[aria-expanded="true"] .xselect-chev { transform: rotate(180deg); }
+.xselect-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 70;
+  margin: 0; padding: 4px; list-style: none;
+  max-height: 15rem; overflow-y: auto;
+  background: var(--surface-card); color: var(--ink-200);
+  border: 1px solid var(--hairline); border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
+}
+.xselect-option {
+  padding: 8px 10px; border-radius: var(--radius-chip);
+  color: var(--ink-200); cursor: pointer; user-select: none;
+}
+.xselect-option[aria-selected="true"] { background: var(--accent-tint); color: var(--accent-text); }
+.xselect-option.active { background: var(--surface-tray); color: var(--ink-100); }
+
+/* visually-hidden keeps a node reachable to assistive tech and the form while
+ * removing it from view; JS also drops the hidden native select from the tab
+ * order (tabindex=-1) so the themed trigger is the sole stop. */
+.visually-hidden {
+  position: absolute !important; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+  overflow: hidden; white-space: nowrap;
 }
 .writeform textarea { min-height: 6rem; padding: 8px 12px; font: var(--type-log); resize: vertical; }
 .writeform.inline { flex-flow: row wrap; align-items: center; gap: 8px; max-width: none; margin-top: 8px; }
@@ -362,6 +408,12 @@ td .btn {
 /* line-height:1 removes the display font's half-leading so the "+" centers on
  * the cap height of the title, not the taller line box. */
 .pageheader h1 { margin: 0; line-height: 1; }
+/* The header sits close to its first card. List surfaces set an 18px inline top
+ * margin on that card (with an add-form <dialog>, itself display:none, sometimes
+ * between the two); collapse both shapes to one deliberate gap owned here. */
+main > .pageheader { margin-bottom: 12px; }
+main > .pageheader + .card,
+main > .pageheader + dialog + .card { margin-top: 0 !important; }
 .addbtn {
   width: 32px; height: 32px; padding: 0; flex: none; align-self: center;
   display: inline-flex; align-items: center; justify-content: center;

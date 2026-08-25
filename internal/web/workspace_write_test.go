@@ -225,12 +225,18 @@ func TestWorkspacesPageBackendConfigModal(t *testing.T) {
 	}
 }
 
-// TestWorkspacesPageHowTo: the page opens with a concise how-to section
-// pointing operators at a row's Backend config for the paste-ready block.
-func TestWorkspacesPageHowTo(t *testing.T) {
+// TestWorkspacesPageConfigure: the header's Configure action opens a modal
+// titled "Configure remote state backend" whose OpenTofu/Terraform tabs carry
+// the `backend "http"` block at the backend's base address and the init step;
+// the list section is titled "States"; the old always-visible how-to card is
+// gone.
+func TestWorkspacesPageConfigure(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
+	if err := api.WriteAddress(filepath.Join(h.dir, api.AddressFile), "127.0.0.1:9443"); err != nil {
+		t.Fatalf("WriteAddress: %v", err)
+	}
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
@@ -242,10 +248,25 @@ func TestWorkspacesPageHowTo(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "Using exocomp as your OpenTofu/Terraform state backend") {
-		t.Fatal("workspaces page missing the state-backend how-to section")
+	if !strings.Contains(body, "Configure remote state backend") {
+		t.Fatal("workspaces page missing the Configure modal title")
 	}
-	if !strings.Contains(body, "Backend config") {
-		t.Fatal("workspaces page how-to does not point at a row's Backend config")
+	if !strings.Contains(body, `data-modal-open="ws-configure"`) {
+		t.Fatal("workspaces page missing the Configure button")
+	}
+	if !strings.Contains(body, ">OpenTofu<") || !strings.Contains(body, ">Terraform<") {
+		t.Fatal("Configure modal missing the OpenTofu/Terraform tabs")
+	}
+	if !strings.Contains(body, "backend &#34;http&#34;") {
+		t.Fatal("Configure modal did not render a backend config snippet")
+	}
+	if !strings.Contains(body, "tofu init") || !strings.Contains(body, "terraform init") {
+		t.Fatal("Configure modal missing the init step")
+	}
+	if !strings.Contains(body, ">States<") {
+		t.Fatal("workspaces list section is not titled States")
+	}
+	if strings.Contains(body, "Using exocomp as your OpenTofu/Terraform state backend") {
+		t.Fatal("workspaces page still renders the removed how-to card")
 	}
 }

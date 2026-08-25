@@ -24,21 +24,22 @@ templ layout(p page) {
 			@themeInit()
 			@navInit()
 			@modalInit()
+			@selectInit()
 		</head>
 		<body>
 			<div class="app">
 				<div class="scrim" onclick="exoCloseNav()" aria-hidden="true"></div>
 				<aside class="sidebar" aria-label="Primary">
 					<div class="side-top">
+						<a class="brandlink" href="/">
+							@brandMark()
+							<span class="wordmark">exocomp</span>
+						</a>
 						<button type="button" class="railtoggle" id="railbtn" onclick="exoToggleRail()" aria-label="Collapse sidebar" title="Collapse sidebar">
 							<span class="railmark" aria-hidden="true">@brandMark()</span>
 							<svg class="railchev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3L5 8l5 5"></path></svg>
 							<span class="raillabel">Open sidebar</span>
 						</button>
-						<a class="brandlink" href="/">
-							@brandMark()
-							<span class="wordmark">exocomp</span>
-						</a>
 					</div>
 					<nav class="side-nav">
 						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard)
@@ -265,10 +266,162 @@ templ navInit() {
 	</script>
 }
 
+// selectInit defines the themed-select enhancer, wired once here so it reaches
+// every .writeform select on the page — including those inside a closed
+// <dialog>, which are already in the DOM at load, so no per-modal re-run is
+// needed. The native <select> stays the form field and the JS-off fallback.
+templ selectInit() {
+	<script>
+	// exoEnhanceSelects walks .writeform selects and enhances each once.
+	function exoEnhanceSelects(root) {
+		var sels = (root || document).querySelectorAll(".writeform select");
+		for (var i = 0; i < sels.length; i++) exoEnhanceSelect(sels[i]);
+	}
+	function exoEnhanceSelect(sel) {
+		if (sel.dataset.enhanced) return;
+		sel.dataset.enhanced = "1";
+		var base = sel.id || ("xsel-" + Math.random().toString(36).slice(2, 8));
+		var panelId = base + "-listbox";
+		var lbl = sel.id && document.querySelector('label[for="' + sel.id + '"]');
+		var name = lbl ? lbl.textContent.trim() : "";
+
+		var wrap = document.createElement("div");
+		wrap.className = "xselect";
+		sel.parentNode.insertBefore(wrap, sel);
+		wrap.appendChild(sel);
+		sel.classList.add("visually-hidden");
+		sel.setAttribute("tabindex", "-1");
+		sel.setAttribute("aria-hidden", "true");
+
+		var trigger = document.createElement("button");
+		trigger.type = "button";
+		trigger.className = "xselect-trigger";
+		trigger.setAttribute("aria-haspopup", "listbox");
+		trigger.setAttribute("aria-expanded", "false");
+		trigger.setAttribute("aria-controls", panelId);
+		if (name) trigger.setAttribute("aria-label", name);
+		var value = document.createElement("span");
+		value.className = "xselect-value";
+		trigger.appendChild(value);
+		trigger.insertAdjacentHTML("beforeend",
+			'<svg class="xselect-chev" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6l4 4 4-4"></path></svg>');
+		wrap.appendChild(trigger);
+
+		var panel = document.createElement("ul");
+		panel.className = "xselect-panel";
+		panel.id = panelId;
+		panel.setAttribute("role", "listbox");
+		panel.setAttribute("tabindex", "-1");
+		if (name) panel.setAttribute("aria-label", name);
+		panel.hidden = true;
+		wrap.appendChild(panel);
+
+		var options = [];
+		for (var j = 0; j < sel.options.length; j++) {
+			var li = document.createElement("li");
+			li.className = "xselect-option";
+			li.id = panelId + "-o" + j;
+			li.setAttribute("role", "option");
+			li.dataset.index = String(j);
+			li.textContent = sel.options[j].textContent;
+			li.setAttribute("aria-selected", sel.options[j].selected ? "true" : "false");
+			panel.appendChild(li);
+			options.push(li);
+		}
+		var active = sel.selectedIndex < 0 ? 0 : sel.selectedIndex;
+
+		function syncValue() {
+			var o = sel.options[sel.selectedIndex];
+			value.textContent = o ? o.textContent : "";
+		}
+		function markSelected() {
+			for (var k = 0; k < options.length; k++) {
+				options[k].setAttribute("aria-selected", k === sel.selectedIndex ? "true" : "false");
+			}
+		}
+		function setActive(idx) {
+			active = Math.max(0, Math.min(options.length - 1, idx));
+			for (var k = 0; k < options.length; k++) options[k].classList.toggle("active", k === active);
+			panel.setAttribute("aria-activedescendant", options[active].id);
+			options[active].scrollIntoView({ block: "nearest" });
+		}
+		function isOpen() { return !panel.hidden; }
+		function open() {
+			if (isOpen()) return;
+			panel.hidden = false;
+			trigger.setAttribute("aria-expanded", "true");
+			setActive(sel.selectedIndex < 0 ? 0 : sel.selectedIndex);
+			panel.focus();
+		}
+		function close(toTrigger) {
+			if (!isOpen()) return;
+			panel.hidden = true;
+			trigger.setAttribute("aria-expanded", "false");
+			if (toTrigger) trigger.focus();
+		}
+		function commit(idx) {
+			if (sel.selectedIndex !== idx) {
+				sel.selectedIndex = idx;
+				sel.dispatchEvent(new Event("change", { bubbles: true }));
+			}
+			markSelected();
+			syncValue();
+		}
+
+		trigger.addEventListener("click", function () { isOpen() ? close(false) : open(); });
+		trigger.addEventListener("keydown", function (e) {
+			if (e.key === "ArrowDown" || e.key === "ArrowUp" || e.key === "Enter" || e.key === " ") {
+				e.preventDefault();
+				open();
+			}
+		});
+		panel.addEventListener("keydown", function (e) {
+			switch (e.key) {
+			case "ArrowDown": e.preventDefault(); setActive(active + 1); break;
+			case "ArrowUp": e.preventDefault(); setActive(active - 1); break;
+			case "Home": e.preventDefault(); setActive(0); break;
+			case "End": e.preventDefault(); setActive(options.length - 1); break;
+			case "Enter":
+			case " ": e.preventDefault(); commit(active); close(true); break;
+			case "Escape": e.preventDefault(); close(true); break;
+			case "Tab": commit(active); close(false); break;
+			default:
+				if (e.key.length === 1) {
+					var ch = e.key.toLowerCase();
+					for (var k = 1; k <= options.length; k++) {
+						var i2 = (active + k) % options.length;
+						if (options[i2].textContent.trim().toLowerCase().indexOf(ch) === 0) { setActive(i2); break; }
+					}
+				}
+			}
+		});
+		panel.addEventListener("click", function (e) {
+			var li = e.target.closest(".xselect-option");
+			if (!li) return;
+			var idx = Number(li.dataset.index);
+			setActive(idx);
+			commit(idx);
+			close(true);
+		});
+		panel.addEventListener("mousemove", function (e) {
+			var li = e.target.closest(".xselect-option");
+			if (li) setActive(Number(li.dataset.index));
+		});
+		document.addEventListener("click", function (e) {
+			if (isOpen() && !wrap.contains(e.target)) close(false);
+		});
+		// Keep the trigger correct if the value is changed on the native element.
+		sel.addEventListener("change", function () { markSelected(); syncValue(); });
+		syncValue();
+	}
+	</script>
+}
+
 templ layoutReady() {
 	<script>
 	exoSyncThemeControl();
 	exoSyncRail();
+	exoEnhanceSelects(document);
 	document.querySelectorAll('.side-nav .navitem').forEach(function (a) {
 		a.addEventListener('click', exoCloseNav);
 	});

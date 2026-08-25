@@ -1,45 +1,38 @@
 package web
 
-// workspacesList is the Workspaces write surface (managed OpenTofu state): a
-// how-to card explaining that exocomp itself is the state backend (there is
-// no "add state" flow — a workspace's row config IS the how-to), then every
-// registered state (store.Workspace under the hood — the DR-critical name
-// stays internal) with its type — state-only (TofuDir empty, exocomp is just
-// the encrypted http backend for an external tofu) or runs-in-server (exocomp
-// also plans/applies it) — and its newest stored tfstate serial, plus per-row
-// Plan and Apply forms for runs-in-server rows. Every row also gets a Backend
-// config action: the same ready-to-paste `backend "http"` block `workspace
-// add --state-only` prints, computed the identical way (api.NewBackendBlock).
+// workspacesList is the Workspaces write surface (managed OpenTofu state): every
+// registered state (store.Workspace under the hood — the DR-critical name stays
+// internal) with its type — state-only (TofuDir empty, exocomp is just the
+// encrypted http backend for an external tofu) or runs-in-server (exocomp also
+// plans/applies it) — and its newest stored tfstate serial, plus per-row Plan
+// and Apply forms for runs-in-server rows. Every row also gets a Backend config
+// action: the same ready-to-paste `backend "http"` block `workspace add
+// --state-only` prints, computed the identical way (api.NewBackendBlock). The
+// header's Configure action opens a how-to modal (OpenTofu/Terraform tabs) with
+// the same block shape at the backend's base address.
 // A plan runs through PlanWorkspace with the "api" trigger, exactly as a
-// bearer-token plan does, so its -out file is sealed into a consumable
-// artifact post-run; the resulting artifact id can be fed into a later
-// apply's optional plan field to consume that saved plan's recorded policy
-// verdict. An apply with no plan id is a fresh apply — auto-approved unless
-// the workspace has enabled plan policies, in which case it is refused (there
-// is nothing for a policy to read). Workspaces carry no secret material of
-// their own — the backend config block does, but it is shown to an operator
-// exactly as the CLI would print it to them, never logged — so, like run and
-// schedules, the controls here are plain operator-scope: no reauth, no
-// confirm_token.
+// bearer-token plan does, so its -out file is sealed into a consumable artifact
+// post-run; the resulting artifact id can be fed into a later apply's optional
+// plan field to consume that saved plan's recorded policy verdict. An apply with
+// no plan id is a fresh apply — auto-approved unless the workspace has enabled
+// plan policies, in which case it is refused (there is nothing for a policy to
+// read). Workspaces carry no secret material of their own — the backend config
+// block does, but it is shown to an operator exactly as the CLI would print it
+// to them, never logged — so, like run and schedules, the controls here are
+// plain operator-scope: no reauth, no confirm_token.
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
 		<div class="pageheader">
 			<h1>Workspaces</h1>
+			if vm.Operator {
+				<button type="button" class="btn" style="margin-left:auto" data-modal-open="ws-configure">Configure</button>
+			}
 		</div>
-		<div class="card span2" style="margin-bottom:18px">
-			<h3>Using exocomp as your OpenTofu/Terraform state backend</h3>
-			<p class="meta">
-				exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Point a <code>backend "http"</code> block in your tofu config at the address in a row's <b>Backend config</b> below, then run <code>tofu init</code>.
-			</p>
-		</div>
-		<p class="meta" style="margin-bottom:16px">
-			A state-only row is just the backend for an external <code>tofu</code>; one with a root module also runs plan/apply here.
-		</p>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2">
 			if !vm.Operator {
 				<div class="kicker">Read-only</div>
 			}
-			<h3>All state</h3>
+			<h3>States</h3>
 			if !vm.Operator {
 				<p class="meta">Read-only: registering state, planning, or applying needs an operator token.</p>
 			}
@@ -86,6 +79,50 @@ templ workspacesList(vm workspacesVM) {
 			}
 		</div>
 		if vm.Operator {
+			@modal("ws-configure", "Configure remote state backend") {
+				<p class="meta">exocomp is the state backend: it holds each workspace's encrypted <code>tfstate</code> and serves it over HTTP. Point a <code>backend "http"</code> block at the address below, then initialise. Each row's <b>Backend config</b> gives that workspace's exact block (address and bearer).</p>
+				<div class="tabs" role="tablist" aria-label="State tool" id="ws-cfg-tabs">
+					<button type="button" class="tab" id="ws-cfg-tab-tofu" role="tab" data-tab="tofu" aria-controls="ws-cfg-tofu" aria-selected="true">OpenTofu</button>
+					<button type="button" class="tab" id="ws-cfg-tab-terraform" role="tab" data-tab="terraform" aria-controls="ws-cfg-terraform" aria-selected="false">Terraform</button>
+				</div>
+				<div id="ws-cfg-tofu" class="tabpanel" role="tabpanel" aria-labelledby="ws-cfg-tab-tofu">
+					if vm.Config.Address == "" {
+						<p class="meta">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
+					} else {
+						<p class="meta">Add to your OpenTofu config (replace <code>{ configExampleWorkspace }</code> with the workspace name):</p>
+						<pre class="secretbox" aria-label="OpenTofu backend config">{ vm.Config.HCL() }</pre>
+						<p class="meta">Then initialise the backend:</p>
+						<pre class="secretbox" aria-label="tofu init">tofu init</pre>
+					}
+				</div>
+				<div id="ws-cfg-terraform" class="tabpanel" role="tabpanel" aria-labelledby="ws-cfg-tab-terraform" hidden>
+					if vm.Config.Address == "" {
+						<p class="meta">No state backend address recorded yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
+					} else {
+						<p class="meta">The block is identical under Terraform — the same <code>terraform</code> / <code>backend "http"</code> stanza; only the CLI differs:</p>
+						<pre class="secretbox" aria-label="Terraform backend config">{ vm.Config.HCL() }</pre>
+						<p class="meta">Then initialise the backend:</p>
+						<pre class="secretbox" aria-label="terraform init">terraform init</pre>
+					}
+				</div>
+				<script>
+				(function () {
+					var scope = document.getElementById("ws-cfg-tabs");
+					if (!scope) return;
+					var tabs = Array.prototype.slice.call(scope.querySelectorAll('[role="tab"]'));
+					tabs.forEach(function (t) {
+						t.addEventListener("click", function () {
+							tabs.forEach(function (o) {
+								var on = o === t;
+								o.setAttribute("aria-selected", on ? "true" : "false");
+								var panel = document.getElementById(o.getAttribute("aria-controls"));
+								if (panel) panel.hidden = !on;
+							});
+						});
+					});
+				})();
+				</script>
+			}
 			for _, wsr := range vm.Workspaces {
 				@modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name) {
 					if wsr.Backend.Address == "" {

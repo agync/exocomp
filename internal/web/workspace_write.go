@@ -35,7 +35,16 @@ type workspacesVM struct {
 	Page       page
 	Operator   bool
 	Workspaces []workspaceWriteRow
+	// Config is an example backend block at the state backend's base address,
+	// for the Configure modal's how-to. Its workspace name is a placeholder; a
+	// row's Backend config gives the exact block. Empty Address when unbound.
+	Config api.BackendBlock
 }
+
+// configExampleWorkspace is the placeholder name the Configure modal's example
+// backend block carries; PathEscape leaves it intact so the address reads
+// cleanly. A row's Backend config carries the real per-workspace block.
+const configExampleWorkspace = "WORKSPACE"
 
 // workspaceWriteRow is one tofu workspace on the write surface: its name, root
 // dir, the newest tfstate serial stored for it (0 means no state has ever
@@ -103,6 +112,9 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.fail(w, r, err)
 		return
+	}
+	if addr != "" {
+		vm.Config = api.NewBackendBlock(s.deriver, addr, configExampleWorkspace)
 	}
 	for _, ws := range list {
 		row := workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial}
