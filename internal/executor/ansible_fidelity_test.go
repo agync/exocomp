@@ -32,12 +32,12 @@ func TestAnsibleArgvPassthrough(t *testing.T) {
 		t.Fatalf("playbook is not the last argument: %v", got)
 	}
 
-	// localhost form keeps --connection local before the passthrough.
+	// Empty inventory adds no --inventory at all: the passthrough sits directly
+	// after the binary and ansible defers to its own inventory discovery.
 	local := executor.AnsibleArgv("/p/site.yml", "", "--check")
-	wantLocal := []string{"ansible-playbook", "--inventory", "localhost,",
-		"--connection", "local", "--check", "/p/site.yml"}
+	wantLocal := []string{"ansible-playbook", "--check", "/p/site.yml"}
 	if !slices.Equal(local, wantLocal) {
-		t.Fatalf("localhost AnsibleArgv = %v\nwant %v", local, wantLocal)
+		t.Fatalf("empty-inventory AnsibleArgv = %v\nwant %v", local, wantLocal)
 	}
 }
 

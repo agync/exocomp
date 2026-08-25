@@ -71,9 +71,10 @@ func TestResolveInventoryPathValueIsAbsolute(t *testing.T) {
 	}
 }
 
-// TestResolveInventoryEmptyIsLocalhost: an empty value targets localhost, with
-// neither a path nor a name.
-func TestResolveInventoryEmptyIsLocalhost(t *testing.T) {
+// TestResolveInventoryEmptyResolvesToNothing: an empty value resolves to neither
+// a path nor a name, so the argv builder adds no --inventory and ansible defers
+// to its own inventory discovery.
+func TestResolveInventoryEmptyResolvesToNothing(t *testing.T) {
 	path, name, err := service.New(openStore(t), t.TempDir(), nil).ResolveInventory(context.Background(), "")
 	if err != nil {
 		t.Fatalf("ResolveInventory: %v", err)

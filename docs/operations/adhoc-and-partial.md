@@ -55,8 +55,9 @@ Both verbs run through the one queue with the same credential and isolation mode
 [`playbook run`](playbook-run.md) uses:
 
 - **From a source checkout** with `--source <name>`, so the repo's `ansible.cfg`
-  and inventory apply; or against localhost over the local connection with no
-  source. `--inventory` names a registered inventory or a path.
+  and inventory apply. `--inventory` names a registered inventory or a path; left
+  empty, ansible discovers its own inventory (the checkout's `ansible.cfg`, then
+  its default hosts file) — no localhost is pinned.
 - **Sandboxed and redacted**, the vault-id from `--vault-project`, the run-secret
   set from `--run-secrets`, resolved from the envelope at run time.
 - **Secrets never on argv.** The vault password and run-secret / dynamic-inventory

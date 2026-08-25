@@ -13,7 +13,8 @@ import (
 // ResolveInventory turns an --inventory value into the path ansible targets and,
 // when it names a registered inventory, that inventory's name so its env_binding
 // resolves for a dynamic plugin. A value that matches no registered inventory is
-// treated as a filesystem path; an empty value targets localhost. This is the
+// treated as a filesystem path; an empty value resolves to nothing, so the argv
+// carries no --inventory and ansible discovers its own. This is the
 // transport-free half a CLI run and a server-side run both call, so the two turn
 // an operator's names into the same paths.
 func (s *Service) ResolveInventory(ctx context.Context, value string) (path, name string, err error) {

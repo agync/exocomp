@@ -83,10 +83,10 @@ func TestNoHostsFailedRunNoWarning(t *testing.T) {
 	}
 }
 
-// TestLocalhostRunNoWarning proves exocomp's built-in localhost-over-local run
-// (the empty-inventory default) does not falsely warn: localhost is a real host
-// row in the recap.
-func TestLocalhostRunNoWarning(t *testing.T) {
+// TestLocalhostRecapNoWarning proves a run whose recap shows localhost as a real
+// host row (localhost reached through ansible's own inventory discovery) does not
+// falsely emit the zero-host warning.
+func TestLocalhostRecapNoWarning(t *testing.T) {
 	t.Parallel()
 	const localhostRecap = `echo "PLAY RECAP ****"
 echo "localhost                  : ok=1    changed=0    unreachable=0    failed=0    skipped=0    rescued=0    ignored=0"

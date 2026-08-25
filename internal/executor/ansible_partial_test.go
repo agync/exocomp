@@ -235,12 +235,12 @@ func TestTolerateUnreachableNoRecapFailsClosed(t *testing.T) {
 }
 
 // TestAnsibleAdhocArgv covers the ad-hoc argv builder: the pattern is the sole
-// positional, the module and args ride their flags, and an empty inventory
-// targets localhost over the local connection.
+// positional, the module and args ride their flags, and an empty inventory adds
+// no --inventory, deferring to ansible's own inventory discovery.
 func TestAnsibleAdhocArgv(t *testing.T) {
 	t.Parallel()
 	got := executor.AnsibleAdhocArgv("all", "", "command", "hostname", "--become")
-	want := []string{"ansible", "all", "--inventory", "localhost,", "--connection", "local",
+	want := []string{"ansible", "all",
 		"--module-name", "command", "--args", "hostname", "--become"}
 	if !eq(got, want) {
 		t.Fatalf("adhoc argv=%v\nwant %v", got, want)

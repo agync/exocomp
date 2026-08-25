@@ -84,7 +84,7 @@ templ sourceDetail(vm sourceDetailVM) {
 						<label for="rp-path">Or a path relative to the checkout</label>
 						<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
 						<label for="rp-inventory">Inventory</label>
-						<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
+						<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
 						<label for="rp-limit">Limit</label>
 						<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
 						<label for="rp-tags">Tags</label>
@@ -107,7 +107,7 @@ templ sourceDetail(vm sourceDetailVM) {
 						<label class="checkline"><input type="checkbox" name="shell" value="1"/> run through the shell module (pipes/redirects)</label>
 						<label class="checkline"><input type="checkbox" name="become" value="1"/> become (privilege escalation)</label>
 						<label for="rc-inventory">Inventory</label>
-						<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: localhost)"/>
+						<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
 						<label for="rc-secrets">Run secrets binding</label>
 						<input id="rc-secrets" name="run_secrets" type="text" autocomplete="off"/>
 						<label class="checkline"><input type="checkbox" name="require_approval" value="1"/> require approval before it runs</label>

@@ -41,7 +41,7 @@ const shellAdhocModule = "shell"
 var adhocModuleName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.]*$`)
 
 // adhocSpec is one ad-hoc invocation: `ansible <pattern> -i <inv> -m <module>
-// -a "<args>"`, run from a source checkout (or localhost) through the one queue
+// -a "<args>"`, run from a source checkout (or none) through the one queue
 // under the same governance a playbook run gets.
 type adhocSpec struct {
 	// runbook labels the job so `command` and `ansible` are told apart in the
@@ -87,8 +87,8 @@ func newAnsibleAdhocCmd() *cobra.Command {
 		Long: "The power form of the everyday ad-hoc run: `ansible <pattern> -i <inv> " +
 			"-m <module> -a \"<args>\"` for any module (service, copy, package, ping, " +
 			"setup, …). `exocomp command` is the ergonomic shorthand for `-m command`. " +
-			"It runs from a source's checkout (--source) against its inventory, or against " +
-			"localhost over the local connection, through the same governance a playbook " +
+			"It runs from a source's checkout (--source) against its inventory, or with no " +
+			"inventory (ansible discovers its own), through the same governance a playbook " +
 			"run gets: the sandbox, the vault-id, the fleet key, run-secrets, redaction, " +
 			"and the one queue. --require-approval gates a destructive module behind the " +
 			"approval gate; --tolerate-unreachable settles an unreachable-only run degraded " +
@@ -138,7 +138,7 @@ func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *strin
 	cmd.Flags().StringVarP(sourceName, "source", "s", "", "run from this registered source's checkout")
 	cmd.Flags().StringVar(host, "host", "", "ansible host pattern: a host, a group, or an expression like `fedora:!nas`")
 	cmd.Flags().StringVar(limit, "limit", "", "alias for --host")
-	cmd.Flags().StringVar(inventory, "inventory", "", "inventory path or registered inventory name (default: localhost over the local connection)")
+	cmd.Flags().StringVar(inventory, "inventory", "", "inventory path or registered inventory name (empty: ansible discovers its own)")
 	cmd.Flags().BoolVar(become, "become", false, "run with privilege escalation (ansible --become)")
 	cmd.Flags().StringVar(vaultProject, "vault-project", "", "derive the ansible-vault password for this project from the envelope")
 	cmd.Flags().StringVar(runSecrets, "run-secrets", "", "bind a run_secret set as named env for the run")

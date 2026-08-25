@@ -71,7 +71,7 @@ func newRunCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&inventory, "inventory", "",
-		"inventory path or registered inventory name (default: localhost)")
+		"inventory path or registered inventory name (empty: ansible discovers its own)")
 	cmd.Flags().StringVar(&vaultProject, "vault-project", "",
 		"derive the ansible-vault password for the play from the envelope")
 	cmd.Flags().StringVar(&runSecrets, "run-secrets", "",

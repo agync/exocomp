@@ -40,18 +40,18 @@ const ansibleEnvPrefix = "ANSIBLE_"
 // public arguments: vault and extra-vars files live in the per-job private
 // directory and are appended when the job runs, so nothing secret and no
 // path that outlives the run is written to the job row. An empty inventory
-// targets localhost over the local connection.
+// adds no --inventory at all, so ansible falls back to its own discovery —
+// the checkout's ./ansible.cfg `inventory`, then its default hosts file —
+// exactly as a bare `ansible-playbook <playbook>` would from that tree.
 // The passthrough arguments are the operator's own flags — --check, --diff,
 // --limit, --tags, -e, --forks — recorded on the job row because they are
 // public: what a run does is not a secret, only the vault password and the
 // extra-vars values are, and those never travel in argv. They are placed
 // before the playbook so ansible-playbook reads them as options.
 func AnsibleArgv(playbook, inventory string, passthrough ...string) []string {
-	argv := []string{AnsibleBinary, "--inventory"}
-	if inventory == "" {
-		argv = append(argv, "localhost,", "--connection", "local")
-	} else {
-		argv = append(argv, inventory)
+	argv := []string{AnsibleBinary}
+	if inventory != "" {
+		argv = append(argv, "--inventory", inventory)
 	}
 	argv = append(argv, passthrough...)
 	return append(argv, playbook)
@@ -73,18 +73,17 @@ func AnsibleArtifactArgv(playbook string, passthrough ...string) []string {
 // operator verb, `ansible <pattern> -i <inv> -m <module> -a "<args>"`, run from
 // a source checkout against its inventory. pattern is any ansible host pattern
 // (a host, a group, or an expression like `fedora:!nas`) and travels as the sole
-// positional. An empty inventory targets localhost over the local connection,
-// the same default AnsibleArgv uses. module defaults to `command` at the caller;
+// positional. An empty inventory adds no --inventory, so ansible discovers its
+// own inventory from the checkout's ./ansible.cfg or default hosts file, the
+// same fallback AnsibleArgv uses. module defaults to `command` at the caller;
 // args is the module's `-a` string, omitted when empty (ping and setup take
 // none). The passthrough carries the same public flags a playbook run does
 // (--become, --limit, --check) — secrets keep their own out-of-argv paths, so
 // nothing here is a secret and the whole argv is safe on the job row.
 func AnsibleAdhocArgv(pattern, inventory, module, args string, passthrough ...string) []string {
-	argv := []string{AnsibleAdhocBinary, pattern, "--inventory"}
-	if inventory == "" {
-		argv = append(argv, "localhost,", "--connection", "local")
-	} else {
-		argv = append(argv, inventory)
+	argv := []string{AnsibleAdhocBinary, pattern}
+	if inventory != "" {
+		argv = append(argv, "--inventory", inventory)
 	}
 	argv = append(argv, "--module-name", module)
 	if args != "" {
@@ -416,13 +415,15 @@ func (a *Ansible) vaultEntries() []VaultEntry {
 	return append(entries, a.opts.Vaults...)
 }
 
-// localOnlyTarget reports whether argv's sole inventory is exocomp's built-in
-// localhost-over-local target — the empty-inventory default from AnsibleArgv.
-// Only then is every host the controller itself, so the source venv interpreter
-// may be forced for all of them. A real inventory (a path, or the materialized
-// artifact that carries no inline --inventory) names hosts whose interpreter is
-// their own, never the controller's venv path, so it returns false and the
-// interpreter is left to the inventory or ansible's remote auto-discovery.
+// localOnlyTarget reports whether argv's sole inventory is an explicit
+// `localhost,` inline target. Only then is every host the controller itself, so
+// the source venv interpreter may be forced for all of them. An empty inventory
+// no longer maps here: it carries no --inventory at all (ansible discovers its
+// own, and its implicit localhost already runs under the venv python that
+// ansible itself runs as), so it returns false and the interpreter is left to
+// ansible's discovery — as does a real inventory (a path, or the materialized
+// artifact that carries no inline --inventory), whose hosts own their own
+// interpreter, never the controller's venv path.
 func localOnlyTarget(argv []string) bool {
 	var inventories []string
 	for i := 0; i < len(argv); i++ {

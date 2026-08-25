@@ -24,7 +24,7 @@ Two steps, in order:
 1. **ansible-play** — the bootstrap play, run against `--inventory`. Because the
    apply has not run yet, there is no materialized `tf:<workspace>` inventory to
    build the play's hosts from, so the play targets an inventory you supply
-   (`--inventory <path|name>`, or localhost by default).
+   (`--inventory <path|name>`); left empty, ansible discovers its own.
 2. **tofu-apply** — `tofu apply -auto-approve` against the workspace, gated on the
    workspace's tofu concurrency key like every other apply.
 
@@ -143,7 +143,7 @@ delivers some values as env and others as a file in one chain.
 
 | Flag | Effect |
 |---|---|
-| `--inventory <path\|name>` | Inventory for the bootstrap play (default: localhost). |
+| `--inventory <path\|name>` | Inventory for the bootstrap play (empty: ansible discovers its own). |
 | `--vault-project <p>` | Derive the play's ansible-vault password from the envelope. |
 | `--run-secrets <name>` | Bind a run-secret set as provider/`TF_VAR_` env for the **apply** step. Mutually exclusive with `--capture`/`--capture-file`. |
 | `--capture NAME=FILE` | Seal a play-fetched file (`FILE`, relative to the run's capture dir) and hand it to the **apply** as `NAME` env. Repeatable. Mutually exclusive with `--run-secrets`. |

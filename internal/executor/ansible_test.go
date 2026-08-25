@@ -47,9 +47,8 @@ func TestAnsibleArgv(t *testing.T) {
 		want      []string
 	}{
 		{
-			name: "localhost",
-			want: []string{"ansible-playbook", "--inventory", "localhost,",
-				"--connection", "local", "/p/site.yml"},
+			name: "empty defers to ansible discovery",
+			want: []string{"ansible-playbook", "/p/site.yml"},
 		},
 		{
 			name:      "inventory",
@@ -100,10 +99,16 @@ env | sed 's/^/env:/'
 		return slices.Contains(lines, prefix+want)
 	}
 
-	for _, want := range []string{"--inventory", "localhost,", "--connection", "local",
-		"/p/site.yml", "--vault-id", "--extra-vars"} {
+	for _, want := range []string{"/p/site.yml", "--vault-id", "--extra-vars"} {
 		if !has("arg:", want) {
 			t.Errorf("argument %q missing from %q", want, lines)
+		}
+	}
+	// An empty inventory adds no --inventory: the run defers to ansible's own
+	// inventory discovery rather than pinning localhost.
+	for _, absent := range []string{"--inventory", "localhost,", "--connection"} {
+		if has("arg:", absent) {
+			t.Errorf("argument %q should be absent for an empty inventory: %q", absent, lines)
 		}
 	}
 	if !has("vaultfile:", "pw-from-the-envelope") {
@@ -168,8 +173,11 @@ done
 // TestAnsibleInterpreterScopedToLocalConnection is the regression guard for the
 // remote rc-127 defect: the source venv interpreter is the controller's own and
 // must never be forced as a global ansible_python_interpreter that a remote host
-// would inherit — the remote has no such path. It stays forced for the built-in
-// localhost-over-local run, where the controller is the only target.
+// would inherit — the remote has no such path. It stays forced only for an
+// explicit `localhost,` inline inventory, where the controller is the sole
+// target; an empty inventory now forces nothing and defers to ansible's own
+// discovery (whose implicit localhost already runs under the venv python that
+// ansible itself runs as).
 func TestAnsibleInterpreterScopedToLocalConnection(t *testing.T) {
 	const venvPython = "/data/cache/python/homelab/abc123/bin/python"
 
@@ -204,11 +212,11 @@ func TestAnsibleInterpreterScopedToLocalConnection(t *testing.T) {
 		}
 	})
 
-	t.Run("localhost run still uses the venv interpreter", func(t *testing.T) {
+	t.Run("explicit localhost inventory still forces the venv interpreter", func(t *testing.T) {
 		t.Parallel()
-		body, forced := extraVarsOf(t, executor.AnsibleArgv("/p/site.yml", ""))
+		body, forced := extraVarsOf(t, executor.AnsibleArgv("/p/site.yml", "localhost,"))
 		if !forced {
-			t.Fatalf("localhost run wrote no extra-vars; interpreter not forced")
+			t.Fatalf("explicit localhost run wrote no extra-vars; interpreter not forced")
 		}
 		var got map[string]string
 		if err := json.Unmarshal([]byte(body), &got); err != nil {
@@ -216,6 +224,17 @@ func TestAnsibleInterpreterScopedToLocalConnection(t *testing.T) {
 		}
 		if got["ansible_python_interpreter"] != venvPython {
 			t.Errorf("localhost interpreter = %q, want %q", got["ansible_python_interpreter"], venvPython)
+		}
+	})
+
+	t.Run("empty inventory forces no interpreter and defers to discovery", func(t *testing.T) {
+		t.Parallel()
+		body, forced := extraVarsOf(t, executor.AnsibleArgv("/p/site.yml", ""))
+		if forced && strings.Contains(body, "ansible_python_interpreter") {
+			t.Errorf("empty-inventory run forced an interpreter instead of deferring: %s", body)
+		}
+		if strings.Contains(body, venvPython) {
+			t.Errorf("controller venv path reached an empty-inventory run: %s", body)
 		}
 	})
 }

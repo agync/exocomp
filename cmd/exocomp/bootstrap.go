@@ -63,8 +63,9 @@ func newBootstrapRunCmd() *cobra.Command {
 		Use:   "run <playbook> <workspace>",
 		Short: "Define and start a bootstrap-play->apply workflow",
 		Long: "Chains the bootstrap play to the workspace's apply as one step-ledger " +
-			"workflow, play first. The play runs against --inventory (localhost by " +
-			"default, since no tofu output exists yet to build one from); the apply runs " +
+			"workflow, play first. The play runs against --inventory (empty defers to " +
+			"ansible's own inventory discovery — there is no tofu output yet to build " +
+			"one from); the apply runs " +
 			"only if the play succeeded. With --source, the source's .exocomp/hooks.yml " +
 			"wraps the chain exactly as it wraps `handoff run`. --require-approval gates " +
 			"the destructive apply behind the confirmation contract.",
@@ -108,7 +109,7 @@ func newBootstrapRunCmd() *cobra.Command {
 		},
 	}
 	run.Flags().StringVar(&inventory, "inventory", "",
-		"inventory path or registered name for the bootstrap play (default: localhost)")
+		"inventory path or registered name for the bootstrap play (empty: ansible discovers its own)")
 	run.Flags().StringVar(&vaultProject, "vault-project", "",
 		"derive the ansible-vault password for the bootstrap play from the envelope")
 	run.Flags().StringVar(&runSecrets, "run-secrets", "",
