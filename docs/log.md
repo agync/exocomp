@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-26 — jobs carry and display their source name
+
+- **A job now names the registered source it ran from, not just its runbook type.**
+  `Source` rides `JobArgs`/`queue.Spec` like `Inventory`/`RunnerName` — a name on the job
+  row's `args_json`, no schema migration. Every source-scoped run path sets it: `playbook
+  run --source`, `run`, `ansible`/`command --source`, `run-cli --source`, and the web
+  source launcher; a hooked source's pre/post-run and gate steps inherit it too.
+- **The `running` job event no longer dumps an absolute checkout path.** With a source it
+  now reads `running <source>: <argv, relativized against Dir>`; without one but with a
+  working directory it still relativizes; a job with neither is unchanged.
+- **Display**: the web jobs list gets a Source column and job detail names it in its meta
+  line (falling back to the old Dir→source reverse lookup for a pre-existing row); `exocomp
+  jobs list`/`get` and the wire `job.list`/`job.get` JSON gain a `source` field; the TUI
+  jobs table gets a SOURCE column.
+
 ## 2026-08-26 — UnifiedPush per-device push endpoints
 
 - New v1.1 push path: a device registers its UnifiedPush distributor URL over
