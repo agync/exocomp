@@ -111,6 +111,14 @@ type JobArgs struct {
 	// resolved fresh at execution time, not cached onto the job. Empty is the
 	// default, uncapped path most jobs take.
 	RunnerName string `json:"runner_name,omitempty"`
+	// Privileged records that this job was requested to run UNSANDBOXED (the
+	// disabled tier) even when the daemon default is enforcing. It lives on the
+	// row so whichever process claims the job runs it at the same tier the
+	// requester asked for, and so the choice is an auditable job fact. Off by
+	// default: an existing row without the field runs at the daemon's effective
+	// tier exactly as before. Setting it is operator-gated at every face that
+	// enqueues (see docs/security/threat-model.md).
+	Privileged bool `json:"privileged,omitempty"`
 }
 
 // JobCaptures is a bootstrap chain's capture wiring on a job row. Workflow is the

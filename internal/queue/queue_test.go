@@ -133,6 +133,78 @@ func TestEnqueueCarriesRunnerName(t *testing.T) {
 	}
 }
 
+// TestEnqueueCarriesPrivileged proves Spec.Privileged reaches the stored job
+// row, so whichever process claims the job runs it unsandboxed as the requester
+// asked. Off by default is the normal-tiering path every other job takes.
+func TestEnqueueCarriesPrivileged(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	q, st := newQueue(t, 1)
+
+	spec := shellSpec("/bin/true")
+	spec.Privileged = true
+	job, err := q.Enqueue(ctx, spec)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	got, err := st.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if !got.Args.Privileged {
+		t.Errorf("stored Privileged = false, want true")
+	}
+}
+
+// recordingDriver captures the last Spec it was handed, so a test can assert
+// what the queue built from a job row reached the driver.
+type recordingDriver struct{ last executor.Spec }
+
+func (d *recordingDriver) Run(_ context.Context, spec executor.Spec, _ executor.EventSink) (executor.Result, error) {
+	d.last = spec
+	return executor.Result{ExitCode: 0}, nil
+}
+
+// TestExecuteCarriesPrivilegedToDriver proves the marker persisted on the row
+// reaches the driver's Spec, the seam the sandboxed drivers read to skip the
+// sandbox. A non-privileged spec leaves it off, so ordinary jobs are untouched.
+func TestExecuteCarriesPrivilegedToDriver(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name       string
+		privileged bool
+	}{{"privileged", true}, {"normal", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			st, err := store.Open(filepath.Join(t.TempDir(), "exocomp.db"))
+			if err != nil {
+				t.Fatalf("open store: %v", err)
+			}
+			t.Cleanup(func() { _ = st.Close() })
+
+			drv := &recordingDriver{}
+			q := queue.New(st, drv, queue.Options{
+				Workers:      1,
+				PollInterval: 10 * time.Millisecond,
+				Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+			})
+
+			spec := shellSpec("/bin/true")
+			spec.Privileged = tc.privileged
+			if _, err := q.Enqueue(ctx, spec); err != nil {
+				t.Fatalf("enqueue: %v", err)
+			}
+			drain(t, q)
+
+			if drv.last.Privileged != tc.privileged {
+				t.Errorf("driver Spec.Privileged = %v, want %v", drv.last.Privileged, tc.privileged)
+			}
+		})
+	}
+}
+
 func TestDrainTimesOutJob(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

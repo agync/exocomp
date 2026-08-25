@@ -53,10 +53,15 @@ type Spec struct {
 	// degradation, not a failure. Carried to the job row so a daemon that claims
 	// the job runs it under the same tolerance.
 	TolerateUnreachable bool
-	ConcurrencyKey      string
-	DedupKey            string
-	IdempotencyKey      string
-	Timeout             time.Duration
+	// Privileged asks that this one job run UNSANDBOXED (the disabled tier) even
+	// when the daemon default is enforcing. It is carried to the job row so
+	// whichever process claims the job runs it at the same tier, and is
+	// operator-gated at every enqueuing face. Off by default = normal tiering.
+	Privileged     bool
+	ConcurrencyKey string
+	DedupKey       string
+	IdempotencyKey string
+	Timeout        time.Duration
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -183,6 +188,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
 			RunnerName:          spec.RunnerName,
+			Privileged:          spec.Privileged,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
@@ -418,6 +424,15 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 		Level: executor.LevelSystem,
 		Msg:   "running " + strings.Join(job.Args.Argv, " "),
 	})
+	// A privileged job runs with no kernel sandbox; record that at the point of
+	// execution so the ledger carries it on every path (daemon or inline drain),
+	// alongside the attributed enqueue-time record the write faces already write.
+	if job.Args.Privileged {
+		sink.Emit(executor.Event{
+			Level: executor.LevelSystem,
+			Msg:   "running UNSANDBOXED (privileged): no kernel sandbox for this job",
+		})
+	}
 
 	timeout := time.Duration(job.Args.Timeout)
 	if timeout <= 0 {
@@ -431,6 +446,7 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 		Dir:         job.Args.Dir,
 		DirReadOnly: job.Args.DirReadOnly,
 		Timeout:     timeout,
+		Privileged:  job.Args.Privileged,
 	}, sink)
 
 	// The job's own outcome must be recorded even when the queue is shutting

@@ -32,6 +32,13 @@ type Spec struct {
 	// for a cgroup.
 	UseCgroup bool
 	CgroupFD  int
+	// Privileged runs this one job UNSANDBOXED — no Landlock/nono policy, full
+	// host access — even when the daemon's effective tier is enforcing. It is a
+	// per-spec, operator-gated opt-out layered on top of the process-global tier
+	// resolver, never a change to it: a sandboxed driver honours it by running
+	// its plain inner driver instead of wrapping it. Off by default, so the
+	// zero-value Spec keeps the daemon's effective tier exactly as before.
+	Privileged bool
 }
 
 // Result is what a driver reports about a process that ran to completion.
