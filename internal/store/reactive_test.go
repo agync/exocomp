@@ -288,6 +288,52 @@ func TestEventOutcomesAreQueryable(t *testing.T) {
 	}
 }
 
+func TestCountEventsByOutcome(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	empty, err := st.CountEventsByOutcome(ctx)
+	if err != nil {
+		t.Fatalf("count events by outcome (empty store): %v", err)
+	}
+	if empty.Total() != 0 {
+		t.Fatalf("empty store total = %d, want 0", empty.Total())
+	}
+
+	seed := map[store.EventOutcome]int{
+		store.OutcomeIgnored:    2,
+		store.OutcomeMatched:    1,
+		store.OutcomeSuppressed: 3,
+		store.OutcomeGated:      1,
+		store.OutcomeFired:      4,
+		store.OutcomeError:      1,
+	}
+	for outcome, n := range seed {
+		for i := 0; i < n; i++ {
+			if _, err := st.CreateEvent(ctx, store.Event{
+				Source: "alertmanager", Outcome: outcome,
+			}); err != nil {
+				t.Fatalf("create %s event: %v", outcome, err)
+			}
+		}
+	}
+
+	got, err := st.CountEventsByOutcome(ctx)
+	if err != nil {
+		t.Fatalf("count events by outcome: %v", err)
+	}
+	want := store.EventOutcomeCounts{
+		Ignored: 2, Matched: 1, Suppressed: 3, Gated: 1, Fired: 4, Error: 1,
+	}
+	if got != want {
+		t.Fatalf("counts = %+v, want %+v", got, want)
+	}
+	if got.Total() != 12 {
+		t.Fatalf("total = %d, want 12", got.Total())
+	}
+}
+
 func TestLastEventByDedupKeySkipsSuppressed(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)

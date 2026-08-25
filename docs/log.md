@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-25 — `GET /api/v1/events/summary`
+
+- **Event funnel as one object.** Tallies every stored event by outcome —
+  `{received, ignored, matched, suppressed, gated, fired, error}` — through a new
+  `store.CountEventsByOutcome`, the same `event` table and `outcome` column `GET /events` and
+  `event list` read, so the two can never disagree. All-time, matching `GET /events`' own
+  unwindowed listing; readable by any authed token, same floor as the rest of the events reads.
+
 ## 2026-08-25 — breadcrumb navigation
 
 - **Back-nav buttons replaced with breadcrumbs.** Source detail, token mint/rotate result,

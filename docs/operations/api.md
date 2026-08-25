@@ -75,6 +75,7 @@ GET /api/v1/rules
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
 GET /api/v1/events?source=&outcome=&limit=
+GET /api/v1/events/summary                     # funnel counts by outcome, all-time
 GET /api/v1/events/{id}
 GET /api/v1/secrets                             # metadata only — no field a value could occupy
 GET /api/v1/backups
@@ -88,6 +89,13 @@ GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted
 host it runs on, so an identity line reads `exocompd 0.7.4 · pve-01.lan` without probing.
 Either server field is omitted when the build carries no version stamp or the host cannot
 report its name; the request never fails on a missing hostname.
+
+`GET /events/summary` tallies every stored event by outcome —
+`{received, ignored, matched, suppressed, gated, fired, error}`, all ints — through
+`store.CountEventsByOutcome`, the same `event` table and `outcome` column `GET /events` and
+`event list` read, so the two can never disagree. `received` is the total, all-time: the
+aggregation is unwindowed, matching `GET /events`' own row listing, so there is no `?since=`
+or `?window=` param here either.
 
 `jobs`/`events` have no cursor param beyond `since`/`limit`; there is no `?cursor=` yet —
 that would be a store change, out of scope for the read routes. `GET /jobs/{id}/stream` reuses

@@ -69,6 +69,10 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/silences", s.apiAuth(s.apiSilences))
 	mux.HandleFunc("GET /api/v1/mutes", s.apiAuth(s.apiMutes))
 	mux.HandleFunc("GET /api/v1/events", s.apiAuth(s.apiEvents))
+	// A literal segment takes precedence over the {id} wildcard at the same
+	// position, so this can neither be shadowed by nor shadow
+	// /api/v1/events/{id}.
+	mux.HandleFunc("GET /api/v1/events/summary", s.apiAuth(s.apiEventsSummary))
 	mux.HandleFunc("GET /api/v1/events/{id}", s.apiAuth(s.apiEventGet))
 	mux.HandleFunc("GET /api/v1/secrets", s.apiAuth(s.apiSecrets))
 	mux.HandleFunc("GET /api/v1/runners", s.apiAuth(s.apiRunners))
@@ -661,6 +665,22 @@ func (s *Server) apiEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindEventList, wire.NewEventList(rows))
+}
+
+// apiEventsSummary returns the event funnel as counts by outcome — the same
+// outcome names EventView.Outcome and `event list --outcome` use — so the
+// phone companion's Events screen reads one object instead of paging
+// GET /events to tally the dispositions itself. It reads through
+// store.CountEventsByOutcome, the same event table and outcome column
+// ListEvents filters on, so this can never disagree with GET /events for the
+// same rows. All-time, matching apiEvents's own unwindowed row listing.
+func (s *Server) apiEventsSummary(w http.ResponseWriter, r *http.Request) {
+	counts, err := s.store.CountEventsByOutcome(r.Context())
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindEventSummary, wire.NewEventSummaryView(counts))
 }
 
 func (s *Server) apiEventGet(w http.ResponseWriter, r *http.Request) {

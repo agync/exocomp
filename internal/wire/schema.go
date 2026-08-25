@@ -22,6 +22,7 @@ const (
 	KindSilenceList   = "silence.list"
 	KindEvent         = "event.get"
 	KindEventList     = "event.list"
+	KindEventSummary  = "event.summary"
 	KindSecretList    = "secret.list"
 	KindBackupList    = "backup.list"
 	KindTokenList     = "token.list"
@@ -470,6 +471,30 @@ func NewEventList(rows []store.Event) []EventView {
 		})
 	}
 	return out
+}
+
+// EventSummaryView is the event funnel: every stored event, tallied by the
+// same store.EventOutcome names EventView.Outcome and `event list --outcome`
+// use — ignored/matched/suppressed/gated/fired/error — never a separate
+// taxonomy. Received is the total, all-time (the underlying aggregation is
+// unwindowed, like the rest of the events reads), so a phone screen renders
+// the whole funnel from one object instead of paging rows to tally it itself.
+type EventSummaryView struct {
+	Received   int `json:"received"`
+	Ignored    int `json:"ignored"`
+	Matched    int `json:"matched"`
+	Suppressed int `json:"suppressed"`
+	Gated      int `json:"gated"`
+	Fired      int `json:"fired"`
+	Error      int `json:"error"`
+}
+
+// NewEventSummaryView projects the store's per-outcome event tally.
+func NewEventSummaryView(c store.EventOutcomeCounts) EventSummaryView {
+	return EventSummaryView{
+		Received: c.Total(), Ignored: c.Ignored, Matched: c.Matched,
+		Suppressed: c.Suppressed, Gated: c.Gated, Fired: c.Fired, Error: c.Error,
+	}
 }
 
 // SecretView is metadata only. Nonce, ciphertext, and AAD are structurally

@@ -219,6 +219,62 @@ func (s *Store) CountSuppressedSince(ctx context.Context, since time.Time) (int,
 	return n, nil
 }
 
+// EventOutcomeCounts is every stored event, tallied by outcome. Total is the
+// funnel's received count: every counted event has exactly one outcome, so it
+// is the sum of the rest, never a separate query.
+type EventOutcomeCounts struct {
+	Ignored    int
+	Matched    int
+	Suppressed int
+	Gated      int
+	Fired      int
+	Error      int
+}
+
+// Total reports every counted event, whatever its outcome.
+func (c EventOutcomeCounts) Total() int {
+	return c.Ignored + c.Matched + c.Suppressed + c.Gated + c.Fired + c.Error
+}
+
+// CountEventsByOutcome tallies every stored event by outcome in one grouped
+// query over the same event table and outcome column ListEvents filters on,
+// so a funnel summary built from it can never disagree with what ListEvents
+// (and so `event list`/GET /events) show for the same rows.
+func (s *Store) CountEventsByOutcome(ctx context.Context) (EventOutcomeCounts, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT outcome, COUNT(*) FROM event GROUP BY outcome`)
+	if err != nil {
+		return EventOutcomeCounts{}, wrap("count events by outcome", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var c EventOutcomeCounts
+	for rows.Next() {
+		var outcome string
+		var n int
+		if err := rows.Scan(&outcome, &n); err != nil {
+			return EventOutcomeCounts{}, wrap("count events by outcome", err)
+		}
+		switch EventOutcome(outcome) {
+		case OutcomeIgnored:
+			c.Ignored = n
+		case OutcomeMatched:
+			c.Matched = n
+		case OutcomeSuppressed:
+			c.Suppressed = n
+		case OutcomeGated:
+			c.Gated = n
+		case OutcomeFired:
+			c.Fired = n
+		case OutcomeError:
+			c.Error = n
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return EventOutcomeCounts{}, wrap("count events by outcome", err)
+	}
+	return c, nil
+}
+
 func scanEvent(row rowScanner) (Event, error) {
 	var (
 		e          Event

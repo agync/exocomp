@@ -452,3 +452,108 @@ func TestAPIJobStreamNoTokenIsWireError(t *testing.T) {
 		t.Fatalf("no-token stream envelope = %s, want error/unauthenticated", body)
 	}
 }
+
+// TestAPIEventsSummary seeds events across every outcome and asserts the
+// summary route tallies them correctly under the event.summary kind, reading
+// through the same store.CountEventsByOutcome aggregation the handler calls.
+func TestAPIEventsSummary(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+	ctx := context.Background()
+
+	seed := map[store.EventOutcome]int{
+		store.OutcomeIgnored:    2,
+		store.OutcomeMatched:    1,
+		store.OutcomeSuppressed: 3,
+		store.OutcomeGated:      1,
+		store.OutcomeFired:      4,
+		store.OutcomeError:      1,
+	}
+	for outcome, n := range seed {
+		for i := 0; i < n; i++ {
+			if _, err := h.store.CreateEvent(ctx, store.Event{
+				Source: "alertmanager", Outcome: outcome,
+			}); err != nil {
+				t.Fatalf("create %s event: %v", outcome, err)
+			}
+		}
+	}
+
+	code, hdr, body := bearerGet(t, ts.URL, "/api/v1/events/summary", token)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/events/summary status = %d, want 200 (body: %s)", code, body)
+	}
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("GET /api/v1/events/summary content-type = %q, want application/json", ct)
+	}
+
+	var env struct {
+		SchemaVersion int                   `json:"schema_version"`
+		Kind          string                `json:"kind"`
+		Data          wire.EventSummaryView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("GET /api/v1/events/summary body is not an envelope: %v (%s)", err, body)
+	}
+	if env.SchemaVersion != wire.SchemaVersion || env.Kind != wire.KindEventSummary {
+		t.Fatalf("bad envelope header: %+v", env)
+	}
+	want := wire.EventSummaryView{
+		Received: 12, Ignored: 2, Matched: 1, Suppressed: 3, Gated: 1, Fired: 4, Error: 1,
+	}
+	if env.Data != want {
+		t.Fatalf("summary = %+v, want %+v (%s)", env.Data, want, body)
+	}
+}
+
+// TestAPIEventsSummaryEmptyStore proves an empty store answers 200 with every
+// count zero, not a 404 — the same "empty collection is still success" shape
+// the list routes hold (TestAPIReadonlyGetsWireEnvelope).
+func TestAPIEventsSummaryEmptyStore(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/events/summary", token)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/events/summary (empty store) status = %d, want 200 (%s)", code, body)
+	}
+	var env struct {
+		Data wire.EventSummaryView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("body is not an envelope: %v (%s)", err, body)
+	}
+	if env.Data != (wire.EventSummaryView{}) {
+		t.Fatalf("empty-store summary = %+v, want all zero", env.Data)
+	}
+}
+
+// TestAPIEventsSummaryNoTokenIsWireError: no token gets 401 and a wire error
+// envelope, the same as every other /api/v1 route.
+func TestAPIEventsSummaryNoTokenIsWireError(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	code, hdr, body := bearerGet(t, ts.URL, "/api/v1/events/summary", "")
+	if code != http.StatusUnauthorized {
+		t.Fatalf("no-token status = %d, want 401", code)
+	}
+	if ct := hdr.Get("Content-Type"); !strings.HasPrefix(ct, "application/json") {
+		t.Fatalf("no-token content-type = %q, want application/json", ct)
+	}
+	var env struct {
+		Kind  string     `json:"kind"`
+		Error wire.Error `json:"error"`
+	}
+	if err := json.Unmarshal([]byte(body), &env); err != nil {
+		t.Fatalf("no-token body is not a wire envelope: %v (%s)", err, body)
+	}
+	if env.Kind != wire.KindError || env.Error.Code != wire.CodeUnauthenticated {
+		t.Fatalf("no-token envelope = %s, want error/unauthenticated", body)
+	}
+}
