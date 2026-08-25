@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"exocomp.dev/exocomp/internal/health"
+	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/version"
 	"exocomp.dev/exocomp/internal/wire"
@@ -441,7 +443,77 @@ func (s *Server) apiApprovalGet(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	s.apiSuccess(w, wire.KindApproval, wire.NewApprovalView(a))
+	view := wire.NewApprovalView(a)
+	stale, err := s.approvalStaleView(r.Context(), a)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	view.Stale = stale
+	prov, err := s.approvalProvenance(r.Context(), a)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	view.Provenance = prov
+	s.apiSuccess(w, wire.KindApproval, view)
+}
+
+// approvalStaleView returns the structured stale-plan block for an approval, or
+// nil when the workspace has not moved under the saved plan. It sources the
+// movement from the store (store.ApprovalStaleness), never from the reactive
+// engine's prose, so the approval.get view and the 409 stale_plan body carry
+// the same facts.
+func (s *Server) approvalStaleView(ctx context.Context, a store.Approval) (*wire.ApprovalStaleView, error) {
+	move, stale, err := s.store.ApprovalStaleness(ctx, a)
+	if err != nil {
+		return nil, err
+	}
+	if !stale {
+		return nil, nil
+	}
+	return wire.NewApprovalStaleView(move), nil
+}
+
+// approvalProvenance answers screen 02's "why you". An approval a reactive rule
+// raised carries its alert, the rule that matched, and when; a manual or
+// scheduled one carries only its origin. The alert/rule/matched_at come from the
+// event ledger row that named the job (EventByJobID) — structured columns and
+// the event's structured normalized_json — never from a free-text message.
+func (s *Server) approvalProvenance(ctx context.Context, a store.Approval) (*wire.ApprovalProvenanceView, error) {
+	ev, err := s.store.EventByJobID(ctx, a.JobID)
+	if err == nil {
+		return wire.NewApprovalProvenanceView(wire.OriginAlert, alertName(ev), ev.MatchedRule, &ev.ReceivedAt), nil
+	}
+	if !errors.Is(err, store.ErrNotFound) {
+		return nil, err
+	}
+	// No event named the job: an operator asked for it by hand (CLI/API), or a
+	// schedule fired it — the job's trigger tells which.
+	origin := wire.OriginManual
+	job, jerr := s.store.GetJob(ctx, a.JobID)
+	switch {
+	case jerr == nil:
+		if job.Trigger == sched.Trigger {
+			origin = wire.OriginSchedule
+		}
+	case errors.Is(jerr, store.ErrNotFound):
+		// The job was pruned; the origin stays manual.
+	default:
+		return nil, jerr
+	}
+	return wire.NewApprovalProvenanceView(origin, "", "", nil), nil
+}
+
+// alertName reads the alert's name from an event's structured normalized_json —
+// the typed reactive.Event projection the ingress wrote — rather than any prose
+// field. An unparseable or nameless body yields the empty string, never an error.
+func alertName(ev store.Event) string {
+	var n struct {
+		Name string `json:"name"`
+	}
+	_ = json.Unmarshal([]byte(ev.Normalized), &n)
+	return n.Name
 }
 
 // apiApprovalStream streams the pending-approvals list as SSE, gated by the

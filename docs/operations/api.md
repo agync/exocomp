@@ -67,7 +67,7 @@ GET /api/v1/jobs/{id}/stream                    # SSE, done-on-terminal
 GET /api/v1/workspaces
 GET /api/v1/sources
 GET /api/v1/approvals?all=                      # pending-only unless all=true
-GET /api/v1/approvals/{id}
+GET /api/v1/approvals/{id}                       # + structured stale + provenance (see below)
 GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
@@ -93,6 +93,20 @@ report its name; the request never fails on a missing hostname.
 that would be a store change, out of scope for the read routes. `GET /jobs/{id}/stream` reuses
 the same append-only `job_event` tail, monotonic `Seq` cursor, and `done`-on-terminal ending
 the browser's own job page streams, so the two surfaces cannot diverge.
+
+`GET /approvals/{id}` adds two structured blocks to the approval, both sourced from the
+store, never from a rendered sentence, and both carrying identifiers and states only — never
+a plan attribute value:
+
+- `stale: {plan_serial, current_serial, moved_by_job, moved_via, moved_at}` — present only
+  when the workspace advanced past the saved plan's serial. `moved_by_job`/`moved_via`/
+  `moved_at` name the job that first moved it, its trigger, and when, and are omitted when
+  the mover is outside the control plane. A fresh approval carries no `stale` block. The
+  same block rides the `409 stale_plan` decision error body under `error.stale`.
+- `provenance: {origin, alert, rule, matched_at}` — `origin` is `alert` (a reactive rule
+  raised it), `manual` (an operator asked by hand), or `schedule` (a schedule fired it). For
+  an `alert` origin, `alert`, `rule`, and `matched_at` come from the event ledger row that
+  named the job; a `manual`/`schedule` origin omits them.
 
 `GET /approvals/stream` has no per-job terminal state to end on — the pending set itself is
 the resource — so it sends one `event: approvals` snapshot on connect (the same
@@ -163,7 +177,10 @@ POST /api/v1/approvals/{id}/decision   {"decision": "approve" | "reject"}   (sco
 Routes through the same fail-closed `reactive.Decide` a decision link and `approval decide`
 use. The capability token is **derived server-side** from the envelope, never carried by the
 caller — a scope is not a bearer capability link. A workspace that moved under a saved plan
-since it was approved settles nothing and returns `409 stale_plan`, not a release.
+since it was approved settles nothing and returns `409 stale_plan`, not a release. That error
+body carries the same structured `error.stale: {plan_serial, current_serial, moved_by_job,
+moved_via, moved_at}` block `GET /approvals/{id}` exposes, so a client reads why the plan
+cannot apply from fields rather than the message.
 
 ## Idempotency
 

@@ -475,8 +475,14 @@ func (s *Server) decideApproval(ctx context.Context, id int64, decision string, 
 	result, derr := s.decider.Decide(ctx, id, decision, token, "api:"+ident.token.Name)
 	if errors.Is(derr, reactive.ErrStalePlan) {
 		// A safety rejection, not a server fault: the workspace moved under the
-		// saved plan, so the job was not released.
-		return decisionView{}, &apiFault{status: http.StatusConflict, err: wire.ErrorFor(derr)}
+		// saved plan, so the job was not released. Carry the structured movement
+		// so a client reads why from fields, not the message; a best-effort
+		// lookup, since the refusal stands whether or not the block resolves.
+		e := wire.ErrorFor(derr)
+		if stale, serr := s.approvalStaleView(ctx, approval); serr == nil {
+			e.Stale = stale
+		}
+		return decisionView{}, &apiFault{status: http.StatusConflict, err: e}
 	}
 	if derr != nil {
 		s.log.Error("api: decide", "approval", id, "err", derr)

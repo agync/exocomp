@@ -256,18 +256,81 @@ func NewSourceList(sources []store.Source) []SourceView {
 }
 
 // ApprovalView projects an approval. The token hash — the capability material —
-// never travels.
+// never travels. Stale and Provenance are populated only on the single-object
+// `.get` view (NewApprovalView leaves them nil): Stale is present only when the
+// workspace moved under the saved plan, and Provenance's alert/rule/matched_at
+// are present only for an approval a reactive rule raised — both carry
+// identifiers and states only, never a plan attribute value.
 type ApprovalView struct {
-	ID          int64   `json:"id"`
-	JobID       int64   `json:"job_id"`
-	State       string  `json:"state"`
-	Workspace   string  `json:"workspace,omitempty"`
-	PlanSerial  int64   `json:"plan_serial,omitempty"`
-	RequestedAt string  `json:"requested_at,omitempty"`
-	ExpiresAt   string  `json:"expires_at,omitempty"`
-	DecidedAt   *string `json:"decided_at,omitempty"`
-	DecidedVia  string  `json:"decided_via,omitempty"`
-	Reason      string  `json:"reason,omitempty"`
+	ID          int64                   `json:"id"`
+	JobID       int64                   `json:"job_id"`
+	State       string                  `json:"state"`
+	Workspace   string                  `json:"workspace,omitempty"`
+	PlanSerial  int64                   `json:"plan_serial,omitempty"`
+	RequestedAt string                  `json:"requested_at,omitempty"`
+	ExpiresAt   string                  `json:"expires_at,omitempty"`
+	DecidedAt   *string                 `json:"decided_at,omitempty"`
+	DecidedVia  string                  `json:"decided_via,omitempty"`
+	Reason      string                  `json:"reason,omitempty"`
+	Stale       *ApprovalStaleView      `json:"stale,omitempty"`
+	Provenance  *ApprovalProvenanceView `json:"provenance,omitempty"`
+}
+
+// The approval provenance origins: an approval a reactive rule raised from an
+// alert, one an operator asked for by hand (CLI/API), or one a schedule fired.
+const (
+	OriginAlert    = "alert"
+	OriginManual   = "manual"
+	OriginSchedule = "schedule"
+)
+
+// ApprovalStaleView is the structured stale-plan refusal: the plan's serial,
+// the serial the workspace stands at now, and — when the control plane owns the
+// state version that moved it — which job did so, under what trigger, and when.
+// It carries no plan content, only the movement facts.
+type ApprovalStaleView struct {
+	PlanSerial    int64   `json:"plan_serial"`
+	CurrentSerial int64   `json:"current_serial"`
+	MovedByJob    *int64  `json:"moved_by_job,omitempty"`
+	MovedVia      string  `json:"moved_via,omitempty"`
+	MovedAt       *string `json:"moved_at,omitempty"`
+}
+
+// NewApprovalStaleView projects a PlanMovement. It is nil-safe: a non-stale
+// movement is not a view, so callers pass one only when staleness was reported.
+func NewApprovalStaleView(m store.PlanMovement) *ApprovalStaleView {
+	v := &ApprovalStaleView{
+		PlanSerial:    m.PlanSerial,
+		CurrentSerial: m.CurrentSerial,
+		MovedByJob:    m.MovedByJob,
+		MovedVia:      m.MovedVia,
+	}
+	if !m.MovedAt.IsZero() {
+		at := rfc3339(m.MovedAt)
+		v.MovedAt = &at
+	}
+	return v
+}
+
+// ApprovalProvenanceView answers screen 02's "why you": the origin an approval
+// arose from and, for an alert-raised one, the alert, the rule that matched it,
+// and when. alert/rule/matched_at are absent for a manual or scheduled origin.
+type ApprovalProvenanceView struct {
+	Origin    string  `json:"origin"`
+	Alert     string  `json:"alert,omitempty"`
+	Rule      string  `json:"rule,omitempty"`
+	MatchedAt *string `json:"matched_at,omitempty"`
+}
+
+// NewApprovalProvenanceView projects one provenance. matchedAt is a pointer so
+// a manual/scheduled origin (no matching event) renders no timestamp.
+func NewApprovalProvenanceView(origin, alert, rule string, matchedAt *time.Time) *ApprovalProvenanceView {
+	return &ApprovalProvenanceView{
+		Origin:    origin,
+		Alert:     alert,
+		Rule:      rule,
+		MatchedAt: rfc3339p(matchedAt),
+	}
 }
 
 // NewApprovalView projects one approval. It mirrors NewApprovalList's element

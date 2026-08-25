@@ -14,11 +14,15 @@ const SchemaVersion = 1
 const KindError = "error"
 
 // Error is the machine-branchable failure body, shaped after RFC 9457: a stable
-// machine code, a human message, and an actionable hint.
+// machine code, a human message, and an actionable hint. Stale rides only the
+// stale_plan refusal, carrying the same structured movement the approval.get
+// view does so a client reads why the plan cannot apply from fields, not the
+// message. It is omitempty, so every other error keeps the three-field shape.
 type Error struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Hint    string `json:"hint,omitempty"`
+	Code    string             `json:"code"`
+	Message string             `json:"message"`
+	Hint    string             `json:"hint,omitempty"`
+	Stale   *ApprovalStaleView `json:"stale,omitempty"`
 }
 
 // successEnvelope wraps a payload. Data has no omitempty: an empty list must

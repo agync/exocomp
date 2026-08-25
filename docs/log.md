@@ -17,6 +17,14 @@ Newest first.
   held (distinct from a silence, which suppresses the rule). The write takes the scope ladder
   the phone's mute sheet offers — `alert`/`host`/`global` — and either a `for` duration or an
   absolute `expires_at`; writes are operator-scoped, the list readable by any authed token.
+- **Structured `stale` + `provenance` on the approval.** `GET /approvals/{id}` now carries a
+  `stale: {plan_serial, current_serial, moved_by_job, moved_via, moved_at}` block (present
+  only when the workspace moved under the saved plan) and a `provenance: {origin, alert,
+  rule, matched_at}` block (`origin` ∈ alert/manual/schedule). The same `stale` block rides
+  the `409 stale_plan` decision error body under `error.stale`. Both are sourced from the
+  store — a new `store.ApprovalStaleness` returns the movement structurally, and provenance
+  reads the event-ledger row that named the job — never by parsing a rendered sentence, and
+  both carry identifiers only, never a plan attribute value.
 
 ## 2026-08-25 — QR pairing, schedule detail, sidebar logo
 

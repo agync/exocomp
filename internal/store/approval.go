@@ -211,3 +211,70 @@ func scanApproval(row rowScanner) (Approval, error) {
 	a.DecidedAt = timePtr(decidedAt)
 	return a, nil
 }
+
+// PlanMovement describes how a workspace advanced past an approval's saved
+// plan: the plan's serial, the serial the workspace stands at now, and — when
+// the control plane owns the state version that first moved it — which job did
+// so, under what trigger, and when. It is the structured source for the
+// stale-plan refusal; the reactive engine renders its human sentence from the
+// same facts, so the API can surface them without a client parsing that prose.
+type PlanMovement struct {
+	PlanSerial    int64
+	CurrentSerial int64
+	MovedByJob    *int64
+	MovedVia      string
+	MovedAt       time.Time
+}
+
+// ApprovalStaleness reports whether the workspace an approval's plan was made
+// against has advanced past the plan's serial, and if so, how it moved. It is
+// (zero, false) for an approval with no workspace, a workspace that no longer
+// exists, or one still at or below the plan's serial — the three cases in which
+// the plan is not stale. The moving version is the oldest one above the plan's
+// serial (the one that moved it first), mirroring the reactive engine's own
+// attribution.
+func (s *Store) ApprovalStaleness(ctx context.Context, a Approval) (PlanMovement, bool, error) {
+	if a.Workspace == "" {
+		return PlanMovement{}, false, nil
+	}
+	ws, err := s.WorkspaceByName(ctx, a.Workspace)
+	if errors.Is(err, ErrNotFound) {
+		return PlanMovement{}, false, nil
+	}
+	if err != nil {
+		return PlanMovement{}, false, err
+	}
+	if ws.Serial <= a.PlanSerial {
+		return PlanMovement{}, false, nil
+	}
+
+	move := PlanMovement{PlanSerial: a.PlanSerial, CurrentSerial: ws.Serial}
+	versions, err := s.ListTFStates(ctx, ws.ID, 0)
+	if err != nil {
+		return PlanMovement{}, false, err
+	}
+	// ListTFStates is newest first; the last version above the plan's serial is
+	// the one that moved it first.
+	var first *TFState
+	for i := range versions {
+		if versions[i].Serial > a.PlanSerial {
+			first = &versions[i]
+		}
+	}
+	if first != nil {
+		move.MovedByJob = first.CreatedByJob
+		move.MovedAt = first.CreatedAt
+		if first.CreatedByJob != nil {
+			job, jerr := s.GetJob(ctx, *first.CreatedByJob)
+			switch {
+			case jerr == nil:
+				move.MovedVia = job.Trigger
+			case errors.Is(jerr, ErrNotFound):
+				// The mover job was pruned; the serials and time still stand.
+			default:
+				return PlanMovement{}, false, jerr
+			}
+		}
+	}
+	return move, true, nil
+}
