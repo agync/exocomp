@@ -509,7 +509,11 @@ main > .pageheader + dialog + .card { margin-top: 0 !important; }
   border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
 }
 .modal-close:hover { color: var(--ink-100); background: var(--surface-tray); }
-.modal-body { min-height: 0; overflow-y: auto; }
+/* overflow-y:auto forces overflow-x to auto too (CSS spec), which would clip a
+ * focused field's outline (3px + 2px offset) on the sides. Pad the scroll box by
+ * that much and pull it back with an equal negative margin so fields don't shift
+ * but the ring has room. */
+.modal-body { min-height: 0; overflow-y: auto; padding: 6px; margin: -6px; }
 .modal-body .writeform { margin-top: 0; }
 
 /* ---- Source detail: meta chips, key/value, launcher tabs ----
