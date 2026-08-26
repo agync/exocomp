@@ -115,6 +115,12 @@ Newest first.
   `ansible.cfg` with a relative `local_tmp` or `control_path_dir` cannot force a write onto a
   read-only checkout — the env vars win over `ansible.cfg`. The data-dir/keys guard is
   unchanged: the checkout grant never extends to the database, `host.key`, or `keyring.age`.
+- **The web + API `--source` playbook paths now set `Dir` too.** The browser launcher
+  (`handleSourceRunPlaybook`) and `POST /api/v1/playbooks/run` (`apiPlaybookRun`) mirrored the
+  CLI's earlier gap: they set the source name but not the checkout working directory, so a
+  source run enqueued over the web or API still fell back to the scratch dir and ignored the
+  checkout's `ansible.cfg`. Both now resolve the checkout via `resolveSourceCheckout` and pass
+  `Dir`/`DirReadOnly`, matching the CLI — so inventory and roles resolve on every face.
 
 ## 2026-08-25 — phone-companion API round 2
 
