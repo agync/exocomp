@@ -6,6 +6,23 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-26 — Run again resubmits with tweaks; run options are toggles
+
+- **"Run again" is a resubmit modal, not a link to the source launcher.** It shows for
+  any terminal job carrying an argv (succeeded included, ad-hoc included — it no longer
+  needs a source), prefilled from the finished run: Check/Diff/Privileged toggles, editable
+  limit/tags, read-only source/command/inventory/extra-vars. A plain submit repeats the run.
+- **`POST /jobs/{id}/rerun`** clones the original row's `JobArgs` into a `queue.Spec`,
+  applies the overrides on the cloned argv (add/remove `--check`/`--diff`, replace
+  `--limit`/`--tags`, set `Privileged`), and enqueues a fresh job (trigger `rerun`) through
+  `service.Reenqueue` — the same actor/privileged attribution tail the run verbs use. Only
+  names travel (VaultProject/RunSecretBinding/Inventory/Source), never secret values.
+- **Security**: the rerun's operator-scope gate is `writeGuard`, run before the privileged
+  flag is read, so a readonly token's rerun (privileged or not) is 403 and enqueues nothing.
+- **Run-option checkboxes are toggle switches.** A shared `toggle` component (a CSS switch
+  over a real `role="switch"` checkbox — still the form field and JS-off fallback) replaces
+  the source launcher's checkboxes and drives the rerun modal.
+
 ## 2026-08-26 — jobs carry and display their source name
 
 - **A job now names the registered source it ran from, not just its runbook type.**
