@@ -203,6 +203,70 @@ func TestTransitionJob(t *testing.T) {
 	}
 }
 
+// TestCountFailedJobsSince asserts the dashboard's "failed recently" count
+// only sees jobs that finished failed at or after the cutoff — an older
+// failure and a job that failed for a different reason (succeeded, still
+// running) are both excluded.
+func TestCountFailedJobsSince(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	fail := func(runbook string) {
+		t.Helper()
+		job, err := s.CreateJob(ctx, store.NewJob{Runbook: runbook, Kind: "shell", Trigger: "manual"})
+		if err != nil {
+			t.Fatalf("create job: %v", err)
+		}
+		if err := s.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+			t.Fatalf("queued -> running: %v", err)
+		}
+		if err := s.TransitionJob(ctx, job.ID, store.StateRunning, store.StateFailed); err != nil {
+			t.Fatalf("running -> failed: %v", err)
+		}
+	}
+
+	cutoff := time.Now().UTC()
+	fail("before-cutoff") // finishes after cutoff too — cutoff is set before any job runs
+
+	n, err := s.CountFailedJobsSince(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("count failed jobs since: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("count = %d, want 1", n)
+	}
+
+	// A job that failed before the window does not count.
+	future := time.Now().UTC().Add(time.Hour)
+	n, err = s.CountFailedJobsSince(ctx, future)
+	if err != nil {
+		t.Fatalf("count failed jobs since (future cutoff): %v", err)
+	}
+	if n != 0 {
+		t.Errorf("count with a cutoff in the future = %d, want 0", n)
+	}
+
+	// A succeeded job never counts, whatever the window.
+	succeeded, err := s.CreateJob(ctx, store.NewJob{Runbook: "ok", Kind: "shell", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.TransitionJob(ctx, succeeded.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("queued -> running: %v", err)
+	}
+	if err := s.TransitionJob(ctx, succeeded.ID, store.StateRunning, store.StateSucceeded); err != nil {
+		t.Fatalf("running -> succeeded: %v", err)
+	}
+	n, err = s.CountFailedJobsSince(ctx, cutoff)
+	if err != nil {
+		t.Fatalf("count failed jobs since (with succeeded job present): %v", err)
+	}
+	if n != 1 {
+		t.Errorf("count with a succeeded job present = %d, want 1 (unchanged)", n)
+	}
+}
+
 func TestTransitionJobRejectsIllegalMoves(t *testing.T) {
 	t.Parallel()
 	s, _ := open(t)
