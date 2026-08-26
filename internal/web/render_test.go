@@ -15,11 +15,19 @@ import (
 // scope/labels, the active nav is announced, and digits are tabular.
 func TestDashboardA11y(t *testing.T) {
 	h := newHarness(t)
-	// Seed a job so the queue table (with its <th scope="col">) renders.
+	// A queued job so the dashboard's queue card shows a nonzero headline, and
+	// a schedule so the Schedules card's table (with its <th scope="col">)
+	// renders — the only table left on the dashboard after the summary-card
+	// redesign.
 	if _, err := h.store.CreateJob(context.Background(), store.NewJob{
 		Runbook: "nightly", Kind: "shell", Trigger: "schedule",
 	}); err != nil {
 		t.Fatalf("seed job: %v", err)
+	}
+	if _, err := h.store.CreateSchedule(context.Background(), store.NewSchedule{
+		Name: "nightly-backup", CronExpr: "0 3 * * *", Kind: "backup",
+	}); err != nil {
+		t.Fatalf("seed schedule: %v", err)
 	}
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -169,8 +177,8 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("seed event: %v", err)
 	}
-	// A workspace so the dashboard drift table renders, and a gated job so the
-	// dashboard "Needs you" / approvals table renders.
+	// A workspace so the dashboard's workspace card has a nonzero total, and a
+	// gated job so /approvals renders its stackable table.
 	if _, err := h.store.CreateWorkspace(context.Background(), store.Workspace{
 		Name: "prod", TofuDir: "prod",
 	}); err != nil {
@@ -186,7 +194,10 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		path   string
 		labels []string
 	}{
-		{"/", []string{`class="tablewrap stackable"`, `data-label="Approval"`, `data-label="Job"`, `data-label="Workspace"`, `data-label="Signed"`, `data-label="Cron"`}},
+		// "/" is excluded here: the dashboard redesign replaced its embedded
+		// tables with summary cards (view_dashboard_test.go covers those). The
+		// Schedules card is the one table left on "/", unchanged by this
+		// redesign.
 		{"/sources", []string{`class="tablewrap stackable"`, `data-label="Source"`, `data-label="URI"`, `data-label="Ref"`, `data-label="Trust"`, `data-label="Last sync"`, `data-label="Enabled"`}},
 		{"/policies", []string{`class="tablewrap stackable"`, `data-label="Policy"`, `data-label="On match"`, `data-label="Expression"`, `data-label="Enabled"`}},
 		{"/events", []string{`class="tablewrap stackable"`, `data-label="Event"`, `data-label="Source"`, `data-label="Outcome"`, `data-label="Received"`}},

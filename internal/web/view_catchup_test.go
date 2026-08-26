@@ -73,10 +73,13 @@ func seedPostV1(t *testing.T, h *harness) {
 	}
 }
 
-// TestDashboardPostV1Sections is the GATE: the dashboard surfaces the seeded
-// source, schedule, and in-flight workflow, each on the shipped table chrome
-// with its a11y attributes. Control-plane health moved to /system (asserted
-// separately) and no longer renders here.
+// TestDashboardPostV1Sections is the GATE: the dashboard's post-v1 cards
+// (sources, workflows) summarise the seeded objects as counts rather than
+// embedding their rows — the source name, its trust chip, and the workflow's
+// id all stay off the glance screen, reachable only by following the card's
+// link to its full view. The schedules card is unchanged by the summary-card
+// redesign and still lists every row. Control-plane health moved to /system
+// (asserted separately) and no longer renders here.
 func TestDashboardPostV1Sections(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
@@ -89,21 +92,33 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		// section chrome + a11y
+		// card chrome + a11y
 		`aria-labelledby="sources-h"`,
 		`aria-labelledby="sched-h"`,
 		`aria-labelledby="flows-h"`,
-		`scope="col"`,
-		// seeded rows
-		"infra",
-		"SIGNED · SIGNERS",
+		`scope="col"`, // from the Schedules card's table
+		// the sources card's count, not a per-row list
+		`<h3 id="sources-h">Sources</h3>`,
+		`<div class="cardnum">1</div>`,
+		`<p class="cardlabel">sources</p>`,
+		// the workflows card's count, not a per-row list
+		`<h3 id="flows-h">Workflows in flight</h3>`,
+		`<p class="cardlabel">in flight</p>`,
+		// the schedules card is untouched: it still lists the seeded row
 		"drift-check",
-		"provision-web-01",
-		// step rail on the in-flight workflow
-		`aria-label="workflow steps"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
+		}
+	}
+	for _, unwanted := range []string{
+		"infra",                       // the source's name — only its count shows now
+		"SIGNED · SIGNERS",            // the source's per-row trust chip
+		"provision-web-01",            // the workflow's id — only its count shows now
+		`aria-label="workflow steps"`, // the workflow's per-row step rail
+	} {
+		if strings.Contains(page, unwanted) {
+			t.Errorf("dashboard should summarise, not list — found %q", unwanted)
 		}
 	}
 	// The control-plane health card left the dashboard for /system.

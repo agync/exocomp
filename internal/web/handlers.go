@@ -10,8 +10,10 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// queueGlance is how many jobs the dashboard and jobs list show. A homelab
-// runs a handful at a time; a longer history is the events and per-job views.
+// queueGlance is how many rows the /jobs and /workflows list views show. A
+// homelab runs a handful at a time; a longer history is the events and
+// per-job views. The dashboard's queue card no longer uses this — it counts
+// the active queue only (jobSummary), never a capped page of history.
 const queueGlance = 50
 
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
@@ -93,26 +95,23 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	vm.NeedsYou = pending
+	vm.Approvals = approvalSummaryFrom(pending)
 
-	jobs, err := s.store.ListJobs(r.Context(), store.JobFilter{Limit: queueGlance})
+	jobs, err := s.jobSummary(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	now := s.now()
-	for _, j := range jobs {
-		vm.Queue = append(vm.Queue, s.jobRow(j, now))
-	}
+	vm.Jobs = jobs
 
-	ws, err := s.workspaces(r, pending)
+	ws, err := s.workspaceSummary(r, pending)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	vm.Workspaces = ws
 
-	sources, err := s.sources(r)
+	sources, err := s.sourceSummary(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -126,12 +125,14 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Schedules = schedules
 
-	flows, err := s.inflightWorkflows(r, queueGlance)
+	// A count only: ListIncompleteWorkflows returns bare IDs, so the card
+	// never pays for GetWorkflow's per-step ledger just to size a number.
+	inflight, err := s.store.ListIncompleteWorkflows(r.Context())
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	vm.Workflows = flows
+	vm.Workflows = workflowSummary{InFlight: len(inflight)}
 
 	s.render(w, r, http.StatusOK, dashboard(vm))
 }

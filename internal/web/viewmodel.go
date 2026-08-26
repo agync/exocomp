@@ -33,17 +33,86 @@ type SignalLine struct {
 }
 
 // dashboardVM is the glance screen: the first answer to "is everything OK?".
+// NeedsYou and Queue are the full-list fields shared with the dedicated
+// /approvals and /jobs surfaces (handleApprovals, handleJobs) that reuse this
+// struct; the dashboard handler itself never populates them. Approvals,
+// Jobs, Workspaces, Sources and Workflows are the at-a-glance summary cards —
+// counts plus the single attention detail each needs, never a full list.
 type dashboardVM struct {
-	Page       page
-	Banner     bannerVM
-	NeedsYou   []approvalRow
-	Queue      []jobRow
-	Workspaces []workspaceRow
-	// Post-v1 surfacing: the capabilities shipped after v1 that the glance
-	// screen had not kept pace with.
-	Sources   []sourceRow
-	Schedules []scheduleRow
-	Workflows []workflowRow // in-flight chains on the dashboard
+	Page     page
+	Banner   bannerVM
+	NeedsYou []approvalRow
+	Queue    []jobRow
+
+	Approvals  approvalSummary
+	Jobs       jobSummary
+	Workspaces workspaceSummary
+	Sources    sourceSummary
+	Workflows  workflowSummary
+	Schedules  []scheduleRow // unchanged: the schedules card still lists every row
+}
+
+// approvalSummary is the dashboard's pending-approvals card: the open count
+// and the soonest-to-expire item, the one line the card is allowed to show.
+// The full list lives at /approvals.
+type approvalSummary struct {
+	Pending   int
+	Runbook   string
+	Workspace string
+	Deadline  string
+	Expiring  bool
+}
+
+// Subline is the pending-approvals card's one attention line: the
+// soonest-to-expire approval's target and time left. Empty when nothing is
+// pending.
+func (c approvalSummary) Subline() string {
+	if c.Pending == 0 {
+		return ""
+	}
+	target := c.Runbook
+	if c.Workspace != "" {
+		target += " · " + c.Workspace
+	}
+	return target + " · " + c.Deadline
+}
+
+// jobSummary is the dashboard's queue card: jobs still moving right now.
+// Settled jobs (succeeded, failed, ...) never count here — that history
+// belongs to the /jobs view, not the glance screen.
+type jobSummary struct {
+	Running int
+	Queued  int
+	// FailedRecently is jobs that settled failed inside the recent window
+	// (jobFailedRecentWindow). Negative means not computed.
+	FailedRecently int
+}
+
+// Idle reports whether the active queue is empty.
+func (j jobSummary) Idle() bool { return j.Running == 0 && j.Queued == 0 }
+
+// Headline is the card's one big line: "N running · M queued".
+func (j jobSummary) Headline() string {
+	return itoa(int64(j.Running)) + " running · " + itoa(int64(j.Queued)) + " queued"
+}
+
+// workspaceSummary is the dashboard's workspace card: the managed total and
+// how many carry an open drift approval.
+type workspaceSummary struct {
+	Total   int
+	Drifted int
+}
+
+// sourceSummary is the dashboard's source card: the registered total and how
+// many need attention — never synced, or disabled.
+type sourceSummary struct {
+	Total     int
+	Attention int
+}
+
+// workflowSummary is the dashboard's in-flight-workflows card.
+type workflowSummary struct {
+	InFlight int
 }
 
 // systemVM is the /system surface: the control plane's health of itself — the
@@ -372,8 +441,7 @@ func (b bannerVM) Message() string {
 	}
 }
 
-// approvalRow is one pending decision on the dashboard's needs-you list and in
-// the approvals surface.
+// approvalRow is one pending decision on the /approvals surface.
 type approvalRow struct {
 	ID        int64
 	JobID     int64
@@ -381,6 +449,10 @@ type approvalRow struct {
 	Workspace string
 	Deadline  string
 	Expiring  bool
+	// ExpiresAt is the raw deadline behind Deadline's rendered string — kept
+	// so the dashboard card can pick the soonest-to-expire row without a
+	// second query or a string-parse of Deadline.
+	ExpiresAt time.Time
 }
 
 // jobRow is one job in the queue/jobs list.

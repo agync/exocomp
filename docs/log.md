@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-26 — dashboard redesigned as at-a-glance summary cards
+
+- **The dashboard's Pending approvals, Queue, Workspaces, Sources, and Workflows sections
+  are summary cards, not embedded tables.** Each card is itself the link to its full view
+  (`/approvals`, `/jobs`, `/workspaces`, `/sources`, `/workflows`); no full list renders on
+  the dashboard anymore, and the Queue card counts the active queue only — settled job
+  history never reaches the page. Pending approvals leads the grid and carries the
+  wait/amber attention accent with a one-line subline naming the soonest-to-expire item;
+  workspace drift and source attention use the same accent. Workflows in flight hides
+  entirely at zero rather than showing a permanent "None". The Schedules card is unchanged.
+- New `store.CountFailedJobsSince` backs the Queue card's "N failed recently" subline with a
+  single COUNT query instead of a loaded-and-len'd list.
+
 ## 2026-08-26 — Run again resubmits with tweaks; run options are toggles
 
 - **"Run again" is a resubmit modal, not a link to the source launcher.** It shows for

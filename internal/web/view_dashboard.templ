@@ -1,9 +1,13 @@
 package web
 
-// dashboard is the glance screen. It answers "is everything OK?" without
-// scrolling: banner state, what needs a human, the queue, and workspace drift.
-// Healthy is quiet; waiting-on-human and stale are loud. Control-plane health
-// and backup freshness live on /system, not here.
+// dashboard is the glance screen: an at-a-glance grid of summary cards, not
+// embedded tables. Each card is itself the link to its full view — the
+// dashboard answers "what needs my attention?" first (pending approvals lead
+// the grid) and "what's the state of everything else?" second, in one line
+// per card. The queue card counts the active queue only; settled job history
+// lives at /jobs, never here. Healthy is quiet; waiting-on-human and drifted
+// are loud, using the same wait/amber signal the chip ladder already uses.
+// Control-plane health and backup freshness live on /system, not here.
 templ dashboard(vm dashboardVM) {
 	@layout(vm.Page) {
 		if vm.Page.Insecure {
@@ -21,149 +25,13 @@ templ dashboard(vm dashboardVM) {
 		}
 		<h1>Dashboard</h1>
 		<div class="cards" style="margin-top:18px">
-			<section class="card" aria-labelledby="needsyou-h">
-				<h3 id="needsyou-h">Pending approvals</h3>
-				if len(vm.NeedsYou) == 0 {
-					<p class="meta">Nothing is waiting on a decision.</p>
-				} else {
-					<div class="tablewrap stackable">
-						<table>
-							<thead>
-								<tr><th scope="col">Approval</th><th scope="col">Runbook</th><th scope="col">Workspace</th><th scope="col" class="right">Time left</th><th scope="col"></th></tr>
-							</thead>
-							<tbody>
-								for _, a := range vm.NeedsYou {
-									<tr>
-										<td class="num" data-label="Approval">#{ itoa(a.ID) }</td>
-										<td data-label="Runbook">{ a.Runbook }</td>
-										<td data-label="Workspace">{ orDash(a.Workspace) }</td>
-										<td class="right" data-label="Time left">
-											if a.Expiring {
-												<span class="chip wait"><span class="dot"></span>{ a.Deadline }</span>
-											} else {
-												<span class="num">{ a.Deadline }</span>
-											}
-										</td>
-										<td class="right" data-label=""><a class="btn" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
-			<section class="card" aria-labelledby="queue-h">
-				<h3 id="queue-h">Queue</h3>
-				if len(vm.Queue) == 0 {
-					<p class="meta">The queue is empty.</p>
-				} else {
-					<div class="tablewrap stackable">
-						<table>
-							<thead>
-								<tr><th scope="col">Job</th><th scope="col">Runbook</th><th scope="col">State</th><th scope="col" class="right">Age</th></tr>
-							</thead>
-							<tbody>
-								for _, j := range vm.Queue {
-									<tr data-href={ "/jobs/" + itoa(j.ID) }>
-										<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
-										<td data-label="Runbook">{ j.Runbook }</td>
-										<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
-										<td class="right num" data-label="Age">{ j.Age }</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
-			<section class="card" aria-labelledby="ws-h">
-				<h3 id="ws-h">Workspaces</h3>
-				if len(vm.Workspaces) == 0 {
-					<p class="meta">No workspaces registered.</p>
-				} else {
-					<div class="tablewrap stackable">
-						<table>
-							<thead>
-								<tr><th scope="col">Workspace</th><th scope="col" class="right">Serial</th><th scope="col">State</th><th scope="col">Last move</th></tr>
-							</thead>
-							<tbody>
-								for _, w := range vm.Workspaces {
-									<tr>
-										<td data-label="Workspace">{ w.Name }</td>
-										<td class="right num" data-label="Serial">{ itoa64(w.Serial) }</td>
-										<td data-label="State">
-											if w.Drift {
-												<span class="chip wait"><span class="dot"></span>DRIFT</span>
-											} else {
-												<span class="chip ok"><span class="dot"></span>IN SYNC</span>
-											}
-										</td>
-										<td class="meta" data-label="Last move">{ orDash(w.LastJob) }</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
-			<section class="card" aria-labelledby="flows-h">
-				<h3 id="flows-h">Workflows in flight</h3>
-				if len(vm.Workflows) == 0 {
-					<p class="meta">No workflows are running.</p>
-				} else {
-					<div class="tablewrap">
-						<table>
-							<thead>
-								<tr><th scope="col">Workflow</th><th scope="col">State</th><th scope="col" class="right">Steps</th><th scope="col">Ledger</th></tr>
-							</thead>
-							<tbody>
-								for _, f := range vm.Workflows {
-									<tr data-href={ "/workflows/" + f.ID }>
-										<td class="mono"><a href={ templ.SafeURL("/workflows/" + f.ID) }>{ f.ID }</a></td>
-										<td>@chip(f.StateClass(), string(f.State))</td>
-										<td class="right num">{ f.Progress() }</td>
-										<td>@stepDots(f.Steps)</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-			</section>
-
-			<section class="card" aria-labelledby="sources-h">
-				<h3 id="sources-h">Sources</h3>
-				if len(vm.Sources) == 0 {
-					<p class="meta">No sources registered.</p>
-				} else {
-					<div class="tablewrap stackable">
-						<table>
-							<thead>
-								<tr><th scope="col">Source</th><th scope="col">Kind</th><th scope="col">Signed</th><th scope="col" class="right">Sync</th></tr>
-							</thead>
-							<tbody>
-								for _, sc := range vm.Sources {
-									<tr>
-										<td data-label="Source">
-											{ sc.Name }
-											if !sc.Enabled {
-												<span class="chip dim" style="margin-left:6px">disabled</span>
-											}
-										</td>
-										<td class="mono" data-label="Kind">{ sc.Kind }</td>
-										<td data-label="Signed">@signedChip(sc)</td>
-										<td class="right mono" data-label="Sync">{ orDash(sc.Short()) }</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
-				}
-				<p class="meta" style="margin-top:10px"><a href="/sources">All sources →</a></p>
-			</section>
+			@approvalsCard(vm.Approvals)
+			@jobsCard(vm.Jobs)
+			@workspacesCard(vm.Workspaces)
+			@sourcesCard(vm.Sources)
+			if vm.Workflows.InFlight > 0 {
+				@workflowsCard(vm.Workflows)
+			}
 
 			<section class="card" aria-labelledby="sched-h">
 				<h3 id="sched-h">Schedules</h3>
@@ -206,4 +74,89 @@ templ dashboard(vm dashboardVM) {
 
 templ chip(class, label string) {
 	<span class={ "chip", class }><span class="dot"></span>{ label }</span>
+}
+
+// approvalsCard is the dashboard's pending-approvals summary: the whole card
+// is the link to /approvals. A pending count above zero is the primary
+// attention item on the glance screen — the card carries the wait/amber
+// accent and the soonest item's one-line subline; zero is calm.
+templ approvalsCard(vm approvalSummary) {
+	<a class={ "card", "cardlink", templ.KV("attn", vm.Pending > 0) } href="/approvals" aria-labelledby="needsyou-h">
+		<h3 id="needsyou-h">Pending approvals</h3>
+		if vm.Pending > 0 {
+			<div class="cardnum warn">{ itoa(int64(vm.Pending)) }</div>
+			<p class="cardlabel">waiting on you</p>
+			<p class="cardsub warn">{ vm.Subline() }</p>
+		} else {
+			<p class="cardsub meta">None waiting.</p>
+		}
+	</a>
+}
+
+// jobsCard is the dashboard's queue summary: the active queue only. Settled
+// jobs never appear here — that history is /jobs' job, not the glance
+// screen's.
+templ jobsCard(vm jobSummary) {
+	<a class="card cardlink" href="/jobs" aria-labelledby="queue-h">
+		<h3 id="queue-h">Queue</h3>
+		if vm.Idle() {
+			<p class="cardsub meta">Idle.</p>
+		} else {
+			<div class="cardnum">{ vm.Headline() }</div>
+		}
+		if vm.FailedRecently > 0 {
+			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
+		}
+	</a>
+}
+
+// workspacesCard is the dashboard's workspace summary: the managed total,
+// with any drift called out in the attention accent — drift is the signal an
+// operator scans for here.
+templ workspacesCard(vm workspaceSummary) {
+	<a class={ "card", "cardlink", templ.KV("attn", vm.Drifted > 0) } href="/workspaces" aria-labelledby="ws-h">
+		<h3 id="ws-h">Workspaces</h3>
+		if vm.Total == 0 {
+			<p class="cardsub meta">No workspaces registered.</p>
+		} else {
+			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
+			<p class="cardlabel">workspaces</p>
+			if vm.Drifted > 0 {
+				<p class="cardsub warn">{ itoa(int64(vm.Drifted)) } drifted</p>
+			} else {
+				<p class="cardsub meta">All in sync.</p>
+			}
+		}
+	</a>
+}
+
+// sourcesCard is the dashboard's source summary: the registered total, with
+// any needing attention (never synced, or disabled) called out.
+templ sourcesCard(vm sourceSummary) {
+	<a class={ "card", "cardlink", templ.KV("attn", vm.Attention > 0) } href="/sources" aria-labelledby="sources-h">
+		<h3 id="sources-h">Sources</h3>
+		if vm.Total == 0 {
+			<p class="cardsub meta">No sources registered.</p>
+		} else {
+			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
+			<p class="cardlabel">sources</p>
+			if vm.Attention > 0 {
+				<p class="cardsub warn">{ itoa(int64(vm.Attention)) } need attention</p>
+			} else {
+				<p class="cardsub meta">All synced.</p>
+			}
+		}
+	</a>
+}
+
+// workflowsCard is the dashboard's in-flight-workflow summary. The dashboard
+// renders it only when InFlight is above zero — an empty card that is usually
+// empty is noise, not signal, so a quiet estate hides it entirely rather than
+// showing a permanent "None".
+templ workflowsCard(vm workflowSummary) {
+	<a class="card cardlink" href="/workflows" aria-labelledby="flows-h">
+		<h3 id="flows-h">Workflows in flight</h3>
+		<div class="cardnum">{ itoa(int64(vm.InFlight)) }</div>
+		<p class="cardlabel">in flight</p>
+	</a>
 }

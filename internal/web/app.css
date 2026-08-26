@@ -44,10 +44,10 @@ a {
   text-underline-offset: 2px;
   font-weight: 500;
 }
-/* Nav and brand links are chrome controls, not prose: they opt out of the
- * hover/focus underline (they signal state with a tint, not a rule). */
-a:hover:not(:has(.chip)):not(.navitem):not(.brandlink),
-a:focus-visible:not(.navitem):not(.brandlink) {
+/* Nav, brand, and card links are chrome controls, not prose: they opt out of
+ * the hover/focus underline (they signal state with a tint, not a rule). */
+a:hover:not(:has(.chip)):not(.navitem):not(.brandlink):not(.cardlink),
+a:focus-visible:not(.navitem):not(.brandlink):not(.cardlink) {
   text-decoration: underline;
   text-decoration-thickness: 1px;
 }
@@ -262,6 +262,32 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
   font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
   color: var(--accent-text); margin-bottom: 10px;
 }
+
+/* ---- Summary cards (dashboard at-a-glance) ----
+ * A card whose whole surface is the link to its full view — no separate
+ * button inside, so the anchor is the entire clickable and focusable target.
+ * .attn tints the card with the same wait/amber signal the chip ladder
+ * already carries (chip.wait, the DRIFT/expiring states), so "needs a look"
+ * reads before any number is parsed. */
+a.cardlink {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .12s ease, background-color .12s ease;
+}
+a.cardlink:hover, a.cardlink:focus-visible {
+  border-color: var(--accent-border);
+  text-decoration: none;
+}
+a.cardlink.attn { border-color: var(--wait-border); background: var(--wait-tint); }
+a.cardlink.attn:hover, a.cardlink.attn:focus-visible { border-color: var(--signal-wait); }
+.cardnum { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
+.cardnum.warn { color: var(--signal-wait); }
+.cardlabel { margin: 2px 0 0; font: var(--type-body); color: var(--ink-400); }
+.cardsub { margin: 10px 0 0; font: var(--type-body); }
+.cardsub.warn { color: var(--signal-wait); }
+.cardsub.fail { color: var(--signal-fail); }
+.cardsub.meta { color: var(--ink-500); }
 
 /* ---- Tables ---- */
 table { width: 100%; border-collapse: collapse; }

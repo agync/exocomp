@@ -77,7 +77,8 @@ func (s *Server) pendingApprovals(r *http.Request) ([]approvalRow, error) {
 	for _, a := range approvals {
 		row := approvalRow{
 			ID: a.ID, JobID: a.JobID, Workspace: a.Workspace,
-			Deadline: reactive.ApprovalDeadline(a, now),
+			Deadline:  reactive.ApprovalDeadline(a, now),
+			ExpiresAt: a.ExpiresAt,
 		}
 		if job, err := s.store.GetJob(r.Context(), a.JobID); err == nil {
 			row.Runbook = job.Runbook
@@ -87,6 +88,59 @@ func (s *Server) pendingApprovals(r *http.Request) ([]approvalRow, error) {
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// approvalSummaryFrom reduces the full pending-approvals list to the
+// dashboard card: the open count and the soonest-to-expire item, the one
+// line the card is allowed to show.
+func approvalSummaryFrom(pending []approvalRow) approvalSummary {
+	card := approvalSummary{Pending: len(pending)}
+	if len(pending) == 0 {
+		return card
+	}
+	soonest := pending[0]
+	for _, a := range pending[1:] {
+		if a.ExpiresAt.Before(soonest.ExpiresAt) {
+			soonest = a
+		}
+	}
+	card.Runbook = soonest.Runbook
+	card.Workspace = soonest.Workspace
+	card.Deadline = soonest.Deadline
+	card.Expiring = soonest.Expiring
+	return card
+}
+
+// jobFailedRecentWindow is how far back the dashboard's "failed recently"
+// subline looks, the same 24h span the backup freshness ladder starts at.
+const jobFailedRecentWindow = 24 * time.Hour
+
+// jobSummary reads only the active queue — queued, awaiting-approval, and
+// running jobs — never settled history, which stays the /jobs view's job. The
+// States filter keeps this a narrow index lookup no matter how large the
+// terminal job history has grown, and the recent-failure count is a single
+// COUNT query rather than a list pulled into memory to be len()'d.
+func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
+	active, err := s.store.ListJobs(r.Context(), store.JobFilter{
+		States: []store.JobState{store.StateQueued, store.StateAwaitingApproval, store.StateRunning},
+	})
+	if err != nil {
+		return jobSummary{}, err
+	}
+	card := jobSummary{}
+	for _, j := range active {
+		if j.State == store.StateRunning {
+			card.Running++
+		} else {
+			card.Queued++
+		}
+	}
+	failed, err := s.store.CountFailedJobsSince(r.Context(), s.now().Add(-jobFailedRecentWindow))
+	if err != nil {
+		return jobSummary{}, err
+	}
+	card.FailedRecently = failed
+	return card, nil
 }
 
 // backups reads each enabled target's newest run into a freshness row on the
@@ -145,6 +199,22 @@ func (s *Server) workspaces(r *http.Request, pending []approvalRow) ([]workspace
 	return out, nil
 }
 
+// workspaceSummary reduces the workspace list to the dashboard card: the
+// managed total and how many carry an open drift approval.
+func (s *Server) workspaceSummary(r *http.Request, pending []approvalRow) (workspaceSummary, error) {
+	list, err := s.workspaces(r, pending)
+	if err != nil {
+		return workspaceSummary{}, err
+	}
+	card := workspaceSummary{Total: len(list)}
+	for _, w := range list {
+		if w.Drift {
+			card.Drifted++
+		}
+	}
+	return card, nil
+}
+
 // sources reads the run-tree sources (ADR 0010) into rows: where each run's
 // tree comes from, whether its ref is signed and pinned to allowed-signers, and
 // the commit its last sync landed on. Read-only — registration is a
@@ -163,6 +233,22 @@ func (s *Server) sources(r *http.Request) ([]sourceRow, error) {
 		})
 	}
 	return out, nil
+}
+
+// sourceSummary reduces the source list to the dashboard card: the
+// registered total and how many need attention — never synced, or disabled.
+func (s *Server) sourceSummary(r *http.Request) (sourceSummary, error) {
+	list, err := s.sources(r)
+	if err != nil {
+		return sourceSummary{}, err
+	}
+	card := sourceSummary{Total: len(list)}
+	for _, src := range list {
+		if !src.Enabled || src.SyncSHA == "" {
+			card.Attention++
+		}
+	}
+	return card, nil
 }
 
 // schedules reads every schedule (enabled and disabled) with its kind, cron,
