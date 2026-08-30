@@ -18,6 +18,7 @@ const (
 	KindApproval      = "approval.get"
 	KindApprovalList  = "approval.list"
 	KindScheduleList  = "schedule.list"
+	KindNetgroupList  = "netgroup.list"
 	KindRuleList      = "rule.list"
 	KindSilenceList   = "silence.list"
 	KindEvent         = "event.get"
@@ -596,6 +597,27 @@ func NewPolicyList(rows []store.PlanPolicy) []PolicyView {
 			ID: p.ID, Name: p.Name, Workspace: p.Workspace, Expr: p.Expr,
 			Action: p.Action, Enabled: p.Enabled, CreatedAt: rfc3339(p.CreatedAt),
 		})
+	}
+	return out
+}
+
+// NetgroupView projects a netgroup: its name and the CIDRs it names. A prefix
+// is config, not a value, so it travels in full.
+type NetgroupView struct {
+	ID       int64    `json:"id"`
+	Name     string   `json:"name"`
+	Prefixes []string `json:"prefixes"`
+}
+
+// NewNetgroupList projects netgroups in store order (by name).
+func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
+	out := make([]NetgroupView, 0, len(rows))
+	for _, g := range rows {
+		prefixes := make([]string, len(g.Prefixes))
+		for i, p := range g.Prefixes {
+			prefixes[i] = p.String()
+		}
+		out = append(out, NetgroupView{ID: g.ID, Name: g.Name, Prefixes: prefixes})
 	}
 	return out
 }
