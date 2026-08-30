@@ -26,6 +26,27 @@ Newest first.
   a most-specific match is what an operator reading the prefixes expects, and
   the name tie-break keeps the verdict deterministic.
 
+## 2026-08-30 — governed playbook rule action
+
+- **A rule can now launch a governed ansible run instead of only a fixed shell
+  argv.** New `ActionKind "playbook"` carries the registered source, the
+  playbook path, and the ansible passthrough (`limit`, `tags`, `check`,
+  `diff`). A new `reactive.PlaybookBuilder` seam — interface in reactive,
+  service-backed impl wired by the daemon — resolves the source checkout and
+  confines the playbook to it; the engine still owns the queue, the gate, the
+  approval, and the identity fields (Runbook/Trigger/DedupKey/ConcurrencyKey/
+  Timeout). Implemented per [design/check-triggered-runs.md §7](design/check-triggered-runs.md).
+- **`--limit` is required and fixed at add time** (default-deny): an
+  un-limited rule would run the playbook against every host the inventory
+  names. The CLI flag for the playbook's registered source is `--repo-source`,
+  because `rule add` already binds `--source` to the event-source filter; the
+  store field stays `source`.
+- **A rule playbook is a plain, vault-less, inventory-discovery play for v1:**
+  no run-secrets or vault binding on rules. A hooked source is refused at add
+  time and at fire time, covering both hook sources (the checkout's own
+  `.exocomp/hooks.yml` and the data-dir override), because a rule never
+  composes the lifecycle workflow `exocomp run` owns.
+
 ## 2026-08-30 — check-triggered runs design
 
 - **New page** [design/check-triggered-runs.md](design/check-triggered-runs.md):
