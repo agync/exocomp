@@ -13,6 +13,7 @@ What the project is for, the users it targets, and the order in which it gets bu
 | [Agent interface](agent-interface.md) | The three programmatic faces (remote CLI, HTTP `/api/v1`, MCP), the wire envelope, and the error/exit-code taxonomy |
 | [Bootstrap-first chain](bootstrap-first.md) | The ansible-first-then-tofu handoff for the Kubernetes case, and its credential capture |
 | [BYO runner](byo-runner.md) | Why the container/bring-your-own-runner tier stays deferred, its shape if built, and the per-job resource caps that are built |
+| [Check-triggered runs](check-triggered-runs.md) | Checks (named probe-sets), network groups (named CIDR sets), and the governed `playbook` rule action that let a run trigger on a reachability or health transition |
 | [UI brief](ui-brief.md) | Design brief for the web UI and phone approval surface |
 | [TUI brief](tui-brief.md) | Design brief for the terminal surface: constraints, screens, deliverables |
 | [Design reference](reference/) | Web handoff: canvas PDF, artboard captures; tokens live at `internal/web/tokens.css` |

@@ -6,6 +6,30 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-30 — check-triggered runs design
+
+- **New page** [design/check-triggered-runs.md](design/check-triggered-runs.md):
+  proposal (no code) for running governed jobs on a reachability or health
+  transition instead of only a wall clock. Three primitives: **checks** (named
+  probe-sets — `tcp`/`ping`/`http`, transition-only events, per-target dedup),
+  **network groups** (named CIDR sets giving the operator's own vocabulary and
+  classifying a probe-target or webhook-peer address), and a governed
+  **`playbook` rule action** (source checkout, inventory, run-secrets, sandbox)
+  replacing the shell-argv escape hatch. Checks enter the existing reactive
+  pipeline the way drift does (`SweepDrift` precedent), so cron stays on the
+  schedule row and a check is a rule listening on `--source check`; both
+  converge on the one queue.
+- **Revised after review.** Address = location now states its two preconditions
+  (static lease per target; LAN-only routing, never an overlay subnet route) and
+  both get a threat-model row. Transition state lives in a `check_state` table
+  with cold-start seeding that never emits on first observation, so a restart
+  does not fire every presence rule. Phase 2 ships per-target events only; the
+  set-event / `--limit-hosts` expansion is deferred. Peer stamping is framed as
+  a network-path signal (LAN vs overlay), not a location verdict. Check
+  transitions require N-consecutive-same-result hysteresis. Cooldown stays
+  per-rule for webhooks (uniform per-dedup-key would let a body-varying webhook
+  bypass the throttle) and is per-target for sweep sources.
+
 ## 2026-08-26 — dashboard redesigned as at-a-glance summary cards
 
 - **The dashboard's Pending approvals, Queue, Workspaces, Sources, and Workflows sections
