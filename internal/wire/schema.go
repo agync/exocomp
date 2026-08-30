@@ -19,6 +19,7 @@ const (
 	KindApprovalList  = "approval.list"
 	KindScheduleList  = "schedule.list"
 	KindNetgroupList  = "netgroup.list"
+	KindCheckList     = "check.list"
 	KindRuleList      = "rule.list"
 	KindSilenceList   = "silence.list"
 	KindEvent         = "event.get"
@@ -629,6 +630,52 @@ func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
 			prefixes[i] = p.String()
 		}
 		out = append(out, NetgroupView{ID: g.ID, Name: g.Name, Prefixes: prefixes})
+	}
+	return out
+}
+
+// CheckTargetView projects one probe of a check. Status is the sweep's last
+// observation of this target ("" when the sweep has never seen it); the
+// address is the target's location, so it travels in full.
+type CheckTargetView struct {
+	Name    string `json:"name"`
+	Address string `json:"address,omitempty"`
+	URL     string `json:"url,omitempty"`
+	Port    int    `json:"port,omitempty"`
+	Expect  int    `json:"expect,omitempty"`
+	Status  string `json:"status,omitempty"`
+}
+
+// CheckView projects a check and its per-target last statuses.
+type CheckView struct {
+	ID        int64             `json:"id"`
+	Name      string            `json:"name"`
+	Kind      string            `json:"kind"`
+	IntervalS int64             `json:"interval_s"`
+	Enabled   bool              `json:"enabled"`
+	Targets   []CheckTargetView `json:"targets"`
+}
+
+// NewCheckList projects checks in store order (by name), joining each target's
+// last observed status from the sweep's check_state rows.
+func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []CheckView {
+	out := make([]CheckView, 0, len(rows))
+	for _, c := range rows {
+		status := make(map[string]string, len(states[c.ID]))
+		for _, s := range states[c.ID] {
+			status[s.TargetName] = s.Status
+		}
+		targets := make([]CheckTargetView, 0, len(c.Targets))
+		for _, t := range c.Targets {
+			targets = append(targets, CheckTargetView{
+				Name: t.Name, Address: t.Address, URL: t.URL,
+				Port: t.Port, Expect: t.Expect, Status: status[t.Name],
+			})
+		}
+		out = append(out, CheckView{
+			ID: c.ID, Name: c.Name, Kind: c.Kind,
+			IntervalS: c.IntervalS, Enabled: c.Enabled, Targets: targets,
+		})
 	}
 	return out
 }

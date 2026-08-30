@@ -1,0 +1,173 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"strings"
+	"testing"
+
+	"exocomp.dev/exocomp/internal/store"
+)
+
+// runCheckCmd executes one `check` invocation against the whole root command,
+// so the persistent --output flag resolves exactly as it does for a real
+// invocation.
+func runCheckCmd(t *testing.T, args ...string) (string, error) {
+	t.Helper()
+
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs(args)
+
+	err := root.Execute()
+	return out.String(), err
+}
+
+func checks(t *testing.T) []store.Check {
+	t.Helper()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	rows, err := st.ListChecks(context.Background(), false)
+	if err != nil {
+		t.Fatalf("list checks: %v", err)
+	}
+	return rows
+}
+
+// TestCheckAddListEnableDisableRmRoundTrip drives the verbs against a scratch
+// data dir: add stores the probe targets, list renders them (text and JSON),
+// enable/disable flip the sweep's view, rm removes the row, and a second rm
+// reports it gone.
+func TestCheckAddListEnableDisableRmRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m",
+		"--target", "laptop=192.168.1.50:22", "--target", "nas=192.168.1.60:22"); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+	rows := checks(t)
+	if len(rows) != 1 || rows[0].Name != "at-home" || rows[0].Kind != store.CheckTCP ||
+		rows[0].IntervalS != 300 || len(rows[0].Targets) != 2 ||
+		rows[0].Targets[1].Address != "192.168.1.60" || rows[0].Targets[1].Port != 22 {
+		t.Fatalf("checks = %+v, want one tcp at-home check every 300s with both targets", rows)
+	}
+
+	out, err := runCheckCmd(t, "check", "list")
+	if err != nil {
+		t.Fatalf("check list: %v", err)
+	}
+	for _, want := range []string{"NAME", "at-home", "tcp", "5m0s", "laptop,nas", "enabled"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list text missing %q:\n%s", want, out)
+		}
+	}
+
+	out, err = runCheckCmd(t, "check", "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("check list --output json: %v", err)
+	}
+	for _, want := range []string{`"kind":"check.list"`, `"name":"at-home"`,
+		`"interval_s":300`, `"enabled":true`, `"address":"192.168.1.50"`, `"port":22`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list json missing %q:\n%s", want, out)
+		}
+	}
+
+	if _, err := runCheckCmd(t, "check", "disable", "at-home"); err != nil {
+		t.Fatalf("check disable: %v", err)
+	}
+	if rows := checks(t); len(rows) != 1 || rows[0].Enabled {
+		t.Fatalf("after disable: %+v, want the check present but disabled", rows)
+	}
+	if _, err := runCheckCmd(t, "check", "enable", "at-home"); err != nil {
+		t.Fatalf("check enable: %v", err)
+	}
+	if rows := checks(t); len(rows) != 1 || !rows[0].Enabled {
+		t.Fatalf("after enable: %+v, want the check enabled again", rows)
+	}
+
+	if _, err := runCheckCmd(t, "check", "rm", "at-home"); err != nil {
+		t.Fatalf("check rm: %v", err)
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Fatalf("checks after rm = %+v, want none", rows)
+	}
+
+	out, err = runCheckCmd(t, "check", "rm", "at-home")
+	if err == nil {
+		t.Fatalf("second check rm succeeded:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("second rm error = %v, want one naming the miss", err)
+	}
+}
+
+// TestCheckAddRejectsBadInput keeps a row that can never probe out of the
+// database: a bad kind, a non-positive interval, malformed targets, and
+// --expect on a non-http kind are all refused.
+func TestCheckAddRejectsBadInput(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	for _, args := range [][]string{
+		{"check", "add", "x", "--kind", "snmp", "--interval", "5m", "--target", "a=127.0.0.1:22"},
+		{"check", "add", "x", "--kind", "tcp", "--interval", "0s", "--target", "a=127.0.0.1:22"},
+		{"check", "add", "x", "--kind", "tcp", "--interval", "-5m", "--target", "a=127.0.0.1:22"},
+		{"check", "add", "x", "--kind", "tcp", "--interval", "5m", "--target", "no-equals"},
+		{"check", "add", "x", "--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1"},       // tcp needs a port
+		{"check", "add", "x", "--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:70000"}, // port out of range
+		{"check", "add", "x", "--kind", "http", "--interval", "5m", "--target", "a=not a url"},      // unparseable
+		{"check", "add", "x", "--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:22", "--expect", "200"},
+		{"check", "add", "x", "--kind", "http", "--interval", "5m", "--target", "a=http://web.lan/x", "--expect", "42"}, // expect out of range
+		{"check", "add", "x", "--kind", "ping", "--interval", "5m", "--target", "a=127.0.0.1:22"},                       // ping carries a port
+	} {
+		out, err := runCheckCmd(t, args...)
+		if err == nil {
+			t.Fatalf("check %v accepted, want a refusal:\n%s", args, out)
+		}
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Errorf("refused checks were written anyway: %+v", rows)
+	}
+
+	// A duplicate name is refused with the collision named.
+	if _, err := runCheckCmd(t, "check", "add", "dup",
+		"--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:22"); err != nil {
+		t.Fatalf("valid add refused: %v", err)
+	}
+	out, err := runCheckCmd(t, "check", "add", "dup",
+		"--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:23")
+	if err == nil {
+		t.Fatalf("duplicate add accepted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "already exists") {
+		t.Errorf("duplicate error = %v, want one naming the collision", err)
+	}
+}
+
+// TestCheckAddPingRefusedWhenBinaryMissing: a ping check on a host without the
+// binary on PATH is refused, because a check that is silently all-down is the
+// observability failure the capability probe exists to prevent.
+func TestCheckAddPingRefusedWhenBinaryMissing(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+
+	out, err := runCheckCmd(t, "check", "add", "gate",
+		"--kind", "ping", "--interval", "5m", "--target", "g=127.0.0.1")
+	if err == nil {
+		t.Fatalf("ping check accepted on a host without the binary:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "ping binary not on PATH") {
+		t.Errorf("refusal = %v, want it to name the missing binary", err)
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Errorf("refused ping check was written anyway: %+v", rows)
+	}
+}

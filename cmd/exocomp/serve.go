@@ -661,6 +661,14 @@ func sweepReactive(ctx context.Context, st *store.Store, engine *reactive.Engine
 			_, _ = fmt.Fprintf(warn, "drift: %d workspace(s) planned changes\n", raised)
 		}
 
+		if raised, err := engine.SweepChecks(ctx); err != nil {
+			if ctx.Err() == nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: sweep checks: %v\n", err)
+			}
+		} else if raised > 0 {
+			_, _ = fmt.Fprintf(warn, "checks: %d transition(s)\n", raised)
+		}
+
 		if paged, err := engine.SweepJobOutcomes(ctx); err != nil {
 			if ctx.Err() == nil {
 				_, _ = fmt.Fprintf(warn, "WARNING: page job failures: %v\n", err)
