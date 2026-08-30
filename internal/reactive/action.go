@@ -25,6 +25,16 @@ const PlanArtifactKind = "tofu-plan"
 // Trigger is what a job this package enqueues records as its origin.
 const Trigger = "event"
 
+// PlaybookBuilder turns a matched playbook-action rule into the run the queue
+// takes. The engine stays in charge: it stamps the identity fields (Runbook,
+// Trigger, DedupKey, ConcurrencyKey, Timeout) and owns enqueue/gate/approval;
+// the builder shapes only the executable half (Kind, Argv, Dir, DirReadOnly,
+// Source). Wired by the daemon (service-backed); nil means a playbook rule can
+// never fire.
+type PlaybookBuilder interface {
+	BuildPlaybookSpec(ctx context.Context, ev Event, rule store.Rule) (queue.Spec, error)
+}
+
 // WorkspaceRunbook is the runbook name a job against a workspace carries.
 func WorkspaceRunbook(name string) string { return WorkspaceRunbookPrefix + name }
 
@@ -119,6 +129,25 @@ func (e *Engine) buildSpec(ctx context.Context, ev Event, rule store.Rule) (queu
 			DedupKey:       ev.DedupKey,
 			Timeout:        time.Duration(rule.Action.Timeout),
 		}, ref, nil
+
+	case store.ActionPlaybook:
+		if e.playbooks == nil {
+			return queue.Spec{}, planRef{}, fmt.Errorf(
+				"rule %q: playbook action has no builder wired", rule.Name)
+		}
+		spec, err := e.playbooks.BuildPlaybookSpec(ctx, ev, rule)
+		if err != nil {
+			return queue.Spec{}, planRef{}, err
+		}
+		// The builder shapes only the executable half; the engine stamps the
+		// identity fields, the same way the shell case assembles its spec
+		// (action.go:76-84).
+		spec.Runbook = "rule:" + rule.Name
+		spec.Trigger = Trigger
+		spec.DedupKey = ev.DedupKey
+		spec.ConcurrencyKey = "rule:" + rule.Name
+		spec.Timeout = time.Duration(rule.Action.Timeout)
+		return spec, planRef{}, nil
 
 	default:
 		return queue.Spec{}, planRef{}, fmt.Errorf("rule %q: unknown action kind %q",

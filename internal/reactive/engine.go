@@ -46,6 +46,12 @@ type Options struct {
 	Deriver Deriver
 	// Notifier carries approvals and cap trips to the operator's phone.
 	Notifier *notify.Notifier
+	// Playbooks resolves a playbook-action rule's source checkout into the
+	// spec the queue takes. Nil is allowed — the web engine and the CLI
+	// approval engine construct a nil-builder engine — but a playbook-action
+	// rule matching on such an engine records an outcome error and fires
+	// nothing.
+	Playbooks PlaybookBuilder
 	// BaseURL is what a decision link is rooted at, e.g. http://127.0.0.1:8080.
 	BaseURL string
 	// DedupWindow is how long a repeat of the same condition is a duplicate.
@@ -70,6 +76,7 @@ type Engine struct {
 	queue       Gate
 	deriver     Deriver
 	notifier    *notify.Notifier
+	playbooks   PlaybookBuilder
 	dedupWindow time.Duration
 	approvalTTL time.Duration
 	redactor    func() Redactor
@@ -112,6 +119,7 @@ func New(opts Options) (*Engine, error) {
 		queue:       opts.Queue,
 		deriver:     opts.Deriver,
 		notifier:    opts.Notifier,
+		playbooks:   opts.Playbooks,
 		dedupWindow: opts.DedupWindow,
 		approvalTTL: opts.ApprovalTTL,
 		redactor:    opts.Redactor,
