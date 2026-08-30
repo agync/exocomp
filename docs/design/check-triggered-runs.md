@@ -489,9 +489,10 @@ exocomp rule add <name> --source check --expr '...' \
 `rule add` learns the `playbook` action and its flags (`cmd/exocomp/rule.go:39`);
 `rule list` renders it (`rule.go:201`). `wire.RuleView` (`wire/schema.go:395`)
 gains the action fields. The web surface gains netgroup and check pages (rows +
-modals, the same chrome the sources/schedules pages use) and a "Run when home"
-rule builder on a check's page. `serve` prints check sweep status beside the
-drift line (`serve.go:655`).
+modals, the same chrome the sources/schedules pages use); rules themselves are
+managed from the CLI — the web has no rules page, so there is no in-browser rule
+builder. `serve` prints check sweep status beside the drift line
+(`serve.go:655`).
 
 ---
 
