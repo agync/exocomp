@@ -9,12 +9,14 @@ import (
 )
 
 // Rule action kinds. A rule's action_args_json is read according to the kind:
-// shell carries argv, the tofu kinds carry a workspace name, notify carries
-// nothing and produces no job at all.
+// shell carries argv, the tofu kinds carry a workspace name, playbook carries
+// the registered source and the ansible passthrough, notify carries nothing
+// and produces no job at all.
 const (
 	ActionShell     = "shell"
 	ActionTofuPlan  = "tofu-plan"
 	ActionTofuApply = "tofu-apply"
+	ActionPlaybook  = "playbook"
 	ActionNotify    = "notify"
 )
 
@@ -22,7 +24,21 @@ const (
 type RuleAction struct {
 	Argv      []string `json:"argv,omitempty"`
 	Workspace string   `json:"workspace,omitempty"`
-	Timeout   Duration `json:"timeout,omitempty"`
+	// Source is the registered source whose checkout the playbook action runs
+	// from. It stays named "source" in the store even though the CLI flag for
+	// it is --repo-source, because a rule's --source is already the
+	// event-source filter.
+	Source string `json:"source,omitempty"`
+	// Playbook is the playbook path, relative to the source checkout.
+	Playbook string `json:"playbook,omitempty"`
+	// Limit is the fixed ansible --limit host pattern a playbook action runs.
+	// It is required at add time: default-deny against running every host the
+	// checkout's inventory names.
+	Limit   string   `json:"limit,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	Check   bool     `json:"check,omitempty"`
+	Diff    bool     `json:"diff,omitempty"`
+	Timeout Duration `json:"timeout,omitempty"`
 }
 
 // Rule is one row of the rule table: a CEL expression over a normalized event
