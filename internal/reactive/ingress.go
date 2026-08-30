@@ -113,6 +113,22 @@ func ParseAllow(spec string) ([]netip.Prefix, error) {
 	return out, nil
 }
 
+// peerAddr resolves a request's peer address. It is the same SplitHostPort
+// fallback the allowlist uses, factored out so the stamping path and permitted
+// read the peer identically: r.RemoteAddr is the address the connection
+// arrived on, which over tailnet is the CGNAT 100.64.0.0/10 address.
+func peerAddr(r *http.Request) (netip.Addr, bool) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return netip.Addr{}, false
+	}
+	return addr.Unmap(), true
+}
+
 // permitted reports whether a request's peer is inside the allowlist. An empty
 // allowlist permits everything: the path token is the authentication, and a
 // CIDR list is defence in depth the operator opts into.
@@ -120,15 +136,10 @@ func (in *Ingress) permitted(r *http.Request) bool {
 	if len(in.allow) == 0 {
 		return true
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
-	}
-	addr, err := netip.ParseAddr(host)
-	if err != nil {
+	addr, ok := peerAddr(r)
+	if !ok {
 		return false
 	}
-	addr = addr.Unmap()
 	for _, prefix := range in.allow {
 		if prefix.Contains(addr) {
 			return true
@@ -200,6 +211,15 @@ func (in *Ingress) handleHook(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
+	}
+
+	// Stamp every event with the network path it arrived on before the pipeline
+	// looks at it. The value is the peer's IP and the netgroup containing it
+	// (or "away"); see Engine.stampPeer for what that does and does not claim.
+	if peer, ok := peerAddr(r); ok {
+		for i := range events {
+			in.engine.stampPeer(r.Context(), &events[i], peer)
+		}
 	}
 
 	result := hookResult{Source: source}

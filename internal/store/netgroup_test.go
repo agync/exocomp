@@ -137,17 +137,24 @@ func TestNetgroupForAddrLongestPrefixWins(t *testing.T) {
 		{"no registered group", "192.168.1.1", "", false},
 	}
 	for _, tc := range cases {
-		got, ok := s.NetgroupForAddr(ctx, netip.MustParseAddr(tc.addr))
-		if ok != tc.ok || got != tc.want {
-			t.Errorf("%s: NetgroupForAddr(%s) = (%q, %v), want (%q, %v)",
-				tc.name, tc.addr, got, ok, tc.want, tc.ok)
+		got, err := s.NetgroupForAddr(ctx, netip.MustParseAddr(tc.addr))
+		if tc.ok && err != nil {
+			t.Errorf("%s: NetgroupForAddr(%s) error = %v, want the group name", tc.name, tc.addr, err)
+			continue
+		}
+		if !tc.ok && !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: NetgroupForAddr(%s) error = %v, want ErrNotFound", tc.name, tc.addr, err)
+			continue
+		}
+		if got != tc.want {
+			t.Errorf("%s: NetgroupForAddr(%s) = %q, want %q", tc.name, tc.addr, got, tc.want)
 		}
 	}
 
 	// An IPv4-mapped IPv6 peer (what net/http hands out) must land in the same
 	// group as its IPv4 twin, not fall through as unmatched.
-	if got, ok := s.NetgroupForAddr(ctx, netip.MustParseAddr("::ffff:10.1.2.9")); !ok || got != "lab" {
-		t.Errorf("mapped peer = (%q, %v), want (lab, true)", got, ok)
+	if got, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("::ffff:10.1.2.9")); err != nil || got != "lab" {
+		t.Errorf("mapped peer = (%q, %v), want (lab, nil)", got, err)
 	}
 }
 
@@ -172,9 +179,9 @@ func TestNetgroupForAddrTieBreaksByNameAscending(t *testing.T) {
 		t.Fatalf("create a-lan: %v", err)
 	}
 
-	got, ok := s.NetgroupForAddr(ctx, netip.MustParseAddr("10.1.1.1"))
-	if !ok || got != "a-lan" {
-		t.Errorf("NetgroupForAddr = (%q, %v), want (a-lan, true)", got, ok)
+	got, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("10.1.1.1"))
+	if err != nil || got != "a-lan" {
+		t.Errorf("NetgroupForAddr = (%q, %v), want (a-lan, nil)", got, err)
 	}
 }
 

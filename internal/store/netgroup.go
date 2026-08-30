@@ -125,14 +125,15 @@ func (s *Store) DeleteNetgroup(ctx context.Context, name string) error {
 // NetgroupForAddr names the netgroup whose prefix most specifically contains
 // addr: the highest Bits() wins, and a tie breaks by name ascending so the
 // answer is deterministic however the rows were inserted. A group that is
-// registered but does not contain addr is not a match. It reports false when no
-// registered group contains addr.
-func (s *Store) NetgroupForAddr(ctx context.Context, addr netip.Addr) (string, bool) {
+// registered but does not contain addr is not a match. It returns ErrNotFound
+// when no registered group contains addr, and the error when the lookup fails
+// so the caller can tell a miss from a broken read.
+func (s *Store) NetgroupForAddr(ctx context.Context, addr netip.Addr) (string, error) {
 	addr = addr.Unmap()
 
 	groups, err := s.ListNetgroups(ctx)
 	if err != nil {
-		return "", false
+		return "", err
 	}
 	best := ""
 	bestBits := -1
@@ -146,7 +147,10 @@ func (s *Store) NetgroupForAddr(ctx context.Context, addr netip.Addr) (string, b
 			}
 		}
 	}
-	return best, best != ""
+	if best == "" {
+		return "", ErrNotFound
+	}
+	return best, nil
 }
 
 func scanNetgroup(row rowScanner) (Netgroup, error) {
