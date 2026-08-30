@@ -220,6 +220,156 @@ VALUES ('host-inv', (SELECT id FROM source WHERE name='host'), 'hosts.ini', 'sta
 	}
 }
 
+// TestMigration0030UpgradesFrom029 pins a database at 0029 and confirms that
+// opening it with the current binary applies 0030 forward: check_row and
+// check_state appear, and the check store's own CRUD/state round-trips on the
+// upgraded schema.
+func TestMigration0030UpgradesFrom029(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 30)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var n int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE name IN ('check_row', 'check_state')`).Scan(&n); err != nil {
+		t.Fatalf("probe check tables at 0029: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("check tables already exist at 0029; the pin is not honest (found %d)", n)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0029 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 30 {
+		t.Fatalf("schema version = %d after open, want >= 30 (0030 applied)", version)
+	}
+
+	created, err := s.CreateCheck(ctx, NewCheck{
+		Name: "at-home", Kind: CheckTCP, IntervalS: 300,
+		Targets: []CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check on upgraded db: %v", err)
+	}
+	if err := s.SetCheckState(ctx, CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: CheckUp,
+		Consecutive: 1, Emitted: CheckUp, FirstSeen: time.Now(), LastChange: time.Now(),
+	}); err != nil {
+		t.Fatalf("set state on upgraded db: %v", err)
+	}
+	if _, err := s.GetCheckState(ctx, created.ID, "laptop"); err != nil {
+		t.Fatalf("read state on upgraded db: %v", err)
+	}
+}
+
+// TestMigration0031UpgradesFrom030 pins a database at 0030 and confirms the
+// rule_fire dedup_key column and its index arrive in place: a pre-0031 fire row
+// defaults to ” and a fire written with a key reads back with it.
+func TestMigration0031UpgradesFrom030(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 31)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	rows, err := raw.QueryContext(ctx, `PRAGMA table_info(rule_fire)`)
+	if err != nil {
+		t.Fatalf("read rule_fire columns at 0030: %v", err)
+	}
+	for rows.Next() {
+		var cid, notnull, pk int
+		var name, typ string
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notnull, &dflt, &pk); err != nil {
+			t.Fatalf("scan column: %v", err)
+		}
+		if name == "dedup_key" {
+			t.Fatal("rule_fire already has dedup_key at 0030; the pin is not honest")
+		}
+	}
+	if err := rows.Close(); err != nil {
+		t.Fatalf("close column rows: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0030 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 31 {
+		t.Fatalf("schema version = %d after open, want >= 31 (0031 applied)", version)
+	}
+
+	var idx int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'rule_fire_rule_key'`).Scan(&idx); err != nil {
+		t.Fatalf("probe index: %v", err)
+	}
+	if idx != 1 {
+		t.Fatal("rule_fire_rule_key index missing after 0031")
+	}
+
+	rule, err := s.CreateRule(ctx, NewRule{Name: "r", CELExpr: "true", ActionKind: ActionNotify})
+	if err != nil {
+		t.Fatalf("create rule on upgraded db: %v", err)
+	}
+	now := time.Now().UTC().UnixMilli()
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO rule_fire (rule_id, ts, job_id, dedup_key) VALUES (?, ?, NULL, ?)`,
+		rule.ID, now, "check:a:b"); err != nil {
+		t.Fatalf("insert keyed fire on upgraded db: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx,
+		`INSERT INTO rule_fire (rule_id, ts, job_id) VALUES (?, ?, NULL)`, rule.ID, now+1); err != nil {
+		t.Fatalf("insert legacy fire on upgraded db: %v", err)
+	}
+
+	var keyed, legacy string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT dedup_key FROM rule_fire WHERE rule_id = ? AND ts = ?`, rule.ID, now).Scan(&keyed); err != nil {
+		t.Fatalf("read keyed fire: %v", err)
+	}
+	if keyed != "check:a:b" {
+		t.Fatalf("keyed fire read back with dedup_key %q", keyed)
+	}
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT dedup_key FROM rule_fire WHERE rule_id = ? AND ts = ?`, rule.ID, now+1).Scan(&legacy); err != nil {
+		t.Fatalf("read legacy fire: %v", err)
+	}
+	if legacy != "" {
+		t.Fatalf("legacy fire read back with dedup_key %q, want ''", legacy)
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.
