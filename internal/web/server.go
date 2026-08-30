@@ -203,6 +203,7 @@ func (s *Server) Handler() http.Handler {
 	// Post-v1 read surfaces (registration and mutation stay CLI/local-auth).
 	mux.HandleFunc("GET /sources", s.requireAuth(s.handleSources))
 	mux.HandleFunc("GET /schedules", s.requireAuth(s.handleSchedules))
+	mux.HandleFunc("GET /netgroups", s.requireAuth(s.handleNetgroups))
 	mux.HandleFunc("GET /workflows", s.requireAuth(s.handleWorkflows))
 	mux.HandleFunc("GET /workflows/{id}", s.requireAuth(s.handleWorkflowDetail))
 	mux.HandleFunc("GET /policies", s.requireAuth(s.handlePolicies))

@@ -65,6 +65,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/approvals/{id}/plan",
 		s.apiGuard(mayApprove, "this token's scope may not read plan diffs", s.apiApprovalPlan))
 	mux.HandleFunc("GET /api/v1/schedules", s.apiAuth(s.apiSchedules))
+	mux.HandleFunc("GET /api/v1/netgroups", s.apiAuth(s.apiNetgroups))
 	mux.HandleFunc("GET /api/v1/rules", s.apiAuth(s.apiRules))
 	mux.HandleFunc("GET /api/v1/silences", s.apiAuth(s.apiSilences))
 	mux.HandleFunc("GET /api/v1/mutes", s.apiAuth(s.apiMutes))
@@ -603,6 +604,15 @@ func (s *Server) apiSchedules(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindScheduleList, wire.NewScheduleList(rows))
+}
+
+func (s *Server) apiNetgroups(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.store.ListNetgroups(r.Context())
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindNetgroupList, wire.NewNetgroupList(rows))
 }
 
 func (s *Server) apiRules(w http.ResponseWriter, r *http.Request) {

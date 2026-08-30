@@ -43,6 +43,7 @@ var apiV1Paths = []string{
 	"/api/v1/sources",
 	"/api/v1/approvals",
 	"/api/v1/schedules",
+	"/api/v1/netgroups",
 	"/api/v1/rules",
 	"/api/v1/silences",
 	"/api/v1/mutes",
