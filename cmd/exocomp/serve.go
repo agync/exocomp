@@ -324,7 +324,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// The reactive surfaces are mounted on the one listener before it binds:
 	// routes are fixed at start, and a second listener would be a second
 	// authentication story.
-	engine, err := reactiveEngine(ctx, st, q, env, warn, opts)
+	engine, err := reactiveEngine(ctx, st, q, env, warn, dir, opts)
 	if err != nil {
 		return err
 	}
@@ -529,7 +529,7 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 // secrets. An operator who has not sealed an ntfy endpoint gets a working
 // daemon and a silent phone, not a daemon that refuses to start.
 func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
-	env *secrets.Envelope, warn io.Writer, opts serveOptions) (*reactive.Engine, error) {
+	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, error) {
 	look := func(ctx context.Context, name string) ([]byte, error) {
 		row, err := st.GetSecret(ctx, name)
 		if err != nil {
@@ -592,6 +592,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		Queue:       q,
 		Deriver:     env,
 		Notifier:    notifier,
+		Playbooks:   service.New(st, dir, nil),
 		DedupWindow: opts.dedupWindow,
 		ApprovalTTL: opts.approvalTTL,
 		Redactor: func() reactive.Redactor {

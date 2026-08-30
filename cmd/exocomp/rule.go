@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -42,6 +44,12 @@ func newRuleAddCmd() *cobra.Command {
 		action          string
 		source          string
 		workspace       string
+		repoSource      string
+		playbook        string
+		limit           string
+		tags            string
+		check           bool
+		diff            bool
 		cooldown        time.Duration
 		dailyCap        int
 		requireApproval bool
@@ -54,8 +62,13 @@ func newRuleAddCmd() *cobra.Command {
 		Long: "The expression is checked against the same environment the engine evaluates " +
 			"it in, so a rule that would never run is refused here rather than logged on " +
 			"every event. Action shell runs argv (everything after --); tofu-plan and " +
-			"tofu-apply act on --workspace; notify sends a push and creates no job. " +
-			"tofu-apply is destructive and is approval-gated whatever --require-approval says.",
+			"tofu-apply act on --workspace; playbook runs the named playbook from a " +
+			"registered source's checkout (--repo-source) under ansible; notify sends a " +
+			"push and creates no job. tofu-apply is destructive and is approval-gated " +
+			"whatever --require-approval says.\n\n" +
+			"A playbook rule is a plain, vault-less, inventory-discovery play for v1: it " +
+			"carries no run-secrets or vault binding, and --limit is required because an " +
+			"un-limited rule would run every host the inventory names.",
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
@@ -75,6 +88,27 @@ func newRuleAddCmd() *cobra.Command {
 					return fmt.Errorf("rule add: action %s takes no argv", action)
 				}
 				ruleAction.Workspace = workspace
+			case store.ActionPlaybook:
+				if repoSource == "" {
+					return errors.New("rule add: action playbook needs --repo-source")
+				}
+				if playbook == "" {
+					return errors.New("rule add: action playbook needs --playbook")
+				}
+				if limit == "" {
+					return errors.New("rule add: action playbook needs --limit (default-deny)")
+				}
+				if len(argv) != 0 {
+					return errors.New("rule add: action playbook takes no argv")
+				}
+				ruleAction.Source = repoSource
+				ruleAction.Playbook = playbook
+				ruleAction.Limit = limit
+				if tags != "" {
+					ruleAction.Tags = strings.Split(tags, ",")
+				}
+				ruleAction.Check = check
+				ruleAction.Diff = diff
 			case store.ActionNotify:
 				if len(argv) != 0 {
 					return errors.New("rule add: action notify takes no argv")
@@ -100,6 +134,12 @@ func newRuleAddCmd() *cobra.Command {
 				return err
 			}
 			defer func() { _ = st.Close() }()
+
+			if action == store.ActionPlaybook {
+				if err := validatePlaybookRule(cmd.Context(), st, repoSource, playbook, limit, tags, check, diff); err != nil {
+					return err
+				}
+			}
 
 			created, err := st.CreateRule(cmd.Context(), store.NewRule{
 				Name:            name,
@@ -133,6 +173,17 @@ func newRuleAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&source, "source", "",
 		"only evaluate events from this source (empty: every source)")
 	cmd.Flags().StringVar(&workspace, "workspace", "", "tofu actions: the workspace to act on")
+	cmd.Flags().StringVar(&repoSource, "repo-source", "",
+		"playbook action: the registered source whose checkout holds the playbook "+
+			"(not --source, which is the event-source filter)")
+	cmd.Flags().StringVar(&playbook, "playbook", "",
+		"playbook action: path to the playbook, relative to the --repo-source checkout")
+	cmd.Flags().StringVar(&limit, "limit", "",
+		"playbook action: ansible --limit host pattern (required: default-deny)")
+	cmd.Flags().StringVar(&tags, "tags", "",
+		"playbook action: ansible --tags, comma-separated")
+	cmd.Flags().BoolVar(&check, "check", false, "playbook action: ansible --check dry run")
+	cmd.Flags().BoolVar(&diff, "diff", false, "playbook action: ansible --diff")
 	cmd.Flags().DurationVar(&cooldown, "cooldown", 0, "refuse to fire again within this long")
 	cmd.Flags().IntVar(&dailyCap, "daily-cap", 0,
 		"fires per 24h before the rule disables itself (0: no cap)")
@@ -145,7 +196,34 @@ func newRuleAddCmd() *cobra.Command {
 }
 
 func actionKinds() []string {
-	return []string{store.ActionShell, store.ActionTofuPlan, store.ActionTofuApply, store.ActionNotify}
+	return []string{store.ActionShell, store.ActionTofuPlan, store.ActionTofuApply,
+		store.ActionPlaybook, store.ActionNotify}
+}
+
+// validatePlaybookRule refuses a playbook-action rule that would never run: the
+// source must exist with a checkout on disk, the playbook path must be relative
+// and confined to that checkout, the source must not be hooked (a rule playbook
+// is a plain run — the override-wins resolution covers both the checkout's own
+// .exocomp/hooks.yml and the data-dir override), and the limit/tags must be
+// shape-valid for ansible. All of it re-validated by the builder when the rule
+// fires; refusing here keeps a rule that can never fire out of `rule list`.
+func validatePlaybookRule(ctx context.Context, st *store.Store, repoSource, playbook, limit, tags string, check, diff bool) error {
+	dir, err := dataDir()
+	if err != nil {
+		return fmt.Errorf("rule add: resolve data dir: %w", err)
+	}
+	hooked, _, err := service.New(st, dir, nil).ResolveSourcePlaybook(ctx,
+		hooksOverridePath(dir, repoSource), repoSource, playbook)
+	if err != nil {
+		return fmt.Errorf("rule add: %w", err)
+	}
+	if hooked {
+		return fmt.Errorf("rule add: source %q has hooks; a rule playbook is a plain run", repoSource)
+	}
+	if _, _, err := service.AnsiblePassthrough(limit, tags, "", check, diff, nil); err != nil {
+		return fmt.Errorf("rule add: %w", err)
+	}
+	return nil
 }
 
 func newRuleListCmd() *cobra.Command {
@@ -204,6 +282,8 @@ func actionLabel(r store.Rule) string {
 		return r.ActionKind + " " + strings.Join(r.Action.Argv, " ")
 	case store.ActionTofuPlan, store.ActionTofuApply:
 		return r.ActionKind + " " + r.Action.Workspace
+	case store.ActionPlaybook:
+		return fmt.Sprintf("%s %s %s (limit %s)", r.ActionKind, r.Action.Source, r.Action.Playbook, r.Action.Limit)
 	default:
 		return r.ActionKind
 	}

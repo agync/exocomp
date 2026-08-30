@@ -394,7 +394,8 @@ func NewScheduleList(rows []store.Schedule) []ScheduleView {
 }
 
 // RuleView projects a rule and its guardrails. The CEL expression is config,
-// not a value; the action argv is omitted.
+// not a value; the action argv is omitted. The playbook-action fields are
+// present only for an ActionKind of playbook.
 type RuleView struct {
 	ID              int64  `json:"id"`
 	Name            string `json:"name"`
@@ -405,6 +406,14 @@ type RuleView struct {
 	DailyCap        int    `json:"daily_cap,omitempty"`
 	RequireApproval bool   `json:"require_approval,omitempty"`
 	Enabled         bool   `json:"enabled"`
+	// Source names the playbook action's registered source (json "source" to
+	// match RuleAction; a rule's event-source filter is "source_filter" above).
+	Source   string   `json:"source,omitempty"`
+	Playbook string   `json:"playbook,omitempty"`
+	Limit    string   `json:"limit,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+	Check    bool     `json:"check,omitempty"`
+	Diff     bool     `json:"diff,omitempty"`
 }
 
 // NewRuleList projects rules in store order.
@@ -415,6 +424,8 @@ func NewRuleList(rows []store.Rule) []RuleView {
 			ID: r.ID, Name: r.Name, SourceFilter: r.SourceFilter, CELExpr: r.CELExpr,
 			ActionKind: r.ActionKind, CooldownS: r.CooldownS, DailyCap: r.DailyCap,
 			RequireApproval: r.RequireApproval, Enabled: r.Enabled,
+			Source: r.Action.Source, Playbook: r.Action.Playbook, Limit: r.Action.Limit,
+			Tags: r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
 		})
 	}
 	return out
