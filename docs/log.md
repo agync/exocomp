@@ -6,6 +6,26 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-30 — netgroups and peer stamping
+
+- **Netgroups land as a store table, CLI verbs, and webhook peer stamping** —
+  phase 1 of [design/check-triggered-runs.md](design/check-triggered-runs.md).
+  `netgroup` rows name a comma-separated CIDR set, managed by `exocomp
+  netgroup add/list/rm` (wire kind `netgroup.list`); prefix validity is
+  enforced at write time, so a row that reads parses. Every webhook the
+  ingress records now carries `labels["peer_ip"]` (the peer address, unmapped)
+  and `labels["peer_netgroup"]` — the registered group whose prefix most
+  specifically contains the peer, or `away` when none does — stamped before
+  the pipeline evaluates the event. The stamp is a network-path signal, not a
+  location verdict: over tailnet the peer is the CGNAT `100.64.0.0/10`
+  address, so a LAN netgroup marks an overlay-delivered hook away, the
+  fail-safe direction for a "refuse from outside" rule.
+- **Reconciliation vs the design doc.** §8.1's "first registered group" is
+  implemented as *longest prefix, then name ascending*. Code wins: "first"
+  would silently change with insertion order on a later `netgroup add`, while
+  a most-specific match is what an operator reading the prefixes expects, and
+  the name tie-break keeps the verdict deterministic.
+
 ## 2026-08-30 — check-triggered runs design
 
 - **New page** [design/check-triggered-runs.md](design/check-triggered-runs.md):
