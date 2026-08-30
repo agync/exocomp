@@ -157,7 +157,7 @@ func TestRuleFireLedger(t *testing.T) {
 	}
 
 	for range 3 {
-		if _, err := st.RecordRuleFire(ctx, rule.ID, nil); err != nil {
+		if _, err := st.RecordRuleFire(ctx, rule.ID, nil, ""); err != nil {
 			t.Fatalf("record fire: %v", err)
 		}
 	}
@@ -182,6 +182,59 @@ func TestRuleFireLedger(t *testing.T) {
 	}
 	if last.RuleID != rule.ID {
 		t.Fatalf("last fire names rule %d, want %d", last.RuleID, rule.ID)
+	}
+}
+
+// TestRuleFireDedupLedger pins the per-key half of the fire ledger: a fire
+// records the dedup key it was raised for, LastRuleFireByKey finds the newest
+// fire of one key, and LastRuleFire stays per-rule so a webhook source keeps
+// its whole-rule budget.
+func TestRuleFireDedupLedger(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	rule, err := st.CreateRule(ctx, store.NewRule{
+		Name: "r", CELExpr: "true", ActionKind: store.ActionNotify,
+	})
+	if err != nil {
+		t.Fatalf("create rule: %v", err)
+	}
+	if _, err := st.LastRuleFireByKey(ctx, rule.ID, "check:a:laptop"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("last fire by key of a rule that never fired that key: err = %v, want ErrNotFound", err)
+	}
+
+	laptop, err := st.RecordRuleFire(ctx, rule.ID, nil, "check:a:laptop")
+	if err != nil {
+		t.Fatalf("record laptop fire: %v", err)
+	}
+	if laptop.DedupKey != "check:a:laptop" {
+		t.Fatalf("recorded fire dedup key = %q", laptop.DedupKey)
+	}
+	if _, err := st.RecordRuleFire(ctx, rule.ID, nil, "check:a:nas"); err != nil {
+		t.Fatalf("record nas fire: %v", err)
+	}
+	if _, err := st.RecordRuleFire(ctx, rule.ID, nil, "check:a:laptop"); err != nil {
+		t.Fatalf("record second laptop fire: %v", err)
+	}
+
+	perKey, err := st.LastRuleFireByKey(ctx, rule.ID, "check:a:laptop")
+	if err != nil {
+		t.Fatalf("last fire by key: %v", err)
+	}
+	if perKey.ID == laptop.ID {
+		t.Fatal("LastRuleFireByKey did not return the newest fire of the key")
+	}
+	if perKey.DedupKey != "check:a:laptop" {
+		t.Fatalf("by-key fire dedup key = %q", perKey.DedupKey)
+	}
+
+	perRule, err := st.LastRuleFire(ctx, rule.ID)
+	if err != nil {
+		t.Fatalf("last fire: %v", err)
+	}
+	if perRule.DedupKey != "check:a:laptop" {
+		t.Fatalf("per-rule newest fire dedup key = %q, want the overall newest", perRule.DedupKey)
 	}
 }
 

@@ -307,7 +307,7 @@ func (e *Engine) match(ctx context.Context, ev Event, set *Ruleset, trace *Trace
 func (e *Engine) act(ctx context.Context, ev Event, raw []byte, rule store.Rule, trace *Trace) (store.Event, error) {
 	if rule.ActionKind == store.ActionNotify {
 		trace.add(StepAction, rule.ActionKind, true, "notify only; no job")
-		if _, err := e.store.RecordRuleFire(ctx, rule.ID, nil); err != nil {
+		if _, err := e.store.RecordRuleFire(ctx, rule.ID, nil, ev.DedupKey); err != nil {
 			return store.Event{}, err
 		}
 		e.notify(ctx, matchedNotification(rule, ev))
@@ -328,7 +328,7 @@ func (e *Engine) act(ctx context.Context, ev Event, raw []byte, rule store.Rule,
 		if err != nil {
 			return store.Event{}, err
 		}
-		if _, err := e.store.RecordRuleFire(ctx, rule.ID, &job.ID); err != nil {
+		if _, err := e.store.RecordRuleFire(ctx, rule.ID, &job.ID, ev.DedupKey); err != nil {
 			return store.Event{}, err
 		}
 		return e.record(ctx, ev, raw, store.OutcomeFired, rule.Name,
@@ -368,7 +368,7 @@ func (e *Engine) gateAction(ctx context.Context, ev Event, raw []byte, rule stor
 	if err != nil {
 		return store.Event{}, err
 	}
-	if _, err := e.store.RecordRuleFire(ctx, rule.ID, &job.ID); err != nil {
+	if _, err := e.store.RecordRuleFire(ctx, rule.ID, &job.ID, ev.DedupKey); err != nil {
 		return store.Event{}, err
 	}
 

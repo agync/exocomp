@@ -183,17 +183,23 @@ type RuleFire struct {
 	RuleID int64
 	Ts     time.Time
 	JobID  *int64
+	// DedupKey is the event key the fire was raised for. It is what a
+	// sweep-source rule's per-target cooldown reads: the check source keys off
+	// check:<check>:<target>, so each target of a multi-target check keeps its
+	// own cooldown slot.
+	DedupKey string
 }
 
 // RecordRuleFire appends to the ledger the cooldown and the daily cap are read
 // from. It is written when a rule's action reaches the queue — gated or
 // running — because a gated action has spent the rule's budget just as much as
-// one that ran.
-func (s *Store) RecordRuleFire(ctx context.Context, ruleID int64, jobID *int64) (RuleFire, error) {
+// one that ran. dedupKey anchors the per-key (per-target) cooldown of a
+// sweep-source rule; webhook sources pass "".
+func (s *Store) RecordRuleFire(ctx context.Context, ruleID int64, jobID *int64, dedupKey string) (RuleFire, error) {
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO rule_fire (rule_id, ts, job_id) VALUES (?, ?, ?)`,
-		ruleID, now.UnixMilli(), nullInt64(jobID))
+		`INSERT INTO rule_fire (rule_id, ts, job_id, dedup_key) VALUES (?, ?, ?, ?)`,
+		ruleID, now.UnixMilli(), nullInt64(jobID), dedupKey)
 	if err != nil {
 		return RuleFire{}, wrap("record rule fire", err)
 	}
@@ -201,18 +207,33 @@ func (s *Store) RecordRuleFire(ctx context.Context, ruleID int64, jobID *int64) 
 	if err != nil {
 		return RuleFire{}, wrap("record rule fire", err)
 	}
-	return RuleFire{ID: id, RuleID: ruleID, Ts: now, JobID: jobID}, nil
+	return RuleFire{ID: id, RuleID: ruleID, Ts: now, JobID: jobID, DedupKey: dedupKey}, nil
 }
 
 // LastRuleFire returns the newest fire of a rule, or ErrNotFound when it has
-// never fired.
+// never fired. It is the per-rule cooldown ledger for webhook sources.
 func (s *Store) LastRuleFire(ctx context.Context, ruleID int64) (RuleFire, error) {
 	row := s.db.QueryRowContext(ctx, `
-		SELECT id, rule_id, ts, job_id FROM rule_fire
+		SELECT id, rule_id, ts, job_id, dedup_key FROM rule_fire
 		WHERE rule_id = ? ORDER BY ts DESC, id DESC LIMIT 1`, ruleID)
 	f, err := scanRuleFire(row)
 	if err != nil {
 		return RuleFire{}, wrap("last rule fire", err)
+	}
+	return f, nil
+}
+
+// LastRuleFireByKey returns the newest fire of a rule for one dedup key, or
+// ErrNotFound when it has never fired with that key. It is the per-target
+// cooldown ledger of a sweep-source rule.
+func (s *Store) LastRuleFireByKey(ctx context.Context, ruleID int64, dedupKey string) (RuleFire, error) {
+	row := s.db.QueryRowContext(ctx, `
+		SELECT id, rule_id, ts, job_id, dedup_key FROM rule_fire
+		WHERE rule_id = ? AND dedup_key = ? ORDER BY ts DESC, id DESC LIMIT 1`,
+		ruleID, dedupKey)
+	f, err := scanRuleFire(row)
+	if err != nil {
+		return RuleFire{}, wrap("last rule fire by key", err)
 	}
 	return f, nil
 }
@@ -259,7 +280,7 @@ func scanRuleFire(row rowScanner) (RuleFire, error) {
 		ts    int64
 		jobID sql.NullInt64
 	)
-	if err := row.Scan(&f.ID, &f.RuleID, &ts, &jobID); err != nil {
+	if err := row.Scan(&f.ID, &f.RuleID, &ts, &jobID, &f.DedupKey); err != nil {
 		return RuleFire{}, err
 	}
 	f.Ts = time.UnixMilli(ts).UTC()
