@@ -16,6 +16,11 @@ const (
 	// SourceDrift is not a webhook: it is a scheduled `tofu plan` that found
 	// changes, entering the same pipeline so drift can gate an apply.
 	SourceDrift = "drift"
+	// SourceCheck is not a webhook: the check sweep probes targets and emits
+	// one event per declared transition, entering the same pipeline a rule
+	// listens to. It is deliberately absent from Sources — that list is the
+	// webhook surface the ingress resolves tokens for.
+	SourceCheck = "check"
 )
 
 // Sources lists every source the ingress accepts, in the order tokens are

@@ -98,6 +98,14 @@ type Engine struct {
 	capMu    sync.Mutex
 	capPaged map[int64]time.Time
 
+	// dueMu guards dueChecks: when each enabled check is next due for a probe,
+	// keyed by check id. Process state like capPaged — a restart re-seeds and
+	// the first sweep probes everything, which cold-start seeding absorbs.
+	// Lazily initialized so a New-less engine (none exist) and a fresh engine
+	// behave the same.
+	dueMu     sync.Mutex
+	dueChecks map[int64]time.Time
+
 	mu      sync.RWMutex
 	baseURL string
 }

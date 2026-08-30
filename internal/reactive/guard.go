@@ -90,7 +90,7 @@ func (e *Engine) runGuards(ctx context.Context, ev Event, rule store.Rule, trace
 	if verdict, err := e.guardDedup(ctx, ev, now, trace); err != nil || verdict.suppressed {
 		return verdict, err
 	}
-	if verdict, err := e.guardCooldown(ctx, rule, now, trace); err != nil || verdict.suppressed {
+	if verdict, err := e.guardCooldown(ctx, ev, rule, now, trace); err != nil || verdict.suppressed {
 		return verdict, err
 	}
 	return e.guardDailyCap(ctx, rule, now, trace)
@@ -178,15 +178,27 @@ func (e *Engine) guardDedup(ctx context.Context, ev Event, now time.Time, trace 
 
 // guardCooldown swallows a rule that fired too recently. The ledger is
 // rule_fire rows, so a crash-loop restart does not hand the rule a fresh
-// budget.
-func (e *Engine) guardCooldown(ctx context.Context, rule store.Rule, now time.Time, trace *Trace) (guardVerdict, error) {
+// budget. The lookup is per-dedup-key for the check source and per-rule for
+// everything else: a check's dedup key is a bounded, daemon-controlled set
+// (check:<check>:<target>), so each target of a multi-target check gets its own
+// cooldown slot; a webhook's key is fingerprint-based and per-key cooldown
+// would hand a varying body a fresh budget on every distinct body.
+func (e *Engine) guardCooldown(ctx context.Context, ev Event, rule store.Rule, now time.Time, trace *Trace) (guardVerdict, error) {
 	if rule.CooldownS <= 0 {
 		trace.add(StepCooldown, rule.Name, true, "no cooldown")
 		return guardVerdict{}, nil
 	}
 	cooldown := time.Duration(rule.CooldownS) * time.Second
 
-	last, err := e.store.LastRuleFire(ctx, rule.ID)
+	var (
+		last store.RuleFire
+		err  error
+	)
+	if ev.Source == SourceCheck {
+		last, err = e.store.LastRuleFireByKey(ctx, rule.ID, ev.DedupKey)
+	} else {
+		last, err = e.store.LastRuleFire(ctx, rule.ID)
+	}
 	if errors.Is(err, store.ErrNotFound) {
 		trace.add(StepCooldown, rule.Name, true, "cooldown %s, never fired", humanDuration(cooldown))
 		return guardVerdict{}, nil
