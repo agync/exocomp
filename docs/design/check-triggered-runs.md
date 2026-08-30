@@ -2,9 +2,15 @@
 
 ## Status
 
-Proposal, under review. No code exists for any of this yet. The reactive engine,
-its event shape, and the drift sweep are the shipped baseline everything below is
-built on; nothing in this document changes what ships.
+Implemented (the shipped subset): netgroups and webhook peer stamping (§4.1,
+§8.1), the check engine — `check_row`/`check_state`, the sweep with
+transition-only emission, N-consecutive hysteresis, and cold-start seeding
+(§4.2, §5) — and the governed `playbook` rule action (§7). The web ships
+netgroup and check pages; rules stay CLI. Deferred, not built: the
+set-event / `--limit-hosts` expansion (§7.4), the presence shim (§8.2), a web
+rule-builder, and run-secrets/vault on rules. Where the shipped code diverges
+from this proposal, code wins and the correction is recorded in
+`docs/log.md`.
 
 ---
 

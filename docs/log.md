@@ -6,6 +6,28 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — web surface for netgroups and checks
+
+- **The web surface gains netgroups and checks pages.** `/netgroups` and
+  `/checks` render their rows — checks with each target's last observed
+  status from `check_state` — and carry operator-scope writes (add/rm,
+  add/enable/disable/rm), plain operator scope like schedules: no reauth, no
+  confirm_token. The read API adds `GET /api/v1/netgroups` and
+  `GET /api/v1/checks` (wire kinds `netgroup.list`, `check.list`), readable
+  by any authed token. The check-add flow exercises the tcp/http kinds; kind
+  `ping` still refuses on a host that cannot actually send ICMP.
+- **The web write handlers reimplement the CLI's parsing instead of calling
+  it** — the comma-split + `ParsePrefix` list for netgroups
+  (`cmd/exocomp/netgroup.go`) and the name=spec target split for checks
+  (`cmd/exocomp/check.go`) — so a row added from the browser is held to
+  exactly the same rules as one added from the CLI; the store remains the
+  shared validator.
+- **Rules stay CLI.** [design/check-triggered-runs.md](design/check-triggered-runs.md)
+  §9 drops the in-browser rule-builder promise and the design's Status is now
+  the shipped-subset summary; `architecture/reactive.md` gains a Checks
+  subsection beside Drift and the `playbook` rule action, and
+  `operations/reactive.md` gains the netgroup/check verbs.
+
 ## 2026-08-30 — check-triggered runs engine
 
 - **The check engine lands: named probe sets become reactive events.** `check

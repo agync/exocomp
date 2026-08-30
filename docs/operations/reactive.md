@@ -156,3 +156,62 @@ turn into an approval-gated apply.
 The same sweep also pages once for any job that ends in a terminal failure, so a
 failed scheduled converge or backup is no longer silent. The page is idempotent
 over the same event-table checkpoint the drift sweep uses.
+
+## Netgroups
+
+```sh
+exocomp netgroup add home 192.168.0.0/16,10.0.0.0/8
+exocomp netgroup list
+exocomp netgroup rm home
+```
+
+A netgroup names a set of CIDRs with the operator's own vocabulary. It
+classifies two things: every webhook's peer and every check target's address.
+Both are stamped before the pipeline evaluates the event, so a rule reads
+`event.labels["netgroup"] == "home"` instead of a prefix literal. The webhook
+stamp is `peer_ip`/`peer_netgroup` on every normalized event — a
+network-path signal, not a location verdict: over tailnet the peer is the
+CGNAT address, so a home netgroup of LAN prefixes marks an overlay-delivered
+hook away, the fail-safe direction for a "refuse from outside" rule.
+
+## Checks as an event
+
+```sh
+exocomp check add at-home --kind tcp --interval 5m \
+  --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22
+exocomp check list           # per-target last status
+exocomp check disable at-home
+exocomp check enable at-home
+exocomp check rm at-home
+```
+
+A check is a probe set the daemon sweeps on the same tick as drift. Kinds:
+`tcp` dials `ip:port` (the address is the location — probe the home-LAN
+address a host is only reachable at when it is home), `ping` runs a `ping`
+subprocess (refused at add on a host that cannot actually send ICMP), `http`
+reads the status line and never the body. An event fires only on a declared
+transition (down→up fires, up→down resolves) after 3 consecutive
+observations, and a restart never spurious-fires: a target with no state row
+is seeded from its first probe without emitting. `check list` reads the
+per-target last status from that same state.
+
+A rule turns the event into a run the same way it turns any event into a
+run:
+
+```sh
+exocomp rule add laptop-update-on-home \
+  --source check \
+  --expr 'event.name == "at-home" && event.labels["netgroup"] == "home"' \
+  --action playbook --repo-source ops --playbook playbooks/update.yml \
+  --limit laptop --cooldown 24h --daily-cap 1
+```
+
+The `playbook` action needs `--repo-source` and `--limit` (default-deny: an
+un-limited rule would run against every host the inventory names). A check
+rule's cooldown keys off `check:<check>:<target>`, so each target of a
+multi-target check gets its own slot while webhook rules stay per-rule.
+
+The web surfaces both: **Netgroups** and **Checks** pages at `/netgroups`
+and `/checks` list and manage their rows (operator scope), and the API reads
+them at `/api/v1/netgroups` and `/api/v1/checks`. Rules stay CLI — the web
+has no rules page.

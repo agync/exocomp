@@ -31,6 +31,16 @@ a warning. Alertmanager and healthchecks cannot sign, so a signature is not
 required — refusing them would mean refusing the two sources this exists for.
 `--hook-allow` narrows senders to a CIDR list on top of that.
 
+Every normalized event is stamped with the network path it arrived on before
+the pipeline evaluates it: `labels["peer_ip"]` (the peer address, unmapped)
+and `labels["peer_netgroup"]` — the registered netgroup whose prefix most
+specifically contains the peer, or `away` when none does. It is a
+network-path signal, not a location verdict: over tailnet the peer is the
+CGNAT `100.64.0.0/10` address, so a home netgroup of LAN prefixes marks every
+overlay-delivered hook away — the fail-safe direction for a "refuse from
+outside" rule. The value comes from where the connection physically arrived,
+so the sender cannot forge it.
+
 ## One event shape
 
 Each source collapses onto `source, kind, name, status, severity, host,
@@ -59,7 +69,11 @@ label set. An expression that errors does not match — a rule that cannot decid
 must not be able to fire an apply.
 
 Actions: `shell` (argv), `tofu-plan` and `tofu-apply` (a workspace), `notify`
-(no job at all).
+(no job at all), and `playbook` — a rule launches a real ansible run through
+the queue's own assembly path (the engine asks the daemon's `PlaybookBuilder`
+to resolve a registered source's checkout) instead of only a fixed shell
+argv. The playbook's `--limit` is a required, fixed pattern validated at
+rule-add time — an event value never shapes a run's argv.
 
 ## Guardrails, in ledger order
 
@@ -188,6 +202,51 @@ subject's latest drift still open", and a repeat sweep closes nothing. Only a
 dry run that finished and reached every host clears an incident: a failed check
 never enters the sweep, and a degraded one (tolerated unreachable hosts) saw
 nothing at all on the hosts it missed, so it leaves the incident open.
+
+## Checks
+
+A check is a named probe set — a kind, an interval, and targets — whose
+answers become events in this same pipeline. `tcp` dials `address:port` (the
+address is the location: probe the home-LAN address a host is only reachable
+at when it is home), `ping` runs one `ping -c1 -W2` subprocess and reads the
+exit code only, `http` GETs a URL and records the status line — the body is
+never read (AGENTS.md 4). `SweepChecks` runs each enabled check on its
+interval beside `SweepDrift` on the same `--sweep-interval` tick, and `check`
+is a pull source (`SourceCheck`), not a webhook: nothing posts it.
+
+Three rules bound what reaches the pipeline:
+
+- **Transition-only.** An event is emitted only when a target's answer flips —
+  down→up fires, up→down resolves — never on a steady state. The dedup key is
+  `check:<check>:<target>`, so a resolve finds and withdraws what its firing
+  raised: the laptop leaving home cancels the approval its arrival raised.
+- **Hysteresis.** A flip becomes a transition only after N consecutive
+  observations of the new result (default 3), in both directions, so a target
+  on marginal wifi cannot flap a pending approval. The lag applies to the
+  resolve path as much as the fire path; an approval held a few intervals
+  longer still fails closed at its TTL.
+- **Cold-start seeding.** A target with no state row is observed and seeded
+  without emitting, with `emitted` seeded to the observed result — so a
+  daemon restart does not read every up target as a fresh down→up transition.
+  Only a change from a seeded value is an event; a target that left and
+  returned while the daemon was down is missed once, the accepted fail-safe
+  price.
+
+At emission a tcp/ping target's event carries `labels["netgroup"]` — the
+registered group whose prefix most specifically contains the address, or
+`away` — so a rule can gate on the operator's own vocabulary instead of a
+prefix literal. An http target's URL resolves off-LAN, so it carries no
+group; its liveness is not a location verdict.
+
+Guardrails key the same way the sources do, with one deliberate split: the
+cooldown ledger is read **per dedup key** for the check source — each target
+of a multi-target check gets its own slot, so `pi` joining ten minutes after
+`laptop` is not suppressed by `laptop`'s cooldown — and **per rule** for
+every other source. A webhook's dedup key is fingerprint-based: per-key
+cooldown would hand a varying body a fresh budget on every distinct body, a
+complete bypass of the throttle. The check source's keys are a bounded,
+daemon-controlled set, so per-target is safe there. The daily cap stays
+per-rule for every source.
 
 ## Job failures
 
