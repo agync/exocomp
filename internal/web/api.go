@@ -66,6 +66,7 @@ func (s *Server) registerAPI(mux *http.ServeMux) {
 		s.apiGuard(mayApprove, "this token's scope may not read plan diffs", s.apiApprovalPlan))
 	mux.HandleFunc("GET /api/v1/schedules", s.apiAuth(s.apiSchedules))
 	mux.HandleFunc("GET /api/v1/netgroups", s.apiAuth(s.apiNetgroups))
+	mux.HandleFunc("GET /api/v1/checks", s.apiAuth(s.apiChecks))
 	mux.HandleFunc("GET /api/v1/rules", s.apiAuth(s.apiRules))
 	mux.HandleFunc("GET /api/v1/silences", s.apiAuth(s.apiSilences))
 	mux.HandleFunc("GET /api/v1/mutes", s.apiAuth(s.apiMutes))
@@ -613,6 +614,27 @@ func (s *Server) apiNetgroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindNetgroupList, wire.NewNetgroupList(rows))
+}
+
+// apiChecks lists checks with each target's last observed status, the same
+// projection `check list --output json` emits (wire.NewCheckList joins each
+// check's check_state rows).
+func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.store.ListChecks(r.Context(), false)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	states := make(map[int64][]store.CheckState, len(rows))
+	for _, c := range rows {
+		st, err := s.store.ListCheckStates(r.Context(), c.ID)
+		if err != nil {
+			s.apiFail(w, err)
+			return
+		}
+		states[c.ID] = st
+	}
+	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states))
 }
 
 func (s *Server) apiRules(w http.ResponseWriter, r *http.Request) {

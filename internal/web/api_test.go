@@ -50,6 +50,7 @@ var apiV1Paths = []string{
 	"/api/v1/events",
 	"/api/v1/secrets",
 	"/api/v1/backups",
+	"/api/v1/checks",
 }
 
 // TestAPIReadonlyGetsWireEnvelope: a readonly token gets 200 and a well-formed

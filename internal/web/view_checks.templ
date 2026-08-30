@@ -1,0 +1,105 @@
+package web
+
+// checksList is the checks surface: named probe sets whose per-target answers
+// flip into reactive events on a transition (docs/architecture/reactive.md
+// "Checks"). Each row lists its targets with the status the sweep last
+// observed. A check carries no secret material, so — like schedules — the
+// write controls here are plain operator-scope: no reauth, no confirm_token.
+templ checksList(vm checksVM) {
+	@layout(vm.Page) {
+		<div class="pageheader">
+			<h1>Checks</h1>
+			if vm.Operator {
+				@addButton("checks-add", "check")
+			}
+		</div>
+		if vm.Operator {
+			@modal("checks-add", "Add a check") {
+				<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
+				<form method="post" action="/checks/add" class="writeform">
+					<label for="ck-name">Name</label>
+					<input id="ck-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+					<label for="ck-kind">Kind</label>
+					<select id="ck-kind" name="kind">
+						<option value="tcp" selected>tcp</option>
+						<option value="ping">ping</option>
+						<option value="http">http</option>
+					</select>
+					<label for="ck-interval">Interval (Go duration, e.g. 5m)</label>
+					<input id="ck-interval" name="interval" type="text" required autocomplete="off" placeholder="5m"/>
+					<label for="ck-target">Targets (<code>name=ip:port</code>, <code>name=ip</code>, or <code>name=url</code>; repeat as needed)</label>
+					<input id="ck-target" name="target" type="text" autocomplete="off" placeholder="laptop=192.168.1.50:22"/>
+					<input name="target" type="text" autocomplete="off" placeholder="nas=192.168.1.60:22"/>
+					<input name="target" type="text" autocomplete="off" placeholder="web=https://web.lan/health"/>
+					<input name="target" type="text" autocomplete="off"/>
+					<label for="ck-expect">HTTP expected status (optional, http kind only)</label>
+					<input id="ck-expect" name="expect" type="number" min="100" max="599" autocomplete="off" placeholder="200"/>
+					<div class="actions"><button type="submit" class="btn primary">Add check</button></div>
+				</form>
+			}
+		}
+		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Probe checks</div>
+			<h3>All checks</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing checks needs an operator token.</p>
+			}
+			if len(vm.Checks) == 0 {
+				<p class="meta">No checks registered.</p>
+			} else {
+				<div class="tablewrap stackable">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Check</th>
+								<th scope="col">Kind</th>
+								<th scope="col">Interval</th>
+								<th scope="col">Targets</th>
+								<th scope="col">Enabled</th>
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
+							</tr>
+						</thead>
+						<tbody>
+							for _, ck := range vm.Checks {
+								<tr>
+									<td data-label="Check">{ ck.Name }</td>
+									<td class="mono" data-label="Kind">{ ck.Kind }</td>
+									<td class="mono" data-label="Interval">{ ck.Interval }</td>
+									<td data-label="Targets">
+										for _, t := range ck.Targets {
+											<div>
+												<span class="mono">{ t.Name }</span>
+												<span class="meta">{ t.Spec() }{ t.ExpectNote() }</span>
+												@chip(t.StatusClass(), t.StatusLabel())
+											</div>
+										}
+									</td>
+									<td data-label="Enabled">@enabledChip(ck.Enabled)</td>
+									if vm.Operator {
+										<td data-label="Actions">
+											if ck.Enabled {
+												<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/disable") } style="display:inline">
+													<button type="submit" class="btn">Disable</button>
+												</form>
+											} else {
+												<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/enable") } style="display:inline">
+													<button type="submit" class="btn">Enable</button>
+												</form>
+											}
+											<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/rm") } style="display:inline">
+												<input type="hidden" name="confirmed" value="1"/>
+												<button type="submit" class="btn danger">Remove</button>
+											</form>
+										</td>
+									}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
