@@ -6,6 +6,46 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-30 — check-triggered runs engine
+
+- **The check engine lands: named probe sets become reactive events.** `check
+  add/list/enable/disable/rm` (wire kind `check.list`) manages `check_row`
+  rows; the daemon's `SweepChecks`, called on the same `--sweep-interval` tick
+  as the drift sweep, probes every enabled check's targets on their interval and
+  emits one event into the existing pipeline per declared transition. Kinds:
+  `tcp` dials `ip:port` (the address is the location), `ping` runs a pinned
+  `ping -c1 -W2` subprocess (exit code only), `http` reads the status line and
+  closes the body without reading it (AGENTS.md 4). A transition declares only
+  after N=3 consecutive observations (hysteresis) in both directions, so a
+  marginal-wifi host cannot flap a pending approval. A target's event carries
+  `labels["netgroup"]` — the group containing the probed address, or `away` —
+  and no group for an http URL target (its liveness is not a location verdict).
+  Implemented per [design/check-triggered-runs.md §5](design/check-triggered-runs.md).
+- **`check_state` schema refinement vs the design doc §4.2.** There is no
+  `unknown` status: a missing row IS the unobserved cold-start state, and the
+  first probe seeds a row (`status=result, consecutive=1, emitted=result`)
+  **without emitting**. `emitted` is seeded to the result, never `''`, so a
+  daemon restart never spurious-fires every up target as a fresh down→up
+  transition; a target home at start is seeded up and its join is missed once,
+  the documented fail-safe. `consecutive` carries the hysteresis counter and
+  `emitted` the last-declared status, so a steady state never emits.
+- **Per-target cooldown is check-only, not sweep-source-wide (design §5.5
+  narrowed).** `guardCooldown` reads the fire ledger per dedup key
+  (`check:<check>:<target>`, a bounded daemon-controlled set) only for the
+  `check` source; drift stays per-rule because its keys are per-job and per-key
+  cooldown would bypass the throttle, and webhook keys are fingerprint-based
+  where a varying body would get a fresh budget. The daily cap stays per-rule
+  for every source: a second target joining inside the rule's window is
+  throttled, and its event row still records the match as suppressed.
+- **A check's effective interval is floored at the sweep tick.** The in-memory
+  due map arms the next probe one interval after the last on the engine clock,
+  but the sweep itself runs on the 30s default `--sweep-interval`; a check
+  interval shorter than the tick cannot probe more often than it.
+- **`check_state` continuity, v1 has no target-edit verb.** A check's targets
+  are fixed at add; state rows persist for the check's life and cascade away
+  with it on delete, so the sweep never re-seeds (and never re-misses) a target
+  that was only being edited.
+
 ## 2026-08-30 — netgroups and peer stamping
 
 - **Netgroups land as a store table, CLI verbs, and webhook peer stamping** —
