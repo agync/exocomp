@@ -26,6 +26,23 @@ Newest first.
   ([design/check-triggered-runs.md](design/check-triggered-runs.md) §9's
   "rules stay CLI" is about the builder, not browsing).
 
+## 2026-08-31 — dashboard checks card, job provenance, events filter
+
+- **The dashboard gains a probe-estate card.** After the sources card, a
+  Checks card shows the registered total, how many targets the sweep currently
+  observes up (one aggregate count over `check_state`, never a per-check state
+  loop), and the attention accent when a check is disabled — DOWN is normal for
+  an away host, so it is not the signal.
+- **Job detail links a rule-triggered run to its cause.** A job whose runbook
+  is `rule:<name>` renders "fired by rule <name>" linking to `/rules` and,
+  when the row is on record, the event that raised it (event #N, source, alert
+  name, received time) linking to its trace. A manually enqueued job carrying
+  a rule runbook shows just the rule line.
+- **The events page filters by source.** A GET `?source=` filter narrows the
+  received-alerts list to one pipeline (alertmanager, healthchecks, generic,
+  drift, check); the form preserves the chosen source, so a filtered view is a
+  linkable URL.
+
 ## 2026-08-31 — http check dial-time guard
 
 - **The http probe refuses the addresses a check must not reach.** Its HTTP
