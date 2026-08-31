@@ -15,6 +15,34 @@ Newest first.
   guide describe the split; the heavy integration tests skip under
   `testing.Short()`.
 
+## 2026-08-31 — CLI/web check, rule, netgroup surfaces consolidated
+
+- **The CLI and web now share the parsers that shape checks, rules, and
+  netgroups.** `store.ParseCheckTargets` (strict for `check add`, blank-skipping
+  for the checks form), `store.ParsePrefixList`, `store.ClassifyNetgroups`
+  (one-pass address classification), and `store.CheckIntervalLabel` are the
+  one home both surfaces parse through; the rule label helpers (action, source,
+  cooldown, cap, approval) now live in `internal/reactive`, so `rule list`
+  and the /rules page render through the same code and cannot drift again. The
+  deliberate unify of the CLI/web parsers is recorded here as the correction of
+  the earlier "store remains the shared validator" framing.
+- **`check list` text now shows per-target status** — a STATUS column in
+  target order, `unobserved` until the sweep has seen the target — matching
+  design §9; the JSON projection (`check list --output json`, `GET
+  /api/v1/checks`) gains `netgroup` and `last_change` per target, so a
+  remote consumer reads location and recency, not just status.
+- **The dashboard's "targets up" card counts only enabled checks** — the
+  count joins `check_row` on `enabled=1` — so a disabled check's frozen
+  state no longer overstates what the sweep probes.
+
+- **The checks page classifies every address target in one pass** — one
+  `ListNetgroups` read, `store.ClassifyNetgroups` — replacing the
+  per-target `NetgroupForAddr` round-trips that re-read all groups per target.
+
+- **A notify rule refuses `--require-approval` at add time** — notify
+  creates no job, so the gate has nothing to gate; earlier the flag was
+  accepted and silently dropped when the engine short-circuited notify.
+
 ## 2026-08-31 — checks page netgroup/recency; read-only rules page
 
 - **The checks page shows the location and recency signals the feature is
