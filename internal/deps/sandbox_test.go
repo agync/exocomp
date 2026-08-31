@@ -18,6 +18,9 @@ import (
 // whose grants would reach the data dir, so a resolver can never be handed
 // the keys.
 func TestResolverSandboxWrapsAndDeniesDataDir(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
 	t.Parallel()
 
 	data := t.TempDir()
@@ -117,6 +120,9 @@ exit 0
 // succeeds when the resolver runs in the daemon context (no sandbox) and fails
 // when it runs under the resolver sandbox, because the read is denied.
 func TestResolverSandboxDeniesDataDirRead(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
 	requireNono(t)
 
 	data := t.TempDir()

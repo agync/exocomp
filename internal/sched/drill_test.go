@@ -92,6 +92,9 @@ func TestBuildSpecsDrillUnknownKindStillRejected(t *testing.T) {
 // produced succeeded — the monthly dr-drill (disaster-recovery.md) as an
 // unattended job instead of a manual `exocomp backup drill`.
 func TestScheduledDrillFiresThroughQueue(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	if _, err := exec.LookPath("restic"); err != nil {
 		t.Skip("restic not installed")

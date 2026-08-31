@@ -113,6 +113,9 @@ func TestFingerprintIsStableAndDistinct(t *testing.T) {
 // with the standalone age binary, because the recovery path runs without any
 // exocomp code.
 func TestKeyringDecryptsWithAgeCLI(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real age")
+	}
 	requireTools(t, "age")
 
 	dir := t.TempDir()
@@ -157,6 +160,9 @@ func TestKeyringDecryptsWithAgeCLI(t *testing.T) {
 // the password Derive produces. The card's command text is a build artifact —
 // a card whose commands do not run is worse than no card.
 func TestRecoveryCardRunsAsWritten(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	requireTools(t, "sh", "age", "openssl", "od", "tr", "base64", "printf", "restic")
 
 	dir := t.TempDir()
@@ -237,6 +243,9 @@ func TestRecoveryCardRunsAsWritten(t *testing.T) {
 // encrypted. The persona review's first finding was that a card deriving only
 // the restic password bricks the operator's own playbooks.
 func TestCardDerivesAVaultPassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible-vault")
+	}
 	requireTools(t, "sh", "age", "openssl", "od", "tr", "base64", "printf", "ansible-vault")
 
 	dir := t.TempDir()

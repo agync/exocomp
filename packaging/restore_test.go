@@ -101,6 +101,9 @@ func runInstall(t *testing.T, home string, args ...string) (string, error) {
 // operator who has the recovery key and the target, and nothing else, gets
 // their data dir back. It used to print "would restore" and exit 0.
 func TestInstallShRestoresWithoutTheBinary(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireTools(t, "sh", "age", "openssl", "restic", "od", "tr", "base64", "sha256sum", "awk")
 	if _, err := exec.LookPath("exocomp"); err == nil {
 		t.Skip("an exocomp binary is on PATH: the no-binary path cannot be exercised")
@@ -152,6 +155,9 @@ func TestInstallShRestoresWithoutTheBinary(t *testing.T) {
 }
 
 func TestInstallShRestoreFailsLoudly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireTools(t, "sh", "age", "openssl", "restic")
 	if _, err := exec.LookPath("exocomp"); err == nil {
 		t.Skip("an exocomp binary is on PATH: the no-binary path cannot be exercised")

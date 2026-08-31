@@ -151,6 +151,9 @@ func originRepo(t *testing.T) (repo, home, headSHA string) {
 }
 
 func TestSyncClonesAndPins(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	repo, home, wantSHA := originRepo(t)
 	ctx := context.Background()
 
@@ -211,6 +214,9 @@ func TestSyncNeedsRef(t *testing.T) {
 }
 
 func TestSyncSignedRefRefusesUnsigned(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	repo, home, _ := originRepo(t)
 	// A valid allowed-signers file so the sync clears the ambient-trust guard and
 	// reaches the signature check itself; the point here is the unsigned ref, not
@@ -248,6 +254,9 @@ func TestSyncSignedRefRefusesUnsigned(t *testing.T) {
 // ambient git config that trusts an attacker key and shows git itself accepts
 // the attacker-signed tag under it — then shows the sync refuses that ref.
 func TestSyncSignedRefRefusesAmbientTrust(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not available for SSH tag signing")
 	}
@@ -376,6 +385,9 @@ exec sh -c "$cmd"
 // one fails the clone; a matching pin clones cleanly. Without the pin the sync
 // would trust whatever key the forge presented (trust on first use).
 func TestSyncPinsForgeHostKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	if _, err := exec.LookPath("git-upload-pack"); err != nil {
 		t.Skip("git-upload-pack not available for the ssh transport")
 	}
@@ -422,6 +434,9 @@ func TestSyncPinsForgeHostKey(t *testing.T) {
 }
 
 func TestSyncVerifiesSSHSignedTag(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not available for SSH tag signing")
 	}

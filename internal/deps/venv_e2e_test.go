@@ -23,6 +23,9 @@ import (
 // It is gated behind EXOCOMP_DEPS_E2E because it invokes uv (which may reach the
 // network on a cold cache) and runs ansible; make check stays hermetic.
 func TestVenvRunImportsDeclaredDep(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if os.Getenv("EXOCOMP_DEPS_E2E") == "" {
 		t.Skip("set EXOCOMP_DEPS_E2E=1 to run the uv+ansible end-to-end gate")
 	}

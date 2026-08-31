@@ -122,6 +122,9 @@ func TestWithoutRedactorEventsAreVerbatim(t *testing.T) {
 // playbook decrypts a vaulted variable with the envelope-derived password and
 // prints it, and no job_event row holds the plaintext.
 func TestVaultedPlaybookLeavesNoSecretInEvents(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	for _, bin := range []string{executor.AnsibleBinary, "ansible-vault"} {
 		if _, err := exec.LookPath(bin); err != nil {
 			t.Skipf("%s not installed: %v", bin, err)
@@ -196,6 +199,9 @@ func TestVaultedPlaybookLeavesNoSecretInEvents(t *testing.T) {
 }
 
 func TestFailingPlaybookFailsTheJob(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	if _, err := exec.LookPath(executor.AnsibleBinary); err != nil {
 		t.Skipf("%s not installed: %v", executor.AnsibleBinary, err)
 	}
