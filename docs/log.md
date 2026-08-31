@@ -65,19 +65,6 @@ Newest first.
   and the /rules page render through the same code and cannot drift again. The
   deliberate unify of the CLI/web parsers is recorded here as the correction of
   the earlier "store remains the shared validator" framing.
-- **`check list` text now shows per-target status** — a STATUS column in
-  target order, `unobserved` until the sweep has seen the target — matching
-  design §9; the JSON projection (`check list --output json`, `GET
-  /api/v1/checks`) gains `netgroup` and `last_change` per target, so a
-  remote consumer reads location and recency, not just status.
-- **The dashboard's "targets up" card counts only enabled checks** — the
-  count joins `check_row` on `enabled=1` — so a disabled check's frozen
-  state no longer overstates what the sweep probes.
-
-- **The checks page classifies every address target in one pass** — one
-  `ListNetgroups` read, `store.ClassifyNetgroups` — replacing the
-  per-target `NetgroupForAddr` loop that re-listed the groups for every
-  target.
 
 ## 2026-08-31 — checks page netgroup/recency; read-only rules page
 

@@ -125,11 +125,13 @@ preconditions must hold, or it fails open rather than failing closed:
 2. **No overlay route to the LAN range.** The whole premise is that `.50` goes
    silent when the laptop is away. A tailscale subnet router advertising
    `192.168.1.0/24` makes the daemon reach `.50` over tailnet from anywhere —
-   the address never goes silent and "not when outside the house" fails open.
-The daemon must reach check targets **only via the LAN interface**, never an
-    overlay subnet route. This is a deployment precondition the check sweep
-    cannot enforce from inside the container (it has no routing-table authority);
-    it is documented, not enforced, and treated as a trust boundary in §10.
+   yet reaching it still requires a live host answering at `.50`, which is real
+   presence, not a false home; the residual is a different device answering at
+   the same address, already covered by item 1 (T32). The daemon must reach
+   check targets **only via the LAN interface**, never an overlay subnet route:
+   a deployment precondition the check sweep cannot enforce from inside the
+   container (it has no routing-table authority), documented as a trust
+   boundary in §10.
 
 Both are owned as stated preconditions, and both get a threat-model row.
 
@@ -513,12 +515,16 @@ sequential catalog):
 
 | id | threat | mitigation |
 |---|---|---|
-| T-N | A spoofed home-presence claim (webhook or a forged peer) fires a run from outside the house. | Peer stamping reads the physical connection (`peer_netgroup`), never a claim; a check's location is the address the daemon itself probed (§3.2 preconditions still apply). |
-| T-N | A check flood re-arms a rule past its budget (an interval set too short, or a target flapping). | Transition-only emission with N-consecutive hysteresis; per-target dedup and cooldown (§5.5); the daily cap throttles rather than disables. |
-| T-N | DHCP re-leases a target's home address to a different device, so a check reports the wrong host as present. | Stated precondition (§3.2.1): targets are pinned by static reservation or fixed lease; the netgroup classifies the address, never the host. |
-| T-N | An overlay subnet route (tailscale advertising the home LAN) keeps a checked address reachable from anywhere, so the location gate fails open. | Stated precondition (§3.2.1): the daemon reaches check targets only via the LAN interface; `doctor` asserts the LAN prefix routes out a LAN device, not an overlay one. A documented trust boundary — the sweep has no routing authority from inside the container. |
-| T-N | A daemon restart reads every up target as a fresh down→up transition and fires every presence rule. | Cold-start seeding writes `check_state` and emits nothing on first observation; only a change from a seeded value is a transition (§5.2). |
-| T-N | An http check persists a health endpoint's body (a secret, a stack trace). | `http` records status only; the body is never read into the event or a ledger. |
+| T30 | A spoofed home-presence claim (webhook or a forged peer) fires a run from outside the house. | Peer stamping reads the physical connection (`peer_netgroup`), never a claim; a check's location is the address the daemon itself probed (§3.2 preconditions still apply). |
+| T31 | A check flood re-arms a rule past its budget (an interval set too short, or a target flapping). | Transition-only emission with N-consecutive hysteresis; per-target dedup and cooldown (§5.5); the daily cap throttles rather than disables. |
+| T32 | DHCP re-leases a target's home address to a different device, so a check reports the wrong host as present. | Stated precondition (§3.2.1): targets are pinned by static reservation or fixed lease; the netgroup classifies the address, never the host. |
+| T33 | An overlay subnet route (tailscale advertising the home LAN) keeps a checked address reachable from anywhere while an overlay host answers at that address. | An overlay route still requires a live host at the probed address (real presence); the residual is address-uniqueness (T32). LAN-only routing is a documented trust boundary — the sweep has no routing-table authority from inside the container. |
+| T34 | A daemon restart reads every up target as a fresh down→up transition and fires every presence rule. | Cold-start seeding writes `check_state` and emits nothing on first observation; only a change from a seeded value is a transition (§5.2). |
+| T35 | An http check persists a health endpoint's body (a secret, a stack trace). | `http` records status only; the body is never read into the event or a ledger. |
+| T36 | An operator-created http check targets the daemon's own loopback listeners or the cloud metadata service, so the check's result depends on a service the operator did not mean to reach. | The http probe dials through a `net.Dialer.Control` hook that refuses loopback, link-local unicast (covers `169.254.169.254`), unspecified, and multicast addresses at the connected IP, scoped so RFC1918/ULA LAN targets are still allowed; a refused address observes down. |
+
+The canonical rows, with the full mitigation text, live in
+[`security/threat-model.md`](../security/threat-model.md).
 
 Invariant mapping:
 
