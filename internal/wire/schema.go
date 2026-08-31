@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"net/netip"
 	"slices"
 	"time"
 
@@ -415,19 +416,26 @@ type RuleView struct {
 	Tags     []string `json:"tags,omitempty"`
 	Check    bool     `json:"check,omitempty"`
 	Diff     bool     `json:"diff,omitempty"`
+	// Timeout is the action's job kill-switch, as the Go duration string the
+	// CLI accepts, so a consumer can audit which rules carry a bound.
+	Timeout string `json:"timeout,omitempty"`
 }
 
 // NewRuleList projects rules in store order.
 func NewRuleList(rows []store.Rule) []RuleView {
 	out := make([]RuleView, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, RuleView{
+		v := RuleView{
 			ID: r.ID, Name: r.Name, SourceFilter: r.SourceFilter, CELExpr: r.CELExpr,
 			ActionKind: r.ActionKind, CooldownS: r.CooldownS, DailyCap: r.DailyCap,
 			RequireApproval: r.RequireApproval, Enabled: r.Enabled,
 			Source: r.Action.Source, Playbook: r.Action.Playbook, Limit: r.Action.Limit,
 			Tags: r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
-		})
+		}
+		if r.Action.Timeout != 0 {
+			v.Timeout = time.Duration(r.Action.Timeout).String()
+		}
+		out = append(out, v)
 	}
 	return out
 }
@@ -635,15 +643,20 @@ func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
 }
 
 // CheckTargetView projects one probe of a check. Status is the sweep's last
-// observation of this target ("" when the sweep has never seen it); the
-// address is the target's location, so it travels in full.
+// observation of this target ("" when the sweep has never seen it); Netgroup is
+// the classification of the probed address ("" for an http URL target, "away"
+// when no registered group covers it); LastChange is when that status last
+// changed ("" when the sweep has never seen it). The address is the target's
+// location, so it travels in full.
 type CheckTargetView struct {
-	Name    string `json:"name"`
-	Address string `json:"address,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	Expect  int    `json:"expect,omitempty"`
-	Status  string `json:"status,omitempty"`
+	Name       string `json:"name"`
+	Address    string `json:"address,omitempty"`
+	URL        string `json:"url,omitempty"`
+	Port       int    `json:"port,omitempty"`
+	Expect     int    `json:"expect,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Netgroup   string `json:"netgroup,omitempty"`
+	LastChange string `json:"last_change,omitempty"`
 }
 
 // CheckView projects a check and its per-target last statuses.
@@ -657,20 +670,31 @@ type CheckView struct {
 }
 
 // NewCheckList projects checks in store order (by name), joining each target's
-// last observed status from the sweep's check_state rows.
-func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []CheckView {
+// last observed status and its recency from the sweep's check_state rows and
+// its netgroup classification from the caller's one-pass map. The map is keyed
+// by the target address's canonical (unmapped) string; an http URL target has
+// no address and no netgroup.
+func NewCheckList(rows []store.Check, states map[int64][]store.CheckState, netgroups map[string]string) []CheckView {
 	out := make([]CheckView, 0, len(rows))
 	for _, c := range rows {
-		status := make(map[string]string, len(states[c.ID]))
+		byName := make(map[string]store.CheckState, len(states[c.ID]))
 		for _, s := range states[c.ID] {
-			status[s.TargetName] = s.Status
+			byName[s.TargetName] = s
 		}
 		targets := make([]CheckTargetView, 0, len(c.Targets))
 		for _, t := range c.Targets {
-			targets = append(targets, CheckTargetView{
+			v := CheckTargetView{
 				Name: t.Name, Address: t.Address, URL: t.URL,
-				Port: t.Port, Expect: t.Expect, Status: status[t.Name],
-			})
+				Port: t.Port, Expect: t.Expect,
+			}
+			if st, ok := byName[t.Name]; ok {
+				v.Status = st.Status
+				v.LastChange = rfc3339(st.LastChange)
+			}
+			if t.Address != "" {
+				v.Netgroup = netgroups[netip.MustParseAddr(t.Address).Unmap().String()]
+			}
+			targets = append(targets, v)
 		}
 		out = append(out, CheckView{
 			ID: c.ID, Name: c.Name, Kind: c.Kind,

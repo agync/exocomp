@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/netip"
 	"os"
 	"strconv"
 	"sync"
@@ -616,15 +617,22 @@ func (s *Server) apiNetgroups(w http.ResponseWriter, r *http.Request) {
 	s.apiSuccess(w, wire.KindNetgroupList, wire.NewNetgroupList(rows))
 }
 
-// apiChecks lists checks with each target's last observed status, the same
+// apiChecks lists checks with each target's last observed status, its netgroup
+// classification, and how long ago that status last changed — the same
 // projection `check list --output json` emits (wire.NewCheckList joins each
-// check's check_state rows).
+// check's check_state rows and the caller's one-pass netgroup map).
 func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.store.ListChecks(r.Context(), false)
 	if err != nil {
 		s.apiFail(w, err)
 		return
 	}
+	groups, err := s.store.ListNetgroups(r.Context())
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	var addrs []netip.Addr
 	states := make(map[int64][]store.CheckState, len(rows))
 	for _, c := range rows {
 		st, err := s.store.ListCheckStates(r.Context(), c.ID)
@@ -633,8 +641,13 @@ func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		states[c.ID] = st
+		for _, t := range c.Targets {
+			if t.Address != "" {
+				addrs = append(addrs, netip.MustParseAddr(t.Address))
+			}
+		}
 	}
-	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states))
+	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states, store.ClassifyNetgroups(addrs, groups)))
 }
 
 func (s *Server) apiRules(w http.ResponseWriter, r *http.Request) {

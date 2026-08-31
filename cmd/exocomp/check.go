@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"strconv"
 	"strings"
 	"text/tabwriter"
@@ -182,7 +183,15 @@ func newCheckListCmd() *cobra.Command {
 				states[c.ID] = s
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindCheckList, wire.NewCheckList(rows, states))
+				groups, err := st.ListNetgroups(cmd.Context())
+				if err != nil {
+					return failJSON(cmd, err)
+				}
+				netgroups, err := checkNetgroups(rows, groups)
+				if err != nil {
+					return failJSON(cmd, err)
+				}
+				return emitJSON(cmd, wire.KindCheckList, wire.NewCheckList(rows, states, netgroups))
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
@@ -275,4 +284,25 @@ func checkTargetsLabel(targets []store.CheckTarget) string {
 		parts[i] = t.Name
 	}
 	return strings.Join(parts, ",")
+}
+
+// checkNetgroups classifies every address target across the listed checks into
+// its netgroup (or "away") with one netgroup read, so `check list --output
+// json` projects the same location signal the checks page and the API do.
+func checkNetgroups(rows []store.Check, groups []store.Netgroup) (map[string]string, error) {
+	var addrs []netip.Addr
+	for _, c := range rows {
+		for _, t := range c.Targets {
+			if t.Address == "" {
+				continue
+			}
+			addr, err := netip.ParseAddr(t.Address)
+			if err != nil {
+				return nil, fmt.Errorf("check %s target %q address %q does not parse: %w",
+					c.Name, t.Name, t.Address, err)
+			}
+			addrs = append(addrs, addr)
+		}
+	}
+	return store.ClassifyNetgroups(addrs, groups), nil
 }
