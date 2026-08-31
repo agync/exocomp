@@ -3,10 +3,8 @@ package web
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -14,9 +12,10 @@ import (
 
 // A check names a probe set — targets and an interval — never a secret. So,
 // like schedules, this lane is operator-scope only: no reauth, no
-// confirm_token. The name=spec parsing below reimplements
-// cmd/exocomp/check.go's parseCheckTargets, so a check added from the browser
-// is held to exactly the same rules as one added from the CLI.
+// confirm_token. The name=spec targets are parsed by the shared
+// store.ParseCheckTargets (blank-skipping for the form's empty rows), so a
+// check added from the browser is held to exactly the same per-kind rules as
+// one added from the CLI.
 
 func init() { registerWrite((*Server).registerCheckWrite) }
 
@@ -43,7 +42,7 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, errors.New("interval must be a positive Go duration (e.g. 5m)"))
 		return
 	}
-	targets, err := formCheckTargets(r, kind)
+	targets, err := store.ParseCheckTargets(kind, r.PostForm["target"], true)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -80,48 +79,6 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: check add", "check", created.Name, "kind", created.Kind, "by", ident.token.Name)
 	redirectFlash(w, r, "/checks", "added "+created.Name)
-}
-
-// formCheckTargets splits the repeated name=spec target fields by kind, the
-// same way cmd/exocomp/check.go's parseCheckTargets splits --target flags: the
-// spec after the '=' is an IP literal (tcp/ping) or a URL (http); a tcp target
-// carries its port after the last ':'. A blank field — an unused row of the
-// form — is skipped, not an error.
-func formCheckTargets(r *http.Request, kind string) ([]store.CheckTarget, error) {
-	var out []store.CheckTarget
-	for _, spec := range r.PostForm["target"] {
-		spec = strings.TrimSpace(spec)
-		if spec == "" {
-			continue
-		}
-		name, value, ok := strings.Cut(spec, "=")
-		if !ok || name == "" || value == "" {
-			return nil, fmt.Errorf("target %q must be name=spec", spec)
-		}
-		t := store.CheckTarget{Name: name}
-		switch kind {
-		case store.CheckTCP:
-			host, port, err := net.SplitHostPort(value)
-			if err != nil {
-				return nil, fmt.Errorf("target %q: a tcp target must be ip:port", spec)
-			}
-			p, err := strconv.Atoi(port)
-			if err != nil {
-				return nil, fmt.Errorf("target %q: port %q is not a number", spec, port)
-			}
-			t.Address = host
-			t.Port = p
-		case store.CheckPing:
-			t.Address = value
-		case store.CheckHTTP:
-			t.URL = value
-		default:
-			return nil, fmt.Errorf("kind must be %s, %s or %s",
-				store.CheckTCP, store.CheckPing, store.CheckHTTP)
-		}
-		out = append(out, t)
-	}
-	return out, nil
 }
 
 // formExpect parses the optional expected-status field; blank means no pin.

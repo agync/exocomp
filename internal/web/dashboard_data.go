@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"syscall"
@@ -80,7 +81,11 @@ func (s *Server) pendingApprovals(r *http.Request) ([]approvalRow, error) {
 			Deadline:  reactive.ApprovalDeadline(a, now),
 			ExpiresAt: a.ExpiresAt,
 		}
-		if job, err := s.store.GetJob(r.Context(), a.JobID); err == nil {
+		if job, err := s.store.GetJob(r.Context(), a.JobID); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				return nil, err
+			}
+		} else {
 			row.Runbook = job.Runbook
 		}
 		half := a.RequestedAt.Add(a.ExpiresAt.Sub(a.RequestedAt) / 2)
@@ -301,7 +306,11 @@ func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
 			row.LastRun = clock(*sc.LastRun)
 		}
 		if sc.LastJobID != nil {
-			if job, err := s.store.GetJob(r.Context(), *sc.LastJobID); err == nil {
+			if job, err := s.store.GetJob(r.Context(), *sc.LastJobID); err != nil {
+				if !errors.Is(err, store.ErrNotFound) {
+					return nil, err
+				}
+			} else {
 				row.HasLast = true
 				row.LastJobID = job.ID
 				row.LastRunbook = job.Runbook

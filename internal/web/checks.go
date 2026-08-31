@@ -1,13 +1,11 @@
 package web
 
 import (
-	"context"
-	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
 	"strconv"
-	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -108,25 +106,8 @@ func (t checkTargetRow) NetgroupClass() string {
 	return "ok"
 }
 
-// netgroupFor classifies an address target's literal IP against the netgroups,
-// the location signal the checks page exists to show. CreateCheck validated
-// the address (a row that reads is a row that probes), so the parse cannot
-// fail; a miss reads "away", the same label the engine stamps on the event.
-func (s *Server) netgroupFor(ctx context.Context, address string) (string, error) {
-	addr, err := netip.ParseAddr(address)
-	if err != nil {
-		return "", err
-	}
-	group, err := s.store.NetgroupForAddr(ctx, addr)
-	if errors.Is(err, store.ErrNotFound) {
-		return "away", nil
-	}
-	if err != nil {
-		return "", err
-	}
-	return group, nil
-}
-
+// handleChecks renders the /checks surface for the session: every probe check
+// with each target's posture and location.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.checks(r)
 	if err != nil {
@@ -143,17 +124,39 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 
 // checks reads every check (enabled and disabled) with each target's last
 // observed status, its netgroup classification, and how long ago that status
-// changed, so a target's current posture and location read at a glance.
+// changed, so a target's current posture and location read at a glance. The
+// netgroups are loaded once and every address target is classified in memory
+// (store.ClassifyNetgroups), never a NetgroupForAddr round-trip per target.
 func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 	list, err := s.store.ListChecks(r.Context(), false)
 	if err != nil {
 		return nil, err
 	}
+	groups, err := s.store.ListNetgroups(r.Context())
+	if err != nil {
+		return nil, err
+	}
+	var addrs []netip.Addr
+	for _, c := range list {
+		for _, t := range c.Targets {
+			if t.Address == "" {
+				continue
+			}
+			addr, err := netip.ParseAddr(t.Address)
+			if err != nil {
+				return nil, fmt.Errorf("check %s target %q address %q does not parse: %w",
+					c.Name, t.Name, t.Address, err)
+			}
+			addrs = append(addrs, addr)
+		}
+	}
+	netgroups := store.ClassifyNetgroups(addrs, groups)
+
 	var out []checkRow
 	for _, c := range list {
 		row := checkRow{
 			Name: c.Name, Kind: c.Kind, Enabled: c.Enabled,
-			Interval: checkIntervalLabel(c.IntervalS),
+			Interval: store.CheckIntervalLabel(c.IntervalS),
 		}
 		states, err := s.store.ListCheckStates(r.Context(), c.ID)
 		if err != nil {
@@ -173,25 +176,11 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 				tr.Changed = humanAge(s.now().Sub(st.LastChange))
 			}
 			if t.Address != "" {
-				group, err := s.netgroupFor(r.Context(), t.Address)
-				if err != nil {
-					return nil, err
-				}
-				tr.Netgroup = group
+				tr.Netgroup = netgroups[netip.MustParseAddr(t.Address).Unmap().String()]
 			}
 			row.Targets = append(row.Targets, tr)
 		}
 		out = append(out, row)
 	}
 	return out, nil
-}
-
-// checkIntervalLabel renders a stored interval as the Go duration string the
-// CLI shows, so the page and `check list` agree on how a check's cadence
-// reads.
-func checkIntervalLabel(intervalS int64) string {
-	if intervalS <= 0 {
-		return "-"
-	}
-	return (time.Duration(intervalS) * time.Second).String()
 }
