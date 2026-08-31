@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — approval surface refinements
+
+- **The approval phone now ticks and explains itself.** The countdown div
+  carries the expiry as a machine deadline (`data-deadline`, unix millis) and a
+  client clock re-renders "Xm Ys left" each second, flipping to "Expired — the
+  window closed" at zero; the server stays authoritative on expiry and the
+  JS-off initial text remains. The provenance sentence names the triggering
+  alert and the rule it matched when the job's event row exists, and keeps the
+  standing sentence when none does.
+- **The approval surface fits the desk.** `.phone` widens to 720px at ≥821px
+  while small screens keep the 390px column, and the mobile (≤560px) table-row
+  button floor is now the hard 48px a11y target.
+
 ## 2026-08-31 — sweep error policy recorded
 
 - **[architecture/reactive.md](architecture/reactive.md) states the shared
