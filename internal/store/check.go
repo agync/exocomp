@@ -294,6 +294,20 @@ func (s *Store) ListCheckStates(ctx context.Context, checkID int64) ([]CheckStat
 	return out, nil
 }
 
+// CountCheckStatesByStatus counts the targets whose state row currently holds
+// status — the dashboard's "N targets up" card line. A COUNT over check_state
+// rather than a per-check ListCheckStates loop: the glance screen must never
+// pull every state row into memory just to size a number.
+func (s *Store) CountCheckStatesByStatus(ctx context.Context, status string) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM check_state WHERE status = ?`, status).Scan(&n)
+	if err != nil {
+		return 0, wrap("count check states", err)
+	}
+	return n, nil
+}
+
 // SetCheckState upserts one target's state. first_seen is written on insert
 // and preserved on update, so it stays the target's first observation for the
 // check's life.

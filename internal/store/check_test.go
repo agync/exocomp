@@ -212,6 +212,56 @@ func TestCheckDuplicateName(t *testing.T) {
 	}
 }
 
+// TestCountCheckStatesByStatus is the dashboard card's count: it tallies state
+// rows by status across checks in one query — one target up, one down — and
+// reads zero (not an error) for a status nothing holds.
+func TestCountCheckStatesByStatus(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	c, err := st.CreateCheck(ctx, checkFixture())
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	for _, tc := range []struct {
+		target, status string
+	}{
+		{"laptop", store.CheckUp},
+		{"nas", store.CheckDown},
+	} {
+		if err := st.SetCheckState(ctx, store.CheckState{
+			CheckID: c.ID, TargetName: tc.target, Status: tc.status,
+			Consecutive: 1, Emitted: tc.status, FirstSeen: now, LastChange: now,
+		}); err != nil {
+			t.Fatalf("set state %s: %v", tc.target, err)
+		}
+	}
+
+	up, err := st.CountCheckStatesByStatus(ctx, store.CheckUp)
+	if err != nil {
+		t.Fatalf("count up states: %v", err)
+	}
+	if up != 1 {
+		t.Fatalf("up count = %d, want 1", up)
+	}
+	down, err := st.CountCheckStatesByStatus(ctx, store.CheckDown)
+	if err != nil {
+		t.Fatalf("count down states: %v", err)
+	}
+	if down != 1 {
+		t.Fatalf("down count = %d, want 1", down)
+	}
+	none, err := st.CountCheckStatesByStatus(ctx, "unobserved")
+	if err != nil {
+		t.Fatalf("count unknown status: %v", err)
+	}
+	if none != 0 {
+		t.Fatalf("unknown status count = %d, want 0", none)
+	}
+}
+
 func TestCheckPingRefusedWhenBinaryMissing(t *testing.T) {
 	// Serial on purpose: t.Setenv must not race the package's parallel tests.
 	st := openReactive(t)
