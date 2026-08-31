@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — sweep error policy recorded
+
+- **[architecture/reactive.md](architecture/reactive.md) states the shared
+  sweep error policy** — the checks, drift, and job-failures sweeps now say
+  in-place that a per-item failure is logged and the sweep continues (a failed
+  check is still marked due and keeps its interval cadence; a broken check
+  target is skipped so its siblings still probe), and only a structural failure
+  (the sweep's list query) or shutdown stops it.
+
 ## 2026-08-31 — docs-review pass on checks, rules, and the web
 
 - **Corrected a false claim about `doctor`.** [security/threat-model.md](security/threat-model.md)

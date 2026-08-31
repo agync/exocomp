@@ -185,6 +185,10 @@ The event table is that sweep's own checkpoint: the drift event's dedup key
 names the job that found the drift, so a job already reported is skipped without
 a cursor to keep or state to lose on a restart.
 
+A per-item failure is logged and the sweep continues: a job that cannot be read
+back does not starve its siblings. Only a structural failure (the sweep's list
+query) or shutdown stops it.
+
 A drift subject is what the incident is opened against, and it differs by plane.
 Tofu's is the workspace, read off the job's `workspace:<name>` runbook. Ansible
 has no equivalent registered noun on the job row, so its subject is
@@ -213,6 +217,11 @@ exit code only, `http` GETs a URL and records the status line — the body is
 never read (AGENTS.md 4). `SweepChecks` runs each enabled check on its
 interval beside `SweepDrift` on the same `--sweep-interval` tick, and `check`
 is a pull source (`SourceCheck`), not a webhook: nothing posts it.
+
+A per-item failure is logged and the sweep continues: a broken check is still
+marked due so it keeps its interval cadence rather than re-probing every tick,
+and a broken target is skipped so its siblings still probe. Only a structural
+failure (the sweep's list query) or shutdown stops it.
 
 The http probe's client dials through a `net.Dialer.Control` guard that refuses
 loopback, link-local unicast (the cloud metadata address), unspecified, and
@@ -272,6 +281,10 @@ skips a job already paged on across repeated sweeps and across a restart — the
 same event-table checkpoint, not a weaker second mechanism. The row is written
 after the page, so a crash between the two re-pages once rather than losing the
 alert.
+
+Per-item failures are tolerated the same way as the other sweeps: a job that
+cannot be reported is logged and the sweep continues; only a structural failure
+or shutdown stops it.
 
 ## What is persisted
 
