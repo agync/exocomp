@@ -6,6 +6,36 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — docs-review pass on checks, rules, and the web
+
+- **Corrected a false claim about `doctor`.** [security/threat-model.md](security/threat-model.md)
+  T33 and [design/check-triggered-runs.md](design/check-triggered-runs.md)
+  §3.2.1 said `doctor` asserts the LAN-only-routing precondition; it has no
+  such probe. Both now record the precondition as documentary, not enforced.
+- **[operations/reactive.md](operations/reactive.md) "Checks as an event"
+  states the consequences the feature ships with:** a check's interval is
+  floored at the `--sweep-interval` tick (30s default); a host home at daemon
+  start is missed once, fail-safe; hysteresis is fixed at N=3 and a departure
+  withdraws a pending approval only after 3 consecutive down observations
+  (~N·interval lag on the resolve path); the persisted `check_state` row
+  (status/consecutive/emitted/last_change) survives a restart and backs the
+  /checks "changed N ago" line; the two §3.2.1 preconditions (static lease,
+  no overlay route) are stated where an operator sets up; and the http
+  dial-time guard plus the no-netgroup-on-url caveat are on the page.
+- **The web paragraph and [operations/serve.md](operations/serve.md) browser
+  list gain the shipped surfaces** — /checks netgroup chip + recency, the
+  dashboard Checks card, job detail "fired by rule" → /rules + the triggering
+  event, the events `?source=` filter, and the read-only /rules page.
+  [operations/api.md](operations/api.md) adds `GET /api/v1/netgroups` and
+  `GET /api/v1/checks` to the read endpoints.
+- **[design/check-triggered-runs.md](design/check-triggered-runs.md) §4.2
+  check_state DDL reconciled to migration 0030** (up/down, consecutive,
+  emitted; no `unknown` — a missing row is the unobserved state), §5.1 http
+  is 2xx/3xx, §9/Status note rules read-only on the web, and the Open
+  questions close: hysteresis N fixed at 3, retention shipped last-status-only,
+  the http-tailnet caveat, and cooldown keying via `0031_rule_fire_dedup.sql`;
+  set-event / `--limit-hosts` stays open.
+
 ## 2026-08-31 — gating split: fast commit gate, full race gate
 
 - **The per-commit gate is now fast.** `make check` runs `fmt-check vet lint
@@ -37,11 +67,8 @@ Newest first.
 
 - **The checks page classifies every address target in one pass** — one
   `ListNetgroups` read, `store.ClassifyNetgroups` — replacing the
-  per-target `NetgroupForAddr` round-trips that re-read all groups per target.
-
-- **A notify rule refuses `--require-approval` at add time** — notify
-  creates no job, so the gate has nothing to gate; earlier the flag was
-  accepted and silently dropped when the engine short-circuited notify.
+  per-target `NetgroupForAddr` loop that re-listed the groups for every
+  target.
 
 ## 2026-08-31 — checks page netgroup/recency; read-only rules page
 
