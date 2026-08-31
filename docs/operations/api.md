@@ -71,6 +71,8 @@ GET /api/v1/approvals/{id}                       # + structured stale + provenan
 GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
+GET /api/v1/netgroups
+GET /api/v1/checks
 GET /api/v1/rules
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true

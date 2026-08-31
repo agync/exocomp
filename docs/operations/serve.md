@@ -297,6 +297,12 @@ manages the daemon from the browser, not just the CLI.
 - **Secrets**: seal, rotate, delete. **Tokens**: mint, rotate, revoke.
 - **Schedules**, **policies**, and **runners**: add and remove; schedules also enable/disable.
 - **Approvals**: decide a pending job, as before.
+- **Netgroups**, **checks**, and **rules** (rules read-only): manage netgroup
+  and check rows; each check target shows its netgroup chip and how long ago
+  its status last changed (`changed 3h ago`, or `unobserved`). The dashboard's
+  Checks card shows the registered total and how many targets the sweep
+  observes up; a job's "fired by rule <name>" line links to `/rules` and the
+  event that raised the run; the events page filters by `?source=`.
 
 The sensitive writes — sealing or rotating a secret, minting or rotating a token, sealing a
 git deploy key — require re-entering your own access token to confirm. A cookie alone cannot
