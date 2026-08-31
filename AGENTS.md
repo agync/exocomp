@@ -36,9 +36,10 @@ Breaking any of these fails review, regardless of how good the change is otherwi
 
 ```
 AGENTS.md        this contract
-.agents/         agents/ skills/ workflows/ hooks/ — automation lives here
+.agents/         agents/ skills/ workflows/ hooks/ brain/ — automation lives here;
+                 brain/specs holds specs for in-flight work
 docs/            OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
-                 design/, operations/, sbom/, history/
+                 design/, operations/, sbom/, history/, contribution/
 cmd/exocomp/     the single cobra binary (`exocompd` = alias for `exocomp serve`)
 internal/        service, api, queue, secrets, executor, tui, web
 api/             OpenAPI 3.1 spec + typed client package (the monorepo seam; created in M2)
@@ -54,3 +55,5 @@ test/lima/       Fedora lima templates for dummy managed nodes + smoke tests
 - ADRs record decisions with consequences; one decision per file under `docs/adr/`.
 - Contributing certifies the [DCO](DCO): submitting work is the certification. No
   `Signed-off-by` trailer — invariant 9 admits no trailers at all.
+- See [docs/contribution/index.md](docs/contribution/index.md) for the full
+  contribution guide.

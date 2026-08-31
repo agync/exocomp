@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — contribution guide and specs store
+
+- **New page** [contribution/index.md](contribution/index.md): the working
+  procedure behind [AGENTS.md](../AGENTS.md) — the DCO, commit conventions,
+  worktree workflow, verification, and design/review. Linked from the bundle
+  index and from AGENTS.md's "Working here".
+- **`brain/` lands in `.agents/`** — `.agents/brain/specs/` holds specs for
+  in-flight work (the UI spec for check-triggered runs is the first). It is
+  tracked, like the rest of `.agents/` content (skills, role cards,
+  workflows); the git-excluded half of `.agents/` stays the generated workflow
+  scripts. AGENTS.md's layout block names the new directory.
+
 ## 2026-08-31 — web surface for netgroups and checks
 
 - **The web surface gains netgroups and checks pages.** `/netgroups` and

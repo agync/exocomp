@@ -74,6 +74,10 @@ What ships and under what license — [sbom/index.md](sbom/index.md)
 |---|---|
 | [Bill of materials](sbom/bill-of-materials.md) | Five layers with pins and licenses, the enforced budget rollup, and the GPL subprocess-boundary rule |
 
+## Contributing
+
+How work lands here and what gates it — [contribution/index.md](contribution/index.md)
+
 ## History
 
 Provenance records, imported byte-identical — [history/index.md](history/index.md)
