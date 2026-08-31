@@ -201,6 +201,22 @@ func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store
 	return err
 }
 
+// netgroupFor names the netgroup most specifically containing addr, or "away"
+// when no registered group covers it. It is the one miss fallback the
+// label-building paths share; peer.go's stamp keeps its own all-errors→"away"
+// swallow on top because a webhook must never be refused for an unreadable
+// netgroup table.
+func (e *Engine) netgroupFor(ctx context.Context, addr netip.Addr) (string, error) {
+	group, err := e.store.NetgroupForAddr(ctx, addr)
+	if errors.Is(err, store.ErrNotFound) {
+		return "away", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return group, nil
+}
+
 // checkLabels builds the label set a check transition event carries. An http
 // target (a URL, no Address) gets no netgroup label: its liveness is not a
 // location verdict (the URL resolves off-LAN). An address target is classified
@@ -215,12 +231,9 @@ func (e *Engine) checkLabels(ctx context.Context, c store.Check, t store.CheckTa
 		return nil, fmt.Errorf("sweep checks %s: target %q address %q does not parse: %w",
 			c.Name, t.Name, t.Address, err)
 	}
-	group, err := e.store.NetgroupForAddr(ctx, addr)
+	group, err := e.netgroupFor(ctx, addr)
 	if err != nil {
-		if !errors.Is(err, store.ErrNotFound) {
-			return nil, err
-		}
-		group = "away"
+		return nil, err
 	}
 	labels["netgroup"] = group
 	return labels, nil

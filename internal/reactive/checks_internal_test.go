@@ -75,12 +75,11 @@ func TestCheckHTTPProbeReachesValidTarget(t *testing.T) {
 	}
 }
 
-// TestCheckHTTPEventCarriesNoNetgroupLabel pins the http carve-out at the
-// label-builder level: a URL target's liveness is not a location verdict, so
-// its event labels carry no netgroup key, while an address target is classified
-// (here into the "home" group, or "away" when no group matches).
-func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
-	ctx := context.Background()
+// labelsEngine opens a store and an engine for the label-builder tests. It is
+// not the reactive_test harness: the label helpers are pure engine+store reads,
+// so the heavier harness buys nothing here.
+func labelsEngine(t *testing.T) *Engine {
+	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "exocomp.db"))
 	if err != nil {
 		t.Fatalf("open store: %v", err)
@@ -103,8 +102,18 @@ func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
+	return e
+}
 
-	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+// TestCheckHTTPEventCarriesNoNetgroupLabel pins the http carve-out at the
+// label-builder level: a URL target's liveness is not a location verdict, so
+// its event labels carry no netgroup key, while an address target is classified
+// (here into the "home" group, or "away" when no group matches).
+func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
+	ctx := context.Background()
+	e := labelsEngine(t)
+
+	if _, err := e.store.CreateNetgroup(ctx, store.NewNetgroup{
 		Name:     "home",
 		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")},
 	}); err != nil {
@@ -136,5 +145,27 @@ func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
 	}
 	if awayLabels["netgroup"] != "away" {
 		t.Fatalf("unmatched target netgroup = %q, want away", awayLabels["netgroup"])
+	}
+}
+
+// TestNetgroupForAwayOnMiss pins the shared miss fallback directly: a covered
+// address names its group, and an uncovered one reads "away" (not an error), so
+// every label builder treats a miss identically.
+func TestNetgroupForAwayOnMiss(t *testing.T) {
+	ctx := context.Background()
+	e := labelsEngine(t)
+
+	if _, err := e.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	if group, err := e.netgroupFor(ctx, netip.MustParseAddr("192.168.1.50")); err != nil || group != "home" {
+		t.Fatalf("netgroupFor(home) = (%q, %v), want (home, nil)", group, err)
+	}
+	if group, err := e.netgroupFor(ctx, netip.MustParseAddr("10.9.9.9")); err != nil || group != "away" {
+		t.Fatalf("netgroupFor(miss) = (%q, %v), want (away, nil)", group, err)
 	}
 }
