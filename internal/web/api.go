@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/netip"
 	"os"
@@ -642,9 +643,16 @@ func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 		}
 		states[c.ID] = st
 		for _, t := range c.Targets {
-			if t.Address != "" {
-				addrs = append(addrs, netip.MustParseAddr(t.Address))
+			if t.Address == "" {
+				continue
 			}
+			addr, err := netip.ParseAddr(t.Address)
+			if err != nil {
+				s.apiFail(w, fmt.Errorf("check %s target %q address %q does not parse: %w",
+					c.Name, t.Name, t.Address, err))
+				return
+			}
+			addrs = append(addrs, addr)
 		}
 	}
 	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states, store.ClassifyNetgroups(addrs, groups)))

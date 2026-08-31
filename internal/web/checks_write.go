@@ -42,6 +42,12 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, errors.New("interval must be a positive Go duration (e.g. 5m)"))
 		return
 	}
+	switch kind {
+	case store.CheckTCP, store.CheckPing, store.CheckHTTP:
+	default:
+		s.fail(w, r, fmt.Errorf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
+		return
+	}
 	targets, err := store.ParseCheckTargets(kind, r.PostForm["target"], true)
 	if err != nil {
 		s.fail(w, r, err)

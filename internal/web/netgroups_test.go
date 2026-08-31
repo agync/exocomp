@@ -114,7 +114,7 @@ func TestNetgroupAddCreates(t *testing.T) {
 }
 
 // TestNetgroupAddValidatesPrefixes: a CIDR that does not parse is refused
-// before the store sees it (the same parsePrefixList `netgroup add` runs),
+// before the store sees it (the same store.ParsePrefixList `netgroup add` runs),
 // and no row lands.
 func TestNetgroupAddValidatesPrefixes(t *testing.T) {
 	h := newHarness(t)
