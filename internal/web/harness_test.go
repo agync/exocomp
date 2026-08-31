@@ -30,6 +30,9 @@ type harness struct {
 // job actually runs. The queue stops when the test's context is cancelled.
 func newHarness(t *testing.T) *harness {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("web harness integration")
+	}
 	dir := t.TempDir()
 
 	env, _, err := secrets.Init(dir, nil)

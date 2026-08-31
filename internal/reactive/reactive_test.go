@@ -62,6 +62,10 @@ type harnessOptions struct {
 func newHarness(t *testing.T, opts harnessOptions) *harness {
 	t.Helper()
 
+	if testing.Short() {
+		t.Skip("reactive harness integration")
+	}
+
 	if opts.dbPath == "" {
 		opts.dbPath = filepath.Join(t.TempDir(), "exocomp.db")
 	}
