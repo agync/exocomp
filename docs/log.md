@@ -6,6 +6,26 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — checks page netgroup/recency; read-only rules page
+
+- **The checks page shows the location and recency signals the feature is
+  about.** Each target now renders the netgroup its probed address belongs to
+  as a small chip next to the status chip — the registered group name (ok) or
+  `away` (dim) — with no badge for an http URL target, whose liveness is not a
+  location verdict. Beside it, a dim meta line reads how long ago the status
+  last changed (`changed 3h ago`, `humanAge` of `check_state.LastChange`) or
+  `unobserved` when the sweep has never seen the target. The classification
+  reuses the engine's label semantics: a miss reads `away`, the same word the
+  engine stamps on the transition event, so the page and the events it
+  describes agree.
+- **New /rules page** reads every rule with the action and guardrails exactly
+  as `rule list` prints them (shell argv, tofu-plan|apply workspace, playbook
+  source playbook (limit), notify; cooldown, daily cap, approval) and the CEL
+  expression verbatim. `GET /rules` joins the post-v1 read surfaces with a
+  Rules nav entry. The web now *reads* rules; mutation stays CLI
+  ([design/check-triggered-runs.md](design/check-triggered-runs.md) §9's
+  "rules stay CLI" is about the builder, not browsing).
+
 ## 2026-08-31 — http check dial-time guard
 
 - **The http probe refuses the addresses a check must not reach.** Its HTTP
