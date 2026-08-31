@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/reactive"
@@ -316,6 +317,20 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		Page: s.pageFor(r, "Job #"+itoa64(id), "jobs"), Job: s.jobRow(job, s.now()),
 		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
 		Rerunnable: len(job.Args.Argv) > 0,
+	}
+	if rule, ok := strings.CutPrefix(job.Runbook, "rule:"); ok {
+		vm.FiredRule = rule
+		ev, err := s.store.EventByJobID(r.Context(), job.ID)
+		if err == nil {
+			vm.TriggerEvent = &triggerEvent{
+				ID: ev.ID, Source: ev.Source, Name: eventName(ev), Time: clock(ev.ReceivedAt),
+			}
+		} else if !errors.Is(err, store.ErrNotFound) {
+			// Only a missing row is benign — a manually enqueued job that
+			// happens to carry a rule runbook shows the rule line, no event.
+			s.fail(w, r, err)
+			return
+		}
 	}
 	if vm.Rerunnable {
 		vm.Rerun = jobRerunVM{

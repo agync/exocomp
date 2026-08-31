@@ -84,6 +84,15 @@ templ jobDetail(vm jobDetailVM) {
 			·
 			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
+		if vm.FiredRule != "" {
+			<p class="meta" style="margin-top:8px">
+				fired by rule <a href="/rules">{ vm.FiredRule }</a>
+				if vm.TriggerEvent != nil {
+					· event <a href={ templ.SafeURL("/events/" + itoa64(vm.TriggerEvent.ID)) }>#{ itoa64(vm.TriggerEvent.ID) }</a>
+					(<span class="mono">{ vm.TriggerEvent.Source }</span> { vm.TriggerEvent.Name }) at { vm.TriggerEvent.Time }
+				}
+			</p>
+		}
 		if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
 			@modal("job-rerun", "Run again") {
 				<p class="meta">Resubmits this run through the one queue. The identity below is fixed; toggle the drift/diff flags, retarget with limit/tags, or change the sandbox tier before submitting. A plain submit repeats the original run.</p>

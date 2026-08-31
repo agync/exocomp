@@ -548,6 +548,21 @@ type jobDetailVM struct {
 	// exactly where the server-rendered tail left off instead of skipping
 	// events written between render and connect.
 	LastSeq int64
+	// FiredRule is the rule this job's runbook named (runbook "rule:<name>"),
+	// empty for a job no rule raised. TriggerEvent is the event that raised the
+	// job, nil when none is on record — a manually enqueued job carrying a rule
+	// runbook has no event row, so the rule line stands alone.
+	FiredRule    string
+	TriggerEvent *triggerEvent
+}
+
+// triggerEvent is the provenance link on a rule-triggered job's detail view:
+// the event whose rule enqueued it, enough to link through to its trace.
+type triggerEvent struct {
+	ID     int64
+	Source string
+	Name   string
+	Time   string
 }
 
 type eventLine struct {
