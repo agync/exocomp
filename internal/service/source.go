@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"exocomp.dev/exocomp/internal/hooks"
@@ -75,14 +74,12 @@ func (s *Service) ResolveSourcePlaybook(ctx context.Context, overridePath, sourc
 // input, not a server fault.
 var ErrSourcePathEscape = errors.New("path resolves outside the source checkout")
 
-// sourceNamePattern is the charset a source name may use. It is checked before
-// the name is spliced into any path (a hooks override, a checkout root), so a
-// traversal in the NAME cannot address a file outside the tree that holds it.
-var sourceNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-
 // ValidSourceName reports whether a source name is safe to splice into a path.
+// It shares the store's one name-charset gate (the same charset a check or
+// netgroup name must hold), wrapping the failure in ErrSourcePathEscape so a
+// face treats it as the path-safety refusal it is.
 func ValidSourceName(name string) error {
-	if !sourceNamePattern.MatchString(name) {
+	if !store.ValidName(name) {
 		return fmt.Errorf("source name %q must match [A-Za-z0-9_.-]+: %w", name, ErrSourcePathEscape)
 	}
 	return nil

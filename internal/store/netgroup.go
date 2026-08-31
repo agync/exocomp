@@ -2,9 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/netip"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -26,16 +26,11 @@ type NewNetgroup struct {
 	Prefixes []netip.Prefix
 }
 
-// netgroupNamePattern bounds a group name so it stays a usable label value:
-// a rule writes `event.labels["netgroup"] == <name>` in CEL, so anything a
-// label key could not hold is refused here.
-var netgroupNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
-
 const netgroupColumns = `id, name, prefixes, created_at, updated_at`
 
 // CreateNetgroup inserts a netgroup. A repeated name returns ErrDuplicate.
 func (s *Store) CreateNetgroup(ctx context.Context, n NewNetgroup) (Netgroup, error) {
-	if !netgroupNamePattern.MatchString(n.Name) {
+	if !ValidName(n.Name) {
 		return Netgroup{}, fmt.Errorf("store: netgroup name %q must match [A-Za-z0-9_.-]+", n.Name)
 	}
 	if len(n.Prefixes) == 0 {
@@ -122,6 +117,27 @@ func (s *Store) DeleteNetgroup(ctx context.Context, name string) error {
 	return nil
 }
 
+// ParsePrefixList splits a comma-separated CIDR string and parses every member
+// — the shape both `netgroup add`'s positional argument and the netgroups
+// page's prefixes field submit. An empty member is refused too: in the middle
+// of a hand-typed list it is a double comma, a typo that should be caught here
+// rather than stored.
+func ParsePrefixList(spec string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, part := range strings.Split(spec, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			return nil, errors.New("an empty CIDR (double comma) in the list")
+		}
+		p, err := netip.ParsePrefix(part)
+		if err != nil {
+			return nil, fmt.Errorf("%q is not a CIDR: %w", part, err)
+		}
+		out = append(out, p)
+	}
+	return out, nil
+}
+
 // NetgroupForAddr names the netgroup whose prefix most specifically contains
 // addr: the highest Bits() wins, and a tie breaks by name ascending so the
 // answer is deterministic however the rows were inserted. A group that is
@@ -129,12 +145,22 @@ func (s *Store) DeleteNetgroup(ctx context.Context, name string) error {
 // when no registered group contains addr, and the error when the lookup fails
 // so the caller can tell a miss from a broken read.
 func (s *Store) NetgroupForAddr(ctx context.Context, addr netip.Addr) (string, error) {
-	addr = addr.Unmap()
-
 	groups, err := s.ListNetgroups(ctx)
 	if err != nil {
 		return "", err
 	}
+	name, ok := classifyAddr(addr, groups)
+	if !ok {
+		return "", ErrNotFound
+	}
+	return name, nil
+}
+
+// classifyAddr returns the netgroup whose prefix most specifically contains
+// addr, or ok=false when none does. It is the in-memory classifier both
+// NetgroupForAddr and ClassifyNetgroups share.
+func classifyAddr(addr netip.Addr, groups []Netgroup) (string, bool) {
+	addr = addr.Unmap()
 	best := ""
 	bestBits := -1
 	for _, g := range groups {
@@ -148,9 +174,28 @@ func (s *Store) NetgroupForAddr(ctx context.Context, addr netip.Addr) (string, e
 		}
 	}
 	if best == "" {
-		return "", ErrNotFound
+		return "", false
 	}
-	return best, nil
+	return best, true
+}
+
+// ClassifyNetgroups classifies every address in one in-memory pass, returning
+// the group each one most specifically falls in keyed by the address's
+// canonical (unmapped) string. An address no registered group covers reads
+// "away", the same miss label the engine stamps on an event. Callers that
+// already hold the netgroups load them once and classify all their targets,
+// instead of a NetgroupForAddr round-trip per target.
+func ClassifyNetgroups(addrs []netip.Addr, groups []Netgroup) map[string]string {
+	out := make(map[string]string, len(addrs))
+	for _, addr := range addrs {
+		addr = addr.Unmap()
+		if name, ok := classifyAddr(addr, groups); ok {
+			out[addr.String()] = name
+		} else {
+			out[addr.String()] = "away"
+		}
+	}
+	return out
 }
 
 func scanNetgroup(row rowScanner) (Netgroup, error) {

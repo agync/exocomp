@@ -214,7 +214,8 @@ func TestCheckDuplicateName(t *testing.T) {
 
 // TestCountCheckStatesByStatus is the dashboard card's count: it tallies state
 // rows by status across checks in one query — one target up, one down — and
-// reads zero (not an error) for a status nothing holds.
+// reads zero (not an error) for a status nothing holds. A disabled check's
+// frozen state rows are not the sweep's business, so they do not count.
 func TestCountCheckStatesByStatus(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)
@@ -239,12 +240,31 @@ func TestCountCheckStatesByStatus(t *testing.T) {
 		}
 	}
 
+	// A disabled check with a frozen up-state row: the count must not include
+	// it, because the sweep no longer probes it.
+	parked, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "parked", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "old", Address: "10.0.0.9", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create parked check: %v", err)
+	}
+	if err := st.SetCheckEnabled(ctx, "parked", false); err != nil {
+		t.Fatalf("disable parked check: %v", err)
+	}
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: parked.ID, TargetName: "old", Status: store.CheckUp,
+		Consecutive: 3, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+	}); err != nil {
+		t.Fatalf("set parked state: %v", err)
+	}
+
 	up, err := st.CountCheckStatesByStatus(ctx, store.CheckUp)
 	if err != nil {
 		t.Fatalf("count up states: %v", err)
 	}
 	if up != 1 {
-		t.Fatalf("up count = %d, want 1", up)
+		t.Fatalf("up count = %d, want 1 (the disabled check's frozen up must not count)", up)
 	}
 	down, err := st.CountCheckStatesByStatus(ctx, store.CheckDown)
 	if err != nil {
@@ -259,6 +279,56 @@ func TestCountCheckStatesByStatus(t *testing.T) {
 	}
 	if none != 0 {
 		t.Fatalf("unknown status count = %d, want 0", none)
+	}
+}
+
+// TestParseCheckTargets pins the one parser the CLI (strict) and the checks
+// page (blank-skipping) share: the per-kind target shape, the default-kind
+// error, and the skipBlank leniency.
+func TestParseCheckTargets(t *testing.T) {
+	tcp, err := store.ParseCheckTargets(store.CheckTCP,
+		[]string{"laptop=192.168.1.50:22", "nas=192.168.1.60:22"}, false)
+	if err != nil {
+		t.Fatalf("parse tcp: %v", err)
+	}
+	if len(tcp) != 2 || tcp[0].Address != "192.168.1.50" || tcp[0].Port != 22 ||
+		tcp[1].Address != "192.168.1.60" {
+		t.Fatalf("tcp targets = %+v", tcp)
+	}
+
+	ping, err := store.ParseCheckTargets(store.CheckPing, []string{"gate=192.168.1.1"}, false)
+	if err != nil {
+		t.Fatalf("parse ping: %v", err)
+	}
+	if len(ping) != 1 || ping[0].Address != "192.168.1.1" || ping[0].Port != 0 {
+		t.Fatalf("ping targets = %+v", ping)
+	}
+
+	http, err := store.ParseCheckTargets(store.CheckHTTP, []string{"web=http://web.lan/health"}, false)
+	if err != nil {
+		t.Fatalf("parse http: %v", err)
+	}
+	if len(http) != 1 || http[0].URL != "http://web.lan/health" {
+		t.Fatalf("http targets = %+v", http)
+	}
+
+	if _, err := store.ParseCheckTargets("snmp", []string{"a=1.2.3.4:1"}, false); err == nil ||
+		!strings.Contains(err.Error(), "--kind must be") {
+		t.Fatalf("unknown kind error = %v, want the CLI's --kind refusal", err)
+	}
+
+	// Strict: a blank target is an error, not a skip.
+	if _, err := store.ParseCheckTargets(store.CheckTCP, []string{"  "}, false); err == nil {
+		t.Fatal("strict mode accepted a blank target")
+	}
+	// Web leniency: blanks are trimmed and skipped.
+	web, err := store.ParseCheckTargets(store.CheckTCP,
+		[]string{"laptop=192.168.1.50:22", "  ", "", "nas=192.168.1.60:22"}, true)
+	if err != nil {
+		t.Fatalf("parse web targets: %v", err)
+	}
+	if len(web) != 2 {
+		t.Fatalf("web targets = %+v, want the two non-blank ones", web)
 	}
 }
 

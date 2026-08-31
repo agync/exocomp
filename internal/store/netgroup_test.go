@@ -185,6 +185,54 @@ func TestNetgroupForAddrTieBreaksByNameAscending(t *testing.T) {
 	}
 }
 
+// TestClassifyNetgroups pins the one-pass in-memory classifier: highest-Bits
+// wins, a tie breaks by name ascending, an uncovered address reads "away", and
+// a mapped address classifies under its canonical (unmapped) string.
+func TestClassifyNetgroups(t *testing.T) {
+	groups := []Netgroup{
+		{Name: "lan", Prefixes: mustPrefixes(t, "10.0.0.0/8")},
+		{Name: "lab", Prefixes: mustPrefixes(t, "10.1.2.0/24")},
+		{Name: "z-lan", Prefixes: mustPrefixes(t, "192.168.0.0/16")},
+		{Name: "a-lan", Prefixes: mustPrefixes(t, "192.168.0.0/16")},
+	}
+	got := ClassifyNetgroups([]netip.Addr{
+		netip.MustParseAddr("10.1.2.9"),
+		netip.MustParseAddr("10.9.0.1"),
+		netip.MustParseAddr("192.168.1.1"),
+		netip.MustParseAddr("::ffff:10.1.2.9"),
+	}, groups)
+
+	want := map[string]string{
+		"10.1.2.9":    "lab",
+		"10.9.0.1":    "lan",
+		"192.168.1.1": "a-lan", // tie-break by name ascending
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("ClassifyNetgroups[%s] = %q, want %q", k, got[k], v)
+		}
+	}
+}
+
+// TestParsePrefixList pins the shared comma-split parser: it trims, refuses an
+// empty member (a double comma), and rejects a non-CIDR member.
+func TestParsePrefixList(t *testing.T) {
+	got, err := ParsePrefixList("192.168.0.0/16, 10.0.0.0/8")
+	if err != nil {
+		t.Fatalf("parse: %v", err)
+	}
+	if len(got) != 2 || got[0].String() != "192.168.0.0/16" || got[1].String() != "10.0.0.0/8" {
+		t.Fatalf("prefixes = %v, want [192.168.0.0/16 10.0.0.0/8]", got)
+	}
+
+	if _, err := ParsePrefixList("192.168.0.0/16,,10.0.0.0/8"); err == nil {
+		t.Fatal("a double comma was accepted")
+	}
+	if _, err := ParsePrefixList("not-a-cidr"); err == nil {
+		t.Fatal("a non-CIDR member was accepted")
+	}
+}
+
 // TestMigration0029UpgradesFrom028 pins a database at user_version 28 and opens
 // it with this binary: an operator upgrading in place must get the netgroup
 // table and usable CRUD, not a migration that only runs on a fresh file.

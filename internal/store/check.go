@@ -4,10 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/netip"
 	"net/url"
 	"os/exec"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -25,10 +28,14 @@ const (
 	CheckDown = "down"
 )
 
-// checkNamePattern bounds a check's name and each target's name so both stay
-// usable host and label values: a rule writes `event.host == <target>` and
-// reads labels, so anything those could not hold is refused here.
-var checkNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+// namePattern bounds a check's name, a netgroup's name, and each target's name
+// so they all stay usable host and label values: a rule writes
+// `event.host == <target>` and reads labels, so anything those could not hold
+// is refused here. ValidName is the single gate every store uses.
+var namePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
+// ValidName reports whether a name stays usable as a host and a label value.
+func ValidName(s string) bool { return namePattern.MatchString(s) }
 
 // CheckTarget is one probe of a check. Which fields are set depends on kind:
 // tcp uses Address+Port, ping uses Address only, http uses URL (with an
@@ -39,6 +46,50 @@ type CheckTarget struct {
 	Port    int    `json:"port,omitempty"`
 	URL     string `json:"url,omitempty"`
 	Expect  int    `json:"expect,omitempty"`
+}
+
+// ParseCheckTargets splits each name=spec target by kind — the shape both
+// `check add`'s --target flags and the checks page's repeated target fields
+// submit. The spec after the '=' is an IP literal (tcp/ping) or a URL (http);
+// a tcp target carries its port after the last ':'. skipBlank is the web
+// form's leniency: an unused row of the form is trimmed and skipped, where the
+// CLI's strict mode refuses it.
+func ParseCheckTargets(kind string, specs []string, skipBlank bool) ([]CheckTarget, error) {
+	out := make([]CheckTarget, 0, len(specs))
+	for _, spec := range specs {
+		if skipBlank {
+			spec = strings.TrimSpace(spec)
+			if spec == "" {
+				continue
+			}
+		}
+		name, value, ok := strings.Cut(spec, "=")
+		if !ok || name == "" || value == "" {
+			return nil, fmt.Errorf("target %q must be name=spec", spec)
+		}
+		t := CheckTarget{Name: name}
+		switch kind {
+		case CheckTCP:
+			host, port, err := net.SplitHostPort(value)
+			if err != nil {
+				return nil, fmt.Errorf("target %q: a tcp target must be ip:port", spec)
+			}
+			p, err := strconv.Atoi(port)
+			if err != nil {
+				return nil, fmt.Errorf("target %q: port %q is not a number", spec, port)
+			}
+			t.Address = host
+			t.Port = p
+		case CheckPing:
+			t.Address = value
+		case CheckHTTP:
+			t.URL = value
+		default:
+			return nil, fmt.Errorf("--kind must be %s, %s or %s", CheckTCP, CheckPing, CheckHTTP)
+		}
+		out = append(out, t)
+	}
+	return out, nil
 }
 
 // Check is one row of the check table.
@@ -68,7 +119,7 @@ const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created
 // ping target addresses are IP literals (the address is the location), http
 // targets are http(s) URLs the probe will dial.
 func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
-	if !checkNamePattern.MatchString(n.Name) {
+	if !ValidName(n.Name) {
 		return Check{}, fmt.Errorf("store: check name %q must match [A-Za-z0-9_.-]+", n.Name)
 	}
 	switch n.Kind {
@@ -86,7 +137,7 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 
 	seen := make(map[string]bool, len(n.Targets))
 	for i, t := range n.Targets {
-		if !checkNamePattern.MatchString(t.Name) {
+		if !ValidName(t.Name) {
 			return Check{}, fmt.Errorf("store: check %q target %d name %q must match [A-Za-z0-9_.-]+",
 				n.Name, i, t.Name)
 		}
@@ -297,11 +348,16 @@ func (s *Store) ListCheckStates(ctx context.Context, checkID int64) ([]CheckStat
 // CountCheckStatesByStatus counts the targets whose state row currently holds
 // status — the dashboard's "N targets up" card line. A COUNT over check_state
 // rather than a per-check ListCheckStates loop: the glance screen must never
-// pull every state row into memory just to size a number.
+// pull every state row into memory just to size a number. It joins check_row
+// on enabled=1, so only the targets the sweep currently probes count: a
+// disabled check's frozen state rows are not probed and would overstate the
+// card.
 func (s *Store) CountCheckStatesByStatus(ctx context.Context, status string) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM check_state WHERE status = ?`, status).Scan(&n)
+		`SELECT COUNT(*) FROM check_state
+		 JOIN check_row ON check_row.id = check_state.check_id
+		 WHERE check_state.status = ? AND check_row.enabled = 1`, status).Scan(&n)
 	if err != nil {
 		return 0, wrap("count check states", err)
 	}
@@ -326,6 +382,16 @@ func (s *Store) SetCheckState(ctx context.Context, st CheckState) error {
 		return wrap("set check state", err)
 	}
 	return nil
+}
+
+// CheckIntervalLabel renders a stored interval as the Go duration string
+// `check list` and the checks page share, so the CLI and the browser read a
+// check's cadence identically.
+func CheckIntervalLabel(intervalS int64) string {
+	if intervalS <= 0 {
+		return "-"
+	}
+	return (time.Duration(intervalS) * time.Second).String()
 }
 
 func scanCheck(row rowScanner) (Check, error) {
@@ -371,6 +437,11 @@ func scanCheckState(row rowScanner) (CheckState, error) {
 // pingCapable reports whether this host can actually send ICMP: the binary
 // exists AND a loopback probe answers. PATH presence alone is not evidence
 // (rootless ICMP needs net.ipv4.ping_group_range or a setuid helper).
+//
+// The probe runs from the store on purpose (validate-at-write, deliberate):
+// the refusal must happen where the check is written, before a row that can
+// never be probed exists. ping is a pinned system binary, not a store
+// dependency.
 func pingCapable() error {
 	if _, err := exec.LookPath("ping"); err != nil {
 		return fmt.Errorf("ping binary not on PATH: %w", err)
