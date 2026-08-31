@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — gating split: fast commit gate, full race gate
+
+- **The per-commit gate is now fast.** `make check` runs `fmt-check vet lint
+  tidy-check` plus `go test -short ./...`; the heavy race suite moved to a new
+  `make check-race` target (`-race ./...`) that runs from the new pre-push hook
+  and as the worktree-merge integration gate. Invariant 12 and the contribution
+  guide describe the split; the heavy integration tests skip under
+  `testing.Short()`.
+
 ## 2026-08-31 — checks page netgroup/recency; read-only rules page
 
 - **The checks page shows the location and recency signals the feature is
