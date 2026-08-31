@@ -210,6 +210,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /policies", s.requireAuth(s.handlePolicies))
 	mux.HandleFunc("GET /secrets", s.requireAuth(s.handleSecrets))
 	mux.HandleFunc("GET /runners", s.requireAuth(s.handleRunners))
+	mux.HandleFunc("GET /rules", s.requireAuth(s.handleRules))
 
 	// Browser write surface: each resource's mutating form POSTs (cookie-session,
 	// operator-scoped, same-origin) register through here so this file stays the

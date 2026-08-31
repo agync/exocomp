@@ -1,0 +1,54 @@
+package web
+
+// rulesList is the rules surface: the CEL expressions and actions that turn
+// events into jobs, and the guardrails that bound them. Rules are
+// CLI-managed — mutation stays on `exocomp rule add|enable|disable|rm` — so
+// unlike sources/secrets/runners there are no write controls here at all, for
+// any token. The expression is shown verbatim so an operator sees exactly
+// what fires a job.
+templ rulesList(vm rulesVM) {
+	@layout(vm.Page) {
+		<div class="pageheader">
+			<h1>Rules</h1>
+		</div>
+		<div class="card span2" style="margin-top:18px">
+			<div class="kicker">Event → job</div>
+			<h3>All rules</h3>
+			<p class="meta">Read-only: rules stay CLI-managed — mutate with <code>exocomp rule add|enable|disable|rm</code>.</p>
+			if len(vm.Rules) == 0 {
+				<p class="meta">No rules registered.</p>
+			} else {
+				<div class="tablewrap stackable">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">Rule</th>
+								<th scope="col">Enabled</th>
+								<th scope="col">Source</th>
+								<th scope="col">Action</th>
+								<th scope="col">Cooldown</th>
+								<th scope="col">Cap</th>
+								<th scope="col">Approval</th>
+								<th scope="col">Expression</th>
+							</tr>
+						</thead>
+						<tbody>
+							for _, rl := range vm.Rules {
+								<tr>
+									<td data-label="Rule">{ rl.Name }</td>
+									<td data-label="Enabled">@enabledChip(rl.Enabled)</td>
+									<td class="mono" data-label="Source">{ rl.SourceFilter }</td>
+									<td class="mono wrap" data-label="Action">{ rl.Action }</td>
+									<td class="mono" data-label="Cooldown">{ rl.Cooldown }</td>
+									<td class="mono" data-label="Cap">{ rl.Cap }</td>
+									<td data-label="Approval">{ rl.Approval }</td>
+									<td class="mono wrap" data-label="Expression">{ rl.Expr }</td>
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+	}
+}
