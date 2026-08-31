@@ -118,6 +118,13 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Sources = sources
 
+	checks, err := s.checkSummary(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Checks = checks
+
 	schedules, err := s.schedules(r)
 	if err != nil {
 		s.fail(w, r, err)

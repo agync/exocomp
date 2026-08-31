@@ -251,6 +251,31 @@ func (s *Server) sourceSummary(r *http.Request) (sourceSummary, error) {
 	return card, nil
 }
 
+// checkSummary reduces the check estate to the dashboard card: the registered
+// total, how many targets the sweep currently probes up, and how many checks
+// are disabled. The up-target line is a single aggregate COUNT over
+// check_state — never a per-check ListCheckStates loop, so the glance screen
+// stays N+1-free. DOWN is normal for an away host, so it is not the attention
+// signal; a disabled check is (mirrors sourcesCard).
+func (s *Server) checkSummary(r *http.Request) (checksSummary, error) {
+	list, err := s.store.ListChecks(r.Context(), false)
+	if err != nil {
+		return checksSummary{}, err
+	}
+	card := checksSummary{Total: len(list)}
+	for _, c := range list {
+		if !c.Enabled {
+			card.Disabled++
+		}
+	}
+	up, err := s.store.CountCheckStatesByStatus(r.Context(), store.CheckUp)
+	if err != nil {
+		return checksSummary{}, err
+	}
+	card.TargetsUp = up
+	return card, nil
+}
+
 // schedules reads every schedule (enabled and disabled) with its kind, cron,
 // next fire, and the outcome of the job its last fire enqueued. A drift-check
 // schedule (a tofu-plan or play --check kind) thereby surfaces its last drift

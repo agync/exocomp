@@ -48,6 +48,7 @@ type dashboardVM struct {
 	Jobs       jobSummary
 	Workspaces workspaceSummary
 	Sources    sourceSummary
+	Checks     checksSummary
 	Workflows  workflowSummary
 	Schedules  []scheduleRow // unchanged: the schedules card still lists every row
 }
@@ -108,6 +109,16 @@ type workspaceSummary struct {
 type sourceSummary struct {
 	Total     int
 	Attention int
+}
+
+// checksSummary is the dashboard's probe-estate card: the registered total,
+// the targets the sweep currently observes up, and how many checks are
+// disabled. DOWN is not the attention signal — it is normal for an
+// away/roaming host — a disabled check is (mirrors sourcesCard).
+type checksSummary struct {
+	Total     int
+	TargetsUp int
+	Disabled  int
 }
 
 // workflowSummary is the dashboard's in-flight-workflows card.

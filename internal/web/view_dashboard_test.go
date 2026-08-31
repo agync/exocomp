@@ -154,6 +154,79 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 	}
 }
 
+// TestDashboardChecksCard asserts the probe-estate card: the registered total,
+// the "N targets up" subline from the aggregate check_state count, and the
+// attention accent exactly when a check is disabled — DOWN is normal for an
+// away host, so only a disabled check flags the card.
+func TestDashboardChecksCard(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	enabled, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("CreateCheck: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := h.store.SetCheckState(ctx, store.CheckState{
+		CheckID: enabled.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 1, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+	}); err != nil {
+		t.Fatalf("SetCheckState: %v", err)
+	}
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "roaming", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "phone", Address: "192.168.1.70", Port: 22}},
+	}); err != nil {
+		t.Fatalf("CreateCheck disabled fixture: %v", err)
+	}
+	if err := h.store.SetCheckEnabled(ctx, "roaming", false); err != nil {
+		t.Fatalf("disable check: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<a class="card cardlink attn" href="/checks" aria-labelledby="checks-h">`,
+		`<div class="cardnum">2</div>`,
+		`<p class="cardlabel">checks</p>`,
+		`<p class="cardsub warn">1 disabled</p>`,
+		`<p class="cardsub">1 targets up</p>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing checks-card marker %q", want)
+		}
+	}
+}
+
+// TestDashboardChecksCardCalm: with nothing registered the card shows the calm
+// line and no attention accent, and the count is never a bare zero.
+func TestDashboardChecksCardCalm(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, `<a class="card cardlink" href="/checks" aria-labelledby="checks-h">`) {
+		t.Error("checks card should render without the attn accent when nothing is registered")
+	}
+	if !strings.Contains(page, `<p class="cardsub meta">No checks registered.</p>`) {
+		t.Error(`checks card should show "No checks registered." when nothing is registered`)
+	}
+}
+
 // TestDashboardWorkflowsCardShowsWhenInFlight asserts the workflows card
 // appears — and links to /workflows — exactly when a workflow is in flight,
 // showing its count rather than the chain's id or step ledger.

@@ -29,6 +29,7 @@ templ dashboard(vm dashboardVM) {
 			@jobsCard(vm.Jobs)
 			@workspacesCard(vm.Workspaces)
 			@sourcesCard(vm.Sources)
+			@checksCard(vm.Checks)
 			if vm.Workflows.InFlight > 0 {
 				@workflowsCard(vm.Workflows)
 			}
@@ -145,6 +146,26 @@ templ sourcesCard(vm sourceSummary) {
 			} else {
 				<p class="cardsub meta">All synced.</p>
 			}
+		}
+	</a>
+}
+
+// checksCard is the dashboard's probe-estate summary: the registered total,
+// the targets currently observed up, and — the attention signal — any disabled
+// checks. DOWN is normal for an away/roaming host, so it is never the accent;
+// a disabled check is (mirrors sourcesCard).
+templ checksCard(vm checksSummary) {
+	<a class={ "card", "cardlink", templ.KV("attn", vm.Disabled > 0) } href="/checks" aria-labelledby="checks-h">
+		<h3 id="checks-h">Checks</h3>
+		if vm.Total == 0 {
+			<p class="cardsub meta">No checks registered.</p>
+		} else {
+			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
+			<p class="cardlabel">checks</p>
+			if vm.Disabled > 0 {
+				<p class="cardsub warn">{ itoa(int64(vm.Disabled)) } disabled</p>
+			}
+			<p class="cardsub">{ itoa(int64(vm.TargetsUp)) } targets up</p>
 		}
 	</a>
 }
