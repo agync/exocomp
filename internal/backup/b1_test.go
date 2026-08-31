@@ -21,6 +21,9 @@ import (
 // authenticating (Source.Authenticates), which the in-repo strip cannot reach.
 // With it, the planted snapshot is refused.
 func TestRestoreRefusesDowngradeWhenMarkerStripped(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)

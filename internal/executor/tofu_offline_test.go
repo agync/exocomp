@@ -33,6 +33,9 @@ import (
 // of the backend over the same on-disk store and envelope the parent
 // prepared, rather than trying to reach the parent's.
 func TestTofuPlanRunsOfflineFromPluginCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if os.Getenv(offlineChildVar) == "1" {
 		runTofuOfflineChild(t)
 		return

@@ -38,6 +38,9 @@ func snapshotDataDir(t *testing.T, dir string) map[string]int64 {
 // snapshot id and a plausible RPO age, leaves the live data dir untouched,
 // and cleans up its own throwaway directory.
 func TestRestoreDrillFindsNewestSnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 
@@ -145,6 +148,9 @@ func (d corruptingRestoreDriver) Run(ctx context.Context, spec executor.Spec, si
 // clear reason — not a thrown error. The drill did its job: it found a bad
 // backup.
 func TestRestoreDrillCatchesCorruption(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 

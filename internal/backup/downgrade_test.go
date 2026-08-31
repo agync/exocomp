@@ -17,6 +17,9 @@ import (
 // unwraps the DEK — that is the point of it — so nothing but the generation
 // catches it.
 func TestRestoreRefusesADowngradedKeyring(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	t.Parallel()
 	f := newFixture(t)
 

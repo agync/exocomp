@@ -154,6 +154,9 @@ func TestStagingManifestVerifies(t *testing.T) {
 }
 
 func TestResticLocalRoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 
@@ -285,6 +288,9 @@ func assertRestoredChain(t *testing.T, f *fixture, dest, targetName string) {
 }
 
 func TestLegsFailIndependently(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 
@@ -378,6 +384,9 @@ func TestCancelledLegFinishesItsRow(t *testing.T) {
 }
 
 func TestRestoreRefusesInitializedDest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 
@@ -407,6 +416,9 @@ func TestRestoreRefusesInitializedDest(t *testing.T) {
 }
 
 func TestRestoreRejectsWrongIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 

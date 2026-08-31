@@ -37,6 +37,9 @@ const offlineChildVar = "EXOCOMP_OFFLINE_TEST_CHILD"
 // only way to put the actual subprocess the driver launches inside it,
 // since the driver does not expose a namespace hook.
 func TestAnsiblePlaybookRunsOfflineFromVendoredCollection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if os.Getenv(offlineChildVar) == "1" {
 		runAnsibleOfflineChild(t)
 		return

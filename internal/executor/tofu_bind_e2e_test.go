@@ -26,6 +26,9 @@ const rotatedCanary = "exocomp-sensitive-output-rotated-4b71c2"
 // identifier is sealed but refused a binding — with a reason, not a mangled
 // name.
 func TestTofuApplyBindsSealedOutput(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 1)
 	ctx := context.Background()
 

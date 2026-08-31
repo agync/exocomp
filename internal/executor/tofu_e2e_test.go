@@ -286,6 +286,9 @@ func (f *fixture) requireSucceeded(job store.Job, log string) {
 }
 
 func TestTofuWorkspaceEndToEnd(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 1)
 	ctx := context.Background()
 
@@ -398,6 +401,9 @@ func TestTofuWorkspaceEndToEnd(t *testing.T) {
 }
 
 func TestTofuAppliesSerializeOnTheConcurrencyKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 2)
 	ctx := context.Background()
 
@@ -453,6 +459,9 @@ func TestTofuAppliesSerializeOnTheConcurrencyKey(t *testing.T) {
 }
 
 func TestTofuRefusesToRunUnderAForeignLock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 1)
 	ctx := context.Background()
 

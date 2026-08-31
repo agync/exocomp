@@ -30,6 +30,9 @@ const (
 // TestResticS3Leg runs the S3 leg against a real SeaweedFS. It skips — with
 // the reason — when podman cannot produce one, and never fakes the result.
 func TestResticS3Leg(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	t.Parallel()
 	if _, err := exec.LookPath("podman"); err != nil {
 		t.Skip("podman is not on PATH")
@@ -100,6 +103,9 @@ func TestResticS3Leg(t *testing.T) {
 // RESTIC_CACHE_DIR, so AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY can only
 // have reached restic and the s3 client through resolveS3Env.
 func TestResticS3LegResolvesSealedCredentials(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	t.Parallel()
 	if _, err := exec.LookPath("podman"); err != nil {
 		t.Skip("podman is not on PATH")

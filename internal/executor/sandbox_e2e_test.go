@@ -49,6 +49,9 @@ func writePlaybook(t *testing.T, dir, name, body string) string {
 // ordinary work still runs under it, so this is a real ansible-playbook run
 // reading its own repository checkout through the local connection.
 func TestSandboxedAnsibleRunsANormalPlaybook(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	requireNono(t)
 	requireAnsible(t)
 
@@ -87,6 +90,9 @@ func TestSandboxedAnsibleRunsANormalPlaybook(t *testing.T) {
 // local tier reads every one of them, which is what makes this a test of the
 // sandbox rather than of the filesystem.
 func TestSandboxedAnsibleCannotReachTheDataDir(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	requireNono(t)
 	requireAnsible(t)
 
@@ -172,6 +178,9 @@ func runAnsibleDriver(t *testing.T, drv executor.Driver, playbook string) (execu
 // the loopback state backend and the provider registry, because the profile
 // grants exactly those two ports and nothing else.
 func TestSandboxedTofuPlansAndApplies(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	requireNono(t)
 	requireTofu(t)
 
@@ -279,6 +288,9 @@ const devShmSecretSentinel = "apiVersion: v1\nkind: Config\ntoken: sandboxed-dev
 // real nono closes inherited fds before exec and a memfd has no path a
 // --read-file grant can name.
 func TestSandboxedTofuReadsDevShmStagedSecret(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireNono(t)
 
 	data := sandboxDataDir(t)
@@ -358,6 +370,9 @@ func TestSandboxedTofuReadsDevShmStagedSecret(t *testing.T) {
 // succeeded because of the grant, not because /dev/shm is somehow exempt from
 // the sandbox's default-deny.
 func TestSandboxDeniesAnUngrantedDevShmFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireNono(t)
 
 	data := sandboxDataDir(t)

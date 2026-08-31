@@ -143,6 +143,9 @@ func TestTamperingIsNotCorruption(t *testing.T) {
 // remote can rewrite it. The rewrite is refused as tampering, before the part
 // digests it lists are trusted for anything.
 func TestRestoreRefusesATamperedPartsManifest(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)
@@ -186,6 +189,9 @@ func TestRestoreRefusesATamperedPartsManifest(t *testing.T) {
 // written before tags existed — no tag and no authenticating marker — still
 // restores, and says so loudly.
 func TestRestoreWarnsOnALegacySnapshot(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)
@@ -235,6 +241,9 @@ func TestRestoreWarnsOnALegacySnapshot(t *testing.T) {
 // the target root, the restore refuses rather than warning — unless the operator
 // explicitly accepts the snapshot.
 func TestRestoreRefusesDowngradeAtMarkedTarget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)
@@ -314,6 +323,9 @@ func rewriteBackupRef(t *testing.T, bare string, edit func(clone string)) {
 // tag to check: an old backup, and a restore run from a bare repository
 // password with no keyring at hand.
 func TestUnauthenticatedRestoreWarns(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	t.Parallel()
 
 	dir := t.TempDir()

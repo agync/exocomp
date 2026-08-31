@@ -25,6 +25,9 @@ const sensitiveCanary = "exocomp-sensitive-output-9d3f1a"
 // inventory artifact, the sensitive-marked output is absent from it, and no
 // event carries the sensitive value.
 func TestTofuApplyCapturesInventory(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 1)
 	ctx := context.Background()
 
@@ -114,6 +117,9 @@ func TestTofuApplyCapturesInventory(t *testing.T) {
 // run-secret (openable, correct value) instead of dropping it, while the value
 // still reaches neither the inventory nor any event, and redaction holds.
 func TestTofuApplySealsSensitiveOutput(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	f := newFixture(t, 1)
 	ctx := context.Background()
 	appendOutputs(t, f.tofuDir)

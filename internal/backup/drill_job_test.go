@@ -118,6 +118,9 @@ func TestLiveSourceMatchesEnginePassword(t *testing.T) {
 // job, then drill it via the queue-shaped entry point a kind-drill schedule
 // fire actually uses.
 func TestRunnerDrillsRealTarget(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 	target := f.target(t, "nas", KindResticLocal, filepath.Join(t.TempDir(), "repo"))
@@ -166,6 +169,9 @@ func TestRunnerDrillsRealTarget(t *testing.T) {
 // failed (exit 1, no error) rather than erroring: the drill did its job, and
 // that outcome is what lets the ordinary job-failure sweep page on it.
 func TestRunnerDrillCatchesCorruption(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 	target := f.target(t, "nas", KindResticLocal, filepath.Join(t.TempDir(), "repo"))

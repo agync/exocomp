@@ -41,6 +41,9 @@ func requireNono(t *testing.T) {
 // TestProbeAssertsTheSandbox is the real probe: nono is on PATH, the canary
 // runs under it, and the assertions are made against live targets.
 func TestProbeAssertsTheSandbox(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
 	requireNono(t)
 	t.Setenv(canaryEnv, "1")
 
@@ -89,6 +92,9 @@ func TestProbeRefusesTheTierWithoutALauncher(t *testing.T) {
 // the socket was dead would read exactly like a probe that passed because the
 // kernel refused.
 func TestCanaryTargetsAreLiveWithoutTheSandbox(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
 	t.Setenv(canaryEnv, "1")
 
 	root := t.TempDir()

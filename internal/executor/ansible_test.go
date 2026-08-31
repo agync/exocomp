@@ -364,6 +364,9 @@ func requireAnsible(t *testing.T) {
 }
 
 func TestAnsibleRunsRealPlaybook(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	requireAnsible(t)
 	t.Setenv("HOME", t.TempDir())
 
@@ -397,6 +400,9 @@ func TestAnsibleRunsRealPlaybook(t *testing.T) {
 }
 
 func TestAnsibleFailingPlaybookExitsNonZero(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible")
+	}
 	requireAnsible(t)
 	t.Setenv("HOME", t.TempDir())
 

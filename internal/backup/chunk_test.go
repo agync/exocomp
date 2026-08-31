@@ -144,6 +144,9 @@ func TestPartsManifestRoundTrip(t *testing.T) {
 // staging tree still splits into several parts, proving the wiring through
 // gitLeg and restoreGit without needing a genuinely huge fixture.
 func TestGitLegChunksAcrossMultipleParts(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	requireTool(t, "git")
 	f := newFixture(t)
 
@@ -188,6 +191,9 @@ func TestGitLegChunksAcrossMultipleParts(t *testing.T) {
 // TestGitLegRefusesOversizedRepo fakes du rather than actually growing a
 // repository to 4 GB in a test.
 func TestGitLegRefusesOversizedRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	requireTool(t, "git")
 	f := newFixture(t)
 

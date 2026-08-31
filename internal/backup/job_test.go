@@ -152,6 +152,9 @@ func TestRunnerReportsLegFailureAsNonZeroExit(t *testing.T) {
 // real restic) against a local target, proving NewRunner's wiring end to end
 // and that a queued backup job leaves the backup_run row a job needs.
 func TestRunnerWithRealEngineWritesBackupRun(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 	target := f.target(t, "local", KindResticLocal, filepath.Join(t.TempDir(), "repo"))

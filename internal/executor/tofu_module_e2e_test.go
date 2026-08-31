@@ -16,6 +16,9 @@ import (
 //
 // Gated behind EXOCOMP_DEPS_E2E: it runs git and tofu; make check stays hermetic.
 func TestModuleCacheReuseWithRealTofu(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	if os.Getenv("EXOCOMP_DEPS_E2E") == "" {
 		t.Skip("set EXOCOMP_DEPS_E2E=1 to run the tofu module-cache end-to-end gate")
 	}

@@ -9,6 +9,9 @@ import (
 )
 
 func TestGitLegRollsOneOrphanCommit(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)
@@ -94,6 +97,9 @@ func TestGitLegRollsOneOrphanCommit(t *testing.T) {
 }
 
 func TestGitSnapshotIsUnreadableWithoutAnIdentity(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	requireTool(t, "git")
 	f := newFixture(t)
@@ -116,6 +122,9 @@ func TestGitSnapshotIsUnreadableWithoutAnIdentity(t *testing.T) {
 }
 
 func TestArchiveRoundTrip(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	t.Parallel()
 	f := newFixture(t)
 
