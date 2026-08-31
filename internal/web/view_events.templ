@@ -1,13 +1,25 @@
 package web
 
 // eventsList shows every received alert with its outcome, so "why didn't it
-// fire?" is answerable by scanning (the brief's Event vocabulary).
+// fire?" is answerable by scanning (the brief's Event vocabulary). The
+// ?source= filter narrows the list to one pipeline source; the form is a plain
+// GET so a filtered view is a linkable URL.
 templ eventsList(vm eventsVM) {
 	@layout(vm.Page) {
 		<h1>Events</h1>
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">Received alerts</div>
 			<h3>All events</h3>
+			<form method="get" action="/events" class="writeform inline">
+				<label for="ev-source">Source</label>
+				<select id="ev-source" name="source">
+					<option value="" selected?={ vm.Source == "" }>all</option>
+					for _, src := range eventSourceFilterOptions {
+						<option value={ src } selected?={ vm.Source == src }>{ src }</option>
+					}
+				</select>
+				<button type="submit" class="btn">Filter</button>
+			</form>
 			if len(vm.Events) == 0 {
 				<p class="meta">No events received yet.</p>
 			} else {

@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -627,10 +628,24 @@ type planLine struct {
 	Redacted bool
 }
 
-// eventsVM is the events + evaluation trace screen.
+// eventsVM is the events + evaluation trace screen. Source is the ?source=
+// filter the page renders under ("" = all sources); the filter form preserves
+// it so a filtered view stays filtered.
 type eventsVM struct {
 	Page   page
 	Events []eventRow
+	Source string
+}
+
+// eventSourceFilterOptions are the ?source= filter's known values — the five
+// sources the engine can produce. The page's rows carry only these, so the
+// filter's universe is this list plus the implicit "all".
+var eventSourceFilterOptions = []string{
+	reactive.SourceAlertmanager,
+	reactive.SourceHealthchecks,
+	reactive.SourceGeneric,
+	reactive.SourceDrift,
+	reactive.SourceCheck,
 }
 
 type eventRow struct {
