@@ -305,9 +305,9 @@ func approvalSurface(vm approvalVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var16 string
-				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Countdown)
+				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(vm.DeadlineMS))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 68, Col: 56}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 68, Col: 63}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
@@ -320,7 +320,7 @@ func approvalSurface(vm approvalVM) templ.Component {
 				var templ_7745c5c3_Var17 string
 				templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Countdown)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 68, Col: 88}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 68, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 				if templ_7745c5c3_Err != nil {
@@ -675,7 +675,9 @@ func globalKill() templ.Component {
 
 // countdownScript ticks the fail-closed timer down each second so the operator
 // watches the window close. prefers-reduced-motion is irrelevant here: this is
-// information, not decoration, and the number simply updates.
+// information, not decoration, and the number simply updates. The deadline
+// comes from the server-derived data-deadline millis; at zero the text flips,
+// while the server stays authoritative on the actual refusal.
 func countdownScript() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -697,7 +699,7 @@ func countdownScript() templ.Component {
 			templ_7745c5c3_Var30 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<script>\n\t(function () {\n\t\tvar el = document.getElementById(\"countdown\");\n\t\tif (!el) return;\n\t\t// The server renders the initial text; we only re-render if it embeds\n\t\t// a machine deadline. Absent that, the static text stands.\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<script>\n\t(function () {\n\t\tvar el = document.getElementById(\"countdown\");\n\t\tif (!el) return;\n\t\tvar deadline = parseInt(el.getAttribute(\"data-deadline\"), 10);\n\t\tif (!isFinite(deadline) || deadline <= 0) return;\n\t\tfunction pad(n) { return n < 10 ? \"0\" + n : \"\" + n; }\n\t\tfunction render() {\n\t\t\tvar ms = deadline - Date.now();\n\t\t\tif (ms <= 0) {\n\t\t\t\tel.textContent = \"Expired — the window closed\";\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tvar total = Math.floor(ms / 1000);\n\t\t\tvar m = Math.floor(total / 60);\n\t\t\tvar s = total % 60;\n\t\t\tel.textContent = m + \"m \" + pad(s) + \"s left\";\n\t\t}\n\t\trender();\n\t\tsetInterval(render, 1000);\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

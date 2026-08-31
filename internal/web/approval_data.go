@@ -33,6 +33,12 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 		vm.Kind = job.Kind
 		vm.Provenance = fmt.Sprintf("Job %d (%s) was gated before it can apply; it was triggered %s.",
 			job.ID, job.Runbook, job.Trigger)
+		// The triggering event names the rule that raised the gate: only the
+		// normalized name/source/rule, never the raw event body.
+		if ev, err := s.store.EventByJobID(r.Context(), job.ID); err == nil && ev.MatchedRule != "" {
+			vm.Provenance = fmt.Sprintf("Job %d (%s) was gated after %s event %s matched rule %s.",
+				job.ID, job.Runbook, ev.Source, eventName(ev), ev.MatchedRule)
+		}
 	}
 
 	ident, _ := identityOf(r.Context())
@@ -50,6 +56,7 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 
 	remaining := a.ExpiresAt.Sub(now)
 	vm.Countdown = humanAge(remaining) + " left"
+	vm.DeadlineMS = a.ExpiresAt.UnixMilli()
 	vm.CanDecide = mayApprove(ident)
 
 	// Stale-plan is a refusal, not a disabled button: if the workspace moved

@@ -65,7 +65,7 @@ templ approvalSurface(vm approvalVM) {
 				<!-- (2) state + fail-closed countdown -->
 				<div class="approve-block timer" role="status">
 					<span class="keyword">Auto-rejects in</span>
-					<div class="countdown" data-deadline={ vm.Countdown } id="countdown">{ vm.Countdown }</div>
+					<div class="countdown" data-deadline={ itoa(vm.DeadlineMS) } id="countdown">{ vm.Countdown }</div>
 					<p class="meta">Then the plan is discarded; nothing applies on its own.</p>
 				</div>
 
@@ -192,14 +192,30 @@ templ globalKill() {
 
 // countdownScript ticks the fail-closed timer down each second so the operator
 // watches the window close. prefers-reduced-motion is irrelevant here: this is
-// information, not decoration, and the number simply updates.
+// information, not decoration, and the number simply updates. The deadline
+// comes from the server-derived data-deadline millis; at zero the text flips,
+// while the server stays authoritative on the actual refusal.
 templ countdownScript() {
 	<script>
 	(function () {
 		var el = document.getElementById("countdown");
 		if (!el) return;
-		// The server renders the initial text; we only re-render if it embeds
-		// a machine deadline. Absent that, the static text stands.
+		var deadline = parseInt(el.getAttribute("data-deadline"), 10);
+		if (!isFinite(deadline) || deadline <= 0) return;
+		function pad(n) { return n < 10 ? "0" + n : "" + n; }
+		function render() {
+			var ms = deadline - Date.now();
+			if (ms <= 0) {
+				el.textContent = "Expired — the window closed";
+				return;
+			}
+			var total = Math.floor(ms / 1000);
+			var m = Math.floor(total / 60);
+			var s = total % 60;
+			el.textContent = m + "m " + pad(s) + "s left";
+		}
+		render();
+		setInterval(render, 1000);
 	})();
 	</script>
 }

@@ -607,11 +607,14 @@ type approvalVM struct {
 	Kind      string
 	Workspace string
 	// Countdown is the fail-closed TTL text; Expired means the window closed.
-	Countdown string
-	Expired   bool
-	Decided   bool
-	Outcome   string
-	Notice    string
+	// DeadlineMS is the expiry as unix millis, the machine deadline the page's
+	// ticking countdown reads. Countdown stays as the JS-off initial text.
+	Countdown  string
+	DeadlineMS int64
+	Expired    bool
+	Decided    bool
+	Outcome    string
+	Notice     string
 	// Destroys are the resource lines that DELETE, rendered first, in red, with
 	// no undo. Changes are the rest of the diff. Both come from the sealed plan.
 	Destroys []planLine

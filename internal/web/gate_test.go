@@ -200,6 +200,16 @@ func TestApproveFromPhoneRunsJob(t *testing.T) {
 			t.Errorf("approval surface missing %q", want)
 		}
 	}
+	// F2: the countdown carries the machine deadline as numeric millis and a
+	// ticking script; the server text stays as the JS-off fallback.
+	if expiry := itoa64(approval.ExpiresAt.UnixMilli()); !strings.Contains(page, `data-deadline="`+expiry+`"`) {
+		t.Errorf("approval surface missing numeric data-deadline %s:\n%s", expiry, page)
+	}
+	for _, want := range []string{"setInterval", "Expired — the window closed"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("approval surface countdown script missing %q", want)
+		}
+	}
 
 	// Approve it through the session.
 	resp, err := client.PostForm(ts.URL+"/approvals/"+itoa64(approval.ID)+"/decide",
@@ -306,5 +316,50 @@ func TestStalePlanRefused(t *testing.T) {
 	}
 	if strings.Contains(page, ">Approve<") {
 		t.Error("a stale plan must not offer Approve")
+	}
+}
+
+// TestApprovalProvenanceNamesRule (F14): the phone says WHY. With a triggering
+// event row the provenance names the alert and the rule it matched; without one
+// it keeps the standing sentence. Only the normalized name/source/rule ever
+// reach the page — never the raw event body.
+func TestApprovalProvenanceNamesRule(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	token := h.mint(t, "phone", "operator")
+	client := login(t, ts.URL, token)
+
+	job, approval := h.gatedJob(t, 30*time.Minute)
+	url := ts.URL + "/approvals/" + itoa64(approval.ID)
+
+	code, page := getBody(t, client, url)
+	if code != http.StatusOK {
+		t.Fatalf("approval surface status = %d", code)
+	}
+	if !strings.Contains(page, "was gated before it can apply; it was triggered manual.") {
+		t.Errorf("no-event provenance should keep the standing sentence:\n%s", page)
+	}
+
+	jobID := job.ID
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", MatchedRule: "disk-full", Outcome: store.OutcomeFired,
+		JobID: &jobID, Normalized: `{"name":"Disk near full"}`,
+	}); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	code, page = getBody(t, client, url)
+	if code != http.StatusOK {
+		t.Fatalf("approval surface status = %d", code)
+	}
+	for _, want := range []string{"alertmanager event Disk near full matched rule disk-full"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("event provenance missing %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "was gated before it can apply") {
+		t.Error("event provenance should replace the standing sentence")
 	}
 }
