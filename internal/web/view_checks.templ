@@ -3,8 +3,10 @@ package web
 // checksList is the checks surface: named probe sets whose per-target answers
 // flip into reactive events on a transition (docs/architecture/reactive.md
 // "Checks"). Each row lists its targets with the status the sweep last
-// observed. A check carries no secret material, so — like schedules — the
-// write controls here are plain operator-scope: no reauth, no confirm_token.
+// observed, the netgroup the probed address belongs to (home/away — none for
+// an http target), and how long ago that status changed. A check carries no
+// secret material, so — like schedules — the write controls here are plain
+// operator-scope: no reauth, no confirm_token.
 templ checksList(vm checksVM) {
 	@layout(vm.Page) {
 		<div class="pageheader">
@@ -73,6 +75,14 @@ templ checksList(vm checksVM) {
 												<span class="mono">{ t.Name }</span>
 												<span class="meta">{ t.Spec() }{ t.ExpectNote() }</span>
 												@chip(t.StatusClass(), t.StatusLabel())
+												if t.Netgroup != "" {
+													@chip(t.NetgroupClass(), t.Netgroup)
+												}
+												if t.Changed != "" {
+													<span class="meta">changed { t.Changed } ago</span>
+												} else {
+													<span class="meta">unobserved</span>
+												}
 											</div>
 										}
 									</td>

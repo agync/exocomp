@@ -1,8 +1,11 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"time"
 
@@ -30,15 +33,19 @@ type checkRow struct {
 	Targets  []checkTargetRow
 }
 
-// checkTargetRow is one probe of a check: what it dials or requests, and the
-// status the sweep last observed.
+// checkTargetRow is one probe of a check: what it dials or requests, the
+// status the sweep last observed, the netgroup the probed address belongs to
+// ("" for an http URL target), and how long ago that status last changed (the
+// humanized age, "" when the sweep has never seen the target).
 type checkTargetRow struct {
-	Name    string
-	Address string
-	Port    int
-	URL     string
-	Expect  int
-	Status  string
+	Name     string
+	Address  string
+	Port     int
+	URL      string
+	Expect   int
+	Status   string
+	Netgroup string
+	Changed  string
 }
 
 // Spec renders the probe location the way the CLI's table reads it: a tcp
@@ -89,6 +96,37 @@ func (t checkTargetRow) StatusLabel() string {
 	}
 }
 
+// NetgroupClass maps a target's netgroup badge onto the chip palette: a named
+// group reads ok (home), a target no group covers reads dim (away). "away" is
+// both the miss label and a possible group name — the ambiguity is the
+// engine's too, which stamps "away" for a miss, so the page stays consistent
+// with the events it describes.
+func (t checkTargetRow) NetgroupClass() string {
+	if t.Netgroup == "away" {
+		return "dim"
+	}
+	return "ok"
+}
+
+// netgroupFor classifies an address target's literal IP against the netgroups,
+// the location signal the checks page exists to show. CreateCheck validated
+// the address (a row that reads is a row that probes), so the parse cannot
+// fail; a miss reads "away", the same label the engine stamps on the event.
+func (s *Server) netgroupFor(ctx context.Context, address string) (string, error) {
+	addr, err := netip.ParseAddr(address)
+	if err != nil {
+		return "", err
+	}
+	group, err := s.store.NetgroupForAddr(ctx, addr)
+	if errors.Is(err, store.ErrNotFound) {
+		return "away", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return group, nil
+}
+
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.checks(r)
 	if err != nil {
@@ -104,7 +142,8 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 }
 
 // checks reads every check (enabled and disabled) with each target's last
-// observed status, so a target's current posture reads at a glance.
+// observed status, its netgroup classification, and how long ago that status
+// changed, so a target's current posture and location read at a glance.
 func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 	list, err := s.store.ListChecks(r.Context(), false)
 	if err != nil {
@@ -120,15 +159,27 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 		if err != nil {
 			return nil, err
 		}
-		status := make(map[string]string, len(states))
+		state := make(map[string]store.CheckState, len(states))
 		for _, st := range states {
-			status[st.TargetName] = st.Status
+			state[st.TargetName] = st
 		}
 		for _, t := range c.Targets {
-			row.Targets = append(row.Targets, checkTargetRow{
+			tr := checkTargetRow{
 				Name: t.Name, Address: t.Address, Port: t.Port,
-				URL: t.URL, Expect: t.Expect, Status: status[t.Name],
-			})
+				URL: t.URL, Expect: t.Expect,
+			}
+			if st, ok := state[t.Name]; ok {
+				tr.Status = st.Status
+				tr.Changed = humanAge(s.now().Sub(st.LastChange))
+			}
+			if t.Address != "" {
+				group, err := s.netgroupFor(r.Context(), t.Address)
+				if err != nil {
+					return nil, err
+				}
+				tr.Netgroup = group
+			}
+			row.Targets = append(row.Targets, tr)
 		}
 		out = append(out, row)
 	}

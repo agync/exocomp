@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"net/url"
 	"strings"
 	"testing"
@@ -283,6 +284,86 @@ func TestCheckRm(t *testing.T) {
 	}
 	if _, err := h.store.GetCheck(ctx, "at-home"); err == nil {
 		t.Fatal("check still present after rm")
+	}
+}
+
+// TestChecksNetgroupAndRecency: a target whose address a registered netgroup
+// covers renders that group's name as a badge, one no group covers renders
+// "away", an http URL target renders no badge at all (its liveness is not a
+// location verdict), and a target the sweep has seen renders how long ago its
+// status changed.
+func TestChecksNetgroupAndRecency(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+
+	// tcp targets: laptop inside "home", nas outside every group.
+	c, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "laptop", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "10.0.0.5", Port: 22},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed tcp check: %v", err)
+	}
+	// An http target: a URL, no address, so no netgroup classification.
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "web-health", Kind: store.CheckHTTP, IntervalS: 60,
+		Targets: []store.CheckTarget{{Name: "web", URL: "https://web.lan/health"}},
+	}); err != nil {
+		t.Fatalf("seed http check: %v", err)
+	}
+
+	// Seed states with LastChange comfortably inside one humanAge bucket: the
+	// render happens milliseconds after seeding, so a boundary-seeded offset
+	// could truncate one step down before it reaches the page.
+	now := time.Now().UTC()
+	for _, st := range []store.CheckState{
+		{CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
+			Consecutive: 3, Emitted: store.CheckUp,
+			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(3*time.Hour + 15*time.Minute))},
+		{CheckID: c.ID, TargetName: "nas", Status: store.CheckDown,
+			Consecutive: 3, Emitted: store.CheckDown,
+			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(2*time.Hour + 15*time.Minute))},
+	} {
+		if err := h.store.SetCheckState(ctx, st); err != nil {
+			t.Fatalf("SetCheckState %s: %v", st.TargetName, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+
+	for _, want := range []string{
+		`<span class="chip ok"><span class="dot"></span>home</span>`,
+		`<span class="chip dim"><span class="dot"></span>away</span>`,
+		"changed 3h ago", "changed 2h ago",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks missing %q", want)
+		}
+	}
+
+	// The http target renders no netgroup badge: cut the page at its row and
+	// check its Targets cell carries no home/away chip. The status chip is
+	// UP/DOWN/UNOBSERVED-labelled, so matching the badge labels is
+	// unambiguous.
+	seg := page[strings.Index(page, "web-health"):]
+	seg = seg[:strings.Index(seg, `data-label="Enabled"`)]
+	if strings.Contains(seg, ">home</span>") || strings.Contains(seg, ">away</span>") {
+		t.Error("http target rendered a netgroup badge")
 	}
 }
 
