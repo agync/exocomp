@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/netip"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -64,7 +66,8 @@ func TestCheckAddListEnableDisableRmRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check list: %v", err)
 	}
-	for _, want := range []string{"NAME", "at-home", "tcp", "5m0s", "laptop,nas", "enabled"} {
+	for _, want := range []string{"NAME", "STATUS", "at-home", "tcp", "5m0s", "laptop,nas",
+		"unobserved,unobserved", "enabled"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list text missing %q:\n%s", want, out)
 		}
@@ -107,6 +110,52 @@ func TestCheckAddListEnableDisableRmRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("second rm error = %v, want one naming the miss", err)
+	}
+}
+
+// TestCheckListJSONNetgroupAndRecency: a registered netgroup covering a target
+// and a seeded state row surface in the JSON projection as netgroup and
+// last_change, so a remote consumer reads location and recency — not just
+// status — the way the checks page does.
+func TestCheckListJSONNetgroupAndRecency(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+	c, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	lastChange := time.Date(2024, 5, 1, 12, 0, 0, 0, time.UTC)
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 3, Emitted: store.CheckUp,
+		FirstSeen: lastChange.Add(-time.Hour), LastChange: lastChange,
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+
+	out, err := runCheckCmd(t, "check", "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("check list json: %v", err)
+	}
+	for _, want := range []string{`"netgroup":"home"`, `"last_change":"2024-05-01T12:00:00Z"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list json missing %q:\n%s", want, out)
+		}
 	}
 }
 

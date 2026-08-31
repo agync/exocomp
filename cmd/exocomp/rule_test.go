@@ -97,6 +97,22 @@ func replaceFlag(args []string, flag, value string) []string {
 	return out
 }
 
+// TestRuleAddRefusesNotifyApprovalGate: a notify action creates no job, so
+// --require-approval has nothing to gate and the combination is refused at add
+// rather than silently dropped when the engine short-circuits notify.
+func TestRuleAddRefusesNotifyApprovalGate(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	out, err := run(t, "rule", "add", "page-me",
+		"--expr", "true", "--action", "notify", "--require-approval")
+	if err == nil {
+		t.Fatalf("rule add succeeded: %s", out)
+	}
+	if !strings.Contains(err.Error(), "--require-approval has nothing to gate") {
+		t.Fatalf("error = %q, want the notify gate refusal", err.Error())
+	}
+}
+
 func TestRuleAddPlaybookAction(t *testing.T) {
 	seedPlaybookSource(t, "")
 

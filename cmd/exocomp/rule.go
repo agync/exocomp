@@ -113,6 +113,9 @@ func newRuleAddCmd() *cobra.Command {
 				if len(argv) != 0 {
 					return errors.New("rule add: action notify takes no argv")
 				}
+				if requireApproval {
+					return errors.New("rule add: action notify creates no job, so --require-approval has nothing to gate")
+				}
 			default:
 				return fmt.Errorf("rule add: --action must be one of %s",
 					strings.Join(actionKinds(), ", "))
@@ -260,59 +263,12 @@ func newRuleListCmd() *cobra.Command {
 			_, _ = fmt.Fprintln(w, "NAME\tSTATE\tSOURCE\tACTION\tCOOLDOWN\tCAP\tAPPROVAL\tEXPR")
 			for _, r := range rows {
 				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					r.Name, enabledLabel(r.Enabled), sourceLabel(r.SourceFilter),
-					actionLabel(r), cooldownLabel(r.CooldownS), capLabel(r.DailyCap),
-					approvalLabel(r), r.CELExpr)
+					r.Name, enabledLabel(r.Enabled), reactive.SourceLabel(r.SourceFilter),
+					reactive.ActionLabel(r), reactive.CooldownLabel(r.CooldownS),
+					reactive.CapLabel(r.DailyCap), reactive.ApprovalLabel(r), r.CELExpr)
 			}
 			return w.Flush()
 		},
-	}
-}
-
-func sourceLabel(filter string) string {
-	if filter == "" {
-		return "any"
-	}
-	return filter
-}
-
-func actionLabel(r store.Rule) string {
-	switch r.ActionKind {
-	case store.ActionShell:
-		return r.ActionKind + " " + strings.Join(r.Action.Argv, " ")
-	case store.ActionTofuPlan, store.ActionTofuApply:
-		return r.ActionKind + " " + r.Action.Workspace
-	case store.ActionPlaybook:
-		return fmt.Sprintf("%s %s %s (limit %s)", r.ActionKind, r.Action.Source, r.Action.Playbook, r.Action.Limit)
-	default:
-		return r.ActionKind
-	}
-}
-
-func cooldownLabel(seconds int) string {
-	if seconds <= 0 {
-		return "-"
-	}
-	return (time.Duration(seconds) * time.Second).String()
-}
-
-func capLabel(limit int) string {
-	if limit <= 0 {
-		return "-"
-	}
-	return fmt.Sprint(limit)
-}
-
-// approvalLabel says why a rule is gated, because "destructive" is a property
-// of the action rather than a flag the operator set.
-func approvalLabel(r store.Rule) string {
-	switch {
-	case reactive.Destructive(r.ActionKind):
-		return "always (destructive)"
-	case r.RequireApproval:
-		return "required"
-	default:
-		return "-"
 	}
 }
 

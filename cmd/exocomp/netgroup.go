@@ -39,7 +39,7 @@ func newNetgroupAddCmd() *cobra.Command {
 		Example: "exocomp netgroup add home 192.168.0.0/16,10.0.0.0/8",
 		Args:    cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			prefixes, err := parsePrefixList(args[1])
+			prefixes, err := store.ParsePrefixList(args[1])
 			if err != nil {
 				return fmt.Errorf("netgroup add: %w", err)
 			}
@@ -130,25 +130,6 @@ func newNetgroupRmCmd() *cobra.Command {
 			return err
 		},
 	}
-}
-
-// parsePrefixList splits a comma-separated CIDR argument and parses every
-// member. An empty member is refused too: in the middle of a hand-typed list
-// it is a double comma, a typo that should be caught here rather than stored.
-func parsePrefixList(spec string) ([]netip.Prefix, error) {
-	var out []netip.Prefix
-	for _, part := range strings.Split(spec, ",") {
-		part = strings.TrimSpace(part)
-		if part == "" {
-			return nil, errors.New("an empty CIDR (double comma) in the list")
-		}
-		p, err := netip.ParsePrefix(part)
-		if err != nil {
-			return nil, fmt.Errorf("%q is not a CIDR: %w", part, err)
-		}
-		out = append(out, p)
-	}
-	return out, nil
 }
 
 func joinPrefixes(prefixes []netip.Prefix) string {

@@ -3,9 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
-	"net"
 	"net/netip"
-	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -66,7 +64,7 @@ func newCheckAddCmd() *cobra.Command {
 			if len(targets) == 0 {
 				return errors.New("check add: need at least one --target")
 			}
-			parsed, err := parseCheckTargets(kind, targets)
+			parsed, err := store.ParseCheckTargets(kind, targets, false)
 			if err != nil {
 				return fmt.Errorf("check add: %w", err)
 			}
@@ -109,42 +107,6 @@ func newCheckAddCmd() *cobra.Command {
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("interval")
 	return cmd
-}
-
-// parseCheckTargets splits each name=spec --target by kind. The spec after the
-// '=' is an IP literal (tcp/ping) or a URL (http); a tcp target carries its
-// port after the last ':'.
-func parseCheckTargets(kind string, targets []string) ([]store.CheckTarget, error) {
-	out := make([]store.CheckTarget, 0, len(targets))
-	for _, spec := range targets {
-		name, value, ok := strings.Cut(spec, "=")
-		if !ok || name == "" || value == "" {
-			return nil, fmt.Errorf("target %q must be name=spec", spec)
-		}
-		t := store.CheckTarget{Name: name}
-		switch kind {
-		case store.CheckTCP:
-			host, port, err := net.SplitHostPort(value)
-			if err != nil {
-				return nil, fmt.Errorf("target %q: a tcp target must be ip:port", spec)
-			}
-			p, err := strconv.Atoi(port)
-			if err != nil {
-				return nil, fmt.Errorf("target %q: port %q is not a number", spec, port)
-			}
-			t.Address = host
-			t.Port = p
-		case store.CheckPing:
-			t.Address = value
-		case store.CheckHTTP:
-			t.URL = value
-		default:
-			return nil, fmt.Errorf("--kind must be %s, %s or %s",
-				store.CheckTCP, store.CheckPing, store.CheckHTTP)
-		}
-		out = append(out, t)
-	}
-	return out, nil
 }
 
 func newCheckListCmd() *cobra.Command {
@@ -195,11 +157,12 @@ func newCheckListCmd() *cobra.Command {
 			}
 
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tENABLED")
+			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tSTATUS\tENABLED")
 			for _, c := range rows {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-					c.Name, c.Kind, checkIntervalLabel(c.IntervalS),
-					checkTargetsLabel(c.Targets), enabledLabel(c.Enabled))
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+					c.Name, c.Kind, store.CheckIntervalLabel(c.IntervalS),
+					checkTargetsLabel(c.Targets), checkStatusesLabel(states[c.ID], c.Targets),
+					enabledLabel(c.Enabled))
 			}
 			return w.Flush()
 		},
@@ -271,17 +234,29 @@ func setCheckEnabled(cmd *cobra.Command, name string, enabled bool) error {
 	return err
 }
 
-func checkIntervalLabel(intervalS int64) string {
-	if intervalS <= 0 {
-		return "-"
-	}
-	return (time.Duration(intervalS) * time.Second).String()
-}
-
 func checkTargetsLabel(targets []store.CheckTarget) string {
 	parts := make([]string, len(targets))
 	for i, t := range targets {
 		parts[i] = t.Name
+	}
+	return strings.Join(parts, ",")
+}
+
+// checkStatusesLabel joins each target's last observed status in the same order
+// as the TARGETS column, so the STATUS cell lines up with the targets it names.
+// A target the sweep has never seen reads "unobserved".
+func checkStatusesLabel(states []store.CheckState, targets []store.CheckTarget) string {
+	byName := make(map[string]string, len(states))
+	for _, s := range states {
+		byName[s.TargetName] = s.Status
+	}
+	parts := make([]string, len(targets))
+	for i, t := range targets {
+		if s, ok := byName[t.Name]; ok {
+			parts[i] = s
+		} else {
+			parts[i] = "unobserved"
+		}
 	}
 	return strings.Join(parts, ",")
 }
