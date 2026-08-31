@@ -41,7 +41,7 @@ How it is assembled, and which support claims are contractual —
 | [Overview](architecture/overview.md) | Component map, the one-queue convergence property, state layout, standing commitments |
 | [Platform contract](architecture/platform-contract.md) | Tiers for systemd/Quadlet, rootless podman, docker-compose, and SELinux enforcing; the specified remote-access path |
 | [Execution](architecture/execution.md) | `ExecutorDriver` tiers `disabled` / `enforcing` / `container`, offline-restorable job dependencies, boot-time reconciliation |
-| [Reactive layer](architecture/reactive.md) | Webhook ingress, one event shape, CEL rules, the guardrails in ledger order, approvals, drift as an event |
+| [Reactive layer](architecture/reactive.md) | Webhook ingress, one event shape, CEL rules, the guardrails in ledger order, approvals, drift as an event, check probes with netgroup-classified peers |
 
 ## Design
 
@@ -64,7 +64,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 | [Draining for a planned reboot](operations/drain-mode.md) | `exocomp drain` — cordon a running daemon, let in-flight work finish, poll "safe to reboot?", and list interrupted jobs afterwards |
 | [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |
 | [Offline caches](operations/offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
-| [Reacting to alerts](operations/reactive.md) | Wiring a monitor to the hooks, sealing push, writing rules, silencing, answering approvals, asking why a rule did not fire |
+| [Reacting to alerts](operations/reactive.md) | Wiring a monitor to the hooks, sealing push, writing rules, silencing, answering approvals, asking why a rule did not fire, running check probes and netgroups |
 
 ## Bill of materials
 

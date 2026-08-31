@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — threat model: checks and peer stamping rows
+
+- [security/threat-model.md](security/threat-model.md) gains a **Checks, netgroups, and peer
+  stamping** subsection under the reactive section — T30–T35 record the shipped mitigations
+  (peer-stamped presence, transition-only + hysteresis + per-target cooldown, the static-lease
+  and LAN-only-routing preconditions, cold-start seeding, http status-only) that the code
+  already carried, closing the invariant-8 gap the feature's design §10 owed. New rows are
+  numbered T30+ to avoid renumbering the existing T1–T29 catalog.
+- [index.md](index.md) summary rows for the Reactive layer and Reacting to alerts now mention
+  check probes, netgroups, and peer stamping.
+
 ## 2026-08-31 — contribution guide and specs store
 
 - **New page** [contribution/index.md](contribution/index.md): the working

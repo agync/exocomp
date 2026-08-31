@@ -160,6 +160,28 @@ The reactive engine matches events to rules and gates security-relevant actions 
   cross-source spoofing footgun. Accepted with a documented warning; a lint/warn is future
   work.
 
+### Checks, netgroups, and peer stamping
+
+The check sweep turns probe transitions into events in the same pipeline; netgroups give
+the operator a name for an address class; the ingress stamps a webhook's peer. New rows are
+numbered T30+ to avoid renumbering the existing catalog.
+
+| id | threat | mitigation in place |
+|---|---|---|
+| T30 | A spoofed home-presence claim (a webhook body asserting a host is home, or a forged peer) fires a run from outside the house. | The peer verdict is stamped by the ingress from the physical connection (`peer_netgroup`), never from a client claim; a check's location is the address the daemon itself probed. A claim never crosses into the verdict. |
+| T31 | A check flood re-arms a rule past its budget (an interval set too short, or a target flapping up/down). | Transition-only emission with N-consecutive-same-result hysteresis (default 3); per-target dedup and per-target cooldown for the check source; the daily cap throttles rather than disables. |
+| T32 | DHCP re-leases a target's home address to a different device, so a check reports the wrong host as present. | Stated precondition ([design/check-triggered-runs.md](../design/check-triggered-runs.md) §3.2.1): targets are pinned by static reservation or fixed lease. The netgroup classifies the address, never the host. |
+| T33 | An overlay subnet route (tailscale advertising the home LAN) keeps a checked address reachable from anywhere, so the location gate fails open. | Stated precondition (§3.2.1): the daemon reaches check targets only via the LAN interface; `doctor` asserts the LAN prefix routes out a LAN device, not an overlay one. A documented trust boundary — the sweep has no routing-table authority from inside the container. |
+| T34 | A daemon restart reads every up target as a fresh down→up transition and fires every presence rule. | Cold-start seeding writes `check_state` with `emitted = result` and emits nothing on first observation; only a change from a previously-emitted status is a transition. A target home at restart is missed once — fail-safe. |
+| T35 | An http check persists a health endpoint's body (a secret, a stack trace, attacker text). | The http probe reads the status line only and closes the body without reading it (AGENTS.md 4); no body ever reaches the event or a ledger. |
+
+**Accepted residuals.**
+
+- **Overlay-routing precondition is documentary, not enforced —** the LAN-only-routing
+  requirement (T33) cannot be asserted from inside the container at dial time; it is a
+  deployment posture `doctor` checks. A host configured to route the home LAN over an overlay
+  silently weakens the location guarantee.
+
 ## Daemon surface
 
 Endpoints and listeners the daemon exposes on the LAN/tailnet.
