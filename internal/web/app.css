@@ -683,6 +683,12 @@ main > .pageheader + dialog + .card { margin-top: 0 !important; }
 }
 .hold.holding .fill { right: 0; }
 
+/* Desktop: the approval phone widens to a readable diff without changing the
+ * phone layout; small screens keep the 390px column. */
+@media (min-width: 821px) {
+  .phone { max-width: 720px; }
+}
+
 /* ---- Login ---- */
 .login { max-width: 420px; margin: 12vh auto; padding: 0 20px; }
 .login .card { padding: 28px 26px; }
@@ -761,6 +767,9 @@ main > .pageheader + dialog + .card { margin-top: 0 !important; }
    * card row rather than leaving a dangling empty label. */
   .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
   .tablewrap.stackable td[data-label=""]::before { content: none; }
+  /* Table-row actions meet the hard 48px touch floor on a phone, matching the
+   * brief's a11y requirement. */
+  td .btn { min-height: 48px; height: 48px; }
 }
 
 /* Never let the page scroll sideways; wide content scrolls in its own box
