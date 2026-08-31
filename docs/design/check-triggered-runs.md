@@ -6,7 +6,8 @@ Implemented (the shipped subset): netgroups and webhook peer stamping (§4.1,
 §8.1), the check engine — `check_row`/`check_state`, the sweep with
 transition-only emission, N-consecutive hysteresis, and cold-start seeding
 (§4.2, §5) — and the governed `playbook` rule action (§7). The web ships
-netgroup and check pages; rules stay CLI. Deferred, not built: the
+netgroup and check pages and a read-only rules page; rule mutation stays
+CLI. Deferred, not built: the
 set-event / `--limit-hosts` expansion (§7.4), the presence shim (§8.2), a web
 rule-builder, and run-secrets/vault on rules. Where the shipped code diverges
 from this proposal, code wins and the correction is recorded in
@@ -125,11 +126,10 @@ preconditions must hold, or it fails open rather than failing closed:
    silent when the laptop is away. A tailscale subnet router advertising
    `192.168.1.0/24` makes the daemon reach `.50` over tailnet from anywhere —
    the address never goes silent and "not when outside the house" fails open.
-   The daemon must reach check targets **only via the LAN interface**, never an
-   overlay subnet route. This is a deployment precondition the check sweep
-   cannot enforce from inside the container (it has no routing-table authority);
-   it is documented, asserted by `doctor` (the LAN prefix routes out a LAN
-   device, not an overlay one), and treated as a trust boundary in §10.
+The daemon must reach check targets **only via the LAN interface**, never an
+    overlay subnet route. This is a deployment precondition the check sweep
+    cannot enforce from inside the container (it has no routing-table authority);
+    it is documented, not enforced, and treated as a trust boundary in §10.
 
 Both are owned as stated preconditions, and both get a threat-model row.
 
@@ -189,11 +189,13 @@ CREATE TABLE check_row (
 -- Per-target transition state. Survives a restart so the sweep never
 -- mistakes a rebooted daemon for a fresh down->up transition (§5.2).
 CREATE TABLE check_state (
-    check_id    INTEGER NOT NULL REFERENCES check_row (id) ON DELETE CASCADE,
-    target_name TEXT    NOT NULL,
-    status      TEXT    NOT NULL CHECK (status IN ('unknown', 'up', 'down')),
-    first_seen  INTEGER NOT NULL,
-    last_change INTEGER NOT NULL,
+    check_id     INTEGER NOT NULL REFERENCES check_row (id) ON DELETE CASCADE,
+    target_name  TEXT    NOT NULL,
+    status       TEXT    NOT NULL CHECK (status IN ('up', 'down')),
+    consecutive  INTEGER NOT NULL DEFAULT 0,
+    emitted      TEXT    NOT NULL DEFAULT '' CHECK (emitted IN ('', 'up', 'down')),
+    first_seen   INTEGER NOT NULL,
+    last_change  INTEGER NOT NULL,
     PRIMARY KEY (check_id, target_name)
 );
 ```
@@ -213,10 +215,13 @@ A target is either `address[:port]` (tcp/ping) or a `url` (http, optional
 it does not have to be a DNS name, because the *address* is the load-bearing
 field for location (§3.2).
 
-`check_state` holds where each target's status currently stands. `unknown` is
-the unobserved cold-start state; a probe that finds no row **seeds** it from the
-first observation **without emitting** (§5.2). `check list` reads this table for
-its per-target last status. Rows are pruned with their check on delete.
+`check_state` holds where each target's status currently stands. A missing row
+IS the unobserved cold-start state; a probe that finds no row **seeds** it from
+the first observation — `status=result, consecutive=1, emitted=result` —
+**without emitting** (§5.2). `consecutive` carries the hysteresis counter and
+`emitted` the last status that was emitted, so a steady state never emits and a
+restart cannot read `up` as a fresh transition. `check list` reads this table
+for its per-target last status. Rows are pruned with their check on delete.
 
 An introduction migration carries a pinned in-place-upgrade test
 (`TestMigration0030UpgradesFrom029`), per the migration discipline.
@@ -270,7 +275,7 @@ webhook source never sets it.
 |---|---|---|---|
 | `tcp` | `net.DialTimeout` on `address:port` | dial succeeds | **Default presence probe.** `:22` answers "the OS is up" without the ICMP privilege story. Works against hosts that block ping. |
 | `ping` | pinned `ping`/`fping` subprocess, exit code only (AGENTS.md 3) | exit 0 | Same as tcp, for hosts that answer ICMP. Rootless constraint: raw ICMP needs `net.ipv4.ping_group_range` or a setuid helper — see §5.4. |
-| `http` | `http.Client` with a short timeout | status in range (default 2xx) | **Liveness, not location.** The URL decides what is reachable; the body is never read. |
+| `http` | `http.Client` with a short timeout | status in range (2xx/3xx) | **Liveness, not location.** The URL decides what is reachable; the body is never read. |
 
 ### 5.2 Transition-only events, with hysteresis and cold-start seeding
 
@@ -495,10 +500,9 @@ exocomp rule add <name> --source check --expr '...' \
 `rule add` learns the `playbook` action and its flags (`cmd/exocomp/rule.go:39`);
 `rule list` renders it (`rule.go:201`). `wire.RuleView` (`wire/schema.go:395`)
 gains the action fields. The web surface gains netgroup and check pages (rows +
-modals, the same chrome the sources/schedules pages use); rules themselves are
-managed from the CLI — the web has no rules page, so there is no in-browser rule
-builder. `serve` prints check sweep status beside the drift line
-(`serve.go:655`).
+modals, the same chrome the sources/schedules pages use); rules are read-only on
+the web — mutation stays CLI, so there is no in-browser rule builder. `serve`
+prints check sweep status beside the drift line (`serve.go:655`).
 
 ---
 
@@ -559,21 +563,19 @@ ship.
 
 ## Open questions
 
-- **Hysteresis N, and per-target vs per-check** (§5.2): default 3 consecutive
-  observations; the value and granularity want a real-network tune. Related:
-  whether a target that missed an interval counts as an observation (a missed
-  probe is a `down`? or a skip?).
-- **`check_state` retention** (§4.2): rows are pruned with the check on delete;
-  whether an operator also wants a bounded *history* of transitions is open —
-  the events table already records every transition as an event, so the question
-  is whether last-status-only is enough.
-- **HTTP check on a tailnet URL**: reachable = up, and `netgroup` stamps nothing
-  (the URL resolves off-LAN). The "trigger on bad health" rule does not need the
-  group, so this is fine — but it should be stated as such in the docs.
-- **Cooldown keying** (§5.5): resolved — per-rule for webhooks, per-dedup-key
-  for sweep sources — but the `rule_fire` schema change (a `dedup_key` column)
-  and its migration number still want the store's normal contended-number
-  handling at merge.
+- **Hysteresis N and granularity** (§5.2): resolved. N is fixed at 3
+  consecutive observations, not operator-tunable, and a missed interval is a
+  skip, not an observation. Granularity is per-target for the check source,
+  settled with the cooldown keying below.
+- **`check_state` retention** (§4.2): resolved. Shipped as last-status-only —
+  rows are pruned with the check on delete, and the events table already
+  records every transition, so no separate history table.
+- **HTTP check on a tailnet URL**: resolved. An http target's URL resolves
+  off-LAN and carries no netgroup label; its liveness is not a location
+  verdict, which a "trigger on bad health" rule does not need.
+- **Cooldown keying** (§5.5): resolved. Migration `0031_rule_fire_dedup.sql`
+  adds the `rule_fire.dedup_key` column; sweep-source rules key cooldown off
+  the event's dedup key (`check:<check>:<target>`), webhooks stay per-rule.
 - **Set-event / `--limit-hosts`** (§7.4): deferred in favor of per-target
   events. Build the set model only if "one run over the present subset" turns
   out to be a real need.
