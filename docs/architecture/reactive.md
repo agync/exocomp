@@ -214,6 +214,13 @@ never read (AGENTS.md 4). `SweepChecks` runs each enabled check on its
 interval beside `SweepDrift` on the same `--sweep-interval` tick, and `check`
 is a pull source (`SourceCheck`), not a webhook: nothing posts it.
 
+The http probe's client dials through a `net.Dialer.Control` guard that refuses
+loopback, link-local unicast (the cloud metadata address), unspecified, and
+multicast addresses at the connected IP — the push transport's dial-time SSRF
+check (T16) scoped for checks, which keep RFC1918/ULA LAN targets allowed
+because probing the LAN is the point. A check against a refused address
+observes down.
+
 Three rules bound what reaches the pipeline:
 
 - **Transition-only.** An event is emitted only when a target's answer flips —

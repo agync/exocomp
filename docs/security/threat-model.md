@@ -174,6 +174,7 @@ numbered T30+ to avoid renumbering the existing catalog.
 | T33 | An overlay subnet route (tailscale advertising the home LAN) keeps a checked address reachable from anywhere, so the location gate fails open. | Stated precondition (§3.2.1): the daemon reaches check targets only via the LAN interface; `doctor` asserts the LAN prefix routes out a LAN device, not an overlay one. A documented trust boundary — the sweep has no routing-table authority from inside the container. |
 | T34 | A daemon restart reads every up target as a fresh down→up transition and fires every presence rule. | Cold-start seeding writes `check_state` with `emitted = result` and emits nothing on first observation; only a change from a previously-emitted status is a transition. A target home at restart is missed once — fail-safe. |
 | T35 | An http check persists a health endpoint's body (a secret, a stack trace, attacker text). | The http probe reads the status line only and closes the body without reading it (AGENTS.md 4); no body ever reaches the event or a ledger. |
+| T36 | An operator-created http check targets the daemon's own loopback listeners or the cloud metadata service, making the check's result depend on (or probe) a service the operator did not mean to reach. | The http probe's HTTP client dials through a `net.Dialer.Control` hook that refuses loopback, link-local unicast (covers `169.254.169.254`), unspecified, and multicast addresses at the connected IP — the same dial-time check T16 uses, scoped so RFC1918/ULA LAN targets (the feature's purpose) are still allowed. A check against a refused address observes down. |
 
 **Accepted residuals.**
 
@@ -181,6 +182,9 @@ numbered T30+ to avoid renumbering the existing catalog.
   requirement (T33) cannot be asserted from inside the container at dial time; it is a
   deployment posture `doctor` checks. A host configured to route the home LAN over an overlay
   silently weakens the location guarantee.
+- **DNS-rebinding on http checks —** the dial-time `Control` hook re-checks the connected IP,
+  so a re-pointed name is refused; the URL's literal hostname is otherwise trusted, and the
+  check carries no credential, so a hostile-but-public target yields a down/up boolean only.
 
 ## Daemon surface
 

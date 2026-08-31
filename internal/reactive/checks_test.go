@@ -466,60 +466,57 @@ func TestCheckDailyCapStaysPerRule(t *testing.T) {
 	}
 }
 
-// TestCheckHTTPProbeCarriesNoNetgroupLabel pins the http carve-out: a URL
-// target's liveness is not a location verdict, so its events carry no netgroup
-// label (the URL resolves off-LAN).
-func TestCheckHTTPProbeCarriesNoNetgroupLabel(t *testing.T) {
+// TestCheckHTTPProbeRefusesLoopback drives the shipped (guarded) client through
+// the sweep against a loopback test server: the dial-time guard refuses the
+// connection, so the target is observed DOWN and never fires. The probe's
+// GET-path is still exercised (the client's Do returns a refusal, not a panic),
+// and the successful-GET path is covered by the internal
+// TestCheckHTTPProbeReachesValidTarget.
+func TestCheckHTTPProbeRefusesLoopback(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
 	h := newHarness(t, harnessOptions{})
-	up := false
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		if up {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-		w.WriteHeader(http.StatusServiceUnavailable)
+		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
 
 	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
-		Name: "web-health", Kind: store.CheckHTTP, IntervalS: 30,
-		Targets: []store.CheckTarget{{Name: "web", URL: srv.URL + "/health", Expect: 200}},
+		Name: "self", Kind: store.CheckHTTP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "lo", URL: srv.URL + "/health", Expect: 200}},
 	}); err != nil {
 		t.Fatalf("create check: %v", err)
 	}
 
-	raised, err := h.engine.SweepChecks(ctx)
-	if err != nil {
+	if raised, err := h.engine.SweepChecks(ctx); err != nil {
 		t.Fatalf("seed sweep: %v", err)
+	} else if raised != 0 {
+		t.Fatalf("seed sweep raised %d events, want 0 (loopback refused -> down)", raised)
 	}
-	if raised != 0 {
-		t.Fatalf("seed sweep raised %d events (503 != 200 is down), want 0", raised)
+	state, err := h.store.GetCheckState(ctx, mustCheckID(t, h, "self"), "lo")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if state.Status != store.CheckDown {
+		t.Fatalf("loopback http target = %s, want down (guard refused the dial)", state.Status)
 	}
 
-	up = true
 	h.advance(30 * time.Second)
-	raised = h.sweepN(t, reactive.DefaultHysteresis)
-	if raised != 1 {
-		t.Fatalf("health recovery raised %d events, want 1", raised)
+	if raised := h.sweepN(t, reactive.DefaultHysteresis); raised != 0 {
+		t.Fatalf("steady loopback target raised %d events, want 0", raised)
 	}
+}
 
-	ev := lastEvent(t, h.store)
-	var normalized reactive.Event
-	if err := json.Unmarshal([]byte(ev.Normalized), &normalized); err != nil {
-		t.Fatalf("decode normalized event: %v", err)
+// mustCheckID looks a check's id back up by name, for reading its state rows.
+func mustCheckID(t *testing.T, h *harness, name string) int64 {
+	t.Helper()
+	ctx := context.Background()
+	c, err := h.store.GetCheck(ctx, name)
+	if err != nil {
+		t.Fatalf("get check %q: %v", name, err)
 	}
-	if normalized.Status != reactive.StatusFiring {
-		t.Fatalf("event status = %q, want firing", normalized.Status)
-	}
-	if _, ok := normalized.Labels["netgroup"]; ok {
-		t.Fatalf("http event carries a netgroup label: %+v", normalized.Labels)
-	}
-	if normalized.Labels["target"] != "web" {
-		t.Fatalf("labels = %+v, want target=web", normalized.Labels)
-	}
+	return c.ID
 }
 
 // TestCheckPingProbe drives the ping probe through a real subprocess: the

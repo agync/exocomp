@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strconv"
+	"syscall"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -166,21 +167,9 @@ func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store
 		eventStatus = StatusResolved
 	}
 
-	labels := map[string]string{"target": t.Name}
-	if t.Address != "" {
-		addr, err := netip.ParseAddr(t.Address)
-		if err != nil {
-			return fmt.Errorf("sweep checks %s: target %q address %q does not parse: %w",
-				c.Name, t.Name, t.Address, err)
-		}
-		group, err := e.store.NetgroupForAddr(ctx, addr)
-		if err != nil {
-			if !errors.Is(err, store.ErrNotFound) {
-				return err
-			}
-			group = "away"
-		}
-		labels["netgroup"] = group
+	labels, err := e.checkLabels(ctx, c, t)
+	if err != nil {
+		return err
 	}
 
 	ev := Event{
@@ -210,6 +199,31 @@ func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store
 	}
 	_, err = e.Ingest(ctx, ev, raw)
 	return err
+}
+
+// checkLabels builds the label set a check transition event carries. An http
+// target (a URL, no Address) gets no netgroup label: its liveness is not a
+// location verdict (the URL resolves off-LAN). An address target is classified
+// against the netgroups, "away" when none matches.
+func (e *Engine) checkLabels(ctx context.Context, c store.Check, t store.CheckTarget) (map[string]string, error) {
+	labels := map[string]string{"target": t.Name}
+	if t.Address == "" {
+		return labels, nil
+	}
+	addr, err := netip.ParseAddr(t.Address)
+	if err != nil {
+		return nil, fmt.Errorf("sweep checks %s: target %q address %q does not parse: %w",
+			c.Name, t.Name, t.Address, err)
+	}
+	group, err := e.store.NetgroupForAddr(ctx, addr)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		group = "away"
+	}
+	labels["netgroup"] = group
+	return labels, nil
 }
 
 // probe asks one target once and returns whether it answered. Results are
@@ -243,17 +257,53 @@ func probeTCP(ctx context.Context, t store.CheckTarget) (bool, error) {
 	return true, nil
 }
 
+// probeHTTPClient builds the HTTP client the probe GETs through. It is a func
+// so a test can substitute a transport that reaches a loopback test server
+// without weakening the shipped dial-time guard (the same testability idiom as
+// notify's lookupIP).
+var probeHTTPClient = func() *http.Client {
+	return &http.Client{
+		Timeout: probeTimeout,
+		Transport: &http.Transport{
+			DialContext: (&net.Dialer{Timeout: probeTimeout, Control: probeHTTPDialControl}).DialContext,
+		},
+	}
+}
+
+// probeHTTPDialControl is the net.Dialer.Control hook the http probe's client
+// dials through, mirroring the push transport's dial-time SSRF check
+// (notify/ssrf.go dialControl). It refuses the addresses a check must not
+// reach — the daemon's own loopback, the cloud metadata service (link-local),
+// and unspecified or multicast — at the concrete post-DNS IP, so a re-pointed
+// name is blocked too. Unlike the push guard it keeps RFC1918 and ULA LAN
+// targets allowed: probing the LAN is the point of a check. The metadata
+// address 169.254.169.254 is link-local, so IsLinkLocalUnicast refuses it
+// without naming it.
+func probeHTTPDialControl(_, address string, _ syscall.RawConn) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("checks: http: refusing malformed dial address %q", address)
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return fmt.Errorf("checks: http: dial address %q is not a resolved IP", host)
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast() {
+		return fmt.Errorf("checks: http: refusing %s: not a reachable LAN address", ip)
+	}
+	return nil
+}
+
 // probeHTTP GETs the URL and reads the status line only. The body is closed
 // without being read: a health endpoint's response is not evidence this code
 // should persist (AGENTS.md 4). Expect 0 means any 2xx/3xx answers up;
 // otherwise the status must match exactly.
 func probeHTTP(ctx context.Context, t store.CheckTarget) (bool, error) {
-	client := &http.Client{Timeout: probeTimeout}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.URL, nil)
 	if err != nil {
 		return false, err
 	}
-	resp, err := client.Do(req)
+	resp, err := probeHTTPClient().Do(req)
 	if err != nil {
 		return false, nil
 	}

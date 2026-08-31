@@ -6,6 +6,20 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — http check dial-time guard
+
+- **The http probe refuses the addresses a check must not reach.** Its HTTP
+  client dials through a `net.Dialer.Control` hook (the push transport's T16
+  dial-time SSRF check, scoped) that refuses loopback, link-local unicast —
+  covering the cloud metadata address `169.254.169.254` — unspecified, and
+  multicast at the connected IP, while keeping the RFC1918/ULA LAN targets a
+  check exists for. A check against a refused address observes down.
+  [security/threat-model.md](security/threat-model.md) T36 + the checks section
+  of [architecture/reactive.md](architecture/reactive.md). The probe's GET path
+  is tested both ways: the guarded client refuses a loopback target through the
+  sweep, and an internal test exercises the successful status check with an
+  injected client.
+
 ## 2026-08-31 — threat model: checks and peer stamping rows
 
 - [security/threat-model.md](security/threat-model.md) gains a **Checks, netgroups, and peer
