@@ -185,6 +185,9 @@ func TestRestoreDrillCatchesCorruption(t *testing.T) {
 // no snapshot to inspect at all — the drill cannot run, so it returns a real
 // error rather than a DrillResult.
 func TestRestoreDrillNoBackupIsAnError(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	requireTool(t, "restic")
 

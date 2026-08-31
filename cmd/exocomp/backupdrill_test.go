@@ -100,6 +100,9 @@ func snapshotDir(t *testing.T, dir string) map[string]int64 {
 // local restic target: it prints OK with a plausible RPO, exits 0, and
 // leaves the live data dir untouched.
 func TestBackupDrillHealthyTargetPrintsOK(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	requireTools(t, "restic", "age")
 	f := setupDrillFixture(t)
 	repo := filepath.Join(t.TempDir(), "nas")
@@ -132,6 +135,9 @@ func TestBackupDrillHealthyTargetPrintsOK(t *testing.T) {
 // envelope names kind backup.drill and carries a structured, OK finding for
 // the seeded target.
 func TestBackupDrillJSONOutputEmitsEnvelope(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	requireTools(t, "restic", "age")
 	f := setupDrillFixture(t)
 	repo := filepath.Join(t.TempDir(), "nas")
@@ -169,6 +175,9 @@ func TestBackupDrillJSONOutputEmitsEnvelope(t *testing.T) {
 // exits nonzero rather than being swallowed. The live data dir stays
 // untouched either way.
 func TestBackupDrillCorruptedTargetFailsLoudly(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	requireTools(t, "restic", "age")
 	f := setupDrillFixture(t)
 	repo := filepath.Join(t.TempDir(), "nas")

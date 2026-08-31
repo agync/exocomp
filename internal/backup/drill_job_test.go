@@ -90,6 +90,9 @@ func TestLiveSourceRefusesGitTarget(t *testing.T) {
 // the engine's own resticPassword, via a real backup + drill round trip: a
 // backup written under the engine's password must open under LiveSource's.
 func TestLiveSourceMatchesEnginePassword(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	t.Parallel()
 	f := newFixture(t)
 	target := f.target(t, "nas", KindResticLocal, filepath.Join(t.TempDir(), "repo"))

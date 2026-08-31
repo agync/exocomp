@@ -92,7 +92,7 @@ func (f *fixture) target(t *testing.T, name, kind, uri string) Target {
 func requireTool(t *testing.T, name string) {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
-		t.Fatalf("%s is required for this test and is not on PATH", name)
+		t.Skipf("%s is required for this test and is not on PATH", name)
 	}
 }
 

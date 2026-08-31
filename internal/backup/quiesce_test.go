@@ -26,6 +26,9 @@ func readTrim(t *testing.T, path string) string {
 // and the source is un-quiesced afterwards. The shared log proves the order:
 // quiesce ran, then un-quiesce, around a snapshot that actually happened.
 func TestQuiesceThawsAfterBackup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	f := newFixture(t)
 	repo := t.TempDir()
 	target := f.target(t, "local", KindResticLocal, repo)
