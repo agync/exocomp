@@ -40,7 +40,8 @@ when the header is present it must verify.
 Flags: `--hook-allow 10.0.0.0/8,192.168.0.0/16` restricts senders; `--public-url
 https://exocomp.lan` sets what decision links point at when the daemon sits
 behind a reverse proxy; `--dedup-window` and `--approval-ttl` set the two
-windows; `--sweep-interval` sets how often TTLs are enforced and drift collected.
+windows; `--sweep-interval` (default 30s) sets how often TTLs are enforced,
+drift is collected, and check probes are due.
 
 ## Push
 
@@ -179,7 +180,8 @@ hook away, the fail-safe direction for a "refuse from outside" rule.
 ```sh
 exocomp check add at-home --kind tcp --interval 5m \
   --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22
-exocomp check list           # per-target last status
+exocomp check list                 # per-target status in the STATUS column
+exocomp check list --output json   # the same per-target state, machine-readable
 exocomp check disable at-home
 exocomp check enable at-home
 exocomp check rm at-home
@@ -189,11 +191,52 @@ A check is a probe set the daemon sweeps on the same tick as drift. Kinds:
 `tcp` dials `ip:port` (the address is the location — probe the home-LAN
 address a host is only reachable at when it is home), `ping` runs a `ping`
 subprocess (refused at add on a host that cannot actually send ICMP), `http`
-reads the status line and never the body. An event fires only on a declared
-transition (down→up fires, up→down resolves) after 3 consecutive
-observations, and a restart never spurious-fires: a target with no state row
-is seeded from its first probe without emitting. `check list` reads the
-per-target last status from that same state.
+reads the status line and never the body.
+
+An event fires only on a declared transition (down→up fires, up→down
+resolves) after 3 consecutive observations. The 3 is fixed — not
+operator-tunable — and a missed interval is a skip, not an observation, so a
+flaky target cannot nurse the counter toward a false transition. Hysteresis
+applies to both directions: a departure withdraws a pending approval only
+after 3 consecutive down observations, a ~N·interval lag on the resolve path,
+not on the fire path. A check's interval is floored at the sweep tick:
+whatever `--interval` says, a probe runs no sooner than the tick — the 30s
+default `--sweep-interval` at worst. A restart never spurious-fires: a target
+with no state row is seeded from its first probe without emitting, and the
+price is fail-safe — a host already home at daemon start is missed once,
+never read as a fresh down→up transition after a reboot.
+
+Per-target transition state lives in a persisted `check_state` row — the
+current `status`, the `consecutive` counter, the last `emitted` status, and
+`last_change`. It survives a restart, which is exactly why a reboot cannot
+read `up` as a fresh transition; the `/checks` page's "changed N ago" line
+reads `last_change` off that row. `check list` renders the same state — the
+text table's STATUS column, `--output json`, and the `/checks` page all carry
+it.
+
+The http probe refuses the addresses a check must not reach: it dials through
+a guard that refuses loopback, link-local unicast (covering the cloud
+metadata address), unspecified, and multicast at the connected IP, so a check
+against a refused address observes down. An http target's URL resolves
+off-LAN, so it carries no netgroup label; its liveness is not a location
+verdict.
+
+> **Before you rely on this.** The address-is-location trick holds only while
+> two preconditions do, and both fail open:
+>
+> 1. **Static lease or reservation per target.** `tcp 192.168.1.50:22`
+>    proves something answers on `:22` at `.50`, not that it is the laptop;
+>    if DHCP re-leases `.50` to another device, the check reports that device
+>    home. Pin each target by static reservation, or accept a documented
+>    misattribution window.
+> 2. **No overlay route to the home LAN.** A tailscale subnet router
+>    advertising the LAN keeps a probed address reachable from anywhere, so
+>    "not when outside the house" fails open. Check targets must be reachable
+>    only via the LAN interface.
+>
+> Both are deployment preconditions the sweep cannot enforce from inside the
+> container; see
+> [design/check-triggered-runs.md §3.2.1](../design/check-triggered-runs.md).
 
 A rule turns the event into a run the same way it turns any event into a
 run:
@@ -211,7 +254,14 @@ un-limited rule would run against every host the inventory names). A check
 rule's cooldown keys off `check:<check>:<target>`, so each target of a
 multi-target check gets its own slot while webhook rules stay per-rule.
 
-The web surfaces both: **Netgroups** and **Checks** pages at `/netgroups`
-and `/checks` list and manage their rows (operator scope), and the API reads
-them at `/api/v1/netgroups` and `/api/v1/checks`. Rules stay CLI — the web
-has no rules page.
+The web surfaces it across the UI. **Netgroups** and **Checks** pages at
+`/netgroups` and `/checks` list and manage their rows (operator scope), the
+API reads them at `/api/v1/netgroups` and `/api/v1/checks`, and the web has a
+read-only **Rules** page — rule mutation stays CLI. The checks page renders
+each target's netgroup chip and how long ago its status last changed
+(`changed 3h ago`, from `check_state.last_change`, or `unobserved`); the
+dashboard's Checks card shows the registered total and how many targets the
+sweep observes up; a job detail line "fired by rule <name>" links to `/rules`
+and, when on record, the event that raised the run; and the events page
+filters by `?source=`, one entry per pipeline (alertmanager, healthchecks,
+generic, drift, check).
