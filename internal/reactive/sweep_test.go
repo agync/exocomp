@@ -136,3 +136,73 @@ func TestSweepCheckToleratesABadTarget(t *testing.T) {
 		t.Fatalf("good target seeded %q, want %q", st.Status, store.CheckUp)
 	}
 }
+
+// TestSweepCheckProbeErrorDoesNotAdvanceStreak pins the anti-regression the
+// hysteresis feature exists for: a target one observation short of a declared
+// transition whose probe ERRORS — an http target whose URL cannot even be
+// parsed into a request — must not advance the streak, must not emit, and must
+// not abort the sweep.
+func TestSweepCheckProbeErrorDoesNotAdvanceStreak(t *testing.T) {
+	capture := &captureHandler{}
+	e := labelsEngine(t)
+	e.log = slog.New(capture)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// The bad URL cannot be stored (store validation refuses it), so the check
+	// row is created with a probe-able target and the probe set is built with
+	// the errored one.
+	created, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name:      "web",
+		Kind:      store.CheckHTTP,
+		IntervalS: 30,
+		Targets:   []store.CheckTarget{{Name: "flake", URL: "http://127.0.0.1:1/"}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	c := store.Check{
+		ID:      created.ID,
+		Name:    created.Name,
+		Kind:    created.Kind,
+		Targets: []store.CheckTarget{{Name: "flake", URL: "://not-a-url"}},
+	}
+
+	// Seed the streak one observation short of a declared transition, with the
+	// emitted flag pinned to the same status so the only way an event is
+	// emitted is for the streak to advance.
+	if err := e.store.SetCheckState(ctx, store.CheckState{
+		CheckID:     c.ID,
+		TargetName:  "flake",
+		Status:      store.CheckUp,
+		Consecutive: DefaultHysteresis - 1,
+		Emitted:     store.CheckUp,
+		FirstSeen:   now,
+		LastChange:  now,
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+
+	raised, err := e.sweepCheck(ctx, c, now)
+	if err != nil {
+		t.Fatalf("sweepCheck with an errored probe = %v, want nil (tolerated)", err)
+	}
+	if raised != 0 {
+		t.Fatalf("sweepCheck raised %d events, want 0 (an errored probe must not emit)", raised)
+	}
+	if len(capture.msgs) != 1 || capture.msgs[0] != "reactive: sweep checks: probe" {
+		t.Fatalf("logged %v, want the single probe-error warning", capture.msgs)
+	}
+
+	st, err := e.store.GetCheckState(ctx, c.ID, "flake")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if st.Consecutive != DefaultHysteresis-1 {
+		t.Fatalf("streak advanced to %d, want %d (an errored probe must not advance the streak)",
+			st.Consecutive, DefaultHysteresis-1)
+	}
+	if st.Emitted != store.CheckUp {
+		t.Fatalf("emitted flag moved to %q, want %q", st.Emitted, store.CheckUp)
+	}
+}
