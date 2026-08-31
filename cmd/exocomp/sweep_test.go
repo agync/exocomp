@@ -97,6 +97,9 @@ func jobState(t *testing.T, id int64) store.JobState {
 }
 
 func TestDevRunSweepsAbandonedJobs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	useDataDir(t, t.TempDir())
 	id := abandonJob(t)
 
@@ -113,6 +116,9 @@ func TestDevRunSweepsAbandonedJobs(t *testing.T) {
 }
 
 func TestPlaybookSweepsAbandonedJobs(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if _, err := exec.LookPath("ansible-playbook"); err != nil {
 		t.Skip("ansible-playbook not on PATH")
 	}

@@ -16,6 +16,9 @@ import (
 // deterministic bearer, states the one-workspace-one-state rule, and — where
 // tofu is on PATH — parses as valid HCL.
 func TestWorkspaceAddStateOnlyEmitsBackendBlock(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
 	dir := initForSource(t)
 
 	const addr = "127.0.0.1:12345"

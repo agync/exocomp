@@ -217,6 +217,9 @@ func TestInventoryAddWithBindings(t *testing.T) {
 }
 
 func TestSourceSyncFromLocalRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
 	dir := initForSource(t)
 	repo, wantSHA := localOriginRepo(t)
 

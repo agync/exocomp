@@ -11,6 +11,9 @@ import (
 )
 
 func TestRunVendorInstallsCollectionsIntoTheCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible-galaxy")
+	}
 	if _, err := exec.LookPath("ansible-galaxy"); err != nil {
 		t.Skip("ansible-galaxy not on PATH")
 	}
@@ -45,6 +48,9 @@ func TestRunVendorInstallsCollectionsIntoTheCache(t *testing.T) {
 }
 
 func TestRunVendorFailsWithTheJobOnABadRequirementsFile(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real ansible-galaxy")
+	}
 	if _, err := exec.LookPath("ansible-galaxy"); err != nil {
 		t.Skip("ansible-galaxy not on PATH")
 	}

@@ -144,6 +144,9 @@ func writeThrowawayIdentity(t *testing.T) string {
 // installed — like the tofu/ansible gates — so the deterministic units above
 // carry the logic and this proves the shell path only where the tool exists.
 func TestLitestreamRestore_E2E(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if !backup.LitestreamAvailable() {
 		t.Skip("litestream binary absent; the shell round-trip e2e is skipped (config-gen + decision logic are unit-tested without it)")
 	}

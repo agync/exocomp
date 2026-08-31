@@ -102,6 +102,9 @@ func TestTofuOutputBindingReachesDependentPlay(t *testing.T) {
 // length, never its text — while the argv the job row records and every durable
 // event stay free of the value itself.
 func TestTofuOutputBindingRunsAPlayValuesFree(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if _, err := exec.LookPath(executor.AnsibleBinary); err != nil {
 		t.Skipf("%s not installed: %v", executor.AnsibleBinary, err)
 	}

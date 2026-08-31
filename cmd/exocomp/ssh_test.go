@@ -24,6 +24,9 @@ import (
 // TUI actually renders over the wish/bubbletea-v2 pairing rather than just
 // that the server accepts a TCP connection.
 func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireSSHTools(t)
 	dir := t.TempDir()
 	useDataDir(t, dir)
@@ -53,6 +56,9 @@ func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 // against exactly the authorized_keys file — a key that is not on it, valid
 // key pair or not, never reaches a session.
 func TestSSHServeRejectsWrongKey(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	requireSSHTools(t)
 	dir := t.TempDir()
 	useDataDir(t, dir)

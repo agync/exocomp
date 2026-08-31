@@ -21,6 +21,9 @@ import (
 // is a separate non-loopback listener that refuses to bind without a token and,
 // once one exists, serves — gated — to a caller presenting it (ADR 0009).
 func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	dir := initForSource(t)
 	ctx := context.Background()
 

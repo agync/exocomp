@@ -91,6 +91,9 @@ func TestHostOnboardRecordsKeysSeedsRunbookAndFleetKey(t *testing.T) {
 // sshd answers on localhost, onboarding records its live host key. It is skipped
 // (not failed) where no sshd is reachable, so the suite stays hermetic.
 func TestHostOnboardAgainstLocalhost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if _, err := exec.LookPath("ssh-keyscan"); err != nil {
 		t.Skip("ssh-keyscan not on PATH")
 	}

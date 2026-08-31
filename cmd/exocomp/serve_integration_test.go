@@ -532,6 +532,9 @@ type daemon struct {
 // end of the test whatever the test does.
 func startDaemon(t *testing.T, bin string, args ...string) *daemon {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("integration")
+	}
 
 	d := &daemon{cmd: exec.Command(bin, args...), done: make(chan error, 1)}
 	d.cmd.Stdout = &d.stdout
@@ -615,6 +618,9 @@ func (b *syncBuffer) String() string {
 
 func buildExocomp(t *testing.T) string {
 	t.Helper()
+	if testing.Short() {
+		t.Skip("integration")
+	}
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go is required to build the binary under test")
 	}

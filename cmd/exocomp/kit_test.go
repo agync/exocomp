@@ -96,6 +96,9 @@ func TestKitDeriveMatchesTheEnvelope(t *testing.T) {
 // restic purpose: a repository created with the derived password opens with it
 // and with nothing else.
 func TestKitDeriveOpensARealResticRepo(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
 	if _, err := exec.LookPath("restic"); err != nil {
 		t.Skip("restic not on PATH: cross-tool proof skipped")
 	}
