@@ -268,18 +268,24 @@ func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, 
 
 	due, err := e.store.PendingApprovalsExpiredAt(ctx, now)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, err // structural: the sweep cannot run at all
 	}
 	for _, a := range due {
-		if _, err := e.expire(ctx, a); err != nil {
-			return expired, 0, err
+		_, keep := e.sweepStep(ctx, "sweep approvals", fmt.Sprintf("approval %d", a.ID), func() (int, error) {
+			if _, err := e.expire(ctx, a); err != nil {
+				return 0, err
+			}
+			expired++
+			return 1, nil
+		})
+		if !keep {
+			return expired, republished, ctx.Err()
 		}
-		expired++
 	}
 
 	pending, err := e.store.ListApprovals(ctx, true)
 	if err != nil {
-		return expired, 0, err
+		return expired, 0, err // structural: the sweep cannot run at all
 	}
 	e.pruneRepublished(pending)
 	for _, a := range pending {
@@ -287,13 +293,22 @@ func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, 
 		if now.Before(half) || e.republished[a.ID] {
 			continue
 		}
-		token, _, err := ApprovalToken(e.deriver, a.JobID)
-		if err != nil {
-			return expired, republished, err
+		_, keep := e.sweepStep(ctx, "sweep approvals", fmt.Sprintf("approval %d", a.ID), func() (int, error) {
+			token, _, err := ApprovalToken(e.deriver, a.JobID)
+			if err != nil {
+				return 0, err
+			}
+			e.notify(ctx, e.approvalNotification(a, token, 2))
+			// The mark stays inside the closure: a tolerated token or notify
+			// error must leave the approval unmarked, so the next sweep retries
+			// the reminder instead of suppressing it forever.
+			e.republished[a.ID] = true
+			republished++
+			return 1, nil
+		})
+		if !keep {
+			return expired, republished, ctx.Err()
 		}
-		e.notify(ctx, e.approvalNotification(a, token, 2))
-		e.republished[a.ID] = true
-		republished++
 	}
 	return expired, republished, nil
 }

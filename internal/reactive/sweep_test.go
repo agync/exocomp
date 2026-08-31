@@ -4,7 +4,12 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // captureHandler collects every logged message, so a test can assert what did
@@ -69,5 +74,65 @@ func TestSweepStepToleratesItemErrors(t *testing.T) {
 	}
 	if called {
 		t.Fatal("item ran on an already-cancelled context")
+	}
+}
+
+// TestSweepCheckToleratesABadTarget pins the per-target tolerance in the check
+// sweep: a target whose probe cannot even start is logged and skipped, and the
+// check keeps probing its siblings — the good target still gets its state row
+// seeded. The seed absorbs the observation, so nothing is emitted.
+func TestSweepCheckToleratesABadTarget(t *testing.T) {
+	orig := probeHTTPClient
+	defer func() { probeHTTPClient = orig }()
+	// The shipped dial guard refuses loopback, so an unguarded client lets the
+	// good target's httptest server answer up (the guard is pinned separately
+	// in checks_internal_test.go).
+	probeHTTPClient = func() *http.Client { return &http.Client{Timeout: probeTimeout} }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	e := labelsEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	// The check_row must exist for the state row's FK; the bad URL cannot be
+	// stored (store validation refuses it), so the row is created with the good
+	// target only and the probe set is built with both.
+	created, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name:      "web",
+		Kind:      store.CheckHTTP,
+		IntervalS: 30,
+		Targets:   []store.CheckTarget{{Name: "good", URL: srv.URL}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	c := store.Check{
+		ID:   created.ID,
+		Name: created.Name,
+		Kind: created.Kind,
+		Targets: []store.CheckTarget{
+			{Name: "bad", URL: "://not-a-url"},
+			{Name: "good", URL: srv.URL},
+		},
+	}
+
+	raised, err := e.sweepCheck(ctx, c, now)
+	if err != nil {
+		t.Fatalf("sweepCheck with a bad target = %v, want nil (tolerated)", err)
+	}
+	if raised != 0 {
+		t.Fatalf("sweepCheck raised %d events, want 0 (seed-only)", raised)
+	}
+
+	st, err := e.store.GetCheckState(ctx, c.ID, "good")
+	if err != nil {
+		t.Fatalf("good target was never probed: %v", err)
+	}
+	if st.Status != store.CheckUp {
+		t.Fatalf("good target seeded %q, want %q", st.Status, store.CheckUp)
 	}
 }

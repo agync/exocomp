@@ -47,7 +47,7 @@ func checkDedupKey(checkName, targetName string) string {
 func (e *Engine) SweepChecks(ctx context.Context) (int, error) {
 	checks, err := e.store.ListChecks(ctx, true)
 	if err != nil {
-		return 0, err
+		return 0, err // structural: the sweep cannot run at all
 	}
 	now := e.now()
 
@@ -56,14 +56,17 @@ func (e *Engine) SweepChecks(ctx context.Context) (int, error) {
 		if next, ok := e.checkDue(c.ID); ok && now.Before(next) {
 			continue
 		}
-		n, err := e.sweepCheck(ctx, c, now)
-		if err != nil {
-			return raised, err
+		n, keep := e.sweepStep(ctx, "sweep checks", c.Name, func() (int, error) {
+			return e.sweepCheck(ctx, c, now)
+		})
+		if !keep {
+			return raised, ctx.Err()
 		}
 		raised += n
-		// The next probe lands one interval after this one on the engine
-		// clock; the sweep tick floors the effective interval at its own
-		// period (a 5s check on a 30s tick probes every 30s).
+		// Marked due even when the check had a problem, so a failing check
+		// keeps its interval cadence instead of re-probing every tick. The
+		// sweep tick floors the effective interval at its own period (a 5s
+		// check on a 30s tick probes every 30s).
 		e.markCheckDue(c.ID, now.Add(time.Duration(c.IntervalS)*time.Second))
 	}
 	return raised, nil
@@ -95,13 +98,18 @@ func (e *Engine) markCheckDue(id int64, next time.Time) {
 // sweepCheck probes every target of one check and updates check_state against
 // each observation: a missing row is seeded without emitting, a steady state
 // only advances the hysteresis counter, and a declared transition becomes one
-// event.
+// event. A broken target is logged and skipped, so one bad target cannot starve
+// the check's other targets; only a cancelled context aborts the sweep.
 func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (int, error) {
 	raised := 0
 	for _, t := range c.Targets {
+		if err := ctx.Err(); err != nil {
+			return raised, err
+		}
 		up, err := e.probe(ctx, c, t)
 		if err != nil {
-			return raised, err
+			e.log.Error("reactive: sweep checks: probe", "check", c.Name, "target", t.Name, "err", err)
+			continue
 		}
 		status := checkStatus(up)
 
@@ -121,12 +129,14 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 				FirstSeen:   now,
 				LastChange:  now,
 			}); err != nil {
-				return raised, err
+				e.log.Error("reactive: sweep checks: seed state", "check", c.Name, "target", t.Name, "err", err)
+				continue
 			}
 			continue
 		}
 		if err != nil {
-			return raised, err
+			e.log.Error("reactive: sweep checks: get state", "check", c.Name, "target", t.Name, "err", err)
+			continue
 		}
 
 		if status == st.Status {
@@ -141,7 +151,12 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 
 		if st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
 			if err := e.emitCheckTransition(ctx, c, t, st.Status, now); err != nil {
-				return raised, err
+				// The emitted flag is not advanced, so the next sweep
+				// re-observes the same status and re-emits the transition.
+				// Dedup-window-bounded and eventually consistent, not a
+				// silent loss.
+				e.log.Error("reactive: sweep checks: emit transition", "check", c.Name, "target", t.Name, "err", err)
+				continue
 			}
 			st.Emitted = st.Status
 			st.LastChange = now
@@ -149,10 +164,11 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 		}
 
 		if err := e.store.SetCheckState(ctx, st); err != nil {
-			return raised, err
+			e.log.Error("reactive: sweep checks: set state", "check", c.Name, "target", t.Name, "err", err)
+			continue
 		}
 	}
-	return raised, nil
+	return raised, ctx.Err() // nil when healthy
 }
 
 // emitCheckTransition builds and ingests the one event a declared transition

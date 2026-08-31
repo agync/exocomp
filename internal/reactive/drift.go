@@ -32,25 +32,33 @@ func (e *Engine) SweepDrift(ctx context.Context) (int, error) {
 		Limit:  driftScan,
 	})
 	if err != nil {
-		return 0, err
+		return 0, err // structural: the sweep cannot run at all
 	}
 
 	raised := 0
 	for _, job := range jobs {
-		var n int
-		var err error
-		switch job.Kind {
-		case executor.KindTofu:
-			n, err = e.sweepTofuPlan(ctx, job)
-		case executor.KindAnsible:
-			n, err = e.sweepAnsibleCheck(ctx, job)
-		}
-		if err != nil {
-			return raised, err
+		n, keep := e.sweepStep(ctx, "sweep drift", fmt.Sprintf("job %d", job.ID), func() (int, error) {
+			return e.sweepDriftJob(ctx, job)
+		})
+		if !keep {
+			return raised, ctx.Err()
 		}
 		raised += n
 	}
 	return raised, nil
+}
+
+// sweepDriftJob settles one finished job: a tofu plan that found changes or an
+// ansible check that changed tasks raises drift. Any other kind is a no-op.
+func (e *Engine) sweepDriftJob(ctx context.Context, job store.Job) (int, error) {
+	switch job.Kind {
+	case executor.KindTofu:
+		return e.sweepTofuPlan(ctx, job)
+	case executor.KindAnsible:
+		return e.sweepAnsibleCheck(ctx, job)
+	default:
+		return 0, nil
+	}
 }
 
 // sweepTofuPlan settles one finished plan: it raises the workspace's drift, or

@@ -56,30 +56,36 @@ func (e *Engine) SweepSecretExpiry(ctx context.Context) (int, error) {
 			continue
 		}
 
-		key := secretExpiryDedupKey(phase, sec.Name, *sec.ExpiresAt)
-		seen, err := e.store.CountEventsByDedupKey(ctx, key)
-		if err != nil {
-			return raised, err
-		}
-		if seen > 0 {
-			continue
-		}
+		n, keep := e.sweepStep(ctx, "sweep secrets", fmt.Sprintf("secret %s", sec.Name), func() (int, error) {
+			key := secretExpiryDedupKey(phase, sec.Name, *sec.ExpiresAt)
+			seen, err := e.store.CountEventsByDedupKey(ctx, key)
+			if err != nil {
+				return 0, err
+			}
+			if seen > 0 {
+				return 0, nil
+			}
 
-		e.notify(ctx, secretExpiryNotification(sec, phase, now))
+			e.notify(ctx, secretExpiryNotification(sec, phase, now))
 
-		// The checkpoint row is written after the page, so a crash between the
-		// two re-pages once on the next sweep — louder than a lost alert, the
-		// trade SweepJobOutcomes and SweepDrift both make.
-		if _, err := e.store.CreateEvent(ctx, store.Event{
-			Source:     SourceSecretExpiry,
-			ReceivedAt: now,
-			DedupKey:   key,
-			Outcome:    store.OutcomeMatched,
-			Reason:     fmt.Sprintf("secret %q %s; operator paged", sec.Name, phase),
-		}); err != nil {
-			return raised, err
+			// The checkpoint row is written after the page, so a crash between the
+			// two re-pages once on the next sweep — louder than a lost alert, the
+			// trade SweepJobOutcomes and SweepDrift both make.
+			if _, err := e.store.CreateEvent(ctx, store.Event{
+				Source:     SourceSecretExpiry,
+				ReceivedAt: now,
+				DedupKey:   key,
+				Outcome:    store.OutcomeMatched,
+				Reason:     fmt.Sprintf("secret %q %s; operator paged", sec.Name, phase),
+			}); err != nil {
+				return 0, err
+			}
+			return 1, nil
+		})
+		if !keep {
+			return raised, ctx.Err()
 		}
-		raised++
+		raised += n
 	}
 	return raised, nil
 }

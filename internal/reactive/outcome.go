@@ -62,39 +62,45 @@ func (e *Engine) SweepJobOutcomes(ctx context.Context) (int, error) {
 		Limit:  outcomeScan,
 	})
 	if err != nil {
-		return 0, err
+		return 0, err // structural: the sweep cannot run at all
 	}
 
 	raised := 0
 	for _, job := range jobs {
-		key := jobOutcomeDedupKey(job.ID)
-		seen, err := e.store.CountEventsByDedupKey(ctx, key)
-		if err != nil {
-			return raised, err
-		}
-		if seen > 0 {
-			continue
-		}
+		n, keep := e.sweepStep(ctx, "sweep outcomes", fmt.Sprintf("job %d", job.ID), func() (int, error) {
+			key := jobOutcomeDedupKey(job.ID)
+			seen, err := e.store.CountEventsByDedupKey(ctx, key)
+			if err != nil {
+				return 0, err
+			}
+			if seen > 0 {
+				return 0, nil
+			}
 
-		host, _ := WorkspaceOf(job.Runbook)
-		lastErr := scrub(e.scrubber(), e.lastJobError(ctx, job.ID))
-		e.notify(ctx, jobFailedNotification(job, host, lastErr))
+			host, _ := WorkspaceOf(job.Runbook)
+			lastErr := scrub(e.scrubber(), e.lastJobError(ctx, job.ID))
+			e.notify(ctx, jobFailedNotification(job, host, lastErr))
 
-		// The checkpoint row is written after the page, so a crash between the
-		// two re-pages once on the next sweep — louder than a lost alert, the
-		// same trade SweepDrift makes. CountEventsByDedupKey counts it whatever
-		// its outcome, so this is what the next sweep skips on.
-		if _, err := e.store.CreateEvent(ctx, store.Event{
-			Source:     SourceJobOutcome,
-			ReceivedAt: e.now(),
-			DedupKey:   key,
-			Outcome:    store.OutcomeMatched,
-			Reason:     fmt.Sprintf("job %d ended %s; operator paged", job.ID, job.State),
-			JobID:      &job.ID,
-		}); err != nil {
-			return raised, err
+			// The checkpoint row is written after the page, so a crash between the
+			// two re-pages once on the next sweep — louder than a lost alert, the
+			// same trade SweepDrift makes. CountEventsByDedupKey counts it whatever
+			// its outcome, so this is what the next sweep skips on.
+			if _, err := e.store.CreateEvent(ctx, store.Event{
+				Source:     SourceJobOutcome,
+				ReceivedAt: e.now(),
+				DedupKey:   key,
+				Outcome:    store.OutcomeMatched,
+				Reason:     fmt.Sprintf("job %d ended %s; operator paged", job.ID, job.State),
+				JobID:      &job.ID,
+			}); err != nil {
+				return 0, err
+			}
+			return 1, nil
+		})
+		if !keep {
+			return raised, ctx.Err()
 		}
-		raised++
+		raised += n
 	}
 	return raised, nil
 }
@@ -131,44 +137,50 @@ func (e *Engine) SweepJobNotifyRequests(ctx context.Context) (int, error) {
 			continue
 		}
 		jobID := *req.JobID
-		job, err := e.store.GetJob(ctx, jobID)
-		if errors.Is(err, store.ErrNotFound) {
-			continue
-		}
-		if err != nil {
-			return paged, err
-		}
-		if !job.State.Terminal() {
-			continue
-		}
+		n, keep := e.sweepStep(ctx, "sweep notify", fmt.Sprintf("job %d", jobID), func() (int, error) {
+			job, err := e.store.GetJob(ctx, jobID)
+			if errors.Is(err, store.ErrNotFound) {
+				return 0, nil
+			}
+			if err != nil {
+				return 0, err
+			}
+			if !job.State.Terminal() {
+				return 0, nil
+			}
 
-		seen, err := e.store.CountEventsByDedupKey(ctx, jobOutcomeDedupKey(jobID))
-		if err != nil {
-			return paged, err
-		}
-		if seen > 0 {
-			// Already paged by the failure sweep (or a prior pass); the request is
-			// covered by that page, so this one stays silent.
-			continue
-		}
+			seen, err := e.store.CountEventsByDedupKey(ctx, jobOutcomeDedupKey(jobID))
+			if err != nil {
+				return 0, err
+			}
+			if seen > 0 {
+				// Already paged by the failure sweep (or a prior pass); the request is
+				// covered by that page, so this one stays silent.
+				return 0, nil
+			}
 
-		host, _ := WorkspaceOf(job.Runbook)
-		e.notify(ctx, jobDoneNotification(job, host))
+			host, _ := WorkspaceOf(job.Runbook)
+			e.notify(ctx, jobDoneNotification(job, host))
 
-		// The shared checkpoint is written after the page, so a crash between the
-		// two re-pages once on the next sweep — the same trade SweepJobOutcomes
-		// makes. It also stops the failure sweep from paging the same job again.
-		if _, err := e.store.CreateEvent(ctx, store.Event{
-			Source:     SourceJobOutcome,
-			ReceivedAt: e.now(),
-			DedupKey:   jobOutcomeDedupKey(jobID),
-			Outcome:    store.OutcomeMatched,
-			Reason:     fmt.Sprintf("job %d ended %s; notify request paged", jobID, job.State),
-			JobID:      &jobID,
-		}); err != nil {
-			return paged, err
+			// The shared checkpoint is written after the page, so a crash between the
+			// two re-pages once on the next sweep — the same trade SweepJobOutcomes
+			// makes. It also stops the failure sweep from paging the same job again.
+			if _, err := e.store.CreateEvent(ctx, store.Event{
+				Source:     SourceJobOutcome,
+				ReceivedAt: e.now(),
+				DedupKey:   jobOutcomeDedupKey(jobID),
+				Outcome:    store.OutcomeMatched,
+				Reason:     fmt.Sprintf("job %d ended %s; notify request paged", jobID, job.State),
+				JobID:      &jobID,
+			}); err != nil {
+				return 0, err
+			}
+			return 1, nil
+		})
+		if !keep {
+			return paged, ctx.Err()
 		}
-		paged++
+		paged += n
 	}
 	return paged, nil
 }
