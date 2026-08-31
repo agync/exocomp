@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build budgets check clean fmt fmt-check help image lint test tidy-check vet
+.PHONY: build budgets check check-race clean fmt fmt-check help image lint test test-race tidy-check vet
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -15,7 +15,11 @@ LDFLAGS   := -X $(MODULE)/internal/version.Version=$(VERSION) \
 build: ## Build the static exocomp binary into bin/
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/exocomp ./cmd/exocomp
 
-check: fmt-check vet lint tidy-check test ## Run fmt-check, vet, lint, and test
+# check is the fast per-commit gate; the full -race suite is check-race,
+# which runs at pre-push and as the worktree-merge integration gate.
+check: fmt-check vet lint tidy-check test ## Run fmt-check, vet, lint, and the fast -short tests
+
+check-race: fmt-check vet lint tidy-check test-race ## Run fmt-check, vet, lint, and the full -race suite
 
 fmt: ## Format source files
 	gofmt -w -s .
@@ -39,7 +43,10 @@ lint: ## Run golangci-lint if installed
 tidy-check: ## Fail if go.mod/go.sum are not tidy
 	go mod tidy -diff
 
-test: ## Run the test suite with the race detector
+test: ## Run the fast test suite (-short, skips heavy integration tests)
+	go test -short ./...
+
+test-race: ## Run the full test suite with the race detector
 	go test -race ./...
 
 clean: ## Remove build artifacts

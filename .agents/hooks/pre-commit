@@ -1,6 +1,8 @@
 #!/bin/sh
-# Runs `make check` against the INDEX (what is being committed), not the
-# working tree, so unstaged edits can neither mask nor cause a failure.
+# Runs the fast `make check` (fmt, vet, lint, tidy, and `go test -short`)
+# against the INDEX (what is being committed), not the working tree, so
+# unstaged edits can neither mask nor cause a failure. The full `make
+# check-race` (`-race ./...`) runs at pre-push and worktree merges.
 # Installed via `git config core.hooksPath .agents/hooks`.
 set -eu
 

@@ -29,7 +29,7 @@ at the first step whose outcome is not mechanical:
    conflict aborts.
 3. Check `internal/store/migrations/` for a version-number collision.
 4. Fast-forward `main`.
-5. Run `make check` once at the integrated tip.
+5. Run `make check-race` once at the integrated tip.
 6. On green, remove the worktree and delete the branch.
 
 Load the skill for the exact commands, the abort conditions, and the only
@@ -43,9 +43,9 @@ conflicts it is allowed to resolve itself.
 - A conflict in any `.go` file (or any file whose semantics it cannot union
   mechanically) aborts. It reports the conflicting hunks verbatim and lets the
   lane owner resolve them. It does not pick a side.
-- A real `make check` failure is reported in full and left standing. The
+- A real `make check-race` failure is reported in full and left standing. The
   integrator does not revert the lane, patch the test, or fix the code to force
   green.
-- It retries `make check` at most once, and only for a timing flake already
+- It retries `make check-race` at most once, and only for a timing flake already
   listed in the flake-triage skill. It does not re-run a failure hoping it
   passes.

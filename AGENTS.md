@@ -29,8 +29,10 @@ Breaking any of these fails review, regardless of how good the change is otherwi
     language anywhere; no filler prose in docs.
 11. Parallel work happens in worktrees under `.worktrees/`; `main` stays linear
     (rebase then fast-forward; merge commits only for milestone integrations).
-12. Automation over manual conformance: `make check` gates every commit via the hooks
-    in `.agents/hooks/` (`git config core.hooksPath .agents/hooks` after clone).
+12. Automation over manual conformance: `make check` (fast, `-short`) gates every
+    commit via the hooks; the full `make check-race` (`-race ./...`) gates
+    pre-push and worktree merges. Activate with `git config core.hooksPath
+    .agents/hooks` after clone.
 
 ## Layout
 

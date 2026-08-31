@@ -65,11 +65,12 @@ a deletion, so the per-finding sequence above does not apply as-is:
 - Logical-unit commits, one finding per unit where they are separable.
   Conventional title `<= 52` chars, terse body saying what the change does, NO
   trailers, explicit path staging (never `git add -A`).
-- The pre-commit hook runs the full `make check` (`fmt-check vet lint tidy-check
-  test`) via `.agents/hooks/`; activate with `git config core.hooksPath
-  .agents/hooks` once per worktree. Paste the real green output before claiming
-  done — verification precedes the claim.
-- Two tests are load-flaky under the full run:
+- The pre-commit hook runs the fast `make check` (`fmt-check vet lint tidy-check
+  test`, `go test -short`) via `.agents/hooks/`; the full `make check-race`
+  (`-race ./...`) runs at pre-push and merge. Activate with `git config
+  core.hooksPath .agents/hooks` once per worktree. Paste the real green output
+  before claiming done — verification precedes the claim.
+- Two tests are load-flaky under the full race run (`check-race`):
   `TestTwoProcessesSerializeAConcurrencyKey` (`cmd/exocomp/concurrency_test.go`)
   and `TestServeShutdownRetiresWhatItCannotFinish`
   (`cmd/exocomp/serve_integration_test.go`). If one fails, re-run before

@@ -61,7 +61,8 @@ Build the static binary from source (Go 1.26+):
 
 ```sh
 make build      # → bin/exocomp
-make check      # fmt, vet, lint, tidy, and the race test suite
+make check      # fast gate: fmt, vet, lint, tidy, and -short tests
+make check-race # full gate: fmt, vet, lint, tidy, and the race test suite
 ```
 
 For a real deployment, the installer drops rootless Podman Quadlet units (with a

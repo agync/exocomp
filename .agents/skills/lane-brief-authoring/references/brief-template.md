@@ -15,8 +15,9 @@ conventional titles (feat|fix|chore|docs|refactor|test|perf|build)(scope):
 summary, <= 52 chars; NO trailers (no Co-Authored-By / Signed-off-by /
 Generated-with); explicit staging (never git add -A); no-slop comments (WHY
 not what, match surrounding density); never sudo. The pre-commit hook runs the
-FULL make check against the index on EVERY commit (a couple of minutes) — never
-bypass it, be patient, and expect commit-msg to reject a >52-char or
+FAST make check against the index on EVERY commit (`go test -short`); the full
+`make check-race` is the integration gate at pre-push and merge — never bypass
+it, be patient, and expect commit-msg to reject a >52-char or
 non-conventional title. REUSE existing machinery; do not reinvent. The queue is
 the only execution authority. Subprocess success is exit-code-only; secrets
 never in argv / env dumps / events / persisted plaintext. Verify with REAL
@@ -44,7 +45,8 @@ mechanical>.
 
 GATE (paste REAL output): <the exact behaviours a reviewer re-runs — the
 failing case the test first shows, the transitions, the restart/idempotency
-proof>. Full make check green. Report with the SCHEMA.
+proof>. `make check` green (fast); the full `make check-race` runs at
+integration. Report with the SCHEMA.
 
 Do NOT touch: <sibling paths by name — the packages, migrations, and shared
 files owned by other lanes this round>. If you add a migration, claim the NEXT

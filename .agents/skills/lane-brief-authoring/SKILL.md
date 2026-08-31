@@ -13,11 +13,13 @@ literally cannot collide with a sibling, cannot claim an unrun check, and cannot
 land a commit the hooks reject.
 
 The gate is not advisory: the pre-commit hook checks the index out into a temp
-tree (`git checkout-index`) and runs the full `make check` (fmt-check, vet,
-lint, tidy-check, test) there on every commit — never against the working tree,
-so unstaged edits neither mask nor cause a failure. commit-msg rejects a title
-over 52 chars or off the conventional prefix. A brief that ignores either
-produces an agent that burns its budget fighting the hook.
+tree (`git checkout-index`) and runs the fast `make check` (fmt-check, vet,
+lint, tidy-check, `go test -short`) there on every commit — never against the
+working tree, so unstaged edits neither mask nor cause a failure. The full race
+suite (`make check-race`) is the integration gate at pre-push and merge.
+commit-msg rejects a title over 52 chars or off the conventional prefix. A
+brief that ignores either produces an agent that burns its budget fighting the
+hook.
 
 ## Run this checklist down
 
@@ -53,14 +55,16 @@ clause is a defect, not a default.
    and security work (gates, crypto, idempotency, concurrency, migrations);
    sonnet for mechanical or scoped edits (wiring, renames, docs, a single CRUD
    method). State it in the brief; do not leave it to the runner default.
-7. **Concurrency-aware gating.** The gate runs the whole race-enabled suite
-   (`go test -race ./...`) and takes a couple of minutes; several lanes commit
-   at once. Tell the lane to set generous gate timeouts and be patient, never to
-   bypass the hook. Allow ONE retry of a KNOWN flake — the `flake-triage` skill
-   is this repo's source of truth for which failures qualify (e.g.
-   `TestTofuPlanRunsOfflineFromPluginCache`, the plugin-cache/`unshare` exec race
-   under concurrent gating); point the lane at it to tell a flake from a real
-   failure. A second failure of the same check is a real failure.
+7. **Concurrency-aware gating.** The per-commit gate is the fast `make check`
+    (`-short`, seconds to a minute); the full race suite (`make check-race`,
+    `go test -race ./...`) is the integration gate at pre-push and merge, and
+    several lanes may hit it at once. Tell the lane to set generous gate
+    timeouts and be patient, never to bypass the hook. Allow ONE retry of a
+    KNOWN flake — the `flake-triage` skill is this repo's source of truth for
+    which failures qualify (e.g. `TestTofuPlanRunsOfflineFromPluginCache`, the
+    plugin-cache/`unshare` exec race under concurrent gating); point the lane
+    at it to tell a flake from a real failure. A second failure of the same
+    check is a real failure.
 8. **Migration lanes: claim now, final at merge.** If the lane adds a store
    migration, tell it to claim the NEXT FREE
    `internal/store/migrations/NNNN_name.sql` number at start — but the number

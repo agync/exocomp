@@ -89,15 +89,15 @@ report the exact paths it names. Never delete or overwrite them yourself: file
 deletion of repo content may be guarded, and clearing them is a human call, not
 an integrator one.
 
-## 5. Run make check once
+## 5. Run make check-race once
 
 ```sh
-make check
+make check-race
 ```
 
-This is the same gate `.agents/hooks/pre-commit` runs (AGENTS.md invariant 12);
-run it explicitly here because a fast-forward creates no commit and so fires no
-hook. Full run is ~2.5 min solo.
+This is the full gate (`-race ./...`) that pre-push and worktree-merge
+integration run (AGENTS.md invariant 12); run it explicitly here because a
+fast-forward creates no commit and so fires no hook. Full run is ~2.5 min solo.
 
 Run it to completion in the foreground, in this same turn, with a generous
 timeout (up to 600000 ms) — do not background it and pause to wait on it. An
@@ -107,14 +107,14 @@ stranded mid-check leaves teardown undone and the worktree lingering.
 - **Green** → proceed to teardown in this same turn — do not end the turn
   between the gate passing and step 6's cleanup.
 - **Failure** → consult the flake-triage skill's flaky list. If, and only if,
-  every failing test is on that list, re-run `make check` **once**. Still failing,
+  every failing test is on that list, re-run `make check-race` **once**. Still failing,
   or the failing test is not listed → **STOP**: report the full failing output.
   Do not revert the lane, patch the test, skip it, or edit code to force green. A
   real failure is a finding for the lane owner.
 
 ## 6. Tear down
 
-Green `make check` only:
+Green `make check-race` only:
 
 ```sh
 git worktree remove <wt>
@@ -129,13 +129,14 @@ not take — investigate, do not force with `-D`.
 
 Guidance for the lane building the work, not just the integrator landing it:
 
-- `make check` — via the pre-commit hook or run standalone — takes ~4 min
+- `make check-race` — via the pre-push hook or run standalone — takes ~4 min
   under the concurrent load several lanes gating at once impose (see
   flake-triage's load ceiling; step 5 above quotes ~2.5 min solo). A builder
   MUST run it in the FOREGROUND and must NOT background it and end the turn —
   that leaves the lane in a half-gated state with the hook's outcome unknown.
   Give the command a generous timeout; the harness default can be too short
-  for a concurrent-load run.
+  for a concurrent-load run. The per-commit `make check` (`-short`) is fast and
+  runs automatically on every commit.
 - When renumbering a migration (step 3) or resolving a conflict mid-rebase,
   chain the git commands with `&&` — `git add <paths> && git commit ...`, or
   `git add <paths> && git rebase --continue` — so a partial-stage failure does

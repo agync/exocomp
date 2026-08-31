@@ -34,8 +34,10 @@ file and `AGENTS.md` disagree, `AGENTS.md` wins.
 
 ## hooksPath activation
 
-Commits are gated by `make check` and the commit-message rules above via
-hooks in `.agents/hooks/`. Activate them once per clone or worktree:
+Commits are gated by the fast `make check` (fmt, vet, lint, tidy, `go test
+-short`) and the commit-message rules above via hooks in `.agents/hooks/`; the
+full `make check-race` (`-race ./...`) runs at pre-push and worktree merges.
+Activate them once per clone or worktree:
 
 ```sh
 git config core.hooksPath .agents/hooks

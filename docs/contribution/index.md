@@ -20,10 +20,11 @@ How work lands in exocomp, and what gates it. The contract lives in
 - Conventional style, title at most 52 chars; terse body stating what the
   change does. No trailers, no meta-messages (invariant 9).
 - Stage explicit paths only. Never `git add -A`.
-- Every commit runs the gate: the pre-commit hook checks the index out into a
-  temp tree and runs the full `make check` (fmt, vet, lint, tidy, race suite),
-  and the commit-msg hook rejects a non-conventional or over-long title.
-  Activate the hooks once per clone or worktree with
+- Every commit runs the fast gate: the pre-commit hook checks the index out
+  into a temp tree and runs `make check` (fmt, vet, lint, tidy, `go test
+  -short`), and the commit-msg hook rejects a non-conventional or over-long
+  title. The full race suite runs at pre-push and before merging a worktree
+  (`make check-race`). Activate the hooks once per clone or worktree with
   `git config core.hooksPath .agents/hooks` (`.agents/bootstrap.sh` does this
   and more, idempotently).
 
@@ -38,7 +39,8 @@ How work lands in exocomp, and what gates it. The contract lives in
 
 ## Verification
 
-- A change is done only when `make check` passes, with the real output pasted.
+- A change is done only when `make check` passes, with the real output pasted;
+  the full `make check-race` is the pre-push / merge-integration gate.
 - Guard tests carry a mutation check, so a test that passes vacuously (without
   the code under test) is caught.
 

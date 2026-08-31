@@ -5,12 +5,15 @@ description: The single source of truth for this repo's known gate flakes, so ev
 
 # Flake triage
 
-`make check` runs `fmt-check vet lint tidy-check test` (Makefile), and `test`
-is `go test -race ./...`. A subset of these fail intermittently under
-concurrent gating — several worktrees under `.worktrees/` running `make check`
-at once — for reasons unrelated to the diff under test. This file is the one
-place that enumerates them, so a flake is judged the same way in every lane and
-by the integrator, not re-diagnosed per person.
+`make check` runs `fmt-check vet lint tidy-check test` (Makefile), where `test`
+is `go test -short ./...` — the fast per-commit gate. The full `make check-race`
+(`fmt-check vet lint tidy-check test-race`, `go test -race ./...`) runs at
+pre-push and as the worktree-merge integration gate. A subset of the race suite
+fails intermittently under concurrent gating — several worktrees under
+`.worktrees/` running `make check-race` at once — for reasons unrelated to the
+diff under test. This file is the one place that enumerates them, so a flake is
+judged the same way in every lane and by the integrator, not re-diagnosed per
+person.
 
 ## The rule
 
@@ -22,7 +25,8 @@ A failure matching a known flake below earns **exactly one** retry of the gate.
   not retry to see if it "goes away", and never relabel it a flake.
 
 Retry the gate, not the one test in isolation: an isolated re-run hides real
-failures that only appear under the full `-race ./...` load the gate imposes.
+failures that only appear under the full `-race ./...` load the race gate
+imposes.
 
 Masking a real failure as a flake is the worst outcome here — worse than a slow
 gate. When unsure whether a failure matches, treat it as REAL and report it
@@ -31,26 +35,35 @@ with the output, rather than retrying.
 ## Known flakes
 
 Each is a timing or shared-resource artifact of concurrency, not a defect in
-the code being gated.
+the code being gated. Most live in tests the fast gate skips under `-short`, so
+they surface only under `check-race`; the one exception is the lint lock, which
+runs in both gates.
 
 - **`TestTofuPlanRunsOfflineFromPluginCache`** (`internal/executor/tofu_offline_test.go`).
   Its online half warms `PluginCacheDir` by fetching the `hashicorp/local`
   provider before the offline half runs. Under concurrent load the warm-up
   races provider download/network and the child's `unshare -rn` namespace
   setup, so it flakes on first attempt.
+  *Applies to: `check-race` only* (the `internal/executor` suite is skipped
+  under `-short`).
 - **serve integration timing** — the `TestServe*` / `TestDaemon*` cases in
   `cmd/exocomp/serve_integration_test.go`. They wait on daemon start-up, socket
   bind, and in-flight-job settling against real wall-clock deadlines that a
   loaded host blows through.
+  *Applies to: `check-race` only* (these run through `buildExocomp` /
+  `startDaemon`, which skip under `-short`).
 - **executor shell timing** — the `shell_*_test.go` group
   (`shell_group_test.go`, `shell_textbusy_test.go`) in `internal/executor`.
   These race process-group signal delivery, inherited-pipe draining, and the
   `ETXTBSY` retry of a just-written executable; under concurrent exec load the
   scheduler and the text-busy window stretch past what the assertions allow.
+  *Applies to: `check-race` only* (skipped under `-short`).
 - **golangci-lint lock collision** — `make lint` fails with
   `parallel golangci-lint is running`. golangci-lint takes a machine-wide lock;
   when several worktrees hit the `lint` target at the same moment, all but one
   lose the lock. This is not a lint finding — the diff is clean.
+  *Applies to: both gates* (`lint` runs in `make check` and `make check-race`
+  alike).
 - **`TestSandboxedTofuReadsDevShmStagedSecret`** (`internal/executor`, the
   real-`nono`/Landlock `/dev/shm` run-secret e2e; its sibling
   `TestSandboxDeniesAnUngrantedDevShmFile` too). Exercises a real Landlock
@@ -58,6 +71,7 @@ the code being gated.
   parallel load the scheduling jitter around the sandbox handshake occasionally
   trips its deadline. Passes reliably in isolation and on retry. Multiple lanes
   hit this once each during the round-2 wave.
+  *Applies to: `check-race` only* (skipped under `-short`).
 
 ## Fixed / root-caused
 
@@ -68,9 +82,10 @@ not re-flag either as flaky or paper over a real regression as one.
   race: a live runner could claim the `queued` row before the test transitioned
   it to `interrupted`. Fixed by creating the job via `store.CreateGatedJob`
   (lands in `awaiting_approval`, which no worker claims) then transitioning it
-  to `interrupted` directly — race-free by construction, not a timing fix.
+  to `interrupted` directly — race-free by construction, not a timing fix. Now
+  runs only under `check-race` (the `internal/web` harness skips under `-short`).
 - **`TestConcurrentMigrationAppliesOnce`** (`internal/store/migrate_test.go`).
-  Was not a product bug — a test-environment artifact of `make check`'s full
+  Was not a product bug — a test-environment artifact of the full
   `go test -race ./...` running every package's race binary at once, where
   SQLite's real write-lock handoff can exceed the production 5s
   `busy_timeout`. Fixed by giving the test its own 30s busy_timeout budget (via
@@ -79,10 +94,12 @@ not re-flag either as flaky or paper over a real regression as one.
 
 ## Load ceiling
 
-`make check` is ~2.5min solo but climbs to ~8-9min under several concurrent
-lanes, and that saturation is what drives the flakes above. Keep concurrent
-gates to **3-4 at most**. More lanes do not gate faster; they multiply
-`SQLITE_BUSY`, lint-lock, and integration-timing flakes and slow every lane.
+`make check-race` is ~2.5min solo but climbs to ~8-9min under several
+concurrent lanes, and that saturation is what drives the flakes above. The fast
+`make check` (`-short`) is a few seconds to about a minute solo. Keep
+concurrent gates to **3-4 at most**. More lanes do not gate faster; they
+multiply `SQLITE_BUSY`, lint-lock, and integration-timing flakes and slow every
+lane.
 
 ## Maintaining this list
 

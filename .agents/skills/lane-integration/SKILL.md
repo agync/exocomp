@@ -1,6 +1,6 @@
 ---
 name: lane-integration
-description: Land a finished lane worktree onto main the way this repo requires — clean-check, rebase resolving only docs unions, migration-number collision check, fast-forward, one make check, then tear down. Use when integrating a reviewed .worktrees/ branch, or driving the lane-integrator agent. Stops and reports on any dirty worktree, Go conflict, or real test failure instead of guessing.
+description: Land a finished lane worktree onto main the way this repo requires — clean-check, rebase resolving only docs unions, migration-number collision check, fast-forward, one make check-race, then tear down. Use when integrating a reviewed .worktrees/ branch, or driving the lane-integrator agent. Stops and reports on any dirty worktree, Go conflict, or real test failure instead of guessing.
 ---
 
 # Lane integration
@@ -22,7 +22,7 @@ nothing here re-litigates it, and nothing here writes a fix.
 - **`main` stays linear** (AGENTS.md invariant 11): rebase the lane, then
   fast-forward. No merge commit for an ordinary lane.
 - **The integrator never invents fixes.** A dirty worktree, a code conflict, or
-  a genuine `make check` failure is reported and left for the lane owner. It is
+  a genuine `make check-race` failure is reported and left for the lane owner. It is
   never resolved by editing the lane's code or tests.
 
 ## The six steps
@@ -40,10 +40,10 @@ short. Do not improvise past a stop condition.
    may share the `NNNN` prefix. Two lanes that branched before either merged can
    both claim the same number — renumber the later one and move its test.
 4. **Fast-forward.** `git merge --ff-only` from the repo root. Refused → STOP.
-5. **Check once.** Run `make check` at the integrated tip — the gate invariant
-   12 wires into `.agents/hooks/pre-commit`. Retry at most **once**, and only for
-   a timing flake the flake-triage skill lists. A real failure → report in full;
-   do not revert or fix.
+5. **Check once.** Run `make check-race` at the integrated tip — the full gate
+    invariant 12 wires into the pre-push hook and worktree merges. Retry at most
+    **once**, and only for a timing flake the flake-triage skill lists. A real
+    failure → report in full; do not revert or fix.
 6. **Tear down.** Green only: remove the worktree, delete the branch.
 
 ## Do not duplicate the flaky list

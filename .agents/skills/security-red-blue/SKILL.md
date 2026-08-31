@@ -55,4 +55,5 @@ short.
 - One finding → one failing test → one fix → one mutation kill. Skipping the
   mutation step ships a guard no test defends.
 - Red is read-only w.r.t. the repo; blue lands only in a `.worktrees/` lane
-  behind the full `make check` gate, with logical-unit commits and no trailers.
+  behind the `make check` gate (fast, `-short`; the full `make check-race` runs
+  at pre-push/merge), with logical-unit commits and no trailers.
