@@ -36,7 +36,26 @@ templ approvalsList(vm dashboardVM) {
 				</div>
 			}
 		</div>
+		@approvalsLive()
 	}
+}
+
+// approvalsLive opens the SSE connection that keeps the /approvals list fresh.
+// tailApprovals always emits one snapshot on connect — the current pending
+// state this page already rendered — so the FIRST approvals event is ignored;
+// only a SUBSEQUENT event, a real membership/state change, reloads the page.
+templ approvalsLive() {
+	<script>
+	(function () {
+		var es = new EventSource("/approvals/stream");
+		var seenFirst = false;
+		es.addEventListener("approvals", function () {
+			if (!seenFirst) { seenFirst = true; return; }
+			location.reload();
+		});
+		es.onerror = function () { es.close(); };
+	})();
+	</script>
 }
 
 // approvalSurface is the phone decision screen (390px). It renders the
