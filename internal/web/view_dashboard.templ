@@ -1,13 +1,11 @@
 package web
 
-// dashboard is the glance screen: an at-a-glance grid of summary cards, not
-// embedded tables. Each card is itself the link to its full view — the
-// dashboard answers "what needs my attention?" first (pending approvals lead
-// the grid) and "what's the state of everything else?" second, in one line
-// per card. The queue card counts the active queue only; settled job history
-// lives at /jobs, never here. Healthy is quiet; waiting-on-human and drifted
-// are loud, using the same wait/amber signal the chip ladder already uses.
-// Control-plane health and backup freshness live on /system, not here.
+// dashboard is the glance screen, ranked (F6): an attention band first (only
+// the non-nominal cards, each ringed with its state border and ending in the
+// decision that resolves it), then the queue, then quiet counts whose empty
+// states name the verb that changes them. Healthy is quiet — a nominal system
+// renders one attention band of nothing. Control-plane health and backup
+// freshness live on /system, not here.
 templ dashboard(vm dashboardVM) {
 	@layout(vm.Page) {
 		if vm.Page.Insecure {
@@ -23,18 +21,44 @@ templ dashboard(vm dashboardVM) {
 				<span class="count">{ swallowedText(vm.Banner) }</span>
 			</div>
 		}
-		<h1>Dashboard</h1>
-		<div class="cards mt18">
-			@approvalsCard(vm.Approvals)
-			@jobsCard(vm.Jobs)
-			@workspacesCard(vm.Workspaces)
-			@sourcesCard(vm.Sources)
-			@checksCard(vm.Checks)
-			@schedulesCard(vm.Schedules)
-			if vm.Workflows.InFlight > 0 {
-				@workflowsCard(vm.Workflows)
-			}
-		</div>
+		if vm.Approvals.Pending > 0 || vm.Workspaces.Drifted > 0 || vm.Sources.Attention > 0 || vm.Checks.Disabled > 0 || vm.Schedules.Disabled > 0 || vm.Workflows.InFlight > 0 {
+			<section class="band" aria-label="Needs attention">
+				<div class="band-kicker">Needs attention</div>
+				<div class="attn-grid">
+					if vm.Approvals.Pending > 0 {
+						@approvalsCard(vm.Approvals)
+					}
+					if vm.Workspaces.Drifted > 0 {
+						@workspacesCard(vm.Workspaces)
+					}
+					if vm.Sources.Attention > 0 {
+						@sourcesCard(vm.Sources)
+					}
+					if vm.Checks.Disabled > 0 {
+						@checksCard(vm.Checks)
+					}
+					if vm.Schedules.Disabled > 0 {
+						@schedulesCard(vm.Schedules)
+					}
+					if vm.Workflows.InFlight > 0 {
+						@workflowsCard(vm.Workflows)
+					}
+				</div>
+			</section>
+		}
+		<section class="band" aria-label="Queue">
+			<div class="band-kicker">Queue</div>
+			@queueCard(vm.Jobs)
+		</section>
+		<section class="band" aria-label="Counts">
+			<div class="band-kicker">Counts</div>
+			<div class="counts-grid">
+				@countCard("Approvals", vm.Approvals.Pending, "/approvals", "None waiting.")
+				@countCard("Workspaces", vm.Workspaces.Total, "/workspaces", "exocomp ws add")
+				@countCard("Schedules", vm.Schedules.Total, "/schedules", "exocomp schedule add")
+				@countCard("Rules", vm.Rules, "/rules", "Nothing fires until a rule matches — written on the CLI.")
+			</div>
+		</section>
 	}
 }
 
@@ -53,26 +77,28 @@ templ approvalsCard(vm approvalSummary) {
 			<div class="cardnum warn">{ itoa(int64(vm.Pending)) }</div>
 			<p class="cardlabel">waiting on you</p>
 			<p class="cardsub warn">{ vm.Subline() }</p>
+			<span class="cardact">Open approvals →</span>
 		} else {
 			<p class="cardsub meta">None waiting.</p>
 		}
 	</a>
 }
 
-// jobsCard is the dashboard's queue summary: the active queue only. Settled
+// queueCard is the dashboard's queue summary: the active queue only. Settled
 // jobs never appear here — that history is /jobs' job, not the glance
-// screen's.
-templ jobsCard(vm jobSummary) {
-	<a class="card cardlink" href="/jobs" aria-labelledby="queue-h">
+// screen's. It is the one wide card of the QUEUE band.
+templ queueCard(vm jobSummary) {
+	<a class="card cardlink queue" href="/jobs" aria-labelledby="queue-h">
 		<h3 id="queue-h">Queue</h3>
 		if vm.Idle() {
-			<p class="cardsub meta">Idle.</p>
+			<p class="cardsub meta">Idle — nothing queued, nothing running.</p>
 		} else {
 			<div class="cardnum">{ vm.Headline() }</div>
 		}
 		if vm.FailedRecently > 0 {
 			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
 		}
+		<span class="queuemeta">last job — none yet</span>
 	</a>
 }
 
@@ -89,6 +115,7 @@ templ workspacesCard(vm workspaceSummary) {
 			<p class="cardlabel">workspaces</p>
 			if vm.Drifted > 0 {
 				<p class="cardsub warn">{ itoa(int64(vm.Drifted)) } drifted</p>
+				<span class="cardact">Open workspaces →</span>
 			} else {
 				<p class="cardsub meta">All in sync.</p>
 			}
@@ -108,6 +135,7 @@ templ sourcesCard(vm sourceSummary) {
 			<p class="cardlabel">sources</p>
 			if vm.Attention > 0 {
 				<p class="cardsub warn">{ itoa(int64(vm.Attention)) } need attention</p>
+				<span class="cardact">Review source →</span>
 			} else {
 				<p class="cardsub meta">All synced.</p>
 			}
@@ -129,6 +157,7 @@ templ checksCard(vm checksSummary) {
 			<p class="cardlabel">checks</p>
 			if vm.Disabled > 0 {
 				<p class="cardsub warn">{ itoa(int64(vm.Disabled)) } disabled</p>
+				<span class="cardact">Open checks →</span>
 			}
 			<p class="cardsub">{ itoa(int64(vm.TargetsUp)) } targets up</p>
 		}
@@ -144,6 +173,7 @@ templ workflowsCard(vm workflowSummary) {
 		<h3 id="flows-h">Workflows in flight</h3>
 		<div class="cardnum">{ itoa(int64(vm.InFlight)) }</div>
 		<p class="cardlabel">in flight</p>
+		<span class="cardact">Open workflows →</span>
 	</a>
 }
 
@@ -160,6 +190,20 @@ templ schedulesCard(vm scheduleSummary) {
 			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
 			<p class="cardlabel">schedules</p>
 			<p class={ "cardsub", templ.KV("warn", vm.Disabled > 0) }>{ itoa(int64(vm.Total)) } schedules · { itoa(int64(vm.Disabled)) } disabled</p>
+			if vm.Disabled > 0 {
+				<span class="cardact">Open schedules →</span>
+			}
 		}
+	</a>
+}
+
+// countCard is a quiet count in the dashboard's COUNTS band: a kicker, the
+// number, and — when zero — the verb that changes it (F6). The whole card is
+// the link to its full view.
+templ countCard(kicker string, n int, href, empty string) {
+	<a class="card cardlink count" href={ templ.SafeURL(href) }>
+		<div class="count-kicker">{ kicker }</div>
+		<div class="countnum">{ itoa(int64(n)) }</div>
+		<p class="cardsub meta">{ empty }</p>
 	</a>
 }

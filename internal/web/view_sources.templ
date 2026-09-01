@@ -21,12 +21,6 @@ templ signedChip(sc sourceRow) {
 // CLI-only (the latter has no queued job kind yet — see sources_write.go).
 templ sourcesList(vm sourcesVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Sources</h1>
-			if vm.Operator {
-				@addButton("sources-add", "source")
-			}
-		</div>
 		if vm.Operator {
 			@modal("sources-add", "Add a source") {
 				<p class="meta">

@@ -1,71 +1,63 @@
 package web
 
-// netgroupsList is the netgroups surface: named CIDR sets that classify an
-// address — a webhook peer or a check target — with the operator's own
-// vocabulary, so a rule says "home" instead of hardcoding the prefixes. Rows
-// show the prefixes in full; they are config, not values. A netgroup carries
-// no secret material, so — like schedules — the write controls here are plain
-// operator-scope: no reauth, no confirm_token.
-templ netgroupsList(vm netgroupsVM) {
-	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Netgroups</h1>
-			if vm.Operator {
-				@addButton("netgroups-add", "netgroup")
-			}
-		</div>
-		if vm.Operator {
-			@modal("netgroups-add", "Add a netgroup") {
-				<p class="meta">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p>
-				<form method="post" action="/netgroups/add" class="writeform">
-					<label for="ng-name">Name</label>
-					<input id="ng-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="ng-prefixes">CIDRs (comma-separated)</label>
-					<input id="ng-prefixes" name="prefixes" type="text" required autocomplete="off" placeholder="192.168.0.0/16,10.0.0.0/8"/>
-					<div class="actions"><button type="submit" class="btn primary">Add netgroup</button></div>
-				</form>
-			}
+// netgroupsPanel is the Netgroups tab body on /checks (F7): named CIDR sets
+// that classify an address — a webhook peer or a check target — so a rule
+// writes `event.labels["netgroup"] == "home"` instead of a prefix literal. It
+// renders without the shell (the checks page owns the tabs), and carries the
+// operator add/remove controls. A netgroup holds no secret material, so the
+// write controls here are plain operator-scope, like schedules.
+templ netgroupsPanel(rows []netgroupRow, operator bool) {
+	if operator {
+		@modal("netgroups-add", "Add a netgroup") {
+			<p class="meta">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p>
+			<form method="post" action="/netgroups/add" class="writeform">
+				<label for="ng-name">Name</label>
+				<input id="ng-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
+				<label for="ng-prefixes">CIDRs (comma-separated)</label>
+				<input id="ng-prefixes" name="prefixes" type="text" required autocomplete="off" placeholder="192.168.0.0/16,10.0.0.0/8"/>
+				<div class="actions"><button type="submit" class="btn primary">Add netgroup</button></div>
+			</form>
 		}
-		<div class="card span2 mt18 tray">
-			<div class="kicker">Address classification</div>
-			<h3>All netgroups</h3>
-			<p class="meta">Nothing fires until a rule matches — rules are written on the CLI and read at <a href="/rules">/rules</a>.</p>
-			if !vm.Operator {
-				<p class="meta">Read-only: managing netgroups needs an operator token.</p>
-			}
-			if len(vm.Netgroups) == 0 {
-				<p class="meta">No netgroups registered — add one.</p>
-			} else {
-				<div class="tablewrap stackable">
-					<table>
-						<thead>
+	}
+	<div class="card span2 mt18 tray">
+		<div class="kicker">Address classification</div>
+		<h3>Netgroups</h3>
+		<p class="meta">Netgroups classify an address for checks and webhook peers — the home/away verdict is a network-path fact, never health.</p>
+		if !operator {
+			<p class="meta">Read-only: managing netgroups needs an operator token.</p>
+		}
+		if len(rows) == 0 {
+			<p class="meta">No netgroups registered — add one.</p>
+		} else {
+			<div class="tablewrap stackable">
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">Netgroup</th>
+							<th scope="col">CIDRs</th>
+							if operator {
+								<th scope="col">Actions</th>
+							}
+						</tr>
+					</thead>
+					<tbody>
+						for _, ng := range rows {
 							<tr>
-								<th scope="col">Netgroup</th>
-								<th scope="col">CIDRs</th>
-								if vm.Operator {
-									<th scope="col">Actions</th>
+								<td data-label="Netgroup"><a href="/events?source=check">{ ng.Name }</a></td>
+								<td class="mono wrap" data-label="CIDRs">{ ng.Join() }</td>
+								if operator {
+									<td data-label="Actions">
+										<form method="post" action={ templ.SafeURL("/netgroups/" + ng.Name + "/rm") } class="inline-form" data-confirm={ "Remove netgroup " + ng.Name + "?" }>
+											<input type="hidden" name="confirmed" value="1"/>
+											<button type="submit" class="btn danger">Remove…</button>
+										</form>
+									</td>
 								}
 							</tr>
-						</thead>
-						<tbody>
-							for _, ng := range vm.Netgroups {
-								<tr>
-									<td data-label="Netgroup"><a href="/events?source=check">{ ng.Name }</a></td>
-									<td class="mono wrap" data-label="CIDRs">{ ng.Join() }</td>
-									if vm.Operator {
-										<td data-label="Actions">
-											<form method="post" action={ templ.SafeURL("/netgroups/" + ng.Name + "/rm") } class="inline-form" data-confirm={ "Remove netgroup " + ng.Name + "?" }>
-												<input type="hidden" name="confirmed" value="1"/>
-												<button type="submit" class="btn danger">Remove…</button>
-											</form>
-										</td>
-									}
-								</tr>
-							}
-						</tbody>
-					</table>
-				</div>
-			}
-		</div>
-	}
+						}
+					</tbody>
+				</table>
+			</div>
+		}
+	</div>
 }

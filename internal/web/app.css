@@ -139,6 +139,20 @@ a:visited { color: var(--accent-text); }
   white-space: nowrap;
 }
 .navitem .navglyph { flex: none; }
+/* Nav grouping (F7): the rail is organised by verb — OPERATE / AUTOMATE /
+ * PROVISION / ACCESS — with a mono group label above each cluster. */
+.side-nav .navgroup {
+  font: 600 10px var(--font-mono); letter-spacing: 1.8px; text-transform: uppercase;
+  color: var(--ink-600); padding: 0 10px 6px; margin-top: 16px;
+}
+/* Nav badge (F7): an actionable state count — down targets on Checks (fail),
+ * never-synced sources and pending approvals (wait). A count is the number of
+ * things needing a look, never a pill. */
+.navitem .navbadge {
+  margin-left: auto; font: 600 10.5px var(--font-mono);
+}
+.navbadge.fail { color: var(--signal-fail); }
+.navbadge.wait { color: var(--signal-wait); }
 .navitem:hover, .navitem:focus-visible { text-decoration: none; background: var(--surface-tray); color: var(--ink-100); }
 .navitem.active { background: var(--accent-tint); color: var(--accent-text); }
 
@@ -174,6 +188,23 @@ a:visited { color: var(--accent-text); }
 .content-col { flex: 1; min-width: 0; min-height: 100vh; display: flex; flex-direction: column; }
 .mobilebar { display: none; }
 .scrim { display: none; }
+
+/* ---- App bar (F15) ----
+ * The slim content header owns the page title (15px/600) and a mono meta slot
+ * (who · scope), replacing the 30px display h1 that restated the nav selection
+ * and cost a band of vertical space on every page. The page's one primary verb
+ * (Add…) sits at the right. The --header-h token is shared with the sidebar
+ * brand, so the bar reads ~58px visually; the token stays 60px. On mobile the
+ * bar sits below the off-canvas drawer's mobilebar and scrolls with content. */
+.appbar {
+  display: flex; align-items: center; gap: 14px;
+  height: 58px; padding: 0 30px;
+  background: var(--surface-rail);
+  border-bottom: 1px solid var(--hairline-faint);
+}
+.appbar-title { font: var(--type-bar); color: var(--ink-100); margin: 0; }
+.appbar-meta { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
+.appbar-action { display: inline-flex; align-items: center; }
 
 /* Desktop rail: icon-only. At the top the exocomp brand mark rests in the
  * collapse toggle; hovering or focusing the toggle swaps it for the open
@@ -289,6 +320,39 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
   font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
   color: var(--accent-text); margin-bottom: 10px;
 }
+
+/* ---- Dashboard bands (F6) ----
+ * The glance screen ranks by signal: NEEDS ATTENTION first (only the
+ * non-nominal cards, each ringed and ending in the decision that resolves it),
+ * then the queue, then quiet counts whose empty states name the verb that
+ * changes them. Healthy is quiet — a nominal system renders no attention band
+ * at all. */
+.band { margin-top: 22px; }
+.band:first-of-type { margin-top: 0; }
+.band-kicker {
+  font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--ink-500); margin-bottom: 12px;
+}
+.attn-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--gap-card);
+  align-items: stretch;
+}
+/* The queue card is the one wide card of its band. */
+.cardlink.queue { grid-column: 1 / -1; }
+.queuemeta { display: block; margin-top: 8px; font: var(--type-log); color: var(--ink-500); }
+/* The attention card's decision verb: the card is a link, and this names the
+ * resolve action explicitly so a ringed card ends in a verb, never a fact. */
+.cardact { display: block; margin-top: 10px; font: var(--type-button); color: var(--accent-text); }
+.counts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--gap-card);
+  align-items: stretch;
+}
+.count-kicker { font: var(--type-keyword); letter-spacing: 0.4px; color: var(--ink-500); margin-bottom: 6px; }
+.countnum { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
 
 /* ---- Summary cards (dashboard at-a-glance) ----
  * A card whose whole surface is the link to its full view — no separate
@@ -735,6 +799,16 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .kv dt { flex: none; min-width: 5rem; color: var(--ink-400); font: var(--type-button); }
 .kv dd { margin: 0; color: var(--ink-200); }
 .tabs { display: flex; gap: 4px; margin: 14px 0 4px; border-bottom: 1px solid var(--hairline-faint); }
+/* Segmented variant (the checks Probes|Netgroups switch, F7): a tray-backed
+ * control with the active segment on the control fill — one surface, not a
+ * bottom-border underline. */
+.tabs.segmented {
+  display: inline-flex; gap: 4px; padding: 4px; margin: 0 0 18px;
+  background: var(--surface-tray); border-radius: var(--radius-control);
+  border-bottom: 0;
+}
+.tabs.segmented .tab { border-bottom: 0; border-radius: var(--radius-chip); margin: 0; }
+.tabs.segmented .tab[aria-selected="true"] { background: var(--surface-control); color: var(--ink-100); }
 .tab {
   padding: 8px 14px; background: transparent; color: var(--ink-400);
   border: none; border-bottom: 2px solid transparent; cursor: pointer;

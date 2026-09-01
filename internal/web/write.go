@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"exocomp.dev/exocomp/internal/secrets"
 )
@@ -102,7 +103,13 @@ func (s *Server) reauth(r *http.Request) error {
 // one-line result. The message is operator-facing status only — never a secret
 // (invariant 4): a value or token is shown once inline, never redirected.
 func redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
-	http.Redirect(w, r, path+"?flash="+url.QueryEscape(msg), http.StatusSeeOther)
+	// A redirect target may already carry a query (e.g. /checks?tab=netgroups);
+	// the flash appends, never overwrites, so it picks the right separator.
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	http.Redirect(w, r, path+sep+"flash="+url.QueryEscape(msg), http.StatusSeeOther)
 }
 
 // writeRegistrars collects each resource lane's route-registration func. A lane

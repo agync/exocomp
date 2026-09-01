@@ -134,7 +134,7 @@ func TestDashboardSummaryCards(t *testing.T) {
 	// Queue: active-only counts, plus the recent-failure subline in the fail
 	// color.
 	for _, want := range []string{
-		`<a class="card cardlink" href="/jobs" aria-labelledby="queue-h">`,
+		`<a class="card cardlink queue" href="/jobs" aria-labelledby="queue-h">`,
 		`<div class="cardnum">1 running · 1 queued</div>`,
 		`<p class="cardsub fail">1 failed recently</p>`,
 	} {
@@ -143,17 +143,20 @@ func TestDashboardSummaryCards(t *testing.T) {
 		}
 	}
 
-	// Workspaces and Sources: nothing registered, so both stay calm and link
-	// through.
+	// Workspaces: nothing registered, so it stays calm and lands in the COUNTS
+	// band as a quiet count naming the verb that changes it. Sources (calm) and
+	// Checks (calm) render nowhere — quiet surfaces stay off the bands (F6).
 	for _, want := range []string{
-		`<a class="card cardlink" href="/workspaces" aria-labelledby="ws-h">`,
-		`<p class="cardsub meta">No workspaces registered.</p>`,
-		`<a class="card cardlink" href="/sources" aria-labelledby="sources-h">`,
-		`<p class="cardsub meta">No sources registered.</p>`,
+		`<div class="count-kicker">Workspaces</div>`,
+		`exocomp ws add`,
+		`<div class="countnum">0</div>`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("dashboard missing calm-state marker %q", want)
+			t.Errorf("dashboard missing calm count marker %q", want)
 		}
+	}
+	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-h"`) {
+		t.Error("a calm sources surface should not render on the glance screen (F6)")
 	}
 
 	// Workflows: nothing in flight — the card is noise when it's usually
@@ -166,8 +169,9 @@ func TestDashboardSummaryCards(t *testing.T) {
 }
 
 // TestDashboardApprovalsCardCalm asserts the pending-approvals card's calm
-// state: with nothing pending, the card carries no attention accent and shows
-// the "None waiting." line, not a bare zero.
+// state: with nothing pending, the approvals card stays off the attention band
+// and shows as a quiet count in the COUNTS band ("None waiting."), never a
+// bare zero with the attention accent.
 func TestDashboardApprovalsCardCalm(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -178,17 +182,23 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	if !strings.Contains(page, `<a class="card cardlink" href="/approvals" aria-labelledby="needsyou-h">`) {
-		t.Error("approvals card should render without the attn accent when nothing is pending")
+	for _, want := range []string{
+		`<div class="count-kicker">Approvals</div>`,
+		`<div class="countnum">0</div>`,
+		`None waiting.`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing approvals count marker %q", want)
+		}
 	}
-	if !strings.Contains(page, `<p class="cardsub meta">None waiting.</p>`) {
-		t.Error(`approvals card should show "None waiting." when nothing is pending`)
+	if strings.Contains(page, `aria-labelledby="needsyou-h"`) {
+		t.Error("a calm approvals card should not render in the attention band (F6)")
 	}
 	if strings.Contains(page, "cardlink attn") {
 		t.Error("no card should carry the attention accent on an otherwise-empty estate")
 	}
-	if !strings.Contains(page, `<p class="cardsub meta">Idle.</p>`) {
-		t.Error(`queue card should show "Idle." when nothing is active`)
+	if !strings.Contains(page, `Idle — nothing queued, nothing running.`) {
+		t.Error(`queue card should show "Idle — nothing queued, nothing running." when nothing is active`)
 	}
 }
 
@@ -245,8 +255,9 @@ func TestDashboardChecksCard(t *testing.T) {
 	}
 }
 
-// TestDashboardChecksCardCalm: with nothing registered the card shows the calm
-// line and no attention accent, and the count is never a bare zero.
+// TestDashboardChecksCardCalm: with nothing registered the checks estate stays
+// off the glance screen entirely — no attention band card, no count — because
+// quiet surfaces render nothing (F6: healthy is quiet).
 func TestDashboardChecksCardCalm(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -257,11 +268,8 @@ func TestDashboardChecksCardCalm(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	if !strings.Contains(page, `<a class="card cardlink" href="/checks" aria-labelledby="checks-h">`) {
-		t.Error("checks card should render without the attn accent when nothing is registered")
-	}
-	if !strings.Contains(page, `<p class="cardsub meta">No checks registered.</p>`) {
-		t.Error(`checks card should show "No checks registered." when nothing is registered`)
+	if strings.Contains(page, `count-kicker">Checks`) || strings.Contains(page, `aria-labelledby="checks-h"`) {
+		t.Error("a calm checks estate should not render on the glance screen (F6)")
 	}
 }
 
@@ -365,8 +373,9 @@ func TestDashboardSchedulesCard(t *testing.T) {
 	}
 }
 
-// TestDashboardSchedulesCardCalm: with nothing registered the card shows the
-// calm line and no attention accent, and the count is never a bare zero.
+// TestDashboardSchedulesCardCalm: with nothing registered the schedules estate
+// stays off the attention band and shows as a quiet count in the COUNTS band,
+// never a bare zero with the accent.
 func TestDashboardSchedulesCardCalm(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -377,10 +386,10 @@ func TestDashboardSchedulesCardCalm(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	if !strings.Contains(page, `<a class="card cardlink" href="/schedules" aria-labelledby="sched-h">`) {
-		t.Error("schedules card should render without the attn accent when nothing is registered")
+	if !strings.Contains(page, `<div class="count-kicker">Schedules</div>`) {
+		t.Error("schedules count should render in the COUNTS band when nothing is registered (F6)")
 	}
-	if !strings.Contains(page, `<p class="cardsub meta">No schedules registered.</p>`) {
-		t.Error(`schedules card should show "No schedules registered." when nothing is registered`)
+	if strings.Contains(page, `aria-labelledby="sched-h"`) {
+		t.Error("a calm schedules card should not render in the attention band (F6)")
 	}
 }

@@ -41,23 +41,26 @@ templ layout(p page) {
 						</button>
 					</div>
 					<nav class="side-nav">
-						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard)
-						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals)
-						@navlink(p.Nav, "checks", "/checks", "Checks", iconChecks)
-						@navlink(p.Nav, "events", "/events", "Events", iconEvents)
-						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs)
-						@navlink(p.Nav, "netgroups", "/netgroups", "Netgroups", iconNetgroups)
-						@navlink(p.Nav, "policies", "/policies", "Policies", iconPolicies)
-						@navlink(p.Nav, "runners", "/runners", "Runners", iconRunners)
-						@navlink(p.Nav, "rules", "/rules", "Rules", iconRules)
-						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules)
-						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets)
-						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources)
-						@navlink(p.Nav, "tokens", "/tokens", "Tokens", iconTokens)
-						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows)
-						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces)
+						<div class="navgroup">Operate</div>
+						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard, "", "")
+						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait")
+						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs, "", "")
+						@navlink(p.Nav, "events", "/events", "Events", iconEvents, "", "")
+						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows, "", "")
+						<div class="navgroup">Automate</div>
+						@navlink(p.Nav, "checks", "/checks", "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail")
+						@navlink(p.Nav, "rules", "/rules", "Rules", iconRules, "", "")
+						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules, "", "")
+						@navlink(p.Nav, "policies", "/policies", "Policies", iconPolicies, "", "")
+						<div class="navgroup">Provision</div>
+						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources, badgeNum(p.Badges.Sources), "wait")
+						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces, "", "")
+						@navlink(p.Nav, "runners", "/runners", "Runners", iconRunners, "", "")
+						<div class="navgroup">Access</div>
+						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets, "", "")
+						@navlink(p.Nav, "tokens", "/tokens", "Tokens", iconTokens, "", "")
 						<div class="navdivider" role="separator" aria-hidden="true"></div>
-						@navlink(p.Nav, "system", "/system", "System", iconSystem)
+						@navlink(p.Nav, "system", "/system", "System", iconSystem, "", "")
 					</nav>
 					<div class="side-foot">
 						@themeToggle()
@@ -72,6 +75,15 @@ templ layout(p page) {
 							@brandMark()
 							<span class="wordmark">exocomp</span>
 						</a>
+					</header>
+					<header class="appbar">
+						<h1 class="appbar-title">{ p.Title }</h1>
+						if p.Who != "" {
+							<span class="appbar-meta">{ p.Who } · { p.Scope }</span>
+						}
+						if p.Add != nil {
+							<span class="appbar-action">@addButton(p.Add.Target, p.Add.Label)</span>
+						}
 					</header>
 					<main>
 						if p.Flash != "" {
@@ -125,19 +137,27 @@ templ brandMark() {
 	</svg>
 }
 
-// navlink renders one sidebar entry: a glyph plus its label. The active entry
-// keeps class before href so the rendered `href="/x" aria-current="page"` stays
-// contiguous (asserted by the render tests).
-templ navlink(active, key, href, label, icon string) {
+// navlink renders one sidebar entry: a glyph plus its label, and — when a count
+// is non-zero — an actionable-state badge (F7) in the matching signal color. The
+// active entry keeps class before href so the rendered
+// `href="/x" aria-current="page"` stays contiguous (asserted by the render
+// tests).
+templ navlink(active, key, href, label, icon, badge, badgeCls string) {
 	if active == key {
 		<a class="navitem active" href={ templ.SafeURL(href) } aria-current="page">
 			@navicon(icon)
 			<span>{ label }</span>
+			if badge != "" {
+				<span class={ "navbadge", badgeCls } aria-label={ badge + " need attention" }>{ badge }</span>
+			}
 		</a>
 	} else {
 		<a class="navitem" href={ templ.SafeURL(href) } aria-label={ label }>
 			@navicon(icon)
 			<span>{ label }</span>
+			if badge != "" {
+				<span class={ "navbadge", badgeCls } aria-label={ badge + " need attention" }>{ badge }</span>
+			}
 		</a>
 	}
 }

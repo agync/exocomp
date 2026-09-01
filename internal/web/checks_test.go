@@ -208,10 +208,15 @@ func flashMessage(t *testing.T, resp *http.Response, wantPath string) string {
 		t.Fatalf("status = %d, want 303", resp.StatusCode)
 	}
 	loc := resp.Header.Get("Location")
-	if !strings.HasPrefix(loc, wantPath+"?flash=") {
-		t.Fatalf("redirect = %q, want %s?flash=…", loc, wantPath)
+	// The flash may sit beside another query param (?tab=netgroups&flash=…), so
+	// accept either separator after the path.
+	if !strings.HasPrefix(loc, wantPath+"?") && !strings.HasPrefix(loc, wantPath+"&") {
+		t.Fatalf("redirect = %q, want %s?…", loc, wantPath)
 	}
-	q, err := url.ParseQuery(strings.TrimPrefix(loc, wantPath+"?"))
+	rest := strings.TrimPrefix(loc, wantPath)
+	rest = strings.TrimPrefix(rest, "?")
+	rest = strings.TrimPrefix(rest, "&")
+	q, err := url.ParseQuery(rest)
 	if err != nil {
 		t.Fatalf("parse redirect query %q: %v", loc, err)
 	}

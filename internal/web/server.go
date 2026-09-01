@@ -296,12 +296,34 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c te
 // the footer signal line.
 func (s *Server) pageFor(r *http.Request, title, nav string) page {
 	p := page{Title: title, Nav: nav, Insecure: s.insecure, Signal: s.signal(r.Context())}
+	p.Badges = s.navBadges(r.Context())
 	p.Flash = r.URL.Query().Get("flash")
 	if id, ok := identityOf(r.Context()); ok {
 		p.Who = id.token.Name
 		p.Scope = id.token.Scope
 	}
 	return p
+}
+
+// navBadges is the nav's actionable state counts (F7): how many probe targets
+// are down (Checks), how many sources are never-synced, and how many approvals
+// are pending. A count is the number of things needing a look, never a pill.
+func (s *Server) navBadges(ctx context.Context) navBadges {
+	var b navBadges
+	if n, err := s.store.CountCheckStatesByStatus(ctx, string(store.CheckDown)); err == nil {
+		b.ChecksDown = n
+	}
+	if srcs, err := s.store.ListSources(ctx); err == nil {
+		for _, src := range srcs {
+			if src.LastSyncSHA == "" {
+				b.Sources++
+			}
+		}
+	}
+	if apps, err := s.store.ListApprovals(ctx, true); err == nil {
+		b.Approvals = len(apps)
+	}
+	return b
 }
 
 // securityHeaders sets the headers the surface should always carry. The CSP is

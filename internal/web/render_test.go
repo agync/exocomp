@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -42,7 +43,7 @@ func TestDashboardA11y(t *testing.T) {
 		`href="/assets/tokens.css?v=`,
 		`href="/assets/app.css?v=`,
 		`aria-current="page"`,
-		`aria-labelledby="sched-h"`,
+		`aria-labelledby="queue-h"`,
 		`<main>`,
 		`lang="en"`,
 		`name="viewport"`,
@@ -382,5 +383,80 @@ func TestApproveBlockMT26Separation(t *testing.T) {
 	}
 	if !strings.Contains(page, `<details class="approve-block mt26">`) {
 		t.Error("approval surface lost the approve-block mt26 class combo")
+	}
+}
+
+// TestAppbarAndNavGroups is the GATE for F15/F7: the shell owns the page title
+// in a slim app bar (with the page's primary verb at the right), the sidebar is
+// grouped by verb, and actionable-state badges show on Checks (fail) and
+// Approvals (wait) — never a pill, always a count.
+func TestAppbarAndNavGroups(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	// A down probe target drives the Checks fail badge; a pending approval the
+	// Approvals wait badge.
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+	c, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := h.store.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckDown,
+		Consecutive: 3, Emitted: store.CheckDown,
+		FirstSeen: now.Add(-time.Hour), LastChange: now.Add(-time.Minute),
+	}); err != nil {
+		t.Fatalf("SetCheckState: %v", err)
+	}
+	_, _ = h.gatedJob(t, time.Minute)
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<h1 class="appbar-title">Dashboard</h1>`,
+		`class="navgroup">Operate</div>`,
+		`class="navgroup">Automate</div>`,
+		`class="navgroup">Provision</div>`,
+		`class="navgroup">Access</div>`,
+		`<span class="navbadge fail" aria-label="1 need attention">1</span>`,
+		`<span class="navbadge wait" aria-label="1 need attention">1</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing %q", want)
+		}
+	}
+	if strings.Contains(page, `href="/netgroups"`) {
+		t.Error("nav still carries a standalone Netgroups item (F7)")
+	}
+
+	// The sources list page's title and Add verb live in the app bar.
+	code, src := getBody(t, client, ts.URL+"/sources")
+	if code != 200 {
+		t.Fatalf("/sources status = %d", code)
+	}
+	for _, want := range []string{
+		`<h1 class="appbar-title">Sources</h1>`,
+		`<span class="appbar-action">`,
+		`>Add source</button>`,
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("/sources missing %q", want)
+		}
+	}
+	if strings.Contains(src, `<h1>Sources</h1>`) {
+		t.Error("page still renders its own display h1 alongside the app bar (F15)")
 	}
 }

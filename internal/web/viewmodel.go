@@ -21,6 +21,29 @@ type page struct {
 	// (write.go). Never a secret value — those render once inline.
 	Flash  string
 	Signal SignalLine
+	// Add is the shell header's one primary verb (F9/F15): a labeled accent
+	// button opening the page's add-modal. Nil renders no verb.
+	Add *pageAdd
+	// Badges carries the nav's actionable state counts (F7): fail on Checks,
+	// wait on Sources/Approvals. A zero count renders no badge.
+	Badges navBadges
+}
+
+// pageAdd is the header's primary verb: the add-modal id and the label that
+// becomes the button's text ("Add source").
+type pageAdd struct {
+	Target string
+	Label  string
+}
+
+// navBadges is the per-nav actionable counts shown beside a nav item: how many
+// probe targets are down (Checks), how many sources are never-synced, and how
+// many approvals are pending. A count is the number of things needing a look,
+// not a pill.
+type navBadges struct {
+	ChecksDown int
+	Sources    int
+	Approvals  int
 }
 
 // SignalLine is the always-on powerline: the dead-man switch, push transport,
@@ -57,6 +80,9 @@ type dashboardVM struct {
 	Checks     checksSummary
 	Workflows  workflowSummary
 	Schedules  scheduleSummary
+	// Rules is the count-band tally: reactive rules are CLI-managed and
+	// read-only on the web, so the card only ever counts them.
+	Rules int
 	// ApprovalFP is the fingerprint of the pending-approvals list as of
 	// render (approvalsFP over the same ListApprovals rows the page shows),
 	// handed to approvalsLive so the stream's ?fp= can prove the connect-time

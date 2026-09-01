@@ -91,24 +91,25 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		// card chrome + a11y
-		`aria-labelledby="sources-h"`,
-		`aria-labelledby="sched-h"`,
+		// the in-flight workflow is an attention card (band one)
 		`aria-labelledby="flows-h"`,
-		`<a class="card cardlink" href="/schedules" aria-labelledby="sched-h">`,
-		// the sources card's count, not a per-row list
-		`<h3 id="sources-h">Sources</h3>`,
-		`<div class="cardnum">1</div>`,
-		`<p class="cardlabel">sources</p>`,
-		// the workflows card's count, not a per-row list
 		`<h3 id="flows-h">Workflows in flight</h3>`,
 		`<p class="cardlabel">in flight</p>`,
-		// the schedules card summarises the seeded row as a count, not a list
-		`1 schedules · 0 disabled`,
+		`<span class="cardact">Open workflows →</span>`,
+		// calm schedules summarise as a count in the COUNTS band
+		`<div class="count-kicker">Schedules</div>`,
+		`<div class="countnum">1</div>`,
+		`exocomp ws add`,
+		`exocomp schedule add`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
 		}
+	}
+	// A synced, enabled source needs no attention and renders nowhere — the
+	// glance keeps quiet surfaces off the bands (F6).
+	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-h"`) {
+		t.Error("a calm source should not render on the glance screen (F6)")
 	}
 	for _, unwanted := range []string{
 		"infra",                       // the source's name — only its count shows now

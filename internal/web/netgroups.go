@@ -28,18 +28,11 @@ type netgroupRow struct {
 // shape the add form accepts back.
 func (r netgroupRow) Join() string { return strings.Join(r.Prefixes, ",") }
 
+// handleNetgroups is the merge redirect (F7): netgroups live as a tab on
+// /checks, so the standalone page points there. The write routes
+// (netgroups_write.go) repoint the same way; the API route stays.
 func (s *Server) handleNetgroups(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.netgroups(r)
-	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	ident, _ := identityOf(r.Context())
-	vm := netgroupsVM{
-		Page: s.pageFor(r, "Netgroups", "netgroups"), Netgroups: rows,
-		Operator: canWrite(ident),
-	}
-	s.render(w, r, http.StatusOK, netgroupsList(vm))
+	http.Redirect(w, r, "/checks?tab=netgroups", http.StatusFound)
 }
 
 // netgroups reads every registered CIDR set into rows.

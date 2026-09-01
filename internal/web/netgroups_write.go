@@ -28,18 +28,18 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 	name := r.PostFormValue("name")
 	prefixes, err := store.ParsePrefixList(r.PostFormValue("prefixes"))
 	if err != nil {
-		redirectFlash(w, r, "/netgroups", err.Error())
+		redirectFlash(w, r, "/checks?tab=netgroups", err.Error())
 		return
 	}
 	created, err := s.store.CreateNetgroup(r.Context(), store.NewNetgroup{
 		Name: name, Prefixes: prefixes,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		redirectFlash(w, r, "/netgroups", "a netgroup named "+name+" already exists")
+		redirectFlash(w, r, "/checks?tab=netgroups", "a netgroup named "+name+" already exists")
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/netgroups", validationFlash(err))
+		redirectFlash(w, r, "/checks?tab=netgroups", validationFlash(err))
 		return
 	}
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: netgroup add", "netgroup", created.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/netgroups", "added "+created.Name)
+	redirectFlash(w, r, "/checks?tab=netgroups", "added "+created.Name)
 }
 
 func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
@@ -69,5 +69,5 @@ func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: netgroup rm", "netgroup", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/netgroups", "removed "+name)
+	redirectFlash(w, r, "/checks?tab=netgroups", "removed "+name)
 }

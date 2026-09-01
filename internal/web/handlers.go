@@ -139,6 +139,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Schedules = summary
 
+	// A count only: reactive rules are CLI-managed and read-only on the web.
+	if rules, err := s.rules(r); err == nil {
+		vm.Rules = len(rules)
+	}
+
 	// A count only: ListIncompleteWorkflows returns bare IDs, so the card
 	// never pays for GetWorkflow's per-step ledger just to size a number.
 	inflight, err := s.store.ListIncompleteWorkflows(r.Context())
@@ -182,6 +187,9 @@ func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 		Page: s.pageFor(r, "Sources", "sources"), Sources: rows,
 		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
 	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "sources-add", Label: "source"}
+	}
 	s.render(w, r, http.StatusOK, sourcesList(vm))
 }
 
@@ -195,6 +203,9 @@ func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
 	vm := schedulesVM{
 		Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows,
 		Operator: canWrite(ident), Prefill: s.schedulePrefillFor(r),
+	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "schedules-add", Label: "schedule"}
 	}
 	s.render(w, r, http.StatusOK, schedulesList(vm))
 }
@@ -246,6 +257,9 @@ func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
 		Page: s.pageFor(r, "Plan policies", "policies"), Policies: rows,
 		Operator: canWrite(ident),
 	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "policies-add", Label: "policy"}
+	}
 	s.render(w, r, http.StatusOK, policiesList(vm))
 }
 
@@ -260,6 +274,9 @@ func (s *Server) handleRunners(w http.ResponseWriter, r *http.Request) {
 		Page: s.pageFor(r, "Runners", "runners"), Runners: rows,
 		Operator: canWrite(ident),
 	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "runners-add", Label: "runner"}
+	}
 	s.render(w, r, http.StatusOK, runnersList(vm))
 }
 
@@ -273,6 +290,9 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 	vm := secretsVM{
 		Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows,
 		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "secrets-add", Label: "secret"}
 	}
 	s.render(w, r, http.StatusOK, secretsList(vm))
 }

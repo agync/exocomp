@@ -10,12 +10,6 @@ package web
 // than stored.
 templ policiesList(vm policiesVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Plan policies</h1>
-			if vm.Operator {
-				@addButton("policies-add", "policy")
-			}
-		</div>
 		if vm.Operator {
 			@modal("policies-add", "Add a policy") {
 				<p class="meta">Mirrors <code>exocomp policy add</code>: the expression is compiled against the sealed plan (one variable, <code>plan</code>) before the policy is stored — one that cannot decide is refused now rather than failing silently at seal time.</p>

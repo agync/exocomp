@@ -10,12 +10,6 @@ package web
 // write controls here are plain operator-scope: no reauth, no confirm_token.
 templ schedulesList(vm schedulesVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Schedules</h1>
-			if vm.Operator {
-				@addButton("schedules-add", "schedule")
-			}
-		</div>
 		if vm.Operator {
 			@modal("schedules-add", "Add a schedule") {
 				<p class="meta">Mirrors <code>exocomp schedule add</code>: kind decides which fields apply. Command is whitespace-split (no quoting) — a command needing quoted arguments still wants the CLI.</p>

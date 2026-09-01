@@ -13,6 +13,15 @@ import (
 func itoa(n int64) string   { return strconv.FormatInt(n, 10) }
 func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 
+// badgeNum renders a nav badge's count text: "" for zero (no badge), else the
+// count. A count is the number of things needing a look (F7).
+func badgeNum(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return strconv.FormatInt(int64(n), 10)
+}
+
 func orDash(s string) string {
 	if s == "" {
 		return "-"

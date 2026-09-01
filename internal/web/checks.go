@@ -18,6 +18,10 @@ type checksVM struct {
 	Page     page
 	Operator bool
 	Checks   []checkRow
+	// Netgroups back the Netgroups tab on /checks (the former /netgroups page,
+	// merged per F7); Tab selects which tab renders ("netgroups" or probes).
+	Netgroups []netgroupRow
+	Tab       string
 }
 
 // checkRow is one probe check on the checks surface, with each target's last
@@ -141,10 +145,26 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	ng, err := s.netgroups(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
 	ident, _ := identityOf(r.Context())
+	tab := r.URL.Query().Get("tab")
+	if tab != "netgroups" {
+		tab = "probes"
+	}
 	vm := checksVM{
 		Page: s.pageFor(r, "Checks", "checks"), Checks: rows,
-		Operator: canWrite(ident),
+		Operator: canWrite(ident), Netgroups: ng, Tab: tab,
+	}
+	if vm.Operator {
+		if tab == "netgroups" {
+			vm.Page.Add = &pageAdd{Target: "netgroups-add", Label: "netgroup"}
+		} else {
+			vm.Page.Add = &pageAdd{Target: "checks-add", Label: "check"}
+		}
 	}
 	s.render(w, r, http.StatusOK, checksList(vm))
 }

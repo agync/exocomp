@@ -24,7 +24,7 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 	now := s.now()
 
 	vm := approvalVM{
-		Page:      s.pageFor(r, "Approve", "approvals"),
+		Page:      s.pageFor(r, "Approvals", "approvals"),
 		ID:        a.ID,
 		JobID:     a.JobID,
 		Workspace: a.Workspace,

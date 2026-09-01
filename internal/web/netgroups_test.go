@@ -44,50 +44,73 @@ func TestNetgroupsSurfaceGated(t *testing.T) {
 		t.Fatalf("/netgroups redirect = %q, want /login…", loc)
 	}
 
-	// Operator: the surface renders with the group and the write controls.
-	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-	code, page := getBody(t, op, ts.URL+"/netgroups")
+	opClient := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// The standalone /netgroups page is a merge redirect (F7): it points at the
+	// Netgroups tab on /checks.
+	noFollow := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	noFollow.Jar = opClient.Jar
+	resp, err = noFollow.Get(ts.URL + "/netgroups")
+	if err != nil {
+		t.Fatalf("GET /netgroups as operator: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("/netgroups as operator = %d, want 302", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/checks?tab=netgroups" {
+		t.Fatalf("/netgroups redirect = %q, want /checks?tab=netgroups", loc)
+	}
+
+	// Operator: the Netgroups tab on /checks renders the group and controls.
+	code, page := getBody(t, opClient, ts.URL+"/checks?tab=netgroups")
 	if code != http.StatusOK {
-		t.Fatalf("/netgroups with session = %d, want 200", code)
+		t.Fatalf("/checks?tab=netgroups with session = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`scope="col"`, "All netgroups", "home", "192.168.0.0/16",
+		`scope="col"`, "home", "192.168.0.0/16",
 		`action="/netgroups/add"`, `/netgroups/home/rm`,
-		`href="/netgroups" aria-current="page"`,
-		"Nothing fires until a rule matches", `href="/rules">/rules</a>`,
+		`href="/checks" aria-current="page"`,
+		`href="/checks?tab=netgroups" role="tab" aria-selected="true"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("/netgroups (operator) missing %q", want)
+			t.Errorf("/checks?tab=netgroups (operator) missing %q", want)
 		}
 	}
 
-	// Readonly: the page renders, without any write control.
-	ro := login(t, ts.URL, h.mint(t, "ro", "readonly"))
-	code, page = getBody(t, ro, ts.URL+"/netgroups")
+	// Readonly: the tab renders, without any write control.
+	ro := h.mint(t, "ro", "readonly")
+	roClient := login(t, ts.URL, ro)
+	code, page = getBody(t, roClient, ts.URL+"/checks?tab=netgroups")
 	if code != http.StatusOK {
-		t.Fatalf("/netgroups readonly = %d, want 200", code)
+		t.Fatalf("/checks?tab=netgroups readonly = %d, want 200", code)
 	}
 	if !strings.Contains(page, "Read-only: managing netgroups needs an operator token.") {
-		t.Error("/netgroups (readonly) missing the read-only note")
+		t.Error("/checks?tab=netgroups (readonly) missing the read-only note")
 	}
 	for _, banned := range []string{`action="/netgroups/add"`, `/rm"`} {
 		if strings.Contains(page, banned) {
-			t.Errorf("/netgroups (readonly) leaked write control %q", banned)
+			t.Errorf("/checks?tab=netgroups (readonly) leaked write control %q", banned)
 		}
 	}
 }
 
-// TestNetgroupsNavElsewhere: the Netgroups nav item appears on other pages
-// too, so it is reachable from anywhere in the surface.
-func TestNetgroupsNavElsewhere(t *testing.T) {
+// TestNetgroupsReachableFromChecks: the Netgroups surface is a tab on /checks
+// (F7), so the checks page carries the tab link and the nav points at /checks.
+func TestNetgroupsReachableFromChecks(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	_, page := getBody(t, client, ts.URL+"/")
-	if !strings.Contains(page, `href="/netgroups"`) || !strings.Contains(page, ">Netgroups</span>") {
-		t.Error("dashboard nav missing the Netgroups link")
+	_, page := getBody(t, client, ts.URL+"/checks")
+	if !strings.Contains(page, `href="/checks?tab=netgroups" role="tab"`) {
+		t.Error("checks page missing the Netgroups tab link (F7)")
+	}
+	if strings.Contains(page, `href="/netgroups"`) {
+		t.Error("nav still carries a standalone Netgroups item (F7)")
 	}
 }
 
@@ -125,7 +148,7 @@ func TestNetgroupAddValidatesPrefixes(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
 		url.Values{"name": {"bad"}, "prefixes": {"not-a-cidr"}}, nil)
-	msg := flashMessage(t, resp, "/netgroups")
+	msg := flashMessage(t, resp, "/checks")
 	_ = resp.Body.Close()
 	if !strings.Contains(msg, "not-a-cidr") {
 		t.Errorf("flash message %q does not name the rejected CIDR", msg)
@@ -152,7 +175,7 @@ func TestNetgroupAddDuplicateFlashes(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
 		url.Values{"name": {"home"}, "prefixes": {"192.168.0.0/16"}}, nil)
-	msg := flashMessage(t, resp, "/netgroups")
+	msg := flashMessage(t, resp, "/checks")
 	_ = resp.Body.Close()
 	if !strings.Contains(msg, "already exists") {
 		t.Errorf("flash message %q does not report the duplicate", msg)
@@ -188,7 +211,7 @@ func TestNetgroupAddBadNameFlashes(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
 		url.Values{"name": {"bad name!"}, "prefixes": {"192.168.0.0/16"}}, nil)
-	msg := flashMessage(t, resp, "/netgroups")
+	msg := flashMessage(t, resp, "/checks")
 	_ = resp.Body.Close()
 	if !strings.Contains(msg, "must match") {
 		t.Errorf("flash message %q does not report the name refusal", msg)

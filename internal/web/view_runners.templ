@@ -23,12 +23,6 @@ templ modeChip(r runnerRow) {
 // deferred container tier and executes nothing today.
 templ runnersList(vm runnersVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Runners</h1>
-			if vm.Operator {
-				@addButton("runners-add", "runner")
-			}
-		</div>
 		if vm.Operator {
 			@modal("runners-add", "Add a runner") {
 				<p class="meta">Mirrors <code>exocomp runner add</code>: a base image plus either a bootstrap script or a Containerfile path — not both. Container tier deferred: this registers a definition, nothing builds or runs it.</p>

@@ -9,13 +9,7 @@ package web
 // operator-scope: no reauth, no confirm_token.
 templ checksList(vm checksVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			<h1>Checks</h1>
-			if vm.Operator {
-				@addButton("checks-add", "check")
-			}
-		</div>
-		if vm.Operator {
+		if vm.Operator && vm.Tab == "probes" {
 			@modal("checks-add", "Add a check") {
 				<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
 				<form method="post" action="/checks/add" class="writeform">
@@ -63,70 +57,78 @@ templ checksList(vm checksVM) {
 			A check watches reachability; nothing fires until a rule matches — rules
 			are written on the CLI and read at <a href="/rules">/rules</a>.
 		</p>
-		if !vm.Operator {
-			<p class="meta">Read-only: managing checks needs an operator token.</p>
-		}
-		if len(vm.Checks) == 0 {
-			<div class="card span2 mt18"><p class="meta">No checks registered — add one.</p></div>
+		<div class="tabs segmented" role="tablist" aria-label="Checks">
+			<a class="tab" href="/checks" role="tab" aria-selected={ boolAttr(vm.Tab != "netgroups") }>Probes</a>
+			<a class="tab" href="/checks?tab=netgroups" role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
+		</div>
+		if vm.Tab == "netgroups" {
+			@netgroupsPanel(vm.Netgroups, vm.Operator)
 		} else {
-			<ul class="checkcards mt18">
-				for _, ck := range vm.Checks {
-					<li class={ "checkcard", templ.KV("disabled", !ck.Enabled) }>
-						<header>
-							<a class="mono" href="/events?source=check">{ ck.Name }</a>
-							<span class="meta mono">{ ck.Kind } · every { ck.Interval }</span>
-							@enabledChip(ck.Enabled, false)
-							if summary := ck.DownSummary(); summary != "" {
-								<span class="meta mono fail-text">{ summary }</span>
-							}
-							if vm.Operator {
-								<span class="spacer"></span>
-								if ck.Enabled {
-									<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/disable") } class="inline-form">
-										<button type="submit" class="btn quiet">Disable</button>
-									</form>
-								} else {
-									<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/enable") } class="inline-form">
-										<button type="submit" class="btn quiet">Enable</button>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing checks needs an operator token.</p>
+			}
+			if len(vm.Checks) == 0 {
+				<div class="card span2 mt18"><p class="meta">No checks registered — add one.</p></div>
+			} else {
+				<ul class="checkcards">
+					for _, ck := range vm.Checks {
+						<li class={ "checkcard", templ.KV("disabled", !ck.Enabled) }>
+							<header>
+								<a class="mono" href="/events?source=check">{ ck.Name }</a>
+								<span class="meta mono">{ ck.Kind } · every { ck.Interval }</span>
+								@enabledChip(ck.Enabled, false)
+								if summary := ck.DownSummary(); summary != "" {
+									<span class="meta mono fail-text">{ summary }</span>
+								}
+								if vm.Operator {
+									<span class="spacer"></span>
+									if ck.Enabled {
+										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/disable") } class="inline-form">
+											<button type="submit" class="btn quiet">Disable</button>
+										</form>
+									} else {
+										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/enable") } class="inline-form">
+											<button type="submit" class="btn quiet">Enable</button>
+										</form>
+									}
+									<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/rm") } class="inline-form" data-confirm={ "Remove check " + ck.Name + "?" }>
+										<input type="hidden" name="confirmed" value="1"/>
+										<button type="submit" class="btn danger">Remove…</button>
 									</form>
 								}
-								<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/rm") } class="inline-form" data-confirm={ "Remove check " + ck.Name + "?" }>
-									<input type="hidden" name="confirmed" value="1"/>
-									<button type="submit" class="btn danger">Remove…</button>
-								</form>
-							}
-						</header>
-						<ul class="targetgrid">
-							for _, t := range ck.Targets {
-								<li class={ "target", templ.KV("down", t.IsDown()) }>
-									<div class="thead">
-										<span class="mono">{ t.Name }</span>
-										<span class="meta mono">{ t.Spec() }{ t.ExpectNote() }</span>
-										if t.Changed != "" {
-											<span class="meta mono tend">{ t.Changed } ago</span>
-										}
-									</div>
-									<div class="tstate">
-										if t.IsUp() || t.IsDown() {
-											@chip(t.StatusClass(), t.StatusLabel())
-											if t.URL == "" {
-												if t.Netgroup == "" || t.Netgroup == "away" {
-													<span class="meta">address not on any netgroup (away)</span>
-												} else {
-													<span class="meta">address is on <b>{ t.Netgroup }</b></span>
-												}
+							</header>
+							<ul class="targetgrid">
+								for _, t := range ck.Targets {
+									<li class={ "target", templ.KV("down", t.IsDown()) }>
+										<div class="thead">
+											<span class="mono">{ t.Name }</span>
+											<span class="meta mono">{ t.Spec() }{ t.ExpectNote() }</span>
+											if t.Changed != "" {
+												<span class="meta mono tend">{ t.Changed } ago</span>
 											}
-										} else {
-											<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>
-											<span class="meta">never seen yet — first result decides</span>
-										}
-									</div>
-								</li>
-							}
-						</ul>
-					</li>
-				}
-			</ul>
+										</div>
+										<div class="tstate">
+											if t.IsUp() || t.IsDown() {
+												@chip(t.StatusClass(), t.StatusLabel())
+												if t.URL == "" {
+													if t.Netgroup == "" || t.Netgroup == "away" {
+														<span class="meta">address not on any netgroup (away)</span>
+													} else {
+														<span class="meta">address is on <b>{ t.Netgroup }</b></span>
+													}
+												}
+											} else {
+												<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>
+												<span class="meta">never seen yet — first result decides</span>
+											}
+										</div>
+									</li>
+								}
+							</ul>
+						</li>
+					}
+				</ul>
+			}
 		}
 	}
 }

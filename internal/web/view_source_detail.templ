@@ -13,9 +13,6 @@ package web
 templ sourceDetail(vm sourceDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: vm.Source.Name})
-		<div class="pageheader">
-			<h1>{ vm.Source.Name }</h1>
-		</div>
 		<div class="card span2 mt18">
 			<div class="detailmeta">
 				<span class="chip"><span class="dot"></span>{ vm.Source.Kind }</span>

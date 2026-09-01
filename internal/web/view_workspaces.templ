@@ -24,7 +24,6 @@ package web
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
 		<div class="pageheader">
-			<h1>Workspaces</h1>
 			if vm.Operator {
 				<button type="button" class="btn ml-auto" data-modal-open="ws-configure">Configure</button>
 			}

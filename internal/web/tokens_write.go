@@ -51,6 +51,9 @@ func (s *Server) handleTokens(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
 	vm := tokensVM{Page: s.pageFor(r, "Tokens", "tokens"), Operator: canWrite(ident)}
 	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "tokens-mint", Label: "token"}
+	}
+	if vm.Operator {
 		rows, err := s.store.ListTokens(r.Context(), false)
 		if err != nil {
 			s.fail(w, r, err)

@@ -5,7 +5,6 @@ package web
 // a job").
 templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
-		<h1>Jobs</h1>
 		<div class="card span2 mt18 tray">
 			<h3>All jobs</h3>
 			if len(vm.Queue) == 0 {
@@ -53,7 +52,6 @@ templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: "/jobs"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
 		<div class="pageheader">
-			<h1>Job #{ itoa64(vm.Job.ID) }</h1>
 			if vm.Operator && vm.Job.State.Terminal() {
 				<div class="actions ml-auto">
 					if vm.Rerunnable {
