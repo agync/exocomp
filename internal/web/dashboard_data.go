@@ -322,6 +322,23 @@ func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
 	return out, nil
 }
 
+// scheduleSummary reduces the schedule list to the dashboard card: the
+// registered total and how many are disabled. A count-only reduction — the
+// /schedules page owns the full list with cron, next/last fire, and outcome.
+func (s *Server) scheduleSummary(r *http.Request) (scheduleSummary, error) {
+	list, err := s.store.ListSchedules(r.Context(), false)
+	if err != nil {
+		return scheduleSummary{}, err
+	}
+	card := scheduleSummary{Total: len(list)}
+	for _, sc := range list {
+		if !sc.Enabled {
+			card.Disabled++
+		}
+	}
+	return card, nil
+}
+
 // workflowRowFrom derives one chain's row from its ordered step ledger: the
 // whole-workflow state (read from the steps, not stored), a done/total tally,
 // and each step's status and job.

@@ -16,9 +16,9 @@ import (
 func TestDashboardA11y(t *testing.T) {
 	h := newHarness(t)
 	// A queued job so the dashboard's queue card shows a nonzero headline, and
-	// a schedule so the Schedules card's table (with its <th scope="col">)
-	// renders — the only table left on the dashboard after the summary-card
-	// redesign.
+	// a schedule so the Schedules card renders its count card (the dashboard
+	// carries no tables at all after the summary-card redesign — each card is
+	// a labeled link with its own aria-labelledby heading).
 	if _, err := h.store.CreateJob(context.Background(), store.NewJob{
 		Runbook: "nightly", Kind: "shell", Trigger: "schedule",
 	}); err != nil {
@@ -41,7 +41,7 @@ func TestDashboardA11y(t *testing.T) {
 		`href="/assets/tokens.css?v=`,
 		`href="/assets/app.css?v=`,
 		`aria-current="page"`,
-		`scope="col"`,
+		`aria-labelledby="sched-h"`,
 		`<main>`,
 		`lang="en"`,
 		`name="viewport"`,
@@ -195,9 +195,8 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		labels []string
 	}{
 		// "/" is excluded here: the dashboard redesign replaced its embedded
-		// tables with summary cards (view_dashboard_test.go covers those). The
-		// Schedules card is the one table left on "/", unchanged by this
-		// redesign.
+		// tables with summary cards (view_dashboard_test.go covers those).
+		// The Schedules card followed in F7, so no table survives on "/".
 		{"/sources", []string{`class="tablewrap stackable"`, `data-label="Source"`, `data-label="URI"`, `data-label="Ref"`, `data-label="Trust"`, `data-label="Last sync"`, `data-label="Enabled"`}},
 		{"/policies", []string{`class="tablewrap stackable"`, `data-label="Policy"`, `data-label="On match"`, `data-label="Expression"`, `data-label="Enabled"`}},
 		{"/events", []string{`class="tablewrap stackable"`, `data-label="Event"`, `data-label="Source"`, `data-label="Outcome"`, `data-label="Received"`}},

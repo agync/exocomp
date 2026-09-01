@@ -67,8 +67,9 @@ func TestDashboardSummaryCards(t *testing.T) {
 	}
 
 	// No table survives on the dashboard: nothing was seeded for the
-	// Schedules card (the one table the redesign left untouched), so its
-	// absence here proves every other card renders as a summary, not a list.
+	// Schedules card (a summary card since the glance redesign, like every
+	// other card), so the absence of any table here proves every card renders
+	// as a summary, not a list.
 	if strings.Contains(page, "<table") {
 		t.Error("dashboard still renders a <table>; summary cards should replace embedded lists")
 	}
@@ -274,5 +275,75 @@ func TestDashboardWorkflowsCardShowsWhenInFlight(t *testing.T) {
 	}
 	if strings.Contains(page, wfID) {
 		t.Error("dashboard should show the workflow count, not its id")
+	}
+}
+
+// TestDashboardSchedulesCard asserts the schedule card: the registered total
+// and the "N schedules · M disabled" tally, with the attention accent exactly
+// when a schedule is disabled — a disabled schedule has silently stopped
+// firing. The full list (cron, next/last fire, outcome) all live on
+// /schedules, not the glance screen.
+func TestDashboardSchedulesCard(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	for _, name := range []string{"nightly-backup", "config-drift"} {
+		if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+			Name: name, CronExpr: "0 3 * * *", Kind: "backup",
+		}); err != nil {
+			t.Fatalf("seed schedule %s: %v", name, err)
+		}
+	}
+	if err := h.store.SetScheduleEnabled(ctx, "config-drift", false); err != nil {
+		t.Fatalf("disable schedule: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<a class="card cardlink attn" href="/schedules" aria-labelledby="sched-h">`,
+		`<div class="cardnum">2</div>`,
+		`<p class="cardlabel">schedules</p>`,
+		`<p class="cardsub warn">2 schedules · 1 disabled</p>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing schedules-card marker %q", want)
+		}
+	}
+	for _, banned := range []string{
+		"nightly-backup",  // the schedule name — only its count shows now
+		"config-drift",    // the disabled schedule's name — only its count shows now
+		"0 3 * * *",       // the cron column is a /schedules concern
+		"All schedules →", // the card is the link; no trailing text link
+	} {
+		if strings.Contains(page, banned) {
+			t.Errorf("dashboard should summarise, not list schedules — found %q", banned)
+		}
+	}
+}
+
+// TestDashboardSchedulesCardCalm: with nothing registered the card shows the
+// calm line and no attention accent, and the count is never a bare zero.
+func TestDashboardSchedulesCardCalm(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, `<a class="card cardlink" href="/schedules" aria-labelledby="sched-h">`) {
+		t.Error("schedules card should render without the attn accent when nothing is registered")
+	}
+	if !strings.Contains(page, `<p class="cardsub meta">No schedules registered.</p>`) {
+		t.Error(`schedules card should show "No schedules registered." when nothing is registered`)
 	}
 }

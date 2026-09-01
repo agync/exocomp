@@ -126,12 +126,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Checks = checks
 
-	schedules, err := s.schedules(r)
+	summary, err := s.scheduleSummary(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	vm.Schedules = schedules
+	vm.Schedules = summary
 
 	// A count only: ListIncompleteWorkflows returns bare IDs, so the card
 	// never pays for GetWorkflow's per-step ledger just to size a number.

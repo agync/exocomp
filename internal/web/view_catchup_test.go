@@ -74,12 +74,11 @@ func seedPostV1(t *testing.T, h *harness) {
 }
 
 // TestDashboardPostV1Sections is the GATE: the dashboard's post-v1 cards
-// (sources, workflows) summarise the seeded objects as counts rather than
-// embedding their rows — the source name, its trust chip, and the workflow's
-// id all stay off the glance screen, reachable only by following the card's
-// link to its full view. The schedules card is unchanged by the summary-card
-// redesign and still lists every row. Control-plane health moved to /system
-// (asserted separately) and no longer renders here.
+// (sources, schedules, workflows) summarise the seeded objects as counts
+// rather than embedding their rows — the source name, its trust chip, the
+// schedule name/cron, and the workflow's id all stay off the glance screen,
+// reachable only by following the card's link to its full view. Control-plane
+// health moved to /system (asserted separately) and no longer renders here.
 func TestDashboardPostV1Sections(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
@@ -96,7 +95,7 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		`aria-labelledby="sources-h"`,
 		`aria-labelledby="sched-h"`,
 		`aria-labelledby="flows-h"`,
-		`scope="col"`, // from the Schedules card's table
+		`<a class="card cardlink" href="/schedules" aria-labelledby="sched-h">`,
 		// the sources card's count, not a per-row list
 		`<h3 id="sources-h">Sources</h3>`,
 		`<div class="cardnum">1</div>`,
@@ -104,8 +103,8 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		// the workflows card's count, not a per-row list
 		`<h3 id="flows-h">Workflows in flight</h3>`,
 		`<p class="cardlabel">in flight</p>`,
-		// the schedules card is untouched: it still lists the seeded row
-		"drift-check",
+		// the schedules card summarises the seeded row as a count, not a list
+		`1 schedules · 0 disabled`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
@@ -114,6 +113,8 @@ func TestDashboardPostV1Sections(t *testing.T) {
 	for _, unwanted := range []string{
 		"infra",                       // the source's name — only its count shows now
 		"SIGNED · SIGNERS",            // the source's per-row trust chip
+		"drift-check",                 // the schedule's name — only its count shows now
+		"*/15 * * * *",                // the schedule's cron — a /schedules concern
 		"provision-web-01",            // the workflow's id — only its count shows now
 		`aria-label="workflow steps"`, // the workflow's per-row step rail
 	} {

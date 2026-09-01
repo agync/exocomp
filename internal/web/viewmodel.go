@@ -37,8 +37,9 @@ type SignalLine struct {
 // NeedsYou and Queue are the full-list fields shared with the dedicated
 // /approvals and /jobs surfaces (handleApprovals, handleJobs) that reuse this
 // struct; the dashboard handler itself never populates them. Approvals,
-// Jobs, Workspaces, Sources and Workflows are the at-a-glance summary cards —
-// counts plus the single attention detail each needs, never a full list.
+// Jobs, Workspaces, Sources, Checks and Schedules are the at-a-glance summary
+// cards — counts plus the single attention detail each needs, never a full
+// list.
 type dashboardVM struct {
 	Page     page
 	Banner   bannerVM
@@ -51,7 +52,7 @@ type dashboardVM struct {
 	Sources    sourceSummary
 	Checks     checksSummary
 	Workflows  workflowSummary
-	Schedules  []scheduleRow // unchanged: the schedules card still lists every row
+	Schedules  scheduleSummary
 }
 
 // approvalSummary is the dashboard's pending-approvals card: the open count
@@ -120,6 +121,14 @@ type checksSummary struct {
 	Total     int
 	TargetsUp int
 	Disabled  int
+}
+
+// scheduleSummary is the dashboard's schedule card: the registered total and
+// how many are disabled. A disabled schedule has silently stopped firing —
+// that is the attention signal the card carries (mirrors sourcesCard).
+type scheduleSummary struct {
+	Total    int
+	Disabled int
 }
 
 // workflowSummary is the dashboard's in-flight-workflows card.
