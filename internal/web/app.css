@@ -74,7 +74,6 @@ a:visited { color: var(--accent-text); }
 .ml-auto { margin-left: auto; }
 .ml6  { margin-left:   6px; }
 .gap6  { gap:   6px; }
-.w8em  { width:   8em; }
 .kill-expiry {
   width:   100%; min-height:  48px;
   background: var(--surface-void); color: var(--ink-100);
