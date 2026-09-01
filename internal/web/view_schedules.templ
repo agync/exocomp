@@ -101,7 +101,7 @@ templ schedulesList(vm schedulesVM) {
 													<button type="submit" class="btn">Enable</button>
 												</form>
 											}
-											<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/rm") } style="display:inline">
+											<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/rm") } style="display:inline" data-confirm={ "Remove schedule " + sc.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Remove</button>
 											</form>

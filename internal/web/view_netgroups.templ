@@ -53,7 +53,7 @@ templ netgroupsList(vm netgroupsVM) {
 									<td class="mono wrap" data-label="CIDRs">{ ng.Join() }</td>
 									if vm.Operator {
 										<td data-label="Actions">
-											<form method="post" action={ templ.SafeURL("/netgroups/" + ng.Name + "/rm") } style="display:inline">
+											<form method="post" action={ templ.SafeURL("/netgroups/" + ng.Name + "/rm") } style="display:inline" data-confirm={ "Remove netgroup " + ng.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Remove</button>
 											</form>

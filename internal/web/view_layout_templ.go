@@ -218,6 +218,10 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		templ_7745c5c3_Err = confirmDialog().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		templ_7745c5c3_Err = powerline(p).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -233,7 +237,7 @@ func layout(p page) templ.Component {
 		var templ_7745c5c3_Var6 string
 		templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/htmx.min.js"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 86, Col: 48}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 87, Col: 48}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 		if templ_7745c5c3_Err != nil {
@@ -302,7 +306,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var8 templ.SafeURL
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(c.Href))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 109, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 110, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -315,7 +319,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var9 string
 				templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 109, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 110, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 				if templ_7745c5c3_Err != nil {
@@ -333,7 +337,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 111, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 112, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -418,7 +422,7 @@ func navlink(active, key, href, label, icon string) templ.Component {
 			var templ_7745c5c3_Var13 templ.SafeURL
 			templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 133, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 134, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 			if templ_7745c5c3_Err != nil {
@@ -439,7 +443,7 @@ func navlink(active, key, href, label, icon string) templ.Component {
 			var templ_7745c5c3_Var14 string
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 135, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 136, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
@@ -457,7 +461,7 @@ func navlink(active, key, href, label, icon string) templ.Component {
 			var templ_7745c5c3_Var15 templ.SafeURL
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 138, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 139, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
@@ -470,7 +474,7 @@ func navlink(active, key, href, label, icon string) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 138, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 139, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -491,7 +495,7 @@ func navlink(active, key, href, label, icon string) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 140, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 141, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -534,7 +538,7 @@ func navicon(d string) templ.Component {
 		var templ_7745c5c3_Var19 string
 		templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(d)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 147, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 148, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
 		if templ_7745c5c3_Err != nil {
@@ -601,7 +605,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var21 string
 		templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.DeadMan)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 178, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 179, Col: 51}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 		if templ_7745c5c3_Err != nil {
@@ -614,7 +618,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var22 string
 		templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.Ntfy)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 179, Col: 44}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 180, Col: 44}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 		if templ_7745c5c3_Err != nil {
@@ -632,7 +636,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.Disk)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 181, Col: 50}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 182, Col: 50}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
@@ -650,7 +654,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var24 string
 			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.Disk)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 183, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 184, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
@@ -669,7 +673,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var25 string
 			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(p.Who)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 186, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 187, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
@@ -682,7 +686,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(p.Scope)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 186, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 187, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -771,6 +775,41 @@ func themeToggle() templ.Component {
 	})
 }
 
+// confirmDialog is the shared destructive-action guard: a native <dialog>
+// opened by layoutReady's form[data-confirm] submit hook with the form's
+// data-confirm message. Confirm re-submits the waiting form; Cancel, the ×, a
+// backdrop click, or Esc drop it. The app's modal idiom applies to destructive
+// actions too — never window.confirm — and the hidden confirmed=1 field the
+// write handlers already require stays the server-side signal.
+func confirmDialog() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var29 == nil {
+			templ_7745c5c3_Var29 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<dialog class=\"modal\" id=\"confirm-dialog\" aria-labelledby=\"confirm-title\"><div class=\"modal-head\"><h2 id=\"confirm-title\">Confirm destructive action</h2><button type=\"button\" class=\"modal-close\" data-modal-dismiss aria-label=\"Close\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3 3l10 10M13 3L3 13\"></path></svg></button></div><div class=\"modal-body\"><p id=\"confirm-msg\"></p><div class=\"actions\"><button type=\"button\" class=\"btn\" data-modal-dismiss>Cancel</button> <button type=\"button\" class=\"btn danger\" id=\"confirm-ok\">Confirm</button></div></div></dialog>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
 // layoutReady runs once the chrome is in the DOM: it syncs the theme-toggle
 // label to the active theme and scrolls the active nav item into view so the
 // current page is visible when the nav has scrolled off-screen on a phone.
@@ -794,12 +833,12 @@ func navInit() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var29 == nil {
-			templ_7745c5c3_Var29 = templ.NopComponent
+		templ_7745c5c3_Var30 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var30 == nil {
+			templ_7745c5c3_Var30 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<script>\n\t(function () {\n\t\ttry { if (localStorage.getItem(\"exocomp-nav\") === \"rail\") document.documentElement.setAttribute(\"data-nav\", \"rail\"); } catch (e) {}\n\t})();\n\tfunction exoToggleRail(ev) {\n\t\tvar r = document.documentElement, rail = r.getAttribute(\"data-nav\") === \"rail\";\n\t\tif (rail) { r.removeAttribute(\"data-nav\"); try { localStorage.removeItem(\"exocomp-nav\"); } catch (e) {} }\n\t\telse {\n\t\t\tr.setAttribute(\"data-nav\", \"rail\"); try { localStorage.setItem(\"exocomp-nav\", \"rail\"); } catch (e) {}\n\t\t\t// A pointer click leaves the button focused, so :focus-within keeps the\n\t\t\t// mark hidden until the next click. Blur on pointer-collapse so the mark\n\t\t\t// shows at once; keyboard activation (detail 0) keeps focus to reveal\n\t\t\t// the reopen control.\n\t\t\tif (ev && ev.detail > 0) { var b = document.getElementById(\"railbtn\"); if (b) b.blur(); }\n\t\t}\n\t\texoSyncRail();\n\t}\n\tfunction exoSyncRail() {\n\t\tvar b = document.getElementById(\"railbtn\");\n\t\tif (!b) return;\n\t\tvar rail = document.documentElement.getAttribute(\"data-nav\") === \"rail\";\n\t\tb.setAttribute(\"aria-label\", rail ? \"Expand sidebar\" : \"Collapse sidebar\");\n\t\tb.setAttribute(\"title\", rail ? \"Open sidebar\" : \"Collapse sidebar\");\n\t}\n\t// The mobile drawer opens over the content; the scrim and any nav link close it.\n\tfunction exoToggleDrawer() {\n\t\tvar r = document.documentElement;\n\t\tif (r.getAttribute(\"data-drawer\") === \"open\") r.removeAttribute(\"data-drawer\");\n\t\telse r.setAttribute(\"data-drawer\", \"open\");\n\t}\n\tfunction exoCloseNav() { document.documentElement.removeAttribute(\"data-drawer\"); }\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<script>\n\t(function () {\n\t\ttry { if (localStorage.getItem(\"exocomp-nav\") === \"rail\") document.documentElement.setAttribute(\"data-nav\", \"rail\"); } catch (e) {}\n\t})();\n\tfunction exoToggleRail(ev) {\n\t\tvar r = document.documentElement, rail = r.getAttribute(\"data-nav\") === \"rail\";\n\t\tif (rail) { r.removeAttribute(\"data-nav\"); try { localStorage.removeItem(\"exocomp-nav\"); } catch (e) {} }\n\t\telse {\n\t\t\tr.setAttribute(\"data-nav\", \"rail\"); try { localStorage.setItem(\"exocomp-nav\", \"rail\"); } catch (e) {}\n\t\t\t// A pointer click leaves the button focused, so :focus-within keeps the\n\t\t\t// mark hidden until the next click. Blur on pointer-collapse so the mark\n\t\t\t// shows at once; keyboard activation (detail 0) keeps focus to reveal\n\t\t\t// the reopen control.\n\t\t\tif (ev && ev.detail > 0) { var b = document.getElementById(\"railbtn\"); if (b) b.blur(); }\n\t\t}\n\t\texoSyncRail();\n\t}\n\tfunction exoSyncRail() {\n\t\tvar b = document.getElementById(\"railbtn\");\n\t\tif (!b) return;\n\t\tvar rail = document.documentElement.getAttribute(\"data-nav\") === \"rail\";\n\t\tb.setAttribute(\"aria-label\", rail ? \"Expand sidebar\" : \"Collapse sidebar\");\n\t\tb.setAttribute(\"title\", rail ? \"Open sidebar\" : \"Collapse sidebar\");\n\t}\n\t// The mobile drawer opens over the content; the scrim and any nav link close it.\n\tfunction exoToggleDrawer() {\n\t\tvar r = document.documentElement;\n\t\tif (r.getAttribute(\"data-drawer\") === \"open\") r.removeAttribute(\"data-drawer\");\n\t\telse r.setAttribute(\"data-drawer\", \"open\");\n\t}\n\tfunction exoCloseNav() { document.documentElement.removeAttribute(\"data-drawer\"); }\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -827,12 +866,12 @@ func selectInit() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var30 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var30 == nil {
-			templ_7745c5c3_Var30 = templ.NopComponent
+		templ_7745c5c3_Var31 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var31 == nil {
+			templ_7745c5c3_Var31 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<script>\n\t// exoEnhanceSelects walks .writeform selects and enhances each once.\n\tfunction exoEnhanceSelects(root) {\n\t\tvar sels = (root || document).querySelectorAll(\".writeform select\");\n\t\tfor (var i = 0; i < sels.length; i++) exoEnhanceSelect(sels[i]);\n\t}\n\tfunction exoEnhanceSelect(sel) {\n\t\tif (sel.dataset.enhanced) return;\n\t\tsel.dataset.enhanced = \"1\";\n\t\tvar base = sel.id || (\"xsel-\" + Math.random().toString(36).slice(2, 8));\n\t\tvar panelId = base + \"-listbox\";\n\t\tvar lbl = sel.id && document.querySelector('label[for=\"' + sel.id + '\"]');\n\t\tvar name = lbl ? lbl.textContent.trim() : \"\";\n\n\t\tvar wrap = document.createElement(\"div\");\n\t\twrap.className = \"xselect\";\n\t\tsel.parentNode.insertBefore(wrap, sel);\n\t\twrap.appendChild(sel);\n\t\tsel.classList.add(\"visually-hidden\");\n\t\tsel.setAttribute(\"tabindex\", \"-1\");\n\t\tsel.setAttribute(\"aria-hidden\", \"true\");\n\n\t\tvar trigger = document.createElement(\"button\");\n\t\ttrigger.type = \"button\";\n\t\ttrigger.className = \"xselect-trigger\";\n\t\ttrigger.setAttribute(\"aria-haspopup\", \"listbox\");\n\t\ttrigger.setAttribute(\"aria-expanded\", \"false\");\n\t\ttrigger.setAttribute(\"aria-controls\", panelId);\n\t\tif (name) trigger.setAttribute(\"aria-label\", name);\n\t\tvar value = document.createElement(\"span\");\n\t\tvalue.className = \"xselect-value\";\n\t\ttrigger.appendChild(value);\n\t\ttrigger.insertAdjacentHTML(\"beforeend\",\n\t\t\t'<svg class=\"xselect-chev\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6l4 4 4-4\"></path></svg>');\n\t\twrap.appendChild(trigger);\n\n\t\tvar panel = document.createElement(\"ul\");\n\t\tpanel.className = \"xselect-panel\";\n\t\tpanel.id = panelId;\n\t\tpanel.setAttribute(\"role\", \"listbox\");\n\t\tpanel.setAttribute(\"tabindex\", \"-1\");\n\t\tif (name) panel.setAttribute(\"aria-label\", name);\n\t\tpanel.hidden = true;\n\t\twrap.appendChild(panel);\n\n\t\tvar options = [];\n\t\tfor (var j = 0; j < sel.options.length; j++) {\n\t\t\tvar li = document.createElement(\"li\");\n\t\t\tli.className = \"xselect-option\";\n\t\t\tli.id = panelId + \"-o\" + j;\n\t\t\tli.setAttribute(\"role\", \"option\");\n\t\t\tli.dataset.index = String(j);\n\t\t\tli.textContent = sel.options[j].textContent;\n\t\t\tli.setAttribute(\"aria-selected\", sel.options[j].selected ? \"true\" : \"false\");\n\t\t\tpanel.appendChild(li);\n\t\t\toptions.push(li);\n\t\t}\n\t\tvar active = sel.selectedIndex < 0 ? 0 : sel.selectedIndex;\n\n\t\tfunction syncValue() {\n\t\t\tvar o = sel.options[sel.selectedIndex];\n\t\t\tvalue.textContent = o ? o.textContent : \"\";\n\t\t}\n\t\tfunction markSelected() {\n\t\t\tfor (var k = 0; k < options.length; k++) {\n\t\t\t\toptions[k].setAttribute(\"aria-selected\", k === sel.selectedIndex ? \"true\" : \"false\");\n\t\t\t}\n\t\t}\n\t\tfunction setActive(idx) {\n\t\t\tactive = Math.max(0, Math.min(options.length - 1, idx));\n\t\t\tfor (var k = 0; k < options.length; k++) options[k].classList.toggle(\"active\", k === active);\n\t\t\tpanel.setAttribute(\"aria-activedescendant\", options[active].id);\n\t\t\toptions[active].scrollIntoView({ block: \"nearest\" });\n\t\t}\n\t\tfunction isOpen() { return !panel.hidden; }\n\t\tfunction open() {\n\t\t\tif (isOpen()) return;\n\t\t\tpanel.hidden = false;\n\t\t\ttrigger.setAttribute(\"aria-expanded\", \"true\");\n\t\t\tsetActive(sel.selectedIndex < 0 ? 0 : sel.selectedIndex);\n\t\t\tpanel.focus();\n\t\t}\n\t\tfunction close(toTrigger) {\n\t\t\tif (!isOpen()) return;\n\t\t\tpanel.hidden = true;\n\t\t\ttrigger.setAttribute(\"aria-expanded\", \"false\");\n\t\t\tif (toTrigger) trigger.focus();\n\t\t}\n\t\tfunction commit(idx) {\n\t\t\tif (sel.selectedIndex !== idx) {\n\t\t\t\tsel.selectedIndex = idx;\n\t\t\t\tsel.dispatchEvent(new Event(\"change\", { bubbles: true }));\n\t\t\t}\n\t\t\tmarkSelected();\n\t\t\tsyncValue();\n\t\t}\n\n\t\ttrigger.addEventListener(\"click\", function () { isOpen() ? close(false) : open(); });\n\t\ttrigger.addEventListener(\"keydown\", function (e) {\n\t\t\tif (e.key === \"ArrowDown\" || e.key === \"ArrowUp\" || e.key === \"Enter\" || e.key === \" \") {\n\t\t\t\te.preventDefault();\n\t\t\t\topen();\n\t\t\t}\n\t\t});\n\t\tpanel.addEventListener(\"keydown\", function (e) {\n\t\t\tswitch (e.key) {\n\t\t\tcase \"ArrowDown\": e.preventDefault(); setActive(active + 1); break;\n\t\t\tcase \"ArrowUp\": e.preventDefault(); setActive(active - 1); break;\n\t\t\tcase \"Home\": e.preventDefault(); setActive(0); break;\n\t\t\tcase \"End\": e.preventDefault(); setActive(options.length - 1); break;\n\t\t\tcase \"Enter\":\n\t\t\tcase \" \": e.preventDefault(); commit(active); close(true); break;\n\t\t\tcase \"Escape\": e.preventDefault(); close(true); break;\n\t\t\tcase \"Tab\": commit(active); close(false); break;\n\t\t\tdefault:\n\t\t\t\tif (e.key.length === 1) {\n\t\t\t\t\tvar ch = e.key.toLowerCase();\n\t\t\t\t\tfor (var k = 1; k <= options.length; k++) {\n\t\t\t\t\t\tvar i2 = (active + k) % options.length;\n\t\t\t\t\t\tif (options[i2].textContent.trim().toLowerCase().indexOf(ch) === 0) { setActive(i2); break; }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t\tpanel.addEventListener(\"click\", function (e) {\n\t\t\tvar li = e.target.closest(\".xselect-option\");\n\t\t\tif (!li) return;\n\t\t\tvar idx = Number(li.dataset.index);\n\t\t\tsetActive(idx);\n\t\t\tcommit(idx);\n\t\t\tclose(true);\n\t\t});\n\t\tpanel.addEventListener(\"mousemove\", function (e) {\n\t\t\tvar li = e.target.closest(\".xselect-option\");\n\t\t\tif (li) setActive(Number(li.dataset.index));\n\t\t});\n\t\tdocument.addEventListener(\"click\", function (e) {\n\t\t\tif (isOpen() && !wrap.contains(e.target)) close(false);\n\t\t});\n\t\t// Keep the trigger correct if the value is changed on the native element.\n\t\tsel.addEventListener(\"change\", function () { markSelected(); syncValue(); });\n\t\tsyncValue();\n\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<script>\n\t// exoEnhanceSelects walks .writeform selects and enhances each once.\n\tfunction exoEnhanceSelects(root) {\n\t\tvar sels = (root || document).querySelectorAll(\".writeform select\");\n\t\tfor (var i = 0; i < sels.length; i++) exoEnhanceSelect(sels[i]);\n\t}\n\tfunction exoEnhanceSelect(sel) {\n\t\tif (sel.dataset.enhanced) return;\n\t\tsel.dataset.enhanced = \"1\";\n\t\tvar base = sel.id || (\"xsel-\" + Math.random().toString(36).slice(2, 8));\n\t\tvar panelId = base + \"-listbox\";\n\t\tvar lbl = sel.id && document.querySelector('label[for=\"' + sel.id + '\"]');\n\t\tvar name = lbl ? lbl.textContent.trim() : \"\";\n\n\t\tvar wrap = document.createElement(\"div\");\n\t\twrap.className = \"xselect\";\n\t\tsel.parentNode.insertBefore(wrap, sel);\n\t\twrap.appendChild(sel);\n\t\tsel.classList.add(\"visually-hidden\");\n\t\tsel.setAttribute(\"tabindex\", \"-1\");\n\t\tsel.setAttribute(\"aria-hidden\", \"true\");\n\n\t\tvar trigger = document.createElement(\"button\");\n\t\ttrigger.type = \"button\";\n\t\ttrigger.className = \"xselect-trigger\";\n\t\ttrigger.setAttribute(\"aria-haspopup\", \"listbox\");\n\t\ttrigger.setAttribute(\"aria-expanded\", \"false\");\n\t\ttrigger.setAttribute(\"aria-controls\", panelId);\n\t\tif (name) trigger.setAttribute(\"aria-label\", name);\n\t\tvar value = document.createElement(\"span\");\n\t\tvalue.className = \"xselect-value\";\n\t\ttrigger.appendChild(value);\n\t\ttrigger.insertAdjacentHTML(\"beforeend\",\n\t\t\t'<svg class=\"xselect-chev\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M4 6l4 4 4-4\"></path></svg>');\n\t\twrap.appendChild(trigger);\n\n\t\tvar panel = document.createElement(\"ul\");\n\t\tpanel.className = \"xselect-panel\";\n\t\tpanel.id = panelId;\n\t\tpanel.setAttribute(\"role\", \"listbox\");\n\t\tpanel.setAttribute(\"tabindex\", \"-1\");\n\t\tif (name) panel.setAttribute(\"aria-label\", name);\n\t\tpanel.hidden = true;\n\t\twrap.appendChild(panel);\n\n\t\tvar options = [];\n\t\tfor (var j = 0; j < sel.options.length; j++) {\n\t\t\tvar li = document.createElement(\"li\");\n\t\t\tli.className = \"xselect-option\";\n\t\t\tli.id = panelId + \"-o\" + j;\n\t\t\tli.setAttribute(\"role\", \"option\");\n\t\t\tli.dataset.index = String(j);\n\t\t\tli.textContent = sel.options[j].textContent;\n\t\t\tli.setAttribute(\"aria-selected\", sel.options[j].selected ? \"true\" : \"false\");\n\t\t\tpanel.appendChild(li);\n\t\t\toptions.push(li);\n\t\t}\n\t\tvar active = sel.selectedIndex < 0 ? 0 : sel.selectedIndex;\n\n\t\tfunction syncValue() {\n\t\t\tvar o = sel.options[sel.selectedIndex];\n\t\t\tvalue.textContent = o ? o.textContent : \"\";\n\t\t}\n\t\tfunction markSelected() {\n\t\t\tfor (var k = 0; k < options.length; k++) {\n\t\t\t\toptions[k].setAttribute(\"aria-selected\", k === sel.selectedIndex ? \"true\" : \"false\");\n\t\t\t}\n\t\t}\n\t\tfunction setActive(idx) {\n\t\t\tactive = Math.max(0, Math.min(options.length - 1, idx));\n\t\t\tfor (var k = 0; k < options.length; k++) options[k].classList.toggle(\"active\", k === active);\n\t\t\tpanel.setAttribute(\"aria-activedescendant\", options[active].id);\n\t\t\toptions[active].scrollIntoView({ block: \"nearest\" });\n\t\t}\n\t\tfunction isOpen() { return !panel.hidden; }\n\t\tfunction open() {\n\t\t\tif (isOpen()) return;\n\t\t\tpanel.hidden = false;\n\t\t\ttrigger.setAttribute(\"aria-expanded\", \"true\");\n\t\t\tsetActive(sel.selectedIndex < 0 ? 0 : sel.selectedIndex);\n\t\t\tpanel.focus();\n\t\t}\n\t\tfunction close(toTrigger) {\n\t\t\tif (!isOpen()) return;\n\t\t\tpanel.hidden = true;\n\t\t\ttrigger.setAttribute(\"aria-expanded\", \"false\");\n\t\t\tif (toTrigger) trigger.focus();\n\t\t}\n\t\tfunction commit(idx) {\n\t\t\tif (sel.selectedIndex !== idx) {\n\t\t\t\tsel.selectedIndex = idx;\n\t\t\t\tsel.dispatchEvent(new Event(\"change\", { bubbles: true }));\n\t\t\t}\n\t\t\tmarkSelected();\n\t\t\tsyncValue();\n\t\t}\n\n\t\ttrigger.addEventListener(\"click\", function () { isOpen() ? close(false) : open(); });\n\t\ttrigger.addEventListener(\"keydown\", function (e) {\n\t\t\tif (e.key === \"ArrowDown\" || e.key === \"ArrowUp\" || e.key === \"Enter\" || e.key === \" \") {\n\t\t\t\te.preventDefault();\n\t\t\t\topen();\n\t\t\t}\n\t\t});\n\t\tpanel.addEventListener(\"keydown\", function (e) {\n\t\t\tswitch (e.key) {\n\t\t\tcase \"ArrowDown\": e.preventDefault(); setActive(active + 1); break;\n\t\t\tcase \"ArrowUp\": e.preventDefault(); setActive(active - 1); break;\n\t\t\tcase \"Home\": e.preventDefault(); setActive(0); break;\n\t\t\tcase \"End\": e.preventDefault(); setActive(options.length - 1); break;\n\t\t\tcase \"Enter\":\n\t\t\tcase \" \": e.preventDefault(); commit(active); close(true); break;\n\t\t\tcase \"Escape\": e.preventDefault(); close(true); break;\n\t\t\tcase \"Tab\": commit(active); close(false); break;\n\t\t\tdefault:\n\t\t\t\tif (e.key.length === 1) {\n\t\t\t\t\tvar ch = e.key.toLowerCase();\n\t\t\t\t\tfor (var k = 1; k <= options.length; k++) {\n\t\t\t\t\t\tvar i2 = (active + k) % options.length;\n\t\t\t\t\t\tif (options[i2].textContent.trim().toLowerCase().indexOf(ch) === 0) { setActive(i2); break; }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t\tpanel.addEventListener(\"click\", function (e) {\n\t\t\tvar li = e.target.closest(\".xselect-option\");\n\t\t\tif (!li) return;\n\t\t\tvar idx = Number(li.dataset.index);\n\t\t\tsetActive(idx);\n\t\t\tcommit(idx);\n\t\t\tclose(true);\n\t\t});\n\t\tpanel.addEventListener(\"mousemove\", function (e) {\n\t\t\tvar li = e.target.closest(\".xselect-option\");\n\t\t\tif (li) setActive(Number(li.dataset.index));\n\t\t});\n\t\tdocument.addEventListener(\"click\", function (e) {\n\t\t\tif (isOpen() && !wrap.contains(e.target)) close(false);\n\t\t});\n\t\t// Keep the trigger correct if the value is changed on the native element.\n\t\tsel.addEventListener(\"change\", function () { markSelected(); syncValue(); });\n\t\tsyncValue();\n\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -856,12 +895,12 @@ func layoutReady() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var31 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var31 == nil {
-			templ_7745c5c3_Var31 = templ.NopComponent
+		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var32 == nil {
+			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Same affordance, but opens a modal instead of navigating — the Schedules\n\t// row's spec detail, with the same exclusion for nested links/buttons\n\t// (Enable/Disable/Remove, the Last outcome link).\n\tdocument.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\texoModalOpen(tr.getAttribute('data-modal-row'));\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar b = e.target.closest('.copybtn');\n\t\tif (!b || !navigator.clipboard) return;\n\t\tvar pre = b.parentNode.querySelector('pre');\n\t\tif (!pre) return;\n\t\tnavigator.clipboard.writeText(pre.textContent).then(function () {\n\t\t\tb.classList.add('copied');\n\t\t\tsetTimeout(function () { b.classList.remove('copied'); }, 1200);\n\t\t});\n\t});\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Same affordance, but opens a modal instead of navigating — the Schedules\n\t// row's spec detail, with the same exclusion for nested links/buttons\n\t// (Enable/Disable/Remove, the Last outcome link).\n\tdocument.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button')) return;\n\t\t\texoModalOpen(tr.getAttribute('data-modal-row'));\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t// Destructive-action guard: any form[data-confirm] submits through the\n\t// shared confirm dialog instead of firing on the first click. Confirm\n\t// re-submits the waiting form via requestSubmit; the hidden confirmed=1\n\t// field stays the server-side signal.\n\tvar confirmForm = null;\n\tdocument.addEventListener('submit', function (e) {\n\t\tvar form = e.target.closest('form[data-confirm]');\n\t\tif (!form || form.dataset.confirmed === '1') return;\n\t\te.preventDefault();\n\t\tconfirmForm = form;\n\t\tvar msg = document.getElementById('confirm-msg');\n\t\tif (msg) msg.textContent = form.getAttribute('data-confirm');\n\t\texoModalOpen('confirm-dialog');\n\t}, true);\n\tvar confirmOk = document.getElementById('confirm-ok');\n\tif (confirmOk) {\n\t\tconfirmOk.addEventListener('click', function () {\n\t\t\tif (!confirmForm) return;\n\t\t\tvar f = confirmForm;\n\t\t\tconfirmForm = null;\n\t\t\texoModalClose('confirm-dialog');\n\t\t\tf.dataset.confirmed = '1';\n\t\t\tf.requestSubmit();\n\t\t});\n\t}\n\t// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar b = e.target.closest('.copybtn');\n\t\tif (!b || !navigator.clipboard) return;\n\t\tvar pre = b.parentNode.querySelector('pre');\n\t\tif (!pre) return;\n\t\tnavigator.clipboard.writeText(pre.textContent).then(function () {\n\t\t\tb.classList.add('copied');\n\t\t\tsetTimeout(function () { b.classList.remove('copied'); }, 1200);\n\t\t});\n\t});\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -888,38 +927,38 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var32 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var32 == nil {
-			templ_7745c5c3_Var32 = templ.NopComponent
+		templ_7745c5c3_Var33 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var33 == nil {
+			templ_7745c5c3_Var33 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign in · exocomp</title><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap\"><style>\n\t\t\t\thtml{background:#0A0C0D}\n\t\t\t\t@media (prefers-color-scheme: light){html:not([data-theme=\"dark\"]){background:#F5F2EC}}\n\t\t\t\thtml[data-theme=\"light\"]{background:#F5F2EC}\n\t\t\t\thtml[data-theme=\"dark\"]{background:#0A0C0D}\n\t\t\t</style><link rel=\"stylesheet\" href=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var33 string
-		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/tokens.css"))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 532, Col: 63}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\"><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign in · exocomp</title><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap\"><style>\n\t\t\t\thtml{background:#0A0C0D}\n\t\t\t\t@media (prefers-color-scheme: light){html:not([data-theme=\"dark\"]){background:#F5F2EC}}\n\t\t\t\thtml[data-theme=\"light\"]{background:#F5F2EC}\n\t\t\t\thtml[data-theme=\"dark\"]{background:#0A0C0D}\n\t\t\t</style><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var34 string
-		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/app.css"))
+		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/tokens.css"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 533, Col: 60}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 584, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\"><link rel=\"stylesheet\" href=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var35 string
+		templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(AssetURL("/assets/app.css"))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 585, Col: 60}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -927,7 +966,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</head><body><div class=\"login\"><div class=\"card\"><div class=\"loginbrand\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</head><body><div class=\"login\"><div class=\"card\"><div class=\"loginbrand\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -935,72 +974,72 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"wordmark\">exocomp</span></div><h2>Sign in</h2><p class=\"meta\">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<span class=\"wordmark\">exocomp</span></div><h2>Sign in</h2><p class=\"meta\">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if errMsg != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<p class=\"error\" role=\"alert\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<p class=\"error\" role=\"alert\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var35 string
-			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
+			var templ_7745c5c3_Var36 string
+			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 546, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 598, Col: 44}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if insecure {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "<p class=\"error\" role=\"alert\">This listener serves cleartext HTTP (--insecure-http). Your token is readable on the wire.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<p class=\"error\" role=\"alert\">This listener serves cleartext HTTP (--insecure-http). Your token is readable on the wire.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "<form method=\"post\" action=\"/login\"><input type=\"hidden\" name=\"next\" value=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var36 string
-		templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(next)
+		var templ_7745c5c3_Var37 string
+		templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(next)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 552, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 604, Col: 51}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\"> <label for=\"token\">Access token</label> <input id=\"token\" name=\"token\" type=\"password\" autocomplete=\"off\" autofocus required aria-describedby=\"fp\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Sign in</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\"> <label for=\"token\">Access token</label> <input id=\"token\" name=\"token\" type=\"password\" autocomplete=\"off\" autofocus required aria-describedby=\"fp\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Sign in</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if fingerprint != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<p id=\"fp\" class=\"fingerprint\" style=\"margin-top:18px\">certificate SHA-256<br>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<p id=\"fp\" class=\"fingerprint\" style=\"margin-top:18px\">certificate SHA-256<br>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var37 string
-			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
+			var templ_7745c5c3_Var38 string
+			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 560, Col: 98}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 612, Col: 98}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "</div></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "</div></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

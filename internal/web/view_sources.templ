@@ -166,7 +166,7 @@ templ sourcesList(vm sourcesVM) {
 													<button type="submit" class="btn">Enable</button>
 												</form>
 											}
-											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } style="display:inline">
+											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } style="display:inline" data-confirm={ "Delete source " + sc.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Delete</button>
 											</form>

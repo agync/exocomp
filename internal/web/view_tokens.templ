@@ -70,7 +70,7 @@ templ tokensPage(vm tokensVM) {
 														<div class="actions"><button type="submit" class="btn primary">Rotate</button></div>
 													</form>
 												}
-												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline">
+												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline" data-confirm={ "Revoke token " + t.Name + "?" }>
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>
 												</form>
