@@ -195,6 +195,9 @@ func TestCheckValidationRefusals(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("err = %v, want it to contain %q", err, tc.wantErr)
 			}
+			if !errors.Is(err, store.ErrValidation) {
+				t.Fatalf("err = %v, want it to carry ErrValidation (operator input, not a store failure)", err)
+			}
 		})
 	}
 }
@@ -344,6 +347,11 @@ func TestCheckPingRefusedWhenBinaryMissing(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "ping binary not on PATH") {
 		t.Fatalf("err = %v, want a ping-not-on-PATH refusal", err)
+	}
+	// A live-loopback probe failure is a real store/infra condition, not an
+	// operator typo: it must NOT carry the ErrValidation sentinel.
+	if errors.Is(err, store.ErrValidation) {
+		t.Fatalf("err = %v must not carry ErrValidation; a missing ping capability is a store error", err)
 	}
 }
 

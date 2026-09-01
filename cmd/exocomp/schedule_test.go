@@ -63,12 +63,19 @@ func TestScheduleAddRejectsAnUnparseableCron(t *testing.T) {
 func TestScheduleAddAcceptsTheScheduler(t *testing.T) {
 	useDataDir(t, t.TempDir())
 
-	for _, expr := range []string{"@every 30s", "@daily", "0 30 3 * * *"} {
-		if _, err := runScheduleCmd(t, "add", "s"+expr[:2], "--kind", "shell",
-			"--cron", expr, "--", "/bin/true"); err != nil {
-			t.Fatalf("schedule add --cron %q: %v", expr, err)
+	// Names must pass ValidName: the store refuses a name no schedule page
+	// could ever address, so the incidental names here stay inside
+	// [A-Za-z0-9_.-] while the cron expressions under test vary.
+	for _, tc := range []struct{ expr, name string }{
+		{"@every 30s", "every-30s"},
+		{"@daily", "daily"},
+		{"0 30 3 * * *", "at-3-30"},
+	} {
+		if _, err := runScheduleCmd(t, "add", tc.name, "--kind", "shell",
+			"--cron", tc.expr, "--", "/bin/true"); err != nil {
+			t.Fatalf("schedule add --cron %q: %v", tc.expr, err)
 		}
-		if _, err := runScheduleCmd(t, "rm", "s"+expr[:2]); err != nil {
+		if _, err := runScheduleCmd(t, "rm", tc.name); err != nil {
 			t.Fatalf("schedule rm: %v", err)
 		}
 	}

@@ -120,50 +120,50 @@ const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created
 // targets are http(s) URLs the probe will dial.
 func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 	if !ValidName(n.Name) {
-		return Check{}, fmt.Errorf("store: check name %q must match [A-Za-z0-9_.-]+", n.Name)
+		return Check{}, fmt.Errorf("%w: store: check name %q must match [A-Za-z0-9_.-]+", ErrValidation, n.Name)
 	}
 	switch n.Kind {
 	case CheckTCP, CheckPing, CheckHTTP:
 	default:
-		return Check{}, fmt.Errorf("store: check kind %q must be %s, %s or %s",
-			n.Kind, CheckTCP, CheckPing, CheckHTTP)
+		return Check{}, fmt.Errorf("%w: store: check kind %q must be %s, %s or %s",
+			ErrValidation, n.Kind, CheckTCP, CheckPing, CheckHTTP)
 	}
 	if n.IntervalS <= 0 {
-		return Check{}, fmt.Errorf("store: check %q interval_s must be positive, got %d", n.Name, n.IntervalS)
+		return Check{}, fmt.Errorf("%w: store: check %q interval_s must be positive, got %d", ErrValidation, n.Name, n.IntervalS)
 	}
 	if len(n.Targets) == 0 {
-		return Check{}, fmt.Errorf("store: check %q needs at least one target", n.Name)
+		return Check{}, fmt.Errorf("%w: store: check %q needs at least one target", ErrValidation, n.Name)
 	}
 
 	seen := make(map[string]bool, len(n.Targets))
 	for i, t := range n.Targets {
 		if !ValidName(t.Name) {
-			return Check{}, fmt.Errorf("store: check %q target %d name %q must match [A-Za-z0-9_.-]+",
-				n.Name, i, t.Name)
+			return Check{}, fmt.Errorf("%w: store: check %q target %d name %q must match [A-Za-z0-9_.-]+",
+				ErrValidation, n.Name, i, t.Name)
 		}
 		if seen[t.Name] {
-			return Check{}, fmt.Errorf("store: check %q has a duplicated target name %q", n.Name, t.Name)
+			return Check{}, fmt.Errorf("%w: store: check %q has a duplicated target name %q", ErrValidation, n.Name, t.Name)
 		}
 		seen[t.Name] = true
 
 		switch n.Kind {
 		case CheckTCP:
 			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("store: check %q target %q address %q is not an IP literal: %w",
-					n.Name, t.Name, t.Address, err)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %v",
+					ErrValidation, n.Name, t.Name, t.Address, err)
 			}
 			if t.Port < 1 || t.Port > 65535 {
-				return Check{}, fmt.Errorf("store: check %q target %q port %d out of range 1..65535",
-					n.Name, t.Name, t.Port)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q port %d out of range 1..65535",
+					ErrValidation, n.Name, t.Name, t.Port)
 			}
 		case CheckPing:
 			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("store: check %q target %q address %q is not an IP literal: %w",
-					n.Name, t.Name, t.Address, err)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %v",
+					ErrValidation, n.Name, t.Name, t.Address, err)
 			}
 			if t.Port != 0 {
-				return Check{}, fmt.Errorf("store: check %q target %q carries a port; ping probes an address",
-					n.Name, t.Name)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q carries a port; ping probes an address",
+					ErrValidation, n.Name, t.Name)
 			}
 			// Rootless fail-closed: a binary on PATH alone does not mean the
 			// host can send ICMP (ping_group_range/setuid), so the kind is
@@ -176,16 +176,16 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 		case CheckHTTP:
 			u, err := url.Parse(t.URL)
 			if err != nil {
-				return Check{}, fmt.Errorf("store: check %q target %q url %q does not parse: %w",
-					n.Name, t.Name, t.URL, err)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q does not parse: %v",
+					ErrValidation, n.Name, t.Name, t.URL, err)
 			}
 			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				return Check{}, fmt.Errorf("store: check %q target %q url %q must be an http(s) URL with a host",
-					n.Name, t.Name, t.URL)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q must be an http(s) URL with a host",
+					ErrValidation, n.Name, t.Name, t.URL)
 			}
 			if t.Expect != 0 && (t.Expect < 100 || t.Expect > 599) {
-				return Check{}, fmt.Errorf("store: check %q target %q expect %d out of range 100..599",
-					n.Name, t.Name, t.Expect)
+				return Check{}, fmt.Errorf("%w: store: check %q target %q expect %d out of range 100..599",
+					ErrValidation, n.Name, t.Name, t.Expect)
 			}
 		}
 	}

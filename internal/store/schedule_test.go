@@ -3,6 +3,7 @@ package store_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -98,6 +99,41 @@ func TestScheduleCRUD(t *testing.T) {
 	}
 
 	_ = backupSched
+}
+
+// TestCreateScheduleRefusesBadName: an empty or charset-breaking name is
+// refused before a row lands — the same ValidName gate a `schedule add`
+// without its own name check now hits via the store — and the refusal carries
+// ErrValidation so the web flashes it instead of a bare 500.
+func TestCreateScheduleRefusesBadName(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	for name, want := range map[string]string{
+		"":          "must match",
+		"bad name!": "must match",
+		"a/b":       "must match",
+	} {
+		if _, err := s.CreateSchedule(ctx, store.NewSchedule{
+			Name: name, CronExpr: "@every 1h", Kind: store.ScheduleShell,
+			Args: store.ScheduleArgs{Argv: []string{"true"}},
+		}); err == nil {
+			t.Fatalf("name %q accepted, want a refusal", name)
+		} else if !errors.Is(err, store.ErrValidation) {
+			t.Fatalf("name %q: err = %v, want it to carry ErrValidation (operator input, not a store failure)", name, err)
+		} else if !strings.Contains(err.Error(), want) {
+			t.Fatalf("name %q: err = %v, want it to contain %q", name, err, want)
+		}
+	}
+
+	rows, err := s.ListSchedules(ctx, false)
+	if err != nil {
+		t.Fatalf("ListSchedules: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("refused schedules were written anyway: %+v", rows)
+	}
 }
 
 func TestListSchedulesEnabledOnly(t *testing.T) {

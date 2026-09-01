@@ -94,6 +94,8 @@ func TestCreateNetgroupRefusesBadInput(t *testing.T) {
 	} {
 		if _, err := s.CreateNetgroup(ctx, n); err == nil {
 			t.Errorf("%s: accepted, want a refusal", name)
+		} else if !errors.Is(err, ErrValidation) {
+			t.Errorf("%s: err = %v, want it to carry ErrValidation (operator input, not a store failure)", name, err)
 		}
 	}
 

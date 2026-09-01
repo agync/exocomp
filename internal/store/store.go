@@ -34,6 +34,10 @@ var (
 	// of the gate: a job queued while its approval is undecided must not run,
 	// however it reached queued.
 	ErrApprovalPending = errors.New("store: approval unsettled")
+	// ErrValidation is returned when operator-input validation refuses a write
+	// (a bad name, kind, or target shape) — a caller typo, not a store
+	// failure, so the web surface flashes it instead of reporting a 500.
+	ErrValidation = errors.New("store: validation")
 )
 
 // Store is the handle on the SQLite database.

@@ -31,14 +31,14 @@ const netgroupColumns = `id, name, prefixes, created_at, updated_at`
 // CreateNetgroup inserts a netgroup. A repeated name returns ErrDuplicate.
 func (s *Store) CreateNetgroup(ctx context.Context, n NewNetgroup) (Netgroup, error) {
 	if !ValidName(n.Name) {
-		return Netgroup{}, fmt.Errorf("store: netgroup name %q must match [A-Za-z0-9_.-]+", n.Name)
+		return Netgroup{}, fmt.Errorf("%w: store: netgroup name %q must match [A-Za-z0-9_.-]+", ErrValidation, n.Name)
 	}
 	if len(n.Prefixes) == 0 {
-		return Netgroup{}, fmt.Errorf("store: netgroup %q needs at least one prefix", n.Name)
+		return Netgroup{}, fmt.Errorf("%w: store: netgroup %q needs at least one prefix", ErrValidation, n.Name)
 	}
 	for i, p := range n.Prefixes {
 		if !p.IsValid() {
-			return Netgroup{}, fmt.Errorf("store: netgroup %q prefix %d is not a valid CIDR", n.Name, i)
+			return Netgroup{}, fmt.Errorf("%w: store: netgroup %q prefix %d is not a valid CIDR", ErrValidation, n.Name, i)
 		}
 	}
 

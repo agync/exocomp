@@ -59,6 +59,9 @@ const scheduleColumns = `id, name, cron_expr, kind, args_json, concurrency_key,
 
 // CreateSchedule inserts an enabled schedule. Names are unique.
 func (s *Store) CreateSchedule(ctx context.Context, n NewSchedule) (Schedule, error) {
+	if !ValidName(n.Name) {
+		return Schedule{}, fmt.Errorf("%w: store: schedule name %q must match [A-Za-z0-9_.-]+", ErrValidation, n.Name)
+	}
 	args, err := json.Marshal(n.Args)
 	if err != nil {
 		return Schedule{}, fmt.Errorf("store: create schedule: encode args: %w", err)
