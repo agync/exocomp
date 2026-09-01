@@ -370,6 +370,87 @@ func TestMigration0031UpgradesFrom030(t *testing.T) {
 	}
 }
 
+// TestMigration0032UpgradesFrom031 pins a database at 0031 and confirms the
+// job_runbook index arrives in place: the runbook lookup the ListPlanArtifacts
+// makes seeks through the index, and the store's plan-artifact CRUD round-trips
+// on the upgraded schema.
+func TestMigration0032UpgradesFrom031(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 32)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var idx int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'job_runbook'`).Scan(&idx); err != nil {
+		t.Fatalf("probe index: %v", err)
+	}
+	if idx != 0 {
+		t.Fatal("job_runbook index already exists at 0031;the pin is not honest")
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0031 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 32 {
+		t.Fatalf("schema version = %d after open, want >= 32 (0032 applied)", version)
+	}
+
+	// Seed enough rows that the planner has a real choice between scan and seek,
+	// then pin that the runbook equality the store's plan lookup makes seeks.
+
+	for i := range 64 {
+		if _, err := s.CreateJob(ctx, NewJob{Runbook: "workspace:ws" + strconv.Itoa(i%4), Kind: "tofu", Trigger: "manual"}); err != nil {
+			t.Fatalf("seed job %d: %v", i, err)
+		}
+	}
+	planJobs := make([]int64, 0, 8)
+	for i := range 8 {
+		job, err := s.CreateJob(ctx, NewJob{Runbook: "workspace:web", Kind: "tofu", Trigger: "manual"})
+		if err != nil {
+			t.Fatalf("seed plan job %d: %v", i, err)
+		}
+		planJobs = append(planJobs, job.ID)
+	}
+	for _, id := range planJobs {
+		if _, err := s.CreateArtifact(ctx, Artifact{JobID: id, Kind: "tofu.plan", Path: "/p", SHA256: "x", Size: 1}); err != nil {
+			t.Fatalf("seed plan artifact %d: %v", id, err)
+		}
+	}
+
+	var plan string
+	if err := s.db.QueryRowContext(ctx,
+		`EXPLAIN QUERY PLAN SELECT id FROM job WHERE runbook = 'workspace:web' LIMIT 1`).Scan(new(string), new(string), new(string), &plan); err != nil {
+		t.Fatalf("explain runbook lookup: %v", err)
+	}
+	if !strings.Contains(plan, "job_runbook") {
+		t.Fatalf("runbook lookup plan = %q, want the job_runbook index", plan)
+	}
+
+	arts, err := s.ListPlanArtifacts(ctx, "workspace:web", "tofu.plan", 3)
+	if err != nil {
+		t.Fatalf("list plan artifacts on upgraded db: %v", err)
+	}
+	if len(arts) != 3 {
+		t.Fatalf("plan artifacts = %d, want 3", len(arts))
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.
