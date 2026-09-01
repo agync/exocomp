@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/tui"
 )
 
@@ -56,7 +57,10 @@ func runTUI(cmd *cobra.Command) (err error) {
 		}
 	}()
 
-	p := tea.NewProgram(tui.New(st),
+	p := tea.NewProgram(tui.New(st, &tui.Write{
+		OpenEnvelope: func() (*secrets.Envelope, error) { return secrets.Open(dir) },
+		DataDir:      dir,
+	}),
 		tea.WithContext(cmd.Context()),
 		tea.WithOutput(cmd.OutOrStdout()),
 		tea.WithInput(cmd.InOrStdin()),

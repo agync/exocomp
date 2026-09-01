@@ -15,6 +15,7 @@ import (
 	wishtea "charm.land/wish/v2/bubbletea"
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/tui"
 )
 
@@ -76,7 +77,10 @@ func runSSHServe(cmd *cobra.Command, listen, authorizedKeys string) error {
 		wish.WithAuthorizedKeys(authorizedKeys),
 		wish.WithMiddleware(
 			wishtea.Middleware(func(_ ssh.Session) (tea.Model, []tea.ProgramOption) {
-				return tui.New(st), nil
+				return tui.New(st, &tui.Write{
+					OpenEnvelope: func() (*secrets.Envelope, error) { return secrets.Open(dir) },
+					DataDir:      dir,
+				}), nil
 			}),
 		),
 	)

@@ -15,7 +15,7 @@ import (
 func TestSignalLineDeadManAge(t *testing.T) {
 	finished := time.Now().Add(-25 * time.Minute)
 
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m.runs = map[int64]store.BackupRun{
 		1: {State: store.BackupSucceeded, FinishedAt: &finished},
 	}
@@ -24,7 +24,7 @@ func TestSignalLineDeadManAge(t *testing.T) {
 		t.Errorf("signalLine = %q, want a fresh dead-man age and loud notify", got)
 	}
 
-	none := New(openTestStore(t))
+	none := New(openTestStore(t), nil)
 	none.runs = map[int64]store.BackupRun{
 		1: {State: store.BackupFailed, FinishedAt: &finished},
 	}

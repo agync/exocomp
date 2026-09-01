@@ -69,3 +69,21 @@ func renderMuteModal(m muteModal) string {
 	}
 	return join(box(1, 56, lines))
 }
+
+// pauseModal is the pause prompt: a minutes input with a default, so a global
+// silence always carries the expiry the store makes mandatory.
+type pauseModal struct {
+	minutes string // "30"
+}
+
+func renderPauseModal(p pauseModal) string {
+	lines := []string{
+		"pause reactive jobs — swallows alerts until the expiry",
+		"",
+		"for how many minutes? (default 30)",
+		"> " + p.minutes + "▍",
+		"",
+		"[enter] pause · [esc] cancel",
+	}
+	return join(box(1, 56, lines))
+}

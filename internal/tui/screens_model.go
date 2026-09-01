@@ -163,36 +163,64 @@ func (m Model) homeModel() HomeModel {
 // approvalsModel renders the pending approval the cursor rests on. The diff
 // body (destroys/changes/creates) comes from the sealed plan artifact, which
 // this screen does not decrypt; it shows the risk-bearing header and the
-// freshness line, and the full diff opens in the pager (the [d] key).
+// freshness line, and the full diff opens in the pager (the [d] key). A plan
+// whose workspace moved after it was made renders as the stale-plan refusal
+// instead: no approve key, only the re-plan-or-reject path.
 func (m Model) approvalsModel() ApprovalModel {
 	now := time.Now()
 	title := fmt.Sprintf("approvals · %d waiting", len(m.approvals))
 	if len(m.approvals) == 0 {
 		return ApprovalModel{title: title, clock: now.Local().Format("15:04 MST")}
 	}
-	a := m.approvals[0]
-	return ApprovalModel{
+	if m.approvalCursor >= len(m.approvals) {
+		m.approvalCursor = 0
+	}
+	a := m.approvals[m.approvalCursor]
+	am := ApprovalModel{
 		title:     title,
 		clock:     now.Local().Format("15:04 MST"),
 		plan:      fmt.Sprintf("PLAN · %s", a.Workspace),
 		right:     "expires " + a.ExpiresAt.Local().Format("15:04") + " → auto-REJECT",
 		freshness: fmt.Sprintf("requested %s ago · plan serial %d", shortDur(now.Sub(a.RequestedAt)), a.PlanSerial),
 	}
+	if move, stale, err := m.store.ApprovalStaleness(context.Background(), a); err == nil && stale {
+		seen := "serial " + itoa64(move.CurrentSerial)
+		if !move.MovedAt.IsZero() {
+			seen = move.MovedAt.Local().Format("15:04")
+		}
+		am.stale = StaleModel{workspace: a.Workspace, driftSeen: seen}
+	}
+	return am
 }
 
-// eventsModel renders the recent events with their outcome and reason.
+// eventsModel renders the recent events with their outcome and reason, under
+// the outcome filter and the [/] search when either is active.
 func (m Model) eventsModel() EventsModel {
 	now := time.Now()
-	counts := map[store.EventOutcome]int{}
+	events := make([]store.Event, 0, len(m.reactiveEvents))
+	filter := strings.ToLower(m.filter)
 	for _, e := range m.reactiveEvents {
+		if m.eventOutcome != "" && e.Outcome != m.eventOutcome {
+			continue
+		}
+		if filter != "" && !strings.Contains(strings.ToLower(e.Source+" "+e.MatchedRule+" "+e.Reason), filter) {
+			continue
+		}
+		events = append(events, e)
+	}
+	if m.eventCursor >= len(events) {
+		m.eventCursor = 0
+	}
+	counts := map[store.EventOutcome]int{}
+	for _, e := range events {
 		counts[e.Outcome]++
 	}
 	summary := fmt.Sprintf("events · %d recent · %d ignored · %d matched · %d suppressed · %d gated · %d fired",
-		len(m.reactiveEvents),
+		len(events),
 		counts[store.OutcomeIgnored], counts[store.OutcomeMatched], counts[store.OutcomeSuppressed],
 		counts[store.OutcomeGated], counts[store.OutcomeFired])
 	em := EventsModel{summary: summary, clock: now.Local().Format("15:04 MST")}
-	for i, e := range m.reactiveEvents {
+	for i, e := range events {
 		name := e.MatchedRule
 		if name == "" {
 			name = e.Source
@@ -203,7 +231,7 @@ func (m Model) eventsModel() EventsModel {
 			source:   truncate(e.Source, 10),
 			outcome:  upperOutcome(e.Outcome),
 			reason:   e.Reason,
-			selected: i == 0,
+			selected: i == m.eventCursor,
 		})
 	}
 	return em

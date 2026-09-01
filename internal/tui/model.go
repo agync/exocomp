@@ -1,9 +1,12 @@
 package tui
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -31,6 +34,30 @@ const (
 	headerLines = 2 // title/tabs line + blank
 	helpLines   = 2 // blank + help line
 )
+
+// Write is the TUI's operator-authority write surface: the envelope opener the
+// approve/reject path derives its capability token from, and the data dir the
+// enqueue-only queue shares with the daemon. nil disables the write keys.
+type Write struct {
+	OpenEnvelope func() (*secrets.Envelope, error)
+	DataDir      string
+}
+
+// modalKind is which input-capturing modal is showing. A modal owns every key
+// until it resolves or is cancelled; nil Write means the write modals never
+// open.
+type modalKind int
+
+const (
+	modalNone    modalKind = iota
+	modalPause             // "pause for how many minutes?"
+	modalMute              // mute modal: expiry presets + a logged reason
+	modalFilter            // filter input for the active table
+	modalDestroy           // typed-confirm before approving a destroy-carrying plan
+)
+
+// mutePresets are the durations the mute modal's expiry chooser cycles.
+var mutePresets = []time.Duration{15 * time.Minute, time.Hour, 4 * time.Hour}
 
 // Model is the top-level Bubble Tea program: the Home glance ([0], the root),
 // the core tables (Jobs, Backups, Workspaces, Schedules; [1]-[4]/tab), the
@@ -106,12 +133,70 @@ type Model struct {
 	tailErr    error
 
 	quitting bool
+
+	// write is the operator-authority write surface. nil disables the write
+	// keys: the TUI degrades to a read-only console.
+	write *Write
+
+	// The input-capturing modals. modal != modalNone owns every key until it
+	// resolves or is cancelled; typed is the text entered so far, and muteOpt
+	// is the expiry preset the mute modal highlights.
+	modal   modalKind
+	typed   string
+	muteOpt int
+
+	// The typed-confirmation on a destroy-carrying plan: which approval waits,
+	// its destroy facts for the renderer, and the workspace name the operator must
+	// type exactly (the typed text lives in the shared modal buffer).
+	confirmApproval  int64
+	confirmDestroys  int
+	confirmResource  string
+	confirmWorkspace string
+
+	// stale is the fail-closed refusal replacing the approval screen when the
+	// workspace moved after the plan was made (approvals.go renderStalePlan).
+	// A non-empty workspace means the approval is stale and has no approve key.
+	stale StaleModel
+
+	// approvalCursor and eventCursor are the rows the two reactive surfaces
+	// rest on (the bubbles tables carry their own cursors).
+	approvalCursor int
+	eventCursor    int
+
+	// diffOpen is the approvals [d] pager: a full-width viewport over the
+	// plan's destroys/changes/creates.
+	diffOpen bool
+	diffView viewport.Model
+
+	// runOpen is the backups screen's last-runs view (enter on a target).
+	runOpen   bool
+	runView   viewport.Model
+	runTarget int64
+	runName   string
+
+	// helpOpen shows the full keymap overlay; any key closes it.
+	helpOpen bool
+
+	// traceOpen shows the events [e] trace overlay for the selected event.
+	traceOpen    bool
+	traceContent string
+
+	// flash is a transient outcome line an operator write leaves. The next key
+	// clears it before anything else, so it never blocks a repeat.
+	flash string
+
+	// filter narrows the active table's rows; eventOutcome narrows the events
+	// surface to one outcome (empty means all).
+	filter       string
+	eventOutcome store.EventOutcome
 }
 
-// New builds the program model over an already-open store.
-func New(st *store.Store) Model {
+// New builds the program model over an already-open store. A nil Write makes
+// the TUI read-only: every write key becomes a no-op.
+func New(st *store.Store, w *Write) Model {
 	m := Model{
 		store:           st,
+		write:           w,
 		active:          screenHome,
 		width:           80,
 		height:          24,
@@ -120,6 +205,8 @@ func New(st *store.Store) Model {
 		workspacesTable: newWorkspacesTable(),
 		schedulesTable:  newSchedulesTable(),
 		tailView:        viewport.New(viewport.WithWidth(80), viewport.WithHeight(16)),
+		diffView:        viewport.New(viewport.WithWidth(120), viewport.WithHeight(20)),
+		runView:         viewport.New(viewport.WithWidth(120), viewport.WithHeight(20)),
 		runs:            map[int64]store.BackupRun{},
 	}
 	m.jobsTable.Focus()
@@ -165,7 +252,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.jobsErr = msg.err
 		if msg.err == nil {
 			m.jobs = msg.jobs
-			m.jobsTable.SetRows(jobRows(msg.jobs))
+			m.jobsTable.SetRows(filterRows(jobRows(msg.jobs), m.filter))
 		}
 		return m, nil
 
@@ -174,7 +261,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.targets = msg.targets
 			m.runs = msg.runs
-			m.backupsTable.SetRows(backupRows(msg.targets, msg.runs))
+			m.backupsTable.SetRows(filterRows(backupRows(msg.targets, msg.runs), m.filter))
 		}
 		return m, nil
 
@@ -183,7 +270,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.workspaces = msg.workspaces
 			m.workspaceStatus = msg.status
-			m.workspacesTable.SetRows(workspaceRows(msg.workspaces, msg.status))
+			m.workspacesTable.SetRows(filterRows(workspaceRows(msg.workspaces, msg.status), m.filter))
 		}
 		return m, nil
 
@@ -192,7 +279,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err == nil {
 			m.schedules = msg.schedules
 			m.scheduleLast = msg.last
-			m.schedulesTable.SetRows(scheduleRows(msg.schedules, msg.last))
+			m.schedulesTable.SetRows(filterRows(scheduleRows(msg.schedules, msg.last), m.filter))
 		}
 		return m, nil
 
@@ -264,6 +351,45 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return m, nil
+
+	case writeDoneMsg:
+		m.modal = modalNone
+		m.flash = msg.text
+		return m, m.reloadScreen(msg.screen)
+
+	case destroyCheckMsg:
+		if msg.err != nil {
+			m.flash = "approve: " + msg.err.Error()
+			return m, nil
+		}
+		if msg.destroys == 0 {
+			return m, m.startApproveDecide(msg.approvalID)
+		}
+		m.confirmApproval = msg.approvalID
+		m.confirmDestroys = msg.destroys
+		m.confirmResource = msg.resource
+		m.confirmWorkspace = m.approval(msg.approvalID).Workspace
+		m.typed = ""
+		m.modal = modalDestroy
+		return m, nil
+
+	case diffLoadedMsg:
+		if msg.err != nil {
+			m.diffOpen = false
+			m.flash = "diff: " + msg.err.Error()
+			return m, nil
+		}
+		m.diffView.SetContent(renderApprovalDiff(msg.model))
+		return m, nil
+
+	case runHistoryLoadedMsg:
+		if msg.err != nil {
+			m.runOpen = false
+			m.flash = "runs: " + msg.err.Error()
+			return m, nil
+		}
+		m.runView.SetContent(renderRunHistory(msg.targetName, msg.runs))
+		return m, nil
 	}
 
 	return m, nil
@@ -308,7 +434,34 @@ func (m Model) refreshCmd() tea.Cmd {
 }
 
 func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
+	// Overlays and modals capture every key until they resolve: help closes on
+	// any key, a flash is cleared by the next key, and an input modal owns the
+	// rest of the buffer.
+	switch {
+	case m.helpOpen:
+		m.helpOpen = false
+		return m, nil
+	case m.traceOpen:
+		m.traceOpen = false
+		return m, nil
+	case m.modal != modalNone:
+		// A modal owns the buffer over a lingering flash, so the key that
+		// dismisses the flash still reaches the modal.
+		return m.handleModalKey(msg)
+	case m.diffOpen:
+		m.diffView, _ = m.diffView.Update(msg)
+		return m, nil
+	case m.runOpen:
+		m.runView, _ = m.runView.Update(msg)
+		return m, nil
+	case m.flash != "":
+		// A flash clears on the next key without eating it: the same keypress
+		// dismisses the outcome line and does its own job.
+		m.flash = ""
+	}
+
+	key := msg.String()
+	switch key {
 	case "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
@@ -393,9 +546,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case "r":
-		// Like [s], a mnemonic global jump: the digits are spent, and it is
-		// inert while a job tail is open.
+	case "u":
+		// The runner registry is read-only; the digits are spent and [r] belongs
+		// to reject on the approvals screen, so it takes a mnemonic key. Inert
+		// while a job tail is open, like the digits.
 		if !m.tailing {
 			m.active = screenRunners
 		}
@@ -403,7 +557,13 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 
 	case "tab":
 		if !m.tailing {
-			m.active = otherScreen(m.active)
+			m.active = nextScreen(m.active)
+		}
+		return m, nil
+
+	case "shift+tab":
+		if !m.tailing {
+			m.active = prevScreen(m.active)
 		}
 		return m, nil
 
@@ -414,6 +574,11 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 			m.tailJobID = 0
 			m.tailEvents = nil
 			m.tailErr = nil
+		case m.diffOpen:
+			m.diffOpen = false
+		case m.runOpen:
+			m.runOpen = false
+			m.runTarget = 0
 		case m.active == screenWorkflows && m.workflowDetail != "":
 			// esc closes the step ledger back to the workflows list.
 			m.workflowDetail = ""
@@ -430,13 +595,112 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		switch m.active {
 		case screenJobs:
 			return m.startTailSelectedJob()
+		case screenBackups:
+			return m.openSelectedBackupRuns()
 		case screenWorkspaces:
 			return m.startTailSelectedWorkspace()
+		case screenHome:
+			return m.openSelectedNeed()
 		case screenWorkflows:
 			if m.workflowDetail == "" && m.workflowsCursor < len(m.workflows) {
 				m.workflowDetail = m.workflows[m.workflowsCursor].id
 			}
 			return m, nil
+		}
+		return m, nil
+
+	case "p":
+		if m.write == nil {
+			return m, nil
+		}
+		if m.paused() {
+			return m, resumeCmd(m.store, m.silences)
+		}
+		m.modal = modalPause
+		m.typed = ""
+		return m, nil
+
+	case "m":
+		if m.write == nil {
+			return m, nil
+		}
+		if m.muted() {
+			return m, unmuteCmd(m.store, m.mutes)
+		}
+		m.modal = modalMute
+		m.typed = ""
+		m.muteOpt = 0
+		return m, nil
+
+	case "/":
+		if m.tailing || !m.filterable() {
+			return m, nil
+		}
+		m.modal = modalFilter
+		m.typed = m.filter
+		return m, nil
+
+	case "?":
+		m.helpOpen = true
+		return m, nil
+
+	case "g":
+		if !m.tailing {
+			m.moveCursorToTop()
+		}
+		return m, nil
+
+	case "G":
+		if !m.tailing {
+			m.moveCursorToBottom()
+		}
+		return m, nil
+
+	case "a":
+		if !m.tailing && m.active == screenApprovals && m.write != nil {
+			return m.startApprove()
+		}
+		return m, nil
+
+	case "r":
+		if !m.tailing && m.active == screenApprovals && m.write != nil {
+			return m.startReject()
+		}
+		return m, nil
+
+	case "d":
+		if !m.tailing && m.active == screenApprovals {
+			return m.openDiff()
+		}
+		return m, nil
+
+	case "c":
+		if !m.tailing && m.active == screenJobs {
+			return m.cancelSelectedJob()
+		}
+		return m, nil
+
+	case "f":
+		if !m.tailing && m.active == screenJobs {
+			return m.startTailSelectedJob()
+		}
+		return m, nil
+
+	case "e":
+		if !m.tailing && m.active == screenEvents {
+			return m.openTrace()
+		}
+		return m, nil
+
+	case "o":
+		if !m.tailing && m.active == screenEvents {
+			m.cycleEventOutcome()
+		}
+		return m, nil
+
+	case "space":
+		if !m.tailing && m.active == screenSchedules && m.write != nil {
+			return m.toggleSelectedSchedule()
 		}
 		return m, nil
 	}
@@ -453,6 +717,10 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		m.workspacesTable.model, cmd = m.workspacesTable.model.Update(msg)
 	case m.active == screenSchedules:
 		m.schedulesTable.model, cmd = m.schedulesTable.model.Update(msg)
+	case m.active == screenApprovals:
+		m.moveApprovalCursor(msg.String())
+	case m.active == screenEvents:
+		m.moveEventCursor(msg.String())
 	case m.active == screenWorkflows && m.workflowDetail == "":
 		m.moveWorkflowsCursor(msg.String())
 	}
@@ -511,18 +779,30 @@ func (m Model) startTail(id int64) (tea.Model, tea.Cmd) {
 	return m, loadEventsCmd(m.store, id)
 }
 
-// otherScreen cycles Jobs -> Backups -> Workspaces -> Schedules -> Jobs.
-func otherScreen(s screen) screen {
-	switch s {
-	case screenJobs:
-		return screenBackups
-	case screenBackups:
-		return screenWorkspaces
-	case screenWorkspaces:
-		return screenSchedules
-	default:
-		return screenJobs
+// nextScreen and prevScreen cycle tab and shift-tab over every screen, Home
+// included. The order is the keymap's screen order; wrap at both ends.
+var screenOrder = []screen{
+	screenHome, screenJobs, screenBackups, screenWorkspaces, screenSchedules,
+	screenApprovals, screenEvents, screenSources, screenPolicies,
+	screenWorkflows, screenSecrets, screenRunners,
+}
+
+func nextScreen(s screen) screen {
+	for i, cur := range screenOrder {
+		if cur == s {
+			return screenOrder[(i+1)%len(screenOrder)]
+		}
 	}
+	return screenHome
+}
+
+func prevScreen(s screen) screen {
+	for i, cur := range screenOrder {
+		if cur == s {
+			return screenOrder[(i+len(screenOrder)-1)%len(screenOrder)]
+		}
+	}
+	return screenHome
 }
 
 func (m *Model) layout() {
@@ -536,4 +816,8 @@ func (m *Model) layout() {
 	m.schedulesTable.SetSize(m.width, bodyHeight)
 	m.tailView.SetWidth(m.width)
 	m.tailView.SetHeight(bodyHeight - 1) // -1 for the tail's own title line
+	m.diffView.SetWidth(m.width)
+	m.diffView.SetHeight(bodyHeight - 1)
+	m.runView.SetWidth(m.width)
+	m.runView.SetHeight(bodyHeight - 1)
 }

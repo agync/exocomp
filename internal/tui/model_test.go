@@ -32,6 +32,8 @@ func key(r rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: r, Text: string(
 
 func specialKey(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
 
+func shiftTabKey() tea.KeyPressMsg { return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift} }
+
 func update(t *testing.T, m Model, msg tea.Msg) Model {
 	t.Helper()
 	next, _ := m.Update(msg)
@@ -43,7 +45,7 @@ func update(t *testing.T, m Model, msg tea.Msg) Model {
 }
 
 func TestScreenSwitching(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	// [0] Home is the new root; [1] selects Jobs.
@@ -79,15 +81,27 @@ func TestScreenSwitching(t *testing.T) {
 		t.Fatalf("did not switch to Schedules, view:\n%s", got)
 	}
 
-	// tab cycles Jobs -> Backups -> Workspaces -> Schedules -> Jobs.
-	m = update(t, m, specialKey(tea.KeyTab))
-	if m.active != screenJobs {
-		t.Fatalf("tab did not wrap back to Jobs, active = %v", m.active)
-	}
-	for _, want := range []screen{screenBackups, screenWorkspaces, screenSchedules, screenJobs} {
+	// tab cycles every screen in order and wraps at both ends.
+	m = update(t, m, key('1'))
+	for _, want := range []screen{
+		screenBackups, screenWorkspaces, screenSchedules, screenApprovals,
+		screenEvents, screenSources, screenPolicies, screenWorkflows,
+		screenSecrets, screenRunners, screenHome, screenJobs,
+	} {
 		m = update(t, m, specialKey(tea.KeyTab))
 		if m.active != want {
 			t.Fatalf("tab did not advance to %v, active = %v", want, m.active)
+		}
+	}
+	// shift-tab walks the same order backwards.
+	for _, want := range []screen{
+		screenHome, screenRunners, screenSecrets, screenWorkflows,
+		screenPolicies, screenSources, screenEvents, screenApprovals,
+		screenSchedules, screenWorkspaces, screenBackups, screenJobs,
+	} {
+		m = update(t, m, shiftTabKey())
+		if m.active != want {
+			t.Fatalf("shift-tab did not step back to %v, active = %v", want, m.active)
 		}
 	}
 
@@ -99,7 +113,7 @@ func TestScreenSwitching(t *testing.T) {
 }
 
 func TestQuitSendsQuitCmd(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	next, cmd := m.Update(key('q'))
 	got := next.(Model)
 	if !got.quitting {
@@ -156,7 +170,7 @@ func TestSelectionMovementAndTailToggling(t *testing.T) {
 		t.Fatalf("append event: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('1')) // Home is the root; move to Jobs to drive its table
 
@@ -234,7 +248,7 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 		t.Fatalf("create disabled backup target: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = update(t, m, key('1')) // leave Home for the Jobs table
 	m = update(t, m, loadJobsCmd(st)())
@@ -258,7 +272,7 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 
 func TestTickReloadsActiveScreen(t *testing.T) {
 	st := openTestStore(t)
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	cmd := m.refreshCmd()
@@ -276,7 +290,7 @@ func TestTickReloadsActiveScreen(t *testing.T) {
 }
 
 func TestNoOpKeysLeaveScreenUnchanged(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('x'))
 	if m.active != screenHome || m.tailing {
@@ -368,7 +382,7 @@ func TestWorkspacesScreenRendersStatusAndDrift(t *testing.T) {
 		t.Fatalf("create workspace: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
 	m = update(t, m, loadWorkspacesCmd(st)())
 	m = update(t, m, key('3'))
@@ -466,7 +480,7 @@ func TestSchedulesScreenRendersEnabledAndDisabled(t *testing.T) {
 		t.Fatalf("disable schedule: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = update(t, m, loadSchedulesCmd(st)())
 	m = update(t, m, key('4'))

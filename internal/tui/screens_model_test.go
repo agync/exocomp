@@ -15,7 +15,7 @@ import (
 // root, q quits only there, esc walks a sub-screen back to Home, and [5]/[6]
 // reach the new screens.
 func TestKeymapRootAndWalkBack(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	m = update(t, m, key('5'))
@@ -40,7 +40,7 @@ func TestKeymapRootAndWalkBack(t *testing.T) {
 		t.Fatal("q at the root did not quit")
 	}
 
-	m2 := update(t, New(openTestStore(t)), tea.WindowSizeMsg{Width: 80, Height: 24})
+	m2 := update(t, New(openTestStore(t), nil), tea.WindowSizeMsg{Width: 80, Height: 24})
 	m2 = update(t, m2, key('6'))
 	if m2.active != screenEvents {
 		t.Fatalf("[6] did not open Events, active = %v", m2.active)
@@ -60,7 +60,7 @@ func TestBannerShowsMutedDistinctFromPaused(t *testing.T) {
 		t.Fatalf("create mute: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, loadGlanceCmd(st)())
 
@@ -99,7 +99,7 @@ func TestHomeSelfObservabilityRendersLive(t *testing.T) {
 		t.Fatalf("create backup target: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, loadGlanceCmd(st)())
 	m = update(t, m, loadBackupsCmd(st)())
@@ -131,7 +131,7 @@ func TestSourcesScreenRendersLive(t *testing.T) {
 		t.Fatalf("create path source: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadSourcesCmd(st)())
 	m = update(t, m, key('7'))
@@ -169,7 +169,7 @@ func TestPoliciesScreenRendersLive(t *testing.T) {
 		t.Fatalf("create gate policy: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadPoliciesCmd(st)())
 	m = update(t, m, key('8'))
@@ -213,7 +213,7 @@ func TestWorkflowsScreenRendersLiveAndDetail(t *testing.T) {
 		t.Fatalf("complete step 1: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadWorkflowsCmd(st)())
 	m = update(t, m, key('9'))
@@ -287,7 +287,7 @@ func TestSecretsScreenRendersLive(t *testing.T) {
 		t.Fatalf("create future secret: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadSecretsCmd(st)())
 	m = update(t, m, key('s'))
@@ -342,12 +342,12 @@ func TestRunnersScreenRendersLive(t *testing.T) {
 		t.Fatalf("create onthefly runner: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadRunnersCmd(st)())
-	m = update(t, m, key('r'))
+	m = update(t, m, key('u'))
 	if m.active != screenRunners {
-		t.Fatalf("[r] did not open Runners, active = %v", m.active)
+		t.Fatalf("[u] did not open Runners, active = %v", m.active)
 	}
 
 	view := m.View().Content
@@ -386,7 +386,7 @@ func TestApprovalsAndEventsRenderLive(t *testing.T) {
 		t.Fatalf("create approval: %v", err)
 	}
 
-	m := New(st)
+	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, loadGlanceCmd(st)())
 
@@ -404,7 +404,7 @@ func TestApprovalsAndEventsRenderLive(t *testing.T) {
 // TestHomeEmptyStateRendersFirstDayBlock proves the first-day Home names the
 // three add commands verbatim when nothing is configured yet (copy.txt:65-66).
 func TestHomeEmptyStateRendersFirstDayBlock(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 
 	view := m.View().Content
@@ -423,7 +423,7 @@ func TestHomeEmptyStateRendersFirstDayBlock(t *testing.T) {
 // TestApprovalsEmptyStateRendersNothingWaiting proves the approvals surface
 // reads "nothing waiting on you" when no approval is pending (copy.txt:73).
 func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('5'))
 
@@ -435,7 +435,7 @@ func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {
 // TestEventsEmptyStateRendersIngestHint proves the events surface points at
 // the ingest command when no event has landed yet (copy.txt:74).
 func TestEventsEmptyStateRendersIngestHint(t *testing.T) {
-	m := New(openTestStore(t))
+	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
 	m = update(t, m, key('6'))
 

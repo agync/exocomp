@@ -19,9 +19,13 @@ type ApprovalModel struct {
 	creates      []approvalItem
 	secrets      []string // "var.db_root_password = [redacted · secret]"
 	freshness    string   // "plan age 2m · workspace unchanged since plan ✓"
+	// stale, when set, replaces the detail with the fail-closed refusal
+	// (renderStalePlan): no approve key exists for a plan whose workspace moved
+	// after it was made.
+	stale StaleModel
 }
 
-const approvalKeys = "[a] approve  [r] reject  [d] full diff · pager  [j/k] move"
+const approvalKeys = "[a] approve  [r] reject  [d] diff  [j/k] move"
 
 // renderApprovalDetail draws the 80×24 approval screen. Destroys lead because
 // they are the irreversible risk; changes and creates follow; secret values

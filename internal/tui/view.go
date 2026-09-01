@@ -16,27 +16,67 @@ func (m Model) View() tea.View {
 	// (their own header, rule, and help bar); the older screens still use the
 	// generic header/body/help chrome. A banner, when a hold is active, rides
 	// above whichever is showing.
-	if !m.tailing {
+	var base string
+	if m.tailing {
+		base = m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp()
+	} else {
 		switch m.active {
 		case screenHome:
-			return tea.NewView(liveFrame(m.withBanner(m.renderHomeScreen())))
+			base = liveFrame(m.withBanner(m.renderHomeScreen()))
 		case screenApprovals:
-			return tea.NewView(liveFrame(m.withBanner(renderApprovalDetail(m.approvalsModel()))))
+			am := m.approvalsModel()
+			if am.stale.workspace != "" {
+				// A stale plan is a refusal: no approve key, the re-plan or
+				// reject path only.
+				base = liveFrame(m.withBanner(renderStalePlan(am.stale)))
+			} else {
+				base = liveFrame(m.withBanner(renderApprovalDetail(am)))
+			}
 		case screenEvents:
-			return tea.NewView(liveFrame(m.withBanner(renderEventsScreen(m.eventsModel()))))
+			base = liveFrame(m.withBanner(renderEventsScreen(m.eventsModel())))
 		case screenSources:
-			return tea.NewView(liveFrame(m.withBanner(m.renderSourcesScreen())))
+			base = liveFrame(m.withBanner(m.renderSourcesScreen()))
 		case screenPolicies:
-			return tea.NewView(liveFrame(m.withBanner(m.renderPoliciesScreen())))
+			base = liveFrame(m.withBanner(m.renderPoliciesScreen()))
 		case screenWorkflows:
-			return tea.NewView(liveFrame(m.withBanner(m.renderWorkflowsScreen())))
+			base = liveFrame(m.withBanner(m.renderWorkflowsScreen()))
 		case screenSecrets:
-			return tea.NewView(liveFrame(m.withBanner(m.renderSecretsScreen())))
+			base = liveFrame(m.withBanner(m.renderSecretsScreen()))
 		case screenRunners:
-			return tea.NewView(liveFrame(m.withBanner(m.renderRunnersScreen())))
+			base = liveFrame(m.withBanner(m.renderRunnersScreen()))
+		default:
+			base = m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp()
 		}
 	}
-	return tea.NewView(m.renderHeader() + "\n\n" + m.renderBody() + "\n\n" + m.renderHelp())
+
+	// Overlays: help and the event trace replace the screen; an input modal or
+	// a flash splices over it so the operator keeps the context behind it.
+	if m.helpOpen {
+		return tea.NewView(renderHelpOverlay())
+	}
+	if m.traceOpen {
+		return tea.NewView(m.withBanner(m.traceContent))
+	}
+	if m.diffOpen {
+		return tea.NewView(m.diffView.View())
+	}
+	if m.runOpen {
+		return tea.NewView(m.runView.View())
+	}
+	switch m.modal {
+	case modalPause:
+		base = spliceOverlay(base, renderPauseModal(m.pauseModalView()), 8)
+	case modalMute:
+		base = spliceOverlay(base, renderMuteModal(m.muteModalView()), 8)
+	case modalFilter:
+		base = spliceOverlay(base, m.filterModalView(), 8)
+	case modalDestroy:
+		base = spliceOverlay(base, m.destroyConfirmView(), 6)
+	}
+	if m.flash != "" {
+		base = spliceOverlay(base, join(box(1, 56, []string{m.flash})), max(0, m.height-4))
+	}
+	return tea.NewView(base)
 }
 
 // renderHomeScreen picks the width-appropriate Home layout.
@@ -192,9 +232,15 @@ func (m Model) renderHelp() string {
 	switch {
 	case m.tailing:
 		return styleHelp.Render("esc back   q quit")
-	case m.active == screenJobs || m.active == screenWorkspaces:
-		return styleHelp.Render("[1]-[4] switch   tab switch   enter tail job   q quit")
+	case m.active == screenJobs:
+		return styleHelp.Render("[enter] tail  [f] follow  [c] cancel  [/] filter  [?] help")
+	case m.active == screenBackups:
+		return styleHelp.Render("[b] run now  [enter] last runs  [j/k] move  [?] help")
+	case m.active == screenWorkspaces:
+		return styleHelp.Render("[enter] detail  [l] plan now  [j/k] move  [?] help")
+	case m.active == screenSchedules:
+		return styleHelp.Render("[space] on/off  [x] run now  [j/k] move  [?] help")
 	default:
-		return styleHelp.Render("[1]-[4] switch   tab switch   q quit")
+		return styleHelp.Render("[?] help")
 	}
 }
