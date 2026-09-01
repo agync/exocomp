@@ -171,8 +171,12 @@ func newJobsListCmd() *cobra.Command {
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 			for _, j := range rows {
+				// The RUNBOOK column prints the raw stored value — the exact
+				// key --runbook matches (rule: prefix included) — so a runbook
+				// read off the list is pasteable straight back into a filter.
+				// The human rule name is the jobs get detail's stripped line.
 				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					j.ID, j.State, dashIfEmpty(web.RunbookLabel(j.Runbook)), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
+					j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
 					dashIfEmpty(j.Trigger), exitCodeLabel(j.ExitCode),
 					j.QueuedAt.UTC().Format("2006-01-02 15:04:05Z"))
 			}

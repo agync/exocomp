@@ -148,8 +148,12 @@ func renderRemoteJobsList(cmd *cobra.Command, mode string, rows []wire.JobView) 
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 	for _, j := range rows {
+		// The RUNBOOK column prints the raw stored value — the exact key
+		// --runbook matches (rule: prefix included), matching the local list —
+		// so a runbook read off a remote list is pasteable back into a filter
+		// on the same box. The human rule name is the get detail's stripped line.
 		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			j.ID, j.State, dashIfEmpty(web.RunbookLabel(j.Runbook)), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
+			j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
 			dashIfEmpty(j.Trigger), exitCodeLabelPtr(j.ExitCode), fmtWireTS(j.QueuedAt))
 	}
 	return w.Flush()

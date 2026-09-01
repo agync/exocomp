@@ -502,10 +502,12 @@ type jobRow struct {
 func (j jobRow) StateClass() string { return stateClass(j.State) }
 
 // RunbookLabel strips the "rule:" prefix a rule-triggered job's runbook
-// carries, so the list and detail read the rule name; the raw runbook stays
-// the run's logic key and the provenance line already names the fired rule. It
-// is the one copy both the web viewmodel and the CLI text surfaces use (cmd
-// calls web.RunbookLabel), so the display cannot drift between them.
+// carries, so the job detail and the web jobs list read the rule name. It is
+// display-only: the raw runbook stays the run's logic key (the approvals list
+// renders it verbatim, and the CLI lists print it raw so a value read there is
+// pasteable into --runbook). It is the one copy the web viewmodel and the CLI
+// jobs get detail use (cmd calls web.RunbookLabel), so the display cannot
+// drift between them.
 func RunbookLabel(runbook string) string {
 	runbook, _ = strings.CutPrefix(runbook, "rule:")
 	return runbook

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -298,6 +299,19 @@ func openStoreAt(dir string) (*store.Store, error) {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 	return store.Open(filepath.Join(dir, "exocomp.db"))
+}
+
+// validationError strips the store's wrapped "store: validation: store: ..."
+// prefix from an operator-input refusal so the CLI prints one actionable
+// sentence instead of the doubled internal namespace, mirroring the web's
+// validationFlash. A non-validation error passes through untouched.
+func validationError(err error) error {
+	if !errors.Is(err, store.ErrValidation) {
+		return err
+	}
+	msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
+	msg = strings.TrimPrefix(msg, "store: validation: ")
+	return errors.New(msg)
 }
 
 // openJobStore opens the store for a command that runs jobs, first reconciling

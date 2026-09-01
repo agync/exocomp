@@ -435,7 +435,9 @@ func TestMigration0032UpgradesFrom031(t *testing.T) {
 
 	var plan string
 	if err := s.db.QueryRowContext(ctx,
-		`EXPLAIN QUERY PLAN SELECT id FROM job WHERE runbook = 'workspace:web' LIMIT 1`).Scan(new(string), new(string), new(string), &plan); err != nil {
+		`EXPLAIN QUERY PLAN
+		 SELECT a.id FROM artifact a JOIN job j ON j.id = a.job_id
+		 WHERE j.runbook = 'workspace:web' AND a.kind = 'tofu.plan' LIMIT 1`).Scan(new(string), new(string), new(string), &plan); err != nil {
 		t.Fatalf("explain runbook lookup: %v", err)
 	}
 	if !strings.Contains(plan, "job_runbook") {

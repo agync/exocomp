@@ -61,7 +61,7 @@ func newNetgroupAddCmd() *cobra.Command {
 				if errors.Is(err, store.ErrDuplicate) {
 					return fmt.Errorf("netgroup add: %q already exists", args[0])
 				}
-				return fmt.Errorf("netgroup add: %w", err)
+				return fmt.Errorf("netgroup add: %w", validationError(err))
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s added: %s\n",
 				created.Name, joinPrefixes(created.Prefixes))

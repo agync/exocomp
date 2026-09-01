@@ -93,7 +93,7 @@ func newCheckAddCmd() *cobra.Command {
 				if errors.Is(err, store.ErrDuplicate) {
 					return fmt.Errorf("check add: %q already exists", name)
 				}
-				return err
+				return validationError(err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s (%s) added: %d target(s) every %s\n",
 				created.Name, created.Kind, len(created.Targets), interval)

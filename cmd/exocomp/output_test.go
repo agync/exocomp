@@ -151,11 +151,12 @@ func TestSecretsListJSONNeverLeaksValue(t *testing.T) {
 	}
 }
 
-// TestJobsRunbookLabelStripsRulePrefix:the web viewmodel strips the "rule:"
-// prefix from a rule-triggered job's runbook for display;the CLI list and get
-// now do the same, while the JSON view (a machine surface) keeps the raw
-// stored value so filters and consumers never match a display..
-func TestJobsRunbookLabelStripsRulePrefix(t *testing.T) {
+// TestJobsListShowsRawRunbook: the CLI list prints the raw stored runbook in
+// the RUNBOOK column — the exact value --runbook matches (rule: prefix
+// included), so a runbook read off the list is pasteable back into a filter —
+// while jobs get keeps both the stripped display name and a raw line, and the
+// JSON view (a machine surface) keeps the raw value.
+func TestJobsListShowsRawRunbook(t *testing.T) {
 	st := seedStore(t)
 	job, err := st.CreateJob(context.Background(), store.NewJob{
 		Runbook: "rule:deploy-app", Kind: "tofu.plan", Trigger: "rule", ConcurrencyKey: "rule:deploy-app",
@@ -168,22 +169,20 @@ func TestJobsRunbookLabelStripsRulePrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(text, "deploy-app") {
-		t.Fatalf("jobs list text missing the stripped runbook name: %q", text)
-	}
-	if strings.Contains(text, "rule:deploy-app") {
-		t.Fatalf("jobs list text leaked the rule: prefix: %q", text)
+	if !strings.Contains(text, "rule:deploy-app") {
+		t.Fatalf("jobs list text missing the raw runbook value: %q", text)
 	}
 
 	get, err := run(t, "jobs", "get", strconv.FormatInt(job.ID, 10))
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The detail view keeps the stripped rule name for humans...
 	if !strings.Contains(get, "deploy-app") {
 		t.Fatalf("jobs get text missing the stripped runbook name: %q", get)
 	}
-	// The raw stored runbook is printed too, so an operator who needs the exact
-	// key --runbook filters on can read it off the detail page.
+	// ...and prints the raw stored runbook too, so an operator who needs the
+	// exact key --runbook filters on can read it off the detail page.
 	if !strings.Contains(get, "runbook (raw)") || !strings.Contains(get, "rule:deploy-app") {
 		t.Fatalf("jobs get text missing the raw runbook line: %q", get)
 	}

@@ -130,40 +130,10 @@ func TestWorkspacesPageListsSeeded(t *testing.T) {
 	}
 }
 
-// TestWorkspacesPageReadonlySkipsPlanQuery: the handler fetches the per-row plan
-// artifact list only for operators; a reader's page renders without ever
-// loading plans, even when artifacts exist — the template already gates the
-// Saved plans modal on Operator, so what is pinned here is that the query is
-// skipped for readers, not merely the modal hidden.
-
-func TestWorkspacesPageReadonlySkipsPlanQuery(t *testing.T) {
-	h := newHarness(t)
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	h.seedWorkspace(t, "web")
-	planID := h.seedPlanArtifact(t, "web").ID
-	ro := h.mint(t, "ro", "readonly")
-	client := login(t, ts.URL, ro)
-
-	resp, err := client.Get(ts.URL + "/workspaces")
-	if err != nil {
-		t.Fatalf("GET /workspaces: %v", err)
-	}
-	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("readonly GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
-	}
-	for _, banned := range []string{"Saved plans", "Apply plan #" + strconv.FormatInt(planID, 10), "ws-plans-web"} {
-		if strings.Contains(body, banned) {
-			t.Fatalf("readonly workspaces page carries a saved plan (%s)", banned)
-		}
-	}
-}
-
 // TestWorkspacesPageReadonlySkipsPlanQueryCounting is the F8 fix's stronger
-// proof: the previous test asserted only the Operator-gated markup, which
-// passes even if the vm.Operator guard on the plan query were removed. The
-// handler now calls the plan list through the Server's injectable
+// proof: the readonly render used to assert only the Operator-gated markup,
+// which passes even if the vm.Operator guard on the plan query were removed.
+// The handler now calls the plan list through the Server's injectable
 // planArtifactsFor field, and this test wraps it in a counter: a readonly
 // render must call it ZERO times, an operator render must call it once per
 // runnable workspace.

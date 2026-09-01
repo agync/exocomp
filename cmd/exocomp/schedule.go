@@ -157,7 +157,7 @@ func newScheduleAddCmd() *cobra.Command {
 				if errors.Is(err, store.ErrDuplicate) {
 					return fmt.Errorf("schedule add: %q already exists", name)
 				}
-				return err
+				return validationError(err)
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "schedule %s (%s) added: %s\n",
 				created.Name, created.Kind, created.CronExpr)

@@ -211,10 +211,11 @@ func TestHostFlagDistinctFromRemote(t *testing.T) {
 	}
 }
 
-// TestRemoteJobsRunbookLabelStripsRulePrefix:the remote list/get renderers
-// strip the "rule:" prefix the same way the local CLI and the web viewmodel do,
-// so an agent reading a remote box sees the same display an operator's browser.
-func TestRemoteJobsRunbookLabelStripsRulePrefix(t *testing.T) {
+// TestRemoteJobsListShowsRawRunbook:the remote list prints the raw stored
+// runbook in the RUNBOOK column — the exact value --runbook matches (rule:
+// prefix included), matching the local list — while the get detail keeps both
+// the stripped display name and a raw line.
+func TestRemoteJobsListShowsRawRunbook(t *testing.T) {
 	var out bytes.Buffer
 	cmd := &cobra.Command{}
 	cmd.SetOut(&out)
@@ -223,11 +224,8 @@ func TestRemoteJobsRunbookLabelStripsRulePrefix(t *testing.T) {
 	if err := renderRemoteJobsList(cmd, outputText, []wire.JobView{job}); err != nil {
 		t.Fatalf("render remote jobs list: %v", err)
 	}
-	if !strings.Contains(out.String(), "deploy-app") {
-		t.Fatalf("remote jobs list missing the stripped runbook name: %q", out.String())
-	}
-	if strings.Contains(out.String(), "rule:deploy-app") {
-		t.Fatalf("remote jobs list leaked the rule: prefix: %q", out.String())
+	if !strings.Contains(out.String(), "rule:deploy-app") {
+		t.Fatalf("remote jobs list missing the raw runbook value: %q", out.String())
 	}
 
 	out.Reset()
