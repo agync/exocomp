@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — inline styles consolidated into classes
+
+- **The web templates carry no inline styles.** The 55 literal `style="..."` attributes
+  (card top margins, inline action forms, the workspaces plan-id width, the phone kill-expiry
+  field) move into named spacing/utility classes in `app.css`, each reproducing its value
+  exactly. The `!important` override that fought the header-adjacent card margin is dropped
+  with the inline margin — both selectors stay as plain `margin-top: 0`.
+
 ## 2026-08-31 — list-surface refinements
 
 - **The list surfaces name their next action.** Every "No X registered." empty state now says what changes it — "add one" where the web has a write surface (checks, netgroups, runners, schedules, sources), the CLI for rules, a workspace for state. The checks and netgroups surfaces gain a one-line hint that nothing fires until a rule matches, linking the read-only /rules page.
