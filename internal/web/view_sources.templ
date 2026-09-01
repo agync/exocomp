@@ -117,7 +117,7 @@ templ sourcesList(vm sourcesVM) {
 				</script>
 			}
 		}
-		<div class="card span2 mt18">
+		<div class="card span2 mt18 tray">
 			if !vm.Operator {
 				<div class="kicker">Read-only · CLI-managed</div>
 			}
@@ -139,14 +139,11 @@ templ sourcesList(vm sourcesVM) {
 								<th scope="col">Trust</th>
 								<th scope="col" class="right">Last sync</th>
 								<th scope="col">Enabled</th>
-								if vm.Operator {
-									<th scope="col">Actions</th>
-								}
 							</tr>
 						</thead>
 						<tbody>
 							for _, sc := range vm.Sources {
-								<tr>
+								<tr data-href={ templ.SafeURL("/sources/" + sc.Name) }>
 									<td data-label="Source"><a href={ templ.SafeURL("/sources/" + sc.Name) }>{ sc.Name }</a></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono wrap" data-label="URI">{ orDash(sc.URI) }</td>
@@ -154,29 +151,12 @@ templ sourcesList(vm sourcesVM) {
 									<td data-label="Trust">@signedChip(sc)</td>
 									<td class="right mono" data-label="Last sync">{ orDash(sc.Short()) }</td>
 									<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
-									if vm.Operator {
-										<td data-label="Actions">
-											<a class="btn primary" href={ templ.SafeURL("/sources/" + sc.Name) }>Open</a>
-											if sc.Enabled {
-												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/disable") } class="inline-form">
-													<button type="submit" class="btn">Disable</button>
-												</form>
-											} else {
-												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/enable") } class="inline-form">
-													<button type="submit" class="btn">Enable</button>
-												</form>
-											}
-											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } class="inline-form" data-confirm={ "Delete source " + sc.Name + "?" }>
-												<input type="hidden" name="confirmed" value="1"/>
-												<button type="submit" class="btn danger">Delete</button>
-											</form>
-										</td>
-									}
 								</tr>
 							}
 						</tbody>
 					</table>
 				</div>
+				<p class="meta mt8">Row opens the source. Disable and delete live on the source page, next to what they affect.</p>
 			}
 		</div>
 	}

@@ -4,7 +4,7 @@ package web
 templ approvalsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<h1>Approvals</h1>
-		<div class="card span2 mt18">
+		<div class="card span2 mt18 tray">
 			<div class="kicker">Waiting on a human</div>
 			<h3>Pending approvals</h3>
 			if len(vm.NeedsYou) == 0 {

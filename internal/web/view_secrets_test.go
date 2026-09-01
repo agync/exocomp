@@ -125,9 +125,11 @@ func TestSecretsSurfaceGated(t *testing.T) {
 		}
 	}
 
-	// Bindings breakdown: bound and unbound.
+	// Bindings breakdown: bound and unbound (unbound carries the safe-to-remove
+	// nudge the render 1e copy adds).
 	for _, want := range []string{
-		"used by", "deploy-app", "$API_TOKEN", "notify", "$NTFY_URL", "unbound",
+		"used by", "deploy-app", "$API_TOKEN", "notify", "$NTFY_URL",
+		"unbound — safe to remove",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/secrets missing binding marker %q", want)

@@ -45,7 +45,7 @@ func eventsList(vm eventsVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Events</h1><div class=\"card span2 mt18\"><div class=\"kicker\">Received alerts</div><h3>All events</h3><form method=\"get\" action=\"/events\" class=\"writeform inline\"><label for=\"ev-source\">Source</label> <select id=\"ev-source\" name=\"source\"><option value=\"\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Events</h1><div class=\"card span2 mt18 tray\"><div class=\"kicker\">Received alerts</div><h3>All events</h3><form method=\"get\" action=\"/events\" class=\"writeform inline\"><label for=\"ev-source\">Source</label> <select id=\"ev-source\" name=\"source\"><option value=\"\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

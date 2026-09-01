@@ -94,6 +94,86 @@ func TestConfirmDialogInLayout(t *testing.T) {
 	}
 }
 
+// TestListSurfacesUseTrayTable is the GATE for F11: the list surfaces render
+// their tables inside the tray surface (padded card, header mono, rows float)
+// instead of the old per-cell hairline grid. The stackable/data-label phone
+// transform and the accessibility of a real table are untouched.
+func TestListSurfacesUseTrayTable(t *testing.T) {
+	h := newHarness(t)
+	seedDestructiveObjects(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// Pages with seeded rows carry the tray card AND the stackable table; the
+	// empty pages (jobs, secrets) still carry the tray card surface.
+	cases := []struct {
+		path, card string
+		stackable  bool
+	}{
+		{"/sources", `class="card span2 mt18 tray"`, true},
+		{"/checks", `class="card span2 mt18 tray"`, true},
+		{"/tokens", `class="card span2 tray"`, true},
+		{"/schedules", `class="card span2 mt18 tray"`, true},
+		{"/jobs", `class="card span2 mt18 tray"`, false},
+		{"/secrets", `class="card span2 mt18 tray"`, false},
+	}
+	for _, c := range cases {
+		code, page := getBody(t, op, ts.URL+c.path)
+		if code != http.StatusOK {
+			t.Fatalf("%s status = %d", c.path, code)
+		}
+		if !strings.Contains(page, c.card) {
+			t.Errorf("%s list lost the tray-table surface (F11)", c.path)
+		}
+		if c.stackable && !strings.Contains(page, `class="tablewrap stackable"`) {
+			t.Errorf("%s lost the stackable phone transform", c.path)
+		}
+	}
+}
+
+// TestSourcesRowsNavigateAndActionsOnDetail is the GATE for F8's sources
+// demotion: a Sources row is itself the link (tr[data-href], the shared
+// row-click substrate), the loud "Open" button is gone, and the destructive
+// controls moved to the source's own page next to what they affect. The
+// list carries only the quiet footnote, never a per-row action column.
+func TestSourcesRowsNavigateAndActionsOnDetail(t *testing.T) {
+	h := newHarness(t)
+	seedDestructiveObjects(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, list := getBody(t, op, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources status = %d", code)
+	}
+	if !strings.Contains(list, `data-href="/sources/infra"`) {
+		t.Error("sources row lost its data-href row navigation (F8)")
+	}
+	if strings.Contains(list, `>Open<`) || strings.Contains(list, `data-label="Actions"`) {
+		t.Error("sources list still carries the per-row Open button or Actions column (F8)")
+	}
+	if strings.Contains(list, "/sources/infra/disable") || strings.Contains(list, "/sources/infra/rm") {
+		t.Error("sources list still renders the per-row disable/delete forms (F8)")
+	}
+
+	code, detail := getBody(t, op, ts.URL+"/sources/infra")
+	if code != http.StatusOK {
+		t.Fatalf("/sources/infra status = %d", code)
+	}
+	for _, want := range []string{
+		`class="btn quiet">Disable`,
+		`action="/sources/infra/disable"`,
+		`data-confirm="Delete source infra?"`,
+		`class="btn danger">Delete…`,
+	} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("source detail missing %q (F8: actions belong on the page)", want)
+		}
+	}
+}
+
 // TestDestructiveFormsCarryDataConfirm is the gate for the destructive-action
 // guard: every Remove/Delete/Revoke form carries data-confirm="<action>?" (the
 // message the shared confirm dialog shows) alongside the hidden confirmed=1
@@ -113,7 +193,7 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 		{"/checks", `data-confirm="Remove check at-home?"`},
 		{"/netgroups", `data-confirm="Remove netgroup home?"`},
 		{"/schedules", `data-confirm="Remove schedule nightly?"`},
-		{"/sources", `data-confirm="Delete source infra?"`},
+		{"/sources/infra", `data-confirm="Delete source infra?"`},
 		{"/policies", `data-confirm="Remove policy no-destroy?"`},
 		{"/tokens", `data-confirm="Revoke token seed-token?"`},
 		{"/runners", `data-confirm="Remove runner fedora-ee?"`},

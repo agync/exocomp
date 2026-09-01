@@ -33,6 +33,23 @@ templ sourceDetail(vm sourceDetailVM) {
 				<div><dt>Ref</dt><dd class="mono">{ orDash(vm.Source.Ref) }</dd></div>
 				<div><dt>Last sync</dt><dd class="mono">{ orDash(vm.Source.Short()) }</dd></div>
 			</dl>
+			if vm.Operator {
+				<div class="rowactions">
+					if vm.Source.Enabled {
+						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/disable") } class="inline-form">
+							<button type="submit" class="btn quiet">Disable</button>
+						</form>
+					} else {
+						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/enable") } class="inline-form">
+							<button type="submit" class="btn quiet">Enable</button>
+						</form>
+					}
+					<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/rm") } class="inline-form" data-confirm={ "Delete source " + vm.Source.Name + "?" }>
+						<input type="hidden" name="confirmed" value="1"/>
+						<button type="submit" class="btn danger">Delete…</button>
+					</form>
+				</div>
+			}
 		</div>
 		if !vm.Operator {
 			<div class="card span2 mt18">

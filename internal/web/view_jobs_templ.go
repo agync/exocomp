@@ -44,7 +44,7 @@ func jobsList(vm dashboardVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Jobs</h1><div class=\"card span2 mt18\"><h3>All jobs</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>Jobs</h1><div class=\"card span2 mt18 tray\"><h3>All jobs</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

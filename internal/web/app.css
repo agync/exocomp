@@ -76,6 +76,10 @@ a:visited { color: var(--accent-text); }
  * single-class .mt26 loses to the later component rule. */
 .approve-block.mt26 { margin-top:  26px; }
 .inline-form { display: inline; }
+/* Detail-page row actions (Enable/Disable/Remove on a resource's own page):
+ * a compact inline row of quiet/danger buttons, unlike the phone `.actions`
+ * stack (full-width, flex:1). */
+.rowactions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
 .ml-auto { margin-left: auto; }
 .ml6  { margin-left:   6px; }
 .gap6  { gap:   6px; }
@@ -327,6 +331,32 @@ td.right, th.right { text-align: right; }
 
 .tablewrap { overflow-x: auto; }
 
+/* ---- Tray-table (F11) ----
+ * A list surface's table floats inside a padded tray instead of a grid of
+ * per-cell hairlines: the card's padding collapses, the header row reads as a
+ * quiet mono label with no rule, and the rows are 44px alternating
+ * none/--surface-tray with hover on --surface-row. Hairlines stay where
+ * tokens.css allows them (the wide-table header rule, inset state rings) —
+ * none are drawn here. Scoped to desktop (>=561px) so the stackable phone
+ * transform and its data-label cards are untouched. */
+@media (min-width: 561px) {
+  .card.tray { padding: 8px; }
+  .card.tray h3 { padding: 4px 12px 8px; }
+  .card.tray table { border-collapse: separate; border-spacing: 0; }
+  .card.tray thead th {
+    border-bottom: 0;
+    font: 600 10.5px var(--font-mono); letter-spacing: .8px;
+    color: var(--ink-600); padding: 8px 16px 4px;
+  }
+  .card.tray tbody td {
+    border-bottom: 0; color: var(--ink-200);
+    padding: 0 16px; height: var(--row-h); vertical-align: middle;
+  }
+  .card.tray tbody tr:nth-child(even) { background: var(--surface-tray); }
+  .card.tray tbody tr:hover { background: var(--surface-row); }
+  .card.tray tbody tr:last-child td { border-bottom: 0; }
+}
+
 /* An unbounded mono value — a 70-char CEL expression, a long git URI or path —
  * wraps inside a capped column instead of forcing the whole wide table to scroll
  * sideways at desktop width. Short mono cells sit under the cap and are unaffected. */
@@ -382,6 +412,19 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 td .btn {
   min-height: 30px; height: 30px; padding: 0 12px;
   border-radius: 9px;
+}
+/* Quiet row action (Disable, Enable): the control fill with label ink, at row
+ * scale. Danger is a ring, not a fill, until the confirm (F8) — a transparent
+ * button with the fail ring and text, and the trailing "…" (it opens the
+ * confirm dialog). */
+td .btn.quiet {
+  background: var(--surface-control); color: var(--ink-400);
+  border: 1px solid var(--hairline);
+}
+td .btn.quiet:hover { color: var(--ink-100); }
+td .btn.danger {
+  background: transparent; color: var(--signal-fail);
+  border: 0; box-shadow: inset 0 0 0 1px var(--fail-border);
 }
 
 /* ---- Write surface: flash, forms, one-time secret ---- */

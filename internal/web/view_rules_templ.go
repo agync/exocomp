@@ -47,7 +47,7 @@ func rulesList(vm rulesVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"pageheader\"><h1>Rules</h1></div><div class=\"card span2 mt18\"><div class=\"kicker\">Event → job</div><h3>All rules</h3><p class=\"meta\">Read-only: rules stay CLI-managed — mutate with <code>exocomp rule add|enable|disable|rm</code>.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"pageheader\"><h1>Rules</h1></div><div class=\"card span2 mt18 tray\"><div class=\"kicker\">Event → job</div><h3>All rules</h3><p class=\"meta\">Read-only: rules stay CLI-managed — mutate with <code>exocomp rule add|enable|disable|rm</code>.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
