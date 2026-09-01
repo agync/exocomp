@@ -96,6 +96,71 @@ func TestJobDetailRuleNoEvent(t *testing.T) {
 	}
 }
 
+// TestJobDetailBreadcrumb: the job detail view carries a breadcrumb trail back to
+// the jobs list, ending in the current job (unlinked, aria-current).
+func TestJobDetailBreadcrumb(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "manual-provision", Kind: "shell", Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/jobs/"+itoa(job.ID))
+	if code != 200 {
+		t.Fatalf("job detail status = %d", code)
+	}
+	for _, want := range []string{
+		`class="breadcrumb"`,
+		`href="/jobs">Jobs</a>`,
+		`aria-current="page">#` + itoa(job.ID) + `</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("job detail missing breadcrumb %q", want)
+		}
+	}
+}
+
+// TestWorkflowDetailBreadcrumb: the workflow ledger view carries a breadcrumb
+// back to the workflows list.
+func TestWorkflowDetailBreadcrumb(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	if err := h.store.CreateWorkflow(ctx, "provision-web-01", []store.NewWorkflowStep{
+		{StepNo: 1, Kind: "tofu-apply", IdempotencyKey: "k1"},
+		{StepNo: 2, Kind: "ansible-converge", IdempotencyKey: "k2"},
+	}); err != nil {
+		t.Fatalf("CreateWorkflow: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/workflows/provision-web-01")
+	if code != 200 {
+		t.Fatalf("workflow detail status = %d", code)
+	}
+	for _, want := range []string{
+		`class="breadcrumb"`,
+		`href="/workflows">Workflows</a>`,
+		`aria-current="page">Workflow</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("workflow detail missing breadcrumb %q", want)
+		}
+	}
+}
+
 // TestJobDetailNoRule: a job whose runbook has no rule prefix shows no
 // provenance line at all.
 func TestJobDetailNoRule(t *testing.T) {

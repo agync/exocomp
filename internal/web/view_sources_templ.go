@@ -165,7 +165,7 @@ func sourcesList(vm sourcesVM) templ.Component {
 				}
 			}
 			if len(vm.Sources) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<p class=\"meta\">No sources registered.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<p class=\"meta\">No sources registered — add one.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

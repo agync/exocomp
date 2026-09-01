@@ -92,7 +92,7 @@ func workspacesList(vm workspacesVM) templ.Component {
 				}
 			}
 			if len(vm.Workspaces) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"meta\">No state registered.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"meta\">No state registered — add a workspace.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

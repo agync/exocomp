@@ -184,6 +184,39 @@ func TestEventsTraceJobLink(t *testing.T) {
 	}
 }
 
+// TestEventTraceBreadcrumb:the event trace view carries a breadcrumb trail back
+// to the events list, ending in the current event (unlinked, aria-current).
+func TestEventTraceBreadcrumb(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	ev, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`, Outcome: store.OutcomeIgnored,
+		Reason: "no rule matched",
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events/"+itoa(ev.ID))
+	if code != 200 {
+		t.Fatalf("event trace status = %d", code)
+	}
+	for _, want := range []string{
+		`class="breadcrumb"`,
+		`href="/events">Events</a>`,
+		`aria-current="page">#` + itoa(ev.ID) + `</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("event trace missing breadcrumb %q", want)
+		}
+	}
+}
+
 // TestEventsLoadMore: a full page (100+) reports HasMore, so the page renders
 // a Load more link carrying the next limit and preserving the source filter.
 // The default floor means "more" can only be exercised by seeding past it.

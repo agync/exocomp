@@ -51,6 +51,7 @@ templ jobsList(vm dashboardVM) {
 // is announced politely and never steals focus (a11y hard requirement).
 templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
+		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: "/jobs"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
 		<div class="pageheader">
 			<h1>Job #{ itoa64(vm.Job.ID) }</h1>
 			if vm.Operator && vm.Job.State.Terminal() {

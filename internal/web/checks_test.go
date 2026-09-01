@@ -457,6 +457,37 @@ func TestChecksLinkToEvents(t *testing.T) {
 	}
 }
 
+// TestListEmptyStatesNameNextAction: every registered-resource surface names
+// its next action when nothing is registered yet, so a cold start reads as a
+// next step instead of a dead end (the brief's empty states must not name
+// the tool, but the action).
+func TestListEmptyStatesNameNextAction(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	for _, tc := range []struct {
+		path, want string
+	}{
+		{"/checks", "No checks registered — add one."},
+		{"/netgroups", "No netgroups registered — add one."},
+		{"/rules", "No rules registered — rules are written on the CLI."},
+		{"/runners", "No runners registered — add one."},
+		{"/schedules", "No schedules registered — add one."},
+		{"/sources", "No sources registered — add one."},
+		{"/workspaces", "No state registered — add a workspace."},
+	} {
+		code, page := getBody(t, op, ts.URL+tc.path)
+		if code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200", tc.path, code)
+		}
+		if !strings.Contains(page, tc.want) {
+			t.Errorf("%s empty state missing %q", tc.path, tc.want)
+		}
+	}
+}
+
 // TestAPIChecksList: a readonly token reads the check.list projection with
 // the seeded check and its target, the same bytes `check list --output json`
 // emits.

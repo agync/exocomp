@@ -55,7 +55,7 @@ templ schedulesList(vm schedulesVM) {
 				<p class="meta">Read-only: managing schedules needs an operator token.</p>
 			}
 			if len(vm.Schedules) == 0 {
-				<p class="meta">No schedules registered.</p>
+				<p class="meta">No schedules registered — add one.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>
@@ -75,7 +75,7 @@ templ schedulesList(vm schedulesVM) {
 						<tbody>
 							for _, sc := range vm.Schedules {
 								<tr data-modal-row={ "sched-" + sc.Name }>
-									<td data-label="Schedule">{ sc.Name }</td>
+									<td data-label="Schedule">{ sc.Name } <button type="button" class="btn" data-modal-open={ "sched-" + sc.Name }>Details</button></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
 									<td class="mono" data-label="Next fire">{ sc.Next }</td>

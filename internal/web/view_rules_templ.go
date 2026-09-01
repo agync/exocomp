@@ -52,7 +52,7 @@ func rulesList(vm rulesVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.Rules) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">No rules registered.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">No rules registered — rules are written on the CLI.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

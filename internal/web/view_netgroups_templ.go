@@ -96,7 +96,7 @@ func netgroupsList(vm netgroupsVM) templ.Component {
 				}
 			}
 			if len(vm.Netgroups) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p class=\"meta\">No netgroups registered.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<p class=\"meta\">No netgroups registered — add one.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

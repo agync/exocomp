@@ -71,6 +71,7 @@ templ eventsList(vm eventsVM) {
 // pass/fail exactly as it was decided, not recomputed.
 templ eventTrace(vm traceVM) {
 	@layout(vm.Page) {
+		@breadcrumb(breadcrumbCrumb{Label: "Events", Href: "/events"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Event.ID)})
 		<h1>Event #{ itoa64(vm.Event.ID) }</h1>
 		<p class="meta">
 			<span class="mono">{ vm.Event.Source }</span> · { vm.Event.Name } ·
