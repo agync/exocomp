@@ -129,6 +129,36 @@ func TestWorkspacesPageListsSeeded(t *testing.T) {
 	}
 }
 
+// TestWorkspacesPageReadonlySkipsPlanQuery: the handler fetches the per-row plan
+// artifact list only for operators; a reader's page renders without ever
+// loading plans, even when artifacts exist — the template already gates the
+// Saved plans modal on Operator, so what is pinned here is that the query is
+// skipped for readers, not merely the modal hidden.
+
+func TestWorkspacesPageReadonlySkipsPlanQuery(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	planID := h.seedPlanArtifact(t, "web").ID
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("readonly GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	for _, banned := range []string{"Saved plans", "Apply plan #" + strconv.FormatInt(planID, 10), "ws-plans-web"} {
+		if strings.Contains(body, banned) {
+			t.Fatalf("readonly workspaces page carries a saved plan (%s)", banned)
+		}
+	}
+}
+
 // TestWorkspacesPageLabelledOpenTofuState: the surface's user-facing label is
 // "Workspaces" (the h1/title), even though the surface manages OpenTofu state
 // "workspaces" — the DR-critical store/API name is unchanged (AGENTS.md).
