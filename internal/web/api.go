@@ -208,6 +208,8 @@ func httpStatusForCode(code string) int {
 		return http.StatusForbidden
 	case wire.CodeKDFBusy:
 		return http.StatusServiceUnavailable
+	case wire.CodeStreamsOverCap:
+		return http.StatusServiceUnavailable
 	case codeInvalidArgument:
 		return http.StatusBadRequest
 	case wire.CodeConflict, wire.CodeConcurrencyHeld, wire.CodeStalePlan, wire.CodeDuplicate:
@@ -388,7 +390,9 @@ func (s *Server) apiJobEvents(w http.ResponseWriter, r *http.Request) {
 // job_event tail, monotonic Seq cursor, and done-on-terminal ending the
 // browser surface streams — so the two surfaces cannot diverge; only
 // existence and error rendering differ here (a wire envelope, not the
-// browser's 404/303).
+// browser's 404/303). The shared stream cap's refusal also answers as a wire
+// envelope (streams_over_cap + Retry-After), so `jobs follow --remote` treats
+// an over-cap tail as the retryable busy it is instead of a dead stream.
 func (s *Server) apiJobStream(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
@@ -405,7 +409,7 @@ func (s *Server) apiJobStream(w http.ResponseWriter, r *http.Request) {
 			wire.NewError(wire.CodeInternal, "streaming unsupported"))
 		return
 	}
-	s.tailJobEvents(w, r, id, flusher)
+	s.tailJobEvents(w, r, id, flusher, true)
 }
 
 // --- workspaces / sources ---------------------------------------------------

@@ -194,7 +194,10 @@ templ jobStream(id int64, since int64) {
 			log.scrollTop = log.scrollHeight;
 		});
 		es.addEventListener("done", function () { location.reload(); });
-		es.onerror = function () { es.close(); };
+		// No onerror close: EventSource reconnects on its own, so a transient
+		// tunnel drop must not end a mid-run tail. A stream the server refuses
+		// (over-cap 503) or a terminal drop loops reconnect until the job
+		// settles or the tab leaves; the reload-on-done is the terminal path.
 	})();
 	</script>
 }

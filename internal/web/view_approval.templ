@@ -49,9 +49,11 @@ templ approvalsList(vm dashboardVM) {
 // reload-only event. Every subsequent "approvals" event is a real change, so
 // every one reloads. There is no onerror close: EventSource reconnects on its
 // own, and closing on error would turn a transient tunnel drop into a dead
-// list. onerror only surfaces the #approvals-stale banner, so a refused (503)
-// or ended stream is visible instead of silently dead — the banner stays until
-// a live event arrives.
+// list. onerror surfaces the #approvals-stale banner only when the stream is
+// closed for good (a refused 503 or an ended socket), never during a transient
+// drop EventSource is already retrying; onopen clears it on every successful
+// (re)connect, so a quiet live list whose fingerprint matched never wears a
+// stale banner.
 templ approvalsLive(fp string) {
 	<script data-fp={ fp }>
 	(function () {
@@ -64,7 +66,16 @@ templ approvalsLive(fp string) {
 			location.reload();
 		});
 		es.onerror = function () {
-			if (stale) stale.hidden = false;
+			// Only a permanently-closed stream is a real failure worth
+			// surfacing: EventSource fires onerror on every transient drop
+			// while it retries, and a refused (503) stream is closed for good.
+			if (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;
+		};
+		es.onopen = function () {
+			// A reconnect is proof the stream is live again, even if the quiet
+			// list then emits nothing for a long stretch (matching fp, no
+			// changes) — the banner must not stay up on a healthy stream.
+			if (stale) stale.hidden = true;
 		};
 	})();
 	</script>

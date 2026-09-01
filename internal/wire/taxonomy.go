@@ -16,8 +16,13 @@ const (
 	CodeConcurrencyHeld = "concurrency_held" // store.ErrConcurrencyHeld
 	CodeStalePlan       = "stale_plan"       // reactive.ErrStalePlan
 	CodeKDFBusy         = "kdf_busy"         // web.ErrKDFBusy (auth boundary)
-	CodeUnauthenticated = "unauthenticated"  // web.ErrUnauthenticated (auth boundary)
-	CodeForbidden       = "forbidden"        // scope check (auth boundary)
+	// CodeStreamsOverCap is the boundary refusal for an over-cap SSE stream
+	// (approvals or job tail). It is distinct from kdf_busy so a phone that
+	// branches on the code does not treat a saturated stream as an auth-gate
+	// backoff.
+	CodeStreamsOverCap  = "streams_over_cap"
+	CodeUnauthenticated = "unauthenticated" // web.ErrUnauthenticated (auth boundary)
+	CodeForbidden       = "forbidden"       // scope check (auth boundary)
 	// CodeInternal is the fallback for an error that matched no sentinel.
 	CodeInternal = "internal"
 )
@@ -34,7 +39,7 @@ const (
 	ExitAuth             = 4 // unauthenticated / forbidden
 	ExitConflict         = 5 // conflict / concurrency held / locked
 	ExitAwaitingApproval = 6 // a gated write landed pending
-	ExitBusy             = 7 // transient: retry later (kdf_busy)
+	ExitBusy             = 7 // transient: retry later (kdf_busy, streams_over_cap)
 )
 
 // hints are actionable, code-keyed, and stable (they carry no volatile detail),
@@ -46,6 +51,7 @@ var hints = map[string]string{
 	CodeConcurrencyHeld: "another run holds this workspace; wait for it to finish or cancel it",
 	CodeStalePlan:       "the workspace moved since the plan was saved; re-plan before applying",
 	CodeKDFBusy:         "the auth gate is saturated; retry shortly",
+	CodeStreamsOverCap:  "too many live streams; close a tab or retry shortly",
 	CodeUnauthenticated: "supply a valid token or session",
 	CodeForbidden:       "this token's scope is too low for the verb; mint one with a higher scope",
 }
@@ -98,6 +104,8 @@ func ExitForCode(code string) int {
 	case CodeConflict, CodeConcurrencyHeld, CodeStalePlan:
 		return ExitConflict
 	case CodeKDFBusy:
+		return ExitBusy
+	case CodeStreamsOverCap:
 		return ExitBusy
 	default:
 		return ExitFailure

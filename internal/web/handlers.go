@@ -366,7 +366,7 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 // provably the state on screen — two fetches would leave a window where a
 // change between them made the fp lie.
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.store.ListApprovals(r.Context(), true)
+	rows, err := s.listApprovals(r.Context(), true)
 	if err != nil {
 		s.fail(w, r, err)
 		return

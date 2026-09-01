@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
 
@@ -202,7 +204,7 @@ func TestApprovalsStreamEndsOnSessionRotate(t *testing.T) {
 // TestApprovalsStreamCap is the F3 regression: unbounded per-page pollers on
 // the one-connection store pool. tailApprovals caps concurrent streams at
 // maxApprovalStreams and refuses the next with 503. With the per-identity
-// sub-cap of 2, four distinct sessions are needed to fill the total of 8.
+// sub-cap of 4, two distinct sessions fill the total of 8.
 func TestApprovalsStreamCap(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -241,7 +243,7 @@ func TestApprovalsStreamCap(t *testing.T) {
 
 // TestApprovalsStreamPerTokenCap is the F3 per-identity sub-cap: one token id
 // may hold at most maxApprovalStreamsPerToken streams, so a single identity
-// cannot fill every slot. The third stream from the same session is refused
+// cannot fill every slot. The fifth stream from the same session is refused
 // with 503, and closing one of the token's streams frees the slot again.
 func TestApprovalsStreamPerTokenCap(t *testing.T) {
 	h := newHarness(t)
@@ -289,10 +291,13 @@ func TestApprovalsStreamPerTokenCap(t *testing.T) {
 	}
 }
 
-// TestApprovalsStreamPerTokenDoesNotBlockOtherIdentity: the per-token sub-cap
-// must not let one identity starve another — a readonly session holding its two
-// slots leaves an operator session's stream open (the total cap still applies,
-// but identities are accounted separately).
+// TestApprovalsStreamPerTokenDoesNotBlockOtherIdentity is the F1(b) regression:
+// the per-token sub-cap must not let one identity starve another — a readonly
+// session holding its full share of slots leaves an operator session's stream
+// open (the total cap still applies, but identities are accounted separately).
+// It is load-bearing on the KEY the sub-cap counts by: re-key it to the source
+// address (all test clients share 127.0.0.1) and the operator's stream is
+// refused, so the test pins per-token, not per-source, accounting.
 func TestApprovalsStreamPerTokenDoesNotBlockOtherIdentity(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -375,8 +380,8 @@ func TestApprovalsStreamAPIRefusalIsWireEnvelope(t *testing.T) {
 	if err := json.Unmarshal(body, &env); err != nil {
 		t.Fatalf("over-cap stream refusal is not a wire envelope: %v (%s)", err, body)
 	}
-	if env.Error.Code != wire.CodeKDFBusy {
-		t.Fatalf("over-cap stream refusal code = %q, want %q", env.Error.Code, wire.CodeKDFBusy)
+	if env.Error.Code != wire.CodeStreamsOverCap {
+		t.Fatalf("over-cap stream refusal code = %q, want %q", env.Error.Code, wire.CodeStreamsOverCap)
 	}
 }
 
@@ -644,7 +649,10 @@ func TestApprovalsStreamEndsOnBearerRotate(t *testing.T) {
 // the render used to come from separate ListApprovals calls, so a change
 // between them left a page whose fingerprint promised a state its rows did not
 // show; the handler now computes both from one fetch, so the fp the stream
-// compares is provably the state on screen.
+// compares is provably the state on screen. The test is load-bearing on the
+// single fetch: it counts how many times the render called listApprovals and
+// requires exactly one (make it two fetches and the count goes red), then
+// checks the fingerprint over the same rows still matches the rendered page.
 func TestApprovalsFingerprintReflectsRenderedRows(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -653,9 +661,24 @@ func TestApprovalsFingerprintReflectsRenderedRows(t *testing.T) {
 
 	_, approval := h.gatedJob(t, time.Hour)
 
+	var mu sync.Mutex
+	calls := 0
+	h.server.listApprovals = func(ctx context.Context, pendingOnly bool) ([]store.Approval, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return h.store.ListApprovals(ctx, pendingOnly)
+	}
+
 	code, page := getBody(t, client, ts.URL+"/approvals")
 	if code != 200 {
 		t.Fatalf("approvals page status = %d", code)
+	}
+	mu.Lock()
+	got := calls
+	mu.Unlock()
+	if got != 1 {
+		t.Fatalf("approvals page fetched the pending list %d times, want exactly 1", got)
 	}
 	// The rendered table names the seeded approval...
 	if !strings.Contains(page, "/approvals/"+itoa64(approval.ID)) {

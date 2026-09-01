@@ -40,8 +40,23 @@ const maxApprovalStreams = 8
 
 // maxApprovalStreamsPerToken bounds concurrent approvals streams per token id,
 // so one identity cannot hold every slot and a readonly session cannot starve
-// an operator's stream.
-const maxApprovalStreamsPerToken = 2
+// an operator's stream. Four per identity still leaves the other half of the
+// total for a second identity's tabs; an operator who actually needs more
+// tailed surfaces than that closes a tab instead of stacking streams.
+const maxApprovalStreamsPerToken = 4
+
+// maxJobStreams bounds concurrent job-event tails per process. Each one polls
+// ListJobEvents every streamPoll (300ms — six times the approvals cadence), so
+// the same stale-tab fleet is worse here: a handful of stuck job pages hammers
+// the one-connection store pool at the queue's own polling speed. The per-token
+// sub-cap keeps one identity from holding every slot, as with approvals.
+const maxJobStreams = 8
+
+// maxJobStreamsPerToken bounds concurrent job tails per token id. Job tails
+// are the more expensive stream (300ms poll against a 12h stuck-tab lifetime),
+// so the per-token ceiling matches the approvals one for the same reason: one
+// identity cannot crowd out another's live tail.
+const maxJobStreamsPerToken = 4
 
 // streamMaxLifetime bounds one attached stream regardless of the job, so a
 // credential that is never revoked still cannot hold a socket forever. A client
@@ -100,20 +115,78 @@ func (s *Server) handleJobStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	s.tailJobEvents(w, r, id, flusher)
+	s.tailJobEvents(w, r, id, flusher, false)
 }
 
 // tailJobEvents is the append-only job_event tail shared by the browser SSE
 // surface (handleJobStream) and the API's job-follow route (apiJobStream): the
 // same monotonic Seq cursor and the same done-on-terminal ending, so the two
-// surfaces cannot drift into different streaming behavior. Existence, auth,
+// surfaces cannot drift into different streaming behavior. It also enforces the
+// shared job-stream cap, with the same per-token sub-cap as tailApprovals —
+// job tails poll six times as often as approvals, so a fleet of stuck job pages
+// is the worse offender against the one-connection store pool. Existence, auth,
 // and error rendering are the caller's job — this assumes the job exists and
-// the response is already cleared to stream.
-func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64, flusher http.Flusher) {
+// the response is already cleared to stream. api tells the cap's refusal which
+// face it answers, exactly like tailApprovals: the API route gets the wire
+// error envelope plus a Retry-After, the browser route a plain 503.
+func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64, flusher http.Flusher, api bool) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+
+	// The identity resolved at attach; each revalidation re-reads its row, so a
+	// revoke or an expiry ends the stream rather than being invisible to it.
+	// The credential epoch is pinned at attach too: re-reading only the row's
+	// Active flag would let a rotated token — whose row stays Active — keep
+	// reading the tail across the rotation meant to cut it off.
+	ident, hasIdent := identityOf(r.Context())
+	var attachedEpoch int64
+	if hasIdent {
+		attachedEpoch = ident.token.CredentialEpoch()
+	}
+
+	// The cap is enforced here, in the shared funnel, so the browser route and
+	// the API route cannot each outrun it. Per-token is charged first so a
+	// readonly flood of attaches cannot push the global count over the ceiling
+	// transiently; the global-refusal path undoes the per-token charge it just
+	// made. The decrement is deferred so every exit path releases a slot.
+	if hasIdent {
+		s.jobStreamsMu.Lock()
+		if s.jobStreamsByToken[ident.token.ID] >= maxJobStreamsPerToken {
+			s.jobStreamsMu.Unlock()
+			s.refuseJobStream(w, r, api)
+			return
+		}
+		s.jobStreamsByToken[ident.token.ID]++
+		s.jobStreamsMu.Unlock()
+	}
+	if n := s.jobStreams.Add(1); n > maxJobStreams {
+		s.jobStreams.Add(-1)
+		if hasIdent {
+			s.jobStreamsMu.Lock()
+			if n := s.jobStreamsByToken[ident.token.ID]; n <= 1 {
+				delete(s.jobStreamsByToken, ident.token.ID)
+			} else {
+				s.jobStreamsByToken[ident.token.ID] = n - 1
+			}
+			s.jobStreamsMu.Unlock()
+		}
+		s.refuseJobStream(w, r, api)
+		return
+	}
+	defer func() {
+		s.jobStreams.Add(-1)
+		if hasIdent {
+			s.jobStreamsMu.Lock()
+			if n := s.jobStreamsByToken[ident.token.ID]; n <= 1 {
+				delete(s.jobStreamsByToken, ident.token.ID)
+			} else {
+				s.jobStreamsByToken[ident.token.ID] = n - 1
+			}
+			s.jobStreamsMu.Unlock()
+		}
+	}()
 
 	// The client passes the Seq of the last event its own render included
 	// (?since=); the stream backfills everything after that, not just what is
@@ -131,16 +204,6 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 	ticker := time.NewTicker(streamPoll)
 	defer ticker.Stop()
 
-	// The identity resolved at attach; each revalidation re-reads its row, so a
-	// revoke or an expiry ends the stream rather than being invisible to it.
-	// The credential epoch is pinned at attach too: re-reading only the row's
-	// Active flag would let a rotated token — whose row stays Active — keep
-	// reading the tail across the rotation meant to cut it off.
-	ident, hasIdent := identityOf(r.Context())
-	var attachedEpoch int64
-	if hasIdent {
-		attachedEpoch = ident.token.CredentialEpoch()
-	}
 	deadline := s.now().Add(streamMaxLifetime)
 
 	for {
@@ -152,7 +215,16 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 		if !now.Before(deadline) {
 			return
 		}
-		if hasIdent {
+		if ident.via == "session" {
+			// A browser session is re-resolved per poll, not just its token
+			// row: resolve() also enforces the session's own expiry stamp and
+			// the credential-epoch pin, so a rotated token — whose row stays
+			// Active — ends the stream the way a revoke does. No KDF runs on
+			// the cookie path, so the per-poll cost is unchanged.
+			if _, err := s.resolve(r); err != nil {
+				return
+			}
+		} else if hasIdent {
 			row, err := s.authenticateRow(r.Context(), ident.token.ID, "", now)
 			if err != nil || row.CredentialEpoch() != attachedEpoch {
 				return
@@ -222,24 +294,35 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 	}
 
 	// The cap is enforced here, in the shared funnel, so the browser route and
-	// the API route cannot each outrun it. The decrement is deferred so every
-	// exit path — cap refusal, deadline, auth failure, store error, client
-	// leave, shutdown — releases a slot.
-	if n := s.approvalStreams.Add(1); n > maxApprovalStreams {
-		s.approvalStreams.Add(-1)
-		s.refuseApprovalStream(w, r, api)
-		return
-	}
+	// the API route cannot each outrun it. The per-token check runs first so a
+	// readonly flood of attaches cannot push the global count over the ceiling
+	// transiently; the global-refusal path undoes the per-token charge it just
+	// made. The decrement is deferred so every exit path — cap refusal,
+	// deadline, auth failure, store error, client leave, shutdown — releases a
+	// slot.
 	if hasIdent {
 		s.approvalStreamsMu.Lock()
 		if s.approvalStreamsByToken[ident.token.ID] >= maxApprovalStreamsPerToken {
 			s.approvalStreamsMu.Unlock()
-			s.approvalStreams.Add(-1)
 			s.refuseApprovalStream(w, r, api)
 			return
 		}
 		s.approvalStreamsByToken[ident.token.ID]++
 		s.approvalStreamsMu.Unlock()
+	}
+	if n := s.approvalStreams.Add(1); n > maxApprovalStreams {
+		s.approvalStreams.Add(-1)
+		if hasIdent {
+			s.approvalStreamsMu.Lock()
+			if n := s.approvalStreamsByToken[ident.token.ID]; n <= 1 {
+				delete(s.approvalStreamsByToken, ident.token.ID)
+			} else {
+				s.approvalStreamsByToken[ident.token.ID] = n - 1
+			}
+			s.approvalStreamsMu.Unlock()
+		}
+		s.refuseApprovalStream(w, r, api)
+		return
 	}
 	defer func() {
 		s.approvalStreams.Add(-1)
@@ -365,13 +448,29 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 // reads it: the API route gets the wire error envelope plus a Retry-After so
 // an agent backs off instead of hammering, the browser route a plain 503 whose
 // EventSource onerror the approvalsLive script turns into the visible stale
-// banner (a refused stream must never be silently dead).
+// banner (a refused stream must never be silently dead). The refusal carries
+// CodeStreamsOverCap, not kdf_busy — a phone branching on the code must not
+// treat a saturated stream as an auth-gate backoff.
 func (s *Server) refuseApprovalStream(w http.ResponseWriter, _ *http.Request, api bool) {
 	if api {
 		w.Header().Set("Retry-After", "30")
 		s.apiError(w, http.StatusServiceUnavailable,
-			wire.NewError(wire.CodeKDFBusy, "too many approvals streams; retry shortly"))
+			wire.NewError(wire.CodeStreamsOverCap, "too many approvals streams; retry shortly"))
 		return
 	}
 	http.Error(w, "too many approvals streams", http.StatusServiceUnavailable)
+}
+
+// refuseJobStream answers an over-cap job tail the same way refuseApprovalStream
+// answers an approvals one: the API face (jobs follow --remote) gets the wire
+// envelope plus a Retry-After so the follow treats the refusal as the retryable
+// busy it is (ExitBusy), the browser face a plain 503.
+func (s *Server) refuseJobStream(w http.ResponseWriter, _ *http.Request, api bool) {
+	if api {
+		w.Header().Set("Retry-After", "30")
+		s.apiError(w, http.StatusServiceUnavailable,
+			wire.NewError(wire.CodeStreamsOverCap, "too many job tails; retry shortly"))
+		return
+	}
+	http.Error(w, "too many job tails", http.StatusServiceUnavailable)
 }

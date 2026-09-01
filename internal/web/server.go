@@ -112,10 +112,25 @@ type Server struct {
 	// process restart resets it and nothing audits it.
 	approvalStreams atomic.Int64
 	// approvalStreamsByToken counts attached streams per token id under
-	// approvalStreamsMu, so one identity cannot hold every slot (2 per token,
+	// approvalStreamsMu, so one identity cannot hold every slot (4 per token,
 	// 8 total) and a readonly session cannot starve an operator's stream.
 	approvalStreamsMu      sync.Mutex
 	approvalStreamsByToken map[int64]int
+	// jobStreams counts the attached job-event tails, each polling
+	// ListJobEvents at the 300ms streamPoll cadence — the same stale-tab
+	// contention as approvalStreams, worse per stream, so the same cap shape:
+	// refused with 503 once maxJobStreams are live, and a per-token sub-cap so
+	// one identity cannot hold every slot.
+	jobStreams atomic.Int64
+	// jobStreamsByToken counts attached job tails per token id under
+	// jobStreamsMu (4 per token, 8 total).
+	jobStreamsMu      sync.Mutex
+	jobStreamsByToken map[int64]int
+	// listApprovals lists the pending approvals for the /approvals render. It
+	// is a field only so a test can pin that the page computes its fingerprint
+	// from the same one fetch it renders (approvals_stream_test.go); production
+	// always uses store.ListApprovals.
+	listApprovals func(ctx context.Context, pendingOnly bool) ([]store.Approval, error)
 	// planArtifactsFor lists a workspace's saved plan artifacts for the
 	// /workspaces render. It is a field only so a test can count how often the
 	// readonly render calls it (workspace_write_test.go); production always
@@ -124,10 +139,10 @@ type Server struct {
 	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
 	// test can shrink the 30s production cadence into a runnable window.
 	heartbeat time.Duration
-	// streamStop is closed once at shutdown to end every attached approvals
-	// stream, so a SIGINT does not burn the whole grace period on idle sockets.
-	// It closes through streamStopOnce because surface shutdown can be reached
-	// twice (tests, error paths).
+	// streamStop is closed once at shutdown to end every attached stream —
+	// approvals and job tails alike — so a SIGINT does not burn the whole
+	// grace period on idle sockets. It closes through streamStopOnce because
+	// surface shutdown can be reached twice (tests, error paths).
 	streamStop     chan struct{}
 	streamStopOnce sync.Once
 }
@@ -167,8 +182,10 @@ func New(opts Options) (*Server, error) {
 		fails:                  newFailGate(),
 		verify:                 verifySecret,
 		approvalStreamsByToken: make(map[int64]int),
+		jobStreamsByToken:      make(map[int64]int),
 	}
 	srv.planArtifactsFor = srv.store.ListPlanArtifacts
+	srv.listApprovals = srv.store.ListApprovals
 	srv.probe = func(ctx context.Context) wire.HealthView {
 		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)
 	}
