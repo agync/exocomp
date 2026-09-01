@@ -6,16 +6,32 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
-## 2026-09-01 — write-form errors surface via flash
+## 2026-08-31 — write-form errors surface via flash
 
-- **A rejected web form now shows its message instead of a bare 500.** The
-  checks, netgroups, and schedules add handlers route operator-input
-  validation failures — an unparseable interval, CIDR, cron, argv, or target,
-  a bad kind, an empty target set, a concurrency-key or jitter mistake —
-  through the existing `redirectFlash` 303 back to the owning page with the
-  `?flash=` one-liner, and a duplicate name redirects the same way rather than
-  answering a 409. Genuine store errors still fail with the internal-error
-  page.
+- **A bad form input no longer renders "internal error".** The checks,
+  netgroups, and schedules add handlers route every operator-input validation
+  failure — interval/kind/target/expect for checks, prefix parse and duplicate
+  names for netgroups, cron/argv/target/concurrency-key/jitter and duplicate
+  names for schedules — through the existing `?flash=` redirect to the owning
+  page instead of `s.fail`'s 500, so the operator sees the actual message and
+  the form can be retried. Duplicate-name branches flip from a bare 409 text
+  page to the same in-layout flash. Genuine store errors stay 500.
+
+## 2026-09-01 — dashboard glance and destructive confirms
+
+- **The dashboard's Schedules card now summarises, not lists.** It shows the
+  registered total with an "N schedules · M disabled" tally, carrying the
+  warn accent when any schedule is disabled (a disabled schedule has silently
+  stopped firing), mirroring the other glance cards; the card is the link to
+  /schedules, which keeps its full table with cron, next/last fire, and last
+  outcome. No table remains on the glance screen.
+- **Destructive actions confirm before they fire.** Every Remove, Delete, and
+  Revoke form across /checks, /netgroups, /schedules, /sources, /policies,
+  /tokens, and /runners now carries a `data-confirm` message that opens a
+  shared native-`<dialog>` confirm modal in the layout; Confirm re-submits the
+  form (whose hidden `confirmed=1` field the write handlers already required),
+  Cancel, the backdrop, or Esc drops it. The app's modal idiom — never
+  `window.confirm` — now guards the destructive write controls too.
 
 ## 2026-08-31 — check-event traceability and events pagination
 
