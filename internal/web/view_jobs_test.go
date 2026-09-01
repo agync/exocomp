@@ -9,6 +9,22 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
+// TestRunbookLabel: the list and detail read a rule-triggered job's runbook
+// without the "rule:" logic prefix; a non-rule runbook passes through.
+func TestRunbookLabel(t *testing.T) {
+	for _, tc := range []struct {
+		runbook, want string
+	}{
+		{"rule:gate-ssh", "gate-ssh"},
+		{"playbook", "playbook"},
+	} {
+		j := jobRow{Runbook: tc.runbook}
+		if got := j.RunbookLabel(); got != tc.want {
+			t.Errorf("RunbookLabel(%q) = %q, want %q", tc.runbook, got, tc.want)
+		}
+	}
+}
+
 // TestJobDetailRuleProvenance: a rule-triggered job's detail view links back to
 // the rule its runbook named and to the event that raised it.
 func TestJobDetailRuleProvenance(t *testing.T) {

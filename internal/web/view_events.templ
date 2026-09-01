@@ -49,6 +49,11 @@ templ eventsList(vm eventsVM) {
 						</tbody>
 					</table>
 				</div>
+				if vm.HasMore {
+					<p class="meta" style="margin-top:14px">
+						<a href={ templ.SafeURL("/events?limit=" + itoa(int64(vm.NextLimit())) + "&source=" + urlEscape(vm.Source)) }>Load more</a>
+					</p>
+				}
 			}
 		</div>
 	}

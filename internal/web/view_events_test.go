@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -69,6 +70,72 @@ func TestEventsListAllSources(t *testing.T) {
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("unfiltered events page missing %q", want)
+		}
+	}
+}
+
+// TestEventName: a check transition body carries no name, so the alert reads
+// as check · target; a body that does carry a name keeps it, and an unnamed
+// body falls back to the source.
+func TestEventName(t *testing.T) {
+	cases := []struct {
+		name string
+		ev   store.Event
+		want string
+	}{
+		{"check transition", store.Event{
+			Source:     reactive.SourceCheck,
+			Normalized: `{"check":"at-home","target":"laptop","kind":"tcp","address":"192.168.1.50:22"}`,
+		}, "at-home · laptop"},
+		{"check body with name wins", store.Event{
+			Source:     reactive.SourceCheck,
+			Normalized: `{"name":"at-home"}`,
+		}, "at-home"},
+		{"alertmanager keeps its name", store.Event{
+			Source:     reactive.SourceAlertmanager,
+			Normalized: `{"name":"DiskFull","severity":"critical"}`,
+		}, "DiskFull"},
+		{"unnamed falls back to source", store.Event{
+			Source:     reactive.SourceGeneric,
+			Normalized: `{"severity":"critical"}`,
+		}, reactive.SourceGeneric},
+	}
+	for _, tc := range cases {
+		if got := eventName(tc.ev); got != tc.want {
+			t.Errorf("%s: eventName = %q, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestEventsLoadMore: a full page (100+) reports HasMore, so the page renders
+// a Load more link carrying the next limit and preserving the source filter.
+// The default floor means "more" can only be exercised by seeding past it.
+func TestEventsLoadMore(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for i := 0; i < 105; i++ {
+		if _, err := h.store.CreateEvent(ctx, store.Event{
+			Source: "check", Normalized: `{"name":"at-home"}`,
+			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+		}); err != nil {
+			t.Fatalf("CreateEvent %d: %v", i, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events?source=check")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		`href="/events?limit=200&amp;source=check"`,
+		">Load more</a>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("full events page missing %q", want)
 		}
 	}
 }

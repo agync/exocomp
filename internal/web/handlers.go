@@ -466,12 +466,22 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	source := r.URL.Query().Get("source")
-	events, err := s.store.ListEvents(r.Context(), store.EventFilter{Source: source, Limit: 100})
+	limit := 100
+	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
+		limit = v
+	}
+	if limit < 100 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	events, err := s.store.ListEvents(r.Context(), store.EventFilter{Source: source, Limit: limit})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	vm := eventsVM{Page: s.pageFor(r, "Events", "events"), Source: source}
+	vm := eventsVM{Page: s.pageFor(r, "Events", "events"), Source: source, Limit: limit, HasMore: len(events) == limit}
 	for _, e := range events {
 		vm.Events = append(vm.Events, eventRow{
 			ID: e.ID, Source: e.Source, Received: clock(e.ReceivedAt),

@@ -585,13 +585,27 @@ func diskFreePercent(path string) (int, bool) {
 }
 
 // eventName pulls a human-facing alert name out of a normalized event body,
-// falling back to the source when the body carries none.
+// falling back to the source when the body carries none. A check transition
+// body carries {check,target} instead of a name, so its alert reads as the
+// check and target the sweep observed — the Source column already says "check".
 func eventName(e store.Event) string {
 	var n struct {
 		Name string `json:"name"`
 	}
 	if err := json.Unmarshal([]byte(e.Normalized), &n); err == nil && n.Name != "" {
 		return n.Name
+	}
+	if e.Source == reactive.SourceCheck {
+		var c struct {
+			Check  string `json:"check"`
+			Target string `json:"target"`
+		}
+		if err := json.Unmarshal([]byte(e.Normalized), &c); err == nil && c.Check != "" {
+			if c.Target != "" {
+				return c.Check + " · " + c.Target
+			}
+			return c.Check
+		}
 	}
 	return e.Source
 }

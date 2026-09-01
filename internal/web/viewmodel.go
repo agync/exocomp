@@ -487,6 +487,14 @@ type jobRow struct {
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
 
+// RunbookLabel strips the "rule:" prefix a rule-triggered job's runbook
+// carries, so the list and detail read the rule name; the raw runbook stays
+// the run's logic key and the provenance line already names the fired rule.
+func (j jobRow) RunbookLabel() string {
+	runbook, _ := strings.CutPrefix(j.Runbook, "rule:")
+	return runbook
+}
+
 // Succeeded gates the Schedule button: a schedule replays a job's exact
 // command, so offering it for anything short of a clean run would let an
 // operator schedule a command already known to fail.
@@ -630,12 +638,19 @@ type planLine struct {
 
 // eventsVM is the events + evaluation trace screen. Source is the ?source=
 // filter the page renders under ("" = all sources); the filter form preserves
-// it so a filtered view stays filtered.
+// it so a filtered view stays filtered. Limit is the ?limit= the page
+// rendered (floor 100, cap 500); HasMore reports whether a full page came
+// back, so the Load more link shows.
 type eventsVM struct {
-	Page   page
-	Events []eventRow
-	Source string
+	Page    page
+	Events  []eventRow
+	Source  string
+	Limit   int
+	HasMore bool
 }
+
+// NextLimit is the ?limit= the Load more link carries, one page deeper.
+func (vm eventsVM) NextLimit() int { return vm.Limit + 100 }
 
 // eventSourceFilterOptions are the ?source= filter's known values — the five
 // sources the engine can produce. The page's rows carry only these, so the

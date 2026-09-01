@@ -29,7 +29,7 @@ templ jobsList(vm dashboardVM) {
 							for _, j := range vm.Queue {
 								<tr data-href={ "/jobs/" + itoa(j.ID) }>
 									<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
-									<td data-label="Runbook">{ j.Runbook }</td>
+									<td data-label="Runbook">{ j.RunbookLabel() }</td>
 									<td class="mono" data-label="Source">{ j.Source }</td>
 									<td class="mono" data-label="Kind">{ j.Kind }</td>
 									<td class="mono" data-label="Trigger">{ j.Trigger }</td>
@@ -77,7 +77,7 @@ templ jobDetail(vm jobDetailVM) {
 			}
 		</div>
 		<p class="meta">
-			{ vm.Job.Runbook } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
+			{ vm.Job.RunbookLabel() } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
 			if vm.Source != "" {
 				· source <span class="mono">{ vm.Source }</span>
 			}
