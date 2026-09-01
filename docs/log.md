@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — write-form errors surface via flash
+
+- **A rejected web form now shows its message instead of a bare 500.** The
+  checks, netgroups, and schedules add handlers route operator-input
+  validation failures — an unparseable interval, CIDR, cron, argv, or target,
+  a bad kind, an empty target set, a concurrency-key or jitter mistake —
+  through the existing `redirectFlash` 303 back to the owning page with the
+  `?flash=` one-liner, and a duplicate name redirects the same way rather than
+  answering a 409. Genuine store errors still fail with the internal-error
+  page.
+
 ## 2026-08-31 — check-event traceability and events pagination
 
 - **The check-triggered flow is now traceable in the web UI.** A `check` event names its check and target on the events page and its trace instead of reading "check" for every one; an event that fired links to the job it enqueued; a check's name and an address target's netgroup chip link to the check-sourced event view, as do netgroup names.
