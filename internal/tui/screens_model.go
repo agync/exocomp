@@ -481,7 +481,27 @@ func (m Model) signalLine() string {
 	if len(m.mutes) > 0 {
 		holds = "muted"
 	}
-	return fmt.Sprintf("dead-man not wired · notify %s · %s", holds, version.String())
+	return fmt.Sprintf("dead-man %s · notify %s · %s", m.deadManAge(), holds, version.String())
+}
+
+// deadManAge is the age of the newest succeeded backup run the Model holds,
+// the freshness proof the dead-man foot observes. "--" when no run has ever
+// succeeded. Disk % and ntfy last-send age are not in the Model, so the line
+// carries the rest of the handoff pattern's segments only.
+func (m Model) deadManAge() string {
+	var newest time.Time
+	for _, run := range m.runs {
+		if run.State != store.BackupSucceeded || run.FinishedAt == nil {
+			continue
+		}
+		if newest.IsZero() || run.FinishedAt.After(newest) {
+			newest = *run.FinishedAt
+		}
+	}
+	if newest.IsZero() {
+		return "--"
+	}
+	return shortDur(time.Since(newest))
 }
 
 func backupFreshness(run store.BackupRun, now time.Time) (age, status string) {
