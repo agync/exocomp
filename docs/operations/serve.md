@@ -303,6 +303,19 @@ manages the daemon from the browser, not just the CLI.
   Checks card shows the registered total and how many targets the sweep
   observes up; a job's "fired by rule <name>" line links to `/rules` and the
   event that raised the run; the events page filters by `?source=`.
+- **Approvals live-update**: the pending-approvals list subscribes to a
+  browser-session SSE stream (`GET /approvals/stream`, the same
+  `tailApprovals` the phone API serves) and reloads when the pending set
+  changes, so the desk and phone never decide on a stale list. The first
+  stream event is the current state and is ignored; only a subsequent change
+  reloads.
+- **Workspaces**: each runnable workspace row has a **Saved plans** button
+  opening a modal of its saved plan artifacts, each applyable by id through the
+  same plan-gate path as the CLI/API (a policied plan may still require
+  approval). The row's own Apply is fresh-apply.
+- **Destructive actions confirm**: Remove/Delete/Revoke forms (checks,
+  netgroups, schedules, sources, policies, tokens, runners) submit through a
+  shared confirm dialog rather than firing on the first click.
 
 The sensitive writes — sealing or rotating a secret, minting or rotating a token, sealing a
 git deploy key — require re-entering your own access token to confirm. A cookie alone cannot

@@ -71,13 +71,13 @@ GET /api/v1/approvals/{id}                       # + structured stale + provenan
 GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
-GET /api/v1/netgroups
-GET /api/v1/checks
-GET /api/v1/rules
+GET /api/v1/netgroups                         # [{id, name, prefixes}]
+GET /api/v1/checks                            # per target: status + netgroup + last_change
+GET /api/v1/rules                             # playbook action carries source/playbook/limit/tags/check/diff/timeout
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
 GET /api/v1/notify/endpoints                     # this token's own registered push endpoints
-GET /api/v1/events?source=&outcome=&limit=
+GET /api/v1/events?source=&outcome=&limit=       # limit floors at 100, caps at 500
 GET /api/v1/events/summary                     # funnel counts by outcome, all-time
 GET /api/v1/events/{id}
 GET /api/v1/secrets                             # metadata only — no field a value could occupy
