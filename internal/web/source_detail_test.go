@@ -30,6 +30,110 @@ func seedSourceCheckout(t *testing.T, h *harness) string {
 	return "tree"
 }
 
+// seedGitSource registers a git source with no checkout on disk and no sync
+// recorded — the never-synced cold state the F5/F14 surfaces must read as a
+// wait state with a verb, not a quiet dash.
+func seedGitSource(t *testing.T, h *harness) string {
+	t.Helper()
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "git-src", Kind: store.SourceGit,
+		URI: "git@host:git-src.git", Ref: "refs/heads/main", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed git source: %v", err)
+	}
+	return "git-src"
+}
+
+// TestSourceNeverSyncedSurfaces is the GATE for F5: a never-synced source reads
+// as a wait state everywhere — a NEVER chip and attention row in the list, and
+// "never — sync to discover playbooks" in wait on its detail page — never a
+// quiet dash.
+func TestSourceNeverSyncedSurfaces(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedGitSource(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, list := getBody(t, client, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources = %d", code)
+	}
+	for _, want := range []string{
+		`<span class="chip wait"><span class="dot"></span>NEVER</span>`,
+		`class="attention"`,
+	} {
+		if !strings.Contains(list, want) {
+			t.Errorf("/sources missing %q (F5)", want)
+		}
+	}
+
+	code, detail := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		`class="mono wait-text">never — sync to discover playbooks</dd>`,
+		`exocomp source sync git-src`,
+	} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("source detail missing %q (F5)", want)
+		}
+	}
+}
+
+// TestSourceLaunchDrawer is the GATE for F4/F14: the launcher is a right-anchored
+// drawer opened by intent, not a wall-of-form; ?launch=1 renders it open (JS-off);
+// and a never-synced source with no discovered playbooks gets a disabled select
+// with the path promoted, not a dead placeholder listbox.
+func TestSourceLaunchDrawer(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedGitSource(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		`class="modal drawer" id="launch"`,
+		`>Launch a run…</button>`,
+		`data-modal-open="launch"`,
+		`<select id="rp-select" name="playbook" disabled>`,
+		`<option value="">path — none discovered yet</option>`,
+		`Unsynced source: give a path relative to the checkout.`,
+		`Queue run — a path @ refs/heads/main`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("launch drawer missing %q", want)
+		}
+	}
+	// The drawer is closed by default — no open attribute without ?launch=1.
+	if strings.Contains(page, `<dialog class="modal drawer" id="launch" aria-labelledby="launch-title" open`) {
+		t.Error("launch drawer rendered open without ?launch=1 (JS-off must opt in)")
+	}
+
+	code, openPage := getBody(t, client, ts.URL+"/sources/"+name+"?launch=1")
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s?launch=1 = %d", name, code)
+	}
+	if !strings.Contains(openPage, `<dialog class="modal drawer" id="launch" aria-labelledby="launch-title" open`) {
+		t.Error("?launch=1 did not render the drawer open (JS-off baseline)")
+	}
+
+	// A readonly session never sees the drawer at all.
+	ro := h.mint(t, "ro", "readonly")
+	roClient := login(t, ts.URL, ro)
+	_, roPage := getBody(t, roClient, ts.URL+"/sources/"+name)
+	if strings.Contains(roPage, `id="launch"`) {
+		t.Error("readonly session sees the launch drawer")
+	}
+}
+
 // TestSourceDetailRendersLauncherForOperator: an operator's detail page shows
 // both the source-scoped run forms; a readonly token sees the header and a
 // read-only note, no launcher.

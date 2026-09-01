@@ -350,6 +350,10 @@ templ selectInit() {
 	function exoEnhanceSelect(sel) {
 		if (sel.dataset.enhanced) return;
 		sel.dataset.enhanced = "1";
+		// A disabled select (an unsynced source with no discovered playbooks,
+		// F14) stays a dead control instead of being dressed up as an interactive
+		// listbox that cannot change anything.
+		if (sel.disabled) return;
 		var base = sel.id || ("xsel-" + Math.random().toString(36).slice(2, 8));
 		var panelId = base + "-listbox";
 		var lbl = sel.id && document.querySelector('label[for="' + sel.id + '"]');

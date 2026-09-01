@@ -58,6 +58,9 @@ type sourceDetailVM struct {
 	// Playbook prefills the Playbook tab from ?playbook=; if it is one of the
 	// discovered paths it is pre-selected, otherwise it seeds the free-path input.
 	Playbook string
+	// Launch opens the launch drawer already open — the JS-off fallback for the
+	// ?launch=1 query, which renders the <dialog> with its open attribute.
+	Launch bool
 }
 
 // PlaybookKnown reports whether the prefilled playbook is one of the discovered
@@ -80,6 +83,41 @@ func (vm sourceDetailVM) FreePrefill() string {
 		return vm.Playbook
 	}
 	return ""
+}
+
+// RunLabel names the thing the launch drawer's submit button queues: the
+// prefilled known playbook, or the path placeholder when discovery found none.
+// The button states the contract ("Queue run — <thing> @ <ref>", F4) so the
+// operator sees exactly what the one queue will run.
+func (vm sourceDetailVM) RunLabel() string {
+	if vm.PlaybookKnown() {
+		return vm.Playbook
+	}
+	if len(vm.Playbooks) == 0 {
+		return "a path"
+	}
+	return "a playbook"
+}
+
+// QueueLabel is the launch drawer's submit-button contract: the thing being
+// queued and the ref it resolves against, so the operator sees exactly what the
+// one queue will run (F4).
+func (vm sourceDetailVM) QueueLabel() string {
+	ref := vm.Source.Ref
+	if ref == "" {
+		ref = "—"
+	}
+	return "Queue run — " + vm.RunLabel() + " @ " + ref
+}
+
+// LaunchMeta is the drawer's provenance line — which source and ref the run
+// resolves against, and that it queues rather than executes directly.
+func (vm sourceDetailVM) LaunchMeta() string {
+	ref := vm.Source.Ref
+	if ref == "" {
+		ref = "—"
+	}
+	return vm.Source.Name + " @ " + ref + " · queues through the one queue"
 }
 
 func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +148,7 @@ func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {
 		Writable: src.Writable,
 		Tab:      "playbook",
 		Playbook: r.URL.Query().Get("playbook"),
+		Launch:   r.URL.Query().Get("launch") == "1",
 	}
 	if r.URL.Query().Get("tab") == "command" {
 		vm.Tab = "command"

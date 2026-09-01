@@ -355,6 +355,12 @@ td.right, th.right { text-align: right; }
   .card.tray tbody tr:nth-child(even) { background: var(--surface-tray); }
   .card.tray tbody tr:hover { background: var(--surface-row); }
   .card.tray tbody tr:last-child td { border-bottom: 0; }
+  /* An attention row (a never-synced source, F5) tints and carries the wait
+   * accent on its leading edge — the row's own inset ring, readable greyscale
+   * with the NEVER chip beside it. */
+  .card.tray tbody tr.attention td { background: var(--wait-tint); }
+  .card.tray tbody tr.attention:hover td { background: var(--wait-tint); }
+  .card.tray tbody tr.attention td:first-child { box-shadow: inset 3px 0 0 var(--wait-border); }
 }
 
 /* ---- Check cards + target grid (F1/F2/F3) ----
@@ -678,6 +684,30 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 }
 .modal:not([open]) { display: none; }
 .modal::backdrop { background: rgba(0,0,0,.5); }
+/* Launch drawer (F4): the source-detail launcher lives in a right-anchored
+ * 460px drawer instead of an always-open wall-of-form, so the detail page leads
+ * with identity and facts and the mutation surface is opened by intent. Same
+ * native <dialog> mechanics as .modal; only the geometry differs. JS-off:
+ * ?launch=1 renders the open attribute, so the drawer still works without
+ * script. */
+.modal.drawer {
+  inset: 0 0 0 auto; margin: 0;
+  width: min(460px, 100vw);
+  max-height: 100vh; height: 100vh;
+  border-radius: 0;
+  border: 0; border-left: 1px solid var(--hairline);
+}
+.modal.drawer .modal-body { padding: 6px 20px 24px; }
+/* The drawer's Options fold holds the run-option toggles/timeout below the
+ * primary fields; the privileged escalation sits in its own fail-tinted block
+ * so it reads as the sharp edge it is, never a plain option. */
+.opts { margin-top: 12px; }
+.opts > summary { cursor: pointer; color: var(--ink-400); font: var(--type-button); list-style: none; }
+.privileged {
+  margin-top: 12px; padding: 12px 14px;
+  border: 1px solid var(--fail-border); border-radius: var(--radius-control);
+  background: var(--fail-tint);
+}
 .modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .modal-head h2 { margin: 0; }
 .modal-close {
@@ -729,6 +759,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .log .sys { color: var(--ink-500); }
 
 .meta { color: var(--ink-500); font: var(--type-body); }
+.wait-text { color: var(--signal-wait); }
 
 /* ---- Powerline (fixed-bottom status bar) ----
  * Always at the viewport bottom, spanning the full width beneath the sidebar

@@ -8,15 +8,16 @@ package web
 import "github.com/a-h/templ"
 import templruntime "github.com/a-h/templ/runtime"
 
-// sourceDetail is a single source's page: a read-only header (kind, writable
-// posture, trust, ref, last sync) everyone sees, and — for an operator — a
-// launcher card with a Playbook | Command tab pair. Both tabs POST to a
+// sourceDetail is a single source's page: a read-only identity card (kind,
+// trust, ref, last sync — and, for an operator, the Disable/Delete controls and
+// the "Launch a run…" verb) followed by a right-anchored launch drawer (F4). The
+// drawer carries the Playbook | Command tab pair, both POSTing to a
 // source-scoped run route (/sources/{name}/run/*), so every browser run reads
 // from a registered source's own tree. The tabs are switched by a few lines of
 // vanilla JS (hidden toggling + aria-selected); the server picks the first tab
 // and prefills the playbook from the query string, so the page is deep-linkable
-// (?tab=playbook&playbook=site.yml). With JS off the deep-linked tab is the one
-// shown, which is still a usable launcher.
+// (?tab=playbook&playbook=site.yml). JS-off: ?launch=1 renders the drawer's
+// open attribute, so the launcher still opens without script.
 func sourceDetail(vm sourceDetailVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -61,7 +62,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 			var templ_7745c5c3_Var3 string
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source.Name)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 16, Col: 23}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 17, Col: 23}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -74,7 +75,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 			var templ_7745c5c3_Var4 string
 			templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 20, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 21, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 			if templ_7745c5c3_Err != nil {
@@ -112,7 +113,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 			var templ_7745c5c3_Var5 string
 			templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.Source.URI))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 32, Col: 66}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 33, Col: 66}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 			if templ_7745c5c3_Err != nil {
@@ -125,254 +126,320 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 			var templ_7745c5c3_Var6 string
 			templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.Source.Ref))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 33, Col: 61}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 34, Col: 61}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</dd></div><div><dt>Last sync</dt><dd class=\"mono\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "</dd></div><div><dt>Last sync</dt>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var7 string
-			templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.Source.Short()))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 34, Col: 71}
+			if vm.Source.NeverSynced() {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<dd class=\"mono wait-text\">never — sync to discover playbooks</dd>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<dd class=\"mono\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var7 string
+				templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source.Short())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 39, Col: 42}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "</dd>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</dd></div></dl>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</div></dl>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"rowactions\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<div class=\"rowactions\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if vm.Source.Enabled {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<form method=\"post\" action=\"")
+				if vm.Source.NeverSynced() {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<span class=\"meta\" title=\"sync is a CLI verb — the web surface only reads a source's tree\"><code>exocomp source sync ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var8 templ.SafeURL
-					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/disable"))
+					var templ_7745c5c3_Var8 string
+					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 39, Col: 91}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 47, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn quiet\">Disable</button></form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</code></span> ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-				} else {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<form method=\"post\" action=\"")
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<button type=\"button\" class=\"btn primary\" data-modal-open=\"launch\">Launch a run…</button> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.Source.Enabled {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<form method=\"post\" action=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var9 templ.SafeURL
-					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/enable"))
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/disable"))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 43, Col: 90}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 52, Col: 91}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn quiet\">Enable</button></form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn quiet\">Disable</button></form>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<form method=\"post\" action=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var10 templ.SafeURL
+					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/enable"))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 56, Col: 90}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn quiet\">Enable</button></form>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var10 templ.SafeURL
-				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/rm"))
+				var templ_7745c5c3_Var11 templ.SafeURL
+				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/rm"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 47, Col: 85}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "\" class=\"inline-form\" data-confirm=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var11 string
-				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs("Delete source " + vm.Source.Name + "?")
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 47, Col: 162}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 60, Col: 85}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\"><input type=\"hidden\" name=\"confirmed\" value=\"1\"> <button type=\"submit\" class=\"btn danger\">Delete…</button></form></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</div>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if !vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<div class=\"card span2 mt18\"><div class=\"kicker\">Read-only</div><h3>Launch a run</h3><p class=\"meta\">Enqueuing a run from this source needs an operator-scoped token.</p></div>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<div class=\"card span2 mt18\"><h3>Launch a run</h3><p class=\"meta\">Resolves the playbook against this source's checkout (loading its ./ansible.cfg), then enqueues through the one queue.</p><div class=\"tabs\" role=\"tablist\" aria-label=\"Launcher\"><button type=\"button\" class=\"tab\" id=\"tab-playbook\" role=\"tab\" data-tab=\"playbook\" aria-controls=\"panel-playbook\" aria-selected=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\" class=\"inline-form\" data-confirm=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(boolAttr(vm.Tab == "playbook"))
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("Delete source " + vm.Source.Name + "?")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 72, Col: 52}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 60, Col: 162}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\">Playbook</button> <button type=\"button\" class=\"tab\" id=\"tab-command\" role=\"tab\" data-tab=\"command\" aria-controls=\"panel-command\" aria-selected=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "\"><input type=\"hidden\" name=\"confirmed\" value=\"1\"> <button type=\"submit\" class=\"btn danger\">Delete…</button></form></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if !vm.Operator {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"card span2 mt18\"><div class=\"kicker\">Read-only</div><h3>Launch a run</h3><p class=\"meta\">Enqueuing a run from this source needs an operator-scoped token.</p></div>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<dialog class=\"modal drawer\" id=\"launch\" aria-labelledby=\"launch-title\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.Launch {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, " open")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "><div class=\"modal-head\"><h2 id=\"launch-title\">Launch a run</h2><button type=\"button\" class=\"modal-close\" data-modal-dismiss aria-label=\"Close\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.6\" stroke-linecap=\"round\" aria-hidden=\"true\"><path d=\"M3 3l10 10M13 3L3 13\"></path></svg></button></div><p class=\"meta\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var13 string
-				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(boolAttr(vm.Tab == "command"))
+				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(vm.LaunchMeta())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 81, Col: 51}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 83, Col: 37}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "\">Command</button></div><div id=\"panel-playbook\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"tab-playbook\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</p><div class=\"modal-body\"><div class=\"tabs\" role=\"tablist\" aria-label=\"Launcher\"><button type=\"button\" class=\"tab\" id=\"tab-playbook\" role=\"tab\" data-tab=\"playbook\" aria-controls=\"panel-playbook\" aria-selected=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if vm.Tab != "playbook" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, " hidden")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "><form method=\"post\" action=\"")
+				var templ_7745c5c3_Var14 string
+				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(boolAttr(vm.Tab == "playbook"))
 				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var14 templ.SafeURL
-				templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook"))
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 85, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 93, Col: 53}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "\" class=\"writeform\"><label for=\"rp-select\">Playbook</label> <select id=\"rp-select\" name=\"playbook\"><option value=\"\">— choose a discovered playbook —</option> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\">Playbook</button> <button type=\"button\" class=\"tab\" id=\"tab-command\" role=\"tab\" data-tab=\"command\" aria-controls=\"panel-command\" aria-selected=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				for _, pb := range vm.Playbooks {
-					if vm.PlaybookKnown() && pb == vm.Playbook {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<option value=\"")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var15 string
-						templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 91, Col: 27}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" selected>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var16 string
-						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 91, Col: 43}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</option> ")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<option value=\"")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var17 string
-						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 93, Col: 27}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\">")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var18 string
-						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 93, Col: 34}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</option> ")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					}
+				var templ_7745c5c3_Var15 string
+				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(boolAttr(vm.Tab == "command"))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 102, Col: 52}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "<option value=\"__other__\">other path…</option></select> ")
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				if len(vm.Playbooks) == 0 {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "<p class=\"meta\">No playbooks discovered in the checkout (an unsynced source, or an unusual layout). Use the path below.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\">Command</button></div><div id=\"panel-playbook\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"tab-playbook\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.Tab != "playbook" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " hidden")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<label for=\"rp-path\">Or a path relative to the checkout</label> <input id=\"rp-path\" name=\"playbook_path\" type=\"text\" autocomplete=\"off\" placeholder=\"deploy/site.yml\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "><form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var19 string
-				templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(vm.FreePrefill())
+				var templ_7745c5c3_Var16 templ.SafeURL
+				templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 102, Col: 132}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 106, Col: 96}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\"> <label for=\"rp-inventory\">Inventory</label> <input id=\"rp-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rp-limit\">Limit</label> <input id=\"rp-limit\" name=\"limit\" type=\"text\" autocomplete=\"off\" placeholder=\"host or group pattern\"> <label for=\"rp-tags\">Tags</label> <input id=\"rp-tags\" name=\"tags\" type=\"text\" autocomplete=\"off\"> <label for=\"rp-secrets\">Run secrets binding</label> <input id=\"rp-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "\" class=\"writeform\"><label for=\"rp-select\">Playbook</label> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(vm.Playbooks) == 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "<select id=\"rp-select\" name=\"playbook\" disabled><option value=\"\">path — none discovered yet</option></select><p class=\"meta\">Unsynced source: give a path relative to the checkout.</p>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				} else {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<select id=\"rp-select\" name=\"playbook\"><option value=\"\">— choose a discovered playbook —</option> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					for _, pb := range vm.Playbooks {
+						if vm.PlaybookKnown() && pb == vm.Playbook {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<option value=\"")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var17 string
+							templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 118, Col: 29}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" selected>")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var18 string
+							templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 118, Col: 45}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</option> ")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						} else {
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<option value=\"")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var19 string
+							templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 120, Col: 29}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\">")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							var templ_7745c5c3_Var20 string
+							templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(pb)
+							if templ_7745c5c3_Err != nil {
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 120, Col: 36}
+							}
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</option> ")
+							if templ_7745c5c3_Err != nil {
+								return templ_7745c5c3_Err
+							}
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<option value=\"__other__\">other path…</option></select> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<label for=\"rp-path\">Or a path relative to the checkout</label> <input id=\"rp-path\" name=\"playbook_path\" type=\"text\" autocomplete=\"off\" placeholder=\"deploy/site.yml\" value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var21 string
+				templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(vm.FreePrefill())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 127, Col: 133}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\"> <label for=\"rp-inventory\">Inventory</label> <input id=\"rp-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rp-limit\">Limit</label> <input id=\"rp-limit\" name=\"limit\" type=\"text\" autocomplete=\"off\" placeholder=\"host or group pattern\"> <label for=\"rp-tags\">Tags</label> <input id=\"rp-tags\" name=\"tags\" type=\"text\" autocomplete=\"off\"> <label for=\"rp-secrets\">Run secrets binding</label> <input id=\"rp-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\"> <details class=\"opts\"><summary>Options — inventory, limit, tags, secrets</summary>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -384,7 +451,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<label for=\"rp-timeout\">Timeout (optional, e.g. 10m)</label> <input id=\"rp-timeout\" name=\"timeout\" type=\"text\" autocomplete=\"off\" placeholder=\"no limit\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<label for=\"rp-timeout\">Timeout (optional, e.g. 10m)</label> <input id=\"rp-timeout\" name=\"timeout\" type=\"text\" autocomplete=\"off\" placeholder=\"no limit\"></details><div class=\"privileged\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -392,30 +459,43 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<p class=\"meta\">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Run playbook</button></div></form></div><div id=\"panel-command\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"tab-command\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<p class=\"meta\">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p></div><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var22 string
+				templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 148, Col: 67}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</button><p class=\"meta\">enqueued, never executed directly · Esc closes</p></div></form></div><div id=\"panel-command\" class=\"tabpanel\" role=\"tabpanel\" aria-labelledby=\"tab-command\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Tab != "command" {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " hidden")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, " hidden")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "><form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "><form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var20 templ.SafeURL
-				templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/run/command"))
+				var templ_7745c5c3_Var23 templ.SafeURL
+				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/run/command"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 121, Col: 94}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 154, Col: 95}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"writeform\"><label for=\"rc-host\">Host pattern</label> <input id=\"rc-host\" name=\"host\" type=\"text\" required autocomplete=\"off\" placeholder=\"web or fedora:!nas\"> <label for=\"rc-command\">Command</label> <input id=\"rc-command\" name=\"command\" type=\"text\" required autocomplete=\"off\" placeholder=\"systemctl status nginx\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" class=\"writeform\"><label for=\"rc-host\">Host pattern</label> <input id=\"rc-host\" name=\"host\" type=\"text\" required autocomplete=\"off\" placeholder=\"web or fedora:!nas\"> <label for=\"rc-command\">Command</label> <input id=\"rc-command\" name=\"command\" type=\"text\" required autocomplete=\"off\" placeholder=\"systemctl status nginx\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -427,7 +507,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<label for=\"rc-inventory\">Inventory</label> <input id=\"rc-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rc-secrets\">Run secrets binding</label> <input id=\"rc-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<label for=\"rc-inventory\">Inventory</label> <input id=\"rc-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rc-secrets\">Run secrets binding</label> <input id=\"rc-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -435,7 +515,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<label for=\"rc-timeout\">Timeout (optional, e.g. 10m)</label> <input id=\"rc-timeout\" name=\"timeout\" type=\"text\" autocomplete=\"off\" placeholder=\"no limit\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"privileged\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -443,7 +523,20 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<p class=\"meta\">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Run command</button></div></form></div><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar tabs = Array.prototype.slice.call(document.querySelectorAll('.tabs [role=\"tab\"]'));\n\t\t\t\t\tif (tabs.length === 0) return;\n\t\t\t\t\tfunction select(key) {\n\t\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\t\tvar on = t.getAttribute(\"data-tab\") === key;\n\t\t\t\t\t\t\tt.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");\n\t\t\t\t\t\t\tvar panel = document.getElementById(t.getAttribute(\"aria-controls\"));\n\t\t\t\t\t\t\tif (panel) panel.hidden = !on;\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\tt.addEventListener(\"click\", function () { select(t.getAttribute(\"data-tab\")); });\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t\t</script></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<p class=\"meta\">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p></div><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var24 string
+				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 171, Col: 67}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</button><p class=\"meta\">enqueued, never executed directly · Esc closes</p></div></form></div><script>\n\t\t\t\t\t(function () {\n\t\t\t\t\t\tvar tabs = Array.prototype.slice.call(document.querySelectorAll('#launch .tabs [role=\"tab\"]'));\n\t\t\t\t\t\tif (tabs.length === 0) return;\n\t\t\t\t\t\tfunction select(key) {\n\t\t\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\t\t\tvar on = t.getAttribute(\"data-tab\") === key;\n\t\t\t\t\t\t\t\tt.setAttribute(\"aria-selected\", on ? \"true\" : \"false\");\n\t\t\t\t\t\t\t\tvar panel = document.getElementById(t.getAttribute(\"aria-controls\"));\n\t\t\t\t\t\t\t\tif (panel) panel.hidden = !on;\n\t\t\t\t\t\t\t});\n\t\t\t\t\t\t}\n\t\t\t\t\t\ttabs.forEach(function (t) {\n\t\t\t\t\t\t\tt.addEventListener(\"click\", function () { select(t.getAttribute(\"data-tab\")); });\n\t\t\t\t\t\t});\n\t\t\t\t\t})();\n\t\t\t\t\t</script></div></dialog>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
