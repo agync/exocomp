@@ -51,8 +51,8 @@ func (m HomeModel) selfLines() []string {
 }
 
 const (
-	homeKeys80  = "[0-9] screens  [enter] open  [p] pause  [m] mute  [q] quit"
-	homeKeys120 = "[0-9] screens  [tab] next  [enter] open  [p] pause  [m] mute  [q] quit"
+	homeKeys80  = "[0-9] [s] [u] screens  [enter] open  [p] pause  [m] mute  [q] quit"
+	homeKeys120 = "[0-9] [s] [u] screens  [tab] next  [enter] open  [p] pause  [m] mute  [q] quit"
 	helpRight   = "[?] help"
 )
 

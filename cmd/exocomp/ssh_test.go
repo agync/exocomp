@@ -66,7 +66,7 @@ func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 	}
 	// The TUI opens on the Home glance ([0], the root): its header, the
 	// needs/queue sections, and the screen-selector help bar.
-	for _, want := range []string{"exocomp", "NEEDS YOU", "QUEUE", "BACKUPS", "[0-9] screens", "[q] quit"} {
+	for _, want := range []string{"exocomp", "NEEDS YOU", "QUEUE", "BACKUPS", "[0-9] [s] [u] screens", "[q] quit"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("session transcript does not contain %q:\n%s", want, out)
 		}

@@ -19,7 +19,7 @@ type EventsModel struct {
 	rows    []eventRow
 }
 
-const eventsKeys = "[e] trace  [o] filter outcome  [/] search  [j/k] move"
+const eventsKeys = "[e] trace  [o] outcome  [/] search  [j/k] move"
 
 // renderEvents draws the events table. The outcome column is fixed-width so the
 // enum reads as a column; source and outcome sit one space apart so a long
@@ -50,7 +50,7 @@ func renderEventsScreen(m EventsModel) string {
 		}
 		lines = append(lines, line)
 	}
-	lines = append(lines, "", lr(eventsKeys, "[0-9] screens", w))
+	lines = append(lines, "", lr(eventsKeys, "[?] help", w))
 	return join(lines)
 }
 
