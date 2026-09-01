@@ -30,6 +30,7 @@ Getting an install standing up, and getting it back after it falls over.
 | [The MCP surface](mcp.md) | `POST /mcp` on the ADR-0009 listener, the one agent MCP surface: connecting an agent, what each scope is advertised, why there is no session id, and what never travels |
 | [Runner definitions](runners.md) | `exocomp runner add/list/show/rm/import` — a database-backed registry for the deferred container tier; definitions only, nothing executes them yet |
 | [Governed CLI runs](cli-run.md) | `exocomp cli-tool` and `exocomp run-cli` — the run type for work that is neither ansible nor tofu: an allow-listed binary under the same queue, sandbox, run-secret and approval governance, with argv that is never a shell string |
+| [Changelog](CHANGELOG.md) | The software release narrative — features, fixes, and behavior changes, newest first (kept separate from the knowledge-base evolution log) |
 
 The two are one loop, not two topics: bootstrap does not finish until a restore drill has
 passed, so the recovery path is proven before any real work exists to lose.
