@@ -537,24 +537,34 @@ func rpoFreshness(age time.Duration) string {
 }
 
 // signal builds the powerline's is-the-control-plane-alive strip: newest backup
-// age (the dead-man), push transport presence, and disk headroom.
+// age (the dead-man), push transport presence, and disk headroom. Each segment
+// also carries the signal state the strip renders in (F10): a dead-man with no
+// backup is a wait state with a fix verb, ntfy-off is deliberate dim, disk is
+// ok until it threatens.
 func (s *Server) signal(ctx context.Context) SignalLine {
 	sig := SignalLine{DeadMan: "—", Ntfy: "off", Disk: "—"}
+	sig.NtfyState = "dim"
 
 	if age, ok := s.newestBackupAge(ctx); ok {
 		sig.DeadMan = humanAge(age)
+		sig.DeadManState = "ok"
 	} else {
 		sig.DeadMan = "none"
+		sig.DeadManState = "wait"
 	}
 
 	if _, err := s.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
 		sig.Ntfy = "on"
+		sig.NtfyState = "ok"
 	}
 
 	if s.dataDir != "" {
 		if pct, ok := diskFreePercent(s.dataDir); ok {
 			sig.Disk = fmt.Sprintf("%d%% free", pct)
-			sig.Warn = pct < 10
+			sig.DiskState = "ok"
+			if pct < 10 {
+				sig.DiskState = "fail"
+			}
 		}
 	}
 	return sig

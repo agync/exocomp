@@ -11,6 +11,43 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
+// TestPowerlineSignalSegments is the GATE for the F10 realign: each powerline
+// segment is dot + word in its signal color and links to where it is fixed, so
+// a gap reads as a verb, not a grey fact. A fresh harness has no backup (dead-man
+// none → wait + "— set one"), no push transport (ntfy off → deliberate dim),
+// and no data dir (disk —, no state class).
+func TestPowerlineSignalSegments(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`class="pl-seg wait"`,
+		`dead-man none`,
+		`— set one`,
+		`class="pl-seg dim"`,
+		`ntfy off`,
+		`href="/system"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("powerline missing %q", want)
+		}
+	}
+	for _, gone := range []string{
+		`pl-item`,
+		`pl-item warn`,
+	} {
+		if strings.Contains(page, gone) {
+			t.Errorf("powerline still carries the old grey-fact markup %q", gone)
+		}
+	}
+}
+
 // TestDashboardSummaryCards is the GATE for the at-a-glance redesign: the
 // dashboard shows summary cards — counts plus a single attention detail —
 // never an embedded table, and settled job history never reaches the page at

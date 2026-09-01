@@ -25,12 +25,16 @@ type page struct {
 
 // SignalLine is the always-on powerline: the dead-man switch, push transport,
 // and disk headroom. It is the "is the control plane itself alive" strip; the
-// running version is a /system concern, not a status-bar one.
+// running version is a /system concern, not a status-bar one. Each segment
+// carries its signal state so the strip renders dot + word in that color (F10):
+// a gap reads as a verb, never a grey fact.
 type SignalLine struct {
-	DeadMan string
-	Ntfy    string
-	Disk    string
-	Warn    bool
+	DeadMan      string
+	DeadManState string
+	Ntfy         string
+	NtfyState    string
+	Disk         string
+	DiskState    string
 }
 
 // dashboardVM is the glance screen: the first answer to "is everything OK?".

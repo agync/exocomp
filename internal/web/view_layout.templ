@@ -171,17 +171,23 @@ const (
 // powerline is the fixed-bottom status strip: the is-the-control-plane-alive
 // signals (dead-man, ntfy, disk) and who is signed in. It sits in the viewport's
 // bottom edge, not at end-of-content, so it is always visible; main carries
-// bottom padding so no content hides behind it. Minimal by intent — the server
-// version lives on /system, not here.
+// bottom padding so no content hides behind it. Each signal is dot + word in its
+// signal color and links to where it is fixed (F10): a gap reads as a verb, not
+// a grey fact. The server version lives on /system, not here.
 templ powerline(p page) {
 	<footer class="powerline" role="contentinfo">
-		<span class="pl-item">dead-man { p.Signal.DeadMan }</span>
-		<span class="pl-item">ntfy { p.Signal.Ntfy }</span>
-		if p.Signal.Warn {
-			<span class="pl-item warn">disk { p.Signal.Disk }</span>
-		} else {
-			<span class="pl-item">disk { p.Signal.Disk }</span>
-		}
+		<a class={ "pl-seg", templ.KV("wait", p.Signal.DeadManState == "wait"), templ.KV("ok", p.Signal.DeadManState == "ok") } href="/system">
+			<span class="dot" aria-hidden="true"></span>dead-man { p.Signal.DeadMan }
+			if p.Signal.DeadMan == "none" {
+				<span>— set one</span>
+			}
+		</a>
+		<a class={ "pl-seg", templ.KV("dim", p.Signal.NtfyState == "dim"), templ.KV("ok", p.Signal.NtfyState == "ok") } href="/system">
+			<span class="dot" aria-hidden="true"></span>ntfy { p.Signal.Ntfy }
+		</a>
+		<a class={ "pl-seg", templ.KV("ok", p.Signal.DiskState == "ok"), templ.KV("fail", p.Signal.DiskState == "fail") } href="/system">
+			<span class="dot" aria-hidden="true"></span>disk { p.Signal.Disk }
+		</a>
 		if p.Who != "" {
 			<span class="pl-who" title="signed in">{ p.Who } · { p.Scope }</span>
 		}
