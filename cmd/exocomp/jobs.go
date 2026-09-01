@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -171,7 +172,7 @@ func newJobsListCmd() *cobra.Command {
 			_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 			for _, j := range rows {
 				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
+					j.ID, j.State, dashIfEmpty(runbookLabel(j.Runbook)), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
 					dashIfEmpty(j.Trigger), exitCodeLabel(j.ExitCode),
 					j.QueuedAt.UTC().Format("2006-01-02 15:04:05Z"))
 			}
@@ -179,7 +180,7 @@ func newJobsListCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringSliceVar(&states, "state", nil, "only jobs in this state (repeatable)")
-	cmd.Flags().StringVar(&runbook, "runbook", "", "only jobs for this runbook")
+	cmd.Flags().StringVar(&runbook, "runbook", "", "only jobs for this runbook (matches the stored runbook value exactly, including a rule: prefix)")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "", "only jobs under this concurrency key")
 	cmd.Flags().IntVar(&limit, "limit", 0, "how many jobs to show (0: all)")
 	return cmd
@@ -232,7 +233,7 @@ func newJobsGetCmd() *cobra.Command {
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintf(w, "id\t%d\n", job.ID)
 			_, _ = fmt.Fprintf(w, "state\t%s\n", job.State)
-			_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(job.Runbook))
+			_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(runbookLabel(job.Runbook)))
 			_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(job.Args.Source))
 			_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(job.Kind))
 			_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(job.Trigger))
@@ -320,6 +321,15 @@ func dashIfEmpty(s string) string {
 		return "-"
 	}
 	return s
+}
+
+// runbookLabel strips the "rule:" prefix a rule-triggered job's runbook
+// carries, so the list and get read the rule name, matching the web's
+// viewmodel. The raw runbook stays the run's logic key:--runbook filters and
+// the JSON view carry it exactly, so a machine query never matches a display..
+func runbookLabel(runbook string) string {
+	runbook, _ = strings.CutPrefix(runbook, "rule:")
+	return runbook
 }
 
 func exitCodeLabel(code *int) string {

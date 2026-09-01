@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -147,6 +148,59 @@ func TestSecretsListJSONNeverLeaksValue(t *testing.T) {
 	}
 	if !strings.Contains(out, "vault/ansible") {
 		t.Fatalf("secrets list should still name the secret: %s", out)
+	}
+}
+
+// TestJobsRunbookLabelStripsRulePrefix:the web viewmodel strips the "rule:"
+// prefix from a rule-triggered job's runbook for display;the CLI list and get
+// now do the same, while the JSON view (a machine surface) keeps the raw
+// stored value so filters and consumers never match a display..
+func TestJobsRunbookLabelStripsRulePrefix(t *testing.T) {
+	st := seedStore(t)
+	job, err := st.CreateJob(context.Background(), store.NewJob{
+		Runbook: "rule:deploy-app", Kind: "tofu.plan", Trigger: "rule", ConcurrencyKey: "rule:deploy-app",
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+
+	text, err := run(t, "jobs", "list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text, "deploy-app") {
+		t.Fatalf("jobs list text missing the stripped runbook name: %q", text)
+	}
+	if strings.Contains(text, "rule:deploy-app") {
+		t.Fatalf("jobs list text leaked the rule: prefix: %q", text)
+	}
+
+	get, err := run(t, "jobs", "get", strconv.FormatInt(job.ID, 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(get, "deploy-app") {
+		t.Fatalf("jobs get text missing the stripped runbook name: %q", get)
+	}
+	if strings.Contains(get, "rule:deploy-app") {
+		t.Fatalf("jobs get text leaked the rule: prefix: %q", get)
+	}
+
+	jsonOut, err := run(t, "jobs", "list", "--output", "json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var e struct {
+		Kind string `json:"kind"`
+		Data []struct {
+			Runbook string `json:"runbook"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &e); err != nil {
+		t.Fatalf("jobs list json: %v (%q)", err, jsonOut)
+	}
+	if e.Kind != "job.list" || len(e.Data) != 1 || e.Data[0].Runbook != "rule:deploy-app" {
+		t.Fatalf("jobs list json did not preserve the raw runbook: %s", jsonOut)
 	}
 }
 

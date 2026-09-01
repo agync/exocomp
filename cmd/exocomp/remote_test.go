@@ -210,3 +210,34 @@ func TestHostFlagDistinctFromRemote(t *testing.T) {
 		t.Error("--host must not activate remote client mode")
 	}
 }
+
+// TestRemoteJobsRunbookLabelStripsRulePrefix:the remote list/get renderers
+// strip the "rule:" prefix the same way the local CLI and the web viewmodel do,
+// so an agent reading a remote box sees the same display an operator's browser.
+func TestRemoteJobsRunbookLabelStripsRulePrefix(t *testing.T) {
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	job := wire.JobView{ID: 7, State: "queued", Runbook: "rule:deploy-app", Kind: "tofu", QueuedAt: "2026-08-22T10:00:00Z"}
+	if err := renderRemoteJobsList(cmd, outputText, []wire.JobView{job}); err != nil {
+		t.Fatalf("render remote jobs list: %v", err)
+	}
+	if !strings.Contains(out.String(), "deploy-app") {
+		t.Fatalf("remote jobs list missing the stripped runbook name: %q", out.String())
+	}
+	if strings.Contains(out.String(), "rule:deploy-app") {
+		t.Fatalf("remote jobs list leaked the rule: prefix: %q", out.String())
+	}
+
+	out.Reset()
+	if err := renderRemoteJobGet(cmd, outputText, job); err != nil {
+		t.Fatalf("render remote job get: %v", err)
+	}
+	if !strings.Contains(out.String(), "deploy-app") {
+		t.Fatalf("remote job get missing the stripped runbook name: %q", out.String())
+	}
+	if strings.Contains(out.String(), "rule:deploy-app") {
+		t.Fatalf("remote job get leaked the rule: prefix: %q", out.String())
+	}
+}
