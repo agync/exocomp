@@ -354,19 +354,30 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
+	// The fingerprint is computed from the same ListApprovals rows the page
+	// renders, projected to the same wire payload the stream diffs, so the
+	// script's ?fp= can tell the stream "this state is already on screen" and
+	// skip a reload-only snapshot (F4).
+	rows, err := s.store.ListApprovals(r.Context(), true)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm := dashboardVM{Page: s.pageFor(r, "Approvals", "approvals"), ApprovalFP: approvalsFP(rows)}
 	pending, err := s.pendingApprovals(r)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	vm := dashboardVM{Page: s.pageFor(r, "Approvals", "approvals"), NeedsYou: pending}
+	vm.NeedsYou = pending
 	s.render(w, r, http.StatusOK, approvalsList(vm))
 }
 
 // handleApprovalStream live-updates the /approvals list page via SSE, the
 // browser twin of apiApprovalStream: the same flusher assertion, then
-// tailApprovals, which re-resolves the session identity each poll and caps
-// lifetime at streamMaxLifetime. tailApprovals sets the SSE headers itself.
+// tailApprovals, which re-resolves the session identity (epoch pin included)
+// each poll and caps lifetime at streamMaxLifetime. tailApprovals sets the SSE
+// headers itself and enforces the shared stream cap.
 func (s *Server) handleApprovalStream(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {

@@ -110,6 +110,9 @@ type Server struct {
 	// 503 once maxApprovalStreams are live; it is a guard, not a ledger — a
 	// process restart resets it and nothing audits it.
 	approvalStreams atomic.Int64
+	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
+	// test can shrink the 30s production cadence into a runnable window.
+	heartbeat time.Duration
 }
 
 // New returns a Server ready to be mounted.
@@ -141,6 +144,7 @@ func New(opts Options) (*Server, error) {
 		dataDir:     opts.DataDir,
 		log:         log,
 		clock:       clock,
+		heartbeat:   approvalsStreamHeartbeat,
 		kdf:         newKDFGate(),
 		fails:       newFailGate(),
 		verify:      verifySecret,

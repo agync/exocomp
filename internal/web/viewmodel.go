@@ -53,6 +53,11 @@ type dashboardVM struct {
 	Checks     checksSummary
 	Workflows  workflowSummary
 	Schedules  scheduleSummary
+	// ApprovalFP is the fingerprint of the pending-approvals list as of
+	// render (approvalsFP over the same ListApprovals rows the page shows),
+	// handed to approvalsLive so the stream's ?fp= can prove the connect-time
+	// state is already on screen and skip a reload-only snapshot (F4).
+	ApprovalFP string
 }
 
 // approvalSummary is the dashboard's pending-approvals card: the open count

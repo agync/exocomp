@@ -36,24 +36,25 @@ templ approvalsList(vm dashboardVM) {
 				</div>
 			}
 		</div>
-		@approvalsLive()
+		@approvalsLive(vm.ApprovalFP)
 	}
 }
 
 // approvalsLive opens the SSE connection that keeps the /approvals list fresh.
-// tailApprovals always emits one snapshot on connect — the current pending
-// state this page already rendered — so the FIRST approvals event is ignored;
-// only a SUBSEQUENT event, a real membership/state change, reloads the page.
-templ approvalsLive() {
-	<script>
+// fp is the server-computed fingerprint of the pending list this page just
+// rendered (vm.ApprovalFP); the stream compares it to its own connect-time
+// state and sends the snapshot only when they differ — so a change between
+// render and connect cannot be silently dropped, and a matching fp produces no
+// reload-only event. Every subsequent "approvals" event is a real change, so
+// every one reloads. There is no onerror close: EventSource reconnects on its
+// own, and closing on error would turn a transient tunnel drop into a dead list.
+templ approvalsLive(fp string) {
+	<script data-fp={ fp }>
 	(function () {
-		var es = new EventSource("/approvals/stream");
-		var seenFirst = false;
-		es.addEventListener("approvals", function () {
-			if (!seenFirst) { seenFirst = true; return; }
-			location.reload();
-		});
-		es.onerror = function () { es.close(); };
+		var script = document.currentScript;
+		var fp = script.getAttribute("data-fp") || "";
+		var es = new EventSource("/approvals/stream?fp=" + encodeURIComponent(fp));
+		es.addEventListener("approvals", function () { location.reload(); });
 	})();
 	</script>
 }

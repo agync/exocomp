@@ -2,6 +2,8 @@ package web
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -49,6 +51,23 @@ const streamMaxLifetime = 12 * time.Hour
 // exporting wire's helper — the wire package's job is projecting rows, not
 // serving SSE frames.
 func sseTS(t time.Time) string { return t.UTC().Format(time.RFC3339) }
+
+// approvalsFP hashes the wire projection of a pending-approvals list — the
+// exact bytes tailApprovals diffs and the /approvals page renders — so the page
+// and the stream can agree on whether the connect-time state is already on
+// screen. It must be computed from the wire payload, not the page's approvalRow
+// (whose fields differ from ApprovalView), or the two could never match.
+func approvalsFP(rows []store.Approval) string {
+	payload, _ := json.Marshal(wire.NewApprovalList(rows))
+	return approvalsFPHash(payload)
+}
+
+// approvalsFPHash fingerprints one stream payload, the same bytes tailApprovals
+// diffs, so ?fp= and the first read compare on one basis.
+func approvalsFPHash(payload []byte) string {
+	sum := sha256.Sum256(payload)
+	return hex.EncodeToString(sum[:])
+}
 
 // handleJobStream tails one job's events over SSE for the browser surface. It
 // replays nothing the page already rendered: the client opens the stream after
@@ -191,16 +210,29 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 
 	ticker := time.NewTicker(approvalsStreamPoll)
 	defer ticker.Stop()
+	// The heartbeat keeps an idle live list audible to intermediaries: nothing
+	// else is written for hours on a quiet pending set, and any idle timeout
+	// kills a stream a silent EventSource would never notice or rebuild.
+	keepalive := time.NewTicker(s.heartbeat)
+	defer keepalive.Stop()
 
 	ident, hasIdent := identityOf(r.Context())
 	deadline := s.now().Add(streamMaxLifetime)
 
+	// wantFP is the fingerprint of the pending list this page already rendered
+	// (handleApprovals → vm.ApprovalFP). On connect a match means the snapshot
+	// would just reload the page, so the stream stays silent until the first
+	// real change; a differ — or an absent ?fp=, the API route — sends the
+	// snapshot as before, so the render-to-connect window can never silently
+	// drop a change.
+	wantFP := r.URL.Query().Get("fp")
 	// last is the previously sent payload; comparing the full projected bytes
 	// (rather than just ids/states) means a field-only change — a decision
 	// clock ticking a plan_serial, a reason edit — still counts as a change,
 	// not just membership in the pending set. nil (not "[]") until the first
 	// send, so an empty pending set still produces the one initial snapshot.
 	var last []byte
+	lastWrite := s.now()
 	for {
 		now := s.now()
 		if !now.Before(deadline) {
@@ -232,11 +264,30 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 		if err != nil {
 			return
 		}
-		if last == nil || !bytes.Equal(payload, last) {
+		if last == nil {
+			// First read. A ?fp= that matches this exact payload means the page
+			// already rendered it, so sending the snapshot would reload a list
+			// that is already current; record the baseline and wait for a
+			// change. The bare flush still commits the 200 + SSE headers so
+			// the client sees an established connection. Differing or absent fp
+			// sends the snapshot as before.
+			if wantFP != "" && approvalsFPHash(payload) == wantFP {
+				last = payload
+				flusher.Flush()
+			} else {
+				last = payload
+				if _, err := fmt.Fprintf(w, "event: approvals\ndata: %s\n\n", payload); err != nil {
+					return
+				}
+				lastWrite = now
+				flusher.Flush()
+			}
+		} else if !bytes.Equal(payload, last) {
 			last = payload
 			if _, err := fmt.Fprintf(w, "event: approvals\ndata: %s\n\n", payload); err != nil {
 				return
 			}
+			lastWrite = now
 			flusher.Flush()
 		}
 
@@ -244,6 +295,15 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
+		case <-keepalive.C:
+			// Only when the whole window saw no write: a data event a moment
+			// ago is keepalive enough, and doubling up buys nothing.
+			if s.now().Sub(lastWrite) >= s.heartbeat {
+				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					return
+				}
+				flusher.Flush()
+			}
 		}
 	}
 }

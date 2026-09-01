@@ -245,13 +245,159 @@ func TestApprovalsStreamPollInterval(t *testing.T) {
 	}
 }
 
+// TestApprovalsStreamHeartbeat is the F2 regression: an idle approvals stream
+// used to write nothing for hours, so any intermediary idle timeout killed the
+// live list silently. The tail now emits an SSE comment heartbeat (: keepalive)
+// on its idle timer.
+func TestApprovalsStreamHeartbeat(t *testing.T) {
+	h := newHarness(t)
+	h.server.heartbeat = 100 * time.Millisecond
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp, err := client.Get(ts.URL + "/approvals/stream")
+	if err != nil {
+		t.Fatalf("GET approvals stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approvals stream status = %d, want 200", resp.StatusCode)
+	}
+
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		scan := bufio.NewScanner(resp.Body)
+		for scan.Scan() {
+			lines <- scan.Text()
+		}
+	}()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed before the heartbeat arrived")
+			}
+			if line == ": keepalive" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no heartbeat written during an idle window")
+		}
+	}
+}
+
+// TestApprovalsStreamMatchingFPSuppressesSnapshot is the F4 regression: a page
+// that already rendered the pending list opens the stream with ?fp= set to that
+// state's fingerprint, so the connect-time snapshot would only reload a list
+// that is already current. A matching fp must stay silent until the first real
+// change.
+func TestApprovalsStreamMatchingFPSuppressesSnapshot(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	rows, err := h.store.ListApprovals(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListApprovals: %v", err)
+	}
+	fp := approvalsFP(rows)
+
+	resp, err := client.Get(ts.URL + "/approvals/stream?fp=" + fp)
+	if err != nil {
+		t.Fatalf("GET approvals stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approvals stream status = %d, want 200", resp.StatusCode)
+	}
+
+	events := make(chan []wire.ApprovalView, 8)
+	go func() {
+		defer close(events)
+		scan := bufio.NewScanner(resp.Body)
+		for scan.Scan() {
+			line := scan.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var views []wire.ApprovalView
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &views); err != nil {
+				continue
+			}
+			events <- views
+		}
+	}()
+
+	select {
+	case views, ok := <-events:
+		t.Fatalf("matching fp delivered an initial snapshot %+v (open=%v)", views, ok)
+	case <-time.After(800 * time.Millisecond):
+	}
+
+	// A real change still streams.
+	_, approval := h.gatedJob(t, time.Hour)
+	second := waitApprovalsEvent(t, events, 3*time.Second)
+	if len(second) != 1 || second[0].ID != approval.ID {
+		t.Fatalf("post-create event = %+v, want exactly one approval with id %d", second, approval.ID)
+	}
+}
+
+// TestApprovalsStreamDifferingFPSendsSnapshot is the F4 counterpart: a stale
+// ?fp= means the page rendered a different state than the stream's, so the
+// connect-time snapshot must be sent immediately or the render-to-connect
+// change is silently dropped. An absent fp (the API route) keeps the same
+// behavior, which is what TestApprovalsStreamInitialSnapshotThenChange guards.
+func TestApprovalsStreamDifferingFPSendsSnapshot(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp, err := client.Get(ts.URL + "/approvals/stream?fp=deadbeef")
+	if err != nil {
+		t.Fatalf("GET approvals stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("approvals stream status = %d, want 200", resp.StatusCode)
+	}
+
+	events := make(chan []wire.ApprovalView, 8)
+	go func() {
+		defer close(events)
+		scan := bufio.NewScanner(resp.Body)
+		for scan.Scan() {
+			line := scan.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var views []wire.ApprovalView
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &views); err != nil {
+				continue
+			}
+			events <- views
+		}
+	}()
+
+	first := waitApprovalsEvent(t, events, 3*time.Second)
+	if len(first) != 0 {
+		t.Fatalf("initial snapshot = %d approvals, want 0 (empty store)", len(first))
+	}
+}
+
 // TestApprovalsPageLiveScript asserts the /approvals page renders the
-// approvalsLive script with the seenFirst guard: it opens the browser stream
-// and ignores the FIRST approvals event (the initial snapshot this page
-// already rendered), reloading only on a SUBSEQUENT change. Grepping the
-// rendered script for the guard is the regression check that the reload-loop
-// fix is actually in the shipped markup, not just in a template that never
-// renders.
+// approvalsLive script with the data-fp fingerprint and no seenFirst blind skip:
+// it opens the browser stream with ?fp= set to the rendered state's
+// fingerprint, reloads on EVERY approvals event (the server already skips
+// the reload-only snapshot when the fingerprints match), and never closes on
+// error (EventSource reconnects on its own). Grepping the rendered script is the
+// regression check that the reload-loop fix is actually in the shipped markup, not
+// just in a template that never renders.
 func TestApprovalsPageLiveScript(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -262,12 +408,19 @@ func TestApprovalsPageLiveScript(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("approvals page status = %d", code)
 	}
-	if !strings.Contains(page, `new EventSource("/approvals/stream")`) {
-		t.Fatal("approvals page does not open the browser stream")
+	if !strings.Contains(page, `data-fp="`) {
+		t.Fatal("approvals page renders the approvalsLive script without the data-fp fingerprint")
 	}
-	if !strings.Contains(page, "seenFirst") ||
-		!strings.Contains(page, "if (!seenFirst) { seenFirst = true; return; }") ||
-		!strings.Contains(page, "location.reload()") {
-		t.Fatal("approvals page renders the approvalsLive script without the seenFirst guard")
+	if !strings.Contains(page, `new EventSource("/approvals/stream?fp="`) {
+		t.Fatal("approvals page does not open the browser stream with the ?fp= fingerprint")
+	}
+	if strings.Contains(page, "seenFirst") {
+		t.Fatal("approvals page still renders the seenFirst blind skip")
+	}
+	if strings.Contains(page, "es.close()") {
+		t.Fatal("approvals page still closes the stream on error instead of letting EventSource reconnect")
+	}
+	if !strings.Contains(page, "location.reload()") {
+		t.Fatal("approvals page does not reload on an approvals event")
 	}
 }
