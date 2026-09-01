@@ -290,6 +290,52 @@ func TestApprovalsStreamHeartbeat(t *testing.T) {
 	}
 }
 
+// TestApprovalsStreamEndsOnStop is the F5 regression: exocomp web used to let
+// an attached approvals stream hold the listener open, so a SIGINT burned the
+// whole grace period. Stopping the surface closes streamStop, which ends the
+// tail on its next select.
+func TestApprovalsStreamEndsOnStop(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp, err := client.Get(ts.URL + "/approvals/stream")
+	if err != nil {
+		t.Fatalf("GET approvals stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	events := make(chan []wire.ApprovalView, 8)
+	go func() {
+		defer close(events)
+		scan := bufio.NewScanner(resp.Body)
+		for scan.Scan() {
+			line := scan.Text()
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+			var views []wire.ApprovalView
+			if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &views); err != nil {
+				continue
+			}
+			events <- views
+		}
+	}()
+	waitApprovalsEvent(t, events, 3*time.Second)
+
+	h.server.StopStreams()
+
+	select {
+	case views, ok := <-events:
+		if ok {
+			t.Fatalf("stream delivered an event after StopStreams: %+v", views)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("stream stayed open after StopStreams")
+	}
+}
+
 // TestApprovalsStreamMatchingFPSuppressesSnapshot is the F4 regression: a page
 // that already rendered the pending list opens the stream with ?fp= set to that
 // state's fingerprint, so the connect-time snapshot would only reload a list

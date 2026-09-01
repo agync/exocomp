@@ -294,6 +294,8 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 		select {
 		case <-r.Context().Done():
 			return
+		case <-s.streamStop:
+			return
 		case <-ticker.C:
 		case <-keepalive.C:
 			// Only when the whole window saw no write: a data event a moment

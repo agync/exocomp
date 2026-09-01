@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -113,6 +114,12 @@ type Server struct {
 	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
 	// test can shrink the 30s production cadence into a runnable window.
 	heartbeat time.Duration
+	// streamStop is closed once at shutdown to end every attached approvals
+	// stream, so a SIGINT does not burn the whole grace period on idle sockets.
+	// It closes through streamStopOnce because surface shutdown can be reached
+	// twice (tests, error paths).
+	streamStop     chan struct{}
+	streamStopOnce sync.Once
 }
 
 // New returns a Server ready to be mounted.
@@ -145,6 +152,7 @@ func New(opts Options) (*Server, error) {
 		log:         log,
 		clock:       clock,
 		heartbeat:   approvalsStreamHeartbeat,
+		streamStop:  make(chan struct{}),
 		kdf:         newKDFGate(),
 		fails:       newFailGate(),
 		verify:      verifySecret,
@@ -162,6 +170,11 @@ func New(opts Options) (*Server, error) {
 }
 
 func (s *Server) now() time.Time { return s.clock().UTC() }
+
+// StopStreams ends every attached approvals stream. It is idempotent: surface
+// shutdown can be reached twice (tests, error paths), and a second close of the
+// channel would panic.
+func (s *Server) StopStreams() { s.streamStopOnce.Do(func() { close(s.streamStop) }) }
 
 //go:embed tokens.css app.css
 var assetFS embed.FS

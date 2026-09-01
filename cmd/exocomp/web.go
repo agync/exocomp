@@ -126,16 +126,27 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 // web/token surface, distinct from the loopback state backend (ADR 0009). The
 // state backend never requires a LAN token; this surface always does.
 type webSurface struct {
-	http        *http.Server
+	http *http.Server
+	// srv is the LAN surface's web handler, retained so Shutdown can end its
+	// attached SSE streams before the http grace clock starts ticking (F5).
+	srv         *web.Server
 	addr        string
 	scheme      string
 	fingerprint string
 	serveErr    <-chan error
 }
 
-// Shutdown stops the listener within the caller's deadline.
+// Shutdown stops the listener within the caller's deadline. It ends attached
+// SSE streams first, so an idle approvals tail does not eat the whole grace
+// window before http.Shutdown's drain notices it.
 func (w *webSurface) Shutdown(ctx context.Context) error {
-	if w == nil || w.http == nil {
+	if w == nil {
+		return nil
+	}
+	if w.srv != nil {
+		w.srv.StopStreams()
+	}
+	if w.http == nil {
 		return nil
 	}
 	if err := w.http.Shutdown(ctx); err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -210,6 +221,7 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 
 	return &webSurface{
 		http:        httpSrv,
+		srv:         srv,
 		addr:        ln.Addr().String(),
 		scheme:      scheme,
 		fingerprint: fingerprint,
