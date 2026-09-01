@@ -243,6 +243,28 @@ func TestCheckAddValidatesTargets(t *testing.T) {
 	}
 }
 
+// TestCheckAddBadNameFlashes: a name the store's ValidName gate refuses is
+// operator input, not a store failure: it must come back as a flash-carrying
+// redirect, never a bare 500, and no row lands.
+func TestCheckAddBadNameFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{"name": {"bad name!"}, "kind": {store.CheckTCP}, "interval": {"5m"},
+			"target": {"laptop=192.168.1.50:22"}}, nil)
+	msg := flashMessage(t, resp, "/checks")
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "must match") {
+		t.Errorf("flash message %q does not report the name refusal", msg)
+	}
+	if _, err := h.store.GetCheck(context.Background(), "bad name!"); err == nil {
+		t.Fatal("a check was created despite an invalid name")
+	}
+}
+
 // TestCheckAddDuplicateFlashes: re-adding a name that exists is refused with
 // a flash-carrying redirect, not a 409, and the original row survives.
 func TestCheckAddDuplicateFlashes(t *testing.T) {

@@ -53,6 +53,15 @@ func seedDestructiveObjects(t *testing.T, h *harness) {
 	}); err != nil {
 		t.Fatalf("seed runner: %v", err)
 	}
+	// The secrets Delete form sits outside the SealAvailable block, so a
+	// direct store seed renders it without an envelope.
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ssh-key", Kind: "generic", Source: store.SecretSourceUser,
+		Nonce: []byte("NONCE-SENTINEL-D"), Ciphertext: []byte("CIPHER-SENTINEL-D"),
+		AAD: "ssh-key|generic",
+	}); err != nil {
+		t.Fatalf("seed secret: %v", err)
+	}
 	h.mint(t, "seed-token", "readonly")
 }
 
@@ -108,6 +117,7 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 		{"/policies", `data-confirm="Remove policy no-destroy?"`},
 		{"/tokens", `data-confirm="Revoke token seed-token?"`},
 		{"/runners", `data-confirm="Remove runner fedora-ee?"`},
+		{"/secrets", `data-confirm="Delete secret ssh-key?"`},
 	}
 	for _, c := range cases {
 		code, page := getBody(t, op, ts.URL+c.path)
@@ -147,7 +157,7 @@ func TestConfirmDialogRendersOnEverySurface(t *testing.T) {
 	defer ts.Close()
 	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	for _, path := range []string{"/", "/checks", "/netgroups", "/schedules", "/sources", "/policies", "/tokens", "/runners"} {
+	for _, path := range []string{"/", "/checks", "/netgroups", "/schedules", "/sources", "/policies", "/tokens", "/runners", "/secrets"} {
 		code, page := getBody(t, op, ts.URL+path)
 		if code != http.StatusOK {
 			t.Fatalf("%s status = %d, want 200", path, code)

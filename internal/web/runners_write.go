@@ -116,6 +116,10 @@ func (s *Server) handleRunnerRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		return
+	}
 	name := r.PathValue("name")
 	if err := s.store.DeleteRunner(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {

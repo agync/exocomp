@@ -115,6 +115,10 @@ func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		return
+	}
 	name := r.PathValue("name")
 	refs, err := s.secretBindings(r, name)
 	if err != nil {

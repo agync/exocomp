@@ -176,6 +176,28 @@ func TestNetgroupAddReadonlyForbidden(t *testing.T) {
 	}
 }
 
+// TestNetgroupAddBadNameFlashes: a name the store's ValidName gate refuses
+// is operator input, not a store failure: it must come back as a flash-
+// carrying redirect, never a bare 500, and no row lands.
+func TestNetgroupAddBadNameFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	resp := postForm(t, op, ts.URL+"/netgroups/add",
+		url.Values{"name": {"bad name!"}, "prefixes": {"192.168.0.0/16"}}, nil)
+	msg := flashMessage(t, resp, "/netgroups")
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "must match") {
+		t.Errorf("flash message %q does not report the name refusal", msg)
+	}
+	if _, err := h.store.GetNetgroup(ctx, "bad name!"); err == nil {
+		t.Fatal("a netgroup was created despite an invalid name")
+	}
+}
+
 func TestNetgroupRm(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())

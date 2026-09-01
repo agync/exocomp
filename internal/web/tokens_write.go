@@ -153,6 +153,10 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		return
+	}
 	name := r.PathValue("name")
 	if name == ident.token.Name {
 		http.Error(w, "refusing to revoke the token this session is bound to; use another operator token", http.StatusConflict)

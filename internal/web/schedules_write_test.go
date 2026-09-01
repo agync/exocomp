@@ -122,6 +122,32 @@ func TestScheduleAddShellNeedsCommand(t *testing.T) {
 	}
 }
 
+// TestScheduleAddRefusesBadName: a name the ValidName gate refuses is
+// refused before the store sees it — with a flash-carrying redirect, not a bare
+// 500, and no row lands. The same guard surfaces through `schedule add`,
+// so a schedule that could never be addressed by the web cannot be created there
+// either.
+func TestScheduleAddRefusesBadName(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	for _, name := range []string{"", "bad name!", "a/b"} {
+		resp := postForm(t, client, ts.URL+"/schedules/add",
+			url.Values{"name": {name}, "cron": {"@every 5m"}, "kind": {"shell"}, "argv": {"true"}}, nil)
+		msg := flashMessage(t, resp, "/schedules")
+		_ = resp.Body.Close()
+		if !strings.Contains(msg, "invalid schedule name") {
+			t.Errorf("name %q: flash message %q does not report the name refusal", name, msg)
+		}
+		if _, err := h.store.GetSchedule(context.Background(), name); err == nil {
+			t.Fatalf("name %q: a schedule was created despite an invalid name", name)
+		}
+	}
+}
+
 // TestScheduleAddDuplicateFlashes: re-adding a name that exists is refused
 // with a flash-carrying redirect, not a 409, and the original row survives.
 func TestScheduleAddDuplicateFlashes(t *testing.T) {

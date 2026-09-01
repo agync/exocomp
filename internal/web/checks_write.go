@@ -79,6 +79,10 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		redirectFlash(w, r, "/checks", "a check named "+name+" already exists")
 		return
 	}
+	if errors.Is(err, store.ErrValidation) {
+		redirectFlash(w, r, "/checks", err.Error())
+		return
+	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -133,6 +137,10 @@ func (s *Server) handleCheckSetEnabled(w http.ResponseWriter, r *http.Request, e
 func (s *Server) handleCheckRm(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
+		return
+	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
 		return
 	}
 	name := r.PathValue("name")

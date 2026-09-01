@@ -32,6 +32,10 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PostFormValue("name")
+	if !store.ValidName(name) {
+		redirectFlash(w, r, "/schedules", "invalid schedule name")
+		return
+	}
 	cronExpr := r.PostFormValue("cron")
 	if err := sched.ValidateCron(cronExpr); err != nil {
 		redirectFlash(w, r, "/schedules", err.Error())
@@ -60,6 +64,10 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		redirectFlash(w, r, "/schedules", "a schedule named "+name+" already exists")
+		return
+	}
+	if errors.Is(err, store.ErrValidation) {
+		redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 	if err != nil {
@@ -103,6 +111,10 @@ func (s *Server) handleScheduleSetEnabled(w http.ResponseWriter, r *http.Request
 func (s *Server) handleScheduleRm(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
+		return
+	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
 		return
 	}
 	name := r.PathValue("name")
