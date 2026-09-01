@@ -29,6 +29,7 @@ templ netgroupsList(vm netgroupsVM) {
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">Address classification</div>
 			<h3>All netgroups</h3>
+			<p class="meta">Nothing fires until a rule matches — rules are written on the CLI and read at <a href="/rules">/rules</a>.</p>
 			if !vm.Operator {
 				<p class="meta">Read-only: managing netgroups needs an operator token.</p>
 			}

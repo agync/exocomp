@@ -54,6 +54,7 @@ func TestNetgroupsSurfaceGated(t *testing.T) {
 		`scope="col"`, "All netgroups", "home", "192.168.0.0/16",
 		`action="/netgroups/add"`, `/netgroups/home/rm`,
 		`href="/netgroups" aria-current="page"`,
+		"Nothing fires until a rule matches", `href="/rules">/rules</a>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/netgroups (operator) missing %q", want)

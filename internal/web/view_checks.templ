@@ -34,15 +34,35 @@ templ checksList(vm checksVM) {
 					<input name="target" type="text" autocomplete="off" placeholder="nas=192.168.1.60:22"/>
 					<input name="target" type="text" autocomplete="off" placeholder="web=https://web.lan/health"/>
 					<input name="target" type="text" autocomplete="off"/>
+					<button type="button" class="btn" id="ck-add-target">Add target</button>
 					<label for="ck-expect">HTTP expected status (optional, http kind only)</label>
 					<input id="ck-expect" name="expect" type="number" min="100" max="599" autocomplete="off" placeholder="200"/>
 					<div class="actions"><button type="submit" class="btn primary">Add check</button></div>
+					<script>
+					(function () {
+						var btn = document.getElementById("ck-add-target");
+						var form = btn && btn.closest("form");
+						if (!btn || !form) return;
+						// The four baseline inputs stay the JS-off baseline; this grows the
+						// form past them, capped so the DOM cannot grow unbounded.
+						btn.addEventListener("click", function () {
+							var inputs = form.querySelectorAll('input[name="target"]');
+							if (inputs.length >= 10) return;
+							var last = inputs[inputs.length - 1];
+							var clone = last.cloneNode(false);
+							clone.value = "";
+							last.after(clone);
+							clone.focus();
+						});
+					})();
+					</script>
 				</form>
 			}
 		}
 		<div class="card span2" style="margin-top:18px">
 			<div class="kicker">Probe checks</div>
 			<h3>All checks</h3>
+			<p class="meta">Nothing fires until a rule matches — rules are written on the CLI and read at <a href="/rules">/rules</a>.</p>
 			if !vm.Operator {
 				<p class="meta">Read-only: managing checks needs an operator token.</p>
 			}

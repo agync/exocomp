@@ -75,7 +75,7 @@ func checksList(vm checksVM) templ.Component {
 						}()
 					}
 					ctx = templ.InitializeContext(ctx)
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"meta\">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p><form method=\"post\" action=\"/checks/add\" class=\"writeform\"><label for=\"ck-name\">Name</label> <input id=\"ck-name\" name=\"name\" type=\"text\" required autocomplete=\"off\" pattern=\"[A-Za-z0-9._-]+\"> <label for=\"ck-kind\">Kind</label> <select id=\"ck-kind\" name=\"kind\"><option value=\"tcp\" selected>tcp</option> <option value=\"ping\">ping</option> <option value=\"http\">http</option></select> <label for=\"ck-interval\">Interval (Go duration, e.g. 5m)</label> <input id=\"ck-interval\" name=\"interval\" type=\"text\" required autocomplete=\"off\" placeholder=\"5m\"> <label for=\"ck-target\">Targets (<code>name=ip:port</code>, <code>name=ip</code>, or <code>name=url</code>; repeat as needed)</label> <input id=\"ck-target\" name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"laptop=192.168.1.50:22\"> <input name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"nas=192.168.1.60:22\"> <input name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"web=https://web.lan/health\"> <input name=\"target\" type=\"text\" autocomplete=\"off\"> <label for=\"ck-expect\">HTTP expected status (optional, http kind only)</label> <input id=\"ck-expect\" name=\"expect\" type=\"number\" min=\"100\" max=\"599\" autocomplete=\"off\" placeholder=\"200\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Add check</button></div></form>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"meta\">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p><form method=\"post\" action=\"/checks/add\" class=\"writeform\"><label for=\"ck-name\">Name</label> <input id=\"ck-name\" name=\"name\" type=\"text\" required autocomplete=\"off\" pattern=\"[A-Za-z0-9._-]+\"> <label for=\"ck-kind\">Kind</label> <select id=\"ck-kind\" name=\"kind\"><option value=\"tcp\" selected>tcp</option> <option value=\"ping\">ping</option> <option value=\"http\">http</option></select> <label for=\"ck-interval\">Interval (Go duration, e.g. 5m)</label> <input id=\"ck-interval\" name=\"interval\" type=\"text\" required autocomplete=\"off\" placeholder=\"5m\"> <label for=\"ck-target\">Targets (<code>name=ip:port</code>, <code>name=ip</code>, or <code>name=url</code>; repeat as needed)</label> <input id=\"ck-target\" name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"laptop=192.168.1.50:22\"> <input name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"nas=192.168.1.60:22\"> <input name=\"target\" type=\"text\" autocomplete=\"off\" placeholder=\"web=https://web.lan/health\"> <input name=\"target\" type=\"text\" autocomplete=\"off\"> <button type=\"button\" class=\"btn\" id=\"ck-add-target\">Add target</button> <label for=\"ck-expect\">HTTP expected status (optional, http kind only)</label> <input id=\"ck-expect\" name=\"expect\" type=\"number\" min=\"100\" max=\"599\" autocomplete=\"off\" placeholder=\"200\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Add check</button></div><script>\n\t\t\t\t\t(function () {\n\t\t\t\t\t\tvar btn = document.getElementById(\"ck-add-target\");\n\t\t\t\t\t\tvar form = btn && btn.closest(\"form\");\n\t\t\t\t\t\tif (!btn || !form) return;\n\t\t\t\t\t\t// The four baseline inputs stay the JS-off baseline; this grows the\n\t\t\t\t\t\t// form past them, capped so the DOM cannot grow unbounded.\n\t\t\t\t\t\tbtn.addEventListener(\"click\", function () {\n\t\t\t\t\t\t\tvar inputs = form.querySelectorAll('input[name=\"target\"]');\n\t\t\t\t\t\t\tif (inputs.length >= 10) return;\n\t\t\t\t\t\t\tvar last = inputs[inputs.length - 1];\n\t\t\t\t\t\t\tvar clone = last.cloneNode(false);\n\t\t\t\t\t\t\tclone.value = \"\";\n\t\t\t\t\t\t\tlast.after(clone);\n\t\t\t\t\t\t\tclone.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t})();\n\t\t\t\t\t</script></form>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -86,7 +86,7 @@ func checksList(vm checksVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <div class=\"card span2\" style=\"margin-top:18px\"><div class=\"kicker\">Probe checks</div><h3>All checks</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <div class=\"card span2\" style=\"margin-top:18px\"><div class=\"kicker\">Probe checks</div><h3>All checks</h3><p class=\"meta\">Nothing fires until a rule matches — rules are written on the CLI and read at <a href=\"/rules\">/rules</a>.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -124,7 +124,7 @@ func checksList(vm checksVM) templ.Component {
 					var templ_7745c5c3_Var4 string
 					templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(ck.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 69, Col: 72}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 89, Col: 72}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 					if templ_7745c5c3_Err != nil {
@@ -137,7 +137,7 @@ func checksList(vm checksVM) templ.Component {
 					var templ_7745c5c3_Var5 string
 					templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinStringErrs(ck.Kind)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 70, Col: 53}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 90, Col: 53}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 					if templ_7745c5c3_Err != nil {
@@ -150,7 +150,7 @@ func checksList(vm checksVM) templ.Component {
 					var templ_7745c5c3_Var6 string
 					templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(ck.Interval)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 71, Col: 61}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 91, Col: 61}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 					if templ_7745c5c3_Err != nil {
@@ -168,7 +168,7 @@ func checksList(vm checksVM) templ.Component {
 						var templ_7745c5c3_Var7 string
 						templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(t.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 75, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 95, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
 						if templ_7745c5c3_Err != nil {
@@ -181,7 +181,7 @@ func checksList(vm checksVM) templ.Component {
 						var templ_7745c5c3_Var8 string
 						templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(t.Spec())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 76, Col: 41}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 96, Col: 41}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 						if templ_7745c5c3_Err != nil {
@@ -190,7 +190,7 @@ func checksList(vm checksVM) templ.Component {
 						var templ_7745c5c3_Var9 string
 						templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(t.ExpectNote())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 76, Col: 59}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 96, Col: 59}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 						if templ_7745c5c3_Err != nil {
@@ -226,7 +226,7 @@ func checksList(vm checksVM) templ.Component {
 							var templ_7745c5c3_Var10 string
 							templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(t.Changed)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 82, Col: 51}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 102, Col: 51}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 							if templ_7745c5c3_Err != nil {
@@ -272,7 +272,7 @@ func checksList(vm checksVM) templ.Component {
 							var templ_7745c5c3_Var11 templ.SafeURL
 							templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/checks/" + ck.Name + "/disable"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 93, Col: 89}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 113, Col: 89}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 							if templ_7745c5c3_Err != nil {
@@ -290,7 +290,7 @@ func checksList(vm checksVM) templ.Component {
 							var templ_7745c5c3_Var12 templ.SafeURL
 							templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/checks/" + ck.Name + "/enable"))
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 97, Col: 88}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 117, Col: 88}
 							}
 							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 							if templ_7745c5c3_Err != nil {
@@ -308,7 +308,7 @@ func checksList(vm checksVM) templ.Component {
 						var templ_7745c5c3_Var13 templ.SafeURL
 						templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/checks/" + ck.Name + "/rm"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 101, Col: 83}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 121, Col: 83}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 						if templ_7745c5c3_Err != nil {
@@ -321,7 +321,7 @@ func checksList(vm checksVM) templ.Component {
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("Remove check " + ck.Name + "?")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 101, Col: 155}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 121, Col: 155}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {

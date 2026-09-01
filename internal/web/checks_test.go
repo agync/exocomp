@@ -87,6 +87,7 @@ func TestChecksSurfaceGated(t *testing.T) {
 		`<span class="chip fail"><span class="dot"></span>DOWN</span>`,
 		`action="/checks/add"`, `/checks/at-home/disable`, `/checks/at-home/rm`,
 		`href="/checks" aria-current="page"`,
+		"Nothing fires until a rule matches", `href="/rules">/rules</a>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks (operator) missing %q", want)
@@ -453,6 +454,31 @@ func TestChecksLinkToEvents(t *testing.T) {
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks missing %q", want)
+		}
+	}
+}
+
+// TestCheckAddTargetControl:the check-add modal carries an Add target control
+// that clones the last target input, plus the vanilla JS that wires it — the four
+// baseline inputs staying the JS-off baseline.
+func TestCheckAddTargetControl(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks status = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="ck-add-target"`,
+		`>Add target</button>`,
+		`cloneNode`,
+		`inputs.length >= 10`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks missing the add-target control %q", want)
 		}
 	}
 }
