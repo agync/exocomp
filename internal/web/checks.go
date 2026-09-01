@@ -94,6 +94,14 @@ func (t checkTargetRow) StatusLabel() string {
 	}
 }
 
+// IsUp / IsDown / IsUnobserved name the sweep's three verdicts so the template
+// branches on the stored constants without importing the store package.
+func (t checkTargetRow) IsUp() bool   { return t.Status == store.CheckUp }
+func (t checkTargetRow) IsDown() bool { return t.Status == store.CheckDown }
+func (t checkTargetRow) IsUnobserved() bool {
+	return t.Status != store.CheckUp && t.Status != store.CheckDown
+}
+
 // NetgroupClass maps a target's netgroup badge onto the chip palette: a named
 // group reads ok (home), a target no group covers reads dim (away). "away" is
 // both the miss label and a possible group name — the ambiguity is the
@@ -104,6 +112,25 @@ func (t checkTargetRow) NetgroupClass() string {
 		return "dim"
 	}
 	return "ok"
+}
+
+// DownSummary is the at-a-glance fail counter the card header carries when any
+// target is down: "N of M down" (the tile ring and DOWN chips carry the
+// per-target detail). Empty when nothing is down or the check is disabled.
+func (c checkRow) DownSummary() string {
+	if !c.Enabled {
+		return ""
+	}
+	down := 0
+	for _, t := range c.Targets {
+		if t.Status == store.CheckDown {
+			down++
+		}
+	}
+	if down == 0 {
+		return ""
+	}
+	return itoa(int64(down)) + " of " + itoa(int64(len(c.Targets))) + " down"
 }
 
 // handleChecks renders the /checks surface for the session: every probe check

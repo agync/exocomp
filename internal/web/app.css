@@ -357,6 +357,46 @@ td.right, th.right { text-align: right; }
   .card.tray tbody tr:last-child td { border-bottom: 0; }
 }
 
+/* ---- Check cards + target grid (F1/F2/F3) ----
+ * One card per check: a header row (name link · kind/interval meta · ENABLED
+ * chip · demoted actions) then a target grid on the tray. Each tile is one
+ * probe: name · address · right-aligned clock up top, and below it the
+ * reachability chip plus the location as prose (never an equal-rank chip —
+ * reachability is state, location is a network-path fact). A down tile carries
+ * the inset fail ring; an unobserved tile shows the dim chip and its cold-start
+ * reason, never a location chip. */
+.checkcards {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; gap: var(--gap-card);
+}
+.checkcard {
+  background: var(--surface-card); border-radius: var(--radius-card);
+  border: 1px solid var(--hairline-faint);
+  padding: 18px 22px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.checkcard.disabled { opacity: .55; }
+.checkcard > header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.checkcard > header .spacer { flex: 1; }
+.checkcard > header .mono { font: var(--type-log); }
+.targetgrid {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+}
+.target {
+  background: var(--surface-tray); border-radius: var(--radius-row);
+  padding: 12px 14px;
+  display: flex; flex-direction: column; gap: 9px;
+}
+.target.down { box-shadow: inset 0 0 0 1px var(--fail-border); }
+.target .thead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.target .thead .tend { margin-left: auto; font: var(--type-log); color: var(--ink-500); white-space: nowrap; }
+.target .tstate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.target .tstate .meta { color: var(--ink-500); }
+.target .tstate .meta b { color: var(--ink-400); font-weight: 600; }
+.fail-text { color: var(--signal-fail); }
+
 /* An unbounded mono value — a 70-char CEL expression, a long git URI or path —
  * wraps inside a capped column instead of forcing the whole wide table to scroll
  * sideways at desktop width. Short mono cells sit under the cap and are unaffected. */

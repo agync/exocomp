@@ -112,7 +112,6 @@ func TestListSurfacesUseTrayTable(t *testing.T) {
 		stackable  bool
 	}{
 		{"/sources", `class="card span2 mt18 tray"`, true},
-		{"/checks", `class="card span2 mt18 tray"`, true},
 		{"/tokens", `class="card span2 tray"`, true},
 		{"/schedules", `class="card span2 mt18 tray"`, true},
 		{"/jobs", `class="card span2 mt18 tray"`, false},

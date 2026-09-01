@@ -81,13 +81,14 @@ func TestChecksSurfaceGated(t *testing.T) {
 		t.Fatalf("/checks with session = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`scope="col"`, "All checks", "at-home", "tcp", "5m0s",
+		"at-home", "tcp", "5m0s",
 		"laptop", "nas", "192.168.1.50:22",
 		`<span class="chip ok"><span class="dot"></span>UP</span>`,
 		`<span class="chip fail"><span class="dot"></span>DOWN</span>`,
 		`action="/checks/add"`, `/checks/at-home/disable`, `/checks/at-home/rm`,
 		`href="/checks" aria-current="page"`,
-		"Nothing fires until a rule matches", `href="/rules">/rules</a>`,
+		"nothing fires until a rule matches", `href="/rules">/rules</a>`,
+		`class="checkcard"`, `class="targetgrid"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks (operator) missing %q", want)
@@ -364,11 +365,13 @@ func TestCheckRm(t *testing.T) {
 	}
 }
 
-// TestChecksNetgroupAndRecency: a target whose address a registered netgroup
-// covers renders that group's name as a badge, one no group covers renders
-// "away", an http URL target renders no badge at all (its liveness is not a
-// location verdict), and a target the sweep has seen renders how long ago its
-// status changed.
+// TestChecksNetgroupAndRecency: location is prose, not an equal-rank chip (F2)
+// — a target a registered netgroup covers reads "address is on <group>", one
+// no group covers reads the away miss, an http URL target renders no location
+// verdict at all (its liveness is not a location). A target the sweep has seen
+// renders how long ago its status changed, right-aligned in its tile header
+// (F13); a never-seen target is a single dim UNOBSERVED chip with its
+// cold-start reason and no location chip (F3).
 func TestChecksNetgroupAndRecency(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -398,6 +401,14 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 		t.Fatalf("seed http check: %v", err)
 	}
 
+	// A third target the sweep has never seen: the cold-start unobserved tile.
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "cold", Kind: store.CheckPing, IntervalS: 15,
+		Targets: []store.CheckTarget{{Name: "tablet", Address: "192.168.1.60"}},
+	}); err != nil {
+		t.Fatalf("seed cold check: %v", err)
+	}
+
 	// Seed states with LastChange comfortably inside one humanAge bucket: the
 	// render happens milliseconds after seeding, so a boundary-seeded offset
 	// could truncate one step down before it reaches the page.
@@ -423,30 +434,52 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 		t.Fatalf("/checks = %d, want 200", code)
 	}
 
+	// Location is prose, not an equal-rank chip (F2): the covered target names
+	// its group, the uncovered one names the miss. The per-target clock sits
+	// right-aligned in the tile header (F13) and the header carries the
+	// at-a-glance down counter.
 	for _, want := range []string{
-		`<span class="chip ok"><span class="dot"></span>home</span>`,
-		`<span class="chip dim"><span class="dot"></span>away</span>`,
-		"changed 3h ago", "changed 2h ago",
+		`address is on <b>home</b>`,
+		`address not on any netgroup (away)`,
+		`3h ago`, `2h ago`,
+		`1 of 2 down`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks missing %q", want)
 		}
 	}
+	// Reachability and location are never two equal chips on the same tile: the
+	// netgroup is prose, so no home/away chip survives the rebuild.
+	if strings.Contains(page, `>home</span>`) || strings.Contains(page, `>away</span>`) {
+		t.Error("a netgroup still renders as a chip on the checks surface (F2)")
+	}
 
-	// The http target renders no netgroup badge: cut the page at its row and
-	// check its Targets cell carries no home/away chip. The status chip is
-	// UP/DOWN/UNOBSERVED-labelled, so matching the badge labels is
-	// unambiguous.
+	// The http target renders no location verdict at all: cut its card and
+	// check for any location prose.
 	seg := page[strings.Index(page, "web-health"):]
-	seg = seg[:strings.Index(seg, `data-label="Enabled"`)]
-	if strings.Contains(seg, ">home</span>") || strings.Contains(seg, ">away</span>") {
-		t.Error("http target rendered a netgroup badge")
+	if strings.Contains(seg, "address is on") || strings.Contains(seg, "not on any netgroup") {
+		t.Error("http target rendered a location verdict")
+	}
+
+	// The never-seen tile is a single dim UNOBSERVED chip with its cold-start
+	// reason, never a location chip (F3).
+	cold := page[strings.Index(page, "cold"):]
+	for _, want := range []string{
+		`<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>`,
+		"never seen yet — first result decides",
+	} {
+		if !strings.Contains(cold, want) {
+			t.Errorf("cold-start tile missing %q", want)
+		}
+	}
+	if strings.Contains(cold, "address is on") || strings.Contains(cold, "not on any netgroup") {
+		t.Error("cold-start tile paired UNOBSERVED with a location chip (F3)")
 	}
 }
 
-// TestChecksLinkToEvents: the check name and each address target's netgroup
-// chip link to the check source's events, so an operator reaches what a check
-// raised.
+// TestChecksLinkToEvents: the check name links to the check source's events,
+// so an operator reaches what a check raised. The netgroup is prose now (F2),
+// not a chip link.
 func TestChecksLinkToEvents(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -471,12 +504,14 @@ func TestChecksLinkToEvents(t *testing.T) {
 		t.Fatalf("/checks status = %d", code)
 	}
 	for _, want := range []string{
-		`<a href="/events?source=check">at-home</a>`,
-		`<a href="/events?source=check"><span class="chip ok"><span class="dot"></span>home</span></a>`,
+		`<a class="mono" href="/events?source=check">at-home</a>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks missing %q", want)
 		}
+	}
+	if strings.Contains(page, `/events?source=check"><span class="chip`) {
+		t.Error("a netgroup chip still links to events; location is prose (F2)")
 	}
 }
 
