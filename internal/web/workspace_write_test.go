@@ -272,6 +272,40 @@ func TestWorkspacesPageConfigure(t *testing.T) {
 	}
 }
 
+// TestWorkspaceApplyUnadjudicatedPlanRefused409: an apply by saved-plan id on
+// a policied workspace whose plan carries no recorded verdict is unconsumable —
+// the browser face maps it to a 409 with the actionable message, not a 500,
+// mirroring the API face's state-conflict mapping, and nothing enqueues.
+func TestWorkspaceApplyUnadjudicatedPlanRefused409(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	h.seedWorkspace(t, "prod")
+	h.seedPlanPolicy(t, "prod", "no-destroy", store.PolicyDeny)
+	art := h.seedPlanArtifact(t, "prod")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces/prod/apply",
+		url.Values{"plan": {strconv.FormatInt(art.ID, 10)}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("unadjudicated plan apply = %d, want 409 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "unconsumable") || !strings.Contains(body, "verdict") {
+		t.Fatalf("unadjudicated plan apply body missing the actionable message: %s", body)
+	}
+	jobs, err := h.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook("prod")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("workspace holds %d jobs, want only the plan job — an apply slipped past the gate", len(jobs))
+	}
+}
+
 // TestWorkspacesPageSavedPlans: a runs-in-server workspace with a saved plan
 // renders the Saved plans control and its modal, whose apply form posts the
 // plan by artifact id to the same apply route — and the inline plan-id input is

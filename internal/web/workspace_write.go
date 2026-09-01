@@ -256,9 +256,17 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		// recorded verdict is unconsumable, not unpoliced.
 		gate, err = svc.PlanGateForPlan(r.Context(), ws.Name, art)
 		var mismatch *service.PlanWorkspaceMismatchError
+		var unadjudicated *service.PlanUnadjudicatedError
 		switch {
 		case errors.As(err, &mismatch):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		case errors.As(err, &unadjudicated):
+			// The API face maps the state-conflict sentinel this unwraps to a 409
+			// with its message; an unconsumable plan is a refusal of the asked-for
+			// apply, not a server failure.
+
+			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		case err != nil:
 			s.fail(w, r, err)
