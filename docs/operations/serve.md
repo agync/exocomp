@@ -302,20 +302,32 @@ manages the daemon from the browser, not just the CLI.
   its status last changed (`changed 3h ago`, or `unobserved`). The dashboard's
   Checks card shows the registered total and how many targets the sweep
   observes up; a job's "fired by rule <name>" line links to `/rules` and the
-  event that raised the run; the events page filters by `?source=`.
+  event that raised the run; the events page filters by `?source=` and pages
+  by `?limit=` (floor 100, cap 500). The dashboard's Schedules card shows the
+  registered total and how many are disabled.
 - **Approvals live-update**: the pending-approvals list subscribes to a
   browser-session SSE stream (`GET /approvals/stream`, the same
   `tailApprovals` the phone API serves) and reloads when the pending set
-  changes, so the desk and phone never decide on a stale list. The first
-  stream event is the current state and is ignored; only a subsequent change
-  reloads.
+  changes, so the desk and phone never decide on a stale list. The page
+  renders a fingerprint (`?fp=`) of the pending list it just drew; the stream
+  compares it to its own connect-time state and sends the snapshot only when
+  they differ, so a change between render and connect cannot be silently
+  dropped and a matching fingerprint produces no reload-only event. The tail
+  writes a keepalive comment every 30 seconds while the list is quiet, so an
+  idle page is not killed by an intermediary's idle timeout. Concurrent
+  streams are capped (8 per process, 2 per identity), and a refused or ended
+  stream surfaces a visible "Live updates stopped" banner instead of going
+  silent — the browser stream keeps reconnecting on its own, and the banner
+  clears on the next live event.
 - **Workspaces**: each runnable workspace row has a **Saved plans** button
   opening a modal of its saved plan artifacts, each applyable by id through the
   same plan-gate path as the CLI/API (a policied plan may still require
   approval). The row's own Apply is fresh-apply.
 - **Destructive actions confirm**: Remove/Delete/Revoke forms (checks,
-  netgroups, schedules, sources, policies, tokens, runners) submit through a
-  shared confirm dialog rather than firing on the first click.
+  netgroups, schedules, sources, policies, runners, tokens, secrets) submit
+  through a shared confirm dialog rather than firing on the first click, and
+  the hidden `confirmed=1` field is a real server-side gate, not just a UI
+  affordance — a confirmed-less destructive POST reads 400.
 
 The sensitive writes — sealing or rotating a secret, minting or rotating a token, sealing a
 git deploy key — require re-entering your own access token to confirm. A cookie alone cannot

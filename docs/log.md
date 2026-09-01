@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — software changelog split from the bundle log
+
+- **The release narrative moved out of this log.** This page now records only
+  bundle-structural history and corrections of fact; software releases,
+  features, and fixes live in
+  [operations/CHANGELOG.md](operations/CHANGELOG.md), linked from the bundle
+  index, and this page's header says so. The split itself is structural, so it
+  is recorded here; the CHANGELOG is the newest-first release narrative.
+
 ## 2026-09-01 — memfd run-secret staging rejected, recorded
 
 - **A `memfd_create(2)` staging experiment was revisited and rejected.** A
@@ -27,7 +36,7 @@ Newest first.
 
 - **Docs' UI-stack references corrected.** The vendored htmx include is gone; the docs now name the vanilla JS the app actually uses.
 
-## 2026-08-31 — approval surface refinements
+## 2026-09-01 — approval surface refinements
 
 - **Log self-correction.** Three back-dated entries (list-surface refinements, write-form errors, check-event traceability) now carry their true 09-01 dates; newest-first order restored.
 

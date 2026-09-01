@@ -65,6 +65,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 | [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |
 | [Offline caches](operations/offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
 | [Reacting to alerts](operations/reactive.md) | Wiring a monitor to the hooks, sealing push, writing rules, silencing, answering approvals, asking why a rule did not fire, running check probes and netgroups |
+| [Changelog](operations/CHANGELOG.md) | Software releases, features, and fixes — the newest-first release narrative |
 
 ## Bill of materials
 

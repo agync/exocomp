@@ -182,7 +182,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   source playbook (limit), notify; cooldown, daily cap, approval) and the CEL
   expression verbatim. `GET /rules` joins the post-v1 read surfaces with a
   Rules nav entry. The web now *reads* rules; mutation stays CLI
-  ([design/check-triggered-runs.md](design/check-triggered-runs.md) §9's
+  ([design/check-triggered-runs.md](../design/check-triggered-runs.md) §9's
   "rules stay CLI" is about the builder, not browsing).
 
 
@@ -212,8 +212,8 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   covering the cloud metadata address `169.254.169.254` — unspecified, and
   multicast at the connected IP, while keeping the RFC1918/ULA LAN targets a
   check exists for. A check against a refused address observes down.
-  [security/threat-model.md](security/threat-model.md) T36 + the checks section
-  of [architecture/reactive.md](architecture/reactive.md). The probe's GET path
+  [security/threat-model.md](../security/threat-model.md) T36 + the checks section
+  of [architecture/reactive.md](../architecture/reactive.md). The probe's GET path
   is tested both ways: the guarded client refuses a loopback target through the
   sweep, and an internal test exercises the successful status check with an
   injected client.
@@ -235,7 +235,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   (`cmd/exocomp/check.go`) — so a row added from the browser is held to
   exactly the same rules as one added from the CLI; the store remains the
   shared validator.
-- **Rules stay CLI.** [design/check-triggered-runs.md](design/check-triggered-runs.md)
+- **Rules stay CLI.** [design/check-triggered-runs.md](../design/check-triggered-runs.md)
   §9 drops the in-browser rule-builder promise and the design's Status is now
   the shipped-subset summary; `architecture/reactive.md` gains a Checks
   subsection beside Drift and the `playbook` rule action, and
@@ -256,7 +256,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   marginal-wifi host cannot flap a pending approval. A target's event carries
   `labels["netgroup"]` — the group containing the probed address, or `away` —
   and no group for an http URL target (its liveness is not a location verdict).
-  Implemented per [design/check-triggered-runs.md §5](design/check-triggered-runs.md).
+  Implemented per [design/check-triggered-runs.md §5](../design/check-triggered-runs.md).
 - **`check_state` schema refinement vs the design doc §4.2.** There is no
   `unknown` status: a missing row IS the unobserved cold-start state, and the
   first probe seeds a row (`status=result, consecutive=1, emitted=result`)
@@ -286,7 +286,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
 ## 2026-08-30 — netgroups and peer stamping
 
 - **Netgroups land as a store table, CLI verbs, and webhook peer stamping** —
-  phase 1 of [design/check-triggered-runs.md](design/check-triggered-runs.md).
+  phase 1 of [design/check-triggered-runs.md](../design/check-triggered-runs.md).
   `netgroup` rows name a comma-separated CIDR set, managed by `exocomp
   netgroup add/list/rm` (wire kind `netgroup.list`); prefix validity is
   enforced at write time, so a row that reads parses. Every webhook the
@@ -313,7 +313,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   service-backed impl wired by the daemon — resolves the source checkout and
   confines the playbook to it; the engine still owns the queue, the gate, the
   approval, and the identity fields (Runbook/Trigger/DedupKey/ConcurrencyKey/
-  Timeout). Implemented per [design/check-triggered-runs.md §7](design/check-triggered-runs.md).
+  Timeout). Implemented per [design/check-triggered-runs.md §7](../design/check-triggered-runs.md).
 - **`--limit` is required and fixed at add time** (default-deny): an
   un-limited rule would run the playbook against every host the inventory
   names. The CLI flag for the playbook's registered source is `--repo-source`,
@@ -404,8 +404,8 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   operator is already trusted. Loud: the CLI prints an unsandboxed warning, the web control is
   a deliberately-warned non-default checkbox. Attributed: an enqueue-time ledger event names who
   asked, and the queue records the unsandboxed execution on every path.
-  [security/threat-model.md](security/threat-model.md) documents the escape hatch and its gating;
-  [operations/serve.md](operations/serve.md) documents the per-run override alongside the tier.
+  [security/threat-model.md](../security/threat-model.md) documents the escape hatch and its gating;
+  [operations/serve.md](serve.md) documents the per-run override alongside the tier.
 
 
 ## 2026-08-25 — `GET /api/v1/events/summary`
@@ -435,7 +435,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   now carries `Dir`/`DirReadOnly`, resolved from the same `sourceCheckoutRoot` helper the
   run-cli and ad-hoc paths use, so the CLI grants exactly what the lifecycle `exocomp run`
   play step already grants: read on a read-only tree, read+write on a writable one.
-  [operations/playbook-run.md](operations/playbook-run.md) documents the new posture.
+  [operations/playbook-run.md](playbook-run.md) documents the new posture.
 - **Ansible scratch is pinned off the (read-only) source tree.** The sandboxed ansible driver
   now also exports `ANSIBLE_SSH_CONTROL_PATH_DIR` (alongside the existing
   `ANSIBLE_LOCAL_TEMP`/`ANSIBLE_REMOTE_TMP`/`TMPDIR`) into the per-job granted tree, so a repo
@@ -484,7 +484,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   connect and TOFU-pin the certificate. A shared `internal/pairing` package renders an SVG
   for the web and a half-block terminal QR for the CLI; the base URL resolves from
   `daemon.public_url` (set by `serve --public-url` or the System page) else the request
-  host. New [operations/pairing.md](operations/pairing.md) documents the payload contract.
+  host. New [operations/pairing.md](pairing.md) documents the payload contract.
 - **Schedule detail.** A schedule row opens a spec modal — kind, cron, command, target,
   concurrency key, jitter, enabled, next/last fire, and last outcome.
 - **Sidebar brand mark** is rendered once, in a fixed column centered on the nav-glyph
@@ -505,7 +505,7 @@ Correction: three back-dated log entries (list-surface refinements, write-form e
   registration/gating and per-poll revocation check, but has no terminal state — it sends
   one snapshot on connect and another only when the pending set changes, replacing a
   phone's poll of `GET /approvals`. SSE `ts` now formats with the same RFC3339 the REST
-  views use, so one parser covers both. [operations/api.md](operations/api.md) updated.
+  views use, so one parser covers both. [operations/api.md](api.md) updated.
 - **ntfy privacy toggle.** A `notify.ntfy_detail` setting switches the ntfy transport
   between `descriptive` (today's title/body/deep-link) and `terse` (a fixed generic
   phrase) for operators who don't trust their relay.
@@ -571,7 +571,7 @@ already trusts instead of failing closed on it.
   like an exocomp access token (`exo_<id>_<secret>`) into a job's env, closing the path
   where an operator binds the daemon's own credential as a run-secret and turns a job into
   a deputy for the API. One choke point covers every job driver.
-  [security/threat-model.md](security/threat-model.md) D2 updated.
+  [security/threat-model.md](../security/threat-model.md) D2 updated.
 - **Threat model renumbered.** The internal E/S/R/D/B/U/AI finding-id families (gaps,
   out-of-order entries, orphan residual refs) are replaced by a single sequential T1-T29
   catalog in document reading order; residual bullets lead with a short descriptive phrase
@@ -580,8 +580,8 @@ already trusts instead of failing closed on it.
   `--inventory` when none is given, so ansible discovers its own (the checkout's
   `ansible.cfg`, then its default hosts file) instead of being pinned to `localhost,`. The
   venv-interpreter force now applies only to an explicit `localhost,` inline inventory.
-  [operations/adhoc-and-partial.md](operations/adhoc-and-partial.md) and
-  [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) updated.
+  [operations/adhoc-and-partial.md](adhoc-and-partial.md) and
+  [operations/ansible-first-bootstrap.md](ansible-first-bootstrap.md) updated.
 - **Token rotate refuses self.** Mirrors the existing revoke self-guard: rotating the token
   that authenticates the current session is rejected with 409 before reauth, since rotation
   would invalidate the secret making the request.
@@ -621,7 +621,7 @@ already trusts instead of failing closed on it.
 - **Workspaces reframed.** The Workspaces page becomes a managed-OpenTofu-state view: an
   explainer, a per-row Backend config modal with a paste-ready backend `http` block, and a
   state-only add form (`POST /workspaces`, matching `workspace add --state-only`).
-  [operations/sources.md](operations/sources.md) notes the web UI names this "Workspaces"
+  [operations/sources.md](sources.md) notes the web UI names this "Workspaces"
   while the CLI verb and store/API keep their existing shape.
 - **CLI.** `--help` groups the ~48 top-level verbs into seven titled sections (run, sources,
   secrets, automation, hosts, backup, service) — presentation only, the `commands` machine
@@ -636,8 +636,8 @@ already trusts instead of failing closed on it.
 
 - **Source kinds** are now `git` and a single `path` (an absolute path, or one relative to the
   data volume), with a `writable` flag (default read-only, now enforced in the sandbox). The
-  `hostpath`/`volpath` split is gone. [operations/sources.md](operations/sources.md) and the
-  [ADR 0010](adr/0010-source-and-credential-model.md) addendum carry the model.
+  `hostpath`/`volpath` split is gone. [operations/sources.md](sources.md) and the
+  [ADR 0010](../adr/0010-source-and-credential-model.md) addendum carry the model.
 - **Runs are launched from a source's page.** Each source has a playbook/command launcher; the
-  standalone run surface is retired. Reflected in [operations/serve.md](operations/serve.md).
+  standalone run surface is retired. Reflected in [operations/serve.md](serve.md).
 

@@ -77,7 +77,7 @@ GET /api/v1/rules                             # playbook action carries source/p
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
 GET /api/v1/notify/endpoints                     # this token's own registered push endpoints
-GET /api/v1/events?source=&outcome=&limit=       # limit floors at 100, caps at 500
+GET /api/v1/events?source=&outcome=&limit=       # default 25; any non-negative limit passes through
 GET /api/v1/events/summary                     # funnel counts by outcome, all-time
 GET /api/v1/events/{id}
 GET /api/v1/secrets                             # metadata only — no field a value could occupy
@@ -104,6 +104,12 @@ or `?window=` param here either.
 that would be a store change, out of scope for the read routes. `GET /jobs/{id}/stream` reuses
 the same append-only `job_event` tail, monotonic `Seq` cursor, and `done`-on-terminal ending
 the browser's own job page streams, so the two surfaces cannot diverge.
+
+`GET /events` passes any non-negative `limit` straight through — `?limit=0` returns the whole
+table — and defaults to 25 when the param is absent (the CLI's own default), with a negative
+value rejected as a 400. The browser's events page applies its own separate bounds (a floor
+of 100 and a cap of 500) to the same underlying list; that is a page convenience, not the
+API's contract.
 
 `GET /approvals/{id}` adds two structured blocks to the approval, both sourced from the
 store, never from a rendered sentence, and both carrying identifiers and states only — never
