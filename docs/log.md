@@ -6,6 +6,24 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — memfd run-secret staging rejected, recorded
+
+- **A `memfd_create(2)` staging experiment was revisited and rejected.** A
+  long-dormant branch staged each run-secret into an anonymous memfd (no path in
+  any mount, `F_ADD_SEALS`, mlock) instead of the shipped `/dev/shm` file
+  staging (`--secret-staging {auto,tmpfs,disk}`). The branch was 265 commits
+  behind and never merged; the shipped design already absorbed its rationale and
+  then superseded it.
+- **Why rejected (code wins).** A memfd's fd does not survive a sandboxed run:
+  real `nono` closes every inherited descriptor but stdio before exec, and a
+  memfd has no path a `--read-file` grant can name. A sandboxed tofu child can
+  read a staged file under `/dev/shm` through the granted path — the exact case
+  the memfd design could not support (`internal/executor/sandbox_e2e_test.go`).
+- The branch is deleted; the `/dev/shm` staging with its loud disk fallback
+  stands.
+
+## 2026-08-31 — list-surface refinements
+
 ## 2026-09-01 — workspace saved-plans modal
 
 - **The workspace row's inline plan-id input becomes a Saved plans modal.** A
