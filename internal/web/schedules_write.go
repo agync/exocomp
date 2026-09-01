@@ -34,23 +34,23 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	name := r.PostFormValue("name")
 	cronExpr := r.PostFormValue("cron")
 	if err := sched.ValidateCron(cronExpr); err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 	kind := r.PostFormValue("kind")
 	args, err := formScheduleArgs(r, kind)
 	if err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 	concurrencyKey := r.PostFormValue("concurrency_key")
 	if (kind == store.ScheduleBackup || kind == store.ScheduleDrill) && concurrencyKey != "" {
-		s.fail(w, r, fmt.Errorf("kind %s keys each fire by target; concurrency key does not apply", kind))
+		redirectFlash(w, r, "/schedules", fmt.Sprintf("kind %s keys each fire by target; concurrency key does not apply", kind))
 		return
 	}
 	jitter, err := formJitter(r)
 	if err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 
@@ -59,7 +59,7 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 		ConcurrencyKey: concurrencyKey, JitterS: jitter,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a schedule named "+name+" already exists", http.StatusConflict)
+		redirectFlash(w, r, "/schedules", "a schedule named "+name+" already exists")
 		return
 	}
 	if err != nil {

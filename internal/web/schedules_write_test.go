@@ -79,6 +79,9 @@ func TestScheduleAddCreates(t *testing.T) {
 	}
 }
 
+// TestScheduleAddValidatesCron: an unparseable cron expression is refused
+// before the store sees it, the rejection resolves as a flash-carrying
+// redirect, and no row lands.
 func TestScheduleAddValidatesCron(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -88,15 +91,18 @@ func TestScheduleAddValidatesCron(t *testing.T) {
 
 	resp := postForm(t, client, ts.URL+"/schedules/add",
 		url.Values{"name": {"bad"}, "cron": {"not a cron expr"}, "kind": {"shell"}, "argv": {"true"}}, nil)
+	msg := flashMessage(t, resp, "/schedules")
 	_ = resp.Body.Close()
-	if resp.StatusCode == http.StatusSeeOther {
-		t.Fatal("invalid cron expression was accepted")
+	if !strings.Contains(msg, "not a cron expression") {
+		t.Errorf("flash message %q does not report the cron error", msg)
 	}
 	if _, err := h.store.GetSchedule(context.Background(), "bad"); err == nil {
 		t.Fatal("a schedule was created despite an invalid cron expression")
 	}
 }
 
+// TestScheduleAddShellNeedsCommand: kind shell with no command is refused,
+// the rejection resolves as a flash-carrying redirect, and no row lands.
 func TestScheduleAddShellNeedsCommand(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -106,12 +112,39 @@ func TestScheduleAddShellNeedsCommand(t *testing.T) {
 
 	resp := postForm(t, client, ts.URL+"/schedules/add",
 		url.Values{"name": {"empty-shell"}, "cron": {"@every 5m"}, "kind": {"shell"}}, nil)
+	msg := flashMessage(t, resp, "/schedules")
 	_ = resp.Body.Close()
-	if resp.StatusCode == http.StatusSeeOther {
-		t.Fatal("kind shell with no command was accepted")
+	if !strings.Contains(msg, "needs a command") {
+		t.Errorf("flash message %q does not report the missing command", msg)
 	}
 	if _, err := h.store.GetSchedule(context.Background(), "empty-shell"); err == nil {
 		t.Fatal("a schedule was created despite a missing shell command")
+	}
+}
+
+// TestScheduleAddDuplicateFlashes: re-adding a name that exists is refused
+// with a flash-carrying redirect, not a 409, and the original row survives.
+func TestScheduleAddDuplicateFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, newTogglerSchedule()); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/schedules/add",
+		url.Values{"name": {"toggler"}, "cron": {"@every 5m"}, "kind": {"shell"}, "argv": {"true"}}, nil)
+	msg := flashMessage(t, resp, "/schedules")
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "already exists") {
+		t.Errorf("flash message %q does not report the duplicate", msg)
+	}
+	if _, err := h.store.GetSchedule(ctx, "toggler"); err != nil {
+		t.Fatalf("original schedule vanished: %v", err)
 	}
 }
 

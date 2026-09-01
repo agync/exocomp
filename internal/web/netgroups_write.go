@@ -28,14 +28,14 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 	name := r.PostFormValue("name")
 	prefixes, err := store.ParsePrefixList(r.PostFormValue("prefixes"))
 	if err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/netgroups", err.Error())
 		return
 	}
 	created, err := s.store.CreateNetgroup(r.Context(), store.NewNetgroup{
 		Name: name, Prefixes: prefixes,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a netgroup named "+name+" already exists", http.StatusConflict)
+		redirectFlash(w, r, "/netgroups", "a netgroup named "+name+" already exists")
 		return
 	}
 	if err != nil {

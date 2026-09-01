@@ -115,7 +115,7 @@ func TestNetgroupAddCreates(t *testing.T) {
 
 // TestNetgroupAddValidatesPrefixes: a CIDR that does not parse is refused
 // before the store sees it (the same store.ParsePrefixList `netgroup add` runs),
-// and no row lands.
+// the rejection resolves as a flash-carrying redirect, and no row lands.
 func TestNetgroupAddValidatesPrefixes(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -124,12 +124,40 @@ func TestNetgroupAddValidatesPrefixes(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
 		url.Values{"name": {"bad"}, "prefixes": {"not-a-cidr"}}, nil)
+	msg := flashMessage(t, resp, "/netgroups")
 	_ = resp.Body.Close()
-	if resp.StatusCode == http.StatusSeeOther {
-		t.Fatal("invalid CIDR was accepted")
+	if !strings.Contains(msg, "not-a-cidr") {
+		t.Errorf("flash message %q does not name the rejected CIDR", msg)
 	}
 	if _, err := h.store.GetNetgroup(context.Background(), "bad"); err == nil {
 		t.Fatal("a netgroup was created despite an invalid CIDR")
+	}
+}
+
+// TestNetgroupAddDuplicateFlashes: re-adding a name that exists is refused
+// with a flash-carrying redirect, not a 409, and the original row survives.
+func TestNetgroupAddDuplicateFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.0.0/16")},
+	}); err != nil {
+		t.Fatalf("CreateNetgroup: %v", err)
+	}
+
+	resp := postForm(t, op, ts.URL+"/netgroups/add",
+		url.Values{"name": {"home"}, "prefixes": {"192.168.0.0/16"}}, nil)
+	msg := flashMessage(t, resp, "/netgroups")
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "already exists") {
+		t.Errorf("flash message %q does not report the duplicate", msg)
+	}
+	if _, err := h.store.GetNetgroup(ctx, "home"); err != nil {
+		t.Fatalf("original netgroup vanished: %v", err)
 	}
 }
 
