@@ -6,29 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
-## 2026-09-01 — list-surface refinements
+## 2026-08-31 — list-surface refinements
 
-- **The web UI stack is templ + vanilla JS — htmx is gone.** The vendored
-  `htmx.min.js` shipped embedded into the binary and included at the end of the
-  layout body, but no `hx-` attribute exists anywhere in the surface — all
-  interactivity is inline vanilla JS + EventSource. The include, the embed,
-  and the CSP comment naming it are dropped, and the architecture/design/sbom
-  docs name the stack without it.
-- **Cold-start reads as a next step.** The checks and netgroups surfaces now
-  hint that nothing fires until a rule matches, linking /rules; the empty-
-  state lines on the seven resource-list surfaces name the next action (add one,
-  write a rule on the CLI, add a workspace) instead of stopping at bare
-  "No X registered.". There are no new write controls: rules mutation stays
-  CLI-only.
+- **The list surfaces name their next action.** Every "No X registered." empty state now says what changes it — "add one" where the web has a write surface (checks, netgroups, runners, schedules, sources), the CLI for rules, a workspace for state. The checks and netgroups surfaces gain a one-line hint that nothing fires until a rule matches, linking the read-only /rules page.
+- **Schedule detail is keyboard-reachable.** Each schedule row gains a focusable Details button that opens its spec modal (the row's mouse-click affordance remains).
+- **The three detail pages share the breadcrumb** — job, event trace, and workflow now trail back to their lists like approval/source/token already did.
+- **The check-add modal grows targets.** An "Add target" control clones the target input (capped), so a 5th+ target no longer forces the CLI.
+- **htmx is dropped.** The vendored, never-used `htmx.min.js` include and embed are removed; the docs' UI-stack references now name the vanilla JS the app actually uses.
 
-- **Detail views and schedule rows are keyboard-reachable.** The job detail, event
-  trace, and workflow ledger pages carry breadcrumb trails back to their
-  lists; each schedule row gains a focusable Details button that opens its spec
-  modal; the check-add modal gains an Add target control that clones the last
-  target input, capped at ten, with the four baseline inputs staying the
-  JS-off baseline.
+## 2026-09-01 — approvals list live-updates via SSE
 
-
+- **The /approvals list now live-updates over SSE.** The page opens a browser-session stream (`GET /approvals/stream`, cookie-auth, the same `tailApprovals` the phone API already serves) and reloads when the pending set changes, so a desk or phone operator no longer decides on a stale list. The first `approvals` event is the initial snapshot (the state the page already rendered), so the script ignores it and reloads only on a subsequent membership/state change; the dashboard card and /events live-update stay out of scope.
 
 ## 2026-08-31 — write-form errors surface via flash
 
