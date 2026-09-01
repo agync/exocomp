@@ -116,6 +116,11 @@ type Server struct {
 	// 8 total) and a readonly session cannot starve an operator's stream.
 	approvalStreamsMu      sync.Mutex
 	approvalStreamsByToken map[int64]int
+	// planArtifactsFor lists a workspace's saved plan artifacts for the
+	// /workspaces render. It is a field only so a test can count how often the
+	// readonly render calls it (workspace_write_test.go); production always
+	// uses store.ListPlanArtifacts.
+	planArtifactsFor func(ctx context.Context, runbook, kind string, limit int) ([]store.Artifact, error)
 	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
 	// test can shrink the 30s production cadence into a runnable window.
 	heartbeat time.Duration
@@ -163,6 +168,7 @@ func New(opts Options) (*Server, error) {
 		verify:                 verifySecret,
 		approvalStreamsByToken: make(map[int64]int),
 	}
+	srv.planArtifactsFor = srv.store.ListPlanArtifacts
 	srv.probe = func(ctx context.Context) wire.HealthView {
 		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)
 	}

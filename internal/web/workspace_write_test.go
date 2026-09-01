@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/api"
@@ -156,6 +157,60 @@ func TestWorkspacesPageReadonlySkipsPlanQuery(t *testing.T) {
 		if strings.Contains(body, banned) {
 			t.Fatalf("readonly workspaces page carries a saved plan (%s)", banned)
 		}
+	}
+}
+
+// TestWorkspacesPageReadonlySkipsPlanQueryCounting is the F8 fix's stronger
+// proof: the previous test asserted only the Operator-gated markup, which
+// passes even if the vm.Operator guard on the plan query were removed. The
+// handler now calls the plan list through the Server's injectable
+// planArtifactsFor field, and this test wraps it in a counter: a readonly
+// render must call it ZERO times, an operator render must call it once per
+// runnable workspace.
+func TestWorkspacesPageReadonlySkipsPlanQueryCounting(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	h.seedPlanArtifact(t, "web")
+
+	var mu sync.Mutex
+	calls := 0
+	h.server.planArtifactsFor = func(ctx context.Context, runbook, kind string, limit int) ([]store.Artifact, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		return h.store.ListPlanArtifacts(ctx, runbook, kind, limit)
+	}
+
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("readonly GET /workspaces: %v", err)
+	}
+	_ = readBody(t, resp)
+	_ = resp.Body.Close()
+	mu.Lock()
+	roCalls := calls
+	mu.Unlock()
+	if roCalls != 0 {
+		t.Fatalf("readonly render called the plan query %d times, want 0", roCalls)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	opClient := login(t, ts.URL, op)
+	resp, err = opClient.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("operator GET /workspaces: %v", err)
+	}
+	_ = readBody(t, resp)
+	_ = resp.Body.Close()
+	mu.Lock()
+	opCalls := calls
+	mu.Unlock()
+	if opCalls == 0 {
+		t.Fatal("operator render never called the plan query")
 	}
 }
 

@@ -135,7 +135,7 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 			// The Saved plans modal renders only for operators, so readers skip
 			// the per-row plan query too — a failure there cannot 500 their page.
 
-			plans, err := s.store.ListPlanArtifacts(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 20)
+			plans, err := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 20)
 			if err != nil {
 				s.fail(w, r, err)
 				return

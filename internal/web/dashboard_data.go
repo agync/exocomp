@@ -65,14 +65,15 @@ func (s *Server) banner(r *http.Request) (bannerVM, error) {
 	return b, nil
 }
 
-// pendingApprovals is the needs-you list: every decision still open, with its
-// runbook and fail-closed deadline. A decision past half its window is marked
-// expiring, the same threshold the re-publish push fires on.
-func (s *Server) pendingApprovals(r *http.Request) ([]approvalRow, error) {
-	approvals, err := s.store.ListApprovals(r.Context(), true)
-	if err != nil {
-		return nil, err
-	}
+// pendingApprovalsFrom is the needs-you list: every decision still open in the
+// given approvals, with its runbook and fail-closed deadline. It takes the
+// rows so a caller that already fetched the pending list for another purpose
+// (the approvals page's fingerprint) does not query it a second time — the fp
+// and the rendered rows must come from ONE fetch, or a change between two
+// queries would leave a page whose fingerprint promised a state its rows did
+// not show. A decision past half its window is marked expiring, the same
+// threshold the re-publish push fires on.
+func (s *Server) pendingApprovalsFrom(r *http.Request, approvals []store.Approval) ([]approvalRow, error) {
 	now := s.now()
 	var out []approvalRow
 	for _, a := range approvals {

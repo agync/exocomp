@@ -634,6 +634,40 @@ func TestApprovalsStreamEndsOnBearerRotate(t *testing.T) {
 	}
 }
 
+// TestApprovalsFingerprintReflectsRenderedRows is the F7 regression: the
+// approvals page's ?fp= must match the exact rows the page renders. The fp and
+// the render used to come from separate ListApprovals calls, so a change
+// between them left a page whose fingerprint promised a state its rows did not
+// show; the handler now computes both from one fetch, so the fp the stream
+// compares is provably the state on screen.
+func TestApprovalsFingerprintReflectsRenderedRows(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, approval := h.gatedJob(t, time.Hour)
+
+	code, page := getBody(t, client, ts.URL+"/approvals")
+	if code != 200 {
+		t.Fatalf("approvals page status = %d", code)
+	}
+	// The rendered table names the seeded approval...
+	if !strings.Contains(page, "/approvals/"+itoa64(approval.ID)) {
+		t.Fatalf("approvals page did not render approval #%d", approval.ID)
+	}
+	// ...and the fingerprint is computed over the same ListApprovals rows that
+	// produced that table.
+	rows, err := h.store.ListApprovals(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListApprovals: %v", err)
+	}
+	wantFP := approvalsFP(rows)
+	if !strings.Contains(page, `data-fp="`+wantFP+`"`) {
+		t.Fatalf("approvals page fingerprint does not match the rendered rows (want %q)", wantFP)
+	}
+}
+
 // TestApprovalsPageLiveScript asserts the /approvals page renders the
 // approvalsLive script with the data-fp fingerprint and no seenFirst blind skip:
 // it opens the browser stream with ?fp= set to the rendered state's

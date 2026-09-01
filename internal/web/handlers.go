@@ -91,7 +91,12 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	vm.Banner = banner
 
-	pending, err := s.pendingApprovals(r)
+	approvals, err := s.store.ListApprovals(r.Context(), true)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	pending, err := s.pendingApprovalsFrom(r, approvals)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -353,18 +358,21 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, jobDetail(vm))
 }
 
+// handleApprovals renders the pending-approvals list. The fingerprint is
+// computed from the same ListApprovals rows the page renders, projected to the
+// same wire payload the stream diffs, so the script's ?fp= can tell the stream
+// "this state is already on screen" and skip a reload-only snapshot (F4). The
+// page rows come from that same one fetch (pendingApprovalsFrom), so the fp is
+// provably the state on screen — two fetches would leave a window where a
+// change between them made the fp lie.
 func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
-	// The fingerprint is computed from the same ListApprovals rows the page
-	// renders, projected to the same wire payload the stream diffs, so the
-	// script's ?fp= can tell the stream "this state is already on screen" and
-	// skip a reload-only snapshot (F4).
 	rows, err := s.store.ListApprovals(r.Context(), true)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	vm := dashboardVM{Page: s.pageFor(r, "Approvals", "approvals"), ApprovalFP: approvalsFP(rows)}
-	pending, err := s.pendingApprovals(r)
+	pending, err := s.pendingApprovalsFrom(r, rows)
 	if err != nil {
 		s.fail(w, r, err)
 		return
