@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -356,5 +357,31 @@ func TestPhoneApprovalTouchTargets(t *testing.T) {
 	}
 	if !strings.Contains(app, "max-width: 390px") {
 		t.Error("phone surface is not laid out at 390px")
+	}
+}
+
+// TestApproveBlockMT26Separation pins the deliberate 26px top separation of
+// the phone approval surface's global-kill details block: the inline style it
+// replaced became a single-class .mt26, which a later .approve-block rule
+// would collapse to its own 14px margin — the compound selector restores
+// the 26px, and the surface still renders the class combo it must apply to.
+func TestApproveBlockMT26Separation(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".approve-block.mt26 { margin-top:  26px; }") {
+		t.Error("app.css missing the approve-block.mt26 compound rule")
+	}
+
+	_, approval := h.gatedJob(t, time.Minute)
+	code, page := getBody(t, client, ts.URL+fmt.Sprintf("/approvals/%d", approval.ID))
+	if code != 200 {
+		t.Fatalf("approval surface status = %d, want 200", code)
+	}
+	if !strings.Contains(page, `<details class="approve-block mt26">`) {
+		t.Error("approval surface lost the approve-block mt26 class combo")
 	}
 }

@@ -70,6 +70,10 @@ a:visited { color: var(--accent-text); }
 .mt14 { margin-top:  14px; }
 .mt8  { margin-top:   8px; }
 .mt26 { margin-top:  26px; }
+/* The approval phone block owns margin: 14px 0; this compound rule
+ * restores the deliberate 26px top separation it replaced, which a
+ * single-class .mt26 loses to the later component rule. */
+.approve-block.mt26 { margin-top:  26px; }
 .inline-form { display: inline; }
 .ml-auto { margin-left: auto; }
 .ml6  { margin-left:   6px; }
