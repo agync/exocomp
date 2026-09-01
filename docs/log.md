@@ -6,24 +6,39 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
-## 2026-09-01 — approvals stream hardened
+## 2026-09-01 — approvals stream hardening
 
-- **The browser and API approvals streams (SSE) get five fixes in one pass.** The
-  tail now re-resolves the browser session per poll — not just the token row — so
-  a rotated token (whose row stays Active) ends the stream the way a revoke does;
-  caps concurrent streams at 8 against the shared one-connection store pool and
-  refuses the next with 503; polls at 2s instead of the 300ms job-tail cadence;
-  emits a 30s SSE comment heartbeat so an idle live list is not silently killed by
-  an intermediary's idle timeout; and carries a server-computed fingerprint
-  (`?fp=`) so a change between page render and stream connect cannot be dropped.
-- **The /approvals script reloads on every approvals event** — the seenFirst
-  blind skip is gone, replaced by the server-side fingerprint match that skips
-  only a reload-only snapshot — and no longer closes on error, so EventSource's
-  own reconnect survives a tunnel drop.
-- **Shutdown now ends attached streams up front.** `webSurface.Shutdown` closes
-  one channel on the web server that every approvals tail selects on, so a SIGINT
-  to `exocomp web` (or the daemon's `--web-addr` surface) does not burn the whole
-  grace period on idle sockets.
+- **The approvals stream is auth-safe and robust.** The browser `/approvals/stream`
+  re-resolves the session per poll (epoch + expiry stamp), so a rotated token or an
+  expired session ends the stream instead of continuing for up to 12h — the same
+  check every ordinary request makes. Concurrent streams are capped (shared funnel,
+  both the browser and API routes) with a list-appropriate 2s poll interval, an idle
+  heartbeat keeps the connection alive so an intermediary timeout no longer silently
+  kills the live list (the client reconnects instead of closing), and a
+  server-computed fingerprint of the rendered pending set closes the
+  render-to-connect gap (no blind first-event skip). Streams end at server shutdown
+  so `exocomp web` Ctrl-C no longer burns the full grace period.
+
+## 2026-09-01 — destructive writes confirm and store validation flashes
+
+- **The /secrets Delete form joins the shared confirm dialog.** It carried the hidden
+  `confirmed=1` field but no `data-confirm` marker, so the dialog never
+  intercepted it — every other operator-visible destructive form already had
+  both. The six rm/revoke handlers (checks, netgroups, schedules, runners,
+  tokens, secrets) now also enforce that hidden field server-side, matching
+  policies and sources: a confirmed-less destructive POST reads 400.
+- **Store-side operator-input refusals no longer read "internal error".**
+  CreateCheck/CreateNetgroup/CreateSchedule return the new exported
+  `store.ErrValidation` for name/kind/target-shape typos, and the checks, netgroups,and
+  schedules add handlers flash the message instead of routing it to the 500 path.
+
+  CreateSchedule also gains the ValidName gate the web add form already had,
+  closing the undeletable-schedule hole (a name the `/schedules/{name}` route
+  could never address).
+- **The phone approval surface's global-kill block keeps its deliberate 26px top
+  separation.** The inline style it replaced became a single-class `.mt26` that a
+  later `.approve-block` rule would collapse to 14px; the compound
+  `.approve-block.mt26` selector restores it.
 
 ## 2026-09-01 — memfd run-secret staging rejected, recorded
 
