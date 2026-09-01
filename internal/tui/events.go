@@ -36,10 +36,16 @@ func renderEventsScreen(m EventsModel) string {
 		if r.selected {
 			marker = "▸"
 		}
-		lines = append(lines, row(
+		line := row(
 			cell{0, marker}, cell{1, r.time}, cell{8, r.event},
 			cell{26, r.source}, cell{37, r.outcome}, cell{49, r.reason},
-		))
+		)
+		if r.selected {
+			// The ▸ prefix is the no-color selection contract; the reverse
+			// video row is the color hint layered over the same line.
+			line = styleSelectedRow.Render(line)
+		}
+		lines = append(lines, line)
 	}
 	lines = append(lines, "", lr(eventsKeys, "[0-9] screens", w))
 	return join(lines)

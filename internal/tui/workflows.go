@@ -81,10 +81,16 @@ func renderWorkflowsScreen(m WorkflowsModel) string {
 		if r.selected {
 			marker = "▸"
 		}
-		lines = append(lines, row(
+		line := row(
 			cell{0, marker}, cell{1, r.id}, cell{34, r.state},
 			cell{48, r.progress}, cell{56, r.rail},
-		))
+		)
+		if r.selected {
+			// The ▸ prefix is the no-color selection contract; the reverse
+			// video row is the color hint layered over the same line.
+			line = styleSelectedRow.Render(line)
+		}
+		lines = append(lines, line)
 	}
 	lines = append(lines, "", lr(workflowsKeys, "[0-9] screens", w))
 	return join(lines)

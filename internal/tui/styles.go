@@ -7,14 +7,17 @@ import "charm.land/lipgloss/v2"
 // only tint word forms that stand on their own. Truecolor values; lipgloss
 // degrades them to the ANSI-16 fallbacks the table pins (magenta 13, green 2,
 // yellow 3, red 9, bright white 15, bright black 8; body ink is the terminal's
-// own default fg).
+// own default fg; selected rows fall back to reverse video).
 var (
-	colorAccent  = lipgloss.Color("#BE7BEB") // keys, links, active tab
-	colorOk      = lipgloss.Color("#4FB86B") // succeeded, running, in sync
-	colorWait    = lipgloss.Color("#E3A008") // awaiting, stale, drift, waiting
-	colorFail    = lipgloss.Color("#F0645A") // failed, timed_out
-	colorHeading = lipgloss.Color("#ECEFF0") // headings, bold ink
-	colorDim     = lipgloss.Color("#8A9296") // meta, disabled, queued, cancelled
+	colorAccent      = lipgloss.Color("#BE7BEB") // keys, links, active tab
+	colorOk          = lipgloss.Color("#4FB86B") // succeeded, running, in sync
+	colorWait        = lipgloss.Color("#E3A008") // awaiting, stale, drift, waiting
+	colorFail        = lipgloss.Color("#F0645A") // failed, timed_out
+	colorHeading     = lipgloss.Color("#ECEFF0") // headings, bold ink
+	colorBody        = lipgloss.Color("#D6DBDD") // body / default text
+	colorDim         = lipgloss.Color("#8A9296") // meta, disabled, queued, cancelled
+	colorRules       = lipgloss.Color("#4A5254") // rule/dividers, structural only
+	colorSelectedRow = lipgloss.Color("#1D2426") // selected row background
 
 	styleTitle       = lipgloss.NewStyle().Bold(true).Foreground(colorHeading)
 	styleTabActive   = lipgloss.NewStyle().Bold(true).Foreground(colorAccent)
@@ -24,6 +27,8 @@ var (
 	styleSuccess     = lipgloss.NewStyle().Foreground(colorOk)
 	styleWait        = lipgloss.NewStyle().Foreground(colorWait)
 	styleDim         = lipgloss.NewStyle().Foreground(colorDim)
+	styleRules       = lipgloss.NewStyle().Foreground(colorRules)
+	styleSelectedRow = lipgloss.NewStyle().Background(colorSelectedRow).Reverse(true)
 )
 
 // renderState colors a job or backup run state per the design's semantic table:

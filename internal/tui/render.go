@@ -56,8 +56,10 @@ func lr(left, right string, width int) string {
 	return left + strings.Repeat(" ", gap) + right
 }
 
-// hrule is the structural rule spanning the full width.
-func hrule(width int) string { return strings.Repeat("─", width) }
+// hrule is the structural rule spanning the full width. The ─ characters are
+// the no-color contract (the rule reads on its own with no color); the rules
+// color tints them in a color terminal and never carries meaning by itself.
+func hrule(width int) string { return styleRules.Render(strings.Repeat("─", width)) }
 
 // rjust right-justifies s in a field of the given width (used for the age
 // column, where "2h", "26h" and "12d" all end on the same column).
