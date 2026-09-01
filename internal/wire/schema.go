@@ -486,9 +486,10 @@ type EventView struct {
 	// Status is a check transition's direction (firing/resolved) as the sweep
 	// observed it; absent for alert events.
 	Status string `json:"status,omitempty"`
-	// Netgroup is a check event's location VERDICT (home/away) from the
-	// normalized body's labels.netgroup — not the group name CheckTargetView
-	// carries — and is absent for alert events and http URL targets.
+	// Netgroup is a check event's netgroup classification from the normalized
+	// body's labels.netgroup — the group whose prefix covered the target, or
+	// "away" when none did, the same value CheckTargetView carries — absent for
+	// alert events and http URL targets.
 	Netgroup string `json:"netgroup,omitempty"`
 }
 
