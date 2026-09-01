@@ -183,7 +183,7 @@ components:
 ## Overview
 
 exocomp is a single-operator homelab control plane. This document specifies the
-design tokens for its web surface: a server-rendered HTML UI (templ + htmx over a
+design tokens for its web surface: a server-rendered HTML UI (templ + vanilla JS over a
 JSON API, live updates via SSE, no SPA). It is the reference a change reads to keep
 that UI consistent, and it maps onto the TUI where the two share a vocabulary.
 

@@ -9,7 +9,7 @@ subprocesses that do the actual work. Rationale in
 graph TB
     subgraph clients["Clients — one API"]
         TUI["TUI (Bubble Tea v2)<br/>local + ssh via Wish"]
-        WEB["Web (templ+htmx, go:embed)"]
+        WEB["Web (templ + vanilla JS, go:embed)"]
         DESK["Desktop (Wails, deferred)"]
         CLI["exocomp CLI / scripts"]
         HOOKS["Webhooks: Alertmanager,<br/>Uptime Kuma, healthchecks,<br/>GitHub — 4th headless client"]

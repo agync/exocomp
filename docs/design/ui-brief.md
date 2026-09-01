@@ -93,7 +93,7 @@ affordances. If a screen would look at home on a SaaS landing page, it's wrong.
 
 ## Technical frame (constrains the design)
 
-Server-rendered HTML + htmx over one JSON API; live updates via SSE (log tails, job
+Server-rendered HTML + vanilla JS over one JSON API; live updates via SSE (log tails, job
 state). No SPA. Type system: monospace-forward is native to this product's audience —
 a mono for data/labels with a quiet UI sans is acceptable; pure-mono is on-brand.
 The TUI already establishes: one accent, dim-by-default, state-colored text.

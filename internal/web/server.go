@@ -151,7 +151,7 @@ func New(opts Options) (*Server, error) {
 
 func (s *Server) now() time.Time { return s.clock().UTC() }
 
-//go:embed tokens.css app.css htmx.min.js
+//go:embed tokens.css app.css
 var assetFS embed.FS
 
 // assetVer is a short content hash of the embedded stylesheets, appended to
@@ -251,7 +251,7 @@ func (s *Server) pageFor(r *http.Request, title, nav string) page {
 
 // securityHeaders sets the headers the surface should always carry. The CSP is
 // deliberately strict: the page's only script is its own inline theme/stream
-// helpers and the vendored htmx, all same-origin, plus the Google Fonts
+// helpers, all same-origin, plus the Google Fonts
 // stylesheet the design tokens name.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
