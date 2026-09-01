@@ -6,6 +6,22 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — saved-plan 409, runbook display parity, tool gate
+
+- **A saved-plan apply on an unadjudicated plan is a 409, not a 500.** The
+  browser form's apply handler now maps the service's `PlanUnadjudicatedError`
+  (which unwraps to `store.ErrStateConflict`) to a conflict response with its
+  actionable message, matching the API face — reachable by planning an
+  unpolicied workspace, adding an enabled policy, then applying the saved plan.
+- **The job runbook is displayed consistently across surfaces.** The CLI and
+  the remote CLI now strip a `rule:` prefix for display (like the web), while
+  `--runbook` still filters on the exact stored value (documented); the wire
+  `JobView.Runbook` stays raw.
+- **The full gate requires the real tools again.** `requireTool` skips only
+  under `-short` and fails the full `make check-race` when restic/age/git are
+  absent — the fast commit gate stays hermetic, the merge gate re-asserts the
+  toolchain.
+
 ## 2026-09-01 — approvals stream hardening
 
 - **The approvals stream is auth-safe and robust.** The browser `/approvals/stream`
