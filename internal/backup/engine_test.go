@@ -95,7 +95,7 @@ func requireTool(t *testing.T, name string) {
 		if testing.Short() {
 			t.Skipf("%s is required for this test and is not on PATH", name)
 		}
-		t.Fatalf("%s is required for this testand is not on PATH", name)
+		t.Fatalf("%s is required for this test and is not on PATH", name)
 	}
 }
 
@@ -591,9 +591,9 @@ func TestUnknownKindFailsItsLegOnly(t *testing.T) {
 }
 
 // TestRequireToolSkipsMissingUnderShort pins the -short branch of requireTool:
-// with the tool hidden from PATH, the fast gate skips;the full gate's FATAL
+// with the tool hidden from PATH, the fast gate skips; the full gate's FATAL
 // branch is proven by a real host without the tool (this host has restic/age),
-// so it self-skips there rather than failing a suite the tools do not need..
+// so it self-skips there rather than failing a suite the tools do not need.
 func TestRequireToolSkipsMissingUnderShort(t *testing.T) {
 	if !testing.Short() {
 		t.Skip("full gate FATAL branch is proven by a host without the tool")

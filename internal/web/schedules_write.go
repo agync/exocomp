@@ -67,7 +67,7 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/schedules", err.Error())
+		redirectFlash(w, r, "/schedules", validationFlash(err))
 		return
 	}
 	if err != nil {

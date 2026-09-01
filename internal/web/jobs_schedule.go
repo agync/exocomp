@@ -3,6 +3,7 @@ package web
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/sched"
@@ -58,9 +59,16 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 
 	name := r.PostFormValue("name")
+	// The schedule-add form's ValidName gate, so an empty or spaced name from
+	// the job-detail form is refused here rather than surfacing the store's
+	// validation sentinel as a 500.
+	if !store.ValidName(name) {
+		http.Error(w, "invalid schedule name", http.StatusBadRequest)
+		return
+	}
 	cronExpr := r.PostFormValue("cron")
 	if err := sched.ValidateCron(cronExpr); err != nil {
-		s.fail(w, r, err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -78,10 +86,23 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "a schedule named "+name+" already exists", http.StatusConflict)
 		return
 	}
+	if errors.Is(err, store.ErrValidation) {
+		http.Error(w, validationFlash(err), http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	s.log.Info("web: job schedule", "job", job.ID, "schedule", created.Name, "by", ident.token.Name)
 	redirectFlash(w, r, "/schedules", "scheduled "+created.Name)
+}
+
+// validationFlash renders a store.ErrValidation error as a flash line without
+// the store's wrapped "store: validation: store: ..." prefix, so the browser
+// shows one actionable sentence instead of the doubled internal namespace.
+func validationFlash(err error) string {
+	msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
+	msg = strings.TrimPrefix(msg, "store: validation: ")
+	return msg
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/client"
+	"exocomp.dev/exocomp/internal/web"
 	"exocomp.dev/exocomp/internal/wire"
 )
 
@@ -148,7 +149,7 @@ func renderRemoteJobsList(cmd *cobra.Command, mode string, rows []wire.JobView) 
 	_, _ = fmt.Fprintln(w, "ID\tSTATE\tRUNBOOK\tSOURCE\tKIND\tTRIGGER\tEXIT\tQUEUED")
 	for _, j := range rows {
 		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			j.ID, j.State, dashIfEmpty(runbookLabel(j.Runbook)), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
+			j.ID, j.State, dashIfEmpty(web.RunbookLabel(j.Runbook)), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
 			dashIfEmpty(j.Trigger), exitCodeLabelPtr(j.ExitCode), fmtWireTS(j.QueuedAt))
 	}
 	return w.Flush()
@@ -162,7 +163,8 @@ func renderRemoteJobGet(cmd *cobra.Command, mode string, j wire.JobView) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "id\t%d\n", j.ID)
 	_, _ = fmt.Fprintf(w, "state\t%s\n", j.State)
-	_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(runbookLabel(j.Runbook)))
+	_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(web.RunbookLabel(j.Runbook)))
+	_, _ = fmt.Fprintf(w, "runbook (raw)\t%s\n", dashIfEmpty(j.Runbook))
 	_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(j.Source))
 	_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(j.Kind))
 	_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(j.Trigger))

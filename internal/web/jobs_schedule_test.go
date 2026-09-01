@@ -322,3 +322,35 @@ func TestJobScheduleRefusesNonAnsibleJob(t *testing.T) {
 		t.Fatalf("tofu job schedule = %d, want 400", resp.StatusCode)
 	}
 }
+
+// TestJobScheduleInvalidName400 is the F5 regression: the job-detail "Schedule
+// this job" form used to 500 on an empty or invalid name, because the store's
+// validation sentinel surfaced as a generic error. It now refuses a bad name
+// with 400 before CreateSchedule, and no schedule row is written.
+func TestJobScheduleInvalidName400(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	job := seedSchedulableJob(t, h, []string{"/bin/true"})
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	for _, name := range []string{"", "spaced name", "bad/name"} {
+		resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(job.ID)+"/schedule",
+			url.Values{"name": {name}, "cron": {"@every 5m"}}, nil)
+		body := readBody(t, resp)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("schedule with name %q = %d, want 400 (%s)", name, resp.StatusCode, body)
+		}
+	}
+
+	rows, err := h.store.ListSchedules(ctx, false)
+	if err != nil {
+		t.Fatalf("ListSchedules: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("invalid-name schedule attempts wrote %d rows, want 0", len(rows))
+	}
+}

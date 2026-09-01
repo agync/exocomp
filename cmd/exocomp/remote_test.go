@@ -237,7 +237,9 @@ func TestRemoteJobsRunbookLabelStripsRulePrefix(t *testing.T) {
 	if !strings.Contains(out.String(), "deploy-app") {
 		t.Fatalf("remote job get missing the stripped runbook name: %q", out.String())
 	}
-	if strings.Contains(out.String(), "rule:deploy-app") {
-		t.Fatalf("remote job get leaked the rule: prefix: %q", out.String())
+	// The raw stored runbook is printed too, so an operator who needs the exact
+	// key --runbook filters on can read it off the detail page.
+	if !strings.Contains(out.String(), "runbook (raw)") || !strings.Contains(out.String(), "rule:deploy-app") {
+		t.Fatalf("remote job get missing the raw runbook line: %q", out.String())
 	}
 }

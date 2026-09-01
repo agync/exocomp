@@ -39,7 +39,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/netgroups", err.Error())
+		redirectFlash(w, r, "/netgroups", validationFlash(err))
 		return
 	}
 	if err != nil {

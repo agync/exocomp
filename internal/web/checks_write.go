@@ -80,7 +80,7 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/checks", err.Error())
+		redirectFlash(w, r, "/checks", validationFlash(err))
 		return
 	}
 	if err != nil {

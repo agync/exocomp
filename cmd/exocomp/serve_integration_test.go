@@ -707,7 +707,10 @@ func requireTools(t *testing.T, names ...string) {
 	t.Helper()
 	for _, name := range names {
 		if _, err := exec.LookPath(name); err != nil {
-			t.Skipf("%s is required for this test and is not on PATH", name)
+			if testing.Short() {
+				t.Skipf("%s is required for this test and is not on PATH", name)
+			}
+			t.Fatalf("%s is required for this test and is not on PATH", name)
 		}
 	}
 }

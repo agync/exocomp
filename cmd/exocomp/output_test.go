@@ -182,8 +182,10 @@ func TestJobsRunbookLabelStripsRulePrefix(t *testing.T) {
 	if !strings.Contains(get, "deploy-app") {
 		t.Fatalf("jobs get text missing the stripped runbook name: %q", get)
 	}
-	if strings.Contains(get, "rule:deploy-app") {
-		t.Fatalf("jobs get text leaked the rule: prefix: %q", get)
+	// The raw stored runbook is printed too, so an operator who needs the exact
+	// key --runbook filters on can read it off the detail page.
+	if !strings.Contains(get, "runbook (raw)") || !strings.Contains(get, "rule:deploy-app") {
+		t.Fatalf("jobs get text missing the raw runbook line: %q", get)
 	}
 
 	jsonOut, err := run(t, "jobs", "list", "--output", "json")
