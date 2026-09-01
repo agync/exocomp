@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — workspace saved-plans modal
+
+- **The workspace row's inline plan-id input becomes a Saved plans modal.** A
+  runs-in-server workspace row now lists its saved plan artifacts in a modal, each
+  posting the artifact id to the existing apply route (which already routes
+  saved plans through the plan gate); a fresh Apply stays one post away. State-
+  only rows — never planned by the daemon — get no control or modal.
+
 ## 2026-09-01 — inline styles consolidated into classes
 
 - **The web templates carry no inline styles.** The 55 literal `style="..."` attributes
