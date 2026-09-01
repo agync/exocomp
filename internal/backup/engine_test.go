@@ -92,7 +92,10 @@ func (f *fixture) target(t *testing.T, name, kind, uri string) Target {
 func requireTool(t *testing.T, name string) {
 	t.Helper()
 	if _, err := exec.LookPath(name); err != nil {
-		t.Skipf("%s is required for this test and is not on PATH", name)
+		if testing.Short() {
+			t.Skipf("%s is required for this test and is not on PATH", name)
+		}
+		t.Fatalf("%s is required for this testand is not on PATH", name)
 	}
 }
 
@@ -585,4 +588,16 @@ func TestUnknownKindFailsItsLegOnly(t *testing.T) {
 	if !strings.Contains(report.Legs[0].Err.Error(), "unknown target kind") {
 		t.Errorf("error = %v", report.Legs[0].Err)
 	}
+}
+
+// TestRequireToolSkipsMissingUnderShort pins the -short branch of requireTool:
+// with the tool hidden from PATH, the fast gate skips;the full gate's FATAL
+// branch is proven by a real host without the tool (this host has restic/age),
+// so it self-skips there rather than failing a suite the tools do not need..
+func TestRequireToolSkipsMissingUnderShort(t *testing.T) {
+	if !testing.Short() {
+		t.Skip("full gate FATAL branch is proven by a host without the tool")
+	}
+	t.Setenv("PATH", t.TempDir())
+	requireTool(t, "definitely-not-a-real-tool")
 }
