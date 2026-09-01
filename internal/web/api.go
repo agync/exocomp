@@ -538,7 +538,7 @@ func (s *Server) apiApprovalStream(w http.ResponseWriter, r *http.Request) {
 			wire.NewError(wire.CodeInternal, "streaming unsupported"))
 		return
 	}
-	s.tailApprovals(w, r, flusher)
+	s.tailApprovals(w, r, flusher, true)
 }
 
 // apiApprovalPlan returns an approval's sealed plan as a structured, redacted

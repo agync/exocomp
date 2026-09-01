@@ -384,7 +384,7 @@ func (s *Server) handleApprovalStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	s.tailApprovals(w, r, flusher)
+	s.tailApprovals(w, r, flusher, false)
 }
 
 func (s *Server) handleApprovalSurface(w http.ResponseWriter, r *http.Request) {

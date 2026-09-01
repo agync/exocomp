@@ -111,6 +111,11 @@ type Server struct {
 	// 503 once maxApprovalStreams are live; it is a guard, not a ledger — a
 	// process restart resets it and nothing audits it.
 	approvalStreams atomic.Int64
+	// approvalStreamsByToken counts attached streams per token id under
+	// approvalStreamsMu, so one identity cannot hold every slot (2 per token,
+	// 8 total) and a readonly session cannot starve an operator's stream.
+	approvalStreamsMu      sync.Mutex
+	approvalStreamsByToken map[int64]int
 	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
 	// test can shrink the 30s production cadence into a runnable window.
 	heartbeat time.Duration
@@ -139,23 +144,24 @@ func New(opts Options) (*Server, error) {
 		clock = func() time.Time { return time.Now().UTC() }
 	}
 	srv := &Server{
-		store:       opts.Store,
-		deriver:     opts.Deriver,
-		decider:     opts.Decider,
-		plans:       opts.Plans,
-		maint:       opts.Maint,
-		sealer:      opts.Sealer,
-		insecure:    opts.Insecure,
-		fingerprint: opts.Fingerprint,
-		version:     opts.Version,
-		dataDir:     opts.DataDir,
-		log:         log,
-		clock:       clock,
-		heartbeat:   approvalsStreamHeartbeat,
-		streamStop:  make(chan struct{}),
-		kdf:         newKDFGate(),
-		fails:       newFailGate(),
-		verify:      verifySecret,
+		store:                  opts.Store,
+		deriver:                opts.Deriver,
+		decider:                opts.Decider,
+		plans:                  opts.Plans,
+		maint:                  opts.Maint,
+		sealer:                 opts.Sealer,
+		insecure:               opts.Insecure,
+		fingerprint:            opts.Fingerprint,
+		version:                opts.Version,
+		dataDir:                opts.DataDir,
+		log:                    log,
+		clock:                  clock,
+		heartbeat:              approvalsStreamHeartbeat,
+		streamStop:             make(chan struct{}),
+		kdf:                    newKDFGate(),
+		fails:                  newFailGate(),
+		verify:                 verifySecret,
+		approvalStreamsByToken: make(map[int64]int),
 	}
 	srv.probe = func(ctx context.Context) wire.HealthView {
 		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)

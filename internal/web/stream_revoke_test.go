@@ -98,3 +98,111 @@ func waitFor(lines <-chan string, want string, within time.Duration) bool {
 		}
 	}
 }
+
+// TestJobStreamEndsOnBearerRotate is the F1/F4 tail: the job tail pins the
+// credential epoch at attach, so a rotated bearer token — whose row stays
+// Active — ends the tail on the next poll instead of streaming until the
+// lifetime cap.
+func TestJobStreamEndsOnBearerRotate(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	// A gated job stays awaiting_approval, so the tail has no terminal state to
+	// end on its own and stays open for the rotate to cut off.
+	job, err := h.queue.EnqueueGated(ctx, queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("EnqueueGated: %v", err)
+	}
+	token := h.mint(t, "leaked", "readonly")
+
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/v1/jobs/"+itoa64(job.ID)+"/stream", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want 200", resp.StatusCode)
+	}
+
+	appendLine := func(msg string) {
+		if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+			JobID: job.ID, Level: store.LevelInfo, Msg: msg,
+		}); err != nil {
+			t.Fatalf("AppendJobEvent: %v", err)
+		}
+	}
+	appendLine("before-rotate")
+	scan := bufio.NewScanner(resp.Body)
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		for scan.Scan() {
+			lines <- scan.Text()
+		}
+	}()
+	if !waitFor(lines, "before-rotate", 3*time.Second) {
+		t.Fatal("stream never delivered the pre-rotate event")
+	}
+
+	if _, _, err := RotateToken(ctx, h.store, "leaked", 0, false); err != nil {
+		t.Fatalf("RotateToken: %v", err)
+	}
+
+	appendLine("after-rotate")
+	if waitFor(lines, "after-rotate", 3*time.Second) {
+		t.Fatal("the open job tail kept delivering events after its bearer token was rotated")
+	}
+}
+
+// TestJobStreamEndsOnStop is the F4 half of the F5 shutdown fix: tailJobEvents
+// now listens for streamStop, so `exocomp web`'s Shutdown ends attached job
+// tails too — a SIGINT must not burn the grace window on a job tail any more
+// than on an approvals tail.
+func TestJobStreamEndsOnStop(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	job, err := h.queue.EnqueueGated(context.Background(), queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("EnqueueGated: %v", err)
+	}
+	client := login(t, ts.URL, h.mint(t, "op", "operator"))
+
+	resp, err := client.Get(ts.URL + "/jobs/" + itoa64(job.ID) + "/stream")
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want 200", resp.StatusCode)
+	}
+
+	scan := bufio.NewScanner(resp.Body)
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		for scan.Scan() {
+			lines <- scan.Text()
+		}
+	}()
+
+	h.server.StopStreams()
+
+	select {
+	case _, ok := <-lines:
+		if ok {
+			t.Fatal("job tail delivered a line after StopStreams")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("job tail stayed open after StopStreams")
+	}
+}

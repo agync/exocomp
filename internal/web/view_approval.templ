@@ -36,6 +36,7 @@ templ approvalsList(vm dashboardVM) {
 				</div>
 			}
 		</div>
+		<p class="meta" id="approvals-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
 		@approvalsLive(vm.ApprovalFP)
 	}
 }
@@ -47,14 +48,24 @@ templ approvalsList(vm dashboardVM) {
 // render and connect cannot be silently dropped, and a matching fp produces no
 // reload-only event. Every subsequent "approvals" event is a real change, so
 // every one reloads. There is no onerror close: EventSource reconnects on its
-// own, and closing on error would turn a transient tunnel drop into a dead list.
+// own, and closing on error would turn a transient tunnel drop into a dead
+// list. onerror only surfaces the #approvals-stale banner, so a refused (503)
+// or ended stream is visible instead of silently dead — the banner stays until
+// a live event arrives.
 templ approvalsLive(fp string) {
 	<script data-fp={ fp }>
 	(function () {
 		var script = document.currentScript;
 		var fp = script.getAttribute("data-fp") || "";
+		var stale = document.getElementById("approvals-stale");
 		var es = new EventSource("/approvals/stream?fp=" + encodeURIComponent(fp));
-		es.addEventListener("approvals", function () { location.reload(); });
+		es.addEventListener("approvals", function () {
+			if (stale) stale.hidden = true;
+			location.reload();
+		});
+		es.onerror = function () {
+			if (stale) stale.hidden = false;
+		};
 	})();
 	</script>
 }
