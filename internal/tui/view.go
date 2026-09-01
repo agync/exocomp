@@ -145,7 +145,7 @@ func (m Model) renderJobs() string {
 		return styleErr.Render("failed to load jobs: " + m.jobsErr.Error())
 	}
 	if len(m.jobs) == 0 {
-		return styleDim.Render("no jobs yet")
+		return styleDim.Render("no jobs yet — they appear when a schedule or alert fires")
 	}
 	return m.jobsTable.View()
 }
@@ -155,7 +155,7 @@ func (m Model) renderBackups() string {
 		return styleErr.Render("failed to load backup targets: " + m.backupsErr.Error())
 	}
 	if len(m.targets) == 0 {
-		return styleDim.Render("no backup targets configured")
+		return styleDim.Render("no backups yet — exocomp backup add")
 	}
 	return m.backupsTable.View()
 }
@@ -165,7 +165,7 @@ func (m Model) renderWorkspaces() string {
 		return styleErr.Render("failed to load workspaces: " + m.workspacesErr.Error())
 	}
 	if len(m.workspaces) == 0 {
-		return styleDim.Render("no workspaces registered")
+		return renderEmptyWorkspaces()
 	}
 	return m.workspacesTable.View()
 }
@@ -175,7 +175,7 @@ func (m Model) renderSchedules() string {
 		return styleErr.Render("failed to load schedules: " + m.schedulesErr.Error())
 	}
 	if len(m.schedules) == 0 {
-		return styleDim.Render("no schedules configured")
+		return styleDim.Render("no schedules yet — exocomp schedule add")
 	}
 	return m.schedulesTable.View()
 }

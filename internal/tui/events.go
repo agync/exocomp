@@ -31,6 +31,9 @@ func renderEventsScreen(m EventsModel) string {
 		hrule(w),
 		row(cell{1, "TIME"}, cell{8, "EVENT"}, cell{26, "SOURCE"}, cell{37, "OUTCOME"}, cell{49, "REASON"}),
 	}
+	if len(m.rows) == 0 {
+		lines = append(lines, "", "  no events yet — point your alert source at exocomp ingest")
+	}
 	for _, r := range m.rows {
 		marker := " "
 		if r.selected {

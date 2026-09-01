@@ -58,9 +58,43 @@ const (
 
 func (m HomeModel) needHeader() string { return fmt.Sprintf("NEEDS YOU (%d)", m.needsCount) }
 
+// empty reports the first-day Home: nothing needing attention, no backup
+// targets, no workspaces, nothing running, and no schedule armed.
+func (m HomeModel) empty() bool {
+	return len(m.needs) == 0 && len(m.backups) == 0 && len(m.ws) == 0 &&
+		len(m.runs) == 0 && len(m.next) == 0
+}
+
+// renderHomeEmpty draws the first-day Home: the empty-state block replaces the
+// section skeleton when nothing is configured yet (copy.txt:65-66). The signal
+// line still renders in the footer, so the frame keeps observing.
+func renderHomeEmpty(m HomeModel, width, height int, keys string) string {
+	head := []string{lr(m.title, m.clock+" · "+m.tick, width), hrule(width)}
+	body := make([]string, 0, height)
+	for i := 0; i < 9; i++ {
+		body = append(body, "")
+	}
+	body = append(body,
+		centerIn("nothing configured yet", width),
+		"",
+		centerIn("the three add commands", width),
+		indent(20, "exocomp backup add"),
+		indent(20, "exocomp workspace add ./infra"),
+		indent(20, "exocomp schedule add"),
+	)
+	footer := []string{hrule(width), m.signal, lr(keys, helpRight, width)}
+	return frame(height, head, body, footer)
+}
+
+// centerIn indents s to the horizontal center of a width-wide line.
+func centerIn(s string, width int) string { return indent((width-rw(s))/2, s) }
+
 // renderHome80 draws the 80×24 Home.
 func renderHome80(m HomeModel) string {
 	const w = 80
+	if m.empty() {
+		return renderHomeEmpty(m, w, 24, homeKeys80)
+	}
 	head := []string{
 		lr(m.title, m.clock+" · "+m.tick, w),
 		hrule(w),
@@ -100,6 +134,9 @@ func renderHome80(m HomeModel) string {
 // NEXT-TO-FIRE column instead of the single NEXT line.
 func renderHome120(m HomeModel) string {
 	const w = 120
+	if m.empty() {
+		return renderHomeEmpty(m, w, 36, homeKeys120)
+	}
 	head := []string{
 		lr(m.title, m.clock+" · "+m.tick, w),
 		hrule(w),

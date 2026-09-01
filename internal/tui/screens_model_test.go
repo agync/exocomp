@@ -89,10 +89,20 @@ func TestBannerShowsMutedDistinctFromPaused(t *testing.T) {
 // fresh-looking zero.
 func TestHomeSelfObservabilityRendersLive(t *testing.T) {
 	st := openTestStore(t)
+	ctx := context.Background()
+
+	// A backup target keeps Home populated so the SELF section renders: the
+	// first-day empty block replaces the whole body, SELF included.
+	if _, err := st.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "restic-local", Kind: "restic_local", URI: "/var/lib/exocomp/restic", Enabled: true,
+	}); err != nil {
+		t.Fatalf("create backup target: %v", err)
+	}
 
 	m := New(st)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, loadGlanceCmd(st)())
+	m = update(t, m, loadBackupsCmd(st)())
 
 	view := m.View().Content
 	for _, want := range []string{"SELF", "version", "litestream", "RPO unknown", "no replica configured"} {
@@ -388,5 +398,48 @@ func TestApprovalsAndEventsRenderLive(t *testing.T) {
 	m = update(t, m, key('6'))
 	if v := m.View().Content; !strings.Contains(v, "events ·") {
 		t.Fatalf("events screen missing summary:\n%s", v)
+	}
+}
+
+// TestHomeEmptyStateRendersFirstDayBlock proves the first-day Home names the
+// three add commands verbatim when nothing is configured yet (copy.txt:65-66).
+func TestHomeEmptyStateRendersFirstDayBlock(t *testing.T) {
+	m := New(openTestStore(t))
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	view := m.View().Content
+	for _, want := range []string{
+		"nothing configured yet",
+		"exocomp backup add",
+		"exocomp workspace add ./infra",
+		"exocomp schedule add",
+	} {
+		if !strings.Contains(view, want) {
+			t.Errorf("empty Home missing %q, view:\n%s", want, view)
+		}
+	}
+}
+
+// TestApprovalsEmptyStateRendersNothingWaiting proves the approvals surface
+// reads "nothing waiting on you" when no approval is pending (copy.txt:73).
+func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {
+	m := New(openTestStore(t))
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, key('5'))
+
+	if v := m.View().Content; !strings.Contains(v, "nothing waiting on you") {
+		t.Fatalf("empty approvals missing the good state, view:\n%s", v)
+	}
+}
+
+// TestEventsEmptyStateRendersIngestHint proves the events surface points at
+// the ingest command when no event has landed yet (copy.txt:74).
+func TestEventsEmptyStateRendersIngestHint(t *testing.T) {
+	m := New(openTestStore(t))
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, key('6'))
+
+	if v := m.View().Content; !strings.Contains(v, "no events yet — point your alert source at exocomp ingest") {
+		t.Fatalf("empty events missing the ingest hint, view:\n%s", v)
 	}
 }

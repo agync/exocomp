@@ -51,7 +51,7 @@ func TestScreenSwitching(t *testing.T) {
 		t.Fatalf("initial screen = %v, want screenHome", m.active)
 	}
 	m = update(t, m, key('1'))
-	if got := m.View().Content; !strings.Contains(got, "no jobs yet") {
+	if got := m.View().Content; !strings.Contains(got, "no jobs yet — they appear when a schedule or alert fires") {
 		t.Fatalf("[1] did not show Jobs, view:\n%s", got)
 	}
 
@@ -59,7 +59,7 @@ func TestScreenSwitching(t *testing.T) {
 	if m.active != screenBackups {
 		t.Fatalf("active = %v, want screenBackups", m.active)
 	}
-	if got := m.View().Content; !strings.Contains(got, "no backup targets configured") {
+	if got := m.View().Content; !strings.Contains(got, "no backups yet — exocomp backup add") {
 		t.Fatalf("did not switch to Backups, view:\n%s", got)
 	}
 
@@ -67,7 +67,7 @@ func TestScreenSwitching(t *testing.T) {
 	if m.active != screenWorkspaces {
 		t.Fatalf("active = %v, want screenWorkspaces", m.active)
 	}
-	if got := m.View().Content; !strings.Contains(got, "no workspaces registered") {
+	if got := m.View().Content; !strings.Contains(got, "no workspaces yet") || !strings.Contains(got, "exocomp workspace add ./infra") {
 		t.Fatalf("did not switch to Workspaces, view:\n%s", got)
 	}
 
@@ -75,7 +75,7 @@ func TestScreenSwitching(t *testing.T) {
 	if m.active != screenSchedules {
 		t.Fatalf("active = %v, want screenSchedules", m.active)
 	}
-	if got := m.View().Content; !strings.Contains(got, "no schedules configured") {
+	if got := m.View().Content; !strings.Contains(got, "no schedules yet — exocomp schedule add") {
 		t.Fatalf("did not switch to Schedules, view:\n%s", got)
 	}
 

@@ -29,6 +29,16 @@ const approvalKeys = "[a] approve  [r] reject  [d] full diff · pager  [j/k] mov
 func renderApprovalDetail(m ApprovalModel) string {
 	const w = 80
 	head := []string{lr(m.title, m.clock, w), hrule(w)}
+	if m.plan == "" {
+		// No pending approval: the good state, stated plainly (copy.txt:73).
+		body := make([]string, 0, 24)
+		for i := 0; i < 10; i++ {
+			body = append(body, "")
+		}
+		body = append(body, centerIn("nothing waiting on you", w))
+		footer := []string{hrule(w), lr(approvalKeys, "[esc] back", w)}
+		return frame(24, head, body, footer)
+	}
 
 	var body []string
 	body = append(body, lr(m.plan, m.right, w), "")
