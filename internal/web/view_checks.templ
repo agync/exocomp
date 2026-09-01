@@ -66,7 +66,7 @@ templ checksList(vm checksVM) {
 						<tbody>
 							for _, ck := range vm.Checks {
 								<tr>
-									<td data-label="Check">{ ck.Name }</td>
+									<td data-label="Check"><a href="/events?source=check">{ ck.Name }</a></td>
 									<td class="mono" data-label="Kind">{ ck.Kind }</td>
 									<td class="mono" data-label="Interval">{ ck.Interval }</td>
 									<td data-label="Targets">
@@ -76,7 +76,7 @@ templ checksList(vm checksVM) {
 												<span class="meta">{ t.Spec() }{ t.ExpectNote() }</span>
 												@chip(t.StatusClass(), t.StatusLabel())
 												if t.Netgroup != "" {
-													@chip(t.NetgroupClass(), t.Netgroup)
+													<a href="/events?source=check">@chip(t.NetgroupClass(), t.Netgroup)</a>
 												}
 												if t.Changed != "" {
 													<span class="meta">changed { t.Changed } ago</span>

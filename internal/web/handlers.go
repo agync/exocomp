@@ -511,6 +511,7 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 		Event: eventRow{
 			ID: ex.Event.ID, Source: ex.Event.Source, Received: clock(ex.Event.ReceivedAt),
 			Name: eventName(ex.Event), Outcome: ex.Event.Outcome, Reason: ex.Event.Reason,
+			JobID: ex.Event.JobID,
 		},
 	}
 	for _, c := range ex.Trace {

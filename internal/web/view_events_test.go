@@ -107,6 +107,83 @@ func TestEventName(t *testing.T) {
 	}
 }
 
+// TestEventsJobColumn: an event that enqueued a job links to it from the
+// events table's Job column.
+func TestEventsJobColumn(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "rule:gate-ssh", Kind: "playbook", Trigger: "rule",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	jobID := job.ID
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`, Outcome: store.OutcomeFired,
+		JobID: &jobID,
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		`<td class="num" data-label="Job">`,
+		`<a href="/jobs/` + itoa(job.ID) + `">#` + itoa(job.ID) + `</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("events page missing %q", want)
+		}
+	}
+}
+
+// TestEventsTraceJobLink: the trace page names the job an event enqueued and
+// links to it.
+func TestEventsTraceJobLink(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "rule:gate-ssh", Kind: "playbook", Trigger: "rule",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	jobID := job.ID
+	ev, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`, Outcome: store.OutcomeFired,
+		JobID: &jobID,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events/"+itoa(ev.ID))
+	if code != 200 {
+		t.Fatalf("event trace status = %d", code)
+	}
+	for _, want := range []string{
+		"enqueued job",
+		`<a href="/jobs/` + itoa(job.ID) + `">#` + itoa(job.ID) + `</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("event trace missing %q", want)
+		}
+	}
+}
+
 // TestEventsLoadMore: a full page (100+) reports HasMore, so the page renders
 // a Load more link carrying the next limit and preserving the source filter.
 // The default floor means "more" can only be exercised by seeding past it.

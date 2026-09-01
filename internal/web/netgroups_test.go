@@ -197,6 +197,30 @@ func TestAPINetgroupsList(t *testing.T) {
 	}
 }
 
+// TestNetgroupsLinkToEvents: a netgroup name links to the events the check
+// sweep emits for the addresses it classifies.
+func TestNetgroupsLinkToEvents(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.0.0/16")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/netgroups")
+	if code != 200 {
+		t.Fatalf("/netgroups status = %d", code)
+	}
+	if !strings.Contains(page, `<a href="/events?source=check">home</a>`) {
+		t.Error("/netgroups missing the linked netgroup name")
+	}
+}
+
 func mustPrefix(t *testing.T, s string) netip.Prefix {
 	t.Helper()
 	p, err := netip.ParsePrefix(s)

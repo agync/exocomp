@@ -49,7 +49,7 @@ templ netgroupsList(vm netgroupsVM) {
 						<tbody>
 							for _, ng := range vm.Netgroups {
 								<tr>
-									<td data-label="Netgroup">{ ng.Name }</td>
+									<td data-label="Netgroup"><a href="/events?source=check">{ ng.Name }</a></td>
 									<td class="mono wrap" data-label="CIDRs">{ ng.Join() }</td>
 									if vm.Operator {
 										<td data-label="Actions">

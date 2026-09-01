@@ -28,6 +28,7 @@ templ eventsList(vm eventsVM) {
 						<thead>
 							<tr>
 								<th scope="col">Event</th>
+								<th scope="col">Job</th>
 								<th scope="col">Source</th>
 								<th scope="col">Alert</th>
 								<th scope="col">Outcome</th>
@@ -39,6 +40,13 @@ templ eventsList(vm eventsVM) {
 							for _, e := range vm.Events {
 								<tr data-href={ "/events/" + itoa64(e.ID) }>
 									<td class="num" data-label="Event"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
+									<td class="num" data-label="Job">
+										if e.JobID != nil {
+											<a href={ templ.SafeURL("/jobs/" + itoa64(*e.JobID)) }>#{ itoa64(*e.JobID) }</a>
+										} else {
+											<span class="meta">-</span>
+										}
+									</td>
 									<td class="mono" data-label="Source">{ e.Source }</td>
 									<td data-label="Alert">{ e.Name }</td>
 									<td data-label="Outcome">@chip(e.OutcomeClass(), string(e.Outcome))</td>
@@ -69,6 +77,11 @@ templ eventTrace(vm traceVM) {
 			@chip(vm.Event.OutcomeClass(), string(vm.Event.Outcome))
 			· { vm.Event.Received }
 		</p>
+		if vm.Event.JobID != nil {
+			<p class="meta" style="margin-top:8px">
+				enqueued job <a href={ templ.SafeURL("/jobs/" + itoa64(*vm.Event.JobID)) }>#{ itoa64(*vm.Event.JobID) }</a>
+			</p>
+		}
 		<div class="card" style="margin-top:14px">
 			<div class="kicker">Evaluation trace</div>
 			if len(vm.Steps) == 0 {

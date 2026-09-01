@@ -367,6 +367,42 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 	}
 }
 
+// TestChecksLinkToEvents: the check name and each address target's netgroup
+// chip link to the check source's events, so an operator reaches what a check
+// raised.
+func TestChecksLinkToEvents(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	}); err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/checks")
+	if code != 200 {
+		t.Fatalf("/checks status = %d", code)
+	}
+	for _, want := range []string{
+		`<a href="/events?source=check">at-home</a>`,
+		`<a href="/events?source=check"><span class="chip ok"><span class="dot"></span>home</span></a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks missing %q", want)
+		}
+	}
+}
+
 // TestAPIChecksList: a readonly token reads the check.list projection with
 // the seeded check and its target, the same bytes `check list --output json`
 // emits.
