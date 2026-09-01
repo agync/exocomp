@@ -46,7 +46,7 @@ primitive we are exposing rather than inventing:
 |---|---|---|---|---|
 | `exocomp` CLI | local process, reads data dir, `Drain`s its own jobs | aligned human text (272 `Fprintf`/tabwriter sites; zero `--json`/`--output` flag; zero cobra `Example`) | filesystem perms on data dir | No — screen-scrape only |
 | TUI | local + ssh (Wish) | Bubble Tea render | data-dir / ssh | No |
-| Web + phone approval | `--web-addr` TLS listener | templ + HTMX **HTML** behind session cookie | ADR-0009 bearer→session, three scopes | No — HTML only |
+| Web + phone approval | `--web-addr` TLS listener | templ **HTML** behind session cookie | ADR-0009 bearer→session, three scopes | No — HTML only |
 | OpenTofu state backend | loopback `127.0.0.1` only | JSON | HKDF-derived per-workspace bearer | Yes, but **workspace-state only**, not general ops (internal/api/state.go) |
 | `/metrics`, `/healthz` | daemon listener | Prometheus / text | none | Read-only telemetry |
 

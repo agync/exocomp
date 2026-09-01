@@ -46,7 +46,7 @@ state, sequencing, keys, and recovery, and shells out to pinned tools
 All faces are thin clients of one API:
 
 - **TUI** (Bubble Tea) — local, or over SSH via a Wish listener.
-- **Web** (templ + htmx, embedded in the binary) — plus a phone-friendly approval
+- **Web** (templ (a-h/templ), embedded in the binary) — plus a phone-friendly approval
   surface over a token-gated TLS listener.
 - **CLI** — machine-readable with `--output json` over a stable envelope and a
   documented exit-code and error taxonomy.
