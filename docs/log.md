@@ -72,8 +72,6 @@ Newest first.
 - The branch is deleted; the `/dev/shm` staging with its loud disk fallback
   stands.
 
-## 2026-08-31 — list-surface refinements
-
 ## 2026-09-01 — workspace saved-plans modal
 
 - **The workspace row's inline plan-id input becomes a Saved plans modal.** A
@@ -90,28 +88,17 @@ Newest first.
   exactly. The `!important` override that fought the header-adjacent card margin is dropped
   with the inline margin — both selectors stay as plain `margin-top: 0`.
 
-## 2026-08-31 — list-surface refinements
+## 2026-09-01 — approvals list live-updates via SSE
+
+- **The /approvals list now live-updates over SSE.** The page opens a browser-session stream (`GET /approvals/stream`, cookie-auth, the same `tailApprovals` the phone API already serves) and reloads when the pending set changes, so a desk or phone operator no longer decides on a stale list. The first `approvals` event is the initial snapshot (the state the page already rendered), so the script ignores it and reloads only on a subsequent membership/state change; the dashboard card and /events live-update stay out of scope.
+
+## 2026-09-01 — list-surface refinements
 
 - **The list surfaces name their next action.** Every "No X registered." empty state now says what changes it — "add one" where the web has a write surface (checks, netgroups, runners, schedules, sources), the CLI for rules, a workspace for state. The checks and netgroups surfaces gain a one-line hint that nothing fires until a rule matches, linking the read-only /rules page.
 - **Schedule detail is keyboard-reachable.** Each schedule row gains a focusable Details button that opens its spec modal (the row's mouse-click affordance remains).
 - **The three detail pages share the breadcrumb** — job, event trace, and workflow now trail back to their lists like approval/source/token already did.
 - **The check-add modal grows targets.** An "Add target" control clones the target input (capped), so a 5th+ target no longer forces the CLI.
 - **htmx is dropped.** The vendored, never-used `htmx.min.js` include and embed are removed; the docs' UI-stack references now name the vanilla JS the app actually uses.
-
-## 2026-09-01 — approvals list live-updates via SSE
-
-- **The /approvals list now live-updates over SSE.** The page opens a browser-session stream (`GET /approvals/stream`, cookie-auth, the same `tailApprovals` the phone API already serves) and reloads when the pending set changes, so a desk or phone operator no longer decides on a stale list. The first `approvals` event is the initial snapshot (the state the page already rendered), so the script ignores it and reloads only on a subsequent membership/state change; the dashboard card and /events live-update stay out of scope.
-
-## 2026-08-31 — write-form errors surface via flash
-
-- **A bad form input no longer renders "internal error".** The checks,
-  netgroups, and schedules add handlers route every operator-input validation
-  failure — interval/kind/target/expect for checks, prefix parse and duplicate
-  names for netgroups, cron/argv/target/concurrency-key/jitter and duplicate
-  names for schedules — through the existing `?flash=` redirect to the owning
-  page instead of `s.fail`'s 500, so the operator sees the actual message and
-  the form can be retried. Duplicate-name branches flip from a bare 409 text
-  page to the same in-layout flash. Genuine store errors stay 500.
 
 ## 2026-09-01 — dashboard glance and destructive confirms
 
@@ -129,7 +116,18 @@ Newest first.
   Cancel, the backdrop, or Esc drops it. The app's modal idiom — never
   `window.confirm` — now guards the destructive write controls too.
 
-## 2026-08-31 — check-event traceability and events pagination
+## 2026-09-01 — write-form errors surface via flash
+
+- **A bad form input no longer renders "internal error".** The checks,
+  netgroups, and schedules add handlers route every operator-input validation
+  failure — interval/kind/target/expect for checks, prefix parse and duplicate
+  names for netgroups, cron/argv/target/concurrency-key/jitter and duplicate
+  names for schedules — through the existing `?flash=` redirect to the owning
+  page instead of `s.fail`'s 500, so the operator sees the actual message and
+  the form can be retried. Duplicate-name branches flip from a bare 409 text
+  page to the same in-layout flash. Genuine store errors stay 500.
+
+## 2026-09-01 — check-event traceability and events pagination
 
 - **The check-triggered flow is now traceable in the web UI.** A `check` event names its check and target on the events page and its trace instead of reading "check" for every one; an event that fired links to the job it enqueued; a check's name and an address target's netgroup chip link to the check-sourced event view, as do netgroup names.
 - **Events paginate** — a "Load more" link raises the 100-row cap up to 500, preserving the source filter.
@@ -147,6 +145,8 @@ Newest first.
 - **The approval surface fits the desk.** `.phone` widens to 720px at ≥821px
   while small screens keep the 390px column, and the mobile (≤560px) table-row
   button floor is now the hard 48px a11y target.
+
+Correction: three back-dated log entries (list-surface refinements, write-form errors surface via flash, check-event traceability) now carry their true 09-01 dates; newest-first order restored.
 
 ## 2026-08-31 — sweep error policy recorded
 
