@@ -6,6 +6,25 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — approvals stream hardened
+
+- **The browser and API approvals streams (SSE) get five fixes in one pass.** The
+  tail now re-resolves the browser session per poll — not just the token row — so
+  a rotated token (whose row stays Active) ends the stream the way a revoke does;
+  caps concurrent streams at 8 against the shared one-connection store pool and
+  refuses the next with 503; polls at 2s instead of the 300ms job-tail cadence;
+  emits a 30s SSE comment heartbeat so an idle live list is not silently killed by
+  an intermediary's idle timeout; and carries a server-computed fingerprint
+  (`?fp=`) so a change between page render and stream connect cannot be dropped.
+- **The /approvals script reloads on every approvals event** — the seenFirst
+  blind skip is gone, replaced by the server-side fingerprint match that skips
+  only a reload-only snapshot — and no longer closes on error, so EventSource's
+  own reconnect survives a tunnel drop.
+- **Shutdown now ends attached streams up front.** `webSurface.Shutdown` closes
+  one channel on the web server that every approvals tail selects on, so a SIGINT
+  to `exocomp web` (or the daemon's `--web-addr` surface) does not burn the whole
+  grace period on idle sockets.
+
 ## 2026-09-01 — memfd run-secret staging rejected, recorded
 
 - **A `memfd_create(2)` staging experiment was revisited and rejected.** A
