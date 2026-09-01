@@ -46,15 +46,25 @@ type workspacesVM struct {
 // cleanly. A row's Backend config carries the real per-workspace block.
 const configExampleWorkspace = "WORKSPACE"
 
+// planArtifactRow is one saved plan of a workspace, referenced by artifact id
+// only: the apply form posts just the id, and the handler ignores the job for
+// applying. Ordering by artifact id IS recency.
+type planArtifactRow struct {
+	ID int64
+}
+
 // workspaceWriteRow is one tofu workspace on the write surface: its name, root
 // dir, the newest tfstate serial stored for it (0 means no state has ever
 // been pushed), and its backend config block (empty Address when the state
-// backend's address is not yet recorded).
+// backend's address is not yet recorded). Plans lists the workspace's saved
+// plan artifacts (newest first, bounded), empty for state-only rows that the
+// daemon never plans.
 type workspaceWriteRow struct {
 	Name    string
 	TofuDir string
 	Serial  int64
 	Backend api.BackendBlock
+	Plans   []planArtifactRow
 }
 
 // StateOnly reports the "state-only" surface distinction: an empty TofuDir
@@ -120,6 +130,16 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		row := workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial}
 		if addr != "" {
 			row.Backend = api.NewBackendBlock(s.deriver, addr, ws.Name)
+		}
+		if !row.StateOnly() {
+			plans, err := s.store.ListPlanArtifacts(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 20)
+			if err != nil {
+				s.fail(w, r, err)
+				return
+			}
+			for _, p := range plans {
+				row.Plans = append(row.Plans, planArtifactRow{ID: p.ID})
+			}
 		}
 		vm.Workspaces = append(vm.Workspaces, row)
 	}

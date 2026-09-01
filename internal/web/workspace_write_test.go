@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -268,5 +269,101 @@ func TestWorkspacesPageConfigure(t *testing.T) {
 	}
 	if strings.Contains(body, "Using exocomp as your OpenTofu/Terraform state backend") {
 		t.Fatal("workspaces page still renders the removed how-to card")
+	}
+}
+
+// TestWorkspacesPageSavedPlans: a runs-in-server workspace with a saved plan
+// renders the Saved plans control and its modal, whose apply form posts the
+// plan by artifact id to the same apply route — and the inline plan-id input is
+// gone.
+func TestWorkspacesPageSavedPlans(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	planID := h.seedPlanArtifact(t, "web").ID
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `data-modal-open="ws-plans-web"`) {
+		t.Fatal("workspaces page missing the Saved plans control")
+	}
+	if !strings.Contains(body, `id="ws-plans-web"`) {
+		t.Fatal("workspaces page missing the Saved plans modal")
+	}
+	want := `<input type="hidden" name="plan" value="` + strconv.FormatInt(planID, 10) + `">`
+	if !strings.Contains(body, want) {
+		t.Fatalf("Saved plans modal missing the plan-by-id field %q", want)
+	}
+	if !strings.Contains(body, "Apply plan #"+strconv.FormatInt(planID, 10)) {
+		t.Fatal("Saved plans modal missing the apply-plan button")
+	}
+	if !strings.Contains(body, `action="/workspaces/web/apply"`) {
+		t.Fatal("Saved plans modal does not post to the apply route")
+	}
+	if !strings.Contains(body, "A policied plan may still require approval.") {
+		t.Fatal("Saved plans modal missing the policied-plan note")
+	}
+	if strings.Contains(body, "plan id (optional)") || strings.Contains(body, `name="plan" min="1"`) {
+		t.Fatal("workspaces page still renders the inline plan-id input")
+	}
+}
+
+// TestWorkspacesPageNoSavedPlans: a runs-in-server workspace with no saved
+// plans still gets the Saved plans modal, telling the operator to run Plan.
+func TestWorkspacesPageNoSavedPlans(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "No saved plans yet — run Plan to save one.") {
+		t.Fatal("Saved plans modal missing the no-plans line")
+	}
+}
+
+// TestWorkspacesPageSavedPlansHiddenForStateOnly: a state-only workspace never
+// renders the Saved plans control or modal — the daemon never plans it.
+func TestWorkspacesPageSavedPlansHiddenForStateOnly(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	if _, err := h.store.CreateWorkspace(context.Background(), store.Workspace{Name: "stateonly"}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "Saved plans") {
+		t.Fatal("state-only workspace renders the Saved plans control")
+	}
+	if strings.Contains(body, `id="ws-plans-stateonly"`) {
+		t.Fatal("state-only workspace renders a Saved plans modal")
 	}
 }

@@ -12,14 +12,15 @@ package web
 // the same block shape at the backend's base address.
 // A plan runs through PlanWorkspace with the "api" trigger, exactly as a
 // bearer-token plan does, so its -out file is sealed into a consumable artifact
-// post-run; the resulting artifact id can be fed into a later apply's optional
-// plan field to consume that saved plan's recorded policy verdict. An apply with
-// no plan id is a fresh apply — auto-approved unless the workspace has enabled
-// plan policies, in which case it is refused (there is nothing for a policy to
-// read). Workspaces carry no secret material of their own — the backend config
-// block does, but it is shown to an operator exactly as the CLI would print it
-// to them, never logged — so, like run and schedules, the controls here are
-// plain operator-scope: no reauth, no confirm_token.
+// post-run; the Saved plans modal lists the workspace's saved plan artifacts
+// and posts one by id into the apply route, consuming that saved plan's
+// recorded policy verdict. An apply with no plan is a fresh apply — auto-
+// approved unless the workspace has enabled plan policies, in which case it is
+// refused (there is nothing for a policy to read). Workspaces carry no secret
+// material of their own — the backend config block does, but it is shown to an
+// operator exactly as the CLI would print it to them, never logged — so, like
+// run and schedules, the controls here are plain operator-scope: no reauth, no
+// confirm_token.
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
 		<div class="pageheader">
@@ -64,9 +65,9 @@ templ workspacesList(vm workspacesVM) {
 													<button type="submit" class="btn">Plan</button>
 												</form>
 												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form">
-													<input type="number" name="plan" min="1" placeholder="plan id (optional)" class="w8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
 													<button type="submit" class="btn primary">Apply</button>
 												</form>
+												<button type="button" class="btn" data-modal-open={ "ws-plans-" + wsr.Name }>Saved plans</button>
 											}
 											<button type="button" class="btn" data-modal-open={ "ws-backend-" + wsr.Name }>Backend config</button>
 										</td>
@@ -120,6 +121,21 @@ templ workspacesList(vm workspacesVM) {
 				</script>
 			}
 			for _, wsr := range vm.Workspaces {
+				if !wsr.StateOnly() {
+					@modal("ws-plans-"+wsr.Name, "Saved plans — "+wsr.Name) {
+						if len(wsr.Plans) == 0 {
+							<p class="meta">No saved plans yet — run Plan to save one.</p>
+						} else {
+							for _, plan := range wsr.Plans {
+								<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form">
+									<input type="hidden" name="plan" value={ itoa(plan.ID) }/>
+									<button type="submit" class="btn primary">Apply plan #{ itoa(plan.ID) }</button>
+								</form>
+							}
+							<p class="meta">A policied plan may still require approval.</p>
+						}
+					}
+				}
 				@modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name) {
 					if wsr.Backend.Address == "" {
 						<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
