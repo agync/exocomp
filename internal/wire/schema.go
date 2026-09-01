@@ -1,11 +1,13 @@
 package wire
 
 import (
+	"encoding/json"
 	"net/netip"
 	"slices"
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -465,7 +467,10 @@ func NewSilenceList(rows []store.Silence) []SilenceView {
 
 // EventView projects a received event and its outcome. The normalized/raw
 // payloads and the per-condition trace (which can carry values) are omitted;
-// the trace is the `event explain` surface, not the list.
+// the trace is the `event explain` surface, not the list. Name, Status, and
+// Netgroup are the values-free projections of the normalized body the web's
+// event surfaces already render (see EventName), so a phone reads a check row
+// without parsing stored JSON.
 type EventView struct {
 	ID          int64  `json:"id"`
 	Source      string `json:"source"`
@@ -475,15 +480,28 @@ type EventView struct {
 	Outcome     string `json:"outcome"`
 	Reason      string `json:"reason,omitempty"`
 	JobID       *int64 `json:"job_id,omitempty"`
+	// Name is the human-facing event name: the normalized body's name, the
+	// "check · target" pairing for a check transition, or the source.
+	Name string `json:"name,omitempty"`
+	// Status is a check transition's direction (firing/resolved) as the sweep
+	// observed it; absent for alert events.
+	Status string `json:"status,omitempty"`
+	// Netgroup is a check event's location VERDICT (home/away) from the
+	// normalized body's labels.netgroup — not the group name CheckTargetView
+	// carries — and is absent for alert events and http URL targets.
+	Netgroup string `json:"netgroup,omitempty"`
 }
 
-// NewEventView projects one received event. It mirrors NewEventList's element
-// mapping exactly; the normalized/raw payloads and the per-condition trace
-// (which can carry values) are omitted, as they are from the list.
+// NewEventView projects one received event. The normalized/raw payloads and the
+// per-condition trace (which can carry values) are omitted, as they are from the
+// list; the additive name/status/netgroup fields are the values-free projection
+// of the normalized body described on EventView.
 func NewEventView(e store.Event) EventView {
+	name, status, netgroup := eventViewExtras(e)
 	return EventView{
 		ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
 		MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
+		Name: name, Status: status, Netgroup: netgroup,
 	}
 }
 
@@ -491,12 +509,67 @@ func NewEventView(e store.Event) EventView {
 func NewEventList(rows []store.Event) []EventView {
 	out := make([]EventView, 0, len(rows))
 	for _, e := range rows {
-		out = append(out, EventView{
-			ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
-			MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
-		})
+		out = append(out, NewEventView(e))
 	}
 	return out
+}
+
+// eventBody is the subset of a normalized event body the projections read: the
+// name an alert carries, the check/target pairing a check transition uses
+// instead, the transition direction, and the label set a location verdict lives
+// in. It is parsed error-tolerantly, like planOutcomeFromRawJSON: an
+// unparseable body yields zero values, never an error.
+type eventBody struct {
+	Name   string            `json:"name"`
+	Check  string            `json:"check"`
+	Target string            `json:"target"`
+	Status string            `json:"status"`
+	Labels map[string]string `json:"labels"`
+}
+
+func parseEventBody(e store.Event) (eventBody, bool) {
+	var b eventBody
+	if err := json.Unmarshal([]byte(e.Normalized), &b); err != nil {
+		return eventBody{}, false
+	}
+	return b, true
+}
+
+// eventViewExtras projects the values-free name/status/netgroup of one event's
+// normalized body, sharing EventName with the web so the two surfaces render
+// the same row facts.
+func eventViewExtras(e store.Event) (name, status, netgroup string) {
+	name = EventName(e)
+	if e.Source != reactive.SourceCheck {
+		return name, "", ""
+	}
+	b, ok := parseEventBody(e)
+	if !ok {
+		return name, "", ""
+	}
+	return name, b.Status, b.Labels["netgroup"]
+}
+
+// EventName pulls a human-facing alert name out of a normalized event body,
+// falling back to the source when the body carries none. A check transition
+// body carries {check,target} instead of a name, so its alert reads as the
+// check and target the sweep observed — the Source column already says "check".
+// It is the one derivation the web and the API both render through.
+func EventName(e store.Event) string {
+	b, ok := parseEventBody(e)
+	if !ok {
+		return e.Source
+	}
+	if b.Name != "" {
+		return b.Name
+	}
+	if e.Source == reactive.SourceCheck && b.Check != "" {
+		if b.Target != "" {
+			return b.Check + " · " + b.Target
+		}
+		return b.Check
+	}
+	return e.Source
 }
 
 // EventSummaryView is the event funnel: every stored event, tallied by the

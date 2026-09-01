@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // approvalVM builds the phone approval surface for one approval, rendering the
@@ -37,7 +38,7 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 		// normalized name/source/rule, never the raw event body.
 		if ev, err := s.store.EventByJobID(r.Context(), job.ID); err == nil && ev.MatchedRule != "" {
 			vm.Provenance = fmt.Sprintf("Job %d (%s) was gated after %s event %s matched rule %s.",
-				job.ID, job.Runbook, ev.Source, eventName(ev), ev.MatchedRule)
+				job.ID, job.Runbook, ev.Source, wire.EventName(ev), ev.MatchedRule)
 		}
 	}
 

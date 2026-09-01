@@ -2,7 +2,6 @@ package web
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -496,7 +495,7 @@ func (s *Server) approvalStaleView(ctx context.Context, a store.Approval) (*wire
 func (s *Server) approvalProvenance(ctx context.Context, a store.Approval) (*wire.ApprovalProvenanceView, error) {
 	ev, err := s.store.EventByJobID(ctx, a.JobID)
 	if err == nil {
-		return wire.NewApprovalProvenanceView(wire.OriginAlert, alertName(ev), ev.MatchedRule, &ev.ReceivedAt), nil
+		return wire.NewApprovalProvenanceView(wire.OriginAlert, wire.EventName(ev), ev.MatchedRule, &ev.ReceivedAt), nil
 	}
 	if !errors.Is(err, store.ErrNotFound) {
 		return nil, err
@@ -516,17 +515,6 @@ func (s *Server) approvalProvenance(ctx context.Context, a store.Approval) (*wir
 		return nil, jerr
 	}
 	return wire.NewApprovalProvenanceView(origin, "", "", nil), nil
-}
-
-// alertName reads the alert's name from an event's structured normalized_json —
-// the typed reactive.Event projection the ingress wrote — rather than any prose
-// field. An unparseable or nameless body yields the empty string, never an error.
-func alertName(ev store.Event) string {
-	var n struct {
-		Name string `json:"name"`
-	}
-	_ = json.Unmarshal([]byte(ev.Normalized), &n)
-	return n.Name
 }
 
 // apiApprovalStream streams the pending-approvals list as SSE, gated by the

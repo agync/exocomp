@@ -8,6 +8,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // seedEvents writes one ignored event per source so the filter tests have rows
@@ -74,9 +75,10 @@ func TestEventsListAllSources(t *testing.T) {
 	}
 }
 
-// TestEventName: a check transition body carries no name, so the alert reads
-// as check · target; a body that does carry a name keeps it, and an unnamed
-// body falls back to the source.
+// TestEventName: the shared wire.EventName the event rows render through — a
+// check transition body carries no name, so the alert reads as check · target;
+// a body that does carry a name keeps it, and an unnamed body falls back to the
+// source.
 func TestEventName(t *testing.T) {
 	cases := []struct {
 		name string
@@ -101,8 +103,8 @@ func TestEventName(t *testing.T) {
 		}, reactive.SourceGeneric},
 	}
 	for _, tc := range cases {
-		if got := eventName(tc.ev); got != tc.want {
-			t.Errorf("%s: eventName = %q, want %q", tc.name, got, tc.want)
+		if got := wire.EventName(tc.ev); got != tc.want {
+			t.Errorf("%s: EventName = %q, want %q", tc.name, got, tc.want)
 		}
 	}
 }

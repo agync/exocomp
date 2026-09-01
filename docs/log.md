@@ -6,6 +6,23 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — event views carry check-field projections
+
+- **`EventView` gains three additive, `omitempty` fields the mobile companion
+  consumes:** `name` (the human-facing event name), `status` (a check
+  transition's direction as the sweep observed it — `firing`/`resolved`), and
+  `netgroup` (a check event's location VERDICT `home`/`away` from the normalized
+  body's `labels.netgroup`, NOT the group name `CheckTargetView` carries; absent
+  for alert events and http URL targets). Existing rows and clients are
+  unaffected — empty values stay absent from the JSON.
+- **The web's `eventName` derivation moved into `internal/wire` as `wire.EventName`
+  and is now the one implementation the web pages and the API render through**
+  (`dashboard_data.go`'s local copy and `api.go`'s `alertName` are gone; web
+  output is byte-identical). `NewEventView`/`NewEventList` populate the fields
+  from the same `Normalized` JSON the web reads, error-tolerantly.
+- The phone companion's wire model already declares optional
+  `name`/`status`/`netgroup` on its `ReactiveEvent`, awaiting these fields.
+
 ## 2026-09-01 — software changelog split from the bundle log
 
 - **The release narrative moved out of this log.** This page now records only

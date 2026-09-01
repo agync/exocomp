@@ -9,6 +9,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // queueGlance is how many rows the /jobs and /workflows list views show. A
@@ -328,7 +329,7 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		ev, err := s.store.EventByJobID(r.Context(), job.ID)
 		if err == nil {
 			vm.TriggerEvent = &triggerEvent{
-				ID: ev.ID, Source: ev.Source, Name: eventName(ev), Time: clock(ev.ReceivedAt),
+				ID: ev.ID, Source: ev.Source, Name: wire.EventName(ev), Time: clock(ev.ReceivedAt),
 			}
 		} else if !errors.Is(err, store.ErrNotFound) {
 			// Only a missing row is benign — a manually enqueued job that
@@ -517,7 +518,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	for _, e := range events {
 		vm.Events = append(vm.Events, eventRow{
 			ID: e.ID, Source: e.Source, Received: clock(e.ReceivedAt),
-			Name: eventName(e), Outcome: e.Outcome, Reason: e.Reason, JobID: e.JobID,
+			Name: wire.EventName(e), Outcome: e.Outcome, Reason: e.Reason, JobID: e.JobID,
 		})
 	}
 	s.render(w, r, http.StatusOK, eventsList(vm))
@@ -542,7 +543,7 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 		Page: s.pageFor(r, "Event #"+itoa64(id), "events"),
 		Event: eventRow{
 			ID: ex.Event.ID, Source: ex.Event.Source, Received: clock(ex.Event.ReceivedAt),
-			Name: eventName(ex.Event), Outcome: ex.Event.Outcome, Reason: ex.Event.Reason,
+			Name: wire.EventName(ex.Event), Outcome: ex.Event.Outcome, Reason: ex.Event.Reason,
 			JobID: ex.Event.JobID,
 		},
 	}
