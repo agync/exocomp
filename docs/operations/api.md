@@ -130,6 +130,14 @@ the resource — so it sends one `event: approvals` snapshot on connect (the sam
 `[]ApprovalView` `GET /approvals` returns, even when empty), then another only when that
 projection changes, replacing a phone's poll of `GET /approvals` with one open connection.
 
+Both stream routes are capped — 8 concurrent approvals streams and 8 job tails per
+process, 4 per identity — so a fleet of stale tabs cannot multiply the one-connection
+store pool's load without bound. An over-cap attach is refused with `503 streams_over_cap`
+and `Retry-After: 30` (a distinct code from the auth gate's `kdf_busy`, so a caller never
+mistakes a saturated stream for an auth backoff); `jobs follow --remote` treats it as the
+retryable busy it is, and a browser EventSource keeps reconnecting on its own while a
+permanent refusal surfaces the page's stale-live-updates banner.
+
 ## Write endpoints (`operator`)
 
 ```
@@ -251,6 +259,7 @@ Every failure maps one taxonomy `code` onto one HTTP status:
 | `unauthenticated` | 401 | no valid token/session (`WWW-Authenticate: Bearer` set) |
 | `forbidden` | 403 | token scope too low for the route |
 | `kdf_busy` | 503 | the auth gate is saturated (`Retry-After: 1` set); retry |
+| `streams_over_cap` | 503 | an approvals or job stream is over the cap (`Retry-After: 30` set); retry |
 | anything unmatched | 500 | `internal` |
 
 See [Machine-readable output](machine-output.md) for the shared `code` taxonomy, the

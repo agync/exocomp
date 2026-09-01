@@ -315,10 +315,13 @@ manages the daemon from the browser, not just the CLI.
   dropped and a matching fingerprint produces no reload-only event. The tail
   writes a keepalive comment every 30 seconds while the list is quiet, so an
   idle page is not killed by an intermediary's idle timeout. Concurrent
-  streams are capped (8 per process, 2 per identity), and a refused or ended
-  stream surfaces a visible "Live updates stopped" banner instead of going
-  silent — the browser stream keeps reconnecting on its own, and the banner
-  clears on the next live event.
+  streams are capped per process and per identity (8 total, 4 per token), and
+  a refused or permanently-ended stream surfaces a visible "Live updates
+  stopped" banner. The banner only appears once the stream is closed for good
+  — a refused (over-cap) attach or an ended socket — never during a transient
+  drop EventSource is already retrying on its own, and it clears on the next
+  successful reconnect, so a quiet live list whose fingerprint matched never
+  wears a stale banner.
 - **Workspaces**: each runnable workspace row has a **Saved plans** button
   opening a modal of its saved plan artifacts, each applyable by id through the
   same plan-gate path as the CLI/API (a policied plan may still require

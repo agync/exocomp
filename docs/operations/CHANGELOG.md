@@ -13,9 +13,11 @@ Newest first.
   actionable message, matching the API face — reachable by planning an
   unpolicied workspace, adding an enabled policy, then applying the saved plan.
 - **The job runbook is displayed consistently across surfaces.** The CLI and
-  the remote CLI now strip a `rule:` prefix for display (like the web), while
-  `--runbook` still filters on the exact stored value (documented); the wire
-  `JobView.Runbook` stays raw.
+  the remote CLI lists print the raw stored runbook — the exact value
+  `--runbook` filters on, `rule:` prefix included — so a value read off a
+  list is pasteable back into a filter, while `jobs get` keeps both the
+  stripped rule name and the raw line; the web job list and detail still
+  strip the prefix for display, and the wire `JobView.Runbook` stays raw.
 - **The full gate requires the real tools again.** `requireTool` skips only
   under `-short` and fails the full `make check-race` when restic/age/git are
   absent — the fast commit gate stays hermetic, the merge gate re-asserts the
@@ -25,15 +27,22 @@ Newest first.
 ## 2026-09-01 — approvals stream hardening
 
 - **The approvals stream is auth-safe and robust.** The browser `/approvals/stream`
-  re-resolves the session per poll (epoch + expiry stamp), so a rotated token or an
-  expired session ends the stream instead of continuing for up to 12h — the same
-  check every ordinary request makes. Concurrent streams are capped (shared funnel,
-  both the browser and API routes) with a list-appropriate 2s poll interval, an idle
-  heartbeat keeps the connection alive so an intermediary timeout no longer silently
-  kills the live list (the client reconnects instead of closing), and a
-  server-computed fingerprint of the rendered pending set closes the
-  render-to-connect gap (no blind first-event skip). Streams end at server shutdown
-  so `exocomp web` Ctrl-C no longer burns the full grace period.
+  re-resolves the session per poll — the credential epoch is pinned at attach, so a
+  rotated token (whose row stays Active) or an expired session ends the stream instead
+  of continuing for up to 12h — the same check every ordinary request makes. Concurrent
+  streams are capped (8 per process, 4 per identity: enough open tabs for a real
+  operator while still leaving half the fleet for a second identity) in a shared funnel
+  both the browser and API routes charge per-token before the global slot, so a readonly
+  attach flood cannot push the fleet over the total transiently. The list-appropriate 2s
+  poll interval, the idle heartbeat that keeps a quiet list alive through intermediary
+  timeouts (the client reconnects instead of closing), and the server-computed
+  fingerprint of the rendered pending set that closes the render-to-connect gap (no blind
+  first-event skip) all stand. Job tails now share the same funnel — a per-identity cap,
+  a per-poll session re-resolve, and reconnect-on-drop — and an over-cap stream is
+  refused with a distinct `streams_over_cap` code (process exit 7) so a phone or
+  `jobs follow --remote` never mistakes a saturated stream for the auth gate's
+  `kdf_busy`. Streams end at server shutdown so `exocomp web` Ctrl-C no longer burns the
+  full grace period.
 
 
 ## 2026-09-01 — destructive writes confirm and store validation flashes
