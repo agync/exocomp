@@ -6,6 +6,12 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-08-31 — check-event traceability and events pagination
+
+- **The check-triggered flow is now traceable in the web UI.** A `check` event names its check and target on the events page and its trace instead of reading "check" for every one; an event that fired links to the job it enqueued; a check's name and an address target's netgroup chip link to the check-sourced event view, as do netgroup names.
+- **Events paginate** — a "Load more" link raises the 100-row cap up to 500, preserving the source filter.
+- **A rule-runbook job displays without the `rule:` prefix** in the jobs list and detail meta (the "fired by rule" provenance line already named it).
+
 ## 2026-08-31 — approval surface refinements
 
 - **The approval phone now ticks and explains itself.** The countdown div
