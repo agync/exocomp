@@ -363,6 +363,19 @@ func (s *Server) handleApprovals(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, approvalsList(vm))
 }
 
+// handleApprovalStream live-updates the /approvals list page via SSE, the
+// browser twin of apiApprovalStream: the same flusher assertion, then
+// tailApprovals, which re-resolves the session identity each poll and caps
+// lifetime at streamMaxLifetime. tailApprovals sets the SSE headers itself.
+func (s *Server) handleApprovalStream(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	s.tailApprovals(w, r, flusher)
+}
+
 func (s *Server) handleApprovalSurface(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(r)
 	if !ok {
