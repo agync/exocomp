@@ -16,6 +16,8 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/spf13/cobra"
+
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // TestSSHServeRendersTUIOverPublicKeyAuth is the scripted probe the ssh-serve
@@ -30,6 +32,25 @@ func TestSSHServeRendersTUIOverPublicKeyAuth(t *testing.T) {
 	requireSSHTools(t)
 	dir := t.TempDir()
 	useDataDir(t, dir)
+
+	// Seed a backup target so the glance renders populated (NEEDS YOU, QUEUE,
+	// BACKUPS): on a truly empty store the first-day Home block replaces those
+	// sections.
+	if err := os.MkdirAll(filepath.Join(dir, "exocomp"), 0o700); err != nil {
+		t.Fatalf("seed data dir: %v", err)
+	}
+	st, err := store.Open(filepath.Join(dir, "exocomp", "exocomp.db"))
+	if err != nil {
+		t.Fatalf("seed store: %v", err)
+	}
+	if _, err := st.CreateBackupTarget(context.Background(), store.BackupTarget{
+		Name: "seed-local", Kind: "restic_local", URI: "/var/lib/exocomp/restic", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed backup target: %v", err)
+	}
+	if err := st.Close(); err != nil {
+		t.Fatalf("close seeded store: %v", err)
+	}
 
 	goodKey := genTestKey(t, dir, "good")
 	authorizedKeys := writeAuthorizedKeys(t, dir, goodKey+".pub")
