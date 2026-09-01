@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 )
 
@@ -43,6 +44,14 @@ func (s *Store) GetArtifact(ctx context.Context, id int64) (Artifact, error) {
 	return a, nil
 }
 
+// scanArtifact reads one artifact row into an Artifact. The column order is
+// the one every artifact query uses: id, job_id, kind, path, sha256, size.
+func scanArtifact(rows *sql.Rows) (Artifact, error) {
+	var a Artifact
+	err := rows.Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size)
+	return a, err
+}
+
 // ListArtifacts returns a job's artifacts in creation order.
 func (s *Store) ListArtifacts(ctx context.Context, jobID int64) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
@@ -55,14 +64,44 @@ func (s *Store) ListArtifacts(ctx context.Context, jobID int64) ([]Artifact, err
 
 	var out []Artifact
 	for rows.Next() {
-		var a Artifact
-		if err := rows.Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size); err != nil {
+		a, err := scanArtifact(rows)
+		if err != nil {
 			return nil, fmt.Errorf("store: scan artifact: %w", err)
 		}
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, wrap("list artifacts", err)
+	}
+	return out, nil
+}
+
+// ListPlanArtifacts returns the newest `limit` plan artifacts of the jobs
+// whose runbook matches (e.g. a workspace's `workspace:<name>` plans), newest
+// artifact first. kind is the artifact kind to keep (the caller passes the
+// reactive plan kind — the store cannot import reactive). Zero result, not an
+// error, when nothing matches.
+func (s *Store) ListPlanArtifacts(ctx context.Context, runbook, kind string, limit int) ([]Artifact, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT a.id, a.job_id, a.kind, a.path, a.sha256, a.size
+		FROM artifact a JOIN job j ON j.id = a.job_id
+		WHERE j.runbook = ? AND a.kind = ?
+		ORDER BY a.id DESC LIMIT ?`, runbook, kind, limit)
+	if err != nil {
+		return nil, wrap("list plan artifacts", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var out []Artifact
+	for rows.Next() {
+		a, err := scanArtifact(rows)
+		if err != nil {
+			return nil, fmt.Errorf("store: scan artifact: %w", err)
+		}
+		out = append(out, a)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, wrap("list plan artifacts", err)
 	}
 	return out, nil
 }
