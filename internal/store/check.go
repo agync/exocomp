@@ -149,7 +149,7 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 		switch n.Kind {
 		case CheckTCP:
 			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %v",
+				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
 					ErrValidation, n.Name, t.Name, t.Address, err)
 			}
 			if t.Port < 1 || t.Port > 65535 {
@@ -158,7 +158,7 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 			}
 		case CheckPing:
 			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %v",
+				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
 					ErrValidation, n.Name, t.Name, t.Address, err)
 			}
 			if t.Port != 0 {
@@ -176,7 +176,7 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 		case CheckHTTP:
 			u, err := url.Parse(t.URL)
 			if err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q does not parse: %v",
+				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q does not parse: %w",
 					ErrValidation, n.Name, t.Name, t.URL, err)
 			}
 			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {

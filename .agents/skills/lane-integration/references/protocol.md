@@ -29,9 +29,10 @@ A clean rebase → proceed to step 3.
 
 On a conflict, the file decides what you may do:
 
-- **A whitelisted docs file** (`docs/log.md`, the roadmap under `docs/design/`,
-  `docs/operations/index.md`) → resolve it as a union per
-  `docs-conflict-resolution.md`, `git add` that path, `git rebase --continue`.
+- **A whitelisted docs file** (`docs/log.md`, `docs/operations/CHANGELOG.md`,
+  the roadmap under `docs/design/`, `docs/operations/index.md`) → resolve it
+  as a union per `docs-conflict-resolution.md`, `git add` that path,
+  `git rebase --continue`.
 - **Any `.go` file, or any other file whose meaning you cannot union
   mechanically** → **ABORT**: `git rebase --abort`, then report the conflicting
   hunks verbatim (the full `<<<<<<< / ======= / >>>>>>>` blocks) and stop. The

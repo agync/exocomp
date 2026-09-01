@@ -1,12 +1,12 @@
 # The only conflicts the integrator resolves
 
-Three docs files conflict on nearly every parallel-lane rebase because both
+Four docs files conflict on nearly every parallel-lane rebase because both
 lanes append to them. Their merge is a union with a known shape, so the
 integrator resolves them itself. Every other file — code above all — is out of
 scope: a conflict there aborts the rebase (see `protocol.md` step 2).
 
 The test for "may I union this myself" is not "is it docs" — it is "is the
-correct merge mechanical and content-free". These three are. A prose section
+correct merge mechanical and content-free". These four are. A prose section
 that two lanes rewrote differently is not; hand that back.
 
 ## `docs/log.md` — keep every entry, newest first
@@ -31,6 +31,16 @@ edited the *status* of the same existing row, that is no longer mechanical:
 STOP and hand back rather than choosing a status. Adding distinct rows is
 mechanical; disagreeing on one row's state is a semantic choice you do not make.
 
+## `docs/operations/CHANGELOG.md` — keep every entry, newest first
+
+The software release narrative, newest first like `docs/log.md`. Two lanes each
+prepend a dated entry; the conflict is the two new blocks fighting for the top.
+
+Resolution: **keep both entries**, ordered newest-first by their dates, above
+the previously-latest entry. When both entries share the same date, the
+later-integrating branch's entry goes on top. Never drop or merge two distinct
+entries into one — each records a separate release change.
+
 ## `docs/operations/index.md` — union the table rows
 
 `docs/operations/index.md` is the operations map: a `| Page | Covers |` table,
@@ -46,6 +56,6 @@ of a row you did not add.
 
 `git add` the resolved path and `git rebase --continue`. The union is a
 resolution, not a new authored change — do not add commentary, reflow unrelated
-lines, or "tidy" the surrounding file. If resolving one of these three ever
+lines, or "tidy" the surrounding file. If resolving one of these four ever
 requires a judgment about wording or status rather than concatenating entries or
 rows, it has stopped being mechanical: abort and report.
