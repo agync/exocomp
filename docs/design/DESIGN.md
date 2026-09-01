@@ -387,3 +387,73 @@ in fail color, insecure-HTTP warned explicitly.
 - No metric cards without a decision behind them; no vanity metrics.
 - No marketing language. The UI reports state; it does not reassure.
 </content>
+
+## Realignment v0.3 (landed)
+
+The v0.3 handoff realigned the shipped surfaces; this section records the
+components and the deliberate deviations that landed with it. Canon for values
+remains `internal/web/tokens.css` and `internal/web/app.css`.
+
+**App bar (F15).** The shell owns the page title in a slim bar (`--type-bar`,
+15px/600) with a mono `who · scope` meta slot and the page's one primary Add
+verb at the right. The 30px display h1 is gone from the list pages; the
+`--header-h` token stays 60px (the sidebar brand shares it) while the bar
+reads 58px.
+
+**Grouped nav (F7).** The rail is grouped by verb — OPERATE / AUTOMATE /
+PROVISION / ACCESS — each cluster under a mono label. Actionable-state badges
+show beside Checks (down-target count, fail) and Approvals (pending, wait)
+and Sources (never-synced, wait): a mono count, never a pill. Netgroups is a
+tab on /checks; `/netgroups` is a redirect.
+
+**Tray-table (F11).** A list surface's table floats inside a padded tray —
+card padding collapses to 8px, the header reads as a quiet mono label with no
+rule, and the rows alternate none/`--surface-tray` with hover on
+`--surface-row`. No per-cell hairlines. The stackable phone transform and real
+`<th scope>` are untouched. Applied to the 13 stackable list surfaces; the
+deliberately non-stackable short tables (system, workflows) are untouched.
+
+**Check cards (F1/F2/F3).** One card per check over a target grid on the tray
+(`minmax(300px, 1fr)`). Reachability is the only chip; location is prose
+(`address is on <group>` / `address not on any netgroup (away)`), so two
+states never claim equal rank. A never-seen target is a single dim UNOBSERVED
+chip with `never seen yet — first result decides`, never a location chip. A
+down tile carries the inset fail ring; the per-target clock right-aligns in
+the tile header.
+
+**Launch drawer (F4).** The source detail leads with identity and facts; the
+launcher is a right-anchored 460px `<dialog>` opened by intent, JS-off via
+`?launch=1` (the `open` attribute). The submit button states the contract
+(`Queue run — <thing> @ <ref>`); the privileged toggle sits in its own
+fail-tinted block. The Options fold holds the run-option toggles and timeout.
+
+**Quiet/danger row actions (F8).** Row actions are 30px: `.btn.quiet`
+(control fill, label ink) for Disable/Enable, `.btn.danger` (transparent,
+fail ring, `…` since it opens the confirm) for Remove. Danger is a ring, not
+a fill, until the confirm. Full-size `.btn.danger` (fail tint) remains for
+the decision/confirm buttons (the phone Reject, the confirm dialog).
+
+**Powerline segments (F10).** Each segment is dot + word in its signal color
+and links to where it is fixed — dead-man none is wait with a fix verb
+(`— set one`), ntfy off is deliberate dim, disk is ok until it drops under
+10%. State is never color alone.
+
+### Deliberate deviations (reviewed)
+
+- **The secrets columns were kept** (Name/Kind/Source/Created/Rotated/Used/
+  Expiry/Bindings) rather than the handoff render 1e's
+  SECRET/CREATED/LAST-USED/USED-BY: expiry and kind are safety-relevant for a
+  sealed-value inventory. The 1e metadata sentence and the
+  `unbound — safe to remove` copy landed.
+- **Sync is a CLI verb, not a web route.** The handoff 1d header's "Sync now"
+  button has no backend (no queued sync job kind exists; sources_write.go
+  documents the deliberate omission). The source detail instead shows the
+  command (`exocomp source sync <name>`) next to the never-synced fact.
+- **TUI keymap.** The TUI's post-v1 screens grew past the handoff round's
+  seven-screen model, so two literals were pushed back: the `[0-6]` help-bar
+  range is the truthful `[0-9] [s] [u]` (the screen set grew), and `r` was
+  freed for reject by remapping the runners jump to `u`. The load-bearing
+  reserved-letters rule and the verbatim per-screen bars are honored. The
+  `b`/`l`/`x` run-now keys are reserved but unwired — their spec construction
+  lives in the CLI (package main), and forking it into the TUI would split
+  the queue-facing contract.

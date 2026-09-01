@@ -254,14 +254,15 @@ un-limited rule would run against every host the inventory names). A check
 rule's cooldown keys off `check:<check>:<target>`, so each target of a
 multi-target check gets its own slot while webhook rules stay per-rule.
 
-The web surfaces it across the UI. **Netgroups** and **Checks** pages at
-`/netgroups` and `/checks` list and manage their rows (operator scope), the
-API reads them at `/api/v1/netgroups` and `/api/v1/checks`, and the web has a
-read-only **Rules** page — rule mutation stays CLI. The checks page renders
-each target's netgroup chip and how long ago its status last changed
-(`changed 3h ago`, from `check_state.last_change`, or `unobserved`); the
-dashboard's Checks card shows the registered total and how many targets the
-sweep observes up; a job detail line "fired by rule <name>" links to `/rules`
+The web surfaces it across the UI. **Netgroups** is a tab on the **Checks**
+page (the standalone `/netgroups` page now 302s to `/checks?tab=netgroups`),
+and the API reads them at `/api/v1/netgroups` and `/api/v1/checks`; the web
+has a read-only **Rules** page — rule mutation stays CLI. The checks page
+renders each target's location as prose (`address is on home` / `not on any
+netgroup (away)`) and how long ago its status last changed (`3h ago`, from
+`check_state.last_change`, or a cold-start UNOBSERVED); the dashboard's
+Checks card shows the registered total and how many targets the sweep
+observes up; a job detail line "fired by rule <name>" links to `/rules`
 and, when on record, the event that raised the run; and the events page
 filters by `?source=`, one entry per pipeline (alertmanager, healthchecks,
 generic, drift, check).

@@ -124,3 +124,13 @@ The phone approval flow's semantics:
    schedules still fire), requires an expiry, and commits by hold-to-confirm.
 7. **A silence or pause is a banner on every screen** until it lifts, carrying the
    count of swallowed alerts.
+
+## Realignment v0.3 (landed)
+
+The v0.3 design handoff was implemented against the shipped surfaces; the
+design system document (`DESIGN.md`) now records the new components (app bar,
+grouped nav with state badges, tray-table lists, check cards over a target
+grid, the launch drawer, quiet/danger row actions, signal-colored powerline)
+and the reviewed deviations (secrets columns kept, sync CLI-only, the TUI
+keymap's `[0-9] [s] [u]` bars and `u`-for-runners remap). Reference renders
+live under `reference/` and `reference/realign/`.

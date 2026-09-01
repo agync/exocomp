@@ -6,6 +6,49 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-01 — design-handoff v0.3 realignment
+
+Lands the web and TUI surfaces against the v0.3 design handoff (the canon
+imported to `.agents/brain/design-handoff/`): the web realign findings F1–F15
+and the TUI write round. `tokens.css` was already byte-identical to the
+handoff, so the foundation was untouched.
+
+- **Web chrome.** The shell owns the page title in a slim app bar (F15); the
+  nav is grouped by verb — OPERATE / AUTOMATE / PROVISION / ACCESS — with
+  actionable-state badges (down targets on Checks, never-synced sources and
+  pending approvals) (F7). The powerline renders dot + word in each segment's
+  signal color and links to where it is fixed (F10).
+- **Web lists.** List tables float in a padded tray with quiet mono headers and
+  no per-cell hairlines (F11); per-row actions demoted to 30px quiet/danger
+  ring buttons, Sources rows navigate and their disable/delete live on the
+  source page (F8); labeled Add buttons replace the bare glyph (F9); Checks
+  and Sources hide the default ENABLED chip (F12).
+- **Checks rebuild.** One card per check with a target grid on the tray (F1);
+  reachability is the only chip and location reads as prose (F2); a never-seen
+  target is a single dim UNOBSERVED chip with its cold-start reason (F3); the
+  per-target clock right-aligns in the tile header (F13). Netgroups became a
+  tab on /checks — the standalone page and its write redirects point there,
+  the one route change (F7).
+- **Sources.** The detail leads with identity and facts; the launcher moved
+  into a right-anchored drawer opened by intent, JS-off via `?launch=1` (F4). A
+  never-synced source reads as a wait state everywhere — NEVER chip and
+  attention row in the list, "never — sync to discover playbooks" on detail
+  (sync is a CLI verb) (F5); an unsynced source with no discovered playbooks
+  gets a disabled select with the path promoted (F14).
+- **Dashboard.** The glance screen ranks by signal — a NEEDS ATTENTION band of
+  only the non-nominal cards, a wide QUEUE card, then quiet COUNTS whose empty
+  states name the verb that changes them (F6).
+- **TUI.** Colors aligned to the semantic table (rules color, selected-row
+  reverse video), the seven empty states wired with the verbatim copy, and the
+  footer reports the real dead-man backup age. The interactive write keys are
+  wired against the one queue and the store: pause/mute with mandatory expiry,
+  approve/reject through the CLI's reactive seam (enqueue-only, never drained;
+  stale plans refuse, destroy plans type-confirm), cancel, schedule toggle,
+  follow, trace, outcome, filter, help, g/G, and tab/S-tab over every screen.
+  The `b`/`l`/`x` run-now keys stay reserved but unwired: their spec
+  construction lives in the CLI, and forking it would split the queue-facing
+  contract.
+
 ## 2026-09-01 — event views carry check-field projections
 
 - **`EventView` gains three additive, `omitempty` fields the mobile companion

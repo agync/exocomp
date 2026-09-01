@@ -6,6 +6,13 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-01 — Netgroups page merged into /checks as a tab
+
+- **The standalone Netgroups page was removed; netgroups are now a tab on
+  /checks** (`?tab=netgroups`). The `/netgroups` route 302s to the tab; the
+  write redirects follow. This is the one route change of the design-handoff
+  realignment (F7).
+
 ## 2026-09-01 — software changelog split from the bundle log
 
 - **The release narrative moved out of this log.** This page now records only
