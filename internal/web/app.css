@@ -63,6 +63,25 @@ a:visited { color: var(--accent-text); }
 /* A mouse click must not ring (matches tokens.css intent). */
 :focus:not(:focus-visible) { outline: none; }
 
+/* ---- Spacing/utility ----
+ * Named one-off layout nudges the surfaces once carried as inline styles, so each
+ * value lives in one place and follows the same tokens as everything else. */
+.mt18 { margin-top:  18px; }
+.mt14 { margin-top:  14px; }
+.mt8  { margin-top:   8px; }
+.mt26 { margin-top:  26px; }
+.inline-form { display: inline; }
+.ml-auto { margin-left: auto; }
+.ml6  { margin-left:   6px; }
+.gap6  { gap:   6px; }
+.w8em  { width:   8em; }
+.kill-expiry {
+  width:   100%; min-height:  48px;
+  background: var(--surface-void); color: var(--ink-100);
+  border:   1px solid var(--hairline); border-radius: var(--radius-control);
+  padding:  0 12px;
+}
+
 /* ---- App frame ---- */
 .app { min-height: 100vh; display: flex; }
 
@@ -535,7 +554,7 @@ td .btn {
  * between the two); collapse both shapes to one deliberate gap owned here. */
 main > .pageheader { margin-bottom: 12px; }
 main > .pageheader + .card,
-main > .pageheader + dialog + .card { margin-top: 0 !important; }
+main > .pageheader + dialog + .card { margin-top: 0; }
 /* An .actions group inside a pageheader is a top-right button row, not the
  * form-actions block .actions .btn's width:100% is meant for — keep it
  * compact and un-stacked. */

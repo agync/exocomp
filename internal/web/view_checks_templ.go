@@ -86,7 +86,7 @@ func checksList(vm checksVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <div class=\"card span2\" style=\"margin-top:18px\"><div class=\"kicker\">Probe checks</div><h3>All checks</h3><p class=\"meta\">Nothing fires until a rule matches — rules are written on the CLI and read at <a href=\"/rules\">/rules</a>.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, " <div class=\"card span2 mt18\"><div class=\"kicker\">Probe checks</div><h3>All checks</h3><p class=\"meta\">Nothing fires until a rule matches — rules are written on the CLI and read at <a href=\"/rules\">/rules</a>.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -278,7 +278,7 @@ func checksList(vm checksVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" style=\"display:inline\"><button type=\"submit\" class=\"btn\">Disable</button></form>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn\">Disable</button></form>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -296,7 +296,7 @@ func checksList(vm checksVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" style=\"display:inline\"><button type=\"submit\" class=\"btn\">Enable</button></form>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn\">Enable</button></form>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -314,14 +314,14 @@ func checksList(vm checksVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" style=\"display:inline\" data-confirm=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\" class=\"inline-form\" data-confirm=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var14 string
 						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs("Remove check " + ck.Name + "?")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 121, Col: 155}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 121, Col: 152}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
