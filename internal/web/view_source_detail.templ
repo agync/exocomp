@@ -15,7 +15,7 @@ templ sourceDetail(vm sourceDetailVM) {
 		<div class="pageheader">
 			<h1>{ vm.Source.Name }</h1>
 		</div>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="detailmeta">
 				<span class="chip"><span class="dot"></span>{ vm.Source.Kind }</span>
 				if vm.Source.Kind == "path" {
@@ -35,13 +35,13 @@ templ sourceDetail(vm sourceDetailVM) {
 			</dl>
 		</div>
 		if !vm.Operator {
-			<div class="card span2" style="margin-top:18px">
+			<div class="card span2 mt18">
 				<div class="kicker">Read-only</div>
 				<h3>Launch a run</h3>
 				<p class="meta">Enqueuing a run from this source needs an operator-scoped token.</p>
 			</div>
 		} else {
-			<div class="card span2" style="margin-top:18px">
+			<div class="card span2 mt18">
 				<h3>Launch a run</h3>
 				<p class="meta">Resolves the playbook against this source's checkout (loading its ./ansible.cfg), then enqueues through the one queue.</p>
 				<div class="tabs" role="tablist" aria-label="Launcher">

@@ -133,7 +133,7 @@ func workflowsList(vm workflowsVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<h1>Workflows</h1><div class=\"card span2\" style=\"margin-top:18px\"><h3>All workflows</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<h1>Workflows</h1><div class=\"card span2 mt18\"><h3>All workflows</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -299,7 +299,7 @@ func workflowDetail(vm workflowVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if vm.NotFound {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"card\" style=\"margin-top:14px\"><p class=\"meta\">No workflow with this id.</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<div class=\"card mt14\"><p class=\"meta\">No workflow with this id.</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -312,7 +312,7 @@ func workflowDetail(vm workflowVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</p><div class=\"card span2\" style=\"margin-top:14px\"><div class=\"kicker\">Step ledger</div><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\" class=\"right\">Step</th><th scope=\"col\">Kind</th><th scope=\"col\">Status</th><th scope=\"col\">Job</th></tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</p><div class=\"card span2 mt14\"><div class=\"kicker\">Step ledger</div><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\" class=\"right\">Step</th><th scope=\"col\">Kind</th><th scope=\"col\">Status</th><th scope=\"col\">Job</th></tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

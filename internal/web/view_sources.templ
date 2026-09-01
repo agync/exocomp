@@ -117,7 +117,7 @@ templ sourcesList(vm sourcesVM) {
 				</script>
 			}
 		}
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			if !vm.Operator {
 				<div class="kicker">Read-only · CLI-managed</div>
 			}
@@ -158,15 +158,15 @@ templ sourcesList(vm sourcesVM) {
 										<td data-label="Actions">
 											<a class="btn primary" href={ templ.SafeURL("/sources/" + sc.Name) }>Open</a>
 											if sc.Enabled {
-												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/disable") } style="display:inline">
+												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/disable") } class="inline-form">
 													<button type="submit" class="btn">Disable</button>
 												</form>
 											} else {
-												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/enable") } style="display:inline">
+												<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/enable") } class="inline-form">
 													<button type="submit" class="btn">Enable</button>
 												</form>
 											}
-											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } style="display:inline" data-confirm={ "Delete source " + sc.Name + "?" }>
+											<form method="post" action={ templ.SafeURL("/sources/" + sc.Name + "/rm") } class="inline-form" data-confirm={ "Delete source " + sc.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Delete</button>
 											</form>
@@ -189,7 +189,7 @@ templ sourceGitResult(vm sourceGitResultVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Registered " + vm.Name})
 		<h1>Registered { vm.Name }</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="kicker">Add this deploy key to the forge — it is not shown again</div>
 			<h3>{ vm.Name } · { vm.URL } (ref { vm.Ref })</h3>
 			<pre class="secretbox" aria-label="deploy key">{ vm.PublicAuthorizedKey }</pre>
@@ -202,7 +202,7 @@ templ sourceReauthNotice(p page) {
 	@layout(p) {
 		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Confirm"})
 		<h1>Confirm required</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p>
 		</div>
 	}

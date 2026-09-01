@@ -66,7 +66,7 @@ func workspacesList(vm workspacesVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" class=\"btn\" style=\"margin-left:auto\" data-modal-open=\"ws-configure\">Configure</button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<button type=\"button\" class=\"btn ml-auto\" data-modal-open=\"ws-configure\">Configure</button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -164,7 +164,7 @@ func workspacesList(vm workspacesVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" style=\"display:inline\"><button type=\"submit\" class=\"btn\">Plan</button></form><form method=\"post\" action=\"")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "\" class=\"inline-form\"><button type=\"submit\" class=\"btn\">Plan</button></form><form method=\"post\" action=\"")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -177,7 +177,7 @@ func workspacesList(vm workspacesVM) templ.Component {
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" style=\"display:inline\"><input type=\"number\" name=\"plan\" min=\"1\" placeholder=\"plan id (optional)\" style=\"width:8em\" title=\"Apply a saved plan by artifact id; empty applies fresh\"> <button type=\"submit\" class=\"btn primary\">Apply</button></form>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "\" class=\"inline-form\"><input type=\"number\" name=\"plan\" min=\"1\" placeholder=\"plan id (optional)\" class=\"w8em\" title=\"Apply a saved plan by artifact id; empty applies fresh\"> <button type=\"submit\" class=\"btn primary\">Apply</button></form>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}

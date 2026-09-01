@@ -14,7 +14,7 @@ templ tokensPage(vm tokensVM) {
 			}
 		</div>
 		if !vm.Operator {
-			<div class="card span2" style="margin-top:18px">
+			<div class="card span2 mt18">
 				<div class="kicker">Read-only</div>
 				<h3>Access tokens</h3>
 				<p class="meta">Token management needs an operator-scoped token.</p>
@@ -70,7 +70,7 @@ templ tokensPage(vm tokensVM) {
 														<div class="actions"><button type="submit" class="btn primary">Rotate</button></div>
 													</form>
 												}
-												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } style="display:inline" data-confirm={ "Revoke token " + t.Name + "?" }>
+												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } class="inline-form" data-confirm={ "Revoke token " + t.Name + "?" }>
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>
 												</form>
@@ -98,7 +98,7 @@ templ tokenResult(vm tokenResultVM) {
 			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Minted " + vm.Name})
 			<h1>Minted { vm.Name }</h1>
 		}
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="kicker">Copy it now — it is not shown again</div>
 			<h3>{ vm.Name } · scope { vm.Scope }</h3>
 			@codeblock("new token", vm.Secret)
@@ -124,7 +124,7 @@ templ tokensReauthNotice(p page) {
 	@layout(p) {
 		@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Confirm"})
 		<h1>Confirm required</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the write.</p>
 		</div>
 	}

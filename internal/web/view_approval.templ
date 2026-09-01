@@ -4,7 +4,7 @@ package web
 templ approvalsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<h1>Approvals</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="kicker">Waiting on a human</div>
 			<h3>Pending approvals</h3>
 			if len(vm.NeedsYou) == 0 {
@@ -179,12 +179,12 @@ templ planDetail(l planLine) {
 // confirm lists what it touches and what it does not, requires an expiry, and
 // commits by hold-to-confirm.
 templ globalKill() {
-	<details class="approve-block" style="margin-top:26px">
+	<details class="approve-block mt26">
 		<summary class="keyword">Silence &amp; global kill</summary>
 		<p class="meta">A silence always expires — there is no "until I turn it off". The global kill pauses every rule.</p>
 		<form method="post" action="/kill">
 			<label for="kill-expiry">Expiry (mandatory)</label>
-			<input id="kill-expiry" name="expiry" type="text" inputmode="text" placeholder="2h" required style="width:100%;min-height:48px;background:var(--surface-void);color:var(--ink-100);border:1px solid var(--hairline);border-radius:var(--radius-control);padding:0 12px"/>
+			<input id="kill-expiry" name="expiry" type="text" inputmode="text" placeholder="2h" required class="kill-expiry"/>
 			<p class="meta">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p>
 			<button type="button" class="btn danger hold" id="killbtn"
 				onpointerdown="exoHoldStart(this)" onpointerup="exoHoldCancel(this)" onpointerleave="exoHoldCancel(this)">

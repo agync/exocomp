@@ -25,7 +25,7 @@ templ workspacesList(vm workspacesVM) {
 		<div class="pageheader">
 			<h1>Workspaces</h1>
 			if vm.Operator {
-				<button type="button" class="btn" style="margin-left:auto" data-modal-open="ws-configure">Configure</button>
+				<button type="button" class="btn ml-auto" data-modal-open="ws-configure">Configure</button>
 			}
 		</div>
 		<div class="card span2">
@@ -60,11 +60,11 @@ templ workspacesList(vm workspacesVM) {
 									if vm.Operator {
 										<td data-label="Actions">
 											if !wsr.StateOnly() {
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } style="display:inline">
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } class="inline-form">
 													<button type="submit" class="btn">Plan</button>
 												</form>
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } style="display:inline">
-													<input type="number" name="plan" min="1" placeholder="plan id (optional)" style="width:8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form">
+													<input type="number" name="plan" min="1" placeholder="plan id (optional)" class="w8em" title="Apply a saved plan by artifact id; empty applies fresh"/>
 													<button type="submit" class="btn primary">Apply</button>
 												</form>
 											}

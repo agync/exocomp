@@ -67,7 +67,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1></div><div class=\"card span2\" style=\"margin-top:18px\"><div class=\"detailmeta\"><span class=\"chip\"><span class=\"dot\"></span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "</h1></div><div class=\"card span2 mt18\"><div class=\"detailmeta\"><span class=\"chip\"><span class=\"dot\"></span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -149,12 +149,12 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if !vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"card span2\" style=\"margin-top:18px\"><div class=\"kicker\">Read-only</div><h3>Launch a run</h3><p class=\"meta\">Enqueuing a run from this source needs an operator-scoped token.</p></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"card span2 mt18\"><div class=\"kicker\">Read-only</div><h3>Launch a run</h3><p class=\"meta\">Enqueuing a run from this source needs an operator-scoped token.</p></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div class=\"card span2\" style=\"margin-top:18px\"><h3>Launch a run</h3><p class=\"meta\">Resolves the playbook against this source's checkout (loading its ./ansible.cfg), then enqueues through the one queue.</p><div class=\"tabs\" role=\"tablist\" aria-label=\"Launcher\"><button type=\"button\" class=\"tab\" id=\"tab-playbook\" role=\"tab\" data-tab=\"playbook\" aria-controls=\"panel-playbook\" aria-selected=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<div class=\"card span2 mt18\"><h3>Launch a run</h3><p class=\"meta\">Resolves the playbook against this source's checkout (loading its ./ansible.cfg), then enqueues through the one queue.</p><div class=\"tabs\" role=\"tablist\" aria-label=\"Launcher\"><button type=\"button\" class=\"tab\" id=\"tab-playbook\" role=\"tab\" data-tab=\"playbook\" aria-controls=\"panel-playbook\" aria-selected=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

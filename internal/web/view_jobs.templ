@@ -6,7 +6,7 @@ package web
 templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<h1>Jobs</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<h3>All jobs</h3>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet.</p>
@@ -55,15 +55,14 @@ templ jobDetail(vm jobDetailVM) {
 		<div class="pageheader">
 			<h1>Job #{ itoa64(vm.Job.ID) }</h1>
 			if vm.Operator && vm.Job.State.Terminal() {
-				<div class="actions" style="margin-left:auto">
+				<div class="actions ml-auto">
 					if vm.Rerunnable {
 						<button type="button" class="btn" data-modal-open="job-rerun">Run again</button>
 					}
 					if vm.CanSchedule {
 						<button
 							type="button"
-							class="btn"
-							style="gap:6px"
+							class="btn gap6"
 							data-modal-open="job-schedule"
 							disabled?={ !vm.Job.Succeeded() }
 							title={ scheduleTitle(vm.Job) }
@@ -86,7 +85,7 @@ templ jobDetail(vm jobDetailVM) {
 			@chip(vm.Job.StateClass(), string(vm.Job.State))
 		</p>
 		if vm.FiredRule != "" {
-			<p class="meta" style="margin-top:8px">
+			<p class="meta mt8">
 				fired by rule <a href="/rules">{ vm.FiredRule }</a>
 				if vm.TriggerEvent != nil {
 					· event <a href={ templ.SafeURL("/events/" + itoa64(vm.TriggerEvent.ID)) }>#{ itoa64(vm.TriggerEvent.ID) }</a>
@@ -142,7 +141,7 @@ templ jobDetail(vm jobDetailVM) {
 				</form>
 			}
 		}
-		<div class="card" style="margin-top:14px">
+		<div class="card mt14">
 			<div class="kicker">Live tail</div>
 			<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
 				for _, e := range vm.Events {

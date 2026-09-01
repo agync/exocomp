@@ -7,7 +7,7 @@ package web
 templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
 		<h1>System</h1>
-		<div class="cards" style="margin-top:18px">
+		<div class="cards mt18">
 			<section class="card span2" aria-labelledby="self-h">
 				<h3 id="self-h">This control plane</h3>
 				<div class="tablewrap">
@@ -65,7 +65,7 @@ templ systemPage(vm systemVM) {
 										<td>
 											{ b.Name }
 											if b.Drill {
-												<span class="chip dim" style="margin-left:6px">drill</span>
+												<span class="chip dim ml6">drill</span>
 											}
 										</td>
 										<td class="mono">{ orDash(b.Snapshot) }</td>

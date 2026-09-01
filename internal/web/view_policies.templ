@@ -35,7 +35,7 @@ templ policiesList(vm policiesVM) {
 				</form>
 			}
 		}
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="kicker">CEL gates</div>
 			<h3>All policies</h3>
 			if !vm.Operator {
@@ -68,7 +68,7 @@ templ policiesList(vm policiesVM) {
 									<td data-label="Enabled">@enabledChip(p.Enabled)</td>
 									if vm.Operator {
 										<td data-label="Actions">
-											<form method="post" action={ templ.SafeURL("/policies/" + p.Name + "/rm") } style="display:inline" data-confirm={ "Remove policy " + p.Name + "?" }>
+											<form method="post" action={ templ.SafeURL("/policies/" + p.Name + "/rm") } class="inline-form" data-confirm={ "Remove policy " + p.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Remove</button>
 											</form>

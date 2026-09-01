@@ -20,7 +20,7 @@ templ stepDots(steps []workflowStepRow) {
 templ workflowsList(vm workflowsVM) {
 	@layout(vm.Page) {
 		<h1>Workflows</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<h3>All workflows</h3>
 			if len(vm.Workflows) == 0 {
 				<p class="meta">No workflows recorded.</p>
@@ -62,12 +62,12 @@ templ workflowDetail(vm workflowVM) {
 		<h1>Workflow</h1>
 		<p class="meta"><span class="mono">{ vm.ID }</span></p>
 		if vm.NotFound {
-			<div class="card" style="margin-top:14px">
+			<div class="card mt14">
 				<p class="meta">No workflow with this id.</p>
 			</div>
 		} else {
 			<p class="meta">@chip(vm.StateClass(), string(vm.State))</p>
-			<div class="card span2" style="margin-top:14px">
+			<div class="card span2 mt14">
 				<div class="kicker">Step ledger</div>
 				<div class="tablewrap">
 					<table>

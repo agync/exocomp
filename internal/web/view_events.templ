@@ -7,7 +7,7 @@ package web
 templ eventsList(vm eventsVM) {
 	@layout(vm.Page) {
 		<h1>Events</h1>
-		<div class="card span2" style="margin-top:18px">
+		<div class="card span2 mt18">
 			<div class="kicker">Received alerts</div>
 			<h3>All events</h3>
 			<form method="get" action="/events" class="writeform inline">
@@ -58,7 +58,7 @@ templ eventsList(vm eventsVM) {
 					</table>
 				</div>
 				if vm.HasMore {
-					<p class="meta" style="margin-top:14px">
+					<p class="meta mt14">
 						<a href={ templ.SafeURL("/events?limit=" + itoa(int64(vm.NextLimit())) + "&source=" + urlEscape(vm.Source)) }>Load more</a>
 					</p>
 				}
@@ -79,11 +79,11 @@ templ eventTrace(vm traceVM) {
 			· { vm.Event.Received }
 		</p>
 		if vm.Event.JobID != nil {
-			<p class="meta" style="margin-top:8px">
+			<p class="meta mt8">
 				enqueued job <a href={ templ.SafeURL("/jobs/" + itoa64(*vm.Event.JobID)) }>#{ itoa64(*vm.Event.JobID) }</a>
 			</p>
 		}
-		<div class="card" style="margin-top:14px">
+		<div class="card mt14">
 			<div class="kicker">Evaluation trace</div>
 			if len(vm.Steps) == 0 {
 				<p class="meta">No trace recorded.</p>
@@ -112,7 +112,7 @@ templ eventTrace(vm traceVM) {
 					</table>
 				</div>
 			}
-			<p class="meta" style="margin-top:14px">Reason: { vm.Event.Reason }</p>
+			<p class="meta mt14">Reason: { vm.Event.Reason }</p>
 		</div>
 	}
 }

@@ -45,7 +45,7 @@ func systemPage(vm systemVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>System</h1><div class=\"cards\" style=\"margin-top:18px\"><section class=\"card span2\" aria-labelledby=\"self-h\"><h3 id=\"self-h\">This control plane</h3><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\">Signal</th><th scope=\"col\">State</th><th scope=\"col\">Detail</th></tr></thead> <tbody><tr><td>Running version</td><td class=\"mono\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<h1>System</h1><div class=\"cards mt18\"><section class=\"card span2\" aria-labelledby=\"self-h\"><h3 id=\"self-h\">This control plane</h3><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\">Signal</th><th scope=\"col\">State</th><th scope=\"col\">Detail</th></tr></thead> <tbody><tr><td>Running version</td><td class=\"mono\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -159,7 +159,7 @@ func systemPage(vm systemVM) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					if b.Drill {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"chip dim\" style=\"margin-left:6px\">drill</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<span class=\"chip dim ml6\">drill</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
