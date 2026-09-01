@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
@@ -66,11 +65,11 @@ func TestWebShutdownReturnsNilWithStreamAttached(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	var out bytes.Buffer
+	out := &syncBuffer{}
 	done := make(chan error, 1)
-	go func() { done <- runWeb(ctx, &out, io.Discard, webOptions{addr: "127.0.0.1:0", insecure: true}) }()
+	go func() { done <- runWeb(ctx, out, io.Discard, webOptions{addr: "127.0.0.1:0", insecure: true}) }()
 
-	addr := waitWebListen(t, &out)
+	addr := waitWebListen(t, out)
 	req, _ := http.NewRequest(http.MethodGet, "http://"+addr+"/approvals/stream", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := http.DefaultClient.Do(req)
@@ -95,7 +94,9 @@ func TestWebShutdownReturnsNilWithStreamAttached(t *testing.T) {
 
 // waitWebListen polls runWeb's output for its listening line and returns the
 // bound addr, so the caller can attach a stream before signalling shutdown.
-func waitWebListen(t *testing.T, out *bytes.Buffer) string {
+// out must be a syncBuffer (as in serve_integration_test.go): runWeb writes it
+// from its own goroutine while this polls it, so a plain bytes.Buffer is racy.
+func waitWebListen(t *testing.T, out *syncBuffer) string {
 	t.Helper()
 	deadline := time.After(10 * time.Second)
 	for {
