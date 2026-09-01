@@ -197,9 +197,33 @@ func TestCheckAddHTTPExpect(t *testing.T) {
 	}
 }
 
+// flashMessage extracts the ?flash= message a rejected form redirect carries,
+// asserting the redirect went back to wantPath. The message is the operator's
+// one-line error; a caller asserts a stable substring of it.
+func flashMessage(t *testing.T, resp *http.Response, wantPath string) string {
+	t.Helper()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("status = %d, want 303", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	if !strings.HasPrefix(loc, wantPath+"?flash=") {
+		t.Fatalf("redirect = %q, want %s?flash=…", loc, wantPath)
+	}
+	q, err := url.ParseQuery(strings.TrimPrefix(loc, wantPath+"?"))
+	if err != nil {
+		t.Fatalf("parse redirect query %q: %v", loc, err)
+	}
+	if msg := q.Get("flash"); msg != "" {
+		return msg
+	}
+	t.Fatalf("redirect %q carries no flash message", loc)
+	return ""
+}
+
 // TestCheckAddValidatesTargets: a tcp target without its ip:port shape is
 // refused before the store sees it (the same parseCheckTargets `check add`
-// runs), and no row lands.
+// runs), the rejection resolves as a flash-carrying redirect, and no row
+// lands.
 func TestCheckAddValidatesTargets(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -208,12 +232,42 @@ func TestCheckAddValidatesTargets(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/checks/add",
 		url.Values{"name": {"bad"}, "kind": {store.CheckTCP}, "interval": {"5m"}, "target": {"laptop"}}, nil)
+	msg := flashMessage(t, resp, "/checks")
 	_ = resp.Body.Close()
-	if resp.StatusCode == http.StatusSeeOther {
-		t.Fatal("a bare name= target without a port was accepted")
+	if !strings.Contains(msg, "laptop") {
+		t.Errorf("flash message %q does not name the rejected target", msg)
 	}
 	if _, err := h.store.GetCheck(context.Background(), "bad"); err == nil {
 		t.Fatal("a check was created despite an invalid target")
+	}
+}
+
+// TestCheckAddDuplicateFlashes: re-adding a name that exists is refused with
+// a flash-carrying redirect, not a 409, and the original row survives.
+func TestCheckAddDuplicateFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	}); err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{"name": {"at-home"}, "kind": {store.CheckTCP}, "interval": {"5m"},
+			"target": {"laptop=192.168.1.50:22"}}, nil)
+	msg := flashMessage(t, resp, "/checks")
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "already exists") {
+		t.Errorf("flash message %q does not report the duplicate", msg)
+	}
+	if _, err := h.store.GetCheck(ctx, "at-home"); err != nil {
+		t.Fatalf("original check vanished: %v", err)
 	}
 }
 

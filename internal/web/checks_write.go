@@ -35,36 +35,36 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	kind := r.PostFormValue("kind")
 	interval, err := time.ParseDuration(r.PostFormValue("interval"))
 	if err != nil {
-		s.fail(w, r, fmt.Errorf("interval must be a Go duration (e.g. 5m): %w", err))
+		redirectFlash(w, r, "/checks", fmt.Sprintf("interval must be a Go duration (e.g. 5m): %v", err))
 		return
 	}
 	if interval <= 0 {
-		s.fail(w, r, errors.New("interval must be a positive Go duration (e.g. 5m)"))
+		redirectFlash(w, r, "/checks", "interval must be a positive Go duration (e.g. 5m)")
 		return
 	}
 	switch kind {
 	case store.CheckTCP, store.CheckPing, store.CheckHTTP:
 	default:
-		s.fail(w, r, fmt.Errorf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
+		redirectFlash(w, r, "/checks", fmt.Sprintf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
 		return
 	}
 	targets, err := store.ParseCheckTargets(kind, r.PostForm["target"], true)
 	if err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/checks", err.Error())
 		return
 	}
 	if len(targets) == 0 {
-		s.fail(w, r, errors.New("need at least one target"))
+		redirectFlash(w, r, "/checks", "need at least one target")
 		return
 	}
 	expect, err := formExpect(r)
 	if err != nil {
-		s.fail(w, r, err)
+		redirectFlash(w, r, "/checks", err.Error())
 		return
 	}
 	if expect != 0 {
 		if kind != store.CheckHTTP {
-			s.fail(w, r, errors.New("expected status applies to kind http"))
+			redirectFlash(w, r, "/checks", "expected status applies to kind http")
 			return
 		}
 		for i := range targets {
@@ -76,7 +76,7 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		Name: name, Kind: kind, IntervalS: int64(interval.Seconds()), Targets: targets,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a check named "+name+" already exists", http.StatusConflict)
+		redirectFlash(w, r, "/checks", "a check named "+name+" already exists")
 		return
 	}
 	if err != nil {
