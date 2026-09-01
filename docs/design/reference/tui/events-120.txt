@@ -1,7 +1,7 @@
 events · 17 in last 24h · 11 ignored · 2 matched · 3 suppressed · 1 gated · 0 fired                         14:03 UTC+11
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[m
  TIME   EVENT             SOURCE     OUTCOME     REASON
-▸14:02  disk-pressure     aurora     SUPPRESSED  silence 'maintenance' until 15:00 · by dana
+[7;48;2;29;36;38m▸14:02  disk-pressure     aurora     SUPPRESSED  silence 'maintenance' until 15:00 · by dana[m
  13:58  drift-detected    core-infra GATED       plan #482 awaiting approval
  13:40  backup-failed     media-nas  FIRED       ran backup-retry · succeeded 13:42
  13:37  cert-expiry-30d   edge-01    MATCHED     queued behind running job · position 2
@@ -10,4 +10,4 @@ events · 17 in last 24h · 11 ignored · 2 matched · 3 suppressed · 1 gated �
  12:51  disk-pressure     aurora     FIRED       ran disk-clean · succeeded 12:53 · freed 18 GB
  11:04  ssh-bruteforce    edge-01    IGNORED     no rule matches
 
-[e] trace  [o] filter outcome  [/] search  [j/k] move                                                      [0-6] screens
+[e] trace  [o] outcome  [/] search  [j/k] move                                                                  [?] help

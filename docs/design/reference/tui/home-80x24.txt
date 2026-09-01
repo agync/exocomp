@@ -1,5 +1,5 @@
 exocomp · aurora                                          14:03 UTC+11 · tick 2s
-────────────────────────────────────────────────────────────────────────────────
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────[m
 NEEDS YOU (2)
   approval   core-infra plan · 1 DESTROY                      expires 06:41  [5]
   backup     media-store STALE 26h (max 24h)                      run now  [2]→b
@@ -14,11 +14,11 @@ BACKUPS                                     WORKSPACES
 
 NEXT    02:00 nightly-db · fires in 11h 57m
 
+SELF
+  version    0.7.4 · the binary an upgrade replaces
+  litestream RPO 3m · newest replicated frame
 
 
-
-
-
-────────────────────────────────────────────────────────────────────────────────
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────[m
 dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗
-[0-6] screens  [enter] open  [p] pause  [m] mute  [q] quit              [?] help
+[0-9] [s] [u] screens  [enter] open  [p] pause  [m] mute  [q] quit      [?] help

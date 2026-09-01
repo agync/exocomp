@@ -1,4 +1,5 @@
 ▌ PAUSED — reactive jobs held · 3 alerts swallowed                   [p] resume 
 ▌ MUTED until 15:00 (43m) · notifications held · jobs still run      [m] unmute 
 ▌ PAUSED + MUTED until 15:00 · 3 swallowed               [p] resume  [m] unmute 
+▌ SILENCED — scoped alerts held · 3 swallowed                        [e] events 
 !! PAUSED — reactive jobs held · 3 alerts swallowed                  [p] resume 

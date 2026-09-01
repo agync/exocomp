@@ -1,0 +1,9 @@
+workflow · provision-aurora-8f2                                       [esc] back
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────[m
+state running · 2/4 done
+
+  STEP  KIND                STATUS        JOB
+   1    provision           succeeded     #12
+   2    onboard             succeeded     #13
+   3    converge            running       #14
+   4    verify              pending       -

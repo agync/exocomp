@@ -1,5 +1,5 @@
 exocomp · aurora · up 41d                                                                         14:03 UTC+11 · tick 2s
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[m
 NEEDS YOU (2)
   approval   plan #482 core-infra · 1 DESTROY · 2 change · 1 create · by nightly-plan   expires 06:41 → auto-reject  [5]
   backup     media-store last good 26h ago (max 24h · 3 attempts failed overnight)                        run now  [2]→b
@@ -14,6 +14,9 @@ BACKUPS                                     WORKSPACES                          
   media-derived    --   disabled
   restore drill   12d   ok    monthly
 
+SELF
+  version    0.7.4 · the binary an upgrade replaces
+  litestream RPO 3m · newest replicated frame
 
 
 
@@ -28,9 +31,6 @@ BACKUPS                                     WORKSPACES                          
 
 
 
-
-
-
-────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[m
 dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗ update available
-[0-6] screens  [tab] next  [enter] open  [p] pause  [m] mute  [q] quit                                          [?] help
+[0-9] [s] [u] screens  [tab] next  [enter] open  [p] pause  [m] mute  [q] quit                                  [?] help
