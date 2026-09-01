@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/a-h/templ"
@@ -102,6 +103,13 @@ type Server struct {
 	// mcpSrv is the MCP adapter that serves POST /mcp, the one agent MCP
 	// surface — HTTP and bearer-scoped, no ambient stdio path (mcp_http.go).
 	mcpSrv *mcp.Server
+	// approvalStreams counts the attached approvals streams. Each one polls
+	// ListApprovals every approvalsStreamPoll against the one-connection store
+	// pool shared with the queue and sequencer, so a flood of browser tabs would
+	// otherwise multiply that contention without bound. A stream is refused with
+	// 503 once maxApprovalStreams are live; it is a guard, not a ledger — a
+	// process restart resets it and nothing audits it.
+	approvalStreams atomic.Int64
 }
 
 // New returns a Server ready to be mounted.

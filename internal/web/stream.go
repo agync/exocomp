@@ -18,6 +18,24 @@ import (
 // simpler than a notify fan-out and costs nothing idle.
 const streamPoll = 300 * time.Millisecond
 
+// approvalsStreamPoll is how often the approvals tail re-reads the pending
+// list. It is deliberately NOT streamPoll: an approval is a human-scale event,
+// not a per-line log tail, and every pending-approvals stream hammers the same
+// one-connection store pool as the queue and sequencer, so the 300ms job-tail
+// cadence would buy nothing but contention.
+const approvalsStreamPoll = 2 * time.Second
+
+// approvalsStreamHeartbeat is how long the approvals tail may go without any
+// write before it emits an SSE comment heartbeat (: keepalive). An idle live
+// list would otherwise send nothing for hours and be silently killed by any
+// intermediary's idle timeout.
+const approvalsStreamHeartbeat = 30 * time.Second
+
+// maxApprovalStreams bounds concurrent approvals streams per process. Each one
+// polls ListApprovals every approvalsStreamPoll, so without a cap a fleet of
+// stale tabs multiplies the load on the one-connection store pool forever.
+const maxApprovalStreams = 8
+
 // streamMaxLifetime bounds one attached stream regardless of the job, so a
 // credential that is never revoked still cannot hold a socket forever. A client
 // that still wants the tail re-attaches from its last sequence, which the
@@ -150,13 +168,28 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 // resource, only the pending set) and there is no ?since= cursor to seed from,
 // so — unlike tailJobEvents — this owns setting the SSE headers itself; the
 // caller (apiApprovalStream) only checks the ResponseWriter can flush.
+//
+// It is the shared funnel for BOTH approvals surfaces (handleApprovalStream and
+// apiApprovalStream), so the concurrency cap and the ?fp= connect logic live
+// here, not in a handler.
 func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher http.Flusher) {
+	// The cap is enforced here, in the shared funnel, so the browser route and
+	// the API route cannot each outrun it. The decrement is deferred so every
+	// exit path — cap refusal, deadline, auth failure, store error, client
+	// leave, shutdown — releases a slot.
+	if n := s.approvalStreams.Add(1); n > maxApprovalStreams {
+		s.approvalStreams.Add(-1)
+		http.Error(w, "too many streams", http.StatusServiceUnavailable)
+		return
+	}
+	defer s.approvalStreams.Add(-1)
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
 
-	ticker := time.NewTicker(streamPoll)
+	ticker := time.NewTicker(approvalsStreamPoll)
 	defer ticker.Stop()
 
 	ident, hasIdent := identityOf(r.Context())
@@ -173,7 +206,16 @@ func (s *Server) tailApprovals(w http.ResponseWriter, r *http.Request, flusher h
 		if !now.Before(deadline) {
 			return
 		}
-		if hasIdent {
+		if ident.via == "session" {
+			// A browser session is re-resolved per poll, not just its token
+			// row: resolve() also enforces the session's own expiry stamp and
+			// the credential-epoch pin, so a rotated token — whose row stays
+			// Active — ends the stream the way a revoke does. No KDF runs on
+			// the cookie path, so the per-poll cost is unchanged.
+			if _, err := s.resolve(r); err != nil {
+				return
+			}
+		} else if hasIdent {
 			if _, err := s.authenticateRow(r.Context(), ident.token.ID, "", now); err != nil {
 				return
 			}
