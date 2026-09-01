@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -200,12 +201,12 @@ func TestApprovalsStreamEndsOnSessionRotate(t *testing.T) {
 
 // TestApprovalsStreamCap is the F3 regression: unbounded per-page pollers on
 // the one-connection store pool. tailApprovals caps concurrent streams at
-// maxApprovalStreams and refuses the next with 503.
+// maxApprovalStreams and refuses the next with 503. With the per-identity
+// sub-cap of 2, four distinct sessions are needed to fill the total of 8.
 func TestApprovalsStreamCap(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	open := make([]*http.Response, 0, maxApprovalStreams)
 	defer func() {
@@ -213,18 +214,22 @@ func TestApprovalsStreamCap(t *testing.T) {
 			_ = r.Body.Close()
 		}
 	}()
-	for i := 0; i < maxApprovalStreams; i++ {
-		resp, err := client.Get(ts.URL + "/approvals/stream")
-		if err != nil {
-			t.Fatalf("open stream %d: %v", i, err)
+	for i := 0; i < maxApprovalStreams/maxApprovalStreamsPerToken; i++ {
+		client := login(t, ts.URL, h.mint(t, fmt.Sprintf("op%d", i), "operator"))
+		for j := 0; j < maxApprovalStreamsPerToken; j++ {
+			resp, err := client.Get(ts.URL + "/approvals/stream")
+			if err != nil {
+				t.Fatalf("open stream %d/%d: %v", i, j, err)
+			}
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("stream %d/%d status = %d, want 200", i, j, resp.StatusCode)
+			}
+			open = append(open, resp)
 		}
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("stream %d status = %d, want 200", i, resp.StatusCode)
-		}
-		open = append(open, resp)
 	}
 
-	over, err := client.Get(ts.URL + "/approvals/stream")
+	// A 9th stream from any identity hits the total cap.
+	over, err := login(t, ts.URL, h.mint(t, "over", "operator")).Get(ts.URL + "/approvals/stream")
 	if err != nil {
 		t.Fatalf("over-cap stream: %v", err)
 	}
