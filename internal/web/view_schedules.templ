@@ -89,7 +89,7 @@ templ schedulesList(vm schedulesVM) {
 											<span class="meta">never fired</span>
 										}
 									</td>
-									<td data-label="Enabled">@enabledChip(sc.Enabled)</td>
+									<td data-label="Enabled">@enabledChip(sc.Enabled, false)</td>
 									if vm.Operator {
 										<td data-label="Actions">
 											if sc.Enabled {
@@ -126,7 +126,7 @@ templ schedulesList(vm schedulesVM) {
 					if sc.Kind == "play" {
 						<div><dt>Tolerate unreachable</dt><dd>{ yesNo(sc.TolerateUnreachable) }</dd></div>
 					}
-					<div><dt>Enabled</dt><dd>@enabledChip(sc.Enabled)</dd></div>
+					<div><dt>Enabled</dt><dd>@enabledChip(sc.Enabled, false)</dd></div>
 					<div><dt>Next fire</dt><dd class="mono">{ sc.Next }</dd></div>
 					<div><dt>Last fired</dt><dd class="mono">{ sc.LastRun }</dd></div>
 					<div>

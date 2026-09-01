@@ -65,7 +65,7 @@ templ policiesList(vm policiesVM) {
 									<td class="mono" data-label="Workspace">{ orDash(p.Workspace) }</td>
 									<td data-label="On match">@chip(p.ActionClass(), p.Action)</td>
 									<td class="mono wrap" data-label="Expression">{ p.Expr }</td>
-									<td data-label="Enabled">@enabledChip(p.Enabled)</td>
+									<td data-label="Enabled">@enabledChip(p.Enabled, false)</td>
 									if vm.Operator {
 										<td data-label="Actions">
 											<form method="post" action={ templ.SafeURL("/policies/" + p.Name + "/rm") } class="inline-form" data-confirm={ "Remove policy " + p.Name + "?" }>

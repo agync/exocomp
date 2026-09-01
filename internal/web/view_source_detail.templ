@@ -26,7 +26,7 @@ templ sourceDetail(vm sourceDetailVM) {
 					}
 				}
 				@signedChip(vm.Source)
-				@enabledChip(vm.Source.Enabled)
+				@enabledChip(vm.Source.Enabled, false)
 			</div>
 			<dl class="kv">
 				<div><dt>URI</dt><dd class="mono wrap">{ orDash(vm.Source.URI) }</dd></div>

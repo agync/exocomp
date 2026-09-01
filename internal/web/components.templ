@@ -1,26 +1,24 @@
 package web
 
-// enabledChip states a row's enabled/disabled posture as a labelled chip — ok
-// when enabled, dim when not — never color-only. Shared by the sources,
-// schedules, and policies surfaces, mirroring how signedChip and chip are shared
-// rather than repeating the same conditional in each template.
-templ enabledChip(enabled bool) {
-	if enabled {
-		<span class="chip ok"><span class="dot"></span>ENABLED</span>
-	} else {
+// enabledChip states a row's enabled/disabled posture as a labelled chip — dim
+// DISABLED when off, ok ENABLED when on. hideEnabled hides the default-enabled
+// chip: a table column whose header carries the default shows state only when
+// it diverges (the design system's F12 rule for the Checks/Sources columns).
+// The chip is never color-only.
+templ enabledChip(enabled, hideEnabled bool) {
+	if !enabled {
 		<span class="chip dim"><span class="dot"></span>DISABLED</span>
+	} else if !hideEnabled {
+		<span class="chip ok"><span class="dot"></span>ENABLED</span>
 	}
 }
 
-// addButton is the "+" affordance a surface's <h1> sits next to; clicking it
-// opens the modal with id target (via the data-modal-open convention modalInit
-// wires up). label names the thing being added (e.g. "source") for the
-// accessible name — the glyph itself carries no visible text.
+// addButton is the header's one primary verb: a labeled accent button that
+// opens the surface's add-modal (via the data-modal-open convention modalInit
+// wires up). The visible text is the accessible name — no glyph-only control.
 templ addButton(target, label string) {
-	<button type="button" class="addbtn" data-modal-open={ target } aria-label={ "Add " + label }>
-		<svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
-			<path d="M8 2v12M2 8h12"></path>
-		</svg>
+	<button type="button" class="btn primary addbtn" data-modal-open={ target }>
+		Add { label }
 	</button>
 }
 

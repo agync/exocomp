@@ -59,8 +59,9 @@ func TestModalRendersHiddenAndAccessible(t *testing.T) {
 }
 
 // TestAddButtonHelper asserts components.templ's addButton renders the
-// data-modal-open trigger convention with an accessible name, since the glyph
-// itself carries no visible text.
+// data-modal-open trigger convention as a labeled primary button — the header's
+// one primary verb, never a bare glyph (F9). The visible text is the accessible
+// name.
 func TestAddButtonHelper(t *testing.T) {
 	var buf bytes.Buffer
 	if err := addButton("widgets-add", "widget").Render(context.Background(), &buf); err != nil {
@@ -68,13 +69,16 @@ func TestAddButtonHelper(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		`class="addbtn"`,
+		`class="btn primary addbtn"`,
 		`data-modal-open="widgets-add"`,
-		`aria-label="Add widget"`,
+		`Add widget`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("addButton missing %q\ngot: %s", want, out)
 		}
+	}
+	if strings.Contains(out, "aria-label") {
+		t.Errorf("addButton carries a redundant aria-label (visible text is the name): %s", out)
 	}
 }
 

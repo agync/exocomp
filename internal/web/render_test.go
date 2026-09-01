@@ -239,16 +239,15 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		}
 	}
 
-	// (c) enabledChip renders identically to the old inline conditional, both
-	// branches, on the sources page (enabled seed + disabled "legacy").
+	// (c) enabledChip on the sources column hides the default ENABLED (the
+	// column header carries the default, F12) and keeps the divergent DISABLED
+	// (enabled seed renders nothing; disabled "legacy" still chips).
 	_, sources := getBody(t, client, ts.URL+"/sources")
-	for _, want := range []string{
-		`<span class="chip ok"><span class="dot"></span>ENABLED</span>`,
-		`<span class="chip dim"><span class="dot"></span>DISABLED</span>`,
-	} {
-		if !strings.Contains(sources, want) {
-			t.Errorf("/sources enabledChip output changed: missing %q", want)
-		}
+	if !strings.Contains(sources, `<span class="chip dim"><span class="dot"></span>DISABLED</span>`) {
+		t.Errorf("/sources enabledChip: DISABLED chip missing")
+	}
+	if strings.Contains(sources, `<span class="chip ok"><span class="dot"></span>ENABLED</span>`) {
+		t.Errorf("/sources enabledChip: default ENABLED chip should be hidden (F12)")
 	}
 
 	// (d) Short / step-ledger tables were deliberately left non-stackable.
