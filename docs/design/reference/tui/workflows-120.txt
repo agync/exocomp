@@ -1,7 +1,7 @@
 workflows · 3 recorded                                                                                      14:03 UTC+11
 [38;2;74;82;84m────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────[m
  WORKFLOW                         STATE         STEPS   LEDGER
-[7;48;2;29;36;38m▸provision-aurora-8f2             running       2/4     ✓✓●·[m
+[7m▸provision-aurora-8f2             running       2/4     ✓✓●·[m
  converge-fleet-1a9               succeeded     3/3     ✓✓✓
  tf-apply-core-77c                failed        1/3     ✓✗▪
 
