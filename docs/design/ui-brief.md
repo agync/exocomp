@@ -133,4 +133,7 @@ grouped nav with state badges, tray-table lists, check cards over a target
 grid, the launch drawer, quiet/danger row actions, signal-colored powerline)
 and the reviewed deviations (secrets columns kept, sync CLI-only, the TUI
 keymap's `[0-9] [s] [u]` bars and `u`-for-runners remap). Reference renders
-live under `reference/` and `reference/realign/`.
+live under `reference/` and `reference/realign/`. The `realign/` captures
+predate the follow-on NIT fixes — 1c-sources.png still shows the ENABLED
+column the Sources list no longer renders at the default — so the shipped
+surface, not the captures, is the source of truth.
