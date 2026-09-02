@@ -90,19 +90,7 @@ for _, sc := range vm.Schedules {
 									}
 									if vm.Operator {
 										<td data-label="Actions">
-											if sc.Enabled {
-												<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/disable") } class="inline-form">
-													<button type="submit" class="btn">Disable</button>
-												</form>
-											} else {
-												<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/enable") } class="inline-form">
-													<button type="submit" class="btn">Enable</button>
-												</form>
-											}
-											<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/rm") } class="inline-form" data-confirm={ "Remove schedule " + sc.Name + "?" }>
-												<input type="hidden" name="confirmed" value="1"/>
-												<button type="submit" class="btn danger">Remove</button>
-											</form>
+											@rowActions(scheduleRowActions(sc))
 										</td>
 									}
 								</tr>
