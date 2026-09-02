@@ -214,6 +214,19 @@ persists the choice; "system" carries no `data-theme` and follows
 `prefers-color-scheme`. A pre-paint script applies the stored theme so a
 light-mode operator never sees a dark flash.
 
+## Sources
+
+Three documents own the surface; read them together:
+
+- [Invariants](INVARIANTS.md) — the design philosophy and hard rules that survive
+  any redesign.
+- The repo-root `DESIGN.md` — the machine tokens as a single contract.
+- This document — the token spec and the component shapes that implement both.
+
+`internal/web/tokens.css` and `internal/web/app.css` are the shipped truth. Where
+a document disagrees with them, the code wins and the correction lands in
+`docs/log.md`.
+
 ## Colors
 
 Every color is a token; nothing is hard-coded at a call site. Tokens divide into
