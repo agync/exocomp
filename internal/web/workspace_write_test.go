@@ -243,7 +243,8 @@ func TestWorkspacesPageDistinguishesType(t *testing.T) {
 // TestWorkspacesPageBackendConfigModal: the per-row backend-config modal
 // carries a ready-to-paste `backend "http"` block, computed the same way the
 // CLI's `workspace add --state-only` computes it (api.NewBackendBlock) once a
-// state backend address is recorded.
+// state backend address is recorded. The block now lives on the workspace
+// detail page (the row's Backend-config item opens it), not a list modal.
 func TestWorkspacesPageBackendConfigModal(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -255,7 +256,7 @@ func TestWorkspacesPageBackendConfigModal(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp, err := client.Get(ts.URL + "/workspaces")
+	resp, err := client.Get(ts.URL + "/workspaces/web")
 	if err != nil {
 		t.Fatalf("GET /workspaces: %v", err)
 	}
@@ -374,35 +375,32 @@ func TestWorkspacesPageSavedPlans(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp, err := client.Get(ts.URL + "/workspaces")
+	resp, err := client.Get(ts.URL + "/workspaces/web")
 	if err != nil {
-		t.Fatalf("GET /workspaces: %v", err)
+		t.Fatalf("GET /workspaces/web: %v", err)
 	}
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+		t.Fatalf("GET /workspaces/web = %d, want 200 (%s)", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, `data-modal-open="ws-plans-web"`) {
-		t.Fatal("workspaces page missing the Saved plans control")
-	}
-	if !strings.Contains(body, `id="ws-plans-web"`) {
-		t.Fatal("workspaces page missing the Saved plans modal")
+	if !strings.Contains(body, `kicker">Saved plans`) {
+		t.Fatal("workspace detail page missing the Saved plans section")
 	}
 	want := `<input type="hidden" name="plan" value="` + strconv.FormatInt(planID, 10) + `">`
 	if !strings.Contains(body, want) {
 		t.Fatalf("Saved plans modal missing the plan-by-id field %q", want)
 	}
-	if !strings.Contains(body, "Apply plan #"+strconv.FormatInt(planID, 10)) {
-		t.Fatal("Saved plans modal missing the apply-plan button")
+	if !strings.Contains(body, "Apply plan") {
+		t.Fatal("workspace detail page missing the apply-plan button")
 	}
 	if !strings.Contains(body, `action="/workspaces/web/apply"`) {
-		t.Fatal("Saved plans modal does not post to the apply route")
+		t.Fatal("workspace detail page does not post to the apply route")
 	}
 	if !strings.Contains(body, "A policied plan may still require approval.") {
-		t.Fatal("Saved plans modal missing the policied-plan note")
+		t.Fatal("workspace detail page missing the policied-plan note")
 	}
 	if strings.Contains(body, "plan id (optional)") || strings.Contains(body, `name="plan" min="1"`) {
-		t.Fatal("workspaces page still renders the inline plan-id input")
+		t.Fatal("workspace detail page still renders the inline plan-id input")
 	}
 }
 
@@ -416,16 +414,16 @@ func TestWorkspacesPageNoSavedPlans(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp, err := client.Get(ts.URL + "/workspaces")
+	resp, err := client.Get(ts.URL + "/workspaces/web")
 	if err != nil {
-		t.Fatalf("GET /workspaces: %v", err)
+		t.Fatalf("GET /workspaces/web: %v", err)
 	}
 	body := readBody(t, resp)
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+		t.Fatalf("GET /workspaces/web = %d, want 200 (%s)", resp.StatusCode, body)
 	}
 	if !strings.Contains(body, "No saved plans yet — run Plan to save one.") {
-		t.Fatal("Saved plans modal missing the no-plans line")
+		t.Fatal("workspace detail page missing the no-plans line")
 	}
 }
 
@@ -454,5 +452,65 @@ func TestWorkspacesPageSavedPlansHiddenForStateOnly(t *testing.T) {
 	}
 	if strings.Contains(body, `id="ws-plans-stateonly"`) {
 		t.Fatal("state-only workspace renders a Saved plans modal")
+	}
+}
+
+// TestWorkspaceDetailPage is the GATE for the v0.6 workspace detail page: it
+// renders the identity facts, the Plan/Apply verbs, the Saved plans section
+// (with the plan-by-id apply form), and the Backend config block. The list row
+// opens it (data-href) and keeps only the row-actions glyphs.
+func TestWorkspaceDetailPage(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	planID := h.seedPlanArtifact(t, "web").ID
+	if err := api.WriteAddress(filepath.Join(h.dir, api.AddressFile), "127.0.0.1:9443"); err != nil {
+		t.Fatalf("WriteAddress: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	// The list row opens the detail page (data-href) and the row keeps the
+	// Plan/Apply glyphs, no per-row view buttons.
+	code, list := getBody(t, client, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces = %d", code)
+	}
+	for _, want := range []string{
+		`data-href="/workspaces/web"`,
+		`aria-label="Plan"`,
+		`aria-label="Apply"`,
+	} {
+		if !strings.Contains(list, want) {
+			t.Errorf("workspaces list missing %q", want)
+		}
+	}
+	if strings.Contains(list, "Saved plans") || strings.Contains(list, "Backend config — web") {
+		t.Error("Saved plans / Backend config must not render as per-row modals on the list (R8)")
+	}
+	// The row's chevron menu keeps the Backend-config entry (it links to the
+	// detail page), so a state-only workspace still has a reachable verb.
+	if !strings.Contains(list, `class="rachev"`) || !strings.Contains(list, "Backend config") {
+		t.Error("workspaces row menu missing the Backend config entry")
+	}
+
+	// The detail page hosts them.
+	code, detail := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces/web = %d", code)
+	}
+	for _, want := range []string{
+		`>Plan</button>`,
+		`data-confirm="Apply web?"`,
+		`kicker">Saved plans`,
+		`name="plan" value="` + strconv.FormatInt(planID, 10) + `"`,
+		`Apply plan`,
+		`kicker">Backend config`,
+		`backend &#34;http&#34;`,
+	} {
+		if !strings.Contains(detail, want) {
+			t.Errorf("workspace detail missing %q", want)
+		}
 	}
 }

@@ -21,10 +21,13 @@ type rowAction struct {
 	Path   string            // 24-viewBox stroke path
 	Form   string            // non-empty: a POST to this action
 	Hidden map[string]string // hidden inputs for the POST (confirmed, etc.)
-	Modal  string            // non-empty: opens this dialog id
-	Href   string            // non-empty: a plain link
-	Count  string            // optional right-aligned mono count
-	Menu   bool              // force this action into the menu, never a row glyph
+	// Confirm is the confirm-dialog message (the shared confirm dialog is the
+	// safety for destructive actions); empty means no confirm.
+	Confirm string
+	Modal   string // non-empty: opens this dialog id
+	Href    string // non-empty: a plain link
+	Count   string // optional right-aligned mono count
+	Menu    bool   // force this action into the menu, never a row glyph
 	// Danger places the item last, in --signal-fail, with "asks first".
 	Danger bool
 }

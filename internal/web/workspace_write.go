@@ -27,6 +27,7 @@ func init() { registerWrite((*Server).registerWorkspaceWrite) }
 
 func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces", s.requireAuth(s.handleWorkspaces))
+	mux.HandleFunc("GET /workspaces/{name}", s.requireAuth(s.handleWorkspaceDetail))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
 }

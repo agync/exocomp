@@ -1,0 +1,72 @@
+package web
+
+// workspaceDetail is one workspace's page: identity + state facts up top, then
+// the Plan/Apply verbs (runs-in-server), the Saved plans list, and the exact
+// Backend config block. The row's view items (Saved plans, Backend config)
+// live here (R8/v0.6); the list row opens this page and keeps only the
+// Plan/Apply glyphs.
+templ workspaceDetail(vm workspaceDetailVM) {
+	@layout(vm.Page) {
+		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Row.Name})
+		<div class="card span2 mt18">
+			<div class="detailmeta">
+				@chip(vm.Row.TypeClass(), vm.Row.TypeLabel())
+				@chip(vm.Row.StateClass(), vm.Row.StateLabel())
+			</div>
+			<dl class="kv">
+				<div><dt>Serial</dt><dd class="mono">{ itoa64(vm.Row.Serial) }</dd></div>
+				if !vm.Row.StateOnly() {
+					<div><dt>Dir</dt><dd class="mono">{ vm.Row.TofuDir }</dd></div>
+				}
+				if vm.Config.Address != "" {
+					<div><dt>State backend</dt><dd class="mono">{ vm.Config.Address }</dd></div>
+				}
+			</dl>
+			if vm.Operator && !vm.Row.StateOnly() {
+				<div class="rowactions">
+					<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/plan") } class="inline-form">
+						<button type="submit" class="btn">Plan</button>
+					</form>
+					<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/apply") } class="inline-form" data-confirm={ "Apply " + vm.Row.Name + "?" }>
+						<input type="hidden" name="confirmed" value="1"/>
+						<button type="submit" class="btn primary">Apply</button>
+					</form>
+				</div>
+			}
+		</div>
+		<div class="card span2 mt18">
+			<div class="kicker">Saved plans</div>
+			<h3>Plans</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: registering state, planning, or applying needs an operator token.</p>
+			} else if vm.Row.StateOnly() {
+				<p class="meta">This workspace is state-only — an external tofu plans and applies it.</p>
+			} else if len(vm.Row.Plans) == 0 {
+				<p class="meta">No saved plans yet — run Plan to save one.</p>
+			} else {
+				<ul class="planlist">
+					for _, plan := range vm.Row.Plans {
+						<li class="mono">
+							<span>#{ itoa(plan.ID) }</span>
+							<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/apply") } class="inline-form">
+								<input type="hidden" name="plan" value={ itoa(plan.ID) }/>
+								<button type="submit" class="btn quiet">Apply plan</button>
+							</form>
+						</li>
+					}
+				</ul>
+				<p class="meta mt8">A policied plan may still require approval.</p>
+			}
+		</div>
+		<div class="card span2 mt18">
+			<div class="kicker">Backend config</div>
+			<h3>External config</h3>
+			if vm.Row.Backend.Address == "" {
+				<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
+			} else {
+				<p class="meta">Paste into an external tofu/terraform config, then run `tofu init` / `terraform init`.</p>
+				@codeblock("backend config", vm.Row.Backend.HCL())
+			}
+		</div>
+	}
+}

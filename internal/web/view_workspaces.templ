@@ -50,22 +50,13 @@ templ workspacesList(vm workspacesVM) {
 						</thead>
 						<tbody>
 							for _, wsr := range vm.Workspaces {
-								<tr>
-									<td data-label="Name">{ wsr.Name }</td>
+								<tr data-href={ templ.SafeURL("/workspaces/" + wsr.Name) }>
+									<td data-label="Name"><a href={ templ.SafeURL("/workspaces/" + wsr.Name) }>{ wsr.Name }</a></td>
 									<td data-label="Type">@chip(wsr.TypeClass(), wsr.TypeLabel())</td>
 									<td data-label="State">@chip(wsr.StateClass(), wsr.StateLabel())</td>
 									if vm.Operator {
 										<td data-label="Actions">
-											if !wsr.StateOnly() {
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } class="inline-form">
-													<button type="submit" class="btn">Plan</button>
-												</form>
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form" data-confirm={ "Apply " + wsr.Name + "?" }>
-													<button type="submit" class="btn primary">Apply</button>
-												</form>
-												<button type="button" class="btn" data-modal-open={ "ws-plans-" + wsr.Name }>Saved plans</button>
-											}
-											<button type="button" class="btn" data-modal-open={ "ws-backend-" + wsr.Name }>Backend config</button>
+											@rowActions(workspaceRowActions(wsr))
 										</td>
 									}
 								</tr>
@@ -115,31 +106,6 @@ templ workspacesList(vm workspacesVM) {
 					});
 				})();
 				</script>
-			}
-			for _, wsr := range vm.Workspaces {
-				if !wsr.StateOnly() {
-					@modal("ws-plans-"+wsr.Name, "Saved plans — "+wsr.Name) {
-						if len(wsr.Plans) == 0 {
-							<p class="meta">No saved plans yet — run Plan to save one.</p>
-						} else {
-							for _, plan := range wsr.Plans {
-								<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form">
-									<input type="hidden" name="plan" value={ itoa(plan.ID) }/>
-									<button type="submit" class="btn primary">Apply plan #{ itoa(plan.ID) }</button>
-								</form>
-							}
-							<p class="meta">A policied plan may still require approval.</p>
-						}
-					}
-				}
-				@modal("ws-backend-"+wsr.Name, "Backend config — "+wsr.Name) {
-					if wsr.Backend.Address == "" {
-						<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
-					} else {
-						<p class="meta">Paste into an external tofu/terraform config, then run `tofu init` / `terraform init`.</p>
-						@codeblock("backend config", wsr.Backend.HCL())
-					}
-				}
 			}
 		}
 	}

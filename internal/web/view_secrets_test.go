@@ -176,3 +176,37 @@ func TestSecretsNavElsewhere(t *testing.T) {
 		t.Error("dashboard nav missing the Secrets link")
 	}
 }
+
+// TestSecretsRowActions is the GATE for the v0.6 secrets row actions: Rotate
+// opens the reauth dialog (with the value/generate/confirm-token form), Remove
+// is a confirmed glyph, and a bound secret's menu carries the Bindings item.
+func TestSecretsRowActions(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ssh-key", Kind: "ssh", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "a", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSecret: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d", code)
+	}
+	for _, want := range []string{
+		`aria-label="Rotate"`,
+		`id="secret-rotate-ssh-key"`,
+		`name="confirm_token"`,
+		`aria-label="Remove"`,
+		`data-confirm="Delete secret ssh-key?"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets missing row-action marker %q", want)
+		}
+	}
+}
