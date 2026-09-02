@@ -157,8 +157,9 @@ handoff, so the foundation was untouched.
 - **The web's `eventName` derivation moved into `internal/wire` as `wire.EventName`
   and is now the one implementation the web pages and the API render through**
   (`dashboard_data.go`'s local copy and `api.go`'s `alertName` are gone; web
-  output is byte-identical). `NewEventView`/`NewEventList` populate the fields
-  from the same `Normalized` JSON the web reads, error-tolerantly.
+  output is byte-identical). The TUI and CLI surfaces name an event by its
+  matched rule, not this derivation. `NewEventView`/`NewEventList` populate the
+  fields from the same `Normalized` JSON the web reads, error-tolerantly.
 - The phone companion's wire model already declares optional
   `name`/`status`/`netgroup` on its `ReactiveEvent`, awaiting these fields.
 
