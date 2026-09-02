@@ -67,9 +67,9 @@ templ schedulesList(vm schedulesVM) {
 							</tr>
 						</thead>
 						<tbody>
-							for _, sc := range vm.Schedules {
-								<tr data-modal-row={ "sched-" + sc.Name }>
-									<td data-label="Schedule">{ sc.Name }</td>
+for _, sc := range vm.Schedules {
+							<tr data-modal-row={ "sched-" + sc.Name }>
+								<td data-label="Schedule"><button type="button" class="cellact" data-modal-open={ "sched-" + sc.Name }>{ sc.Name }</button></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
 									<td class="mono" data-label="Next fire">{ sc.Next }</td>

@@ -46,3 +46,36 @@ func TestScheduleRowsHaveDetailsButton(t *testing.T) {
 		t.Error("/schedules still renders the redundant inline Details button (W8)")
 	}
 }
+
+// TestScheduleSpecModalKeyboardPath pins the MED fix: the row's click
+// affordance has no tab stop, so the schedule name cell carries a real button
+// that opens the same spec dialog — a keyboard operator (Tab to the name,
+// Enter/Space) can reach the modal without a pointer, and the native dialog's
+// own focus handling covers focus-on-open and Esc.
+func TestScheduleSpecModalKeyboardPath(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly", CronExpr: "@every 6h", Kind: store.ScheduleShell,
+		Args: store.ScheduleArgs{Argv: []string{"echo", "hi"}},
+	}); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/schedules")
+	if code != http.StatusOK {
+		t.Fatalf("GET /schedules = %d, want 200", code)
+	}
+	if !strings.Contains(page, `<button type="button" class="cellact" data-modal-open="sched-nightly">nightly</button>`) {
+		t.Error("schedule spec dialog has no keyboard-reachable trigger (MED)")
+	}
+	if !strings.Contains(page, `id="sched-nightly"`) {
+		t.Error("schedule spec dialog missing")
+	}
+}
