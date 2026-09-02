@@ -165,6 +165,7 @@ Timestamps are fixed RFC3339 UTC (the store normalizes to UTC ms). Volatile fiel
 | `concurrency_held` | store.ErrConcurrencyHeld (store.go:31) | another run holds the workspace |
 | `stale_plan` | reactive.ErrStalePlan (approval.go:27) | workspace moved under the saved plan |
 | `kdf_busy` | web.ErrKDFBusy (auth.go:41) | auth gate saturated; retry (transient 503) |
+| `streams_over_cap` | the SSE stream cap (stream.go) | too many live streams; close a tab or retry |
 | `unauthenticated` | web.ErrUnauthenticated | no valid token/session |
 | `forbidden` | scope check (auth.go:241) | token scope too low for this verb |
 

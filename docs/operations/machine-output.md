@@ -60,6 +60,7 @@ Every JSON `error.code` maps 1:1 onto a real sentinel — no code is invented pe
 | `concurrency_held` | `store.ErrConcurrencyHeld` |
 | `stale_plan` | `reactive.ErrStalePlan` |
 | `kdf_busy` | the web auth gate is saturated (transient; retry) |
+| `streams_over_cap` | the web stream boundary refuses an over-cap SSE attach (transient; retry) |
 | `unauthenticated` / `forbidden` | the web/API auth boundary |
 | `invalid_argument` | a malformed request parameter (API/MCP only) |
 | `internal` | anything unmatched |
