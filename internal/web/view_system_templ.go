@@ -45,7 +45,7 @@ func systemPage(vm systemVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"cards mt18\"><section class=\"card span2\" aria-labelledby=\"self-h\"><h3 id=\"self-h\">This control plane</h3><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\">Signal</th><th scope=\"col\">State</th><th scope=\"col\">Detail</th></tr></thead> <tbody><tr><td>Running version</td><td class=\"mono\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"cards mt18\"><section class=\"card span2 tray\" aria-labelledby=\"self-h\"><h3 id=\"self-h\">This control plane</h3><div class=\"tablewrap\"><table><thead><tr><th scope=\"col\">Signal</th><th scope=\"col\">State</th><th scope=\"col\">Detail</th></tr></thead> <tbody><tr><td>Running version</td><td class=\"mono\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -102,7 +102,7 @@ func systemPage(vm systemVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"meta\">Not set. <code>exocomp serve --public-url</code> also sets this.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<p class=\"meta\">Not set.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -121,12 +121,12 @@ func systemPage(vm systemVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Save</button></div></form><p class=\"meta\"><code>exocomp serve --public-url</code> also sets this.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\"> <button type=\"submit\" class=\"btn primary\">Save</button></form><p class=\"meta mt8\"><code>exocomp serve --public-url</code> also sets this.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</section><section class=\"card span2\" aria-labelledby=\"backups-h\"><h3 id=\"backups-h\">Backups</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</section><section class=\"card span2 tray\" aria-labelledby=\"backups-h\"><h3 id=\"backups-h\">Backups</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

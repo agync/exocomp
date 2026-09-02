@@ -78,11 +78,11 @@ templ layout(p page) {
 					</header>
 					<header class="appbar">
 						<h1 class="appbar-title">{ p.Title }</h1>
-						if p.Who != "" {
-							<span class="appbar-meta">{ p.Who } · { p.Scope }</span>
+						if p.Meta != "" {
+							<span class="appbar-meta">{ p.Meta }</span>
 						}
 						if p.Add != nil {
-							<span class="appbar-action">@addButton(p.Add.Target, p.Add.Label)</span>
+							<span class="appbar-action">@addButton(p.Add.Target, p.Add.ButtonText())</span>
 						}
 					</header>
 					<main>

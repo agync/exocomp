@@ -6,6 +6,29 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review MED pass (consistency)
+
+- **W4 · ligatures off:** every mono run (`code`, `pre`, `.log`, `.mono`) turns
+  ligatures and contextual alternates off, so `==` and `->` in CEL expressions
+  and log tails render as their own glyphs.
+- **W5 · empty states name verb and trigger:** approvals, jobs, events, and
+  workspaces carry the "… and what makes them appear" copy, not a bare "no X".
+- **W6 · no per-row hairlines:** the system page's control-plane and backups
+  tables use the tray surface (rows float, no cell rules).
+- **W7 · identity once:** the app bar's meta slot is the page's own fact
+  (dashboard: `host · up 6d 04h`); the signed-in identity lives in the
+  powerline only.
+- **W8 · schedules row is the link:** the redundant inline Details button is
+  gone; the row opens the spec modal.
+- **W9 · actions column + chips:** tray action columns hold their quiet/danger
+  pair on one row, and chips never wrap.
+- **W10 · workspaces Configure** is the header's primary verb (the app-bar slot,
+  generalized to arbitrary label text), not an orphan row above the card.
+- **W11 · system Save** is a control-width button beside the field and the
+  `exocomp serve --public-url` note renders once.
+- **F12 extended:** Rules and Schedules hide the default ENABLED chip (the
+  column header carries the default), matching Checks and Sources.
+
 ## 2026-09-02 — design-review HIGH pass (W1/W2/W3 + F4 remainder)
 
 - **W1 · header primary verb:** the app-bar Add button is a 34px nowrap accent

@@ -434,3 +434,30 @@ func TestDashboardChecksDownInBand(t *testing.T) {
 		}
 	}
 }
+
+// TestDashboardAppbarMetaNotIdentity is the GATE for W7: the app bar's meta
+// slot carries the page's own fact (host · uptime), and the signed-in identity
+// appears only in the powerline — never twice.
+func TestDashboardAppbarMetaNotIdentity(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, `class="appbar-meta">`) {
+		t.Error("dashboard app bar has no page-own meta slot (W7)")
+	}
+	if strings.Contains(page, `class="appbar-meta">laptop · operator`) {
+		t.Error("app bar meta still carries the identity (W7)")
+	}
+	if !strings.Contains(page, `class="pl-who"`) {
+		t.Error("identity must live in the powerline")
+	}
+	if !strings.Contains(page, "up ") {
+		t.Error("dashboard meta should name the uptime")
+	}
+}

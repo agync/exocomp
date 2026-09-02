@@ -23,11 +23,6 @@ package web
 // confirm_token.
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
-		<div class="pageheader">
-			if vm.Operator {
-				<button type="button" class="btn ml-auto" data-modal-open="ws-configure">Configure</button>
-			}
-		</div>
 		<div class="card span2 tray">
 			if !vm.Operator {
 				<div class="kicker">Read-only</div>
@@ -37,7 +32,7 @@ templ workspacesList(vm workspacesVM) {
 				<p class="meta">Read-only: registering state, planning, or applying needs an operator token.</p>
 			}
 			if len(vm.Workspaces) == 0 {
-				<p class="meta">No state registered — add a workspace.</p>
+				<p class="meta">No workspace registered — exocomp ws add on the host defines one.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>

@@ -27,7 +27,12 @@ body {
 
 /* Every digit aligns: the brief's tabular-nums-everywhere rule. */
 .num, td, th, time, .mono, code, pre { font-variant-numeric: tabular-nums; }
-.mono, code, pre, .log { font: var(--type-log); }
+.mono, code, pre, .log {
+  font: var(--type-log);
+  /* Verbatim text must not ligate (W4): `==` and `->` render as their own
+   * glyphs in code, CEL expressions, and log tails — never a combined shape. */
+  font-feature-settings: "liga" 0, "calt" 0;
+}
 
 h1 { font: var(--type-display); letter-spacing: -0.7px; color: var(--ink-100); margin: 0; }
 h2 { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); margin: 0 0 12px; }
@@ -416,6 +421,9 @@ td.right, th.right { text-align: right; }
   .card.tray tbody tr:nth-child(even) { background: var(--surface-tray); }
   .card.tray tbody tr:hover { background: var(--surface-row); }
   .card.tray tbody tr:last-child td { border-bottom: 0; }
+  /* The Actions column fits its quiet/danger pair on one row (W9): two 30px
+   * buttons plus the gap never stack. */
+  .card.tray td[data-label="Actions"] { min-width: 160px; }
   /* An attention row (a never-synced source, F5) tints and carries the wait
    * accent on its leading edge — the row's own inset ring, readable greyscale
    * with the NEVER chip beside it. */
@@ -474,6 +482,7 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
   padding: 3px 9px; border-radius: var(--radius-chip);
   font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
   border: 1px solid var(--hairline);
+  white-space: nowrap;
 }
 .chip .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--signal-dim-dot); }
 .chip.ok    { color: var(--signal-ok);   border-color: var(--ok-border);   background: var(--ok-tint); }

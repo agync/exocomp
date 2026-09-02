@@ -8,7 +8,7 @@ templ jobsList(vm dashboardVM) {
 		<div class="card span2 mt18 tray">
 			<h3>All jobs</h3>
 			if len(vm.Queue) == 0 {
-				<p class="meta">No jobs yet.</p>
+				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>

@@ -64,7 +64,7 @@ func TestModalRendersHiddenAndAccessible(t *testing.T) {
 // name.
 func TestAddButtonHelper(t *testing.T) {
 	var buf bytes.Buffer
-	if err := addButton("widgets-add", "widget").Render(context.Background(), &buf); err != nil {
+	if err := addButton("widgets-add", "Add widget").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render addButton: %v", err)
 	}
 	out := buf.String()

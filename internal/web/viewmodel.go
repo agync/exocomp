@@ -17,6 +17,10 @@ type page struct {
 	Who      string
 	Scope    string
 	Insecure bool
+	// Meta is the app bar's page-own fact slot (W7): "host · up 6d" on the
+	// dashboard, a count on a list page. It is NOT the identity — that lives in
+	// the powerline only. Empty renders no slot.
+	Meta string
 	// Flash is a one-line operator-facing result from a redirect-after-POST
 	// (write.go). Never a secret value — those render once inline.
 	Flash  string
@@ -29,11 +33,21 @@ type page struct {
 	Badges navBadges
 }
 
-// pageAdd is the header's primary verb: the add-modal id and the label that
-// becomes the button's text ("Add source").
+// pageAdd is the header's primary verb: the modal id it opens and the button
+// label. Text overrides the default "Add {label}" form (W10: a workspace's verb
+// is "Configure", a runner's is "Add runner").
 type pageAdd struct {
 	Target string
 	Label  string
+	Text   string
+}
+
+// ButtonText is the header verb's visible label.
+func (a *pageAdd) ButtonText() string {
+	if a.Text != "" {
+		return a.Text
+	}
+	return "Add " + a.Label
 }
 
 // navBadges is the per-nav actionable counts shown beside a nav item: how many
@@ -883,6 +897,20 @@ func humanAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
+}
+
+// uptimeLabel renders the app bar's "up 6d 04h" fact from the daemon's start
+// time (W7). It reads finer than humanAge when the process has been up a while.
+func (s *Server) uptimeLabel() string {
+	up := time.Since(s.startedAt)
+	if up < 0 {
+		up = 0
+	}
+	h := int(up.Hours())
+	if h >= 24 {
+		return fmt.Sprintf("up %dd %02dh", h/24, h%24)
+	}
+	return "up " + humanAge(up)
 }
 
 // orNever renders an optional lifecycle timestamp, using "never" for the nil

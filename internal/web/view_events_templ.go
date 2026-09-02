@@ -106,7 +106,7 @@ func eventsList(vm eventsVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.Events) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<p class=\"meta\">No events received yet.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<p class=\"meta\">No events yet. Point an alert source at exocomp ingest and they land here.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

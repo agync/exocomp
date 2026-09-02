@@ -49,7 +49,7 @@ func jobsList(vm dashboardVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.Queue) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">No jobs yet.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">No jobs yet. They appear when a schedule, rule or manual run fires.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

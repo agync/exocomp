@@ -564,7 +564,7 @@ func TestListEmptyStatesNameNextAction(t *testing.T) {
 		{"/runners", "No runners registered — add one."},
 		{"/schedules", "No schedules registered — add one."},
 		{"/sources", "No sources registered — add one."},
-		{"/workspaces", "No state registered — add a workspace."},
+		{"/workspaces", "No workspace registered — exocomp ws add on the host defines one."},
 	} {
 		code, page := getBody(t, op, ts.URL+tc.path)
 		if code != http.StatusOK {

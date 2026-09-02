@@ -47,7 +47,7 @@ func approvalsList(vm dashboardVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.NeedsYou) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">Nothing is waiting on a decision.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<p class=\"meta\">Nothing is waiting on a decision. Approvals land here when a rule or schedule needs your say.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

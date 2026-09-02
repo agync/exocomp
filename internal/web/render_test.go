@@ -498,3 +498,26 @@ func TestReviewCSSGuards(t *testing.T) {
 		}
 	}
 }
+
+// TestW5EmptyStatesNameVerbAndTrigger is the GATE for W5: the empty states name
+// the verb AND the trigger, per the review copy — not a bare "no X yet".
+func TestW5EmptyStatesNameVerbAndTrigger(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	for _, tc := range []struct{ path, want string }{
+		{"/approvals", "Approvals land here when a rule or schedule needs your say."},
+		{"/jobs", "They appear when a schedule, rule or manual run fires."},
+		{"/events", "Point an alert source at exocomp ingest"},
+	} {
+		code, page := getBody(t, client, ts.URL+tc.path)
+		if code != 200 {
+			t.Fatalf("%s status = %d", tc.path, code)
+		}
+		if !strings.Contains(page, tc.want) {
+			t.Errorf("%s empty state missing %q (W5)", tc.path, tc.want)
+		}
+	}
+}

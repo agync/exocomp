@@ -69,7 +69,7 @@ templ schedulesList(vm schedulesVM) {
 						<tbody>
 							for _, sc := range vm.Schedules {
 								<tr data-modal-row={ "sched-" + sc.Name }>
-									<td data-label="Schedule">{ sc.Name } <button type="button" class="btn" data-modal-open={ "sched-" + sc.Name }>Details</button></td>
+									<td data-label="Schedule">{ sc.Name }</td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
 									<td class="mono" data-label="Next fire">{ sc.Next }</td>
@@ -83,7 +83,7 @@ templ schedulesList(vm schedulesVM) {
 											<span class="meta">never fired</span>
 										}
 									</td>
-									<td data-label="Enabled">@enabledChip(sc.Enabled, false)</td>
+									<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
 									if vm.Operator {
 										<td data-label="Actions">
 											if sc.Enabled {

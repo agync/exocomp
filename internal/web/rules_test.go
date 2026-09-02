@@ -93,7 +93,6 @@ func TestRulesSurfaceGated(t *testing.T) {
 		"30m0s", "5", "-", "required",
 		`event.labels.severity == &#34;critical&#34;`,
 		`event.labels.netgroup == &#34;home&#34;`,
-		`<span class="chip ok"><span class="dot"></span>ENABLED</span>`,
 		`href="/rules" aria-current="page"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -102,6 +101,11 @@ func TestRulesSurfaceGated(t *testing.T) {
 	}
 	if strings.Contains(page, "<form") || strings.Contains(page, `method="post"`) {
 		t.Error("/rules (operator) must expose no mutation form")
+	}
+	// The default ENABLED chip is hidden (F12) — the column header carries the
+	// default; only a divergent DISABLED would chip.
+	if strings.Contains(page, `<span class="chip ok"><span class="dot"></span>ENABLED</span>`) {
+		t.Error("/rules still renders the default ENABLED chip (F12)")
 	}
 
 	// Readonly: renders identically, still no write control.

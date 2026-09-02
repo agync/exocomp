@@ -16,9 +16,9 @@ templ enabledChip(enabled, hideEnabled bool) {
 // addButton is the header's one primary verb: a labeled accent button that
 // opens the surface's add-modal (via the data-modal-open convention modalInit
 // wires up). The visible text is the accessible name — no glyph-only control.
-templ addButton(target, label string) {
+templ addButton(target string, text string) {
 	<button type="button" class="btn primary addbtn" data-modal-open={ target }>
-		Add { label }
+		{ text }
 	</button>
 }
 

@@ -7,7 +7,7 @@ package web
 templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
 		<div class="cards mt18">
-			<section class="card span2" aria-labelledby="self-h">
+			<section class="card span2 tray" aria-labelledby="self-h">
 				<h3 id="self-h">This control plane</h3>
 				<div class="tablewrap">
 					<table>
@@ -36,19 +36,19 @@ templ systemPage(vm systemVM) {
 				if vm.PublicURL != "" {
 					<p>Current: <span class="mono">{ vm.PublicURL }</span></p>
 				} else {
-					<p class="meta">Not set. <code>exocomp serve --public-url</code> also sets this.</p>
+					<p class="meta">Not set.</p>
 				}
 				if vm.Operator {
 					<form method="post" action="/system/public-url" class="writeform">
 						<label for="pub-url">Public URL</label>
 						<input id="pub-url" name="url" type="url" required autocomplete="off" placeholder="https://exocomp.example.ts.net" value={ vm.PublicURL }/>
-						<div class="actions"><button type="submit" class="btn primary">Save</button></div>
+						<button type="submit" class="btn primary">Save</button>
 					</form>
-					<p class="meta"><code>exocomp serve --public-url</code> also sets this.</p>
+					<p class="meta mt8"><code>exocomp serve --public-url</code> also sets this.</p>
 				}
 			</section>
 
-			<section class="card span2" aria-labelledby="backups-h">
+			<section class="card span2 tray" aria-labelledby="backups-h">
 				<h3 id="backups-h">Backups</h3>
 				if len(vm.Backups) == 0 {
 					<p class="meta">No backup targets configured.</p>

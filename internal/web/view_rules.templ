@@ -33,7 +33,7 @@ templ rulesList(vm rulesVM) {
 							for _, rl := range vm.Rules {
 								<tr>
 									<td data-label="Rule">{ rl.Name }</td>
-									<td data-label="Enabled">@enabledChip(rl.Enabled, false)</td>
+									<td data-label="Enabled">@enabledChip(rl.Enabled, true)</td>
 									<td class="mono" data-label="Source">{ rl.SourceFilter }</td>
 									<td class="mono wrap" data-label="Action">{ rl.Action }</td>
 									<td class="mono" data-label="Cooldown">{ rl.Cooldown }</td>

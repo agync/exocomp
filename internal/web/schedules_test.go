@@ -34,12 +34,15 @@ func TestScheduleRowsHaveDetailsButton(t *testing.T) {
 		t.Fatalf("GET /schedules = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`data-modal-open="sched-nightly-drift"`,
-		`>Details</button>`,
+		`data-modal-row="sched-nightly-drift"`,
 		`id="sched-nightly-drift"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/schedules missing %q", want)
 		}
+	}
+	// The inline Details button is gone (W8): the row itself opens the modal.
+	if strings.Contains(page, ">Details</button>") {
+		t.Error("/schedules still renders the redundant inline Details button (W8)")
 	}
 }

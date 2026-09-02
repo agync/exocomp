@@ -7,7 +7,7 @@ templ approvalsList(vm dashboardVM) {
 			<div class="kicker">Waiting on a human</div>
 			<h3>Pending approvals</h3>
 			if len(vm.NeedsYou) == 0 {
-				<p class="meta">Nothing is waiting on a decision.</p>
+				<p class="meta">Nothing is waiting on a decision. Approvals land here when a rule or schedule needs your say.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>

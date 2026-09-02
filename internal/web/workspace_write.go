@@ -108,6 +108,9 @@ func (r workspaceWriteRow) StateClass() string {
 func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
 	vm := workspacesVM{Page: s.pageFor(r, "Workspaces", "workspaces"), Operator: canWrite(ident)}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "ws-configure", Label: "workspace", Text: "Configure"}
+	}
 	list, err := s.store.ListWorkspaces(r.Context())
 	if err != nil {
 		s.fail(w, r, err)

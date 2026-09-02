@@ -85,6 +85,13 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	vm := dashboardVM{Page: s.pageFor(r, "Dashboard", "dashboard")}
+	// The app bar's page-own fact: the host and how long the control plane has
+	// been up — identity stays in the powerline (W7).
+	if host := hostname(); host != "" {
+		vm.Page.Meta = host + " · " + s.uptimeLabel()
+	} else {
+		vm.Page.Meta = s.uptimeLabel()
+	}
 
 	banner, err := s.banner(r)
 	if err != nil {
