@@ -3,7 +3,6 @@ package tui
 import (
 	"fmt"
 	"image/color"
-	"strings"
 	"testing"
 )
 
@@ -38,29 +37,8 @@ func TestThemePinsDesignColors(t *testing.T) {
 // survive, so the rule still reads with no color (the table's no-color
 // contract).
 func TestHRuleKeepsNoColorForm(t *testing.T) {
-	plain := ansiStrip(hrule(8))
+	plain := stripANSI(hrule(8))
 	if plain != "────────" {
 		t.Errorf("hrule plain form = %q, want 8 rule characters", plain)
 	}
-}
-
-// ansiStrip removes SGR escape sequences for the tests that prove the plain
-// text form survives styling.
-func ansiStrip(s string) string {
-	var b strings.Builder
-	esc := false
-	for _, r := range s {
-		if esc {
-			if r == 'm' {
-				esc = false
-			}
-			continue
-		}
-		if r == '\x1b' {
-			esc = true
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
 }

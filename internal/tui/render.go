@@ -100,6 +100,28 @@ func frame(height int, head, body, footer []string) string {
 // trailing newline every golden frame carries.
 func join(lines []string) string { return strings.Join(lines, "\n") + "\n" }
 
+// stripANSI removes SGR escape sequences so a filter matches the text an
+// operator reads, never the colour codes wrapped around styled cells.
+func stripANSI(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	esc := false
+	for _, r := range s {
+		if esc {
+			if r == 'm' {
+				esc = false
+			}
+			continue
+		}
+		if r == '\x1b' {
+			esc = true
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
 // box draws a single-line-border panel at the given indent. innerWidth is the
 // number of rule characters between the corners; each content line is wrapped
 // as "│ text… │" padded to fit. It renders the mute modal and the destroy

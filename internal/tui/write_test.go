@@ -614,6 +614,44 @@ func TestFilterNarrowsTheActiveTable(t *testing.T) {
 	}
 }
 
+// TestFilterIgnoresColorCodes proves the table filter matches row text, not
+// the SGR sequences styling it: a numeric filter (the digits inside a colour
+// code) must not match styled rows, and a plain word inside a styled cell
+// still does.
+func TestFilterIgnoresColorCodes(t *testing.T) {
+	st := openTestStore(t)
+	seedJob(t, st, "ansible", store.StateSucceeded, nil)
+
+	m := New(st, nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, key('1'))
+	m = update(t, m, loadJobsCmd(st)())
+
+	// A row's STATE cell is styled: "succeeded" still matches once SGR is
+	// stripped, but the escape digits (here the 38 inside the colour code) do
+	// not.
+	m, _ = updateCmd(t, m, key('/'))
+	for _, r := range "succeeded" {
+		m = update(t, m, key(r))
+	}
+	m = update(t, m, specialKey(tea.KeyEnter))
+	if got := m.View().Content; !strings.Contains(got, "succeeded") {
+		t.Fatalf("filter by a styled word dropped the row:\n%s", got)
+	}
+
+	// The modal pre-fills the previous filter, so reset it before typing a
+	// fresh numeric filter.
+	m.filter = ""
+	m, _ = updateCmd(t, m, key('/'))
+	for _, r := range "38" {
+		m = update(t, m, key(r))
+	}
+	m = update(t, m, specialKey(tea.KeyEnter))
+	if len(m.jobsTable.model.Rows()) != 0 {
+		t.Fatalf("numeric filter matched a colour code; %d rows kept, want none", len(m.jobsTable.model.Rows()))
+	}
+}
+
 // TestEventsOutcomeFilterAndTrace drives o through the outcome cycle and e
 // into the trace overlay for the selected event.
 func TestEventsOutcomeFilterAndTrace(t *testing.T) {

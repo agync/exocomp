@@ -415,7 +415,8 @@ func onOff(b bool) string {
 
 // filterRows drops table rows that do not contain the filter, case-folded over
 // the row's own text. It is the "start simple" filter: a substring match a
-// human scans, not a query language.
+// human scans, not a query language. SGR codes are stripped before matching so
+// a numeric filter matches row text, not the colour sequences in styled cells.
 func filterRows(rows []table.Row, filter string) []table.Row {
 	if filter == "" {
 		return rows
@@ -423,7 +424,7 @@ func filterRows(rows []table.Row, filter string) []table.Row {
 	f := strings.ToLower(filter)
 	out := make([]table.Row, 0, len(rows))
 	for _, r := range rows {
-		if strings.Contains(strings.ToLower(strings.Join(r, " ")), f) {
+		if strings.Contains(strings.ToLower(stripANSI(strings.Join(r, " "))), f) {
 			out = append(out, r)
 		}
 	}
