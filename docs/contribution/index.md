@@ -48,8 +48,9 @@ How work lands in exocomp, and what gates it. The contract lives in
 
 - Architecture-relevant changes record decisions as ADRs, one decision per
   file under [adr/](../adr/index.md).
-- Specs for in-flight work live under `.agents/brain/specs/`; design proposals
-  live under [design/](../design/index.md).
+- Specs for in-flight work live under `.agents/brain/specs/` — a local-only,
+  untracked working directory, so a clone of this repo carries no spec store;
+  design proposals live under [design/](../design/index.md).
 - Scope is stated in one sentence before work begins — unit of work, target,
   outcome. Anything not needed for that outcome is out of scope by default.
 - A clean subagent reviews a change as a skeptical maintainer before it

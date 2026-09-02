@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-02 — agent brain made local-only
+
+- **Correction of earlier framing.** The 2026-08-31 entry "`brain/` lands in
+  `.agents/`" claimed `.agents/brain/` is tracked like the rest of `.agents/`
+  content. It is not: the directory is gitignored and holds local-only working
+  notes (specs, the design handoff, review inbox/outbox), so a reader of this
+  repo cannot open it. [contribution/index.md](contribution/index.md) and the
+  CHANGELOG now say plainly the path is local-only; the spec store is gone from
+  the repo.
+
 ## 2026-09-02 — design invariants page added
 
 - **A new `design/INVARIANTS.md` page codifies the design philosophy, hard

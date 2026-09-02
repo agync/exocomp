@@ -104,7 +104,8 @@ Newest first.
 ## 2026-09-01 — design-handoff v0.3 realignment
 
 Lands the web and TUI surfaces against the v0.3 design handoff (the canon
-imported to `.agents/brain/design-handoff/`): the web realign findings F1–F15
+imported to `.agents/brain/design-handoff/` — a local-only working directory,
+not tracked in this repo): the web realign findings F1–F15
 and the TUI write round. `tokens.css` was already byte-identical to the
 handoff, so the foundation was untouched.
 
