@@ -117,23 +117,58 @@ func runCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
 }
 
 // TestNilWriteDisablesWriteKeys proves the read-only posture: with a nil Write
-// every write key is a no-op, and no command ever reaches the store.
+// every write key is a no-op even when its screen carries a real row to act on,
+// and no command or overlay ever appears. Seeding each surface (a queued job, a
+// gated approval, a schedule) keeps the keys reachable, so stripping any one
+// guard goes red. d is read-only (its pager opens with nil Write) and x has no
+// handler, so neither is a write key to pin.
 func TestNilWriteDisablesWriteKeys(t *testing.T) {
 	st := openTestStore(t)
+	_, env := newTestWrite(t)
+	gated := seedGatedJob(t, st)
+	seedApproval(t, st, env, gated.ID, "core", 1, nil)
+	seedJob(t, st, "ansible", store.StateQueued, nil)
+	if _, err := st.CreateSchedule(context.Background(), store.NewSchedule{
+		Name: "nightly", CronExpr: "@daily", Kind: store.ScheduleBackup,
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
 	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadJobsCmd(st)())
+	m = update(t, m, loadGlanceCmd(st)())
+	m = update(t, m, loadSchedulesCmd(st)())
 
-	for _, k := range []tea.KeyPressMsg{key('p'), key('m'), key('a'), key('r'), key('c'), key('x'), key(' ')} {
-		before := m
-		m, cmd := updateCmd(t, m, k)
+	assertInert := func(key tea.KeyPressMsg, m Model) {
+		t.Helper()
+		got, cmd := updateCmd(t, m, key)
 		if cmd != nil {
-			t.Fatalf("key %q with nil Write produced a command; write keys must be inert", k.String())
+			t.Fatalf("key %q with nil Write produced a command; write keys must be inert", key.String())
 		}
-		if m.modal != modalNone || m.helpOpen {
-			t.Fatalf("key %q with nil Write opened an overlay", k.String())
+		if got.modal != modalNone || got.helpOpen {
+			t.Fatalf("key %q with nil Write opened an overlay", key.String())
 		}
-		_ = before
 	}
+
+	// Home: p pauses, m mutes.
+	for _, k := range []tea.KeyPressMsg{key('p'), key('m')} {
+		assertInert(k, m)
+	}
+
+	// Approvals: a approves, r rejects.
+	m = update(t, m, key('5'))
+	for _, k := range []tea.KeyPressMsg{key('a'), key('r')} {
+		assertInert(k, m)
+	}
+
+	// Jobs: c cancels the selected queued job.
+	m = update(t, m, key('1'))
+	assertInert(key('c'), m)
+
+	// Schedules: space toggles the selected schedule.
+	m = update(t, m, key('4'))
+	assertInert(key(' '), m)
 }
 
 // TestPauseAndResume drives p through the mandatory-expiry prompt into a
