@@ -235,11 +235,14 @@ func (m Model) renderHelp() string {
 	case m.active == screenJobs:
 		return styleHelp.Render("[enter] tail  [f] follow  [c] cancel  [/] filter  [?] help")
 	case m.active == screenBackups:
-		return styleHelp.Render("[b] run now  [enter] last runs  [j/k] move  [?] help")
+		// b (run now) is reserved, not wired; the bar names only live keys.
+		return styleHelp.Render("[enter] last runs  [j/k] move  [?] help")
 	case m.active == screenWorkspaces:
-		return styleHelp.Render("[enter] detail  [l] plan now  [j/k] move  [?] help")
+		// l (plan now) is reserved, not wired.
+		return styleHelp.Render("[enter] detail  [j/k] move  [?] help")
 	case m.active == screenSchedules:
-		return styleHelp.Render("[space] on/off  [x] run now  [j/k] move  [?] help")
+		// x (run now) is reserved, not wired.
+		return styleHelp.Render("[space] on/off  [j/k] move  [?] help")
 	default:
 		return styleHelp.Render("[?] help")
 	}

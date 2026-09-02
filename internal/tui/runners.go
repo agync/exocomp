@@ -47,6 +47,6 @@ func renderRunnersScreen(m RunnersModel) string {
 			cell{75, r.core}, cell{85, r.hash}, cell{99, r.created},
 		))
 	}
-	lines = append(lines, "", lr(runnersKeys, "[0-9]/[r] screens", w))
+	lines = append(lines, "", lr(runnersKeys, "[0-9]/[u] screens", w))
 	return join(lines)
 }
