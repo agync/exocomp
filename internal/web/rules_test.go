@@ -82,7 +82,7 @@ func TestRulesSurfaceGated(t *testing.T) {
 	for _, want := range []string{
 		`scope="col"`, "All rules",
 		"restart-nginx", "converge", "page-me",
-		`<th scope="col">Rule</th>`, `<th scope="col">Enabled</th>`,
+		`<th scope="col">Rule</th>`,
 		`<th scope="col">Source</th>`, `<th scope="col">Action</th>`,
 		`<th scope="col">Cooldown</th>`, `<th scope="col">Cap</th>`,
 		`<th scope="col">Approval</th>`, `<th scope="col">Expression</th>`,
@@ -103,9 +103,13 @@ func TestRulesSurfaceGated(t *testing.T) {
 		t.Error("/rules (operator) must expose no mutation form")
 	}
 	// The default ENABLED chip is hidden (F12) — the column header carries the
-	// default; only a divergent DISABLED would chip.
+	// default; only a divergent DISABLED would chip. With every rule enabled,
+	// the whole column (header + cells) is dropped (W17).
 	if strings.Contains(page, `<span class="chip ok"><span class="dot"></span>ENABLED</span>`) {
 		t.Error("/rules still renders the default ENABLED chip (F12)")
+	}
+	if strings.Contains(page, `<th scope="col">Enabled</th>`) {
+		t.Error("/rules still renders the ENABLED column with all rows enabled (W17)")
 	}
 
 	// Readonly: renders identically, still no write control.

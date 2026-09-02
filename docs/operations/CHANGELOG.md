@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review v0.5 lane A (HIGH + still-open)
+
+- **Danger buttons are a ring, not a fill** on the source-detail page (R1):
+  `Delete…` is transparent with the fail ring until the confirm dialog, matching
+  the tray-row and check-card danger buttons. The filled danger stays for the
+  confirm dialog's Confirm.
+- **Check card actions moved to the card foot** (R2): the Disable/Remove…
+  pair sits below the target grid so the header stays one row (name · kind ·
+  chip · down-count) on phones; the pair keeps the 30px row scale, ring-only
+  danger, and the phone's 48px touch floor.
+- **Rules and Schedules drop the empty ENABLED column** when no row diverges
+  (F12/W17), matching Sources.
+- **System Save is control-width**, not a full-width accent bar (W11).
+- The playbook select on a never-synced source was verified already-disabled
+  (F14) — reported to the designer as fixed.
+
 ## 2026-09-02 — UX fix round (actions spacing, banner copy, mobile powerline)
 
 - **Tray action buttons breathe.** The tray Actions column is a spaced flex row

@@ -80,22 +80,6 @@ templ checksList(vm checksVM) {
 								if summary := ck.DownSummary(); summary != "" {
 									<span class="meta mono fail-text">{ summary }</span>
 								}
-								if vm.Operator {
-									<span class="spacer"></span>
-									if ck.Enabled {
-										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/disable") } class="inline-form">
-											<button type="submit" class="btn quiet">Disable</button>
-										</form>
-									} else {
-										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/enable") } class="inline-form">
-											<button type="submit" class="btn quiet">Enable</button>
-										</form>
-									}
-									<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/rm") } class="inline-form" data-confirm={ "Remove check " + ck.Name + "?" }>
-										<input type="hidden" name="confirmed" value="1"/>
-										<button type="submit" class="btn danger">Remove…</button>
-									</form>
-								}
 							</header>
 							<ul class="targetgrid">
 								for _, t := range ck.Targets {
@@ -125,6 +109,23 @@ templ checksList(vm checksVM) {
 									</li>
 								}
 							</ul>
+							if vm.Operator {
+								<div class="checkactions">
+									if ck.Enabled {
+										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/disable") } class="inline-form">
+											<button type="submit" class="btn quiet">Disable</button>
+										</form>
+									} else {
+										<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/enable") } class="inline-form">
+											<button type="submit" class="btn quiet">Enable</button>
+										</form>
+									}
+									<form method="post" action={ templ.SafeURL("/checks/" + ck.Name + "/rm") } class="inline-form" data-confirm={ "Remove check " + ck.Name + "?" }>
+										<input type="hidden" name="confirmed" value="1"/>
+										<button type="submit" class="btn danger">Remove…</button>
+									</form>
+								</div>
+							}
 						</li>
 					}
 				</ul>

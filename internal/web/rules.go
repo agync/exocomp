@@ -16,6 +16,18 @@ type rulesVM struct {
 	Rules    []ruleRow
 }
 
+// ShowEnabledColumn reports whether any rule is disabled: the ENABLED column
+// renders only when a row diverges from the default (F12/W17), matching the
+// Sources behaviour.
+func (vm rulesVM) ShowEnabledColumn() bool {
+	for _, r := range vm.Rules {
+		if !r.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
 // ruleRow is one rule on the rules surface: its enabled posture, the source
 // filter, the action as `rule list` renders it, and the guardrails. The
 // expression is shown verbatim so an operator sees exactly what fires the job.

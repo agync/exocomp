@@ -20,7 +20,9 @@ templ rulesList(vm rulesVM) {
 						<thead>
 							<tr>
 								<th scope="col">Rule</th>
-								<th scope="col">Enabled</th>
+								if vm.ShowEnabledColumn() {
+									<th scope="col">Enabled</th>
+								}
 								<th scope="col">Source</th>
 								<th scope="col">Action</th>
 								<th scope="col">Cooldown</th>
@@ -33,7 +35,9 @@ templ rulesList(vm rulesVM) {
 							for _, rl := range vm.Rules {
 								<tr>
 									<td data-label="Rule">{ rl.Name }</td>
-									<td data-label="Enabled">@enabledChip(rl.Enabled, true)</td>
+									if vm.ShowEnabledColumn() {
+										<td data-label="Enabled">@enabledChip(rl.Enabled, true)</td>
+									}
 									<td class="mono" data-label="Source">{ rl.SourceFilter }</td>
 									<td class="mono wrap" data-label="Action">{ rl.Action }</td>
 									<td class="mono" data-label="Cooldown">{ rl.Cooldown }</td>

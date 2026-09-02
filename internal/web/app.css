@@ -88,6 +88,13 @@ a:visited { color: var(--accent-text); }
  * a compact inline row of quiet/danger buttons, unlike the phone `.actions`
  * stack (full-width, flex:1). */
 .rowactions { display: flex; align-items: center; gap: 8px; margin-top: 14px; }
+/* A row/detail danger button is a RING, not a fill, until the confirm dialog
+ * (R1): transparent with the fail ring, the same stance as the tray-row
+ * danger. The filled .btn.danger stays for the confirm dialog's Confirm. */
+.rowactions .btn.danger {
+  background: transparent; border: 0;
+  box-shadow: inset 0 0 0 1px var(--fail-border);
+}
 .ml-auto { margin-left: auto; }
 .ml6  { margin-left:   6px; }
 .gap6  { gap:   6px; }
@@ -478,6 +485,25 @@ td.right, th.right { text-align: right; }
   background: transparent; border: 0;
   box-shadow: inset 0 0 0 1px var(--fail-border);
 }
+/* The check card's foot actions (R2): the Disable/Remove… pair lives below the
+ * target grid so the header stays one row (name · kind · chip · down-count) on
+ * phones. Same 30px quiet/danger row scale and ring-only danger as the header
+ * had; right-aligned at the card foot. The phone floor (48px) still applies. */
+.checkactions {
+  display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+}
+.checkactions .btn {
+  min-height: 30px; height: 30px; padding: 0 12px; border-radius: 9px;
+}
+.checkactions .btn.quiet {
+  background: var(--surface-control); color: var(--ink-400);
+  border: 1px solid var(--hairline);
+}
+.checkactions .btn.quiet:hover { color: var(--ink-100); }
+.checkactions .btn.danger {
+  background: transparent; border: 0;
+  box-shadow: inset 0 0 0 1px var(--fail-border);
+}
 .targetgrid {
   list-style: none; margin: 0; padding: 0;
   display: grid; gap: 10px;
@@ -583,6 +609,9 @@ td .cellact:hover { text-decoration: underline; }
   font: var(--type-body);
 }
 .writeform { display: flex; flex-direction: column; gap: 6px; max-width: 34rem; margin-top: 12px; }
+/* A bare submit in a column form must not stretch full width (W11): the button
+ * sits at its content width, left-aligned, not a 34rem accent bar. */
+.writeform > .btn { align-self: flex-start; }
 .writeform label { color: var(--ink-400); font: var(--type-button); margin-top: 6px; }
 .writeform input, .writeform select, .writeform textarea {
   min-height: var(--row-h); padding: 0 12px;
@@ -1075,7 +1104,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   /* Table-row actions meet the hard 48px touch floor on a phone, matching the
    * brief's a11y requirement; the check-card header buttons share the floor
    * (their 30px desktop scale is below it). */
-  td .btn, .checkcard > header .btn { min-height: 48px; height: 48px; }
+  td .btn, .checkcard > header .btn, .checkactions .btn { min-height: 48px; height: 48px; }
 }
 
 /* Never let the page scroll sideways; wide content scrolls in its own box

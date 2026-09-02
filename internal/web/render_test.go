@@ -563,9 +563,9 @@ func ruleDecl(css, prefix string) string {
 	return css[i : i+j]
 }
 
-// TestReviewWebMediumCSSGuards pins the web MEDIUM CSS fixes: the check-card
-// header's quiet/danger buttons get the 30px row scale (the `.btn.quiet` rule
-// is scoped to `td` and would otherwise be inert there) and share the phone's
+// TestReviewWebMediumCSSGuards pins the web MEDIUM CSS fixes: the check card's
+// foot actions get the 30px row scale with ring-only danger (the `.btn.quiet`
+// rule is scoped to `td` and would otherwise be inert there), share the phone's
 // 48px touch floor, and the three narrow-viewport grids stack to one column
 // instead of clipping a min-width track.
 func TestReviewWebMediumCSSGuards(t *testing.T) {
@@ -576,9 +576,9 @@ func TestReviewWebMediumCSSGuards(t *testing.T) {
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
-		`.checkcard > header .btn.quiet {`,
-		`.checkcard > header .btn.quiet:hover`,
-		`td .btn, .checkcard > header .btn { min-height: 48px; height: 48px; }`,
+		`.checkactions .btn.quiet {`,
+		`.checkactions .btn.danger {`,
+		`td .btn, .checkcard > header .btn, .checkactions .btn { min-height: 48px; height: 48px; }`,
 		`.cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }`,
 	} {
 		if !strings.Contains(app, want) {
@@ -606,6 +606,29 @@ func TestW5EmptyStatesNameVerbAndTrigger(t *testing.T) {
 		}
 		if !strings.Contains(page, tc.want) {
 			t.Errorf("%s empty state missing %q (W5)", tc.path, tc.want)
+		}
+	}
+}
+
+// TestReviewV05ACSSGuards pins the v0.5 lane-A CSS: the source-detail danger
+// button is ring-only (R1), the writeform submit does not stretch full width
+// (W11), and the check-card foot actions keep the row scale + phone floor (R2).
+func TestReviewV05ACSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.rowactions .btn.danger {`,
+		`box-shadow: inset 0 0 0 1px var(--fail-border);`,
+		`.writeform > .btn { align-self: flex-start; }`,
+		`.checkactions .btn {`,
+		`.checkactions .btn.danger {`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing v0.5-a rule %q", want)
 		}
 	}
 }

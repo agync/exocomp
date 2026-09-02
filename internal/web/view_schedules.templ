@@ -60,7 +60,9 @@ templ schedulesList(vm schedulesVM) {
 								<th scope="col">Cron</th>
 								<th scope="col">Next fire</th>
 								<th scope="col">Last outcome</th>
-								<th scope="col">Enabled</th>
+								if vm.ShowEnabledColumn() {
+									<th scope="col">Enabled</th>
+								}
 								if vm.Operator {
 									<th scope="col">Actions</th>
 								}
@@ -83,7 +85,9 @@ for _, sc := range vm.Schedules {
 											<span class="meta">never fired</span>
 										}
 									</td>
-									<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
+									if vm.ShowEnabledColumn() {
+										<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
+									}
 									if vm.Operator {
 										<td data-label="Actions">
 											if sc.Enabled {

@@ -361,6 +361,17 @@ type schedulesVM struct {
 	Prefill   schedulePrefill
 }
 
+// ShowEnabledColumn reports whether any schedule is disabled: the ENABLED
+// column renders only when a row diverges from the default (F12/W17).
+func (vm schedulesVM) ShowEnabledColumn() bool {
+	for _, sc := range vm.Schedules {
+		if !sc.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
 type workflowsVM struct {
 	Page      page
 	Workflows []workflowRow
