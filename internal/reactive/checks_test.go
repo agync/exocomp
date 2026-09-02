@@ -129,6 +129,10 @@ func TestCheckSweepHysteresisAndColdStart(t *testing.T) {
 	if state.Status != store.CheckUp || state.Emitted != store.CheckUp || state.Consecutive != 1 {
 		t.Fatalf("seeded state = %+v, want status=up emitted=up consecutive=1", state)
 	}
+	// The cold-start probe opened the observation ring with the seeded result.
+	if len(state.RecentObservations) == 0 {
+		t.Fatal("seeded state has no observation ring")
+	}
 
 	// Steady up never emits, even past hysteresis: emitted is seeded to the
 	// result, so `emitted != status` stays false however long the target stays
@@ -174,6 +178,10 @@ func TestCheckSweepHysteresisAndColdStart(t *testing.T) {
 	if normalized.Labels["netgroup"] != "loop" || normalized.Labels["target"] != "laptop" {
 		t.Fatalf("resolved labels = %+v, want netgroup=loop target=laptop", normalized.Labels)
 	}
+	// The resolved event carries the hysteresis ledger that produced it: the
+	// last 3 down observations, homogeneous (never mixed with the earlier up
+	// seed), ending at 3-of-3. This is the "WHY THIS COUNTED" card's data.
+	assertLedger(t, resolved.CheckObservations, store.CheckDown)
 
 	// The host returns: the same hysteresis before the join is declared.
 	reopen := reopenTCP(t, addr, port)
@@ -556,5 +564,34 @@ func TestCheckPingProbe(t *testing.T) {
 	raised = h.sweepN(t, reactive.DefaultHysteresis)
 	if raised != 0 {
 		t.Fatalf("steady ping raised %d events, want 0", raised)
+	}
+}
+
+// assertLedger verifies an event's embedded hysteresis ledger: N homogeneous
+// observations of the given status, consecutive running 1..N, newest last —
+// the exact shape the "WHY THIS COUNTED" card renders.
+func assertLedger(t *testing.T, ledgerJSON, status string) {
+	t.Helper()
+	var obs []struct {
+		ObservedAt  string `json:"observed_at"`
+		Status      string `json:"status"`
+		Consecutive int    `json:"consecutive"`
+	}
+	if err := json.Unmarshal([]byte(ledgerJSON), &obs); err != nil {
+		t.Fatalf("decode ledger %q: %v", ledgerJSON, err)
+	}
+	if len(obs) != reactive.DefaultHysteresis {
+		t.Fatalf("ledger has %d observations, want %d", len(obs), reactive.DefaultHysteresis)
+	}
+	for i, o := range obs {
+		if o.Status != status {
+			t.Fatalf("ledger[%d] status = %q, want %q (homogeneous)", i, o.Status, status)
+		}
+		if o.Consecutive != i+1 {
+			t.Fatalf("ledger[%d] consecutive = %d, want %d", i, o.Consecutive, i+1)
+		}
+		if o.ObservedAt == "" {
+			t.Fatalf("ledger[%d] has no observed_at", i)
+		}
 	}
 }

@@ -733,11 +733,19 @@ type eventRow struct {
 
 func (e eventRow) OutcomeClass() string { return outcomeClass(e.Outcome) }
 
-// traceVM is one event's stored evaluation trace.
+// traceVM is one event's stored evaluation trace, plus — for a check
+// transition — the hysteresis ledger that produced it (the "WHY THIS COUNTED"
+// card). Both come from the event row, never recomputed.
 type traceVM struct {
 	Page  page
 	Event eventRow
 	Steps []traceStep
+	// CheckObservations is a check event's transition ledger, newest last;
+	// nil for alert and non-check events.
+	CheckObservations []checkObservationRow
+	// StartedAt is the daemon's start time, for the cold-start body of the
+	// ledger card.
+	StartedAt string
 }
 
 type traceStep struct {
@@ -745,6 +753,40 @@ type traceStep struct {
 	Step   string
 	Detail string
 	Reason string
+}
+
+// checkObservationRow is one probe of a check transition's hysteresis ledger.
+type checkObservationRow struct {
+	ObservedAt  string
+	Status      string
+	Consecutive int
+}
+
+// checkHysteresis is the observation window the sweep must hold before a
+// transition fires. It mirrors reactive.DefaultHysteresis; the web renders the
+// ledger lines with it (a divergence there would mislabel the card).
+const checkHysteresis = 3
+
+// LedgerLines renders the hysteresis ledger as the "observed {status}
+// {hh:mm:ss} · {i} of 3" lines, with the transition line carrying the ok
+// marker. The last observation is the one that crossed the window.
+func (vm traceVM) LedgerLines() string {
+	lines := make([]string, 0, len(vm.CheckObservations))
+	for i, o := range vm.CheckObservations {
+		var t string
+		if ts, err := time.Parse(time.RFC3339, o.ObservedAt); err == nil {
+			t = ts.UTC().Format("15:04:05")
+		} else {
+			t = o.ObservedAt
+		}
+		marker := " "
+		if i == len(vm.CheckObservations)-1 {
+			marker = "→"
+		}
+		lines = append(lines, fmt.Sprintf("observed %-4s %s   %d of %d %s",
+			o.Status, t, o.Consecutive, checkHysteresis, marker))
+	}
+	return strings.Join(lines, "\n")
 }
 
 // ---- helpers the templates call ----

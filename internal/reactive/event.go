@@ -51,6 +51,11 @@ type Event struct {
 	Annotations map[string]string `json:"annotations"`
 	ReceivedAt  time.Time         `json:"received_at"`
 	DedupKey    string            `json:"dedup_key"`
+	// CheckObservations is a check transition's hysteresis ledger (JSON) that
+	// record() persists onto store.Event.CheckObservations. It is excluded from
+	// the normalized body (json:"-") — the ledger is projected from the event
+	// row, never from normalized_json, so there is one copy, not two.
+	CheckObservations string `json:"-"`
 }
 
 // Resolved reports whether the event says the condition has cleared.

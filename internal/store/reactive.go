@@ -45,10 +45,15 @@ type Event struct {
 	// decided. It is stored rather than recomputed because the ledgers it read
 	// move on afterwards.
 	Trace string
+	// CheckObservations is a check transition's hysteresis ledger (JSON):
+	// {observed_at, status, consecutive} per probe, values-free. It is embedded
+	// at emission so a historical event stays self-sufficient even after the
+	// check_state ring moves on. Empty for alert and non-check events.
+	CheckObservations string
 }
 
 const eventColumns = `id, source, received_at, dedup_key, normalized_json, raw_json,
-	matched_rule, outcome, reason, job_id, trace_json`
+	matched_rule, outcome, reason, job_id, trace_json, check_observations_json`
 
 // CreateEvent records an event and its outcome. Callers write the row once the
 // pipeline has decided, so no event exists without a reason.
@@ -65,13 +70,17 @@ func (s *Store) CreateEvent(ctx context.Context, e Event) (Event, error) {
 	if e.Trace == "" {
 		e.Trace = "[]"
 	}
+	if e.CheckObservations == "" {
+		e.CheckObservations = "[]"
+	}
 
 	res, err := s.db.ExecContext(ctx, `
 		INSERT INTO event (source, received_at, dedup_key, normalized_json, raw_json,
-		                   matched_rule, outcome, reason, job_id, trace_json)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		                   matched_rule, outcome, reason, job_id, trace_json, check_observations_json)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Source, e.ReceivedAt.UTC().UnixMilli(), e.DedupKey, e.Normalized, e.Raw,
-		e.MatchedRule, string(e.Outcome), e.Reason, nullInt64(e.JobID), e.Trace)
+		e.MatchedRule, string(e.Outcome), e.Reason, nullInt64(e.JobID), e.Trace,
+		e.CheckObservations)
 	if err != nil {
 		return Event{}, wrap("create event", err)
 	}
@@ -283,7 +292,7 @@ func scanEvent(row rowScanner) (Event, error) {
 		jobID      sql.NullInt64
 	)
 	err := row.Scan(&e.ID, &e.Source, &receivedAt, &e.DedupKey, &e.Normalized, &e.Raw,
-		&e.MatchedRule, &outcome, &e.Reason, &jobID, &e.Trace)
+		&e.MatchedRule, &outcome, &e.Reason, &jobID, &e.Trace, &e.CheckObservations)
 	if err != nil {
 		return Event{}, err
 	}

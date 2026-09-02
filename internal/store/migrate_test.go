@@ -521,3 +521,87 @@ func pinAtMigration1(t *testing.T, path string) {
 		t.Fatalf("close raw db: %v", err)
 	}
 }
+
+// TestMigration0033UpgradesFrom032 pins the in-place upgrade the observation
+// ledger depends on: a database at 0032 (no observation columns) opens with the
+// current binary, gains check_state.recent_observations and
+// event.check_observations_json, and both are usable — a check_state row
+// carries a ring and an event carries an embedded ledger.
+func TestMigration0033UpgradesFrom032(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 33)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var cols int
+	if err := raw.QueryRowContext(ctx, `SELECT COUNT(*) FROM pragma_table_info('check_state') WHERE name = 'recent_observations'`).Scan(&cols); err != nil {
+		t.Fatalf("probe check_state column: %v", err)
+	}
+	if cols != 0 {
+		t.Fatal("recent_observations already exists at 0032; the pin is not honest")
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0032 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 33 {
+		t.Fatalf("schema version = %d after open, want >= 33 (0033 applied)", version)
+	}
+
+	// A check_state row carrying the observation ring, written through the store.
+	c, err := s.CreateCheck(ctx, NewCheck{
+		Name: "presence", Kind: CheckTCP, IntervalS: 5,
+		Targets: []CheckTarget{{Name: "phone", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	ring := `[{"observed_at":"2026-09-01T13:41:15Z","status":"up","consecutive":1},` +
+		`{"observed_at":"2026-09-01T13:41:20Z","status":"up","consecutive":2}]`
+	if err := s.SetCheckState(ctx, CheckState{
+		CheckID: c.ID, TargetName: "phone", Status: CheckUp, Consecutive: 2,
+		Emitted: CheckUp, FirstSeen: time.Unix(0, 0), LastChange: time.Unix(0, 0),
+		RecentObservations: ring,
+	}); err != nil {
+		t.Fatalf("set check state with ring: %v", err)
+	}
+	st, err := s.GetCheckState(ctx, c.ID, "phone")
+	if err != nil {
+		t.Fatalf("get check state: %v", err)
+	}
+	if st.RecentObservations != ring {
+		t.Fatalf("ring not persisted: got %q want %q", st.RecentObservations, ring)
+	}
+
+	// An event carrying the embedded ledger, written through the store.
+	ev, err := s.CreateEvent(ctx, Event{
+		Source: "check", ReceivedAt: time.Unix(0, 0), DedupKey: "check:presence:phone",
+		Outcome: OutcomeFired, Reason: "transition",
+		CheckObservations: `[{"observed_at":"2026-09-01T13:41:15Z","status":"up","consecutive":3}]`,
+	})
+	if err != nil {
+		t.Fatalf("create event with ledger: %v", err)
+	}
+	got, err := s.GetEvent(ctx, ev.ID)
+	if err != nil {
+		t.Fatalf("get event: %v", err)
+	}
+	if got.CheckObservations != `[{"observed_at":"2026-09-01T13:41:15Z","status":"up","consecutive":3}]` {
+		t.Fatalf("embedded ledger not persisted: got %q", got.CheckObservations)
+	}
+}

@@ -59,11 +59,15 @@ func TestEventViewOmitEmptyJSON(t *testing.T) {
 		Source: reactive.SourceCheck,
 		Normalized: `{"source":"check","kind":"check","name":"at-home","status":"firing",` +
 			`"severity":"warning","host":"laptop","labels":{"target":"laptop","netgroup":"home"}}`,
+		CheckObservations: `[{"observed_at":"2026-09-01T13:41:15Z","status":"up","consecutive":1},` +
+			`{"observed_at":"2026-09-01T13:41:30Z","status":"up","consecutive":2},` +
+			`{"observed_at":"2026-09-01T13:41:45Z","status":"up","consecutive":3}]`,
 	}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{`"name":"at-home"`, `"status":"firing"`, `"netgroup":"home"`} {
+	for _, want := range []string{`"name":"at-home"`, `"status":"firing"`, `"netgroup":"home"`,
+		`"check_observations"`, `"observed_at":"2026-09-01T13:41:45Z"`, `"consecutive":3`} {
 		if !strings.Contains(string(check), want) {
 			t.Fatalf("check view %s missing %s", check, want)
 		}
@@ -79,6 +83,9 @@ func TestEventViewOmitEmptyJSON(t *testing.T) {
 	}
 	if s := string(alert); strings.Contains(s, "status") || strings.Contains(s, "netgroup") {
 		t.Fatalf("alert view %s must omit status and netgroup", s)
+	}
+	if strings.Contains(string(alert), "check_observations") {
+		t.Fatalf("alert view %s must omit check_observations", alert)
 	}
 	if !strings.Contains(string(alert), `"name":"DiskFull"`) {
 		t.Fatalf("alert view %s must carry its name", alert)

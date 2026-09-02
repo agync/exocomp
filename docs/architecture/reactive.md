@@ -254,6 +254,14 @@ registered group whose prefix most specifically contains the address, or
 prefix literal. An http target's URL resolves off-LAN, so it carries no
 group; its liveness is not a location verdict.
 
+The sweep also keeps a bounded per-target **observation ring**
+(`check_state.recent_observations`, trimmed to five) and, when a transition is
+declared, embeds the transition's tail — filtered to the transition status,
+`observed {status} · {i} of 3` — into the event row
+(`event.check_observations_json`). The event is the durable checkpoint, so a
+historical transition's "why it counted" ledger survives the ring moving on;
+the phone and web Explain surfaces render it, never a fresh read.
+
 Guardrails key the same way the sources do, with one deliberate split: the
 cooldown ledger is read **per dedup key** for the check source — each target
 of a multi-target check gets its own slot, so `pi` joining ten minutes after

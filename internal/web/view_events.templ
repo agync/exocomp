@@ -82,6 +82,20 @@ templ eventTrace(vm traceVM) {
 				enqueued job <a href={ templ.SafeURL("/jobs/" + itoa64(*vm.Event.JobID)) }>#{ itoa64(*vm.Event.JobID) }</a>
 			</p>
 		}
+		if len(vm.CheckObservations) > 0 {
+			<div class="card mt14">
+				<div class="kicker">Why this counted as a transition</div>
+				<pre class="ledger">
+					{ vm.LedgerLines() }
+				</pre>
+				<p class="meta mt8">hysteresis N=3 · one blip is not a transition</p>
+				if vm.StartedAt != "" {
+					<p class="meta">A status must hold for 3 consecutive observations before it becomes an event. A host already up when the daemon started ({ vm.StartedAt }) produces no event until it changes — absence of history is cold-start, not health.</p>
+				} else {
+					<p class="meta">A status must hold for 3 consecutive observations before it becomes an event. Absence of history is cold-start, not health.</p>
+				}
+			</div>
+		}
 		<div class="card mt14">
 			<div class="kicker">Evaluation trace</div>
 			if len(vm.Steps) == 0 {

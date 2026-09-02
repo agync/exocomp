@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-01 — check-transition observation ledger
+
+- **A check transition now carries the hysteresis ledger that produced it.**
+  The sweep records each probe into a bounded per-target observation ring
+  (check_state.recent_observations, migration 0033) and embeds the transition's
+  tail — filtered to the transition status, `observed {status} · {i} of 3` —
+  into the event row at emission (event.check_observations_json), so a
+  historical event stays self-sufficient after the ring moves on. This is the
+  phone Explain card's "WHY THIS COUNTED AS A TRANSITION" data (checks-round
+  D4/17) and it closes the same gap on the web Explain page, which now renders
+  the ledger, the hysteresis note, and the cold-start body anchored to
+  `whoami.server.started_at`.
+- **`EventView.check_observations`** (additive, omitempty): the values-free
+  ledger for a check event; absent for alert and non-check events. The ledger
+  never lands in `normalized_json` — it is projected from the event row, one
+  copy.
+
 ## 2026-09-01 — phone API: approval countdown + daemon start time
 
 - **`JobView.expires_at`** (RFC3339, omitempty) for an `awaiting_approval` job:

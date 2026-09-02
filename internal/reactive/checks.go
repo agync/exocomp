@@ -23,6 +23,11 @@ import (
 // events table.
 const DefaultHysteresis = 3
 
+// obsRingLen bounds a target's observation ring: a little slack over the
+// hysteresis window so a transition's last-3 observations are always in hand at
+// emission, without the ring growing without bound.
+const obsRingLen = 5
+
 // probeTimeout bounds one probe: a dial, an http GET, or a ping subprocess, so
 // a wedged target reports down instead of hanging the sweep.
 const probeTimeout = 5 * time.Second
@@ -32,6 +37,57 @@ const probeTimeout = 5 * time.Second
 // so one target of one check is one slot.
 func checkDedupKey(checkName, targetName string) string {
 	return SourceCheck + ":" + checkName + ":" + targetName
+}
+
+// CheckObservation is one probe of the hysteresis ledger: what was observed and
+// the consecutive count it advanced. Values-free by construction (timestamp,
+// status, count) — it is embedded into the event a transition raises.
+type CheckObservation struct {
+	ObservedAt  string `json:"observed_at"`
+	Status      string `json:"status"`
+	Consecutive int    `json:"consecutive"`
+}
+
+// appendObservation adds one probe to a target's observation ring (JSON,
+// newest last) and trims to obsRingLen. The ring is stored whole and read whole
+// at emission; it is never queried by column.
+func appendObservation(ring string, status string, consecutive int, at time.Time) string {
+	obs := make([]CheckObservation, 0, obsRingLen)
+	_ = json.Unmarshal([]byte(ring), &obs) // a corrupt ring degrades to a fresh one
+	obs = append(obs, CheckObservation{
+		ObservedAt: at.UTC().Format(time.RFC3339), Status: status, Consecutive: consecutive,
+	})
+	if len(obs) > obsRingLen {
+		obs = obs[len(obs)-obsRingLen:]
+	}
+	b, err := json.Marshal(obs)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
+}
+
+// transitionObservations is the tail of the ring that produced a transition: the
+// observations of the transition status, kept to the hysteresis window, newest
+// last. The ring can hold both statuses after a flip, so it is filtered — the
+// "WHY THIS COUNTED" ledger is homogeneous (`observed up · 1 of 3 … 3 of 3`),
+// never a mix.
+func transitionObservations(ring, status string) []CheckObservation {
+	var obs []CheckObservation
+	if err := json.Unmarshal([]byte(ring), &obs); err != nil {
+		return nil
+	}
+	out := make([]CheckObservation, 0, DefaultHysteresis)
+	for _, o := range obs {
+		if o.Status != status {
+			continue
+		}
+		out = append(out, o)
+	}
+	if len(out) > DefaultHysteresis {
+		out = out[len(out)-DefaultHysteresis:]
+	}
+	return out
 }
 
 // SweepChecks probes every enabled check that is due and emits one event per
@@ -119,15 +175,17 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 			// seeded to the observed result, never '' — with a '' seed the
 			// `emitted != status` transition condition would be true on every
 			// steady observation, so a daemon restart would spurious-fire
-			// every up target (design §5.2).
+			// every up target (design §5.2). The seeded observation opens the
+			// ring.
 			if err := e.store.SetCheckState(ctx, store.CheckState{
-				CheckID:     c.ID,
-				TargetName:  t.Name,
-				Status:      status,
-				Consecutive: 1,
-				Emitted:     status,
-				FirstSeen:   now,
-				LastChange:  now,
+				CheckID:            c.ID,
+				TargetName:         t.Name,
+				Status:             status,
+				Consecutive:        1,
+				Emitted:            status,
+				FirstSeen:          now,
+				LastChange:         now,
+				RecentObservations: appendObservation("", status, 1, now),
 			}); err != nil {
 				e.log.Error("reactive: sweep checks: seed state", "check", c.Name, "target", t.Name, "err", err)
 				continue
@@ -148,9 +206,10 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 			st.Status = status
 			st.Consecutive = 1
 		}
+		st.RecentObservations = appendObservation(st.RecentObservations, status, st.Consecutive, now)
 
 		if st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
-			if err := e.emitCheckTransition(ctx, c, t, st.Status, now); err != nil {
+			if err := e.emitCheckTransition(ctx, c, t, st, now); err != nil {
 				// The emitted flag is not advanced, so the next sweep
 				// re-observes the same status and re-emits the transition.
 				// Dedup-window-bounded and eventually consistent, not a
@@ -175,11 +234,11 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 // produces. The status here is the check_state vocabulary (up/down); the event
 // maps it onto firing/resolved so a resolve finds and withdraws what its
 // firing raised.
-func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store.CheckTarget, status string, now time.Time) error {
+func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store.CheckTarget, st store.CheckState, now time.Time) error {
 	key := checkDedupKey(c.Name, t.Name)
 
 	eventStatus := StatusFiring
-	if status == store.CheckDown {
+	if st.Status == store.CheckDown {
 		eventStatus = StatusResolved
 	}
 
@@ -188,19 +247,30 @@ func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store
 		return err
 	}
 
+	// The hysteresis ledger the "WHY THIS COUNTED" card renders: the target's
+	// observations of the transition status, kept to the window, embedded here
+	// so the event stays self-sufficient after the ring moves on.
+	var ledger []byte
+	if obs := transitionObservations(st.RecentObservations, st.Status); len(obs) > 0 {
+		if b, merr := json.Marshal(obs); merr == nil {
+			ledger = b
+		}
+	}
+
 	ev := Event{
-		Source:      SourceCheck,
-		Kind:        "check",
-		Name:        c.Name,
-		Status:      eventStatus,
-		Severity:    "warning",
-		Host:        t.Name,
-		Fingerprint: key,
-		Summary:     fmt.Sprintf("check %s target %s is %s", c.Name, t.Name, status),
-		Labels:      labels,
-		Annotations: map[string]string{},
-		ReceivedAt:  now,
-		DedupKey:    key,
+		Source:            SourceCheck,
+		Kind:              "check",
+		Name:              c.Name,
+		Status:            eventStatus,
+		Severity:          "warning",
+		Host:              t.Name,
+		Fingerprint:       key,
+		Summary:           fmt.Sprintf("check %s target %s is %s", c.Name, t.Name, st.Status),
+		Labels:            labels,
+		Annotations:       map[string]string{},
+		ReceivedAt:        now,
+		DedupKey:          key,
+		CheckObservations: string(ledger),
 	}
 
 	address := t.Address

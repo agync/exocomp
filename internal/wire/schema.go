@@ -550,19 +550,40 @@ type EventView struct {
 	// "away" when none did, the same value CheckTargetView carries — absent for
 	// alert events and http URL targets.
 	Netgroup string `json:"netgroup,omitempty"`
+	// CheckObservations is a check transition's hysteresis ledger — the
+	// observed {status, consecutive} tail that produced it (timestamps in
+	// RFC3339). Absent for alert and non-check events.
+	CheckObservations []CheckObservationView `json:"check_observations,omitempty"`
+}
+
+// CheckObservationView is one probe of a check transition's hysteresis ledger:
+// what was observed, when, and the consecutive count it advanced. Values-free.
+type CheckObservationView struct {
+	ObservedAt  string `json:"observed_at"`
+	Status      string `json:"status"`
+	Consecutive int    `json:"consecutive"`
 }
 
 // NewEventView projects one received event. The normalized/raw payloads and the
 // per-condition trace (which can carry values) are omitted, as they are from the
-// list; the additive name/status/netgroup fields are the values-free projection
-// of the normalized body described on EventView.
+// list; the additive name/status/netgroup/check-observations fields are the
+// values-free projection of the stored row described on EventView.
 func NewEventView(e store.Event) EventView {
 	name, status, netgroup := eventViewExtras(e)
-	return EventView{
+	view := EventView{
 		ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
 		MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
 		Name: name, Status: status, Netgroup: netgroup,
 	}
+	// The observation ledger rides the event row, not the normalized body; a
+	// corrupt ledger degrades to absent, never an error.
+	if e.CheckObservations != "" && e.CheckObservations != "[]" {
+		var obs []CheckObservationView
+		if err := json.Unmarshal([]byte(e.CheckObservations), &obs); err == nil && len(obs) > 0 {
+			view.CheckObservations = obs
+		}
+	}
+	return view
 }
 
 // NewEventList projects events newest-first, as the store returns them.

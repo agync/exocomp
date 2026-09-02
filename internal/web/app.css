@@ -818,6 +818,14 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .tab[aria-selected="true"] { color: var(--accent-text); border-bottom-color: var(--accent-fill); }
 
 /* ---- Log tail ---- */
+/* The hysteresis ledger (the check Explain "WHY THIS COUNTED" card): a mono
+ * code block whose transition line reads in the ok signal. */
+.ledger {
+  background: var(--surface-void); border: 1px solid var(--hairline);
+  border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
+  overflow-x: auto; font: var(--type-log); color: var(--ink-200);
+  white-space: pre;
+}
 .log {
   background: var(--surface-void); border: 1px solid var(--hairline);
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;

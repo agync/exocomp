@@ -494,16 +494,17 @@ func (e *Engine) record(ctx context.Context, ev Event, raw []byte, outcome store
 	}
 	r := e.scrubber()
 	return e.store.CreateEvent(ctx, store.Event{
-		Source:      ev.Source,
-		ReceivedAt:  ev.ReceivedAt,
-		DedupKey:    ev.DedupKey,
-		Normalized:  scrub(r, ev.JSON()),
-		Raw:         scrub(r, string(raw)),
-		MatchedRule: ruleName,
-		Outcome:     outcome,
-		Reason:      scrub(r, reason),
-		JobID:       jobID,
-		Trace:       scrub(r, trace.JSON()),
+		Source:            ev.Source,
+		ReceivedAt:        ev.ReceivedAt,
+		DedupKey:          ev.DedupKey,
+		Normalized:        scrub(r, ev.JSON()),
+		Raw:               scrub(r, string(raw)),
+		MatchedRule:       ruleName,
+		Outcome:           outcome,
+		Reason:            scrub(r, reason),
+		JobID:             jobID,
+		Trace:             scrub(r, trace.JSON()),
+		CheckObservations: ev.CheckObservations,
 	})
 }
 

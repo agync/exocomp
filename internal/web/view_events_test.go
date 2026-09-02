@@ -251,3 +251,59 @@ func TestEventsLoadMore(t *testing.T) {
 		}
 	}
 }
+
+// TestEventTraceCheckLedger is the GATE for the hysteresis ledger card on a
+// check event's Explain page: the stored observations render as the
+// "observed {status} {hh:mm:ss} · {i} of 3" lines with the transition marker,
+// the hysteresis note, and the cold-start body; an alert event renders none of
+// the card.
+func TestEventTraceCheckLedger(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	checkEv, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home","check":"at-home","target":"laptop"}`,
+		Outcome: store.OutcomeFired, Reason: "transition",
+		CheckObservations: `[{"observed_at":"2026-09-01T13:41:15Z","status":"up","consecutive":1},` +
+			`{"observed_at":"2026-09-01T13:41:30Z","status":"up","consecutive":2},` +
+			`{"observed_at":"2026-09-01T13:41:45Z","status":"up","consecutive":3}]`,
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent check: %v", err)
+	}
+	alertEv, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"DiskFull"}`, Outcome: store.OutcomeIgnored,
+		Reason: "no rule matched",
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent alert: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events/"+itoa(checkEv.ID))
+	if code != 200 {
+		t.Fatalf("check trace status = %d", code)
+	}
+	for _, want := range []string{
+		`Why this counted as a transition`,
+		`observed up   13:41:15   1 of 3`,
+		`observed up   13:41:45   3 of 3 →`,
+		`hysteresis N=3 · one blip is not a transition`,
+		`absence of history is cold-start, not health`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("check trace missing ledger marker %q", want)
+		}
+	}
+
+	code, alert := getBody(t, client, ts.URL+"/events/"+itoa(alertEv.ID))
+	if code != 200 {
+		t.Fatalf("alert trace status = %d", code)
+	}
+	if strings.Contains(alert, "Why this counted as a transition") {
+		t.Error("an alert event must not render the hysteresis ledger card")
+	}
+}

@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -569,6 +570,26 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, c := range ex.Trace {
 		vm.Steps = append(vm.Steps, traceStep{Passed: c.Passed, Step: c.Step, Detail: c.Detail, Reason: c.Reason})
+	}
+	// A check event carries its hysteresis ledger on the row (embedded at
+	// emission); alert events carry none. It renders the "WHY THIS COUNTED"
+	// card. The cold-start body needs the daemon's start time.
+	if ex.Event.Source == "check" && ex.Event.CheckObservations != "" && ex.Event.CheckObservations != "[]" {
+		var obs []struct {
+			ObservedAt  string `json:"observed_at"`
+			Status      string `json:"status"`
+			Consecutive int    `json:"consecutive"`
+		}
+		if err := json.Unmarshal([]byte(ex.Event.CheckObservations), &obs); err == nil {
+			for _, o := range obs {
+				vm.CheckObservations = append(vm.CheckObservations, checkObservationRow{
+					ObservedAt: o.ObservedAt, Status: o.Status, Consecutive: o.Consecutive,
+				})
+			}
+		}
+	}
+	if !s.startedAt.IsZero() {
+		vm.StartedAt = s.startedAt.UTC().Format("15:04")
 	}
 	s.render(w, r, http.StatusOK, eventTrace(vm))
 }
