@@ -226,6 +226,32 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 	}
 }
 
+// TestWorkspaceApplyCarriesDataConfirm pins the MED fix: the fresh Apply
+// button is a one-click primary that enqueues `tofu apply -auto-approve`, so
+// it must route through the shared confirm dialog (data-confirm) like every
+// other destructive action.
+func TestWorkspaceApplyCarriesDataConfirm(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateWorkspace(ctx, store.Workspace{Name: "prod", TofuDir: "prod"}); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces status = %d", code)
+	}
+	if !strings.Contains(page, `data-confirm="Apply prod?"`) {
+		t.Error("workspace Apply button must route through the confirm dialog (MED)")
+	}
+	if !strings.Contains(page, `class="inline-form" data-confirm="Apply prod?"`) {
+		t.Error("workspace Apply confirm must ride the apply form, not a stray element")
+	}
+}
+
 // TestConfirmDialogRendersOnEverySurface: the shared confirm dialog ships on
 // every authenticated surface, not just the dashboard — a destructive action
 // is reachable from the page that owns it.

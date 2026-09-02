@@ -58,7 +58,7 @@ templ workspacesList(vm workspacesVM) {
 												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/plan") } class="inline-form">
 													<button type="submit" class="btn">Plan</button>
 												</form>
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form">
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/apply") } class="inline-form" data-confirm={ "Apply " + wsr.Name + "?" }>
 													<button type="submit" class="btn primary">Apply</button>
 												</form>
 												<button type="button" class="btn" data-modal-open={ "ws-plans-" + wsr.Name }>Saved plans</button>
