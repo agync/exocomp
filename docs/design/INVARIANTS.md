@@ -61,15 +61,20 @@ disagree, the code wins and the correction lands in `docs/log.md`.
   round caps. Never emoji or emoji-renderable glyphs. Typographic marks (‹ ▾ ▸ ·)
   are fine inside text.
 - **Copy**: commands render as `exocomp` (never `exo`). Buttons one word where
-  possible; trailing "…" only when the action opens a confirm dialog.
-  Findings-not-praise tone; no marketing language. Insecure/cleartext warnings
-  read as plain English for a human, never internal vocabulary ("on the wire",
-  "listener", "served over cleartext").
-- **Row actions** (current stance): a tray row's Actions cell holds its common
-  verb pairs as word buttons at 30px, 8px apart, on one line; danger is a ring
-  until the confirm dialog. Views (Saved plans, Backend config, Bindings, Open)
-  do not sit in the row as buttons — they belong on the resource's detail page.
-  (The glyph-row + chevron menu design is a decided follow-on, not yet landed.)
+  possible; the trailing "…" is retired — a button that opens a confirm dialog
+  is named plainly and the dialog is the safety. Findings-not-praise tone; no
+  marketing language. Insecure/cleartext warnings read as plain English for a
+  human, never internal vocabulary ("on the wire", "listener", "served over
+  cleartext").
+- **Row actions**: a tray row shows at most two verb glyphs — the actions an
+  operator reaches for daily on that resource — then a chevron that opens a
+  menu. Fewer than three actions total → glyphs only, no chevron. Menu items
+  are always glyph + word; destructive items live last, in `--signal-fail`,
+  with an "asks first" note. The glyph set is fixed per verb (the same shape
+  means the same verb on every resource); every glyph and the chevron carry an
+  aria-label. Views (Saved plans, Backend config, Bindings, Open) live on the
+  resource's detail page, not as per-row buttons. The phone chevron opens a
+  bottom sheet listing every action.
 - **One button-height ladder**: 34px default, 30px in tray rows and card feet,
   44px for a form's single dominant verb (the `.actions` block: modal submits,
   the launch drawer, login), 48px phone floor on every button below 560px.

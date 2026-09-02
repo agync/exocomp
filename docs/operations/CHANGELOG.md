@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — v0.6 row-actions design (glyphs + chevron menu)
+
+- **A shared row-actions partial** renders a tray row's up-to-two verb glyphs
+  then a chevron menu, with a fixed per-verb inline-SVG glyph set (plan, apply,
+  enable, disable, open, rotate, remove, bindings), aria-labels on every
+  control, a destructive-last menu with the "asks first" note, and the phone
+  48px floor. Views (Saved plans, Backend config, Bindings, Open) moved off the
+  rows onto the resource pages.
+- **Secrets and Workspaces** wire to the partial: secrets Rotate opens a reauth
+  dialog (value/generate/confirm-token) and Remove is a confirmed glyph;
+  workspaces gain a detail page (Saved plans + Backend config live there, the
+  row opens it and keeps Plan/Apply glyphs) — closing R8.
+- **Schedules, Checks cards, and Netgroups** wire to the partial: Disable/Enable
+  glyph + Open/Remove menu, and a single Remove glyph for netgroups. "Run now"
+  stays deferred — a schedule-fire route does not exist yet.
+- **The trailing "…" is retired** from buttons and copy (the prefix
+  truncation marker and select sentinels stay).
+- INVARIANTS and the DESIGN.md component spec record the row-actions rule, the
+  retired ellipsis, and the per-verb glyph set.
+
 ## 2026-09-02 — design-review v0.5 lane C (footnote, NITs, invariants)
 
 - **The source sync note is a footnote, not an inline button-row text** (F4):

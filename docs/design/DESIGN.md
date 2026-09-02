@@ -442,9 +442,25 @@ fail-tinted block. The Options fold holds the run-option toggles and timeout.
 
 **Quiet/danger row actions (F8).** Row actions are 30px: `.btn.quiet`
 (control fill, label ink) for Disable/Enable, `.btn.danger` (transparent,
-fail ring, `…` since it opens the confirm) for Remove. Danger is a ring, not
-a fill, until the confirm. Full-size `.btn.danger` (fail tint) remains for
-the decision/confirm buttons (the phone Reject, the confirm dialog).
+fail ring) for Remove. Danger is a ring, not a fill, until the confirm.
+Full-size `.btn.danger` (fail tint) remains for the decision/confirm buttons
+(the phone Reject, the confirm dialog).
+
+**Row actions (v0.6).** A tray row's actions cell holds at most two verb
+glyphs — the actions an operator reaches for daily — then a chevron that opens
+a menu of the rarer verbs and views. Fewer than three actions → glyphs only.
+Glyph buttons are 34×34 (44×44 on phones) transparent icons, 18px glyphs
+(20px on phones), ink-500 → ink-400 on row hover → surface-control fill +
+ink-100 on button hover; the chevron is 26×34 (32×44 on phones), ink-600 →
+ink-400, open state fills surface-control with an accent-border ring. The menu
+is surface-control, min-width 220, radius 11; items are 36px glyph + word with
+an optional mono count; destructive items sit last in `--signal-fail` with an
+"asks first" note. On phones the chevron opens a bottom sheet (surface-control,
+radius 16 top, a `{name} · {kind}` identity line) listing every action. The
+glyph set is fixed per verb (plan, apply, enable, disable, open, rotate,
+remove, bindings) as inline stroke SVGs; every glyph and the chevron carry an
+aria-label. The trailing "…" is retired — a destructive button is named
+plainly and the confirm dialog is the safety.
 
 **Powerline segments (F10).** Each segment is dot + word in its signal color
 and links to where it is fixed — dead-man none is wait with a fix verb
