@@ -27,10 +27,10 @@ const streamPoll = 300 * time.Millisecond
 // cadence would buy nothing but contention.
 const approvalsStreamPoll = 2 * time.Second
 
-// approvalsStreamHeartbeat is how long the approvals tail may go without any
-// write before it emits an SSE comment heartbeat (: keepalive). An idle live
-// list would otherwise send nothing for hours and be silently killed by any
-// intermediary's idle timeout.
+// approvalsStreamHeartbeat is how long either live tail (approvals, job) may
+// go without any write before it emits an SSE comment heartbeat (: keepalive).
+// An idle live list or running tail would otherwise send nothing for hours and
+// be silently killed by any intermediary's idle timeout.
 const approvalsStreamHeartbeat = 30 * time.Second
 
 // maxApprovalStreams bounds concurrent approvals streams per process. Each one
@@ -130,11 +130,6 @@ func (s *Server) handleJobStream(w http.ResponseWriter, r *http.Request) {
 // face it answers, exactly like tailApprovals: the API route gets the wire
 // error envelope plus a Retry-After, the browser route a plain 503.
 func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64, flusher http.Flusher, api bool) {
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
 	// The identity resolved at attach; each revalidation re-reads its row, so a
 	// revoke or an expiry ends the stream rather than being invisible to it.
 	// The credential epoch is pinned at attach too: re-reading only the row's
@@ -188,6 +183,15 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 		}
 	}()
 
+	// SSE headers are set only after the cap check, exactly like tailApprovals:
+	// a refused tail must return a plain 503, never a response that still
+	// carries text/event-stream (which an EventSource client would read as a
+	// stream opening).
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+
 	// The client passes the Seq of the last event its own render included
 	// (?since=); the stream backfills everything after that, not just what is
 	// newest at connect time — the gap between page-render and SSE-connect is
@@ -203,8 +207,15 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 
 	ticker := time.NewTicker(streamPoll)
 	defer ticker.Stop()
+	// The heartbeat keeps an idle running tail audible to intermediaries: a
+	// long quiet job would otherwise write nothing until its next line, and any
+	// idle timeout kills a stream a silent EventSource would never notice or
+	// rebuild (the approvals tail's idle-keepalive, shared).
+	keepalive := time.NewTicker(s.heartbeat)
+	defer keepalive.Stop()
 
 	deadline := s.now().Add(streamMaxLifetime)
+	lastWrite := s.now()
 
 	for {
 		// Re-resolve before every read: auth used to be resolved once, at attach,
@@ -246,6 +257,7 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 			if _, err := fmt.Fprintf(w, "event: line\ndata: %s\n\n", payload); err != nil {
 				return
 			}
+			lastWrite = now
 		}
 
 		current, err := s.store.GetJob(r.Context(), id)
@@ -262,6 +274,15 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 		case <-s.streamStop:
 			return
 		case <-ticker.C:
+		case <-keepalive.C:
+			// Only when the whole window saw no write: a line a moment ago is
+			// keepalive enough, and doubling up buys nothing.
+			if s.now().Sub(lastWrite) >= s.heartbeat {
+				if _, err := fmt.Fprint(w, ": keepalive\n\n"); err != nil {
+					return
+				}
+				flusher.Flush()
+			}
 		}
 	}
 }

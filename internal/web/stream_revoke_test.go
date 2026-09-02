@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -101,6 +102,156 @@ func waitFor(lines <-chan string, want string, within time.Duration) bool {
 			return false
 		}
 	}
+}
+
+// openNStreams opens n streams from the given GET func, asserting each is 200,
+// and returns them for the caller to close. Used by the cap-reorder tests to
+// fill (and refill) a token's share. A failed open closes the streams opened so
+// far — a test that fails partway must not strand live SSE bodies and hang the
+// httptest server's Close().
+func openNStreams(t *testing.T, get func() (*http.Response, error), n int, what string) []*http.Response {
+	t.Helper()
+	open := make([]*http.Response, 0, n)
+	for i := 0; i < n; i++ {
+		resp, err := get()
+		if err != nil {
+			closeAll(open)
+			t.Fatalf("open %s %d: %v", what, i, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			_ = resp.Body.Close()
+			closeAll(open)
+			t.Fatalf("open %s %d status = %d, want 200", what, i, resp.StatusCode)
+		}
+		open = append(open, resp)
+	}
+	return open
+}
+
+func closeAll(rs []*http.Response) {
+	for _, r := range rs {
+		_ = r.Body.Close()
+	}
+}
+
+// waitStreamAtOrBelow polls the server's global stream counter until it is at
+// or below want, so a test that frees slots by closing bodies does not race
+// the handler's async cleanup on its next attach.
+func waitStreamAtOrBelow(t *testing.T, counter *atomic.Int64, want int64, within time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(within)
+	for {
+		if counter.Load() <= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("stream counter did not drop to %d (still %d)", want, counter.Load())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestJobStreamHeartbeat pins the MED fix: the job tail now emits an SSE
+// comment heartbeat (: keepalive) on its idle timer, so a long quiet running
+// job is not silently killed by an intermediary idle timeout — mirroring the
+// approvals tail.
+func TestJobStreamHeartbeat(t *testing.T) {
+	h := newHarness(t)
+	h.server.heartbeat = 100 * time.Millisecond
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	// A gated job stays non-terminal, so the tail has no done-frame to end on
+	// and would otherwise write nothing at all.
+	job, err := h.queue.EnqueueGated(context.Background(), queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("EnqueueGated: %v", err)
+	}
+	client := login(t, ts.URL, h.mint(t, "op", "operator"))
+
+	resp, err := client.Get(ts.URL + "/jobs/" + itoa64(job.ID) + "/stream")
+	if err != nil {
+		t.Fatalf("GET stream: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("stream status = %d, want 200", resp.StatusCode)
+	}
+
+	lines := make(chan string, 64)
+	go func() {
+		defer close(lines)
+		scan := bufio.NewScanner(resp.Body)
+		for scan.Scan() {
+			lines <- scan.Text()
+		}
+	}()
+
+	deadline := time.After(5 * time.Second)
+	for {
+		select {
+		case line, ok := <-lines:
+			if !ok {
+				t.Fatal("stream closed before the heartbeat arrived")
+			}
+			if line == ": keepalive" {
+				return
+			}
+		case <-deadline:
+			t.Fatal("no job-tail heartbeat written during an idle window")
+		}
+	}
+}
+
+// TestJobStreamCapReorderUndoesPerToken pins the F3 cap reorder (MED): the job
+// tail charges the per-token cap before the global slot, and a global-cap
+// refusal must UNDO that per-token charge — otherwise a refused attach leaks a
+// phantom per-token slot that silently shrinks that identity's share. Fill the
+// global cap with two identities, refuse a third at the global level, free the
+// slots, then the refused identity must still open its FULL per-token share.
+// Reverting the reorder (charging per-token without the undo) makes the fourth
+// open fail.
+func TestJobStreamCapReorderUndoesPerToken(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	job, err := h.queue.EnqueueGated(context.Background(), queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("EnqueueGated: %v", err)
+	}
+	stream := func(c *http.Client) func() (*http.Response, error) {
+		return func() (*http.Response, error) { return c.Get(ts.URL + "/jobs/" + itoa64(job.ID) + "/stream") }
+	}
+
+	a := login(t, ts.URL, h.mint(t, "a", "operator"))
+	b := login(t, ts.URL, h.mint(t, "b", "operator"))
+	aOpen := openNStreams(t, stream(a), maxJobStreamsPerToken, "a job stream")
+	defer closeAll(aOpen)
+	bOpen := openNStreams(t, stream(b), maxJobStreamsPerToken, "b job stream")
+	defer closeAll(bOpen)
+
+	// A third identity hits the global cap and is refused.
+	c := login(t, ts.URL, h.mint(t, "c", "operator"))
+	over, err := stream(c)()
+	if err != nil {
+		t.Fatalf("over-cap stream: %v", err)
+	}
+	_ = over.Body.Close()
+	if over.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("third-token stream status = %d, want 503", over.StatusCode)
+	}
+
+	// Free a's slots; the refused c must then open its full per-token share —
+	// no phantom per-token charge survives the global refusal.
+	closeAll(aOpen)
+	waitStreamAtOrBelow(t, &h.server.jobStreams, maxJobStreams-maxJobStreamsPerToken, 3*time.Second)
+	cOpen := openNStreams(t, stream(c), maxJobStreamsPerToken, "c job stream after freeing")
+	defer closeAll(cOpen)
 }
 
 // TestJobStreamEndsOnBearerRotate is the F1/F4 tail: the job tail pins the
@@ -368,6 +519,11 @@ func TestJobStreamTotalCap(t *testing.T) {
 	defer func() { _ = over.Body.Close() }()
 	if over.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("over-cap stream status = %d, want 503", over.StatusCode)
+	}
+	// The tail sets its SSE headers only after the cap check (MED), so a
+	// refused stream is a plain 503 an EventSource cannot mistake for a stream.
+	if ct := over.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("over-cap refusal must not carry SSE headers, got Content-Type %q", ct)
 	}
 }
 

@@ -140,8 +140,9 @@ type Server struct {
 	// readonly render calls it (workspace_write_test.go); production always
 	// uses store.ListPlanArtifacts.
 	planArtifactsFor func(ctx context.Context, runbook, kind string, limit int) ([]store.Artifact, error)
-	// heartbeat is the approvals tail's idle-keepalive interval. A field so a
-	// test can shrink the 30s production cadence into a runnable window.
+	// heartbeat is the idle-keepalive interval of both live tails (approvals
+	// and job). A field so a test can shrink the 30s production cadence into a
+	// runnable window.
 	heartbeat time.Duration
 	// streamStop is closed once at shutdown to end every attached stream —
 	// approvals and job tails alike — so a SIGINT does not burn the whole

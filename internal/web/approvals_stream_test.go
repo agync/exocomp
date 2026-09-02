@@ -239,6 +239,55 @@ func TestApprovalsStreamCap(t *testing.T) {
 	if over.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("over-cap stream status = %d, want 503", over.StatusCode)
 	}
+	// The tail sets its SSE headers only after the cap check, so a refused
+	// stream is a plain 503 an EventSource cannot mistake for a stream.
+	if ct := over.Header.Get("Content-Type"); strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("over-cap refusal must not carry SSE headers, got Content-Type %q", ct)
+	}
+}
+
+// TestApprovalsStreamCapReorderUndoesPerToken is the approvals half of the F3
+// cap-reorder regression (the job half is TestJobStreamCapReorderUndoesPerToken):
+// the tail charges the per-token cap before the global slot, and a global-cap
+// refusal must UNDO that per-token charge — otherwise a refused attach leaks a
+// phantom per-token slot that silently shrinks that identity's share. Fill the
+// global cap with two identities, refuse a third at the global level, free the
+// slots, then the refused identity must still open its FULL per-token share.
+// Reverting the reorder (charging per-token without the undo) makes the fourth
+// open fail.
+func TestApprovalsStreamCapReorderUndoesPerToken(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	stream := func(c *http.Client) func() (*http.Response, error) {
+		return func() (*http.Response, error) { return c.Get(ts.URL + "/approvals/stream") }
+	}
+
+	a := login(t, ts.URL, h.mint(t, "a", "operator"))
+	b := login(t, ts.URL, h.mint(t, "b", "operator"))
+	aOpen := openNStreams(t, stream(a), maxApprovalStreamsPerToken, "a approvals stream")
+	defer closeAll(aOpen)
+	bOpen := openNStreams(t, stream(b), maxApprovalStreamsPerToken, "b approvals stream")
+	defer closeAll(bOpen)
+
+	// A third identity hits the global cap and is refused.
+	c := login(t, ts.URL, h.mint(t, "c", "operator"))
+	over, err := stream(c)()
+	if err != nil {
+		t.Fatalf("over-cap stream: %v", err)
+	}
+	_ = over.Body.Close()
+	if over.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("third-token stream status = %d, want 503", over.StatusCode)
+	}
+
+	// Free a's slots; the refused c must then open its full per-token share —
+	// no phantom per-token charge survives the global refusal.
+	closeAll(aOpen)
+	waitStreamAtOrBelow(t, &h.server.approvalStreams, maxApprovalStreams-maxApprovalStreamsPerToken, 3*time.Second)
+	cOpen := openNStreams(t, stream(c), maxApprovalStreamsPerToken, "c approvals stream after freeing")
+	defer closeAll(cOpen)
 }
 
 // TestApprovalsStreamPerTokenCap is the F3 per-identity sub-cap: one token id

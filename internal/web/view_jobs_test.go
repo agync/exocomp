@@ -2,10 +2,12 @@ package web
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -158,6 +160,47 @@ func TestWorkflowDetailBreadcrumb(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("workflow detail missing breadcrumb %q", want)
 		}
+	}
+}
+
+// TestJobDetailStaleBannerAndHeartbeat pins the MED stream-alignment fix: the
+// job tail page carries the same stale-live-updates banner and reconnect
+// handling the approvals tail documents — the banner element, an onerror that
+// surfaces it only when the stream is closed for good, and an onopen that
+// clears it — so a refused or ended tail is never silently dead.
+func TestJobDetailStaleBannerAndHeartbeat(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	// A gated job stays awaiting_approval (non-terminal), so the detail page
+	// renders the live tail script.
+	job, err := h.queue.EnqueueGated(ctx, queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("EnqueueGated: %v", err)
+	}
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/jobs/"+itoa(job.ID))
+	if code != http.StatusOK {
+		t.Fatalf("job detail status = %d", code)
+	}
+	for _, want := range []string{
+		`id="jobs-stale"`,                      // the stale banner element
+		`es.readyState === EventSource.CLOSED`, // surfaces only a closed stream
+		`es.onopen`,                            // clears on reconnect
+		`new EventSource("/jobs/" + job + "/stream?since=" + since)`, // opens the tail with the cursor
+		`location.reload()`, // done reloads for true final state
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("job detail missing stale/heartbeat marker %q", want)
+		}
+	}
+	if strings.Contains(page, "es.close()") {
+		t.Error("job tail still closes the stream on error instead of letting EventSource reconnect")
 	}
 }
 

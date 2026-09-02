@@ -148,6 +148,7 @@ templ jobDetail(vm jobDetailVM) {
 				}
 			</pre>
 		</div>
+		<p class="meta" id="jobs-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
 		if !vm.Job.State.Terminal() {
 			@jobStream(vm.Job.ID, vm.LastSeq)
 		}
@@ -172,6 +173,13 @@ templ logLine(e eventLine) {
 // chip, the full log, and the now-enabled Schedule button are all rendered
 // server-side, and a reload is the simplest way to get the true final state
 // rather than reconstructing it in JS.
+// There is no onerror close: EventSource reconnects on its own, and closing on
+// error would turn a transient tunnel drop into a dead tail. onerror surfaces
+// the #jobs-stale banner only when the stream is closed for good (a refused
+// 503 or an ended socket), never during a transient drop EventSource is
+// already retrying; onopen clears it on every successful (re)connect, so a
+// long quiet job that only heartbeats never wears a stale banner. The
+// reload-on-done is the terminal path.
 templ jobStream(id int64, since int64) {
 	<script data-job={ itoa64(id) } data-since={ itoa64(since) }>
 	(function () {
@@ -179,6 +187,7 @@ templ jobStream(id int64, since int64) {
 		var job = script.getAttribute("data-job");
 		var since = script.getAttribute("data-since");
 		var log = document.getElementById("log");
+		var stale = document.getElementById("jobs-stale");
 		var es = new EventSource("/jobs/" + job + "/stream?since=" + since);
 		es.addEventListener("line", function (ev) {
 			var d = JSON.parse(ev.data);
@@ -193,10 +202,18 @@ templ jobStream(id int64, since int64) {
 			log.scrollTop = log.scrollHeight;
 		});
 		es.addEventListener("done", function () { location.reload(); });
-		// No onerror close: EventSource reconnects on its own, so a transient
-		// tunnel drop must not end a mid-run tail. A stream the server refuses
-		// (over-cap 503) or a terminal drop loops reconnect until the job
-		// settles or the tab leaves; the reload-on-done is the terminal path.
+		es.onerror = function () {
+			// Only a permanently-closed stream is a real failure worth
+			// surfacing: EventSource fires onerror on every transient drop
+			// while it retries, and a refused (503) stream is closed for good.
+			if (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;
+		};
+		es.onopen = function () {
+			// A reconnect is proof the stream is live again, even if the quiet
+			// job then emits nothing for a long stretch — the banner must not
+			// stay up on a healthy stream.
+			if (stale) stale.hidden = true;
+		};
 	})();
 	</script>
 }
