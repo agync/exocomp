@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review v0.5 lane B (MED consistency)
+
+- **Tray rows have no zebra** (R3): the alternating stripe is gone, so the dark
+  theme's static captures show plain rows with hover only. Light was already
+  flat.
+- **One button-height ladder** (R4): 34px default, 30px in tray rows and card
+  feet, 44px for the `.actions` block (modal submits, the launch drawer, login
+  Sign in), and every button reaches the 48px phone floor below 560px.
+- **One left edge on list cards** (R5): the kicker and hint/body lines align
+  with the title and table at the content edge — the title no longer floats
+  right of them. The system cards gained kickers ("Control-plane health",
+  "Backup freshness") so they share the alignment.
+- **Events filter only when there is something to filter** (R7): with zero
+  events and no active source the filter row is hidden; an active filter keeps
+  it and shows a filtered-empty line. The select applies on change
+  (enhancement), the Filter button stays for JS-off.
+- **Sources and Workspaces list cards gained kickers** (R10): "Playbook
+  origins" and "Remote state", so every list card has one.
+
 ## 2026-09-02 — design-review v0.5 lane A (HIGH + still-open)
 
 - **Danger buttons are a ring, not a fill** on the source-detail page (R1):

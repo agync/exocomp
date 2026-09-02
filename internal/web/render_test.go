@@ -578,7 +578,7 @@ func TestReviewWebMediumCSSGuards(t *testing.T) {
 	for _, want := range []string{
 		`.checkactions .btn.quiet {`,
 		`.checkactions .btn.danger {`,
-		`td .btn, .checkcard > header .btn, .checkactions .btn { min-height: 48px; height: 48px; }`,
+		`.btn { min-height: 48px; height: 48px; }`,
 		`.cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }`,
 	} {
 		if !strings.Contains(app, want) {
@@ -630,5 +630,32 @@ func TestReviewV05ACSSGuards(t *testing.T) {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing v0.5-a rule %q", want)
 		}
+	}
+}
+
+// TestReviewV05BCSSGuards pins the v0.5 lane-B CSS: no tray zebra (R3), the
+// 34px default button with the 44px .actions exception (R4), the blanket 48px
+// phone floor, and the one-left-edge kicker alignment (R5).
+func TestReviewV05BCSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		".card.tray tbody tr:hover { background: var(--surface-row); }",
+		"min-height: 34px; padding: 0 18px;",
+		".actions .btn { width: 100%; min-height: var(--row-h); }",
+		".phone .actions .btn { min-height: 48px; }",
+		".card.tray .kicker, .card.tray > .meta { padding-left: 16px; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing v0.5-b rule %q", want)
+		}
+	}
+	// The tray zebra rule is gone entirely.
+	if strings.Contains(app, "tr:nth-child(even)") {
+		t.Error("tray zebra still present (R3)")
 	}
 }

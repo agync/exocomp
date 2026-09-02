@@ -112,7 +112,9 @@ templ sourcesList(vm sourcesVM) {
 			}
 		}
 		<div class="card span2 mt18 tray">
-			if !vm.Operator {
+			if vm.Operator {
+				<div class="kicker">Playbook origins</div>
+			} else {
 				<div class="kicker">Read-only · CLI-managed</div>
 			}
 			<h3>All sources</h3>

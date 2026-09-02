@@ -8,6 +8,7 @@ templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
 		<div class="cards mt18">
 			<section class="card span2 tray" aria-labelledby="self-h">
+				<div class="kicker">Control-plane health</div>
 				<h3 id="self-h">This control plane</h3>
 				<div class="tablewrap">
 					<table>
@@ -49,6 +50,7 @@ templ systemPage(vm systemVM) {
 			</section>
 
 			<section class="card span2 tray" aria-labelledby="backups-h">
+				<div class="kicker">Backup freshness</div>
 				<h3 id="backups-h">Backups</h3>
 				if len(vm.Backups) == 0 {
 					<p class="meta">No backup targets configured.</p>

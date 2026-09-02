@@ -516,6 +516,13 @@ templ layoutReady() {
 	exoSyncThemeControl();
 	exoSyncRail();
 	exoEnhanceSelects(document);
+	// Autosubmit filters (R7): a form marked data-autosubmit applies on change
+	// (its select's change already bubbles through the enhanced listbox). The
+	// Filter button stays for the JS-off baseline — this is additive, not a
+	// replacement.
+	document.querySelectorAll('form[data-autosubmit] select').forEach(function (sel) {
+		sel.addEventListener('change', function () { sel.form.submit(); });
+	});
 	document.querySelectorAll('.side-nav .navitem').forEach(function (a) {
 		a.addEventListener('click', exoCloseNav);
 	});

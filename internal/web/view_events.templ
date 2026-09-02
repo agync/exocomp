@@ -9,18 +9,24 @@ templ eventsList(vm eventsVM) {
 		<div class="card span2 mt18 tray">
 			<div class="kicker">Received alerts</div>
 			<h3>All events</h3>
-			<form method="get" action="/events" class="writeform inline">
-				<label for="ev-source">Source</label>
-				<select id="ev-source" name="source">
-					<option value="" selected?={ vm.Source == "" }>all</option>
-					for _, src := range eventSourceFilterOptions {
-						<option value={ src } selected?={ vm.Source == src }>{ src }</option>
-					}
-				</select>
-				<button type="submit" class="btn">Filter</button>
-			</form>
+			if len(vm.Events) > 0 || vm.Source != "" {
+				<form method="get" action="/events" class="writeform inline" data-autosubmit>
+					<label for="ev-source">Source</label>
+					<select id="ev-source" name="source">
+						<option value="" selected?={ vm.Source == "" }>all</option>
+						for _, src := range eventSourceFilterOptions {
+							<option value={ src } selected?={ vm.Source == src }>{ src }</option>
+						}
+					</select>
+					<button type="submit" class="btn">Filter</button>
+				</form>
+			}
 			if len(vm.Events) == 0 {
-				<p class="meta">No events yet. Point an alert source at exocomp ingest and they land here.</p>
+				if vm.Source != "" {
+					<p class="meta">No events from <span class="mono">{ vm.Source }</span> — change the source filter to see all events.</p>
+				} else {
+					<p class="meta">No events yet. Point an alert source at exocomp ingest and they land here.</p>
+				}
 			} else {
 				<div class="tablewrap stackable">
 					<table>

@@ -417,6 +417,10 @@ td.right, th.right { text-align: right; }
 @media (min-width: 561px) {
   .card.tray { padding: 8px; }
   .card.tray h3 { padding: 4px 16px 8px; }
+  /* One left edge (R5): the kicker and the hint/body lines align with the
+   * title and the table cells at the content edge — the tray's 8px padding
+   * plus the 16px cell padding. The title no longer floats right of them. */
+  .card.tray .kicker, .card.tray > .meta { padding-left: 16px; }
   .card.tray table { border-collapse: separate; border-spacing: 0; }
   .card.tray thead th {
     border-bottom: 0;
@@ -427,7 +431,6 @@ td.right, th.right { text-align: right; }
     border-bottom: 0; color: var(--ink-200);
     padding: 0 16px; height: var(--row-h); vertical-align: middle;
   }
-  .card.tray tbody tr:nth-child(even) { background: var(--surface-tray); }
   .card.tray tbody tr:hover { background: var(--surface-row); }
   .card.tray tbody tr:last-child td { border-bottom: 0; }
   /* The Actions column fits its quiet/danger pair on one row (W9): two 30px
@@ -558,10 +561,15 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .stepdot.run  { background: var(--accent-text); border-color: var(--accent-border); animation: var(--breathe); }
 .stepdot.dim  { background: var(--signal-dim-dot); }
 
-/* ---- Buttons ---- */
+/* ---- Buttons ----
+ * One height ladder (R4): 34px default, 30px in tray rows and card feet, 44px
+ * for the single modal/drawer/login primary, 48px on the phone approval
+ * surface. The old default was 44 (row-h); the audit moved it down to 34 and
+ * kept 44 only where a form's one primary verb dominates (the `.actions`
+ * block: modal submits, the launch drawer, login). */
 .btn {
   display: inline-flex; align-items: center; justify-content: center;
-  min-height: var(--row-h); padding: 0 18px;
+  min-height: 34px; padding: 0 18px;
   border-radius: var(--radius-control); border: 1px solid var(--hairline);
   background: var(--surface-control); color: var(--ink-100);
   font: var(--type-button); cursor: pointer; text-decoration: none;
@@ -1002,7 +1010,12 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .phone .btn, .phone button, .phone .actions a { min-height: 48px; font-size: 15px; }
 .actions { display: flex; gap: 12px; margin-top: 18px; }
 .actions form { flex: 1; }
-.actions .btn { width: 100%; }
+/* The `.actions` block is a form's one dominant verb: the modal submit, the
+ * launch drawer's Queue run, the login Sign in — it keeps the 44px height
+ * (R4) while the default button dropped to 34. */
+.actions .btn { width: 100%; min-height: var(--row-h); }
+/* …and the phone surface still overrides to 48 (the 48px floor beats 44). */
+.phone .actions .btn { min-height: 48px; }
 
 /* Hold-to-confirm global kill: the fill grows while pressed. */
 .hold {
@@ -1104,7 +1117,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   /* Table-row actions meet the hard 48px touch floor on a phone, matching the
    * brief's a11y requirement; the check-card header buttons share the floor
    * (their 30px desktop scale is below it). */
-  td .btn, .checkcard > header .btn, .checkactions .btn { min-height: 48px; height: 48px; }
+  /* Every button reaches the 48px touch floor below 560px — not just the
+   * tray/card rows — so a modal submit or drawer verb on a phone is not 34px. */
+  .btn { min-height: 48px; height: 48px; }
 }
 
 /* Never let the page scroll sideways; wide content scrolls in its own box

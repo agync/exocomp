@@ -307,3 +307,36 @@ func TestEventTraceCheckLedger(t *testing.T) {
 		t.Error("an alert event must not render the hysteresis ledger card")
 	}
 }
+
+// TestEventsFilterHiddenWhenEmpty is the GATE for R7: with zero events and no
+// active filter the filter row is hidden (nothing to filter); with an active
+// filter it stays visible and carries the filtered-empty line.
+func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("/events status = %d", code)
+	}
+	if strings.Contains(page, `name="source"`) {
+		t.Error("the filter row renders with zero events and no filter (R7)")
+	}
+	if !strings.Contains(page, "No events yet. Point an alert source at exocomp ingest") {
+		t.Error("the empty-state copy is missing")
+	}
+
+	// An active filter keeps the filter visible and shows the filtered-empty line.
+	code, filtered := getBody(t, client, ts.URL+"/events?source=check")
+	if code != 200 {
+		t.Fatalf("/events?source=check status = %d", code)
+	}
+	if !strings.Contains(filtered, `name="source"`) {
+		t.Error("the filter row hides even with an active filter (R7)")
+	}
+	if !strings.Contains(filtered, "No events from") {
+		t.Error("the filtered-empty line is missing")
+	}
+}

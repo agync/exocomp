@@ -24,7 +24,9 @@ package web
 templ workspacesList(vm workspacesVM) {
 	@layout(vm.Page) {
 		<div class="card span2 tray">
-			if !vm.Operator {
+			if vm.Operator {
+				<div class="kicker">Remote state</div>
+			} else {
 				<div class="kicker">Read-only</div>
 			}
 			<h3>States</h3>
