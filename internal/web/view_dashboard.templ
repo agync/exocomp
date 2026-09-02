@@ -92,7 +92,6 @@ templ queueCard(vm jobSummary) {
 		if vm.FailedRecently > 0 {
 			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
 		}
-		<span class="queuemeta">last job — none yet</span>
 	</a>
 }
 
@@ -164,12 +163,14 @@ templ schedulesCard(vm scheduleSummary) {
 }
 
 // countCard is a quiet count in the dashboard's COUNTS band: a kicker, the
-// number, and — when zero — the verb that changes it (F6). The whole card is
-// the link to its full view.
+// number, and — only when zero — the verb that changes it (F6). The whole card
+// is the link to its full view.
 templ countCard(kicker string, n int, href, empty string) {
 	<a class="card cardlink count" href={ templ.SafeURL(href) }>
 		<div class="count-kicker">{ kicker }</div>
 		<div class="countnum">{ itoa(int64(n)) }</div>
-		<p class="cardsub meta">{ empty }</p>
+		if n == 0 {
+			<p class="cardsub meta">{ empty }</p>
+		}
 	</a>
 }

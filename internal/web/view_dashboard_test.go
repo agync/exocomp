@@ -435,6 +435,110 @@ func TestDashboardChecksDownInBand(t *testing.T) {
 	}
 }
 
+// TestDashboardQueueCardStatesNoSettledFact pins H5: the queue card states
+// only what the glance actually knows — the active queue. It never asserts a
+// "last job" fact it does not query, so the hardcoded "last job — none yet"
+// line is gone.
+func TestDashboardQueueCardStatesNoSettledFact(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if strings.Contains(page, "last job — none yet") {
+		t.Error("queue card states a settled-job fact the glance does not query (H5)")
+	}
+}
+
+// TestDashboardCountCardHidesZeroVerbWhenNonzero pins the count-card fix: the
+// zero-state sentence (the verb that changes it) renders only when the count
+// is zero — a nonzero count must not wear its own zero-state copy.
+func TestDashboardCountCardHidesZeroVerbWhenNonzero(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateWorkspace(ctx, store.Workspace{Name: "prod", TofuDir: "prod"}); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, `<div class="count-kicker">Workspaces</div>`) {
+		t.Error("workspaces count card missing")
+	}
+	if !strings.Contains(page, `<div class="countnum">1</div>`) {
+		t.Error("workspaces count should read 1")
+	}
+	if strings.Contains(page, "exocomp ws add") {
+		t.Error("nonzero workspaces count still renders the zero-state verb")
+	}
+}
+
+// seedWebBackupRun registers one backup run of the given state, finished at
+// the given time, so the dead-man web test controls history exactly.
+func seedWebBackupRun(t *testing.T, h *harness, targetID int64, state string, finishedAt time.Time) error {
+	t.Helper()
+	ctx := context.Background()
+	run, err := h.store.StartBackupRun(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	run.State = state
+	run.FinishedAt = &finishedAt
+	if state == store.BackupSucceeded {
+		run.SnapshotID = "snap"
+	}
+	return h.store.FinishBackupRun(ctx, run)
+}
+
+// TestDeadManReportsOlderSucceededRun pins H6: the powerline dead-man reads
+// the store's ONE rule (LastSucceededBackupTime) — succeeded runs only, always
+// finished. A FAILED newest run must never mask an older good backup or report
+// "none"; it reports the older succeeded run's age.
+func TestDeadManReportsOlderSucceededRun(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	target, err := h.store.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "nas", Kind: "restic_local", URI: "/srv/nas", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create backup target: %v", err)
+	}
+	good := time.Now().Add(-3 * time.Hour).Add(-15 * time.Minute).UTC()
+	if err := seedWebBackupRun(t, h, target.ID, store.BackupSucceeded, good); err != nil {
+		t.Fatalf("seed succeeded run: %v", err)
+	}
+	bad := time.Now().Add(-30 * time.Minute).UTC()
+	if err := seedWebBackupRun(t, h, target.ID, store.BackupFailed, bad); err != nil {
+		t.Fatalf("seed failed run: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, "dead-man 3h") {
+		t.Errorf("dead-man must report the older succeeded run's age (3h), got:\n%s", page)
+	}
+	if strings.Contains(page, "dead-man none") {
+		t.Error("dead-man reported none despite an older succeeded run (H6)")
+	}
+}
+
 // TestDashboardAppbarMetaNotIdentity is the GATE for W7: the app bar's meta
 // slot carries the page's own fact (host · uptime), and the signed-in identity
 // appears only in the powerline — never twice.

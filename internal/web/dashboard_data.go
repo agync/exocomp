@@ -556,13 +556,15 @@ func rpoFreshness(age time.Duration) string {
 // age (the dead-man), push transport presence, and disk headroom. Each segment
 // also carries the signal state the strip renders in (F10): a dead-man with no
 // backup is a wait state with a fix verb, ntfy-off is deliberate dim, disk is
-// ok until it threatens.
+// ok until it threatens. The dead-man reads the store's ONE rule
+// (LastSucceededBackupTime): succeeded runs only, always finished — a failed or
+// still-running newest run never masks an older good backup.
 func (s *Server) signal(ctx context.Context) SignalLine {
 	sig := SignalLine{DeadMan: "—", Ntfy: "off", Disk: "—"}
 	sig.NtfyState = "dim"
 
-	if age, ok := s.newestBackupAge(ctx); ok {
-		sig.DeadMan = humanAge(age)
+	if when, ok := s.store.LastSucceededBackupTime(ctx); ok {
+		sig.DeadMan = humanAge(s.now().Sub(when))
 		sig.DeadManState = "ok"
 	} else {
 		sig.DeadMan = "none"
@@ -584,32 +586,6 @@ func (s *Server) signal(ctx context.Context) SignalLine {
 		}
 	}
 	return sig
-}
-
-func (s *Server) newestBackupAge(ctx context.Context) (time.Duration, bool) {
-	targets, err := s.store.ListBackupTargets(ctx, true)
-	if err != nil {
-		return 0, false
-	}
-	now := s.now()
-	var newest time.Time
-	for _, t := range targets {
-		runs, err := s.store.ListBackupRuns(ctx, t.ID, 1)
-		if err != nil || len(runs) == 0 {
-			continue
-		}
-		when := runs[0].StartedAt
-		if runs[0].FinishedAt != nil {
-			when = *runs[0].FinishedAt
-		}
-		if when.After(newest) {
-			newest = when
-		}
-	}
-	if newest.IsZero() {
-		return 0, false
-	}
-	return now.Sub(newest), true
 }
 
 // diskFreePercent returns the free-space percentage of the filesystem holding

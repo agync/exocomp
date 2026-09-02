@@ -99,7 +99,6 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		`<div class="count-kicker">Schedules</div>`,
 		`<div class="countnum">1</div>`,
 		`exocomp ws add`,
-		`exocomp schedule add`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
@@ -117,6 +116,7 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		"*/15 * * * *",                // the schedule's cron — a /schedules concern
 		"provision-web-01",            // the workflow's id — only its count shows now
 		`aria-label="workflow steps"`, // the workflow's per-row step rail
+		"exocomp schedule add",        // a nonzero count hides the count card's zero-verb
 	} {
 		if strings.Contains(page, unwanted) {
 			t.Errorf("dashboard should summarise, not list — found %q", unwanted)

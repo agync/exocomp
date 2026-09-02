@@ -349,7 +349,6 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
 }
 /* The queue card is the one wide card of its band. */
 .cardlink.queue { grid-column: 1 / -1; }
-.queuemeta { display: block; margin-top: 8px; font: var(--type-log); color: var(--ink-500); }
 /* The attention card's decision verb: the card is a link, and this names the
  * resolve action explicitly so a ringed card ends in a verb, never a fact. */
 .cardact { display: block; margin-top: 10px; font: var(--type-button); color: var(--accent-text); }
