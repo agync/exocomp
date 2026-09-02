@@ -2,8 +2,10 @@ package reactive
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -52,19 +54,53 @@ func (x Explanation) Render() string {
 
 	if len(x.Trace) == 0 {
 		b.WriteString("\nno trace recorded\n")
-		return b.String()
-	}
-	b.WriteString("\ntrace:\n")
-	for _, c := range x.Trace {
-		mark := "x"
-		if c.Passed {
-			mark = "."
+	} else {
+		b.WriteString("\ntrace:\n")
+		for _, c := range x.Trace {
+			mark := "x"
+			if c.Passed {
+				mark = "."
+			}
+			label := c.Step
+			if c.Detail != "" {
+				label += " " + c.Detail
+			}
+			fmt.Fprintf(&b, "  %s %-24s %s\n", mark, label, c.Reason)
 		}
-		label := c.Step
-		if c.Detail != "" {
-			label += " " + c.Detail
-		}
-		fmt.Fprintf(&b, "  %s %-24s %s\n", mark, label, c.Reason)
 	}
+	x.renderLedger(&b)
 	return b.String()
+}
+
+// renderLedger appends a check transition's hysteresis ledger — the "WHY THIS
+// COUNTED" observations, the transition line, the hysteresis note, and the
+// cold-start body — when the event is a check event that carries one. Alert and
+// non-check events carry no ledger, so their output is unchanged. The daemon's
+// start time is not reachable here (the CLI reads the store, not the server),
+// so the cold-start body is the unanchored form; the web card anchors it to
+// whoami.server.started_at.
+func (x Explanation) renderLedger(b *strings.Builder) {
+	e := x.Event
+	if e.Source != SourceCheck || e.CheckObservations == "" || e.CheckObservations == "[]" {
+		return
+	}
+	var obs []CheckObservation
+	if err := json.Unmarshal([]byte(e.CheckObservations), &obs); err != nil || len(obs) == 0 {
+		return
+	}
+	b.WriteString("\nledger:\n")
+	for i, o := range obs {
+		at := o.ObservedAt
+		if ts, err := time.Parse(time.RFC3339, o.ObservedAt); err == nil {
+			at = ts.UTC().Format("15:04:05")
+		}
+		marker := ""
+		if i == len(obs)-1 {
+			marker = " → transition"
+		}
+		fmt.Fprintf(b, "  observed %s %s · %d of %d%s\n",
+			o.Status, at, o.Consecutive, DefaultHysteresis, marker)
+	}
+	b.WriteString("  hysteresis N=3 · one blip is not a transition\n")
+	b.WriteString("  A status must hold for 3 consecutive observations before it becomes an event. Absence of history is cold-start, not health.\n")
 }
