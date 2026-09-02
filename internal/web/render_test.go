@@ -499,6 +499,89 @@ func TestReviewCSSGuards(t *testing.T) {
 	}
 }
 
+// TestReviewHigh4CSSGuards pins the HIGH 4 CSS fixes that a markup test cannot
+// see: ink-600 is for dots/rules/dividers, never text — the nav group labels,
+// tray column headers, and log timestamps all read ink-500 (the last AA text
+// step), while the crumb separator (a rule) stays ink-600 — and the font:
+// shorthand on mono runs must not reset tabular-nums (re-asserted after the
+// shorthand at both sites). Reordering or reverting either breaks the guard.
+func TestReviewHigh4CSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+
+	// ink-600 is never text: the three text surfaces read ink-500, the crumb
+	// separator (a rule, not text) keeps ink-600.
+	for _, want := range []string{
+		`color: var(--ink-500); padding: 0 10px 6px; margin-top: 16px;`, // nav group label
+		`color: var(--ink-500); padding: 8px 16px 4px;`,                 // tray column header
+		`.log .ts { color: var(--ink-500);`,                             // log timestamp
+		`.crumb-sep { color: var(--ink-600); }`,                         // separator stays a rule
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing H4 ink fix %q", want)
+		}
+	}
+
+	// tabular-nums must survive the font: shorthand on the shared mono block.
+	mono := ruleDecl(app, ".mono, code, pre, .log {")
+	fontAt := strings.Index(mono, "font: var(--type-log);")
+	numsAt := strings.Index(mono, "font-variant-numeric: tabular-nums;")
+	if fontAt == -1 || numsAt == -1 || numsAt < fontAt {
+		t.Error(".mono, code, pre, .log must re-assert tabular-nums after the font: shorthand (H4)")
+	}
+
+	// The check-card header mono run repeats the same shorthand at a second site.
+	cm := ruleDecl(app, ".checkcard > header .mono {")
+	cf := strings.Index(cm, "font: var(--type-log);")
+	cn := strings.Index(cm, "font-variant-numeric: tabular-nums;")
+	if cf == -1 || cn == -1 || cn < cf {
+		t.Error(".checkcard > header .mono must re-assert tabular-nums after the font: shorthand (H4)")
+	}
+}
+
+// ruleDecl returns the declaration text of the first CSS rule beginning with
+// prefix, up to its closing brace — so a guard can bound a property search to
+// one rule instead of matching a later, unrelated occurrence in the sheet.
+func ruleDecl(css, prefix string) string {
+	i := strings.Index(css, prefix)
+	if i < 0 {
+		return ""
+	}
+	j := strings.Index(css[i:], "}")
+	if j < 0 {
+		return css[i:]
+	}
+	return css[i : i+j]
+}
+
+// TestReviewWebMediumCSSGuards pins the web MEDIUM CSS fixes: the check-card
+// header's quiet/danger buttons get the 30px row scale (the `.btn.quiet` rule
+// is scoped to `td` and would otherwise be inert there) and share the phone's
+// 48px touch floor, and the three narrow-viewport grids stack to one column
+// instead of clipping a min-width track.
+func TestReviewWebMediumCSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.checkcard > header .btn.quiet {`,
+		`.checkcard > header .btn.quiet:hover`,
+		`td .btn, .checkcard > header .btn { min-height: 48px; height: 48px; }`,
+		`.cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing web-MEDIUM rule %q", want)
+		}
+	}
+}
+
 // TestW5EmptyStatesNameVerbAndTrigger is the GATE for W5: the empty states name
 // the verb AND the trigger, per the review copy — not a bare "no X yet".
 func TestW5EmptyStatesNameVerbAndTrigger(t *testing.T) {

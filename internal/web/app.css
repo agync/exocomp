@@ -29,6 +29,9 @@ body {
 .num, td, th, time, .mono, code, pre { font-variant-numeric: tabular-nums; }
 .mono, code, pre, .log {
   font: var(--type-log);
+  /* The font: shorthand resets font-variant-numeric, so tabular-nums (and the
+   * ligature-off) must be re-asserted after it, not before (H4). */
+  font-variant-numeric: tabular-nums;
   /* Verbatim text must not ligate (W4): `==` and `->` render as their own
    * glyphs in code, CEL expressions, and log tails — never a combined shape. */
   font-feature-settings: "liga" 0, "calt" 0;
@@ -148,7 +151,7 @@ a:visited { color: var(--accent-text); }
  * PROVISION / ACCESS — with a mono group label above each cluster. */
 .side-nav .navgroup {
   font: 600 10px var(--font-mono); letter-spacing: 1.8px; text-transform: uppercase;
-  color: var(--ink-600); padding: 0 10px 6px; margin-top: 16px;
+  color: var(--ink-500); padding: 0 10px 6px; margin-top: 16px;
 }
 /* Nav badge (F7): an actionable state count — down targets on Checks (fail),
  * never-synced sources and pending approvals (wait). A count is the number of
@@ -412,7 +415,7 @@ td.right, th.right { text-align: right; }
   .card.tray thead th {
     border-bottom: 0;
     font: 600 10.5px var(--font-mono); letter-spacing: .8px;
-    color: var(--ink-600); padding: 8px 16px 4px;
+    color: var(--ink-500); padding: 8px 16px 4px;
   }
   .card.tray tbody td {
     border-bottom: 0; color: var(--ink-200);
@@ -453,13 +456,20 @@ td.right, th.right { text-align: right; }
 .checkcard.disabled { opacity: .55; }
 .checkcard > header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .checkcard > header .spacer { flex: 1; }
-.checkcard > header .mono { font: var(--type-log); }
+.checkcard > header .mono { font: var(--type-log); font-variant-numeric: tabular-nums; }
 /* The check card's header actions read at the same 30px quiet/danger scale as
  * the tray row actions (W14): the full 44px .btn is too tall for a card header.
- * Danger is a ring, not a fill, until the confirm. */
+ * Danger is a ring, not a fill, until the confirm. The quiet style is repeated
+ * here because `.btn.quiet` is scoped to `td` (row-action cells) and would
+ * otherwise be inert on the card header (H4/MED). */
 .checkcard > header .btn {
   min-height: 30px; height: 30px; padding: 0 12px; border-radius: 9px;
 }
+.checkcard > header .btn.quiet {
+  background: var(--surface-control); color: var(--ink-400);
+  border: 1px solid var(--hairline);
+}
+.checkcard > header .btn.quiet:hover { color: var(--ink-100); }
 .checkcard > header .btn.danger {
   background: transparent; border: 0;
   box-shadow: inset 0 0 0 1px var(--fail-border);
@@ -551,6 +561,16 @@ td .btn.danger {
   background: transparent; color: var(--signal-fail);
   border: 0; box-shadow: inset 0 0 0 1px var(--fail-border);
 }
+/* The keyboard path to a row-opening modal (the schedule spec dialog): the
+ * row's click affordance has no tab stop, so the name cell carries a real
+ * button that opens the same modal — native focus, Enter/Space activation,
+ * and no redundant button chrome (W8 keeps the row as the pointer path). */
+td .cellact {
+  background: none; border: 0; padding: 0; margin: 0;
+  color: var(--accent-text); font: inherit; font-weight: 500; cursor: pointer;
+  text-align: left;
+}
+td .cellact:hover { text-decoration: underline; }
 
 /* ---- Write surface: flash, forms, one-time secret ---- */
 .flash {
@@ -862,7 +882,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * repeated stamp does not dominate the wall of output. */
 .log .logln { display: block; padding: 1px 0; }
 .log .logln + .logln { border-top: 1px solid transparent; }
-.log .ts { color: var(--ink-600); user-select: none; margin-right: 6px; }
+.log .ts { color: var(--ink-500); user-select: none; margin-right: 6px; }
 .log .err { color: var(--signal-fail); }
 .log .err .ts { color: var(--signal-fail); opacity: 0.55; }
 .log .sys { color: var(--ink-500); }
@@ -982,7 +1002,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .fingerprint { color: var(--ink-500); font: var(--type-log); word-break: break-all; }
 
 @media (max-width: 720px) {
-  .cards { grid-template-columns: 1fr; }
+  .cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }
   main { padding: 18px 14px; }
 }
 /* Stacked label/value cards below phone width. A wide table (Sources, Policies,
@@ -1046,8 +1066,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
   .tablewrap.stackable td[data-label=""]::before { content: none; }
   /* Table-row actions meet the hard 48px touch floor on a phone, matching the
-   * brief's a11y requirement. */
-  td .btn { min-height: 48px; height: 48px; }
+   * brief's a11y requirement; the check-card header buttons share the floor
+   * (their 30px desktop scale is below it). */
+  td .btn, .checkcard > header .btn { min-height: 48px; height: 48px; }
 }
 
 /* Never let the page scroll sideways; wide content scrolls in its own box
