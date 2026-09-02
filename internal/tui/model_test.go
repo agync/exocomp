@@ -388,7 +388,7 @@ func TestWorkspacesScreenRendersStatusAndDrift(t *testing.T) {
 	m = update(t, m, key('3'))
 
 	view := m.View().Content
-	for _, want := range []string{"edge", "1", "succeeded", "failed", "drift", "core", "unplanned"} {
+	for _, want := range []string{"edge", "1", "succeeded", "failed", "drift", "core", "unplanned", "never"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("workspaces view missing %q, view:\n%s", want, view)
 		}

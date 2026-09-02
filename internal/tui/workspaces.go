@@ -82,12 +82,13 @@ func jobStateCell(state store.JobState) string {
 	return renderState(string(state))
 }
 
-// driftCell marks a workspace whose most recent plan reported changes. There
-// is no state to color when a plan found nothing, so the absence of drift is
-// the same plain "-" every other unset cell uses.
+// driftCell marks a workspace whose most recent plan reported changes. The
+// design's color table assigns DRIFT to signal-wait, and a workspace with no
+// drift signal yet reads as the same wait "never" — one colour for the never
+// state, never a bare dash.
 func driftCell(drift bool) string {
 	if !drift {
-		return emptyCell
+		return styleWait.Render("never")
 	}
-	return styleErr.Render("drift")
+	return styleWait.Render("drift")
 }
