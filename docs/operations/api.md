@@ -88,10 +88,12 @@ GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted
 ```
 
 `GET /whoami` reflects the calling token — `{id, name, scope, via, expires_at}` — and adds
-`server: {version, hostname}`: the daemon's own build version (`internal/version`) and the
-host it runs on, so an identity line reads `exocompd 0.7.4 · pve-01.lan` without probing.
-Either server field is omitted when the build carries no version stamp or the host cannot
-report its name; the request never fails on a missing hostname.
+`server: {version, hostname, started_at}`: the daemon's own build version (`internal/version`),
+the host it runs on, and the time the process came up — `started_at` is the exact "since
+daemon start" anchor the events screen's cold-start label uses. An identity line reads
+`exocompd 0.7.4 · pve-01.lan` without probing. Each server field is omitted when it has no
+value (no version stamp, an unnameable host, or no start time); the request never fails on a
+missing hostname.
 
 `GET /events/summary` tallies every stored event by outcome —
 `{received, ignored, matched, suppressed, gated, fired, error}`, all ints — through
@@ -110,6 +112,11 @@ table — and defaults to 25 when the param is absent (the CLI's own default), w
 value rejected as a 400. The browser's events page applies its own separate bounds (a floor
 of 100 and a cap of 500) to the same underlying list; that is a page convenience, not the
 API's contract.
+
+`GET /events` and `GET /events/{id}` rows are the values-free `EventView` projection. A check
+transition's row additionally carries `check_observations`, the hysteresis ledger that
+produced it — one `{observed_at, status, consecutive}` per probe, newest last; absent for
+alert and non-check events.
 
 `GET /approvals/{id}` adds two structured blocks to the approval, both sourced from the
 store, never from a rendered sentence, and both carrying identifiers and states only — never
