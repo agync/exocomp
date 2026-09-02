@@ -6,6 +6,38 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — v0.3 review R2: web findings
+
+- **HIGH 4 · design invariants:** ink-600 is no longer text — the nav group
+  labels, tray column headers, and log timestamps read ink-500 (the last AA
+  text step); the crumb separator (a rule) stays ink-600. The `font:`
+  shorthand on mono runs no longer resets `font-variant-numeric` — tabular-nums
+  is re-asserted after it on `.mono/code/pre/.log` and the check-card header.
+- **HIGH 5 · queue card fact:** the queue card no longer hardcodes
+  "last job — none yet" — it shows the active queue only, and the dead
+  `.queuemeta` rule is gone.
+- **HIGH 6 · dead-man via the store:** the powerline dead-man reads
+  `store.LastSucceededBackupTime` (the shared rule: succeeded runs only, always
+  finished), so a failed or still-running newest run never masks an older good
+  backup.
+- **MEDIUM · check-card actions:** the header's quiet/danger buttons get the
+  30px row scale and the phone's 48px touch floor.
+- **MEDIUM · grid reflow:** the attention/counts/target grids stack to one
+  column below 720px instead of clipping a min-width track.
+- **MEDIUM · count cards:** a count card shows its zero-state verb only when
+  the count is zero.
+- **MEDIUM · launch drawer:** the Command tab's Timeout field is restored.
+- **MEDIUM · workspace apply** now routes through the shared confirm dialog.
+- **MEDIUM · schedules spec modal** gains a keyboard-reachable trigger — the
+  schedule name opens the dialog.
+- **MEDIUM · job tail:** aligned with the approvals tail — SSE headers are set
+  after the cap check (a refused tail is a plain 503), the tail emits the idle
+  keepalive heartbeat, and the page carries the stale-live-updates banner with
+  the approvals reconnect semantics.
+- **MEDIUM · stream cap reorder:** regression tests for BOTH tails pin the
+  per-token-then-global charge with undo — a refused attach leaves no phantom
+  per-token slot.
+
 ## 2026-09-02 — design-review NIT pass
 
 - **W13 · one left edge:** the tray-table card titles align with their rows (the
