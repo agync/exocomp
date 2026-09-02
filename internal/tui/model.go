@@ -675,7 +675,7 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "c":
-		if !m.tailing && m.active == screenJobs {
+		if !m.tailing && m.active == screenJobs && m.write != nil {
 			return m.cancelSelectedJob()
 		}
 		return m, nil

@@ -383,7 +383,7 @@ func TestCancelQueuedJob(t *testing.T) {
 	st := openTestStore(t)
 	job := seedJob(t, st, "ansible", store.StateQueued, nil)
 
-	m := New(st, nil)
+	m := New(st, &Write{})
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('1'))
 	m = update(t, m, loadJobsCmd(st)())
@@ -405,14 +405,17 @@ func TestCancelTerminalJobIsANoOp(t *testing.T) {
 	zero := 0
 	seedJob(t, st, "ansible", store.StateSucceeded, &zero)
 
-	m := New(st, nil)
+	m := New(st, &Write{})
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('1'))
 	m = update(t, m, loadJobsCmd(st)())
 
-	_, cmd := updateCmd(t, m, key('c'))
+	got, cmd := updateCmd(t, m, key('c'))
 	if cmd != nil {
 		t.Fatal("c on a terminal job produced a command; nothing may be cancelled")
+	}
+	if !strings.Contains(got.flash, "nothing to cancel") {
+		t.Fatalf("flash = %q, want the terminal refusal", got.flash)
 	}
 }
 
