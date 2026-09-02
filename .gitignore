@@ -8,6 +8,5 @@ CLAUDE.md
 /dist/
 # Generated ultracode workflow scripts (build-specs); keep .md notes tracked
 .agents/workflows/*.js
-# Transient agent working state — inbox/outbox are local-only (specs stay tracked)
-.agents/brain/inbox/
-.agents/brain/outbox/
+# Agent brain — durable working notes and design handoff; local-only, never committed
+.agents/brain/
