@@ -272,6 +272,53 @@ func TestMuteAndUnmute(t *testing.T) {
 	}
 }
 
+// TestResumeAndUnmuteLiftOnlyGlobalHolds proves p/m never touch scoped holds
+// the web set: resume lifts only global silences and unmute only global notify
+// mutes, leaving an alert or host hold in place.
+func TestResumeAndUnmuteLiftOnlyGlobalHolds(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	globalSil, err := st.CreateSilence(ctx, store.Silence{
+		ScopeKind: store.ScopeGlobal, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create global silence: %v", err)
+	}
+	hostSil, err := st.CreateSilence(ctx, store.Silence{
+		ScopeKind: store.ScopeHost, ScopeValue: "aurora", CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create host silence: %v", err)
+	}
+
+	runCmd(t, New(st, nil), resumeCmd(st, []store.Silence{globalSil, hostSil}))
+	sils, err := st.ListSilences(ctx, true)
+	if err != nil || len(sils) != 1 || sils[0].ID != hostSil.ID {
+		t.Fatalf("after resume: %+v (%v), want only the host silence left", sils, err)
+	}
+
+	globalMute, err := st.CreateNotifyMute(ctx, store.NotifyMute{
+		ScopeKind: store.ScopeGlobal, CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create global mute: %v", err)
+	}
+	alertMute, err := st.CreateNotifyMute(ctx, store.NotifyMute{
+		ScopeKind: store.ScopeAlert, ScopeValue: "disk-pressure", CreatedAt: now, ExpiresAt: now.Add(time.Hour),
+	})
+	if err != nil {
+		t.Fatalf("create alert mute: %v", err)
+	}
+
+	runCmd(t, New(st, nil), unmuteCmd(st, []store.NotifyMute{globalMute, alertMute}))
+	mutes, err := st.ListNotifyMutes(ctx, true)
+	if err != nil || len(mutes) != 1 || mutes[0].ID != alertMute.ID {
+		t.Fatalf("after unmute: %+v (%v), want only the alert mute left", mutes, err)
+	}
+}
+
 // TestApproveThroughTheReactiveSeam drives a full approve: the envelope's
 // capability token, the enqueue-only queue, and the service's decision verb —
 // ending with the job released into queued and the approval settled.

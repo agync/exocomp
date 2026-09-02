@@ -363,11 +363,16 @@ func muteCmd(st *store.Store, d time.Duration, reason string) tea.Cmd {
 	}
 }
 
-// unmuteCmd lifts every active notify mute the banner is showing.
+// unmuteCmd lifts every active global notify mute the banner is showing. A
+// scoped mute (the web's alert or host silences) is left alone, mirroring
+// resumeCmd: the TUI's p/m controls the global kill switches only.
 func unmuteCmd(st *store.Store, mutes []store.NotifyMute) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
 		for _, m := range mutes {
+			if m.ScopeKind != store.ScopeGlobal {
+				continue
+			}
 			if err := st.DeleteNotifyMute(ctx, m.ID); err != nil {
 				return writeDoneMsg{screen: screenHome, text: "unmute: " + err.Error()}
 			}
