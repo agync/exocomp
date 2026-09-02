@@ -158,7 +158,7 @@ func (s *Server) backups(r *http.Request) ([]backupRow, error) {
 	now := s.now()
 	var out []backupRow
 	for _, t := range targets {
-		row := backupRow{Name: t.Name, Kind: t.Kind, State: "never", Age: "never", Freshness: "fail"}
+		row := backupRow{Name: t.Name, Kind: t.Kind, State: "never", Age: "never", Freshness: "wait"}
 		runs, err := s.store.ListBackupRuns(r.Context(), t.ID, 1)
 		if err != nil {
 			return nil, err

@@ -246,3 +246,32 @@ func TestConfirmDialogRendersOnEverySurface(t *testing.T) {
 		}
 	}
 }
+
+// TestSourcesEnabledColumnHiddenWhenNoneDiverge is the GATE for W17: the
+// ENABLED column renders only when a row is disabled — an all-enabled estate
+// drops the empty column entirely.
+func TestSourcesEnabledColumnHiddenWhenNoneDiverge(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for _, name := range []string{"alpha", "beta"} {
+		if _, err := h.store.CreateSource(ctx, store.Source{
+			Name: name, Kind: store.SourceGit,
+			URI: "git@host:" + name + ".git", Ref: "main", Enabled: true,
+			LastSyncSHA: "0123456789abcdef",
+		}); err != nil {
+			t.Fatalf("seed source %s: %v", name, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources status = %d", code)
+	}
+	if strings.Contains(page, `scope="col">Enabled</th>`) {
+		t.Error("all-enabled sources still render the ENABLED column (W17)")
+	}
+}

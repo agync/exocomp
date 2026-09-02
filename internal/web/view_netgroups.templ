@@ -44,7 +44,7 @@ templ netgroupsPanel(rows []netgroupRow, operator bool) {
 						for _, ng := range rows {
 							<tr>
 								<td data-label="Netgroup"><a href="/events?source=check">{ ng.Name }</a></td>
-								<td class="mono wrap" data-label="CIDRs">{ ng.Join() }</td>
+								<td class="mono wrap" data-label="CIDRs">{ ng.Display() }</td>
 								if operator {
 									<td data-label="Actions">
 										<form method="post" action={ templ.SafeURL("/netgroups/" + ng.Name + "/rm") } class="inline-form" data-confirm={ "Remove netgroup " + ng.Name + "?" }>

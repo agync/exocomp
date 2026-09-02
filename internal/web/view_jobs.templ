@@ -6,6 +6,7 @@ package web
 templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<div class="card span2 mt18 tray">
+			<div class="kicker">Run ledger</div>
 			<h3>All jobs</h3>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>

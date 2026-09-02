@@ -132,7 +132,9 @@ templ sourcesList(vm sourcesVM) {
 								<th scope="col">Ref</th>
 								<th scope="col">Trust</th>
 								<th scope="col" class="right">Last sync</th>
-								<th scope="col">Enabled</th>
+								if vm.ShowEnabledColumn() {
+									<th scope="col">Enabled</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -150,7 +152,9 @@ templ sourcesList(vm sourcesVM) {
 											{ sc.Short() }
 										}
 									</td>
-									<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
+									if vm.ShowEnabledColumn() {
+										<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
+									}
 								</tr>
 							}
 						</tbody>

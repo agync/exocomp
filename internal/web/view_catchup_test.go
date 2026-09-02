@@ -278,3 +278,31 @@ func TestPoliciesVerdict(t *testing.T) {
 		}
 	}
 }
+
+// TestSystemBackupsNeverIsWait is the GATE for W19: a backup target with no run
+// yet renders its NEVER fact as a wait chip (a gap, not a failure) — the same
+// colour Sources' NEVER and the powerline dead-man use.
+func TestSystemBackupsNeverIsWait(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "nas", Kind: "restic_local", URI: "/srv/nas", Enabled: true,
+	}); err != nil {
+		t.Fatalf("CreateBackupTarget: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("system status = %d", code)
+	}
+	if !strings.Contains(page, `<span class="chip wait"><span class="dot"></span>never</span>`) {
+		t.Error("a never-run backup target must render a wait NEVER chip (W19)")
+	}
+	if strings.Contains(page, `<span class="chip fail"><span class="dot"></span>never</span>`) {
+		t.Error("never must never read as fail (W19)")
+	}
+}

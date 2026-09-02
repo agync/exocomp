@@ -28,6 +28,10 @@ type netgroupRow struct {
 // shape the add form accepts back.
 func (r netgroupRow) Join() string { return strings.Join(r.Prefixes, ",") }
 
+// Display renders the prefixes for a table cell: the space-separated · form a
+// reader scans, distinct from the comma form the CLI/add form accepts (W16).
+func (r netgroupRow) Display() string { return strings.Join(r.Prefixes, " · ") }
+
 // handleNetgroups is the merge redirect (F7): netgroups live as a tab on
 // /checks, so the standalone page points there. The write routes
 // (netgroups_write.go) repoint the same way; the API route stays.

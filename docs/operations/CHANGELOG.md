@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review NIT pass
+
+- **W13 · one left edge:** the tray-table card titles align with their rows (the
+  12px indent is gone).
+- **W14 · check card actions:** the per-check Disable/Remove… buttons sit at the
+  30px quiet/danger row scale, and Remove… is a ring, not a fill, until the
+  confirm.
+- **W16 · netgroups CIDRs** render space-separated with ` · ` (the comma form
+  stays for the add form's accepted input).
+- **W17 · empty ENABLED column:** the Sources ENABLED column disappears when no
+  row diverges from the default.
+- **W18 · list-card kickers:** the Jobs and Secrets cards gain kickers, so every
+  list card has one.
+- **W19 · one colour for never:** a backup target with no run yet renders its
+  NEVER fact as wait (a gap, not a failure), matching Sources' NEVER and the
+  powerline dead-man.
+
 ## 2026-09-02 — design-review MED pass (consistency)
 
 - **W4 · ligatures off:** every mono run (`code`, `pre`, `.log`, `.mono`) turns

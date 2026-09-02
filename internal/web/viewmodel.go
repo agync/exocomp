@@ -242,6 +242,18 @@ func (r sourceRow) Short() string {
 // quiet dash.
 func (r sourceRow) NeverSynced() bool { return r.SyncSHA == "" }
 
+// ShowEnabledColumn reports whether any source is disabled: the ENABLED column
+// renders only when a row diverges from the default (F12/W17), so an all-enabled
+// estate drops the empty column.
+func (vm sourcesVM) ShowEnabledColumn() bool {
+	for _, sc := range vm.Sources {
+		if !sc.Enabled {
+			return true
+		}
+	}
+	return false
+}
+
 // scheduleRow is one cron schedule: its kind, expression, next/last fire, and
 // the outcome of the job its last fire enqueued — so a drift-check schedule's
 // last drift result reads at a glance. Argv/Target/ConcurrencyKey/JitterS/
