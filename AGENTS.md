@@ -59,3 +59,6 @@ test/lima/       Fedora lima templates for dummy managed nodes + smoke tests
   `Signed-off-by` trailer — invariant 9 admits no trailers at all.
 - See [docs/contribution/index.md](docs/contribution/index.md) for the full
   contribution guide.
+- The design system: root DESIGN.md (machine tokens) + docs/design/INVARIANTS.md
+  (philosophy, hard rules) + docs/design/DESIGN.md (components). Changes to
+  surfaces keep both themes and the invariants.

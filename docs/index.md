@@ -52,6 +52,7 @@ Purpose, revision under review, and build order — [design/index.md](design/ind
 | [Requirements](design/requirements.md) | Two hard constraints, six goals, the anti-scope contract, and what is deferred behind a named seam |
 | [Amendments](design/amendments.md) | The twelve normative changes from the 30-gap adversarial review |
 | [Delivery](design/delivery.md) | v0.1 / v0.5 / v1.0 with effort, and the risks carried into each |
+| [Design invariants](design/INVARIANTS.md) | The design philosophy, hard rules, and component vocabulary that survive any redesign |
 
 ## Operations
 
