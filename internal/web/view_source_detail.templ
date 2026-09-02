@@ -28,7 +28,9 @@ templ sourceDetail(vm sourceDetailVM) {
 			</div>
 			<dl class="kv">
 				<div><dt>URI</dt><dd class="mono wrap">{ orDash(vm.Source.URI) }</dd></div>
-				<div><dt>Ref</dt><dd class="mono">{ orDash(vm.Source.Ref) }</dd></div>
+				if vm.Source.Ref != "" {
+					<div><dt>Ref</dt><dd class="mono">{ vm.Source.Ref }</dd></div>
+				}
 				<div><dt>Last sync</dt>
 					if vm.Source.NeverSynced() {
 						<dd class="mono wait-text">never — sync to discover playbooks</dd>
@@ -40,7 +42,7 @@ templ sourceDetail(vm sourceDetailVM) {
 			if vm.Operator {
 				<div class="rowactions">
 					if vm.Source.NeverSynced() {
-						<span class="meta" title="sync is a CLI verb — the web surface only reads a source's tree">
+						<span class="meta syncnote" title="sync is a CLI verb — the web surface only reads a source's tree">
 							<code>exocomp source sync { vm.Source.Name }</code>
 						</span>
 					}
@@ -59,6 +61,18 @@ templ sourceDetail(vm sourceDetailVM) {
 						<button type="submit" class="btn danger">Delete…</button>
 					</form>
 				</div>
+			}
+		</div>
+		<div class="card span2 mt18">
+			<div class="kicker">Playbooks</div>
+			if len(vm.Playbooks) == 0 {
+				<p class="meta">{ vm.PlaybooksNote() }</p>
+			} else {
+				<ul class="playbooklist">
+					for _, pb := range vm.Playbooks {
+						<li class="mono">{ pb }</li>
+					}
+				</ul>
 			}
 		</div>
 		if !vm.Operator {
@@ -102,7 +116,7 @@ templ sourceDetail(vm sourceDetailVM) {
 					<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
 						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook") } class="writeform">
 							<label for="rp-select">Playbook</label>
-							if len(vm.Playbooks) == 0 {
+							if vm.Source.NeverSynced() || len(vm.Playbooks) == 0 {
 								<select id="rp-select" name="playbook" disabled>
 									<option value="">path — none discovered yet</option>
 								</select>
@@ -122,16 +136,16 @@ templ sourceDetail(vm sourceDetailVM) {
 							}
 							<label for="rp-path">Or a path relative to the checkout</label>
 							<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
-							<label for="rp-inventory">Inventory</label>
-							<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
-							<label for="rp-limit">Limit</label>
-							<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
-							<label for="rp-tags">Tags</label>
-							<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
-							<label for="rp-secrets">Run secrets binding</label>
-							<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
 							<details class="opts">
-								<summary>Options — inventory, limit, tags, secrets</summary>
+								<summary>Options — inventory, limit, tags, secrets, run modes</summary>
+								<label for="rp-inventory">Inventory</label>
+								<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
+								<label for="rp-limit">Limit</label>
+								<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
+								<label for="rp-tags">Tags</label>
+								<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
+								<label for="rp-secrets">Run secrets binding</label>
+								<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
 								@toggle("check", "check mode (dry run)", false, false)
 								@toggle("diff", "show diff", false, false)
 								<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
@@ -143,8 +157,8 @@ templ sourceDetail(vm sourceDetailVM) {
 							</div>
 							<div class="actions">
 								<button type="submit" class="btn primary">{ vm.QueueLabel() }</button>
-								<p class="meta">enqueued, never executed directly · Esc closes</p>
 							</div>
+							<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
@@ -166,8 +180,8 @@ templ sourceDetail(vm sourceDetailVM) {
 							</div>
 							<div class="actions">
 								<button type="submit" class="btn primary">{ vm.QueueLabel() }</button>
-								<p class="meta">enqueued, never executed directly · Esc closes</p>
 							</div>
+							<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 						</form>
 					</div>
 					<script>

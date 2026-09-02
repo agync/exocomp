@@ -13,9 +13,11 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// seedSourceCheckout registers a path source whose checkout is a real temp
-// directory holding one playbook, so discovery and a source-scoped run have a
-// tree to resolve against. It returns the source name.
+// seedSourceCheckout registers a SYNCED path source whose checkout is a real
+// temp directory holding one playbook, so discovery and a source-scoped run
+// have a tree to resolve against and the playbook select stays enabled (a
+// never-synced source would disable it — the F14 state is covered separately by
+// seedGitSource). It returns the source name.
 func seedSourceCheckout(t *testing.T, h *harness) string {
 	t.Helper()
 	root := t.TempDir()
@@ -24,6 +26,7 @@ func seedSourceCheckout(t *testing.T, h *harness) string {
 	}
 	if _, err := h.store.CreateSource(context.Background(), store.Source{
 		Name: "tree", Kind: store.SourcePath, URI: root, Enabled: true,
+		LastSyncSHA: "0123456789abcdef",
 	}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
@@ -489,5 +492,50 @@ func TestRunSurfaceRemoved(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("POST /run/playbook = %d, want 404 (removed)", resp.StatusCode)
+	}
+}
+
+// seedUnsyncedPath registers a PATH source with a checkout on disk but no sync
+// recorded: discovery finds real playbooks, yet the source has never synced —
+// the F14 state where the select must be disabled anyway (never-synced = no
+// trusted tree).
+func seedUnsyncedPath(t *testing.T, h *harness) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "site.yml"), []byte("- hosts: all\n  tasks: []\n"), 0o644); err != nil {
+		t.Fatalf("write playbook: %v", err)
+	}
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "unsynced", Kind: store.SourcePath, URI: root, Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	return "unsynced"
+}
+
+// TestSourcePlaybookSelectDisabledUnsynced is the GATE for F14: a never-synced
+// source gets the disabled playbook select + the path-promoted meta line even
+// when discovery found playbooks in the checkout — the select is a dead control
+// until the source has synced.
+func TestSourcePlaybookSelectDisabledUnsynced(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedUnsyncedPath(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		`<select id="rp-select" name="playbook" disabled>`,
+		`Unsynced source: give a path relative to the checkout.`,
+		`site.yml`, // discovery still lists the checkout's playbook in the card
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("unsynced source missing F14 marker %q", want)
+		}
 	}
 }

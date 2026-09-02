@@ -6,6 +6,31 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review HIGH pass (W1/W2/W3 + F4 remainder)
+
+- **W1 · header primary verb:** the app-bar Add button is a 34px nowrap accent
+  button (`.addbtn` no longer caps at 32px transparent and strips the fill); on
+  phones the meta slot hides before the verb shrinks.
+- **W2 · attention band truth:** the NEEDS ATTENTION band shares the rail
+  badge's one source of truth — a check estate with targets down surfaces as a
+  fail chip + sentence + decision link ("2 DOWN · 2 of 2 targets down · Open
+  checks →"). All six attention cards render the chip + one sentence + one
+  decision link shape, never a count tile; the never-synced sources sentence
+  names the sources.
+- **W3 · phone powerline:** below 640px the powerline is one horizontal row that
+  scrolls instead of wrapping over the content; the identity segment hides (it
+  is already in the header).
+- **F4 remainder:** the source detail gains a PLAYBOOKS card; the drawer's
+  Options fold now holds the inventory/limit/tags/secrets fields closed by
+  default; the footer button is full-width with the queue note on its own line;
+  `@ {ref}` is omitted when a source has no ref (drawer meta, queue button, and
+  the Ref fact row); the playbook select is disabled on any never-synced source
+  (not just an empty discovery); and the `exocomp source sync` note is spaced
+  from the Launch verb.
+- **W12/W15 fixes:** the never-synced detail fact actually renders wait and the
+  check down-count actually renders fail — `.fail-text`/`.wait-text` now sit
+  after `.meta`, and `.kv dd.wait-text` beats the `.kv dd` colour.
+
 ## 2026-09-01 — check-transition observation ledger
 
 - **A check transition now carries the hysteresis ledger that produced it.**

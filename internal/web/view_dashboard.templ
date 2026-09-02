@@ -21,7 +21,7 @@ templ dashboard(vm dashboardVM) {
 				<span class="count">{ swallowedText(vm.Banner) }</span>
 			</div>
 		}
-		if vm.Approvals.Pending > 0 || vm.Workspaces.Drifted > 0 || vm.Sources.Attention > 0 || vm.Checks.Disabled > 0 || vm.Schedules.Disabled > 0 || vm.Workflows.InFlight > 0 {
+		if vm.Approvals.Pending > 0 || vm.Workspaces.Drifted > 0 || vm.Sources.Attention > 0 || vm.Checks.Disabled > 0 || vm.Checks.TargetsDown > 0 || vm.Schedules.Disabled > 0 || vm.Workflows.InFlight > 0 {
 			<section class="band" aria-label="Needs attention">
 				<div class="band-kicker">Needs attention</div>
 				<div class="attn-grid">
@@ -34,7 +34,7 @@ templ dashboard(vm dashboardVM) {
 					if vm.Sources.Attention > 0 {
 						@sourcesCard(vm.Sources)
 					}
-					if vm.Checks.Disabled > 0 {
+					if vm.Checks.TargetsDown > 0 || vm.Checks.Disabled > 0 {
 						@checksCard(vm.Checks)
 					}
 					if vm.Schedules.Disabled > 0 {
@@ -71,16 +71,10 @@ templ chip(class, label string) {
 // attention item on the glance screen — the card carries the wait/amber
 // accent and the soonest item's one-line subline; zero is calm.
 templ approvalsCard(vm approvalSummary) {
-	<a class={ "card", "cardlink", templ.KV("attn", vm.Pending > 0) } href="/approvals" aria-labelledby="needsyou-h">
-		<h3 id="needsyou-h">Pending approvals</h3>
-		if vm.Pending > 0 {
-			<div class="cardnum warn">{ itoa(int64(vm.Pending)) }</div>
-			<p class="cardlabel">waiting on you</p>
-			<p class="cardsub warn">{ vm.Subline() }</p>
-			<span class="cardact">Open approvals →</span>
-		} else {
-			<p class="cardsub meta">None waiting.</p>
-		}
+	<a class="card cardlink attn" href="/approvals" aria-labelledby="needsyou-chip">
+		<span class="chip wait" id="needsyou-chip"><span class="dot"></span>{ itoa(int64(vm.Pending)) } PENDING</span>
+		<p class="cardsub">{ vm.Subline() }</p>
+		<span class="cardact">Open approvals →</span>
 	</a>
 }
 
@@ -106,40 +100,25 @@ templ queueCard(vm jobSummary) {
 // with any drift called out in the attention accent — drift is the signal an
 // operator scans for here.
 templ workspacesCard(vm workspaceSummary) {
-	<a class={ "card", "cardlink", templ.KV("attn", vm.Drifted > 0) } href="/workspaces" aria-labelledby="ws-h">
-		<h3 id="ws-h">Workspaces</h3>
-		if vm.Total == 0 {
-			<p class="cardsub meta">No workspaces registered.</p>
-		} else {
-			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
-			<p class="cardlabel">workspaces</p>
-			if vm.Drifted > 0 {
-				<p class="cardsub warn">{ itoa(int64(vm.Drifted)) } drifted</p>
-				<span class="cardact">Open workspaces →</span>
-			} else {
-				<p class="cardsub meta">All in sync.</p>
-			}
-		}
+	<a class="card cardlink attn" href="/workspaces" aria-labelledby="ws-chip">
+		<span class="chip wait" id="ws-chip"><span class="dot"></span>{ itoa(int64(vm.Drifted)) } DRIFTED</span>
+		<p class="cardsub">{ itoa(int64(vm.Drifted)) } workspaces out of sync — a plan or check moved the state.</p>
+		<span class="cardact">Open workspaces →</span>
 	</a>
 }
 
 // sourcesCard is the dashboard's source summary: the registered total, with
 // any needing attention (never synced, or disabled) called out.
 templ sourcesCard(vm sourceSummary) {
-	<a class={ "card", "cardlink", templ.KV("attn", vm.Attention > 0) } href="/sources" aria-labelledby="sources-h">
-		<h3 id="sources-h">Sources</h3>
-		if vm.Total == 0 {
-			<p class="cardsub meta">No sources registered.</p>
+	<a class="card cardlink attn" href="/sources" aria-labelledby="sources-chip">
+		if vm.NeverSynced > 0 {
+			<span class="chip wait" id="sources-chip"><span class="dot"></span>{ itoa(int64(vm.NeverSynced)) } NEVER SYNCED</span>
+			<p class="cardsub">{ vm.NeverSentence() }</p>
 		} else {
-			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
-			<p class="cardlabel">sources</p>
-			if vm.Attention > 0 {
-				<p class="cardsub warn">{ itoa(int64(vm.Attention)) } need attention</p>
-				<span class="cardact">Review source →</span>
-			} else {
-				<p class="cardsub meta">All synced.</p>
-			}
+			<span class="chip wait" id="sources-chip"><span class="dot"></span>{ itoa(int64(vm.Attention)) } NEEDS LOOK</span>
+			<p class="cardsub">A source is disabled or unsigned — nothing runs from it until it is fixed.</p>
 		}
+		<span class="cardact">Review sources →</span>
 	</a>
 }
 
@@ -148,19 +127,15 @@ templ sourcesCard(vm sourceSummary) {
 // checks. DOWN is normal for an away/roaming host, so it is never the accent;
 // a disabled check is (mirrors sourcesCard).
 templ checksCard(vm checksSummary) {
-	<a class={ "card", "cardlink", templ.KV("attn", vm.Disabled > 0) } href="/checks" aria-labelledby="checks-h">
-		<h3 id="checks-h">Checks</h3>
-		if vm.Total == 0 {
-			<p class="cardsub meta">No checks registered.</p>
+	<a class="card cardlink attn" href="/checks" aria-labelledby="checks-chip">
+		if vm.TargetsDown > 0 {
+			<span class="chip fail" id="checks-chip"><span class="dot"></span>{ itoa(int64(vm.TargetsDown)) } DOWN</span>
+			<p class="cardsub">{ itoa(int64(vm.TargetsDown)) } of { itoa(int64(vm.TargetsTotal)) } targets down — reachability is the fact the sweep last observed.</p>
 		} else {
-			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
-			<p class="cardlabel">checks</p>
-			if vm.Disabled > 0 {
-				<p class="cardsub warn">{ itoa(int64(vm.Disabled)) } disabled</p>
-				<span class="cardact">Open checks →</span>
-			}
-			<p class="cardsub">{ itoa(int64(vm.TargetsUp)) } targets up</p>
+			<span class="chip wait" id="checks-chip"><span class="dot"></span>{ itoa(int64(vm.Disabled)) } DISABLED</span>
+			<p class="cardsub">A check is disabled and no longer probed.</p>
 		}
+		<span class="cardact">Open checks →</span>
 	</a>
 }
 
@@ -169,10 +144,9 @@ templ checksCard(vm checksSummary) {
 // empty is noise, not signal, so a quiet estate hides it entirely rather than
 // showing a permanent "None".
 templ workflowsCard(vm workflowSummary) {
-	<a class="card cardlink" href="/workflows" aria-labelledby="flows-h">
-		<h3 id="flows-h">Workflows in flight</h3>
-		<div class="cardnum">{ itoa(int64(vm.InFlight)) }</div>
-		<p class="cardlabel">in flight</p>
+	<a class="card cardlink attn" href="/workflows" aria-labelledby="flows-chip">
+		<span class="chip wait" id="flows-chip"><span class="dot"></span>{ itoa(int64(vm.InFlight)) } IN FLIGHT</span>
+		<p class="cardsub">A provision → converge chain is partway through its steps.</p>
 		<span class="cardact">Open workflows →</span>
 	</a>
 }
@@ -182,18 +156,10 @@ templ workflowsCard(vm workflowSummary) {
 // a schedule is disabled — a disabled schedule has silently stopped firing,
 // the one signal an operator scans for (mirrors sourcesCard).
 templ schedulesCard(vm scheduleSummary) {
-	<a class={ "card", "cardlink", templ.KV("attn", vm.Disabled > 0) } href="/schedules" aria-labelledby="sched-h">
-		<h3 id="sched-h">Schedules</h3>
-		if vm.Total == 0 {
-			<p class="cardsub meta">No schedules registered.</p>
-		} else {
-			<div class="cardnum">{ itoa(int64(vm.Total)) }</div>
-			<p class="cardlabel">schedules</p>
-			<p class={ "cardsub", templ.KV("warn", vm.Disabled > 0) }>{ itoa(int64(vm.Total)) } schedules · { itoa(int64(vm.Disabled)) } disabled</p>
-			if vm.Disabled > 0 {
-				<span class="cardact">Open schedules →</span>
-			}
-		}
+	<a class="card cardlink attn" href="/schedules" aria-labelledby="sched-chip">
+		<span class="chip wait" id="sched-chip"><span class="dot"></span>{ itoa(int64(vm.Disabled)) } DISABLED</span>
+		<p class="cardsub">A schedule is disabled and no longer fires.</p>
+		<span class="cardact">Open schedules →</span>
 	</a>
 }
 

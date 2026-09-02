@@ -460,3 +460,41 @@ func TestAppbarAndNavGroups(t *testing.T) {
 		t.Error("page still renders its own display h1 alongside the app bar (F15)")
 	}
 }
+
+// TestReviewCSSGuards pins the v0.4 CSS fixes that a markup test cannot see:
+// the header primary verb is a 34px nowrap accent button (W1), and the
+// state-tint rules (.fail-text/.wait-text) are declared AFTER .meta so a
+// `meta mono fail-text` down-count actually renders fail, with .kv dd.wait-text
+// beating the .kv dd colour (W12/W15). Reordering these breaks the guard.
+func TestReviewCSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	metaAt := strings.Index(app, ".meta { color: var(--ink-500); font: var(--type-body); }")
+	failAt := strings.Index(app, ".fail-text { color: var(--signal-fail); }")
+	waitAt := strings.Index(app, ".wait-text { color: var(--signal-wait); }")
+	kvAt := strings.Index(app, ".kv dd.wait-text { color: var(--signal-wait); }")
+	if failAt == -1 || waitAt == -1 || kvAt == -1 {
+		t.Error("app.css missing the state-tint rules")
+	}
+	if failAt < metaAt || waitAt < metaAt {
+		t.Error(".fail-text/.wait-text must be declared after .meta (W12/W15 specificity)")
+	}
+	if kvAt < waitAt {
+		t.Error(".kv dd.wait-text must follow the bare .wait-text")
+	}
+	for _, want := range []string{
+		".addbtn {",
+		"min-height: 34px; height: 34px; padding: 0 14px",
+		"white-space: nowrap",
+		".appbar-meta { display: none; }",
+		".powerline .pl-who { display: none; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing W1/W3 rule %q", want)
+		}
+	}
+}

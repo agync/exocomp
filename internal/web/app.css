@@ -373,10 +373,7 @@ a.cardlink:hover, a.cardlink:focus-visible {
 a.cardlink.attn { border-color: var(--wait-border); background: var(--wait-tint); }
 a.cardlink.attn:hover, a.cardlink.attn:focus-visible { border-color: var(--signal-wait); }
 .cardnum { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
-.cardnum.warn { color: var(--signal-wait); }
-.cardlabel { margin: 2px 0 0; font: var(--type-body); color: var(--ink-400); }
 .cardsub { margin: 10px 0 0; font: var(--type-body); }
-.cardsub.warn { color: var(--signal-wait); }
 .cardsub.fail { color: var(--signal-fail); }
 .cardsub.meta { color: var(--ink-500); }
 
@@ -465,7 +462,6 @@ td.right, th.right { text-align: right; }
 .target .tstate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .target .tstate .meta { color: var(--ink-500); }
 .target .tstate .meta b { color: var(--ink-400); font-weight: 600; }
-.fail-text { color: var(--signal-fail); }
 
 /* An unbounded mono value — a 70-char CEL expression, a long git URI or path —
  * wraps inside a capped column instead of forcing the whole wide table to scroll
@@ -717,13 +713,17 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * compact and un-stacked. */
 .pageheader .actions { margin-top: 0; }
 .pageheader .actions .btn { width: auto; }
+/* The header's one primary verb (W1): a 34px nowrap accent button. It always
+ * renders as `class="btn primary addbtn"`, so .btn.primary owns the accent
+ * fill/on colors and this rule owns the size + nowrap — a two-word "Add
+ * schedule" label must never wrap or climb the app-bar meta. */
 .addbtn {
-  width: 32px; height: 32px; padding: 0; flex: none; align-self: center;
+  min-height: 34px; height: 34px; padding: 0 14px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
-  background: transparent; color: var(--accent-text);
-  border: 1px solid var(--hairline); border-radius: 9px; cursor: pointer;
+  border-radius: var(--radius-control);
+  font: var(--type-button); white-space: nowrap; cursor: pointer;
 }
-.addbtn:hover { color: var(--accent-text); background: var(--accent-tint); }
+.addbtn:hover { color: var(--accent-on); }
 
 /* ---- Modal ----
  * The native <dialog>. showModal() renders it in the browser TOP LAYER, so it is
@@ -767,6 +767,14 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * so it reads as the sharp edge it is, never a plain option. */
 .opts { margin-top: 12px; }
 .opts > summary { cursor: pointer; color: var(--ink-400); font: var(--type-button); list-style: none; }
+/* The drawer footer's queue note sits on its own line below the full-width
+ * button (F4), so it never rides beside it. */
+.drawer-foot { margin-top: 10px; }
+/* The discovered-playbooks card: one mono line per playbook, no bullets. */
+.playbooklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.playbooklist li { font: var(--type-log); color: var(--ink-200); }
+/* The CLI sync note beside the Launch verb: a little room from the button. */
+.syncnote { margin-right: 10px; }
 .privileged {
   margin-top: 12px; padding: 12px 14px;
   border: 1px solid var(--fail-border); border-radius: var(--radius-control);
@@ -841,8 +849,13 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .log .sys { color: var(--ink-500); }
 
 .meta { color: var(--ink-500); font: var(--type-body); }
+/* State-tinted text rides AFTER .meta so its colour wins at equal specificity
+ * (W15: a `meta mono fail-text` down-count must render fail, not ink-500). */
+.fail-text { color: var(--signal-fail); }
 .wait-text { color: var(--signal-wait); }
-
+/* The never-synced detail fact lives on a `.kv dd` (specificity 0,1,1), which
+ * would beat a bare .wait-text — pin the state colour explicitly (W12). */
+.kv dd.wait-text { color: var(--signal-wait); }
 /* ---- Powerline (fixed-bottom status bar) ----
  * Always at the viewport bottom, spanning the full width beneath the sidebar
  * (which is shortened by --powerline-h to sit above it). Thin, muted, mono: the
@@ -874,6 +887,17 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .powerline .pl-who {
   margin-left: auto; color: var(--ink-400);
   font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
+}
+/* Phone powerline (W3): one row that scrolls horizontally instead of wrapping
+ * to three lines and growing over the content. The identity segment hides —
+ * it is already in the app bar's identity position on phones. */
+@media (max-width: 640px) {
+  .powerline {
+    gap: 14px; padding: 0 12px;
+    overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+  }
+  .pl-seg { white-space: nowrap; flex: none; }
+  .powerline .pl-who { display: none; }
 }
 
 /* ---- Phone approval surface (390px) ---- */
@@ -951,6 +975,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * Card padding drops here so a stacked row keeps usable width on a 380px screen. */
 @media (max-width: 560px) {
   .card { padding: 16px 16px; }
+  /* The app bar's meta slot (the page's own fact) drops before the header's
+   * primary verb shrinks — the verb is the action, the meta is context. */
+  .appbar-meta { display: none; }
   .tablewrap.stackable table,
   .tablewrap.stackable thead,
   .tablewrap.stackable tbody,

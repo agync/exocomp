@@ -252,6 +252,12 @@ func (s *Server) sourceSummary(r *http.Request) (sourceSummary, error) {
 		if !src.Enabled || src.SyncSHA == "" {
 			card.Attention++
 		}
+		if src.SyncSHA == "" {
+			card.NeverSynced++
+			if len(card.NeverNames) < 2 {
+				card.NeverNames = append(card.NeverNames, src.Name)
+			}
+		}
 	}
 	return card, nil
 }
@@ -260,24 +266,34 @@ func (s *Server) sourceSummary(r *http.Request) (sourceSummary, error) {
 // total, how many targets the sweep currently probes up, and how many checks
 // are disabled. The up-target line is a single aggregate COUNT over
 // check_state — never a per-check ListCheckStates loop, so the glance screen
-// stays N+1-free. DOWN is normal for an away host, so it is not the attention
-// signal; a disabled check is (mirrors sourcesCard).
+// stays N+1-free. A target that reads down (or was never observed) is the
+// attention fact the NEEDS ATTENTION band leads with — the rail badge counts
+// down targets, so the band and the badge share one source of truth.
 func (s *Server) checkSummary(r *http.Request) (checksSummary, error) {
 	list, err := s.store.ListChecks(r.Context(), false)
 	if err != nil {
 		return checksSummary{}, err
 	}
 	card := checksSummary{Total: len(list)}
+	targets := 0
 	for _, c := range list {
 		if !c.Enabled {
 			card.Disabled++
+			continue
 		}
+		targets += len(c.Targets)
 	}
+	card.TargetsTotal = targets
 	up, err := s.store.CountCheckStatesByStatus(r.Context(), store.CheckUp)
 	if err != nil {
 		return checksSummary{}, err
 	}
 	card.TargetsUp = up
+	down, err := s.store.CountCheckStatesByStatus(r.Context(), store.CheckDown)
+	if err != nil {
+		return checksSummary{}, err
+	}
+	card.TargetsDown = down
 	return card, nil
 }
 

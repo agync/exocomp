@@ -92,9 +92,8 @@ func TestDashboardPostV1Sections(t *testing.T) {
 	}
 	for _, want := range []string{
 		// the in-flight workflow is an attention card (band one)
-		`aria-labelledby="flows-h"`,
-		`<h3 id="flows-h">Workflows in flight</h3>`,
-		`<p class="cardlabel">in flight</p>`,
+		`aria-labelledby="flows-chip"`,
+		`<span class="chip wait" id="flows-chip"><span class="dot"></span>1 IN FLIGHT</span>`,
 		`<span class="cardact">Open workflows →</span>`,
 		// calm schedules summarise as a count in the COUNTS band
 		`<div class="count-kicker">Schedules</div>`,
@@ -108,7 +107,7 @@ func TestDashboardPostV1Sections(t *testing.T) {
 	}
 	// A synced, enabled source needs no attention and renders nowhere — the
 	// glance keeps quiet surfaces off the bands (F6).
-	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-h"`) {
+	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-chip"`) {
 		t.Error("a calm source should not render on the glance screen (F6)")
 	}
 	for _, unwanted := range []string{

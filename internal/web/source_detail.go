@@ -101,23 +101,32 @@ func (vm sourceDetailVM) RunLabel() string {
 
 // QueueLabel is the launch drawer's submit-button contract: the thing being
 // queued and the ref it resolves against, so the operator sees exactly what the
-// one queue will run (F4).
+// one queue will run (F4). The `@ ref` is omitted when the source has no ref.
 func (vm sourceDetailVM) QueueLabel() string {
-	ref := vm.Source.Ref
-	if ref == "" {
-		ref = "—"
+	if vm.Source.Ref == "" {
+		return "Queue run — " + vm.RunLabel()
 	}
-	return "Queue run — " + vm.RunLabel() + " @ " + ref
+	return "Queue run — " + vm.RunLabel() + " @ " + vm.Source.Ref
 }
 
-// LaunchMeta is the drawer's provenance line — which source and ref the run
-// resolves against, and that it queues rather than executes directly.
-func (vm sourceDetailVM) LaunchMeta() string {
-	ref := vm.Source.Ref
-	if ref == "" {
-		ref = "—"
+// PlaybooksNote is the PLAYBOOKS card's line when discovery found nothing: it
+// names the reason — a never-synced source (no checkout to read) vs a synced
+// source with an unusual layout.
+func (vm sourceDetailVM) PlaybooksNote() string {
+	if vm.Source.NeverSynced() {
+		return "None discovered — this source has never synced. Sync brings the checkout down and reads its layout."
 	}
-	return vm.Source.Name + " @ " + ref + " · queues through the one queue"
+	return "None discovered in the checkout — give a path relative to it in the launcher."
+}
+
+// LaunchMeta is the drawer's provenance line — which source (and ref, when it
+// has one) the run resolves against, and that it queues rather than executes
+// directly. `@ {ref}` is omitted for a ref-less source.
+func (vm sourceDetailVM) LaunchMeta() string {
+	if vm.Source.Ref == "" {
+		return vm.Source.Name + " · queues through the one queue"
+	}
+	return vm.Source.Name + " @ " + vm.Source.Ref + " · queues through the one queue"
 }
 
 func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {

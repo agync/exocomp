@@ -116,13 +116,12 @@ func TestDashboardSummaryCards(t *testing.T) {
 		t.Error("dashboard shows settled job history; the queue card must count active jobs only")
 	}
 
-	// Pending approvals: the primary attention item, wait/amber accent, one
-	// subline naming the soonest item (the only one here) and its deadline.
+	// Pending approvals: the primary attention item, a wait chip + one subline
+	// naming the soonest item (the only one here) + the decision link.
 	for _, want := range []string{
-		`<a class="card cardlink attn" href="/approvals" aria-labelledby="needsyou-h">`,
-		`<div class="cardnum warn">1</div>`,
-		`<p class="cardlabel">waiting on you</p>`,
-		`class="cardsub warn"`,
+		`<a class="card cardlink attn" href="/approvals" aria-labelledby="needsyou-chip">`,
+		`<span class="chip wait" id="needsyou-chip"><span class="dot"></span>1 PENDING</span>`,
+		`Open approvals →`,
 		"deploy-app", // gatedJob's fixed runbook — the soonest (only) item's target
 	} {
 		if !strings.Contains(page, want) {
@@ -243,11 +242,9 @@ func TestDashboardChecksCard(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<a class="card cardlink attn" href="/checks" aria-labelledby="checks-h">`,
-		`<div class="cardnum">2</div>`,
-		`<p class="cardlabel">checks</p>`,
-		`<p class="cardsub warn">1 disabled</p>`,
-		`<p class="cardsub">1 targets up</p>`,
+		`<a class="card cardlink attn" href="/checks" aria-labelledby="checks-chip">`,
+		`<span class="chip wait" id="checks-chip"><span class="dot"></span>1 DISABLED</span>`,
+		`Open checks →`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing checks-card marker %q", want)
@@ -309,10 +306,9 @@ func TestDashboardWorkflowsCardShowsWhenInFlight(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<a class="card cardlink" href="/workflows" aria-labelledby="flows-h">`,
-		`<h3 id="flows-h">Workflows in flight</h3>`,
-		`<div class="cardnum">1</div>`,
-		`<p class="cardlabel">in flight</p>`,
+		`<a class="card cardlink attn" href="/workflows" aria-labelledby="flows-chip">`,
+		`<span class="chip wait" id="flows-chip"><span class="dot"></span>1 IN FLIGHT</span>`,
+		`Open workflows →`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing workflows-card marker %q", want)
@@ -352,10 +348,9 @@ func TestDashboardSchedulesCard(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<a class="card cardlink attn" href="/schedules" aria-labelledby="sched-h">`,
-		`<div class="cardnum">2</div>`,
-		`<p class="cardlabel">schedules</p>`,
-		`<p class="cardsub warn">2 schedules · 1 disabled</p>`,
+		`<a class="card cardlink attn" href="/schedules" aria-labelledby="sched-chip">`,
+		`<span class="chip wait" id="sched-chip"><span class="dot"></span>1 DISABLED</span>`,
+		`Open schedules →`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing schedules-card marker %q", want)
@@ -391,5 +386,51 @@ func TestDashboardSchedulesCardCalm(t *testing.T) {
 	}
 	if strings.Contains(page, `aria-labelledby="sched-h"`) {
 		t.Error("a calm schedules card should not render in the attention band (F6)")
+	}
+}
+
+// TestDashboardChecksDownInBand is the GATE for W2: a check estate with targets
+// down surfaces in the NEEDS ATTENTION band as a fail chip + sentence + decision
+// link — the rail badge counts down targets and the band shares that one source
+// of truth, so the "4 DOWN" fact is never buried.
+func TestDashboardChecksDownInBand(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	c, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "presence", Kind: store.CheckTCP, IntervalS: 5,
+		Targets: []store.CheckTarget{
+			{Name: "phone", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "10.0.0.5", Port: 22},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCheck: %v", err)
+	}
+	now := time.Now().UTC()
+	for _, tn := range []string{"phone", "nas"} {
+		if err := h.store.SetCheckState(ctx, store.CheckState{
+			CheckID: c.ID, TargetName: tn, Status: store.CheckDown,
+			Consecutive: 3, Emitted: store.CheckDown, FirstSeen: now, LastChange: now,
+		}); err != nil {
+			t.Fatalf("SetCheckState %s: %v", tn, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<span class="chip fail" id="checks-chip"><span class="dot"></span>2 DOWN</span>`,
+		`2 of 2 targets down`,
+		`Open checks →`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard missing W2 checks-down marker %q", want)
+		}
 	}
 }

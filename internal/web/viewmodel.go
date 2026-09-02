@@ -142,20 +142,38 @@ type workspaceSummary struct {
 }
 
 // sourceSummary is the dashboard's source card: the registered total and how
-// many need attention — never synced, or disabled.
+// many need attention — never synced, or disabled. NeverSynced + NeverNames
+// drive the NEEDS ATTENTION band's chip + sentence for the never-synced case.
 type sourceSummary struct {
-	Total     int
-	Attention int
+	Total       int
+	Attention   int
+	NeverSynced int
+	NeverNames  []string
 }
 
-// checksSummary is the dashboard's probe-estate card: the registered total,
-// the targets the sweep currently observes up, and how many checks are
-// disabled. DOWN is not the attention signal — it is normal for an
-// away/roaming host — a disabled check is (mirrors sourcesCard).
+// NeverSentence is the attention card's one line for never-synced sources:
+// the names, or a generic line when more than two never synced.
+func (s sourceSummary) NeverSentence() string {
+	switch len(s.NeverNames) {
+	case 1:
+		return s.NeverNames[0] + " has never synced — nothing can run from it until it does."
+	case 2:
+		return s.NeverNames[0] + " and " + s.NeverNames[1] + " have never synced — nothing can run from them until they do."
+	default:
+		return itoa(int64(s.NeverSynced)) + " sources have never synced — nothing can run from them until they do."
+	}
+}
+
+// checksSummary is the dashboard's probe-estate card: the registered total, the
+// targets the sweep currently observes up, and how many checks are disabled.
+// DOWN is not the attention signal — it is normal for an away/roaming host —
+// a disabled check is (mirrors sourcesCard).
 type checksSummary struct {
-	Total     int
-	TargetsUp int
-	Disabled  int
+	Total        int
+	TargetsUp    int
+	TargetsDown  int
+	TargetsTotal int
+	Disabled     int
 }
 
 // scheduleSummary is the dashboard's schedule card: the registered total and
