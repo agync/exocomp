@@ -13,7 +13,7 @@ ink · headings         #ECEFF0     15 bright white/bold  bold; degrades to plai
 ink · body             #D6DBDD     7  default fg         —
 dim · meta, disabled   #8A9296     8  bright black*      parenthesized · "disabled" spelled out
 rules                  #4A5254     8  bright black*      ─ characters, structural only
-selected row           bg #1D2426  reverse video         ▸ prefix (ASCII fallback: >)
+selected row           reverse video  reverse video         ▸ prefix (ASCII fallback: >)
 running                #4FB86B ●   2  green ● static     the word "running" — dot is decoration
                        breathes 1.6s
 

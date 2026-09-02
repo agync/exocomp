@@ -28,7 +28,9 @@ var (
 	styleWait        = lipgloss.NewStyle().Foreground(colorWait)
 	styleDim         = lipgloss.NewStyle().Foreground(colorDim)
 	styleRules       = lipgloss.NewStyle().Foreground(colorRules)
-	styleSelectedRow = lipgloss.NewStyle().Background(colorSelectedRow).Reverse(true)
+	// Reverse video only: a truecolor background under SGR 7 renders the row
+	// inverted rather than bg-tinted on a truecolor terminal (colors.txt).
+	styleSelectedRow = lipgloss.NewStyle().Reverse(true)
 )
 
 // renderState colors a job or backup run state per the design's semantic table:
