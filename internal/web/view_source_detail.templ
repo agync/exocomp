@@ -41,11 +41,6 @@ templ sourceDetail(vm sourceDetailVM) {
 			</dl>
 			if vm.Operator {
 				<div class="rowactions">
-					if vm.Source.NeverSynced() {
-						<span class="meta syncnote" title="sync is a CLI verb — the web surface only reads a source's tree">
-							<code>exocomp source sync { vm.Source.Name }</code>
-						</span>
-					}
 					<button type="button" class="btn primary" data-modal-open="launch">Launch a run…</button>
 					if vm.Source.Enabled {
 						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/disable") } class="inline-form">
@@ -63,6 +58,9 @@ templ sourceDetail(vm sourceDetailVM) {
 				</div>
 			}
 		</div>
+		if vm.Source.NeverSynced() {
+			<p class="meta mt8">Sync is a CLI verb — run <code>exocomp source sync { vm.Source.Name }</code> on the host to bring the checkout down and read its playbooks.</p>
+		}
 		<div class="card span2 mt18">
 			<div class="kicker">Playbooks</div>
 			if len(vm.Playbooks) == 0 {

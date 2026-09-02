@@ -62,7 +62,19 @@ disagree, the code wins and the correction lands in `docs/log.md`.
   are fine inside text.
 - **Copy**: commands render as `exocomp` (never `exo`). Buttons one word where
   possible; trailing "…" only when the action opens a confirm dialog.
-  Findings-not-praise tone; no marketing language.
+  Findings-not-praise tone; no marketing language. Insecure/cleartext warnings
+  read as plain English for a human, never internal vocabulary ("on the wire",
+  "listener", "served over cleartext").
+- **Row actions** (current stance): a tray row's Actions cell holds its common
+  verb pairs as word buttons at 30px, 8px apart, on one line; danger is a ring
+  until the confirm dialog. Views (Saved plans, Backend config, Bindings, Open)
+  do not sit in the row as buttons — they belong on the resource's detail page.
+  (The glyph-row + chevron menu design is a decided follow-on, not yet landed.)
+- **One button-height ladder**: 34px default, 30px in tray rows and card feet,
+  44px for a form's single dominant verb (the `.actions` block: modal submits,
+  the launch drawer, login), 48px phone floor on every button below 560px.
+- **A list card's zero-state sentence shows only at zero** (a non-zero count
+  never contradicts it), and it names the verb that changes the state.
 - **A11y gates**: 48px touch targets on the phone surface (44px rows on desktop),
   200% reflow, keyboard reachable everywhere (mouse-only control = bug), greyscale
   legible, visible focus ring, TalkBack live regions on the approval surface.

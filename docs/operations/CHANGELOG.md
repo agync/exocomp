@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — design-review v0.5 lane C (footnote, NITs, invariants)
+
+- **The source sync note is a footnote, not an inline button-row text** (F4):
+  a never-synced source's detail page carries
+  `exocomp source sync <name>` under the identity card, like the Sources list
+  footnote — not jammed beside the Launch verb.
+- **`never fired` reads as wait** on schedules (R11), matching Sources'
+  never-synced and the powerline dead-man — one colour for never.
+- **The version string stops repeating itself** (R12): a dev build reads
+  "dev", not "dev (dev) built dev" — a segment equal to the version is
+  omitted; a real stamp keeps the full form.
+- **INVARIANTS additions**: the row-action stance, the one button-height
+  ladder, the zero-only list-card sentence, and the human insecure-warning
+  copy rule. R9 (COUNTS zero-state) documented as zero-only (already the
+  behaviour); R13 (light accent) verified as a fill-vs-tint reading, no token
+  mismatch — both noted to the designer.
+
 ## 2026-09-02 — design-review v0.5 lane B (MED consistency)
 
 - **Tray rows have no zebra** (R3): the alternating stripe is gone, so the dark

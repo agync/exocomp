@@ -82,7 +82,7 @@ for _, sc := range vm.Schedules {
 											</a>
 											<span class="meta">{ workspaceSuffix(sc.LastRunbook) }</span>
 										} else {
-											<span class="meta">never fired</span>
+											<span class="meta wait-text">never fired</span>
 										}
 									</td>
 									if vm.ShowEnabledColumn() {
@@ -136,7 +136,7 @@ for _, sc := range vm.Schedules {
 								</a>
 								<span class="meta">{ workspaceSuffix(sc.LastRunbook) }</span>
 							} else {
-								<span class="meta">never fired</span>
+								<span class="meta wait-text">never fired</span>
 							}
 						</dd>
 					</div>

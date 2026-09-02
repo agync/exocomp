@@ -12,3 +12,12 @@ func TestString(t *testing.T) {
 		t.Errorf("String() = %q, want %q", got, want)
 	}
 }
+
+func TestStringDedupsDev(t *testing.T) {
+	Version, Commit, Date = "dev", "dev", "dev"
+
+	got := String()
+	if got != "dev" {
+		t.Errorf("String() = %q, want %q (a segment equal to the version is omitted)", got, "dev")
+	}
+}
