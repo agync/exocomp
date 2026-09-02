@@ -171,6 +171,8 @@ templ sourceDetail(vm sourceDetailVM) {
 							@toggle("become", "become (privilege escalation)", false, false)
 							<label for="rc-inventory">Inventory</label>
 							<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
+							<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>
+							<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
 							<label for="rc-secrets">Run secrets binding</label>
 							<input id="rc-secrets" name="run_secrets" type="text" autocomplete="off"/>
 							@toggle("require_approval", "require approval before it runs", false, false)

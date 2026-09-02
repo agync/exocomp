@@ -156,6 +156,12 @@ func TestSourceDetailRendersLauncherForOperator(t *testing.T) {
 		!strings.Contains(body, `action="/sources/tree/run/command"`) {
 		t.Error("operator's source detail must render both run forms")
 	}
+	// The Command tab posts the timeout the route parses — the field the
+	// drawer rebuild dropped while the Playbook tab kept it (MED).
+	if !strings.Contains(body, `<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>`) ||
+		!strings.Contains(body, `<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit">`) {
+		t.Error("launch drawer Command tab lost its Timeout field (MED)")
+	}
 	// Discovery lists the seeded playbook as a <select> option.
 	if !strings.Contains(body, `>site.yml</option>`) {
 		t.Errorf("playbook select must list the discovered playbook, got:\n%s", body)
