@@ -243,12 +243,16 @@ type whoamiView struct {
 }
 
 // serverView is the daemon's own identity: the build version (internal/version,
-// the one source the rest of the app reports) and the host it runs on. Both are
-// omitempty so a build with no version stamp or a host that cannot report its
-// name renders an honest empty field rather than a placeholder.
+// the one source the rest of the app reports), the host it runs on, and when
+// the process came up. All are omitempty so a build with no version stamp, a
+// host that cannot report its name, or a zero start time renders an honest
+// empty field rather than a placeholder.
 type serverView struct {
 	Version  string `json:"version,omitempty"`
 	Hostname string `json:"hostname,omitempty"`
+	// StartedAt is the daemon's start time — the exact "since daemon start"
+	// anchor the events screen's cold-start label needs.
+	StartedAt *string `json:"started_at,omitempty"`
 }
 
 // apiWhoami returns the calling token's own identity. Any authenticated token
@@ -265,6 +269,10 @@ func (s *Server) apiWhoami(w http.ResponseWriter, r *http.Request) {
 	view := whoamiView{
 		ID: id.token.ID, Name: id.token.Name, Scope: id.token.Scope, Via: id.via,
 		Server: serverView{Version: version.Version, Hostname: hostname()},
+	}
+	if !s.startedAt.IsZero() {
+		started := s.startedAt.UTC().Format(time.RFC3339)
+		view.Server.StartedAt = &started
 	}
 	if id.token.ExpiresAt != nil {
 		exp := id.token.ExpiresAt.UTC().Format(time.RFC3339)
@@ -316,7 +324,7 @@ func (s *Server) apiJobs(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	s.apiSuccess(w, wire.KindJobList, wire.NewJobList(rows))
+	s.apiSuccess(w, wire.KindJobList, wire.NewJobViewsResolved(r.Context(), s.store, rows))
 }
 
 // apiJobGet returns one job. A well-formed but unknown id is 404. Plan is
@@ -342,7 +350,7 @@ func (s *Server) apiJobGet(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	view := wire.NewJobView(job)
+	view := wire.NewJobViewResolved(r.Context(), s.store, job)
 	view.Plan = wire.NewPlanOutcomeView(events)
 	s.apiSuccess(w, wire.KindJob, view)
 }

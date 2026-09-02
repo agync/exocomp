@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-01 — phone API: approval countdown + daemon start time
+
+- **`JobView.expires_at`** (RFC3339, omitempty) for an `awaiting_approval` job:
+  the pending approval's fail-closed deadline, so a phone queue row renders the
+  `expires {hh:mm:ss} · {mm:ss} left` countdown tail. The web API, MCP reads,
+  and the CLI's local `jobs list/get --json` and gated `run-cli --json` all
+  resolve it through one shared wire helper, so the bytes stay identical across
+  every face. Terminal jobs omit it.
+- **`whoami.server.started_at`** (RFC3339, omitempty): the daemon's start time,
+  so the events screen labels its cold-start state exactly ("since daemon start
+  {hh:mm}") instead of approximating it from the earliest event. It is taken
+  from the server's injectable clock so a test clock keeps it deterministic.
+
 ## 2026-09-01 — design-handoff v0.3 realignment
 
 Lands the web and TUI surfaces against the v0.3 design handoff (the canon

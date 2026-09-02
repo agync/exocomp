@@ -27,7 +27,7 @@ func (s *Server) readJobs(ctx context.Context, filter store.JobFilter) (string, 
 	if err != nil {
 		return "", nil, err
 	}
-	return wire.KindJobList, wire.NewJobList(rows), nil
+	return wire.KindJobList, wire.NewJobViewsResolved(ctx, s.store, rows), nil
 }
 
 func (s *Server) readJob(ctx context.Context, id int64) (string, any, error) {
@@ -35,7 +35,7 @@ func (s *Server) readJob(ctx context.Context, id int64) (string, any, error) {
 	if err != nil {
 		return "", nil, err
 	}
-	return wire.KindJob, wire.NewJobView(job), nil
+	return wire.KindJob, wire.NewJobViewResolved(ctx, s.store, job), nil
 }
 
 // readJobEvents projects a job's append-only, already-redacted event log,

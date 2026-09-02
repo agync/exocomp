@@ -86,6 +86,10 @@ type Server struct {
 	dataDir     string
 	log         *slog.Logger
 	clock       func() time.Time
+	// startedAt is when the daemon process came up — the "since daemon start"
+	// anchor the events surface labels its cold-start state with. Set from the
+	// injectable clock so a test clock keeps it deterministic.
+	startedAt time.Time
 	// kdf bounds concurrent argon2id evaluations on the pre-auth path so a
 	// flood cannot amplify the KDF's memory cost.
 	kdf *kdfGate
@@ -195,6 +199,10 @@ func New(opts Options) (*Server, error) {
 	// face derives its approval capability from it rather than unwrapping the
 	// keyring a second time.
 	srv.mcpSrv.UseDeriver(opts.Deriver)
+	// The daemon start time is the "since daemon start {hh:mm}" the events
+	// screen labels its cold-start state with; it comes from the injected clock
+	// so a test clock keeps it deterministic.
+	srv.startedAt = srv.clock()
 	return srv, nil
 }
 

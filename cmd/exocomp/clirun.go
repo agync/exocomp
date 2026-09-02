@@ -300,7 +300,7 @@ func gateCLIRun(ctx context.Context, cmd *cobra.Command, st *store.Store, dir st
 		return 0, fmt.Errorf("run-cli: %w", err)
 	}
 	if asJSON {
-		return 0, emitJSON(cmd, wire.KindJob, wire.NewJobView(job))
+		return 0, emitJSON(cmd, wire.KindJob, wire.NewJobViewResolved(ctx, st, job))
 	}
 	printGatedJob(cmd.OutOrStdout(), job, approval)
 	return 0, nil

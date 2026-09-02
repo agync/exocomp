@@ -217,13 +217,19 @@ func TestAPIJobBytesMatchCLI(t *testing.T) {
 		}
 		h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
 	}
+	// A pending approval: the list's one awaiting_approval row must carry its
+	// fail-closed expiry on both faces — this is the field the phone countdown
+	// renders, so the API==CLI contract is load-bearing for it.
+	_, approval := h.gatedJob(t, 30*time.Minute)
+	_ = approval
 
-	// The list route.
+	// The list route. The CLI-side projection is the resolved form (expiry
+	// stamped), so the byte contract covers the new field too.
 	rows, err := h.store.ListJobs(ctx, store.JobFilter{})
 	if err != nil {
 		t.Fatalf("ListJobs: %v", err)
 	}
-	want, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobList(rows))
+	want, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobViewsResolved(ctx, h.store, rows))
 	if err != nil {
 		t.Fatalf("MarshalSuccess: %v", err)
 	}
@@ -231,10 +237,14 @@ func TestAPIJobBytesMatchCLI(t *testing.T) {
 	if body != string(want) {
 		t.Fatalf("list bytes differ from CLI projection:\n api: %q\n cli: %q", body, want)
 	}
+	// The awaiting_approval row actually carries the expiry (not a vacuous pass).
+	if !strings.Contains(body, `"expires_at"`) {
+		t.Fatal("the awaiting_approval job's expires_at is missing from the list")
+	}
 
 	// The single-resource route.
 	job := rows[0]
-	want, err = wire.MarshalSuccess(wire.KindJob, wire.NewJobView(job))
+	want, err = wire.MarshalSuccess(wire.KindJob, wire.NewJobViewResolved(ctx, h.store, job))
 	if err != nil {
 		t.Fatalf("MarshalSuccess get: %v", err)
 	}

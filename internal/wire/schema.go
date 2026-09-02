@@ -1,6 +1,7 @@
 package wire
 
 import (
+	"context"
 	"encoding/json"
 	"net/netip"
 	"slices"
@@ -72,6 +73,11 @@ type JobView struct {
 	StartedAt      *string          `json:"started_at,omitempty"`
 	FinishedAt     *string          `json:"finished_at,omitempty"`
 	Plan           *PlanOutcomeView `json:"plan,omitempty"`
+	// ExpiresAt is the pending approval's fail-closed deadline for an
+	// awaiting_approval job — the countdown tail a phone queue row renders.
+	// Absent for every other state. NewJobView cannot populate it (it has no
+	// approval); callers with store access resolve it via WithExpiry.
+	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
 // NewJobView projects one job.
@@ -99,6 +105,59 @@ func NewJobList(jobs []store.Job) []JobView {
 		out = append(out, NewJobView(j))
 	}
 	return out
+}
+
+// WithExpiry stamps an awaiting_approval job's fail-closed deadline so a phone
+// queue row can render its countdown tail. A zero time (no approval) leaves the
+// field nil, so a caller resolving an approval that races away still emits the
+// honest empty form.
+func (v *JobView) WithExpiry(t time.Time) {
+	v.ExpiresAt = rfc3339p(&t)
+}
+
+// NewJobViewResolved resolves one job's pending-approval expiry the same way
+// NewJobViewsResolved does for a list; a non-awaiting job or an unresolvable
+// approval leaves it nil. It is the one shared implementation the web, MCP, and
+// CLI all use, so the bytes stay identical across every face.
+func NewJobViewResolved(ctx context.Context, st *store.Store, j store.Job) JobView {
+	v := NewJobView(j)
+	if j.State != store.StateAwaitingApproval {
+		return v
+	}
+	a, err := st.ApprovalByJob(ctx, j.ID)
+	if err != nil {
+		return v
+	}
+	v.WithExpiry(a.ExpiresAt)
+	return v
+}
+
+// NewJobViewsResolved resolves the pending-approval expiry for any
+// awaiting_approval row in a job list, so a phone queue row renders its
+// countdown tail. The approval lookup is one batched read, never a per-row
+// query; a store error or a raced-away approval leaves the field nil (the
+// honest empty form).
+func NewJobViewsResolved(ctx context.Context, st *store.Store, rows []store.Job) []JobView {
+	views := NewJobList(rows)
+	waiting := make(map[int64]int, 0)
+	for i, j := range rows {
+		if j.State == store.StateAwaitingApproval {
+			waiting[j.ID] = i
+		}
+	}
+	if len(waiting) == 0 {
+		return views
+	}
+	pending, err := st.ListApprovals(ctx, true)
+	if err != nil {
+		return views
+	}
+	for _, a := range pending {
+		if idx, ok := waiting[a.JobID]; ok {
+			views[idx].WithExpiry(a.ExpiresAt)
+		}
+	}
+	return views
 }
 
 // JobEventView projects one append-only, already-redacted job event. RawJSON is

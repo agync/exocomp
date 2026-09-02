@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/version"
 )
@@ -47,5 +48,18 @@ func TestAPIWhoami(t *testing.T) {
 	// version is the build's internal/version stamp ("dev" in a test binary).
 	if v.Server.Version != version.Version {
 		t.Fatalf("whoami server.version = %q, want %q", v.Server.Version, version.Version)
+	}
+	// The daemon start time anchors the events screen's "since daemon start"
+	// label: it is always present, RFC3339, and not in the future (the injected
+	// clock at construction is the process's own now).
+	if v.Server.StartedAt == nil {
+		t.Fatalf("whoami server.started_at is absent (%s)", body)
+	}
+	started, err := time.Parse(time.RFC3339, *v.Server.StartedAt)
+	if err != nil {
+		t.Fatalf("whoami server.started_at %q is not RFC3339: %v", *v.Server.StartedAt, err)
+	}
+	if started.After(time.Now()) {
+		t.Fatalf("whoami server.started_at %q is in the future", *v.Server.StartedAt)
 	}
 }

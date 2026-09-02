@@ -160,7 +160,7 @@ func newJobsListCmd() *cobra.Command {
 				return err
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindJobList, wire.NewJobList(rows))
+				return emitJSON(cmd, wire.KindJobList, wire.NewJobViewsResolved(cmd.Context(), st, rows))
 			}
 
 			out := cmd.OutOrStdout()
@@ -230,7 +230,7 @@ func newJobsGetCmd() *cobra.Command {
 				return err
 			}
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindJob, wire.NewJobView(job))
+				return emitJSON(cmd, wire.KindJob, wire.NewJobViewResolved(cmd.Context(), st, job))
 			}
 
 			out := cmd.OutOrStdout()
