@@ -18,7 +18,9 @@ func renderEmpty(title, clock string, block []string, keysLeft string) string {
 	return frame(24, head, body, footer)
 }
 
-// renderEmptyWorkspaces is the [3] Workspaces empty state.
+// renderEmptyWorkspaces is the [3] Workspaces empty state, kept as the golden
+// fixture the design reference pins (golden_test.go). The live screen renders
+// its own compact empty line, so this full frame no longer runs on the binary.
 func renderEmptyWorkspaces() string {
 	block := []string{
 		indent(31, "no workspaces yet"),
@@ -26,7 +28,7 @@ func renderEmptyWorkspaces() string {
 		"",
 		indent(17, "add the first:  exocomp workspace add ./infra"),
 	}
-	return renderEmpty("workspaces · 0", "14:03 UTC+11", block, "[0-9] screens  [q] quit")
+	return renderEmpty("workspaces · 0", "14:03 UTC+11", block, "[0-9] [s] [u] screens")
 }
 
 func indent(n int, s string) string { return fmt.Sprintf("%*s%s", n, "", s) }

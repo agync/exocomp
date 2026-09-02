@@ -205,7 +205,7 @@ func (m Model) renderWorkspaces() string {
 		return styleErr.Render("failed to load workspaces: " + m.workspacesErr.Error())
 	}
 	if len(m.workspaces) == 0 {
-		return renderEmptyWorkspaces()
+		return styleDim.Render("no workspaces yet — exocomp workspace add ./infra")
 	}
 	return m.workspacesTable.View()
 }
