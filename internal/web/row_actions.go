@@ -1,0 +1,44 @@
+package web
+
+// Row actions (v0.6): a row shows at most two verb glyphs — the actions an
+// operator reaches for daily on that resource — then a chevron that opens a
+// menu of the rarer verbs and views. Fewer than three actions total → glyphs
+// only, no chevron. Every glyph is a 24-viewBox inline stroke SVG
+// (stroke-width 1.8, currentColor, round caps) with an aria-label — never a
+// glyph-only control (components.templ). Menu items are always glyph + word;
+// destructive items live last, after a rule, in --signal-fail with an
+// "asks first" note. The trailing "…" is retired: a button that opens a
+// confirm is named plainly and the confirm dialog is the safety.
+
+// rowAction is one row action: a glyph (its path + accessible name) plus the
+// behaviour — a POST form target, a modal id to open, or a plain link — and
+// optionally a menu-only flag. The first two non-menu actions render as the
+// row's verb glyphs; the rest (and any menu-only action) go in the chevron
+// menu. A glyph that POSTs is a form submit; a glyph that opens a modal is a
+// data-modal-open trigger.
+type rowAction struct {
+	Name   string            // accessible name / tooltip text
+	Path   string            // 24-viewBox stroke path
+	Form   string            // non-empty: a POST to this action
+	Hidden map[string]string // hidden inputs for the POST (confirmed, etc.)
+	Modal  string            // non-empty: opens this dialog id
+	Href   string            // non-empty: a plain link
+	Count  string            // optional right-aligned mono count
+	Menu   bool              // force this action into the menu, never a row glyph
+	// Danger places the item last, in --signal-fail, with "asks first".
+	Danger bool
+}
+
+// The per-verb glyph set — the same shape means the same verb on every
+// resource (the designer's fixed-per-verb rule).
+const (
+	glyphPlan     = "M12 5v14M5 12h14"
+	glyphApply    = "M5 12l4 4L19 6"
+	glyphEnable   = "M7 5v14l10-7z"
+	glyphDisable  = "M6 6l12 12M18 6L6 18"
+	glyphOpen     = "M14 4h6v6M10 14l10-10M19 13v7H4V5h7"
+	glyphRotate   = "M4 10a8 8 0 0 1 13.7-2.7M20 14a8 8 0 0 1-13.7 2.7M16 4h2v4h-4"
+	glyphRemove   = "M6 7h12M9 7V5h6v2M8 10l.6 9h6.8l.6-9M10 13v3M14 13v3"
+	glyphBindings = "M4 6h16v9H4zM7 18h10M12 15v3"
+	glyphChevron  = "M6 9l6 6 6-6"
+)

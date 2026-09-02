@@ -165,7 +165,7 @@ func TestSourcesRowsNavigateAndActionsOnDetail(t *testing.T) {
 		`class="btn quiet">Disable`,
 		`action="/sources/infra/disable"`,
 		`data-confirm="Delete source infra?"`,
-		`class="btn danger">Delete…`,
+		`class="btn danger">Delete`,
 	} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("source detail missing %q (F8: actions belong on the page)", want)

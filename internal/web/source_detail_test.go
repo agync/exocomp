@@ -104,7 +104,7 @@ func TestSourceLaunchDrawer(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="modal drawer" id="launch"`,
-		`>Launch a run…</button>`,
+		`>Launch a run</button>`,
 		`data-modal-open="launch"`,
 		`<select id="rp-select" name="playbook" disabled>`,
 		`<option value="">path — none discovered yet</option>`,

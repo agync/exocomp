@@ -10,7 +10,7 @@ import templruntime "github.com/a-h/templ/runtime"
 
 // sourceDetail is a single source's page: a read-only identity card (kind,
 // trust, ref, last sync — and, for an operator, the Disable/Delete controls and
-// the "Launch a run…" verb) followed by a right-anchored launch drawer (F4). The
+// the "Launch a run" verb) followed by a right-anchored launch drawer (F4). The
 // drawer carries the Playbook | Command tab pair, both POSTing to a
 // source-scoped run route (/sources/{name}/run/*), so every browser run reads
 // from a registered source's own tree. The tabs are switched by a few lines of
@@ -162,7 +162,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"rowactions\"><button type=\"button\" class=\"btn primary\" data-modal-open=\"launch\">Launch a run…</button> ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"rowactions\"><button type=\"button\" class=\"btn primary\" data-modal-open=\"launch\">Launch a run</button> ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -229,7 +229,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"><input type=\"hidden\" name=\"confirmed\" value=\"1\"> <button type=\"submit\" class=\"btn danger\">Delete…</button></form></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "\"><input type=\"hidden\" name=\"confirmed\" value=\"1\"> <button type=\"submit\" class=\"btn danger\">Delete</button></form></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

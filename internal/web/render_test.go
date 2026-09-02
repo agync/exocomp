@@ -659,3 +659,24 @@ func TestReviewV05BCSSGuards(t *testing.T) {
 		t.Error("tray zebra still present (R3)")
 	}
 }
+
+// TestRowActionsCSSGuards pins the v0.6 row-actions CSS: the glyph button, the
+// chevron menu, the destructive "asks first" note, and the phone 48px floor.
+func TestRowActionsCSSGuards(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		".raglyph {",
+		".ramenu-panel {",
+		".ramenu-item.danger::after { content: \" — asks first\";",
+		".raglyph { width: 44px; height: 44px; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing row-actions rule %q", want)
+		}
+	}
+}

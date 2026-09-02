@@ -64,7 +64,7 @@ templ policiesList(vm policiesVM) {
 										<td data-label="Actions">
 											<form method="post" action={ templ.SafeURL("/policies/" + p.Name + "/rm") } class="inline-form" data-confirm={ "Remove policy " + p.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
-												<button type="submit" class="btn danger">Remove…</button>
+												<button type="submit" class="btn danger">Remove</button>
 											</form>
 										</td>
 									}

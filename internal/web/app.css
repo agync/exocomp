@@ -507,6 +507,58 @@ td.right, th.right { text-align: right; }
   background: transparent; border: 0;
   box-shadow: inset 0 0 0 1px var(--fail-border);
 }
+
+/* ---- Row actions (v0.6) ----
+ * A tray row's actions cell: up to two verb glyphs then a chevron menu. Glyph
+ * buttons are 34×34 transparent icons (ink-500 → ink-400 on row hover →
+ * surface-control fill + ink-100 on button hover), 18px glyphs, focus-ringed.
+ * The chevron opens the menu below-right; the JS upgrade flips it above when
+ * there is no room. The phone <640 sheet is in the mobile block. */
+.rowacts { display: flex; align-items: center; gap: 4px; }
+.raglyph {
+  width: 34px; height: 34px; padding: 0; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ink-500);
+  border: 0; border-radius: 9px; cursor: pointer;
+}
+tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
+.raglyph:hover { background: var(--surface-control); color: var(--ink-100); }
+.raglyph:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--radius-chip); }
+
+/* The chevron menu: a <details> whose summary is the chevron trigger. JS-off
+ * it toggles the item list inline; with JS it becomes the floating menu. */
+.ramenu { position: relative; }
+.rachev {
+  width: 26px; height: 34px; padding: 0; margin: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ink-600);
+  border: 0; border-radius: 9px; cursor: pointer; list-style: none;
+}
+.rachev:hover { color: var(--ink-400); }
+.ramenu[open] .rachev { background: var(--surface-control); color: var(--ink-100); }
+.ramenu[open] .rachev svg { transform: rotate(180deg); }
+.ramenu-panel {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 70;
+  min-width: 220px; margin: 0; padding: 6px; list-style: none;
+  background: var(--surface-control); color: var(--ink-200);
+  border: 1px solid var(--hairline); border-radius: 11px;
+  box-shadow: none; /* depth is the surface ramp, never a shadow */
+}
+.ramenu-item {
+  display: flex; align-items: center; gap: 10px;
+  min-height: 36px; padding: 0 10px; border-radius: 8px;
+  font: var(--type-button); color: var(--ink-200);
+}
+.ramenu-item > svg { flex: none; color: var(--ink-400); }
+.ramenu-item:hover { background: var(--surface-row); }
+.ramenu-item.danger { color: var(--signal-fail); }
+.ramenu-item.danger > svg { color: var(--signal-fail); }
+.ramenu-item.danger::after { content: " — asks first"; color: var(--ink-500); margin-left: auto; font: var(--type-body); }
+.ramenu-btn {
+  background: none; border: 0; padding: 0;
+  font: inherit; color: inherit; cursor: pointer; text-align: left;
+}
+.ramenu-count { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
 .targetgrid {
   list-style: none; margin: 0; padding: 0;
   display: grid; gap: 10px;
@@ -1062,6 +1114,11 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * Card padding drops here so a stacked row keeps usable width on a 380px screen. */
 @media (max-width: 560px) {
   .card { padding: 16px 16px; }
+  /* Row-action glyphs reach the 48px phone floor; the chevron is 32 wide. No
+   * tooltips on phones — the chevron opens the bottom sheet instead. */
+  .raglyph { width: 44px; height: 44px; }
+  .raglyph svg { width: 20px; height: 20px; }
+  .rachev { width: 32px; height: 44px; }
   /* The app bar's meta slot (the page's own fact) drops before the header's
    * primary verb shrinks — the verb is the action, the meta is context. */
   .appbar-meta { display: none; }

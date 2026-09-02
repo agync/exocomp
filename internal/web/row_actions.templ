@@ -1,0 +1,100 @@
+package web
+
+// rowActions renders a resource row's actions cell. The first two non-menu
+// actions are the verb glyphs; any remaining actions go in the chevron menu.
+// A glyph that POSTs is a form submit (the glyph button submits its form); a
+// glyph that opens a modal is a data-modal-open trigger. JS-off: the chevron
+// is a <details> whose summary toggles the item list inline (POST and link
+// items work; modal items are inert without JS, same as data-modal-open
+// today); a selectInit-style upgrade turns it into the floating menu with
+// Esc/arrows/Enter and above-flip.
+templ rowActions(acts []rowAction) {
+	<div class="rowacts">
+		for _, a := range rowGlyphs(acts) {
+			if a.Form != "" {
+				<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+					for k, v := range a.Hidden {
+						<input type="hidden" name={ k } value={ v }/>
+					}
+					<button type="submit" class="raglyph" aria-label={ a.Name } title={ a.Name }>
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+					</button>
+				</form>
+			} else {
+				<button type="button" class="raglyph" aria-label={ a.Name } title={ a.Name } data-modal-open={ a.Modal }>
+					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+				</button>
+			}
+		}
+		if rowMenuCount(acts) > 0 {
+			<details class="ramenu">
+				<summary class="rachev" aria-label="More actions" title="More actions">
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg>
+				</summary>
+				<ul class="ramenu-panel" role="menu">
+					for _, a := range rowMenu(acts) {
+						<li class={ "ramenu-item", templ.KV("danger", a.Danger) } role="menuitem">
+							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+							if a.Form != "" {
+								<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+									for k, v := range a.Hidden {
+										<input type="hidden" name={ k } value={ v }/>
+									}
+									<button type="submit" class="ramenu-btn">{ a.Name }</button>
+								</form>
+							} else if a.Modal != "" {
+								<button type="button" class="ramenu-btn" data-modal-open={ a.Modal }>{ a.Name }</button>
+							} else {
+								<a class="ramenu-btn" href={ templ.SafeURL(a.Href) }>{ a.Name }</a>
+							}
+							if a.Count != "" {
+								<span class="ramenu-count">{ a.Count }</span>
+							}
+						</li>
+					}
+				</ul>
+			</details>
+		}
+	</div>
+}
+
+// rowGlyphs returns the row's verb-glyph actions: the first two non-menu
+// actions. Fewer than three actions → glyphs only.
+func rowGlyphs(acts []rowAction) []rowAction {
+	var out []rowAction
+	for _, a := range acts {
+		if a.Menu {
+			continue
+		}
+		out = append(out, a)
+		if len(out) == 2 {
+			break
+		}
+	}
+	return out
+}
+
+// rowMenu returns the actions that go in the chevron menu: everything past the
+// first two glyphs, plus every Menu-flagged action, in order, destructive
+// items last.
+func rowMenu(acts []rowAction) []rowAction {
+	var out, danger []rowAction
+	glyphSlots := 2
+	for _, a := range acts {
+		if a.Menu || glyphSlots == 0 {
+			if a.Danger {
+				danger = append(danger, a)
+			} else {
+				out = append(out, a)
+			}
+			continue
+		}
+		glyphSlots--
+	}
+	return append(out, danger...)
+}
+
+// rowMenuCount reports whether the chevron menu should render at all.
+func rowMenuCount(acts []rowAction) int {
+	return len(rowMenu(acts))
+}

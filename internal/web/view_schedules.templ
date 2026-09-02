@@ -101,7 +101,7 @@ for _, sc := range vm.Schedules {
 											}
 											<form method="post" action={ templ.SafeURL("/schedules/" + sc.Name + "/rm") } class="inline-form" data-confirm={ "Remove schedule " + sc.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
-												<button type="submit" class="btn danger">Remove…</button>
+												<button type="submit" class="btn danger">Remove</button>
 											</form>
 										</td>
 									}
