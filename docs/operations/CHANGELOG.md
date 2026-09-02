@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-02 — UX fix round (actions spacing, banner copy, mobile powerline)
+
+- **Tray action buttons breathe.** The tray Actions column is a spaced flex row
+  (8px gap) with enough min-width that the common pairs — Rotate…/Remove…,
+  Plan/Apply — sit on one line instead of flush together or wrapping. Applies
+  to every tray table (workspaces, secrets, checks, netgroups, schedules,
+  policies, runners, tokens).
+- **The insecure-warning copy reads like a person wrote it.** "This surface is
+  served over cleartext. Tokens on the wire…" is now "This page is not secure.
+  Anyone on this network could read your sign-in." — and the login warning says
+  the same plainly.
+- **Mobile powerline shows what needs a decision.** On phones the ok and dim
+  segments hide, so the strip renders only the signal that needs a look
+  ("dead-man none — set one") instead of a cut-off scroll. A fully healthy
+  phone shows a quiet empty strip. The icon-button direction stays deferred.
+
 ## 2026-09-02 — v0.3 review R2: web findings
 
 - **HIGH 4 · design invariants:** ink-600 is no longer text — the nav group

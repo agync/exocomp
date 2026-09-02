@@ -48,7 +48,7 @@ func dashboard(vm dashboardVM) templ.Component {
 			}
 			ctx = templ.InitializeContext(ctx)
 			if vm.Page.Insecure {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"banner fail\" role=\"alert\"><span class=\"keyword\">INSECURE HTTP</span> <span>This surface is served over cleartext. Tokens on the wire are readable by anyone on the network.</span></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<div class=\"banner fail\" role=\"alert\"><span class=\"keyword\">INSECURE HTTP</span> <span>This page is not secure. Anyone on this network could read your sign-in.</span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

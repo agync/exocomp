@@ -492,9 +492,14 @@ func TestReviewCSSGuards(t *testing.T) {
 		"white-space: nowrap",
 		".appbar-meta { display: none; }",
 		".powerline .pl-who { display: none; }",
+		// UX-fix round: tray actions are a spaced flex row; the phone powerline
+		// shows only the segments that need a decision (ok/dim hidden).
+		".card.tray td[data-label=\"Actions\"] {",
+		"display: flex; align-items: center; gap: 8px;",
+		".pl-seg.ok, .pl-seg.dim { display: none; }",
 	} {
 		if !strings.Contains(app, want) {
-			t.Errorf("app.css missing W1/W3 rule %q", want)
+			t.Errorf("app.css missing rule %q", want)
 		}
 	}
 }

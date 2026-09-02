@@ -1206,7 +1206,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool) templ.Component 
 			}
 		}
 		if insecure {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<p class=\"error\" role=\"alert\">This listener serves cleartext HTTP (--insecure-http). Your token is readable on the wire.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 84, "<p class=\"error\" role=\"alert\">This sign-in is not secure. Anyone on this network could read it.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

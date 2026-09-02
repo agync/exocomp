@@ -424,8 +424,13 @@ td.right, th.right { text-align: right; }
   .card.tray tbody tr:hover { background: var(--surface-row); }
   .card.tray tbody tr:last-child td { border-bottom: 0; }
   /* The Actions column fits its quiet/danger pair on one row (W9): two 30px
-   * buttons plus the gap never stack. */
-  .card.tray td[data-label="Actions"] { min-width: 160px; }
+   * buttons plus the gap never stack. The cell is a flex row with a real gap
+   * (the sibling forms/buttons were flush); min-width + nowrap keep the common
+   * pairs (Rotate/Remove, Plan/Apply) on one line even in a narrow column. */
+  .card.tray td[data-label="Actions"] {
+    display: flex; align-items: center; gap: 8px;
+    min-width: 170px; white-space: nowrap;
+  }
   /* An attention row (a never-synced source, F5) tints and carries the wait
    * accent on its leading edge — the row's own inset ring, readable greyscale
    * with the NEVER chip beside it. */
@@ -674,7 +679,7 @@ td .cellact:hover { text-decoration: underline; }
 .toggle-cb:focus-visible ~ .toggle-track { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .toggle.warn { color: var(--signal-fail); font-weight: 600; }
 .toggle.warn .toggle-cb:checked ~ .toggle-track { background: var(--signal-fail); }
-.rowact { display: inline-block; margin-right: 8px; }
+.rowact { display: inline-block; }
 .rowact > summary { cursor: pointer; color: var(--accent-text); font: var(--type-button); list-style: none; }
 .rowact[open] > summary { margin-bottom: 6px; }
 .secretbox {
@@ -926,15 +931,18 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   margin-left: auto; color: var(--ink-400);
   font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
 }
-/* Phone powerline (W3): one row that scrolls horizontally instead of wrapping
- * to three lines and growing over the content. The identity segment hides —
- * it is already in the app bar's identity position on phones. */
+/* Phone powerline: one row, but only the signals that need a decision render —
+ * ok and dim segments hide (healthy is quiet, and a scroll-to-find strip reads
+ * as cut off). A nominal phone shows a quiet empty strip; a seeded phone shows
+ * just "dead-man none — set one". The identity hides (it is already in the
+ * header). overflow-x:auto stays as a safety net, not the interaction. */
 @media (max-width: 640px) {
   .powerline {
     gap: 14px; padding: 0 12px;
     overflow-x: auto; overflow-y: hidden; white-space: nowrap;
   }
   .pl-seg { white-space: nowrap; flex: none; }
+  .pl-seg.ok, .pl-seg.dim { display: none; }
   .powerline .pl-who { display: none; }
 }
 

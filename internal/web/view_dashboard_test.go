@@ -1,6 +1,7 @@
 package web
 
 import (
+	"bytes"
 	"context"
 	"net/http/httptest"
 	"strings"
@@ -563,5 +564,45 @@ func TestDashboardAppbarMetaNotIdentity(t *testing.T) {
 	}
 	if !strings.Contains(page, "up ") {
 		t.Error("dashboard meta should name the uptime")
+	}
+}
+
+// TestInsecureBannerHumanCopy is the GATE for the operator's UX flag: the
+// insecure-HTTP banner and the login warning read as plain English, not
+// internal vocabulary ("cleartext", "on the wire", "listener"). They render
+// only under --insecure-http, so the copy is pinned by rendering the templates
+// directly with the insecure flag set.
+func TestInsecureBannerHumanCopy(t *testing.T) {
+	var buf bytes.Buffer
+	vm := dashboardVM{Page: page{Insecure: true}}
+	if err := dashboard(vm).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render dashboard: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`INSECURE HTTP`,
+		`This page is not secure. Anyone on this network could read your sign-in.`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("dashboard banner missing %q", want)
+		}
+	}
+	for _, gone := range []string{"cleartext", "on the wire", "served over"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("dashboard banner still uses internal vocabulary %q", gone)
+		}
+	}
+
+	buf.Reset()
+	if err := loginPage("", "", "", true).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render loginPage: %v", err)
+	}
+	login := buf.String()
+	for _, want := range []string{
+		`This sign-in is not secure. Anyone on this network could read it.`,
+	} {
+		if !strings.Contains(login, want) {
+			t.Errorf("login insecure warning missing %q", want)
+		}
 	}
 }

@@ -11,7 +11,7 @@ templ dashboard(vm dashboardVM) {
 		if vm.Page.Insecure {
 			<div class="banner fail" role="alert">
 				<span class="keyword">INSECURE HTTP</span>
-				<span>This surface is served over cleartext. Tokens on the wire are readable by anyone on the network.</span>
+				<span>This page is not secure. Anyone on this network could read your sign-in.</span>
 			</div>
 		}
 		if vm.Banner.Active() {

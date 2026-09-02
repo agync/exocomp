@@ -627,7 +627,7 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 						<p class="error" role="alert">{ errMsg }</p>
 					}
 					if insecure {
-						<p class="error" role="alert">This listener serves cleartext HTTP (--insecure-http). Your token is readable on the wire.</p>
+						<p class="error" role="alert">This sign-in is not secure. Anyone on this network could read it.</p>
 					}
 					<form method="post" action="/login">
 						<input type="hidden" name="next" value={ next }/>
