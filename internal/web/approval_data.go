@@ -1,7 +1,6 @@
 package web
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -247,13 +246,10 @@ func classifyActions(actions []string) string {
 }
 
 // hasSensitive reports whether a plan's *_sensitive tree marks anything secret.
-// It is a coarse check on purpose: any true anywhere means the phone shows
-// [redacted · secret] rather than a value the web UI would not.
+// It delegates to the shared classifier (wire.HasSensitivePlan) so the web,
+// TUI, API, and CLI read one decision, never a per-face fork.
 func hasSensitive(raw json.RawMessage) bool {
-	if len(raw) == 0 {
-		return false
-	}
-	return bytes.Contains(raw, []byte("true"))
+	return wire.HasSensitivePlan(raw)
 }
 
 func decidedNotice(a store.Approval) string {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -209,4 +210,27 @@ func (s *Store) ListBackupRuns(ctx context.Context, targetID int64, limit int) (
 		return nil, wrap("list backup runs", err)
 	}
 	return out, nil
+}
+
+// LastSucceededBackupTime is the ONE dead-man rule every face uses (web, TUI,
+// API): the finish time of the newest SUCCEEDED run across all targets. A
+// failed or still-running newest run never masks an older good backup — the
+// dead-man answers "when did a backup last actually succeed?", which neither
+// face can infer from the newest row alone. Returns ok=false when nothing has
+// ever succeeded.
+func (s *Store) LastSucceededBackupTime(ctx context.Context) (time.Time, bool) {
+	var when int64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT COALESCE(finished_at, started_at)
+		FROM backup_run
+		WHERE state = ?
+		ORDER BY COALESCE(finished_at, started_at) DESC
+		LIMIT 1`, BackupSucceeded).Scan(&when)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return time.Time{}, false
+		}
+		return time.Time{}, false
+	}
+	return time.UnixMilli(when).UTC(), true
 }
