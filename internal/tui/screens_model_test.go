@@ -420,6 +420,39 @@ func TestHomeEmptyStateRendersFirstDayBlock(t *testing.T) {
 	}
 }
 
+// TestHomeNotEmptyWithRunningJobAndArmedSchedule proves the first-day block
+// only renders when nothing is configured: a running job and an armed schedule
+// keep the live assembly out of the empty state (homeModel populates runs and
+// next from the loaded streams).
+func TestHomeNotEmptyWithRunningJobAndArmedSchedule(t *testing.T) {
+	st := openTestStore(t)
+	ctx := context.Background()
+	seedJob(t, st, "ansible", store.StateRunning, nil)
+	sc, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly", CronExpr: "@daily", Kind: store.ScheduleBackup,
+	})
+	if err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+	next := time.Now().Add(time.Hour)
+	if err := st.RecordScheduleFire(ctx, sc.ID, nil, &next); err != nil {
+		t.Fatalf("arm schedule: %v", err)
+	}
+
+	m := New(st, nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadJobsCmd(st)())
+	m = update(t, m, loadSchedulesCmd(st)())
+
+	view := m.View().Content
+	if strings.Contains(view, "nothing configured yet") {
+		t.Fatalf("first-day block rendered with a running job and an armed schedule:\n%s", view)
+	}
+	if !strings.Contains(view, "running") || !strings.Contains(view, "nightly") {
+		t.Fatalf("populated Home missing the running job or the armed schedule:\n%s", view)
+	}
+}
+
 // TestApprovalsEmptyStateRendersNothingWaiting proves the approvals surface
 // reads "nothing waiting on you" when no approval is pending (copy.txt:73).
 func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {

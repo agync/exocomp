@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -157,6 +158,43 @@ func (m Model) homeModel() HomeModel {
 		})
 	}
 	h.queue = m.queueLine(now)
+	// Running jobs and armed schedules populate the runs/next rows HomeModel
+	// renders, so the first-day block stays away whenever either exists — a
+	// home with work configured is never "nothing configured yet".
+	for _, j := range m.jobs {
+		if j.State != store.StateRunning {
+			continue
+		}
+		started := j.QueuedAt
+		if j.StartedAt != nil {
+			started = *j.StartedAt
+		}
+		h.runs = append(h.runs, homeRun{
+			head:  "● " + j.Kind + " " + j.Runbook,
+			body:  "running " + started.Local().Format("15:04"),
+			right: "follow",
+			tag:   "[1]→enter",
+		})
+	}
+	var armed []store.Schedule
+	for _, s := range m.schedules {
+		if !s.Enabled || s.NextAt == nil {
+			continue
+		}
+		armed = append(armed, s)
+	}
+	slices.SortFunc(armed, func(a, b store.Schedule) int { return a.NextAt.Compare(*b.NextAt) })
+	for _, s := range armed {
+		at := s.NextAt.Local().Format("15:04")
+		if s.NextAt.Local().Day() != now.Day() {
+			at = s.NextAt.Local().Format("Mon 15:04")
+		}
+		h.next = append(h.next, homeNext{
+			at:   at,
+			name: s.Name,
+			when: "in " + shortDur(s.NextAt.Sub(now)),
+		})
+	}
 	for _, t := range m.targets {
 		age, status := backupFreshness(m.runs[t.ID], now)
 		h.backups = append(h.backups, homeBackup{name: t.Name, age: age, status: status})
