@@ -680,3 +680,24 @@ func TestRowActionsCSSGuards(t *testing.T) {
 		}
 	}
 }
+
+// TestRowClickExcludesSummary pins the v0.6 row-navigation guard: a row opens
+// its target (data-href/data-modal-row), but a click on a nested control —
+// including the row-actions chevron <summary> — must NOT bubble into row
+// navigation. Without the summary exclusion, a chevron click navigates the
+// row instead of opening the menu.
+func TestRowClickExcludesSummary(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/")
+	for _, want := range []string{
+		`e.target.closest('a,button,summary')`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("row-click handler missing the summary exclusion %q", want)
+		}
+	}
+}

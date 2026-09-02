@@ -534,7 +534,7 @@ templ layoutReady() {
 	// behaviour instead of triggering the row navigation.
 	document.querySelectorAll('tr[data-href]').forEach(function (tr) {
 		tr.addEventListener('click', function (e) {
-			if (e.target.closest('a,button')) return;
+			if (e.target.closest('a,button,summary')) return;
 			window.location.href = tr.getAttribute('data-href');
 		});
 	});
@@ -543,7 +543,7 @@ templ layoutReady() {
 	// (Enable/Disable/Remove, the Last outcome link).
 	document.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {
 		tr.addEventListener('click', function (e) {
-			if (e.target.closest('a,button')) return;
+			if (e.target.closest('a,button,summary')) return;
 			exoModalOpen(tr.getAttribute('data-modal-row'));
 		});
 	});
