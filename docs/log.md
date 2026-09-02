@@ -6,6 +6,14 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-02 — design invariants page added
+
+- **A new `design/INVARIANTS.md` page codifies the design philosophy, hard
+  rules, and component vocabulary** into the bundle (previously held only in
+  the untracked design-handoff canon). The repo-root `DESIGN.md` and the wiki
+  `design/DESIGN.md` cross-reference it; `AGENTS.md` and both design indexes
+  list it. Structural: a page added.
+
 ## 2026-09-01 — Netgroups page merged into /checks as a tab
 
 - **The standalone Netgroups page was removed; netgroups are now a tab on
