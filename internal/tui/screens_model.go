@@ -33,7 +33,10 @@ type glanceLoadedMsg struct {
 	// the Litestream replication RPO age with its freshness detail.
 	selfRPO    string
 	selfDetail string
-	err        error
+	// deadMan is the footer's dead-man age, resolved here on the load path so
+	// View never touches the store. "--" when no backup has ever succeeded.
+	deadMan string
+	err     error
 }
 
 func loadGlanceCmd(st *store.Store) tea.Cmd {
@@ -70,9 +73,13 @@ func loadGlanceCmd(st *store.Store) tea.Cmd {
 			}
 		}
 		rpo, detail := litestreamRPO(ctx, st, time.Now())
+		deadMan := "--"
+		if when, ok := st.LastSucceededBackupTime(ctx); ok {
+			deadMan = shortDur(time.Since(when))
+		}
 		return glanceLoadedMsg{
 			approvals: approvals, events: events, silences: silences, mutes: mutes,
-			swallowed: swallowed, selfRPO: rpo, selfDetail: detail,
+			swallowed: swallowed, selfRPO: rpo, selfDetail: detail, deadMan: deadMan,
 		}
 	}
 }
@@ -509,27 +516,7 @@ func (m Model) signalLine() string {
 	if len(m.mutes) > 0 {
 		holds = "muted"
 	}
-	return fmt.Sprintf("dead-man %s · notify %s · %s", m.deadManAge(), holds, version.String())
-}
-
-// deadManAge is the age of the newest succeeded backup run the Model holds,
-// the freshness proof the dead-man foot observes. "--" when no run has ever
-// succeeded. Disk % and ntfy last-send age are not in the Model, so the line
-// carries the rest of the handoff pattern's segments only.
-func (m Model) deadManAge() string {
-	var newest time.Time
-	for _, run := range m.runs {
-		if run.State != store.BackupSucceeded || run.FinishedAt == nil {
-			continue
-		}
-		if newest.IsZero() || run.FinishedAt.After(newest) {
-			newest = *run.FinishedAt
-		}
-	}
-	if newest.IsZero() {
-		return "--"
-	}
-	return shortDur(time.Since(newest))
+	return fmt.Sprintf("dead-man %s · notify %s · %s", m.deadMan, holds, version.String())
 }
 
 func backupFreshness(run store.BackupRun, now time.Time) (age, status string) {

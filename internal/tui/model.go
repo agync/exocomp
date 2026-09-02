@@ -125,6 +125,9 @@ type Model struct {
 	selfRPO        string
 	selfDetail     string
 	glanceErr      error
+	// deadMan is the footer's dead-man age, cached on the glance load path
+	// from store.LastSucceededBackupTime (View never does I/O).
+	deadMan string
 
 	tailing    bool
 	tailJobID  int64
@@ -333,6 +336,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.swallowed = msg.swallowed
 			m.selfRPO = msg.selfRPO
 			m.selfDetail = msg.selfDetail
+			m.deadMan = msg.deadMan
 		}
 		return m, nil
 

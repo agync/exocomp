@@ -84,7 +84,7 @@ func home80Model() HomeModel {
 		selfVersion: "0.7.4",
 		selfRPO:     "3m",
 		selfDetail:  "newest replicated frame",
-		signal:      "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗",
+		signal:      "dead-man 12m · notify loud · 0.7.4 (a1b2c3d) built 2026-08-22",
 	}
 }
 
@@ -120,7 +120,7 @@ func home120Model() HomeModel {
 		selfVersion: "0.7.4",
 		selfRPO:     "3m",
 		selfDetail:  "newest replicated frame",
-		signal:      "dead-man 12m · ntfy 2m · disk 71% · 0.7.4↗ update available",
+		signal:      "dead-man 12m · notify loud · 0.7.4 (a1b2c3d) built 2026-08-22",
 	}
 }
 
