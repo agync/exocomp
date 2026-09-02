@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -19,6 +18,7 @@ import (
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // enqueueOnly is the driver of the queue an operator write releases work into
@@ -218,7 +218,7 @@ func planDiffItems(blob []byte) (destroys, changes, creates []approvalItem, secr
 	}
 	for _, rc := range plan.ResourceChanges {
 		item := approvalItem{addr: rc.Address}
-		if hasSensitiveRaw(rc.Change.AfterSensitive) || hasSensitiveRaw(rc.Change.BeforeSensitive) {
+		if wire.HasSensitivePlan(rc.Change.AfterSensitive) || wire.HasSensitivePlan(rc.Change.BeforeSensitive) {
 			item.detail = "[redacted · secret]"
 			secrets++
 		}
@@ -232,10 +232,6 @@ func planDiffItems(blob []byte) (destroys, changes, creates []approvalItem, secr
 		}
 	}
 	return destroys, changes, creates, secrets
-}
-
-func hasSensitiveRaw(raw json.RawMessage) bool {
-	return len(raw) > 0 && bytes.Contains(raw, []byte("true"))
 }
 
 // renderApprovalDiff renders the plan body the [d] pager scrolls: the same

@@ -116,6 +116,31 @@ func runCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
 	return update(t, m, cmd())
 }
 
+// seedSensitivePlanArtifact seals a plan whose *_sensitive trees carry a true
+// flag and a secret value, the fixture the [d] pager redaction test drives.
+func seedSensitivePlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64) *int64 {
+	t.Helper()
+	changes := `[{"address":"aws_db_instance.legacy_reports","change":{"actions":["update"],` +
+		`"after":{"engine":"pg14"},"after_sensitive":{"password":"s3cr3t-p@ss","sensitive":true},` +
+		`"before_sensitive":{"password":"s3cr3t-p@ss","sensitive":true}}}]`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "plan.json")
+	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"resource_changes":%s}`, changes)), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	sealed, err := env.SealFile(path)
+	if err != nil {
+		t.Fatalf("seal plan: %v", err)
+	}
+	art, err := st.CreateArtifact(context.Background(), store.Artifact{
+		JobID: jobID, Kind: reactive.PlanArtifactKind, Path: sealed,
+	})
+	if err != nil {
+		t.Fatalf("create artifact: %v", err)
+	}
+	return &art.ID
+}
+
 // TestNilWriteDisablesWriteKeys proves the read-only posture: with a nil Write
 // every write key is a no-op even when its screen carries a real row to act on,
 // and no command or overlay ever appears. Seeding each surface (a queued job, a
@@ -396,6 +421,35 @@ func TestApproveDestroyCarryingPlanRequiresTypedConfirm(t *testing.T) {
 	}
 	if got.State != store.ApprovalApproved {
 		t.Fatalf("typed-confirmed approval state = %s, want approved", got.State)
+	}
+}
+
+// TestApprovalDiffRedactsSensitivePlan proves the [d] pager never shows a
+// secret value: a plan whose *_sensitive trees mark anything true renders
+// [redacted · secret] for the resource and the SECRETS section counts it, the
+// shared wire.HasSensitivePlan classifier the web uses. Deleting the
+// redaction branch leaves no marker and fails.
+func TestApprovalDiffRedactsSensitivePlan(t *testing.T) {
+	st := openTestStore(t)
+	w, env := newTestWrite(t)
+	job := seedGatedJob(t, st)
+	art := seedSensitivePlanArtifact(t, st, env, job.ID)
+	approval := seedApproval(t, st, env, job.ID, "core", 1, art)
+
+	msg := loadApprovalDiffCmd(st, w, approval)()
+	loaded, ok := msg.(diffLoadedMsg)
+	if !ok {
+		t.Fatalf("loadApprovalDiffCmd() = %T, want diffLoadedMsg", msg)
+	}
+	if loaded.err != nil {
+		t.Fatalf("load diff: %v", loaded.err)
+	}
+	got := renderApprovalDiff(loaded.model)
+	if strings.Contains(got, "s3cr3t-p@ss") {
+		t.Fatalf("diff pager leaked the secret value:\n%s", got)
+	}
+	if !strings.Contains(got, "[redacted · secret]") || !strings.Contains(got, "SECRETS") {
+		t.Fatalf("diff pager did not mark the secret resource redacted:\n%s", got)
 	}
 }
 
