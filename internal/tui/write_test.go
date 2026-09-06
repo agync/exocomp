@@ -640,10 +640,14 @@ func TestFilterIgnoresColorCodes(t *testing.T) {
 	}
 
 	// The modal pre-fills the previous filter, so reset it before typing a
-	// fresh numeric filter.
+	// fresh numeric filter. Filter on "38;2" — the true-colour SGR signature
+	// (the semicolon can only come from the colour code, never from row data
+	// like an ID or a queued time, which is what makes the old bare "38"
+	// flaky: a wall-clock minute/second containing "38" matched and kept the
+	// row). After SGR stripping there is no "38;2" left, so zero rows match.
 	m.filter = ""
 	m, _ = updateCmd(t, m, key('/'))
-	for _, r := range "38" {
+	for _, r := range "38;2" {
 		m = update(t, m, key(r))
 	}
 	m = update(t, m, specialKey(tea.KeyEnter))

@@ -321,18 +321,21 @@ func TestJobRawLogUnknownIs404(t *testing.T) {
 
 // seedJobWithRecap drives a job to a terminal state with a seeded event stream:
 // the queue is not told, so the store transitions and events below are the
-// whole truth the detail page and list rows read (the harness queue polls on a
-// 20ms tick and never sees the row before these synchronous transitions land).
+// whole truth the detail page and list rows read. The job is created via
+// CreateGatedJob so it lands in awaiting_approval — a state no harness worker
+// claims — and is transitioned to running directly, so a live queue runner can
+// never grab the row first (the old CreateJob→queued pattern raced the runner
+// and failed under the full -race load: "job N is running, not queued").
 func seedJobWithRecap(t *testing.T, h *harness, state store.JobState, code int, recap, fatals []string, args store.JobArgs) store.Job {
 	t.Helper()
 	ctx := context.Background()
-	job, err := h.store.CreateJob(ctx, store.NewJob{
+	job, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual", Args: args,
 	})
 	if err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatalf("start seeded job: %v", err)
 	}
 	for _, l := range fatals {
@@ -515,14 +518,15 @@ func TestJobsListReasonLines(t *testing.T) {
 		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
 	})
 	// A syntax-error failure: no recap, the ERROR! banner as the last error.
-	syntax, err := h.store.CreateJob(ctx, store.NewJob{
+	// Created gated so no harness worker can claim it before the transitions.
+	syntax, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
 		Args: store.JobArgs{Argv: []string{"/bin/true"}},
 	})
 	if err != nil {
 		t.Fatalf("seed syntax job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, syntax.ID, store.StateQueued, store.StateRunning); err != nil {
+	if err := h.store.TransitionJob(ctx, syntax.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatalf("start syntax job: %v", err)
 	}
 	for _, l := range []string{"ERROR! Syntax Error while loading YAML."} {
