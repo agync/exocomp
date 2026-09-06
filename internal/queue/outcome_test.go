@@ -44,11 +44,11 @@ func TestOutcome(t *testing.T) {
 			nil, context.Canceled, store.StateFailed,
 		},
 		{
-			// A tolerated degradation settles succeeded, not failed, even though
+			// A tolerated degradation settles degraded, not failed, even though
 			// the process exited non-zero — so it does not page.
-			"degraded settles succeeded",
+			"degraded settles degraded",
 			executor.Result{ExitCode: 4, Degraded: true, UnreachableHosts: []string{"laptop"}},
-			nil, nil, store.StateSucceeded,
+			nil, nil, store.StateDegraded,
 		},
 		{
 			// A timeout or a driver error wins over Degraded: the tolerance only

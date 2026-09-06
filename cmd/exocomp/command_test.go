@@ -156,8 +156,8 @@ func TestAdhocPartialUnreachable(t *testing.T) {
 		t.Fatalf("tolerant run exited %d; a tolerated degradation must not fail:\n%s", code, out.String())
 	}
 	final := getJob(t, lastJobID(t, "command"))
-	if final.State != store.StateSucceeded || !final.Partial {
-		t.Fatalf("tolerant run state=%s partial=%v, want succeeded+partial", final.State, final.Partial)
+	if final.State != store.StateDegraded || !final.Partial {
+		t.Fatalf("tolerant run state=%s partial=%v, want degraded+partial", final.State, final.Partial)
 	}
 	events := jobEventText(t, final.ID)
 	if !strings.Contains(events, "ansible_partial") || !strings.Contains(events, "laptop") {

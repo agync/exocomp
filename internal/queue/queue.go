@@ -520,10 +520,12 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 
 	// A degraded run settled as a tolerated non-failure: the driver reported it
 	// (an unreachable-tolerant ansible run whose only non-success was offline
-	// hosts). The state below stays succeeded so no consumer is disturbed; this
-	// flag records that the success was degraded, not clean, and the driver has
-	// already emitted the event naming the unreachable hosts.
-	if runErr == nil && res.Degraded && state == store.StateSucceeded {
+	// hosts). The state below is degraded (a terminal "succeeded with
+	// warnings", not a failure); this flag is the legacy marker kept and still
+	// written beside it (D2) for readers that predate the degraded state, and
+	// the driver has already emitted the event naming the unreachable hosts.
+	if runErr == nil && res.Degraded &&
+		(state == store.StateSucceeded || state == store.StateDegraded) {
 		if err := q.store.SetJobPartial(final, job.ID, true); err != nil {
 			q.log.Error("record job partial", "job", job.ID, "err", err)
 		}
@@ -554,9 +556,9 @@ func outcome(res executor.Result, runErr, ctxErr error) (store.JobState, string)
 	case res.Degraded:
 		// A tolerated degradation: the process exited non-zero, but its only
 		// non-success was a condition the operator opted to tolerate (ansible
-		// unreachable hosts). It settles succeeded-but-degraded, not failed, so
-		// it does not page — while the real exit code stays recorded.
-		return store.StateSucceeded, fmt.Sprintf("succeeded (degraded: exit %d, %d host(s) unreachable, tolerated)",
+		// unreachable hosts). It settles degraded — terminal, never paged —
+		// while the real exit code stays recorded.
+		return store.StateDegraded, fmt.Sprintf("degraded (exit %d, %d host(s) unreachable, tolerated)",
 			res.ExitCode, len(res.UnreachableHosts))
 	default:
 		return store.StateFailed, fmt.Sprintf("failed (exit %d)", res.ExitCode)

@@ -22,10 +22,12 @@ func (degradedDriver) Run(_ context.Context, _ executor.Spec, _ executor.EventSi
 	return executor.Result{ExitCode: 4, Degraded: true, UnreachableHosts: []string{"laptop"}}, nil
 }
 
-// TestDegradedRunSettlesSucceededPartial proves a Degraded driver result settles
-// the job succeeded (so it does not page) and marks the row partial (so the
-// degraded success is told from a clean one), while the true exit code stays.
-func TestDegradedRunSettlesSucceededPartial(t *testing.T) {
+// TestDegradedRunSettlesDegradedPartial proves a Degraded driver result settles
+// the job degraded (a terminal "succeeded with warnings", never paged) and
+// still marks the row partial (D2 — the legacy marker keeps being written so
+// readers that predate the degraded state keep telling a degraded run from a
+// clean one), while the true exit code stays.
+func TestDegradedRunSettlesDegradedPartial(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 
@@ -60,11 +62,11 @@ func TestDegradedRunSettlesSucceededPartial(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
-	if final.State != store.StateSucceeded {
-		t.Errorf("state = %s, want succeeded (a tolerated degradation must not fail)", final.State)
+	if final.State != store.StateDegraded {
+		t.Errorf("state = %s, want degraded (a tolerated degradation must not fail)", final.State)
 	}
 	if !final.Partial {
-		t.Errorf("Partial = false, want true (the degraded success must be marked)")
+		t.Errorf("Partial = false, want true (the legacy degraded marker must still be written)")
 	}
 	if final.ExitCode == nil || *final.ExitCode != 4 {
 		t.Errorf("exit code = %v, want the real 4 preserved", final.ExitCode)

@@ -56,8 +56,8 @@ func roamJobs(t *testing.T) []store.Job {
 // TestScheduledTolerateUnreachablePlaySettlesPartial is the schedule gate for the
 // unreachable-tolerant outcome: a `schedule add --kind play --tolerate-unreachable`
 // against a fleet with an offline host fires, converges the online host, and
-// settles the fire DEGRADED (succeeded + partial, the offline host named) instead
-// of failing and paging every cron tick.
+// settles the fire DEGRADED (the state plus the legacy partial marker, the
+// offline host named) instead of failing and paging every cron tick.
 func TestScheduledTolerateUnreachablePlaySettlesPartial(t *testing.T) {
 	useDataDir(t, t.TempDir())
 	requireTools(t, "ansible-playbook")
@@ -83,7 +83,7 @@ func TestScheduledTolerateUnreachablePlaySettlesPartial(t *testing.T) {
 	var degraded store.Job
 	waitFor(t, "a scheduled tolerate-unreachable fire to settle degraded", 60*time.Second, func() bool {
 		for _, job := range roamJobs(t) {
-			if job.State == store.StateSucceeded && job.Partial {
+			if job.State == store.StateDegraded && job.Partial {
 				degraded = job
 				return true
 			}
