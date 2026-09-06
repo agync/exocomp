@@ -302,6 +302,69 @@ func TestTransitionJobRejectsIllegalMoves(t *testing.T) {
 	}
 }
 
+// TestDegradedState pins degraded as a first-class terminal state: a claimed
+// run settles running -> degraded exactly as it settles succeeded, stamping
+// finished_at and releasing ownership, and a settled run has nowhere left to
+// go. Degraded is reached only from running — a queued row cannot degrade.
+func TestDegradedState(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	job, err := s.CreateJob(ctx, store.NewJob{Runbook: "r", Kind: "ansible", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := s.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("queued -> running: %v", err)
+	}
+	if err := s.TransitionJob(ctx, job.ID, store.StateRunning, store.StateDegraded); err != nil {
+		t.Fatalf("running -> degraded: %v", err)
+	}
+
+	done, err := s.GetJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if done.State != store.StateDegraded {
+		t.Errorf("state = %s, want degraded", done.State)
+	}
+	if done.FinishedAt == nil {
+		t.Error("degraded job has no finished_at; it must settle like any terminal state")
+	}
+	if done.OwnerPID != 0 {
+		t.Errorf("terminal degraded job still owned by pid %d", done.OwnerPID)
+	}
+	if !done.State.Terminal() {
+		t.Error("degraded is not terminal; a settled run must never be re-claimed")
+	}
+
+	// A settled run has nowhere left to go.
+	err = s.TransitionJob(ctx, job.ID, store.StateDegraded, store.StateRunning)
+	if !errors.Is(err, store.ErrIllegalTransition) {
+		t.Errorf("degraded -> running: err = %v, want ErrIllegalTransition", err)
+	}
+
+	// Degraded is not reachable from queued: only a claimed run degrades.
+	fresh, err := s.CreateJob(ctx, store.NewJob{Runbook: "q", Kind: "ansible", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	err = s.TransitionJob(ctx, fresh.ID, store.StateQueued, store.StateDegraded)
+	if !errors.Is(err, store.ErrIllegalTransition) {
+		t.Errorf("queued -> degraded: err = %v, want ErrIllegalTransition", err)
+	}
+
+	// The degraded state round-trips through ListJobs and its filter.
+	rows, err := s.ListJobs(ctx, store.JobFilter{States: []store.JobState{store.StateDegraded}})
+	if err != nil {
+		t.Fatalf("list degraded jobs: %v", err)
+	}
+	if len(rows) != 1 || rows[0].ID != job.ID {
+		t.Fatalf("degraded filter = %+v, want the one degraded job", rows)
+	}
+}
+
 func TestTransitionJobDetectsStateConflict(t *testing.T) {
 	t.Parallel()
 	s, _ := open(t)

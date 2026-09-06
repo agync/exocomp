@@ -22,10 +22,16 @@ const (
 	StateAwaitingApproval JobState = "awaiting_approval"
 	StateRunning          JobState = "running"
 	StateSucceeded        JobState = "succeeded"
-	StateFailed           JobState = "failed"
-	StateCancelled        JobState = "cancelled"
-	StateTimedOut         JobState = "timed_out"
-	StateInterrupted      JobState = "interrupted"
+	// StateDegraded is a terminal "succeeded with warnings": the run finished
+	// and every reachable target converged, but one or more targets were
+	// skipped as unreachable because the launch tolerated it. It is not a
+	// failure and never pages; it still needs the operator, who must see that
+	// the skipped hosts were never configured.
+	StateDegraded    JobState = "degraded"
+	StateFailed      JobState = "failed"
+	StateCancelled   JobState = "cancelled"
+	StateTimedOut    JobState = "timed_out"
+	StateInterrupted JobState = "interrupted"
 )
 
 // jobTransitions is the whole state machine. States absent from the map are
@@ -45,6 +51,7 @@ var jobTransitions = map[JobState]map[JobState]bool{
 	},
 	StateRunning: {
 		StateSucceeded:   true,
+		StateDegraded:    true,
 		StateFailed:      true,
 		StateCancelled:   true,
 		StateTimedOut:    true,
@@ -186,10 +193,10 @@ type Job struct {
 	DedupKey       string
 	IdempotencyKey string
 	OwnerPID       int
-	// Partial is set when a succeeded job settled as a tolerated degradation
-	// (an unreachable-tolerant ansible run that reached every host it could and
-	// recorded the ones it could not). The state stays succeeded; this flag
-	// marks it a degraded success rather than a clean one.
+	// Partial is the legacy tolerated-degradation marker: an unreachable-tolerant
+	// ansible run that reached every host it could and recorded the ones it could
+	// not. The state column is now the truth (degraded); this flag is kept and
+	// still written for readers that predate the degraded state.
 	Partial bool
 }
 
@@ -477,10 +484,11 @@ func (s *Store) SetJobExitCode(ctx context.Context, id int64, code int) error {
 	return nil
 }
 
-// SetJobPartial marks a job as a tolerated degradation: a succeeded run whose
-// only non-success was unreachable hosts. The job's terminal state is unchanged
-// (it stays succeeded, so no state-machine consumer is disturbed and it does not
-// page); this flag records that the success was degraded, not clean.
+// SetJobPartial marks a job as a tolerated degradation: a run whose only
+// non-success was unreachable hosts. The degraded state is now the truth; this
+// flag is the legacy marker kept and still written beside it (D2), so readers
+// that predate the degraded state keep distinguishing a degraded run from a
+// clean one.
 func (s *Store) SetJobPartial(ctx context.Context, id int64, partial bool) error {
 	res, err := s.db.ExecContext(ctx, `UPDATE job SET partial = ? WHERE id = ?`, boolInt(partial), id)
 	if err != nil {

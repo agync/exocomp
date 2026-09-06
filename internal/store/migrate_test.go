@@ -453,6 +453,154 @@ func TestMigration0032UpgradesFrom031(t *testing.T) {
 	}
 }
 
+// TestMigration0034UpgradesFrom33 pins the in-place jump the degraded state
+// depends on: a database at 0033 (a job CHECK without 'degraded') opens with
+// the current binary, the table rebuild lands, and — the rebuild's own failure
+// mode — every row written at 0033 survives it: the job itself and each of the
+// nine tables that reference job, whose FKs must point at the NEW job, not the
+// renamed-aside legacy table (a cascade through a stale FK would have deleted
+// them). The widened CHECK is then proven usable by settling a run degraded.
+func TestMigration0034UpgradesFrom33(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+
+	pinBeforeMigration(t, path, 34)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	seed := `
+INSERT INTO job (id, runbook, kind, "trigger", state, args_json, queued_at, owner_pid, partial)
+VALUES (1, 'keep', 'shell', 'manual', 'succeeded', '{}', 1, 0, 0);
+INSERT INTO job_event (job_id, seq, ts, level, msg) VALUES (1, 1, 1, 'info', 'hello');
+INSERT INTO artifact (id, job_id, kind, path, sha256, size) VALUES (1, 1, 'log', '/p/l', 'abc', 5);
+INSERT INTO workspace (id, name, tofu_dir, auto_apply, serial) VALUES (1, 'ws', '/t', 0, 0);
+INSERT INTO tfstate (id, workspace_id, serial, lineage, created_at, created_by_job_id, ciphertext)
+VALUES (1, 1, 1, 'lin', 1, 1, X'00');
+INSERT INTO tflock (workspace_id, lock_id, who, operation, created_at, job_id)
+VALUES (1, 'L1', 'me', 'op', 1, 1);
+INSERT INTO schedule (id, name, cron_expr, kind, args_json, enabled, last_job_id, next_at, last_run)
+VALUES (1, 'nightly', '0 2 * * *', 'play', '{}', 1, 1, 2, 3);
+INSERT INTO rule (id, name, cel_expr, action_kind) VALUES (1, 'r', 'true', 'notify');
+INSERT INTO event (id, source, received_at, dedup_key, outcome, job_id)
+VALUES (1, 'drift', 1, 'd1', 'fired', 1);
+INSERT INTO rule_fire (id, rule_id, ts, job_id, dedup_key) VALUES (1, 1, 1, 1, 'k');
+INSERT INTO approval (id, job_id, plan_artifact, workspace, plan_serial, requested_at,
+                      expires_at, token_hash, state)
+VALUES (1, 1, 1, 'ws', 0, 1, 2, 'tok', 'pending');
+INSERT INTO workflow_step (workflow_id, step_no, kind, status, idempotency_key, job_id,
+                           created_at, updated_at, require_approval)
+VALUES ('wf', 1, 'play', 'succeeded', 'ik', 1, 1, 1, 0);
+`
+	if _, err := raw.ExecContext(ctx, seed); err != nil {
+		t.Fatalf("seed 0033 rows: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0033 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 34 {
+		t.Fatalf("schema version = %d after open, want >= 34 (0034 applied)", version)
+	}
+
+	// The FK that rode the rename-aside must now point at the NEW job, so a
+	// later DELETE FROM job cascades correctly instead of following a stale
+	// reference to a dropped table.
+	var fkTable string
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT [table] FROM pragma_foreign_key_list('job_event') LIMIT 1`).Scan(&fkTable); err != nil {
+		t.Fatalf("read job_event FK: %v", err)
+	}
+	if fkTable != "job" {
+		t.Fatalf("job_event FK points at %q, want job (the rebuilt table)", fkTable)
+	}
+
+	// Row survival across the rebuild: the job and one row of every table that
+	// references it. A cascade through the legacy table would have deleted them.
+	job, err := s.GetJob(ctx, 1)
+	if err != nil {
+		t.Fatalf("job row lost by 0034: %v", err)
+	}
+	if job.State != StateSucceeded {
+		t.Fatalf("job state = %q, want succeeded", job.State)
+	}
+	events, err := s.ListJobEvents(ctx, 1)
+	if err != nil {
+		t.Fatalf("job_event rows lost by 0034: %v", err)
+	}
+	if len(events) != 1 || events[0].Msg != "hello" {
+		t.Fatalf("job_event rows = %+v, want the seeded one", events)
+	}
+	arts, err := s.ListArtifacts(ctx, 1)
+	if err != nil {
+		t.Fatalf("artifact rows lost by 0034: %v", err)
+	}
+	if len(arts) != 1 {
+		t.Fatalf("artifacts = %d, want 1", len(arts))
+	}
+	approval, err := s.ApprovalByJob(ctx, 1)
+	if err != nil {
+		t.Fatalf("approval rows lost by 0034: %v", err)
+	}
+	if approval.PlanArtifact == nil || *approval.PlanArtifact != 1 {
+		t.Fatalf("approval lost its plan_artifact link: %+v", approval)
+	}
+	if _, err := s.LatestTFState(ctx, 1); err != nil {
+		t.Fatalf("tfstate rows lost by 0034: %v", err)
+	}
+	if _, err := s.GetTFLock(ctx, 1); err != nil {
+		t.Fatalf("tflock rows lost by 0034: %v", err)
+	}
+	if _, err := s.GetSchedule(ctx, "nightly"); err != nil {
+		t.Fatalf("schedule rows lost by 0034: %v", err)
+	}
+	if _, err := s.GetEvent(ctx, 1); err != nil {
+		t.Fatalf("event rows lost by 0034: %v", err)
+	}
+	for _, table := range []string{"rule_fire", "workflow_step"} {
+		var n int
+		if err := s.db.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM `+table).Scan(&n); err != nil {
+			t.Fatalf("count %s: %v", table, err)
+		}
+		if n != 1 {
+			t.Fatalf("%s rows lost by 0034: have %d, want 1", table, n)
+		}
+	}
+
+	// The widened CHECK admits the new state through the store's own settle
+	// path — a running job degrades, and the state machine owns the move.
+	created, err := s.CreateJob(ctx, NewJob{Runbook: "d", Kind: "ansible", Trigger: "manual"})
+	if err != nil {
+		t.Fatalf("create job on upgraded schema: %v", err)
+	}
+	if err := s.TransitionJob(ctx, created.ID, StateQueued, StateRunning); err != nil {
+		t.Fatalf("claim on upgraded schema: %v", err)
+	}
+	if err := s.TransitionJob(ctx, created.ID, StateRunning, StateDegraded); err != nil {
+		t.Fatalf("settle degraded on upgraded schema: %v", err)
+	}
+	settled, err := s.GetJob(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get degraded job: %v", err)
+	}
+	if settled.State != StateDegraded {
+		t.Fatalf("settled state = %q, want degraded", settled.State)
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.
