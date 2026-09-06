@@ -35,9 +35,10 @@ var (
 
 // renderState colors a job or backup run state per the design's semantic table:
 // succeeded and running are ok-green (running carries its own word, and the
-// design's breathing dot, as the signal), terminal failures are red,
-// awaiting_approval is wait-yellow, and the inactive rest (queued, cancelled,
-// interrupted) is dim. Color is a hint; the state word is the message.
+// design's breathing dot, as the signal), terminal failures are red, degraded
+// is wait-amber with its own word (tolerated ≠ failed), awaiting_approval is
+// wait-yellow, and the inactive rest (queued, cancelled, interrupted) is dim.
+// Color is a hint; the state word is the message.
 func renderState(state string) string {
 	switch state {
 	case "succeeded", "running":
@@ -46,6 +47,8 @@ func renderState(state string) string {
 		return styleErr.Render(state)
 	case "awaiting_approval":
 		return styleWait.Render(state)
+	case "degraded":
+		return styleWait.Render("◐ DEGRADED")
 	default:
 		return styleDim.Render(state)
 	}

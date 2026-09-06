@@ -42,3 +42,15 @@ func TestHRuleKeepsNoColorForm(t *testing.T) {
 		t.Errorf("hrule plain form = %q, want 8 rule characters", plain)
 	}
 }
+
+// TestRenderStateDegraded pins the degraded state's render: the wait-coloured
+// DEGRADED word, never a bare state string — a tolerated run is amber, not red.
+func TestRenderStateDegraded(t *testing.T) {
+	want := styleWait.Render("◐ DEGRADED")
+	if got := renderState("degraded"); got != want {
+		t.Errorf("renderState(degraded) = %q, want %q", got, want)
+	}
+	if got := stripANSI(renderState("degraded")); got != "◐ DEGRADED" {
+		t.Errorf("renderState(degraded) plain = %q, want %q", got, "◐ DEGRADED")
+	}
+}

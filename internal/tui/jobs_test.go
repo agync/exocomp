@@ -6,6 +6,20 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
+// TestJobRowsRendersDegradedState pins that the jobs table shows a degraded run
+// as the wait-coloured DEGRADED word rather than a bare state string.
+func TestJobRowsRendersDegradedState(t *testing.T) {
+	rows := jobRows([]store.Job{
+		{ID: 3, Kind: "ansible", State: store.StateDegraded},
+	})
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1", len(rows))
+	}
+	if rows[0][3] != styleWait.Render("◐ DEGRADED") {
+		t.Errorf("degraded state cell = %q, want the wait DEGRADED word", rows[0][3])
+	}
+}
+
 // TestJobRowsShowsSource proves the jobs table names the source a job ran
 // from, dashing an empty one the same way every other unset cell renders.
 func TestJobRowsShowsSource(t *testing.T) {
