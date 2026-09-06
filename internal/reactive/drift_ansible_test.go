@@ -303,6 +303,99 @@ func TestDegradedCleanCheckDoesNotClose(t *testing.T) {
 	}
 }
 
+// degradedCheckJob writes a finished scheduled `--check` play that settled
+// degraded — the state-truth form of the tolerated run
+// TestDegradedCleanCheckDoesNotClose exercises through the legacy partial flag.
+func (h *harness) degradedCheckJob(t *testing.T, runbook, playbook string, drift map[string]int) store.Job {
+	t.Helper()
+	ctx := context.Background()
+
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: runbook,
+		Kind:    executor.KindAnsible,
+		Trigger: "schedule",
+		Args:    store.JobArgs{Argv: executor.AnsibleArtifactArgv(playbook, "--check")},
+	})
+	if err != nil {
+		t.Fatalf("create degraded check job: %v", err)
+	}
+
+	outcome := executor.AnsibleCheckOutcome{Operation: "check"}
+	for _, host := range sortedHosts(drift) {
+		outcome.Changes = true
+		outcome.Drift = append(outcome.Drift,
+			executor.AnsibleHostDrift{Host: host, Changed: drift[host]})
+	}
+	if len(outcome.Drift) == 0 {
+		outcome.CleanHosts = 2
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: job.ID, Level: store.LevelSystem, Msg: "ansible check finished",
+		RawJSON: checkRawJSON(t, outcome),
+	}); err != nil {
+		t.Fatalf("append check outcome: %v", err)
+	}
+
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start degraded check job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateDegraded); err != nil {
+		t.Fatalf("settle degraded check job: %v", err)
+	}
+	return job
+}
+
+// TestDegradedStateCheckStillOpensDrift pins B3: a scheduled --check run that
+// settles degraded still opens the drift incident. Before the sweep admitted
+// the degraded state, such a run was invisible to it and the drift went
+// unpaged — the tolerated run's findings are real config drift either way.
+func TestDegradedStateCheckStillOpensDrift(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.degradedCheckJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 3})
+
+	raised, err := h.engine.SweepDrift(ctx)
+	if err != nil {
+		t.Fatalf("sweep drift (degraded): %v", err)
+	}
+	if raised != 1 {
+		t.Fatalf("raised %d drift events for a degraded check, want 1", raised)
+	}
+	if len(driftPages(h.sent.sent)) != 1 {
+		t.Fatalf("degraded check produced %d pages, want the one open", len(driftPages(h.sent.sent)))
+	}
+}
+
+// TestDegradedStateCleanCheckDoesNotClose pins that a clean check which settled
+// degraded is not evidence of a clean play: it saw nothing on the hosts it
+// never reached, so the incident stays open — the state truth, not just the
+// legacy partial flag, keeps the incident.
+func TestDegradedStateCleanCheckDoesNotClose(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	h.checkJob(t, "nightly-converge", "playbooks/site.yml", map[string]int{"nas": 2})
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (open): %v", err)
+	}
+
+	h.degradedCheckJob(t, "nightly-converge", "playbooks/site.yml", nil)
+	if _, err := h.engine.SweepDrift(ctx); err != nil {
+		t.Fatalf("sweep drift (degraded clean): %v", err)
+	}
+
+	pages := driftPages(h.sent.sent)
+	if len(pages) != 1 {
+		t.Fatalf("pages = %d, want only the open page", len(pages))
+	}
+	if pages[0].Resolved {
+		t.Fatal("a degraded clean check closed the incident")
+	}
+}
+
 // TestFailedCheckDoesNotClose pins that only a check that actually finished
 // clean closes an incident: a check that failed decided nothing about drift,
 // whatever partial recap it printed on the way down.

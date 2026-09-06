@@ -86,8 +86,9 @@ func (e *Engine) sweepAnsibleCheck(ctx context.Context, job store.Job) (int, err
 		// A run that could not reach every host saw nothing at all on the ones
 		// it missed, so "no host reported a change" is not evidence the play is
 		// clean. A degraded check leaves the incident open rather than closing
-		// one on partial evidence.
-		if job.Partial {
+		// one on partial evidence. The degraded state is the truth; Partial is
+		// the legacy marker still written beside it (D2).
+		if job.Partial || job.State == store.StateDegraded {
 			return 0, nil
 		}
 		openJob, open, err := e.latestOpenAnsibleDrift(ctx, subject)

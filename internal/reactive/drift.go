@@ -28,7 +28,7 @@ const driftScan = 200
 // cursor to keep, a column to add, or state to lose on a restart.
 func (e *Engine) SweepDrift(ctx context.Context) (int, error) {
 	jobs, err := e.store.ListJobs(ctx, store.JobFilter{
-		States: []store.JobState{store.StateSucceeded},
+		States: []store.JobState{store.StateSucceeded, store.StateDegraded},
 		Limit:  driftScan,
 	})
 	if err != nil {
