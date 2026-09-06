@@ -317,8 +317,8 @@ func newJobsEventsCmd() *cobra.Command {
 func knownJobState(s string) bool {
 	switch store.JobState(s) {
 	case store.StateQueued, store.StateAwaitingApproval, store.StateRunning,
-		store.StateSucceeded, store.StateFailed, store.StateCancelled,
-		store.StateTimedOut, store.StateInterrupted:
+		store.StateSucceeded, store.StateDegraded, store.StateFailed,
+		store.StateCancelled, store.StateTimedOut, store.StateInterrupted:
 		return true
 	default:
 		return false

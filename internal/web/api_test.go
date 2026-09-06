@@ -569,3 +569,23 @@ func TestAPIEventsSummaryNoTokenIsWireError(t *testing.T) {
 		t.Fatalf("no-token envelope = %s, want error/unauthenticated", body)
 	}
 }
+
+// TestAPIJobsFilterAcceptsDegradedState asserts GET /api/v1/jobs?state=degraded
+// is a valid filter: the read API must not refuse a real terminal state. The
+// admitted set stays closed — an unknown state remains a 400.
+func TestAPIJobsFilterAcceptsDegradedState(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/jobs?state=degraded", token)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/jobs?state=degraded status = %d, want 200 (body: %s)", code, body)
+	}
+
+	code, _, body = bearerGet(t, ts.URL, "/api/v1/jobs?state=bogus", token)
+	if code != http.StatusBadRequest {
+		t.Fatalf("GET /api/v1/jobs?state=bogus status = %d, want 400 (body: %s)", code, body)
+	}
+}

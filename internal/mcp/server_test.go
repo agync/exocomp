@@ -427,3 +427,26 @@ func TestListEventsRejectsUnknownOutcome(t *testing.T) {
 		t.Fatalf("want invalid_argument, got %+v", env.Error)
 	}
 }
+
+// TestListJobsAcceptsDegradedState asserts the list_jobs state filter admits
+// the degraded state (a real terminal state, not an unknown word) and still
+// refuses an unknown one — the filter is closed, just wider.
+func TestListJobsAcceptsDegradedState(t *testing.T) {
+	srv, _ := newTestServer(t)
+	resps := drive(t, srv, req(1, "tools/call",
+		`{"name":"list_jobs","arguments":{"state":["degraded"]}}`))
+	env, isErr := toolContent(t, resps[0].Result)
+	if isErr {
+		t.Fatalf("list_jobs state=[degraded] refused: %+v", env.Error)
+	}
+	if env.Error != nil {
+		t.Fatalf("list_jobs state=[degraded] error = %+v", env.Error)
+	}
+
+	resps = drive(t, srv, req(2, "tools/call",
+		`{"name":"list_jobs","arguments":{"state":["bogus"]}}`))
+	env, isErr = toolContent(t, resps[0].Result)
+	if !isErr {
+		t.Fatalf("list_jobs with an unknown state must be refused")
+	}
+}

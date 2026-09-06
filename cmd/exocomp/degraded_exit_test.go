@@ -9,6 +9,26 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
+// TestJobsListAcceptsDegradedState: `jobs list --state degraded` is a valid
+// filter — a degraded run is a real, queryable terminal state, so the CLI must
+// not refuse the word. Unknown states are still refused.
+func TestJobsListAcceptsDegradedState(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", t.TempDir())
+
+	out, _, err := runRoot(t, []string{"jobs", "list", "--state", "degraded"})
+	if err != nil {
+		t.Fatalf("jobs list --state degraded: %v", err)
+	}
+	if !strings.Contains(out, "no jobs") {
+		t.Fatalf("empty-store list = %q, want the no-jobs line", out)
+	}
+
+	_, _, err = runRoot(t, []string{"jobs", "list", "--state", "bogus"})
+	if err == nil || !strings.Contains(err.Error(), "not a job state") {
+		t.Fatalf("--state bogus err = %v, want a not-a-job-state refusal", err)
+	}
+}
+
 // TestPlaybookReportJobOutcomeDegradedExitsZero pins B4 on the local path: a
 // degraded run is a tolerated success, so the shell code a playbook run reports
 // is 0 however non-zero the underlying exit was — a tolerated offline host must
