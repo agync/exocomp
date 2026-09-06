@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -603,9 +604,49 @@ type jobRow struct {
 	// "Run again"/"Schedule" actions and their read-only argv preview; the
 	// plain jobsList table never renders it.
 	Argv []string
+	// Title is what the PLAYBOOK cell and the run card title name: an ansible
+	// run's playbook path relativized against its working directory, else the
+	// runbook label.
+	Title string
+	// SourceMeta is the meta under the playbook: "{Source} · check mode".
+	SourceMeta string
+	// TriggerLabel/TriggerMeta render the TRIGGER cell's two lines — "Rerun" /
+	// "of #4 · operator", "Manual" / "operator", "Schedule" / the schedule name.
+	TriggerLabel string
+	TriggerMeta  string
+	// Reason is the D4 one-fact reason line ("2 hosts unreachable",
+	// "exit 4 · 2 hosts unreachable", "exit 2 · syntax error"); empty on
+	// SUCCEEDED and every non-terminal row. One terse fact, never a host list —
+	// names live on the detail page.
+	Reason string
+	// Duration is the run's wall time ("41s"); FinishedRel the "16:31 today"
+	// clock of when it ended.
+	Duration    string
+	FinishedRel string
+	// CheckMode reports the run's --check flag for the meta line.
+	CheckMode bool
 }
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
+
+// ReasonClass names the reason line's state colour: the degraded line reads in
+// the wait signal, every other line in the default ink.
+func (j jobRow) ReasonClass() string {
+	if j.State == store.StateDegraded {
+		return "reason reason--degraded"
+	}
+	return "reason"
+}
+
+// outputMeta renders the Output card's "stdout + stderr · {n} lines · complete"
+// line; a live job reads "live" instead of "complete".
+func outputMeta(n int, terminal bool) string {
+	s := fmt.Sprintf("stdout + stderr · %d lines", n)
+	if terminal {
+		return s + " · complete"
+	}
+	return s + " · live"
+}
 
 // RunbookLabel strips the "rule:" prefix a rule-triggered job's runbook
 // carries, so the job detail and the web jobs list read the rule name. It is
@@ -689,6 +730,22 @@ type jobDetailVM struct {
 	// runbook has no event row, so the rule line stands alone.
 	FiredRule    string
 	TriggerEvent *triggerEvent
+	// RunCard is the run card: chips, the "Queued by ..." sentence, the
+	// verdict number, and the RUN CONFIGURATION tiles.
+	RunCard jobRunCardVM
+	// Verdict is the verdict band, populated only on FAILED and DEGRADED.
+	Verdict *jobVerdictVM
+	// RerunFailedOn names the hosts this job's own recap left unreachable, for
+	// the rerun dialog's "#N failed on {hosts}." suffix and its is-suggested
+	// pre-highlight. Empty on a run that did not fail on unreachable hosts.
+	RerunFailedOn []string
+	// RerunOpen renders the rerun dialog open (?rerun=1, JS-off).
+	RerunOpen bool
+	// RefLabel is the source's "{Ref} @ {short sha}" per S1, empty when the
+	// job ran from no source or the source row is gone. Ref is the branch
+	// alone, the rerun dialog footer's "@ {ref}".
+	RefLabel string
+	Ref      string
 }
 
 // triggerEvent is the provenance link on a rule-triggered job's detail view:
@@ -705,23 +762,336 @@ type eventLine struct {
 	Ts    string
 	Level string
 	Msg   string
+	// Band is the copy-formatted terminal-band line when this event is one of
+	// the run's state bands (▸ running / ▸ failed / ▸ degraded); empty on a
+	// plain log line. BandClass is the band's state class (run|fail|wait).
+	Band      string
+	BandClass string
 }
 
 // jobRerunVM prefills the "Run again" resubmit modal from the original job. The
-// three toggles carry the original run's flags (Check/Diff detected in the
-// stored argv, Privileged from Args.Privileged); Limit/Tags are the editable
-// values pulled from the argv's two-token flags. Command/Inventory/ExtraVars are
-// the read-only identity — the run's own resolved command line and the names it
-// carried, never a secret value.
+// toggles carry the original run's flags (Check/Diff detected in the stored
+// argv, Privileged from Args.Privileged, Tolerate from Args.TolerateUnreachable);
+// Limit/Tags are the editable values pulled from the argv's two-token flags.
+// Command/Inventory/ExtraVars are the read-only identity — the run's own
+// resolved command line and the names it carried, never a secret value.
 type jobRerunVM struct {
 	Check      bool
 	Diff       bool
 	Privileged bool
+	Tolerate   bool
 	Limit      string
 	Tags       string
 	Command    string
 	Inventory  string
 	ExtraVars  []string
+}
+
+// Summary is the rerun dialog footer's mono line naming the enabled options:
+// "check · diff · tolerate unreachable". It is the server-rendered baseline;
+// the toggles are real form fields, so a JS-off submit carries the same truth.
+func (r jobRerunVM) Summary() string {
+	var parts []string
+	if r.Check {
+		parts = append(parts, "check")
+	}
+	if r.Diff {
+		parts = append(parts, "diff")
+	}
+	if r.Tolerate {
+		parts = append(parts, "tolerate unreachable")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// RerunQueueLabel is the rerun dialog's submit-button contract: the thing
+// being queued and the ref it resolves against (F4). The `@ ref` is omitted
+// when the source has no ref.
+func (vm jobDetailVM) RerunQueueLabel() string {
+	label := "Queue run — " + vm.RunCard.Title
+	if vm.Ref != "" {
+		label += " @ " + vm.Ref
+	}
+	return label
+}
+
+// configTile is one RUN CONFIGURATION tile: a label and a value, with the
+// optional link the value resolves to and the state ring the cause tile wears
+// (the Tolerate tile on a degraded run).
+type configTile struct {
+	Label string
+	Value string
+	Link  string
+	// Cause marks the tile that carried the outcome's inset state ring.
+	Cause bool
+	// Wait tints the value with the wait signal ("on · settles degraded").
+	Wait bool
+}
+
+// jobRunCardVM is the run card at the top of the job detail page: the chip
+// row, the "Queued by ..." sentence, the verdict number, and the RUN
+// CONFIGURATION tile grid.
+type jobRunCardVM struct {
+	State     store.JobState
+	Tool      string
+	CheckMode bool
+	// RerunOf is the parent job's id when this run is a rerun; 0 otherwise.
+	RerunOf  int64
+	Title    string
+	JobID    int64
+	Sentence string
+	// Verdict is "exit {code}" with " tolerated" appended on a degraded run;
+	// empty on a job that never exited. Tolerated flags the smaller "tolerated"
+	// tail.
+	Verdict   string
+	Tolerated bool
+	// RanLine is "ran 00:00:41 · 16:26:38 → 16:27:19 · budget 600s"; empty on a
+	// job that never finished.
+	RanLine string
+	// DegradedChip is the "2 hosts unreachable · hypnotoad, lrrr" wait-tint
+	// chip, empty on every state but degraded.
+	DegradedChip string
+	Tiles        []configTile
+}
+
+// jobVerdictHost is one host row of the verdict band's table.
+type jobVerdictHost struct {
+	Host   string
+	Class  string // fail | wait | ok
+	Result string // UNREACHABLE | FAILED | OK
+	Recap  string
+}
+
+// jobVerdictVM is the verdict band: the keyword line, the one sentence, the
+// host table, and the invariant-3 verbs. It is populated only on FAILED and
+// DEGRADED — healthy is quiet.
+type jobVerdictVM struct {
+	Keyword  string
+	Class    string // fail | wait
+	Sentence string
+	Hosts    []jobVerdictHost
+	// Verb is the band's primary action link and its meta line; VerbSecond the
+	// degraded band's second link.
+	Verb           string
+	VerbHref       string
+	VerbMeta       string
+	VerbSecond     string
+	VerbSecondHref string
+}
+
+// recapHostRow is one PLAY RECAP host row plus the raw counts text ansible
+// printed, for the verdict band's host table.
+type recapHostRow struct {
+	Host        string
+	Changed     int
+	Unreachable int
+	Failed      int
+	RawCounts   string
+}
+
+// jobOutcomeFacts is the parsed outcome the reason line and the verdict band
+// read: the recap hosts, the unreachable/failed names, and whether an ansible
+// syntax-error banner was the last error. It is computed once from a job's
+// stored event stream (D1) and shared by the detail view and the list rows.
+type jobOutcomeFacts struct {
+	Hosts       []recapHostRow
+	RecapFound  bool
+	Unreachable []string
+	Failed      []string
+	SyntaxError bool
+}
+
+// parseJobOutcome reads a job's stored event stream for the facts a reason
+// line and the verdict band need: the PLAY RECAP (already LevelInfo events,
+// D1) and the last error banner. found stays false when no recap printed, so
+// a run that errored before any host result fails closed rather than reading
+// as "every host clean".
+func parseJobOutcome(events []store.JobEvent) jobOutcomeFacts {
+	var f jobOutcomeFacts
+	var lines []string
+	for _, e := range events {
+		if e.Level == store.LevelInfo {
+			lines = append(lines, e.Msg)
+		}
+	}
+	hosts, found := executor.ParseRecapHosts(lines)
+	f.RecapFound = found
+	if !found {
+		f.SyntaxError = syntaxErrorSeen(events)
+		return f
+	}
+	for _, h := range hosts {
+		f.Hosts = append(f.Hosts, recapHostRow{
+			Host: h.Host, Changed: h.Changed, Unreachable: h.Unreachable,
+			Failed: h.Failed, RawCounts: rawCountsFor(lines, h.Host),
+		})
+		if h.Unreachable > 0 {
+			f.Unreachable = append(f.Unreachable, h.Host)
+		}
+		if h.Failed > 0 {
+			f.Failed = append(f.Failed, h.Host)
+		}
+	}
+	f.SyntaxError = syntaxErrorSeen(events)
+	return f
+}
+
+// rawCountsFor returns the `ok=… changed=… skipped=…` text of one recap host
+// row as ansible printed it, for the OK hosts' RECAP cell.
+func rawCountsFor(lines []string, host string) string {
+	inRecap := false
+	for _, line := range lines {
+		if strings.HasPrefix(line, "PLAY RECAP") {
+			inRecap = true
+			continue
+		}
+		if !inRecap {
+			continue
+		}
+		h, rest, ok := strings.Cut(line, ":")
+		if !ok || strings.TrimSpace(h) != host {
+			continue
+		}
+		rest = strings.TrimSpace(rest)
+		if strings.HasPrefix(rest, "ok=") {
+			return rest
+		}
+	}
+	return ""
+}
+
+// syntaxErrorSeen reports whether the last LevelError event carries ansible's
+// "ERROR!" banner — the stderr shape a syntax failure prints before any host
+// ran (shell.go routes stderr to LevelError).
+func syntaxErrorSeen(events []store.JobEvent) bool {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Level != store.LevelError {
+			continue
+		}
+		return strings.HasPrefix(events[i].Msg, "ERROR!")
+	}
+	return false
+}
+
+// hostCountLine renders the reason line's host count, singular below two.
+func hostCountLine(n int) string {
+	if n == 1 {
+		return "1 host unreachable"
+	}
+	return itoa(int64(n)) + " hosts unreachable"
+}
+
+// jobReason is the D4 one-terse-fact reason line: a degraded run names its
+// unreachable count, a failed run its exit code plus the cause from the recap
+// count or the syntax-error banner. Every other state carries no reason.
+func jobReason(f jobOutcomeFacts, state store.JobState, exit string) string {
+	switch state {
+	case store.StateDegraded:
+		if !f.RecapFound {
+			return ""
+		}
+		return hostCountLine(len(f.Unreachable))
+	case store.StateFailed:
+		if exit == "" {
+			return ""
+		}
+		cause := ""
+		if f.RecapFound && len(f.Unreachable) > 0 {
+			cause = " · " + hostCountLine(len(f.Unreachable))
+		} else if f.SyntaxError {
+			cause = " · syntax error"
+		}
+		return "exit " + exit + cause
+	default:
+		return ""
+	}
+}
+
+// andList joins host names for a sentence: "hypnotoad and lrrr", or
+// "a, b and c" past two.
+func andList(names []string) string {
+	switch len(names) {
+	case 0:
+		return ""
+	case 1:
+		return names[0]
+	case 2:
+		return names[0] + " and " + names[1]
+	default:
+		return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+	}
+}
+
+// jobTitle names a job the way the PLAYBOOK cell and the run card do: an
+// ansible run's playbook path relativized against its working directory (a
+// source run reads "deploy/aio-sandbox.yml", not the checkout's absolute
+// path), else the runbook label.
+func jobTitle(j store.Job) string {
+	if j.Kind == executor.KindAnsible && len(j.Args.Argv) > 0 && j.Runbook != "command" {
+		return relTo(j.Args.Dir, j.Args.Argv[len(j.Args.Argv)-1])
+	}
+	return RunbookLabel(j.Runbook)
+}
+
+// relTo rebases a path onto dir when it names a path at or under it; a path
+// outside dir, or a non-path token, passes through unchanged.
+func relTo(dir, path string) string {
+	if dir == "" || !strings.HasPrefix(path, dir) || len(path) <= len(dir) {
+		return path
+	}
+	if dir[len(dir)-1] == '/' {
+		return path[len(dir):]
+	}
+	if path[len(dir)] == '/' {
+		return path[len(dir)+1:]
+	}
+	return path
+}
+
+// runDuration renders a run's wall time the way the RAN column reads it:
+// "41s", "2m 14s", or "1h 5m".
+func runDuration(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		return fmt.Sprintf("%dm %02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+// finishedRel renders a finished clock the way the RAN column reads it: today's
+// runs as "16:31 today", older ones as "Sep 5 · 21:14".
+func finishedRel(t, now time.Time) string {
+	if t.UTC().Format("2006-01-02") == now.UTC().Format("2006-01-02") {
+		return t.UTC().Format("15:04") + " today"
+	}
+	return t.UTC().Format("Jan 2 · 15:04")
+}
+
+// ranLine renders the verdict's "ran 00:00:41 · 16:26:38 → 16:27:19 · budget
+// 600s" line; empty on a job that never started and finished.
+func ranLine(j store.Job) string {
+	if j.StartedAt == nil || j.FinishedAt == nil {
+		return ""
+	}
+	d := j.FinishedAt.Sub(*j.StartedAt)
+	line := fmt.Sprintf("ran %02d:%02d:%02d · %s → %s",
+		int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60,
+		j.StartedAt.UTC().Format("15:04:05"), j.FinishedAt.UTC().Format("15:04:05"))
+	if t := time.Duration(j.Args.Timeout); t > 0 {
+		line += fmt.Sprintf(" · budget %ds", int(t.Seconds()))
+	}
+	return line
+}
+
+// utcStamp renders a UTC timestamp as "2026-09-06 16:26:38 UTC".
+func utcStamp(t time.Time) string {
+	return t.UTC().Format("2006-01-02 15:04:05") + " UTC"
 }
 
 // approvalVM is the phone approval surface: the seven-point contract rendered.
@@ -868,6 +1238,10 @@ func stateClass(s store.JobState) string {
 		return "ok"
 	case store.StateFailed, store.StateTimedOut, store.StateInterrupted:
 		return "fail"
+	case store.StateDegraded:
+		// A tolerated degradation is a wait state: not a failure, never paged,
+		// but the skipped hosts were not configured and still need the operator.
+		return "wait"
 	case store.StateAwaitingApproval:
 		return "wait"
 	case store.StateRunning:

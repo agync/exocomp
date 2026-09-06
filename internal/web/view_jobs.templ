@@ -2,48 +2,71 @@ package web
 
 // jobsList is the one list every execution path shares: manual runs, scheduled
 // runs, backups, applies. One list, one detail view (the brief's "everything is
-// a job").
+// a job"). The rows are the two-line grid (2a): a PLAYBOOK / TRIGGER / STATE /
+// RAN cell pair each, the STATE cell carrying the one-fact reason line on
+// FAILED and DEGRADED.
 templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
-		<div class="card span2 mt18 tray">
+		<div class="card span2 mt18 jobslist">
 			<div class="kicker">Run ledger</div>
 			<h3>All jobs</h3>
+			<div class="listmeta">
+				<span class="mono">{ itoa(int64(len(vm.Queue))) } · newest first</span>
+				<input id="jobs-filter" type="search" autocomplete="off" placeholder="filter" aria-label="Filter jobs"/>
+			</div>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>
 			} else {
-				<div class="tablewrap stackable">
-					<table>
-						<thead>
-						<tr>
-								<th scope="col">Job</th>
-								<th scope="col">Runbook</th>
-								<th scope="col">Source</th>
-								<th scope="col">Kind</th>
-								<th scope="col">Trigger</th>
-								<th scope="col">State</th>
-								<th scope="col" class="right">Exit</th>
-								<th scope="col" class="right">Age</th>
-							</tr>
-						</thead>
-						<tbody>
-							for _, j := range vm.Queue {
-								<tr data-href={ "/jobs/" + itoa(j.ID) }>
-									<td class="num" data-label="Job"><a href={ templ.SafeURL("/jobs/" + itoa(j.ID)) }>#{ itoa(j.ID) }</a></td>
-									<td data-label="Runbook">{ j.RunbookLabel() }</td>
-									<td class="mono" data-label="Source">{ j.Source }</td>
-									<td class="mono" data-label="Kind">{ j.Kind }</td>
-									<td class="mono" data-label="Trigger">{ j.Trigger }</td>
-									<td data-label="State">@chip(j.StateClass(), string(j.State))</td>
-									<td class="right num" data-label="Exit">{ j.ExitCode }</td>
-									<td class="right num" data-label="Age">{ j.Age }</td>
-								</tr>
-							}
-						</tbody>
-					</table>
+				<div class="jobshead" aria-hidden="true">
+					<span>#</span><span>Playbook</span><span>Trigger</span><span>State</span><span>Ran</span>
 				</div>
+				for _, j := range vm.Queue {
+					@jobsRow(j)
+				}
 			}
 		</div>
+		<script>
+		(function () {
+			var input = document.getElementById("jobs-filter");
+			if (!input) return;
+			window.exoFilterJobs = function () {
+				var q = input.value.trim().toLowerCase();
+				var rows = document.querySelectorAll(".jobs-row");
+				for (var i = 0; i < rows.length; i++) {
+					rows[i].style.display = (q === "" || rows[i].textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
+				}
+			};
+			input.addEventListener("input", window.exoFilterJobs);
+		})();
+		</script>
 	}
+}
+
+// jobsRow is one two-line row of the jobs list: the whole row is the link to
+// the job's detail page, and each cell is a primary line over a meta line on
+// shared baselines.
+templ jobsRow(j jobRow) {
+	<a class="jobs-row" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+		<span class="num">{ itoa64(j.ID) }</span>
+		<span class="cell">
+			<b class="mono">{ j.Title }</b>
+			<small class="mono">{ j.SourceMeta }</small>
+		</span>
+		<span class="cell">
+			<b>{ j.TriggerLabel }</b>
+			<small class="mono">{ j.TriggerMeta }</small>
+		</span>
+		<span class="cell cell--state">
+			@chip(j.StateClass(), string(j.State))
+			if j.Reason != "" {
+				<span class={ j.ReasonClass() }>{ j.Reason }</span>
+			}
+		</span>
+		<span class="cell">
+			<b class="mono">{ j.Duration }</b>
+			<small class="mono">{ j.FinishedRel }</small>
+		</span>
+	</a>
 }
 
 // jobDetail streams a job's event tail. The pre-rendered events are what the
@@ -53,10 +76,18 @@ templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: "/jobs"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
 		<div class="pageheader">
-			if vm.Operator && vm.Job.State.Terminal() {
-				<div class="actions ml-auto">
+			<p class="meta mono">
+				{ vm.Job.Title }
+				· <span class="mono">{ vm.Job.Kind }</span>
+				if vm.RunCard.CheckMode {
+					· check
+				}
+			</p>
+			<div class="actions ml-auto">
+				<a class="btn" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" rel="noopener" aria-label="View raw log in new tab" title="View raw log in new tab">Raw log</a>
+				if vm.Operator && vm.Job.State.Terminal() {
 					if vm.Rerunnable {
-						<button type="button" class="btn" data-modal-open="job-rerun">Run again</button>
+						<button type="button" class="btn primary" data-modal-open="job-rerun">Rerun</button>
 					}
 					if vm.CanSchedule {
 						<button
@@ -72,17 +103,13 @@ templ jobDetail(vm jobDetailVM) {
 							Schedule
 						</button>
 					}
-				</div>
-			}
+				}
+			</div>
 		</div>
-		<p class="meta">
-			{ vm.Job.RunbookLabel() } · <span class="mono">{ vm.Job.Kind }</span> · trigger <span class="mono">{ vm.Job.Trigger }</span>
-			if vm.Source != "" {
-				· source <span class="mono">{ vm.Source }</span>
-			}
-			·
-			@chip(vm.Job.StateClass(), string(vm.Job.State))
-		</p>
+		@runCard(vm)
+		if vm.Verdict != nil {
+			@verdictBand(vm)
+		}
 		if vm.FiredRule != "" {
 			<p class="meta mt8">
 				fired by rule <a href="/rules">{ vm.FiredRule }</a>
@@ -92,37 +119,9 @@ templ jobDetail(vm jobDetailVM) {
 				}
 			</p>
 		}
+		@outputCard(vm)
 		if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
-			@modal("job-rerun", "Run again") {
-				<p class="meta">Resubmits this run through the one queue. The identity below is fixed; toggle the drift/diff flags, retarget with limit/tags, or change the sandbox tier before submitting. A plain submit repeats the original run.</p>
-				<form method="post" action={ rerunAction(vm.Job.ID) } class="writeform">
-					if vm.Source != "" {
-						<label>Source (read-only)</label>
-						<p class="meta mono">{ vm.Source }</p>
-					}
-					<label>Command (read-only, from this run)</label>
-					<p class="meta mono">{ vm.Rerun.Command }</p>
-					if vm.Rerun.Inventory != "" {
-						<label>Inventory (read-only)</label>
-						<p class="meta mono">{ vm.Rerun.Inventory }</p>
-					}
-					if len(vm.Rerun.ExtraVars) > 0 {
-						<label>Extra vars (read-only)</label>
-						for _, ev := range vm.Rerun.ExtraVars {
-							<p class="meta mono">{ ev }</p>
-						}
-					}
-					@toggle("check", "check mode (dry run / drift)", vm.Rerun.Check, false)
-					@toggle("diff", "show diff", vm.Rerun.Diff, false)
-					<label for="jr-limit">Limit</label>
-					<input id="jr-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value={ vm.Rerun.Limit }/>
-					<label for="jr-tags">Tags</label>
-					<input id="jr-tags" name="tags" type="text" autocomplete="off" value={ vm.Rerun.Tags }/>
-					@toggle("privileged", "Run unsandboxed (privileged)", vm.Rerun.Privileged, true)
-					<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
-					<div class="actions"><button type="submit" class="btn primary">Resubmit</button></div>
-				</form>
-			}
+			@rerunDialog(vm)
 		}
 		if vm.Operator && vm.CanSchedule {
 			@modal("job-schedule", "Schedule this job") {
@@ -140,43 +139,225 @@ templ jobDetail(vm jobDetailVM) {
 				</form>
 			}
 		}
-		<div class="card mt14">
-			<div class="logbar">
-				<div class="kicker">Live tail</div>
-				<div class="logtools ml-auto">
-					<label class="logsearch" for="log-search">Search log</label>
-					<input id="log-search" type="search" autocomplete="off" placeholder="filter log…" aria-label="Search log"/>
-					<a class="raglyph" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" rel="noopener" aria-label="View raw log in new tab" title="View raw log in new tab">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphOpen }></path></svg>
-					</a>
-				</div>
-			</div>
-			<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
-				for _, e := range vm.Events {
-					@logLine(e)
-				}
-			</pre>
-		</div>
-		<script>
-		(function () {
-			var input = document.getElementById("log-search");
-			var log = document.getElementById("log");
-			if (!input || !log) return;
-			window.exoFilterLog = function () {
-				var q = input.value.trim().toLowerCase();
-				var lines = log.querySelectorAll(".logln");
-				for (var i = 0; i < lines.length; i++) {
-					lines[i].style.display = (q === "" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
-				}
-			};
-			input.addEventListener("input", window.exoFilterLog);
-		})();
-		</script>
 		<p class="meta" id="jobs-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
 		if !vm.Job.State.Terminal() {
 			@jobStream(vm.Job.ID, vm.LastSeq)
 		}
 	}
+}
+
+// runCard is the job detail's lead block (2.1): the chip row (state, degraded
+// host count, tool, check mode, rerun-of link), the "Queued by ..." sentence,
+// the verdict number, and the RUN CONFIGURATION tile grid. The card wears the
+// terminal state's inset ring through data-state.
+templ runCard(vm jobDetailVM) {
+	<article class="run-card" data-state={ string(vm.RunCard.State) }>
+		<div class="chips">
+			@chip(vm.Job.StateClass(), string(vm.Job.State))
+			if vm.RunCard.DegradedChip != "" {
+				<span class="chip chip--degraded"><span class="dot"></span>{ vm.RunCard.DegradedChip }</span>
+			}
+			<span class="chip dim"><span class="dot"></span>{ vm.RunCard.Tool }</span>
+			if vm.RunCard.CheckMode {
+				<span class="chip dim"><span class="dot"></span>check mode</span>
+			}
+			if vm.RunCard.RerunOf > 0 {
+				<a class="chip chip--dashed" href={ templ.SafeURL("/jobs/" + itoa64(vm.RunCard.RerunOf)) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
+			}
+		</div>
+		<div class="runhead">
+			<div class="runid">
+				<div class="runtitle">
+					<span class="title mono">{ vm.RunCard.Title }</span>
+					<span class="jobid">job #{ itoa64(vm.RunCard.JobID) }</span>
+				</div>
+				<p class="sentence">{ vm.RunCard.Sentence }</p>
+			</div>
+			<div class="verdictcol">
+				if vm.RunCard.Verdict != "" {
+					<div class="verdict">
+						{ vm.RunCard.Verdict }
+						if vm.RunCard.Tolerated {
+							<span class="tolerated">tolerated</span>
+						}
+					</div>
+				}
+				if vm.RunCard.RanLine != "" {
+					<p class="ranline">{ vm.RunCard.RanLine }</p>
+				}
+			</div>
+		</div>
+		<div class="kicker">RUN CONFIGURATION</div>
+		<div class="config">
+			for _, t := range vm.RunCard.Tiles {
+				@configTileBox(t)
+			}
+		</div>
+	</article>
+}
+
+// configTileBox is one RUN CONFIGURATION tile: a label over a value, the value a
+// link when the tile resolves somewhere, and the wait ring when it is the
+// cause tile (the Tolerate tile on a degraded run).
+templ configTileBox(t configTile) {
+	<div class={ "tile", templ.KV("is-cause", t.Cause), templ.KV("wait", t.Wait) }>
+		<span>{ t.Label }</span>
+		if t.Link != "" {
+			<b><a href={ templ.SafeURL(t.Link) }>{ t.Value }</a></b>
+		} else {
+			<b>{ t.Value }</b>
+		}
+	</div>
+}
+
+// verdictBand is the FAILED/DEGRADED block (2.2): the keyword line, the one
+// sentence, the HOST table, and the invariant-3 verbs. It is never rendered on
+// a healthy run — quiet is the design.
+templ verdictBand(vm jobDetailVM) {
+	<div class={ "verdict-band", "verdict-band--" + vm.Verdict.Class }>
+		<div class="bandhead">
+			<span class="keyword">{ vm.Verdict.Keyword }</span>
+			<a class="jump" href="#log">jump to recap in log ↓</a>
+		</div>
+		<p class="sentence">{ vm.Verdict.Sentence }</p>
+		if len(vm.Verdict.Hosts) > 0 {
+			<div class="host-table">
+				<div class="hhead" aria-hidden="true">
+					<span>HOST</span><span>RESULT</span><span>RECAP</span>
+				</div>
+				for _, h := range vm.Verdict.Hosts {
+					@verdictHost(h)
+				}
+			</div>
+		}
+		if vm.Verdict.Verb != "" {
+			<div class="bandverbs">
+				<a href={ templ.SafeURL(vm.Verdict.VerbHref) }>{ vm.Verdict.Verb }</a>
+				if vm.Verdict.VerbMeta != "" {
+					<p class="meta mono">{ vm.Verdict.VerbMeta }</p>
+				}
+				if vm.Verdict.VerbSecond != "" {
+					<a href={ templ.SafeURL(vm.Verdict.VerbSecondHref) }>{ vm.Verdict.VerbSecond }</a>
+				}
+			</div>
+		}
+	</div>
+}
+
+// verdictHost is one row of the verdict band's host table: host · result
+// (state-coloured dot + keyword) · per-host recap.
+templ verdictHost(h jobVerdictHost) {
+	<div class="hrow">
+		<span class="host">{ h.Host }</span>
+		<span class={ "result", h.Class }><span class="dot"></span>{ h.Result }</span>
+		<span class="recap">{ h.Recap }</span>
+	</div>
+}
+
+// outputCard is the retuned log tail (2.3, J6): the Output header with the
+// line meta, the ENDED pill, the filter input (placeholder only), the wrap
+// toggle, and the log with the run's state bands re-rendered from copy.
+templ outputCard(vm jobDetailVM) {
+	<div class="card mt14">
+		<div class="outputbar">
+			<span class="outputtitle">Output</span>
+			<span class="outputmeta mono">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
+			<div class="logtools ml-auto">
+				if vm.Job.State.Terminal() {
+					<span class="pill">ENDED · nothing to follow</span>
+				}
+				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
+				<button type="button" class="logwrap" id="logwrap" aria-pressed="true">wrap</button>
+			</div>
+		</div>
+		<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
+			for _, e := range vm.Events {
+				if e.Band != "" {
+					<div class={ "logband", e.BandClass }><span class="ts">{ e.Ts }</span> { e.Band }</div>
+				} else {
+					@logLine(e)
+				}
+			}
+		</pre>
+	</div>
+	<script>
+	(function () {
+		var input = document.getElementById("log-search");
+		var log = document.getElementById("log");
+		if (!input || !log) return;
+		window.exoFilterLog = function () {
+			var q = input.value.trim().toLowerCase();
+			var lines = log.querySelectorAll(".logln, .logband");
+			for (var i = 0; i < lines.length; i++) {
+				lines[i].style.display = (q === "" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
+			}
+		};
+		input.addEventListener("input", window.exoFilterLog);
+		var wrap = document.getElementById("logwrap");
+		if (wrap) {
+			wrap.addEventListener("click", function () {
+				var nowrap = log.classList.toggle("nowrap");
+				wrap.setAttribute("aria-pressed", nowrap ? "false" : "true");
+			});
+		}
+	})();
+	</script>
+}
+
+// rerunDialog is the resubmit modal (1c): the facts block (read-only identity
+// plus the editable Limit), the OPTIONS toggles (Check mode, Show diff,
+// Tolerate unreachable hosts — pre-highlighted when this job failed on
+// unreachable hosts), and the footer contract button. ?rerun=1 renders it open
+// for JS-off.
+templ rerunDialog(vm jobDetailVM) {
+	<dialog class="modal" id="job-rerun" aria-labelledby="job-rerun-title" open?={ vm.RerunOpen }>
+		<div class="modal-head">
+			<h2 id="job-rerun-title">Queue the same run again</h2>
+			<button type="button" class="modal-close" data-modal-dismiss aria-label="Close">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+					<path d="M3 3l10 10M13 3L3 13"></path>
+				</svg>
+			</button>
+		</div>
+		<div class="modal-body">
+			<span class="kicker">RERUN JOB #{ itoa64(vm.Job.ID) }</span>
+			<p class="meta">Same playbook, ref, inventory and secrets as <a href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID)) }>#{ itoa64(vm.Job.ID) }</a>. Change only what is listed here.</p>
+			<form method="post" action={ rerunAction(vm.Job.ID) } class="writeform">
+				<div class="facts">
+					<div><span>Playbook</span><b class="mono">{ vm.RunCard.Title }</b></div>
+					if vm.Source != "" {
+						<div><span>Source</span><b class="mono">{ vm.Source }</b></div>
+					}
+					<div><span>Ref</span><b class="mono">{ orDash(vm.RefLabel) }</b></div>
+					<div><span>Inventory</span><b class="mono">{ orDash(vm.Rerun.Inventory) }</b></div>
+				</div>
+				<label for="jr-limit">Limit</label>
+				<input id="jr-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value={ vm.Rerun.Limit }/>
+				<span class="kicker">OPTIONS</span>
+				<div class="toggle-row">
+					@toggle("check", "Check mode", vm.Rerun.Check, false)
+					<p class="meta">report what would change, change nothing</p>
+				</div>
+				<div class="toggle-row">
+					@toggle("diff", "Show diff", vm.Rerun.Diff, false)
+				</div>
+				<div class={ "toggle-row", templ.KV("is-suggested", len(vm.RerunFailedOn) > 0) }>
+					@toggle("tolerate_unreachable", "Tolerate unreachable hosts", vm.Rerun.Tolerate, false)
+					<p class="meta">Offline hosts are skipped and the job settles <span class="wait-text">DEGRADED</span> instead of FAILED when the rest succeed.
+						if len(vm.RerunFailedOn) > 0 {
+							<span> #{ itoa64(vm.Job.ID) } failed on { andList(vm.RerunFailedOn) }.</span>
+						}
+						<span> CLI: --tolerate-unreachable</span>
+					</p>
+				</div>
+				<div class="actions">
+					<button type="submit" class="btn primary">{ vm.RerunQueueLabel() }</button>
+				</div>
+				<p class="meta mono rerun-summary">{ vm.Rerun.Summary() }</p>
+				<button type="button" class="btn quiet" data-modal-dismiss>Cancel</button>
+			</form>
+		</div>
+	</dialog>
 }
 
 templ logLine(e eventLine) {

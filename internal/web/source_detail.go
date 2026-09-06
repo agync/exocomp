@@ -260,19 +260,20 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 	// session/token scope every other run control on this surface checks.
 	privileged := r.Form.Has("privileged")
 	res, err := svc.RunPlaybook(r.Context(), s.enqueuer(), service.PlaybookInput{
-		PlaybookPath:   playbook,
-		InventoryPath:  invPath,
-		InventoryName:  invName,
-		RunSecrets:     r.PostFormValue("run_secrets"),
-		Source:         name,
-		Dir:            root,
-		DirReadOnly:    readOnly,
-		Passthrough:    passthrough,
-		ExtraVars:      vars,
-		Privileged:     privileged,
-		IdempotencyKey: idempotencyKey(r, routePlaybook),
-		Timeout:        timeout,
-		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
+		PlaybookPath:        playbook,
+		InventoryPath:       invPath,
+		InventoryName:       invName,
+		RunSecrets:          r.PostFormValue("run_secrets"),
+		Source:              name,
+		Dir:                 root,
+		DirReadOnly:         readOnly,
+		Passthrough:         passthrough,
+		ExtraVars:           vars,
+		Privileged:          privileged,
+		TolerateUnreachable: r.Form.Has("tolerate_unreachable"),
+		IdempotencyKey:      idempotencyKey(r, routePlaybook),
+		Timeout:             timeout,
+		Actor:               service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"},
 	})
 	if err != nil {
 		s.fail(w, r, err)
@@ -354,7 +355,7 @@ func (s *Server) handleSourceRunCommand(w http.ResponseWriter, r *http.Request) 
 		Privileged:     r.Form.Has("privileged"),
 		IdempotencyKey: idempotencyKey(r, routeCommand),
 		Timeout:        timeout,
-		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
+		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"},
 	})
 	if err != nil {
 		if errors.Is(err, service.ErrSourcePathEscape) {

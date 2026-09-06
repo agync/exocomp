@@ -2,6 +2,7 @@ package web
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -88,6 +89,13 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 	// the toggle inherits that gate, never the client's hidden state.
 	privileged := r.Form.Has("privileged")
 
+	// Tolerate unreachable hosts mirrors the launcher's toggle: it opts the
+	// rerun into the degraded outcome (an offline host settles DEGRADED instead
+	// of FAILED when the rest succeed). Unlike privileged it is not an
+	// escalation — it only widens the set of acceptable terminal states — so
+	// the operator scope check above is the whole gate for it too.
+	tolerate := r.Form.Has("tolerate_unreachable")
+
 	spec := queue.Spec{
 		Runbook: job.Runbook,
 		Kind:    job.Kind,
@@ -104,21 +112,37 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 		Source:              job.Args.Source,
 		ExtraVars:           job.Args.ExtraVars,
 		RunnerName:          job.Args.RunnerName,
-		TolerateUnreachable: job.Args.TolerateUnreachable,
+		TolerateUnreachable: tolerate,
 		Timeout:             time.Duration(job.Args.Timeout),
 		Privileged:          privileged,
 	}
 
 	// The operator who clicked rerun owns the new run, not whoever submitted the
 	// original — attribution follows the actor at the keyboard, recorded by the
-	// same service tail every run write uses.
+	// same service tail every run write uses. The face is the browser surface:
+	// the job detail sentence reads it back as "from the web".
 	res, err := s.service().Reenqueue(r.Context(), s.enqueuer(), spec,
-		service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name})
+		service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name, Face: "web"})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.log.Info("web: rerun", "from", id, "job", res.Job.ID, "privileged", privileged, "by", ident.token.Name)
+	// The rerun-of record is the durable fact the dashed "rerun of #N" chip and
+	// the list's "of #N · operator" read (J3): the flash the redirect used to
+	// carry is dropped on the job detail page, so the parent id must live on
+	// the child's own ledger. A failed append fails the write the same way the
+	// actor record does — the relationship is the evidence the chip renders.
+	if _, err := s.store.AppendJobEvent(r.Context(), store.JobEvent{
+		JobID:   res.Job.ID,
+		Level:   store.LevelSystem,
+		Msg:     "rerun of job " + strconv.FormatInt(id, 10),
+		RawJSON: fmt.Sprintf(`{"rerun_of":%d}`, id),
+	}); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: rerun", "from", id, "job", res.Job.ID, "privileged", privileged,
+		"tolerate", tolerate, "by", ident.token.Name)
 	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
 		"job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued (rerun of "+strconv.FormatInt(id, 10)+")")
 }

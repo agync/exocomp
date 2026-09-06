@@ -147,6 +147,94 @@ func TestJobRerunToggleOverridesRemove(t *testing.T) {
 	}
 }
 
+// TestJobRerunTolerateToggleOff: a rerun of a tolerated run without the
+// tolerate box stays non-tolerating — the toggle defaults to the original
+// run's value, never silently carries it.
+func TestJobRerunTolerateToggleOff(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	orig := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/true"}, TolerateUnreachable: true})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(orig.ID)+"/rerun", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rerun = %d, want 303", resp.StatusCode)
+	}
+
+	got := rerunJob(t, h)
+	if got.Args.TolerateUnreachable {
+		t.Error("tolerate toggle unchecked must set TolerateUnreachable false")
+	}
+}
+
+// TestJobRerunTolerateToggleOn: checking "Tolerate unreachable hosts" opts the
+// rerun into the degraded outcome even when the original run did not tolerate.
+func TestJobRerunTolerateToggleOn(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	orig := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(orig.ID)+"/rerun",
+		url.Values{"tolerate_unreachable": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rerun = %d, want 303", resp.StatusCode)
+	}
+
+	got := rerunJob(t, h)
+	if !got.Args.TolerateUnreachable {
+		t.Error("tolerate toggle checked must set TolerateUnreachable true")
+	}
+}
+
+// TestJobRerunChildDetailShowsRerunOf: the rerun handler records the parent on
+// the child's ledger, and the child's run card reads it back as the dashed
+// "rerun of #N" chip — the flash's replacement (J3).
+func TestJobRerunChildDetailShowsRerunOf(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	orig := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(orig.ID)+"/rerun", url.Values{}, nil)
+	_ = resp.Body.Close()
+	child := rerunJob(t, h)
+
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(child.ID))
+	if !strings.Contains(body, `class="chip chip--dashed" href="/jobs/`+itoa64(orig.ID)+`">rerun of #`+itoa64(orig.ID)+`</a>`) {
+		t.Errorf("child detail missing the dashed rerun-of chip:\n%s", body)
+	}
+}
+
+// TestJobRerunDialogSuggestsTolerate: a failed job whose recap names
+// unreachable hosts renders the rerun dialog's tolerate row pre-highlighted
+// (is-suggested) with the "#N failed on {hosts}." suffix.
+func TestJobRerunDialogSuggestsTolerate(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=1 changed=0 unreachable=0 failed=0 skipped=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `class="toggle-row is-suggested"`) {
+		t.Errorf("rerun dialog tolerate row must be pre-highlighted, got:\n%s", body)
+	}
+	if !strings.Contains(body, `#`+itoa64(job.ID)+` failed on hypnotoad and lrrr.`) {
+		t.Errorf("rerun dialog must name the unreachable hosts it failed on")
+	}
+}
+
 // TestJobRerunReadonlyForbidden: a readonly token's rerun is refused before the
 // privileged flag is honored — privileged or not — and enqueues nothing. This is
 // the escalation gate: the client hiding the toggle is never trusted.
@@ -214,15 +302,16 @@ func TestJobRerunRejectsUnrunnable(t *testing.T) {
 
 // TestJobRerunModalPrefills: the resubmit modal renders on a succeeded job's
 // detail with each toggle prefilled to the original run's flags (Check from
-// --check in argv, Privileged from the row) and limit/tags prefilled from the
-// argv. It is also the shared toggle's JS-off proof: every switch is a real
+// --check in argv, Tolerate from the row) and limit prefilled from the argv.
+// It is also the shared toggle's JS-off proof: every switch is a real
 // <input type="checkbox"> form field.
 func TestJobRerunModalPrefills(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	job := seedTerminalJob(t, h, store.JobArgs{
-		Argv: []string{"/bin/true", "--limit", "web", "--tags", "deploy", "--check"}, Privileged: true,
+		Argv:                []string{"/bin/true", "--limit", "web", "--check"},
+		TolerateUnreachable: true,
 	})
 	h.waitJobState(t, job.ID, store.StateSucceeded, 3*time.Second)
 
@@ -237,17 +326,14 @@ func TestJobRerunModalPrefills(t *testing.T) {
 	if !strings.Contains(body, `<input type="checkbox" role="switch" name="check" value="1" class="toggle-cb" checked>`) {
 		t.Error("check toggle must be a checkbox prefilled on for a --check run")
 	}
-	if !strings.Contains(body, `<input type="checkbox" role="switch" name="privileged" value="1" class="toggle-cb" checked>`) {
-		t.Error("privileged toggle must be a checkbox prefilled on for a privileged run")
+	if !strings.Contains(body, `<input type="checkbox" role="switch" name="tolerate_unreachable" value="1" class="toggle-cb" checked>`) {
+		t.Error("tolerate toggle must be a checkbox prefilled on for a tolerating run")
 	}
 	if strings.Contains(body, `name="diff" value="1" class="toggle-cb" checked`) {
 		t.Error("diff toggle must be off for a run without --diff")
 	}
 	if !strings.Contains(body, `name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value="web"`) {
 		t.Error("limit field must be prefilled from the argv")
-	}
-	if !strings.Contains(body, `name="tags" type="text" autocomplete="off" value="deploy"`) {
-		t.Error("tags field must be prefilled from the argv")
 	}
 }
 

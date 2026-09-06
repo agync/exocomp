@@ -114,7 +114,8 @@ func TestListSurfacesUseTrayTable(t *testing.T) {
 		{"/sources", `class="card span2 mt18 tray"`, true},
 		{"/tokens", `class="card span2 tray"`, true},
 		{"/schedules", `class="card span2 mt18 tray"`, true},
-		{"/jobs", `class="card span2 mt18 tray"`, false},
+		// /jobs is the two-line grid card (2a), not a tray table.
+		{"/jobs", `class="card span2 mt18 jobslist"`, false},
 		{"/secrets", `class="card span2 mt18 tray"`, false},
 	}
 	for _, c := range cases {

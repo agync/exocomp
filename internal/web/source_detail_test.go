@@ -25,8 +25,8 @@ func seedSourceCheckout(t *testing.T, h *harness) string {
 		t.Fatalf("write playbook: %v", err)
 	}
 	if _, err := h.store.CreateSource(context.Background(), store.Source{
-		Name: "tree", Kind: store.SourcePath, URI: root, Enabled: true,
-		LastSyncSHA: "0123456789abcdef",
+		Name: "tree", Kind: store.SourcePath, URI: root, Ref: "main",
+		Enabled: true, LastSyncSHA: "0123456789abcdef",
 	}); err != nil {
 		t.Fatalf("seed source: %v", err)
 	}
@@ -314,6 +314,60 @@ func TestSourceRunPrivilegedRefusedForReadonly(t *testing.T) {
 	}
 	if len(jobs) != 0 {
 		t.Fatalf("a refused privileged run still enqueued %d job(s)", len(jobs))
+	}
+}
+
+// TestSourceLaunchDrawerTolerateToggle: the launch drawer's Options fold
+// carries the "Tolerate unreachable hosts" switch, and checking it enqueues a
+// playbook job with TolerateUnreachable set — the web half of the CLI's
+// --tolerate-unreachable parity (1c).
+func TestSourceLaunchDrawerTolerateToggle(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		`name="tolerate_unreachable" value="1" class="toggle-cb"`,
+		`Offline hosts are skipped and the job settles <span class="wait-text">DEGRADED</span> instead of FAILED when the rest succeed. CLI: --tolerate-unreachable`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("launch drawer missing %q", want)
+		}
+	}
+
+	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}, "tolerate_unreachable": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("tolerating run = %d, want 303", resp.StatusCode)
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 || !jobs[0].Args.TolerateUnreachable {
+		t.Fatalf("tolerating run did not mark the row: %+v", jobs)
+	}
+
+	// The box unchecked stays non-tolerating (secure default).
+	resp = postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}}, nil)
+	_ = resp.Body.Close()
+	plain, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	for _, j := range plain {
+		if j.ID != jobs[0].ID && j.Args.TolerateUnreachable {
+			t.Errorf("a run with the box unchecked defaulted to tolerating: %+v", j)
+		}
 	}
 }
 

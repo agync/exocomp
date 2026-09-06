@@ -1,13 +1,17 @@
 package web
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -315,9 +319,47 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	now := s.now()
 	// Newest first reads better as a history than the store's oldest-first.
 	for i := len(jobs) - 1; i >= 0; i-- {
-		vm.Queue = append(vm.Queue, s.jobRow(jobs[i], now))
+		vm.Queue = append(vm.Queue, s.jobRowForList(r.Context(), jobs[i], now))
 	}
 	s.render(w, r, http.StatusOK, jobsList(vm))
+}
+
+// reasonEventWindow is how many tail events a list row reads for its reason
+// line: the PLAY RECAP and the final error both sit at the very end of the
+// stream (the recap is ansible's last stdout, the error band the last system
+// event), so a bounded tail is enough and a full read is never paid for.
+const reasonEventWindow = 200
+
+// jobRowForList builds one jobs-list row: the shared row facts plus the
+// D4 reason line (a bounded tail read for the reason-carrying states) and the
+// TRIGGER cell. The rerun parent is the only thing that costs a full event
+// read, and only on the rare rerun rows.
+func (s *Server) jobRowForList(ctx context.Context, j store.Job, now time.Time) jobRow {
+	row := s.jobRow(j, now)
+	if j.State == store.StateFailed || j.State == store.StateDegraded || j.State == store.StateTimedOut {
+		if events, err := s.store.LastJobEvents(ctx, j.ID, reasonEventWindow); err == nil {
+			row.Reason = jobReason(parseJobOutcome(events), j.State, row.ExitCode)
+		}
+	}
+	switch j.Trigger {
+	case rerunTrigger:
+		row.TriggerLabel = "Rerun"
+		row.TriggerMeta = "operator"
+		if events, err := s.store.ListJobEvents(ctx, j.ID); err == nil {
+			if parent := rerunOf(events); parent > 0 {
+				row.TriggerMeta = "of #" + itoa64(parent) + " · operator"
+			}
+		}
+	case "schedule":
+		row.TriggerLabel = "Schedule"
+		row.TriggerMeta = RunbookLabel(j.Runbook)
+	case "manual":
+		row.TriggerLabel = "Manual"
+		row.TriggerMeta = "operator"
+	default:
+		row.TriggerLabel = orDash(j.Trigger)
+	}
+	return row
 }
 
 func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
@@ -352,6 +394,81 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
 		Rerunnable: len(job.Args.Argv) > 0,
 	}
+	// J3/S6: three routes flash to /jobs/{id} and the layout renders the banner
+	// for every page, but on the job's own page the fact is the dashed "rerun
+	// of #N" chip — the banner is dropped here, at the render seam, not at the
+	// call sites.
+	vm.Page.Flash = ""
+
+	facts := parseJobOutcome(events)
+	vm.RerunFailedOn = facts.Unreachable
+
+	// The "Queued by {actor} from the {face}" sentence reads the actor record
+	// off the ledger; a CLI run records none, so it reads "operator from the
+	// cli" (S2).
+	actor, aerr := s.service().JobActor(r.Context(), job.ID)
+	if aerr != nil {
+		s.fail(w, r, aerr)
+		return
+	}
+	actorName, face := "operator", "cli"
+	if actor.Kind != "" {
+		actorName = actor.Name
+		face = actor.Face
+		if face == "" {
+			face = "api"
+		}
+	}
+	runner := job.Args.RunnerName
+	if runner == "" {
+		runner = hostname()
+	}
+
+	// The Ref tile shows the source's current sync (S1): its ref and short sha.
+	var src *store.Source
+	if source != "" {
+		if row, serr := s.store.SourceByName(r.Context(), source); serr == nil {
+			src = &row
+			vm.RefLabel = refLabel(row)
+			vm.Ref = row.Ref
+		}
+	}
+
+	if vm.Rerunnable {
+		vm.Rerun = jobRerunVM{
+			Check:      hasFlag(job.Args.Argv, "--check"),
+			Diff:       hasFlag(job.Args.Argv, "--diff"),
+			Privileged: job.Args.Privileged,
+			Tolerate:   job.Args.TolerateUnreachable,
+			Limit:      flagValue(job.Args.Argv, "--limit"),
+			Tags:       flagValue(job.Args.Argv, "--tags"),
+			Command:    joinArgv(job.Args.Argv),
+			Inventory:  job.Args.Inventory,
+			ExtraVars:  extraVarLines(job.Args.ExtraVars),
+		}
+		// ?rerun=1 renders the dialog open (JS-off); ?limit= prefills the Limit
+		// field, the target of the verdict band's "Rerun limited to …" verb.
+		if r.URL.Query().Get("rerun") == "1" {
+			vm.RerunOpen = true
+			if lim := r.URL.Query().Get("limit"); lim != "" {
+				vm.Rerun.Limit = lim
+			}
+		}
+	}
+
+	vm.RunCard = s.runCardVM(r.Context(), job, source, src, facts, actorName, face, runner, rerunOf(events))
+	vm.Verdict = s.jobVerdict(job, facts, events)
+
+	for _, e := range events {
+		line := eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg}
+		if e.Level == store.LevelSystem {
+			line.Band, line.BandClass = bandFor(job, e.Msg, facts)
+		}
+		vm.Events = append(vm.Events, line)
+	}
+	if len(vm.Events) > 0 {
+		vm.LastSeq = vm.Events[len(vm.Events)-1].Seq
+	}
 	if rule, ok := strings.CutPrefix(job.Runbook, "rule:"); ok {
 		vm.FiredRule = rule
 		ev, err := s.store.EventByJobID(r.Context(), job.ID)
@@ -365,24 +482,6 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 			s.fail(w, r, err)
 			return
 		}
-	}
-	if vm.Rerunnable {
-		vm.Rerun = jobRerunVM{
-			Check:      hasFlag(job.Args.Argv, "--check"),
-			Diff:       hasFlag(job.Args.Argv, "--diff"),
-			Privileged: job.Args.Privileged,
-			Limit:      flagValue(job.Args.Argv, "--limit"),
-			Tags:       flagValue(job.Args.Argv, "--tags"),
-			Command:    joinArgv(job.Args.Argv),
-			Inventory:  job.Args.Inventory,
-			ExtraVars:  extraVarLines(job.Args.ExtraVars),
-		}
-	}
-	for _, e := range events {
-		vm.Events = append(vm.Events, eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg})
-	}
-	if len(vm.Events) > 0 {
-		vm.LastSeq = vm.Events[len(vm.Events)-1].Seq
 	}
 	s.render(w, r, http.StatusOK, jobDetail(vm))
 }
@@ -640,6 +739,8 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 	row := jobRow{
 		ID: j.ID, Runbook: j.Runbook, Kind: j.Kind, Trigger: j.Trigger, Source: "-",
 		State: j.State, Age: jobAge(j, now), ExitCode: "-", Argv: j.Args.Argv,
+		Title: jobTitle(j), CheckMode: hasFlag(j.Args.Argv, "--check"),
+		Duration: jobDuration(j, now), FinishedRel: jobFinishedRel(j, now),
 	}
 	if j.Args.Source != "" {
 		row.Source = j.Args.Source
@@ -647,7 +748,352 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 	if j.ExitCode != nil {
 		row.ExitCode = strconv.Itoa(*j.ExitCode)
 	}
+	var parts []string
+	if row.Source != "-" && row.Source != "" {
+		parts = append(parts, row.Source)
+	}
+	if row.CheckMode {
+		parts = append(parts, "check mode")
+	}
+	row.SourceMeta = strings.Join(parts, " · ")
 	return row
+}
+
+// jobDuration is the RAN column's primary line: the finished run's wall time,
+// a running job's time so far, else how long the row has queued.
+func jobDuration(j store.Job, now time.Time) string {
+	if j.StartedAt != nil && j.FinishedAt != nil {
+		return runDuration(j.FinishedAt.Sub(*j.StartedAt))
+	}
+	if j.StartedAt != nil {
+		return runDuration(now.Sub(*j.StartedAt))
+	}
+	return humanAge(now.Sub(j.QueuedAt))
+}
+
+// jobFinishedRel is the RAN column's meta line: "16:31 today" for a finished
+// run, empty while it still runs.
+func jobFinishedRel(j store.Job, now time.Time) string {
+	if j.FinishedAt != nil {
+		return finishedRel(*j.FinishedAt, now)
+	}
+	return ""
+}
+
+// rerunOf reads a rerun job's parent id from the record the rerun handler
+// appended to its ledger (jobs_rerun.go); 0 when the run is not a rerun or the
+// record is missing.
+func rerunOf(events []store.JobEvent) int64 {
+	for _, e := range events {
+		var payload struct {
+			Of int64 `json:"rerun_of"`
+		}
+		if e.RawJSON == "" {
+			continue
+		}
+		if err := json.Unmarshal([]byte(e.RawJSON), &payload); err != nil || payload.Of <= 0 {
+			continue
+		}
+		return payload.Of
+	}
+	return 0
+}
+
+// refLabel renders the Ref tile's "{ref} @ {short sha}" from a source's current
+// sync (S1) — an approximation, never the run's own pinned commit.
+func refLabel(src store.Source) string {
+	ref, sha := src.Ref, shortSHA(src.LastSyncSHA)
+	switch {
+	case ref != "" && sha != "":
+		return ref + " @ " + sha
+	case ref != "":
+		return ref
+	default:
+		return sha
+	}
+}
+
+// shortSHA renders a sync sha at the length a human scans, mirroring
+// sourceRow.Short for a store row.
+func shortSHA(sha string) string {
+	if len(sha) > 12 {
+		return sha[:12]
+	}
+	return sha
+}
+
+// runCardVM builds the run card: the chip row, the "Queued by ..." sentence,
+// the verdict number, and the RUN CONFIGURATION tile grid. source is the
+// resolved source name (Args.Source or the reverse Dir lookup).
+func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, src *store.Source,
+	facts jobOutcomeFacts, actorName, face, runner string, rerunOfID int64) jobRunCardVM {
+	rc := jobRunCardVM{
+		State: job.State, Tool: job.Kind, CheckMode: hasFlag(job.Args.Argv, "--check"),
+		RerunOf: rerunOfID, Title: jobTitle(job), JobID: job.ID,
+		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src),
+	}
+	rc.Sentence = "Queued by " + actorName + " from the " + face + " · " +
+		utcStamp(job.QueuedAt) + " · ran on " + runner
+	if job.ExitCode != nil {
+		rc.Verdict = "exit " + strconv.Itoa(*job.ExitCode)
+		if job.State == store.StateDegraded {
+			rc.Tolerated = true
+		}
+	}
+	if job.State == store.StateDegraded && facts.RecapFound {
+		rc.DegradedChip = hostCountLine(len(facts.Unreachable)) + " · " +
+			strings.Join(facts.Unreachable, ", ")
+	}
+	return rc
+}
+
+// runCardTiles builds the RUN CONFIGURATION tile grid. The Tolerate tile is the
+// cause tile on a degraded run: it wears the outcome's inset state ring. source
+// is the resolved source name (Args.Source or the reverse Dir lookup).
+func (s *Server) runCardTiles(ctx context.Context, source string, job store.Job, src *store.Source) []configTile {
+	var tiles []configTile
+	argv := job.Args.Argv
+	if source != "" {
+		tile := configTile{Label: "Source", Value: source + " ↗"}
+		if src != nil {
+			tile.Link = "/sources/" + src.Name
+		}
+		tiles = append(tiles, tile)
+	}
+	if src != nil {
+		if val := refLabel(*src); val != "" {
+			tiles = append(tiles, configTile{Label: "Ref", Value: val, Link: "/sources/" + src.Name})
+		}
+	}
+	if job.Args.Inventory != "" {
+		tiles = append(tiles, configTile{Label: "Inventory", Value: job.Args.Inventory})
+	}
+	if limit := flagValue(argv, "--limit"); limit != "" {
+		tiles = append(tiles, configTile{Label: "Limit", Value: limit})
+	}
+	if tags := flagValue(argv, "--tags"); tags != "" {
+		tiles = append(tiles, configTile{Label: "Tags", Value: tags})
+	}
+	mode := ""
+	if job.Kind == executor.KindTofu && len(argv) > 1 {
+		mode = argv[1] // plan|apply
+	} else {
+		var parts []string
+		if hasFlag(argv, "--check") {
+			parts = append(parts, "check")
+		}
+		if hasFlag(argv, "--diff") {
+			parts = append(parts, "diff")
+		}
+		mode = strings.Join(parts, " + ")
+	}
+	if mode != "" {
+		tiles = append(tiles, configTile{Label: "Mode", Value: mode})
+	}
+	var priv []string
+	if job.Args.Privileged {
+		priv = append(priv, "unsandboxed")
+	}
+	if hasFlag(argv, "--become") {
+		priv = append(priv, "become")
+	}
+	if hasFlag(argv, "--sudo") {
+		priv = append(priv, "sudo")
+	}
+	if len(priv) > 0 {
+		tiles = append(tiles, configTile{Label: "Privileged", Value: strings.Join(priv, " · ")})
+	}
+	if job.Args.RunSecretBinding != "" {
+		val := job.Args.RunSecretBinding
+		if pairs, err := s.store.RunSecretsByBinding(ctx, job.Args.RunSecretBinding); err == nil && len(pairs) > 1 {
+			val += " · " + itoa(int64(len(pairs)-1)) + " more"
+		}
+		tiles = append(tiles, configTile{Label: "Secrets bound", Value: val})
+	}
+	tol := configTile{Label: "Tolerate unreachable", Value: "off"}
+	if job.Args.TolerateUnreachable {
+		tol = configTile{Label: "Tolerate unreachable", Value: "on · settles degraded", Wait: true}
+	}
+	if job.State == store.StateDegraded {
+		tol.Cause = true
+	}
+	tiles = append(tiles, tol)
+	return tiles
+}
+
+// jobVerdict builds the verdict band — populated only on FAILED and DEGRADED.
+func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store.JobEvent) *jobVerdictVM {
+	if job.State != store.StateFailed && job.State != store.StateDegraded {
+		return nil
+	}
+	v := jobVerdictVM{Class: "fail"}
+	code := "-"
+	if job.ExitCode != nil {
+		code = strconv.Itoa(*job.ExitCode)
+	}
+	if job.State == store.StateDegraded {
+		v.Class = "wait"
+		if facts.RecapFound {
+			v.Keyword = fmt.Sprintf("DEGRADED — SUCCEEDED WITH WARNINGS · %d OF %d HOSTS UNREACHABLE",
+				len(facts.Unreachable), len(facts.Hosts))
+		} else {
+			v.Keyword = "DEGRADED — SUCCEEDED WITH WARNINGS"
+		}
+	} else if facts.RecapFound {
+		v.Keyword = fmt.Sprintf("FAILED · EXIT %s — %d OF %d HOSTS UNREACHABLE",
+			code, len(facts.Unreachable), len(facts.Hosts))
+	} else {
+		v.Keyword = "FAILED · EXIT " + code
+	}
+	v.Sentence = verdictSentence(job, facts)
+
+	for _, h := range facts.Hosts {
+		row := jobVerdictHost{Host: h.Host}
+		switch {
+		case h.Unreachable > 0:
+			row.Result = "UNREACHABLE"
+			row.Class = v.Class
+			reason := unreachableReason(events, h.Host)
+			if job.State == store.StateDegraded {
+				if reason == "" {
+					reason = "tolerated"
+				} else {
+					reason = "tolerated · " + reason
+				}
+			}
+			row.Recap = reason
+		case h.Failed > 0:
+			row.Result = "FAILED"
+			row.Class = "fail"
+			row.Recap = h.RawCounts
+			if row.Recap == "" {
+				row.Recap = "failed"
+			}
+		default:
+			row.Result = "OK"
+			row.Class = "ok"
+			row.Recap = h.RawCounts
+			if hasFlag(job.Args.Argv, "--check") && h.Changed > 0 {
+				row.Recap += fmt.Sprintf(" · %d tasks would change", h.Changed)
+			}
+		}
+		v.Hosts = append(v.Hosts, row)
+	}
+
+	// Verbs (invariant 3) — only when the run actually has unreachable hosts to
+	// act on: the 1a rerun-tolerating verb, or the 1b checks/limit pair.
+	if len(facts.Unreachable) > 0 {
+		if job.State == store.StateDegraded {
+			hosts := strings.Join(facts.Unreachable, ", ")
+			downSince, found := unreachableSince(events, facts.Unreachable)
+			down := "unknown"
+			if found {
+				down = downSince.Format("15:04")
+			}
+			v.Verb = "Open checks — " + hosts + " DOWN since " + down + " →"
+			v.VerbHref = "/checks"
+			v.VerbSecond = "Rerun limited to " + hosts + " →"
+			v.VerbSecondHref = "/jobs/" + itoa64(job.ID) + "?rerun=1&limit=" +
+				url.QueryEscape(strings.Join(facts.Unreachable, ","))
+		} else {
+			v.Verb = "Rerun tolerating unreachable hosts →"
+			v.VerbHref = "/jobs/" + itoa64(job.ID) + "?rerun=1"
+			v.VerbMeta = "settles DEGRADED when the reachable hosts succeed · " +
+				"same as exocomp job rerun " + itoa64(job.ID) + " --tolerate-unreachable"
+		}
+	}
+	return &v
+}
+
+// verdictSentence is the verdict band's one line: it names what happened to
+// the reachable and unreachable hosts, in plain words.
+func verdictSentence(job store.Job, facts jobOutcomeFacts) string {
+	var reach []string
+	for _, h := range facts.Hosts {
+		if h.Unreachable == 0 && h.Failed == 0 {
+			reach = append(reach, h.Host)
+		}
+	}
+	if job.State == store.StateDegraded {
+		if len(reach) == 0 {
+			return "No host was reachable; " + andList(facts.Unreachable) +
+				" were skipped as unreachable because this run tolerates offline hosts."
+		}
+		return "Every play on " + andList(reach) + " completed; " + andList(facts.Unreachable) +
+			" were skipped as unreachable because this run tolerates offline hosts. They have not been configured."
+	}
+	if len(facts.Failed) > 0 && len(facts.Unreachable) == 0 {
+		return "The play failed on " + andList(facts.Failed) + "."
+	}
+	if len(reach) == 0 {
+		return "Ansible could not reach " + andList(facts.Unreachable) + "."
+	}
+	return "Ansible could not reach " + andList(facts.Unreachable) + "; every play on " +
+		andList(reach) + " completed."
+}
+
+// unreachableReason extracts the stderr text after ansible's
+// "fatal: [host]: UNREACHABLE! =>" marker, the per-host why (N2).
+func unreachableReason(events []store.JobEvent, host string) string {
+	needle := "fatal: [" + host + "]: UNREACHABLE!"
+	for _, e := range events {
+		idx := strings.Index(e.Msg, needle)
+		if idx < 0 {
+			continue
+		}
+		rest := e.Msg[idx+len(needle):]
+		if i := strings.Index(rest, "=>"); i >= 0 {
+			rest = strings.TrimSpace(rest[i+2:])
+		}
+		if rest != "" {
+			return rest
+		}
+	}
+	return ""
+}
+
+// unreachableSince finds the latest "fatal: [host]: UNREACHABLE!" event among
+// the named hosts — the last time ansible reported them unreachable, the
+// approximation the degraded band's "DOWN since {time}" reads. found is false
+// when no fatal line named any of the hosts.
+func unreachableSince(events []store.JobEvent, hosts []string) (latest time.Time, found bool) {
+	for _, e := range events {
+		for _, h := range hosts {
+			if strings.Contains(e.Msg, "fatal: ["+h+"]: UNREACHABLE!") && e.Ts.After(latest) {
+				latest = e.Ts
+				found = true
+			}
+		}
+	}
+	return latest, found
+}
+
+// bandFor re-renders one of the run's state bands with the copy strings: the
+// queue writes "running …", "failed (exit N)" and "degraded (exit N, …)", and
+// the output card shows the load-bearing copy in their place. Everything else
+// is a plain system line.
+func bandFor(job store.Job, msg string, facts jobOutcomeFacts) (string, string) {
+	switch {
+	case strings.HasPrefix(msg, "running UNSANDBOXED"):
+		return "", ""
+	case strings.HasPrefix(msg, "running "):
+		return "▸ running — " + msg[len("running "):], "run"
+	case strings.HasPrefix(msg, "failed (exit "):
+		return "▸ failed — exit " + exitOf(job) + " · unreachable hosts not tolerated · ntfy notified", "fail"
+	case strings.HasPrefix(msg, "degraded (exit "):
+		return fmt.Sprintf("▸ degraded — exit %s tolerated · %d hosts unreachable (%s) · reachable hosts succeeded",
+			exitOf(job), len(facts.Unreachable), strings.Join(facts.Unreachable, ", ")), "wait"
+	default:
+		return "", ""
+	}
+}
+
+// exitOf renders a job's recorded exit code, or "-" when none was recorded.
+func exitOf(job store.Job) string {
+	if job.ExitCode == nil {
+		return "-"
+	}
+	return strconv.Itoa(*job.ExitCode)
 }
 
 func jobAge(j store.Job, now time.Time) string {

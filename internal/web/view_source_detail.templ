@@ -142,6 +142,10 @@ templ sourceDetail(vm sourceDetailVM) {
 								<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
 								@toggle("check", "check mode (dry run)", false, false)
 								@toggle("diff", "show diff", false, false)
+								<div class="toggle-row">
+									@toggle("tolerate_unreachable", "Tolerate unreachable hosts", false, false)
+									<p class="meta">Offline hosts are skipped and the job settles <span class="wait-text">DEGRADED</span> instead of FAILED when the rest succeed. CLI: --tolerate-unreachable</p>
+								</div>
 								<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
 								<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
 							</details>

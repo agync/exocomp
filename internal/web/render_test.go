@@ -202,7 +202,8 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		{"/sources", []string{`class="tablewrap stackable"`, `data-label="Source"`, `data-label="URI"`, `data-label="Ref"`, `data-label="Trust"`, `data-label="Last sync"`, `data-label="Enabled"`}},
 		{"/policies", []string{`class="tablewrap stackable"`, `data-label="Policy"`, `data-label="On match"`, `data-label="Expression"`, `data-label="Enabled"`}},
 		{"/events", []string{`class="tablewrap stackable"`, `data-label="Event"`, `data-label="Source"`, `data-label="Outcome"`, `data-label="Received"`}},
-		{"/jobs", []string{`class="tablewrap stackable"`, `data-label="Job"`, `data-label="Source"`, `data-label="Kind"`, `data-label="Trigger"`, `data-label="Exit"`}},
+		// /jobs is deliberately absent: its two-line rows (2a) are a grid of
+		// links, not a stackable table.
 	}
 	for _, c := range stack {
 		_, page := getBody(t, client, ts.URL+c.path)

@@ -244,11 +244,11 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	if !strings.Contains(body, `data-modal-open="job-rerun"`) {
 		t.Error("Run again must open the resubmit modal")
 	}
-	if !strings.Contains(body, `<label>Source (read-only)</label><p class="meta mono">tree</p>`) {
+	if !strings.Contains(body, `<div><span>Source</span><b class="mono">tree</b></div>`) {
 		t.Error("rerun modal must name the reverse-mapped source")
 	}
-	if !strings.Contains(body, `source <span class="mono">tree</span>`) {
-		t.Error("job detail must show the (here, reverse-derived) source name in its meta line")
+	if !strings.Contains(body, `>Source</span> <b><a href="/sources/tree">tree ↗</a></b>`) {
+		t.Error("job detail run card must show the (here, reverse-derived) source tile")
 	}
 }
 
@@ -272,12 +272,12 @@ func TestJobDetailShowsPersistedSource(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	_, list := getBody(t, client, ts.URL+"/jobs")
-	if !strings.Contains(list, `data-label="Source">my-fleet<`) {
+	if !strings.Contains(list, `<small class="mono">my-fleet</small>`) {
 		t.Errorf("jobs list did not show the persisted source:\n%s", list)
 	}
 
 	_, detail := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
-	if !strings.Contains(detail, `source <span class="mono">my-fleet</span>`) {
+	if !strings.Contains(detail, `>Source</span> <b>my-fleet ↗</b>`) {
 		t.Errorf("job detail did not show the persisted source:\n%s", detail)
 	}
 }

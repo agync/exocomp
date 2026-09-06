@@ -2,11 +2,13 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -261,11 +263,11 @@ func TestJobRawLogServesPlainText(t *testing.T) {
 		t.Fatalf("job detail status = %d", code)
 	}
 	for _, want := range []string{
-		`id="log-search"`,                                // search input present (Q2)
-		`/jobs/` + itoa(job.ID) + `/raw`,                 // raw link target
-		`target="_blank" rel="noopener"`,                 // new tab
-		`aria-label="View raw log in new tab"`,           // icon-only, named
-		`<path d="M14 4h6v6M10 14l10-10M19 13v7H4V5h7">`, // the open glyph
+		`id="log-search"`,                      // search input present (Q2)
+		`/jobs/` + itoa(job.ID) + `/raw`,       // raw link target
+		`target="_blank" rel="noopener"`,       // new tab
+		`aria-label="View raw log in new tab"`, // named control
+		`>Raw log</a>`,                         // the header [Raw log] button
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("job detail missing %q", want)
@@ -314,5 +316,375 @@ func TestJobRawLogUnknownIs404(t *testing.T) {
 	_ = resp.Body.Close()
 	if resp.StatusCode != 404 {
 		t.Fatalf("unknown job raw status = %d, want 404", resp.StatusCode)
+	}
+}
+
+// seedJobWithRecap drives a job to a terminal state with a seeded event stream:
+// the queue is not told, so the store transitions and events below are the
+// whole truth the detail page and list rows read (the harness queue polls on a
+// 20ms tick and never sees the row before these synchronous transitions land).
+func seedJobWithRecap(t *testing.T, h *harness, state store.JobState, code int, recap, fatals []string, args store.JobArgs) store.Job {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual", Args: args,
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start seeded job: %v", err)
+	}
+	for _, l := range fatals {
+		if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: job.ID, Level: store.LevelError, Msg: l}); err != nil {
+			t.Fatalf("append fatal: %v", err)
+		}
+	}
+	for _, l := range recap {
+		if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: job.ID, Level: store.LevelInfo, Msg: l}); err != nil {
+			t.Fatalf("append recap: %v", err)
+		}
+	}
+	n := 0
+	for _, l := range recap {
+		if strings.Contains(l, "unreachable=1") {
+			n++
+		}
+	}
+	band := fmt.Sprintf("failed (exit %d)", code)
+	if state == store.StateDegraded {
+		band = fmt.Sprintf("degraded (exit %d, %d host(s) unreachable, tolerated)", code, n)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: job.ID, Level: store.LevelSystem, Msg: band}); err != nil {
+		t.Fatalf("append band: %v", err)
+	}
+	if err := h.store.SetJobExitCode(ctx, job.ID, code); err != nil {
+		t.Fatalf("set exit code: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, state); err != nil {
+		t.Fatalf("finish seeded job: %v", err)
+	}
+	return job
+}
+
+func seedFailedWithRecap(t *testing.T, h *harness, code int, recap []string) store.Job {
+	t.Helper()
+	return seedJobWithRecap(t, h, store.StateFailed, code, recap, []string{
+		"fatal: [hypnotoad]: UNREACHABLE! => ssh: connect to host 10.0.20.11 port 22: No route to host",
+		"fatal: [lrrr]: UNREACHABLE! => ssh: connect to host 10.0.20.12 port 22: No route to host",
+	}, store.JobArgs{Argv: []string{"/bin/true", "--check", "deploy/site.yml"}})
+}
+
+func seedDegradedWithRecap(t *testing.T, h *harness, code int, recap []string) store.Job {
+	t.Helper()
+	return seedJobWithRecap(t, h, store.StateDegraded, code, recap, []string{
+		"fatal: [hypnotoad]: UNREACHABLE! => ssh: connect to host 10.0.20.11 port 22: No route to host",
+		"fatal: [lrrr]: UNREACHABLE! => ssh: connect to host 10.0.20.12 port 22: No route to host",
+	}, store.JobArgs{Argv: []string{"/bin/true", "--check", "deploy/site.yml"}, TolerateUnreachable: true})
+}
+
+// TestJobDetailFailedRendersVerdictBand: a FAILED run's detail page renders
+// the verdict band with the keyword line, the per-host table (unreachable rows
+// state-coloured, the OK host with its recap counts), and the 1a rerun-tolerating
+// verb with its meta — the facts the old page buried at the bottom of the tail.
+func TestJobDetailFailedRendersVerdictBand(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`FAILED · EXIT 4 — 2 OF 3 HOSTS UNREACHABLE`,
+		`Ansible could not reach hypnotoad and lrrr; every play on nibbler completed.`,
+		`<span class="result fail"><span class="dot"></span>UNREACHABLE</span>`,
+		`<span class="result ok"><span class="dot"></span>OK</span>`,
+		`ssh: connect to host 10.0.20.11 port 22: No route to host`,
+		`ok=313 changed=4 unreachable=0 failed=0 skipped=130`,
+		`Rerun tolerating unreachable hosts →`,
+		`settles DEGRADED when the reachable hosts succeed · same as exocomp job rerun ` + itoa64(job.ID) + ` --tolerate-unreachable`,
+		`<div class="verdict">exit 4 </div>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("failed detail missing %q", want)
+		}
+	}
+	if strings.Contains(body, `<span class="tolerated">tolerated</span>`) {
+		t.Error("a FAILED run must not render the tolerated verdict tail")
+	}
+	// The terminal band re-renders from copy (2.3).
+	if !strings.Contains(body, `▸ failed — exit 4 · unreachable hosts not tolerated · ntfy notified`) {
+		t.Error("failed detail missing the copy-formatted failed band")
+	}
+}
+
+// TestJobDetailDegradedRendersVerdictBand: a DEGRADED run renders the wait
+// band, the wait-coloured verdict tail, the degraded host-count chip, and the
+// 1b verbs — never a failure reading.
+func TestJobDetailDegradedRendersVerdictBand(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedDegradedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`data-state="degraded"`,
+		`DEGRADED — SUCCEEDED WITH WARNINGS · 2 OF 3 HOSTS UNREACHABLE`,
+		`<span class="chip chip--degraded"><span class="dot"></span>2 hosts unreachable · hypnotoad, lrrr</span>`,
+		`<div class="verdict">exit 4 <span class="tolerated">tolerated</span></div>`,
+		`<span class="result wait"><span class="dot"></span>UNREACHABLE</span>`,
+		`tolerated · ssh: connect to host 10.0.20.11 port 22: No route to host`,
+		`Every play on nibbler completed; hypnotoad and lrrr were skipped as unreachable because this run tolerates offline hosts. They have not been configured.`,
+		`Rerun limited to hypnotoad, lrrr →`,
+		`Open checks — hypnotoad, lrrr DOWN since`,
+		`on · settles degraded`,
+		`class="tile is-cause wait"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("degraded detail missing %q", want)
+		}
+	}
+	if strings.Contains(body, `FAILED · EXIT`) {
+		t.Error("a DEGRADED run must not render the FAILED keyword")
+	}
+	// The degraded band re-renders from copy (2.3).
+	if !strings.Contains(body, `▸ degraded — exit 4 tolerated · 2 hosts unreachable (hypnotoad, lrrr) · reachable hosts succeeded`) {
+		t.Error("degraded detail missing the copy-formatted degraded band")
+	}
+}
+
+// TestJobDetailOutputCardRetune is J6: the Output header carries the line
+// meta and the ENDED pill, the filter input is placeholder-only (no "Search
+// log" label), and the wrap toggle is present.
+func TestJobDetailOutputCardRetune(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<span class="outputtitle">Output</span>`,
+		`<span class="outputmeta mono">stdout + stderr · 5 lines · complete</span>`,
+		`<span class="pill">ENDED · nothing to follow</span>`,
+		`<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log">`,
+		`id="logwrap"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output card missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Search log") {
+		t.Error("the search control must be placeholder-only (J6)")
+	}
+}
+
+// TestJobsListReasonLines: the two-line list carries the D4 one-fact reason on
+// degraded and failed rows — never a host list — and nothing on SUCCEEDED.
+func TestJobsListReasonLines(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	seedDegradedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=1 changed=0 unreachable=0 failed=0 skipped=0",
+	})
+	seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+	})
+	// A syntax-error failure: no recap, the ERROR! banner as the last error.
+	syntax, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("seed syntax job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, syntax.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start syntax job: %v", err)
+	}
+	for _, l := range []string{"ERROR! Syntax Error while loading YAML."} {
+		if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: syntax.ID, Level: store.LevelError, Msg: l}); err != nil {
+			t.Fatalf("append error: %v", err)
+		}
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: syntax.ID, Level: store.LevelSystem, Msg: "failed (exit 2)"}); err != nil {
+		t.Fatalf("append band: %v", err)
+	}
+	if err := h.store.SetJobExitCode(ctx, syntax.ID, 2); err != nil {
+		t.Fatalf("set exit: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, syntax.ID, store.StateRunning, store.StateFailed); err != nil {
+		t.Fatalf("finish syntax job: %v", err)
+	}
+	// A clean succeeded run: no reason line.
+	if _, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	}); err != nil {
+		t.Fatalf("enqueue clean job: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+	for _, want := range []string{
+		`<span class="reason reason--degraded">2 hosts unreachable</span>`,
+		`<span class="reason">exit 4 · 2 hosts unreachable</span>`,
+		`<span class="reason">exit 2 · syntax error</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("jobs list missing reason line %q", want)
+		}
+	}
+	// Exactly the three reason lines: SUCCEEDED and the non-terminal rows carry
+	// none, and no reason line ever names a host.
+	if n := strings.Count(body, `class="reason`); n != 3 {
+		t.Errorf("jobs list has %d reason lines, want exactly 3:\n%s", n, body)
+	}
+}
+
+// TestJobDetailFlashCleared is J3: the three write routes flash to /jobs/{id},
+// and the job's own page drops the banner — the layout renders it for every
+// page, so handleJobDetail clears it at the render seam.
+func TestJobDetailFlashCleared(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job, err := h.store.CreateJob(context.Background(), store.NewJob{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID)+"?flash=job+4+enqueued")
+	if strings.Contains(body, `class="flash"`) {
+		t.Error("job detail must not render the redirected flash banner (J3)")
+	}
+}
+
+// TestJobDetailSentenceRendersFace: the run card sentence reads the actor and
+// the face off the job's ledger — "Queued by laptop from the web" — and a
+// job with no actor event (a CLI run) reads "operator from the cli".
+func TestJobDetailSentenceRendersFace(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: job.ID, Level: store.LevelSystem, Msg: "enqueued by token laptop via web",
+		RawJSON: `{"actor_kind":"token","actor_name":"laptop","face":"web"}`,
+	}); err != nil {
+		t.Fatalf("append actor event: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `Queued by laptop from the web · `) {
+		t.Errorf("detail sentence missing the recorded face, got:\n%s", body)
+	}
+
+	cli, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	_, body = getBody(t, client, ts.URL+"/jobs/"+itoa64(cli.ID))
+	if !strings.Contains(body, `Queued by operator from the cli · `) {
+		t.Errorf("actorless detail sentence must read operator from the cli, got:\n%s", body)
+	}
+}
+
+// TestJobDetailRunCardTiles: the RUN CONFIGURATION grid renders the source and
+// ref tiles (the ref at the source's current sync, S1), the inventory/limit/
+// tags/mode/privileged facts, the secrets binding, and the Tolerate tile.
+func TestJobDetailRunCardTiles(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	name := seedSourceCheckout(t, h)
+	for _, rs := range []store.RunSecret{
+		{Binding: "lab", EnvName: "SSH_KEY", SecretName: "lab-ssh"},
+		{Binding: "lab", EnvName: "VAULT", SecretName: "vault-pass"},
+	} {
+		if _, err := h.store.AddRunSecret(ctx, rs); err != nil {
+			t.Fatalf("AddRunSecret: %v", err)
+		}
+	}
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Args: store.JobArgs{
+			Argv:   []string{"/bin/true", "--limit", "web", "--tags", "deploy", "--check", "--diff", "deploy/site.yml"},
+			Source: name, Inventory: "prod-inv", RunSecretBinding: "lab",
+			TolerateUnreachable: true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<span>Source</span> <b><a href="/sources/tree">tree ↗</a></b>`,
+		`<span>Ref</span> <b><a href="/sources/tree">main @ 0123456789ab</a></b>`,
+		`<span>Inventory</span> <b>prod-inv</b>`,
+		`<span>Limit</span> <b>web</b>`,
+		`<span>Tags</span> <b>deploy</b>`,
+		`<span>Mode</span> <b>check + diff</b>`,
+		`<span>Secrets bound</span> <b>lab · 1 more</b>`,
+		`class="tile wait"><span>Tolerate unreachable</span> <b>on · settles degraded</b>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("run card missing tile %q", want)
+		}
+	}
+}
+
+// TestStateClassDegradedIsWait is S7: the degraded state reads as a wait
+// everywhere the chip ladder renders, never a failure or a dim default.
+func TestStateClassDegradedIsWait(t *testing.T) {
+	if got := stateClass(store.StateDegraded); got != "wait" {
+		t.Errorf("stateClass(degraded) = %q, want wait", got)
+	}
+	if got := stateClass(store.StateFailed); got != "fail" {
+		t.Errorf("stateClass(failed) = %q, want fail", got)
+	}
+	if got := stateClass(store.StateSucceeded); got != "ok" {
+		t.Errorf("stateClass(succeeded) = %q, want ok", got)
 	}
 }
