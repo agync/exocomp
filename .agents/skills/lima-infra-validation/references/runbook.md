@@ -91,13 +91,14 @@ exocomp playbook vendor --requirements <requirements.yml>
 exocomp playbook run …
 ```
 
-`vendor` runs `ansible-galaxy collection install` into a collections cache
-(`CollectionsPath = filepath.Join(dataDir, collectionsCacheDir)`,
-`cmd/exocomp/ansible.go:29`; `collectionsCacheDir = "cache/collections"` in
-`cmd/exocomp/vendor.go`); `playbook run` appends that to
-`ANSIBLE_COLLECTIONS_PATH` automatically (see `ansibleEnv`,
-`internal/executor/ansible_env_test.go`). Prove attribution by confirming the
-collection resolved only from the vendored path.
+`vendor` runs `ansible-galaxy collection install` into a per-source collections
+cache dir (`cache/collections/<source>/<requirements-hash>`, derived from the
+`--requirements` file's project root and content — `cmd/exocomp/vendor.go`), the
+same hash-keyed layout the run path resolves into at claim time (ADR 0015);
+`playbook run` appends `<per-source>:<shared>` to `ANSIBLE_COLLECTIONS_PATH`
+automatically (see `ansibleEnv`, `internal/executor/ansible_env_test.go`). Prove
+attribution by confirming the collection resolved only from the per-source
+vendored path.
 
 ## 7. Assert a real pass, not a green-but-empty one
 
