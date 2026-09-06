@@ -235,3 +235,46 @@ func TestRunPlaybookRecordsActor(t *testing.T) {
 		t.Fatalf("got %d event(s), want 1: %+v", len(events), events)
 	}
 }
+
+// TestJobActorReturnsFace proves JobActor reads the recorded surface back out of
+// the ledger: a web-enqueued job's actor event carries Face "web", and the read
+// returns it so the job detail sentence can render "from the web". The zero
+// Actor (no event) reads back empty.
+func TestJobActorReturnsFace(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	q := queue.New(st, enqueueOnlyDriver{}, queue.Options{Workers: 1})
+	enq := &recordingEnqueuer{q: q}
+	svc := service.New(st, t.TempDir(), fixedClock())
+
+	res, err := svc.RunPlaybook(ctx, enq, service.PlaybookInput{
+		PlaybookPath: "/abs/site.yml", InventoryPath: "/abs/hosts.ini",
+		Actor: service.Actor{Kind: service.ActorKindToken, Name: "laptop", Face: "web"},
+	})
+	if err != nil {
+		t.Fatalf("RunPlaybook: %v", err)
+	}
+	actor, err := svc.JobActor(ctx, res.Job.ID)
+	if err != nil {
+		t.Fatalf("JobActor: %v", err)
+	}
+	if actor.Kind != service.ActorKindToken || actor.Name != "laptop" || actor.Face != "web" {
+		t.Errorf("actor = %+v, want kind=token name=laptop face=web", actor)
+	}
+
+	// An API write records the default face.
+	other, err := svc.RunPlaybook(ctx, enq, service.PlaybookInput{
+		PlaybookPath: "/abs/other.yml", InventoryPath: "/abs/hosts.ini",
+		Actor: service.Actor{Kind: service.ActorKindToken, Name: "ci"},
+	})
+	if err != nil {
+		t.Fatalf("RunPlaybook: %v", err)
+	}
+	actor, err = svc.JobActor(ctx, other.Job.ID)
+	if err != nil {
+		t.Fatalf("JobActor: %v", err)
+	}
+	if actor.Face != "api" {
+		t.Errorf("default face = %q, want api", actor.Face)
+	}
+}

@@ -122,7 +122,7 @@ func (s *Service) JobActor(ctx context.Context, jobID int64) (Actor, error) {
 		if err := json.Unmarshal([]byte(e.RawJSON), &payload); err != nil || payload.ActorKind == "" {
 			continue
 		}
-		return Actor{Kind: payload.ActorKind, Name: payload.ActorName}, nil
+		return Actor{Kind: payload.ActorKind, Name: payload.ActorName, Face: payload.Face}, nil
 	}
 	return Actor{}, nil
 }
