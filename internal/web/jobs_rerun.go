@@ -132,6 +132,15 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 	// carry is dropped on the job detail page, so the parent id must live on
 	// the child's own ledger. A failed append fails the write the same way the
 	// actor record does — the relationship is the evidence the chip renders.
+	//
+	// This append is NOT atomic with the enqueue above: it runs after
+	// Reenqueue returned, so a failure between the two leaves the child job
+	// enqueued without its lineage record and this handler 500s. It is
+	// accepted as-is because both writes hit the same local SQLite file in the
+	// same request (a store error here means the database itself is failing,
+	// and the enqueue's own writes would be equally at risk); folding the
+	// record into the service write would couple the transport-agnostic
+	// Reenqueue to the web rerun concept for every caller.
 	if _, err := s.store.AppendJobEvent(r.Context(), store.JobEvent{
 		JobID:   res.Job.ID,
 		Level:   store.LevelSystem,

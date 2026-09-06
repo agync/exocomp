@@ -332,8 +332,8 @@ const reasonEventWindow = 200
 
 // jobRowForList builds one jobs-list row: the shared row facts plus the
 // D4 reason line (a bounded tail read for the reason-carrying states) and the
-// TRIGGER cell. The rerun parent is the only thing that costs a full event
-// read, and only on the rare rerun rows.
+// TRIGGER cell. The rerun parent and the manual face are the only things that
+// cost a full event read, and only on the rare rerun/manual rows.
 func (s *Server) jobRowForList(ctx context.Context, j store.Job, now time.Time) jobRow {
 	row := s.jobRow(j, now)
 	if j.State == store.StateFailed || j.State == store.StateDegraded || j.State == store.StateTimedOut {
@@ -352,14 +352,53 @@ func (s *Server) jobRowForList(ctx context.Context, j store.Job, now time.Time) 
 		}
 	case "schedule":
 		row.TriggerLabel = "Schedule"
-		row.TriggerMeta = RunbookLabel(j.Runbook)
+		// The schedule association is inferred: a schedule-fired job carries
+		// the schedule's name as its Runbook (the scheduler sets it for every
+		// kind) and no schedule foreign key on the row. Look the name back up
+		// for the cron time; a job whose schedule was since deleted keeps a
+		// bare "schedule" qualifier rather than duplicating the playbook cell.
+		row.TriggerMeta = scheduleMeta(ctx, s.store, j)
 	case "manual":
 		row.TriggerLabel = "Manual"
-		row.TriggerMeta = "operator"
+		row.TriggerMeta = "cli · operator"
+		if events, err := s.store.ListJobEvents(ctx, j.ID); err == nil {
+			if face := actorFace(events); face != "" {
+				row.TriggerMeta = face + " · operator"
+			}
+		}
 	default:
 		row.TriggerLabel = orDash(j.Trigger)
 	}
 	return row
+}
+
+// scheduleMeta is a schedule-fired row's TRIGGER meta: "{name} · {fire time}",
+// the fire time being the job's own queued instant (the scheduler enqueues at
+// the fire). A deleted schedule falls back to a bare "schedule" qualifier.
+func scheduleMeta(ctx context.Context, st *store.Store, j store.Job) string {
+	if sc, err := st.GetSchedule(ctx, RunbookLabel(j.Runbook)); err == nil {
+		return sc.Name + " · " + j.QueuedAt.UTC().Format("15:04")
+	}
+	return "schedule"
+}
+
+// actorFace reads the surface a token-attributed write recorded on the job's
+// ledger (service.recordActor's face field); "" when no actor event exists, so
+// a CLI-run job's caller can render its "cli" default.
+func actorFace(events []store.JobEvent) string {
+	for _, e := range events {
+		if e.RawJSON == "" {
+			continue
+		}
+		var payload struct {
+			Face string `json:"face"`
+		}
+		if err := json.Unmarshal([]byte(e.RawJSON), &payload); err != nil || payload.Face == "" {
+			continue
+		}
+		return payload.Face
+	}
+	return ""
 }
 
 func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
@@ -459,10 +498,11 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	vm.RunCard = s.runCardVM(r.Context(), job, source, src, facts, actorName, face, runner, rerunOf(events))
 	vm.Verdict = s.jobVerdict(job, facts, events)
 
+	rerunParent := rerunOf(events)
 	for _, e := range events {
 		line := eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg}
 		if e.Level == store.LevelSystem {
-			line.Band, line.BandClass = bandFor(job, e.Msg, facts)
+			line.Band, line.BandClass = bandFor(job, e.Msg, facts, rerunParent)
 		}
 		vm.Events = append(vm.Events, line)
 	}
@@ -1071,12 +1111,26 @@ func unreachableSince(events []store.JobEvent, hosts []string) (latest time.Time
 // bandFor re-renders one of the run's state bands with the copy strings: the
 // queue writes "running …", "failed (exit N)" and "degraded (exit N, …)", and
 // the output card shows the load-bearing copy in their place. Everything else
-// is a plain system line.
-func bandFor(job store.Job, msg string, facts jobOutcomeFacts) (string, string) {
+// is a plain system line. rerunOfID is the parent the child's ledger recorded
+// (0 for a run that is not a rerun).
+func bandFor(job store.Job, msg string, facts jobOutcomeFacts, rerunOfID int64) (string, string) {
 	switch {
 	case strings.HasPrefix(msg, "running UNSANDBOXED"):
 		return "", ""
 	case strings.HasPrefix(msg, "running "):
+		// Copy names a rerun's running band as "rerun of #{id} · tolerate
+		// unreachable on · workspace lock {ws} acquired". The workspace-lock
+		// fact has no source in the job data (the wave-1 queue writes the
+		// running line, not the lock acquisition), so it is omitted rather
+		// than fabricated; the rerun and tolerance facts compose from the
+		// child's ledger. A non-rerun keeps the queue's own running line.
+		if rerunOfID > 0 {
+			line := "▸ running — rerun of #" + itoa64(rerunOfID)
+			if job.Args.TolerateUnreachable {
+				line += " · tolerate unreachable on"
+			}
+			return line, "run"
+		}
 		return "▸ running — " + msg[len("running "):], "run"
 	case strings.HasPrefix(msg, "failed (exit "):
 		return "▸ failed — exit " + exitOf(job) + " · unreachable hosts not tolerated · ntfy notified", "fail"

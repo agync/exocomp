@@ -78,7 +78,6 @@ templ jobDetail(vm jobDetailVM) {
 		<div class="pageheader">
 			<p class="meta mono">
 				{ vm.Job.Title }
-				· <span class="mono">{ vm.Job.Kind }</span>
 				if vm.RunCard.CheckMode {
 					· check
 				}
@@ -312,7 +311,10 @@ templ outputCard(vm jobDetailVM) {
 templ rerunDialog(vm jobDetailVM) {
 	<dialog class="modal" id="job-rerun" aria-labelledby="job-rerun-title" open?={ vm.RerunOpen }>
 		<div class="modal-head">
-			<h2 id="job-rerun-title">Queue the same run again</h2>
+			<div class="modal-title">
+				<span class="kicker">RERUN JOB #{ itoa64(vm.Job.ID) }</span>
+				<h2 id="job-rerun-title">Queue the same run again</h2>
+			</div>
 			<button type="button" class="modal-close" data-modal-dismiss aria-label="Close">
 				<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
 					<path d="M3 3l10 10M13 3L3 13"></path>
@@ -320,7 +322,6 @@ templ rerunDialog(vm jobDetailVM) {
 			</button>
 		</div>
 		<div class="modal-body">
-			<span class="kicker">RERUN JOB #{ itoa64(vm.Job.ID) }</span>
 			<p class="meta">Same playbook, ref, inventory and secrets as <a href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID)) }>#{ itoa64(vm.Job.ID) }</a>. Change only what is listed here.</p>
 			<form method="post" action={ rerunAction(vm.Job.ID) } class="writeform">
 				<div class="facts">

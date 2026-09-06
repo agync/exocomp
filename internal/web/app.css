@@ -1375,3 +1375,16 @@ body { overflow-x: clip; }
 .facts span { color: var(--ink-500); font: var(--type-body); }
 .facts b { color: var(--ink-200); font: var(--type-log); }
 .rerun-summary { margin-top: 4px; }
+/* The rerun dialog's kicker (SCREENS 1c) sits ABOVE the title in the modal
+ * head and reads in the accent; the OPTIONS kicker inside the body is the
+ * quiet ink kicker. */
+.modal-head .kicker {
+  font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--accent-text); margin: 0;
+}
+.modal-body .kicker {
+  font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--ink-500); margin-bottom: 10px;
+}
+.modal-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.modal-title h2 { margin: 0; }
