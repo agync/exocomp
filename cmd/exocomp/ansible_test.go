@@ -256,3 +256,92 @@ func TestAnsibleDriverRunNamesPerSourceCollectionsFirst(t *testing.T) {
 		t.Errorf("a cache-hit run emitted a collections resolve event:\n%s", events)
 	}
 }
+
+// fakeNono writes a nono stand-in that records the argv it was handed to log
+// and then execs the payload after the `--` separator, standing in for the
+// launcher's grant application without a kernel. It makes the resolver
+// profile's grants observable the way the executor's capturingDriver observes
+// its launcher argv.
+func fakeNono(t *testing.T, bin, log string) {
+	t.Helper()
+	path := filepath.Join(bin, "nono")
+	script := `#!/bin/sh
+echo "$@" >> "` + log + `"
+while [ "$#" -gt 0 ] && [ "$1" != "--" ]; do shift; done
+[ "$#" -gt 0 ] && shift
+exec "$@"
+`
+	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake nono: %v", err)
+	}
+}
+
+// TestResolveSourceCollectionsSandboxGrantsVenvGalaxy proves the sandboxed
+// collections resolve grants the ansible-galaxy that actually executes: when
+// the source resolved a per-source venv, its bin/ansible-galaxy is the
+// resolver (ADR 0015), so the resolver profile must carry a read grant on that
+// venv binary — the image galaxy grant alone would deny the venv one that
+// runs. A fake nono records the launcher argv, mirroring the executor's
+// sandbox-grant tests.
+func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.once.Do(func() {})
+
+	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
+	binDir := t.TempDir()
+	fakeNono(t, binDir, nonoLog)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dataDir := t.TempDir()
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, "requirements.txt"), "jmespath==1.1.0\n")
+	writeFile(t, filepath.Join(project, "requirements.yml"), "collections:\n  - community.sops\n")
+	play := filepath.Join(project, "site.yml")
+
+	// Seed the per-source venv as a cache hit (no uv runs) with an executable
+	// ansible-galaxy sibling, the resolver B2 ensures the sandbox grants. Its
+	// collection-install body matches the fake galaxy so a provision succeeds.
+	py, err := deps.DiscoverPython(project)
+	if err != nil {
+		t.Fatalf("discover python: %v", err)
+	}
+	source := deps.SourceKey(py.Root)
+	venv := filepath.Join(dataDir, "cache", "python", source, py.Hash)
+	venvBin := filepath.Join(venv, "bin")
+	if err := os.MkdirAll(venvBin, 0o700); err != nil {
+		t.Fatalf("mkdir venv bin: %v", err)
+	}
+	for tool, body := range map[string]string{
+		"python":           "#!/bin/sh\nexit 0\n",
+		"ansible-playbook": "#!/bin/sh\nexit 0\n",
+		"ansible-galaxy":   "#!/bin/sh\nfor a in \"$@\"; do target=\"$a\"; done\nmkdir -p \"$target/ansible_collections/community/general\" || exit 1\nexit 0\n",
+	} {
+		if err := os.WriteFile(filepath.Join(venvBin, tool), []byte(body), 0o755); err != nil {
+			t.Fatalf("write %s: %v", tool, err)
+		}
+	}
+	writeFile(t, filepath.Join(venv, ".exocomp-venv-ready"), py.Hash+"\n")
+
+	c, err := resolveSourceCollections(context.Background(), dataDir, play)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !c.Created {
+		t.Fatal("expected a fresh collections provision through the resolver sandbox")
+	}
+
+	launcher := strings.TrimSpace(readFile(t, nonoLog))
+	if !strings.Contains(launcher, "collection install") {
+		t.Fatalf("the launcher argv is not the galaxy install:\n%s", launcher)
+	}
+	// The venv's ansible-galaxy executed, so the profile must have granted it.
+	// ToolGrants names the bin dir and the venv root for the interpreted tool.
+	if !strings.Contains(launcher, "--read "+venv) {
+		t.Errorf("resolver profile does not read-grant the venv ansible-galaxy (%s):\n%s", venv, launcher)
+	}
+	if !strings.Contains(launcher, "--read "+venvBin) {
+		t.Errorf("resolver profile does not read-grant the venv bin dir:\n%s", launcher)
+	}
+}

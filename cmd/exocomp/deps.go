@@ -124,11 +124,17 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	// galaxy servers and installer code no more trusted than a manifest's build
 	// backend. Under the sandbox tier it is confined to its collections cache
 	// and the requirements, denied the data dir and the keys; the
-	// daemon-context resolve stays only where no sandbox can enforce it.
+	// daemon-context resolve stays only where no sandbox can enforce it. The
+	// galaxy that actually executes is granted — the venv's sibling when one
+	// was resolved, the image's otherwise (ADR 0015).
 	if sandboxed(ctx) {
 		galaxyCache := filepath.Join(cacheRoot, galaxyCacheSubdir)
-		read := executor.ToolGrants(galaxyTool, "python3")
-		read = append(read, manifest.Root)
+		read := []string{manifest.Root}
+		if spec.GalaxyBinary != "" {
+			read = append(read, executor.ToolGrants(spec.GalaxyBinary)...)
+		} else {
+			read = append(read, executor.ToolGrants(galaxyTool)...)
+		}
 		spec.GalaxyCacheDir = galaxyCache
 		spec.Sandbox = deps.NewResolverSandbox(deps.ResolverSandboxOptions{
 			DataDir:    dataDir,
