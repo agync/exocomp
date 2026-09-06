@@ -101,7 +101,8 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey s
 	if err != nil {
 		return 0, fmt.Errorf("playbook vendor: read requirements: %w", err)
 	}
-	cache := filepath.Join(dir, collectionsCacheDir, source, galaxyRequirementsHash(body))
+	hash := galaxyRequirementsHash(body)
+	cache := filepath.Join(dir, collectionsCacheDir, source, hash)
 	if err := os.MkdirAll(cache, 0o700); err != nil {
 		return 0, fmt.Errorf("playbook vendor: create cache dir: %w", err)
 	}
@@ -138,6 +139,14 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey s
 
 	switch {
 	case final.State == store.StateSucceeded:
+		// A run path's EnsureCollections reuses a dir only when its ready
+		// marker carries the requirements hash; without one it treats the dir
+		// as half-built, removes it, and re-dials galaxy. Mark the dir the
+		// install just populated so the vendored collections serve the next
+		// run offline (ADR 0015).
+		if err := deps.MarkCollectionsReady(cache, hash); err != nil {
+			return 0, fmt.Errorf("playbook vendor: mark collections ready: %w", err)
+		}
 		return 0, nil
 	case final.ExitCode != nil && *final.ExitCode != 0:
 		return *final.ExitCode, nil

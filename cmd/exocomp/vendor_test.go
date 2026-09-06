@@ -12,6 +12,11 @@ import (
 	"exocomp.dev/exocomp/internal/deps"
 )
 
+// galaxyReadyMarker is the marker deps writes into a provisioned collections
+// dir (internal/deps/collections.go); vendor_test asserts it so offline reuse
+// is proven rather than assumed.
+const galaxyReadyMarker = ".exocomp-galaxy-ready"
+
 // lastInvocation is the most recent argv the fake ansible-galaxy recorded.
 func lastInvocation(t *testing.T, counter string) string {
 	t.Helper()
@@ -72,7 +77,7 @@ func TestRunVendorInstallsCollectionsIntoTheCache(t *testing.T) {
 	}
 }
 
-func TestRunVendorFailsWithTheJobOnABadRequirementsFile(t *testing.T) {
+func TestRunVendorRefusesMissingRequirementsFile(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires real ansible-galaxy")
 	}
@@ -128,5 +133,61 @@ func TestRunVendorInstallsIntoPerSourceDir(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, collectionsCacheDir, "ansible_collections")); !os.IsNotExist(err) {
 		t.Errorf("vendor wrote collections into the shared cache dir")
+	}
+}
+
+// TestRunVendorThenResolveIsOfflineCacheHit proves the full offline loop (ADR
+// 0015): `playbook vendor` populates the per-source dir and marks it ready, so
+// a following run-path resolve is a cache hit — EnsureCollections reuses the
+// dir, invokes ansible-galaxy exactly once total (during the vendor), and
+// would succeed with no network. Before MarkCollectionsReady, the resolve
+// treated the vendored dir as half-built, removed it, and re-dialed galaxy.
+func TestRunVendorThenResolveIsOfflineCacheHit(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	binDir := t.TempDir()
+	invocations := filepath.Join(t.TempDir(), "galaxy-invocations")
+	fakeGalaxyBinary(t, binDir, invocations)
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	project := t.TempDir()
+	requirements := filepath.Join(project, "requirements.yml")
+	writeFile(t, requirements, "collections:\n  - community.sops\n")
+	play := filepath.Join(project, "site.yml")
+
+	var out bytes.Buffer
+	code, err := runVendor(context.Background(), &out, &out, requirements, "")
+	if err != nil {
+		t.Fatalf("vendor: %v", err)
+	}
+	if code != 0 {
+		t.Fatalf("vendor exit code = %d:\n%s", code, out.String())
+	}
+
+	dir, err := dataDir()
+	if err != nil {
+		t.Fatalf("data dir: %v", err)
+	}
+	manifest, err := deps.DiscoverGalaxy(project)
+	if err != nil {
+		t.Fatalf("discover galaxy: %v", err)
+	}
+	wantDir := filepath.Join(dir, collectionsCacheDir, deps.SourceKey(manifest.Root), manifest.Hash)
+	if _, statErr := os.Stat(filepath.Join(wantDir, galaxyReadyMarker)); statErr != nil {
+		t.Fatalf("vendor did not mark the per-source collections dir ready: %v", statErr)
+	}
+
+	c, err := resolveSourceCollections(context.Background(), dir, play)
+	if err != nil {
+		t.Fatalf("resolve after vendor: %v", err)
+	}
+	if c.Created {
+		t.Fatal("resolve after vendor re-provisioned the dir (offline-after-vendor is broken)")
+	}
+	if c.Dir != wantDir {
+		t.Errorf("resolve dir %s, want %s", c.Dir, wantDir)
+	}
+	if got := invocationCount(t, invocations); got != 1 {
+		t.Errorf("ansible-galaxy invoked %d times after vendor+resolve, want exactly 1 (the vendor)", got)
 	}
 }

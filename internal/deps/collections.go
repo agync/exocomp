@@ -228,6 +228,17 @@ func galaxyMarkerMatches(dir, hash string) bool {
 	return strings.TrimSpace(string(body)) == hash
 }
 
+// MarkCollectionsReady writes the ready marker a provisioned collections dir
+// carries, so a later EnsureCollections reads it as a cache hit and never
+// re-dials galaxy. It is the counterpart to provisionCollections' marker
+// write, byte-identical (the hash plus a newline), exposed so `playbook
+// vendor` can mark the dir it populated offline (ADR 0015): without it a
+// vendored dir with no marker is rebuilt — and its contents removed — on the
+// next run.
+func MarkCollectionsReady(dir, hash string) error {
+	return os.WriteFile(filepath.Join(dir, galaxyReadyMarker), []byte(hash+"\n"), 0o600)
+}
+
 // pruneStaleCollections runs PruneCollections for spec's source after a
 // successful provision, protecting the hash just built — the collections half
 // of pruneStaleVenvs. A prune error is logged, never returned, so a provision
