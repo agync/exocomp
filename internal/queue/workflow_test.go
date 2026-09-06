@@ -271,6 +271,94 @@ func TestSequencerResumesFromLedgerAfterRestart(t *testing.T) {
 	}
 }
 
+// degradedStepDriver reports a tolerated degradation for every run, standing in
+// for the ansible driver when a TolerateUnreachable play is a workflow step
+// (cmd/exocomp/run.go composes exactly that into a gated ledger workflow).
+type degradedStepDriver struct{}
+
+func (degradedStepDriver) Run(_ context.Context, _ executor.Spec, _ executor.EventSink) (executor.Result, error) {
+	return executor.Result{ExitCode: 4, Degraded: true, UnreachableHosts: []string{"laptop"}}, nil
+}
+
+// TestSequencerAdvancesPastADegradedStep proves a step whose job settles
+// degraded is a SUCCESS for the chain: a TolerateUnreachable play that
+// converged its reachable hosts is not a caller failure (the same judgment the
+// CLI exit mappers apply), so it must advance the ledger and release the next
+// step instead of blocking it the way a real failure would.
+//
+// The driver settles EVERY step's job degraded (it never executes argv), so a
+// released step proves itself by reaching a terminal job state and a
+// StepSucceeded ledger row — the ledger rows and the second job's settled
+// state are the whole proof that nothing was blocked.
+//
+// Mutation check: reverting recordOutcome's degraded admission to
+// StateSucceeded-only settles step 1 StepFailed, blocks step 2 (its job stays
+// awaiting_approval), and marks the workflow failed — this test then fails on
+// every assertion.
+func TestSequencerAdvancesPastADegradedStep(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "exocomp.db")
+
+	st, err := store.Open(dbPath)
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	q := New(st, degradedStepDriver{}, Options{
+		Workers:      2,
+		PollInterval: 10 * time.Millisecond,
+		Logger:       slog.New(slog.NewTextHandler(io.Discard, nil)),
+	})
+	seq := NewSequencer(q)
+	ctx := context.Background()
+
+	steps := []Step{
+		step("shell", "/bin/true"),
+		step("shell", "/bin/true"),
+	}
+	if err := seq.Start(ctx, "wf-degraded", steps); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+
+	_, cancel, done := runDaemon(t, q)
+	defer stopDaemon(t, cancel, done)
+
+	if err := seq.Run(ctx, "wf-degraded"); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	// Step 1's own job really settled degraded — the test is not vacuous.
+	step1, err := st.JobByIdempotencyKey(ctx, stepKey("wf-degraded", 1))
+	if err != nil {
+		t.Fatalf("find step 1 job: %v", err)
+	}
+	if step1.State != store.StateDegraded {
+		t.Errorf("step 1 job is %s, want degraded", step1.State)
+	}
+
+	// Step 2 was released and ran (its job settled), not left awaiting behind a
+	// block — the exact shape a blocked step would take.
+	step2, err := st.JobByIdempotencyKey(ctx, stepKey("wf-degraded", 2))
+	if err != nil {
+		t.Fatalf("find step 2 job: %v", err)
+	}
+	if step2.State != store.StateDegraded {
+		t.Errorf("step 2 job is %s, want it released and settled (not awaiting_approval behind a block)", step2.State)
+	}
+
+	ledger := mustSteps(t, st, "wf-degraded")
+	if ledger[0].Status != store.StepSucceeded {
+		t.Errorf("step 1 is %s, want succeeded (a degraded play is not a failure)", ledger[0].Status)
+	}
+	if ledger[1].Status != store.StepSucceeded {
+		t.Errorf("step 2 is %s, want succeeded — a degraded step must not block the chain", ledger[1].Status)
+	}
+	if got := store.WorkflowStatus(ledger); got != store.WorkflowSucceeded {
+		t.Errorf("workflow status = %s, want succeeded", got)
+	}
+}
+
 // TestSequencerRearmsStepInterruptedWhileQueued is the reachability-and-safety
 // proof for the info-level finding that ReconcileNonTerminal's owner-liveness
 // check might retire a legitimately-queued job whose enqueuing CLI exited: it

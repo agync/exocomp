@@ -362,13 +362,14 @@ func (s *Sequencer) rearmStep(ctx context.Context, workflowID string, step store
 }
 
 // recordOutcome writes a finished step's status from its job's terminal state:
-// succeeded on exit 0, failed otherwise, with the failure blocking the steps
-// that were waiting on it. The write is guarded on the running status, so a
+// succeeded (or degraded — a tolerated non-failure, the same judgment that maps
+// it to exit 0 for the CLI) advances the chain; a failure blocks the steps that
+// were waiting on it. The write is guarded on the running status, so a
 // duplicate — two drivers finishing the same step, or a reconcile of a step a
 // prior process already recorded — is a no-op rather than a second effect.
 func (s *Sequencer) recordOutcome(ctx context.Context, workflowID string, step store.WorkflowStep, job store.Job) error {
 	status := store.StepFailed
-	if job.State == store.StateSucceeded {
+	if job.State == store.StateSucceeded || job.State == store.StateDegraded {
 		status = store.StepSucceeded
 	}
 
