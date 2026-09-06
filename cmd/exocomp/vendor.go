@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
@@ -27,6 +30,17 @@ const collectionsCacheDir = "cache/collections"
 // different argv shape than a playbook run.
 const vendorKind = "shell"
 
+// galaxyRequirementsHash is the content hash a requirements file's per-source
+// collections dir is keyed by. It must match internal/deps' hashGalaxy (sha256,
+// first 32 hex chars) so `playbook vendor` lands exactly where a later run's
+// resolve (deps.DiscoverGalaxy → EnsureCollections) looks. vendor hashes the
+// named file itself because --requirements may name any file, not only the
+// manifest a resolve would discover.
+func galaxyRequirementsHash(body []byte) string {
+	sum := sha256.Sum256(body)
+	return hex.EncodeToString(sum[:])[:32]
+}
+
 func newPlaybookVendorCmd() *cobra.Command {
 	var requirements string
 
@@ -34,9 +48,11 @@ func newPlaybookVendorCmd() *cobra.Command {
 		Use:   "vendor",
 		Short: "Install ansible collections into the offline cache",
 		Long: "Runs `ansible-galaxy collection install -r <requirements>` into " +
-			"<data dir>/cache/collections through the queue, so a later playbook run " +
-			"resolves those collections without Ansible Galaxy being reachable " +
-			"(design/amendments.md item 8). Needs network access for whatever the " +
+			"the per-source cache dir <data dir>/cache/collections/<source>/<hash> " +
+			"through the queue, so a later playbook run resolves those collections " +
+			"without Ansible Galaxy being reachable (ADR 0015). <source> and <hash> " +
+			"derive from the --requirements file's project root and content, the " +
+			"same dir the run path resolves. Needs network access for whatever the " +
 			"cache does not already hold.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -75,7 +91,17 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey s
 	if err != nil {
 		return 0, fmt.Errorf("playbook vendor: resolve data dir: %w", err)
 	}
-	cache := filepath.Join(dir, collectionsCacheDir)
+	// The install target is per-source (ADR 0015): keyed by the requirements
+	// file's project root and content hash, not the shared cache dir, so the
+	// vendor step and the run path's resolve land in the same dir. The shared
+	// dir is left as a read-only fallback nothing writes anymore.
+	projectRoot := deps.FindProjectRoot(filepath.Dir(requirements))
+	source := deps.SourceKey(projectRoot)
+	body, err := os.ReadFile(requirements)
+	if err != nil {
+		return 0, fmt.Errorf("playbook vendor: read requirements: %w", err)
+	}
+	cache := filepath.Join(dir, collectionsCacheDir, source, galaxyRequirementsHash(body))
 	if err := os.MkdirAll(cache, 0o700); err != nil {
 		return 0, fmt.Errorf("playbook vendor: create cache dir: %w", err)
 	}
