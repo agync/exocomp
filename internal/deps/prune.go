@@ -9,11 +9,12 @@ import (
 	"time"
 )
 
-// DefaultKeepVenvs and DefaultKeepVenvsSince are PruneVenvs's conservative
-// defaults, applied by EnsureVenv after every successful provision. Without a
-// reaper, cache/python/<source>/<manifest-hash> grows one directory per
-// manifest hash forever — unlike restic (forget --prune) and tofu state
-// (store.PruneTFStates), nothing bounded this cache before.
+// DefaultKeepVenvs and DefaultKeepVenvsSince are the keep policy PruneVenvs
+// and PruneCollections apply by default, and what EnsureVenv/EnsureCollections
+// use after every successful provision. Without a reaper,
+// cache/{python,collections}/<source>/<hash> grows one directory per manifest
+// hash forever — unlike restic (forget --prune) and tofu state
+// (store.PruneTFStates), nothing bounded these caches before.
 const (
 	DefaultKeepVenvs      = 3
 	DefaultKeepVenvsSince = 30 * 24 * time.Hour
@@ -36,30 +37,39 @@ const (
 // venv was last built, not last used. A venv with no marker (half-built, or
 // predating this prune) falls back to the venv directory's own mtime.
 func PruneVenvs(cacheRoot, source string, keepN int, keepSince time.Time, protect string) (int, error) {
+	return pruneHashDirs(filepath.Join(cacheRoot, source), readyMarker, keepN, keepSince, protect, "venv")
+}
+
+// pruneHashDirs is the keep-N/since sweep both planes share: newest first by
+// recency, retain index < keepN or recency >= keepSince, delete the rest,
+// honoring protect. markerName selects the plane's ready marker for the
+// recency signal; a directory with no marker falls back to its own mtime. what
+// names the plane in errors. A removal failure is collected but does not stop
+// the rest of the sweep.
+func pruneHashDirs(sourceDir, markerName string, keepN int, keepSince time.Time, protect string, what string) (int, error) {
 	if keepN < 1 {
 		keepN = 1
 	}
-	sourceDir := filepath.Join(cacheRoot, source)
 	entries, err := os.ReadDir(sourceDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return 0, nil
 		}
-		return 0, fmt.Errorf("deps: prune venvs: %w", err)
+		return 0, fmt.Errorf("deps: prune %ss: %w", what, err)
 	}
 
-	type venvDir struct {
+	type hashDir struct {
 		hash   string
 		dir    string
 		recent time.Time
 	}
-	var live []venvDir
+	var live []hashDir
 	for _, e := range entries {
 		if !e.IsDir() || e.Name() == protect {
 			continue
 		}
 		dir := filepath.Join(sourceDir, e.Name())
-		live = append(live, venvDir{hash: e.Name(), dir: dir, recent: venvRecency(dir)})
+		live = append(live, hashDir{hash: e.Name(), dir: dir, recent: hashDirRecency(dir, markerName)})
 	}
 
 	// Newest first, so index < keepN is exactly the retained window.
@@ -73,7 +83,7 @@ func PruneVenvs(cacheRoot, source string, keepN int, keepSince time.Time, protec
 		}
 		if err := os.RemoveAll(v.dir); err != nil {
 			if firstErr == nil {
-				firstErr = fmt.Errorf("deps: prune venv %s: %w", v.hash, err)
+				firstErr = fmt.Errorf("deps: prune %s %s: %w", what, v.hash, err)
 			}
 			continue
 		}
@@ -82,10 +92,11 @@ func PruneVenvs(cacheRoot, source string, keepN int, keepSince time.Time, protec
 	return pruned, firstErr
 }
 
-// venvRecency is the best-available recency signal for dir: the ready
-// marker's mtime, falling back to the directory's own mtime. See PruneVenvs.
-func venvRecency(dir string) time.Time {
-	if fi, err := os.Stat(filepath.Join(dir, readyMarker)); err == nil {
+// hashDirRecency is the best-available recency signal for a hash-keyed cache
+// dir: the plane's ready marker's mtime, falling back to the directory's own
+// mtime. See pruneHashDirs.
+func hashDirRecency(dir, markerName string) time.Time {
+	if fi, err := os.Stat(filepath.Join(dir, markerName)); err == nil {
 		return fi.ModTime()
 	}
 	if fi, err := os.Stat(dir); err == nil {
