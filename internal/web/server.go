@@ -255,6 +255,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /jobs", s.requireAuth(s.handleJobs))
 	mux.HandleFunc("GET /jobs/{id}", s.requireAuth(s.handleJobDetail))
 	mux.HandleFunc("GET /jobs/{id}/stream", s.requireAuth(s.handleJobStream))
+	mux.HandleFunc("GET /jobs/{id}/raw", s.requireAuth(s.handleJobRaw))
 	mux.HandleFunc("GET /approvals", s.requireAuth(s.handleApprovals))
 	mux.HandleFunc("GET /approvals/stream", s.requireAuth(s.handleApprovalStream))
 	mux.HandleFunc("GET /approvals/{id}", s.requireAuth(s.handleApprovalSurface))

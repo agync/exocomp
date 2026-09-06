@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-06 — job log: search + view raw in a new tab
+
+- **The Live tail gained a search filter.** A "Search log" input above the log
+  box filters the event lines in place (case-insensitive substring); clearing it
+  restores the full tail, and lines the SSE stream appends are filtered to the
+  same query live.
+- **An icon-only "view raw log" button** (the open-in-new-tab glyph) in the Live
+  tail header opens `GET /jobs/{id}/raw` in a new tab: the job's full event log
+  as `text/plain`, one already-redacted message per line — the raw output to
+  copy into a terminal or log viewer, minus timestamps and level chrome.
+
 ## 2026-09-06 — path sources are never "never-synced"
 
 - **A path source is no longer a never-synced wait state.** It has no sync verb

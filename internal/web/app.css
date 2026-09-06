@@ -970,6 +970,18 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
   max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
 }
+/* The Live tail toolbar: kicker on the left, search + raw-log glyph on the
+ * right. Search uses the compact 30px height (the card-foot ladder), and the
+ * raw-log button reuses the .raglyph icon-button shape (R4, one glyph set). */
+.logbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.logbar .kicker { margin: 0; }
+.logtools { display: flex; align-items: center; gap: 8px; }
+.logtools .logsearch { color: var(--ink-500); font: var(--type-body); }
+.logtools input[type="search"] {
+  min-height: 30px; padding: 0 10px; width: 180px;
+  border-radius: var(--radius-control); border: 1px solid var(--hairline);
+  background: var(--surface-control); color: var(--ink-100);
+}
 /* One event per line, its timestamp dimmed so the message carries the eye and a
  * repeated stamp does not dominate the wall of output. */
 .log .logln { display: block; padding: 1px 0; }

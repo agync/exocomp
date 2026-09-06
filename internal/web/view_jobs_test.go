@@ -230,3 +230,89 @@ func TestJobDetailNoRule(t *testing.T) {
 		t.Error("a non-rule job must not render a fired-by-rule line")
 	}
 }
+
+// TestJobRawLogServesPlainText gates the "view raw log" button (Q3): the job
+// detail carries the icon-only raw-log link, and GET /jobs/{id}/raw returns the
+// job's full event log as text/plain — one message per line, in sequence order,
+// no timestamps or level chrome.
+func TestJobRawLogServesPlainText(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: "ansible", Trigger: "manual",
+	})
+	if err != nil {
+		t.Fatalf("CreateJob: %v", err)
+	}
+	for _, m := range []string{"line one", "line two", "fatal: boom"} {
+		if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+			JobID: job.ID, Level: store.LevelInfo, Msg: m,
+		}); err != nil {
+			t.Fatalf("AppendJobEvent: %v", err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/jobs/"+itoa(job.ID))
+	if code != 200 {
+		t.Fatalf("job detail status = %d", code)
+	}
+	for _, want := range []string{
+		`id="log-search"`,                                // search input present (Q2)
+		`/jobs/` + itoa(job.ID) + `/raw`,                 // raw link target
+		`target="_blank" rel="noopener"`,                 // new tab
+		`aria-label="View raw log in new tab"`,           // icon-only, named
+		`<path d="M14 4h6v6M10 14l10-10M19 13v7H4V5h7">`, // the open glyph
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("job detail missing %q", want)
+		}
+	}
+
+	resp, err := client.Get(ts.URL + "/jobs/" + itoa(job.ID) + "/raw")
+	if err != nil {
+		t.Fatalf("raw get: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != 200 {
+		t.Fatalf("raw status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("raw Content-Type = %q, want text/plain", ct)
+	}
+	// The three seeded messages each appear once on their own line, in sequence
+	// order (the harness driver may append its own events around them, so order
+	// is relative, not contiguous).
+	i1 := strings.Index(body, "line one")
+	i2 := strings.Index(body, "line two")
+	i3 := strings.Index(body, "fatal: boom")
+	ordered := i1 >= 0 && i1 < i2 && i2 < i3
+	if !ordered {
+		t.Errorf("raw body must keep seeded messages in relative order, one per line:\n%s", body)
+	}
+	for _, line := range []string{"line one\n", "line two\n", "fatal: boom\n"} {
+		if !strings.Contains(body, line) {
+			t.Errorf("raw body missing whole line %q:\n%s", line, body)
+		}
+	}
+}
+
+// TestJobRawLogUnknownIs404: a raw log for a job that does not exist is a 404,
+// not an empty or error render.
+func TestJobRawLogUnknownIs404(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp, err := client.Get(ts.URL + "/jobs/999999/raw")
+	if err != nil {
+		t.Fatalf("raw get: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != 404 {
+		t.Fatalf("unknown job raw status = %d, want 404", resp.StatusCode)
+	}
+}

@@ -387,6 +387,39 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, jobDetail(vm))
 }
 
+// handleJobRaw serves a job's full event log as plain text — one message per
+// line, no timestamps or level chrome — so an operator can copy the raw output
+// into a terminal or log viewer. The events are already redacted on the way in
+// (AGENTS.md invariant 4), so this is the same text the log box shows, minus
+// the UI. It is the target of the job detail's "view raw log" button.
+func (s *Server) handleJobRaw(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(r)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	if _, err := s.store.GetJob(r.Context(), id); err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.NotFound(w, r)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	events, err := s.store.ListJobEvents(r.Context(), id)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	var b strings.Builder
+	for _, e := range events {
+		b.WriteString(e.Msg)
+		b.WriteByte('\n')
+	}
+	_, _ = w.Write([]byte(b.String()))
+}
+
 // handleApprovals renders the pending-approvals list. The fingerprint is
 // computed from the same ListApprovals rows the page renders, projected to the
 // same wire payload the stream diffs, so the script's ?fp= can tell the stream

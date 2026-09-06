@@ -141,13 +141,37 @@ templ jobDetail(vm jobDetailVM) {
 			}
 		}
 		<div class="card mt14">
-			<div class="kicker">Live tail</div>
+			<div class="logbar">
+				<div class="kicker">Live tail</div>
+				<div class="logtools ml-auto">
+					<label class="logsearch" for="log-search">Search log</label>
+					<input id="log-search" type="search" autocomplete="off" placeholder="filter log…" aria-label="Search log"/>
+					<a class="raglyph" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" rel="noopener" aria-label="View raw log in new tab" title="View raw log in new tab">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphOpen }></path></svg>
+					</a>
+				</div>
+			</div>
 			<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
 				for _, e := range vm.Events {
 					@logLine(e)
 				}
 			</pre>
 		</div>
+		<script>
+		(function () {
+			var input = document.getElementById("log-search");
+			var log = document.getElementById("log");
+			if (!input || !log) return;
+			window.exoFilterLog = function () {
+				var q = input.value.trim().toLowerCase();
+				var lines = log.querySelectorAll(".logln");
+				for (var i = 0; i < lines.length; i++) {
+					lines[i].style.display = (q === "" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
+				}
+			};
+			input.addEventListener("input", window.exoFilterLog);
+		})();
+		</script>
 		<p class="meta" id="jobs-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
 		if !vm.Job.State.Terminal() {
 			@jobStream(vm.Job.ID, vm.LastSeq)
@@ -199,6 +223,7 @@ templ jobStream(id int64, since int64) {
 			span.appendChild(ts);
 			span.appendChild(document.createTextNode(" " + d.msg));
 			log.appendChild(span);
+			if (window.exoFilterLog) window.exoFilterLog();
 			log.scrollTop = log.scrollHeight;
 		});
 		es.addEventListener("done", function () { location.reload(); });
