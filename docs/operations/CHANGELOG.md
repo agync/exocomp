@@ -6,6 +6,27 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-06 — degraded is a first-class job state
+
+- **A tolerated unreachable run settles in the `degraded` state, not
+  `succeeded` + a `partial` flag.** `--tolerate-unreachable` runs whose only
+  non-success is offline hosts now end in `degraded` — a terminal "succeeded
+  with warnings" that does not page. The job row keeps its true non-zero exit
+  code; the CLI (`reportJobOutcome`, `remoteJobExit`) and a workflow step's
+  ledger (`recordOutcome`) treat degraded as a success, so a tolerated offline
+  host fails neither the caller nor the chain waiting on it. `partial` remains
+  as the legacy marker, still written beside the state for readers that predate
+  it. Schema: migration 0034 rebuilds `job` with the widened state CHECK and
+  re-points every referencing table, preserving all rows.
+- **A whole-inventory miss is not degraded.** A run whose recap shows every
+  addressed host unreachable (the full inventory, or the full `--limit` set)
+  falls through to `failed`: with nothing reached, nothing converged. Only a
+  run that reached some host and succeeded there may degrade.
+- **The state filters admit it.** `jobs list --state degraded`, the MCP
+  `list_jobs` filter, and `GET /api/v1/jobs?state=degraded` all accept the new
+  state, and the drift sweep treats a degraded `--check` run like a succeeded
+  one — it opens (and a clean one never closes) a drift incident.
+
 ## 2026-09-06 — per-source ansible collections isolation
 
 - **Ansible collections follow the venv model: per-source, hash-keyed,

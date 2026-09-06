@@ -99,9 +99,17 @@ When it is set, the run is classified by its record — a playbook's `PLAY RECAP
 or an ad-hoc run's `host | STATUS` lines (ad-hoc mode prints no recap):
 
 - **Only unreachable hosts** were the non-success (`failed=0` on every host the
-  run reached) → the run settles **degraded**: a succeeded job flagged `partial`,
-  exiting 0, that does **not** page. The reachable hosts converged; the offline
-  ones are recorded and named in a job event.
+  run reached, and at least one host WAS reached) → the run settles in the
+  **`degraded`** terminal state: the run completed, every reachable target
+  succeeded, the offline ones were skipped because the launch tolerated it. It
+  does **not** page, and the CLI exits 0 for it (a tolerated offline host is not
+  a caller failure). The reachable hosts converged; the offline ones are
+  recorded and named in a job event. The `partial` column is the legacy marker
+  for this outcome, still written beside the state for readers that predate it.
+- **Every addressed host unreachable** (the whole inventory, or the whole
+  `--limit` set, was offline) → a **hard failure**, not degraded: with nothing
+  reached, nothing converged, and the tolerance flag must not turn a full miss
+  into a tolerated success.
 - **Any reachable host's task failed** → a **hard failure**, exactly as without
   the flag. The tolerance never hides a real failure.
 
@@ -135,12 +143,12 @@ exocomp schedule add nightly-converge --kind play --tolerate-unreachable \
 ```
 
 Every fire converges the online fleet. When only the laptop is offline the fire
-settles **degraded** — succeeded, `partial`, the laptop named — instead of failing
-and paging; the degraded state is still surfaced, so a machine that is *always*
-offline is visible rather than silently skipped. The fail-closed rule for play
-schedules still holds: a missing, stale, or hostless standing inventory fires
-nothing rather than reporting a clean sweep against nobody. `--tolerate-unreachable`
-is rejected on any kind but `play`.
+settles in the **`degraded`** state — the online hosts converged, the laptop
+named — instead of failing and paging; the degraded state is still surfaced, so
+a machine that is *always* offline is visible rather than silently skipped. The
+fail-closed rule for play schedules still holds: a missing, stale, or hostless
+standing inventory fires nothing rather than reporting a clean sweep against
+nobody. `--tolerate-unreachable` is rejected on any kind but `play`.
 
 A genuine breakage — a task that fails on a host that *is* online — still fails the
 fire and pages, tolerance or not. The flag narrows exactly one thing: an offline
