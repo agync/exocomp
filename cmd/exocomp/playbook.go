@@ -454,13 +454,19 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	if err != nil {
 		return store.Job{}, err
 	}
+	// Resolve the per-source ansible collections (ADR 0015 vendoring step) the
+	// same way; the shared cache/collections dir stays as the fallback.
+	collections, err := resolveSourceCollections(ctx, dir, ansiblePlaybookPath(spec.Argv))
+	if err != nil {
+		return store.Job{}, err
+	}
 	caps, err := resolveRunnerCaps(ctx, st, spec.RunnerName)
 	if err != nil {
 		return store.Job{}, err
 	}
 	// The daemonless play path declares no captures: the bootstrap chain's capture
 	// seal runs only through the daemon's ansibleJobDriver, so this passes none.
-	driver, derived, err := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, spec.ExtraVars, spec.TolerateUnreachable, nil, nil, caps)
+	driver, derived, err := newAnsibleDriver(dir, env, spec.VaultProject, runSecrets, inventoryArtifact, venv, collections, spec.ExtraVars, spec.TolerateUnreachable, nil, nil, caps)
 	if err != nil {
 		return store.Job{}, err
 	}

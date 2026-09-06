@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -20,6 +21,16 @@ const pythonCacheDir = "cache/python"
 // resolver sandbox; uv's default cache lives under the daemon home, which the
 // sandbox does not grant.
 const uvCacheSubdir = "uv-cache"
+
+// galaxyTool is the ansible-galaxy binary a collections resolve invokes: on
+// PATH, or a per-source venv's sibling when the run resolved one.
+const galaxyTool = "ansible-galaxy"
+
+// galaxyCacheSubdir is galaxy's download/temp cache, under the collections
+// cache root so it is backed up with the collections it seeds. It is a granted
+// write path under the resolver sandbox; galaxy's default cache lives under
+// the daemon home, which the sandbox does not grant.
+const galaxyCacheSubdir = ".galaxy-cache"
 
 // resolveProjectVenv resolves the per-source uv venv a playbook run executes
 // inside (ADR 0011). It discovers the project's Python manifest from the
@@ -67,6 +78,84 @@ func resolveProjectVenv(ctx context.Context, dataDir, playbook string) (deps.Ven
 		})
 	}
 	return deps.EnsureVenv(ctx, spec)
+}
+
+// resolveSourceCollections resolves the per-source ansible collections a
+// playbook run executes with (ADR 0015), mirroring resolveProjectVenv. It
+// discovers the project's galaxy manifest from the playbook's directory; a
+// source that declares none returns a zero Collections, so the run falls back
+// to the shared cache/collections dir — which is also what keeps DR-path
+// runbooks (seeded standalone, carrying no manifest) on the shared fallback. A
+// declared manifest is resolved into cache/collections/<source>/<hash>,
+// hash-gated so an unchanged requirements file invokes no ansible-galaxy.
+//
+// It is fail-closed: a requirements file that will not resolve returns an
+// error, so a run never proceeds against half-met collections.
+func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (deps.Collections, error) {
+	if playbook == "" {
+		return deps.Collections{}, nil
+	}
+	start := filepath.Dir(playbook)
+	manifest, err := deps.DiscoverGalaxy(start)
+	if err != nil {
+		return deps.Collections{}, fmt.Errorf("deps: discover galaxy manifest for %s: %w", playbook, err)
+	}
+	if !manifest.Found() {
+		return deps.Collections{}, nil
+	}
+	// Resolve the venv first: its ansible-galaxy sibling, when present, is this
+	// source's collections resolver — the way its ansible-playbook is the run's
+	// binary (ADR 0015). An absent venv leaves galaxy to PATH.
+	venv, err := resolveProjectVenv(ctx, dataDir, playbook)
+	if err != nil {
+		return deps.Collections{}, err
+	}
+	cacheRoot := filepath.Join(dataDir, collectionsCacheDir)
+	source := deps.SourceKey(manifest.Root)
+	spec := deps.CollectionsSpec{
+		CacheRoot: cacheRoot,
+		Source:    source,
+		Manifest:  manifest,
+	}
+	if galaxy := filepath.Join(venv.Dir, "bin", galaxyTool); executable(galaxy) {
+		spec.GalaxyBinary = galaxy
+	}
+	// The resolver runs ansible-galaxy, and a requirements file steers it to
+	// galaxy servers and installer code no more trusted than a manifest's build
+	// backend. Under the sandbox tier it is confined to its collections cache
+	// and the requirements, denied the data dir and the keys; the
+	// daemon-context resolve stays only where no sandbox can enforce it.
+	if sandboxed(ctx) {
+		galaxyCache := filepath.Join(cacheRoot, galaxyCacheSubdir)
+		read := executor.ToolGrants(galaxyTool, "python3")
+		read = append(read, manifest.Root)
+		spec.GalaxyCacheDir = galaxyCache
+		spec.Sandbox = deps.NewResolverSandbox(deps.ResolverSandboxOptions{
+			DataDir:    dataDir,
+			VenvDir:    filepath.Join(cacheRoot, source),
+			ReadPaths:  read,
+			WritePaths: []string{galaxyCache},
+		})
+	}
+	return deps.EnsureCollections(ctx, spec)
+}
+
+// executable reports whether path names a runnable file.
+func executable(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir() && info.Mode()&0o111 != 0
+}
+
+// ansibleCollectionsPath is the ANSIBLE_COLLECTIONS_PATH value a run gets: the
+// per-source resolved collections dir ahead of the shared cache/collections
+// fallback when the source resolved collections, the shared dir alone
+// otherwise (ADR 0015). The per-source path wins because it comes first.
+func ansibleCollectionsPath(dataDir string, collections deps.Collections) string {
+	shared := filepath.Join(dataDir, collectionsCacheDir)
+	if collections.Dir == "" {
+		return shared
+	}
+	return collections.Dir + string(os.PathListSeparator) + shared
 }
 
 // ansiblePlaybookPath returns the playbook file an ansible argv names: its last

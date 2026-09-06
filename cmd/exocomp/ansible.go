@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"path/filepath"
 	"time"
 
 	"exocomp.dev/exocomp/internal/deps"
@@ -23,12 +22,13 @@ const vaultPurpose = "ansible-vault"
 // cannot drift apart. An empty project runs without a vault password.
 func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string,
 	runSecrets executor.RunSecrets, inventoryArtifact string, venv deps.Venv,
+	collections deps.Collections,
 	extraVars map[string]string, tolerateUnreachable bool,
 	captures []executor.AnsibleCapture, sealer executor.OutputSealer,
 	caps executor.Caps) (executor.Driver, [][]byte, error) {
 	opts := executor.AnsibleOptions{
 		VaultID:             executor.DefaultVaultID,
-		CollectionsPath:     filepath.Join(dataDir, collectionsCacheDir),
+		CollectionsPath:     ansibleCollectionsPath(dataDir, collections),
 		RunSecrets:          runSecrets,
 		InventoryArtifact:   inventoryArtifact,
 		ExtraVars:           extraVars,
@@ -109,6 +109,18 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 			Msg: "resolved project deps into " + venv.Dir})
 	}
 
+	// Resolve the per-source ansible collections the same way (ADR 0015
+	// vendoring step); the shared cache/collections dir stays as the fallback
+	// when the source declares no requirements.
+	collections, err := resolveSourceCollections(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))
+	if err != nil {
+		return executor.Result{}, err
+	}
+	if collections.Created {
+		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelSystem,
+			Msg: "resolved source collections into " + collections.Dir})
+	}
+
 	// A bootstrap play carries its capture declarations and workflow id on the
 	// job's first-class Captures field; build the sealer that binds each capture
 	// under ab:<workflow>. The play's own extra-vars are a separate field, so
@@ -124,7 +136,7 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 	if err != nil {
 		return executor.Result{}, err
 	}
-	drv, derived, err := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, job.Args.ExtraVars, job.Args.TolerateUnreachable, captures, sealer, caps)
+	drv, derived, err := newAnsibleDriver(d.dataDir, d.env, job.Args.VaultProject, runSecrets, inventoryArtifact, venv, collections, job.Args.ExtraVars, job.Args.TolerateUnreachable, captures, sealer, caps)
 	if err != nil {
 		return executor.Result{}, err
 	}
