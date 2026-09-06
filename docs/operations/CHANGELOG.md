@@ -15,6 +15,24 @@ Newest first.
   caches). Deleting a source had already garbage-collected its dependency
   caches; this makes that explicit on both deletion surfaces.
 
+## 2026-09-06 — jobs v2: run card, verdict band, reason lines
+
+- **The job detail page is rebuilt around the verdict.** A run card (state chip,
+  `exit {code}` / `exit {code} tolerated` verdict number, RUN CONFIGURATION tile
+  grid) is followed by a verdict band on FAILED and DEGRADED — keyword line,
+  per-host HOST/RESULT/RECAP table, and the rerun-tolerating / open-checks /
+  rerun-limited verbs — then the output tail. The list becomes two-line rows with
+  a one-fact reason line (`2 hosts unreachable`, `exit 4 · 2 hosts unreachable`)
+  and never a host list.
+- **The DEGRADED state is surfaced everywhere** it can land: web chips and verdict
+  band (wait amber), the jobs list, the dashboard queue card's last-job line, and
+  the TUI (`◐ DEGRADED`); the ntfy notify-request title is
+  `degraded: {playbook} — {n} hosts unreachable`.
+- **The rerun dialog and the source launch drawer gain a Tolerate unreachable
+  hosts toggle** (pre-highlighted when the prior run failed on unreachable
+  hosts); the detail-page flash is dropped in favour of a dashed `rerun of #N`
+  chip, and the filter is placeholder-only.
+
 ## 2026-09-06 — degraded is a first-class job state
 
 - **A tolerated unreachable run settles in the `degraded` state, not
