@@ -12,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -320,6 +321,110 @@ func TestForgeKnownHosts(t *testing.T) {
 	}
 }
 
+// --- source rm cache GC (ADR 0015) ---
+
+func TestSourceRmPurgesSoleSourceCaches(t *testing.T) {
+	dir := initForSource(t)
+	root := filepath.Join(dir, "trees", "infra")
+	python, collections := plantSourceCaches(t, dir, root)
+
+	if _, err := runSource(t, "add", "infra", "--path", root); err != nil {
+		t.Fatalf("source add --path: %v", err)
+	}
+	if _, err := runSource(t, "rm", "infra"); err != nil {
+		t.Fatalf("source rm: %v", err)
+	}
+	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/python kept after rm of a sole source: %v", err)
+	}
+	if _, err := os.Stat(collections); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/collections kept after rm of a sole source: %v", err)
+	}
+}
+
+func TestSourceRmSharedRootKeepsCaches(t *testing.T) {
+	dir := initForSource(t)
+	root := filepath.Join(dir, "trees", "shared")
+	python, collections := plantSourceCaches(t, dir, root)
+
+	if _, err := runSource(t, "add", "a", "--path", root); err != nil {
+		t.Fatalf("source add a: %v", err)
+	}
+	if _, err := runSource(t, "add", "b", "--path", root); err != nil {
+		t.Fatalf("source add b: %v", err)
+	}
+
+	// A sibling resolving to the same root owns the cache too; rm must not
+	// purge a plane a surviving source still resolves to.
+	if _, err := runSource(t, "rm", "a"); err != nil {
+		t.Fatalf("source rm a: %v", err)
+	}
+	if _, err := os.Stat(python); err != nil {
+		t.Fatalf("cache/python purged despite a sibling sharing the root: %v", err)
+	}
+	if _, err := os.Stat(collections); err != nil {
+		t.Fatalf("cache/collections purged despite a sibling sharing the root: %v", err)
+	}
+
+	// With the last owner gone, the plane is garbage-collected.
+	if _, err := runSource(t, "rm", "b"); err != nil {
+		t.Fatalf("source rm b: %v", err)
+	}
+	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/python kept after rm of the last owner: %v", err)
+	}
+	if _, err := os.Stat(collections); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/collections kept after rm of the last owner: %v", err)
+	}
+}
+
+func TestSourceRmDisabledSiblingKeepsCaches(t *testing.T) {
+	dir := initForSource(t)
+	root := filepath.Join(dir, "trees", "shared")
+	python, collections := plantSourceCaches(t, dir, root)
+
+	if _, err := runSource(t, "add", "a", "--path", root); err != nil {
+		t.Fatalf("source add a: %v", err)
+	}
+	if _, err := runSource(t, "add", "b", "--path", root); err != nil {
+		t.Fatalf("source add b: %v", err)
+	}
+	// A disabled source still owns its cache when re-enabled (ADR 0015), so it
+	// is a reference the guard must count.
+	disableSource(t, dir, "b")
+
+	if _, err := runSource(t, "rm", "a"); err != nil {
+		t.Fatalf("source rm a: %v", err)
+	}
+	if _, err := os.Stat(python); err != nil {
+		t.Fatalf("cache/python purged despite a disabled sibling owning the root: %v", err)
+	}
+	if _, err := os.Stat(collections); err != nil {
+		t.Fatalf("cache/collections purged despite a disabled sibling owning the root: %v", err)
+	}
+}
+
+func TestSourceRmDisabledUniqueSourcePurgesCaches(t *testing.T) {
+	dir := initForSource(t)
+	root := filepath.Join(dir, "trees", "infra")
+	python, collections := plantSourceCaches(t, dir, root)
+
+	if _, err := runSource(t, "add", "infra", "--path", root); err != nil {
+		t.Fatalf("source add: %v", err)
+	}
+	disableSource(t, dir, "infra")
+
+	if _, err := runSource(t, "rm", "infra"); err != nil {
+		t.Fatalf("source rm of a disabled source: %v", err)
+	}
+	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/python kept after rm of a disabled sole source: %v", err)
+	}
+	if _, err := os.Stat(collections); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/collections kept after rm of a disabled sole source: %v", err)
+	}
+}
+
 // --- helpers ---
 
 func runSource(t *testing.T, args ...string) (string, error) {
@@ -330,6 +435,46 @@ func runRunSecret(t *testing.T, args ...string) (string, error) {
 }
 func runInventory(t *testing.T, args ...string) (string, error) {
 	return runCobra(t, newInventoryCmd, args...)
+}
+
+// plantSourceCaches creates the dependency-cache planes a synced source leaves
+// under dataDir for the given root (cache/python and cache/collections under
+// the root's SourceKey, ADR 0015), returning both plane roots.
+func plantSourceCaches(t *testing.T, dir, root string) (pythonDir, collectionsDir string) {
+	t.Helper()
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	key := deps.SourceKey(root)
+	pythonDir = filepath.Join(dir, "cache", "python", key)
+	collectionsDir = filepath.Join(dir, "cache", "collections", key)
+	for _, d := range []string{
+		filepath.Join(pythonDir, "venv"),
+		filepath.Join(collectionsDir, "ansible_collections"),
+	} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return pythonDir, collectionsDir
+}
+
+// disableSource flips a source's enabled bit off directly, the shape a web
+// disable leaves behind.
+func disableSource(t *testing.T, dir, name string) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	src, err := st.SourceByName(context.Background(), name)
+	if err != nil {
+		t.Fatalf("source by name: %v", err)
+	}
+	if err := st.SetSourceEnabled(context.Background(), src.ID, false); err != nil {
+		t.Fatalf("disable: %v", err)
+	}
 }
 
 func sealSecretDirect(t *testing.T, dir, name, value string) {

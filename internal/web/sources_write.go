@@ -1,11 +1,13 @@
 package web
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
@@ -208,6 +210,17 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
+	// The rm needs the row to resolve the caches the source may own, and it is
+	// gone after DeleteSource — pre-fetch.
+	src, err := s.store.SourceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no source named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
 	if err := s.store.DeleteSource(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.Error(w, "no source named "+name, http.StatusNotFound)
@@ -216,6 +229,38 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+	s.purgeSourceCaches(r.Context(), src)
 	s.log.Info("web: source rm", "source", name, "by", ident.token.Name)
 	redirectFlash(w, r, "/sources", "removed "+name)
+}
+
+// purgeSourceCaches removes a deleted source's dependency caches
+// (cache/python/<SourceKey> and cache/collections/<SourceKey> under the data
+// dir) unless another registered source resolves to the same root and therefore
+// shares the key (ADR 0015). A disabled source still owns its cache when
+// re-enabled, so it counts as a reference. The source row is already deleted by
+// the caller. Any failure leaves the caches in place: the failure mode is a
+// stale cache, never a wrong purge.
+func (s *Server) purgeSourceCaches(ctx context.Context, src store.Source) {
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
+	if err != nil {
+		return
+	}
+	key := deps.SourceKey(loc.Root)
+	rows, err := s.store.ListSources(ctx)
+	if err != nil {
+		return
+	}
+	for _, other := range rows {
+		otherLoc, err := source.Resolve(s.dataDir, other.Kind, other.Name, other.URI, other.Writable)
+		if err != nil {
+			continue
+		}
+		if deps.SourceKey(otherLoc.Root) == key {
+			return
+		}
+	}
+	if err := deps.RemoveProjectCaches(s.dataDir, loc.Root); err != nil {
+		s.log.Warn("web: source rm: purge caches failed", "source", src.Name, "error", err)
+	}
 }

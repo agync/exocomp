@@ -2,12 +2,16 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -139,6 +143,116 @@ func TestSourceRm(t *testing.T) {
 	if _, err := h.store.SourceByName(ctx, "tree"); err == nil {
 		t.Fatal("source still present after rm")
 	}
+}
+
+func TestSourceRmPurgesCaches(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	python, collections := plantWebCaches(t, h.dir, "/srv/tree")
+
+	resp := postForm(t, client, ts.URL+"/sources/tree/rm", url.Values{"confirmed": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rm = %d, want 303", resp.StatusCode)
+	}
+	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/python kept after web rm of a sole source: %v", err)
+	}
+	if _, err := os.Stat(collections); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache/collections kept after web rm of a sole source: %v", err)
+	}
+}
+
+func TestSourceRmSharedRootKeepsCaches(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	for _, name := range []string{"a", "b"} {
+		if _, err := h.store.CreateSource(ctx, store.Source{Name: name, Kind: store.SourcePath, URI: "/srv/shared", Enabled: true}); err != nil {
+			t.Fatalf("seed source %s: %v", name, err)
+		}
+	}
+	python, collections := plantWebCaches(t, h.dir, "/srv/shared")
+
+	resp := postForm(t, client, ts.URL+"/sources/a/rm", url.Values{"confirmed": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rm = %d, want 303", resp.StatusCode)
+	}
+	if _, err := os.Stat(python); err != nil {
+		t.Fatalf("cache/python purged despite a sibling sharing the root: %v", err)
+	}
+	if _, err := os.Stat(collections); err != nil {
+		t.Fatalf("cache/collections purged despite a sibling sharing the root: %v", err)
+	}
+}
+
+// TestSourceRmDisabledSiblingKeepsCaches proves the guard counts a disabled
+// source as a reference: the sibling still owns the cache when re-enabled.
+func TestSourceRmDisabledSiblingKeepsCaches(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "a", Kind: store.SourcePath, URI: "/srv/shared", Enabled: true}); err != nil {
+		t.Fatalf("seed source a: %v", err)
+	}
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "b", Kind: store.SourcePath, URI: "/srv/shared", Enabled: true}); err != nil {
+		t.Fatalf("seed source b: %v", err)
+	}
+	b, err := h.store.SourceByName(ctx, "b")
+	if err != nil {
+		t.Fatalf("source b by name: %v", err)
+	}
+	if err := h.store.SetSourceEnabled(ctx, b.ID, false); err != nil {
+		t.Fatalf("disable b: %v", err)
+	}
+	python, collections := plantWebCaches(t, h.dir, "/srv/shared")
+
+	resp := postForm(t, client, ts.URL+"/sources/a/rm", url.Values{"confirmed": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("rm = %d, want 303", resp.StatusCode)
+	}
+	if _, err := os.Stat(python); err != nil {
+		t.Fatalf("cache/python purged despite a disabled sibling owning the root: %v", err)
+	}
+	if _, err := os.Stat(collections); err != nil {
+		t.Fatalf("cache/collections purged despite a disabled sibling owning the root: %v", err)
+	}
+}
+
+// plantWebCaches creates the dependency-cache planes a synced source leaves
+// under the harness data dir for the given root, returning both plane roots.
+func plantWebCaches(t *testing.T, dir, root string) (python, collections string) {
+	t.Helper()
+	key := deps.SourceKey(root)
+	python = filepath.Join(dir, "cache", "python", key)
+	collections = filepath.Join(dir, "cache", "collections", key)
+	for _, d := range []string{
+		filepath.Join(python, "venv"),
+		filepath.Join(collections, "ansible_collections"),
+	} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatalf("plant cache: %v", err)
+		}
+	}
+	return python, collections
 }
 
 func TestSourceAddGitNoSealer503(t *testing.T) {

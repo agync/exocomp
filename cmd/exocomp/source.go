@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/naming"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
@@ -417,18 +418,74 @@ func newSourceRmCmd() *cobra.Command {
 		Short: "Remove a source (its inventories cascade; a git deploy key is left sealed)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			st, err := openStore()
-			if err != nil {
-				return err
-			}
-			defer func() { _ = st.Close() }()
-			if err := st.DeleteSource(cmd.Context(), args[0]); err != nil {
-				return fmt.Errorf("source rm: %w", err)
-			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "removed source %q\n", args[0])
-			return nil
+			return runSourceRm(cmd, args[0])
 		},
 	}
+}
+
+func runSourceRm(cmd *cobra.Command, name string) error {
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+	dir, err := dataDir()
+	if err != nil {
+		return err
+	}
+
+	// Fetch the row before delete: the rm needs it to resolve the caches the
+	// source may own, and it is gone after.
+	src, err := st.SourceByName(cmd.Context(), name)
+	if err != nil {
+		return fmt.Errorf("source rm: %w", err)
+	}
+	if err := st.DeleteSource(cmd.Context(), name); err != nil {
+		return fmt.Errorf("source rm: %w", err)
+	}
+	purgeSourceCachesIfUnreferenced(cmd.Context(), st, dir, src)
+	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "removed source %q\n", name)
+	return nil
+}
+
+// purgeSourceCachesIfUnreferenced removes a deleted source's dependency caches
+// (cache/python/<SourceKey> and cache/collections/<SourceKey> under dataDir)
+// unless another registered source resolves to the same root and therefore
+// shares the key (ADR 0015). A disabled source still owns its cache when
+// re-enabled, so it counts as a reference. The source row is already deleted by
+// the caller. Any failure leaves the caches in place: the failure mode is a
+// stale cache, never a wrong purge.
+func purgeSourceCachesIfUnreferenced(ctx context.Context, st *store.Store, dataDir string, src store.Source) {
+	root, ok := sourceRoot(dataDir, src)
+	if !ok {
+		return
+	}
+	key := deps.SourceKey(root)
+	rows, err := st.ListSources(ctx)
+	if err != nil {
+		return
+	}
+	for _, other := range rows {
+		otherRoot, ok := sourceRoot(dataDir, other)
+		if !ok {
+			continue
+		}
+		if deps.SourceKey(otherRoot) == key {
+			return
+		}
+	}
+	_ = deps.RemoveProjectCaches(dataDir, root)
+}
+
+// sourceRoot resolves a source row to its locality root; ok is false when the
+// row cannot be resolved (an empty or malformed path), in which case the caller
+// must not purge anything it cannot key.
+func sourceRoot(dataDir string, src store.Source) (root string, ok bool) {
+	loc, err := source.Resolve(dataDir, src.Kind, src.Name, src.URI, src.Writable)
+	if err != nil {
+		return "", false
+	}
+	return loc.Root, true
 }
 
 // --- run-secret bindings: the credential-plane mapping, no secret material ---
