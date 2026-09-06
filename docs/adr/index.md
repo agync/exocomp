@@ -20,6 +20,7 @@ of fact land in [the evolution log](../log.md).
 | [0012](0012-litestream.md) | Litestream as an optional fast-RPO sidecar replicating exocomp.db's WAL; restic stays authoritative; unencrypted-remote refused without ack; sidecar not embedded | Accepted |
 | [0013](0013-openbao-transit-seal.md) | OpenBao Transit as an optional additive seal for the DEK (auto-unseal); keyring.age recovery preserved; unreachable is an explicit error, never silent fallback | Accepted |
 | [0014](0014-agent-facing-surface.md) | Agent-facing surface: one core, three thin faces (CLI --output json, HTTP /api/v1, MCP) sharing ADR-0009 auth, the one queue, and the internal/wire envelope contract | Accepted |
+| [0015](0015-per-source-collections.md) | Ansible collections go per-source: content-hash-keyed cache dir, resolved at claim time, GC'd with the source lifecycle; ADR 0011's shared collections decision superseded | Accepted |
 
 Some decisions are recorded elsewhere because they are shape rather than choice: the twelve
 design amendments are in [design/amendments.md](../design/amendments.md), and the platform

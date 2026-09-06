@@ -1,5 +1,7 @@
 # ADR 0011 — Project dependency resolution: uv at runtime for declared manifests
 
+Superseded by [0015](0015-per-source-collections.md) for the collections decision; the venv, tofu-provider, tofu-modules, and system-package decisions stand.
+
 ## Status
 
 Accepted · 2026-08-22 — refines the boundary in [ADR 0006](0006-uv-toolchain-escape-hatch.md).
