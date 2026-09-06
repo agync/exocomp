@@ -355,7 +355,7 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
   align-items: stretch;
 }
 /* The queue card is the one wide card of its band. */
-.cardlink.queue { grid-column: 1 / -1; }
+.card.queue { grid-column: 1 / -1; }
 /* The attention card's decision verb: the card is a link, and this names the
  * resolve action explicitly so a ringed card ends in a verb, never a fact. */
 .cardact { display: block; margin-top: 10px; font: var(--type-button); color: var(--accent-text); }
@@ -386,7 +386,6 @@ a.cardlink:hover, a.cardlink:focus-visible {
 }
 a.cardlink.attn { border-color: var(--wait-border); background: var(--wait-tint); }
 a.cardlink.attn:hover, a.cardlink.attn:focus-visible { border-color: var(--signal-wait); }
-.cardnum { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
 .cardsub { margin: 10px 0 0; font: var(--type-body); }
 .cardsub.fail { color: var(--signal-fail); }
 .cardsub.meta { color: var(--ink-500); }
@@ -1239,6 +1238,13 @@ body { overflow-x: clip; }
 }
 .jobs-row .reason { font: 400 12px var(--font-mono); color: var(--ink-500); white-space: nowrap; }
 .jobs-row .reason--degraded { color: var(--signal-wait); }
+
+/* Dashboard queue rows: the /jobs two-line row reduced to the glance's
+ * essentials — runbook over source/meta with a state chip — each row still
+ * its own link to the job, so the card holds rows, not one big anchor. */
+.jobs-row.queue-row {
+  grid-template-columns: minmax(0, 1fr) 190px;
+}
 
 /* ---- Run card (2.1): the job detail's lead block ----
  * The card wears the terminal state's inset ring through data-state, and the

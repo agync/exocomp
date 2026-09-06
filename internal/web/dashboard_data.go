@@ -139,9 +139,11 @@ type jobLastRow struct {
 // running jobs — never settled history, which stays the /jobs view's job. The
 // States filter keeps this a narrow index lookup no matter how large the
 // terminal job history has grown, and the recent-failure count is a single
-// COUNT query rather than a list pulled into memory to be len()'d. The one
-// settled-history fact the glance does carry is the newest finished job
-// (lastTerminalJob), the last-job line's chip and runbook.
+// COUNT query rather than a list pulled into memory to be len()'d. The rows
+// reuse jobRowForList — the same two-line /jobs row facts — newest first,
+// capped at the glance ceiling; active rows carry no reason line, which is
+// correct. The one settled-history fact the glance does carry is the newest
+// finished job (lastTerminalJob), the last-job line's chip and runbook.
 func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 	active, err := s.store.ListJobs(r.Context(), store.JobFilter{
 		States: []store.JobState{store.StateQueued, store.StateAwaitingApproval, store.StateRunning},
@@ -150,14 +152,21 @@ func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 		return jobSummary{}, err
 	}
 	card := jobSummary{}
-	for _, j := range active {
+	now := s.now()
+	// One backward pass: count the whole active set and build the rows
+	// newest-first, stopping once the glance cap is reached.
+	for i := len(active) - 1; i >= 0; i-- {
+		j := active[i]
 		if j.State == store.StateRunning {
 			card.Running++
 		} else {
 			card.Queued++
 		}
+		if len(card.Rows) < queueRowsCap {
+			card.Rows = append(card.Rows, s.jobRowForList(r.Context(), j, now))
+		}
 	}
-	failed, err := s.store.CountFailedJobsSince(r.Context(), s.now().Add(-jobFailedRecentWindow))
+	failed, err := s.store.CountFailedJobsSince(r.Context(), now.Add(-jobFailedRecentWindow))
 	if err != nil {
 		return jobSummary{}, err
 	}

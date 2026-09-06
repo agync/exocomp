@@ -78,16 +78,22 @@ templ approvalsCard(vm approvalSummary) {
 	</a>
 }
 
-// queueCard is the dashboard's queue summary: the active queue only, plus the
-// one settled-history fact the glance queries — the newest finished job as a
-// state chip beside its runbook. Anything older stays on /jobs.
+// queueCard is the dashboard's queue summary: the active queue as capped
+// two-line rows in the /jobs language — each row its own link to its job, so
+// the card cannot be one big anchor — with the running/queued split as the
+// meta line, the one settled-history fact the glance queries (the newest
+// finished job as a state chip beside its runbook), and the Open all jobs
+// footer. Anything older stays on /jobs.
 templ queueCard(vm jobSummary) {
-	<a class="card cardlink queue" href="/jobs" aria-labelledby="queue-h">
-		<h3 id="queue-h">Queue</h3>
+	<div class="card queue">
+		<h3>Queue</h3>
 		if vm.Idle() {
 			<p class="cardsub meta">Idle — nothing queued, nothing running.</p>
 		} else {
-			<div class="cardnum">{ vm.Headline() }</div>
+			<p class="cardsub meta">{ vm.Headline() }</p>
+			for _, j := range vm.Rows {
+				@queueJobRow(j)
+			}
 		}
 		if vm.FailedRecently > 0 {
 			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
@@ -98,6 +104,23 @@ templ queueCard(vm jobSummary) {
 				<span>{ RunbookLabel(vm.LastJob.Runbook) }</span>
 			</p>
 		}
+		<a class="cardact" href="/jobs">Open all jobs →</a>
+	</div>
+}
+
+// queueJobRow is one active job on the dashboard queue card: the /jobs
+// two-line row reduced to its glance essentials — runbook over source/meta
+// with a state chip — linked through to the job. Active rows carry no reason
+// line (D4 names facts only for settled FAILED/DEGRADED runs).
+templ queueJobRow(j jobRow) {
+	<a class="jobs-row queue-row" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+		<span class="cell">
+			<b class="mono">{ j.Title }</b>
+			<small class="mono">{ j.SourceMeta }</small>
+		</span>
+		<span class="cell cell--state">
+			@chip(j.StateClass(), string(j.State))
+		</span>
 	</a>
 }
 

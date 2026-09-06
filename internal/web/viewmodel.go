@@ -130,12 +130,17 @@ func (c approvalSummary) Subline() string {
 	return target + " · " + c.Deadline
 }
 
-// jobSummary is the dashboard's queue card: jobs still moving right now.
-// Settled jobs (succeeded, failed, ...) never count here — that history
-// belongs to the /jobs view, not the glance screen.
+// jobSummary is the dashboard's queue card: jobs still moving right now,
+// rendered as capped two-line rows in the /jobs language. Settled jobs
+// (succeeded, failed, ...) never count or render here — that history belongs
+// to the /jobs view, not the glance screen.
 type jobSummary struct {
 	Running int
 	Queued  int
+	// Rows are the active jobs as /jobs two-line rows, newest first and capped
+	// at queueRowsCap: the glance shows the newest movers and counts the whole
+	// set. Empty when Idle.
+	Rows []jobRow
 	// FailedRecently is jobs that settled failed inside the recent window
 	// (jobFailedRecentWindow). Negative means not computed.
 	FailedRecently int
@@ -144,6 +149,11 @@ type jobSummary struct {
 	// ever finished.
 	LastJob *jobLastRow
 }
+
+// queueRowsCap is how many active rows the queue card renders before the card
+// stops being a glance screen; the headline counts the whole active set and
+// the Open all jobs footer links the rest through to /jobs.
+const queueRowsCap = 6
 
 // Idle reports whether the active queue is empty.
 func (j jobSummary) Idle() bool { return j.Running == 0 && j.Queued == 0 }
