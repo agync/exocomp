@@ -249,10 +249,10 @@ func (s *Server) sourceSummary(r *http.Request) (sourceSummary, error) {
 	}
 	card := sourceSummary{Total: len(list)}
 	for _, src := range list {
-		if !src.Enabled || src.SyncSHA == "" {
+		if !src.Enabled || src.NeverSynced() {
 			card.Attention++
 		}
-		if src.SyncSHA == "" {
+		if src.NeverSynced() {
 			card.NeverSynced++
 			if len(card.NeverNames) < 2 {
 				card.NeverNames = append(card.NeverNames, src.Name)

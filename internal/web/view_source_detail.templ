@@ -32,11 +32,7 @@ templ sourceDetail(vm sourceDetailVM) {
 					<div><dt>Ref</dt><dd class="mono">{ vm.Source.Ref }</dd></div>
 				}
 				<div><dt>Last sync</dt>
-					if vm.Source.NeverSynced() {
-						<dd class="mono wait-text">never — sync to discover playbooks</dd>
-					} else {
-						<dd class="mono">{ vm.Source.Short() }</dd>
-					}
+					<dd class={ templ.KV("mono", true), templ.KV("wait-text", vm.Source.NeverSynced()) }>{ vm.Source.LastSyncLabel() }</dd>
 				</div>
 			</dl>
 			if vm.Operator {
@@ -114,11 +110,11 @@ templ sourceDetail(vm sourceDetailVM) {
 					<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
 						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook") } class="writeform">
 							<label for="rp-select">Playbook</label>
-							if vm.Source.NeverSynced() || len(vm.Playbooks) == 0 {
+							if len(vm.Playbooks) == 0 {
 								<select id="rp-select" name="playbook" disabled>
 									<option value="">path — none discovered yet</option>
 								</select>
-								<p class="meta">Unsynced source: give a path relative to the checkout.</p>
+								<p class="meta">{ vm.PlaybooksNote() }</p>
 							} else {
 								<select id="rp-select" name="playbook">
 									<option value="">— choose a discovered playbook —</option>

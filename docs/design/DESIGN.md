@@ -477,7 +477,11 @@ and links to where it is fixed — dead-man none is wait with a fix verb
 - **Sync is a CLI verb, not a web route.** The handoff 1d header's "Sync now"
   button has no backend (no queued sync job kind exists; sources_write.go
   documents the deliberate omission). The source detail instead shows the
-  command (`exocomp source sync <name>`) next to the never-synced fact.
+  command (`exocomp source sync <name>`) next to the never-synced fact. The
+  never-synced wait state is **git-only**: a path source's tree is already on
+  the box and read directly, has no sync verb (`source sync` refuses it), and so
+  reads `n/a (path source)` for Last sync and enables the launch select as soon
+  as discovery finds playbooks.
 - **TUI keymap.** The TUI's post-v1 screens grew past the handoff round's
   seven-screen model, so two literals were pushed back: the `[0-6]` help-bar
   range is the truthful `[0-9] [s] [u]` (the screen set grew), and `r` was

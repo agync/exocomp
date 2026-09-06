@@ -108,7 +108,7 @@ func TestSourceLaunchDrawer(t *testing.T) {
 		`data-modal-open="launch"`,
 		`<select id="rp-select" name="playbook" disabled>`,
 		`<option value="">path — none discovered yet</option>`,
-		`Unsynced source: give a path relative to the checkout.`,
+		`this source has never synced. Sync brings the checkout down and reads its layout.`,
 		`Queue run — a path @ refs/heads/main`,
 	} {
 		if !strings.Contains(page, want) {
@@ -502,9 +502,9 @@ func TestRunSurfaceRemoved(t *testing.T) {
 }
 
 // seedUnsyncedPath registers a PATH source with a checkout on disk but no sync
-// recorded: discovery finds real playbooks, yet the source has never synced —
-// the F14 state where the select must be disabled anyway (never-synced = no
-// trusted tree).
+// recorded: discovery finds real playbooks, and because a path source has no
+// sync verb at all (`source sync` refuses a non-git source), the launcher's
+// playbook select is enabled — the tree is already present and read directly.
 func seedUnsyncedPath(t *testing.T, h *harness) string {
 	t.Helper()
 	root := t.TempDir()
@@ -519,11 +519,12 @@ func seedUnsyncedPath(t *testing.T, h *harness) string {
 	return "unsynced"
 }
 
-// TestSourcePlaybookSelectDisabledUnsynced is the GATE for F14: a never-synced
-// source gets the disabled playbook select + the path-promoted meta line even
-// when discovery found playbooks in the checkout — the select is a dead control
-// until the source has synced.
-func TestSourcePlaybookSelectDisabledUnsynced(t *testing.T) {
+// TestSourcePathSelectEnabledWhenPlaybooksFound is the gate for the path-source
+// launch fix: a path source is never "never-synced" (there is no sync verb for
+// it), so when discovery finds playbooks the launcher select is ENABLED and
+// lists them — it must not be a dead "none discovered yet" control. The card
+// and the launcher must agree.
+func TestSourcePathSelectEnabledWhenPlaybooksFound(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -536,12 +537,35 @@ func TestSourcePlaybookSelectDisabledUnsynced(t *testing.T) {
 		t.Fatalf("/sources/%s = %d", name, code)
 	}
 	for _, want := range []string{
-		`<select id="rp-select" name="playbook" disabled>`,
-		`Unsynced source: give a path relative to the checkout.`,
-		`site.yml`, // discovery still lists the checkout's playbook in the card
+		`<select id="rp-select" name="playbook">`, // enabled, not disabled
+		`>site.yml</option>`,                      // the discovered playbook is selectable
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("unsynced source missing F14 marker %q", want)
+			t.Errorf("path source launcher missing %q", want)
 		}
+	}
+	for _, banned := range []string{
+		`<select id="rp-select" name="playbook" disabled>`,
+		`path — none discovered yet`,
+		`Unsynced source: give a path relative to the checkout.`,
+	} {
+		if strings.Contains(page, banned) {
+			t.Errorf("path source launcher must not contain %q", banned)
+		}
+	}
+	// A path source has no sync to report: no "never — sync to discover
+	// playbooks" wait fact, and the list shows no NEVER chip.
+	if strings.Contains(page, "never — sync to discover playbooks") {
+		t.Error("path source detail must not claim it needs a sync")
+	}
+	if !strings.Contains(page, "n/a (path source)") {
+		t.Error("path source detail must show n/a (path source) for Last sync")
+	}
+	code, list := getBody(t, client, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources = %d", code)
+	}
+	if strings.Contains(list, "NEVER") {
+		t.Errorf("path source must not wear a NEVER chip in the list, got:\n%s", list)
 	}
 }

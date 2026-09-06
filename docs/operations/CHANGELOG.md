@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-06 — path sources are never "never-synced"
+
+- **A path source is no longer a never-synced wait state.** It has no sync verb
+  (`source sync` refuses a non-git source — the tree is already on the box and
+  read directly), so `NeverSynced()` now reports false for a path source. The
+  launch drawer's playbook select enables as soon as discovery finds playbooks,
+  fixing the contradiction where the Playbooks card listed playbooks while the
+  launcher stayed disabled with "none discovered yet" (the F14 gate, which
+  reasoned "never-synced = no trusted tree" for git sources, had been applied to
+  path sources too).
+- **The source detail's Last-sync fact reads `n/a (path source)`** for a path
+  source instead of "never — sync to discover playbooks", and path sources drop
+  the NEVER chip and attention row in the list and the dashboard never-synced
+  count. The never-synced wait state is now git-only, where the sync verb is
+  real.
+- **A disabled launcher select (no playbooks found) names the reason** via the
+  same note as the Playbooks card: a never-synced git source says to sync; a
+  synced source with an unusual layout says to give a path relative to the
+  checkout.
+
 ## 2026-09-02 — v0.6 row-actions design (glyphs + chevron menu)
 
 - **A shared row-actions partial** renders a tray row's up-to-two verb glyphs

@@ -237,10 +237,26 @@ func (r sourceRow) Short() string {
 	return r.SyncSHA
 }
 
-// NeverSynced reports whether a source has ever recorded a sync: no last-sync
-// sha at all (F5). A never-synced source is a wait state with a verb, not a
-// quiet dash.
-func (r sourceRow) NeverSynced() bool { return r.SyncSHA == "" }
+// NeverSynced reports whether a source is in the "waiting to sync" state: a git
+// source with no recorded sync (no checkout yet), never a path source. A path
+// source's tree is already on the box and read directly — there is no sync verb
+// for it (`source sync` refuses a non-git source), so it is never a wait state
+// with a verb (F5).
+func (r sourceRow) NeverSynced() bool { return r.Kind != store.SourcePath && r.SyncSHA == "" }
+
+// LastSyncLabel is the source detail's Last-sync fact: a path source has no sync
+// to report, a never-synced git source names the verb that changes it, and a
+// synced source shows its pinned commit.
+func (r sourceRow) LastSyncLabel() string {
+	switch {
+	case r.Kind == store.SourcePath:
+		return "n/a (path source)"
+	case r.NeverSynced():
+		return "never — sync to discover playbooks"
+	default:
+		return r.Short()
+	}
+}
 
 // ShowEnabledColumn reports whether any source is disabled: the ENABLED column
 // renders only when a row diverges from the default (F12/W17), so an all-enabled
