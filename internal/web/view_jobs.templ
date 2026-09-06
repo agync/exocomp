@@ -213,7 +213,7 @@ templ configTileBox(t configTile) {
 // sentence, the HOST table, and the invariant-3 verbs. It is never rendered on
 // a healthy run — quiet is the design.
 templ verdictBand(vm jobDetailVM) {
-	<div class={ "verdict-band", "verdict-band--" + vm.Verdict.Class }>
+	<div class={ "verdict-band mt14", "verdict-band--" + vm.Verdict.BandClass }>
 		<div class="bandhead">
 			<span class="keyword">{ vm.Verdict.Keyword }</span>
 			<a class="jump" href="#log">jump to recap in log ↓</a>

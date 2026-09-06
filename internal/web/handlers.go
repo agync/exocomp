@@ -966,13 +966,14 @@ func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store
 	if job.State != store.StateFailed && job.State != store.StateDegraded {
 		return nil
 	}
-	v := jobVerdictVM{Class: "fail"}
+	v := jobVerdictVM{Class: "fail", BandClass: "failed"}
 	code := "-"
 	if job.ExitCode != nil {
 		code = strconv.Itoa(*job.ExitCode)
 	}
 	if job.State == store.StateDegraded {
 		v.Class = "wait"
+		v.BandClass = "degraded"
 		if facts.RecapFound {
 			v.Keyword = fmt.Sprintf("DEGRADED — SUCCEEDED WITH WARNINGS · %d OF %d HOSTS UNREACHABLE",
 				len(facts.Unreachable), len(facts.Hosts))

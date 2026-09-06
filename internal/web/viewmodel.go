@@ -880,10 +880,14 @@ type jobVerdictHost struct {
 // host table, and the invariant-3 verbs. It is populated only on FAILED and
 // DEGRADED — healthy is quiet.
 type jobVerdictVM struct {
-	Keyword  string
-	Class    string // fail | wait
-	Sentence string
-	Hosts    []jobVerdictHost
+	Keyword string
+	Class   string // fail | wait — host-result vocabulary (.result.fail / .result.wait)
+	// BandClass drives the band's own tint + inset ring: the CSS tokens are
+	// verdict-band--failed / verdict-band--degraded (a different vocabulary from
+	// the host rows' Class above).
+	BandClass string // failed | degraded
+	Sentence  string
+	Hosts     []jobVerdictHost
 	// Verb is the band's primary action link and its meta line; VerbSecond the
 	// degraded band's second link.
 	Verb           string

@@ -404,6 +404,7 @@ func TestJobDetailFailedRendersVerdictBand(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
+		`class="verdict-band mt14 verdict-band--failed"`,
 		`FAILED · EXIT 4 — 2 OF 3 HOSTS UNREACHABLE`,
 		`Ansible could not reach hypnotoad and lrrr; every play on nibbler completed.`,
 		`<span class="result fail"><span class="dot"></span>UNREACHABLE</span>`,
@@ -444,7 +445,7 @@ func TestJobDetailDegradedRendersVerdictBand(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
-		`data-state="degraded"`,
+		`class="verdict-band mt14 verdict-band--degraded"`,
 		`DEGRADED — SUCCEEDED WITH WARNINGS · 2 OF 3 HOSTS UNREACHABLE`,
 		`<span class="chip chip--degraded"><span class="dot"></span>2 hosts unreachable · hypnotoad, lrrr</span>`,
 		`<div class="verdict">exit 4 <span class="tolerated">tolerated</span></div>`,
