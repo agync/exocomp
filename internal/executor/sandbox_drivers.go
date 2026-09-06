@@ -155,7 +155,11 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	// it by default. It is a single file, world-readable in the normal case,
 	// and holds no secret — the shadow file, which does, is never granted.
 	sb.ReadFiles = append(slices.Clone(sb.ReadFiles), passwdFile)
-	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), a.opts.CollectionsPath)
+	// CollectionsPath is a joined ANSIBLE_COLLECTIONS_PATH value — per-source
+	// collections ahead of the shared fallback (ADR 0015). Each component is a
+	// real directory, so each is granted individually; the joined string itself
+	// names no existing path and granting it would deny the read the run needs.
+	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), collectionsReadGrants(a.opts.CollectionsPath)...)
 	sb.ReadPaths = append(sb.ReadPaths, ansibleSourceDirs(spec.Argv)...)
 	sb.ReadPaths = append(sb.ReadPaths, toolGrant(a.opts.Binary, AnsibleBinary)...)
 	// An ad-hoc run executes `ansible`, a sibling of ansible-playbook; grant it
@@ -182,6 +186,16 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
 	return drv.Run(ctx, spec, sink)
+}
+
+// collectionsReadGrants splits a joined ANSIBLE_COLLECTIONS_PATH value into the
+// directories it names, so a sandbox grant covers each real directory instead
+// of one nonexistent joined path (ADR 0015).
+func collectionsReadGrants(collectionsPath string) []string {
+	if collectionsPath == "" {
+		return nil
+	}
+	return strings.Split(collectionsPath, string(os.PathListSeparator))
 }
 
 // ansibleScratchEnv redirects every scratch path an ansible run writes into the

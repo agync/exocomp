@@ -490,3 +490,36 @@ func TestAnsibleSourceDirsIgnoresAdhocHostPattern(t *testing.T) {
 		t.Errorf("ansibleSourceDirs(%v) = %v, want no grants for a bare host pattern", argv, dirs)
 	}
 }
+
+// TestCollectionsReadGrantsSplitsOnPathSeparator pins the ADR 0015 sandbox
+// fix: a joined ANSIBLE_COLLECTIONS_PATH value names the per-source collections
+// dir and the shared fallback, two real directories, and each must be granted
+// read individually. Granting the joined string as one path would name a
+// directory that does not exist, denying the read a sandboxed run needs.
+func TestCollectionsReadGrantsSplitsOnPathSeparator(t *testing.T) {
+	t.Parallel()
+
+	perSource := filepath.Join(t.TempDir(), "cache", "collections", "demo-1a2b3c4d", "deadbeef")
+	shared := filepath.Join(t.TempDir(), "cache", "collections")
+	joined := perSource + string(os.PathListSeparator) + shared
+
+	grants := collectionsReadGrants(joined)
+	if !slices.Contains(grants, perSource) || !slices.Contains(grants, shared) {
+		t.Fatalf("collectionsReadGrants(%q) = %v, want each component granted", joined, grants)
+	}
+	if slices.Contains(grants, joined) {
+		t.Fatalf("collectionsReadGrants(%q) = %v, granted the joined path as one entry", joined, grants)
+	}
+	if len(grants) != 2 {
+		t.Errorf("collectionsReadGrants(%q) = %v, want exactly the two components", joined, grants)
+	}
+
+	// The sandbox profile an ansible run resolves to read-grants each component.
+	sb := SandboxOptions{DataDir: t.TempDir(), ReadPaths: collectionsReadGrants(joined)}
+	profile := ProfileFor(KindAnsible, sb)
+	for _, want := range []string{perSource, shared} {
+		if !slices.Contains(profile.Read, want) {
+			t.Errorf("sandbox profile missing the read grant %s: %v", want, profile.Read)
+		}
+	}
+}
