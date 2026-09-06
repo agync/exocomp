@@ -40,6 +40,15 @@ func PruneVenvs(cacheRoot, source string, keepN int, keepSince time.Time, protec
 	return pruneHashDirs(filepath.Join(cacheRoot, source), readyMarker, keepN, keepSince, protect, "venv")
 }
 
+// PruneCollections is PruneVenvs for the collections plane: it deletes stale
+// <requirements-hash> directories under cacheRoot/source with the identical
+// keep-N/since policy and marker-mtime recency (the collections ready marker
+// is .exocomp-galaxy-ready; see EnsureCollections). The two planes share the
+// sweep core (pruneHashDirs) so the policy cannot drift between them.
+func PruneCollections(cacheRoot, source string, keepN int, keepSince time.Time, protect string) (int, error) {
+	return pruneHashDirs(filepath.Join(cacheRoot, source), galaxyReadyMarker, keepN, keepSince, protect, "collection")
+}
+
 // pruneHashDirs is the keep-N/since sweep both planes share: newest first by
 // recency, retain index < keepN or recency >= keepSince, delete the rest,
 // honoring protect. markerName selects the plane's ready marker for the

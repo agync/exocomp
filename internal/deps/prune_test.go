@@ -202,6 +202,75 @@ func TestEnsureVenvPrunesStaleSiblingsAfterProvision(t *testing.T) {
 	mustExist(t, v.Dir)
 }
 
+// TestPruneCollectionsKeepsNewestNAndRecent: the collections plane prunes with
+// the identical keep-both policy as PruneVenvs — newest keepN by recency plus
+// anything within keepSince survive, only what fails both is removed. The two
+// share the sweep core (pruneHashDirs), so this mirrors
+// TestPruneVenvsKeepsNewestNAndRecent.
+func TestPruneCollectionsKeepsNewestNAndRecent(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "demo")
+	now := time.Now()
+	keepSince := now.Add(-30 * 24 * time.Hour)
+
+	n1 := seedCollections(t, sourceDir, "n1", now.Add(-1*time.Hour))
+	n2 := seedCollections(t, sourceDir, "n2", now.Add(-2*time.Hour))
+	n3 := seedCollections(t, sourceDir, "n3", now.Add(-3*time.Hour))
+	recent := seedCollections(t, sourceDir, "recent", now.Add(-1*time.Hour-29*24*time.Hour))
+	stale1 := seedCollections(t, sourceDir, "stale1", now.Add(-40*24*time.Hour))
+	stale2 := seedCollections(t, sourceDir, "stale2", now.Add(-90*24*time.Hour))
+
+	n, err := PruneCollections(root, "demo", 3, keepSince, "")
+	if err != nil {
+		t.Fatalf("PruneCollections: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("pruned = %d, want 2", n)
+	}
+	mustExist(t, n1)
+	mustExist(t, n2)
+	mustExist(t, n3)
+	mustExist(t, recent)
+	mustNotExist(t, stale1)
+	mustNotExist(t, stale2)
+}
+
+// TestPruneCollectionsProtectsGivenHash: a protected hash is never removed,
+// even when it is both outside the newest-keepN window and older than
+// keepSince.
+func TestPruneCollectionsProtectsGivenHash(t *testing.T) {
+	root := t.TempDir()
+	sourceDir := filepath.Join(root, "demo")
+	now := time.Now()
+
+	protected := seedCollections(t, sourceDir, "protected", now.Add(-365*24*time.Hour))
+	seedCollections(t, sourceDir, "n1", now.Add(-1*time.Hour))
+	seedCollections(t, sourceDir, "n2", now.Add(-2*time.Hour))
+	seedCollections(t, sourceDir, "n3", now.Add(-3*time.Hour))
+
+	n, err := PruneCollections(root, "demo", 3, now.Add(-30*24*time.Hour), "protected")
+	if err != nil {
+		t.Fatalf("PruneCollections: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("pruned = %d, want 0 (protected is old and outside keepN)", n)
+	}
+	mustExist(t, protected)
+}
+
+// TestPruneCollectionsMissingSourceIsNoop: a source with no collections cache
+// dir yet is not an error.
+func TestPruneCollectionsMissingSourceIsNoop(t *testing.T) {
+	root := t.TempDir()
+	n, err := PruneCollections(root, "never-seen", 3, time.Now(), "")
+	if err != nil {
+		t.Fatalf("PruneCollections on missing source: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("pruned = %d, want 0", n)
+	}
+}
+
 // TestEnsureVenvPruneFailureDoesNotFailProvision is the fail-safe gate: a
 // prune error (here, a stale sibling RemoveAll cannot touch because its
 // parent is read-only) must not turn a successful provision into a failure.
