@@ -165,7 +165,7 @@ func TestSourcesRowsNavigateAndActionsOnDetail(t *testing.T) {
 	for _, want := range []string{
 		`class="btn quiet">Disable`,
 		`action="/sources/infra/disable"`,
-		`data-confirm="Delete source infra?"`,
+		`data-confirm="Delete source infra? Its cached Python venv and ansible collections are removed with it."`,
 		`class="btn danger">Delete`,
 	} {
 		if !strings.Contains(detail, want) {
@@ -193,7 +193,7 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 		{"/checks", `data-confirm="Remove check at-home?"`},
 		{"/netgroups", `data-confirm="Remove netgroup home?"`},
 		{"/schedules", `data-confirm="Remove schedule nightly?"`},
-		{"/sources/infra", `data-confirm="Delete source infra?"`},
+		{"/sources/infra", `data-confirm="Delete source infra? Its cached Python venv and ansible collections are removed with it."`},
 		{"/policies", `data-confirm="Remove policy no-destroy?"`},
 		{"/tokens", `data-confirm="Revoke token seed-token?"`},
 		{"/runners", `data-confirm="Remove runner fedora-ee?"`},
