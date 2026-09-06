@@ -3,11 +3,13 @@ package web
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -452,6 +454,129 @@ func TestDashboardQueueCardStatesNoSettledFact(t *testing.T) {
 	}
 	if strings.Contains(page, "last job — none yet") {
 		t.Error("queue card states a settled-job fact the glance does not query (H5)")
+	}
+}
+
+// degradedSeedJob writes a finished tolerated ansible run straight into the
+// store: degraded state plus the partial outcome naming the unreachable hosts,
+// the shape a --tolerate-unreachable converge leaves behind. It never goes
+// through the harness queue, so it must share a concurrency key with a running
+// job to stay unclaimable while it is seeded.
+func (h *harness) degradedSeedJob(t *testing.T, runbook, key string, hosts []string) store.Job {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: runbook, Kind: executor.KindAnsible, Trigger: "schedule",
+		ConcurrencyKey: key, Args: store.JobArgs{Argv: executor.AnsibleArtifactArgv("site.yml")},
+	})
+	if err != nil {
+		t.Fatalf("create degraded job: %v", err)
+	}
+	raw, err := json.Marshal(map[string]executor.AnsiblePartialOutcome{
+		"ansible_partial": {Operation: "run", Unreachable: hosts},
+	})
+	if err != nil {
+		t.Fatalf("encode partial outcome: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: job.ID, Level: store.LevelSystem, Msg: "ansible: degraded — tolerated",
+		RawJSON: string(raw),
+	}); err != nil {
+		t.Fatalf("append partial outcome: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start degraded job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateDegraded); err != nil {
+		t.Fatalf("settle degraded job: %v", err)
+	}
+	return job
+}
+
+// TestDashboardQueueCardLastJobLine pins S5: the queue card's last-job line is
+// a REAL query — the newest settled job, its runbook and a state chip — with a
+// degraded run rendered as the wait-coloured DEGRADED chip. A degraded job must
+// not inflate "failed recently", which counts StateFailed only.
+func TestDashboardQueueCardLastJobLine(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// An older clean run settles first; the degraded run is the newest settled
+	// job, so the last-job line names it. The holder keeps the seeded degraded
+	// row unclaimable by the live harness queue.
+	if _, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "older-clean", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/sh", "-c", "exit 0"},
+	}); err != nil {
+		t.Fatalf("enqueue older run: %v", err)
+	}
+	holder, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "key-holder", Kind: "shell", Trigger: "manual",
+		ConcurrencyKey: "deg-seed", Argv: []string{"/bin/sleep", "30"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue key holder: %v", err)
+	}
+	h.waitJobState(t, holder.ID, store.StateRunning, 3*time.Second)
+	h.degradedSeedJob(t, "nightly-converge", "deg-seed", []string{"hypnotoad", "lrrr"})
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<span class="chip wait"><span class="dot"></span>DEGRADED</span>`,
+		"nightly-converge",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard last-job line missing %q", want)
+		}
+	}
+	// A degraded job is not a failure: nothing here failed, so the subline
+	// must not appear.
+	if strings.Contains(page, "failed recently") {
+		t.Error("a degraded job inflated the failed-recently count")
+	}
+	// The glance queries only the newest settled job.
+	if strings.Contains(page, "older-clean") {
+		t.Error("queue card shows more than the newest settled job")
+	}
+}
+
+// TestDashboardQueueCardLastJobLineSucceeded is the clean twin: a newest
+// succeeded run renders the ok chip, so the line is not degraded-only.
+func TestDashboardQueueCardLastJobLineSucceeded(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "nightly-backup", Kind: "shell", Trigger: "schedule",
+		Argv: []string{"/bin/sh", "-c", "exit 0"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue succeeded job: %v", err)
+	}
+	h.waitJobState(t, job.ID, store.StateSucceeded, 3*time.Second)
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<span class="chip ok"><span class="dot"></span>SUCCEEDED</span>`,
+		"nightly-backup",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard last-job line missing %q", want)
+		}
 	}
 }
 

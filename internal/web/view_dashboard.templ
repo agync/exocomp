@@ -78,9 +78,9 @@ templ approvalsCard(vm approvalSummary) {
 	</a>
 }
 
-// queueCard is the dashboard's queue summary: the active queue only. Settled
-// jobs never appear here — that history is /jobs' job, not the glance
-// screen's. It is the one wide card of the QUEUE band.
+// queueCard is the dashboard's queue summary: the active queue only, plus the
+// one settled-history fact the glance queries — the newest finished job as a
+// state chip beside its runbook. Anything older stays on /jobs.
 templ queueCard(vm jobSummary) {
 	<a class="card cardlink queue" href="/jobs" aria-labelledby="queue-h">
 		<h3 id="queue-h">Queue</h3>
@@ -91,6 +91,12 @@ templ queueCard(vm jobSummary) {
 		}
 		if vm.FailedRecently > 0 {
 			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
+		}
+		if vm.LastJob != nil {
+			<p class="cardsub">
+				@chip(lastJobClass(vm.LastJob.State), lastJobWord(vm.LastJob.State))
+				<span>{ RunbookLabel(vm.LastJob.Runbook) }</span>
+			</p>
 		}
 	</a>
 }

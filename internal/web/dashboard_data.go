@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"syscall"
 	"time"
 
@@ -120,11 +121,27 @@ func approvalSummaryFrom(pending []approvalRow) approvalSummary {
 // subline looks, the same 24h span the backup freshness ladder starts at.
 const jobFailedRecentWindow = 24 * time.Hour
 
+// jobLastStates are the settled states the queue card's last-job line reads —
+// every terminal state, so the newest finished run is the fact shown.
+var jobLastStates = []store.JobState{
+	store.StateSucceeded, store.StateDegraded, store.StateFailed,
+	store.StateCancelled, store.StateTimedOut, store.StateInterrupted,
+}
+
+// jobLastRow is the dashboard queue card's one settled-history fact: the newest
+// terminal job's runbook and state, shown as a chip beside its name.
+type jobLastRow struct {
+	Runbook string
+	State   store.JobState
+}
+
 // jobSummary reads only the active queue — queued, awaiting-approval, and
 // running jobs — never settled history, which stays the /jobs view's job. The
 // States filter keeps this a narrow index lookup no matter how large the
 // terminal job history has grown, and the recent-failure count is a single
-// COUNT query rather than a list pulled into memory to be len()'d.
+// COUNT query rather than a list pulled into memory to be len()'d. The one
+// settled-history fact the glance does carry is the newest finished job
+// (lastTerminalJob), the last-job line's chip and runbook.
 func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 	active, err := s.store.ListJobs(r.Context(), store.JobFilter{
 		States: []store.JobState{store.StateQueued, store.StateAwaitingApproval, store.StateRunning},
@@ -145,8 +162,41 @@ func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 		return jobSummary{}, err
 	}
 	card.FailedRecently = failed
+	last, err := s.lastTerminalJob(r.Context())
+	if err != nil {
+		return jobSummary{}, err
+	}
+	card.LastJob = last
 	return card, nil
 }
+
+// lastTerminalJob reads the newest settled job for the queue card's last-job
+// line. ListJobs returns terminal rows oldest first, so the newest is the last
+// element; a store with no finished jobs yields no line at all.
+func (s *Server) lastTerminalJob(ctx context.Context) (*jobLastRow, error) {
+	jobs, err := s.store.ListJobs(ctx, store.JobFilter{States: jobLastStates})
+	if err != nil {
+		return nil, err
+	}
+	if len(jobs) == 0 {
+		return nil, nil
+	}
+	job := jobs[len(jobs)-1]
+	return &jobLastRow{Runbook: job.Runbook, State: job.State}, nil
+}
+
+// lastJobClass maps a last-job state to its chip class. Degraded reads wait
+// here — tolerated ≠ failed — because the shared stateClass's degraded case is
+// the jobs-v2 lane's to land; this stays local to the queue card.
+func lastJobClass(s store.JobState) string {
+	if s == store.StateDegraded {
+		return "wait"
+	}
+	return stateClass(s)
+}
+
+// lastJobWord renders a last-job state as its chip keyword.
+func lastJobWord(s store.JobState) string { return strings.ToUpper(string(s)) }
 
 // backups reads each enabled target's newest run into a freshness row on the
 // 24h/48h ladder.

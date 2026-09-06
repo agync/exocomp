@@ -139,6 +139,10 @@ type jobSummary struct {
 	// FailedRecently is jobs that settled failed inside the recent window
 	// (jobFailedRecentWindow). Negative means not computed.
 	FailedRecently int
+	// LastJob is the newest settled job, rendered as the queue card's one
+	// settled-history line: its runbook and a state chip. Nil when no job has
+	// ever finished.
+	LastJob *jobLastRow
 }
 
 // Idle reports whether the active queue is empty.
