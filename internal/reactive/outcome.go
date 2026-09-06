@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -160,7 +161,11 @@ func (e *Engine) SweepJobNotifyRequests(ctx context.Context) (int, error) {
 			}
 
 			host, _ := WorkspaceOf(job.Runbook)
-			e.notify(ctx, jobDoneNotification(job, host))
+			unreachable := 0
+			if job.State == store.StateDegraded {
+				unreachable, _ = e.jobUnreachableHosts(ctx, jobID)
+			}
+			e.notify(ctx, jobDoneNotification(job, host, unreachable))
 
 			// The shared checkpoint is written after the page, so a crash between the
 			// two re-pages once on the next sweep — the same trade SweepJobOutcomes
@@ -201,6 +206,24 @@ func (e *Engine) lastJobError(ctx context.Context, jobID int64) string {
 	return ""
 }
 
+// jobUnreachableHosts reads the tolerated-unreachable outcome back out of a
+// job's own events — where the ansible driver attached it — and returns the
+// number of hosts the run could not reach. ok is false when the job carries no
+// partial payload: a clean run, or a tofu run whose degradation is drift or
+// -target rather than unreachable hosts.
+func (e *Engine) jobUnreachableHosts(ctx context.Context, jobID int64) (int, bool) {
+	events, err := e.store.ListJobEvents(ctx, jobID)
+	if err != nil {
+		return 0, false
+	}
+	for _, ev := range events {
+		if outcome, ok := executor.AnsiblePartialHosts(ev.RawJSON); ok {
+			return len(outcome.Unreachable), true
+		}
+	}
+	return 0, false
+}
+
 // jobFailedNotification is the page a terminal failure raises: high priority,
 // attributed by runbook and workspace so a scoped mute can hold it, carrying the
 // outcome and the last error the run left.
@@ -228,13 +251,21 @@ func jobFailedNotification(job store.Job, host, lastErr string) notify.Notificat
 // reaches any terminal state. It is default priority — the operator opted in, so
 // this is an answer to a question they asked, not an alarm — and attributed by
 // runbook and workspace like the failure page, so a scoped mute can hold it.
-func jobDoneNotification(job store.Job, host string) notify.Notification {
+// A degraded run names how many hosts it could not reach: the run converged the
+// hosts it could and skipped the rest, which is the fact that still needs the
+// operator. failedJobStates never pages degraded, so this is the one surface a
+// tolerated degradation's owner hears on.
+func jobDoneNotification(job store.Job, host string, unreachable int) notify.Notification {
 	name := job.Runbook
 	if name == "" {
 		name = fmt.Sprintf("job %d", job.ID)
 	}
+	title := "job " + string(job.State) + ": " + name
+	if job.State == store.StateDegraded {
+		title = fmt.Sprintf("degraded: %s — %d hosts unreachable", name, unreachable)
+	}
 	return notify.Notification{
-		Title:    "job " + string(job.State) + ": " + name,
+		Title:    title,
 		Body:     fmt.Sprintf("Job %d (%s) ended %s — you asked to be notified.", job.ID, job.Kind, job.State),
 		Priority: notify.PriorityDefault,
 		Tags:     []string{fmt.Sprintf("id:%d", job.ID), "kind:job"},
