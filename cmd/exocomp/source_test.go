@@ -331,8 +331,10 @@ func TestSourceRmPurgesSoleSourceCaches(t *testing.T) {
 	if _, err := runSource(t, "add", "infra", "--path", root); err != nil {
 		t.Fatalf("source add --path: %v", err)
 	}
-	if _, err := runSource(t, "rm", "infra"); err != nil {
+	if out, err := runSource(t, "rm", "infra"); err != nil {
 		t.Fatalf("source rm: %v", err)
+	} else if !strings.Contains(out, "removed source \"infra\" (cached project deps removed)") {
+		t.Errorf("sole-source rm must say the cached project deps were removed, got: %q", out)
 	}
 	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cache/python kept after rm of a sole source: %v", err)
@@ -367,8 +369,10 @@ func TestSourceRmSharedRootKeepsCaches(t *testing.T) {
 	}
 
 	// With the last owner gone, the plane is garbage-collected.
-	if _, err := runSource(t, "rm", "b"); err != nil {
+	if out, err := runSource(t, "rm", "b"); err != nil {
 		t.Fatalf("source rm b: %v", err)
+	} else if !strings.Contains(out, "removed source \"b\" (cached project deps removed)") {
+		t.Errorf("last-owner rm must say the cached project deps were removed, got: %q", out)
 	}
 	if _, err := os.Stat(python); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("cache/python kept after rm of the last owner: %v", err)

@@ -6,6 +6,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-06 — source delete names its cache removal
+
+- **Deleting a source states the full scope of the action.** The source detail's
+  Delete confirmation says the source's cached Python venv and ansible
+  collections are removed with it, and `source rm` prints the same when it
+  actually purged them (the shared-root guard still keeps a surviving source's
+  caches). Deleting a source had already garbage-collected its dependency
+  caches; this makes that explicit on both deletion surfaces.
+
 ## 2026-09-06 — degraded is a first-class job state
 
 - **A tolerated unreachable run settles in the `degraded` state, not

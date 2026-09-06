@@ -623,3 +623,23 @@ func TestSourcePathSelectEnabledWhenPlaybooksFound(t *testing.T) {
 		t.Errorf("path source must not wear a NEVER chip in the list, got:\n%s", list)
 	}
 }
+
+// TestSourceDeleteConfirmNamesCacheRemoval: the source detail's Delete
+// confirmation states that deleting a source also removes its cached Python
+// venv and ansible collections (ADR 0015), so an operator sees the full scope
+// of the destructive action before confirming.
+func TestSourceDeleteConfirmNamesCacheRemoval(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	if !strings.Contains(page, `data-confirm="Delete source tree? Its cached Python venv and ansible collections are removed with it."`) {
+		t.Errorf("source delete confirm must name the cache removal, got:\n%s", page)
+	}
+}

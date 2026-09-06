@@ -443,7 +443,11 @@ func runSourceRm(cmd *cobra.Command, name string) error {
 	if err := st.DeleteSource(cmd.Context(), name); err != nil {
 		return fmt.Errorf("source rm: %w", err)
 	}
-	purgeSourceCachesIfUnreferenced(cmd.Context(), st, dir, src)
+	purged := purgeSourceCachesIfUnreferenced(cmd.Context(), st, dir, src)
+	if purged {
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "removed source %q (cached project deps removed)\n", name)
+		return nil
+	}
 	_, _ = fmt.Fprintf(cmd.OutOrStdout(), "removed source %q\n", name)
 	return nil
 }
@@ -454,16 +458,17 @@ func runSourceRm(cmd *cobra.Command, name string) error {
 // shares the key (ADR 0015). A disabled source still owns its cache when
 // re-enabled, so it counts as a reference. The source row is already deleted by
 // the caller. Any failure leaves the caches in place: the failure mode is a
-// stale cache, never a wrong purge.
-func purgeSourceCachesIfUnreferenced(ctx context.Context, st *store.Store, dataDir string, src store.Source) {
+// stale cache, never a wrong purge. It reports whether it actually removed
+// anything so the caller can say so.
+func purgeSourceCachesIfUnreferenced(ctx context.Context, st *store.Store, dataDir string, src store.Source) bool {
 	root, ok := sourceRoot(dataDir, src)
 	if !ok {
-		return
+		return false
 	}
 	key := deps.SourceKey(root)
 	rows, err := st.ListSources(ctx)
 	if err != nil {
-		return
+		return false
 	}
 	for _, other := range rows {
 		otherRoot, ok := sourceRoot(dataDir, other)
@@ -471,10 +476,11 @@ func purgeSourceCachesIfUnreferenced(ctx context.Context, st *store.Store, dataD
 			continue
 		}
 		if deps.SourceKey(otherRoot) == key {
-			return
+			return false
 		}
 	}
 	_ = deps.RemoveProjectCaches(dataDir, root)
+	return true
 }
 
 // sourceRoot resolves a source row to its locality root; ok is false when the

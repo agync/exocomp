@@ -228,9 +228,9 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var12 string
-				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("Delete source " + vm.Source.Name + "?")
+				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs("Delete source " + vm.Source.Name + "? Its cached Python venv and ansible collections are removed with it.")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 50, Col: 162}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 50, Col: 230}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
