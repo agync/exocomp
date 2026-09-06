@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-06 — degraded job state + job detail v2
+
+- **Software change, no structural edit needed here**: the job state machine
+  gained the terminal `degraded` state (tolerated unreachable hosts, migration
+  0034), and the web jobs surface was rebuilt (run card, verdict band, host
+  table, two-line list, rerun/drawer tolerate toggle). Recorded here for
+  bundle-fact coherence: "job state" now includes `degraded`; the web and TUI
+  render it in wait (amber) and it is not a failure to CLI callers.
+
 ## 2026-09-06 — ADR 0015 page added
 
 - **A new `adr/0015-per-source-collections.md` page records the per-source
