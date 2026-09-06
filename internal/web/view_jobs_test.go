@@ -688,3 +688,127 @@ func TestStateClassDegradedIsWait(t *testing.T) {
 		t.Errorf("stateClass(succeeded) = %q, want ok", got)
 	}
 }
+
+// seedStartedJob creates a job and synchronously moves it to running before the
+// harness queue's 20ms tick can claim it, so a test can append its own event
+// stream without the real driver racing it (the same window seedJobWithRecap
+// relies on).
+func seedStartedJob(t *testing.T, h *harness, runbook string, trigger string, args store.JobArgs) store.Job {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.store.CreateJob(ctx, store.NewJob{
+		Runbook: runbook, Kind: executor.KindAnsible, Trigger: trigger, Args: args,
+	})
+	if err != nil {
+		t.Fatalf("seed job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start seeded job: %v", err)
+	}
+	return job
+}
+
+// TestJobDetailRunningBandComposesRerunCopy is the running-band copy: a rerun's
+// running band composes "▸ running — rerun of #{id} · tolerate unreachable on"
+// from the child's ledger (the workspace-lock fact is a wave-1 gap, omitted),
+// while a non-rerun keeps the queue's own running line.
+func TestJobDetailRunningBandComposesRerunCopy(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	parent := seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+
+	child := seedStartedJob(t, h, "playbook", rerunTrigger, store.JobArgs{
+		Argv: []string{"/bin/true", "deploy/site.yml"}, TolerateUnreachable: true,
+	})
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: child.ID, Level: store.LevelSystem, Msg: "rerun of job " + itoa64(parent.ID),
+		RawJSON: fmt.Sprintf(`{"rerun_of":%d}`, parent.ID),
+	}); err != nil {
+		t.Fatalf("append rerun-of: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: child.ID, Level: store.LevelSystem, Msg: "running deploy/site.yml --check",
+	}); err != nil {
+		t.Fatalf("append running: %v", err)
+	}
+
+	plain := seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: plain.ID, Level: store.LevelSystem, Msg: "running deploy/other.yml",
+	}); err != nil {
+		t.Fatalf("append plain running: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, childBody := getBody(t, client, ts.URL+"/jobs/"+itoa64(child.ID))
+	if !strings.Contains(childBody, `▸ running — rerun of #`+itoa64(parent.ID)+` · tolerate unreachable on`) {
+		t.Errorf("rerun running band missing the copy composition:\n%s", childBody)
+	}
+	_, plainBody := getBody(t, client, ts.URL+"/jobs/"+itoa64(plain.ID))
+	if !strings.Contains(plainBody, `▸ running — deploy/other.yml`) {
+		t.Errorf("non-rerun running band must keep the queue's own line:\n%s", plainBody)
+	}
+}
+
+// TestJobsListScheduleTriggerMeta: a schedule-fired row's TRIGGER meta is
+// "{schedule name} · {fire time}" per SCREENS 2a — not a duplicate of the
+// playbook cell. The fire time is the job's own queued instant (the scheduler
+// enqueues at the fire).
+func TestJobsListScheduleTriggerMeta(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly", CronExpr: "0 2 * * *", Kind: store.ScheduleShell,
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+	// A schedule-fired ansible play: the playbook cell is the playbook path and
+	// the trigger meta is the schedule name + fire time.
+	seedStartedJob(t, h, "nightly", "schedule", store.JobArgs{Argv: []string{"/bin/true", "deploy/site.yml"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+	if !strings.Contains(body, `<b>Schedule</b>`) {
+		t.Errorf("schedule row missing the Schedule trigger label:\n%s", body)
+	}
+	if !strings.Contains(body, `<small class="mono">nightly · `) {
+		t.Errorf("schedule row missing the name + fire time trigger meta:\n%s", body)
+	}
+	if strings.Contains(body, `<small class="mono">nightly</small>`) {
+		t.Error("schedule trigger meta must not duplicate the bare schedule name without a time")
+	}
+}
+
+// TestJobsListManualTriggerMetaCarriesFace: a token-attributed manual run's
+// TRIGGER meta carries the recorded face ("web · operator"), and a CLI run with
+// no actor event reads "cli · operator".
+func TestJobsListManualTriggerMetaCarriesFace(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	web := seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{
+		JobID: web.ID, Level: store.LevelSystem, Msg: "enqueued by token laptop via web",
+		RawJSON: `{"actor_kind":"token","actor_name":"laptop","face":"web"}`,
+	}); err != nil {
+		t.Fatalf("append actor: %v", err)
+	}
+	seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+	if !strings.Contains(body, `<small class="mono">web · operator</small>`) {
+		t.Errorf("manual row missing the web face:\n%s", body)
+	}
+	if !strings.Contains(body, `<small class="mono">cli · operator</small>`) {
+		t.Errorf("actorless manual row missing the cli fallback:\n%s", body)
+	}
+}
