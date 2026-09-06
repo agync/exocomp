@@ -6,24 +6,42 @@ the 0700 data dir and both covered by the ordinary backup snapshot, make that tr
 
 ## Ansible collections
 
-`exocomp playbook vendor` installs collections into `<data dir>/cache/collections`
-through the queue, needing network access for whatever the cache does not already hold:
+A source's collections are vendored per source, mirroring the venv model
+([ADR 0015](../adr/0015-per-source-collections.md)): into
+`<data dir>/cache/collections/<source>/<requirements-hash>/`, where `<source>`
+is the same slug+hash key a source's uv venv uses and the requirements file is
+`.exocomp/requirements.yml`, overriding a repo-root `requirements.yml` (the same
+precedence as the Python manifest). A ready marker (`.exocomp-galaxy-ready`) in
+the dir records that the resolve already happened.
+
+The ansible driver resolves the source's collections at claim time, before the
+play runs: a matching ready marker is a no-op with no Galaxy dial; a new hash
+runs `ansible-galaxy collection install -r <req> -p <dir>` as a subprocess of
+the claimed job, fail-closed on an unresolvable requirements file. The
+daemonless inline drain path resolves the same way before enqueue. A playbook
+needs no flag, no environment variable, and no network to use a vendored
+collection; it only needs to have been vendored once.
+
+`exocomp playbook vendor` installs collections through the queue and is now
+source-keyed — it resolves the source's `.exocomp/requirements.yml`-or-root
+file into the source's hash-keyed dir:
 
 ```
 exocomp playbook vendor --requirements requirements.yml
 ```
 
-`requirements.yml` is an ordinary `ansible-galaxy` requirements file:
+The shared `<data dir>/cache/collections` dir survives only as a **fallback**
+for collections no source declares; the driver appends the per-source dir ahead
+of it so a source's pin wins. Nothing writes the shared dir anymore, but it
+stays readable so the offline guarantee never regresses for an existing
+deployment.
 
-```yaml
-collections:
-  - name: community.sops
-```
-
-Every `exocomp playbook run` appends that cache directory to `ANSIBLE_COLLECTIONS_PATH` —
-appends, not replaces, so an operator-set `ANSIBLE_COLLECTIONS_PATH` still applies. A
-playbook needs no flag, no environment variable, and no network to use a vendored
-collection; it only needs to have been vendored once.
+Deleting a source removes its `cache/collections/<source>` (and
+`cache/python/<source>`) — only when no other registered source resolves to the
+same root, since a shared root means a shared key. A requirements-hash change
+provisions a new dir and prunes that source's old hashes with the same keep-N +
+since policy as venvs. The shared fallback is never purged by one source's
+lifecycle.
 
 `community.sops` is worth vendoring on every install: the design itself depends on it
 ([disaster-recovery.md](disaster-recovery.md)'s S3 credential story assumes sops-encrypted

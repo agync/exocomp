@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-06 — per-source ansible collections isolation
+
+- **Ansible collections follow the venv model: per-source, hash-keyed,
+  resolved at claim time** ([ADR 0015](../adr/0015-per-source-collections.md)).
+  A source's collections live in `cache/collections/<source>/<requirements-hash>`,
+  provisioned by `ansible-galaxy` as a subprocess of the claimed job when the
+  hash changes (a matching ready marker is a no-op); the shared
+  `cache/collections` dir is demoted to a legacy fallback for collections no
+  source declares.
+- **`playbook vendor` is now source-keyed**, resolving the source's
+  `.exocomp/requirements.yml` (else repo-root `requirements.yml`) into the
+  source's hash-keyed dir instead of the flat shared cache.
+- **Collections gain lifecycle GC:** deleting a source removes its
+  `cache/collections/<source>` and `cache/python/<source>` (only when no other
+  registered source resolves to the same root), and a requirements-hash change
+  prunes that source's old hashes with the venv keep-N + since policy.
+
 ## 2026-09-06 — job log: search + view raw in a new tab
 
 - **The Live tail gained a search filter.** A "Search log" input above the log

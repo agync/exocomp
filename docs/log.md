@@ -6,6 +6,13 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-06 — ADR 0015 page added
+
+- **A new `adr/0015-per-source-collections.md` page records the per-source
+  ansible collections isolation decision**, superseding ADR 0011's collections
+  decision; the venv, tofu-provider, tofu-modules, and system-package decisions
+  stand. Structural: a page added.
+
 ## 2026-09-02 — agent brain made local-only
 
 - **Correction of earlier framing.** The 2026-08-31 entry "`brain/` lands in
