@@ -22,9 +22,9 @@ daemonless inline drain path resolves the same way before enqueue. A playbook
 needs no flag, no environment variable, and no network to use a vendored
 collection; it only needs to have been vendored once.
 
-`exocomp playbook vendor` installs collections through the queue and is now
-source-keyed — it resolves the source's `.exocomp/requirements.yml`-or-root
-file into the source's hash-keyed dir:
+`exocomp playbook vendor` installs, through the queue, the collections named
+by its `--requirements` file into that file's project's hash-keyed per-source
+dir:
 
 ```
 exocomp playbook vendor --requirements requirements.yml
