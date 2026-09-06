@@ -356,9 +356,9 @@ func (e playbookInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spe
 }
 
 // reportJobOutcome prints the terminal job's one-line summary and maps it to a
-// shell exit code. A degraded success (an unreachable-tolerant run that settled
-// partial) is a success: it prints "(degraded)" and exits 0, so a tolerated
-// offline host is not a failure to the caller or to whatever watches the code.
+// shell exit code. A degraded success (an unreachable-tolerant run) is a
+// success: it prints "(degraded)" and exits 0, so a tolerated offline host is
+// not a failure to the caller or to whatever watches the code.
 func reportJobOutcome(out io.Writer, final store.Job) int {
 	stateLabel := string(final.State)
 	if final.Partial {
@@ -369,6 +369,8 @@ func reportJobOutcome(out io.Writer, final store.Job) int {
 
 	switch {
 	case final.State == store.StateSucceeded:
+		return 0
+	case final.State == store.StateDegraded:
 		return 0
 	case final.ExitCode != nil && *final.ExitCode != 0:
 		return *final.ExitCode

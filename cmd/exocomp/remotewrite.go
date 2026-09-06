@@ -35,6 +35,8 @@ func remoteJobExit(j wire.JobView) int {
 	switch {
 	case j.State == "succeeded":
 		return 0
+	case j.State == "degraded":
+		return 0
 	case j.ExitCode != nil && *j.ExitCode != 0:
 		return *j.ExitCode
 	default:
