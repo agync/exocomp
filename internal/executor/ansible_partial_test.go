@@ -210,6 +210,36 @@ func TestTolerateUnreachableStillFailsOnTaskFailure(t *testing.T) {
 	}
 }
 
+// allUnreachableRecap is a fake ansible that could not reach ANY addressed
+// host: the whole inventory is offline, so it exits 4 with every recap row
+// unreachable.
+const allUnreachableRecap = `
+echo "PLAY RECAP ****"
+echo "node0                     : ok=0    changed=0    unreachable=1    failed=0    skipped=0    rescued=0    ignored=0"
+echo "node1                     : ok=0    changed=0    unreachable=1    failed=0    skipped=0    rescued=0    ignored=0"
+exit 4
+`
+
+// TestTolerateUnreachableAllHostsOfflineIsNotDegraded pins D3: a run whose
+// ENTIRE addressed inventory was unreachable is not a tolerated degradation —
+// nothing converged, so it is a plain failure even with the flag on. Only a run
+// that reached some host and succeeded there may degrade.
+func TestTolerateUnreachableAllHostsOfflineIsNotDegraded(t *testing.T) {
+	t.Parallel()
+	res, sink := runRecap(t, allUnreachableRecap, true)
+	if res.Degraded {
+		t.Fatalf("Degraded=true with every addressed host unreachable; want a plain failure")
+	}
+	if res.ExitCode != 4 {
+		t.Errorf("ExitCode=%d, want the real 4 preserved", res.ExitCode)
+	}
+	for _, raw := range sink.rawJSON() {
+		if strings.Contains(raw, "ansible_partial") {
+			t.Errorf("an all-unreachable run emitted a partial event: %s", raw)
+		}
+	}
+}
+
 // TestTolerateUnreachableOffIsStrict proves the default is unchanged: without
 // the opt-in, an unreachable host is an ordinary non-zero exit, never degraded.
 func TestTolerateUnreachableOffIsStrict(t *testing.T) {

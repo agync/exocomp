@@ -332,6 +332,14 @@ func (a *Ansible) classifyDegraded(res *Result, lines []string, sink EventSink) 
 	if !found || len(class.Failed) > 0 || len(class.Unreachable) == 0 {
 		return
 	}
+	// A run that could not reach ANY addressed host is not a degradation: with
+	// every host offline nothing converged, so the tolerance flag must not turn
+	// a full miss into a tolerated success — it falls through to StateFailed.
+	// len(hosts) is the addressed set from the recap, so --limit narrows it.
+	hosts, found := ParseRecapHosts(lines)
+	if found && len(hosts) > 0 && len(class.Unreachable) == len(hosts) {
+		return
+	}
 	res.Degraded = true
 	res.UnreachableHosts = class.Unreachable
 	emitPartialOutcome(class.Unreachable, sink)
