@@ -57,7 +57,7 @@ func TestPowerlineSignalSegments(t *testing.T) {
 // all (only the active queue is counted). A pending approval is the primary
 // attention item and carries the wait/amber accent with a one-line subline
 // naming the soonest-to-expire item; a recent job failure surfaces the same
-// way on the queue card.
+// way on the queue card, whose active jobs now render as two-line rows.
 func TestDashboardSummaryCards(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -75,7 +75,7 @@ func TestDashboardSummaryCards(t *testing.T) {
 
 	// Pending approval: also the queue's one non-running active job — an
 	// awaiting_approval row is still part of the active queue.
-	_, approval := h.gatedJob(t, 30*time.Minute)
+	gated, approval := h.gatedJob(t, 30*time.Minute)
 
 	// Settled history: must never appear on the dashboard at all.
 	settled, err := h.queue.Enqueue(ctx, queue.Spec{
@@ -133,12 +133,19 @@ func TestDashboardSummaryCards(t *testing.T) {
 	}
 	_ = approval // the ID isn't asserted; only its effect on the card is
 
-	// Queue: active-only counts, plus the recent-failure subline in the fail
-	// color.
+	// Queue: the active jobs render as /jobs two-line rows — runbook over
+	// source/meta, a state chip, each row its own link to /jobs/{id} — with the
+	// running/queued split as the card's meta line and the recent-failure
+	// subline in the fail color.
 	for _, want := range []string{
-		`<a class="card cardlink queue" href="/jobs" aria-labelledby="queue-h">`,
-		`<div class="cardnum">1 running · 1 queued</div>`,
+		`<div class="card queue">`,
+		`<p class="cardsub meta">1 running · 1 queued</p>`,
+		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(running.ID) + `">`,
+		`<span class="chip run"><span class="dot"></span>running</span>`,
+		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(gated.ID) + `">`,
+		`<span class="chip wait"><span class="dot"></span>awaiting_approval</span>`,
 		`<p class="cardsub fail">1 failed recently</p>`,
+		`<a class="cardact" href="/jobs">Open all jobs →</a>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing queue marker %q", want)
@@ -577,6 +584,51 @@ func TestDashboardQueueCardLastJobLineSucceeded(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard last-job line missing %q", want)
 		}
+	}
+}
+
+// TestDashboardQueueRowsCapped pins the queue card's glance ceiling: the rows
+// stop at the cap (queueRowsCap, six today), newest first, while the headline
+// still states the whole active set. The full queue lives on /jobs, reached
+// through the Open all jobs footer — the card never becomes a list.
+func TestDashboardQueueRowsCapped(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	// Eight gated (awaiting_approval) jobs — all active, none claimable by a
+	// worker — one more than the cap allows past the oldest dropped row.
+	for i := 0; i < 8; i++ {
+		if _, err := h.store.CreateGatedJob(ctx, store.NewJob{
+			Runbook: "cap-job-" + itoa(int64(i)), Kind: "shell", Trigger: "manual",
+			Args: store.JobArgs{Argv: []string{"/bin/true"}},
+		}); err != nil {
+			t.Fatalf("seed capped job %d: %v", i, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	// Exactly the cap's rows render, newest first: the last-seeded job shows,
+	// the first-seeded one is the one the cap drops.
+	if n := strings.Count(page, `class="jobs-row queue-row"`); n != 6 {
+		t.Errorf("queue card renders %d rows, want the cap of 6:\n%s", n, page)
+	}
+	if !strings.Contains(page, "cap-job-7") {
+		t.Error("newest active row must render (cap-job-7)")
+	}
+	if strings.Contains(page, "cap-job-0") {
+		t.Error("oldest active row must drop off the capped card (cap-job-0)")
+	}
+	// The headline counts the whole active set, so a queue past the cap still
+	// reads in full on the glance screen.
+	if !strings.Contains(page, `<p class="cardsub meta">0 running · 8 queued</p>`) {
+		t.Error("queue card headline must state the full active set past the cap")
 	}
 }
 

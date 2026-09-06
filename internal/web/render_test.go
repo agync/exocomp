@@ -17,12 +17,15 @@ import (
 // scope/labels, the active nav is announced, and digits are tabular.
 func TestDashboardA11y(t *testing.T) {
 	h := newHarness(t)
-	// A queued job so the dashboard's queue card shows a nonzero headline, and
-	// a schedule so the Schedules card renders its count card (the dashboard
-	// carries no tables at all after the summary-card redesign — each card is
-	// a labeled link with its own aria-labelledby heading).
+	// A long-running queued job so the dashboard's queue card renders a row
+	// (a bare job with no argv would settle before the GET and drop off the
+	// active queue), and a schedule so the Schedules card renders its count
+	// card (the dashboard carries no tables at all after the summary-card
+	// redesign — each card is a labeled link with its own aria-labelledby
+	// heading, the queue card a set of row links).
 	if _, err := h.store.CreateJob(context.Background(), store.NewJob{
 		Runbook: "nightly", Kind: "shell", Trigger: "schedule",
+		Args: store.JobArgs{Argv: []string{"/bin/sleep", "30"}},
 	}); err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
@@ -43,7 +46,7 @@ func TestDashboardA11y(t *testing.T) {
 		`href="/assets/tokens.css?v=`,
 		`href="/assets/app.css?v=`,
 		`aria-current="page"`,
-		`aria-labelledby="queue-h"`,
+		`class="jobs-row queue-row"`,
 		`<main>`,
 		`lang="en"`,
 		`name="viewport"`,
