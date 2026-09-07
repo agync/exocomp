@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-07 — events: funnel, filter chips, tray with inline explain
+
+- **The /events page leads with a last-24h funnel.** One card tallies every
+  outcome in the window (`17 in · 11 ignored · … · 0 fired`) against a
+  proportional bar of the closed enum; the counts come from a new windowed
+  store query (`CountEventsByOutcomeSince`) that rides the existing
+  `event_received_at` index — no migration, no second table.
+- **Filter chips replace the source dropdown.** `all`, `checks`, `alerts`, and
+  the six outcomes each re-run the page under `?filter=`, counting the rows in
+  view; the active chip wears the accent tint, and the row of chips hides
+  entirely at zero events (R7). The alerts split is a new `NotSource` clause on
+  the event list filter ("everything but check").
+- **The tray table's rows expand to a two-pane.** Every row is a button that
+  opens the stored normalized payload beside the evaluation trace (the same
+  PASS/STOP rendering the /events/{id} page uses, decoded from the row), with
+  the reason column enriched per outcome: FIRED reads the live job
+  (`job 4 · succeeded · exit 0`) and links to it, GATED names the approval and
+  its TTL and links there, a suppressed silence or cooldown maps to the design
+  copy, and ignored/matched are the fixed sentences. `j`/`k` move the row,
+  Enter and `e` expand (`e` also brings the trace into view), Esc collapses.
+- **The footer is honest about the ledger**: `showing latest {n} of {total}
+  events · retained 90d · the enum is closed`. The /events/{id} trace page is
+  unchanged.
+
 ## 2026-09-07 — netgroup add refusals render on the form
 
 - **Netgroup-add refusals render on the form that owns the input, not a
