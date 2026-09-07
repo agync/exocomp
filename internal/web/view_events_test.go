@@ -133,9 +133,10 @@ func TestEventsFunnel(t *testing.T) {
 		t.Fatalf("events status = %d", code)
 	}
 	for _, want := range []string{
-		">4 in<", ">2 ignored<", ">1 matched<", ">1 fired<",
+		"<b>4</b><small>in</small>", "<b>2</b><small>ignored</small>",
+		"<b>1</b><small>matched</small>", "<b>1</b><small>fired</small>",
 		`aria-label="Alert funnel, last 24 hours"`,
-		"last 24h · nothing ran without being on this page first",
+		"nothing ran without being on this page first",
 		"stale-alert",
 	} {
 		if !strings.Contains(page, want) {
@@ -351,8 +352,8 @@ func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
 	if !strings.Contains(page, "No events yet. Point an alert source at exocomp ingest") {
 		t.Error("the empty-state copy is missing")
 	}
-	if !strings.Contains(page, "0 in") {
-		t.Error("the funnel does not read 0 in on an empty store")
+	if !strings.Contains(page, "<b>0</b><small>in</small>") {
+		t.Error("the funnel does not read 0 on an empty store")
 	}
 
 	// An active filter with nothing matching keeps the chips and shows the
@@ -534,5 +535,220 @@ func TestEventTraceCheckLedger(t *testing.T) {
 	}
 	if strings.Contains(alert, "Why this counted as a transition") {
 		t.Error("an alert event must not render the hysteresis ledger card")
+	}
+}
+
+// TestEventsFunnelGrid is the GATE for R10: the funnel renders as a three-column
+// count grid (SPEC §2.5) — a monospace numeral over a small label per closed
+// outcome, each cell wearing its enum colour class, a proportional bar, and the
+// verbatim sentence with the "last 24h ·" prefix gone (that fact moved to the
+// app bar's meta slot).
+func TestEventsFunnelGrid(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for i := 0; i < 2; i++ {
+		if _, err := h.store.CreateEvent(ctx, store.Event{
+			Source: "alertmanager", Normalized: `{"name":"ignored-alert"}`,
+			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+		}); err != nil {
+			t.Fatalf("CreateEvent ignored: %v", err)
+		}
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"matched-alert"}`,
+		Outcome: store.OutcomeMatched, Reason: "notify only",
+	}); err != nil {
+		t.Fatalf("CreateEvent matched: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"fire-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		`<div class="counts funnel-counts">`,
+		"<b>4</b><small>in</small>", "<b>2</b><small>ignored</small>",
+		"<b>1</b><small>matched</small>", "<b>0</b><small>suppressed</small>",
+		"<b>0</b><small>gated</small>", "<b>1</b><small>fired</small>",
+		`class="funnel-ct funnel-in"`, `class="funnel-ct"`,
+		`class="funnel-ct matched"`, `class="funnel-ct wait"`,
+		`class="funnel-ct fired on"`,
+		`class="bar funnel-bar"`,
+		`class="funnel-note">nothing ran without being on this page first</p>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("funnel grid missing %q", want)
+		}
+	}
+	if strings.Contains(page, "last 24h · nothing ran") {
+		t.Error("funnel sentence still carries the last-24h prefix (R10)")
+	}
+}
+
+// TestEventsRowLines is the GATE for R11's row restructure: each tray row is
+// two .line rows — alert + outcome + chevron, then source · rule + time · rel
+// ago — and the reason leaves the row entirely for the expand pane's
+// "reason · …" line (SPEC §2.5), keeping the chevron and data-index cursor.
+func TestEventsRowLines(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"disk_full"}`,
+		Outcome: store.OutcomeMatched, MatchedRule: "notify-on-failure",
+		Reason: "log only — rule has no action",
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		`class="events-row" role="button" tabindex="0" data-index="0"`,
+		`class="evt-alert">disk_full</span>`,
+		`class="evt-outcome matched"`,
+		`class="evt-chev" aria-hidden="true">▸</span>`,
+		"alertmanager · notify-on-failure",
+		" ago",
+		"reason · log only — rule has no action",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("row missing %q", want)
+		}
+	}
+	if n := strings.Count(page, `<div class="line">`); n != 2 {
+		t.Errorf("row does not render exactly two .line rows, got %d", n)
+	}
+	if strings.Contains(page, `class="evt-reason"`) {
+		t.Error("reason leaked into the row markup (R11: pane only)")
+	}
+}
+
+// TestEventsPayloadAfterTrace pins the phone expand-pane order (SPEC §2.5):
+// reason and trace first, then the "Show normalized payload →" button, then the
+// payload card — so the payload follows the trace in the DOM.
+func TestEventsPayloadAfterTrace(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"dns_records_drifted"}`,
+		Outcome: store.OutcomeGated, Reason: "approval 1 pending",
+		Trace: `[{"step":"rule","detail":"drift-replan","passed":true,"reason":"matched"}]`,
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	explain := strings.Index(page, "EXPLAIN · RULE EVALUATION TRACE")
+	toggle := strings.Index(page, "Show normalized payload →")
+	payload := strings.Index(page, "NORMALIZED PAYLOAD")
+	if explain < 0 || toggle < 0 || payload < 0 {
+		t.Fatalf("pane markers missing (explain=%d toggle=%d payload=%d)", explain, toggle, payload)
+	}
+	if explain >= toggle || toggle >= payload {
+		t.Errorf("pane order wrong: trace %d, toggle %d, payload %d (want trace < toggle < payload)", explain, toggle, payload)
+	}
+	if !strings.Contains(page, `class="payload"`) {
+		t.Error("the payload card does not carry the .payload class")
+	}
+}
+
+// TestEventsFooter is the GATE for the footer copy (copy.txt): the enum-closed
+// sentence leaves the page, leaving "showing latest {n} of {t} · retained 90d".
+func TestEventsFooter(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if _, err := h.store.CreateEvent(ctx, store.Event{
+			Source: "alertmanager", Normalized: `{"name":"alert"}`,
+			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+		}); err != nil {
+			t.Fatalf("CreateEvent: %v", err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, "showing latest 3 of 3 · retained 90d") {
+		t.Error("footer does not read 'showing latest 3 of 3 · retained 90d'")
+	}
+	for _, gone := range []string{"the enum is closed", " events · retained"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("footer still carries the dropped copy %q", gone)
+		}
+	}
+}
+
+// TestEventsAppbarMetaLast24h is the GATE for the app-bar meta slot: it reads
+// "last 24h" (the funnel's window, moved out of the funnel note per R10).
+func TestEventsAppbarMetaLast24h(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`,
+		Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, `<span class="appbar-meta">last 24h</span>`) {
+		t.Error("app bar meta does not read 'last 24h'")
+	}
+	if strings.Contains(page, "every alert received") {
+		t.Error("old app bar meta string still present")
+	}
+}
+
+// TestKeysHintCoarseCSS is the GATE for R12: the keys hint markup stays but the
+// stylesheet hides it on touch via (pointer:coarse) — asserted on the CSS, not
+// the rendered page, since the guard is a media query (Shell ships it).
+func TestKeysHintCoarseCSS(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, "@media (pointer: coarse)") {
+		t.Error("app.css missing the (pointer: coarse) touch-hint rule")
+	}
+	if !strings.Contains(app, "@media (pointer: coarse) { .keys-hint { display: none; } }") {
+		t.Error("the coarse-pointer guard does not hide .keys-hint")
 	}
 }
