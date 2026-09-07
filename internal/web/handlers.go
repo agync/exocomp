@@ -698,7 +698,9 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	source := r.URL.Query().Get("source")
+	ctx := r.Context()
+	now := s.now()
+
 	limit := 100
 	if v, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil {
 		limit = v
@@ -709,19 +711,93 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	if limit > 500 {
 		limit = 500
 	}
-	events, err := s.store.ListEvents(r.Context(), store.EventFilter{Source: source, Limit: limit})
+
+	filter := r.URL.Query().Get("filter")
+	ef := store.EventFilter{Limit: limit}
+	switch filter {
+	case "", "all":
+		filter = "all"
+	case "checks":
+		ef.Source = reactive.SourceCheck
+	case "alerts":
+		ef.NotSource = reactive.SourceCheck
+	case "ignored", "matched", "suppressed", "gated", "fired", "error":
+		ef.Outcomes = []store.EventOutcome{store.EventOutcome(filter)}
+	default:
+		filter = "all"
+	}
+
+	events, err := s.store.ListEvents(ctx, ef)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	vm := eventsVM{Page: s.pageFor(r, "Events", "events"), Source: source, Limit: limit, HasMore: len(events) == limit}
-	for _, e := range events {
-		vm.Events = append(vm.Events, eventRow{
-			ID: e.ID, Source: e.Source, Received: clock(e.ReceivedAt),
-			Name: wire.EventName(e), Outcome: e.Outcome, Reason: e.Reason, JobID: e.JobID,
-		})
+	funnel, err := s.store.CountEventsByOutcomeSince(ctx, now.Add(-24*time.Hour))
+	if err != nil {
+		s.fail(w, r, err)
+		return
 	}
+	ledger, err := s.store.CountEventsByOutcome(ctx)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	vm := eventsVM{
+		Page:    s.pageFor(r, "Events", "events"),
+		Funnel:  funnel,
+		Filter:  filter,
+		Total:   int64(ledger.Total()),
+		Empty:   ledger.Total() == 0 && filter == "all",
+		NoMatch: ledger.Total() > 0 && len(events) == 0,
+	}
+	for _, e := range events {
+		row := eventRow{
+			ID: e.ID, Source: e.Source, Received: receivedClock(e.ReceivedAt, now),
+			Name: wire.EventName(e), Rule: e.MatchedRule, Outcome: e.Outcome,
+			Reason: e.Reason, JobID: e.JobID, Normalized: prettyJSON(e.Normalized),
+			Trace: decodeSteps(e.Trace),
+		}
+		row = s.enrichEventRow(ctx, row, e)
+		vm.Rows = append(vm.Rows, row)
+		vm.Chips.add(row)
+	}
+	vm.Page.Meta = "every alert received · what became of it"
 	s.render(w, r, http.StatusOK, eventsList(vm))
+}
+
+// enrichEventRow turns the stored one-line reason into the reason column's
+// copy. FIRED and GATED override the emission-time sentence with live facts:
+// the fired reason was "job {id} queued" but the operator is asking what the
+// job became; a gated event names the approval and its TTL. A suppressed
+// silence or cooldown maps to the design copy; ignored and matched are the
+// design's fixed sentences. Anything without a mapping keeps the stored
+// reason.
+func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event) eventRow {
+	switch e.Outcome {
+	case store.OutcomeFired:
+		if e.JobID != nil {
+			if job, err := s.store.GetJob(ctx, *e.JobID); err == nil {
+				row.Reason = fmt.Sprintf("job %d · %s · exit %s", job.ID, job.State, exitOf(job))
+				row.ReasonLink = "/jobs/" + itoa64(job.ID)
+			}
+		}
+	case store.OutcomeGated:
+		if e.JobID != nil {
+			if approval, err := s.store.ApprovalByJob(ctx, *e.JobID); err == nil {
+				row.Reason = fmt.Sprintf("awaiting approval %d · TTL %s",
+					approval.ID, compactDuration(approval.ExpiresAt.Sub(approval.RequestedAt)))
+				row.ReasonLink = "/approvals/" + itoa64(approval.ID)
+			}
+		}
+	case store.OutcomeSuppressed:
+		row.Reason = enrichSuppressed(e.Reason)
+	case store.OutcomeIgnored:
+		row.Reason = "no rule matched"
+	case store.OutcomeMatched:
+		row.Reason = "log only — rule has no action"
+	}
+	return row
 }
 
 func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {

@@ -1,78 +1,226 @@
 package web
 
-// eventsList shows every received alert with its outcome, so "why didn't it
-// fire?" is answerable by scanning (the brief's Event vocabulary). The
-// ?source= filter narrows the list to one pipeline source; the form is a plain
-// GET so a filtered view is a linkable URL.
+// eventsList is the Events screen: a last-24h funnel card, filter chips
+// (outcome + source split), and a tray table of every received alert with the
+// stored payload and evaluation trace inline — so "why didn't it fire?" is
+// answerable by scanning (the brief's Event vocabulary). The ?filter= chip is
+// a plain GET so a filtered view stays linkable; the empty state hides the
+// chips (R7) and the funnel shows a zero bar.
 templ eventsList(vm eventsVM) {
 	@layout(vm.Page) {
-		<div class="card span2 mt18 tray">
-			<div class="kicker">Received alerts</div>
-			<h3>All events</h3>
-			if len(vm.Events) > 0 || vm.Source != "" {
-				<form method="get" action="/events" class="writeform inline" data-autosubmit>
-					<label for="ev-source">Source</label>
-					<select id="ev-source" name="source">
-						<option value="" selected?={ vm.Source == "" }>all</option>
-						for _, src := range eventSourceFilterOptions {
-							<option value={ src } selected?={ vm.Source == src }>{ src }</option>
-						}
-					</select>
-					<button type="submit" class="btn">Filter</button>
-				</form>
+		@eventsFunnel(vm.Funnel.Total(), vm.Funnel.Ignored, vm.Funnel.Matched, vm.Funnel.Suppressed, vm.Funnel.Gated, vm.Funnel.Fired)
+		if vm.Empty {
+			<div class="card span2 mt18 events-empty">
+				<p class="meta">No events yet. Point an alert source at exocomp ingest and they land here.</p>
+			</div>
+		} else {
+			@eventsFilters(vm)
+			if vm.NoMatch {
+				<p class="meta mt14">No events match <span class="mono">{ vm.Filter }</span>.</p>
 			}
-			if len(vm.Events) == 0 {
-				if vm.Source != "" {
-					<p class="meta">No events from <span class="mono">{ vm.Source }</span> — change the source filter to see all events.</p>
-				} else {
-					<p class="meta">No events yet. Point an alert source at exocomp ingest and they land here.</p>
-				}
-			} else {
-				<div class="tablewrap stackable">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">Event</th>
-								<th scope="col">Job</th>
-								<th scope="col">Source</th>
-								<th scope="col">Alert</th>
-								<th scope="col">Outcome</th>
-								<th scope="col">Reason</th>
-								<th scope="col" class="right">Received</th>
-							</tr>
-						</thead>
-						<tbody>
-							for _, e := range vm.Events {
-								<tr data-href={ "/events/" + itoa64(e.ID) }>
-									<td class="num" data-label="Event"><a href={ templ.SafeURL("/events/" + itoa64(e.ID)) }>#{ itoa64(e.ID) }</a></td>
-									<td class="num" data-label="Job">
-										if e.JobID != nil {
-											<a href={ templ.SafeURL("/jobs/" + itoa64(*e.JobID)) }>#{ itoa64(*e.JobID) }</a>
-										} else {
-											<span class="meta">-</span>
-										}
-									</td>
-									<td class="mono" data-label="Source">{ e.Source }</td>
-									<td data-label="Alert">{ e.Name }</td>
-									<td data-label="Outcome">@chip(e.OutcomeClass(), string(e.Outcome))</td>
-									<td class="meta" data-label="Reason">{ e.Reason }</td>
-									<td class="right num" data-label="Received">{ e.Received }</td>
-								</tr>
-							}
-						</tbody>
-					</table>
-				</div>
-				if vm.HasMore {
-					<p class="meta mt14">
-						<a href={ templ.SafeURL("/events?limit=" + itoa(int64(vm.NextLimit())) + "&source=" + urlEscape(vm.Source)) }>Load more</a>
-					</p>
-				}
-			}
-		</div>
+			@eventsTray(vm)
+		}
+		@eventsKeys()
 	}
 }
 
-// eventTrace renders one event's stored evaluation trace: the per-condition
+// eventsFunnel is the last-24h counts row plus the proportional outcome bar.
+// The bar renders only the closed enum's five outcomes (the copy's closed
+// set), weighted by the count; a zero outcome is absent, so the ratio never
+// implies work of unknown length.
+templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
+	<div class="card funnel" role="region" aria-label="Alert funnel, last 24 hours">
+		<div class="funnel-counts">
+			<span class="funnel-in">{ itoa(int64(total)) } in</span>
+			<span class="funnel-ct">{ itoa(int64(ignored)) } ignored</span>
+			<span class="funnel-ct matched">{ itoa(int64(matched)) } matched</span>
+			<span class="funnel-ct wait">{ itoa(int64(suppressed)) } suppressed</span>
+			<span class="funnel-ct wait">{ itoa(int64(gated)) } gated</span>
+			<span class={ "funnel-ct fired", templ.KV("on", fired > 0) }>{ itoa(int64(fired)) } fired</span>
+			<span class="funnel-note">last 24h · nothing ran without being on this page first</span>
+		</div>
+		<div class="funnel-bar" aria-hidden="true">
+			@funnelSeg("ignored", ignored)
+			@funnelSeg("matched", matched)
+			@funnelSeg("suppressed", suppressed)
+			@funnelSeg("gated", gated)
+			@funnelSeg("fired", fired)
+		</div>
+	</div>
+}
+
+// funnelSeg is one flex-weighted bar segment; a zero count renders no segment
+// at all, so the bar shows only the outcomes that actually happened.
+templ funnelSeg(kind string, n int) {
+	if n > 0 {
+		<span class={ "funnel-seg", kind } style={ "flex-grow:" + itoa(int64(n)) }></span>
+	}
+}
+
+// eventsFilters is the chip row: source splits first (D4), then the outcome
+// chips, then the keyboard hint on the right. Counts are rows in view.
+templ eventsFilters(vm eventsVM) {
+	<div class="filters">
+		<div class="filter-chips" role="group" aria-label="Filter events">
+			@filterChip("all", vm.Filter == "all", vm.ChipCount("all"))
+			@filterChip("checks", vm.Filter == "checks", vm.ChipCount("checks"))
+			@filterChip("alerts", vm.Filter == "alerts", vm.ChipCount("alerts"))
+			@filterChip("ignored", vm.Filter == "ignored", vm.ChipCount("ignored"))
+			@filterChip("matched", vm.Filter == "matched", vm.ChipCount("matched"))
+			@filterChip("suppressed", vm.Filter == "suppressed", vm.ChipCount("suppressed"))
+			@filterChip("gated", vm.Filter == "gated", vm.ChipCount("gated"))
+			@filterChip("fired", vm.Filter == "fired", vm.ChipCount("fired"))
+			@filterChip("error", vm.Filter == "error", vm.ChipCount("error"))
+		</div>
+		<span class="keys-hint"><kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> expand · <kbd>e</kbd> explain</span>
+	</div>
+}
+
+// filterChip is one outcome or source chip: a link that re-runs the page under
+// that filter. The active chip carries the accent (aria-pressed mirrors it for
+// a reader that never sees colour).
+templ filterChip(key string, active bool, n int) {
+	<a class={ "filter-chip", templ.KV("active", active) } href={ templ.SafeURL("/events?filter=" + key) } aria-pressed={ boolAttr(active) }>
+		{ key } · { itoa(int64(n)) }
+	</a>
+}
+
+// eventsTray is the tray table. Each row is one event; the whole row toggles
+// the pane below it (payload + evaluation trace). The grid columns are the
+// schema: RECEIVED · ALERT · SOURCE · MATCHED RULE · OUTCOME · REASON · chevron.
+templ eventsTray(vm eventsVM) {
+	<div class="card events-tray">
+		<div class="evt-head" aria-hidden="true">
+			<span>RECEIVED</span><span>ALERT</span><span>SOURCE</span><span>MATCHED RULE</span><span>OUTCOME</span><span>REASON</span><span class="evt-chev-col"></span>
+		</div>
+		for i, e := range vm.Rows {
+			@eventTrayPair(i, e)
+		}
+	</div>
+	<p class="events-foot">showing latest { itoa(int64(len(vm.Rows))) } of { itoa(vm.Total) } events · retained 90d · the enum is closed: ignored / matched / suppressed / gated / fired</p>
+}
+
+// eventTrayPair is one row button and its expand pane. The row keeps the
+// keyboard cursor index on data-index; the pane id is the aria-controls target
+// so j/k/↵/e and a click agree on what expanded.
+templ eventTrayPair(i int, e eventRow) {
+	<div class="evt-row" role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
+		<span class="evt-time">{ e.Received }</span>
+		<span class="evt-alert">{ e.Name }</span>
+		<span class="evt-source">{ e.Source }</span>
+		<span class="evt-rule">{ orDash(e.Rule) }</span>
+		<span class={ "evt-outcome", e.TokenClass() }>
+			<span class="evt-glyph" aria-hidden="true">{ e.TokenGlyph() }</span>
+			<span class="evt-word">{ e.TokenWord() }</span>
+		</span>
+		if e.ReasonLink != "" {
+			<a class="evt-reason" href={ templ.SafeURL(e.ReasonLink) }>{ e.Reason }</a>
+		} else {
+			<span class="evt-reason">{ e.Reason }</span>
+		}
+		<span class="evt-chev" aria-hidden="true">▸</span>
+	</div>
+	<div class="evt-panes" id={ "evt-pane-" + itoa64(e.ID) } hidden>
+		<div class="evt-pane pane-payload">
+			<div class="pane-kicker">NORMALIZED PAYLOAD</div>
+			<pre>{ e.Normalized }</pre>
+		</div>
+		<div class="evt-pane pane-explain">
+			<div class="pane-kicker kicker-accent">EXPLAIN · RULE EVALUATION TRACE</div>
+			if len(e.Trace) == 0 {
+				<p class="meta">No trace recorded.</p>
+			} else {
+				<table class="trace-mini">
+					for _, s := range e.Trace {
+						<tr>
+							<td>
+								if s.Passed {
+									<span class="chip ok"><span class="dot"></span>PASS</span>
+								} else {
+									<span class="chip fail"><span class="dot"></span>STOP</span>
+								}
+							</td>
+							<td class="mono">{ s.Step }</td>
+							<td class="mono">{ orDash(s.Detail) }</td>
+							<td class="meta">{ s.Reason }</td>
+						</tr>
+					}
+				</table>
+			}
+		</div>
+	</div>
+}
+
+// eventsKeys wires the tray's keyboard map: j/k move the current row, Enter
+// and e expand it (e also brings the EXPLAIN pane into view), Esc collapses.
+// Clicking a row toggles its pane; clicking the FIRED/GATED reason link inside
+// it still navigates — the row handler skips anchor hits.
+templ eventsKeys() {
+	<script>
+	(function () {
+		var tray = document.querySelector(".events-tray");
+		if (!tray) return;
+		var rows = Array.prototype.slice.call(tray.querySelectorAll(".evt-row"));
+		if (!rows.length) return;
+
+		function currentRow() {
+			for (var i = 0; i < rows.length; i++) {
+				if (rows[i].classList.contains("current")) return rows[i];
+			}
+			return rows[0];
+		}
+		function setCurrent(row) {
+			for (var j = 0; j < rows.length; j++) rows[j].classList.remove("current");
+			row.classList.add("current");
+			row.focus();
+		}
+		function isOpen(row) {
+			return row.getAttribute("aria-expanded") === "true";
+		}
+		function toggle(row, focusExplain) {
+			var open = !isOpen(row);
+			row.setAttribute("aria-expanded", open ? "true" : "false");
+			var pane = document.getElementById(row.getAttribute("aria-controls"));
+			if (pane) pane.hidden = !open;
+			var chev = row.querySelector(".evt-chev");
+			if (chev) chev.textContent = open ? "▾" : "▸";
+			if (open && focusExplain) {
+				var explain = pane && pane.querySelector(".pane-explain");
+				if (explain) explain.scrollIntoView({ block: "nearest" });
+			}
+		}
+		rows.forEach(function (row) {
+			row.addEventListener("click", function (e) {
+				if (e.target.closest("a")) return;
+				toggle(row, false);
+			});
+		});
+		document.addEventListener("keydown", function (e) {
+			var t = e.target;
+			if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+			var i = rows.indexOf(currentRow());
+			if (e.key === "j" || e.key === "ArrowDown") {
+				e.preventDefault();
+				setCurrent(rows[Math.min(rows.length - 1, i + 1)]);
+			} else if (e.key === "k" || e.key === "ArrowUp") {
+				e.preventDefault();
+				setCurrent(rows[Math.max(0, i - 1)]);
+			} else if (e.key === "Enter") {
+				e.preventDefault();
+				toggle(currentRow(), false);
+			} else if (e.key === "e") {
+				e.preventDefault();
+				toggle(currentRow(), true);
+			} else if (e.key === "Escape") {
+				var opened = currentRow();
+				if (isOpen(opened)) toggle(opened, false);
+			}
+		});
+	})();
+	</script>
+}
+
+// eventTrace shows one event's stored evaluation trace: the per-condition
 // pass/fail exactly as it was decided, not recomputed.
 templ eventTrace(vm traceVM) {
 	@layout(vm.Page) {

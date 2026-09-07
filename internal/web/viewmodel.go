@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -1221,44 +1223,222 @@ type planLine struct {
 	Redacted bool
 }
 
-// eventsVM is the events + evaluation trace screen. Source is the ?source=
-// filter the page renders under ("" = all sources); the filter form preserves
-// it so a filtered view stays filtered. Limit is the ?limit= the page
-// rendered (floor 100, cap 500); HasMore reports whether a full page came
-// back, so the Load more link shows.
+// eventsVM is the events screen: the last-24h funnel card, the outcome and
+// source filter chips, and the tray table of received alerts with the stored
+// payload and evaluation trace inline. Filter is the active chip ("all" when
+// none); Funnel is the 24h window while the chip counts and Total describe
+// the rows in view and the whole store respectively. Empty hides the chips
+// (R7: nothing to filter); NoMatch keeps them with the filtered-empty line.
 type eventsVM struct {
 	Page    page
-	Events  []eventRow
-	Source  string
-	Limit   int
-	HasMore bool
+	Funnel  store.EventOutcomeCounts
+	Rows    []eventRow
+	Chips   eventsChips
+	Filter  string
+	Total   int64
+	Empty   bool
+	NoMatch bool
 }
 
-// NextLimit is the ?limit= the Load more link carries, one page deeper.
-func (vm eventsVM) NextLimit() int { return vm.Limit + 100 }
+// ChipCount is the count the chip named key carries — the rows in view that
+// share its outcome or source split.
+func (vm eventsVM) ChipCount(key string) int {
+	switch key {
+	case "all":
+		return vm.Chips.All
+	case "checks":
+		return vm.Chips.Checks
+	case "alerts":
+		return vm.Chips.Alerts
+	case "ignored":
+		return vm.Chips.Ignored
+	case "matched":
+		return vm.Chips.Matched
+	case "suppressed":
+		return vm.Chips.Suppressed
+	case "gated":
+		return vm.Chips.Gated
+	case "fired":
+		return vm.Chips.Fired
+	case "error":
+		return vm.Chips.Error
+	}
+	return 0
+}
 
-// eventSourceFilterOptions are the ?source= filter's known values — the five
-// sources the engine can produce. The page's rows carry only these, so the
-// filter's universe is this list plus the implicit "all".
-var eventSourceFilterOptions = []string{
-	reactive.SourceAlertmanager,
-	reactive.SourceHealthchecks,
-	reactive.SourceGeneric,
-	reactive.SourceDrift,
-	reactive.SourceCheck,
+// eventsChips are the per-chip counts. They count the rows in view (the page
+// ListEvents returned), never the store: "all · 8" is the tray's rows, so the
+// chips sum to the tray and not to a 90-day ledger.
+type eventsChips struct {
+	All                                 int
+	Checks, Alerts                      int
+	Ignored, Matched, Suppressed, Gated int
+	Fired, Error                        int
+}
+
+// add tallies one rendered row into every chip it belongs to.
+func (c *eventsChips) add(e eventRow) {
+	c.All++
+	switch e.Outcome {
+	case store.OutcomeIgnored:
+		c.Ignored++
+	case store.OutcomeMatched:
+		c.Matched++
+	case store.OutcomeSuppressed:
+		c.Suppressed++
+	case store.OutcomeGated:
+		c.Gated++
+	case store.OutcomeFired:
+		c.Fired++
+	case store.OutcomeError:
+		c.Error++
+	}
+	if e.Source == reactive.SourceCheck {
+		c.Checks++
+	} else {
+		c.Alerts++
+	}
 }
 
 type eventRow struct {
-	ID       int64
-	Source   string
-	Received string
-	Name     string
-	Outcome  store.EventOutcome
-	Reason   string
-	JobID    *int64
+	ID         int64
+	Source     string
+	Received   string
+	Name       string
+	Rule       string
+	Outcome    store.EventOutcome
+	Reason     string
+	ReasonLink string
+	JobID      *int64
+	Normalized string
+	Trace      []traceStep
 }
 
 func (e eventRow) OutcomeClass() string { return outcomeClass(e.Outcome) }
+
+// TokenGlyph, TokenWord, and TokenClass render the OUTCOME column's glyph and
+// keyword per the closed enum (copy.txt): IGNORED — in ink, MATCHED ● in
+// ink-200, SUPPRESSED and GATED ◐ in wait, FIRED ● in accent. error, which the
+// lane keeps as a chip, reuses the ● in the fail colour. The glyph and the
+// keyword always render together — never colour alone.
+func (e eventRow) TokenGlyph() string {
+	switch e.Outcome {
+	case store.OutcomeMatched, store.OutcomeError, store.OutcomeFired:
+		return "●"
+	case store.OutcomeSuppressed, store.OutcomeGated:
+		return "◐"
+	default:
+		return "—"
+	}
+}
+
+func (e eventRow) TokenWord() string { return strings.ToUpper(string(e.Outcome)) }
+
+func (e eventRow) TokenClass() string {
+	switch e.Outcome {
+	case store.OutcomeFired:
+		return "fired"
+	case store.OutcomeSuppressed, store.OutcomeGated:
+		return "wait"
+	case store.OutcomeMatched:
+		return "matched"
+	case store.OutcomeError:
+		return "fail"
+	default:
+		return "ignored"
+	}
+}
+
+// receivedClock renders the RECEIVED column: today's events by clock
+// ("13:58:04"), older ones as "Wed 23:58".
+func receivedClock(t, now time.Time) string {
+	if t.UTC().Format("2006-01-02") == now.UTC().Format("2006-01-02") {
+		return t.UTC().Format("15:04:05")
+	}
+	return t.UTC().Format("Mon 15:04")
+}
+
+// compactDuration renders a duration the way a reason column reads a cooldown
+// or an approval TTL: "6h", "30m", "45s" — no trailing zero units.
+func compactDuration(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d == 0:
+		return "0s"
+	case d >= time.Hour && d%time.Hour == 0:
+		return fmt.Sprintf("%dh", int64(d/time.Hour))
+	case d >= time.Minute && d%time.Minute == 0:
+		return fmt.Sprintf("%dm", int64(d/time.Minute))
+	case d >= time.Second && d%time.Second == 0:
+		return fmt.Sprintf("%ds", int64(d/time.Second))
+	default:
+		return d.String()
+	}
+}
+
+// decodeSteps reads a stored trace_json into the row's step list, the same
+// read the trace page makes. A malformed or absent trace yields nil so the
+// pane renders "No trace recorded" rather than failing the page.
+func decodeSteps(raw string) []traceStep {
+	trace, err := reactive.DecodeTrace(raw)
+	if err != nil {
+		return nil
+	}
+	steps := make([]traceStep, 0, len(trace))
+	for _, c := range trace {
+		steps = append(steps, traceStep{Passed: c.Passed, Step: c.Step, Detail: c.Detail, Reason: c.Reason})
+	}
+	return steps
+}
+
+// prettyJSON re-indents a stored normalized payload for the expand pane. The
+// row keeps the compact form; a malformed payload renders as stored.
+func prettyJSON(raw string) string {
+	if raw == "" {
+		return "{}"
+	}
+	var buf bytes.Buffer
+	if err := json.Indent(&buf, []byte(raw), "", "  "); err != nil {
+		return raw
+	}
+	return buf.String()
+}
+
+// enrichSuppressed maps a guardrail's stored reason to the design's reason
+// copy: a silence reads "swallowed · silence {scope} · lifts {t}", a cooldown
+// reads "cooldown {d} · next eligible {t}". A dedup or a daily cap keeps its
+// stored sentence.
+func enrichSuppressed(reason string) string {
+	if strings.HasPrefix(reason, "silenced: ") {
+		rest := reason[len("silenced: "):]
+		until := strings.Index(rest, " until ")
+		if until < 0 {
+			return reason
+		}
+		scope, lifts := rest[:until], rest[until+len(" until "):]
+		if j := strings.Index(lifts, " ("); j >= 0 {
+			lifts = lifts[:j]
+		}
+		return "swallowed · silence " + silenceName(scope) + " · lifts " + lifts
+	}
+	if strings.HasPrefix(reason, "cooldown ") {
+		return strings.Replace(reason, ", next eligible ", " · next eligible ", 1)
+	}
+	return reason
+}
+
+// silenceName drops the scope kind the engine prefixes ("host pve-02" reads
+// as the design's "silence pve-02", "alert dns" as "dns").
+func silenceName(scope string) string {
+	for _, prefix := range []string{"alert ", "host "} {
+		if strings.HasPrefix(scope, prefix) {
+			return scope[len(prefix):]
+		}
+	}
+	return scope
+}
 
 // traceVM is one event's stored evaluation trace, plus — for a check
 // transition — the hysteresis ledger that produced it (the "WHY THIS COUNTED"

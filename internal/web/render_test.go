@@ -204,7 +204,8 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		// The Schedules card followed in F7, so no table survives on "/".
 		{"/sources", []string{`class="tablewrap stackable"`, `data-label="Source"`, `data-label="URI"`, `data-label="Ref"`, `data-label="Trust"`, `data-label="Last sync"`, `data-label="Enabled"`}},
 		{"/policies", []string{`class="tablewrap stackable"`, `data-label="Policy"`, `data-label="On match"`, `data-label="Expression"`, `data-label="Enabled"`}},
-		{"/events", []string{`class="tablewrap stackable"`, `data-label="Event"`, `data-label="Source"`, `data-label="Outcome"`, `data-label="Received"`}},
+		// /events is deliberately absent: its tray table is a grid of row
+		// buttons with an inline expand pane, never a stackable table.
 		// /jobs is deliberately absent: its two-line rows (2a) are a grid of
 		// links, not a stackable table.
 	}
@@ -231,7 +232,8 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 		{"/workflows", "", "All workflows"},
 		{"/policies", "CEL gates", "All policies"},
 		{"/jobs", "", "All jobs"},
-		{"/events", "Received alerts", "All events"},
+		// /events is deliberately absent: the rebuilt page leads with the
+		// funnel card and the tray table, not a kicker + All-events heading.
 		{"/approvals", "Waiting on a human", "Pending approvals"},
 	}
 	for _, hd := range headers {

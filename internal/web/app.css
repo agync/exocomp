@@ -1431,3 +1431,150 @@ body { overflow-x: clip; }
 }
 .modal-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .modal-title h2 { margin: 0; }
+
+/* ---- Events: funnel card ----
+ * The last-24h counts row reads the emphasized total first, then each closed
+ * outcome; the note rides right. The bar below is a ratio of the closed enum
+ * (never of unknown-length work): each segment flex-grows by its count, so a
+ * zero outcome draws no segment at all. */
+.funnel { display: flex; flex-direction: column; gap: 14px; }
+.funnel-counts {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 16px;
+}
+.funnel-in {
+  font: var(--type-display); font-family: var(--font-mono);
+  letter-spacing: -1px; color: var(--ink-100);
+}
+.funnel-ct { font: 500 15px var(--font-ui); color: var(--ink-500); }
+.funnel-ct.matched { color: var(--ink-200); }
+.funnel-ct.wait { color: var(--signal-wait); }
+.funnel-ct.fired { color: var(--ink-500); }
+.funnel-ct.fired.on { color: var(--accent-text); }
+.funnel-note {
+  margin-left: auto; font: var(--type-log); color: var(--ink-500);
+}
+.funnel-bar {
+  display: flex; gap: 3px; height: 8px; border-radius: 4px; overflow: hidden;
+}
+.funnel-seg { flex-basis: 0; border-radius: 4px; }
+.funnel-seg.ignored { background: var(--surface-control); }
+.funnel-seg.matched { background: var(--ink-600); }
+.funnel-seg.suppressed { background: var(--signal-wait); opacity: .75; }
+.funnel-seg.gated { background: var(--signal-wait); }
+.funnel-seg.fired { background: var(--accent-fill); }
+
+/* ---- Events: filter chips ----
+ * One pill per outcome and source split; the active chip wears the accent tint
+ * (never colour alone — the label always reads). The keys hint sits right. */
+.filters {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chip {
+  display: inline-flex; align-items: center;
+  height: 34px; padding: 0 13px; border-radius: 10px;
+  background: var(--surface-tray); color: var(--ink-400);
+  font: var(--type-log); text-decoration: none;
+}
+.filter-chip:hover { color: var(--ink-100); text-decoration: none; }
+.filter-chip.active {
+  background: var(--accent-tint); color: var(--accent-text);
+}
+.keys-hint {
+  margin-left: auto; height: 34px; display: inline-flex; align-items: center;
+  gap: 4px; padding: 0 13px; background: var(--surface-card);
+  border-radius: 10px; font: var(--type-log); color: var(--ink-500);
+}
+.keys-hint kbd {
+  font: 600 var(--type-log); color: var(--ink-400);
+  border: 1px solid var(--hairline); border-radius: 4px;
+  padding: 0 4px; background: var(--surface-control);
+}
+
+/* ---- Events: tray table ----
+ * Rows float in a padded tray like every list, but the grid carries the
+ * design's column schema (RECEIVED · ALERT · SOURCE · RULE · OUTCOME · REASON ·
+ * chevron) and each row toggles the inline two-pane below it. The whole row is
+ * focusable and the focus ring rings the full 44px cell. */
+.events-tray { padding: 6px; }
+.evt-head, .evt-row {
+  display: grid;
+  grid-template-columns: 96px minmax(0,1.2fr) 104px 172px 128px minmax(0,1.4fr) 26px;
+  gap: 14px; align-items: center;
+}
+.evt-head {
+  height: 38px; padding: 0 14px;
+  font: 600 11px var(--font-mono); letter-spacing: .4px;
+  text-transform: uppercase; color: var(--ink-500);
+  border-bottom: 1px solid var(--hairline-faint);
+}
+.evt-row {
+  height: var(--row-h); margin-top: 2px; padding: 0 14px;
+  border-radius: var(--radius-row); cursor: pointer;
+  font: var(--type-log); text-align: left; background: none; border: 0;
+  width: 100%; color: inherit;
+}
+.evt-row:hover, .evt-row:focus-visible, .evt-row.current,
+.evt-row.open { background: var(--surface-row); }
+.evt-row:focus-visible {
+  outline: var(--focus-ring); outline-offset: var(--focus-offset);
+  position: relative; z-index: 1;
+}
+.evt-time { font: var(--type-log); color: var(--ink-500); }
+.evt-alert {
+  font: var(--type-log); color: var(--ink-100);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.evt-source { font: var(--type-log); color: var(--ink-500); }
+.evt-rule {
+  font: var(--type-log); color: var(--ink-400);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.evt-outcome {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: var(--type-keyword); letter-spacing: .4px;
+}
+.evt-outcome.ignored { color: var(--ink-500); }
+.evt-outcome.matched { color: var(--ink-200); }
+.evt-outcome.wait { color: var(--signal-wait); }
+.evt-outcome.fired { color: var(--accent-text); }
+.evt-outcome.fail { color: var(--signal-fail); }
+.evt-reason {
+  font: var(--type-log); color: var(--ink-500); text-decoration: none;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+a.evt-reason { color: var(--accent-text); }
+.evt-chev { font: var(--type-log); color: var(--ink-600); justify-self: end; }
+
+/* ---- Events: two-pane expand ----
+ * Each row's pane is a payload/explain split on the void, revealed by toggling
+ * hidden; [hidden] keeps the default display:none so a pane is inert until
+ * opened. */
+.evt-panes {
+  display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px;
+  padding: 2px 8px 10px;
+}
+.evt-panes[hidden] { display: none; }
+.evt-pane {
+  background: var(--surface-void); border-radius: var(--radius-control);
+  padding: 14px 16px; min-width: 0;
+}
+.evt-pane .pane-kicker {
+  font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
+  color: var(--ink-500); margin-bottom: 10px;
+}
+.evt-pane .pane-kicker.kicker-accent { color: var(--accent-text); }
+.evt-pane pre {
+  margin: 0; font: var(--type-log); color: var(--ink-400);
+  white-space: pre; overflow-x: auto;
+}
+.trace-mini { border-collapse: collapse; }
+.trace-mini td {
+  padding: 2px 10px 2px 0; vertical-align: top;
+  font: var(--type-log); color: var(--ink-400);
+}
+.trace-mini td.mono { color: var(--ink-200); white-space: nowrap; }
+
+.events-foot { margin-top: 12px; font: var(--type-log); color: var(--ink-500); }
+.events-empty { padding: 26px 30px; }
+

@@ -2,10 +2,13 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -26,9 +29,9 @@ func seedEvents(t *testing.T, h *harness) {
 	}
 }
 
-// TestEventsSourceFilter: the ?source= filter narrows the page to that
-// source's rows only, and the filter form preserves the chosen value.
-func TestEventsSourceFilter(t *testing.T) {
+// TestEventsSourceChip: the ?filter=checks chip narrows the page to that
+// source's rows only, and the active chip carries the pressed state.
+func TestEventsSourceChip(t *testing.T) {
 	h := newHarness(t)
 	seedEvents(t, h)
 
@@ -36,7 +39,7 @@ func TestEventsSourceFilter(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	code, page := getBody(t, client, ts.URL+"/events?source=check")
+	code, page := getBody(t, client, ts.URL+"/events?filter=checks")
 	if code != 200 {
 		t.Fatalf("events status = %d", code)
 	}
@@ -46,16 +49,23 @@ func TestEventsSourceFilter(t *testing.T) {
 	if strings.Contains(page, "alertmanager-alert") {
 		t.Error("filtered page leaked a row from another source")
 	}
-	if !strings.Contains(page, `<option value="check" selected`) {
-		t.Error("filter form does not preserve the chosen source")
+	if !strings.Contains(page, `href="/events?filter=checks" aria-pressed="true"`) {
+		t.Error("the checks chip is not marked active")
 	}
 }
 
-// TestEventsListAllSources: with no filter every source's rows render and the
-// select defaults to all.
-func TestEventsListAllSources(t *testing.T) {
+// TestEventsChipCounts: the chips count the rows in view across the outcome
+// and source splits, and the "all" chip sums to the tray.
+func TestEventsChipCounts(t *testing.T) {
 	h := newHarness(t)
+	ctx := context.Background()
 	seedEvents(t, h)
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"fire-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -66,12 +76,302 @@ func TestEventsListAllSources(t *testing.T) {
 		t.Fatalf("events status = %d", code)
 	}
 	for _, want := range []string{
-		"alertmanager-alert", "check-alert",
-		`<option value="" selected>all</option>`,
+		"all · 3", "checks · 1", "alerts · 2", "ignored · 2", "fired · 1",
+		"check-alert", "alertmanager-alert", "fire-alert",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("unfiltered events page missing %q", want)
 		}
+	}
+}
+
+// TestEventsFunnel is the GATE for the web funnel card: events received in the
+// last 24h are tallied by outcome and rendered, and an event older than the
+// window is excluded from the counts (though it still lists in the tray).
+func TestEventsFunnel(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	now := time.Now()
+	for i := 0; i < 2; i++ {
+		if _, err := h.store.CreateEvent(ctx, store.Event{
+			Source: "alertmanager", Normalized: `{"name":"ignored-alert"}`,
+			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+			ReceivedAt: now.Add(-time.Minute),
+		}); err != nil {
+			t.Fatalf("CreateEvent ignored: %v", err)
+		}
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"matched-alert"}`,
+		Outcome: store.OutcomeMatched, Reason: "notify only; no job",
+		ReceivedAt: now.Add(-time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateEvent matched: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"fire-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+		ReceivedAt: now.Add(-2 * time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
+	// Older than the window: in the tray, out of the funnel.
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"stale-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 2 queued",
+		ReceivedAt: now.Add(-25 * time.Hour),
+	}); err != nil {
+		t.Fatalf("CreateEvent stale: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		">4 in<", ">2 ignored<", ">1 matched<", ">1 fired<",
+		`aria-label="Alert funnel, last 24 hours"`,
+		"last 24h · nothing ran without being on this page first",
+		"stale-alert",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("funnel missing %q", want)
+		}
+	}
+}
+
+// TestEventsFiredReason is the GATE for FIRED enrichment: the reason column
+// overrides the emission-time "job N queued" sentence with the live job facts
+// and links to the job.
+func TestEventsFiredReason(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "deadman-restart", Kind: "shell", Trigger: "rule",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	job = h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
+	jobID := job.ID
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"deadman_ping_missing"}`,
+		Outcome: store.OutcomeFired, Reason: fmt.Sprintf("job %d queued", jobID),
+		JobID: &jobID,
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("job %d · succeeded · exit 0", job.ID),
+		`href="/jobs/` + itoa(job.ID) + `"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("fired event missing %q", want)
+		}
+	}
+}
+
+// TestEventsGatedReason is the GATE for GATED enrichment: the reason names the
+// approval and its TTL, and links to it.
+func TestEventsGatedReason(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	job, approval := h.gatedJob(t, 30*time.Minute)
+	jobID := job.ID
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"dns_records_drifted"}`,
+		Outcome: store.OutcomeGated, Reason: fmt.Sprintf("approval %d pending", approval.ID),
+		JobID: &jobID,
+	}); err != nil {
+		t.Fatalf("CreateEvent gated: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		fmt.Sprintf("awaiting approval %d · TTL 30m", approval.ID),
+		`href="/approvals/` + itoa(approval.ID) + `"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("gated event missing %q", want)
+		}
+	}
+}
+
+// TestEventsSuppressedReasons: the suppressed reason maps to the design copy
+// for a silence and a cooldown.
+func TestEventsSuppressedReasons(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"zfs_pool_degraded"}`,
+		Outcome: store.OutcomeSuppressed,
+		Reason:  "silenced: host pve-02 until 16:00 (3 swallowed)",
+	}); err != nil {
+		t.Fatalf("CreateEvent silence: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"restic_lock_held"}`,
+		Outcome: store.OutcomeSuppressed,
+		Reason:  "cooldown 6h, next eligible 14:22",
+	}); err != nil {
+		t.Fatalf("CreateEvent cooldown: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		"swallowed · silence pve-02 · lifts 16:00",
+		"cooldown 6h · next eligible 14:22",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("suppressed event missing %q", want)
+		}
+	}
+}
+
+// TestEventsExpandPane is the GATE for the two-pane expand: the row's inline
+// pane carries the pretty-printed normalized payload and the evaluation trace
+// steps, both read from the stored row.
+func TestEventsExpandPane(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"dns_records_drifted","severity":"warning"}`,
+		Outcome: store.OutcomeGated, Reason: "approval 1 pending",
+		Trace: `[{"step":"rule","detail":"drift-replan","passed":true,"reason":"matched drift-replan"},` +
+			`{"step":"silence","detail":"","passed":true,"reason":"no silence covers this event"}]`,
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	for _, want := range []string{
+		"NORMALIZED PAYLOAD",
+		// The pre renders the stored JSON HTML-escaped, key order intact.
+		`&#34;name&#34;: &#34;dns_records_drifted&#34;`,
+		"EXPLAIN · RULE EVALUATION TRACE",
+		"drift-replan",
+		"matched drift-replan",
+		"PASS",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("expand pane missing %q", want)
+		}
+	}
+}
+
+// TestEventsOutcomeChipFilter: the outcome chip narrows the tray to that
+// outcome's rows.
+func TestEventsOutcomeChipFilter(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"chk-alert"}`,
+		Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+	}); err != nil {
+		t.Fatalf("CreateEvent ignored: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"fire-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events?filter=ignored")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, "chk-alert") {
+		t.Error("filtered page missing the ignored row")
+	}
+	if strings.Contains(page, "fire-alert") {
+		t.Error("filtered page leaked a non-ignored row")
+	}
+	if !strings.Contains(page, `href="/events?filter=ignored" aria-pressed="true"`) {
+		t.Error("the ignored chip is not marked active")
+	}
+}
+
+// TestEventsFilterHiddenWhenEmpty is the GATE for R7: with zero events and no
+// filter the chips and tray are hidden and the W5 empty copy shows; with an
+// active filter that matches nothing, the chips stay and the filtered-empty
+// line reads.
+func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("/events status = %d", code)
+	}
+	if strings.Contains(page, "filter-chip") {
+		t.Error("the filter chips render with zero events (R7)")
+	}
+	if !strings.Contains(page, "No events yet. Point an alert source at exocomp ingest") {
+		t.Error("the empty-state copy is missing")
+	}
+	if !strings.Contains(page, "0 in") {
+		t.Error("the funnel does not read 0 in on an empty store")
+	}
+
+	// An active filter with nothing matching keeps the chips and shows the
+	// filtered-empty line (there are rows, just none gated).
+	if _, err := h.store.CreateEvent(context.Background(), store.Event{
+		Source: "check", Normalized: `{"name":"chk-alert"}`,
+		Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+	code, filtered := getBody(t, client, ts.URL+"/events?filter=gated")
+	if code != 200 {
+		t.Fatalf("/events?filter=gated status = %d", code)
+	}
+	if !strings.Contains(filtered, "filter-chip") {
+		t.Error("the filter chips hide even with an active filter")
+	}
+	if !strings.Contains(filtered, "No events match") {
+		t.Error("the filtered-empty line is missing")
 	}
 }
 
@@ -105,44 +405,6 @@ func TestEventName(t *testing.T) {
 	for _, tc := range cases {
 		if got := wire.EventName(tc.ev); got != tc.want {
 			t.Errorf("%s: EventName = %q, want %q", tc.name, got, tc.want)
-		}
-	}
-}
-
-// TestEventsJobColumn: an event that enqueued a job links to it from the
-// events table's Job column.
-func TestEventsJobColumn(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	job, err := h.store.CreateJob(ctx, store.NewJob{
-		Runbook: "rule:gate-ssh", Kind: "playbook", Trigger: "rule",
-		Args: store.JobArgs{Argv: []string{"/bin/true"}},
-	})
-	if err != nil {
-		t.Fatalf("CreateJob: %v", err)
-	}
-	jobID := job.ID
-	if _, err := h.store.CreateEvent(ctx, store.Event{
-		Source: "check", Normalized: `{"name":"at-home"}`, Outcome: store.OutcomeFired,
-		JobID: &jobID,
-	}); err != nil {
-		t.Fatalf("CreateEvent: %v", err)
-	}
-
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/events")
-	if code != 200 {
-		t.Fatalf("events status = %d", code)
-	}
-	for _, want := range []string{
-		`<td class="num" data-label="Job">`,
-		`<a href="/jobs/` + itoa(job.ID) + `">#` + itoa(job.ID) + `</a>`,
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("events page missing %q", want)
 		}
 	}
 }
@@ -219,39 +481,6 @@ func TestEventTraceBreadcrumb(t *testing.T) {
 	}
 }
 
-// TestEventsLoadMore: a full page (100+) reports HasMore, so the page renders
-// a Load more link carrying the next limit and preserving the source filter.
-// The default floor means "more" can only be exercised by seeding past it.
-func TestEventsLoadMore(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	for i := 0; i < 105; i++ {
-		if _, err := h.store.CreateEvent(ctx, store.Event{
-			Source: "check", Normalized: `{"name":"at-home"}`,
-			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
-		}); err != nil {
-			t.Fatalf("CreateEvent %d: %v", i, err)
-		}
-	}
-
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/events?source=check")
-	if code != 200 {
-		t.Fatalf("events status = %d", code)
-	}
-	for _, want := range []string{
-		`href="/events?limit=200&amp;source=check"`,
-		">Load more</a>",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("full events page missing %q", want)
-		}
-	}
-}
-
 // TestEventTraceCheckLedger is the GATE for the hysteresis ledger card on a
 // check event's Explain page: the stored observations render as the
 // "observed {status} {hh:mm:ss} · {i} of 3" lines with the transition marker,
@@ -305,38 +534,5 @@ func TestEventTraceCheckLedger(t *testing.T) {
 	}
 	if strings.Contains(alert, "Why this counted as a transition") {
 		t.Error("an alert event must not render the hysteresis ledger card")
-	}
-}
-
-// TestEventsFilterHiddenWhenEmpty is the GATE for R7: with zero events and no
-// active filter the filter row is hidden (nothing to filter); with an active
-// filter it stays visible and carries the filtered-empty line.
-func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
-	h := newHarness(t)
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/events")
-	if code != 200 {
-		t.Fatalf("/events status = %d", code)
-	}
-	if strings.Contains(page, `name="source"`) {
-		t.Error("the filter row renders with zero events and no filter (R7)")
-	}
-	if !strings.Contains(page, "No events yet. Point an alert source at exocomp ingest") {
-		t.Error("the empty-state copy is missing")
-	}
-
-	// An active filter keeps the filter visible and shows the filtered-empty line.
-	code, filtered := getBody(t, client, ts.URL+"/events?source=check")
-	if code != 200 {
-		t.Fatalf("/events?source=check status = %d", code)
-	}
-	if !strings.Contains(filtered, `name="source"`) {
-		t.Error("the filter row hides even with an active filter (R7)")
-	}
-	if !strings.Contains(filtered, "No events from") {
-		t.Error("the filtered-empty line is missing")
 	}
 }
