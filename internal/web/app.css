@@ -1546,7 +1546,11 @@ a.evt-reason { color: var(--accent-text); }
  * The mobilebar (hamburger over a second title row) folds into the app bar, so
  * it hides here. Brandmark 20px, the wordmark hidden — the mark is the brand. */
 @media (max-width: 719px) {
-  .mobilebar { display: none; }
+   /* The off-canvas sidebar rail is translated off-screen but, being position:fixed
+    * with html overflow-x visible, still extends the document and forces a
+    * horizontal scroll on phone (R13/R14: no horizontal page scroll). Clip it. */
+   html { overflow-x: hidden; }
+   .mobilebar { display: none; }
   .appbar{height:56px; padding:0 14px 0 6px; gap:10px; }
   .appbar .hamburger, .appbar .back { display: inline-flex; width: 44px; height: 44px; border-radius: var(--radius-control); }
   .appbar .brandlink { display: inline-flex; }
