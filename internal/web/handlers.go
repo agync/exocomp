@@ -518,7 +518,7 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 
 	rerunParent := rerunOf(events)
 	for _, e := range events {
-		line := eventLine{Seq: e.Seq, Ts: clock(e.Ts), Level: e.Level, Msg: e.Msg}
+		line := eventLine{Seq: e.Seq, Ts: logClock(e.Ts), Level: e.Level, Msg: e.Msg}
 		if e.Level == store.LevelSystem {
 			line.Band, line.BandClass = bandFor(job, e.Msg, facts, rerunParent)
 		}

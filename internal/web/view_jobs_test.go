@@ -482,11 +482,12 @@ func TestJobDetailOutputCardRetune(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
+		`<div class="outputbar output-head">`,
 		`<span class="outputtitle">Output</span>`,
-		`<span class="outputmeta mono">stdout + stderr · 5 lines · complete</span>`,
-		`<span class="pill">ENDED · nothing to follow</span>`,
+		`<span class="outputmeta mono ml-auto">stdout + stderr · 5 lines · complete</span>`,
+		`<span class="pill ended mono">ENDED · nothing to follow</span>`,
 		`<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log">`,
-		`id="logwrap"`,
+		`class="logwrap wrap" id="logwrap"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("output card missing %q", want)
@@ -880,5 +881,139 @@ func TestJobDetailRunCardOrder(t *testing.T) {
 	// The title and the job # sit together on the title line.
 	if !strings.Contains(body, `class="jobid">job #`+itoa64(job.ID)) {
 		t.Errorf("run card title must pair with job #%d:\n%s", job.ID, body)
+	}
+}
+
+// TestJobDetailConfigWraps is R6: the RUN CONFIGURATION tile values wrap on
+// phone instead of ellipsizing (a value is never a truncated link), and the
+// tablet band widens the grid to two columns.
+func TestJobDetailConfigWraps(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `<div class="config">`) {
+		t.Errorf("run card missing the config grid:\n%s", body)
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.config .tile b, .config .tile a { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }`,
+		`@media (min-width: 720px) and (max-width: 1099px) {`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the config wrap rule %q (R6)", want)
+		}
+	}
+}
+
+// TestJobDetailHostTableSecondLine is R7: each host row is name + result on
+// the first line (the .top node) with the recap as a second line, and the
+// header carries the RECAP label the phone sheet hides.
+func TestJobDetailHostTableSecondLine(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<div class="head" aria-hidden="true">`,
+		`<span>HOST</span><span>RESULT</span><span class="recap">RECAP</span>`,
+		`<div class="row">`,
+		`<div class="top">`,
+		`<span class="host">hypnotoad</span>`,
+		`<span class="result fail"><span class="dot"></span>UNREACHABLE</span>`,
+		`<span class="result ok"><span class="dot"></span>OK</span>`,
+		`<span class="recap">ssh: connect to host 10.0.20.11 port 22: No route to host</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("host table missing %q", want)
+		}
+	}
+	// The recap is the row's second line: it renders outside the .top node.
+	top := strings.Index(body, `<div class="top">`)
+	recap := strings.Index(body, `<span class="recap">ssh: connect`)
+	if top < 0 || recap <= top {
+		t.Errorf("host recap must render after the .top first line:\n%s", body)
+	}
+}
+
+// TestJobDetailOutputHeadRows is R8: the Output header is two rows — the title
+// with the line meta, then the filter + wrap controls — with ENDED as a plain
+// mono line on phone (the pill styling it keeps on desktop).
+func TestJobDetailOutputHeadRows(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<div class="outputbar output-head">`,
+		`<span class="controls">`,
+		`<span class="outputtitle">Output</span>`,
+		`<span class="outputmeta mono ml-auto">stdout + stderr · `,
+		`<span class="logtools controls ml-auto">`,
+		`<input id="log-search"`,
+		`class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>`,
+		`<span class="pill ended mono">ENDED · nothing to follow</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output head missing %q", want)
+		}
+	}
+}
+
+// TestJobDetailLogPreLines is R9: the log is a .line-per-row div (not a <pre>),
+// each row a ts/msg grid with the HH:MM:SS clock column, and the wrap toggle
+// flips the .log.wrap class. The band rows stay full-width.
+func TestJobDetailLogPreLines(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">`,
+		`<span class="line" style="display:grid;grid-template-columns:60px 1fr">`,
+		`<span class="ts">`,
+		`<span class="msg">`,
+		`class="logband fail"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("log missing %q", want)
+		}
+	}
+	if strings.Contains(body, `<pre id="log"`) {
+		t.Error("the log must be a .line div, not a <pre> (R9)")
+	}
+	// The clocks are HH:MM:SS (R9): the date lives on the card.
+	if i := strings.Index(body, `<span class="ts">`); i >= 0 {
+		clock := body[i+len(`<span class="ts">`):][:8]
+		if len(clock) != 8 || clock[2] != ':' || clock[5] != ':' {
+			t.Errorf("log clocks must read HH:MM:SS, got %q:\n%s", clock, body)
+		}
+	} else {
+		t.Error("log has no clock row at all")
 	}
 }

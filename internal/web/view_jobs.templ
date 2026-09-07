@@ -212,8 +212,8 @@ templ verdictBand(vm jobDetailVM) {
 		<p class="sentence">{ vm.Verdict.Sentence }</p>
 		if len(vm.Verdict.Hosts) > 0 {
 			<div class="host-table">
-				<div class="hhead" aria-hidden="true">
-					<span>HOST</span><span>RESULT</span><span>RECAP</span>
+				<div class="head" aria-hidden="true">
+					<span>HOST</span><span>RESULT</span><span class="recap">RECAP</span>
 				</div>
 				for _, h := range vm.Verdict.Hosts {
 					@verdictHost(h)
@@ -235,32 +235,37 @@ templ verdictBand(vm jobDetailVM) {
 }
 
 // verdictHost is one row of the verdict band's host table: host · result
-// (state-coloured dot + keyword) · per-host recap.
+// (state-coloured dot + keyword) on the first line, the per-host recap as the
+// second line on phone (SPEC §2.4).
 templ verdictHost(h jobVerdictHost) {
-	<div class="hrow">
-		<span class="host">{ h.Host }</span>
-		<span class={ "result", h.Class }><span class="dot"></span>{ h.Result }</span>
+	<div class="row">
+		<div class="top">
+			<span class="host">{ h.Host }</span>
+			<span class={ "result", h.Class }><span class="dot"></span>{ h.Result }</span>
+		</div>
 		<span class="recap">{ h.Recap }</span>
 	</div>
 }
 
 // outputCard is the retuned log tail (2.3, J6): the Output header with the
-// line meta, the ENDED pill, the filter input (placeholder only), the wrap
-// toggle, and the log with the run's state bands re-rendered from copy.
+// line meta, the filter input (placeholder only), the wrap toggle, the ENDED
+// line, and the log with the run's state bands re-rendered from copy.
 templ outputCard(vm jobDetailVM) {
 	<div class="card mt14">
-		<div class="outputbar">
-			<span class="outputtitle">Output</span>
-			<span class="outputmeta mono">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
-			<div class="logtools ml-auto">
-				if vm.Job.State.Terminal() {
-					<span class="pill">ENDED · nothing to follow</span>
-				}
+		<div class="outputbar output-head">
+			<span class="controls">
+				<span class="outputtitle">Output</span>
+				<span class="outputmeta mono ml-auto">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
+			</span>
+			<span class="logtools controls ml-auto">
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
-				<button type="button" class="logwrap" id="logwrap" aria-pressed="true">wrap</button>
-			</div>
+				<button type="button" class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>
+			</span>
+			if vm.Job.State.Terminal() {
+				<span class="pill ended mono">ENDED · nothing to follow</span>
+			}
 		</div>
-		<pre id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
+		<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
 			for _, e := range vm.Events {
 				if e.Band != "" {
 					<div class={ "logband", e.BandClass }><span class="ts">{ e.Ts }</span> { e.Band }</div>
@@ -268,7 +273,7 @@ templ outputCard(vm jobDetailVM) {
 					@logLine(e)
 				}
 			}
-		</pre>
+		</div>
 	</div>
 	<script>
 	(function () {
@@ -277,7 +282,7 @@ templ outputCard(vm jobDetailVM) {
 		if (!input || !log) return;
 		window.exoFilterLog = function () {
 			var q = input.value.trim().toLowerCase();
-			var lines = log.querySelectorAll(".logln, .logband");
+			var lines = log.querySelectorAll(".line, .logband");
 			for (var i = 0; i < lines.length; i++) {
 				lines[i].style.display = (q === "" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? "" : "none";
 			}
@@ -286,8 +291,8 @@ templ outputCard(vm jobDetailVM) {
 		var wrap = document.getElementById("logwrap");
 		if (wrap) {
 			wrap.addEventListener("click", function () {
-				var nowrap = log.classList.toggle("nowrap");
-				wrap.setAttribute("aria-pressed", nowrap ? "false" : "true");
+				var on = log.classList.toggle("wrap");
+				wrap.setAttribute("aria-pressed", on ? "true" : "false");
 			});
 		}
 	})();
@@ -352,14 +357,14 @@ templ rerunDialog(vm jobDetailVM) {
 	</dialog>
 }
 
+// logLine is one log row: the HH:MM:SS clock in a fixed column and the message
+// beside it. The line is its own grid (60px 1fr) so the clock column never
+// clips; the wrap toggle flips the .log container to pre-wrap.
 templ logLine(e eventLine) {
-	if e.Level == "error" {
-		<span class="logln err"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
-	} else if e.Level == "system" {
-		<span class="logln sys"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
-	} else {
-		<span class="logln"><span class="ts">{ e.Ts }</span> { e.Msg }</span>
-	}
+	<span class={ "line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system") } style="display:grid;grid-template-columns:60px 1fr">
+		<span class="ts">{ e.Ts }</span>
+		<span class="msg">{ e.Msg }</span>
+	</span>
 }
 
 // jobStream opens the SSE connection for a running job with the browser's own
@@ -389,12 +394,17 @@ templ jobStream(id int64, since int64) {
 		es.addEventListener("line", function (ev) {
 			var d = JSON.parse(ev.data);
 			var span = document.createElement("span");
-			span.className = "logln" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
+			span.className = "line" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
+			span.style.display = "grid";
+			span.style.gridTemplateColumns = "60px 1fr";
 			var ts = document.createElement("span");
 			ts.className = "ts";
-			ts.textContent = d.ts;
+			ts.textContent = d.ts.slice(11, 19);
 			span.appendChild(ts);
-			span.appendChild(document.createTextNode(" " + d.msg));
+			var msg = document.createElement("span");
+			msg.className = "msg";
+			msg.textContent = d.msg;
+			span.appendChild(msg);
 			log.appendChild(span);
 			if (window.exoFilterLog) window.exoFilterLog();
 			log.scrollTop = log.scrollHeight;

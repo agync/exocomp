@@ -977,7 +977,7 @@ func verdictBand(vm jobDetailVM) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if len(vm.Verdict.Hosts) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div class=\"host-table\"><div class=\"hhead\" aria-hidden=\"true\"><span>HOST</span><span>RESULT</span><span>RECAP</span></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 77, "<div class=\"host-table\"><div class=\"head\" aria-hidden=\"true\"><span>HOST</span><span>RESULT</span><span class=\"recap\">RECAP</span></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -1088,7 +1088,8 @@ func verdictBand(vm jobDetailVM) templ.Component {
 }
 
 // verdictHost is one row of the verdict band's host table: host · result
-// (state-coloured dot + keyword) · per-host recap.
+// (state-coloured dot + keyword) on the first line, the per-host recap as the
+// second line on phone (SPEC §2.4).
 func verdictHost(h jobVerdictHost) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1110,14 +1111,14 @@ func verdictHost(h jobVerdictHost) templ.Component {
 			templ_7745c5c3_Var56 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div class=\"hrow\"><span class=\"host\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 89, "<div class=\"row\"><div class=\"top\"><span class=\"host\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var57 string
 		templ_7745c5c3_Var57, templ_7745c5c3_Err = templ.JoinStringErrs(h.Host)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 241, Col: 29}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 243, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var57))
 		if templ_7745c5c3_Err != nil {
@@ -1152,20 +1153,20 @@ func verdictHost(h jobVerdictHost) templ.Component {
 		var templ_7745c5c3_Var60 string
 		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(h.Result)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 242, Col: 71}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 244, Col: 72}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span> <span class=\"recap\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</span></div><span class=\"recap\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var61 string
 		templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(h.Recap)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 243, Col: 31}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 246, Col: 31}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 		if templ_7745c5c3_Err != nil {
@@ -1180,8 +1181,8 @@ func verdictHost(h jobVerdictHost) templ.Component {
 }
 
 // outputCard is the retuned log tail (2.3, J6): the Output header with the
-// line meta, the ENDED pill, the filter input (placeholder only), the wrap
-// toggle, and the log with the run's state bands re-rendered from copy.
+// line meta, the filter input (placeholder only), the wrap toggle, the ENDED
+// line, and the log with the run's state bands re-rendered from copy.
 func outputCard(vm jobDetailVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1203,30 +1204,30 @@ func outputCard(vm jobDetailVM) templ.Component {
 			templ_7745c5c3_Var62 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<div class=\"card mt14\"><div class=\"outputbar\"><span class=\"outputtitle\">Output</span> <span class=\"outputmeta mono\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<div class=\"card mt14\"><div class=\"outputbar output-head\"><span class=\"controls\"><span class=\"outputtitle\">Output</span> <span class=\"outputmeta mono ml-auto\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var63 string
 		templ_7745c5c3_Var63, templ_7745c5c3_Err = templ.JoinStringErrs(outputMeta(len(vm.Events), vm.Job.State.Terminal()))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 254, Col: 86}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 258, Col: 95}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var63))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</span><div class=\"logtools ml-auto\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "</span></span> <span class=\"logtools controls ml-auto\"><input id=\"log-search\" type=\"search\" autocomplete=\"off\" placeholder=\"filter log\" aria-label=\"Filter log\"> <button type=\"button\" class=\"logwrap wrap\" id=\"logwrap\" aria-pressed=\"false\">wrap</button></span> ")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if vm.Job.State.Terminal() {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span class=\"pill\">ENDED · nothing to follow</span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "<span class=\"pill ended mono\">ENDED · nothing to follow</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "<input id=\"log-search\" type=\"search\" autocomplete=\"off\" placeholder=\"filter log\" aria-label=\"Filter log\"> <button type=\"button\" class=\"logwrap\" id=\"logwrap\" aria-pressed=\"true\">wrap</button></div></div><pre id=\"log\" class=\"log\" role=\"log\" aria-live=\"polite\" aria-label=\"Job log\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</div><div id=\"log\" class=\"log\" role=\"log\" aria-live=\"polite\" aria-label=\"Job log\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1257,7 +1258,7 @@ func outputCard(vm jobDetailVM) templ.Component {
 				var templ_7745c5c3_Var66 string
 				templ_7745c5c3_Var66, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 266, Col: 66}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 271, Col: 66}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var66))
 				if templ_7745c5c3_Err != nil {
@@ -1270,7 +1271,7 @@ func outputCard(vm jobDetailVM) templ.Component {
 				var templ_7745c5c3_Var67 string
 				templ_7745c5c3_Var67, templ_7745c5c3_Err = templ.JoinStringErrs(e.Band)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 266, Col: 84}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 271, Col: 84}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var67))
 				if templ_7745c5c3_Err != nil {
@@ -1287,7 +1288,7 @@ func outputCard(vm jobDetailVM) templ.Component {
 				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</pre></div><script>\n\t(function () {\n\t\tvar input = document.getElementById(\"log-search\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tif (!input || !log) return;\n\t\twindow.exoFilterLog = function () {\n\t\t\tvar q = input.value.trim().toLowerCase();\n\t\t\tvar lines = log.querySelectorAll(\".logln, .logband\");\n\t\t\tfor (var i = 0; i < lines.length; i++) {\n\t\t\t\tlines[i].style.display = (q === \"\" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? \"\" : \"none\";\n\t\t\t}\n\t\t};\n\t\tinput.addEventListener(\"input\", window.exoFilterLog);\n\t\tvar wrap = document.getElementById(\"logwrap\");\n\t\tif (wrap) {\n\t\t\twrap.addEventListener(\"click\", function () {\n\t\t\t\tvar nowrap = log.classList.toggle(\"nowrap\");\n\t\t\t\twrap.setAttribute(\"aria-pressed\", nowrap ? \"false\" : \"true\");\n\t\t\t});\n\t\t}\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "</div></div><script>\n\t(function () {\n\t\tvar input = document.getElementById(\"log-search\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tif (!input || !log) return;\n\t\twindow.exoFilterLog = function () {\n\t\t\tvar q = input.value.trim().toLowerCase();\n\t\t\tvar lines = log.querySelectorAll(\".line, .logband\");\n\t\t\tfor (var i = 0; i < lines.length; i++) {\n\t\t\t\tlines[i].style.display = (q === \"\" || lines[i].textContent.toLowerCase().indexOf(q) !== -1) ? \"\" : \"none\";\n\t\t\t}\n\t\t};\n\t\tinput.addEventListener(\"input\", window.exoFilterLog);\n\t\tvar wrap = document.getElementById(\"logwrap\");\n\t\tif (wrap) {\n\t\t\twrap.addEventListener(\"click\", function () {\n\t\t\t\tvar on = log.classList.toggle(\"wrap\");\n\t\t\t\twrap.setAttribute(\"aria-pressed\", on ? \"true\" : \"false\");\n\t\t\t});\n\t\t}\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1338,7 +1339,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var69 string
 		templ_7745c5c3_Var69, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 306, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 311, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var69))
 		if templ_7745c5c3_Err != nil {
@@ -1351,7 +1352,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var70 templ.SafeURL
 		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/jobs/" + itoa64(vm.Job.ID)))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 316, Col: 117}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 321, Col: 117}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
 		if templ_7745c5c3_Err != nil {
@@ -1364,7 +1365,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var71 string
 		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 316, Col: 140}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 321, Col: 140}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 		if templ_7745c5c3_Err != nil {
@@ -1377,7 +1378,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var72 templ.SafeURL
 		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinURLErrs(rerunAction(vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 317, Col: 54}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 322, Col: 54}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
 		if templ_7745c5c3_Err != nil {
@@ -1390,7 +1391,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var73 string
 		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunCard.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 319, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 324, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 		if templ_7745c5c3_Err != nil {
@@ -1408,7 +1409,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var74 string
 			templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 321, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 326, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 			if templ_7745c5c3_Err != nil {
@@ -1426,7 +1427,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var75 string
 		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.RefLabel))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 323, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 328, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
 		if templ_7745c5c3_Err != nil {
@@ -1439,7 +1440,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var76 string
 		templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.Rerun.Inventory))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 324, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 329, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 		if templ_7745c5c3_Err != nil {
@@ -1452,7 +1453,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var77 string
 		templ_7745c5c3_Var77, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Rerun.Limit)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 327, Col: 127}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 332, Col: 127}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var77))
 		if templ_7745c5c3_Err != nil {
@@ -1516,7 +1517,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var80 string
 			templ_7745c5c3_Var80, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 340, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 345, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var80))
 			if templ_7745c5c3_Err != nil {
@@ -1529,7 +1530,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var81 string
 			templ_7745c5c3_Var81, templ_7745c5c3_Err = templ.JoinStringErrs(andList(vm.RerunFailedOn))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 340, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 345, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var81))
 			if templ_7745c5c3_Err != nil {
@@ -1547,7 +1548,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var82 string
 		templ_7745c5c3_Var82, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RerunQueueLabel())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 346, Col: 69}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 351, Col: 69}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var82))
 		if templ_7745c5c3_Err != nil {
@@ -1560,7 +1561,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var83 string
 		templ_7745c5c3_Var83, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Rerun.Summary())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 348, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 353, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var83))
 		if templ_7745c5c3_Err != nil {
@@ -1574,6 +1575,9 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 	})
 }
 
+// logLine is one log row: the HH:MM:SS clock in a fixed column and the message
+// beside it. The line is its own grid (60px 1fr) so the clock column never
+// clips; the wrap toggle flips the .log container to pre-wrap.
 func logLine(e eventLine) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1595,99 +1599,53 @@ func logLine(e eventLine) templ.Component {
 			templ_7745c5c3_Var84 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		if e.Level == "error" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<span class=\"logln err\"><span class=\"ts\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var85 string
-			templ_7745c5c3_Var85, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 357, Col: 49}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var85))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "</span> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var86 string
-			templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 357, Col: 66}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else if e.Level == "system" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "<span class=\"logln sys\"><span class=\"ts\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var87 string
-			templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 359, Col: 49}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var87))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "</span> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var88 string
-			templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 359, Col: 66}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "<span class=\"logln\"><span class=\"ts\">")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var89 string
-			templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 361, Col: 45}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 136, "</span> ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var90 string
-			templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 361, Col: 62}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 137, "</span>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
+		var templ_7745c5c3_Var85 = []any{"line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system")}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var85...)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 129, "<span class=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var86 string
+		templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var85).String())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 1, Col: 0}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 130, "\" style=\"display:grid;grid-template-columns:60px 1fr\"><span class=\"ts\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var87 string
+		templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 365, Col: 25}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var87))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 131, "</span> <span class=\"msg\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var88 string
+		templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 366, Col: 27}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 132, "</span></span>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
 		}
 		return nil
 	})
@@ -1724,38 +1682,38 @@ func jobStream(id int64, since int64) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var91 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var91 == nil {
-			templ_7745c5c3_Var91 = templ.NopComponent
+		templ_7745c5c3_Var89 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var89 == nil {
+			templ_7745c5c3_Var89 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 138, "<script data-job=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 133, "<script data-job=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var92 string
-		templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(id))
+		var templ_7745c5c3_Var90 string
+		templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(id))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 381, Col: 30}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 386, Col: 30}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 139, "\" data-since=\"")
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var93 string
-		templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(since))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 381, Col: 59}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 134, "\" data-since=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 140, "\">\n\t(function () {\n\t\tvar script = document.currentScript;\n\t\tvar job = script.getAttribute(\"data-job\");\n\t\tvar since = script.getAttribute(\"data-since\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tvar stale = document.getElementById(\"jobs-stale\");\n\t\tvar es = new EventSource(\"/jobs/\" + job + \"/stream?since=\" + since);\n\t\tes.addEventListener(\"line\", function (ev) {\n\t\t\tvar d = JSON.parse(ev.data);\n\t\t\tvar span = document.createElement(\"span\");\n\t\t\tspan.className = \"logln\" + (d.level === \"error\" ? \" err\" : d.level === \"system\" ? \" sys\" : \"\");\n\t\t\tvar ts = document.createElement(\"span\");\n\t\t\tts.className = \"ts\";\n\t\t\tts.textContent = d.ts;\n\t\t\tspan.appendChild(ts);\n\t\t\tspan.appendChild(document.createTextNode(\" \" + d.msg));\n\t\t\tlog.appendChild(span);\n\t\t\tif (window.exoFilterLog) window.exoFilterLog();\n\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t});\n\t\tes.addEventListener(\"done\", function () { location.reload(); });\n\t\tes.onerror = function () {\n\t\t\t// Only a permanently-closed stream is a real failure worth\n\t\t\t// surfacing: EventSource fires onerror on every transient drop\n\t\t\t// while it retries, and a refused (503) stream is closed for good.\n\t\t\tif (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;\n\t\t};\n\t\tes.onopen = function () {\n\t\t\t// A reconnect is proof the stream is live again, even if the quiet\n\t\t\t// job then emits nothing for a long stretch — the banner must not\n\t\t\t// stay up on a healthy stream.\n\t\t\tif (stale) stale.hidden = true;\n\t\t};\n\t})();\n\t</script>")
+		var templ_7745c5c3_Var91 string
+		templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(since))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 386, Col: 59}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 135, "\">\n\t(function () {\n\t\tvar script = document.currentScript;\n\t\tvar job = script.getAttribute(\"data-job\");\n\t\tvar since = script.getAttribute(\"data-since\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tvar stale = document.getElementById(\"jobs-stale\");\n\t\tvar es = new EventSource(\"/jobs/\" + job + \"/stream?since=\" + since);\n\t\tes.addEventListener(\"line\", function (ev) {\n\t\t\tvar d = JSON.parse(ev.data);\n\t\t\tvar span = document.createElement(\"span\");\n\t\t\tspan.className = \"line\" + (d.level === \"error\" ? \" err\" : d.level === \"system\" ? \" sys\" : \"\");\n\t\t\tspan.style.display = \"grid\";\n\t\t\tspan.style.gridTemplateColumns = \"60px 1fr\";\n\t\t\tvar ts = document.createElement(\"span\");\n\t\t\tts.className = \"ts\";\n\t\t\tts.textContent = d.ts.slice(11, 19);\n\t\t\tspan.appendChild(ts);\n\t\t\tvar msg = document.createElement(\"span\");\n\t\t\tmsg.className = \"msg\";\n\t\t\tmsg.textContent = d.msg;\n\t\t\tspan.appendChild(msg);\n\t\t\tlog.appendChild(span);\n\t\t\tif (window.exoFilterLog) window.exoFilterLog();\n\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t});\n\t\tes.addEventListener(\"done\", function () { location.reload(); });\n\t\tes.onerror = function () {\n\t\t\t// Only a permanently-closed stream is a real failure worth\n\t\t\t// surfacing: EventSource fires onerror on every transient drop\n\t\t\t// while it retries, and a refused (503) stream is closed for good.\n\t\t\tif (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;\n\t\t};\n\t\tes.onopen = function () {\n\t\t\t// A reconnect is proof the stream is live again, even if the quiet\n\t\t\t// job then emits nothing for a long stretch — the banner must not\n\t\t\t// stay up on a healthy stream.\n\t\t\tif (stale) stale.hidden = true;\n\t\t};\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
