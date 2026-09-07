@@ -364,14 +364,26 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
 /* The attention card's decision verb: the card is a link, and this names the
  * resolve action explicitly so a ringed card ends in a verb, never a fact. */
 .cardact { display: block; margin-top: 10px; font: var(--type-button); color: var(--accent-text); }
-.counts-grid {
+/* Dashboard counts (SPEC §2.1): the quiet-count tiles pack into as many equal
+ * columns as the width fits, each tile a link with a label, the number, and —
+ * when zero — the verb that changes it. The phone block re-grids .counts to
+ * the 2x2 tile band. */
+.counts {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--gap-card);
   align-items: stretch;
 }
-.count-kicker { font: var(--type-keyword); letter-spacing: 0.4px; color: var(--ink-500); margin-bottom: 6px; }
-.countnum { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
+.counts .tile {
+  background: var(--surface-card); border: 1px solid var(--hairline-faint);
+  border-radius: var(--radius-card); padding: var(--pad-card);
+  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  color: inherit; text-decoration: none;
+}
+.counts .tile .tlabel { font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase; color: var(--ink-500); }
+.counts .tile b { font: var(--type-section); letter-spacing: -0.3px; color: var(--ink-100); }
+.counts .tile .tmeta { font: var(--type-body); color: var(--ink-500); }
+.counts .tile:hover, .counts .tile:focus-visible { border-color: var(--accent-border); text-decoration: none; }
 
 /* ---- Summary cards (dashboard at-a-glance) ----
  * A card whose whole surface is the link to its full view — no separate
@@ -1011,6 +1023,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
   max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
 }
+/* One log line: a fixed HH:MM:SS clock column (60px) beside the message (R9).
+ * The Shell owns this grid so the templ/SSE rows carry no inline style. */
+.log .line { display: grid; grid-template-columns: 60px 1fr; }
 /* The Live tail toolbar: kicker on the left, search + raw-log glyph on the
  * right. Search uses the compact 30px height (the card-foot ladder), and the
  * raw-log button reuses the .raglyph icon-button shape (R4, one glyph set). */
@@ -1151,18 +1166,18 @@ body { overflow-x: clip; }
  * primary line over a meta line on shared baselines, and the whole row is the
  * link to the job's detail page. */
 .jobslist { padding-bottom: 8px; }
-.jobslist .listmeta {
-  display: flex; align-items: center; gap: var(--gap-inline);
-  margin-bottom: 10px;
-}
-.jobslist .listmeta input[type="search"] {
-  margin-left: auto; min-height: 30px; padding: 0 10px; width: 180px;
+/* The jobs filter (R4, SPEC §2.3): the list's one search sits alone above the
+ * header row, right-aligned on desktop (the old .listmeta flex row is gone —
+ * the count moved to the app bar). Full-width on phone via the 719 block. */
+.filter {
+  display: block; margin-left: auto; width: 180px; margin-bottom: 10px;
+  min-height: 30px; padding: 0 10px;
   border-radius: var(--radius-control); border: 1px solid var(--hairline);
   background: var(--surface-control); color: var(--ink-100);
 }
 .jobshead {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 160px 290px 110px;
+  grid-template-columns: 44px minmax(0, 1fr) 290px 160px 110px;
   gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px;
   font: 600 10.5px var(--font-mono); letter-spacing: .8px;
   color: var(--ink-600);
@@ -1170,12 +1185,17 @@ body { overflow-x: clip; }
 }
 .jobs-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 160px 290px 110px;
+  grid-template-columns: 44px minmax(0, 1fr) 290px 160px 110px;
   gap: var(--gap-cell); align-items: center; height: 64px;
   padding: 0 14px; border-radius: var(--radius-row);
   color: inherit; text-decoration: none;
 }
 .jobs-row:hover, .jobs-row:focus-visible { background: var(--surface-tray); text-decoration: none; }
+/* The stacked row's two .line wrappers re-flow into the desktop grid: each
+ * line holds the cells for its half, and display:contents makes those cells
+ * the grid's direct children in # · playbook · STATE · trigger · ran order.
+ * On phone the 719 block turns the same .line nodes into the two flex rows. */
+.jobs-row .line { display: contents; }
 .jobs-row .num { font: var(--type-log); color: var(--ink-500); }
 .jobs-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .jobs-row .cell--state { gap: 6px; align-items: flex-start; }
@@ -1214,13 +1234,16 @@ body { overflow-x: clip; }
 }
 .chip--degraded .dot { background: var(--signal-wait); }
 .chip--dashed { color: var(--ink-400); border-style: dashed; }
-.run-card .runhead { display: flex; align-items: flex-start; gap: var(--gap-cell); }
-.run-card .runid { flex: 1; min-width: 0; }
+/* The run card's stacked head (R5): title · job # and the verdict sit side by
+ * side on the first line, the "Queued by …" sentence spans the full width
+ * below. The phone block stacks the head into a column. */
+.run-card .head { display: flex; align-items: flex-start; gap: var(--gap-cell); flex-wrap: wrap; }
+.run-card .head .sentence { flex: 1 0 100%; }
 .run-card .runtitle { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
 .run-card .runtitle .title { font: 600 19px var(--font-mono); color: var(--ink-100); }
 .run-card .runtitle .jobid { font: var(--type-log); color: var(--ink-500); }
 .run-card .sentence { font: var(--type-body); color: var(--ink-400); }
-.run-card .verdictcol { text-align: right; }
+.run-card .verdict-wrap { text-align: right; }
 .run-card .verdict { font: var(--type-display); font-family: var(--font-mono); letter-spacing: -1px; }
 .run-card[data-state="failed"] .verdict { color: var(--signal-fail); }
 .run-card[data-state="degraded"] .verdict { color: var(--signal-wait); }
@@ -1262,22 +1285,25 @@ body { overflow-x: clip; }
 .verdict-band .jump { margin-left: auto; font: var(--type-body); color: var(--ink-400); }
 .verdict-band .sentence { font: var(--type-body); color: var(--ink-200); }
 .host-table { background: var(--surface-void); border-radius: var(--radius-control); padding: var(--tray-inset); }
-.host-table .hhead {
+.host-table .head {
   display: grid; grid-template-columns: 150px 120px 1fr; gap: var(--gap-cell);
   align-items: center; height: 30px; padding: 0 12px;
   font: 600 10.5px var(--font-mono); letter-spacing: .8px; color: var(--ink-600);
 }
-.host-table .hrow {
+.host-table .row {
   display: grid; grid-template-columns: 150px 120px 1fr; gap: var(--gap-cell);
   align-items: center; height: 40px; padding: 0 12px; font: var(--type-log);
 }
-.host-table .hrow .host { color: var(--ink-100); }
-.host-table .hrow .result { display: inline-flex; align-items: center; gap: 6px; }
-.host-table .hrow .result .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-.host-table .hrow .result.fail { color: var(--signal-fail); }
-.host-table .hrow .result.wait { color: var(--signal-wait); }
-.host-table .hrow .result.ok { color: var(--signal-ok); }
-.host-table .hrow .recap { color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The row's first line (name + result) re-flows into the first two grid
+ * columns; the recap is the third. On phone the 719 block stacks them. */
+.host-table .row .top { display: contents; }
+.host-table .row .host { color: var(--ink-100); }
+.host-table .row .result { display: inline-flex; align-items: center; gap: 6px; }
+.host-table .row .result .dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.host-table .row .result.fail { color: var(--signal-fail); }
+.host-table .row .result.wait { color: var(--signal-wait); }
+.host-table .row .result.ok { color: var(--signal-ok); }
+.host-table .row .recap { color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .verdict-band .bandverbs { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .verdict-band .bandverbs a { font: 500 13px var(--font-ui); }
 
@@ -1288,6 +1314,10 @@ body { overflow-x: clip; }
 .outputbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
 .outputtitle { font: var(--type-bar); color: var(--ink-100); }
 .outputmeta { font: var(--type-log); color: var(--ink-500); }
+/* The retuned Output head (R8): two control groups — title · line-meta, then
+ * the filter · wrap pair — each its own flex row inside the .outputbar. The
+ * phone block stacks them into two rows. */
+.output-head .controls { display: flex; align-items: center; gap: 8px; }
 .outputbar .logtools { display: flex; align-items: center; gap: 8px; }
 .outputbar .logtools input[type="search"] {
   min-height: 30px; padding: 0 10px; width: 200px;
@@ -1411,29 +1441,26 @@ body { overflow-x: clip; }
  * chevron) and each row toggles the inline two-pane below it. The whole row is
  * focusable and the focus ring rings the full 44px cell. */
 .events-tray { padding: 6px; }
-.evt-head, .evt-row {
-  display: grid;
-  grid-template-columns: 96px minmax(0,1.2fr) 104px 172px 128px minmax(0,1.4fr) 26px;
-  gap: 14px; align-items: center;
-}
-.evt-head {
-  height: 38px; padding: 0 14px;
-  font: 600 11px var(--font-mono); letter-spacing: .4px;
-  text-transform: uppercase; color: var(--ink-500);
-  border-bottom: 1px solid var(--hairline-faint);
-}
-.evt-row {
-  height: var(--row-h); margin-top: 2px; padding: 0 14px;
-  border-radius: var(--radius-row); cursor: pointer;
+/* Events rows (R11): the tray is now a stacked list, not a seven-column table —
+ * each row is a button of two .line rows (alert · outcome · chevron over
+ * source · rule and the received clock · age), whole row focusable. The old
+ * table header is gone; the reason moved into the expand pane. */
+.events-row {
+  display: flex; flex-direction: column; gap: 5px; padding: 11px 12px;
+  margin-top: 2px; border-radius: var(--radius-row); cursor: pointer;
   font: var(--type-log); text-align: left; background: none; border: 0;
   width: 100%; color: inherit;
 }
-.evt-row:hover, .evt-row:focus-visible, .evt-row.current,
-.evt-row.open { background: var(--surface-row); }
-.evt-row:focus-visible {
+.events-row:hover, .events-row:focus-visible, .events-row.current,
+.events-row.open { background: var(--surface-row); }
+.events-row:focus-visible {
   outline: var(--focus-ring); outline-offset: var(--focus-offset);
   position: relative; z-index: 1;
 }
+.events-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+.events-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.events-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-row .line > :last-child { flex: none; }
 .evt-time { font: var(--type-log); color: var(--ink-500); }
 .evt-alert {
   font: var(--type-log); color: var(--ink-100);
@@ -1460,19 +1487,34 @@ body { overflow-x: clip; }
 a.evt-reason { color: var(--accent-text); }
 .evt-chev { font: var(--type-log); color: var(--ink-600); justify-self: end; }
 
-/* ---- Events: two-pane expand ----
- * Each row's pane is a payload/explain split on the void, revealed by toggling
- * hidden; [hidden] keeps the default display:none so a pane is inert until
- * opened. */
-.evt-panes {
-  display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px;
-  padding: 2px 8px 10px;
+/* ---- Events: expand pane ----
+ * One row's pane stacks on the void: the reason line, the trace kicker + table,
+ * the payload toggle, then the normalized payload card. It is revealed by
+ * toggling hidden; the [hidden] rule beats the display:flex column so a pane is
+ * inert until opened (the UA default cannot override an author display:flex). */
+.expanded {
+  display: flex; flex-direction: column; gap: 10px;
 }
-.evt-panes[hidden] { display: none; }
+.expanded[hidden] { display: none; }
 .evt-pane {
   background: var(--surface-void); border-radius: var(--radius-control);
   padding: 14px 16px; min-width: 0;
 }
+/* The pane's one "why" line: the reason reads muted, its link in the accent. */
+.evt-pane-reason { font: var(--type-log); color: var(--ink-500); }
+.evt-pane-reason a { color: var(--accent-text); }
+/* The "Show normalized payload →" verb: a 44px control button that reveals the
+ * payload card below it (additive — JS-off keeps reason + trace visible). */
+.evt-payload-toggle {
+  display: inline-flex; align-items: center; align-self: flex-start;
+  min-height: var(--row-h); padding: 0 14px;
+  border-radius: var(--radius-control); border: 1px solid var(--hairline);
+  background: var(--surface-control); color: var(--ink-100);
+  font: var(--type-button); cursor: pointer;
+}
+.evt-payload-toggle:hover { color: var(--accent-text); }
+/* The normalized payload card stays hidden until the toggle reveals it. */
+.payload { display: none; background: var(--surface-void); border-radius: var(--radius-control); padding: 14px 16px; min-width: 0; }
 .evt-pane .pane-kicker {
   font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
   color: var(--ink-500); margin-bottom: 10px;
@@ -1576,6 +1618,7 @@ a.evt-reason { color: var(--accent-text); }
   .jobs-row .line > :first-child, .queue-row .line > :first-child, .events-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .jobs-row .line > :last-child, .queue-row .line > :last-child, .events-row .line > :last-child { flex: none; }
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
+  .queue-idle .idle-full { display: none; }
   .queue-idle code, .queue-row .verb { display: none; }
 
   /* Dashboard counts 2x2 tiles (SPEC §2.1) and the full-width jobs filter
@@ -1639,6 +1682,9 @@ a.evt-reason { color: var(--accent-text); }
 .section-label a { margin-left: auto; font: 500 13px var(--font-ui); color: var(--accent-text); }
 .queue-idle { display: flex; align-items: center; gap: 14px; height: var(--row-h); padding: 0 14px; color: var(--ink-500); font: var(--type-body); }
 .queue-idle .kw { font: 600 11px var(--font-mono); letter-spacing: 0.4px; white-space: nowrap; }
+/* The idle sentence has a full and a short form (SPEC §3): desktop reads the
+ * full sentence, phone the short one — the 719 block hides .idle-full. */
+.queue-idle .idle-short { display: none; }
 .queue-idle code { margin-left: auto; font: 400 12px var(--font-mono); white-space: nowrap; }
 .queue-rule { display: grid; grid-template-columns: 200px minmax(0,1fr) 170px 130px 90px; gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px; font: 600 10.5px var(--font-mono); letter-spacing: 1.4px; color: var(--ink-600); border-bottom: 1px solid var(--hairline-faint); }
 .queue-rule .failed { color: var(--signal-fail); letter-spacing: 0.4px; margin-left: 8px; font-style: normal; }
