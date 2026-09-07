@@ -855,6 +855,36 @@ func TestJobsListAppbarCount(t *testing.T) {
 	}
 }
 
+// TestJobsListHeaderOrderMatchesRows pins the .jobs-head column labels to the
+// row DOM's column order: the stacked row is # · playbook · STATE · trigger ·
+// ran (the state cell sits on line 1, before the trigger on line 2), so the
+// desktop re-flow must label column 3 State and column 4 Trigger. A header
+// that swaps them would mislabel the desktop grid.
+func TestJobsListHeaderOrderMatchesRows(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+	if !strings.Contains(body, `<span>#</span><span>Playbook</span><span>State</span><span>Trigger</span><span>Ran</span>`) {
+		t.Errorf("jobs header must read # · Playbook · State · Trigger · Ran:\n%s", body)
+	}
+	if strings.Contains(body, `<span>#</span><span>Playbook</span><span>Trigger</span><span>State</span><span>Ran</span>`) {
+		t.Error("jobs header must not emit the old Trigger-before-State column order")
+	}
+	// The row DOM agrees: the state chip renders before the trigger label.
+	chip := strings.Index(body, `class="chip`)
+	trigger := strings.Index(body, `>Manual</b>`)
+	if chip < 0 || trigger < 0 || chip > trigger {
+		t.Errorf("row must place the state chip before the trigger cell (chip %d, trigger %d)", chip, trigger)
+	}
+}
+
 // TestJobDetailRunCardOrder is R5's card stack: chips, then the title + job #,
 // then the verdict number, then the sentence — in byte order, never the old
 // title-and-sentence column beside the verdict.

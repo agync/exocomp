@@ -16,7 +16,7 @@ templ jobsList(vm dashboardVM) {
 				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>
 			} else {
 				<div class="jobshead jobs-head" aria-hidden="true">
-					<span>#</span><span>Playbook</span><span>Trigger</span><span>State</span><span>Ran</span>
+					<span>#</span><span>Playbook</span><span>State</span><span>Trigger</span><span>Ran</span>
 				</div>
 				for _, j := range vm.Queue {
 					@jobsRow(j)

@@ -57,7 +57,7 @@ func jobsList(vm dashboardVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"jobshead jobs-head\" aria-hidden=\"true\"><span>#</span><span>Playbook</span><span>Trigger</span><span>State</span><span>Ran</span></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<div class=\"jobshead jobs-head\" aria-hidden=\"true\"><span>#</span><span>Playbook</span><span>State</span><span>Trigger</span><span>Ran</span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
