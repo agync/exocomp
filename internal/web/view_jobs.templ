@@ -75,40 +75,29 @@ templ jobsRow(j jobRow) {
 
 // jobDetail streams a job's event tail. The pre-rendered events are what the
 // server has already seen; the SSE connection appends the rest. The log region
-// is announced politely and never steals focus (a11y hard requirement).
+// is announced politely and never steals focus (a11y hard requirement). The
+// page's own action header is gone: the phone app bar carries the back chevron,
+// the stacked title, and the Raw log / Rerun actions (SPEC §2.0); the Schedule
+// trigger stays a page-level button beside the breadcrumb.
 templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: "/jobs"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
-		<div class="pageheader">
-			<p class="meta mono">
-				{ vm.Job.Title }
-				if vm.RunCard.CheckMode {
-					· check
-				}
-			</p>
-			<div class="actions ml-auto">
-				<a class="btn" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" rel="noopener" aria-label="View raw log in new tab" title="View raw log in new tab">Raw log</a>
-				if vm.Operator && vm.Job.State.Terminal() {
-					if vm.Rerunnable {
-						<button type="button" class="btn primary" data-modal-open="job-rerun">Rerun</button>
-					}
-					if vm.CanSchedule {
-						<button
-							type="button"
-							class="btn gap6"
-							data-modal-open="job-schedule"
-							disabled?={ !vm.Job.Succeeded() }
-							title={ scheduleTitle(vm.Job) }
-						>
-							<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
-								<path d={ iconSchedules }></path>
-							</svg>
-							Schedule
-						</button>
-					}
-				}
+		if vm.Operator && vm.Job.State.Terminal() && vm.CanSchedule {
+			<div class="actions mb10">
+				<button
+					type="button"
+					class="btn gap6"
+					data-modal-open="job-schedule"
+					disabled?={ !vm.Job.Succeeded() }
+					title={ scheduleTitle(vm.Job) }
+				>
+					<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+						<path d={ iconSchedules }></path>
+					</svg>
+					Schedule
+				</button>
 			</div>
-		</div>
+		}
 		@runCard(vm)
 		if vm.Verdict != nil {
 			@verdictBand(vm)
@@ -149,9 +138,9 @@ templ jobDetail(vm jobDetailVM) {
 	}
 }
 
-// runCard is the job detail's lead block (2.1): the chip row (state, degraded
-// host count, tool, check mode, rerun-of link), the "Queued by ..." sentence,
-// the verdict number, and the RUN CONFIGURATION tile grid. The card wears the
+// runCard is the job detail's lead block (2.1): the chip row, then the stacked
+// head — title + job #, the verdict number with its ran line, then the "Queued
+// by ..." sentence — and the RUN CONFIGURATION tile grid. The card wears the
 // terminal state's inset ring through data-state.
 templ runCard(vm jobDetailVM) {
 	<article class="run-card" data-state={ string(vm.RunCard.State) }>
@@ -168,15 +157,12 @@ templ runCard(vm jobDetailVM) {
 				<a class="chip chip--dashed" href={ templ.SafeURL("/jobs/" + itoa64(vm.RunCard.RerunOf)) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
 			}
 		</div>
-		<div class="runhead">
-			<div class="runid">
-				<div class="runtitle">
-					<span class="title mono">{ vm.RunCard.Title }</span>
-					<span class="jobid">job #{ itoa64(vm.RunCard.JobID) }</span>
-				</div>
-				<p class="sentence">{ vm.RunCard.Sentence }</p>
+		<div class="head">
+			<div class="runtitle">
+				<span class="title mono">{ vm.RunCard.Title }</span>
+				<span class="jobid">job #{ itoa64(vm.RunCard.JobID) }</span>
 			</div>
-			<div class="verdictcol">
+			<div class="verdict-wrap">
 				if vm.RunCard.Verdict != "" {
 					<div class="verdict">
 						{ vm.RunCard.Verdict }
@@ -189,6 +175,7 @@ templ runCard(vm jobDetailVM) {
 					<p class="ranline">{ vm.RunCard.RanLine }</p>
 				}
 			</div>
+			<p class="sentence">{ vm.RunCard.Sentence }</p>
 		</div>
 		<div class="kicker">RUN CONFIGURATION</div>
 		<div class="config">

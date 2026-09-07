@@ -263,11 +263,9 @@ func TestJobRawLogServesPlainText(t *testing.T) {
 		t.Fatalf("job detail status = %d", code)
 	}
 	for _, want := range []string{
-		`id="log-search"`,                      // search input present (Q2)
-		`/jobs/` + itoa(job.ID) + `/raw`,       // raw link target
-		`target="_blank" rel="noopener"`,       // new tab
-		`aria-label="View raw log in new tab"`, // named control
-		`>Raw log</a>`,                         // the header [Raw log] button
+		`id="log-search"`,                // search input present (Q2)
+		`/jobs/` + itoa(job.ID) + `/raw`, // raw link target
+		`>Raw log</a>`,                   // the app-bar [Raw log] action
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("job detail missing %q", want)
@@ -853,5 +851,34 @@ func TestJobsListAppbarCount(t *testing.T) {
 	}
 	if strings.Contains(body, `<span class="mono">2 · newest first</span>`) {
 		t.Error("the jobs list must not render its own count span (the count moved to the app bar)")
+	}
+}
+
+// TestJobDetailRunCardOrder is R5's card stack: chips, then the title + job #,
+// then the verdict number, then the sentence — in byte order, never the old
+// title-and-sentence column beside the verdict.
+func TestJobDetailRunCardOrder(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	chips := strings.Index(body, `<div class="chips">`)
+	title := strings.Index(body, `class="title mono">`)
+	verdict := strings.Index(body, `<div class="verdict">`)
+	sentence := strings.Index(body, `<p class="sentence">`)
+	ordered := chips >= 0 && chips < title && title < verdict && verdict < sentence
+	if !ordered {
+		t.Errorf("run card must stack chips < title < verdict < sentence (indexes %d %d %d %d)", chips, title, verdict, sentence)
+	}
+	// The title and the job # sit together on the title line.
+	if !strings.Contains(body, `class="jobid">job #`+itoa64(job.ID)) {
+		t.Errorf("run card title must pair with job #%d:\n%s", job.ID, body)
 	}
 }

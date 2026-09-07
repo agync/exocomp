@@ -182,8 +182,13 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	opClient := login(t, ts.URL, op)
 	_, body := getBody(t, opClient, ts.URL+"/jobs/"+itoa64(job.ID))
-	if !strings.Contains(body, `data-modal-open="job-rerun"`) {
-		t.Error("a terminal job with an argv must offer the Run again resubmit modal")
+	// The Rerun action moved to the phone app bar (SPEC §2.0): it opens the
+	// resubmit modal through the JS-off ?rerun=1 path.
+	if !strings.Contains(body, `>Rerun</a>`) || !strings.Contains(body, `/jobs/`+itoa64(job.ID)+`?rerun=1`) {
+		t.Error("a terminal job with an argv must offer the Rerun resubmit modal from the app bar")
+	}
+	if !strings.Contains(body, `id="job-rerun"`) {
+		t.Error("the rerun modal must be present")
 	}
 	if !strings.Contains(body, `action="/jobs/`+itoa64(job.ID)+`/rerun"`) {
 		t.Error("rerun form must post to this job's own rerun route")
@@ -241,8 +246,8 @@ func TestJobDetailHidesScheduleForSourceJob(t *testing.T) {
 	if strings.Contains(body, `data-modal-open="job-schedule"`) {
 		t.Error("a source-context job must not offer Schedule…")
 	}
-	if !strings.Contains(body, `data-modal-open="job-rerun"`) {
-		t.Error("Run again must open the resubmit modal")
+	if !strings.Contains(body, `?rerun=1`) || !strings.Contains(body, `id="job-rerun"`) {
+		t.Error("Rerun must open the resubmit modal (the ?rerun=1 JS-off path)")
 	}
 	if !strings.Contains(body, `<div><span>Source</span><b class="mono">tree</b></div>`) {
 		t.Error("rerun modal must name the reverse-mapped source")

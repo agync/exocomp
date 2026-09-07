@@ -441,6 +441,21 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	// of #N" chip — the banner is dropped here, at the render seam, not at the
 	// call sites.
 	vm.Page.Flash = ""
+	// The page's own header (the old .pageheader with its Raw log / Rerun /
+	// Schedule buttons) is gone: the phone app bar carries the back chevron,
+	// the stacked title, and the compact Raw log / Rerun actions (SPEC §2.0).
+	// Rerun opens the resubmit dialog via the JS-off ?rerun=1 path; Raw log is
+	// the plain text tail in a new tab.
+	vm.Page.BackHref = "/jobs"
+	vm.Page.TitleSub = vm.Job.Title
+	vm.Page.Actions = append(vm.Page.Actions, pageAction{
+		Href: "/jobs/" + itoa64(id) + "/raw", Label: "Raw log", Kind: "control",
+	})
+	if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
+		vm.Page.Actions = append(vm.Page.Actions, pageAction{
+			Href: "/jobs/" + itoa64(id) + "?rerun=1", Label: "Rerun", Kind: "accent",
+		})
+	}
 
 	facts := parseJobOutcome(events)
 	vm.RerunFailedOn = facts.Unreachable
