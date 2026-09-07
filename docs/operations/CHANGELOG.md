@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-07 — netgroup form: real-time validation + multipart fix
+
+- **The netgroup-add form validates on blur, not just on submit.** A name with
+  spaces or a malformed CIDR shows its `▲` message the moment the operator
+  leaves the field, and clears when corrected — the daemon stays authoritative
+  on uniqueness, so submit still asks the server.
+- **The browser form-fetch path no longer loses the typed values.** The JS
+  submit POSTs a multipart `FormData` (a fetch body cannot carry urlencoded),
+  but the write guard parsed only urlencoded forms, so a 422 re-render echoed
+  empty fields and the dialog reset to an empty form after a refusal. The guard
+  now parses multipart too, so a corrected re-submit keeps the values.
+
 ## 2026-09-07 — events: funnel, filter chips, tray with inline explain
 
 - **The /events page leads with a last-24h funnel.** One card tallies every

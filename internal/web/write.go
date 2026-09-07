@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"strings"
 
 	"exocomp.dev/exocomp/internal/secrets"
 )
@@ -39,11 +40,30 @@ func (s *Server) writeGuard(w http.ResponseWriter, r *http.Request) (identity, b
 		http.Error(w, "cross-origin form post refused", http.StatusForbidden)
 		return identity{}, false
 	}
-	if err := r.ParseForm(); err != nil {
+	if err := parseFormBody(r); err != nil {
 		http.Error(w, "malformed form", http.StatusBadRequest)
 		return identity{}, false
 	}
 	return ident, true
+}
+
+// parseFormBody parses the request body for form reads. The browser form-fetch
+// path (netgroupFormJS and its siblings) POSTs a multipart FormData — the fetch
+// body cannot carry urlencoded — while a plain <form> submit is urlencoded.
+// r.PostFormValue reads only what ParseForm parsed, so a multipart body would
+// otherwise yield empty fields and every echoed refusal would lose the values.
+// ParseMultipartForm populates the same PostForm map (and fills r.MultipartForm),
+// so one call covers both shapes.
+func parseFormBody(r *http.Request) error {
+	if err := r.ParseForm(); err != nil {
+		return err
+	}
+	if r.MultipartForm == nil && strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data") {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // sameOrigin refuses a state-changing POST a browser reports as cross-site. The

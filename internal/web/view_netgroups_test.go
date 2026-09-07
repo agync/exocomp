@@ -115,7 +115,10 @@ func TestNetgroupFormDuplicateRenders(t *testing.T) {
 	if !strings.Contains(page, "A netgroup called home already exists.") {
 		t.Errorf("duplicate 422 missing the name-field sentence")
 	}
-	if strings.Contains(page, "needs four octets") {
-		t.Error("duplicate 422 leaked a cidr refusal")
+	// The CIDR field is valid and at rest: it must not be flagged invalid. The
+	// "needs four octets" string now ships in the on-blur validation JS on
+	// every page, so assert the field's state (aria-invalid), not the copy.
+	if strings.Contains(page, `id="ng-cidr"`+"\" aria-invalid") || strings.Contains(page, `id="ng-cidr" aria-invalid`) {
+		t.Error("duplicate 422 flagged the cidr field invalid")
 	}
 }

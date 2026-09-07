@@ -280,7 +280,22 @@ func TestNetgroupRefusalDoesNotPersist(t *testing.T) {
 			t.Errorf("fresh /checks missing at-rest help %q", want)
 		}
 	}
-	for _, banned := range []string{"Names can't have spaces.", "needs four octets", "A netgroup called"} {
+	// A fresh page must not carry a server-rendered refusal state: no input in
+	// the netgroup form is flagged aria-invalid, and no server-only refusal
+	// copy (the duplicate message is emitted only by the 422). The client-side
+	// on-blur validation copy ("Names can't have spaces." etc.) legitimately
+	// ships in the inline JS on every page, so it is not residue — the form
+	// fields themselves are at rest (help text, no aria-invalid). Scope the
+	// aria-invalid check to the actual <input> elements, not the JS source.
+	for _, frag := range []string{
+		`id="ng-name"` + " \" aria-invalid", `id="ng-name" aria-invalid`,
+		`id="ng-cidr"` + " \" aria-invalid", `id="ng-cidr" aria-invalid`,
+	} {
+		if strings.Contains(page, frag) {
+			t.Errorf("fresh /checks carried a field in the invalid state (%q)", frag)
+		}
+	}
+	for _, banned := range []string{"A netgroup called"} {
 		if strings.Contains(page, banned) {
 			t.Errorf("fresh /checks carried refusal residue %q", banned)
 		}

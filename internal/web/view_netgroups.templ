@@ -94,6 +94,47 @@ templ netgroupFormJS() {
 				}
 			}
 
+			// showError paints a refusal on a field without changing its geometry
+			// (the meta line always exists), mirroring the server's human copy.
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rules the server holds to — a
+			// name/CIDR shape refusal — on blur so a mistake surfaces before
+			// submit. Empty is left alone (that's a submit-time required check);
+			// the moment a filled value is wrong the field says so, and clearing
+			// it right clears the error. The daemon stays authoritative on
+			// uniqueness etc., so submit still asks the server.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				if (input.name === "name") {
+					if (!/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) {
+						showError(input, "Names can't have spaces.");
+						return;
+					}
+					restoreMeta(input);
+				} else {
+					var parts = input.value.split(",");
+					var bad = null;
+					for (var i = 0; i < parts.length; i++) {
+						var p = parts[i].trim();
+						if (p === "") { bad = "Add at least one range, like 192.168.0.0/16."; break; }
+						if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(p) && !/^[0-9a-fA-F:]+::\/\d{1,3}$/.test(p)) {
+							bad = p + " needs four octets — like 192.168.0.0/16.";
+							break;
+						}
+					}
+					if (bad) { showError(input, bad); return; }
+					restoreMeta(input);
+				}
+			}
+
 			form.addEventListener("click", function (e) {
 				var fill = e.target.closest("[data-fill]");
 				if (fill) {
@@ -146,16 +187,12 @@ templ netgroupFormJS() {
 				});
 			});
 
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
 			form.addEventListener("blur", function (e) {
 				var input = e.target.closest('input[name="name"], input[name="cidrs"]');
-				if (!input || form.dataset.netgroupRefused !== "1") return;
-				if (input.name === "name") {
-					if (/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) restoreMeta(input);
-				} else {
-					var parts = input.value.split(",");
-					var ok = input.value.trim() !== "" && parts.every(function (p) { return p.trim() !== ""; });
-					if (ok) restoreMeta(input);
-				}
+				if (!input) return;
+				validateField(input);
 			}, true);
 		}
 		netgroupFormWire();
