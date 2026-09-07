@@ -220,6 +220,11 @@ a:visited { color: var(--accent-text); }
 .appbar-title { font: var(--type-bar); color: var(--ink-100); margin: 0; }
 .appbar-meta { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
 .appbar-action { display: inline-flex; align-items: center; }
+/* The app-bar menu button, back chevron, and brandmark are the phone shell's
+ * chrome (SPEC §2.0): on desktop the sidebar carries the brand, so these render
+ * for the phone shell and hide here. The wordmark inside the app-bar brandlink
+ * is likewise phone-hidden (the mark is the brand). */
+.appbar .hamburger, .appbar .back, .appbar .brandlink { display: none; }
 
 /* Desktop rail: icon-only. At the top the exocomp brand mark rests in the
  * collapse toggle; hovering or focusing the toggle swaps it for the open
@@ -1067,20 +1072,6 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   margin-left: auto; color: var(--ink-400);
   font: var(--type-keyword); letter-spacing: 0.4px; text-transform: uppercase;
 }
-/* Phone powerline: one row, but only the signals that need a decision render —
- * ok and dim segments hide (healthy is quiet, and a scroll-to-find strip reads
- * as cut off). A nominal phone shows a quiet empty strip; a seeded phone shows
- * just "dead-man none — set one". The identity hides (it is already in the
- * header). overflow-x:auto stays as a safety net, not the interaction. */
-@media (max-width: 640px) {
-  .powerline {
-    gap: 14px; padding: 0 12px;
-    overflow-x: auto; overflow-y: hidden; white-space: nowrap;
-  }
-  .pl-seg { white-space: nowrap; flex: none; }
-  .pl-seg.ok, .pl-seg.dim { display: none; }
-  .powerline .pl-who { display: none; }
-}
 
 /* ---- Phone approval surface (390px) ---- */
 .phone {
@@ -1148,83 +1139,6 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 }
 .error { color: var(--signal-fail); margin: 10px 0; }
 .fingerprint { color: var(--ink-500); font: var(--type-log); word-break: break-all; }
-
-@media (max-width: 720px) {
-  .cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }
-  main { padding: 18px 14px; }
-}
-/* Stacked label/value cards below phone width. A wide table (Sources, Policies,
- * Events, Jobs, the dashboard's priority cards) becomes one bordered card per
- * row: each cell is its own line labelled by the column name it carries in
- * data-label, so a scrolled-right row never loses its header. thead is pulled
- * from the visual flow but stays in the a11y tree. Only .stackable tables
- * transform; a short, already-scannable table keeps the plain scroll box.
- * Card padding drops here so a stacked row keeps usable width on a 380px screen. */
-@media (max-width: 560px) {
-  .card { padding: 16px 16px; }
-  /* Row-action glyphs reach the 48px phone floor; the chevron is 32 wide. No
-   * tooltips on phones — the chevron opens the bottom sheet instead. */
-  .raglyph { width: 44px; height: 44px; }
-  .raglyph svg { width: 20px; height: 20px; }
-  .rachev { width: 32px; height: 44px; }
-  /* The app bar's meta slot (the page's own fact) drops before the header's
-   * primary verb shrinks — the verb is the action, the meta is context. */
-  .appbar-meta { display: none; }
-  .tablewrap.stackable table,
-  .tablewrap.stackable thead,
-  .tablewrap.stackable tbody,
-  .tablewrap.stackable tr,
-  .tablewrap.stackable td {
-    display: block;
-    width: 100%;
-  }
-  /* Visually hidden, still read by a screen reader (not display:none). */
-  .tablewrap.stackable thead {
-    position: absolute;
-    width: 1px; height: 1px;
-    margin: -1px; padding: 0; border: 0;
-    overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
-    white-space: nowrap;
-  }
-  .tablewrap.stackable tr {
-    border: 1px solid var(--hairline-faint);
-    border-radius: var(--radius-card);
-    background: var(--surface-card);
-    padding: 10px 12px;
-    margin-bottom: 10px;
-  }
-  .tablewrap.stackable tr:hover { background: var(--surface-card); }
-  .tablewrap.stackable td {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 12px;
-    max-width: none;
-    padding: 6px 0;
-    text-align: left;
-    border-bottom: 1px solid var(--hairline-faint);
-  }
-  .tablewrap.stackable td.right { text-align: left; }
-  .tablewrap.stackable tr td:last-child { border-bottom: none; }
-  .tablewrap.stackable td::before {
-    content: attr(data-label);
-    flex: none;
-    font: var(--type-keyword);
-    letter-spacing: 0.4px;
-    text-transform: uppercase;
-    color: var(--ink-400);
-  }
-  /* A cell with no column name (an action button, a lead status chip) fills the
-   * card row rather than leaving a dangling empty label. */
-  .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
-  .tablewrap.stackable td[data-label=""]::before { content: none; }
-  /* Table-row actions meet the hard 48px touch floor on a phone, matching the
-   * brief's a11y requirement; the check-card header buttons share the floor
-   * (their 30px desktop scale is below it). */
-  /* Every button reaches the 48px touch floor below 560px — not just the
-   * tray/card rows — so a modal submit or drawer verb on a phone is not 34px. */
-  .btn { min-height: 48px; height: 48px; }
-}
 
 /* Never let the page scroll sideways; wide content scrolls in its own box
  * (.tablewrap, the nav). `clip` (not `hidden`) so it doesn't turn body into a
@@ -1578,3 +1492,164 @@ a.evt-reason { color: var(--accent-text); }
 .events-foot { margin-top: 12px; font: var(--type-log); color: var(--ink-500); }
 .events-empty { padding: 26px 30px; }
 
+
+/* ---- Phone shell: one 719px breakpoint (SPEC §0, v0.9) ----
+ * Everything at or below 719px is a phone. 720-1099 keeps the desktop layout
+ * with the rail collapsed to the menu button and .config at two columns; nothing
+ * in this round needs a third breakpoint. Touch hints key off (pointer:coarse),
+ * not width. The old 560/640/720 blocks are folded here into one media query;
+ * the 561 tray-table block stays at its own floor (F4). */
+
+/* The one 56px bar (R13): menu · brandmark · stacked title · meta · actions.
+ * The mobilebar (hamburger over a second title row) folds into the app bar, so
+ * it hides here. Brandmark 20px, the wordmark hidden — the mark is the brand. */
+@media (max-width: 719px) {
+  .mobilebar { display: none; }
+  .appbar{height:56px; padding:0 14px 0 6px; gap:10px; }
+  .appbar .hamburger, .appbar .back { display: inline-flex; width: 44px; height: 44px; border-radius: var(--radius-control); }
+  .appbar .brandlink { display: inline-flex; }
+  .appbar .brandmark { width: 20px; height: 20px; }
+  .appbar .wordmark { display: none; }
+  .appbar-title-wrap { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+  .appbar .appbar-sub { font: 400 11px var(--font-mono); color: var(--ink-500); }
+  .appbar-actions { display: inline-flex; gap: 8px; }
+  main{padding:14px 16px 50px; gap:12px; }
+
+  /* Powerline foot (R14): sticky at the viewport bottom, 36px, ink-split mono
+   * 12. Only the signals that need a decision render — ok/dim hide (healthy is
+   * quiet), the identity hides (already in the header). */
+  .powerline{position:sticky;bottom:0;height:36px;font-size:12px; box-shadow:inset 0 1px 0 var(--hairline-faint); gap:14px; padding:0 12px; overflow-x:auto; overflow-y:hidden; white-space:nowrap; }
+  .pl-seg { white-space: nowrap; flex: none; }
+  .pl-seg.ok, .pl-seg.dim { display: none; }
+  .powerline .pl-who { display: none; }
+
+  /* Grids stack to one column. The counts surface moves to .counts (SPEC §2.1),
+   * so the old .counts-grid rule does not carry (F3). */
+  .cards, .attn-grid, .targetgrid { grid-template-columns: 1fr; }
+
+  /* Stackable tables become one card per row (from the old 560 block). */
+  .card { padding: 16px 16px; }
+  .raglyph { width: 44px; height: 44px; }
+  .raglyph svg { width: 20px; height: 20px; }
+  .rachev { width: 32px; height: 44px; }
+  .tablewrap.stackable table,
+  .tablewrap.stackable thead,
+  .tablewrap.stackable tbody,
+  .tablewrap.stackable tr,
+  .tablewrap.stackable td { display: block; width: 100%; }
+  .tablewrap.stackable thead {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    border: 0; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .tablewrap.stackable tr {
+    border: 1px solid var(--hairline-faint); border-radius: var(--radius-card);
+    background: var(--surface-card); padding: 10px 12px; margin-bottom: 10px;
+  }
+  .tablewrap.stackable tr:hover { background: var(--surface-card); }
+  .tablewrap.stackable td {
+    display: flex; justify-content: space-between; align-items: baseline;
+    gap: 12px; max-width: none; padding: 6px 0; text-align: left;
+    border-bottom: 1px solid var(--hairline-faint);
+  }
+  .tablewrap.stackable td.right { text-align: left; }
+  .tablewrap.stackable tr td:last-child { border-bottom: none; }
+  .tablewrap.stackable td::before {
+    content: attr(data-label); flex: none; font: var(--type-keyword);
+    letter-spacing: 0.4px; text-transform: uppercase; color: var(--ink-400);
+  }
+  .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
+  .tablewrap.stackable td[data-label=""]::before { content: none; }
+
+  /* The 48px touch floor for phone verbs and primary actions (a11y invariant,
+   * F3). Compact secondary actions (the Raw log app-bar button) opt out through
+   * .btn-compact, the one documented exception. */
+  .btn, .btn.primary, .btn.danger, .actions .btn, .addbtn { min-height: 48px; height: 48px; }
+  .btn-compact { min-height: 36px; height: 36px; }
+
+  /* Pre-shipped row/stack contract (SPEC §4, inert until the Wave-2 lanes ship
+   * their markup). */
+  .keys-hint, .jobs-head, .events-head { display: none; }
+  .jobs-row, .queue-row, .events-row { display: flex; flex-direction: column; gap: 5px; height: auto; padding: 11px 12px; }
+  .jobs-row .line, .queue-row .line, .events-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+  .jobs-row .line + .line, .queue-row .line + .line, .events-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+  .jobs-row .line > :first-child, .queue-row .line > :first-child, .events-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jobs-row .line > :last-child, .queue-row .line > :last-child, .events-row .line > :last-child { flex: none; }
+  .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
+  .queue-idle code, .queue-row .verb { display: none; }
+
+  .run-card { padding: 16px; gap: 14px; }
+  .run-card .head { flex-direction: column; align-items: stretch; gap: 14px; }
+  .run-card .title { font-size: 17px; letter-spacing: -0.4px; overflow-wrap: anywhere; }
+  .run-card .verdict { font-size: 26px; letter-spacing: -0.8px; }
+  .config { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .config .tile { padding: 10px 12px; min-width: 0; }
+  .config .tile b, .config .tile a { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
+
+  .verdict-band { padding: 16px; gap: 12px; }
+  .verdict-band .keyword { line-height: 1.5; }
+  .verdict-band .verb { min-height: var(--row-h); display: flex; align-items: center; }
+  .host-table .head { display: flex; justify-content: space-between; padding: 0 10px; }
+  .host-table .row { display: flex; flex-direction: column; gap: 3px; height: auto; min-height: var(--row-h); padding: 9px 10px; }
+  .host-table .row .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .host-table .row .recap { font-size: 11.5px; overflow-wrap: anywhere; }
+
+  .output-head { flex-direction: column; align-items: stretch; gap: 8px; height: auto; padding: 8px 10px 2px; }
+  .output-head .controls { display: flex; gap: 8px; }
+  .output-head input { flex: 1; width: auto; height: 40px; font-size: 12.5px; }
+  .output-head .wrap { height: 40px; box-shadow: inset 0 0 0 1px var(--hairline); }
+  .output-head .ended { background: none; padding: 0; height: auto; }
+  .log{height:300px;white-space:pre; overflow:auto; font-size:12px; }
+  .log .line { grid-template-columns: 60px 1fr; width: max-content; min-width: 100%; }
+  .log.wrap .line { white-space: pre-wrap; width: auto; }
+
+  .funnel { padding: 16px; gap: 12px; }
+  .funnel .counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
+  .funnel .counts b { font: 600 24px/1 var(--font-mono); letter-spacing: -0.8px; display: block; }
+  .funnel .counts small { font-size: 11px; color: var(--ink-500); }
+  .funnel .bar { height: 6px; }
+  .chips { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
+  .chips .chip { height: 36px; flex: none; font-size: 12.5px; }
+  .events-row .expanded { border-radius: var(--radius-row); padding: 12px 14px; gap: 10px; }
+  .events-row .expanded .payload { display: none; }
+}
+
+/* Touch devices never need the keyboard hint (R12). */
+@media (pointer: coarse) { .keys-hint { display: none; } }
+
+/* Tablet / half-screen (SPEC §0): the rail is already collapsed to the menu
+ * button; the config tiles widen to two columns instead of ellipsizing (R6). */
+@media (min-width: 720px) and (max-width: 1099px) {
+  .config { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---- Dashboard queue card, both sizes (SPEC §3) ----
+ * The pre-shipped contract the Dashboard lane renders in Wave 2: the idle line,
+ * the LAST N RUNS rule row, and the recent rows. Inert until that lane lands. */
+.section-label { display: flex; align-items: baseline; gap: 10px; }
+.section-label b { font: 600 13px var(--font-ui); color: var(--ink-100); }
+.section-label span { font: 400 12px var(--font-mono); color: var(--ink-500); }
+.section-label a { margin-left: auto; font: 500 13px var(--font-ui); color: var(--accent-text); }
+.queue-idle { display: flex; align-items: center; gap: 14px; height: var(--row-h); padding: 0 14px; color: var(--ink-500); font: var(--type-body); }
+.queue-idle .kw { font: 600 11px var(--font-mono); letter-spacing: 0.4px; white-space: nowrap; }
+.queue-idle code { margin-left: auto; font: 400 12px var(--font-mono); white-space: nowrap; }
+.queue-rule { display: grid; grid-template-columns: 200px minmax(0,1fr) 170px 130px 90px; gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px; font: 600 10.5px var(--font-mono); letter-spacing: 1.4px; color: var(--ink-600); border-bottom: 1px solid var(--hairline-faint); }
+.queue-rule .failed { color: var(--signal-fail); letter-spacing: 0.4px; margin-left: 8px; font-style: normal; }
+.queue-row { display: grid; grid-template-columns: 200px minmax(0,1fr) 170px 130px 90px; gap: var(--gap-cell); align-items: center; height: 56px; padding: 0 14px; margin-top: 2px; border-radius: var(--radius-row); color: inherit; text-decoration: none; }
+.queue-row:hover { background: var(--surface-tray); }
+.queue-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.queue-row .cell--state { gap: 5px; align-items: flex-start; }
+.queue-row .reason { font: 400 11.5px var(--font-mono); color: var(--ink-500); white-space: nowrap; }
+.queue-row .reason--degraded { color: var(--signal-wait); }
+.queue-row .verb { font: 500 13px var(--font-ui); color: var(--accent-text); text-align: right; white-space: nowrap; }
+@media (max-width: 719px) {
+  .queue-rule { display: flex; justify-content: space-between; }
+  .queue-rule > :not(:first-child):not(:last-child) { display: none; }
+}
+/* Phone row-node meta (SPEC §2.3/§2.5): the "#id · reason" second-line node
+ * that carries the row's meta clock, and the time node. */
+.qmeta { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+.qtime { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; flex: none; }
+/* Desktop-only small: the row meta line's <small> renders at body ink on the
+ * desktop row and is dropped by the phone stacked rows (lift.css §4). */
+.jobs-row .cell small, .queue-row .cell small { font: var(--type-log); color: var(--ink-500); }

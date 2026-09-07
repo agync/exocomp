@@ -269,10 +269,11 @@ func TestResponsiveTablesAndHeaders(t *testing.T) {
 	}
 
 	// The CSS side: the stacked-card pattern, its data-label rendering, the
-	// <=560px card-padding reduction (F11), and the F7 desktop wrap cap.
+	// <=719px card-padding reduction (F11), and the F7 desktop wrap cap. The
+	// stackable transform now lives under the one 719px phone breakpoint.
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
-		"@media (max-width: 560px)",
+		"@media (max-width: 719px)",
 		".tablewrap.stackable td",
 		"content: attr(data-label)",
 		"td.wrap { max-width: 32ch; overflow-wrap: anywhere; }",
@@ -496,10 +497,10 @@ func TestReviewCSSGuards(t *testing.T) {
 		".addbtn {",
 		"min-height: 34px; height: 34px; padding: 0 14px",
 		"white-space: nowrap",
-		".appbar-meta { display: none; }",
 		".powerline .pl-who { display: none; }",
 		// UX-fix round: tray actions are a spaced flex row; the phone powerline
-		// shows only the segments that need a decision (ok/dim hidden).
+		// shows only the segments that need a decision (ok/dim hidden). The app
+		// bar's meta slot stays on phone (F3/SPEC §2.0) — no display:none.
 		".card.tray td[data-label=\"Actions\"] {",
 		"display: flex; align-items: center; gap: 8px;",
 		".pl-seg.ok, .pl-seg.dim { display: none; }",
@@ -584,8 +585,12 @@ func TestReviewWebMediumCSSGuards(t *testing.T) {
 	for _, want := range []string{
 		`.checkactions .btn.quiet {`,
 		`.checkactions .btn.danger {`,
-		`.btn { min-height: 48px; height: 48px; }`,
-		`.cards, .attn-grid, .counts-grid, .targetgrid { grid-template-columns: 1fr; }`,
+		// The 48px phone floor is scoped to verbs/primary with the compact
+		// secondary exception (F3), and the narrow grids stack to one column —
+		// .counts-grid is dropped (Dashboard swaps to .counts).
+		`.btn, .btn.primary, .btn.danger, .actions .btn, .addbtn { min-height: 48px; height: 48px; }`,
+		`.btn-compact { min-height: 36px; height: 36px; }`,
+		`.cards, .attn-grid, .targetgrid { grid-template-columns: 1fr; }`,
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing web-MEDIUM rule %q", want)
@@ -705,5 +710,89 @@ func TestRowClickExcludesSummary(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("row-click handler missing the summary exclusion %q", want)
 		}
+	}
+}
+
+// TestResponsiveOneBreakpoint is the GATE for the v0.9 breakpoint
+// consolidation (SPEC §0, F4): one phone breakpoint at 719px, the old
+// 560/640/720 blocks folded into it, the touch hint keyed to (pointer:coarse),
+// and the tablet .config two-column rule. It also pins the F3 choice that the
+// app bar's meta slot stays on phone (no display:none) and that the 719 block
+// carries the phone shell and powerline foot overrides.
+func TestResponsiveOneBreakpoint(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	// The one 719px phone breakpoint is present; the folded 560/640/720 blocks
+	// are gone.
+	if !strings.Contains(app, "@media (max-width: 719px)") {
+		t.Error("app.css missing the one 719px phone breakpoint")
+	}
+	for _, gone := range []string{
+		"@media (max-width: 560px)", "@media (max-width: 640px)", "@media (max-width: 720px)",
+	} {
+		if strings.Contains(app, gone) {
+			t.Errorf("app.css still carries the folded breakpoint %q (one 719px block)", gone)
+		}
+	}
+	// Touch hints key to pointer, and the tablet band gets its own .config rule.
+	if !strings.Contains(app, "@media (pointer: coarse)") {
+		t.Error("app.css missing the (pointer: coarse) touch-hint rule")
+	}
+	if !strings.Contains(app, "@media (min-width: 720px) and (max-width: 1099px)") {
+		t.Error("app.css missing the tablet .config two-column rule")
+	}
+	// The 719 block carries the phone shell, sticky powerline foot, content
+	// padding, and the log pre/scroll column.
+	for _, want := range []string{
+		".appbar{height:56px;",
+		".powerline{position:sticky;bottom:0;height:36px;",
+		"main{padding:14px 16px 50px;",
+		".log{height:300px;white-space:pre;",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css 719 block missing %q", want)
+		}
+	}
+	// F3: the app bar's meta slot stays on phone — its display:none rule must
+	// not be (re)introduced.
+	if strings.Contains(app, ".appbar-meta { display: none; }") {
+		t.Error(".appbar-meta must stay visible on phone (F3/SPEC §2.0)")
+	}
+	// R14: the powerline foot is sticky, not the fixed desktop bar.
+	i := strings.Index(app, "@media (max-width: 719px)")
+	block := app[i:]
+	if !strings.Contains(block, "position:sticky") {
+		t.Error("719 block powerline is not sticky (R14)")
+	}
+}
+
+// TestPhoneShellSlots pins the phone shell chrome (R13): the app bar renders
+// the 44x44 menu button and the brandmark, and the wordmark stays in the DOM —
+// it is hidden only by CSS, never dropped from markup.
+func TestPhoneShellSlots(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/")
+	for _, want := range []string{
+		`<button type="button" class="hamburger" onclick="exoToggleDrawer()" aria-label="Menu">`,
+		`class="brandmark"`,
+		`<span class="wordmark">exocomp</span>`,
+		`<h1 class="appbar-title">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("phone shell missing app-bar slot %q", want)
+		}
+	}
+	// The wordmark is present but phone-hidden by CSS, never display:none in
+	// markup or a drop of the element.
+	if strings.Count(page, `<span class="wordmark">exocomp</span>`) < 2 {
+		t.Error("wordmark must still render (sidebar + app bar), hidden by CSS only")
 	}
 }
