@@ -95,9 +95,8 @@ func TestDashboardPostV1Sections(t *testing.T) {
 		`aria-labelledby="flows-chip"`,
 		`<span class="chip wait" id="flows-chip"><span class="dot"></span>1 IN FLIGHT</span>`,
 		`<span class="cardact">Open workflows →</span>`,
-		// calm schedules summarise as a count in the COUNTS band
-		`<div class="count-kicker">Schedules</div>`,
-		`<div class="countnum">1</div>`,
+		// calm schedules summarise as a count tile in the COUNTS band
+		`<a class="tile" href="/schedules">`,
 		`exocomp ws add`,
 	} {
 		if !strings.Contains(page, want) {
@@ -106,7 +105,7 @@ func TestDashboardPostV1Sections(t *testing.T) {
 	}
 	// A synced, enabled source needs no attention and renders nowhere — the
 	// glance keeps quiet surfaces off the bands (F6).
-	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-chip"`) {
+	if strings.Contains(page, `<a class="tile" href="/sources">`) || strings.Contains(page, `aria-labelledby="sources-chip"`) {
 		t.Error("a calm source should not render on the glance screen (F6)")
 	}
 	for _, unwanted := range []string{

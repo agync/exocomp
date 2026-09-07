@@ -117,19 +117,24 @@ func approvalSummaryFrom(pending []approvalRow) approvalSummary {
 	return card
 }
 
-// jobFailedRecentWindow is how far back the dashboard's "failed recently"
-// subline looks, the same 24h span the backup freshness ladder starts at.
-const jobFailedRecentWindow = 24 * time.Hour
-
-// jobLastStates are the settled states the queue card's last-job line reads —
-// every terminal state, so the newest finished run is the fact shown.
+// jobLastStates are the settled states the queue card's LAST N RUNS group reads —
+// every terminal state, so the newest finished runs are the facts shown.
 var jobLastStates = []store.JobState{
 	store.StateSucceeded, store.StateDegraded, store.StateFailed,
 	store.StateCancelled, store.StateTimedOut, store.StateInterrupted,
 }
 
-// jobLastRow is the dashboard queue card's one settled-history fact: the newest
-// terminal job's runbook and state, shown as a chip beside its name.
+// lastRunsMax is the LAST N RUNS group's size on an idle queue; the group
+// shrinks to lastRunsWithLive when live rows are present, so the card never
+// shows more settled history than the active queue it is answering.
+const (
+	lastRunsMax      = 3
+	lastRunsWithLive = 2
+)
+
+// jobLastRow is the retired last-job line's row type. The Shell-owned
+// jobSummary.LastJob field (viewmodel.go) still names it, so the type stays
+// defined here even though the queue card no longer renders that line.
 type jobLastRow struct {
 	Runbook string
 	State   store.JobState
@@ -138,12 +143,11 @@ type jobLastRow struct {
 // jobSummary reads only the active queue — queued, awaiting-approval, and
 // running jobs — never settled history, which stays the /jobs view's job. The
 // States filter keeps this a narrow index lookup no matter how large the
-// terminal job history has grown, and the recent-failure count is a single
-// COUNT query rather than a list pulled into memory to be len()'d. The rows
-// reuse jobRowForList — the same two-line /jobs row facts — newest first,
-// capped at the glance ceiling; active rows carry no reason line, which is
-// correct. The one settled-history fact the glance does carry is the newest
-// finished job (lastTerminalJob), the last-job line's chip and runbook.
+// terminal job history has grown. The rows reuse jobRowForList — the same
+// two-line /jobs row facts — newest first, capped at the glance ceiling; active
+// rows carry no reason line, which is correct. The one settled history the
+// glance does carry is the LAST N RUNS group (SPEC §3): the newest terminal
+// jobs, three of them, or two when the queue is live.
 func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 	active, err := s.store.ListJobs(r.Context(), store.JobFilter{
 		States: []store.JobState{store.StateQueued, store.StateAwaitingApproval, store.StateRunning},
@@ -166,46 +170,83 @@ func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 			card.Rows = append(card.Rows, s.jobRowForList(r.Context(), j, now))
 		}
 	}
-	failed, err := s.store.CountFailedJobsSince(r.Context(), now.Add(-jobFailedRecentWindow))
+	limit := lastRunsMax
+	if !card.Idle() {
+		limit = lastRunsWithLive
+	}
+	recent, err := s.recentFilesJobs(r.Context(), limit)
 	if err != nil {
 		return jobSummary{}, err
 	}
-	card.FailedRecently = failed
-	last, err := s.lastTerminalJob(r.Context())
-	if err != nil {
-		return jobSummary{}, err
+	for _, j := range recent {
+		card.Recent = append(card.Recent, s.jobRowForList(r.Context(), j, now))
 	}
-	card.LastJob = last
 	return card, nil
 }
 
-// lastTerminalJob reads the newest settled job for the queue card's last-job
-// line. ListJobs returns terminal rows oldest first, so the newest is the last
-// element; a store with no finished jobs yields no line at all.
-func (s *Server) lastTerminalJob(ctx context.Context) (*jobLastRow, error) {
+// recentFilesJobs reads the newest terminal jobs, newest first, capped at
+// limit. ListJobs returns terminal rows oldest first, so the newest are the
+// last elements, reversed.
+func (s *Server) recentFilesJobs(ctx context.Context, limit int) ([]store.Job, error) {
 	jobs, err := s.store.ListJobs(ctx, store.JobFilter{States: jobLastStates})
 	if err != nil {
 		return nil, err
 	}
-	if len(jobs) == 0 {
-		return nil, nil
+	if len(jobs) > limit {
+		jobs = jobs[len(jobs)-limit:]
 	}
-	job := jobs[len(jobs)-1]
-	return &jobLastRow{Runbook: job.Runbook, State: job.State}, nil
+	for i, j := 0, len(jobs)-1; i < j; i, j = i+1, j-1 {
+		jobs[i], jobs[j] = jobs[j], jobs[i]
+	}
+	return jobs, nil
 }
 
-// lastJobClass maps a last-job state to its chip class. Degraded reads wait
-// here — tolerated ≠ failed — because the shared stateClass's degraded case is
-// the jobs-v2 lane's to land; this stays local to the queue card.
-func lastJobClass(s store.JobState) string {
-	if s == store.StateDegraded {
-		return "wait"
+// SectionSummary is the queue section label's tail (SPEC §3): the word "idle"
+// when nothing is moving, else the running count with the oldest queued job's
+// age — the opposite end of the queue from the newest row the card shows.
+func (j jobSummary) SectionSummary() string {
+	if j.Idle() {
+		return "idle"
 	}
-	return stateClass(s)
+	headline := itoa(int64(j.Running)) + " running"
+	for i := len(j.Rows) - 1; i >= 0; i-- {
+		row := j.Rows[i]
+		if row.State == store.StateQueued || row.State == store.StateAwaitingApproval {
+			if row.Age != "" {
+				return headline + ", oldest queued " + row.Age
+			}
+		}
+	}
+	return headline
 }
 
-// lastJobWord renders a last-job state as its chip keyword.
-func lastJobWord(s store.JobState) string { return strings.ToUpper(string(s)) }
+// RecentFailed counts the failed rows in the LAST N RUNS group — the rule
+// row's "{n} FAILED" tally in the fail colour. Degraded is not a failure.
+func (j jobSummary) RecentFailed() int {
+	n := 0
+	for _, row := range j.Recent {
+		if row.State == store.StateFailed {
+			n++
+		}
+	}
+	return n
+}
+
+// StateKeyword renders a recent row's state as its chip keyword (SPEC §5):
+// the uppercase word — FAILED, SUCCEEDED — where the live queue rows keep the
+// lower word.
+func (j jobRow) StateKeyword() string { return strings.ToUpper(string(j.State)) }
+
+// PhoneMeta is the recent row's phone second-line left node (SPEC §2.2): the
+// settled fact "#id · reason" on FAILED/DEGRADED, else "#id · trigger-meta" —
+// the reason a SUCCEEDED row never carries.
+func (j jobRow) PhoneMeta() string {
+	fact := j.Reason
+	if fact == "" {
+		fact = j.TriggerMeta
+	}
+	return "#" + itoa64(j.ID) + " · " + fact
+}
 
 // backups reads each enabled target's newest run into a freshness row on the
 // 24h/48h ladder.

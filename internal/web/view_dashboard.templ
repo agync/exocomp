@@ -10,9 +10,19 @@ templ dashboard(vm dashboardVM) {
 	@layout(vm.Page) {
 		if vm.Page.Insecure {
 			<div class="banner fail" role="alert">
-				<span class="keyword">INSECURE HTTP</span>
-				<span>This page is not secure. Anyone on this network could read your sign-in.</span>
+				<span class="keyword">▲ INSECURE HTTP</span>
+				<span>Anyone on this network can read your sign-in. <a class="verb" href="https://" data-tls>Serve over TLS →</a></span>
 			</div>
+			<script>
+			// The Serve-over-TLS verb points at this host over https — the
+			// request's own origin, which no web VM field carries, so the
+			// browser supplies it. JS-off keeps the banner, only the verb's
+			// href stays inert.
+			(function () {
+				var a = document.querySelector("[data-tls]");
+				if (a) { a.href = "https://" + location.host; }
+			})();
+			</script>
 		}
 		if vm.Banner.Active() {
 			<div class={ "banner", templ.KV("fail", vm.Banner.Paused) } role="alert">
@@ -47,16 +57,49 @@ templ dashboard(vm dashboardVM) {
 			</section>
 		}
 		<section class="band" aria-label="Queue">
-			<div class="band-kicker">Queue</div>
-			@queueCard(vm.Jobs)
+			<div class="section-label">
+				<b>In the queue</b>
+				<span>· { vm.Jobs.SectionSummary() }</span>
+				<a href="/jobs">all jobs →</a>
+			</div>
+			<div class="card queue">
+				if vm.Jobs.Idle() {
+					<div class="queue-idle">
+						<span class="kw">○ QUEUE IDLE</span>
+						<span class="idle-full">Nothing queued, nothing running. Every run — manual, scheduled, reactive — lands here first.</span>
+						<span class="idle-short">Nothing queued, nothing running.</span>
+						<code>exocomp run &lt;playbook&gt;</code>
+					</div>
+				} else {
+					for _, j := range vm.Jobs.Rows {
+						@queueJobRow(j)
+					}
+				}
+				if len(vm.Jobs.Recent) > 0 {
+					<div class="queue-rule">
+						<span>LAST { itoa(int64(len(vm.Jobs.Recent))) } RUNS
+							if vm.Jobs.RecentFailed() > 0 {
+								<em class="failed">{ itoa(int64(vm.Jobs.RecentFailed())) } FAILED</em>
+							}
+						</span>
+						<span>PLAYBOOK</span>
+						<span>TRIGGER</span>
+						<span>RAN</span>
+						<span></span>
+					</div>
+					for _, j := range vm.Jobs.Recent {
+						@queueRecentRow(j)
+					}
+				}
+			</div>
 		</section>
 		<section class="band" aria-label="Counts">
-			<div class="band-kicker">Counts</div>
-			<div class="counts-grid">
-				@countCard("Approvals", vm.Approvals.Pending, "/approvals", "None waiting.")
+			<div class="band-kicker">COUNTS</div>
+			<div class="counts">
+				@countCard("Approvals", vm.Approvals.Pending, "/approvals", "none waiting")
 				@countCard("Workspaces", vm.Workspaces.Total, "/workspaces", "exocomp ws add")
 				@countCard("Schedules", vm.Schedules.Total, "/schedules", "exocomp schedule add")
-				@countCard("Rules", vm.Rules, "/rules", "Nothing fires until a rule matches — written on the CLI.")
+				@countCard("Rules", vm.Rules, "/rules", "exocomp rule add")
 			</div>
 		</section>
 	}
@@ -78,36 +121,6 @@ templ approvalsCard(vm approvalSummary) {
 	</a>
 }
 
-// queueCard is the dashboard's queue summary: the active queue as capped
-// two-line rows in the /jobs language — each row its own link to its job, so
-// the card cannot be one big anchor — with the running/queued split as the
-// meta line, the one settled-history fact the glance queries (the newest
-// finished job as a state chip beside its runbook), and the Open all jobs
-// footer. Anything older stays on /jobs.
-templ queueCard(vm jobSummary) {
-	<div class="card queue">
-		<h3>Queue</h3>
-		if vm.Idle() {
-			<p class="cardsub meta">Idle — nothing queued, nothing running.</p>
-		} else {
-			<p class="cardsub meta">{ vm.Headline() }</p>
-			for _, j := range vm.Rows {
-				@queueJobRow(j)
-			}
-		}
-		if vm.FailedRecently > 0 {
-			<p class="cardsub fail">{ itoa(int64(vm.FailedRecently)) } failed recently</p>
-		}
-		if vm.LastJob != nil {
-			<p class="cardsub">
-				@chip(lastJobClass(vm.LastJob.State), lastJobWord(vm.LastJob.State))
-				<span>{ RunbookLabel(vm.LastJob.Runbook) }</span>
-			</p>
-		}
-		<a class="cardact" href="/jobs">Open all jobs →</a>
-	</div>
-}
-
 // queueJobRow is one active job on the dashboard queue card: the /jobs
 // two-line row reduced to its glance essentials — runbook over source/meta
 // with a state chip — linked through to the job. Active rows carry no reason
@@ -122,6 +135,43 @@ templ queueJobRow(j jobRow) {
 			@chip(j.StateClass(), string(j.State))
 		</span>
 	</a>
+}
+
+// queueRecentRow is one settled job of the queue card's LAST N RUNS group
+// (SPEC §3): the five-column row — state + reason, playbook + "#id · source",
+// trigger + meta, duration + time, verb — whole row a link to the job. The
+// Rerun verb is the fifth column's own sibling link (never nested inside the
+// row link) opening the rerun dialog via ?rerun=1 (handlers.go:490), shown on
+// FAILED and DEGRADED only; phone CSS hides it and stacks the row's lines
+// through the .qmeta/.qtime nodes.
+templ queueRecentRow(j jobRow) {
+	<div class="queue-row">
+		<a class="cell cell--state" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+			@chip(j.StateClass(), j.StateKeyword())
+			if j.Reason != "" {
+				<span class={ j.ReasonClass() }>{ j.Reason }</span>
+			}
+		</a>
+		<a class="cell" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+			<b class="mono">{ j.Title }</b>
+			<small class="mono">{ "#" + itoa64(j.ID) + " · " + j.Source }</small>
+			<span class="qmeta">{ j.PhoneMeta() }</span>
+		</a>
+		<a class="cell" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+			<b>{ j.TriggerLabel }</b>
+			<small class="mono">{ j.TriggerMeta }</small>
+		</a>
+		<a class="cell" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+			<b class="mono">{ j.Duration }</b>
+			<small class="mono">{ j.FinishedRel }</small>
+			<span class="qtime">{ j.FinishedClock }</span>
+		</a>
+		if needsOperator(j.State) {
+			<a class="verb" href={ templ.SafeURL("/jobs/" + itoa64(j.ID) + "?rerun=1") }>Rerun →</a>
+		} else {
+			<span></span>
+		}
+	</div>
 }
 
 // workspacesCard is the dashboard's workspace summary: the managed total,
@@ -191,15 +241,15 @@ templ schedulesCard(vm scheduleSummary) {
 	</a>
 }
 
-// countCard is a quiet count in the dashboard's COUNTS band: a kicker, the
-// number, and — only when zero — the verb that changes it (F6). The whole card
-// is the link to its full view.
-templ countCard(kicker string, n int, href, empty string) {
-	<a class="card cardlink count" href={ templ.SafeURL(href) }>
-		<div class="count-kicker">{ kicker }</div>
-		<div class="countnum">{ itoa(int64(n)) }</div>
+// countCard is a quiet count in the dashboard's COUNTS band (SPEC §2.1): a
+// label, the number, and — only when zero — the verb that changes it (F6).
+// The whole tile is the link to its full view.
+templ countCard(label string, n int, href, meta string) {
+	<a class="tile" href={ templ.SafeURL(href) }>
+		<span class="tlabel">{ label }</span>
+		<b>{ itoa(int64(n)) }</b>
 		if n == 0 {
-			<p class="cardsub meta">{ empty }</p>
+			<span class="tmeta">{ meta }</span>
 		}
 	</a>
 }

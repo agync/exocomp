@@ -329,21 +329,6 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 	return out, nil
 }
 
-// CountFailedJobsSince counts jobs that settled failed at or after since — the
-// dashboard's "failed recently" card subline. A narrow COUNT rather than a
-// ListJobs+len: the dashboard glance must never pull settled history into
-// memory just to size a number.
-func (s *Store) CountFailedJobsSince(ctx context.Context, since time.Time) (int, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM job WHERE state = ? AND finished_at >= ?`,
-		string(StateFailed), since.UTC().UnixMilli()).Scan(&n)
-	if err != nil {
-		return 0, wrap("count failed jobs since", err)
-	}
-	return n, nil
-}
-
 // TransitionJob is the only way a job changes state. It rejects moves the
 // state machine does not allow (ErrIllegalTransition) and moves whose source
 // state no longer matches (ErrStateConflict). Entering running stamps

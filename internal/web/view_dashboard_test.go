@@ -53,11 +53,10 @@ func TestPowerlineSignalSegments(t *testing.T) {
 
 // TestDashboardSummaryCards is the GATE for the at-a-glance redesign: the
 // dashboard shows summary cards — counts plus a single attention detail —
-// never an embedded table, and settled job history never reaches the page at
-// all (only the active queue is counted). A pending approval is the primary
-// attention item and carries the wait/amber accent with a one-line subline
-// naming the soonest-to-expire item; a recent job failure surfaces the same
-// way on the queue card, whose active jobs now render as two-line rows.
+// never an embedded table, and the queue card answers the glance with the
+// active rows plus the LAST N RUNS group (SPEC §3), never a full history.
+// A pending approval is the primary attention item and carries the wait/amber
+// accent with a one-line subline naming the soonest-to-expire item.
 func TestDashboardSummaryCards(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -77,7 +76,8 @@ func TestDashboardSummaryCards(t *testing.T) {
 	// awaiting_approval row is still part of the active queue.
 	gated, approval := h.gatedJob(t, 30*time.Minute)
 
-	// Settled history: must never appear on the dashboard at all.
+	// Settled history: the newest settled job lands in the LAST N RUNS group,
+	// and nothing older than the group's window reaches the page.
 	settled, err := h.queue.Enqueue(ctx, queue.Spec{
 		Runbook: "settled-history-job", Kind: "shell", Trigger: "manual",
 		Argv: []string{"/bin/sh", "-c", "exit 0"},
@@ -86,16 +86,6 @@ func TestDashboardSummaryCards(t *testing.T) {
 		t.Fatalf("enqueue settled job: %v", err)
 	}
 	h.waitJobState(t, settled.ID, store.StateSucceeded, 3*time.Second)
-
-	// A recent failure: the queue card's fail-colored subline.
-	failed, err := h.queue.Enqueue(ctx, queue.Spec{
-		Runbook: "recently-failed-job", Kind: "shell", Trigger: "manual",
-		Argv: []string{"/bin/sh", "-c", "exit 1"},
-	})
-	if err != nil {
-		t.Fatalf("enqueue failing job: %v", err)
-	}
-	h.waitJobState(t, failed.ID, store.StateFailed, 3*time.Second)
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -113,11 +103,6 @@ func TestDashboardSummaryCards(t *testing.T) {
 	if strings.Contains(page, "<table") {
 		t.Error("dashboard still renders a <table>; summary cards should replace embedded lists")
 	}
-	// The settled job's own runbook must never reach the page — only its
-	// exclusion from the active count does.
-	if strings.Contains(page, "settled-history-job") {
-		t.Error("dashboard shows settled job history; the queue card must count active jobs only")
-	}
 
 	// Pending approvals: the primary attention item, a wait chip + one subline
 	// naming the soonest item (the only one here) + the decision link.
@@ -133,19 +118,20 @@ func TestDashboardSummaryCards(t *testing.T) {
 	}
 	_ = approval // the ID isn't asserted; only its effect on the card is
 
-	// Queue: the active jobs render as /jobs two-line rows — runbook over
-	// source/meta, a state chip, each row its own link to /jobs/{id} — with the
-	// running/queued split as the card's meta line and the recent-failure
-	// subline in the fail color.
+	// Queue section: the section label names the live queue, the active jobs
+	// render as /jobs two-line rows (each its own link), and the newest settled
+	// job appears in the LAST N RUNS group.
 	for _, want := range []string{
-		`<div class="card queue">`,
-		`<p class="cardsub meta">1 running · 1 queued</p>`,
+		`<div class="section-label"><b>In the queue</b>`,
+		`all jobs →`,
+		`1 running, oldest queued `,
 		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(running.ID) + `">`,
 		`<span class="chip run"><span class="dot"></span>running</span>`,
 		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(gated.ID) + `">`,
 		`<span class="chip wait"><span class="dot"></span>awaiting_approval</span>`,
-		`<p class="cardsub fail">1 failed recently</p>`,
-		`<a class="cardact" href="/jobs">Open all jobs →</a>`,
+		`LAST `,
+		`RUNS`,
+		"settled-history-job", // the newest settled job is the LAST RUNS group
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing queue marker %q", want)
@@ -153,25 +139,22 @@ func TestDashboardSummaryCards(t *testing.T) {
 	}
 
 	// Workspaces: nothing registered, so it stays calm and lands in the COUNTS
-	// band as a quiet count naming the verb that changes it. Sources (calm) and
+	// band as a quiet tile naming the verb that changes it. Sources (calm) and
 	// Checks (calm) render nowhere — quiet surfaces stay off the bands (F6).
 	for _, want := range []string{
-		`<div class="count-kicker">Workspaces</div>`,
+		`<a class="tile" href="/workspaces">`,
 		`exocomp ws add`,
-		`<div class="countnum">0</div>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing calm count marker %q", want)
 		}
 	}
-	if strings.Contains(page, `count-kicker">Sources`) || strings.Contains(page, `aria-labelledby="sources-h"`) {
+	if strings.Contains(page, `<a class="tile" href="/sources">`) {
 		t.Error("a calm sources surface should not render on the glance screen (F6)")
 	}
 
 	// Workflows: nothing in flight — the card is noise when it's usually
 	// empty, so it is hidden entirely rather than shown as a permanent zero.
-	// (The sidebar nav always links to /workflows; only the card's own
-	// aria-labelledby marks whether the card itself rendered.)
 	if strings.Contains(page, `aria-labelledby="flows-h"`) {
 		t.Error("workflows card should be hidden when nothing is in flight")
 	}
@@ -179,8 +162,8 @@ func TestDashboardSummaryCards(t *testing.T) {
 
 // TestDashboardApprovalsCardCalm asserts the pending-approvals card's calm
 // state: with nothing pending, the approvals card stays off the attention band
-// and shows as a quiet count in the COUNTS band ("None waiting."), never a
-// bare zero with the attention accent.
+// and shows as a quiet tile in the COUNTS band ("none waiting"), never a bare
+// zero with the attention accent.
 func TestDashboardApprovalsCardCalm(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -192,9 +175,12 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<div class="count-kicker">Approvals</div>`,
-		`<div class="countnum">0</div>`,
-		`None waiting.`,
+		`<a class="tile" href="/approvals">`,
+		"none waiting",
+		`In the queue`,
+		`· idle`,
+		`○ QUEUE IDLE`,
+		`Nothing queued, nothing running. Every run — manual, scheduled, reactive — lands here first.`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing approvals count marker %q", want)
@@ -205,9 +191,6 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 	}
 	if strings.Contains(page, "cardlink attn") {
 		t.Error("no card should carry the attention accent on an otherwise-empty estate")
-	}
-	if !strings.Contains(page, `Idle — nothing queued, nothing running.`) {
-		t.Error(`queue card should show "Idle — nothing queued, nothing running." when nothing is active`)
 	}
 }
 
@@ -391,8 +374,8 @@ func TestDashboardSchedulesCardCalm(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	if !strings.Contains(page, `<div class="count-kicker">Schedules</div>`) {
-		t.Error("schedules count should render in the COUNTS band when nothing is registered (F6)")
+	if !strings.Contains(page, `<a class="tile" href="/schedules">`) {
+		t.Error("schedules tile should render in the COUNTS band when nothing is registered (F6)")
 	}
 	if strings.Contains(page, `aria-labelledby="sched-h"`) {
 		t.Error("a calm schedules card should not render in the attention band (F6)")
@@ -500,32 +483,51 @@ func (h *harness) degradedSeedJob(t *testing.T, runbook, key string, hosts []str
 	return job
 }
 
-// TestDashboardQueueCardLastJobLine pins S5: the queue card's last-job line is
-// a REAL query — the newest settled job, its runbook and a state chip — with a
-// degraded run rendered as the wait-coloured DEGRADED chip. A degraded job must
-// not inflate "failed recently", which counts StateFailed only.
-func TestDashboardQueueCardLastJobLine(t *testing.T) {
+// TestDashboardQueueRecentRuns pins the queue card's LAST N RUNS group with a
+// live queue (SPEC §3): the group shrinks to the newest two rows, the rule row
+// reads "LAST 2 RUNS" with the "{n} FAILED" tally in the fail colour, and the
+// Rerun verb renders on FAILED rows only — as a sibling link opening the rerun
+// dialog via /jobs/{id}?rerun=1, never on a settled-but-quiet row.
+func TestDashboardQueueRecentRuns(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 
-	// An older clean run settles first; the degraded run is the newest settled
-	// job, so the last-job line names it. The holder keeps the seeded degraded
-	// row unclaimable by the live harness queue.
-	if _, err := h.queue.Enqueue(ctx, queue.Spec{
+	// A live queue: one long-running job, so the recent group is capped at 2.
+	running, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "live-job", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/sleep", "30"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue live job: %v", err)
+	}
+	h.waitJobState(t, running.ID, store.StateRunning, 3*time.Second)
+
+	// Three settled jobs, oldest first: one clean run, then two failures. The
+	// two newest are both failures, so "LAST 2 RUNS" reads "2 FAILED" and the
+	// clean run falls outside the group's window.
+	ok, err := h.queue.Enqueue(ctx, queue.Spec{
 		Runbook: "older-clean", Kind: "shell", Trigger: "manual",
 		Argv: []string{"/bin/sh", "-c", "exit 0"},
-	}); err != nil {
-		t.Fatalf("enqueue older run: %v", err)
-	}
-	holder, err := h.queue.Enqueue(ctx, queue.Spec{
-		Runbook: "key-holder", Kind: "shell", Trigger: "manual",
-		ConcurrencyKey: "deg-seed", Argv: []string{"/bin/sleep", "30"},
 	})
 	if err != nil {
-		t.Fatalf("enqueue key holder: %v", err)
+		t.Fatalf("enqueue older clean run: %v", err)
 	}
-	h.waitJobState(t, holder.ID, store.StateRunning, 3*time.Second)
-	h.degradedSeedJob(t, "nightly-converge", "deg-seed", []string{"hypnotoad", "lrrr"})
+	h.waitJobState(t, ok.ID, store.StateSucceeded, 3*time.Second)
+
+	fail := func(runbook string) store.Job {
+		t.Helper()
+		j, err := h.queue.Enqueue(ctx, queue.Spec{
+			Runbook: runbook, Kind: "shell", Trigger: "manual",
+			Argv: []string{"/bin/sh", "-c", "exit 1"},
+		})
+		if err != nil {
+			t.Fatalf("enqueue failing run %s: %v", runbook, err)
+		}
+		h.waitJobState(t, j.ID, store.StateFailed, 3*time.Second)
+		return j
+	}
+	failed1 := fail("recent-fail-1")
+	failed2 := fail("recent-fail-2")
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -536,38 +538,63 @@ func TestDashboardQueueCardLastJobLine(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<span class="chip wait"><span class="dot"></span>DEGRADED</span>`,
-		"nightly-converge",
+		`LAST 2 RUNS`,
+		`<em class="failed">2 FAILED</em>`,
+		`href="/jobs/` + itoa64(failed2.ID) + `?rerun=1"`,
+		`href="/jobs/` + itoa64(failed1.ID) + `?rerun=1"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("dashboard last-job line missing %q", want)
+			t.Errorf("dashboard queue rule/verb missing %q", want)
 		}
 	}
-	// A degraded job is not a failure: nothing here failed, so the subline
-	// must not appear.
-	if strings.Contains(page, "failed recently") {
-		t.Error("a degraded job inflated the failed-recently count")
+	// The live queue caps the group at two: "LAST 3 RUNS" must not render, and
+	// the clean run (the oldest settled job) falls outside the group.
+	if strings.Contains(page, "LAST 3 RUNS") {
+		t.Error("queue rule shows LAST 3 RUNS with a live queue; the group must shrink to two")
 	}
-	// The glance queries only the newest settled job.
 	if strings.Contains(page, "older-clean") {
-		t.Error("queue card shows more than the newest settled job")
+		t.Error("queue recent group shows more than the newest two with a live queue")
+	}
+	// Exactly the two recent rows render; the live queue shows no idle line.
+	if n := strings.Count(page, `<div class="queue-row">`); n != 2 {
+		t.Errorf("queue recent group renders %d rows, want 2:\n%s", n, page)
+	}
+	if strings.Contains(page, "○ QUEUE IDLE") {
+		t.Error("queue idle line rendered while the queue is live")
 	}
 }
 
-// TestDashboardQueueCardLastJobLineSucceeded is the clean twin: a newest
-// succeeded run renders the ok chip, so the line is not degraded-only.
-func TestDashboardQueueCardLastJobLineSucceeded(t *testing.T) {
+// TestDashboardQueueRecentRunsIdle pins the recent group on an idle queue and
+// the Rerun verb's state gate: "LAST 3 RUNS" renders, and the verb appears on
+// FAILED rows only — a SUCCEEDED row is quiet, no verb, no reason line.
+func TestDashboardQueueRecentRunsIdle(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 
-	job, err := h.queue.Enqueue(ctx, queue.Spec{
-		Runbook: "nightly-backup", Kind: "shell", Trigger: "schedule",
+	// Three settled jobs, oldest first: two failures then a clean run, so the
+	// newest settled run is the SUCCEEDED row the verb-gate must leave quiet.
+	fail := func(runbook string) store.Job {
+		t.Helper()
+		j, err := h.queue.Enqueue(ctx, queue.Spec{
+			Runbook: runbook, Kind: "shell", Trigger: "manual",
+			Argv: []string{"/bin/sh", "-c", "exit 1"},
+		})
+		if err != nil {
+			t.Fatalf("enqueue failing run %s: %v", runbook, err)
+		}
+		h.waitJobState(t, j.ID, store.StateFailed, 3*time.Second)
+		return j
+	}
+	failed1 := fail("older-fail-1")
+	failed2 := fail("older-fail-2")
+	ok, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "newest-clean", Kind: "shell", Trigger: "manual",
 		Argv: []string{"/bin/sh", "-c", "exit 0"},
 	})
 	if err != nil {
-		t.Fatalf("enqueue succeeded job: %v", err)
+		t.Fatalf("enqueue newest clean run: %v", err)
 	}
-	h.waitJobState(t, job.ID, store.StateSucceeded, 3*time.Second)
+	h.waitJobState(t, ok.ID, store.StateSucceeded, 3*time.Second)
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -578,19 +605,33 @@ func TestDashboardQueueCardLastJobLineSucceeded(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`<span class="chip ok"><span class="dot"></span>SUCCEEDED</span>`,
-		"nightly-backup",
+		`LAST 3 RUNS`,
+		`<em class="failed">2 FAILED</em>`,
+		`href="/jobs/` + itoa64(failed2.ID) + `?rerun=1"`,
+		`href="/jobs/` + itoa64(failed1.ID) + `?rerun=1"`,
+		"newest-clean", // the newest settled run is in the group
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("dashboard last-job line missing %q", want)
+			t.Errorf("dashboard queue recent group missing %q", want)
 		}
+	}
+	// The SUCCEEDED row is quiet: no Rerun verb on its own id, no reason line.
+	if strings.Contains(page, `href="/jobs/`+itoa64(ok.ID)+`?rerun=1"`) {
+		t.Error("Rerun verb rendered on a SUCCEEDED row; the verb is FAILED/DEGRADED only")
+	}
+	if strings.Contains(page, `href="/jobs/`+itoa64(ok.ID)+`"`) == false {
+		t.Error("succeeded recent row is missing its link to the job")
+	}
+	if strings.Contains(page, "○ QUEUE IDLE") == false {
+		t.Error("idle queue must render the queue-idle line")
 	}
 }
 
-// TestDashboardQueueRowsCapped pins the queue card's glance ceiling: the rows
-// stop at the cap (queueRowsCap, six today), newest first, while the headline
-// still states the whole active set. The full queue lives on /jobs, reached
-// through the Open all jobs footer — the card never becomes a list.
+// TestDashboardQueueRowsCapped pins the queue card's live-row glance ceiling:
+// the rows stop at the cap (queueRowsCap, six today), newest first, while the
+// section label still states the whole active set — the oldest queued age
+// among them. The full queue lives on /jobs, reached through the all-jobs link
+// — the card never becomes a list.
 func TestDashboardQueueRowsCapped(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -614,8 +655,8 @@ func TestDashboardQueueRowsCapped(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	// Exactly the cap's rows render, newest first: the last-seeded job shows,
-	// the first-seeded one is the one the cap drops.
+	// Exactly the cap's live rows render, newest first: the last-seeded job
+	// shows, the first-seeded one is the one the cap drops.
 	if n := strings.Count(page, `class="jobs-row queue-row"`); n != 6 {
 		t.Errorf("queue card renders %d rows, want the cap of 6:\n%s", n, page)
 	}
@@ -625,14 +666,15 @@ func TestDashboardQueueRowsCapped(t *testing.T) {
 	if strings.Contains(page, "cap-job-0") {
 		t.Error("oldest active row must drop off the capped card (cap-job-0)")
 	}
-	// The headline counts the whole active set, so a queue past the cap still
-	// reads in full on the glance screen.
-	if !strings.Contains(page, `<p class="cardsub meta">0 running · 8 queued</p>`) {
-		t.Error("queue card headline must state the full active set past the cap")
+	// The section label states the whole active set, so a queue past the cap
+	// still reads in full on the glance screen — all queued here, so "0
+	// running, oldest queued {age}".
+	if !strings.Contains(page, `0 running, oldest queued `) {
+		t.Error("queue section label must state the full active set past the cap")
 	}
 }
 
-// TestDashboardCountCardHidesZeroVerbWhenNonzero pins the count-card fix: the
+// TestDashboardCountCardHidesZeroVerbWhenNonzero pins the count-tile fix: the
 // zero-state sentence (the verb that changes it) renders only when the count
 // is zero — a nonzero count must not wear its own zero-state copy.
 func TestDashboardCountCardHidesZeroVerbWhenNonzero(t *testing.T) {
@@ -650,10 +692,10 @@ func TestDashboardCountCardHidesZeroVerbWhenNonzero(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("dashboard status = %d", code)
 	}
-	if !strings.Contains(page, `<div class="count-kicker">Workspaces</div>`) {
-		t.Error("workspaces count card missing")
+	if !strings.Contains(page, `<a class="tile" href="/workspaces">`) {
+		t.Error("workspaces count tile missing")
 	}
-	if !strings.Contains(page, `<div class="countnum">1</div>`) {
+	if !strings.Contains(page, `<b>1</b>`) {
 		t.Error("workspaces count should read 1")
 	}
 	if strings.Contains(page, "exocomp ws add") {
@@ -757,14 +799,15 @@ func TestInsecureBannerHumanCopy(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		`INSECURE HTTP`,
-		`This page is not secure. Anyone on this network could read your sign-in.`,
+		`▲ INSECURE HTTP`,
+		`Anyone on this network can read your sign-in.`,
+		`Serve over TLS →`,
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dashboard banner missing %q", want)
 		}
 	}
-	for _, gone := range []string{"cleartext", "on the wire", "served over"} {
+	for _, gone := range []string{"cleartext", "on the wire", "served over", "This page is not secure"} {
 		if strings.Contains(out, gone) {
 			t.Errorf("dashboard banner still uses internal vocabulary %q", gone)
 		}
@@ -781,5 +824,59 @@ func TestInsecureBannerHumanCopy(t *testing.T) {
 		if !strings.Contains(login, want) {
 			t.Errorf("login insecure warning missing %q", want)
 		}
+	}
+}
+
+// TestDashboardInsecureBannerVerb pins R3: the insecure banner carries the
+// ▲ keyword, the one sentence, and the "Serve over TLS →" verb as a link —
+// a banner with a decision, never a two-line fact.
+func TestDashboardInsecureBannerVerb(t *testing.T) {
+	var buf bytes.Buffer
+	vm := dashboardVM{Page: page{Insecure: true}}
+	if err := dashboard(vm).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render dashboard: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, `▲ INSECURE HTTP`) {
+		t.Errorf("banner keyword missing the ▲ marker:\n%s", out)
+	}
+	if !strings.Contains(out, `Anyone on this network can read your sign-in.`) {
+		t.Errorf("banner sentence missing:\n%s", out)
+	}
+	if !strings.Contains(out, `<a class="verb" href="https://" data-tls>Serve over TLS →</a>`) {
+		t.Errorf("banner verb must be the Serve-over-TLS link:\n%s", out)
+	}
+}
+
+// TestDashboardCountsTiles pins the counts band's 2x2 tiles (SPEC §2.1): four
+// whole-tile links to their full views, the value, and — only at zero — the
+// verbatim zero-state copy naming the CLI verb that changes the count.
+func TestDashboardCountsTiles(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	for _, want := range []string{
+		`<a class="tile" href="/approvals">`,
+		`<a class="tile" href="/workspaces">`,
+		`<a class="tile" href="/schedules">`,
+		`<a class="tile" href="/rules">`,
+		`none waiting`,
+		`exocomp ws add`,
+		`exocomp schedule add`,
+		`exocomp rule add`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("dashboard counts tiles missing %q", want)
+		}
+	}
+	// Four tiles, each the whole link to its full view.
+	if n := strings.Count(page, `<a class="tile" href=`); n != 4 {
+		t.Errorf("dashboard renders %d count tiles, want 4:\n%s", n, page)
 	}
 }
