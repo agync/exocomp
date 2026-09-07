@@ -772,6 +772,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	for _, e := range events {
 		row := eventRow{
 			ID: e.ID, Source: e.Source, Received: receivedClock(e.ReceivedAt, now),
+			Rel:  humanAge(now.Sub(e.ReceivedAt)),
 			Name: wire.EventName(e), Rule: e.MatchedRule, Outcome: e.Outcome,
 			Reason: e.Reason, JobID: e.JobID, Normalized: prettyJSON(e.Normalized),
 			Trace: decodeSteps(e.Trace),
@@ -780,7 +781,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		vm.Rows = append(vm.Rows, row)
 		vm.Chips.add(row)
 	}
-	vm.Page.Meta = "every alert received · what became of it"
+	vm.Page.Meta = "last 24h"
 	s.render(w, r, http.StatusOK, eventsList(vm))
 }
 
