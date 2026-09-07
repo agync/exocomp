@@ -1,9 +1,9 @@
 package web
 
 // eventsList is the Events screen: a last-24h funnel card, filter chips
-// (outcome + source split), and a tray table of every received alert with the
+// (outcome + source split), and a tray of every received alert with the
 // stored payload and evaluation trace inline — so "why didn't it fire?" is
-// answerable by scanning (the brief's Event vocabulary). The ?filter= chip is
+// answerable by expanding (the brief's Event vocabulary). The ?filter= chip is
 // a plain GET so a filtered view stays linkable; the empty state hides the
 // chips (R7) and the funnel shows a zero bar.
 templ eventsList(vm eventsVM) {
@@ -24,28 +24,29 @@ templ eventsList(vm eventsVM) {
 	}
 }
 
-// eventsFunnel is the last-24h counts row plus the proportional outcome bar.
-// The bar renders only the closed enum's five outcomes (the copy's closed
-// set), weighted by the count; a zero outcome is absent, so the ratio never
+// eventsFunnel is the last-24h counts plus the proportional outcome bar and
+// the one sentence below it. Each closed outcome renders as a monospace
+// numeral over a small label (SPEC §2.5); the bar weights only the five
+// outcomes of the closed enum, never the error sink, so the ratio never
 // implies work of unknown length.
 templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
 	<div class="card funnel" role="region" aria-label="Alert funnel, last 24 hours">
-		<div class="funnel-counts">
-			<span class="funnel-in">{ itoa(int64(total)) } in</span>
-			<span class="funnel-ct">{ itoa(int64(ignored)) } ignored</span>
-			<span class="funnel-ct matched">{ itoa(int64(matched)) } matched</span>
-			<span class="funnel-ct wait">{ itoa(int64(suppressed)) } suppressed</span>
-			<span class="funnel-ct wait">{ itoa(int64(gated)) } gated</span>
-			<span class={ "funnel-ct fired", templ.KV("on", fired > 0) }>{ itoa(int64(fired)) } fired</span>
-			<span class="funnel-note">last 24h · nothing ran without being on this page first</span>
+		<div class="counts funnel-counts">
+			<span class="funnel-ct funnel-in"><b>{ itoa(int64(total)) }</b><small>in</small></span>
+			<span class="funnel-ct"><b>{ itoa(int64(ignored)) }</b><small>ignored</small></span>
+			<span class="funnel-ct matched"><b>{ itoa(int64(matched)) }</b><small>matched</small></span>
+			<span class="funnel-ct wait"><b>{ itoa(int64(suppressed)) }</b><small>suppressed</small></span>
+			<span class="funnel-ct wait"><b>{ itoa(int64(gated)) }</b><small>gated</small></span>
+			<span class={ "funnel-ct fired", templ.KV("on", fired > 0) }><b>{ itoa(int64(fired)) }</b><small>fired</small></span>
 		</div>
-		<div class="funnel-bar" aria-hidden="true">
+		<div class="bar funnel-bar" aria-hidden="true">
 			@funnelSeg("ignored", ignored)
 			@funnelSeg("matched", matched)
 			@funnelSeg("suppressed", suppressed)
 			@funnelSeg("gated", gated)
 			@funnelSeg("fired", fired)
 		</div>
+		<p class="funnel-note">nothing ran without being on this page first</p>
 	</div>
 }
 
@@ -85,48 +86,41 @@ templ filterChip(key string, active bool, n int) {
 	</a>
 }
 
-// eventsTray is the tray table. Each row is one event; the whole row toggles
-// the pane below it (payload + evaluation trace). The grid columns are the
-// schema: RECEIVED · ALERT · SOURCE · MATCHED RULE · OUTCOME · REASON · chevron.
+// eventsTray is the stacked list of received alerts. Each row is a button of
+// two lines — the alert with its outcome and chevron, then source · rule and
+// the received clock · age — and the expand pane below it carries the reason,
+// the evaluation trace, then the normalized payload behind a button. The
+// reason never renders in the row itself (SPEC §2.5): it answers "why" only
+// once the operator opens the pane.
 templ eventsTray(vm eventsVM) {
 	<div class="card events-tray">
-		<div class="evt-head" aria-hidden="true">
-			<span>RECEIVED</span><span>ALERT</span><span>SOURCE</span><span>MATCHED RULE</span><span>OUTCOME</span><span>REASON</span><span class="evt-chev-col"></span>
-		</div>
 		for i, e := range vm.Rows {
 			@eventTrayPair(i, e)
 		}
 	</div>
-	<p class="events-foot">showing latest { itoa(int64(len(vm.Rows))) } of { itoa(vm.Total) } events · retained 90d · the enum is closed: ignored / matched / suppressed / gated / fired</p>
+	<p class="events-foot">showing latest { itoa(int64(len(vm.Rows))) } of { itoa(vm.Total) } · retained 90d</p>
 }
 
 // eventTrayPair is one row button and its expand pane. The row keeps the
 // keyboard cursor index on data-index; the pane id is the aria-controls target
 // so j/k/↵/e and a click agree on what expanded.
 templ eventTrayPair(i int, e eventRow) {
-	<div class="evt-row" role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
-		<span class="evt-time">{ e.Received }</span>
-		<span class="evt-alert">{ e.Name }</span>
-		<span class="evt-source">{ e.Source }</span>
-		<span class="evt-rule">{ orDash(e.Rule) }</span>
-		<span class={ "evt-outcome", e.TokenClass() }>
-			<span class="evt-glyph" aria-hidden="true">{ e.TokenGlyph() }</span>
-			<span class="evt-word">{ e.TokenWord() }</span>
-		</span>
-		if e.ReasonLink != "" {
-			<a class="evt-reason" href={ templ.SafeURL(e.ReasonLink) }>{ e.Reason }</a>
-		} else {
-			<span class="evt-reason">{ e.Reason }</span>
-		}
-		<span class="evt-chev" aria-hidden="true">▸</span>
-	</div>
-	<div class="evt-panes" id={ "evt-pane-" + itoa64(e.ID) } hidden>
-		<div class="evt-pane pane-payload">
-			<div class="pane-kicker">NORMALIZED PAYLOAD</div>
-			<pre>{ e.Normalized }</pre>
+	<div class="events-row" role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
+		<div class="line">
+			<span class="evt-alert">{ e.Name }</span>
+			<span class={ "evt-outcome", e.TokenClass() }>
+				<span class="evt-glyph" aria-hidden="true">{ e.TokenGlyph() }</span>
+				<span class="evt-word">{ e.TokenWord() }</span>
+			</span>
+			<span class="evt-chev" aria-hidden="true">▸</span>
 		</div>
-		<div class="evt-pane pane-explain">
-			<div class="pane-kicker kicker-accent">EXPLAIN · RULE EVALUATION TRACE</div>
+		<div class="line">
+			<span class="evt-source">{ e.Source } · { orDash(e.Rule) }</span>
+			<span class="evt-time">{ e.Received } · { e.Rel } ago</span>
+		</div>
+		<div class="evt-pane expanded" id={ "evt-pane-" + itoa64(e.ID) } hidden>
+			@eventReason(e)
+			<div class="pane-kicker kicker-accent pane-trace">EXPLAIN · RULE EVALUATION TRACE</div>
 			if len(e.Trace) == 0 {
 				<p class="meta">No trace recorded.</p>
 			} else {
@@ -147,20 +141,37 @@ templ eventTrayPair(i int, e eventRow) {
 					}
 				</table>
 			}
+			<button type="button" class="evt-payload-toggle" data-payload={ "evt-payload-" + itoa64(e.ID) }>Show normalized payload →</button>
+			<div class="payload" id={ "evt-payload-" + itoa64(e.ID) }>
+				<div class="pane-kicker">NORMALIZED PAYLOAD</div>
+				<pre>{ e.Normalized }</pre>
+			</div>
 		</div>
 	</div>
 }
 
+// eventReason is the pane's one "why" line. A fired or gated reason links to
+// the job or approval that followed; every other outcome is plain text.
+templ eventReason(e eventRow) {
+	if e.ReasonLink != "" {
+		<div class="evt-pane-reason">reason · <a href={ templ.SafeURL(e.ReasonLink) }>{ e.Reason }</a></div>
+	} else {
+		<div class="evt-pane-reason">reason · { e.Reason }</div>
+	}
+}
+
 // eventsKeys wires the tray's keyboard map: j/k move the current row, Enter
-// and e expand it (e also brings the EXPLAIN pane into view), Esc collapses.
-// Clicking a row toggles its pane; clicking the FIRED/GATED reason link inside
-// it still navigates — the row handler skips anchor hits.
+// and e expand it (e also brings the trace into view), Esc collapses. Clicking
+// a row toggles its pane; clicking the payload button or a reason link inside
+// it keeps their own behaviour — the row handler skips anchors and buttons.
+// The payload button is additive: with no script the pane still shows the
+// reason and trace, and the payload card stays inert behind the button.
 templ eventsKeys() {
 	<script>
 	(function () {
 		var tray = document.querySelector(".events-tray");
 		if (!tray) return;
-		var rows = Array.prototype.slice.call(tray.querySelectorAll(".evt-row"));
+		var rows = Array.prototype.slice.call(tray.querySelectorAll(".events-row[data-index]"));
 		if (!rows.length) return;
 
 		function currentRow() {
@@ -185,19 +196,26 @@ templ eventsKeys() {
 			var chev = row.querySelector(".evt-chev");
 			if (chev) chev.textContent = open ? "▾" : "▸";
 			if (open && focusExplain) {
-				var explain = pane && pane.querySelector(".pane-explain");
+				var explain = pane && pane.querySelector(".pane-trace");
 				if (explain) explain.scrollIntoView({ block: "nearest" });
 			}
 		}
 		rows.forEach(function (row) {
 			row.addEventListener("click", function (e) {
-				if (e.target.closest("a")) return;
+				if (e.target.closest("a,button")) return;
 				toggle(row, false);
+			});
+		});
+		tray.querySelectorAll(".evt-payload-toggle").forEach(function (btn) {
+			btn.addEventListener("click", function () {
+				var payload = document.getElementById(btn.getAttribute("data-payload"));
+				if (!payload) return;
+				payload.style.display = payload.style.display === "block" ? "" : "block";
 			});
 		});
 		document.addEventListener("keydown", function (e) {
 			var t = e.target;
-			if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
+			if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.tagName === "BUTTON" || t.tagName === "A")) return;
 			var i = rows.indexOf(currentRow());
 			if (e.key === "j" || e.key === "ArrowDown") {
 				e.preventDefault();
