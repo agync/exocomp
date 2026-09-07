@@ -77,9 +77,34 @@ templ layout(p page) {
 						</a>
 					</header>
 					<header class="appbar">
-						<h1 class="appbar-title">{ p.Title }</h1>
+						if p.BackHref != "" {
+							<a class="back" href={ templ.SafeURL(p.BackHref) } onclick="exoCloseNav()" aria-label="Back to jobs">
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-10 10M14 5l-7 7"></path></svg>
+							</a>
+						} else {
+							<button type="button" class="hamburger" onclick="exoToggleDrawer()" aria-label="Menu">
+								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
+							</button>
+						}
+						<a class="brandlink" href="/">
+							@brandMark()
+							<span class="wordmark">exocomp</span>
+						</a>
+						<div class="appbar-title-wrap">
+							<h1 class="appbar-title">{ p.Title }</h1>
+							if p.TitleSub != "" {
+								<span class="appbar-sub">{ p.TitleSub }</span>
+							}
+						</div>
 						if p.Meta != "" {
 							<span class="appbar-meta">{ p.Meta }</span>
+						}
+						if len(p.Actions) > 0 {
+							<span class="appbar-actions">
+								for _, a := range p.Actions {
+									<a class={ "btn btn-compact", templ.KV("primary", a.Kind == "accent") } href={ templ.SafeURL(a.Href) }>{ a.Label }</a>
+								}
+							</span>
 						}
 						if p.Add != nil {
 							<span class="appbar-action">@addButton(p.Add.Target, p.Add.ButtonText())</span>
