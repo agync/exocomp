@@ -6,6 +6,28 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-07 — dashboard: counts tiles, queue card, insecure-banner verb
+
+- **The COUNTS band is a 2×2 grid of whole-link tiles (SPEC §2.1).** Each tile
+  is one `<a class="tile">` to its full view — label, mono 26/600 tabular value,
+  and, only at zero, the verbatim CLI verb that changes it (`none waiting`,
+  `exocomp ws add`, `exocomp schedule add`, `exocomp rule add`). The old
+  `.counts-grid` card-list markup is gone.
+- **The queue card reads as one section.** The card's "Queue" title is
+  replaced by a `In the queue · {idle | N running, oldest queued …}` section
+  label with an `all jobs →` link; the tray shows the live rows, the idle line
+  (`○ QUEUE IDLE` + the copy sentence) when nothing is moving, and — under a
+  `LAST {n} RUNS · {m} FAILED` rule row — the newest terminal jobs: FAILED and
+  DEGRADED rows carry their reason and a `Rerun →` verb (a sibling link to
+  `/jobs/{id}?rerun=1` that opens the rerun dialog, JS-off included), SUCCEEDED
+  rows are quiet. The group is three rows, or two while the queue is live.
+- **The insecure banner ends in a verb.** `▲ INSECURE HTTP` + one sentence +
+  `Serve over TLS →` linking this host over https, replacing the two-line fact
+  with a decision.
+- **The `failed recently` subline is retired.** Its store COUNT
+  (`CountFailedJobsSince`) is dropped with its test; the recent runs group is
+  the one settled-history fact the glance carries.
+
 ## 2026-09-07 — netgroup form: real-time validation + multipart fix
 
 - **The netgroup-add form validates on blur, not just on submit.** A name with
