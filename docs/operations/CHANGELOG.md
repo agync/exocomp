@@ -6,6 +6,28 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-07 — events: phone-responsive funnel, stacked rows, expand pane
+
+- **The funnel reads as a three-column grid of monospace counts.** Each of the
+  six closed outcomes is a 24px numeral over an 11px label, tinted per outcome
+  (`in` ink-100, `matched` ink-200, `suppressed`/`gated` wait, `fired` accent
+  when non-zero) with a 6px proportional bar; the "last 24h ·" note leaves the
+  funnel for the app bar, which now reads `last 24h` in the meta slot.
+- **Rows are two stacked lines instead of a seven-column table.** Line one is
+  the alert with its outcome keyword and chevron; line two is `source · rule`
+  with `{HH:MM} · {rel} ago` on the right, where `rel` is the age from the
+  event's received time. The chevron still toggles ▸/▾ and `j`/`k`/`↵` still
+  move and expand.
+- **The reason leaves the row for the expanded pane.** It now answers "why"
+  only once the operator opens a row: `reason · …` sits at the top of the pane,
+  the evaluation trace comes first, and the normalized payload sits behind a
+  `Show normalized payload →` button (`payload` is second on a phone). The
+  keyboard hint stays in the markup and is hidden on touch by the coarse
+  pointer media query.
+- **The footer drops the enum sentence.** It reads `showing latest {n} of {t} ·
+  retained 90d`; the closed-enum prose moves to the docs.
+
+
 ## 2026-09-07 — dashboard: counts tiles, queue card, insecure-banner verb
 
 - **The COUNTS band is a 2×2 grid of whole-link tiles (SPEC §2.1).** Each tile
