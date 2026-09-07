@@ -321,6 +321,9 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 	for i := len(jobs) - 1; i >= 0; i-- {
 		vm.Queue = append(vm.Queue, s.jobRowForList(r.Context(), jobs[i], now))
 	}
+	// The count moves to the app bar (SPEC §2.3): the list's own count span is
+	// dropped from the markup, and the app bar meta names the ordering.
+	vm.Page.Meta = itoa(int64(len(vm.Queue))) + " · newest first"
 	s.render(w, r, http.StatusOK, jobsList(vm))
 }
 

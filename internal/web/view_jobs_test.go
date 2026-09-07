@@ -835,3 +835,23 @@ func TestJobsListManualTriggerMetaCarriesFace(t *testing.T) {
 		t.Errorf("actorless manual row missing the cli fallback:\n%s", body)
 	}
 }
+
+// TestJobsListAppbarCount is R4's count move: the jobs count + "newest first"
+// ordering fact live in the app bar meta, and the list's own count span is
+// dropped from the markup.
+func TestJobsListAppbarCount(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+	if !strings.Contains(body, `<span class="appbar-meta">2 · newest first</span>`) {
+		t.Errorf("jobs app bar missing the count meta:\n%s", body)
+	}
+	if strings.Contains(body, `<span class="mono">2 · newest first</span>`) {
+		t.Error("the jobs list must not render its own count span (the count moved to the app bar)")
+	}
+}

@@ -2,22 +2,20 @@ package web
 
 // jobsList is the one list every execution path shares: manual runs, scheduled
 // runs, backups, applies. One list, one detail view (the brief's "everything is
-// a job"). The rows are the two-line grid (2a): a PLAYBOOK / TRIGGER / STATE /
-// RAN cell pair each, the STATE cell carrying the one-fact reason line on
-// FAILED and DEGRADED.
+// a job"). The count lives in the app bar (SPEC §2.3); the rows are the two-line
+// stack (2a): line 1 carries # + playbook + the state cell, line 2 the trigger
+// and the ran meta. The desktop grid re-flows through the .line wrappers
+// (display:contents) so the five cells keep their columns.
 templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<div class="card span2 mt18 jobslist">
 			<div class="kicker">Run ledger</div>
 			<h3>All jobs</h3>
-			<div class="listmeta">
-				<span class="mono">{ itoa(int64(len(vm.Queue))) } · newest first</span>
-				<input id="jobs-filter" type="search" autocomplete="off" placeholder="filter" aria-label="Filter jobs"/>
-			</div>
+			<input id="jobs-filter" type="search" class="filter" autocomplete="off" placeholder="filter" aria-label="Filter jobs"/>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>
 			} else {
-				<div class="jobshead" aria-hidden="true">
+				<div class="jobshead jobs-head" aria-hidden="true">
 					<span>#</span><span>Playbook</span><span>Trigger</span><span>State</span><span>Ran</span>
 				</div>
 				for _, j := range vm.Queue {
@@ -43,28 +41,34 @@ templ jobsList(vm dashboardVM) {
 }
 
 // jobsRow is one two-line row of the jobs list: the whole row is the link to
-// the job's detail page, and each cell is a primary line over a meta line on
-// shared baselines.
+// the job's detail page. Line 1 is the identity (number, playbook, state cell
+// with its one-fact reason); line 2 the trigger and the ran meta. On desktop
+// the .line wrappers are display:contents so the five cells flow into the
+// five-column grid; on phone they are the two stacked flex rows (SPEC §2.3).
 templ jobsRow(j jobRow) {
 	<a class="jobs-row" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
-		<span class="num">{ itoa64(j.ID) }</span>
-		<span class="cell">
-			<b class="mono">{ j.Title }</b>
-			<small class="mono">{ j.SourceMeta }</small>
+		<span class="line">
+			<span class="num">{ itoa64(j.ID) }</span>
+			<span class="cell">
+				<b class="mono">{ j.Title }</b>
+				<small class="mono">{ j.SourceMeta }</small>
+			</span>
+			<span class="cell cell--state">
+				@chip(j.StateClass(), string(j.State))
+				if j.Reason != "" {
+					<span class={ j.ReasonClass() }>{ j.Reason }</span>
+				}
+			</span>
 		</span>
-		<span class="cell">
-			<b>{ j.TriggerLabel }</b>
-			<small class="mono">{ j.TriggerMeta }</small>
-		</span>
-		<span class="cell cell--state">
-			@chip(j.StateClass(), string(j.State))
-			if j.Reason != "" {
-				<span class={ j.ReasonClass() }>{ j.Reason }</span>
-			}
-		</span>
-		<span class="cell">
-			<b class="mono">{ j.Duration }</b>
-			<small class="mono">{ j.FinishedRel }</small>
+		<span class="line">
+			<span class="cell">
+				<b>{ j.TriggerLabel }</b>
+				<small class="mono">{ j.TriggerMeta }</small>
+			</span>
+			<span class="cell">
+				<b class="mono">{ j.Duration }</b>
+				<small class="mono">{ j.FinishedRel }</small>
+			</span>
 		</span>
 	</a>
 }
