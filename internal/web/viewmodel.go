@@ -20,6 +20,17 @@ type page struct {
 	Who      string
 	Scope    string
 	Insecure bool
+	// BackHref is the detail page's back-chevron target (SPEC §2.0): the
+	// phone app bar swaps its menu button for a back chevron when set. Empty
+	// renders the menu button. TitleSub stacks under Title ("Job #5" / the
+	// mono playbook) on the phone shell; empty renders a single-line title.
+	BackHref string
+	TitleSub string
+	// Actions is the phone app bar's action list (SPEC §2.0): the 36px
+	// compact buttons (Raw log control, Rerun accent). It coexists with Add:
+	// Add stays the desktop page-add verb, Actions the phone app-bar list.
+	// Empty renders no slot.
+	Actions []pageAction
 	// Meta is the app bar's page-own fact slot (W7): "host · up 6d" on the
 	// dashboard, a count on a list page. It is NOT the identity — that lives in
 	// the powerline only. Empty renders no slot.
@@ -51,6 +62,15 @@ func (a *pageAdd) ButtonText() string {
 		return a.Text
 	}
 	return "Add " + a.Label
+}
+
+// pageAction is one phone app-bar action (SPEC §2.0): a 36px compact button.
+// Kind names the accent: "control" is the quiet surface fill, "accent" the
+// primary tint — the Raw log / Rerun pair on a job detail page.
+type pageAction struct {
+	Href  string
+	Label string
+	Kind  string // control|accent
 }
 
 // navBadges is the per-nav actionable counts shown beside a nav item: how many
@@ -150,6 +170,12 @@ type jobSummary struct {
 	// settled-history line: its runbook and a state chip. Nil when no job has
 	// ever finished.
 	LastJob *jobLastRow
+	// Recent is the queue card's LAST N RUNS group (SPEC §3): the newest
+	// settled jobs as jobRow rows, the settled history the card lists. The
+	// Dashboard lane (Wave 2) populates and renders it and retires
+	// FailedRecently/LastJob; both fields remain for the current queue card
+	// until that lane lands (see lane report).
+	Recent []jobRow
 }
 
 // queueRowsCap is how many active rows the queue card renders before the card
@@ -704,14 +730,23 @@ type jobRow struct {
 	// names live on the detail page.
 	Reason string
 	// Duration is the run's wall time ("41s"); FinishedRel the "16:31 today"
-	// clock of when it ended.
-	Duration    string
-	FinishedRel string
+	// clock of when it ended; FinishedClock the HH:MM clock alone (the phone
+	// RAN meta's "{HH:MM} · time" second line, SPEC §3).
+	Duration      string
+	FinishedRel   string
+	FinishedClock string
 	// CheckMode reports the run's --check flag for the meta line.
 	CheckMode bool
 }
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
+
+// needsOperator reports whether a job's terminal state still needs the operator
+// (SPEC §3): failed and degraded runs carry a Rerun verb, every other state is
+// quiet. The verb is the operator's cue — never a bare fact.
+func needsOperator(s store.JobState) bool {
+	return s == store.StateFailed || s == store.StateDegraded
+}
 
 // ReasonClass names the reason line's state colour: the degraded line reads in
 // the wait signal, every other line in the default ink.
@@ -1301,9 +1336,11 @@ func (c *eventsChips) add(e eventRow) {
 }
 
 type eventRow struct {
-	ID         int64
-	Source     string
-	Received   string
+	ID       int64
+	Source   string
+	Received string
+	// Rel is the row's "X ago" age (SPEC §2.5 line 2: "{HH:MM} · {rel} ago").
+	Rel        string
 	Name       string
 	Rule       string
 	Outcome    store.EventOutcome

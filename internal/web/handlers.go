@@ -857,6 +857,7 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 		State: j.State, Age: jobAge(j, now), ExitCode: "-", Argv: j.Args.Argv,
 		Title: jobTitle(j), CheckMode: hasFlag(j.Args.Argv, "--check"),
 		Duration: jobDuration(j, now), FinishedRel: jobFinishedRel(j, now),
+		FinishedClock: jobFinishedClock(j),
 	}
 	if j.Args.Source != "" {
 		row.Source = j.Args.Source
@@ -892,6 +893,16 @@ func jobDuration(j store.Job, now time.Time) string {
 func jobFinishedRel(j store.Job, now time.Time) string {
 	if j.FinishedAt != nil {
 		return finishedRel(*j.FinishedAt, now)
+	}
+	return ""
+}
+
+// jobFinishedClock is the finished clock alone (HH:MM), the phone RAN meta's
+// "{HH:MM} · time" split from the finishedRel string (SPEC §3); empty while
+// the run still runs.
+func jobFinishedClock(j store.Job) string {
+	if j.FinishedAt != nil {
+		return j.FinishedAt.UTC().Format("15:04")
 	}
 	return ""
 }
@@ -1264,3 +1275,7 @@ func sanitizeNext(next string) string {
 }
 
 func clock(t time.Time) string { return t.Format("2006-01-02 15:04:05Z") }
+
+// logClock renders a clock column's HH:MM:SS (R9): the date lives on the card,
+// so the log's fixed 60px column carries the seconds alone.
+func logClock(t time.Time) string { return t.UTC().Format("15:04:05") }
