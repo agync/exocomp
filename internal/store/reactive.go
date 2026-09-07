@@ -250,7 +250,26 @@ func (c EventOutcomeCounts) Total() int {
 // so a funnel summary built from it can never disagree with what ListEvents
 // (and so `event list`/GET /events) show for the same rows.
 func (s *Store) CountEventsByOutcome(ctx context.Context) (EventOutcomeCounts, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT outcome, COUNT(*) FROM event GROUP BY outcome`)
+	return s.countEventsByOutcome(ctx, 0, false)
+}
+
+// CountEventsByOutcomeSince tallies events received at or after since, grouped
+// by outcome — the last-24h funnel the events page's funnel card renders. It
+// rides the event_received_at index the list query uses, so a windowed funnel
+// needs no second table and no migration.
+func (s *Store) CountEventsByOutcomeSince(ctx context.Context, since time.Time) (EventOutcomeCounts, error) {
+	return s.countEventsByOutcome(ctx, since.UTC().UnixMilli(), true)
+}
+
+func (s *Store) countEventsByOutcome(ctx context.Context, sinceMS int64, windowed bool) (EventOutcomeCounts, error) {
+	query := `SELECT outcome, COUNT(*) FROM event`
+	var args []any
+	if windowed {
+		query += ` WHERE received_at >= ?`
+		args = append(args, sinceMS)
+	}
+	query += ` GROUP BY outcome`
+	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return EventOutcomeCounts{}, wrap("count events by outcome", err)
 	}

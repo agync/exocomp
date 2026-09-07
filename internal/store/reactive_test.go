@@ -387,6 +387,58 @@ func TestCountEventsByOutcome(t *testing.T) {
 	}
 }
 
+// TestCountEventsByOutcomeSince is the GATE for the windowed funnel: events
+// received at or after since are tallied by outcome, and an event older than
+// the window is excluded. The web events page's last-24h funnel is built from
+// it, so dropping the window (counting all-time) must flip this test red.
+func TestCountEventsByOutcomeSince(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	since := time.Now().UTC().Add(-24 * time.Hour)
+
+	seed := map[store.EventOutcome]int{
+		store.OutcomeIgnored:    2,
+		store.OutcomeMatched:    1,
+		store.OutcomeSuppressed: 3,
+		store.OutcomeGated:      1,
+		store.OutcomeFired:      1,
+		store.OutcomeError:      1,
+	}
+	for outcome, n := range seed {
+		for i := 0; i < n; i++ {
+			if _, err := st.CreateEvent(ctx, store.Event{
+				Source: "alertmanager", Outcome: outcome,
+				ReceivedAt: time.Now().Add(-time.Duration(i+1) * time.Hour),
+			}); err != nil {
+				t.Fatalf("create %s event: %v", outcome, err)
+			}
+		}
+	}
+	// An event older than the window must not count.
+	if _, err := st.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Outcome: store.OutcomeFired,
+		ReceivedAt: time.Now().Add(-25 * time.Hour),
+	}); err != nil {
+		t.Fatalf("create stale event: %v", err)
+	}
+
+	got, err := st.CountEventsByOutcomeSince(ctx, since)
+	if err != nil {
+		t.Fatalf("count events by outcome since: %v", err)
+	}
+	want := store.EventOutcomeCounts{
+		Ignored: 2, Matched: 1, Suppressed: 3, Gated: 1, Fired: 1, Error: 1,
+	}
+	if got != want {
+		t.Fatalf("counts = %+v, want %+v", got, want)
+	}
+	if got.Total() != 9 {
+		t.Fatalf("total = %d, want 9", got.Total())
+	}
+}
+
 func TestLastEventByDedupKeySkipsSuppressed(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)
