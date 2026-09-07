@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
@@ -122,10 +123,22 @@ func TestNetgroupAddCreates(t *testing.T) {
 	ctx := context.Background()
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
-		url.Values{"name": {"home"}, "prefixes": {"192.168.0.0/16,10.0.0.0/8"}}, nil)
+		url.Values{"name": {"home"}, "cidrs": {"192.168.0.0/16,10.0.0.0/8"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("netgroup add = %d, want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/checks?tab=netgroups" {
+		t.Fatalf("success redirect = %q, want /checks?tab=netgroups", loc)
+	}
+	var flash string
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie {
+			flash = c.Value
+		}
+	}
+	if flash != "home added (2 ranges)" {
+		t.Errorf("success flash = %q, want %q", flash, "home added (2 ranges)")
 	}
 
 	g, err := h.store.GetNetgroup(ctx, "home")
@@ -137,30 +150,39 @@ func TestNetgroupAddCreates(t *testing.T) {
 	}
 }
 
-// TestNetgroupAddValidatesPrefixes: a CIDR that does not parse is refused
-// before the store sees it (the same store.ParsePrefixList `netgroup add` runs),
-// the rejection resolves as a flash-carrying redirect, and no row lands.
-func TestNetgroupAddValidatesPrefixes(t *testing.T) {
+// TestNetgroupAddValidatesCIDRs: a CIDR that does not parse is refused before
+// the store sees it (the same store.ParsePrefixList `netgroup add` runs) and
+// re-renders at 422 naming the offending item, not a redirect. No row lands.
+func TestNetgroupAddValidatesCIDRs(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
-		url.Values{"name": {"bad"}, "prefixes": {"not-a-cidr"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+		url.Values{"name": {"bad"}, "cidrs": {"192.168.0/16"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "not-a-cidr") {
-		t.Errorf("flash message %q does not name the rejected CIDR", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("netgroup add bad cidr = %d, want 422", resp.StatusCode)
 	}
-	if _, err := h.store.GetNetgroup(context.Background(), "bad"); err == nil {
+	if loc := resp.Header.Get("Location"); loc != "" {
+		t.Fatalf("refusal redirected to %q; a refusal must render on the form", loc)
+	}
+	for _, want := range []string{"192.168.0/16", "needs four octets", "like 192.168.0.0/16"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("422 body missing %q", want)
+		}
+	}
+	if _, err := h.store.GetNetgroup(ctx, "bad"); err == nil {
 		t.Fatal("a netgroup was created despite an invalid CIDR")
 	}
 }
 
-// TestNetgroupAddDuplicateFlashes: re-adding a name that exists is refused
-// with a flash-carrying redirect, not a 409, and the original row survives.
-func TestNetgroupAddDuplicateFlashes(t *testing.T) {
+// TestNetgroupAddDuplicateRefuses: re-adding a name that exists re-renders at
+// 422 with the duplicate sentence on the name field, not a 409 or a flash.
+func TestNetgroupAddDuplicateRefuses(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -174,11 +196,14 @@ func TestNetgroupAddDuplicateFlashes(t *testing.T) {
 	}
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
-		url.Values{"name": {"home"}, "prefixes": {"192.168.0.0/16"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+		url.Values{"name": {"home"}, "cidrs": {"192.168.0.0/16"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "already exists") {
-		t.Errorf("flash message %q does not report the duplicate", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate netgroup add = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "A netgroup called home already exists.") {
+		t.Errorf("422 body missing the duplicate sentence")
 	}
 	if _, err := h.store.GetNetgroup(ctx, "home"); err != nil {
 		t.Fatalf("original netgroup vanished: %v", err)
@@ -192,17 +217,17 @@ func TestNetgroupAddReadonlyForbidden(t *testing.T) {
 	ro := login(t, ts.URL, h.mint(t, "ro", "readonly"))
 
 	resp := postForm(t, ro, ts.URL+"/netgroups/add",
-		url.Values{"name": {"home"}, "prefixes": {"192.168.0.0/16"}}, nil)
+		url.Values{"name": {"home"}, "cidrs": {"192.168.0.0/16"}}, nil)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("readonly netgroup add = %d, want 403", resp.StatusCode)
 	}
 }
 
-// TestNetgroupAddBadNameFlashes: a name the store's ValidName gate refuses
-// is operator input, not a store failure: it must come back as a flash-
-// carrying redirect, never a bare 500, and no row lands.
-func TestNetgroupAddBadNameFlashes(t *testing.T) {
+// TestNetgroupAddBadNameRefuses: a name the store's ValidName gate refuses is
+// operator input, not a store failure: it re-renders at 422 with the human
+// spaces sentence and the one-click slug fix, and no row lands.
+func TestNetgroupAddBadNameRefuses(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -210,14 +235,55 @@ func TestNetgroupAddBadNameFlashes(t *testing.T) {
 	ctx := context.Background()
 
 	resp := postForm(t, op, ts.URL+"/netgroups/add",
-		url.Values{"name": {"bad name!"}, "prefixes": {"192.168.0.0/16"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+		url.Values{"name": {"Home CIDR"}, "cidrs": {"192.168.0.0/16"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "must match") {
-		t.Errorf("flash message %q does not report the name refusal", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("netgroup add bad name = %d, want 422", resp.StatusCode)
 	}
-	if _, err := h.store.GetNetgroup(ctx, "bad name!"); err == nil {
+	for _, want := range []string{"Names can&#39;t have spaces.", "Use home-cidr"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("422 body missing %q", want)
+		}
+	}
+	if _, err := h.store.GetNetgroup(ctx, "Home CIDR"); err == nil {
 		t.Fatal("a netgroup was created despite an invalid name")
+	}
+}
+
+// TestNetgroupRefusalDoesNotPersist: a refusal re-renders at 422 with the
+// errors filled, but a fresh GET of /checks shows the meta lines at rest — no
+// error residue is stored or re-rendered.
+func TestNetgroupRefusalDoesNotPersist(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/netgroups/add",
+		url.Values{"name": {"Home CIDR"}, "cidrs": {"192.168.0/16"}}, nil)
+	_, _ = io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal status = %d, want 422", resp.StatusCode)
+	}
+
+	code, page := getBody(t, op, ts.URL+"/checks?tab=netgroups")
+	if code != http.StatusOK {
+		t.Fatalf("fresh /checks = %d, want 200", code)
+	}
+	for _, want := range []string{
+		"Letters, digits, dots, hyphens, underscores.",
+		"Comma-separated. IPv4 or IPv6.",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("fresh /checks missing at-rest help %q", want)
+		}
+	}
+	for _, banned := range []string{"Names can't have spaces.", "needs four octets", "A netgroup called"} {
+		if strings.Contains(page, banned) {
+			t.Errorf("fresh /checks carried refusal residue %q", banned)
+		}
 	}
 }
 

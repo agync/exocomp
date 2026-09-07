@@ -27,28 +27,58 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PostFormValue("name")
-	prefixes, err := store.ParsePrefixList(r.PostFormValue("prefixes"))
-	if err != nil {
-		redirectFlash(w, r, "/checks?tab=netgroups", err.Error())
+	cidrs := r.PostFormValue("cidrs")
+	form := netgroupFormVM{Name: name, CIDRs: cidrs}
+
+	// Validate both fields up front so every refusal renders at once (the
+	// daemon stays authoritative: these client rules only shape the response).
+	prefixes, parseErr := store.ParsePrefixList(cidrs)
+	if !store.ValidName(name) {
+		form.ErrName, form.FixName = netgroupNameRefusal(name)
+	}
+	if parseErr != nil {
+		s.log.Info("web: netgroup add refused", "err", parseErr.Error(), "by", ident.token.Name)
+		form.ErrCIDRItem, form.ErrCIDRs = netgroupCIDRRefusal(cidrs, parseErr)
+	}
+	if form.ErrName != "" || form.ErrCIDRs != "" {
+		form.FirstInvalid = "name"
+		if form.ErrName == "" {
+			form.FirstInvalid = "cidrs"
+		}
+		s.netgroupRefusal(w, r, form)
 		return
 	}
+
 	created, err := s.store.CreateNetgroup(r.Context(), store.NewNetgroup{
 		Name: name, Prefixes: prefixes,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		redirectFlash(w, r, "/checks?tab=netgroups", "a netgroup named "+name+" already exists")
+		s.log.Info("web: netgroup add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrName = "A netgroup called " + name + " already exists."
+		form.FirstInvalid = "name"
+		s.netgroupRefusal(w, r, form)
 		return
 	}
-	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/checks?tab=netgroups", validationFlash(err))
+	if err != nil {
+		s.log.Error("web: netgroup add", "err", err.Error())
+		form.ErrForm = netgroupSubmitRefusal
+		s.netgroupRefusal(w, r, form)
 		return
 	}
+	s.log.Info("web: netgroup add", "netgroup", created.Name, "by", ident.token.Name)
+	redirectFlash(w, r, "/checks?tab=netgroups", netgroupAddedFlash(created.Name, len(created.Prefixes)))
+}
+
+// netgroupRefusal re-renders the checks surface at 422 with the add form
+// carrying its refusals — the JS-off path, and the fragment body a JS submit
+// swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) netgroupRefusal(w http.ResponseWriter, r *http.Request, form netgroupFormVM) {
+	vm, err := s.checksVMFor(r, &form)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
-	s.log.Info("web: netgroup add", "netgroup", created.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks?tab=netgroups", "added "+created.Name)
+	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
 }
 
 func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
@@ -79,13 +109,15 @@ func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
 const netgroupSubmitRefusal = "Couldn't reach exocompd — nothing was saved."
 
 // netgroupAddedFlash is the one legitimate success flash (forms/copy.txt):
-// what was added and how many ranges, shown only after the dialog closed.
+// what was added and how many ranges, shown only after the dialog closed. The
+// flash cookie is ASCII-only (Cookie.String sanitizes non-ASCII bytes to
+// spaces), so the copy's "·" separator reads as a parenthetical here.
 func netgroupAddedFlash(name string, n int) string {
 	word := "ranges"
 	if n == 1 {
 		word = "range"
 	}
-	return name + " added · " + itoa(int64(n)) + " " + word
+	return name + " added (" + itoa(int64(n)) + " " + word + ")"
 }
 
 // netgroupNameRefusal translates a refused netgroup name into the field's

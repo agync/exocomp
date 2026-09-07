@@ -103,7 +103,7 @@ func checksList(vm checksVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if vm.Tab == "netgroups" {
-				templ_7745c5c3_Err = netgroupsPanel(vm.Netgroups, vm.Operator).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = netgroupsPanel(vm.Netgroups, vm.Operator, vm.NetgroupForm).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

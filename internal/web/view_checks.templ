@@ -62,7 +62,7 @@ templ checksList(vm checksVM) {
 			<a class="tab" href="/checks?tab=netgroups" role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
 		</div>
 		if vm.Tab == "netgroups" {
-			@netgroupsPanel(vm.Netgroups, vm.Operator)
+			@netgroupsPanel(vm.Netgroups, vm.Operator, vm.NetgroupForm)
 		} else {
 			if !vm.Operator {
 				<p class="meta">Read-only: managing checks needs an operator token.</p>

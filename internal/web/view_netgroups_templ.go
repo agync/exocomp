@@ -14,7 +14,7 @@ import templruntime "github.com/a-h/templ/runtime"
 // renders without the shell (the checks page owns the tabs), and carries the
 // operator add/remove controls. A netgroup holds no secret material, so the
 // write controls here are plain operator-scope, like schedules.
-func netgroupsPanel(rows []netgroupRow, operator bool) templ.Component {
+func netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -48,7 +48,37 @@ func netgroupsPanel(rows []netgroupRow, operator bool) templ.Component {
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<p class=\"meta\">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p><form method=\"post\" action=\"/netgroups/add\" class=\"writeform\"><label for=\"ng-name\">Name</label> <input id=\"ng-name\" name=\"name\" type=\"text\" required autocomplete=\"off\" pattern=\"[A-Za-z0-9._-]+\"> <label for=\"ng-prefixes\">CIDRs (comma-separated)</label> <input id=\"ng-prefixes\" name=\"prefixes\" type=\"text\" required autocomplete=\"off\" placeholder=\"192.168.0.0/16,10.0.0.0/8\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Add netgroup</button></div></form>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<p class=\"meta\">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p><form method=\"post\" action=\"/netgroups/add\" class=\"writeform\" id=\"netgroup-add-form\" novalidate data-netgroup-form>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = fieldInput(form.nameField()).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = fieldInput(form.cidrField()).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = formStatus(form.Pending(), form.ErrFormText()).Render(ctx, templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if form.Pending() {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, " disabled")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, ">Add netgroup</button></div></form>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = netgroupFormJS().Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -58,70 +88,80 @@ func netgroupsPanel(rows []netgroupRow, operator bool) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, " ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if form != nil {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "  <script>\n\t\t\texoModalOpen(\"netgroups-add\");\n\t\t\tvar ngBad = document.querySelector('#netgroups-add input[aria-invalid=\"true\"]');\n\t\t\tif (ngBad) ngBad.focus();\n\t\t\t</script>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<div class=\"card span2 mt18 tray\"><div class=\"kicker\">Address classification</div><h3>Netgroups</h3><p class=\"meta\">Netgroups classify an address for checks and webhook peers — the home/away verdict is a network-path fact, never health.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "<div class=\"card span2 mt18 tray\"><div class=\"kicker\">Address classification</div><h3>Netgroups</h3><p class=\"meta\">Netgroups classify an address for checks and webhook peers — the home/away verdict is a network-path fact, never health.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if !operator {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<p class=\"meta\">Read-only: managing netgroups needs an operator token.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<p class=\"meta\">Read-only: managing netgroups needs an operator token.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if len(rows) == 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 4, "<p class=\"meta\">No netgroups registered — add one.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<p class=\"meta\">No netgroups registered — add one.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 5, "<div class=\"tablewrap stackable\"><table><thead><tr><th scope=\"col\">Netgroup</th><th scope=\"col\">CIDRs</th>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<div class=\"tablewrap stackable\"><table><thead><tr><th scope=\"col\">Netgroup</th><th scope=\"col\">CIDRs</th>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "<th scope=\"col\">Actions</th>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<th scope=\"col\">Actions</th>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 7, "</tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, ng := range rows {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<tr><td data-label=\"Netgroup\"><a href=\"/events?source=check\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<tr><td data-label=\"Netgroup\"><a href=\"/events?source=check\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var3 string
 				templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinStringErrs(ng.Name)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 46, Col: 74}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 55, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "</a></td><td class=\"mono wrap\" data-label=\"CIDRs\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</a></td><td class=\"mono wrap\" data-label=\"CIDRs\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var4 string
 				templ_7745c5c3_Var4, templ_7745c5c3_Err = templ.JoinStringErrs(ng.Display())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 47, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 56, Col: 63}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var4))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if operator {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<td data-label=\"Actions\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<td data-label=\"Actions\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -129,22 +169,58 @@ func netgroupsPanel(rows []netgroupRow, operator bool) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "</td>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</td>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "</tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "</tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "</tbody></table></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</tbody></table></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// netgroupFormJS is the netgroup-add form's progressive enhancement. The form
+// is novalidate (the daemon is authoritative), so submit is intercepted and
+// POSTed with fetch: a 422 swaps the form fragment in place with the
+// server-rendered refusals (JS-off gets the same bytes as a full re-render),
+// anything else follows the redirect and its success flash. After a refusal a
+// field re-validates on blur and clears when right; the primary disables only
+// while submitting.
+func netgroupFormJS() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var5 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var5 == nil {
+			templ_7745c5c3_Var5 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<script>\n\t(function () {\n\t\tfunction netgroupFormWire() {\n\t\t\tvar form = document.getElementById(\"netgroup-add-form\");\n\t\t\tif (!form || form.dataset.netgroupWired) return;\n\t\t\tform.dataset.netgroupWired = \"1\";\n\n\t\t\tfunction restoreMeta(input) {\n\t\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\t\tmeta.textContent = input.name === \"name\"\n\t\t\t\t\t\t? \"Letters, digits, dots, hyphens, underscores.\"\n\t\t\t\t\t\t: \"Comma-separated. IPv4 or IPv6.\";\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar fill = e.target.closest(\"[data-fill]\");\n\t\t\t\tif (fill) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tvar input = form.querySelector('input[name=\"' + fill.getAttribute(\"data-fill\") + '\"]');\n\t\t\t\t\tif (input) {\n\t\t\t\t\t\tinput.value = fill.getAttribute(\"data-value\");\n\t\t\t\t\t\trestoreMeta(input);\n\t\t\t\t\t\tinput.focus();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar retry = e.target.closest(\"[data-retry]\");\n\t\t\t\tif (retry) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.requestSubmit();\n\t\t\t\t}\n\t\t\t});\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Adding';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tform.dataset.netgroupRefused = \"1\";\n\t\t\t\t\t\t\tnetgroupFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"], input[name=\"cidrs\"]');\n\t\t\t\tif (!input || form.dataset.netgroupRefused !== \"1\") return;\n\t\t\t\tif (input.name === \"name\") {\n\t\t\t\t\tif (/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) restoreMeta(input);\n\t\t\t\t} else {\n\t\t\t\t\tvar parts = input.value.split(\",\");\n\t\t\t\t\tvar ok = input.value.trim() !== \"\" && parts.every(function (p) { return p.trim() !== \"\"; });\n\t\t\t\t\tif (ok) restoreMeta(input);\n\t\t\t\t}\n\t\t\t}, true);\n\t\t}\n\t\tnetgroupFormWire();\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

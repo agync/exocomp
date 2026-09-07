@@ -120,16 +120,17 @@ func TestNetgroupCIDRRefusal(t *testing.T) {
 
 // TestNetgroupSubmitAndFlash pin the status line and the success flash: the
 // status line is a whole-submit refusal that names the data's fate, and the
-// flash is success-only copy naming the netgroup and its range count.
+// flash is success-only copy naming the netgroup and its range count (ASCII,
+// since the flash cookie sanitizes non-ASCII bytes to spaces).
 func TestNetgroupSubmitAndFlash(t *testing.T) {
 	assertClean(t, "submit", netgroupSubmitRefusal)
 	if !strings.HasSuffix(netgroupSubmitRefusal, ".") {
 		t.Errorf("submit refusal %q must end in a full stop", netgroupSubmitRefusal)
 	}
-	if got := netgroupAddedFlash("home", 2); got != "home added · 2 ranges" {
+	if got := netgroupAddedFlash("home", 2); got != "home added (2 ranges)" {
 		t.Errorf("netgroupAddedFlash(home, 2) = %q", got)
 	}
-	if got := netgroupAddedFlash("home", 1); got != "home added · 1 range" {
+	if got := netgroupAddedFlash("home", 1); got != "home added (1 range)" {
 		t.Errorf("netgroupAddedFlash(home, 1) = %q", got)
 	}
 }

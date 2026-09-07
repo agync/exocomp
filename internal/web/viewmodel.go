@@ -213,6 +213,74 @@ type scheduleSummary struct {
 	Disabled int
 }
 
+// netgroupFormVM is the netgroup-add dialog's refusal state. ErrName and
+// ErrCIDRs hold the translated sentences (forms/copy.txt) — the raw validator
+// words go to the log at the same call site — and FixName, when set, is the
+// one-click slug the fix link applies. ErrCIDRItem is the offending member,
+// rendered mono ahead of ErrCIDRs when the field holds several values.
+// FirstInvalid names the control to focus; Submitting drives the status line's
+// "Adding" and disables the primary.
+type netgroupFormVM struct {
+	Name         string
+	CIDRs        string
+	ErrName      string
+	ErrCIDRItem  string
+	ErrCIDRs     string
+	FixName      string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+// effective dereferences the form for rendering; nil is the at-rest form
+// (help text, no refusals, dialog closed). A checksVM carries nil on a fresh
+// GET and the filled form only on a 422 re-render.
+func (f *netgroupFormVM) effective() netgroupFormVM {
+	if f == nil {
+		return netgroupFormVM{}
+	}
+	return *f
+}
+
+// Pending reports whether the form is mid-submit, driving the status line's
+// "Adding" and the primary's disabled state. The primary is never disabled for
+// validation — only while submitting.
+func (f *netgroupFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+// ErrFormText is the whole-submit refusal for the status line; empty renders
+// the line empty.
+func (f *netgroupFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// nameField and cidrField build the reusable field's render state from the
+// form's current values and refusals, so the netgroup panel stays a list of
+// fieldInput calls and the per-field copy lives beside the form model.
+func (f *netgroupFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ng-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "home-cidr", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *netgroupFormVM) cidrField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ng-cidr", Label: "CIDRs", Name: "cidrs", Value: v.CIDRs,
+		Placeholder: "192.168.0.0/16, 10.0.0.0/8", Help: "Comma-separated. IPv4 or IPv6.",
+		ErrItem: v.ErrCIDRItem, ErrMsg: v.ErrCIDRs,
+		FirstInvalid: v.FirstInvalid == "cidrs",
+	}
+}
+
 // workflowSummary is the dashboard's in-flight-workflows card.
 type workflowSummary struct {
 	InFlight int

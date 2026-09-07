@@ -737,6 +737,43 @@ td .cellact:hover { text-decoration: underline; }
 .writeform .checkline input { min-height: 0; }
 .writeform .checkline.warn { color: var(--signal-fail); font-weight: 600; }
 
+/* ---- Form fields (forms round) ----
+ * One labelled control = label · control · meta line. The meta line is ALWAYS
+ * rendered (min-height 18px) with help text at rest, so a refusal never changes
+ * the geometry of the field, the form, or the dialog. On refusal the control
+ * wears the fail ring, the meta carries the ▲ message in signal-fail, and an
+ * optional accent fix link applies a safe value. */
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field > .label { font: 500 12.5px/18px var(--font-ui); color: var(--ink-400); }
+.field > .control {
+  height: var(--row-h); padding: 0 14px; border: 0; border-radius: var(--radius-control);
+  background: var(--surface-tray); box-shadow: inset 0 0 0 1px var(--hairline);
+  font: 400 13px var(--font-mono); color: var(--ink-100); width: 100%;
+}
+.field > .control::placeholder { color: var(--ink-600); }
+.field > .control[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--signal-fail); }
+.field > .meta {
+  min-height: 18px; font: 400 12px/18px var(--font-ui); color: var(--ink-500);
+  display: flex; gap: 7px; flex-wrap: wrap;
+}
+.field > .meta.is-error { color: var(--signal-fail); }
+.field > .meta.is-error::before { content: "▲"; font: 400 10px var(--font-mono); margin-right: 6px; }
+.field > .meta .item { font-family: var(--font-mono); }
+.field > .meta a { color: var(--accent-text); }
+
+/* The form-level status line: directly above the primary, always rendered
+ * (min-height 20px) with role="status", so "● Adding" while submitting and
+ * "▲ <msg> Retry" for a whole-submit refusal never shift the layout. */
+.form-status {
+  min-height: 20px; font: 400 12.5px/20px var(--font-ui); color: var(--ink-400);
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.form-status.is-error { color: var(--signal-fail); }
+.form-status.is-error > .msg::before { content: "▲"; font: 400 10px var(--font-mono); margin-right: 6px; }
+.form-status .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-text); animation: var(--breathe); }
+.form-status a { color: var(--accent-text); }
+
+
 /* ---- Toggle switch (progressive enhancement over a real checkbox) ----
  * The <input type="checkbox" role="switch"> stays the form field and the JS-off
  * fallback; this is pure CSS on top, driven by :checked, so no script runs. The

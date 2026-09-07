@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-07 — netgroup add refusals render on the form
+
+- **Netgroup-add refusals render on the form that owns the input, not a
+  flash.** A refused name, CIDR, or duplicate re-renders the add dialog with
+  the field's human sentence (▲ Names can't have spaces., ▲ 192.168.0/16 needs
+  four octets — like 192.168.0.0/16., ▲ A netgroup called home already exists.)
+  and its fail ring; a whole-submit failure reads on the status line
+  (▲ Couldn't reach exocompd — nothing was saved. Retry). JS-off the same page
+  returns HTTP 422 with the dialog open; JS swaps the form in place via fetch.
+  Flash is success-only now ("home added (2 ranges)" — the flash cookie is
+  ASCII-only, so the copy's · separator reads as a parenthetical), so a refusal
+  can never wear the ok tint.
+- **The field layout never moves.** Every control carries an always-present
+  meta line (min-height 18px) that shows help text at rest and the refusal when
+  invalid, so an error never shifts the geometry of the field or the dialog.
+  aria-invalid and aria-describedby tie the control to its meta; the first
+  invalid field receives focus, and after a refusal a field re-validates on
+  blur and clears when right. The reusable fieldInput/formStatus components
+  (view_form.templ) make the pattern mechanical for the other forms.
+
 ## 2026-09-06 — source delete names its cache removal
 
 - **Deleting a source states the full scope of the action.** The source detail's

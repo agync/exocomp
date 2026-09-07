@@ -1,0 +1,69 @@
+package web
+
+// fieldMeta is one labelled control's render state for fieldInput: the control's
+// value, its at-rest help text, and the refusal the daemon or a client rule
+// attached (empty = at rest). ErrItem is the offending member when the field
+// holds several values, rendered mono ahead of ErrMsg; FixValue, when set, is
+// the name the one-click fix link fills in. FirstInvalid drives the browser's
+// autofocus for the JS-off re-render.
+type fieldMeta struct {
+	ID           string
+	Label        string
+	Name         string
+	Value        string
+	Placeholder  string
+	Help         string
+	ErrItem      string
+	ErrMsg       string
+	FixValue     string
+	FirstInvalid bool
+}
+
+// fieldInput is one labelled control in the forms pattern: label · control ·
+// meta line. The meta line is ALWAYS rendered (min-height 18px) with help text
+// at rest, so an error never changes the geometry of the field, the form, or
+// the dialog. On refusal the ring goes signal-fail, the meta carries the ▲
+// message in signal-fail, and an optional accent fix link (data-fill) applies a
+// safe value. aria-invalid sits on the control; the meta id is its
+// aria-describedby.
+templ fieldInput(f fieldMeta) {
+	<label class="field">
+		<span class="label">{ f.Label }</span>
+		<input class="control" id={ f.ID } name={ f.Name } value={ f.Value } spellcheck="false"
+			placeholder={ f.Placeholder }
+			aria-invalid?={ f.ErrMsg != "" }
+			aria-describedby={ f.ID + "-meta" }
+			autofocus?={ f.FirstInvalid }/>
+		<span id={ f.ID + "-meta" } class={ "meta", templ.KV("is-error", f.ErrMsg != "") }>
+			if f.ErrMsg != "" {
+				<span class="msg">
+					if f.ErrItem != "" {
+						<span class="item">{ f.ErrItem }</span>
+					}
+					{ f.ErrMsg }
+				</span>
+				if f.FixValue != "" {
+					<a href="#" data-fill={ f.Name } data-value={ f.FixValue }>Use { f.FixValue }</a>
+				}
+			} else {
+				{ f.Help }
+			}
+		</span>
+	</label>
+}
+
+// formStatus is the form-level status line, directly above the primary and
+// always rendered (min-height 20px): "● Adding" while submitting and "▲ <msg>
+// Retry" for a refusal not attributable to a field. role="status" + aria-live
+// announces changes without stealing focus.
+templ formStatus(pending bool, msg string) {
+	<div class={ "form-status", templ.KV("is-error", msg != "") } role="status" aria-live="polite">
+		if pending {
+			<span class="dot" aria-hidden="true"></span>Adding
+		}
+		if msg != "" {
+			<span class="msg">{ msg }</span>
+			<a href="#" data-retry>Retry</a>
+		}
+	</div>
+}

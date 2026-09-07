@@ -22,6 +22,10 @@ type checksVM struct {
 	// merged per F7); Tab selects which tab renders ("netgroups" or probes).
 	Netgroups []netgroupRow
 	Tab       string
+	// NetgroupForm is the netgroup-add dialog's render state: nil renders the
+	// fresh form (help at rest, dialog closed), and a refusal re-renders the
+	// surface at 422 with the form filled and the dialog open.
+	NetgroupForm *netgroupFormVM
 }
 
 // checkRow is one probe check on the checks surface, with each target's last
@@ -140,24 +144,39 @@ func (c checkRow) DownSummary() string {
 // handleChecks renders the /checks surface for the session: every probe check
 // with each target's posture and location.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.checks(r)
+	vm, err := s.checksVMFor(r, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	s.render(w, r, http.StatusOK, checksList(vm))
+}
+
+// checksVMFor builds the checks view model, optionally carrying the
+// netgroup-add form's refusal state (nil = fresh form).
+func (s *Server) checksVMFor(r *http.Request, form *netgroupFormVM) (checksVM, error) {
+	rows, err := s.checks(r)
+	if err != nil {
+		return checksVM{}, err
+	}
 	ng, err := s.netgroups(r)
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return checksVM{}, err
 	}
 	ident, _ := identityOf(r.Context())
 	tab := r.URL.Query().Get("tab")
 	if tab != "netgroups" {
 		tab = "probes"
 	}
+	// A netgroup refusal re-renders the surface the form lives on, whatever
+	// tab the POST arrived under.
+	if form != nil {
+		tab = "netgroups"
+	}
 	vm := checksVM{
 		Page: s.pageFor(r, "Checks", "checks"), Checks: rows,
 		Operator: canWrite(ident), Netgroups: ng, Tab: tab,
+		NetgroupForm: form,
 	}
 	if vm.Operator {
 		if tab == "netgroups" {
@@ -166,7 +185,7 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 			vm.Page.Add = &pageAdd{Target: "checks-add", Label: "check"}
 		}
 	}
-	s.render(w, r, http.StatusOK, checksList(vm))
+	return vm, nil
 }
 
 // checks reads every check (enabled and disabled) with each target's last

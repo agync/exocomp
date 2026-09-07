@@ -6,17 +6,26 @@ package web
 // renders without the shell (the checks page owns the tabs), and carries the
 // operator add/remove controls. A netgroup holds no secret material, so the
 // write controls here are plain operator-scope, like schedules.
-templ netgroupsPanel(rows []netgroupRow, operator bool) {
+templ netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM) {
 	if operator {
 		@modal("netgroups-add", "Add a netgroup") {
 			<p class="meta">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p>
-			<form method="post" action="/netgroups/add" class="writeform">
-				<label for="ng-name">Name</label>
-				<input id="ng-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-				<label for="ng-prefixes">CIDRs (comma-separated)</label>
-				<input id="ng-prefixes" name="prefixes" type="text" required autocomplete="off" placeholder="192.168.0.0/16,10.0.0.0/8"/>
-				<div class="actions"><button type="submit" class="btn primary">Add netgroup</button></div>
+			<form method="post" action="/netgroups/add" class="writeform" id="netgroup-add-form" novalidate data-netgroup-form>
+				@fieldInput(form.nameField())
+				@fieldInput(form.cidrField())
+				@formStatus(form.Pending(), form.ErrFormText())
+				<div class="actions"><button type="submit" class="btn primary" disabled?={ form.Pending() }>Add netgroup</button></div>
 			</form>
+			@netgroupFormJS()
+		}
+		if form != nil {
+			// A JS-off refusal re-renders the whole page; open the dialog and
+			// focus the first invalid control after it is in the DOM.
+			<script>
+			exoModalOpen("netgroups-add");
+			var ngBad = document.querySelector('#netgroups-add input[aria-invalid="true"]');
+			if (ngBad) ngBad.focus();
+			</script>
 		}
 	}
 	<div class="card span2 mt18 tray">
@@ -57,4 +66,99 @@ templ netgroupsPanel(rows []netgroupRow, operator bool) {
 			</div>
 		}
 	</div>
+}
+
+// netgroupFormJS is the netgroup-add form's progressive enhancement. The form
+// is novalidate (the daemon is authoritative), so submit is intercepted and
+// POSTed with fetch: a 422 swaps the form fragment in place with the
+// server-rendered refusals (JS-off gets the same bytes as a full re-render),
+// anything else follows the redirect and its success flash. After a refusal a
+// field re-validates on blur and clears when right; the primary disables only
+// while submitting.
+templ netgroupFormJS() {
+	<script>
+	(function () {
+		function netgroupFormWire() {
+			var form = document.getElementById("netgroup-add-form");
+			if (!form || form.dataset.netgroupWired) return;
+			form.dataset.netgroupWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.remove("is-error");
+					meta.textContent = input.name === "name"
+						? "Letters, digits, dots, hyphens, underscores."
+						: "Comma-separated. IPv4 or IPv6.";
+				}
+			}
+
+			form.addEventListener("click", function (e) {
+				var fill = e.target.closest("[data-fill]");
+				if (fill) {
+					e.preventDefault();
+					var input = form.querySelector('input[name="' + fill.getAttribute("data-fill") + '"]');
+					if (input) {
+						input.value = fill.getAttribute("data-value");
+						restoreMeta(input);
+						input.focus();
+					}
+				}
+				var retry = e.target.closest("[data-retry]");
+				if (retry) {
+					e.preventDefault();
+					form.requestSubmit();
+				}
+			});
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("netgroup-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("netgroup-add-form");
+							form.dataset.netgroupRefused = "1";
+							netgroupFormWire();
+							var bad = form.querySelector('input[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="cidrs"]');
+				if (!input || form.dataset.netgroupRefused !== "1") return;
+				if (input.name === "name") {
+					if (/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) restoreMeta(input);
+				} else {
+					var parts = input.value.split(",");
+					var ok = input.value.trim() !== "" && parts.every(function (p) { return p.trim() !== ""; });
+					if (ok) restoreMeta(input);
+				}
+			}, true);
+		}
+		netgroupFormWire();
+	})();
+	</script>
 }
