@@ -102,11 +102,14 @@ func (s *Store) GetEvent(ctx context.Context, id int64) (Event, error) {
 	return e, nil
 }
 
-// EventFilter narrows ListEvents. A zero filter lists every event.
+// EventFilter narrows ListEvents. A zero filter lists every event. NotSource
+// excludes one exact source — the events page's "alerts" chip reads as "every
+// source but check" — and composes with the rest of the filter.
 type EventFilter struct {
-	Source   string
-	Outcomes []EventOutcome
-	Limit    int
+	Source    string
+	NotSource string
+	Outcomes  []EventOutcome
+	Limit     int
 }
 
 // ListEvents returns events newest first.
@@ -118,6 +121,10 @@ func (s *Store) ListEvents(ctx context.Context, f EventFilter) ([]Event, error) 
 	if f.Source != "" {
 		where = append(where, "source = ?")
 		args = append(args, f.Source)
+	}
+	if f.NotSource != "" {
+		where = append(where, "source != ?")
+		args = append(args, f.NotSource)
 	}
 	if len(f.Outcomes) > 0 {
 		placeholders := make([]string, len(f.Outcomes))

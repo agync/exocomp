@@ -439,6 +439,43 @@ func TestCountEventsByOutcomeSince(t *testing.T) {
 	}
 }
 
+// TestListEventsExcludesSource is the GATE for the EventFilter.NotSource
+// clause the events page's "alerts" chip rides: rows from the excluded source
+// never appear, rows from every other source do.
+func TestListEventsExcludesSource(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+	for _, src := range []string{"check", "alertmanager", "healthchecks"} {
+		if _, err := st.CreateEvent(ctx, store.Event{
+			Source: src, Outcome: store.OutcomeIgnored,
+		}); err != nil {
+			t.Fatalf("create %s event: %v", src, err)
+		}
+	}
+
+	rows, err := st.ListEvents(ctx, store.EventFilter{NotSource: "check"})
+	if err != nil {
+		t.Fatalf("list events excluding source: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2 (the non-check sources)", len(rows))
+	}
+	for _, e := range rows {
+		if e.Source == "check" {
+			t.Fatal("an excluded check row leaked through the filter")
+		}
+	}
+
+	all, err := st.ListEvents(ctx, store.EventFilter{})
+	if err != nil {
+		t.Fatalf("list all events: %v", err)
+	}
+	if len(all) != 3 {
+		t.Fatalf("all rows = %d, want 3", len(all))
+	}
+}
+
 func TestLastEventByDedupKeySkipsSuppressed(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)
