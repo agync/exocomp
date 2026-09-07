@@ -1578,6 +1578,13 @@ a.evt-reason { color: var(--accent-text); }
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   .queue-idle code, .queue-row .verb { display: none; }
 
+  /* Dashboard counts 2x2 tiles (SPEC §2.1) and the full-width jobs filter
+   * (SPEC §2.3): pre-shipped for the Wave-2 lanes, inert until their markup. */
+  .counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .counts .tile { min-height: 88px; padding: 12px 14px; border-radius: 12px; }
+  .counts .tile b { font: 600 26px var(--font-mono); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
+  .filter { width: 100%; height: var(--row-h); border-radius: var(--radius-control); font-size: 13px; }
+
   .run-card { padding: 16px; gap: 14px; }
   .run-card .head { flex-direction: column; align-items: stretch; gap: 14px; }
   .run-card .title { font-size: 17px; letter-spacing: -0.4px; overflow-wrap: anywhere; }
