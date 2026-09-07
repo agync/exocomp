@@ -115,7 +115,7 @@ spacing:
   main-max:  "1100px"     # centered content column (app.css, not a token)
   phone-max: "390px"      # phone approval surface width (app.css)
   focus-offset: "2px"
-  breakpoints: { stack-cards: "720px", stack-tables: "560px" }
+  breakpoints: { phone: "719px" }   # @media (max-width:719px) — phone, and phone only; 720–1099 keeps desktop layouts
 
 focus:
   ring:   "3px solid {colors.dark.accent.text}"   # :focus-visible only; never recolors to state
@@ -160,7 +160,7 @@ components:
     th:  { font: "{typography.ramp.keyword}", color: "{colors.dark.ink.400}", border-bottom: "1px solid {colors.dark.surface.hairline}" }
     td:  { color: "{colors.dark.ink.200}", border-bottom: "1px solid {colors.dark.surface.hairline-faint}" }
     row-hover: "{colors.dark.surface.tray}"
-    stackable: "below 560px each row becomes a labelled card (data-label from column)"
+    stackable: "on phone (≤719px) each row becomes a labelled card (data-label from column)"
   banner:               # pause / silence / insecure, on every screen until lifted
     radius: "{rounded.card}"
     wait: { border: "{colors.dark.signal.wait-border}", background: "{colors.dark.signal.wait-tint}" }
@@ -295,21 +295,27 @@ The frame is a sticky app bar over a centered content column. The bar is
 `header-h` (60px) tall, holds the brand, a horizontally scrolling primary nav, the
 operator identity, and the theme toggle. On a narrow screen the nav scrolls within
 its space (with a trailing-edge fade signalling more items) rather than pushing the
-bar wider than the viewport; the operator label drops below 720px to reclaim room.
+bar wider than the viewport. On phone the bar is a single 56px shell — menu ·
+mark · page title · right meta — and the wordmark drops; the powerline foot is
+sticky at 36px and `main` carries 50px bottom padding.
 
-`main` is capped at 1100px and centered, padded by `pad-page` (26px 30px). The
-dashboard lays cards on a two-column grid (`gap-card`, 12px); a `span2` card spans
-both columns. Below 720px the grid collapses to one column.
+`main` is capped at 1100px and centered, padded by `pad-page` (26px 30px); on phone
+it is 14px 16px with 50px bottom clearance. The dashboard lays cards on a
+two-column grid (`gap-card`, 12px); a `span2` card spans both columns. Below 719px —
+the one phone breakpoint — the grid collapses to one column; 720–1099 keeps the
+desktop layout with the rail collapsed and `.config` at two columns. A third width
+breakpoint is a bug until a SPEC says otherwise; touch hints are
+`(pointer: coarse)`, never a width test.
 
 Spacing is anchored by `row-h` (44px) — the minimum hit target, shared by rows,
 controls, and buttons. On the phone approval surface (capped at 390px) touch
 targets rise to 48px, an accessibility hard requirement.
 
 Wide content never scrolls the page sideways. `body` uses `overflow-x: clip`, and
-each wide block (`.tablewrap`, the nav) scrolls inside its own box. Below 560px,
-`stackable` tables transform: each row becomes a bordered card and each cell prints
-its column name from `data-label`, so a row never loses its header. The `thead` is
-visually hidden but kept in the accessibility tree.
+each wide block (`.tablewrap`, the nav) scrolls inside its own box. On phone
+(≤719px), `stackable` tables transform: each row becomes a bordered card and each
+cell prints its column name from `data-label`, so a row never loses its header. The
+`thead` is visually hidden but kept in the accessibility tree.
 
 ## Elevation
 

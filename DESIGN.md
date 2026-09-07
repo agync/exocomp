@@ -153,9 +153,9 @@ spacing:
   pad-page: "26px 30px"
   nav-item-h: 40px   # sidebar nav pill height
   focus-offset: 2px
-  breakpoint-stack-cards: 720px
-  breakpoint-stack-tables: 560px
-  breakpoint-drawer: 820px   # below this the sidebar is an off-canvas drawer
+  breakpoint-phone: 719px        # @media (max-width:719px) — phone, and phone only
+  breakpoint-tablet: 1099px      # 720–1099 keeps desktop layouts, rail collapsed, .config 2-col
+  breakpoint-drawer: 820px       # below this the sidebar is an off-canvas drawer
   phone-max: 390px           # phone approval surface width
   modal-width: "min(34rem, calc(100vw - 32px))"
   drawer-width: "min(460px, 100vw)"
@@ -447,17 +447,23 @@ The frame is a fixed-width **sidebar rail** (232px) plus a **content column**,
 with a fixed **powerline** (34px) spanning the viewport bottom. The sidebar
 ends above the powerline; `main` pads its content clear of it. On desktop the
 rail collapses to a 64px icon-only rail; below 820px it becomes an off-canvas
-drawer behind a slim top bar.
+drawer behind a slim top bar. On phone the foot is sticky at 36px and `main`
+carries 50px bottom padding.
 
 The **app bar** renders 58px (the `header-h` token stays 60px, shared with the
 sidebar brand): the page title in `bar` type, a mono `who · scope` meta slot,
-and the page's one primary verb at the right.
+and the page's one primary verb at the right. On phone it is a single 56px bar
+— menu · mark · page title · right meta — and the wordmark drops.
 
-`main` is padded by `pad-page` (26px 30px). Cards pack into equal columns
-(`auto-fill, minmax(360px, 1fr)`, gap 12px) and stack to one column below
-720px. Below 560px, `stackable` tables transform: each row becomes a bordered
+`main` is padded by `pad-page` (26px 30px); on phone it is 14px 16px with 50px
+bottom clearance. Cards pack into equal columns (`auto-fill, minmax(360px,
+1fr)`, gap 12px) and stack to one column below 719px — the one phone
+breakpoint. On phone, `stackable` tables transform: each row becomes a bordered
 card and each cell prints its column name from `data-label`, so a row never
 loses its header; the `thead` is visually hidden but stays in the a11y tree.
+720–1099 keeps the desktop layout with the rail collapsed and `.config` at two
+columns. A third width breakpoint is a bug until a SPEC says otherwise; touch
+hints are `(pointer: coarse)`, never a width test.
 
 The rail is grouped by verb — OPERATE / AUTOMATE / PROVISION / ACCESS — each
 cluster under a mono group label. Actionable-state badges are mono counts in

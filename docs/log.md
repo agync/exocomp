@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-07 — responsive round (v0.9)
+
+- **The design pages codify the responsive principles.** The web surfaces
+  gained a single 719px phone breakpoint and the rules landed as a new
+  `## Responsive (v0.9)` section in `design/INVARIANTS.md` (one breakpoint,
+  rows-not-tables on phone, pre logs, the 56px phone shell bar, size-agnostic
+  markup, the 48px floor with its 36px compact-secondary exception, the app-bar
+  meta staying visible on phone); the `## Layout` sections of the root
+  `DESIGN.md` and `design/DESIGN.md` were rewritten to the same wording, and
+  the breakpoint tokens collapsed to the one phone breakpoint. Structural: the
+  invariants page is extended.
+
 ## 2026-09-06 — degraded job state + job detail v2
 
 - **Software change, no structural edit needed here**: the job state machine

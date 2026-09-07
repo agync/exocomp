@@ -77,7 +77,9 @@ disagree, the code wins and the correction lands in `docs/log.md`.
   bottom sheet listing every action.
 - **One button-height ladder**: 34px default, 30px in tray rows and card feet,
   44px for a form's single dominant verb (the `.actions` block: modal submits,
-  the launch drawer, login), 48px phone floor on every button below 560px.
+  the launch drawer, login), 48px floor on every verb and primary button on
+  phone (≤719px). The one documented exception is a 36px compact-secondary
+  class for a secondary shell action (e.g. Raw log).
 - **A list card's zero-state sentence shows only at zero** (a non-zero count
   never contradicts it), and it names the verb that changes the state.
 - **A11y gates**: 48px touch targets on the phone surface (44px rows on desktop),
@@ -94,6 +96,33 @@ disagree, the code wins and the correction lands in `docs/log.md`.
 - **Header meta is the page's own fact.** The app-bar meta slot carries the page's
   own fact (host · uptime, `{n} checks`, `1 of 1 down`); the operator identity
   renders once per screen, in the powerline only.
+
+## Responsive (v0.9)
+
+The web surface serves every width with one template structure re-flown by the
+stylesheet; phone is not a second design.
+
+- **One breakpoint.** `@media (max-width: 719px)` is phone, and phone only.
+  720–1099 keeps desktop layouts with the rail collapsed and `.config` at two
+  columns. A third width breakpoint is a bug until a SPEC says otherwise. Touch
+  hints are `(pointer: coarse)`, never a width test.
+- **Rows, not tables, on phone.** Every list row (jobs, queue, events) stacks
+  into two lines — a primary line over a mono meta line — the whole row is one
+  link, 44px minimum. The wide table's header row is `display: none` on phone
+  but stays in the a11y tree. A value is never ellipsized on phone:
+  `overflow-wrap: anywhere` before truncation.
+- **Logs are pre by default.** On phone the log is `white-space: pre` in a
+  300px scroll box with a 60px clock column; wrapping is the operator's opt-in
+  toggle (`wrap`), never the default.
+- **One phone shell bar.** Phone chrome is a single 56px bar — menu · mark ·
+  page title · right meta — and the wordmark drops. The powerline foot is
+  sticky at 36px; `main` carries 50px bottom padding.
+- **Size-agnostic markup.** One template structure serves both sizes; the
+  stylesheet re-flows it. Copy differs per size only where the SPEC names it.
+- **Touch floor, documented exception.** The 48px floor (a11y) stays for verbs
+  and primary buttons; a 36px compact-secondary class (e.g. Raw log) is the
+  documented exception. The app bar's right meta slot stays visible on phone
+  (clock · count · last 24h) — it is not hidden.
 
 ## Component vocabulary (one of each, everywhere)
 
