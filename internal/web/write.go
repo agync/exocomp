@@ -3,7 +3,6 @@ package web
 import (
 	"net/http"
 	"net/url"
-	"strings"
 
 	"exocomp.dev/exocomp/internal/secrets"
 )
@@ -103,13 +102,37 @@ func (s *Server) reauth(r *http.Request) error {
 // one-line result. The message is operator-facing status only — never a secret
 // (invariant 4): a value or token is shown once inline, never redirected.
 func redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
-	// A redirect target may already carry a query (e.g. /checks?tab=netgroups);
-	// the flash appends, never overwrites, so it picks the right separator.
-	sep := "?"
-	if strings.Contains(path, "?") {
-		sep = "&"
-	}
-	http.Redirect(w, r, path+sep+"flash="+url.QueryEscape(msg), http.StatusSeeOther)
+	// The flash is carried in a short-lived HttpOnly SameSite=Strict cookie, not
+	// a URL parameter: a deep link can name no message it owns, so an operator
+	// can never be shown a flash another site picked. The redirect itself stays
+	// argument-free (the old ?flash= append is gone — a target carrying its own
+	// query, like /checks?tab=netgroups, needs no separators now). The next page
+	// render consumes the cookie (render clears it) and shows the one message.
+	setFlashCookie(w, msg)
+	http.Redirect(w, r, path, http.StatusSeeOther)
+}
+
+// flashCookie carries the one-shot across a redirect. It is server-set only
+// (Set-Cookie on the 303), HttpOnly, SameSite=Strict, and short-lived so an
+// unconsumed flash cannot linger forever. Read and cleared in pageFor/render.
+const flashCookie = "exocomp_flash"
+
+func setFlashCookie(w http.ResponseWriter, msg string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     flashCookie,
+		Value:    msg,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   300, // 5m — plenty for one redirect hop; render clears it.
+	})
+}
+
+func clearFlashCookie(w http.ResponseWriter) {
+	http.SetCookie(w, &http.Cookie{
+		Name: flashCookie, Value: "", Path: "/",
+		HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: -1,
+	})
 }
 
 // writeRegistrars collects each resource lane's route-registration func. A lane

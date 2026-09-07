@@ -570,9 +570,10 @@ func TestJobsListReasonLines(t *testing.T) {
 	}
 }
 
-// TestJobDetailFlashCleared is J3: the three write routes flash to /jobs/{id},
-// and the job's own page drops the banner — the layout renders it for every
-// page, so handleJobDetail clears it at the render seam.
+// TestJobDetailFlashCleared is J3 + the flash-posture change: the write routes
+// flash to /jobs/{id} via a server-set cookie, the job's own page drops the
+// banner (handleJobDetail clears it at the render seam), and a ?flash= URL
+// parameter — the old, injectable transport — is ignored outright.
 func TestJobDetailFlashCleared(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -585,9 +586,26 @@ func TestJobDetailFlashCleared(t *testing.T) {
 		t.Fatalf("CreateJob: %v", err)
 	}
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// A ?flash= parameter must not render anything (it no longer names a
+	// message — reads come from the cookie only).
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID)+"?flash=job+4+enqueued")
 	if strings.Contains(body, `class="flash"`) {
-		t.Error("job detail must not render the redirected flash banner (J3)")
+		t.Error("a ?flash= URL parameter must not render a flash banner")
+	}
+
+	// A real flash cookie (set the way redirectFlash does) on the detail page
+	// is also dropped — the rerun fact is the dashed chip, not a banner (J3),
+	// and the cookie is consumed so a refresh does not resow it.
+	req, _ := http.NewRequest("GET", ts.URL+"/jobs/"+itoa64(job.ID), nil)
+	req.AddCookie(&http.Cookie{Name: flashCookie, Value: "job 4 enqueued"})
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("detail with flash cookie: %v", err)
+	}
+	b := readBody(t, resp)
+	if strings.Contains(b, "job 4 enqueued") {
+		t.Error("job detail must not render the redirected flash cookie banner (J3)")
 	}
 }
 

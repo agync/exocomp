@@ -295,6 +295,10 @@ func (s *Server) Handler() http.Handler {
 
 // render writes a templ component as an HTML response.
 func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c templ.Component) {
+	// One-shot flash: any render consumes the cookie so a refresh never resows
+	// it. The layout draws p.Flash (set by pageFor from the same cookie) above
+	// the page content.
+	clearFlashCookie(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 	if err := c.Render(r.Context(), w); err != nil {
@@ -307,7 +311,11 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c te
 func (s *Server) pageFor(r *http.Request, title, nav string) page {
 	p := page{Title: title, Nav: nav, Insecure: s.insecure, Signal: s.signal(r.Context())}
 	p.Badges = s.navBadges(r.Context())
-	p.Flash = r.URL.Query().Get("flash")
+	// Flash comes from the redirect cookie (server-set only), never a URL
+	// parameter — a deep link can name no message it owns.
+	if c, err := r.Cookie(flashCookie); err == nil {
+		p.Flash = c.Value
+	}
 	if id, ok := identityOf(r.Context()); ok {
 		p.Who = id.token.Name
 		p.Scope = id.token.Scope

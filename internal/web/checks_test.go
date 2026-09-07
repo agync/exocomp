@@ -199,31 +199,29 @@ func TestCheckAddHTTPExpect(t *testing.T) {
 	}
 }
 
-// flashMessage extracts the ?flash= message a rejected form redirect carries,
-// asserting the redirect went back to wantPath. The message is the operator's
-// one-line error; a caller asserts a stable substring of it.
+// flashMessage extracts the flash a rejected form redirect carries, asserting
+// the redirect went back to wantPath. Flash now travels in a server-set
+// HttpOnly cookie (never a URL parameter), so the message is read off the
+// 303's Set-Cookie header. The message is the operator's one-line error; a
+// caller asserts a stable substring of it.
 func flashMessage(t *testing.T, resp *http.Response, wantPath string) string {
 	t.Helper()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", resp.StatusCode)
 	}
 	loc := resp.Header.Get("Location")
-	// The flash may sit beside another query param (?tab=netgroups&flash=…), so
-	// accept either separator after the path.
-	if !strings.HasPrefix(loc, wantPath+"?") && !strings.HasPrefix(loc, wantPath+"&") {
-		t.Fatalf("redirect = %q, want %s?…", loc, wantPath)
+	// The redirect target may carry its own query (e.g. /checks?tab=netgroups);
+	// compare the path portion, not the whole Location.
+	locPath, _, _ := strings.Cut(loc, "?")
+	if locPath != wantPath {
+		t.Fatalf("redirect = %q, want %s", loc, wantPath)
 	}
-	rest := strings.TrimPrefix(loc, wantPath)
-	rest = strings.TrimPrefix(rest, "?")
-	rest = strings.TrimPrefix(rest, "&")
-	q, err := url.ParseQuery(rest)
-	if err != nil {
-		t.Fatalf("parse redirect query %q: %v", loc, err)
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie {
+			return c.Value
+		}
 	}
-	if msg := q.Get("flash"); msg != "" {
-		return msg
-	}
-	t.Fatalf("redirect %q carries no flash message", loc)
+	t.Fatalf("redirect to %q carries no flash cookie", wantPath)
 	return ""
 }
 
