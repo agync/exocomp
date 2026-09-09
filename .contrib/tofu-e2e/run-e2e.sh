@@ -250,22 +250,34 @@ scenario_S08() { # serial history + prune
     pass "S08"
 }
 
-scenario_S09() { # offline provider mirror (cache population)
-    log "S09 offline provider mirror (cache population)"
+scenario_S09() { # offline provider mirror (full enforcement)
+    log "S09 offline provider mirror (workspace offline on)"
     ensure_workspace "$PROJECT"
-    # The plugin cache is populated by the first init. The full offline
-    # enforcement (OfflineProviders) is not reachable from any surface yet
-    # (gap G2); this asserts the warm-cache half: the provider binaries exist
-    # in the cache and a plan runs without re-fetching.
+    mkdir -p "$WS_DIR/out"
+    # Ensure a warm cache: one online apply populates the mirror. A standalone
+    # S09 run has no prior scenario to warm it.
     cache_dir="$SCRATCH/exocomp/tofu/plugin-cache"
     before=$(find "$cache_dir" -type f 2>/dev/null | wc -l)
-    [ "$before" -gt 0 ] || fail "S09 plugin cache empty after prior runs"
-    # A plan against the fresh WS_DIR may see drift (marker absent) — that is
-    # correct; what matters is the provider is served from the cache.
+    if [ "$before" -eq 0 ]; then
+        out=$(plan_ws "$PROJECT") || rc=$?
+        run_cli workspace apply "$PROJECT" >/dev/null 2>&1 || fail "S09 warm apply failed"
+        before=$(find "$cache_dir" -type f 2>/dev/null | wc -l)
+    fi
+    [ "$before" -gt 0 ] || fail "S09 plugin cache empty after warm apply"
+    # Flip the workspace to offline resolution: providers come from the mirror
+    # alone, no registry access (the executor's OfflineProviders path).
+    run_cli workspace offline "$PROJECT" on 2>&1 | grep -q "offline providers: on" \
+        || fail "S09 workspace offline on failed"
+    # A plan under the offline posture succeeds from the warm mirror. It may see
+    # drift (fresh WS_DIR) — what matters is it resolves providers with no
+    # network and fails only if a provider were missing from the mirror.
     out=$(plan_ws "$PROJECT") || rc=$?
     after=$(find "$cache_dir" -type f 2>/dev/null | wc -l)
     [ "$after" -ge "$before" ] || fail "S09 plugin cache shrank ($before -> $after)"
-    log "S09 plugin cache stable at $after files (offline enforcement is G2)"
+    # Restore the default posture.
+    run_cli workspace offline "$PROJECT" off 2>&1 | grep -q "offline providers: off" \
+        || fail "S09 workspace offline off failed"
+    log "S09 offline resolution from warm mirror ($after files)"
     pass "S09"
 }
 

@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-09 — workspaces can resolve tofu providers offline
+
+- **`exocomp workspace offline <name> on|off`** flips a workspace's
+  offline-provider posture: on makes every tofu run resolve providers from the
+  local filesystem mirror alone, with no `registry.opentofu.org` access — the
+  amendment-8 offline guarantee, now a surface instead of an executor option
+  nothing set. A provider missing from the cache fails the run rather than
+  falling back to the network (fail closed). The posture is per-workspace,
+  stored on the `workspace` row (migration 0035), and threaded into both the
+  inline and daemon driver paths.
+- **The offline path was already proven** (`TestTofuPlanRunsOfflineFromPluginCache`
+  runs a network-denied init and plan from the cache); the gap was that no CLI
+  or store surface could set `OfflineProviders`. Now it can, with an upgrade
+  test pinning the column and a CLI test proving the posture is per-workspace.
+
 ## 2026-09-09 — OpenTofu state adoption works end to end
 
 - **`exocomp workspace adopt <name>`** migrates a workspace's pre-existing local

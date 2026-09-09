@@ -51,8 +51,7 @@ run alone; a failure is reported as a finding (the matrix continues).
 
 Tracked in `.agents/brain/tofu-e2e/todo.md`:
 
-- **G2** — the executor's `OfflineProviders` option is not reachable from any
-  CLI/API surface, so the full offline-provider-mirror enforcement cannot be
-  driven end-to-end yet. S09 asserts the warm-cache half only.
-- G1 (state adoption vs TF_ENCRYPTION) is **fixed** — `exocomp workspace adopt`
-  migrates pre-existing local state; S04 asserts the full flow.
+- G1 (state adoption vs TF_ENCRYPTION) and G2 (OfflineProviders unwired) are
+  **fixed** — `exocomp workspace adopt` migrates pre-existing local state (S04),
+  and `exocomp workspace offline <name> on|off` enforces mirror-only provider
+  resolution (S09).

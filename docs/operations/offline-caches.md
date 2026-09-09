@@ -106,8 +106,11 @@ it. In `OfflineProviders` mode the driver first runs `tofu providers lock -fs-mi
 
 That mode is proven end to end (`TestTofuPlanRunsOfflineFromPluginCache`,
 `internal/executor/tofu_offline_test.go`: one online apply, then a network-denied init and
-plan from the same cache) but is not yet wired to a workspace CLI flag — a restore-drill
-command exercising it end to end is follow-on work, not shipped here.
+plan from the same cache). The surface is `exocomp workspace offline <name> on|off`:
+a workspace flipped on resolves every tofu run's providers from the mirror alone,
+with no registry access, and a provider missing from the cache fails the run rather
+than falling back to the network. Flip it once the cache is known warm — the
+restore-drill plan above is exactly the offline run this posture forces.
 
 ## Verifying offline resolution
 

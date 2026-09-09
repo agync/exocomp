@@ -14,7 +14,7 @@ surface gaps, not to confirm a rosy picture.
 | S06 | Egress declaration | `workspace egress` adds/clears extra outbound ports for tofu runs | CLI: `workspace egress <ws> 6443` then clear | PASS |
 | S07 | Locking + stale-lock unlock | audited `workspace unlock` breaks a held lock | CLI: `workspace unlock` | PASS |
 | S08 | Serial history + prune | N applies produce N serials; `prune --keep --days` trims past the budget | CLI: 3× (mutate, plan, apply), `prune` | PASS |
-| S09 | Offline provider cache | first init populates the plugin cache; warm-cache runs reuse it | CLI + cache dir assertion | PASS (enforcement = G2) |
+| S09 | Offline provider enforcement | `workspace offline on` resolves providers from the warm filesystem mirror alone (no registry); the plan succeeds, and `off` restores online resolution | CLI: warm the cache, `workspace offline on`, plan, `off` | PASS (was G2) |
 | S10 | State-only (mode-A) | `workspace add --state-only` emits the backend block + bearer for an external tofu | CLI: state-only add emits the block | PASS |
 
 ## Driving surfaces
