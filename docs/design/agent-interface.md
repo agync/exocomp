@@ -475,4 +475,3 @@ service extraction (step 2), so they land first.
   binds the TCP listener to the tailnet address).
 - AGENTS.md invariants 1-5 — one operator/container/no external DB; no bespoke stored formats;
   exit codes decide correctness; secrets never in logs/events; every path through the one queue.
-

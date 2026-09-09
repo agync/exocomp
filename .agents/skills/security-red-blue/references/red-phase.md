@@ -6,7 +6,7 @@ regression test.
 
 ## §1 Build, freeze, ground truth
 
-- Build a real binary (`make build` → `bin/exocomp`, or `go build -o /tmp/... 
+- Build a real binary (`make build` → `bin/exocomp`, or `go build -o /tmp/...
   ./cmd/exocomp`). Init a throwaway data dir under a scratch `XDG_DATA_HOME` in
   a `mktemp` dir. Attack that instance; never sudo, never touch tracked files,
   never reach networks beyond what a normal run does.
