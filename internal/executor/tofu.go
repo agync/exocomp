@@ -111,6 +111,15 @@ type TofuOptions struct {
 	// StatePassphrase feeds tofu's own pbkdf2 state encryption. Empty leaves
 	// TF_ENCRYPTION unset and state is pushed in the clear.
 	StatePassphrase string
+	// AdoptState is the one-shot adoption mode for a workspace whose tofu dir
+	// already holds local state (a prior `backend "local"`). It widens the
+	// TF_ENCRYPTION document with an `unencrypted` fallback method so init can
+	// read the old unencrypted terraform.tfstate, and passes -force-copy (which
+	// implies -migrate-state and clears the interactive confirmation) so tofu
+	// migrates it onto the HTTP backend. It is deliberately per-run and never
+	// the default: the unencrypted fallback is a security risk (tofu warns
+	// loudly; the enforced flag forbids it), so a normal run stays aes_gcm-only.
+	AdoptState bool
 	// PrivateDirRoot is where the per-run private directory is created.
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
@@ -295,7 +304,18 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 
 	if op != "init" {
 		initSpec := spec
-		initSpec.Argv = tofuFlags(bin, []string{TofuBinary, "init", "-backend-config=" + backendConfig})
+		initArgv := []string{TofuBinary, "init", "-backend-config=" + backendConfig}
+		if t.opts.AdoptState {
+			// An adoption run migrates pre-existing local state onto the HTTP
+			// backend. -force-copy implies -migrate-state (tofu treats them the
+			// same, meta_backend.go) AND skips the interactive confirmation that
+			// -input=false would otherwise block ("add -force-copy for
+			// non-interactive operation"). A normal run never passes it, so
+			// tofu's own migrateOrReconfigDiag guard still protects a workspace
+			// that grew local state without an explicit adoption.
+			initArgv = append(initArgv, "-force-copy")
+		}
+		initSpec.Argv = tofuFlags(bin, initArgv)
 		sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelSystem, Msg: "tofu init"})
 		res, err := t.inner.Run(ctx, initSpec, sink)
 		if err != nil || res.ExitCode != 0 {
@@ -303,6 +323,9 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 		}
 	} else {
 		spec.Argv = append(spec.Argv, "-backend-config="+backendConfig)
+		if t.opts.AdoptState {
+			spec.Argv = append(spec.Argv, "-force-copy")
+		}
 	}
 
 	spec.Argv = tofuFlags(bin, spec.Argv)
@@ -672,7 +695,7 @@ func (t *Tofu) env(dataDir, cliConfig string, rs RunSecrets) ([]string, error) {
 		out = append(out, "TF_CLI_CONFIG_FILE="+cliConfig)
 	}
 	if t.opts.StatePassphrase != "" {
-		out = append(out, "TF_ENCRYPTION="+encryptionConfig(t.opts.StatePassphrase))
+		out = append(out, "TF_ENCRYPTION="+encryptionConfig(t.opts.StatePassphrase, t.opts.AdoptState))
 	}
 	out = append(out, t.opts.Env...)
 
@@ -690,11 +713,33 @@ func (t *Tofu) env(dataDir, cliConfig string, rs RunSecrets) ([]string, error) {
 // encryptionConfig is the TF_ENCRYPTION document: pbkdf2 over the derived
 // passphrase, AES-GCM over the state. Tofu does the encrypting, so there is no
 // second format and no third party in the recovery path (ADR 0004).
-func encryptionConfig(passphrase string) string {
+//
+// In adoption mode (AdoptState) it also declares an `unencrypted` method and
+// wires it as the state target's fallback, so an init migrating pre-existing
+// unencrypted local state can read the old payload. The `enforced` flag is
+// deliberately NOT set: exocomp never needs to forbid the fallback, it needs it
+// available exactly for the one adoption run. Plans are only ever written by
+// exocomp, so only the state target gains the fallback.
+func encryptionConfig(passphrase string, adopt bool) string {
 	quoted, err := hclString(passphrase)
 	if err != nil {
 		// Unreachable: the passphrase is base64 of a derived subkey.
 		panic("executor: tofu: state passphrase: " + err.Error())
+	}
+	fallback := ""
+	if adopt {
+		fallback = `
+method "unencrypted" "exocomp" {}
+`
+	}
+	stateMethod := `method = method.aes_gcm.exocomp`
+	stateFallback := ""
+	if adopt {
+		stateFallback = `
+  fallback {
+    method = method.unencrypted.exocomp
+  }
+`
 	}
 	return fmt.Sprintf(`key_provider "pbkdf2" "exocomp" {
   passphrase = %s
@@ -702,10 +747,10 @@ func encryptionConfig(passphrase string) string {
 method "aes_gcm" "exocomp" {
   keys = key_provider.pbkdf2.exocomp
 }
-state {
-  method = method.aes_gcm.exocomp
+%sstate {
+  %s%s
 }
-`, quoted)
+`, quoted, fallback, stateMethod, stateFallback)
 }
 
 // hclString quotes a value for an HCL document, refusing the characters that

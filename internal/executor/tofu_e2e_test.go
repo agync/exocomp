@@ -110,6 +110,7 @@ type fixture struct {
 	tofuDir    string
 	target     string
 	queue      *queue.Queue
+	driver     *executor.Tofu
 	token      string
 	passphrase string
 }
@@ -195,6 +196,7 @@ func newFixture(t *testing.T, workers int) *fixture {
 		tofuDir:    tofuDir,
 		target:     filepath.Join(tofuDir, "greeting.txt"),
 		queue:      q,
+		driver:     driver,
 		token:      token,
 		passphrase: passphrase,
 	}
@@ -282,6 +284,126 @@ func (f *fixture) requireSucceeded(job store.Job, log string) {
 	f.t.Helper()
 	if job.State != store.StateSucceeded {
 		f.t.Fatalf("job %d ended %s:\n%s", job.ID, job.State, log)
+	}
+}
+
+// TestTofuAdoptsExistingLocalState proves the adoption runbook end to end: a
+// workspace whose tofu dir already holds state from a prior `backend "local"`
+// is migrated onto the HTTP backend by one AdoptState run. The unencrypted
+// fallback lets init read the old terraform.tfstate, -migrate-state moves it,
+// and a subsequent plain plan reads clean state — proving the fallback was not
+// needed again. This is the regression test for G1.
+func TestTofuAdoptsExistingLocalState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real tofu")
+	}
+	if _, err := exec.LookPath(executor.TofuBinary); err != nil {
+		t.Skip("tofu not installed")
+	}
+	f := newFixture(t, 1)
+	ctx := context.Background()
+
+	// Establish local state OUTSIDE exocomp: a local backend in the same tofu
+	// dir, applied once, leaving terraform.tfstate (serial 1, unencrypted).
+	localCfg := "terraform {\n  backend \"local\" {}\n}\n"
+	extra := filepath.Join(f.tofuDir, "backend.tf")
+	if err := os.WriteFile(extra, []byte(localCfg), 0o600); err != nil {
+		t.Fatalf("write local backend: %v", err)
+	}
+	runLocal := func(argv ...string) {
+		cmd := exec.CommandContext(ctx, executor.TofuBinary, argv...)
+		cmd.Dir = f.tofuDir
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("local tofu %v: %v", argv, err)
+		}
+	}
+	runLocal("init", "-input=false")
+	runLocal("plan", "-out="+filepath.Join(f.tofuDir, "adopt.tfplan"), "-input=false")
+	runLocal("apply", "-auto-approve", filepath.Join(f.tofuDir, "adopt.tfplan"))
+	localState := filepath.Join(f.tofuDir, "terraform.tfstate")
+	if _, err := os.Stat(localState); err != nil {
+		t.Fatalf("local state not created: %v", err)
+	}
+	if err := os.Remove(extra); err != nil {
+		t.Fatalf("remove local backend: %v", err)
+	}
+
+	// A normal (non-adopt) run must refuse: tofu needs a migration flag to change
+	// backends, and the driver never passes one outside adoption.
+	refused, refusedLog := f.run(executor.TofuArgv("plan"), "tofu:edge")
+	if refused.State != store.StateFailed {
+		t.Fatalf("non-adopt plan over existing local state ended %s, want failed:\n%s",
+			refused.State, refusedLog)
+	}
+
+	// The adoption run: AdoptState widens the encryption doc and passes
+	// -migrate-state; the state lands in the HTTP backend at serial 1.
+	f.driver = executor.NewTofu(executor.TofuOptions{
+		Workspace:        f.workspace.Name,
+		BackendURL:       api.StateURL(f.server.Addr(), f.workspace.Name),
+		BackendToken:     f.token,
+		StatePassphrase:  f.passphrase,
+		PrivateDirRoot:   f.t.TempDir(),
+		PluginCacheDir:   tofuPluginCache(f.t),
+		OfflineProviders: true,
+		AdoptState:       true,
+	})
+	f.queue = queue.New(f.store, f.driver, queue.Options{
+		Workers:      1,
+		PollInterval: 20 * time.Millisecond,
+	}, queue.WithRedactor(secrets.NewRedactor([][]byte{
+		[]byte(f.token), []byte(f.passphrase),
+	})))
+
+	adoptJob, adoptLog := f.run(executor.TofuArgv("init"), "tofu:edge")
+	f.requireSucceeded(adoptJob, adoptLog)
+	version, err := f.store.LatestTFState(ctx, f.workspace.ID)
+	if err != nil {
+		t.Fatalf("latest tfstate after adopt: %v", err)
+	}
+	if version.Serial != 1 {
+		t.Errorf("serial after adopt = %d, want 1", version.Serial)
+	}
+	// Tofu's documented migration safety: the old local file is drained to an
+	// empty placeholder and the pre-migration state is preserved at .backup.
+	// What matters is the state is no longer authoritative locally.
+	if info, err := os.Stat(localState); err != nil {
+		t.Fatalf("local terraform.tfstate missing after adopt: %v", err)
+	} else if info.Size() != 0 {
+		t.Errorf("local terraform.tfstate not drained after adopt: %d bytes, want 0", info.Size())
+	}
+	if _, err := os.Stat(localState + ".backup"); err != nil {
+		t.Errorf("migration backup missing at .backup: %v", err)
+	}
+
+	// A subsequent plain run reads the adopted state cleanly: no drift, no
+	// "unencrypted payload" error, no -migrate-state.
+	f.driver = executor.NewTofu(executor.TofuOptions{
+		Workspace:        f.workspace.Name,
+		BackendURL:       api.StateURL(f.server.Addr(), f.workspace.Name),
+		BackendToken:     f.token,
+		StatePassphrase:  f.passphrase,
+		PrivateDirRoot:   f.t.TempDir(),
+		PluginCacheDir:   tofuPluginCache(f.t),
+		OfflineProviders: true,
+	})
+	f.queue = queue.New(f.store, f.driver, queue.Options{
+		Workers:      1,
+		PollInterval: 20 * time.Millisecond,
+	}, queue.WithRedactor(secrets.NewRedactor([][]byte{
+		[]byte(f.token), []byte(f.passphrase),
+	})))
+
+	planJob, planLog := f.run(executor.TofuArgv("plan"), "tofu:edge")
+	f.requireSucceeded(planJob, planLog)
+	if f.planFoundChanges(planJob.ID) {
+		t.Errorf("plan after adopt found drift against adopted state:\n%s", planLog)
+	}
+	if strings.Contains(planLog, "-migrate-state") {
+		t.Errorf("plain plan after adopt still passed -migrate-state:\n%s", planLog)
+	}
+	if strings.Contains(planLog, "unencrypted payload") {
+		t.Errorf("plain plan after adopt hit an unencrypted payload error:\n%s", planLog)
 	}
 }
 

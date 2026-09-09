@@ -9,7 +9,7 @@ surface gaps, not to confirm a rosy picture.
 | S01 | First-run state creation | GET 404 → empty → apply POSTs serial 1; state encrypted at rest (TF_ENCRYPTION pbkdf2); plan exits 2 = changes, job still succeeds | CLI: `workspace add` → `plan` (exit 2) → `apply` → marker written | PASS |
 | S02 | Plan → drift | out-of-band change re-plans to exit 2; drift is a fact, not a failed run | CLI: mutate marker, `plan` exits 2 | PASS |
 | S03 | Plan gating + approvals | saved plan artifact sealed; require-approval policy pends the apply; `approval decide --approve` releases it and the job runs | CLI: `policy add … --action require_approval`, `plan`, `apply --plan`, `approval decide --approve`, poll job | PASS |
-| S04 | State import / adoption | `tofu init -migrate-state` onto the HTTP backend takes over existing local state | CLI + manual tofu with local backend | **FAIL = G1** |
+| S04 | State adoption | `exocomp workspace adopt` migrates a workspace's pre-existing local `terraform.tfstate` (a prior local backend) onto the HTTP backend; a plain plan then reads it cleanly | CLI: establish local state by hand, `workspace add`, `workspace adopt`, `workspace plan` exit 0 | PASS (was G1) |
 | S05 | Run-secrets as TF_VAR_ | sealed secret bound to `TF_VAR_*` reaches the provider's env; value never in logs/events | CLI: `secrets add`, `run-secret add`, `apply --run-secrets`; marker takes the secret value | PASS |
 | S06 | Egress declaration | `workspace egress` adds/clears extra outbound ports for tofu runs | CLI: `workspace egress <ws> 6443` then clear | PASS |
 | S07 | Locking + stale-lock unlock | audited `workspace unlock` breaks a held lock | CLI: `workspace unlock` | PASS |

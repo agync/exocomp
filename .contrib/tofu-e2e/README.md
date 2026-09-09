@@ -51,10 +51,8 @@ run alone; a failure is reported as a finding (the matrix continues).
 
 Tracked in `.agents/brain/tofu-e2e/todo.md`:
 
-- **G1** — state adoption (`tofu init -migrate-state`, the documented runbook)
-  conflicts with exocomp's `TF_ENCRYPTION`: an unencrypted local
-  `terraform.tfstate` cannot be adopted because tofu refuses to read an
-  unencrypted payload into an encryption-configured backend. S04 pins this.
 - **G2** — the executor's `OfflineProviders` option is not reachable from any
   CLI/API surface, so the full offline-provider-mirror enforcement cannot be
   driven end-to-end yet. S09 asserts the warm-cache half only.
+- G1 (state adoption vs TF_ENCRYPTION) is **fixed** — `exocomp workspace adopt`
+  migrates pre-existing local state; S04 asserts the full flow.

@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-09 — OpenTofu state adoption works end to end
+
+- **`exocomp workspace adopt <name>`** migrates a workspace's pre-existing local
+  tofu state onto the HTTP backend. It runs one `tofu init -force-copy` (which
+  implies `-migrate-state`) with an `unencrypted` read fallback in the
+  `TF_ENCRYPTION` document, so an old local `terraform.tfstate` from a prior
+  `backend "local"` is read, migrated, and drained (tofu keeps a `.backup`).
+  This closes the gap that made the documented adoption runbook fail with
+  "encountered unencrypted payload without unencrypted method configured".
+- **The unencrypted fallback is one-shot and never the default.** A normal run's
+  encryption document stays `aes_gcm`-only; the fallback exists exactly for the
+  adoption run, and a normal plan over migrated state reads it cleanly. Tofu's
+  own backend-change guard still protects a workspace that grows local state
+  without an explicit adoption.
+- **Verified against the real tofu binary** (executor e2e fixture): local state
+  established with a local backend, adopted, then re-planned to no changes.
+
 ## 2026-09-09 — gates move to the pre-commit framework
 
 - **The three bespoke hook scripts become pre-commit dispatchers.** `commit-msg`,

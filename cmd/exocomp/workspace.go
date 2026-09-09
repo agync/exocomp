@@ -53,11 +53,47 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceListCmd(),
 		newWorkspacePlanCmd(),
 		newWorkspaceApplyCmd(),
+		newWorkspaceAdoptCmd(),
 		newWorkspaceEgressCmd(),
 		newWorkspaceUnlockCmd(),
 		newWorkspacePruneCmd(),
 	)
 	return cmd
+}
+
+// newWorkspaceAdoptCmd registers the one-shot adoption verb: migrate a
+// workspace's pre-existing local tofu state onto the HTTP backend. It is the
+// CLI face of the documented "take over existing OpenTofu state" runbook
+// (docs/operations/bootstrap.md, ADR 0004).
+func newWorkspaceAdoptCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "adopt <name>",
+		Short: "Migrate a workspace's pre-existing local state onto the HTTP backend",
+		Long: "One-shot adoption for a workspace whose tofu dir already holds state from a " +
+			"prior local backend. Runs `tofu init -migrate-state` once with an unencrypted " +
+			"read fallback so the old terraform.tfstate is migrated and then removed (tofu " +
+			"keeps a backup). Refuses when the workspace already has state in exocomp. The " +
+			"unencrypted fallback lives only for this one run: every later run is encrypted " +
+			"as usual. Run this on a host without `exocomp serve` (the run serves the state " +
+			"backend itself).",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
+			out := cmd.OutOrStdout()
+			warn := cmd.ErrOrStderr()
+			code, err := runWorkspaceOp(ctx, out, warn, workspaceOp{
+				workspace: args[0],
+				op:        "adopt",
+			})
+			if err != nil {
+				return err
+			}
+			if code != 0 {
+				os.Exit(code)
+			}
+			return nil
+		},
+	}
 }
 
 func newWorkspacePruneCmd() *cobra.Command {
@@ -663,6 +699,13 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 	svc := service.New(st, dir, nil)
 	var enq service.Enqueuer
 	if daemonRunning(ctx, dir) {
+		if op.op == "adopt" {
+			// Adoption serves the state backend in this process and drains the
+			// one job it enqueues. A running daemon polls the same job table, so
+			// two queues would race the row; and the daemon's driver does not
+			// carry the adoption flag. Refuse rather than race.
+			return 0, fmt.Errorf("workspace adopt: stop `exocomp serve` first; adoption runs the state backend itself (one-shot, unencrypted read fallback)")
+		}
 		enq = daemonEnqueuer{st: st, dir: dir, out: out}
 	} else {
 		enq = workspaceInlineEnqueuer{st: st, env: env, dir: dir, dirs: dirs, ws: ws, out: out, warn: warn}
@@ -673,6 +716,8 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		return runWorkspacePlan(ctx, svc, enq, st, env, out, op, ws, dirs)
 	case "apply":
 		return runWorkspaceApply(ctx, svc, enq, st, env, out, op, ws, dirs)
+	case "adopt":
+		return runWorkspaceAdopt(ctx, st, env, dir, dirs, ws, out, warn)
 	default:
 		return 0, fmt.Errorf("workspace: unknown operation %q", op.op)
 	}
@@ -803,7 +848,44 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 	return workspaceExit(ctx, st, out, final, op.op)
 }
 
-// workspaceInlineEnqueuer serves the state backend in this process and drains
+// runWorkspaceAdopt migrates a workspace's pre-existing local tofu state onto
+// the HTTP backend: one `tofu init -migrate-state` run with the unencrypted
+// read fallback, served in this process like any inline run. It refuses when
+// the workspace already holds state in exocomp — there is nothing to take over
+// — and warns (but proceeds) when no local state file is present, so tofu's own
+// diagnostics stay authoritative. The adopt flag lives for this run only: the
+// driver's normal (non-adopt) path is unchanged and stays aes_gcm-only.
+func runWorkspaceAdopt(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
+	dirs tofuPaths, ws store.Workspace, out, warn io.Writer) (code int, err error) {
+	if ws.Serial > 0 {
+		return 0, fmt.Errorf("workspace adopt: %q already has state in exocomp (serial %d); nothing to take over",
+			ws.Name, ws.Serial)
+	}
+	localState := filepath.Join(ws.TofuDir, "terraform.tfstate")
+	if _, serr := os.Stat(localState); serr != nil {
+		_, _ = fmt.Fprintf(warn, "workspace adopt: no terraform.tfstate in %s; tofu will report if there is nothing to migrate\n", ws.TofuDir)
+	}
+
+	enq := workspaceInlineEnqueuer{st: st, env: env, dir: dir, dirs: dirs, ws: ws, out: out, warn: warn, adopt: true}
+	spec := queue.Spec{
+		Runbook:        service.WorkspaceRunbook(ws.Name),
+		Kind:           executor.KindTofu,
+		Trigger:        service.TriggerManual,
+		Argv:           executor.TofuArgv("init"),
+		Dir:            ws.TofuDir,
+		ConcurrencyKey: "tofu:" + ws.Name,
+	}
+	job, err := enq.Enqueue(ctx, spec)
+	if err != nil {
+		return 0, err
+	}
+	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n", job.ID, job.State, jobDuration(job))
+	if job.State == store.StateSucceeded {
+		_, _ = fmt.Fprintln(out, "adopted: state migrated onto the HTTP backend (tofu kept a local backup)")
+	}
+	return workspaceExit(ctx, st, out, job, "adopt")
+}
+
 // the one job it enqueues, which is what a host with no daemon does. Its
 // EnqueueGated is an enqueue-only insert: a gated apply waits for a decision and
 // never starts a backend or a driver here.
@@ -814,10 +896,13 @@ type workspaceInlineEnqueuer struct {
 	dirs      tofuPaths
 	ws        store.Workspace
 	out, warn io.Writer
+	// adopt marks the run as a one-shot state adoption: the driver widens its
+	// encryption document and passes -migrate-state for this run only.
+	adopt bool
 }
 
 func (e workspaceInlineEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
-	return runWorkspaceInline(ctx, e.st, e.env, e.dir, e.dirs, e.ws, spec, e.out, e.warn)
+	return runWorkspaceInline(ctx, e.st, e.env, e.dir, e.dirs, e.ws, spec, e.out, e.warn, e.adopt)
 }
 
 func (e workspaceInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
@@ -827,8 +912,9 @@ func (e workspaceInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Sp
 // runWorkspaceInline serves the state backend in this process and drains the
 // one job it enqueued. The bearer and the state passphrase are derived here
 // and never leave it, which is why a job row alone is not enough to run one.
+// adopt marks a one-shot state adoption (see workspaceInlineEnqueuer.adopt).
 func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
-	dirs tofuPaths, ws store.Workspace, spec queue.Spec, out, warn io.Writer) (job store.Job, err error) {
+	dirs tofuPaths, ws store.Workspace, spec queue.Spec, out, warn io.Writer, adopt bool) (job store.Job, err error) {
 	addr, srv, err := stateBackend(ctx, dir, st, env)
 	if err != nil {
 		return store.Job{}, err
@@ -878,6 +964,7 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		// through this same path captures nothing.
 		InventoryOut: handoffInventoryPath(dir, ws.Name),
 		OutputSealer: executor.EnvelopeOutputSealer{Env: env, Store: st, Workspace: ws.Name},
+		AdoptState:   adopt,
 	}, caps)
 	if err != nil {
 		return store.Job{}, err

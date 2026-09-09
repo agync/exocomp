@@ -57,8 +57,12 @@ whole homelab.
 
 Adoption paths are reversible runbooks tested against fixtures, not one-way doors:
 
-- **Existing OpenTofu state** — `tofu init -migrate-state` onto the HTTP backend, with a
-  documented back-out performed while the old backend still exists.
+- **Existing OpenTofu state** — `exocomp workspace adopt <name>` runs one
+  `tofu init -force-copy` (which implies `-migrate-state`) with an unencrypted
+  read fallback so the old `terraform.tfstate` migrates onto the HTTP backend.
+  The local file is drained and tofu keeps a `.backup`; the fallback exists for
+  that one run only — every later run is encrypted as usual. Reversible: the
+  old backend's `.backup` still exists while the migration is fresh.
 - **Existing ansible-vault password** — imported at screen 4, stored as a `vault_pass`
   secret and bound to a vault-id.
 - **Existing restic repository** — verified and adopted rather than re-initialised.

@@ -168,7 +168,7 @@ scenario_S03() { # plan gating + approvals (saved plan, policy, approve/reject)
 }
 
 scenario_S04() { # state import / migrate-state adoption
-    log "S04 state import (tofu init -migrate-state)"
+    log "S04 state adoption (exocomp workspace adopt)"
     run_cli policy rm gated 2>/dev/null || true
     # A second project dir holding a workspace that ALREADY has local state:
     # the adoption case from docs/operations/bootstrap.md. We first establish
@@ -185,15 +185,18 @@ scenario_S04() { # state import / migrate-state adoption
         tofu apply /tmp/adopt.tfplan >/dev/null 2>&1 && \
         [ -f terraform.tfstate ]) || fail "S04 could not establish local state"
     run_cli workspace add "$PROJECT-adopt" --dir "$ADOPT_DIR"
-    # The adoption apply should migrate the local state. KNOWN GAP (G1): the
-    # executor's TF_ENCRYPTION blocks adopting unencrypted local state. This
-    # asserts the CURRENT behavior so the gap is pinned until G1 is fixed.
-    if run_cli workspace apply "$PROJECT-adopt" >/dev/null 2>&1; then
-        log "S04 adopt apply SUCCEEDED (G1 no longer reproduces — update this scenario)"
-        pass "S04"
-    else
-        fail "S04 adopt apply failed (G1: TF_ENCRYPTION vs unencrypted state)"
-    fi
+    # Adoption serves the state backend in this process, so the daemon must be
+    # down for it (two queues over one job table would race). Stop, adopt,
+    # restart.
+    "$DAEMON" stop
+    run_cli workspace adopt "$PROJECT-adopt" 2>&1 | grep -q "adopted: state migrated" \
+        || fail "S04 workspace adopt did not report migration"
+    "$DAEMON" start --keep-data
+    # A subsequent plain plan reads the adopted state cleanly: no drift.
+    rc=0
+    out=$(plan_ws "$PROJECT-adopt") || rc=$?
+    [ "$rc" -eq 0 ] || fail "S04 post-adopt plan exit = $rc, want 0 (no changes)"
+    pass "S04"
 }
 
 scenario_S05() { # run-secrets as TF_VAR_
