@@ -33,6 +33,11 @@ Breaking any of these fails review, regardless of how good the change is otherwi
     commit via the hooks; the full `make check-race` (`-race ./...`) gates
     pre-push and worktree merges. Activate with `git config core.hooksPath
     .agents/hooks` after clone.
+13. Agent scratch lives in the brain: whenever `.agents/brain/` exists, session
+    documents (plans, specs, inbox, tasks) go directly there, and any
+    agent-specific scratch under its own directory (e.g.
+    `.agents/brain/.opencode/`). `/tmp` is for truly ephemeral throwaway only —
+    never for session documents.
 
 ## Layout
 
