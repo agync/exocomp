@@ -72,7 +72,18 @@ case "${1:-}" in
                 grep -o 'exo_[0-9][0-9]*_[A-Za-z0-9_-]*' | head -1)
         fi
         log "starting serve on $ADDR, data dir $BASE_DATA"
-        XDG_DATA_HOME="$BASE_DATA" "$BIN" serve --web-addr "$ADDR" --web-insecure-http \
+        # EXOCOMP_E2E_TLS=1 serves real TLS (self-signed, ADR 0009) instead of
+        # cleartext --web-insecure-http. Used by the browser demo so the login
+        # page shows the certificate fingerprint, not the "not secure" alert;
+        # the matrix default stays insecure-http for its http:// curl and MCP
+        # legs. Behind a tailscale serve https+insecure:// proxy the browser
+        # sees a valid tailnet cert end to end.
+        EXTRA_WEB="--web-insecure-http"
+        if [ "${EXOCOMP_E2E_TLS:-0}" = "1" ]; then
+            EXTRA_WEB=""
+        fi
+        # shellcheck disable=SC2086
+        XDG_DATA_HOME="$BASE_DATA" "$BIN" serve --web-addr "$ADDR" $EXTRA_WEB \
             >"$BASE_DATA/daemon.log" 2>&1 &
         echo $! >"$PIDFILE"
         wait_listener || { log "serve did not come up; see $BASE_DATA/daemon.log"; exit 1; }
