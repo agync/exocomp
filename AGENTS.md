@@ -31,8 +31,9 @@ Breaking any of these fails review, regardless of how good the change is otherwi
     (rebase then fast-forward; merge commits only for milestone integrations).
 12. Automation over manual conformance: `make check` (fast, `-short`) gates every
     commit via the hooks; the full `make check-race` (`-race ./...`) gates
-    pre-push and worktree merges. Activate with `git config core.hooksPath
-    .agents/hooks` after clone.
+    pre-push and worktree merges. Hooks are pre-commit dispatchers declared in
+    `.pre-commit-config.yaml`; activate with `git config core.hooksPath
+    .agents/hooks` and `pip install pre-commit` after clone.
 13. Agent scratch lives in the brain: whenever `.agents/brain/` exists, session
     documents (plans, specs, inbox, tasks) go directly there, and any
     agent-specific scratch under its own directory (e.g.
@@ -44,7 +45,8 @@ Breaking any of these fails review, regardless of how good the change is otherwi
 ```
 AGENTS.md        this contract
 .agents/         agents/ skills/ workflows/ hooks/ brain/ — automation lives here;
-                 brain/specs holds specs for in-flight work
+                 brain/specs holds specs for in-flight work; hooks/ are pre-commit
+                 dispatchers (see .pre-commit-config.yaml)
 docs/            OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
                  design/, operations/, sbom/, history/, contribution/
 cmd/exocomp/     the single cobra binary (`exocompd` = alias for `exocomp serve`)

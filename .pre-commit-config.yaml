@@ -1,0 +1,60 @@
+# Declarative gate layer (memory: standard pre-commit framework over custom
+# hook scripts). `make check` and `make check-race` stay the Go gates and run
+# as repo-local system hooks; hygiene and commit-format come from standard
+# hooks. Install with `pip install pre-commit`; activation is
+# `git config core.hooksPath .agents/hooks` (see .agents/bootstrap.sh).
+# Run everything with `make check-hygiene` (pre-commit run --all-files).
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        # Migrations are final at merge (migration-authoring skill); the TUI
+        # golden frames and their design-reference twins are byte-pinned —
+        # trailing spaces are the frame width, semantically significant.
+        exclude: ^(internal/store/migrations/|internal/tui/testdata/frames/|docs/design/reference/tui/)
+      - id: end-of-file-fixer
+        exclude: ^(internal/store/migrations/|internal/tui/testdata/frames/|docs/design/reference/tui/)
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      # Conventional format (type(scope): subject). The repo-specific rules
+      # conventional-pre-commit cannot express — title <= 52 chars, no
+      # trailers, no AI-slop emoji — live in commit-msg-extras.
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [feat, fix, chore, docs, refactor, test, perf, build, revert]
+
+  - repo: local
+    hooks:
+      - id: no-host-paths
+        name: no host paths in docs
+        entry: '/home/[a-z][a-z0-9_-]*/'
+        language: pygrep
+        types: [text]
+        files: ^docs/
+      - id: commit-msg-extras
+        name: commit-msg extras (52 chars, no trailers, no emoji)
+        entry: .agents/hooks/commit-msg-extras.sh
+        language: system
+        stages: [commit-msg]
+      - id: make-check
+        name: make check
+        entry: make check
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: make-check-race
+        name: make check-race
+        entry: make check-race
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

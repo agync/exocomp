@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build budgets check check-race clean fmt fmt-check help image lint test test-race tidy-check vet
+.PHONY: build budgets check check-hygiene check-race clean fmt fmt-check help image lint test test-race tidy-check vet
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -20,6 +20,9 @@ build: ## Build the static exocomp binary into bin/
 check: fmt-check vet lint tidy-check test ## Run fmt-check, vet, lint, and the fast -short tests
 
 check-race: fmt-check vet lint tidy-check test-race ## Run fmt-check, vet, lint, and the full -race suite
+
+check-hygiene: ## Run all pre-commit framework hooks over every tracked file
+	pre-commit run --all-files
 
 fmt: ## Format source files
 	gofmt -w -s .

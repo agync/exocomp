@@ -6,6 +6,31 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-09 — gates move to the pre-commit framework
+
+- **The three bespoke hook scripts become pre-commit dispatchers.** `commit-msg`,
+  `pre-commit`, and `pre-push` under `.agents/hooks/` are now one-line shims
+  that hand off to `pre-commit run`; the rules live in a declarative
+  `.pre-commit-config.yaml` instead of shell.
+- **Standard hooks for hygiene.** `trailing-whitespace`, `end-of-file-fixer`,
+  `check-yaml`, `check-json`, `check-merge-conflict`, and
+  `check-added-large-files` from `pre-commit/pre-commit-hooks`. The TUI golden
+  frames (`internal/tui/testdata/frames/`, `docs/design/reference/tui/`) and
+  the store migrations are excluded — the frames are byte-pinned terminal
+  widths, the migrations final at merge.
+- **`conventional-pre-commit` validates the commit format.** Type + optional
+  scope + subject; non-strict mode keeps `fixup!`/`squash!`/`amend!` and
+  `Merge` subjects legal, and `revert` joins the allowed types for `git
+  revert` subjects.
+- **Repo-specific rules stay repo-local.** A `commit-msg-extras` hook keeps the
+  title at 52 chars, forbids attribution trailers, and rejects AI-slop emoji —
+  the checks `conventional-pre-commit` cannot express. A pygrep hook forbids
+  real host paths (`/home/<user>/…`) in `docs/`.
+- **`make check` and `make check-race` run as repo-local hooks** against the
+  working tree (no more index-export clean-room: there should be no unstaged
+  edits at commit time). `make check-hygiene` runs every pre-commit hook over
+  all tracked files.
+
 ## 2026-09-07 — events: phone-responsive funnel, stacked rows, expand pane
 
 - **The funnel reads as a three-column grid of monospace counts.** Each of the
@@ -1123,4 +1148,3 @@ already trusts instead of failing closed on it.
   [ADR 0010](../adr/0010-source-and-credential-model.md) addendum carry the model.
 - **Runs are launched from a source's page.** Each source has a playbook/command launcher; the
   standalone run surface is retired. Reflected in [operations/serve.md](serve.md).
-

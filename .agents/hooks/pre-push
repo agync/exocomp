@@ -1,26 +1,13 @@
 #!/bin/sh
-# Runs the full `make check-race` (fmt, vet, lint, tidy, and `go test -race
-# ./...`) against the INDEX (what is being pushed), not the working tree, so
-# unstaged edits are neither pushed nor checked. The fast `make check`
-# (`-short`) gates every commit; the full race suite gates what leaves the
-# machine and worktree merges.
-# Installed via `git config core.hooksPath .agents/hooks`.
+# Dispatches to the pre-commit framework's pre-push stage, declared in
+# .pre-commit-config.yaml. Runs `make check-race` (the full -race suite) and
+# the hygiene hooks against the working tree. Installed via `git config
+# core.hooksPath .agents/hooks`.
 set -eu
 
-root=$(git rev-parse --show-toplevel)
-
-if [ ! -f "$root/Makefile" ] || ! grep -Eq '^check-race:' "$root/Makefile"; then
-    echo "pre-push: no Makefile check-race target, skipping"
-    exit 0
+if ! command -v pre-commit >/dev/null 2>&1; then
+    echo "pre-push: pre-commit not installed — run 'pip install pre-commit'" >&2
+    exit 1
 fi
 
-tmp=$(mktemp -d "${TMPDIR:-/tmp}/exocomp-prepush.XXXXXX")
-trap 'rm -rf "$tmp"' EXIT INT TERM
-
-GIT_INDEX_FILE=$(git rev-parse --git-path index)
-export GIT_INDEX_FILE
-git checkout-index -a --prefix="$tmp/"
-
-make -C "$tmp" check-race
-
-exit 0
+exec pre-commit run --hook-stage pre-push
