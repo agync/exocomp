@@ -16,11 +16,17 @@ surface gaps, not to confirm a rosy picture.
 | S08 | Serial history + prune | N applies produce N serials; `prune --keep --days` trims past the budget | CLI: 3× (mutate, plan, apply), `prune` | PASS |
 | S09 | Offline provider enforcement | `workspace offline on` resolves providers from the warm filesystem mirror alone (no registry); the plan succeeds, and `off` restores online resolution | CLI: warm the cache, `workspace offline on`, plan, `off` | PASS (was G2) |
 | S10 | State-only (mode-A) | `workspace add --state-only` emits the backend block + bearer for an external tofu | CLI: state-only add emits the block | PASS |
+| S11 | k3s-in-lima kubernetes | the kubernetes provider reaches a single-node cluster (lima `template:k3s`); first-run creates namespace+configmap, out-of-band drift is detected and restored | CLI + kubectl: plan→apply→verify→mutate→plan(exit 2)→apply→verify | PASS |
 
 ## Driving surfaces
 
 - **CLI**: local mode against the daemon's data dir (`XDG_DATA_HOME`),
   `--output json` where a machine-readable assertion helps.
+- **k3s cluster (S11)**: `limactl start --name exocomp-k3s template:k3s`, then
+  `export KUBECONFIG=$(limactl list exocomp-k3s --format 'unix://{{.Dir}}/copied-from-guest/kubeconfig.yaml')`.
+  The kubeconfig lives inside the workspace dir (`kubeconfig.yaml`), granted to
+  the tofu sandbox via the workspace grant, so no run-secret file staging is
+  needed; `workspace egress k3s 6443` opens the API port.
 - **Web**: the token-gated listener on `0.0.0.0:8642`; screenshots via the
   playwright-cli skill into `.agents/brain/screenshots/tofu-e2e/`.
 - **MCP**: JSON-RPC `POST /mcp` with the operator token; tools

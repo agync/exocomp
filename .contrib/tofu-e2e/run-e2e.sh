@@ -38,7 +38,7 @@ while [ $# -gt 0 ]; do
         --faces) FACES=$2; shift 2 ;;
         --keep-daemon) KEEP_DAEMON=1; shift ;;
         --keep-data) KEEP_DATA=1; shift ;;
-        --list) echo "S01 S02 S03 S04 S05 S06 S07 S08 S09 S10"; exit 0 ;;
+        --list) echo "S01 S02 S03 S04 S05 S06 S07 S08 S09 S10 S11"; exit 0 ;;
         *) usage ;;
     esac
 done
@@ -293,12 +293,47 @@ scenario_S10() { # state-only external client
     pass "S10"
 }
 
+scenario_S11() { # k3s-in-lima kubernetes provider
+    log "S11 k3s-in-lima kubernetes provider"
+    command -v kubectl >/dev/null 2>&1 || { log "S11 SKIP: kubectl not installed"; return 0; }
+    KUBE_CFG="$HOME/.lima/exocomp-k3s/copied-from-guest/kubeconfig.yaml"
+    [ -f "$KUBE_CFG" ] || { log "S11 SKIP: k3s cluster not running (limactl start template:k3s)"; return 0; }
+    WS11="$SCRATCH/ws/k3s"
+    rm -rf "$WS11"; mkdir -p "$WS11"
+    cp -R "$RIG/projects/b-k8s/." "$WS11/"
+    cp "$KUBE_CFG" "$WS11/kubeconfig.yaml"
+    if ! run_cli workspace list 2>/dev/null | grep -q "k3s"; then
+        run_cli workspace add k3s --dir "$WS11"
+    fi
+    run_cli workspace egress k3s 6443 || true
+    # First-run: plan sees the namespace+configmap to create.
+    out=$(plan_ws "k3s") || rc=$?
+    [ "$rc" -eq 2 ] || fail "S11 first plan exit = $rc, want 2 (resources to create)"
+    run_cli workspace apply k3s >/dev/null 2>&1 || fail "S11 apply failed"
+    # Verify the cluster state from kubectl.
+    export KUBECONFIG="$KUBE_CFG"
+    kubectl get namespace exocomp-e2e >/dev/null 2>&1 || fail "S11 namespace not created in cluster"
+    val=$(kubectl get configmap -n exocomp-e2e e2e-marker -o json 2>/dev/null | python3 -c \
+        "import sys,json; print(json.load(sys.stdin)['data']['marker'])" 2>/dev/null)
+    [ "$val" = "hello-exocomp" ] || fail "S11 configmap marker = '$val', want hello-exocomp"
+    # Drift: mutate out-of-band, re-plan sees it, apply restores.
+    kubectl patch configmap e2e-marker -n exocomp-e2e --type json -p \
+        '[{"op":"replace","path":"/data/marker","value":"DRIFTED"}]' >/dev/null 2>&1
+    out=$(plan_ws "k3s") || rc=$?
+    [ "$rc" -eq 2 ] || fail "S11 drift plan exit = $rc, want 2 (drift detected)"
+    run_cli workspace apply k3s >/dev/null 2>&1 || fail "S11 restore apply failed"
+    val=$(kubectl get configmap -n exocomp-e2e e2e-marker -o json 2>/dev/null | python3 -c \
+        "import sys,json; print(json.load(sys.stdin)['data']['marker'])" 2>/dev/null)
+    [ "$val" = "hello-exocomp" ] || fail "S11 marker not restored = '$val'"
+    pass "S11"
+}
+
 # --- run --------------------------------------------------------------------
 
 if [ -n "$SCENARIO" ]; then
     "scenario_$SCENARIO"
 else
-    for s in S01 S02 S03 S04 S05 S06 S07 S08 S09 S10; do
+    for s in S01 S02 S03 S04 S05 S06 S07 S08 S09 S10 S11; do
         # Each scenario runs in a subshell so a fail() (exit 1) ends only that
         # scenario; a failure is a finding, not a matrix abort.
         if ( "scenario_$s" ); then

@@ -38,6 +38,7 @@ lib/faces.sh      per-surface drivers: CLI (local), web (screenshot hook), MCP (
 lib/assert.sh     assertion helpers
 projects/a-local  tofu root module: local/null provider, no external target
 projects/a-adopt  same, without a backend block (the S04 adoption case)
+projects/b-k8s    kubernetes provider: namespace + configmap on a lima k3s cluster (S11)
 run-e2e.sh        the scenario driver
 test-plan.md      the scenario matrix and what each one proves
 ```
