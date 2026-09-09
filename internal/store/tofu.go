@@ -30,6 +30,12 @@ type Workspace struct {
 	// port and not by destination, a granted port opens that port to any host,
 	// not only the intended one (docs/operations/serve.md).
 	ExtraEgressPorts []int
+	// OfflineProviders resolves tofu providers from the local filesystem mirror
+	// alone, with no registry access (docs/design/amendments.md item 8). False
+	// is the default posture: a workspace without the flag keeps the built-in
+	// online resolution. The executor requires a plugin cache when offline is
+	// set, which every exocomp run has.
+	OfflineProviders bool
 }
 
 // ErrInvalidEgressPort reports a declared egress port outside 1..65535.
@@ -88,7 +94,7 @@ type TFLock struct {
 	JobID       *int64
 }
 
-const workspaceColumns = `id, name, tofu_dir, auto_apply, serial, extra_egress_ports`
+const workspaceColumns = `id, name, tofu_dir, auto_apply, serial, extra_egress_ports, offline_providers`
 
 // CreateWorkspace inserts a workspace. A repeated name returns ErrDuplicate.
 // The name is validated here, not only at the CLI boundary, so a future
@@ -172,6 +178,25 @@ func (s *Store) SetWorkspaceEgressPorts(ctx context.Context, id int64, ports []i
 		`UPDATE workspace SET extra_egress_ports = ? WHERE id = ?`, string(encoded), id)
 	if err != nil {
 		return Workspace{}, wrap("set egress ports", err)
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Workspace{}, ErrNotFound
+	}
+	return s.GetWorkspace(ctx, id)
+}
+
+// SetWorkspaceOfflineProviders flips a workspace's offline-provider posture.
+// True makes the executor resolve tofu providers from the local filesystem
+// mirror alone; false restores the default online resolution.
+func (s *Store) SetWorkspaceOfflineProviders(ctx context.Context, id int64, offline bool) (Workspace, error) {
+	v := 0
+	if offline {
+		v = 1
+	}
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE workspace SET offline_providers = ? WHERE id = ?`, v, id)
+	if err != nil {
+		return Workspace{}, wrap("set offline providers", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return Workspace{}, ErrNotFound
@@ -510,8 +535,9 @@ func scanWorkspace(row rowScanner) (Workspace, error) {
 		// only to consume the column; nothing sets it.
 		autoApply int64
 		egress    string
+		offline   int64
 	)
-	if err := row.Scan(&w.ID, &w.Name, &w.TofuDir, &autoApply, &w.Serial, &egress); err != nil {
+	if err := row.Scan(&w.ID, &w.Name, &w.TofuDir, &autoApply, &w.Serial, &egress, &offline); err != nil {
 		return Workspace{}, err
 	}
 	if egress != "" {
@@ -519,6 +545,7 @@ func scanWorkspace(row rowScanner) (Workspace, error) {
 			return Workspace{}, fmt.Errorf("store: workspace %d egress ports: %w", w.ID, err)
 		}
 	}
+	w.OfflineProviders = offline != 0
 	return w, nil
 }
 

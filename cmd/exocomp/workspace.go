@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -55,6 +56,7 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceApplyCmd(),
 		newWorkspaceAdoptCmd(),
 		newWorkspaceEgressCmd(),
+		newWorkspaceOfflineCmd(),
 		newWorkspaceUnlockCmd(),
 		newWorkspacePruneCmd(),
 	)
@@ -223,6 +225,68 @@ func runWorkspaceEgress(cmd *cobra.Command, name string, portArgs []string) (err
 		"workspace %s extra egress ports: %v (any host on these ports)\n",
 		updated.Name, updated.ExtraEgressPorts)
 	return err
+}
+
+func newWorkspaceOfflineCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "offline <name> <on|off>",
+		Short: "Resolve a workspace's tofu providers from the local mirror only",
+		Long: "Flips the workspace's offline-provider posture. On makes every tofu run " +
+			"resolve providers from the local filesystem mirror alone, with no registry " +
+			"access — the amendment-8 offline guarantee (docs/design/amendments.md). The " +
+			"mirror is populated by the first online init and kept warm by scheduled " +
+			"providers-lock runs, so set this only once the cache is known warm; a " +
+			"provider missing from it then fails the run rather than falling back to " +
+			"the network (docs/operations/offline-caches.md).",
+		Args: cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			on, err := parseOnOff(args[1])
+			if err != nil {
+				return fmt.Errorf("workspace offline: %w", err)
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() {
+				if cerr := st.Close(); cerr != nil && err == nil {
+					err = cerr
+				}
+			}()
+			ctx := cmd.Context()
+			ws, err := st.WorkspaceByName(ctx, args[0])
+			if errors.Is(err, store.ErrNotFound) {
+				return fmt.Errorf("workspace offline: no workspace %q", args[0])
+			}
+			if err != nil {
+				return err
+			}
+			updated, err := st.SetWorkspaceOfflineProviders(ctx, ws.ID, on)
+			if err != nil {
+				return err
+			}
+			posture := "off"
+			if on {
+				posture = "on"
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "workspace %s offline providers: %s\n",
+				updated.Name, posture)
+			return err
+		},
+	}
+}
+
+// parseOnOff decodes a one-word on/off toggle, refusing anything else at the
+// CLI boundary so a typo cannot silently flip a posture.
+func parseOnOff(v string) (bool, error) {
+	switch strings.ToLower(v) {
+	case "on":
+		return true, nil
+	case "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("%q is not on or off", v)
+	}
 }
 
 func newWorkspaceUnlockCmd() *cobra.Command {
@@ -965,6 +1029,9 @@ func runWorkspaceInline(ctx context.Context, st *store.Store, env *secrets.Envel
 		InventoryOut: handoffInventoryPath(dir, ws.Name),
 		OutputSealer: executor.EnvelopeOutputSealer{Env: env, Store: st, Workspace: ws.Name},
 		AdoptState:   adopt,
+		// The workspace's offline-provider posture: true resolves providers from
+		// the local mirror alone, no registry access.
+		OfflineProviders: ws.OfflineProviders,
 	}, caps)
 	if err != nil {
 		return store.Job{}, err

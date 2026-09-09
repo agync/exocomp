@@ -753,3 +753,76 @@ func TestMigration0033UpgradesFrom032(t *testing.T) {
 		t.Fatalf("embedded ledger not persisted: got %q", got.CheckObservations)
 	}
 }
+
+// TestMigration0035UpgradesFrom34 pins a database at user_version 34 (no
+// workspace.offline_providers column), then opens it with the current binary:
+// the migration must add the column, default it off, and leave the store able
+// to flip and read it through the CRUD.
+func TestMigration0035UpgradesFrom34(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 34)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('workspace') WHERE name = 'offline_providers'`).
+		Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatalf("offline_providers column exists at user_version 34, want it introduced by 0035")
+	}
+	// Seed a workspace through the pre-migration schema so the upgrade has a
+	// row to prove the new column defaults correctly on existing data.
+	if _, err := raw.ExecContext(ctx,
+		`INSERT INTO workspace (id, name, tofu_dir, auto_apply, serial) VALUES (1, 'ws', '/t', 0, 0)`); err != nil {
+		t.Fatalf("seed workspace: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0034 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 35 {
+		t.Fatalf("schema version = %d after open, want >= 35 (0035 applied)", version)
+	}
+
+	// The pre-existing row defaults to offline off.
+	ws, err := s.WorkspaceByName(ctx, "ws")
+	if err != nil {
+		t.Fatalf("read seeded workspace: %v", err)
+	}
+	if ws.OfflineProviders {
+		t.Fatalf("seeded workspace offline_providers = true, want the default false")
+	}
+
+	// The store can flip and read it.
+	on, err := s.SetWorkspaceOfflineProviders(ctx, ws.ID, true)
+	if err != nil {
+		t.Fatalf("set offline on: %v", err)
+	}
+	if !on.OfflineProviders {
+		t.Fatalf("workspace offline_providers not true after SetWorkspaceOfflineProviders(true)")
+	}
+	off, err := s.SetWorkspaceOfflineProviders(ctx, ws.ID, false)
+	if err != nil {
+		t.Fatalf("set offline off: %v", err)
+	}
+	if off.OfflineProviders {
+		t.Fatalf("workspace offline_providers not false after SetWorkspaceOfflineProviders(false)")
+	}
+}

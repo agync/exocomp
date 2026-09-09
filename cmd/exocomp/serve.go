@@ -1180,6 +1180,9 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 		// path (runWorkspaceInline): without this, a daemon-driven apply leaves
 		// the tf:<workspace> binding empty and the dependent play finds nothing.
 		OutputSealer: executor.EnvelopeOutputSealer{Env: d.env, Store: d.store, Workspace: ws.Name},
+		// The workspace's offline-provider posture (workspace offline on):
+		// resolve providers from the local mirror alone, no registry access.
+		OfflineProviders: ws.OfflineProviders,
 	}, caps)
 	if err != nil {
 		return executor.Result{}, err
