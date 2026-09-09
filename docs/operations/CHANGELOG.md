@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-09 — the job log owns its scroll (v0.10, part 1)
+
+- **The job-detail page is now a no-page-scroll flex column** (scoped to
+  `<main class="page-job">`): the log box ends above the powerline, owns its
+  own scroll, and the page never scrolls to reach it. The previous `max-height:
+  60vh` box let a long log's tail fall below the viewport fold with the page
+  itself as the scroller.
+- **A streaming pin.** While a job runs, the Output bar shows a FOLLOWING TAIL
+  pill; scrolling up pauses it (PAUSED · scrolled up) and a floating Tail +N
+  button returns to the bottom. End of run shows ENDED · nothing to follow.
+- **Header verbs are glyphs (T6).** Raw log and Rerun in the app bar are now
+  34px stroke-SVG buttons (document · rotate), right-aligned, with aria-labels
+  carrying the word.
+- **New invariants** (docs/design/INVARIANTS.md "Tofu surfaces v0.10"):
+  a log owns its scroll; one apply per workspace; secrets never render in a
+  paste block; mutations preview their diff.
+
 ## 2026-09-09 — workspaces can resolve tofu providers offline
 
 - **`exocomp workspace offline <name> on|off`** flips a workspace's

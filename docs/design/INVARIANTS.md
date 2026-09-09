@@ -97,6 +97,24 @@ disagree, the code wins and the correction lands in `docs/log.md`.
   own fact (host · uptime, `{n} checks`, `1 of 1 down`); the operator identity
   renders once per screen, in the powerline only.
 
+## Tofu surfaces (v0.10)
+
+The round that surfaced the job-log and workspace-state problems. Source:
+`tofu/SPEC.md` in the v0.10 handoff. Four invariants, each a hard rule:
+
+- **A log owns its scroll.** The log box ends above the powerline, follows the
+  tail while streaming (FOLLOWING TAIL), and shows a PAUSED word + a Tail verb
+  when the operator scrolls up. The page never scrolls to reach a log.
+- **One apply per workspace.** Only the latest SAVED plan carries an apply
+  affordance (a glyph); plan history is read-only, one lifecycle word per plan
+  (SAVED · SUPERSEDED · CONSUMED). Drift is a finding (wait), never a failure.
+- **Secrets never render in a paste block.** Config the operator copies
+  references a secret by variable or name; reveal is a separate, logged, timed
+  action beside the block; copy never includes the value.
+- **Mutations preview their diff.** Apply and destroy open a confirm showing the
+  structured change set with +N ~N −N counters; a stale plan renders REFUSED
+  with "Plan again", never a disabled button.
+
 ## Responsive (v0.9)
 
 The web surface serves every width with one template structure re-flown by the
