@@ -826,3 +826,78 @@ func TestMigration0035UpgradesFrom34(t *testing.T) {
 		t.Fatalf("workspace offline_providers not false after SetWorkspaceOfflineProviders(false)")
 	}
 }
+
+// TestMigration0036UpgradesFrom35 pins a database at user_version 35 (no
+// artifact.plan_serial column), seeds an artifact row, then opens it with the
+// current binary: the migration must add the column, default it to 0 for the
+// pre-existing row, and leave the store able to record and read a plan serial.
+func TestMigration0036UpgradesFrom35(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 35)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('artifact') WHERE name = 'plan_serial'`).
+		Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatalf("plan_serial column exists at user_version 35, want it introduced by 0036")
+	}
+	// Seed a job + an artifact through the pre-migration schema so the upgrade
+	// has a row to prove the new column defaults correctly on existing data.
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO job (id, runbook, kind, "trigger", state, args_json, queued_at, owner_pid, partial)
+		VALUES (1, 'workspace:ws', 'tofu', 'manual', 'succeeded', '{}', 1, 0, 0);
+		INSERT INTO artifact (id, job_id, kind, path, sha256, size)
+		VALUES (1, 1, 'tofu-plan', '/p/plan.tfplan.age', 'abc', 5)`); err != nil {
+		t.Fatalf("seed artifact: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0035 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 36 {
+		t.Fatalf("schema version = %d after open, want >= 36 (0036 applied)", version)
+	}
+
+	// The pre-existing row defaults to serial 0 (unknown).
+	pre, err := s.GetArtifact(ctx, 1)
+	if err != nil {
+		t.Fatalf("read seeded artifact: %v", err)
+	}
+	if pre.PlanSerial != 0 {
+		t.Fatalf("seeded artifact plan_serial = %d, want the default 0", pre.PlanSerial)
+	}
+
+	// The store can record and read a plan serial.
+	created, err := s.CreateArtifact(ctx, Artifact{
+		JobID: 1, Kind: "tofu-plan", Path: "/p/p2.tfplan.age", SHA256: "def", Size: 7, PlanSerial: 42,
+	})
+	if err != nil {
+		t.Fatalf("create artifact with plan_serial: %v", err)
+	}
+	got, err := s.GetArtifact(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get created artifact: %v", err)
+	}
+	if got.PlanSerial != 42 {
+		t.Fatalf("artifact plan_serial = %d, want 42", got.PlanSerial)
+	}
+}

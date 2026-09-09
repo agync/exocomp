@@ -818,7 +818,7 @@ func runWorkspacePlan(ctx context.Context, svc *service.Service, enq service.Enq
 		if err != nil {
 			return 0, err
 		}
-		saved, err := recordPlan(ctx, st, env, out, final.ID, res.PlanPath)
+		saved, err := recordPlan(ctx, st, env, out, final.ID, res.PlanPath, ws.Serial)
 		if err != nil {
 			return 0, err
 		}
@@ -1177,9 +1177,11 @@ func resolvePlan(ctx context.Context, st *store.Store, ref string) (store.Artifa
 // run that changed nothing still writes one, so its absence means the plan
 // never got that far. The seal-and-record logic lives in internal/service so
 // the daemon seals an API-initiated plan the same way; the CLI keeps the notice.
+// planSerial is the workspace serial the plan was made against, recorded so
+// the plan's lifecycle (stale vs current) renders truthfully.
 func recordPlan(ctx context.Context, st *store.Store, env *secrets.Envelope, out io.Writer,
-	jobID int64, path string) (*store.Artifact, error) {
-	saved, err := service.New(st, "", nil).SealPlan(ctx, planEnvelope(env), jobID, path)
+	jobID int64, path string, planSerial int64) (*store.Artifact, error) {
+	saved, err := service.New(st, "", nil).SealPlan(ctx, planEnvelope(env), jobID, path, planSerial)
 	if err != nil || saved == nil {
 		return saved, err
 	}

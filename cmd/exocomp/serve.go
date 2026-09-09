@@ -1237,7 +1237,7 @@ func (d workspaceDriver) sealAPIPlan(ctx context.Context, job store.Job, ws stor
 	if res.FailNotice != "" {
 		sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: executor.LevelSystem, Msg: res.FailNotice})
 	}
-	saved, err := svc.SealPlan(ctx, d.env, job.ID, planPath)
+	saved, err := svc.SealPlan(ctx, d.env, job.ID, planPath, ws.Serial)
 	if err != nil {
 		emit("seal plan artifact: %v", err)
 		return

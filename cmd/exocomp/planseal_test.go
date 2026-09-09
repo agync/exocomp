@@ -49,7 +49,7 @@ func TestPlanArtifactIsUnreadableAtRest(t *testing.T) {
 	}
 
 	var out bytes.Buffer
-	if _, err := recordPlan(t.Context(), st, env, &out, job.ID, plan); err != nil {
+	if _, err := recordPlan(t.Context(), st, env, &out, job.ID, plan, 3); err != nil {
 		t.Fatalf("recordPlan: %v", err)
 	}
 

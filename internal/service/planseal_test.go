@@ -51,7 +51,7 @@ func TestSealPlanRecordsArtifact(t *testing.T) {
 		t.Fatalf("write plan: %v", err)
 	}
 
-	saved, err := svc.SealPlan(ctx, nil, jobID, plan)
+	saved, err := svc.SealPlan(ctx, nil, jobID, plan, 7)
 	if err != nil {
 		t.Fatalf("SealPlan: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestSealPlanMissingFileIsNil(t *testing.T) {
 	svc := service.New(st, t.TempDir(), nil)
 	jobID := seedPlanJob(t, st, "web", executor.TofuPlanOutcome{})
 
-	saved, err := svc.SealPlan(context.Background(), nil, jobID, filepath.Join(t.TempDir(), "absent.tfplan"))
+	saved, err := svc.SealPlan(context.Background(), nil, jobID, filepath.Join(t.TempDir(), "absent.tfplan"), 0)
 	if err != nil {
 		t.Fatalf("SealPlan: %v", err)
 	}

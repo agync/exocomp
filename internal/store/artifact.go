@@ -14,13 +14,17 @@ type Artifact struct {
 	Path   string
 	SHA256 string
 	Size   int64
+	// PlanSerial is the workspace serial a saved plan was made against. Zero
+	// for non-plan artifacts and for plans recorded before the column existed.
+	// The plan detail and the workspace's stale-refusal read it.
+	PlanSerial int64
 }
 
 // CreateArtifact records an artifact against a job.
 func (s *Store) CreateArtifact(ctx context.Context, a Artifact) (Artifact, error) {
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO artifact (job_id, kind, path, sha256, size) VALUES (?, ?, ?, ?, ?)`,
-		a.JobID, a.Kind, a.Path, a.SHA256, a.Size)
+		INSERT INTO artifact (job_id, kind, path, sha256, size, plan_serial) VALUES (?, ?, ?, ?, ?, ?)`,
+		a.JobID, a.Kind, a.Path, a.SHA256, a.Size, a.PlanSerial)
 	if err != nil {
 		return Artifact{}, wrap("create artifact", err)
 	}
@@ -36,8 +40,8 @@ func (s *Store) CreateArtifact(ctx context.Context, a Artifact) (Artifact, error
 func (s *Store) GetArtifact(ctx context.Context, id int64) (Artifact, error) {
 	var a Artifact
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, job_id, kind, path, sha256, size FROM artifact WHERE id = ?`, id).
-		Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size)
+		SELECT id, job_id, kind, path, sha256, size, plan_serial FROM artifact WHERE id = ?`, id).
+		Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size, &a.PlanSerial)
 	if err != nil {
 		return Artifact{}, wrap("get artifact", err)
 	}
@@ -45,17 +49,18 @@ func (s *Store) GetArtifact(ctx context.Context, id int64) (Artifact, error) {
 }
 
 // scanArtifact reads one artifact row into an Artifact. The column order is
-// the one every artifact query uses: id, job_id, kind, path, sha256, size.
+// the one every artifact query uses: id, job_id, kind, path, sha256, size,
+// plan_serial.
 func scanArtifact(rows *sql.Rows) (Artifact, error) {
 	var a Artifact
-	err := rows.Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size)
+	err := rows.Scan(&a.ID, &a.JobID, &a.Kind, &a.Path, &a.SHA256, &a.Size, &a.PlanSerial)
 	return a, err
 }
 
 // ListArtifacts returns a job's artifacts in creation order.
 func (s *Store) ListArtifacts(ctx context.Context, jobID int64) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, job_id, kind, path, sha256, size
+		SELECT id, job_id, kind, path, sha256, size, plan_serial
 		FROM artifact WHERE job_id = ? ORDER BY id`, jobID)
 	if err != nil {
 		return nil, wrap("list artifacts", err)
@@ -83,7 +88,7 @@ func (s *Store) ListArtifacts(ctx context.Context, jobID int64) ([]Artifact, err
 // error, when nothing matches.
 func (s *Store) ListPlanArtifacts(ctx context.Context, runbook, kind string, limit int) ([]Artifact, error) {
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT a.id, a.job_id, a.kind, a.path, a.sha256, a.size
+		SELECT a.id, a.job_id, a.kind, a.path, a.sha256, a.size, a.plan_serial
 		FROM artifact a JOIN job j ON j.id = a.job_id
 		WHERE j.runbook = ? AND a.kind = ?
 		ORDER BY a.id DESC LIMIT ?`, runbook, kind, limit)

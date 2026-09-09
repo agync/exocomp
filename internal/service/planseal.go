@@ -33,7 +33,7 @@ type PlanEnvelope interface {
 // that far, and SealPlan returns a nil artifact. The digest recorded is of the
 // ciphertext, because that is what is on disk to check later. A nil envelope
 // records the plaintext path unchanged (there is nothing to seal to).
-func (s *Service) SealPlan(ctx context.Context, env PlanEnvelope, jobID int64, path string) (*store.Artifact, error) {
+func (s *Service) SealPlan(ctx context.Context, env PlanEnvelope, jobID int64, path string, planSerial int64) (*store.Artifact, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -52,11 +52,12 @@ func (s *Service) SealPlan(ctx context.Context, env PlanEnvelope, jobID int64, p
 		return nil, err
 	}
 	saved, err := s.store.CreateArtifact(ctx, store.Artifact{
-		JobID:  jobID,
-		Kind:   reactive.PlanArtifactKind,
-		Path:   path,
-		SHA256: sum,
-		Size:   size,
+		JobID:      jobID,
+		Kind:       reactive.PlanArtifactKind,
+		Path:       path,
+		SHA256:     sum,
+		Size:       size,
+		PlanSerial: planSerial,
 	})
 	if err != nil {
 		return nil, err
