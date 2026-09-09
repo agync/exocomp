@@ -448,12 +448,15 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	// the plain text tail in a new tab.
 	vm.Page.BackHref = "/jobs"
 	vm.Page.TitleSub = vm.Job.Title
+	// T1: the job detail page is a no-page-scroll flex column — the log box
+	// owns the scroll and ends above the powerline (app.css .page-job).
+	vm.Page.PageClass = "page-job"
 	vm.Page.Actions = append(vm.Page.Actions, pageAction{
-		Href: "/jobs/" + itoa64(id) + "/raw", Label: "Raw log", Kind: "control",
+		Href: "/jobs/" + itoa64(id) + "/raw", Label: "Raw log", Kind: "control", Glyph: glyphDocument,
 	})
 	if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
 		vm.Page.Actions = append(vm.Page.Actions, pageAction{
-			Href: "/jobs/" + itoa64(id) + "?rerun=1", Label: "Rerun", Kind: "accent",
+			Href: "/jobs/" + itoa64(id) + "?rerun=1", Label: "Rerun", Kind: "accent", Glyph: glyphRotate,
 		})
 	}
 

@@ -39,6 +39,10 @@ type page struct {
 	// (write.go). Never a secret value — those render once inline.
 	Flash  string
 	Signal SignalLine
+	// PageClass is an extra class on <main> for page-scoped layout rules. The
+	// job detail page uses it to make itself a no-page-scroll flex column so
+	// the log box owns the scroll (T1); every other page leaves it empty.
+	PageClass string
 	// Add is the shell header's one primary verb (F9/F15): a labeled accent
 	// button opening the page's add-modal. Nil renders no verb.
 	Add *pageAdd
@@ -64,13 +68,18 @@ func (a *pageAdd) ButtonText() string {
 	return "Add " + a.Label
 }
 
-// pageAction is one phone app-bar action (SPEC §2.0): a 36px compact button.
-// Kind names the accent: "control" is the quiet surface fill, "accent" the
-// primary tint — the Raw log / Rerun pair on a job detail page.
+// pageAction is one app-bar action (SPEC §2.0): a 36px compact button, or a
+// 34px glyph verb when Glyph is set (T6: header verbs are glyphs, right-
+// aligned, at most two then a chevron menu). Kind names the accent: "control"
+// is the quiet surface fill, "accent" the primary tint — the Raw log / Rerun
+// pair on a job detail page.
 type pageAction struct {
 	Href  string
 	Label string
 	Kind  string // control|accent
+	// Glyph names the stroke-SVG verb (row_actions.go) rendered instead of
+	// the text label. aria-label stays the Label so the verb is announced.
+	Glyph string
 }
 
 // navBadges is the per-nav actionable counts shown beside a nav item: how many

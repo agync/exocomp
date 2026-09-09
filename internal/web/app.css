@@ -646,6 +646,49 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .btn.danger  { background: var(--fail-tint); color: var(--signal-fail); border-color: var(--fail-border); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ---- Job detail page: the log owns the scroll (T1) ----
+ * Scoped to <main class="page-job"> so every other page keeps its normal
+ * body scroll. The page becomes a no-page-scroll flex column: the header and
+ * run/verdict cards are flex:none, the output card is flex:1 with its own
+ * min-height:0, and the log box inside it is flex:1; overflow:auto. Result:
+ * the log tail is always inside the viewport, ending above the powerline,
+ * and the wheel scrolls the log, never the page. */
+.page-job { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+/* The job page fixes the content column to the viewport so main cannot grow
+ * past it (T1): the log box then owns the scroll. Scoped by main.page-job so
+ * every other page keeps its natural min-height:100vh growth. */
+.content-col:has(> main.page-job) { height: 100vh; min-height: 0; }
+.content-col:has(> main.page-job) > header { flex: none; }
+.page-job > * { flex: none; }
+.page-job > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.page-job > .card.output > .output-head { flex: none; }
+.page-job > .card.output > .logwrap2 { flex: 1; min-height: 0; }
+.page-job > .card.output > .logwrap2 > #log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+.page-job .card.mt14 { margin-top: 0; }
+@media (max-width: 719px) {
+  /* The phone shell stacks the page like every other screen; the log gets a
+   * viewport-bound height instead of a flex fill (SPEC §3 phone). */
+  .page-job { display: block; overflow: auto; }
+  .page-job > .card.output > #log { height: calc(100dvh - 240px); min-height: 240px; max-height: none; }
+}
+
+/* Glyph verb button (T6): a 34px square icon action for header and row verbs
+ * (Raw log, Rerun, Plan, Apply). One shape per verb (row_actions.go); the
+ * aria-label carries the word for a11y. at most two per header before a
+ * chevron menu. */
+.verb {
+  width: 34px; height: 34px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: var(--radius-control);
+  background: transparent; color: var(--ink-400);
+  cursor: pointer; text-decoration: none;
+}
+.verb:hover { background: var(--surface-control); color: var(--ink-100); }
+.verb.primary { color: var(--accent-text); }
+.verb.primary:hover { background: var(--accent-tint); }
+.verb:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
+.verb svg { width: 18px; height: 18px; }
+
 /* Row-action buttons live in a table cell (Revoke, the inline Rotate submit, the
  * dashboard Review CTA) and read at row scale, not as a full-height form button
  * — a Revoke that towers over its sibling Rotate text-link. Still clears the
@@ -1023,6 +1066,24 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
   max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
 }
+/* The log's scroll container is the box; the Tail button floats over its
+ * bottom-right corner. */
+.logwrap2 { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* Pin pill (T1): the follow state of the streaming log. */
+.pin { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
+       border-radius: 9px; font: var(--type-keyword); letter-spacing: .4px; }
+.pin .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pin[data-state="following"] { background: var(--accent-tint); color: var(--accent-text); }
+.pin[data-state="following"] .dot { animation: var(--breathe); }
+.pin[data-state="paused"] { background: var(--wait-tint); color: var(--signal-wait); }
+.pin[data-state="ended"] { background: var(--surface-control); color: var(--ink-500); font: var(--type-body); }
+/* Tail button: only rendered while paused. */
+.tail-btn { position: absolute; right: 22px; bottom: 16px; height: 34px; padding: 0 14px 0 12px;
+            display: inline-flex; align-items: center; gap: 8px; border: 0;
+            border-radius: var(--radius-control); background: var(--accent-fill); color: var(--accent-on);
+            font: var(--type-button); cursor: pointer; }
+.tail-btn:hover { filter: brightness(1.08); }
+.tail-btn small { font: 400 11px var(--font-mono); opacity: .85; }
 /* One log line: a fixed HH:MM:SS clock column (60px) beside the message (R9).
  * The Shell owns this grid so the templ/SSE rows carry no inline style. */
 .log .line { display: grid; grid-template-columns: 60px 1fr; }

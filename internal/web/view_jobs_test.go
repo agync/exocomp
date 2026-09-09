@@ -265,7 +265,7 @@ func TestJobRawLogServesPlainText(t *testing.T) {
 	for _, want := range []string{
 		`id="log-search"`,                // search input present (Q2)
 		`/jobs/` + itoa(job.ID) + `/raw`, // raw link target
-		`>Raw log</a>`,                   // the app-bar [Raw log] action
+		`aria-label="Raw log"`,           // the app-bar Raw log glyph action (T6)
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("job detail missing %q", want)

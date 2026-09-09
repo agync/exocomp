@@ -44,4 +44,9 @@ const (
 	glyphRemove   = "M6 7h12M9 7V5h6v2M8 10l.6 9h6.8l.6-9M10 13v3M14 13v3"
 	glyphBindings = "M4 6h16v9H4zM7 18h10M12 15v3"
 	glyphChevron  = "M6 9l6 6 6-6"
+	// glyphDocument is the Raw log verb (T6): a file with folded corner. The
+	// designer's document path (row-actions/GLYPHS.txt) adds to the shipped
+	// set rather than forking it.
+	glyphDocument = "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5zM14 3v5h5"
+	glyphTail     = "M5 12h14M12 5l7 7-7 7"
 )

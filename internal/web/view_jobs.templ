@@ -251,13 +251,17 @@ templ verdictHost(h jobVerdictHost) {
 // line meta, the filter input (placeholder only), the wrap toggle, the ENDED
 // line, and the log with the run's state bands re-rendered from copy.
 templ outputCard(vm jobDetailVM) {
-	<div class="card mt14">
+	<div class="card output">
 		<div class="outputbar output-head">
 			<span class="controls">
 				<span class="outputtitle">Output</span>
 				<span class="outputmeta mono ml-auto">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
 			</span>
 			<span class="logtools controls ml-auto">
+				<span class="pin" id="log-pin" data-state="following" role="status">
+					<span class="dot" aria-hidden="true"></span>
+					<span class="pinword">FOLLOWING TAIL</span>
+				</span>
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
 				<button type="button" class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>
 			</span>
@@ -265,14 +269,20 @@ templ outputCard(vm jobDetailVM) {
 				<span class="pill ended mono">ENDED · nothing to follow</span>
 			}
 		</div>
-		<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
-			for _, e := range vm.Events {
-				if e.Band != "" {
-					<div class={ "logband", e.BandClass }><span class="ts">{ e.Ts }</span> { e.Band }</div>
-				} else {
-					@logLine(e)
+		<div class="logwrap2">
+			<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
+				for _, e := range vm.Events {
+					if e.Band != "" {
+						<div class={ "logband", e.BandClass }><span class="ts">{ e.Ts }</span> { e.Band }</div>
+					} else {
+						@logLine(e)
+					}
 				}
-			}
+			</div>
+			<button type="button" class="tail-btn" id="log-tail" hidden>
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphTail }></path></svg>
+				Tail <small id="log-tail-n">+0</small>
+			</button>
 		</div>
 	</div>
 	<script>
@@ -390,7 +400,35 @@ templ jobStream(id int64, since int64) {
 		var since = script.getAttribute("data-since");
 		var log = document.getElementById("log");
 		var stale = document.getElementById("jobs-stale");
+		var pin = document.getElementById("log-pin");
+		var tailBtn = document.getElementById("log-tail");
+		var tailN = document.getElementById("log-tail-n");
+		var following = true; // pinned to the tail; false once the operator scrolls up
+		var sincePin = 0;     // lines appended while unpinned, for the Tail +N badge
 		var es = new EventSource("/jobs/" + job + "/stream?since=" + since);
+		function setPin(state) {
+			if (!pin) return;
+			pin.setAttribute("data-state", state);
+			var word = pin.querySelector(".pinword");
+			if (word) word.textContent = state === "following" ? "FOLLOWING TAIL" : state === "paused" ? "PAUSED · scrolled up" : "ENDED · nothing to follow";
+		}
+		function rePin() {
+			following = true;
+			sincePin = 0;
+			log.scrollTop = log.scrollHeight;
+			setPin("following");
+			if (tailBtn) tailBtn.hidden = true;
+		}
+		// The operator scrolling up unpins; reaching the bottom re-pins.
+		log.addEventListener("scroll", function () {
+			if (following && log.scrollTop + log.clientHeight < log.scrollHeight - 6) {
+				following = false;
+				setPin("paused");
+			} else if (!following && log.scrollTop + log.clientHeight >= log.scrollHeight - 6) {
+				rePin();
+			}
+		});
+		if (tailBtn) tailBtn.addEventListener("click", rePin);
 		es.addEventListener("line", function (ev) {
 			var d = JSON.parse(ev.data);
 			var span = document.createElement("span");
@@ -407,7 +445,15 @@ templ jobStream(id int64, since int64) {
 			span.appendChild(msg);
 			log.appendChild(span);
 			if (window.exoFilterLog) window.exoFilterLog();
-			log.scrollTop = log.scrollHeight;
+			if (following) {
+				log.scrollTop = log.scrollHeight;
+			} else {
+				sincePin++;
+				if (tailBtn) {
+					tailBtn.hidden = false;
+					if (tailN) tailN.textContent = "+" + sincePin;
+				}
+			}
 		});
 		es.addEventListener("done", function () { location.reload(); });
 		es.onerror = function () {

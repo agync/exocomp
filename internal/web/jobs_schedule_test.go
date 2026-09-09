@@ -184,7 +184,7 @@ func TestJobDetailShowsScheduleAndRunAgain(t *testing.T) {
 	_, body := getBody(t, opClient, ts.URL+"/jobs/"+itoa64(job.ID))
 	// The Rerun action moved to the phone app bar (SPEC §2.0): it opens the
 	// resubmit modal through the JS-off ?rerun=1 path.
-	if !strings.Contains(body, `>Rerun</a>`) || !strings.Contains(body, `/jobs/`+itoa64(job.ID)+`?rerun=1`) {
+	if !strings.Contains(body, `aria-label="Rerun"`) || !strings.Contains(body, `/jobs/`+itoa64(job.ID)+`?rerun=1`) {
 		t.Error("a terminal job with an argv must offer the Rerun resubmit modal from the app bar")
 	}
 	if !strings.Contains(body, `id="job-rerun"`) {
