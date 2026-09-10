@@ -160,7 +160,7 @@ func (s *Server) handleWorkspacePlanDetail(w http.ResponseWriter, r *http.Reques
 	}
 
 	if vm.CanPlan && s.plans != nil {
-		blob, oerr := s.plans.OpenSealedFile(art.Path)
+		blob, oerr := s.planShowBlob(r, art)
 		if oerr == nil {
 			resources, ok := classifyPlan(blob)
 			if ok {

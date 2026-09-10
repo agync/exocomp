@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -82,6 +83,27 @@ func (s *Server) approvalVM(r *http.Request, id int64, _ string) (approvalVM, er
 	return vm, nil
 }
 
+// planShowBlob resolves the JSON a plan's diff renders from. A plan produced
+// by this control plane carries a sealed `tofu show -json` companion artifact
+// (the executor captured it at plan time, while the run env was live), which is
+// the authoritative source: the saved plan file tofu wrote is a binary, not a
+// show-json document, and re-running tofu show later cannot be hermetic. A plan
+// with no companion — one sealed before the capture existed, or an operator's
+// own plan file — falls back to the plan artifact's own bytes, the pre-capture
+// behaviour. Read-only sessions are gated by the caller.
+func (s *Server) planShowBlob(r *http.Request, art store.Artifact) ([]byte, error) {
+	if art.JobID != 0 {
+		if arts, err := s.store.ListArtifacts(r.Context(), art.JobID); err == nil {
+			for _, a := range arts {
+				if a.Kind == reactive.PlanShowArtifactKind {
+					return s.plans.OpenSealedFile(a.Path)
+				}
+			}
+		}
+	}
+	return s.plans.OpenSealedFile(art.Path)
+}
+
 // renderPlan reads a sealed plan artifact through the envelope — never the raw
 // ciphertext — and splits it into the lines that destroy (rendered first, in
 // red) and the rest. Secret-backed attributes are marked redacted, never
@@ -93,7 +115,7 @@ func (s *Server) renderPlan(r *http.Request, artifactID int64) (destroys, change
 	if err != nil {
 		return nil, nil, false
 	}
-	blob, err := s.plans.OpenSealedFile(art.Path)
+	blob, err := s.planShowBlob(r, art)
 	if err != nil {
 		s.log.Warn("web: open sealed plan", "artifact", artifactID, "err", err)
 		return nil, nil, false

@@ -903,6 +903,53 @@ func (h *harness) seedPlanDiff(t *testing.T, ws string, planSerial int64, planJS
 	return art
 }
 
+// seedPlanDiffWithShow writes a plan whose sealed plan file is the BINARY tofu
+// wrote (classifyPlan cannot parse it) and whose show-json companion holds the
+// actual `tofu show -json` document — the production shape after the fix, where
+// the executor captured the show-json at plan time. The web renders the diff
+// from the companion, never from the plan file.
+func (h *harness) seedPlanDiffWithShow(t *testing.T, ws string, planSerial int64, planJSON string) store.Artifact {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook(ws), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue plan job: %v", err)
+	}
+	planPlain := filepath.Join(h.dir, "plan-"+itoa64(job.ID)+".tfplan")
+	if err := os.WriteFile(planPlain, []byte("tofu-binary-plan"), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	sealed, err := h.env.SealFile(planPlain)
+	if err != nil {
+		t.Fatalf("SealFile plan: %v", err)
+	}
+	art, err := h.store.CreateArtifact(ctx, store.Artifact{
+		JobID: job.ID, Kind: reactive.PlanArtifactKind, Path: sealed,
+		SHA256: fmt.Sprintf("diff-%d", job.ID), Size: 1, PlanSerial: planSerial,
+	})
+	if err != nil {
+		t.Fatalf("CreateArtifact plan: %v", err)
+	}
+	showPlain := filepath.Join(h.dir, "plan-"+itoa64(job.ID)+".show.json")
+	if err := os.WriteFile(showPlain, []byte(planJSON), 0o600); err != nil {
+		t.Fatalf("write show json: %v", err)
+	}
+	showSealed, err := h.env.SealFile(showPlain)
+	if err != nil {
+		t.Fatalf("SealFile show json: %v", err)
+	}
+	if _, err := h.store.CreateArtifact(ctx, store.Artifact{
+		JobID: job.ID, Kind: reactive.PlanShowArtifactKind, Path: showSealed,
+		SHA256: fmt.Sprintf("show-%d", job.ID), Size: 1, PlanSerial: planSerial,
+	}); err != nil {
+		t.Fatalf("CreateArtifact show json: %v", err)
+	}
+	return art
+}
+
 // TestPlanDetailPageRendersDiff: the plan-detail page (SPEC §4) is the tray's
 // diff deep-link target. It renders the +N ~N −N counters, the diff rows with
 // the action keywords, the old→new strike of a changed attribute, the
@@ -956,6 +1003,57 @@ func TestPlanDetailPageRendersDiff(t *testing.T) {
 	// The redacted attribute never carries its plaintext.
 	if strings.Contains(body, "hunter2") {
 		t.Error("plan detail leaked a secret-backed value")
+	}
+}
+
+// TestPlanDetailRendersDiffFromShowJSON pins the fix for the "nothing to diff"
+// bug: a plan-detail page feeds the plan's show-json companion (captured at
+// plan time, while the run env was live) to classifyPlan, NOT the saved plan
+// BINARY — a saved .tfplan is a tofu-format binary, not a show-json document,
+// so the old feed always parsed empty. Mutation check: drop the show artifact
+// change or feed the plan bytes and the diff reads empty again.
+func TestPlanDetailRendersDiffFromShowJSON(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanDiffWithShow(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old","keep":"same"},"after":{"value":"new","keep":"same"}}},
+		{"address":"kubernetes_secret.gone","change":{"actions":["delete"],"before":{"token":"hunter2"},"before_sensitive":{"token":true}}},
+		{"address":"kubernetes_namespace.added","change":{"actions":["create"],"after":{"name":"e2e"}}}
+	]}`)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10))
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web/plans/%d = %d (%s)", art.ID, code, body)
+	}
+	for _, want := range []string{
+		">+1<",
+		">~1<",
+		">−1<",
+		"kubernetes_config_map.marker",
+		"kubernetes_secret.gone",
+		"kubernetes_namespace.added",
+		">UPDATE<",
+		">DESTROY<",
+		">CREATE<",
+		">old<",
+		">new<",
+		"[redacted · secret]",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("plan detail missing %q from the show-json diff", want)
+		}
+	}
+	if strings.Contains(body, "This plan changes nothing") {
+		t.Error("plan detail still reads 'changes nothing' for a plan that changes a resource")
+	}
+	// The redacted attribute never carries its plaintext, exactly as the
+	// binary-fed page promised.
+	if strings.Contains(body, "hunter2") {
+		t.Error("plan detail leaked a secret-backed value from the show-json")
 	}
 }
 

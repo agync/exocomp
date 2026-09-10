@@ -575,7 +575,7 @@ func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	blob, err := s.plans.OpenSealedFile(art.Path)
+	blob, err := s.planShowBlob(r, art)
 	if err != nil {
 		s.log.Error("api: open sealed plan", "approval", id, "err", err)
 		s.apiError(w, http.StatusInternalServerError, wire.NewError(wire.CodeInternal, "cannot open the sealed plan"))
