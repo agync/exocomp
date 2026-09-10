@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-10 — the plan-detail diff renders from a captured show-json (v0.10, fix)
+
+- **The plan-detail page and the approval surfaces show the diff again.**
+  `/workspaces/{ws}/plans/{id}`, the approval plan view, and
+  `/api/v1/.../plan` were feeding the saved plan's sealed **binary** to the
+  classifier, which reads `tofu show -json` (`resource_changes`), so every
+  plan read "nothing to diff". A saved plan is the binary tofu wrote, not a
+  show-json document — and re-running `tofu show` at render time cannot be
+  hermetic, because it needs the run's private `TF_DATA_DIR` (where the run
+  installed providers), which is gone after the run.
+- **The executor now captures `tofu show -json` at plan time**, while the run
+  env is live, and writes it beside the plan file as `<plan>.show.json`. The
+  sealer records it as a second artifact on the same job under a new
+  `tofu-plan-show` kind, sealed with the same envelope; the plan artifact's
+  digest stays the plan's. The web renders the diff from the show-json
+  artifact and never from the plan binary, through the same `classifyPlan`
+  redaction the approval phone and `/api/v1` use. A plan sealed before the
+  capture existed (or an operator's own plan file) falls back to the old feed.
+
 ## 2026-09-10 — plan detail page and the CONSUMED lifecycle (v0.10, part 3)
 
 - **`/workspaces/{ws}/plans/{id}` is live** (SPEC §4): the tray's diff/play
