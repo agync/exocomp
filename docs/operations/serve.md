@@ -322,10 +322,17 @@ manages the daemon from the browser, not just the CLI.
   drop EventSource is already retrying on its own, and it clears on the next
   successful reconnect, so a quiet live list whose fingerprint matched never
   wears a stale banner.
-- **Workspaces**: each runnable workspace row has a **Saved plans** button
-  opening a modal of its saved plan artifacts, each applyable by id through the
-  same plan-gate path as the CLI/API (a policied plan may still require
-  approval). The row's own Apply is fresh-apply.
+- **Workspaces**: the list's two-line rows show each workspace's posture
+  (runs-in-server with its newest job, or state-only with "external tofu"), a
+  DRIFT chip (NONE / PRESENT linking the open approval / LOCKED), and the TOFU
+  STATE column — serial · serials · size with the ENCRYPTED keyword and the
+  newest writer's meta (external writes named by serial). A runs-in-server row
+  plans and applies through the same service verbs the CLI uses; the Apply
+  glyph appears only while a SAVED plan exists (one apply per workspace), and a
+  state-only row links its backend config. A LOCKED row ends in force-unlock —
+  the same audited verb as `exocomp workspace unlock`, which refuses a live
+  job's lock and records the break on the job the lock named. Saved plans and
+  the exact backend block live on each workspace's detail page.
 - **Destructive actions confirm**: Remove/Delete/Revoke forms (checks,
   netgroups, schedules, sources, policies, runners, tokens, secrets) submit
   through a shared confirm dialog rather than firing on the first click, and

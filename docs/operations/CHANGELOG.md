@@ -33,6 +33,22 @@ Newest first.
   from append-only job events, the reveal endpoint's operation-only answer, and
   the leak check (the pasted block carries no bearer).
 
+- **The workspaces list grew the T7 columns.** Each row is now the two-line
+  64px density: NAME · POSTURE (runs-in-server with its newest job, or
+  state-only with "external tofu") · DRIFT (NONE / PRESENT / LOCKED chip) ·
+  TOFU STATE (serial · serials · size with the ENCRYPTED keyword and its writer
+  meta) · ACTIONS. The row keeps the Plan glyph; the Apply glyph appears only
+  while a SAVED plan exists (invariant: one apply per workspace) and a
+  state-only row's Backend glyph links the detail page.
+- **A LOCKED row is actionable from the list.** The TOFU STATE meta names the
+  lock holder and since when, ending in a force-unlock button — the same
+  audited verb as `exocomp workspace unlock`: a live job's lock is refused, the
+  break is recorded on the job the lock named (or the workspace's newest), and
+  the row returns to its ordinary state.
+- **A drifted row links its open approval.** The DRIFT chip reads PRESENT with
+  an approval link to the pending decision, so a workspace waiting on a human
+  is one click from the ask.
+
 ## 2026-09-09 — the job log owns its scroll (v0.10, part 1)
 
 - **The job-detail page is now a no-page-scroll flex column** (scoped to
