@@ -35,8 +35,11 @@ func TestWorkspaceAddStateOnlyEmitsBackendBlock(t *testing.T) {
 	if !strings.Contains(out, "address        = \""+wantURL+"\"") {
 		t.Errorf("emit missing state URL %q:\n%s", wantURL, out)
 	}
-	if !strings.Contains(out, "Bearer "+wantToken) {
-		t.Errorf("emit missing the workspace bearer:\n%s", out)
+	if strings.Contains(out, "Bearer "+wantToken) {
+		t.Errorf("emit leaked the workspace bearer in the paste block:\n%s", out)
+	}
+	if !strings.Contains(out, "tofu init -backend-config=<(exocomp workspace backend prod-net --config)") {
+		t.Errorf("emit missing the secret-free init line:\n%s", out)
 	}
 	if !strings.Contains(out, `lock_method    = "LOCK"`) ||
 		!strings.Contains(out, `unlock_method  = "UNLOCK"`) {
@@ -49,7 +52,15 @@ func TestWorkspaceAddStateOnlyEmitsBackendBlock(t *testing.T) {
 		t.Errorf("emit does not state that tofu workspace new/select is unsupported:\n%s", out)
 	}
 
-	assertParsesAsHCL(t, out)
+	// The state-only emit now carries prose + the init command after the terraform
+	// block; only the `terraform { ... }` section is HCL. Extract it so tofu fmt
+	// validates the block alone.
+	block, _, ok := strings.Cut(out, "# init (fills the bearer at init time, never on screen):")
+	block = strings.TrimSuffix(strings.TrimSpace(block), "\n")
+	if !ok {
+		t.Fatal("emit missing the init-command delimiter")
+	}
+	assertParsesAsHCL(t, block)
 }
 
 // TestWorkspaceAddStateOnlyNeedsAddress proves the emit refuses when it has no

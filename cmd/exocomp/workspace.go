@@ -57,10 +57,102 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceAdoptCmd(),
 		newWorkspaceEgressCmd(),
 		newWorkspaceOfflineCmd(),
+		newWorkspaceBackendCmd(),
+		newWorkspaceTokenCmd(),
 		newWorkspaceUnlockCmd(),
 		newWorkspacePruneCmd(),
 	)
 	return cmd
+}
+
+// resolveBackendBlock derives a workspace's backend block: the recorded state
+// backend address plus the per-workspace bearer. The bearer is an HKDF
+// derivation (api.WorkspaceToken), never stored, so it is recomputed here for
+// the one command that needs it.
+func resolveBackendBlock(name, address string) (api.BackendBlock, error) {
+	dir, err := dataDir()
+	if err != nil {
+		return api.BackendBlock{}, fmt.Errorf("workspace %s: resolve data dir: %w", name, err)
+	}
+	if address == "" {
+		recorded, rerr := api.ReadAddress(filepath.Join(dir, api.AddressFile))
+		if rerr != nil {
+			return api.BackendBlock{}, rerr
+		}
+		if recorded == "" {
+			return api.BackendBlock{}, errors.New("workspace backend: no recorded state backend address; " +
+				"pass --address host:port or start `exocomp serve` first")
+		}
+		address = recorded
+	}
+	env, err := secrets.Open(dir)
+	if err != nil {
+		return api.BackendBlock{}, fmt.Errorf("workspace %s: open envelope (run `exocomp init` first): %w", name, err)
+	}
+	defer func() { _ = env.Close() }()
+	return api.NewBackendBlock(env, address, name), nil
+}
+
+// newWorkspaceBackendCmd prints a workspace's paste-able backend block plus the
+// init line that fills the bearer without ever showing it: `tofu init
+// -backend-config=<(exocomp workspace backend <name> --config)`. The block
+// carries no credential (tofu sends http-backend headers verbatim, so a
+// pasted bearer would be a secret on screen); the value reaches init through
+// the filled config emitted by --config.
+func newWorkspaceBackendCmd() *cobra.Command {
+	var (
+		config  bool
+		address string
+	)
+	backend := &cobra.Command{
+		Use:   "backend <name>",
+		Short: "Print a workspace's state backend block and its init command",
+		Long: "Prints the `backend \"http\"` block an external tofu pastes, and the init " +
+			"line that fills the bearer from exocomp at init time. The block itself carries " +
+			"NO credential — OpenTofu sends http-backend headers verbatim, so a pasted bearer " +
+			"would be a secret on screen. `--config` prints the filled backend configuration " +
+			"(address + bearer) for `tofu init -backend-config=<(...)`.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			block, err := resolveBackendBlock(args[0], address)
+			if err != nil {
+				return err
+			}
+			if config {
+				_, err := fmt.Fprint(cmd.OutOrStdout(), block.BackendConfig())
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(),
+				"# %s — paste into an external tofu root, then init with the line below.\n%s\n"+
+					"tofu init -backend-config=<(exocomp workspace backend %s --config)\n",
+				args[0], block.HCL(), args[0])
+			return err
+		},
+	}
+	backend.Flags().BoolVar(&config, "config", false,
+		"print the filled backend configuration (address + bearer) for -backend-config=<(...)")
+	backend.Flags().StringVar(&address, "address", "",
+		"state backend address the block targets (default: the recorded backend address)")
+	return backend
+}
+
+// newWorkspaceTokenCmd prints a workspace's derived state-backend bearer. It is
+// the value `workspace backend --config` embeds; printing it directly is a
+// deliberate reveal (kit discipline — the caller controls the terminal).
+func newWorkspaceTokenCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "token <name>",
+		Short: "Print a workspace's derived state-backend bearer",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			block, err := resolveBackendBlock(args[0], "")
+			if err != nil {
+				return err
+			}
+			_, err = fmt.Fprintln(cmd.OutOrStdout(), block.Token)
+			return err
+		},
+	}
 }
 
 // newWorkspaceAdoptCmd registers the one-shot adoption verb: migrate a
@@ -539,13 +631,19 @@ func runWorkspaceAddStateOnly(cmd *cobra.Command, name, address string) (err err
 
 // writeStateOnlyBackend prints the mode-A backend block, computed the same
 // way the web surface's backend-config helper computes it (api.BackendBlock).
+// The block carries no credential (HCL has no headers line); the init line
+// fills the bearer via -backend-config=<(...  --config), so state-only users
+// get the same no-secret-on-screen story as runs-in-server.
 func writeStateOnlyBackend(w io.Writer, block api.BackendBlock) error {
 	_, err := fmt.Fprintf(w, `# exocomp workspace %q — mode A (secure state store only).
 # One exocomp workspace = one state = one backend URL. `+"`tofu workspace new`"+`
 # and `+"`tofu workspace select`"+` are unsupported against this backend: use a
 # separate exocomp workspace per environment. State lands encrypted and locked
 # in exocomp; exocomp does not run your plan in this mode.
-%s`, block.Workspace, block.HCL())
+%s
+# init (fills the bearer at init time, never on screen):
+tofu init -backend-config=<(exocomp workspace backend %s --config)
+`, block.Workspace, block.HCL(), block.Workspace)
 	return err
 }
 
