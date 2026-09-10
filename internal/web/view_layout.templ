@@ -27,7 +27,7 @@ templ layout(p page) {
 			@selectInit()
 		</head>
 		<body>
-			<div class="app">
+			<div class={ "app", templ.KV("page-job", p.PageClass != "") }>
 				<div class="scrim" onclick="exoCloseNav()" aria-hidden="true"></div>
 				<aside class="sidebar" aria-label="Primary">
 					<div class="side-top">
@@ -116,7 +116,7 @@ templ layout(p page) {
 							<span class="appbar-action">@addButton(p.Add.Target, p.Add.ButtonText())</span>
 						}
 					</header>
-					<main class={ p.PageClass }>
+					<main>
 						if p.Flash != "" {
 							<p class="flash" role="status">{ p.Flash }</p>
 						}

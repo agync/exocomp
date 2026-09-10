@@ -653,23 +653,24 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
  * min-height:0, and the log box inside it is flex:1; overflow:auto. Result:
  * the log tail is always inside the viewport, ending above the powerline,
  * and the wheel scrolls the log, never the page. */
-.page-job { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 /* The job page fixes the content column to the viewport so main cannot grow
- * past it (T1): the log box then owns the scroll. Scoped by main.page-job so
+ * past it (T1): the log box then owns the scroll. Scoped by .app.page-job so
  * every other page keeps its natural min-height:100vh growth. */
-.content-col:has(> main.page-job) { height: 100vh; min-height: 0; }
-.content-col:has(> main.page-job) > header { flex: none; }
-.page-job > * { flex: none; }
-.page-job > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.page-job > .card.output > .output-head { flex: none; }
-.page-job > .card.output > .logwrap2 { flex: 1; min-height: 0; }
-.page-job > .card.output > .logwrap2 > #log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
-.page-job .card.mt14 { margin-top: 0; }
+.app.page-job .content-col { height: 100vh; min-height: 0; }
+.app.page-job .content-col > header { flex: none; }
+.app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.app.page-job main > * { flex: none; }
+.app.page-job main > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.app.page-job main > .card.output > .output-head { flex: none; }
+.app.page-job main > .card.output > .logwrap2 { flex: 1; min-height: 0; }
+.app.page-job main > .card.output > .logwrap2 > #log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
+.app.page-job .card.mt14 { margin-top: 0; }
 @media (max-width: 719px) {
   /* The phone shell stacks the page like every other screen; the log gets a
    * viewport-bound height instead of a flex fill (SPEC §3 phone). */
-  .page-job { display: block; overflow: auto; }
-  .page-job > .card.output > #log { height: calc(100dvh - 240px); min-height: 240px; max-height: none; }
+  .app.page-job .content-col { height: auto; min-height: 100vh; }
+  .app.page-job main { display: block; overflow: auto; }
+  .app.page-job main > .card.output > .logwrap2 > #log { height: calc(100dvh - 240px); min-height: 240px; max-height: none; }
 }
 
 /* Glyph verb button (T6): a 34px square icon action for header and row verbs
