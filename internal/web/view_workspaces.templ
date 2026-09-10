@@ -29,7 +29,8 @@ templ workspacesList(vm workspacesVM) {
 			} else {
 				<div class="kicker">Read-only</div>
 			}
-			<h3>States</h3>
+			<h3>Workspaces</h3>
+			<p class="meta">{ itoa(int64(len(vm.Workspaces))) } · remote state on this server</p>
 			if !vm.Operator {
 				<p class="meta">Read-only: registering state, planning, or applying needs an operator token.</p>
 			}
@@ -41,21 +42,48 @@ templ workspacesList(vm workspacesVM) {
 						<thead>
 							<tr>
 								<th scope="col">Name</th>
-								<th scope="col">Type</th>
-								<th scope="col">State</th>
-								if vm.Operator {
-									<th scope="col">Actions</th>
-								}
+								<th scope="col">Posture</th>
+								<th scope="col">Drift</th>
+								<th scope="col">Tofu state</th>
+								<th scope="col" class="right">Actions</th>
 							</tr>
 						</thead>
 						<tbody>
 							for _, wsr := range vm.Workspaces {
 								<tr data-href={ templ.SafeURL("/workspaces/" + wsr.Name) }>
-									<td data-label="Name"><a href={ templ.SafeURL("/workspaces/" + wsr.Name) }>{ wsr.Name }</a></td>
-									<td data-label="Type">@chip(wsr.TypeClass(), wsr.TypeLabel())</td>
-									<td data-label="State">@chip(wsr.StateClass(), wsr.StateLabel())</td>
+									<td data-label="Name" class="ws-name"><a href={ templ.SafeURL("/workspaces/" + wsr.Name) }>{ wsr.Name }</a></td>
+									<td data-label="Posture" class="ws-cell">
+										<b class="mono">{ wsr.PostureLabel() }</b>
+										<small class="mono">{ wsr.PostureMeta() }</small>
+									</td>
+									<td data-label="Drift" class="ws-cell">
+										@chip(wsr.DriftClass(), wsr.DriftLabel())
+										if wsr.ApprovalID > 0 {
+											<a class="ws-meta" href={ templ.SafeURL("/approvals/" + itoa(wsr.ApprovalID)) }>approval #{ itoa(wsr.ApprovalID) }</a>
+										}
+									</td>
+									<td data-label="Tofu state" class="ws-cell">
+										<span class="ws-line">
+											<b class="mono">{ wsr.StateLine() }</b>
+											if wsr.HasState() {
+												<span class="ws-encrypted">
+													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>
+													ENCRYPTED
+												</span>
+											}
+										</span>
+										if wsr.Locked {
+											<small class="mono ws-lockline">{ wsr.LockLine() }
+												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/unlock") } class="inline-form" data-confirm={ "Force-unlock " + wsr.Name + "?" }>
+													<button type="submit" class="ws-unlock">force-unlock</button>
+												</form>
+											</small>
+										} else {
+											<small class="mono">{ wsr.StateMeta() }</small>
+										}
+									</td>
 									if vm.Operator {
-										<td data-label="Actions">
+										<td data-label="Actions" class="right">
 											@rowActions(workspaceRowActions(wsr))
 										</td>
 									}

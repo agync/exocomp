@@ -31,6 +31,7 @@ func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
 	mux.HandleFunc("POST /workspaces/{name}/backend/reveal", s.requireAuth(s.handleWorkspaceBackendReveal))
+	mux.HandleFunc("POST /workspaces/{name}/unlock", s.requireAuth(s.handleWorkspaceUnlock))
 }
 
 type workspacesVM struct {
@@ -135,13 +136,37 @@ func (v planVerdictRow) Class() string {
 // been pushed), and its backend config block (empty Address when the state
 // backend's address is not yet recorded). Plans lists the workspace's saved
 // plan artifacts (newest first, bounded), empty for state-only rows that the
-// daemon never plans.
+// daemon never plans. The T7 list columns — POSTURE meta, the DRIFT chip, and
+// the TOFU STATE facts — ride the same row; the detail page reads the subset
+// it needs.
 type workspaceWriteRow struct {
 	Name    string
 	TofuDir string
 	Serial  int64
 	Backend api.BackendBlock
 	Plans   []planArtifactRow
+	// LastJob is the POSTURE meta for a runs-in-server row ("last #20 ·
+	// 16:57", or "no runs yet"); state-only rows read the fixed "external
+	// tofu" instead. Empty until workspaceListRows fills it.
+	LastJob string
+	// ApprovalID is the open drift approval naming this workspace, 0 when
+	// none — the PRESENT chip's meta links it.
+	ApprovalID int64
+	// Locked carries the held tflock (DRIFT LOCKED): who holds it and since
+	// when, rendered in the TOFU STATE meta with the force-unlock verb.
+	Locked     bool
+	LockHolder string
+	LockSince  string
+	// SerialCount is the stored tfstate count; StateSize the newest body's
+	// human size. StateWrittenAt/StateWrittenBy name the newest serial's
+	// writer (0 = an external tool wrote it). ExternalWrites counts the
+	// serials no job wrote, ExternalSerial the first one's serial.
+	SerialCount    int
+	StateSize      string
+	StateWrittenAt string
+	StateWrittenBy int64
+	ExternalWrites int
+	ExternalSerial int64
 }
 
 // StateOnly reports the "state-only" surface distinction: an empty TofuDir
@@ -151,12 +176,13 @@ type workspaceWriteRow struct {
 func (r workspaceWriteRow) StateOnly() bool { return r.TofuDir == "" }
 
 // TypeLabel and TypeClass render the state-only/runs-in-server distinction as
-// a labelled chip, never colour-only.
+// a labelled chip, never colour-only. The list's POSTURE column reads the same
+// word through PostureLabel.
 func (r workspaceWriteRow) TypeLabel() string {
 	if r.StateOnly() {
 		return "state-only"
 	}
-	return "runs in server"
+	return "runs-in-server"
 }
 
 func (r workspaceWriteRow) TypeClass() string {
@@ -164,6 +190,85 @@ func (r workspaceWriteRow) TypeClass() string {
 		return "dim"
 	}
 	return "ok"
+}
+
+// PostureLabel and PostureMeta render the list's POSTURE column (T7): the
+// posture word and its one-line meta — the newest job for a runs-in-server
+// row, the fixed "external tofu" for a state-only one.
+func (r workspaceWriteRow) PostureLabel() string {
+	if r.StateOnly() {
+		return "state-only"
+	}
+	return "runs-in-server"
+}
+
+func (r workspaceWriteRow) PostureMeta() string {
+	if r.StateOnly() {
+		return "external tofu"
+	}
+	return r.LastJob
+}
+
+// DriftLabel and DriftClass render the DRIFT column's chip (T7): NONE in ok
+// when nothing is waiting, PRESENT in wait when an open approval names the
+// workspace, LOCKED in wait when a tflock holds it. A held lock wins — an
+// apply that cannot start is the stronger fact.
+func (r workspaceWriteRow) DriftLabel() string {
+	if r.Locked {
+		return "LOCKED"
+	}
+	if r.ApprovalID > 0 {
+		return "PRESENT"
+	}
+	return "NONE"
+}
+
+func (r workspaceWriteRow) DriftClass() string {
+	if r.Locked || r.ApprovalID > 0 {
+		return "wait"
+	}
+	return "ok"
+}
+
+// HasState reports whether the workspace holds any stored state.
+func (r workspaceWriteRow) HasState() bool { return r.Serial > 0 }
+
+// StateLine renders the TOFU STATE column's first line: "serial 10 · 10
+// serials · 4.1 KB", or "no state yet" when nothing has been pushed.
+func (r workspaceWriteRow) StateLine() string {
+	if !r.HasState() {
+		return "no state yet"
+	}
+	return "serial " + itoa(r.Serial) + " · " + itoa(int64(r.SerialCount)) + " serials · " + r.StateSize
+}
+
+// StateMeta renders the TOFU STATE column's second line: it names the newest
+// serial's writer (job #id, or outside exocomp when an external tool wrote it)
+// and counts the external writes, naming the first one's serial. A held lock
+// replaces this line with LockLine + the force-unlock verb; a workspace with
+// no state has no meta.
+func (r workspaceWriteRow) StateMeta() string {
+	if !r.HasState() {
+		return ""
+	}
+	line := "written " + r.StateWrittenAt
+	if r.StateWrittenBy > 0 {
+		line += " by job #" + itoa(r.StateWrittenBy)
+	} else {
+		line += " · outside exocomp"
+	}
+	if r.ExternalWrites == 1 {
+		line += " · 1 external write (serial " + itoa(r.ExternalSerial) + ")"
+	} else if r.ExternalWrites > 1 {
+		line += " · " + itoa(int64(r.ExternalWrites)) + " external writes (serial " + itoa(r.ExternalSerial) + ")"
+	}
+	return line
+}
+
+// LockLine is the LOCKED row's TOFU STATE meta: who holds the tflock and since
+// when, the line the force-unlock verb ends.
+func (r workspaceWriteRow) LockLine() string {
+	return "lock held by " + r.LockHolder + " since " + r.LockSince
 }
 
 // StateLabel and StateClass render the serial as a labelled chip, never
@@ -188,7 +293,15 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if vm.Operator {
 		vm.Page.Add = &pageAdd{Target: "ws-configure", Label: "workspace", Text: "Configure"}
 	}
-	list, err := s.store.ListWorkspaces(r.Context())
+	// The DRIFT chip and its meta come from the pending approvals (an open one
+	// names a workspace drifting) — the same ListApprovals rows the dashboard
+	// card and the /approvals list read, so the surfaces never disagree.
+	approvals, err := s.store.ListApprovals(r.Context(), true)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	pending, err := s.pendingApprovalsFrom(r, approvals)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -206,16 +319,20 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	if addr != "" {
 		vm.Config = api.NewBackendBlock(s.deriver, addr, configExampleWorkspace)
 	}
-	for _, ws := range list {
-		row := workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial}
+	rows, err := s.workspaceListRows(r.Context(), pending)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	for _, row := range rows {
 		if addr != "" {
-			row.Backend = api.NewBackendBlock(s.deriver, addr, ws.Name)
+			row.Backend = api.NewBackendBlock(s.deriver, addr, row.Name)
 		}
 		if !row.StateOnly() && vm.Operator {
 			// The Saved plans modal renders only for operators, so readers skip
 			// the per-row plan query too — a failure there cannot 500 their page.
 
-			plans, err := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 20)
+			plans, err := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(row.Name), reactive.PlanArtifactKind, 20)
 			if err != nil {
 				s.fail(w, r, err)
 				return
@@ -405,4 +522,88 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("web: workspace apply", "job", run.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
 	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(run.Job.ID, 10),
 		"job "+strconv.FormatInt(run.Job.ID, 10)+" enqueued")
+}
+
+// handleWorkspaceUnlock force-releases a workspace's state lock from the list
+// row's LOCKED meta (SPEC §5): the same audited verb as `exocomp workspace
+// unlock` — a live job's lock is refused (the system working, not a leftover),
+// the break is recorded on the job the lock named (or the workspace's newest),
+// and the list returns to the ordinary state.
+func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	ws, err := s.store.WorkspaceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no workspace named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	held, err := s.store.GetTFLock(r.Context(), ws.ID)
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, name+" is not locked", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if held.JobID != nil {
+		if owner, err := s.store.GetJob(r.Context(), *held.JobID); err == nil && !owner.State.Terminal() {
+			http.Error(w, "job "+itoa64(owner.ID)+" is still "+string(owner.State)+"; cancel it first", http.StatusConflict)
+			return
+		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	broken, err := s.store.ForceReleaseTFLock(r.Context(), ws.ID)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: workspace force-unlock", "workspace", ws.Name, "lock", broken.LockID, "by", ident.token.Name)
+	if jobID, err := s.unlockAuditJob(r.Context(), ws, broken); err != nil {
+		s.fail(w, r, err)
+		return
+	} else if jobID > 0 {
+		if _, err := s.store.AppendJobEvent(r.Context(), store.JobEvent{
+			JobID: jobID,
+			Level: store.LevelSystem,
+			Msg:   "force-unlocked tofu state: lock " + broken.LockID + ", " + broken.Operation + " by " + broken.Who + " since " + broken.CreatedAt.Format("2006-01-02 15:04:05Z"),
+		}); err != nil {
+			s.fail(w, r, err)
+			return
+		}
+	}
+	redirectFlash(w, r, "/workspaces", name+" unlocked")
+}
+
+// unlockAuditJob picks the job an unlock's audit event belongs on: the job the
+// lock named when it still exists, else the workspace's newest job, else 0 when
+// the workspace has never run — the same rule as the CLI's workspace unlock.
+func (s *Server) unlockAuditJob(ctx context.Context, ws store.Workspace, broken store.TFLock) (int64, error) {
+	if broken.JobID != nil {
+		if _, err := s.store.GetJob(ctx, *broken.JobID); err == nil {
+			return *broken.JobID, nil
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return 0, err
+		}
+	}
+	jobs, err := s.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook(ws.Name)})
+	if err != nil {
+		return 0, err
+	}
+	var latest int64
+	for _, job := range jobs {
+		if job.ID > latest {
+			latest = job.ID
+		}
+	}
+	return latest, nil
 }

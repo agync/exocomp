@@ -465,6 +465,35 @@ td.right, th.right { text-align: right; }
   .card.tray tbody tr.attention td:first-child { box-shadow: inset 3px 0 0 var(--wait-border); }
 }
 
+/* ---- Workspaces list columns (T7) ----
+ * The v0.10 rows are the 64px two-line density the job list uses: each data
+ * cell stacks a bold line over a mono meta, so POSTURE, DRIFT and TOFU STATE
+ * read at a glance. The ENCRYPTED keyword is the state's at-rest guarantee,
+ * a 12px padlock + keyword in the ok signal — never colour-only. */
+.ws-name a { font: 600 13px var(--font-ui); color: var(--ink-100); }
+.ws-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; align-items: flex-start; }
+.ws-cell b { font: var(--type-log); color: var(--ink-100); white-space: nowrap; }
+.ws-cell small { font: var(--type-log); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.ws-encrypted {
+  display: inline-flex; align-items: center; gap: 3px; flex: none;
+  font: var(--type-keyword); letter-spacing: .4px; color: var(--signal-ok);
+}
+.ws-encrypted svg { width: 12px; height: 12px; }
+.ws-meta { font: 400 12px var(--font-mono); color: var(--signal-wait); white-space: nowrap; }
+/* The LOCKED meta ends in the force-unlock button — never ellipsized, so the
+ * verb is always reachable even with a long holder name. */
+.ws-cell small.ws-lockline { overflow: visible; }
+.ws-unlock {
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font: 400 12px var(--font-mono); color: var(--signal-wait); text-decoration: underline;
+}
+.ws-unlock:hover { color: var(--ink-100); }
+.ws-unlock:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--radius-chip); }
+@media (min-width: 561px) {
+  .card.tray tbody td.ws-cell { height: 64px; }
+}
+
 /* ---- Check cards + target grid (F1/F2/F3) ----
  * One card per check: a header row (name link · kind/interval meta · ENABLED
  * chip · demoted actions) then a target grid on the tray. Each tile is one

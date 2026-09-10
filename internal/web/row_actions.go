@@ -57,4 +57,7 @@ const (
 	// designer's reveal path. It shows the bearer beside the block for 30s and
 	// logs the reveal; the pupil is a separate circle in the SVG.
 	glyphReveal = "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"
+	// glyphLock is the ENCRYPTED keyword's 12px padlock (T7): the designer's
+	// shackle-arc padlock — a body with a keyhole slot under an arc.
+	glyphLock = "M8 14a4 4 0 0 1 8 0M10 14v7h4v-7M12 17v2"
 )

@@ -230,13 +230,15 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 // TestWorkspaceApplyCarriesDataConfirm pins the MED fix: the fresh Apply
 // button is a one-click primary that enqueues `tofu apply -auto-approve`, so
 // it must route through the shared confirm dialog (data-confirm) like every
-// other destructive action.
+// other destructive action. The Apply glyph appears only while a SAVED plan
+// exists (SPEC §5), so the row seeds one.
 func TestWorkspaceApplyCarriesDataConfirm(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	if _, err := h.store.CreateWorkspace(ctx, store.Workspace{Name: "prod", TofuDir: "prod"}); err != nil {
 		t.Fatalf("seed workspace: %v", err)
 	}
+	h.seedPlanArtifact(t, "prod")
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))

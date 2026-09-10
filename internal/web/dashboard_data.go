@@ -12,6 +12,7 @@ import (
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -318,6 +319,104 @@ func (s *Server) workspaceSummary(r *http.Request, pending []approvalRow) (works
 		}
 	}
 	return card, nil
+}
+
+// workspaceListRows enriches every workspace into its T7 list row: the POSTURE
+// meta (the newest job for a runs-in-server row), the DRIFT chip state (an open
+// approval names the row drifting; a held tflock locks it), and the TOFU STATE
+// facts — the serial count, the newest body's size, the newest serial's writer
+// job, and how many serials were written outside exocomp. The drifting map is
+// the same one workspaces() derives, so the dashboard card and the list never
+// disagree.
+func (s *Server) workspaceListRows(ctx context.Context, pending []approvalRow) ([]workspaceWriteRow, error) {
+	list, err := s.store.ListWorkspaces(ctx)
+	if err != nil {
+		return nil, err
+	}
+	drifting := map[string]int64{}
+	for _, a := range pending {
+		if a.Workspace != "" && drifting[a.Workspace] == 0 {
+			drifting[a.Workspace] = a.ID
+		}
+	}
+	var out []workspaceWriteRow
+	for _, w := range list {
+		row := workspaceWriteRow{Name: w.Name, TofuDir: w.TofuDir, Serial: w.Serial}
+		row.ApprovalID = drifting[w.Name]
+		if lock, err := s.store.GetTFLock(ctx, w.ID); err == nil {
+			row.Locked = true
+			row.LockHolder = lock.Who
+			row.LockSince = lock.CreatedAt.Local().Format("15:04")
+		} else if !errors.Is(err, store.ErrNotFound) {
+			return nil, err
+		}
+		if w.Serial > 0 {
+			states, err := s.store.ListTFStates(ctx, w.ID, 0)
+			if err != nil {
+				return nil, err
+			}
+			row.SerialCount = len(states)
+			if len(states) > 0 {
+				latest := states[0]
+				row.StateSize = humanBytes(len(latest.Ciphertext))
+				row.StateWrittenAt = latest.CreatedAt.Local().Format("15:04")
+				if latest.CreatedByJob != nil {
+					row.StateWrittenBy = *latest.CreatedByJob
+				}
+				// Oldest first: the first external serial is the one the meta
+				// names.
+				for i := len(states) - 1; i >= 0; i-- {
+					if states[i].CreatedByJob == nil {
+						row.ExternalWrites++
+						row.ExternalSerial = states[i].Serial
+					}
+				}
+			}
+		}
+		if !row.StateOnly() {
+			row.LastJob, err = s.workspaceLastJob(ctx, w.Name)
+			if err != nil {
+				return nil, err
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// workspaceLastJob is the POSTURE meta for a runs-in-server row: "last #N ·
+// 16:57" naming the workspace's newest job and when it ran, or "no runs yet"
+// when the workspace has never run. ListJobs returns oldest first, so the
+// newest is the last element.
+func (s *Server) workspaceLastJob(ctx context.Context, name string) (string, error) {
+	jobs, err := s.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook(name)})
+	if err != nil {
+		return "", err
+	}
+	if len(jobs) == 0 {
+		return "no runs yet", nil
+	}
+	j := jobs[len(jobs)-1]
+	at := j.FinishedAt
+	if at == nil {
+		at = j.StartedAt
+	}
+	if at == nil {
+		at = &j.QueuedAt
+	}
+	return "last #" + itoa64(j.ID) + " · " + at.Local().Format("15:04"), nil
+}
+
+// humanBytes renders a byte count the way the state column reads it: "4.1 KB"
+// at the KB scale, "1.2 MB" at the MB scale, plain bytes below.
+func humanBytes(n int) string {
+	if n >= 1048576 {
+		return fmt.Sprintf("%.1f MB", float64(n)/1048576)
+	}
+	if n >= 1024 {
+		return fmt.Sprintf("%.1f KB", float64(n)/1024)
+	}
+	return fmt.Sprintf("%d B", n)
 }
 
 // sources reads the run-tree sources (ADR 0010) into rows: where each run's

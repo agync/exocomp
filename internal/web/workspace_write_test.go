@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -10,9 +11,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -212,8 +215,8 @@ func TestWorkspacesPageLabelledOpenTofuState(t *testing.T) {
 }
 
 // TestWorkspacesPageDistinguishesType: a state-only row (empty TofuDir) shows
-// as "state-only" and a runs-in-server row (TofuDir set) shows as "runs in
-// server" — the reframed Type column.
+// as "state-only" and a runs-in-server row (TofuDir set) shows as
+// "runs-in-server" — the POSTURE column (T7).
 func TestWorkspacesPageDistinguishesType(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -233,11 +236,11 @@ func TestWorkspacesPageDistinguishesType(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "state-only") {
-		t.Fatal("workspaces page did not mark the state-only row")
+	if !strings.Contains(body, "state-only") || !strings.Contains(body, "external tofu") {
+		t.Fatal("workspaces page did not mark the state-only row's posture")
 	}
-	if !strings.Contains(body, "runs in server") {
-		t.Fatal("workspaces page did not mark the runs-in-server row")
+	if !strings.Contains(body, "runs-in-server") {
+		t.Fatal("workspaces page did not mark the runs-in-server row's posture")
 	}
 }
 
@@ -374,8 +377,8 @@ func TestWorkspacesPageConfigure(t *testing.T) {
 	if !strings.Contains(body, "tofu init") || !strings.Contains(body, "terraform init") {
 		t.Fatal("Configure modal missing the init step")
 	}
-	if !strings.Contains(body, ">States<") {
-		t.Fatal("workspaces list section is not titled States")
+	if !strings.Contains(body, ">Workspaces<") {
+		t.Fatal("workspaces list section is not titled Workspaces")
 	}
 	if strings.Contains(body, "Using exocomp as your OpenTofu/Terraform state backend") {
 		t.Fatal("workspaces page still renders the removed how-to card")
@@ -674,5 +677,190 @@ func TestWorkspaceDetailPage(t *testing.T) {
 	}
 	if strings.Contains(detail, "Authorization") || strings.Contains(detail, "Bearer ") {
 		t.Error("backend block leaked the bearer into the pasted form")
+	}
+}
+
+// TestWorkspacesListStateColumns: the T7 TOFU STATE column renders "serial N ·
+// N serials · size" with the ENCRYPTED keyword, the meta names the newest
+// serial's writer job and counts the external writes, and a runs-in-server row
+// shows its newest job in the POSTURE meta. The state-only row reads
+// "no state yet" until an external tool writes.
+func TestWorkspacesListStateColumns(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	h.seedWorkspace(t, "web")
+	if _, err := h.store.CreateWorkspace(ctx, store.Workspace{Name: "stateonly"}); err != nil {
+		t.Fatalf("CreateWorkspace: %v", err)
+	}
+	ws, err := h.store.WorkspaceByName(ctx, "web")
+	if err != nil {
+		t.Fatalf("WorkspaceByName: %v", err)
+	}
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue job: %v", err)
+	}
+	// Serial 1 is an external write (no job); serial 2 was written by the job —
+	// the adopted-history shape where the first serial came from outside.
+	if _, err := h.store.AppendTFState(ctx, store.NewTFState{
+		WorkspaceID: ws.ID, SerialHint: 1, Lineage: "abcd",
+		Ciphertext: []byte("external state body"),
+	}); err != nil {
+		t.Fatalf("append external tfstate: %v", err)
+	}
+	if _, err := h.store.AppendTFState(ctx, store.NewTFState{
+		WorkspaceID: ws.ID, SerialHint: 2, Lineage: "abcd",
+		JobID:      &job.ID,
+		Ciphertext: []byte("job state body"),
+	}); err != nil {
+		t.Fatalf("append job tfstate: %v", err)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		// The newest serial's size and the serial count.
+		"serial 2 · 2 serials · 14 B",
+		// ENCRYPTED keyword renders with its lock glyph.
+		"ENCRYPTED",
+		`class="ws-encrypted"`,
+		// The meta names the newest writer and the first external write.
+		"by job #" + strconv.FormatInt(job.ID, 10),
+		"1 external write (serial 1)",
+		// POSTURE meta names the newest job.
+		"last #" + strconv.FormatInt(job.ID, 10),
+		// The state-only row has nothing stored yet.
+		"no state yet",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workspaces list missing %q", want)
+		}
+	}
+}
+
+// TestWorkspacesListDriftedShowsApproval: a workspace named by an open approval
+// renders the DRIFT chip PRESENT and its meta links the open approval.
+func TestWorkspacesListDriftedShowsApproval(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	h.seedWorkspace(t, "web")
+	job, err := h.queue.EnqueueGated(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue gated job: %v", err)
+	}
+	now := time.Now().UTC()
+	appr, err := h.store.CreateApproval(ctx, store.Approval{
+		JobID: job.ID, Workspace: "web", TokenHash: "x",
+		RequestedAt: now, ExpiresAt: now.Add(time.Minute),
+	})
+	if err != nil {
+		t.Fatalf("CreateApproval: %v", err)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		">PRESENT<",
+		`approval #` + strconv.FormatInt(appr.ID, 10),
+		`href="/approvals/` + strconv.FormatInt(appr.ID, 10) + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workspaces list missing %q", want)
+		}
+	}
+}
+
+// TestWorkspacesListLockedShowsForceUnlock: a workspace holding a tflock (with
+// no live job) renders the DRIFT chip LOCKED and the TOFU STATE meta names the
+// holder with a force-unlock button; the POST force-releases the lock and
+// records the audit on the workspace's newest job.
+func TestWorkspacesListLockedShowsForceUnlock(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	ws := h.seedWorkspace(t, "web")
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue job: %v", err)
+	}
+	if _, err := h.store.AcquireTFLock(ctx, store.TFLock{
+		WorkspaceID: ws.ID, LockID: "stale", Who: "ci@lima",
+		Operation: "OperationTypeApply", JobID: nil,
+	}); err != nil {
+		t.Fatalf("AcquireTFLock: %v", err)
+	}
+
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	resp, err := client.Get(ts.URL + "/workspaces")
+	if err != nil {
+		t.Fatalf("GET /workspaces: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		">LOCKED<",
+		"lock held by ci@lima since",
+		`action="/workspaces/web/unlock"`,
+		"force-unlock",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workspaces list missing %q", want)
+		}
+	}
+
+	// The POST force-releases and audits on the workspace's newest job.
+	post := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	_ = post.Body.Close()
+	if post.StatusCode != http.StatusSeeOther {
+		t.Fatalf("workspace unlock = %d, want 303", post.StatusCode)
+	}
+	if _, err := h.store.GetTFLock(ctx, ws.ID); !errors.Is(err, store.ErrNotFound) {
+		t.Fatal("unlock did not release the lock")
+	}
+	events, err := h.store.ListJobEvents(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("ListJobEvents: %v", err)
+	}
+	audited := false
+	for _, e := range events {
+		if strings.Contains(e.Msg, "force-unlocked tofu state") {
+			audited = true
+		}
+	}
+	if !audited {
+		t.Fatal("unlock did not record the audit event on the workspace's newest job")
 	}
 }
