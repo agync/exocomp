@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"exocomp.dev/exocomp/internal/api"
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -270,15 +271,68 @@ func TestWorkspacesPageBackendConfigModal(t *testing.T) {
 	if !strings.Contains(body, "backend &#34;http&#34;") {
 		t.Fatal("workspaces page did not render a backend config block")
 	}
-	if !strings.Contains(body, "lock_address") || !strings.Contains(body, "Authorization") {
-		t.Fatal("backend config block missing lock_address or Authorization header")
+	// The reference block (SPEC §2.4) carries the address and lock plumbing but
+	// NO credential: tofu sends http-backend headers verbatim, so a pasted
+	// bearer would be a secret on screen. The value reaches init through the
+	// filled config the CLI emits to a process pipe, never a paste block.
+
+	if !strings.Contains(body, "lock_address") || !strings.Contains(body, "lock_method") {
+		t.Fatal("backend config block missing the reference lock plumbing")
 	}
 	want := api.NewBackendBlock(h.server.deriver, "127.0.0.1:9443", "web")
 	if !strings.Contains(body, want.Address) {
 		t.Fatal("backend config block did not carry the computed state address")
 	}
-	if !strings.Contains(body, want.Token) {
-		t.Fatal("backend config block did not carry the computed bearer")
+	// Leak check: the pasted block must not carry the bearer or an Authorization
+	// header, and the reveal/copy handlers exist beside it.
+	if strings.Contains(body, "Authorization") {
+		t.Fatal("backend config block leaked an Authorization header")
+	}
+	if strings.Contains(body, want.Token) {
+		t.Fatal("backend config block leaked the bearer")
+	}
+	if !strings.Contains(body, `id="be-reveal"`) || !strings.Contains(body, "Reveal bearer") {
+		t.Fatal("backend card missing the reveal handler")
+	}
+	if !strings.Contains(body, "class=\"copybtn\"") {
+		t.Fatal("backend card missing the copy handler")
+	}
+}
+
+// TestWorkspaceBackendRevealEndpoint: the reveal glyph's fetch target returns
+// the derived bearer to an operator (text/plain — never rendered in any paste
+// block), and a readonly session is refused: reveal is a deliberate, logged
+// action, not a surface fact (SPEC §2.4).
+func TestWorkspaceBackendRevealEndpoint(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	if err := api.WriteAddress(filepath.Join(h.dir, "state-backend.addr"), "127.0.0.1:9443"); err != nil {
+		t.Fatalf("WriteAddress: %v", err)
+	}
+	want := api.NewBackendBlock(h.server.deriver, "127.0.0.1:9443", "web").Token
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp, err := op.Post(ts.URL+"/workspaces/web/backend/reveal", "", nil)
+	if err != nil {
+		t.Fatalf("POST reveal: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reveal = %d, want 200 (%s)", resp.StatusCode, body)
+	}
+	if body != want {
+		t.Fatalf("reveal returned %q, want the derived bearer %q", body, want)
+	}
+
+	ro := login(t, ts.URL, h.mint(t, "ro", "readonly"))
+	roResp, err := ro.Post(ts.URL+"/workspaces/web/backend/reveal", "", nil)
+	if err != nil {
+		t.Fatalf("readonly POST reveal: %v", err)
+	}
+	_ = readBody(t, roResp)
+	if roResp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly reveal = %d, want 403", roResp.StatusCode)
 	}
 }
 
@@ -362,16 +416,19 @@ func TestWorkspaceApplyUnadjudicatedPlanRefused409(t *testing.T) {
 	}
 }
 
-// TestWorkspacesPageSavedPlans: a runs-in-server workspace with a saved plan
-// renders the Saved plans control and its modal, whose apply form posts the
-// plan by artifact id to the same apply route — and the inline plan-id input is
-// gone.
+// TestWorkspacesPageSavedPlans: the Plans tray-table (SPEC §2.2) renders one
+// row per saved plan with the LIFECYCLE word — SAVED for the newest, SUPERSEDED
+// for every older one — and exactly ONE apply glyph: on the latest SAVED
+// non-stale row. The per-row Apply plan button and the plan= hidden field are
+// gone; the apply affordance deep-links to the plan-detail page (lane F owns
+// the route and its confirm).
 func TestWorkspacesPageSavedPlans(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	h.seedWorkspace(t, "web")
-	planID := h.seedPlanArtifact(t, "web").ID
+	older := h.seedPlanArtifactSerial(t, "web", 1)
+	latest := h.seedPlanArtifactSerial(t, "web", 2)
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
@@ -386,21 +443,103 @@ func TestWorkspacesPageSavedPlans(t *testing.T) {
 	if !strings.Contains(body, `kicker">Saved plans`) {
 		t.Fatal("workspace detail page missing the Saved plans section")
 	}
-	want := `<input type="hidden" name="plan" value="` + strconv.FormatInt(planID, 10) + `">`
-	if !strings.Contains(body, want) {
-		t.Fatalf("Saved plans modal missing the plan-by-id field %q", want)
+	if !strings.Contains(body, "2 plans · newest first · latest is applicable") {
+		t.Fatal("workspace detail page missing the plans count line")
 	}
-	if !strings.Contains(body, "Apply plan") {
-		t.Fatal("workspace detail page missing the apply-plan button")
+	for _, want := range []string{
+		"SAVED",
+		"SUPERSEDED",
+		`aria-label="Apply plan #` + strconv.FormatInt(latest.ID, 10) + `"`,
+		`/workspaces/web/plans/` + strconv.FormatInt(latest.ID, 10),
+		`/workspaces/web/plans/` + strconv.FormatInt(older.ID, 10),
+		"a Policy verdict rides on the plan: deny · require-approval",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workspace detail missing %q", want)
+		}
 	}
-	if !strings.Contains(body, `action="/workspaces/web/apply"`) {
-		t.Fatal("workspace detail page does not post to the apply route")
+	// Single-apply mutation check: the newest SAVED row carries the one play
+	// glyph; the SUPERSEDED row must not render one. No apply form remains.
+	if n := strings.Count(body, "aria-label=\"Apply plan #"); n != 1 {
+		t.Errorf("Plans tray renders %d apply glyphs, want exactly 1", n)
 	}
-	if !strings.Contains(body, "A policied plan may still require approval.") {
-		t.Fatal("workspace detail page missing the policied-plan note")
+	if strings.Contains(body, "Apply plan\"") {
+		t.Fatal("workspace detail page still renders a per-row Apply plan button")
 	}
-	if strings.Contains(body, "plan id (optional)") || strings.Contains(body, `name="plan" min="1"`) {
-		t.Fatal("workspace detail page still renders the inline plan-id input")
+	if strings.Contains(body, `name="plan"`) {
+		t.Fatal("workspace detail page still renders a plan= hidden field")
+	}
+	if strings.Contains(body, `action="/workspaces/web/apply"`) {
+		t.Fatal("workspace detail page still posts an apply form")
+	}
+}
+
+// TestWorkspaceDetailPlansChangesVerdict: the Plans tray's CHANGES cell reads
+// the plan outcome's counters, resource names, drift note, and the policy
+// verdict the plan job recorded — all from append-only job events (SPEC §2.2,
+// copy.txt), never from a tofu show parse.
+func TestWorkspaceDetailPlansChangesVerdict(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanArtifactSerial(t, "web", 1)
+	h.seedPlanOutcome(t, art, true, []executor.ResourceDelta{
+		{Address: "kubernetes_config_map.marker", Actions: []string{"update"}},
+		{Address: "kubernetes_namespace.e2e", Actions: []string{"create"}},
+		{Address: "kubernetes_secret.old", Actions: []string{"delete"}},
+	}, []executor.ResourceDelta{{Address: "kubernetes_config_map.drifted", Actions: []string{"update"}}})
+	h.seedPlanVerdict(t, art, store.PolicyRequireApproval, "ops")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces/web = %d", code)
+	}
+	for _, want := range []string{
+		"+1",
+		"~1",
+		"−1",
+		"kubernetes_config_map.marker, kubernetes_namespace.e2e, kubernetes_secret.old",
+		"· drift",
+		"require-approval · pending",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("Plans tray CHANGES/VERDICT missing %q", want)
+		}
+	}
+}
+
+// TestWorkspaceDetailPlansDenyVerdict: a deny verdict renders "deny · <policy>"
+// in the CHANGES·VERDICT cell, and a no-match adjudication reads "no policy
+// matched" — both keyed to the sealed artifact, exactly as the seal wrote them.
+func TestWorkspaceDetailPlansDenyVerdict(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanArtifactSerial(t, "web", 1)
+	h.seedPlanOutcome(t, art, true, []executor.ResourceDelta{{Address: "kubernetes_config_map.marker", Actions: []string{"update"}}}, nil)
+	h.seedPlanVerdict(t, art, store.PolicyDeny, "no-destroy")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces/web = %d", code)
+	}
+	if !strings.Contains(body, "deny · no-destroy") {
+		t.Error("Plans tray missing the deny verdict")
+	}
+	h.seedPlanArtifact(t, "web")
+	h.seedPlanVerdict(t, art, "no_match", "")
+	code, body = getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces/web = %d", code)
+	}
+	if !strings.Contains(body, "no policy matched") {
+		t.Error("Plans tray missing the no-match verdict")
 	}
 }
 
@@ -463,9 +602,22 @@ func TestWorkspaceDetailPage(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	h.seedWorkspace(t, "web")
-	planID := h.seedPlanArtifact(t, "web").ID
-	if err := api.WriteAddress(filepath.Join(h.dir, api.AddressFile), "127.0.0.1:9443"); err != nil {
+	ws := h.seedWorkspace(t, "web")
+	// The tray's stale rule:the Tofu state has moved to serial 2, so the one
+	// SAVED plan (made against serial 1) reads stale and loses its apply.
+
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	h.seedPlanArtifactSerial(t, "web", 1)
+	if err := api.WriteAddress(filepath.Join(h.dir, "state-backend.addr"), "127.0.0.1:9443"); err != nil {
 		t.Fatalf("WriteAddress: %v", err)
 	}
 	op := h.mint(t, "laptop", "operator")
@@ -502,15 +654,25 @@ func TestWorkspaceDetailPage(t *testing.T) {
 	}
 	for _, want := range []string{
 		`>Plan</button>`,
-		`data-confirm="Apply web?"`,
 		`kicker">Saved plans`,
-		`name="plan" value="` + strconv.FormatInt(planID, 10) + `"`,
-		`Apply plan`,
+		"SAVED",
+		"stale · state at serial 2",
 		`kicker">Backend config`,
-		`backend &#34;http&#34;`,
+		"backend &#34;http&#34;",
+		"tofu init -backend-config=&lt;(exocomp workspace backend web --config)",
+		"reveal logs an event · copy never includes it",
 	} {
 		if !strings.Contains(detail, want) {
 			t.Errorf("workspace detail missing %q", want)
 		}
+	}
+	// The single-apply rule: a stale SAVED plan carries NO apply glyph (the
+	// only apply candidate lost its affordance to the moved state), and the
+	// pasted block never carries the bearer.
+	if strings.Contains(detail, "aria-label=\"Apply plan #") {
+		t.Error("workspace detail renders an apply glyph on a stale plan")
+	}
+	if strings.Contains(detail, "Authorization") || strings.Contains(detail, "Bearer ") {
+		t.Error("backend block leaked the bearer into the pasted form")
 	}
 }

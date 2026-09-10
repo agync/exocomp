@@ -1,10 +1,13 @@
 package web
 
 // workspaceDetail is one workspace's page: identity + state facts up top, then
-// the Plan/Apply verbs (runs-in-server), the Saved plans list, and the exact
-// Backend config block. The row's view items (Saved plans, Backend config)
-// live here (R8/v0.6); the list row opens this page and keeps only the
-// Plan/Apply glyphs.
+// the Plan verb (runs-in-server), the read-only Plans tray-table (SPEC §2.2:
+// one apply affordance on the latest SAVED non-stale row, truthful
+// LIFECYCLE/CHANGES/VERDICT columns), and the Backend card whose block carries
+// a reference, never the bearer (SPEC §2.4: reveal is a separate, logged,
+// timed action; copy never includes the value). The row's view items (Saved
+// plans, Backend config) live here (R8/v0.6); the list row opens this page and
+// keeps only the Plan/Apply glyphs.
 templ workspaceDetail(vm workspaceDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Row.Name})
@@ -27,10 +30,6 @@ templ workspaceDetail(vm workspaceDetailVM) {
 					<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/plan") } class="inline-form">
 						<button type="submit" class="btn">Plan</button>
 					</form>
-					<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/apply") } class="inline-form" data-confirm={ "Apply " + vm.Row.Name + "?" }>
-						<input type="hidden" name="confirmed" value="1"/>
-						<button type="submit" class="btn primary">Apply</button>
-					</form>
 				</div>
 			}
 		</div>
@@ -44,28 +43,118 @@ templ workspaceDetail(vm workspaceDetailVM) {
 			} else if len(vm.Row.Plans) == 0 {
 				<p class="meta">No saved plans yet — run Plan to save one.</p>
 			} else {
-				<ul class="planlist">
+				<p class="meta">{ itoa(int64(len(vm.Row.Plans))) } plans · newest first · latest is applicable</p>
+				<div class="tray-table plans">
+					<div class="row tt-col">
+						<span>PLAN</span>
+						<span>SERIAL</span>
+						<span>SEALED</span>
+						<span>CHANGES · VERDICT</span>
+						<span>LIFECYCLE</span>
+						<span>ACTIONS</span>
+					</div>
 					for _, plan := range vm.Row.Plans {
-						<li class="mono">
-							<span>#{ itoa(plan.ID) }</span>
-							<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/apply") } class="inline-form">
-								<input type="hidden" name="plan" value={ itoa(plan.ID) }/>
-								<button type="submit" class="btn quiet">Apply plan</button>
-							</form>
-						</li>
+						<div class={ "row", templ.KV("applicable", plan.Applicable()) }>
+							<span class="mono">#{ itoa(plan.ID) }</span>
+							<span class="mono">{ itoa64(plan.PlanSerial) }</span>
+							<span class="mono">{ plan.Sealed }</span>
+							<div class="cv">
+								if plan.Changes.Present {
+									<span class="counters">
+										<span class="n-add">{ "+" + itoa(int64(plan.Changes.Create)) }</span>
+										<span class="n-chg">{ "~" + itoa(int64(plan.Changes.Update)) }</span>
+										<span class="n-del">{ "−" + itoa(int64(plan.Changes.Destroy)) }</span>
+									</span>
+									<span class="res">{ plan.Changes.Resources }</span>
+									if plan.Changes.Drift {
+										<span class="drift">· drift</span>
+									}
+								} else {
+									<span class="quiet">—</span>
+								}
+								if plan.Verdict.Present {
+									<span class={ "verdict", plan.Verdict.Class() }>{ plan.Verdict.Label() }</span>
+								} else {
+									<span class="quiet">—</span>
+								}
+							</div>
+							<div class="pl-life">
+								@chip(plan.LifecycleClass(), plan.Lifecycle)
+								if plan.Stale {
+									<span class="stale">{ "stale · state at serial " + itoa64(vm.Row.Serial) }</span>
+								}
+							</div>
+							<div class="verbs">
+								if plan.Applicable() {
+									<a class="verb primary" href={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)) } aria-label={ "Apply plan #" + itoa(plan.ID) } title={ "Apply plan #" + itoa(plan.ID) }>
+										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphApply }></path></svg>
+									</a>
+								}
+								<a class="verb" href={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)) } aria-label={ "Diff plan #" + itoa(plan.ID) } title="Diff">
+									<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphDiff }></path></svg>
+								</a>
+							</div>
+						</div>
 					}
-				</ul>
-				<p class="meta mt8">A policied plan may still require approval.</p>
+				</div>
+				<p class="meta mt8">a Policy verdict rides on the plan: deny · require-approval</p>
 			}
 		</div>
-		<div class="card span2 mt18">
+		<div class="card span2 mt18 backend">
 			<div class="kicker">Backend config</div>
-			<h3>External config</h3>
+			<h3>Backend</h3>
 			if vm.Row.Backend.Address == "" {
 				<p class="meta">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>
 			} else {
-				<p class="meta">Paste into an external tofu/terraform config, then run `tofu init` / `terraform init`.</p>
+				<p class="meta">Paste into an external tofu root, then `tofu init`. The bearer is a reference — the value comes from the sealed secret at init time.</p>
+				<div class="backend-tools">
+					<p class="mono hint">tofu init -backend-config=&lt;(exocomp workspace backend { vm.Row.Name } --config)</p>
+					if vm.Operator {
+						<button type="button" class="verb" id="be-reveal" data-action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/backend/reveal") } aria-label="Reveal bearer" title="Reveal bearer">
+							<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphReveal }></path><circle cx="12" cy="12" r="2.5"></circle></svg>
+						</button>
+					}
+				</div>
 				@codeblock("backend config", vm.Row.Backend.HCL())
+				<div class="backend-foot">
+					<span class="bearer" id="be-bearer">bearer ••••••••••••••••••••••••••••••••••••••••••••</span>
+					<span class="note" id="be-note">reveal logs an event · copy never includes it</span>
+				</div>
+				<script>
+				(function () {
+					var btn = document.getElementById("be-reveal");
+					if (!btn) return;
+					var out = document.getElementById("be-bearer");
+					var note = document.getElementById("be-note");
+					var timer = null;
+					function hide() {
+						if (timer) { clearTimeout(timer); timer = null; }
+						out.textContent = "bearer ••••••••••••••••••••••••••••••••••••••••••••";
+						note.textContent = "reveal logs an event · copy never includes it";
+						btn.setAttribute("aria-label", "Reveal bearer");
+						btn.setAttribute("title", "Reveal bearer");
+					}
+					btn.addEventListener("click", function () {
+						fetch(btn.getAttribute("data-action"), {
+							method: "POST",
+							credentials: "same-origin",
+							headers: { "Accept": "text/plain" }
+						}).then(function (resp) {
+							if (!resp.ok) throw new Error(String(resp.status));
+							return resp.text();
+						}).then(function (token) {
+							out.textContent = "bearer " + token;
+							note.textContent = "revealed · logged to events · hides in 30s";
+							btn.setAttribute("aria-label", "Hide bearer");
+							btn.setAttribute("title", "Hide bearer");
+							if (timer) clearTimeout(timer);
+							timer = setTimeout(hide, 30000);
+						}).catch(function () {
+							note.textContent = "reveal refused — reload and try again";
+						});
+					});
+				})();
+				</script>
 			}
 		</div>
 	}

@@ -690,6 +690,46 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .verb:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); }
 .verb svg { width: 18px; height: 18px; }
 
+/* ---- Plans / state tray-tables (SPEC §2.2, lift.css §plans/state) ----
+ * The tray base is a grid, not a table: `.tray-table` stacks rows with the
+ * row height, radius, hover, and padding every surface row shares; a
+ * `.plans .row` (or `.state .row`) sets the per-tray column template. Rows
+ * are read-only — the only mutation is the one apply glyph. */
+.tray-table { display: grid; gap: 2px; }
+.tray-table .row {
+  display: grid; align-items: center; gap: 8px;
+  min-height: var(--row-h); padding: 0 12px;
+  border-radius: 9px;
+}
+.tray-table .row:hover { background: var(--surface-control); }
+.tray-table .row.applicable { background: var(--surface-row); }
+.tray-table .row.applicable:hover { background: var(--surface-row); }
+.tray-table .tt-col { min-height: 30px; color: var(--ink-500); font: var(--type-keyword); letter-spacing: .4px; }
+.plans .row { grid-template-columns: 52px 70px 150px minmax(0,1fr) 150px 120px; }
+/* The CHANGES · VERDICT cell: counters in signal colour, the resource names,
+ * a drift note, then the policy verdict (SPEC §2.2). */
+.plans .cv { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.plans .cv .res { color: var(--ink-400); font: 400 12px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plans .cv .drift { color: var(--signal-wait); font: 400 12px var(--font-mono); }
+.plans .cv .verdict { font: 400 12px var(--font-mono); white-space: nowrap; }
+.plans .cv .verdict.muted { color: var(--ink-500); }
+.plans .cv .verdict.wait { color: var(--signal-wait); }
+.plans .cv .verdict.fail { color: var(--signal-fail); }
+.plans .cv .quiet { color: var(--ink-600); }
+.plans .pl-life { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.plans .pl-life .stale { color: var(--signal-wait); font: 400 11px var(--font-mono); white-space: nowrap; }
+.n-add { color: var(--signal-ok); } .n-chg { color: var(--signal-wait); } .n-del { color: var(--signal-fail); }
+
+/* Backend card (SPEC §2.4): the reference block, its init hint, and the
+ * reveal/copy verbs. The block never carries the bearer; reveal shows it
+ * beside the block for 30s and logs the reveal. */
+.backend .hint { color: var(--ink-400); font-size: 12px; overflow-x: auto; white-space: nowrap; }
+.backend-tools { display: flex; align-items: center; gap: 10px; }
+.backend-tools .hint { margin: 0 0 10px; flex: 1; min-width: 0; }
+.backend-tools .verb { margin-bottom: 10px; }
+.backend-foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font: 400 11px var(--font-mono); color: var(--ink-500); }
+.backend-foot .bearer { color: var(--ink-200); }
+
 /* Row-action buttons live in a table cell (Revoke, the inline Rotate submit, the
  * dashboard Review CTA) and read at row scale, not as a full-height form button
  * — a Revoke that towers over its sibling Rotate text-link. Still clears the

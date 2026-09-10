@@ -30,6 +30,7 @@ func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces/{name}", s.requireAuth(s.handleWorkspaceDetail))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
+	mux.HandleFunc("POST /workspaces/{name}/backend/reveal", s.requireAuth(s.handleWorkspaceBackendReveal))
 }
 
 type workspacesVM struct {
@@ -47,11 +48,86 @@ type workspacesVM struct {
 // cleanly. A row's Backend config carries the real per-workspace block.
 const configExampleWorkspace = "WORKSPACE"
 
-// planArtifactRow is one saved plan of a workspace, referenced by artifact id
-// only: the apply form posts just the id, and the handler ignores the job for
-// applying. Ordering by artifact id IS recency.
+// planArtifactRow is one saved plan of a workspace on the detail tray: the
+// artifact id (the apply/diff deep-link key), the workspace serial it was made
+// against, and the truthful surface facts a tray row reads — LIFECYCLE (SAVED
+// for the newest, SUPERSEDED for every older one; CONSUMED lands with lane F),
+// whether the Tofu state has moved past it (stale → no apply), the plan
+// outcome's change counters + resource names + drift, the policy verdict the
+// plan job recorded, and when it was sealed. Ordering by artifact id IS
+// recency: the first row is the latest SAVED plan.
 type planArtifactRow struct {
-	ID int64
+	ID         int64
+	PlanSerial int64
+	Lifecycle  string // "SAVED" | "SUPERSEDED"
+	Stale      bool
+	Sealed     string
+	Changes    planChangesRow
+	Verdict    planVerdictRow
+}
+
+// Applicable reports the single-apply rule (SPEC §2.2, invariant 7): only the
+// latest SAVED plan the Tofu state has not moved past carries an apply
+// affordance. Every other row — SUPERSEDED, or SAVED-but-stale — reads only.
+func (p planArtifactRow) Applicable() bool { return p.Lifecycle == "SAVED" && !p.Stale }
+
+// LifecycleClass renders the LIFECYCLE chip's signal: accent for the one SAVED
+// plan, dim for SUPERSEDED history. Never colour-only (the word is always shown).
+func (p planArtifactRow) LifecycleClass() string {
+	if p.Lifecycle == "SAVED" {
+		return "run"
+	}
+	return "dim"
+}
+
+// planChangesRow is the CHANGES cell of a plan tray row: the pending-change
+// counters and resource addresses the plan's outcome recorded, and whether it
+// reported drift. All values-free — the plan outcome never carries attribute
+// values (SPEC §2.2).
+type planChangesRow struct {
+	Present   bool
+	Create    int
+	Update    int
+	Destroy   int
+	Resources string
+	Drift     bool
+}
+
+// planVerdictRow is the policy verdict the plan's job recorded. Present=false
+// (no record) renders a quiet —; a no-match adjudication reads "no policy
+// matched"; deny/require-approval name the policy that decided (SPEC §2.2).
+type planVerdictRow struct {
+	Present bool
+	Action  string // store.PolicyDeny | store.PolicyRequireApproval, or "" for no match
+	Policy  string
+}
+
+func (v planVerdictRow) Label() string {
+	if !v.Present {
+		return ""
+	}
+	switch v.Action {
+	case store.PolicyDeny:
+		return "deny · " + v.Policy
+	case store.PolicyRequireApproval:
+		return "require-approval · pending"
+	default:
+		return "no policy matched"
+	}
+}
+
+func (v planVerdictRow) Class() string {
+	if !v.Present {
+		return "muted"
+	}
+	switch v.Action {
+	case store.PolicyDeny:
+		return "fail"
+	case store.PolicyRequireApproval:
+		return "wait"
+	default:
+		return "muted"
+	}
 }
 
 // workspaceWriteRow is one tofu workspace on the write surface: its name, root

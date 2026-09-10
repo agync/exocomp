@@ -49,4 +49,12 @@ const (
 	// set rather than forking it.
 	glyphDocument = "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5zM14 3v5h5"
 	glyphTail     = "M5 12h14M12 5l7 7-7 7"
+	// glyphDiff is the plan-diff verb (T3): two bars with offset ticks, the
+	// designer's diff path verbatim. Every plan row deep-links it to the plan
+	// detail page (lane F owns the route).
+	glyphDiff = "M8 4v16M16 4v16M5 8h6M13 16h6"
+	// glyphReveal is the backend reveal verb (T4): an eye with a pupil, the
+	// designer's reveal path. It shows the bearer beside the block for 30s and
+	// logs the reveal; the pupil is a separate circle in the SVG.
+	glyphReveal = "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"
 )

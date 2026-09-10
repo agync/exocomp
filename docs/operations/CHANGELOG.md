@@ -6,6 +6,33 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-10 — workspace detail: plans tray and reference backend block (v0.10, part 2)
+
+- **The workspace detail page's Saved plans list is now a read-only
+  tray-table** (SPEC §2.2): one row per plan with PLAN / SERIAL / SEALED /
+  CHANGES · VERDICT / LIFECYCLE / ACTIONS columns. LIFECYCLE reads SAVED for
+  the newest plan and SUPERSEDED for every older one (CONSUMED lands with the
+  plan-detail lane); CHANGES reads the plan outcome's `+N ~N −N` counters,
+  resource names, and drift note; the policy verdict the plan job recorded
+  (deny · <policy>, require-approval · pending, or no policy matched) rides in
+  the same cell. A SAVED plan whose serial the Tofu state has moved past reads
+  `stale · state at serial N` and loses its apply affordance.
+- **One apply glyph, deep-linked.** The old per-row "Apply plan" button and the
+  `plan=` hidden field are gone; the single play glyph sits on the latest SAVED
+  non-stale row and links to `/workspaces/{ws}/plans/{id}`, the plan-detail
+  page that will own the apply confirm. Each row keeps a diff glyph to the same
+  route.
+- **The Backend card emits a reference, never the bearer** (SPEC §2.4): the
+  pasted block carries the address and lock plumbing only, and the init line
+  `tofu init -backend-config=<(exocomp workspace backend <ws> --config)` fills
+  the value at init time. A reveal glyph shows the derived bearer beside the
+  block for 30 s and logs the reveal to the web server's own log; copy copies
+  the block as printed, never the value. Reveal is operator-scoped.
+- **New web surface tests** pin the single-apply rule (mutation check: a second
+  row renders no apply glyph), the LIFECYCLE words, the CHANGES/VERDICT cells
+  from append-only job events, the reveal endpoint's operation-only answer, and
+  the leak check (the pasted block carries no bearer).
+
 ## 2026-09-09 — the job log owns its scroll (v0.10, part 1)
 
 - **The job-detail page is now a no-page-scroll flex column** (scoped to

@@ -2,11 +2,13 @@ package web
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
@@ -27,6 +29,12 @@ func (h *harness) seedPlanPolicy(t *testing.T, ws, name, action string) {
 // seedPlanArtifact writes a plan job and its sealed artifact, without a policy
 // verdict — the state that exists between the seal and the verdict record.
 func (h *harness) seedPlanArtifact(t *testing.T, ws string) store.Artifact {
+	return h.seedPlanArtifactSerial(t, ws, 0)
+}
+
+// seedPlanArtifactSerial is seedPlanArtifact with a real PlanSerial (the
+// workspace serial the plan was made against), so a tray row can be stale.
+func (h *harness) seedPlanArtifactSerial(t *testing.T, ws string, planSerial int64) store.Artifact {
 	t.Helper()
 	ctx := context.Background()
 	planJob, err := h.queue.Enqueue(ctx, queue.Spec{
@@ -39,11 +47,49 @@ func (h *harness) seedPlanArtifact(t *testing.T, ws string) store.Artifact {
 	art, err := h.store.CreateArtifact(ctx, store.Artifact{
 		JobID: planJob.ID, Kind: reactive.PlanArtifactKind,
 		Path: "/data/artifacts/tofu/" + ws + ".tfplan.age", SHA256: "x", Size: 1,
+		PlanSerial: planSerial,
 	})
 	if err != nil {
 		t.Fatalf("CreateArtifact: %v", err)
 	}
 	return art
+}
+
+// seedPlanOutcome appends a plan-outcome event onto the plan job's timeline,
+// shaped exactly as the tofu driver records it (`{"tofu":{...}}`), so the
+// tray's CHANGES cell reads the counters/drift a real seal would have recorded.
+func (h *harness) seedPlanOutcome(t *testing.T, art store.Artifact, changes bool, pending, drift []executor.ResourceDelta) {
+	t.Helper()
+	payload, err := json.Marshal(map[string]executor.TofuPlanOutcome{
+		"tofu": {Operation: "plan", Changes: changes, Drift: drift, Pending: pending},
+	})
+	if err != nil {
+		t.Fatalf("marshal plan outcome: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{
+		JobID: art.JobID, Level: store.LevelSystem, Msg: "tofu plan", RawJSON: string(payload),
+	}); err != nil {
+		t.Fatalf("AppendJobEvent: %v", err)
+	}
+}
+
+// seedPlanVerdict appends a policy verdict event onto the plan job's timeline,
+// shaped exactly as service.RecordPlanVerdict records it (`{"plan_policy":{...}}`)
+// keyed to the sealed artifact, so the tray's VERDICT cell reads it. action is
+// store.PolicyDeny, store.PolicyRequireApproval, or "no_match".
+func (h *harness) seedPlanVerdict(t *testing.T, art store.Artifact, action, policy string) {
+	t.Helper()
+	payload, err := json.Marshal(map[string]map[string]any{
+		"plan_policy": {"action": action, "policy": policy, "artifact": art.ID},
+	})
+	if err != nil {
+		t.Fatalf("marshal plan verdict: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{
+		JobID: art.JobID, Level: store.LevelSystem, Msg: "plan policy", RawJSON: string(payload),
+	}); err != nil {
+		t.Fatalf("AppendJobEvent: %v", err)
+	}
 }
 
 // TestAPIFreshApplyRefusedUnderPolicy proves a fresh apply cannot bypass plan
