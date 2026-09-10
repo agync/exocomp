@@ -6,6 +6,38 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-10 — plan detail page and the CONSUMED lifecycle (v0.10, part 3)
+
+- **`/workspaces/{ws}/plans/{id}` is live** (SPEC §4): the tray's diff/play
+  deep-links now render the plan-detail page instead of 404ing. One card with
+  the lifecycle chips (SAVED · LATEST, DRIFT · FINDING when the plan job
+  recorded drift), `against serial N · recorded <time>`, the `+N ~N −N`
+  verdict, and a structured diff parsed from `tofu show -json` through the
+  SAME classifier the phone approval and `/api/v1` use — so a value one
+  surface redacts is redacted on every surface. Destroys render first in their
+  own fail block; each resource row shows the action keyword with its signal,
+  the address, and `N changed · M same`, expanding to the old→new strike of
+  the moved attributes with the unchanged remainder collapsed. The footer verb
+  `Apply plan #id →` and the header's apply glyph open the confirm.
+- **The apply confirm is a native `<dialog>`** that repeats the diff and asks:
+  kicker `APPLY PLAN #id · WORKSPACE X`, `Change N resource(s) on <ws>`, a
+  four-row fact grid (Summary · Against · Policy · Runner), and one primary —
+  `Queue apply — ws @ plan #id`, `Queue apply — awaits approval` for a
+  require-approval verdict, or `Plan again` for a stale plan. A deny verdict
+  shows `DENIED · <policy>` with Cancel only, never a primary. The stale
+  refusal is copy (`REFUSED · Tofu state moved to serial N`), never a disabled
+  button (invariant 7). `?launch=1` renders the dialog open with JS off; the
+  same dialog doubles as the destroy confirm (`?destroy=1`, kicker DESTROY,
+  −N counters, danger ring).
+- **CONSUMED is a real lifecycle word.** An apply that re-recorded its sealed
+  plan (the CLI's same-SHA re-record) now dedupes by SHA256, so a second apply
+  of the same plan never piles up a tray row and "N plans" reads honestly; the
+  tray and plan page render `CONSUMED #job` with the applying job as a link,
+  and the one apply affordance stays on the newest unconsumed plan.
+- **The plan diff API grew `before`.** The `/api/v1` plan projection now
+  carries each attribute's pre-apply value (`before`), empty for a created
+  attribute, so the phone can render the same old→new strike.
+
 ## 2026-09-10 — workspace detail: plans tray and reference backend block (v0.10, part 2)
 
 - **The workspace detail page's Saved plans list is now a read-only
