@@ -361,196 +361,228 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					if plan.Stale {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<span class=\"stale\">")
+					if plan.ConsumedBy != 0 {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<a class=\"mono\" href=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var20 string
-						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs("stale · state at serial " + itoa64(vm.Row.Serial))
+						var templ_7745c5c3_Var20 templ.SafeURL
+						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/jobs/" + itoa(plan.ConsumedBy)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 82}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 79}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "\">#")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</div><div class=\"verbs\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					if plan.Applicable() {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<a class=\"verb primary\" href=\"")
+						var templ_7745c5c3_Var21 string
+						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(plan.ConsumedBy))
 						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						var templ_7745c5c3_Var21 templ.SafeURL
-						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)))
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 89, Col: 111}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 106}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "\" aria-label=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</a> ")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					if plan.Stale {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "<span class=\"stale\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var22 string
-						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs("Apply plan #" + itoa(plan.ID))
+						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs("stale · state at serial " + itoa64(vm.Row.Serial))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 89, Col: 157}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 87, Col: 82}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "\" title=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var23 string
-						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs("Apply plan #" + itoa(plan.ID))
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"verbs\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if plan.Applicable() {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<a class=\"verb primary\" href=\"")
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 89, Col: 198}
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var23 templ.SafeURL
+						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 92, Col: 111}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" aria-label=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var24 string
-						templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(glyphApply)
+						templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs("Apply plan #" + itoa(plan.ID))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 90, Col: 197}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 92, Col: 157}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\"></path></svg></a> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" title=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var25 string
+						templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs("Apply plan #" + itoa(plan.ID))
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 92, Col: 198}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						var templ_7745c5c3_Var26 string
+						templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(glyphApply)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 93, Col: 197}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"></path></svg></a> ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<a class=\"verb\" href=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<a class=\"verb\" href=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var25 templ.SafeURL
-					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)))
+					var templ_7745c5c3_Var27 templ.SafeURL
+					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/plans/" + itoa(plan.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 93, Col: 102}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\" aria-label=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var26 string
-					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs("Diff plan #" + itoa(plan.ID))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 93, Col: 147}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" title=\"Diff\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var27 string
-					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(glyphDiff)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 94, Col: 195}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 96, Col: 102}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\"></path></svg></a></div></div>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" aria-label=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "</div><p class=\"meta mt8\">a Policy verdict rides on the plan: deny · require-approval</p>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "</div><div class=\"card span2 mt18 backend\"><div class=\"kicker\">Backend config</div><h3>Backend</h3>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			if vm.Row.Backend.Address == "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<p class=\"meta\">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<p class=\"meta\">Paste into an external tofu root, then `tofu init`. The bearer is a reference — the value comes from the sealed secret at init time.</p><div class=\"backend-tools\"><p class=\"mono hint\">tofu init -backend-config=&lt;(exocomp workspace backend ")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var28 string
-				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Row.Name)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 111, Col: 96}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " --config)</p>")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if vm.Operator {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<button type=\"button\" class=\"verb\" id=\"be-reveal\" data-action=\"")
+					var templ_7745c5c3_Var28 string
+					templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs("Diff plan #" + itoa(plan.ID))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 96, Col: 147}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" title=\"Diff\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var29 string
-					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/backend/reveal"))
+					templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(glyphDiff)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 113, Col: 133}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 97, Col: 195}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" aria-label=\"Reveal bearer\" title=\"Reveal bearer\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var30 string
-					templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(glyphReveal)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 114, Col: 195}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"></path><circle cx=\"12\" cy=\"12\" r=\"2.5\"></circle></svg></button>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\"></path></svg></a></div></div>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "</div><p class=\"meta mt8\">a Policy verdict rides on the plan: deny · require-approval</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "</div><div class=\"card span2 mt18 backend\"><div class=\"kicker\">Backend config</div><h3>Backend</h3>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if vm.Row.Backend.Address == "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<p class=\"meta\">No recorded state backend address yet — start `exocomp serve`, or pass --address to `workspace add --state-only`.</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<p class=\"meta\">Paste into an external tofu root, then `tofu init`. The bearer is a reference — the value comes from the sealed secret at init time.</p><div class=\"backend-tools\"><p class=\"mono hint\">tofu init -backend-config=&lt;(exocomp workspace backend ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var30 string
+				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Row.Name)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 114, Col: 96}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, " --config)</p>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.Operator {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<button type=\"button\" class=\"verb\" id=\"be-reveal\" data-action=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var31 string
+					templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(templ.SafeURL("/workspaces/" + vm.Row.Name + "/backend/reveal"))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 116, Col: 133}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\" aria-label=\"Reveal bearer\" title=\"Reveal bearer\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var32 string
+					templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(glyphReveal)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 117, Col: 195}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\"></path><circle cx=\"12\" cy=\"12\" r=\"2.5\"></circle></svg></button>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -558,12 +590,12 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, " <div class=\"backend-foot\"><span class=\"bearer\" id=\"be-bearer\">bearer ••••••••••••••••••••••••••••••••••••••••••••</span> <span class=\"note\" id=\"be-note\">reveal logs an event · copy never includes it</span></div><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar btn = document.getElementById(\"be-reveal\");\n\t\t\t\t\tif (!btn) return;\n\t\t\t\t\tvar out = document.getElementById(\"be-bearer\");\n\t\t\t\t\tvar note = document.getElementById(\"be-note\");\n\t\t\t\t\tvar timer = null;\n\t\t\t\t\tfunction hide() {\n\t\t\t\t\t\tif (timer) { clearTimeout(timer); timer = null; }\n\t\t\t\t\t\tout.textContent = \"bearer ••••••••••••••••••••••••••••••••••••••••••••\";\n\t\t\t\t\t\tnote.textContent = \"reveal logs an event · copy never includes it\";\n\t\t\t\t\t\tbtn.setAttribute(\"aria-label\", \"Reveal bearer\");\n\t\t\t\t\t\tbtn.setAttribute(\"title\", \"Reveal bearer\");\n\t\t\t\t\t}\n\t\t\t\t\tbtn.addEventListener(\"click\", function () {\n\t\t\t\t\t\tfetch(btn.getAttribute(\"data-action\"), {\n\t\t\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\t\t\theaders: { \"Accept\": \"text/plain\" }\n\t\t\t\t\t\t}).then(function (resp) {\n\t\t\t\t\t\t\tif (!resp.ok) throw new Error(String(resp.status));\n\t\t\t\t\t\t\treturn resp.text();\n\t\t\t\t\t\t}).then(function (token) {\n\t\t\t\t\t\t\tout.textContent = \"bearer \" + token;\n\t\t\t\t\t\t\tnote.textContent = \"revealed · logged to events · hides in 30s\";\n\t\t\t\t\t\t\tbtn.setAttribute(\"aria-label\", \"Hide bearer\");\n\t\t\t\t\t\t\tbtn.setAttribute(\"title\", \"Hide bearer\");\n\t\t\t\t\t\t\tif (timer) clearTimeout(timer);\n\t\t\t\t\t\t\ttimer = setTimeout(hide, 30000);\n\t\t\t\t\t\t}).catch(function () {\n\t\t\t\t\t\t\tnote.textContent = \"reveal refused — reload and try again\";\n\t\t\t\t\t\t});\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t\t</script>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, " <div class=\"backend-foot\"><span class=\"bearer\" id=\"be-bearer\">bearer ••••••••••••••••••••••••••••••••••••••••••••</span> <span class=\"note\" id=\"be-note\">reveal logs an event · copy never includes it</span></div><script>\n\t\t\t\t(function () {\n\t\t\t\t\tvar btn = document.getElementById(\"be-reveal\");\n\t\t\t\t\tif (!btn) return;\n\t\t\t\t\tvar out = document.getElementById(\"be-bearer\");\n\t\t\t\t\tvar note = document.getElementById(\"be-note\");\n\t\t\t\t\tvar timer = null;\n\t\t\t\t\tfunction hide() {\n\t\t\t\t\t\tif (timer) { clearTimeout(timer); timer = null; }\n\t\t\t\t\t\tout.textContent = \"bearer ••••••••••••••••••••••••••••••••••••••••••••\";\n\t\t\t\t\t\tnote.textContent = \"reveal logs an event · copy never includes it\";\n\t\t\t\t\t\tbtn.setAttribute(\"aria-label\", \"Reveal bearer\");\n\t\t\t\t\t\tbtn.setAttribute(\"title\", \"Reveal bearer\");\n\t\t\t\t\t}\n\t\t\t\t\tbtn.addEventListener(\"click\", function () {\n\t\t\t\t\t\tfetch(btn.getAttribute(\"data-action\"), {\n\t\t\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\t\t\theaders: { \"Accept\": \"text/plain\" }\n\t\t\t\t\t\t}).then(function (resp) {\n\t\t\t\t\t\t\tif (!resp.ok) throw new Error(String(resp.status));\n\t\t\t\t\t\t\treturn resp.text();\n\t\t\t\t\t\t}).then(function (token) {\n\t\t\t\t\t\t\tout.textContent = \"bearer \" + token;\n\t\t\t\t\t\t\tnote.textContent = \"revealed · logged to events · hides in 30s\";\n\t\t\t\t\t\t\tbtn.setAttribute(\"aria-label\", \"Hide bearer\");\n\t\t\t\t\t\t\tbtn.setAttribute(\"title\", \"Hide bearer\");\n\t\t\t\t\t\t\tif (timer) clearTimeout(timer);\n\t\t\t\t\t\t\ttimer = setTimeout(hide, 30000);\n\t\t\t\t\t\t}).catch(function () {\n\t\t\t\t\t\t\tnote.textContent = \"reveal refused — reload and try again\";\n\t\t\t\t\t\t});\n\t\t\t\t\t});\n\t\t\t\t})();\n\t\t\t\t</script>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

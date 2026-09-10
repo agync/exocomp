@@ -591,7 +591,7 @@ func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
 	for _, rc := range resources {
 		row := wire.PlanResourceView{Address: rc.Address, Action: rc.Action, Redacted: rc.Redacted}
 		for _, at := range rc.Attrs {
-			row.Attrs = append(row.Attrs, wire.PlanAttrView{Name: at.Name, Value: at.Value, Redacted: at.Redacted})
+			row.Attrs = append(row.Attrs, wire.PlanAttrView{Name: at.Name, Before: at.Before, Value: at.After, Redacted: at.Redacted})
 		}
 		rows = append(rows, row)
 	}

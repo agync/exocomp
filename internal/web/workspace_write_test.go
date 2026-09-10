@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -16,6 +18,7 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -862,5 +865,326 @@ func TestWorkspacesListLockedShowsForceUnlock(t *testing.T) {
 	}
 	if !audited {
 		t.Fatal("unlock did not record the audit event on the workspace's newest job")
+	}
+}
+
+// ---- Plan detail (SPEC §4) ----
+
+// seedPlanDiff writes a REAL sealed plan for a workspace so the plan-detail
+// page can open and classify it (seedPlanArtifactSerial's path is a stub the
+// opener cannot read). planSerial is the workspace serial the plan was made
+// against — the stale/current rule reads it, so a seeded serial is real.
+func (h *harness) seedPlanDiff(t *testing.T, ws string, planSerial int64, planJSON string) store.Artifact {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook(ws), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue plan job: %v", err)
+	}
+	plain := filepath.Join(h.dir, "plan-"+itoa64(job.ID)+".json")
+	if err := os.WriteFile(plain, []byte(planJSON), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	sealed, err := h.env.SealFile(plain)
+	if err != nil {
+		t.Fatalf("SealFile: %v", err)
+	}
+	art, err := h.store.CreateArtifact(ctx, store.Artifact{
+		JobID: job.ID, Kind: reactive.PlanArtifactKind, Path: sealed,
+		SHA256: fmt.Sprintf("diff-%d", job.ID), Size: 1,
+		PlanSerial: planSerial,
+	})
+	if err != nil {
+		t.Fatalf("CreateArtifact: %v", err)
+	}
+	return art
+}
+
+// TestPlanDetailPageRendersDiff: the plan-detail page (SPEC §4) is the tray's
+// diff deep-link target. It renders the +N ~N −N counters, the diff rows with
+// the action keywords, the old→new strike of a changed attribute, the
+// unchanged collapse, and the redaction marker for a secret-backed value —
+// all from the SAME classifyPlan the phone and /api/v1 read, never from a
+// second parser.
+func TestPlanDetailPageRendersDiff(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanDiff(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old","keep":"same"},"after":{"value":"new","keep":"same"}}},
+		{"address":"kubernetes_secret.gone","change":{"actions":["delete"],"before":{"token":"hunter2"},"before_sensitive":{"token":true}}},
+		{"address":"kubernetes_namespace.added","change":{"actions":["create"],"after":{"name":"e2e"}}}
+	]}`)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10))
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web/plans/%d = %d (%s)", art.ID, code, body)
+	}
+	for _, want := range []string{
+		">plan #" + strconv.FormatInt(art.ID, 10) + "<",
+		"against serial 1",
+		">+1<",
+		">~1<",
+		">−1<",
+		">UPDATE<",
+		">DESTROY<",
+		">CREATE<",
+		"kubernetes_config_map.marker",
+		"1 changed · 1 same",
+		">old<",
+		">new<",
+		"1 attributes unchanged",
+		"[redacted · secret]",
+		"Apply plan #" + strconv.FormatInt(art.ID, 10) + " →",
+		"asks first · same as exocomp ws apply web --plan " + strconv.FormatInt(art.ID, 10),
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("plan detail missing %q", want)
+		}
+	}
+	// Destroys come first, in their own fail block.
+	di, ci := strings.Index(body, "Destroys — no undo"), strings.Index(body, "ACTION")
+	if di < 0 || di >= ci {
+		t.Error("plan detail did not render destroys before the ACTION header")
+	}
+	// The redacted attribute never carries its plaintext.
+	if strings.Contains(body, "hunter2") {
+		t.Error("plan detail leaked a secret-backed value")
+	}
+}
+
+// TestPlanDetailConfirmOpensWithoutJS: ?launch=1 renders the native <dialog>
+// confirm already open (no JS), with the kicker, the ask, the fact grid, and
+// the queue primary; the destroy variant (?destroy=1) reads kicker DESTROY
+// with the −N counters and the danger ring.
+func TestPlanDetailConfirmOpensWithoutJS(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanDiff(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old"},"after":{"value":"new"}}}
+	]}`)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10)+"?launch=1")
+	if code != http.StatusOK {
+		t.Fatalf("GET plan detail ?launch=1 = %d (%s)", code, body)
+	}
+	for _, want := range []string{
+		`class="modal plan-confirm" id="plan-confirm" aria-labelledby="plan-confirm-title" open`,
+		">APPLY PLAN #" + strconv.FormatInt(art.ID, 10) + " · WORKSPACE WEB<",
+		">Change 1 resource(s) on web<",
+		">Summary<",
+		">Against<",
+		">Policy<",
+		">Runner<",
+		"serial 1 · no drift",
+		"none matched · no approval needed",
+		">Queue apply — web @ plan #" + strconv.FormatInt(art.ID, 10) + "<",
+		"1 update · 0 create · 0 destroy",
+		`action="/workspaces/web/apply"`,
+		`name="plan" value="` + strconv.FormatInt(art.ID, 10) + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("open confirm missing %q", want)
+		}
+	}
+
+	// Destroy mode: same dialog, kicker DESTROY, the −N verdict, danger ring.
+	code, body = getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10)+"?destroy=1")
+	if code != http.StatusOK {
+		t.Fatalf("GET plan detail ?destroy=1 = %d (%s)", code, body)
+	}
+	for _, want := range []string{
+		">DESTROY · WORKSPACE WEB<",
+		">Destroy 0 resource(s) on web<",
+		">Queue destroy — web<",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("destroy confirm missing %q", want)
+		}
+	}
+}
+
+// TestPlanDetailStaleRefuses: a plan the Tofu state has moved past renders the
+// REFUSED copy in fail and a live "Plan again" primary that posts the Plan verb
+// — never a disabled button (invariant 7). Mutation check: drop the stale test
+// and it reads red.
+func TestPlanDetailStaleRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ws := h.seedWorkspace(t, "web")
+	// The state moves to serial 2 after the plan was made at serial 1.
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	art := h.seedPlanDiff(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old"},"after":{"value":"new"}}}
+	]}`)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10)+"?launch=1")
+	if code != http.StatusOK {
+		t.Fatalf("GET stale plan detail = %d (%s)", code, body)
+	}
+	for _, want := range []string{
+		"REFUSED · Tofu state moved to serial 2",
+		`<button type="submit" class="btn primary">Plan again</button>`,
+		`action="/workspaces/web/plan"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("stale plan missing %q", want)
+		}
+	}
+	// Never disabled (invariant 7): the primary is a live, enabled submit that
+	// re-plans. The queue-apply form must not be offered for a stale plan.
+	if strings.Contains(body, `action="/workspaces/web/apply"`) {
+		t.Error("stale plan still offers the apply form")
+	}
+}
+
+// TestPlanDetailDenyHasNoPrimary: a deny verdict renders the DENIED copy in
+// fail and Cancel only — no primary submit at all (SPEC §4).
+func TestPlanDetailDenyHasNoPrimary(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanDiff(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old"},"after":{"value":"new"}}}
+	]}`)
+	h.seedPlanVerdict(t, art, store.PolicyDeny, "no-destroy")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10)+"?launch=1")
+	if code != http.StatusOK {
+		t.Fatalf("GET denied plan detail = %d (%s)", code, body)
+	}
+	if !strings.Contains(body, "DENIED · no-destroy") {
+		t.Error("denied plan missing the DENIED verdict")
+	}
+	if strings.Contains(body, "Queue apply") || strings.Contains(body, "Plan again") {
+		t.Error("denied plan renders a primary submit")
+	}
+	// Cancel is still there.
+	if !strings.Contains(body, ">Cancel<") {
+		t.Error("denied plan missing Cancel")
+	}
+}
+
+// TestPlanDetailConsumedShowsJob: a plan an apply re-recorded reads CONSUMED
+// #job on both the tray and the plan page, and the job is a link (SPEC §2.2).
+// The dedupe (same sha, two artifact rows) is what makes one plan of the pair.
+func TestPlanDetailConsumedShowsJob(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanArtifactSerial(t, "web", 1)
+	applyJob, err := h.queue.Enqueue(context.Background(), queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue apply job: %v", err)
+	}
+	h.seedPlanReRecord(t, art, applyJob.ID)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	// The tray collapses the seal + re-record pair onto ONE row: CONSUMED #job.
+	code, body := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web = %d", code)
+	}
+	if !strings.Contains(body, "1 plans · newest first · latest is applicable") {
+		t.Error("consumed plan tray does not read one plan")
+	}
+	for _, want := range []string{
+		">CONSUMED<",
+		`href="/jobs/` + strconv.FormatInt(applyJob.ID, 10) + `"`,
+		">#" + strconv.FormatInt(applyJob.ID, 10) + "<",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("consumed tray row missing %q", want)
+		}
+	}
+	// The single-apply rule: the consumed plan is no longer the SAVED one, so
+	// no apply glyph remains.
+	if strings.Contains(body, "aria-label=\"Apply plan #") {
+		t.Error("consumed plan still carries an apply glyph")
+	}
+
+	// The plan page reads the same word.
+	code, body = getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10))
+	if code != http.StatusOK {
+		t.Fatalf("GET consumed plan page = %d", code)
+	}
+	if !strings.Contains(body, ">CONSUMED<") || !strings.Contains(body, ">#"+strconv.FormatInt(applyJob.ID, 10)+"<") {
+		t.Error("consumed plan page missing CONSUMED #job")
+	}
+}
+
+// TestWorkspacesPageReRecordNotDoubleCount: the CLI apply re-records a sealed
+// plan under the applying job; the tray dedupes by sha256 so the re-record
+// never doubles "N plans" and never shadows a distinct plan. Two seeds are two
+// plans; adding a same-sha re-record of one still reads two.
+func TestWorkspacesPageReRecordNotDoubleCount(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	first := h.seedPlanArtifactSerial(t, "web", 1)
+	second := h.seedPlanArtifactSerial(t, "web", 2)
+	applyJob, err := h.queue.Enqueue(context.Background(), queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue apply job: %v", err)
+	}
+	h.seedPlanReRecord(t, first, applyJob.ID)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web = %d", code)
+	}
+	// Two distinct plans — the re-record of `first` collapses into it.
+	if !strings.Contains(body, "2 plans · newest first · latest is applicable") {
+		t.Error("re-record doubled the plan count")
+	}
+	// The newest unconsumed plan (second) is the one SAVED and applicable; the
+	// re-recorded first plan reads CONSUMED and carries no apply glyph.
+	for _, want := range []string{
+		"SAVED",
+		">CONSUMED<",
+		`aria-label="Apply plan #` + strconv.FormatInt(second.ID, 10) + `"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("tray after re-record missing %q", want)
+		}
+	}
+	if strings.Contains(body, `aria-label="Apply plan #`+strconv.FormatInt(first.ID, 10)+`"`) {
+		t.Error("consumed first plan still carries an apply glyph")
 	}
 }

@@ -191,6 +191,43 @@ func TestAPIApprovalPlanRedaction(t *testing.T) {
 	}
 }
 
+// TestAPIApprovalPlanBeforeAfter: the classifier now emits the old value for
+// every attribute (SPEC §4), so the plan-detail's old→new strike is possible.
+// The API projection carries Before alongside the post-apply Value: "old" for
+// a changed attribute, empty for one that is newly created. The union key set
+// means an attribute present only in `after` (a creation) has an empty Before.
+func TestAPIApprovalPlanBeforeAfter(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	const planJSON = `{"resource_changes":[
+		{"address":"null_resource.cfg","change":{"actions":["update"],"before":{"tag":"old"},"after":{"tag":"new"}}},
+		{"address":"null_resource.fresh","change":{"actions":["create"],"after":{"name":"x"}}}
+	]}`
+	approval := h.sealedPlanApproval(t, planJSON)
+	path := "/api/v1/approvals/" + itoa64(approval.ID) + "/plan"
+
+	op := h.mint(t, "op", "operator")
+	code, _, body := bearerGet(t, ts.URL, path, op)
+	if code != http.StatusOK {
+		t.Fatalf("operator plan status = %d, want 200 (%s)", code, body)
+	}
+	var v wire.ApprovalPlanView
+	decodeData(t, body, &v)
+	if len(v.Changes) != 1 || len(v.Creates) != 1 {
+		t.Fatalf("changes/creates = %d/%d, want 1/1 (%s)", len(v.Changes), len(v.Creates), body)
+	}
+	upd := v.Changes[0]
+	if len(upd.Attrs) != 1 || upd.Attrs[0].Name != "tag" || upd.Attrs[0].Before != "old" || upd.Attrs[0].Value != "new" {
+		t.Fatalf("updated attr = %+v, want tag old→new", upd.Attrs)
+	}
+	crt := v.Creates[0]
+	if len(crt.Attrs) != 1 || crt.Attrs[0].Name != "name" || crt.Attrs[0].Before != "" || crt.Attrs[0].Value != "x" {
+		t.Fatalf("created attr = %+v, want name (empty before) → x", crt.Attrs)
+	}
+}
+
 // TestAPIApprovalPlanNoPlan proves an approval with no plan artifact is a 404,
 // not an empty success — matching what the web path shows when there is nothing
 // to render.

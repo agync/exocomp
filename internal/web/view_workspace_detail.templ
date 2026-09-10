@@ -80,6 +80,9 @@ templ workspaceDetail(vm workspaceDetailVM) {
 							</div>
 							<div class="pl-life">
 								@chip(plan.LifecycleClass(), plan.Lifecycle)
+								if plan.ConsumedBy != 0 {
+									<a class="mono" href={ templ.SafeURL("/jobs/" + itoa(plan.ConsumedBy)) }>#{ itoa(plan.ConsumedBy) }</a>
+								}
 								if plan.Stale {
 									<span class="stale">{ "stale · state at serial " + itoa64(vm.Row.Serial) }</span>
 								}

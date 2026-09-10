@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"exocomp.dev/exocomp/internal/api"
@@ -61,12 +62,13 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		now := s.now()
-		for i, p := range plans {
-			row := planArtifactRow{ID: p.ID, PlanSerial: p.PlanSerial}
-			if i == 0 {
-				row.Lifecycle = "SAVED"
-			} else {
-				row.Lifecycle = "SUPERSEDED"
+		for _, meta := range dedupedPlanRows(plans) {
+			p := meta.Artifact
+			row := planArtifactRow{
+				ID:         p.ID,
+				PlanSerial: p.PlanSerial,
+				Lifecycle:  meta.Lifecycle,
+				ConsumedBy: meta.ConsumedBy,
 			}
 			// Stale: the Tofu state has moved past the serial this plan was made
 			// against — the chip stays SAVED but the row loses its apply (SPEC §2.2).
@@ -85,6 +87,77 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, r, http.StatusOK, workspaceDetail(vm))
+}
+
+// planRowMeta is one deduped saved plan of a workspace: the sealing artifact,
+// its lifecycle word, and the consuming apply job when the plan has been
+// applied (CONSUMED #job, SPEC §2.2).
+type planRowMeta struct {
+	Artifact   store.Artifact
+	Lifecycle  string // SAVED | SUPERSEDED | CONSUMED
+	ConsumedBy int64
+}
+
+// dedupedPlanRows collapses a workspace's saved plan artifacts (newest first)
+// onto distinct plans by sha256, so the apply's same-SHA re-record never
+// doubles the tray count and "N plans" reads honestly. Two rows sharing a
+// sha256 are one plan: the older is the seal, the newer — recorded by the
+// apply that consumed it — names the consuming job. Among the distinct plans,
+// the newest is SAVED, every older one SUPERSEDED, and a consumed one reads
+// CONSUMED #job. A consumed plan is never also the latest SAVED one, so the
+// single apply affordance (SPEC §2.2) lands on the newest unconsumed plan.
+func dedupedPlanRows(plans []store.Artifact) []planRowMeta {
+	type group struct {
+		seal       store.Artifact
+		consumedBy int64
+	}
+	groups := map[string]*group{}
+	for _, p := range plans { // newest first
+		g := groups[p.SHA256]
+		if g == nil {
+			g = &group{seal: p}
+			groups[p.SHA256] = g
+			continue
+		}
+		// The seal is the oldest record (a plan must exist before it is
+		// applied), so the group's seal is the smallest id.
+		if p.ID < g.seal.ID {
+			g.seal = p
+		}
+	}
+	// plans is newest first, so the first record of a group that a DIFFERENT
+	// job wrote is the newest apply that consumed the plan; it names the
+	// consume. A record with no job never consumes anything.
+	for _, p := range plans {
+		g := groups[p.SHA256]
+		if p.JobID != 0 && p.JobID != g.seal.JobID && g.consumedBy == 0 {
+			g.consumedBy = p.JobID
+		}
+	}
+	out := make([]planRowMeta, 0, len(groups))
+	for _, g := range groups {
+		lifecycle := "SUPERSEDED"
+		if g.consumedBy != 0 {
+			lifecycle = "CONSUMED"
+		}
+		out = append(out, planRowMeta{
+			Artifact:   g.seal,
+			Lifecycle:  lifecycle,
+			ConsumedBy: g.consumedBy,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Artifact.ID > out[j].Artifact.ID })
+	saved := false
+	for i := range out {
+		if out[i].ConsumedBy != 0 {
+			continue
+		}
+		if !saved {
+			out[i].Lifecycle = "SAVED"
+			saved = true
+		}
+	}
+	return out
 }
 
 // planJobSurface reads the truthful tray facts a plan job recorded as

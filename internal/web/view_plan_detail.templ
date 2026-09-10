@@ -1,0 +1,178 @@
+package web
+
+// planDetailPage is the plan-detail surface (SPEC §4): breadcrumb, one card
+// with the lifecycle chips and the +N ~N −N verdict, the structured diff from
+// the sealed plan (destroys first in their own fail block, then the
+// ACTION · RESOURCE · ATTRIBUTES rows with expandable old→new strikes, secret
+// values redacted), and the apply confirm dialog that repeats the diff and
+// asks. The footer verb and the header's apply glyph open the confirm; with JS
+// off, ?launch=1 renders it already open.
+templ planDetailPage(vm planDetailVM) {
+	@layout(vm.Page) {
+		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Workspace, Href: "/workspaces/" + vm.Workspace}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)})
+		<div class={ "card span2 mt18 plan-detail", vm.RingClass() }>
+			<div class="detailmeta">
+				@chip(vm.LifecycleClass(), vm.Lifecycle)
+				if vm.ConsumedBy != 0 {
+					<a class="mono" href={ templ.SafeURL("/jobs/" + itoa(vm.ConsumedBy)) }>#{ itoa(vm.ConsumedBy) }</a>
+				}
+				if vm.Latest {
+					@chip("run", "LATEST")
+				}
+				if vm.Drift {
+					@chip("wait", "DRIFT")
+					@chip("wait", "FINDING")
+				}
+				@chip("dim", "tofu plan -out")
+			</div>
+			<h3>Plan #{ itoa(vm.ID) }</h3>
+			<p class="meta mono">{ vm.Recorded }</p>
+			if vm.Prose != "" {
+				<p class="meta">{ vm.Prose }</p>
+			}
+			if vm.HasPlan {
+				<div class="verdict">
+					<span class="counters">
+						<span class="n-add">{ "+" + itoa(int64(vm.Changes.Create)) }</span>
+						<span class="n-chg">{ "~" + itoa(int64(vm.Changes.Update)) }</span>
+						<span class="n-del">{ "−" + itoa(int64(vm.Changes.Destroy)) }</span>
+					</span>
+				</div>
+				<div class="diff">
+					if len(vm.DestroyResources()) > 0 {
+						<div class="destroy-block" role="alert">
+							<div class="block-head"><span class="keyword">Destroys — no undo</span></div>
+							for _, rc := range vm.DestroyResources() {
+								@diffRow(rc, false)
+							}
+						</div>
+					}
+					<div class="row tt-col">
+						<span>ACTION</span>
+						<span>RESOURCE</span>
+						<span>ATTRIBUTES</span>
+					</div>
+					for _, rc := range vm.ChangeResources() {
+						@diffRow(rc, false)
+					}
+				</div>
+			} else if vm.CanPlan {
+				<p class="meta" role="status">The sealed plan could not be opened or parsed — nothing to diff.</p>
+			} else {
+				<p class="meta" role="note">Read-only: plan diffs need an operator or approve token.</p>
+			}
+			if vm.CanPlan && vm.HasPlan {
+				<div class="plan-foot">
+					<a class="btn primary" href={ templ.SafeURL("?launch=1") }>{ "Apply plan #" + itoa(vm.ID) + " →" }</a>
+					<span class="meta mono">{ "asks first · same as exocomp ws apply " + vm.Workspace + " --plan " + itoa(vm.ID) }</span>
+				</div>
+			}
+		</div>
+		if vm.CanPlan && vm.HasPlan {
+			@planConfirmDialog(vm)
+		}
+	}
+}
+
+// diffRow is one resource of the plan diff: the ACTION keyword with its signal
+// dot, the resource address, and the "N changed · M same" count, expanding to
+// the attribute grid (SPEC §4). A changed attribute renders the old→new
+// strike — old in fail-strike on the fail tint, new in ok on the ok tint; an
+// unchanged remainder collapses to "N attributes unchanged". Secret-backed
+// values render the redaction marker, never the value, as on the phone.
+templ diffRow(rc planResource, compact bool) {
+	<details class={ "diff-row", templ.KV("compact", compact) }>
+		<summary>
+			<span class={ "action", rc.ActionClass() }><span class="dot" aria-hidden="true"></span>{ rc.ActionWord() }</span>
+			<span class="addr">{ rc.Address }</span>
+			<span class="count">{ itoa(int64(rc.Changed())) } changed · { itoa(int64(rc.Same())) } same</span>
+		</summary>
+		<div class="attrs">
+			for _, at := range rc.Attrs {
+				if at.Same {
+					continue
+				}
+				<div class="row">
+					<span class="k">{ at.Name }</span>
+					if at.Redacted {
+						<span class="v redacted">[redacted · secret]</span>
+					} else {
+						<span class="v"><span class="old">{ at.Before }</span><span class="arrow" aria-hidden="true">→</span><span class="new">{ at.After }</span></span>
+					}
+				</div>
+			}
+			if rc.Same() > 0 {
+				<div class="row unchanged">{ itoa(int64(rc.Same())) } attributes unchanged</div>
+			}
+		</div>
+	</details>
+}
+
+// planConfirmDialog is the apply/destroy ask (SPEC §4): a native <dialog> that
+// repeats the diff below the kicker and title, a 4-row fact grid (Summary ·
+// Against · Policy · Runner), and one primary — Queue apply, Queue destroy,
+// Queue apply — awaits approval, or Plan again for a stale plan. A deny
+// verdict shows the refusal with no primary; Cancel is always there. The
+// primary posts the SAME workspace apply verb the tray used, so the server
+// gate (deny refusal, require-approval routing) stays authoritative. ?launch=1
+// renders the dialog open with no JS.
+templ planConfirmDialog(vm planDetailVM) {
+	<dialog class="modal plan-confirm" id="plan-confirm" aria-labelledby="plan-confirm-title" open?={ vm.Launch }>
+		<div class="modal-head">
+			<div class="kicker">{ vm.Kicker() }</div>
+			<h2 id="plan-confirm-title">{ vm.ConfirmTitle() }</h2>
+			<button type="button" class="modal-close" data-modal-dismiss aria-label="Close">
+				<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true">
+					<path d="M3 3l10 10M13 3L3 13"></path>
+				</svg>
+			</button>
+		</div>
+		<div class="modal-body">
+			<p class="meta">Exactly the diff below, nothing else. The plan is refused if state moves past serial { itoa64(vm.PlanSerial) } before the job runs.</p>
+			<div class="diff">
+				if len(vm.DestroyResources()) > 0 {
+					<div class="destroy-block" role="alert">
+						<div class="block-head"><span class="keyword">Destroys — no undo</span></div>
+						for _, rc := range vm.DestroyResources() {
+							@diffRow(rc, true)
+						}
+					</div>
+				}
+				for _, rc := range vm.ChangeResources() {
+					@diffRow(rc, true)
+				}
+			</div>
+			<dl class="factgrid">
+				<div><dt>Summary</dt><dd class="mono">{ vm.SummaryLine() }</dd></div>
+				<div><dt>Against</dt><dd class={ "mono", vm.AgainstClass() }>{ vm.AgainstLine() }</dd></div>
+				<div><dt>Policy</dt><dd class={ "mono", vm.PolicyClass() }>{ vm.PolicyLabel() }</dd></div>
+				<div><dt>Runner</dt><dd class="mono">{ vm.Runner }</dd></div>
+			</dl>
+			<div class="actions">
+				if !vm.Denied() {
+					<form method="post" action={ templ.SafeURL(vm.ConfirmForm()) } class="inline-form">
+						if !vm.Stale {
+							<input type="hidden" name="plan" value={ itoa(vm.ID) }/>
+							<input type="hidden" name="confirmed" value="1"/>
+						}
+						<button type="submit" class="btn primary">{ vm.ConfirmPrimary() }</button>
+					</form>
+				}
+				<button type="button" class="btn" data-modal-dismiss>Cancel</button>
+			</div>
+		</div>
+	</dialog>
+}
+
+// LifecycleClass renders the plan's lifecycle chip signal: accent for the one
+// SAVED plan, ok for a CONSUMED one, dim for SUPERSEDED history.
+func (vm planDetailVM) LifecycleClass() string {
+	switch vm.Lifecycle {
+	case "CONSUMED":
+		return "ok"
+	case "SAVED":
+		return "run"
+	default:
+		return "dim"
+	}
+}

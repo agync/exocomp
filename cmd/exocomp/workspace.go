@@ -995,16 +995,25 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 		final.ID, final.State, jobDuration(final))
 
 	if run.Parent != nil {
-		if _, err := st.CreateArtifact(ctx, store.Artifact{
-			JobID:  final.ID,
-			Kind:   planArtifactKind,
-			Path:   run.Parent.Path,
-			SHA256: run.Parent.SHA256,
-			Size:   run.Parent.Size,
-		}); err != nil {
+		// The consumed link is the same-SHA artifact row under the applying
+		// job's id; a second apply of the same plan must not pile up another.
+		// Dedupe by sha256 so the workspace's plan tray stays honest.
+		already, err := st.ReRecorded(ctx, run.Parent.SHA256, run.Parent.JobID)
+		if err != nil {
 			return 0, err
 		}
-		_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", run.Parent.ID, run.Parent.JobID)
+		if !already {
+			if _, err := st.CreateArtifact(ctx, store.Artifact{
+				JobID:  final.ID,
+				Kind:   planArtifactKind,
+				Path:   run.Parent.Path,
+				SHA256: run.Parent.SHA256,
+				Size:   run.Parent.Size,
+			}); err != nil {
+				return 0, err
+			}
+			_, _ = fmt.Fprintf(out, "plan artifact %d, saved by job %d\n", run.Parent.ID, run.Parent.JobID)
+		}
 	}
 
 	return workspaceExit(ctx, st, out, final, op.op)

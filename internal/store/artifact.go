@@ -127,3 +127,19 @@ func (s *Store) DeleteArtifact(ctx context.Context, id int64) error {
 	}
 	return nil
 }
+
+// ReRecorded reports whether the sealed plan's sha256 is already linked to a
+// job other than the one that sealed it. An apply records its consumed plan by
+// re-inserting the same sha256 under the applying job's id; a second apply of
+// the same plan must not pile up another row, so the CLI consults this before
+// inserting. sealJob is the sealing plan job's id (0 for an operator's own
+// plan file, which was never sealed by a job).
+func (s *Store) ReRecorded(ctx context.Context, sha256 string, sealJob int64) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(1) FROM artifact WHERE sha256 = ? AND job_id != ?`, sha256, sealJob).Scan(&n)
+	if err != nil {
+		return false, wrap("re-recorded artifact", err)
+	}
+	return n > 0, nil
+}

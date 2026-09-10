@@ -114,10 +114,11 @@ func (s *Server) renderPlan(r *http.Request, artifactID int64) (destroys, change
 }
 
 // planResource is one classified, redacted resource line of a sealed plan: the
-// projection shared by the web approval surface (renderPlan) and the /api/v1
-// plan endpoint (apiApprovalPlan). Redacted marks a resource whose sealed plan
-// flags anything secret; its Attrs then carry redactedValue in place of every
-// attribute value, so a secret-backed value is never carried with its plaintext.
+// projection shared by the web approval surface (renderPlan), the /api/v1 plan
+// endpoint (apiApprovalPlan), and the plan-detail page (SPEC §4). Redacted
+// marks a resource whose sealed plan flags anything secret; its Attrs then
+// carry redactedValue in place of every attribute value, so a secret-backed
+// value is never carried with its plaintext.
 type planResource struct {
 	Action   string
 	Address  string
@@ -125,17 +126,77 @@ type planResource struct {
 	Attrs    []planAttr
 }
 
-// planAttr is one post-apply attribute row. Value is redactedValue, never the
-// plaintext, whenever the owning resource is redacted.
+// planAttr is one attribute row with its before and after values. Before is
+// empty when the attribute is new, After when it was removed; Same is set when
+// the value did not move (the "N attributes unchanged" collapse). Both values
+// are redactedValue, never the plaintext, whenever the owning resource is
+// redacted.
 type planAttr struct {
 	Name     string
-	Value    string
+	Before   string
+	After    string
 	Redacted bool
+	Same     bool
 }
 
 // redactedValue is the marker shown in place of a secret-backed value, the same
 // text the web plan view renders (view_approval.templ planDetail).
 const redactedValue = "[redacted · secret]"
+
+// Changed is the number of attributes whose value moved (Before != After); Same
+// the rest. The plan detail's per-resource "N changed · M same" reads them.
+func (r planResource) Changed() int {
+	n := 0
+	for _, at := range r.Attrs {
+		if !at.Same {
+			n++
+		}
+	}
+	return n
+}
+
+func (r planResource) Same() int {
+	n := 0
+	for _, at := range r.Attrs {
+		if at.Same {
+			n++
+		}
+	}
+	return n
+}
+
+// ActionWord is the keyword the diff table's ACTION cell shows (CREATE · UPDATE
+// · REPLACE · DESTROY). no-op/read rows never reach a surface — classifyPlan
+// drops them — so the default is unreachable.
+func (r planResource) ActionWord() string {
+	switch r.Action {
+	case "create":
+		return "CREATE"
+	case "update":
+		return "UPDATE"
+	case "replace":
+		return "REPLACE"
+	case "delete":
+		return "DESTROY"
+	default:
+		return "NO-OP"
+	}
+}
+
+// ActionClass is the keyword's signal: create ok, update/replace wait, delete
+// fail. Never colour-only — the keyword word is always shown.
+func (r planResource) ActionClass() string {
+	switch r.Action {
+	case "create":
+		return "ok"
+	case "update", "replace":
+		return "wait"
+	case "delete":
+		return "fail"
+	default:
+		return "dim"
+	}
+}
 
 // classifyPlan parses a decrypted tofu plan blob into the ordered, classified,
 // redacted resource list both surfaces build from. It is the one place the
@@ -149,6 +210,7 @@ func classifyPlan(blob []byte) (resources []planResource, ok bool) {
 			Address string `json:"address"`
 			Change  struct {
 				Actions         []string        `json:"actions"`
+				Before          map[string]any  `json:"before"`
 				After           map[string]any  `json:"after"`
 				AfterSensitive  json.RawMessage `json:"after_sensitive"`
 				BeforeSensitive json.RawMessage `json:"before_sensitive"`
@@ -168,34 +230,42 @@ func classifyPlan(blob []byte) (resources []planResource, ok bool) {
 			Action:   action,
 			Address:  rc.Address,
 			Redacted: redacted,
-			Attrs:    planAttrs(rc.Change.After, redacted),
+			Attrs:    planAttrs(rc.Change.Before, rc.Change.After, redacted),
 		})
 	}
 	return resources, true
 }
 
-// planAttrs projects a resource's post-apply attribute map into stable-ordered
-// rows. When the resource is redacted every value becomes redactedValue — the
-// coarse, resource-granular decision hasSensitive already makes for the whole
-// line — so a secret-backed value never appears with its plaintext. A value
-// shown only when the resource carries nothing sensitive is a value the web
-// would also show.
-func planAttrs(after map[string]any, redacted bool) []planAttr {
-	if len(after) == 0 {
+// planAttrs projects a resource's before/after attribute maps into
+// stable-ordered rows carrying the old→new strike the plan detail renders
+// (SPEC §4). The key set is the union of both maps, so a created attribute has
+// an empty Before and a removed one an empty After. When the resource is
+// redacted every value becomes redactedValue — the coarse, resource-granular
+// decision hasSensitive already makes for the whole line — so a secret-backed
+// value never appears with its plaintext. Same is decided on the raw values
+// before redaction, so a redacted resource still reports its true change count.
+func planAttrs(before, after map[string]any, redacted bool) []planAttr {
+	keys := map[string]struct{}{}
+	for k := range before {
+		keys[k] = struct{}{}
+	}
+	for k := range after {
+		keys[k] = struct{}{}
+	}
+	if len(keys) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(after))
-	for k := range after {
+	names := make([]string, 0, len(keys))
+	for k := range keys {
 		names = append(names, k)
 	}
 	sort.Strings(names)
 	attrs := make([]planAttr, 0, len(names))
 	for _, name := range names {
-		a := planAttr{Name: name, Redacted: redacted}
+		beforeVal, afterVal := attrValue(before[name]), attrValue(after[name])
+		a := planAttr{Name: name, Before: beforeVal, After: afterVal, Same: beforeVal == afterVal, Redacted: redacted}
 		if redacted {
-			a.Value = redactedValue
-		} else {
-			a.Value = attrValue(after[name])
+			a.Before, a.After = redactedValue, redactedValue
 		}
 		attrs = append(attrs, a)
 	}

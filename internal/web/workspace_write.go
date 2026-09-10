@@ -28,6 +28,7 @@ func init() { registerWrite((*Server).registerWorkspaceWrite) }
 func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces", s.requireAuth(s.handleWorkspaces))
 	mux.HandleFunc("GET /workspaces/{name}", s.requireAuth(s.handleWorkspaceDetail))
+	mux.HandleFunc("GET /workspaces/{name}/plans/{id}", s.requireAuth(s.handleWorkspacePlanDetail))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
 	mux.HandleFunc("POST /workspaces/{name}/backend/reveal", s.requireAuth(s.handleWorkspaceBackendReveal))
@@ -52,15 +53,19 @@ const configExampleWorkspace = "WORKSPACE"
 // planArtifactRow is one saved plan of a workspace on the detail tray: the
 // artifact id (the apply/diff deep-link key), the workspace serial it was made
 // against, and the truthful surface facts a tray row reads — LIFECYCLE (SAVED
-// for the newest, SUPERSEDED for every older one; CONSUMED lands with lane F),
-// whether the Tofu state has moved past it (stale → no apply), the plan
-// outcome's change counters + resource names + drift, the policy verdict the
-// plan job recorded, and when it was sealed. Ordering by artifact id IS
-// recency: the first row is the latest SAVED plan.
+// for the newest unconsumed plan, SUPERSEDED for older ones, CONSUMED once an
+// apply re-recorded the same sealed plan under the applying job's id), whether
+// the Tofu state has moved past it (stale → no apply), the plan outcome's
+// change counters + resource names + drift, the policy verdict the plan job
+// recorded, and when it was sealed. Ordering by artifact id IS recency: the
+// first row is the latest SAVED plan.
 type planArtifactRow struct {
 	ID         int64
 	PlanSerial int64
-	Lifecycle  string // "SAVED" | "SUPERSEDED"
+	Lifecycle  string // "SAVED" | "SUPERSEDED" | "CONSUMED"
+	// ConsumedBy is the apply job that consumed the plan, 0 until an apply
+	// re-recorded it; the LIFECYCLE cell renders the job as a link.
+	ConsumedBy int64
 	Stale      bool
 	Sealed     string
 	Changes    planChangesRow
@@ -69,16 +74,22 @@ type planArtifactRow struct {
 
 // Applicable reports the single-apply rule (SPEC §2.2, invariant 7): only the
 // latest SAVED plan the Tofu state has not moved past carries an apply
-// affordance. Every other row — SUPERSEDED, or SAVED-but-stale — reads only.
+// affordance. Every other row — SUPERSEDED, CONSUMED, or SAVED-but-stale —
+// reads only.
 func (p planArtifactRow) Applicable() bool { return p.Lifecycle == "SAVED" && !p.Stale }
 
 // LifecycleClass renders the LIFECYCLE chip's signal: accent for the one SAVED
-// plan, dim for SUPERSEDED history. Never colour-only (the word is always shown).
+// plan, dim for SUPERSEDED history, ok for a CONSUMED plan whose apply ran.
+// Never colour-only (the word is always shown).
 func (p planArtifactRow) LifecycleClass() string {
-	if p.Lifecycle == "SAVED" {
+	switch p.Lifecycle {
+	case "CONSUMED":
+		return "ok"
+	case "SAVED":
 		return "run"
+	default:
+		return "dim"
 	}
-	return "dim"
 }
 
 // planChangesRow is the CHANGES cell of a plan tray row: the pending-change

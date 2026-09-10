@@ -35,9 +35,11 @@ type PlanResourceView struct {
 }
 
 // PlanAttrView is one attribute row. Value is the marker string, never the
-// plaintext, whenever Redacted is set.
+// plaintext, whenever Redacted is set; Before is the pre-apply value the plan
+// detail's old→new strike renders (empty when the attribute is new).
 type PlanAttrView struct {
 	Name     string `json:"name"`
+	Before   string `json:"before,omitempty"`
 	Value    string `json:"value"`
 	Redacted bool   `json:"redacted,omitempty"`
 }

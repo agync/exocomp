@@ -749,6 +749,57 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .plans .pl-life .stale { color: var(--signal-wait); font: 400 11px var(--font-mono); white-space: nowrap; }
 .n-add { color: var(--signal-ok); } .n-chg { color: var(--signal-wait); } .n-del { color: var(--signal-fail); }
 
+/* ---- Plan detail (SPEC §4, lift.css §diff) ----
+ * The plan-detail card: the lifecycle chips, the +N ~N −N verdict, and the
+ * structured diff parsed from `tofu show -json`. The ring is the dominant
+ * action colour — wait for update, ok for create-only, fail if anything tears
+ * down. Never colour-only: the keyword words and the counters always read. */
+.plan-detail .verdict { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+.plan-detail.ring-fail  { box-shadow: inset 0 0 0 1px var(--fail-border); }
+.plan-detail.ring-wait  { box-shadow: inset 0 0 0 1px var(--wait-border); }
+.plan-detail.ring-ok    { box-shadow: inset 0 0 0 1px var(--ok-border); }
+.plan-detail.ring-dim   { box-shadow: inset 0 0 0 1px var(--hairline-faint); }
+.counters { display: flex; gap: 14px; font: 600 26px/1 var(--font-mono); letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
+.diff { background: var(--surface-void); border-radius: var(--radius-control); padding: var(--tray-inset); margin-top: 12px; }
+.diff .diff-row { border-radius: 9px; }
+.diff .diff-row[open] summary { background: var(--surface-control); border-radius: 9px; }
+.diff .diff-row summary { display: grid; grid-template-columns: 120px minmax(0,1fr) auto; align-items: center; gap: 12px; padding: 8px 10px; cursor: pointer; }
+.diff .diff-row .action { display: inline-flex; align-items: center; gap: 6px; font: var(--type-keyword); letter-spacing: .4px; }
+.diff .diff-row .action .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.diff .diff-row .action.ok   { color: var(--signal-ok); }
+.diff .diff-row .action.wait { color: var(--signal-wait); }
+.diff .diff-row .action.fail { color: var(--signal-fail); }
+.diff .diff-row .action.dim  { color: var(--ink-600); }
+.diff .diff-row .addr { color: var(--ink-100); font: 500 12.5px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diff .diff-row .count { color: var(--ink-500); font: 400 11px var(--font-mono); white-space: nowrap; }
+.diff .attrs { display: grid; grid-template-columns: 130px minmax(0,1fr); gap: 2px 16px; font: var(--type-log); padding: 8px 10px 8px 142px; }
+.diff .attrs .k { color: var(--ink-500); }
+.diff .attrs .row { display: contents; }
+.diff .attrs .arrow { color: var(--ink-500); margin: 0 6px; }
+.diff .old { color: var(--signal-fail); background: var(--fail-tint); border-radius: 4px; padding: 0 4px; text-decoration: line-through; }
+.diff .new { color: var(--signal-ok); background: var(--ok-tint); border-radius: 4px; padding: 0 4px; }
+.diff .same { color: var(--ink-600); }
+.diff .v.redacted { color: var(--ink-500); }
+.diff .unchanged { color: var(--ink-600); }
+.diff .block-head { padding: 10px 10px 6px; }
+.diff .block-head .keyword { color: var(--signal-fail); }
+.diff .destroy-block { border: 1px solid var(--fail-border); background: var(--fail-tint); border-radius: 9px; margin-bottom: 4px; }
+.plan-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
+.plan-foot .meta { margin: 0; }
+/* The confirm dialog reuses the diff; the fact grid reads the four rows. */
+.plan-confirm { width: min(480px, calc(100vw - 32px)); }
+.plan-confirm .kicker { color: var(--signal-fail); }
+.plan-confirm .diff { max-height: 40vh; overflow: auto; }
+.plan-confirm .factgrid { display: grid; grid-template-columns: 96px minmax(0,1fr); gap: 6px 16px; margin: 14px 0 0; font: 400 12px var(--font-ui); }
+.plan-confirm .factgrid dt { color: var(--ink-500); }
+.plan-confirm .factgrid dd { margin: 0; color: var(--ink-100); }
+.plan-confirm .factgrid dd.mono { font-family: var(--font-mono); font-size: 11.5px; }
+.plan-confirm .factgrid dd.muted { color: var(--ink-500); }
+.plan-confirm .factgrid dd.wait { color: var(--signal-wait); }
+.plan-confirm .factgrid dd.fail { color: var(--signal-fail); }
+.plan-confirm .actions { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
+.plan-confirm .actions .btn { width: 100%; }
+
 /* Backend card (SPEC §2.4): the reference block, its init hint, and the
  * reveal/copy verbs. The block never carries the bearer; reveal shows it
  * beside the block for 30s and logs the reveal. */

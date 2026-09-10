@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/executor"
@@ -25,6 +26,11 @@ func (h *harness) seedPlanPolicy(t *testing.T, ws, name, action string) {
 		t.Fatalf("CreatePlanPolicy: %v", err)
 	}
 }
+
+// seedPlanSeq makes each seeded sealed plan a distinct artifact on disk, so the
+// tray's sha256 dedupe (SPEC §2.2, CONSUMED) treats two seeds as two plans the
+// way real seals are — the sha of the ciphertext on disk differs per seal.
+var seedPlanSeq atomic.Int64
 
 // seedPlanArtifact writes a plan job and its sealed artifact, without a policy
 // verdict — the state that exists between the seal and the verdict record.
@@ -46,13 +52,28 @@ func (h *harness) seedPlanArtifactSerial(t *testing.T, ws string, planSerial int
 	}
 	art, err := h.store.CreateArtifact(ctx, store.Artifact{
 		JobID: planJob.ID, Kind: reactive.PlanArtifactKind,
-		Path: "/data/artifacts/tofu/" + ws + ".tfplan.age", SHA256: "x", Size: 1,
+		Path:   "/data/artifacts/tofu/" + ws + ".tfplan.age",
+		SHA256: fmt.Sprintf("seed-%d", seedPlanSeq.Add(1)), Size: 1,
 		PlanSerial: planSerial,
 	})
 	if err != nil {
 		t.Fatalf("CreateArtifact: %v", err)
 	}
 	return art
+}
+
+// seedPlanReRecord writes the apply's same-SHA re-record of a sealed plan under
+// the given applying job — the artifact row the CLI apply writes to link a
+// consumed plan (SPEC §2.2). It is the shape the tray's CONSUMED dedupe reads.
+func (h *harness) seedPlanReRecord(t *testing.T, art store.Artifact, applyJob int64) store.Artifact {
+	t.Helper()
+	re, err := h.store.CreateArtifact(context.Background(), store.Artifact{
+		JobID: applyJob, Kind: art.Kind, Path: art.Path, SHA256: art.SHA256, Size: art.Size,
+	})
+	if err != nil {
+		t.Fatalf("CreateArtifact re-record: %v", err)
+	}
+	return re
 }
 
 // seedPlanOutcome appends a plan-outcome event onto the plan job's timeline,

@@ -72,3 +72,57 @@ func TestListPlanArtifacts(t *testing.T) {
 		t.Errorf("absent runbook returned %d artifacts, want none", len(none))
 	}
 }
+
+// TestReRecorded pins the CLI apply's consumed-plan dedupe (SPEC §2.2): an
+// apply re-records a sealed plan under the applying job's id, and a SECOND
+// apply of the same plan must not pile up another row. ReRecorded reads "is
+// this sha already linked to a job other than the one that sealed it?" — false
+// for the seal alone, true once any apply re-records it, and still true after
+// an unrelated plan re-records. An operator's own plan file (sealJob 0) reads
+// the same way once an apply re-records it.
+func TestReRecorded(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	mk := func(runbook, kind, sha string) (int64, int64) {
+		t.Helper()
+		job, err := s.CreateJob(ctx, store.NewJob{Runbook: runbook, Kind: "tofu", Trigger: "manual"})
+		if err != nil {
+			t.Fatalf("create job: %v", err)
+		}
+		art, err := s.CreateArtifact(ctx, store.Artifact{JobID: job.ID, Kind: kind, Path: "/p", SHA256: sha, Size: 1})
+		if err != nil {
+			t.Fatalf("create artifact: %v", err)
+		}
+		return art.ID, job.ID
+	}
+
+	// The seal is recorded by the plan job; nothing else shares its sha yet.
+	_, planJob := mk("workspace:web", "tofu-plan", "sha-a")
+	got, err := s.ReRecorded(ctx, "sha-a", planJob)
+	if err != nil || got {
+		t.Fatalf("ReRecorded(seal alone) = %v,%v want false", got, err)
+	}
+
+	// An apply re-records the same sealed plan under the applying job.
+	_, applyJob := mk("workspace:web", "tofu-plan", "sha-a")
+	got, err = s.ReRecorded(ctx, "sha-a", planJob)
+	if err != nil || !got {
+		t.Fatalf("ReRecorded(once applied) = %v,%v want true", got, err)
+	}
+	_ = applyJob
+
+	// An operator's own plan file was never sealed by a job (sealJob 0) and has
+	// no artifact row; the first apply re-records it, the second must not.
+	got, err = s.ReRecorded(ctx, "sha-b", 0)
+	if err != nil || got {
+		t.Fatalf("ReRecorded(own seal absent) = %v,%v want false", got, err)
+	}
+	_, ownApplyJob := mk("workspace:own", "tofu-plan", "sha-b")
+	got, err = s.ReRecorded(ctx, "sha-b", 0)
+	if err != nil || !got {
+		t.Fatalf("ReRecorded(own re-recorded) = %v,%v want true", got, err)
+	}
+	_ = ownApplyJob
+}
