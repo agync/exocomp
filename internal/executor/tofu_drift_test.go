@@ -174,4 +174,14 @@ func TestTofuPlanReportsDrift(t *testing.T) {
 	if len(found.Pending) != 1 || found.Pending[0].Address != "local_file.render" {
 		t.Fatalf("outcome.Pending = %+v, want the config change separated out", found.Pending)
 	}
+	// The show-json the driver read is persisted beside the plan file, so a
+	// later consumer (the web's plan detail) can render the diff after the
+	// run's private dir is gone.
+	show, err := os.ReadFile(planOut + ".show.json")
+	if err != nil {
+		t.Fatalf("read captured show json: %v", err)
+	}
+	if string(show) != driftShowJSON {
+		t.Errorf("captured show json does not match what the fake tofu printed")
+	}
 }

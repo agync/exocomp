@@ -336,7 +336,8 @@ func (t *Tofu) Run(ctx context.Context, spec Spec, sink EventSink) (Result, erro
 		return res, err
 	}
 	if op == "plan" {
-		res = reportPlanOutcome(ctx, res, sink, t.driftShower(bin, spec))
+		planFile, _ := planOutPath(spec.Argv)
+		res = reportPlanOutcome(ctx, res, sink, planFile, t.driftShower(bin, spec))
 	}
 	if op == "apply" && res.ExitCode == 0 && t.opts.InventoryOut != "" {
 		t.captureInventory(ctx, bin, spec, sink)
@@ -437,8 +438,11 @@ func (t *Tofu) resolve(spec Spec) (bin, op string, err error) {
 // Exit 2 means the plan found changes, which is a fact about infrastructure,
 // not a failed run, so the job's exit code becomes 0. When a shower is given —
 // the plan wrote a file to describe — the outcome carries the resource-level
-// drift and pending changes, with attribute values suppressed.
-func reportPlanOutcome(ctx context.Context, res Result, sink EventSink, show func(context.Context) []byte) Result {
+// drift and pending changes, with attribute values suppressed. The show-json
+// body the shower produced is persisted beside the plan file as well, so the
+// web can render the plan's diff without re-running tofu show (the run's
+// private TF_DATA_DIR is gone after the run).
+func reportPlanOutcome(ctx context.Context, res Result, sink EventSink, planFile string, show func(context.Context) []byte) Result {
 	changes := res.ExitCode == 2
 	if res.ExitCode != 0 && !changes {
 		return res
@@ -447,6 +451,7 @@ func reportPlanOutcome(ctx context.Context, res Result, sink EventSink, show fun
 	outcome := TofuPlanOutcome{Operation: "plan", Changes: changes}
 	if changes && show != nil {
 		if body := show(ctx); body != nil {
+			capturePlanShowJSON(planFile, body, sink)
 			if drift, pending, err := ParsePlanShowJSON(body); err == nil {
 				outcome.Drift = drift
 				outcome.Pending = pending
@@ -468,6 +473,25 @@ func reportPlanOutcome(ctx context.Context, res Result, sink EventSink, show fun
 	})
 	res.ExitCode = 0
 	return res
+}
+
+// capturePlanShowJSON persists the `tofu show -json` body a plan's shower
+// produced, beside the plan file the run wrote, so the sealed-plan surface can
+// render the diff hermetically long after the run's private directory is gone.
+// The keep-forever artifact the caller seals is the real record; this is the
+// companion the web reads. A write failure is a system event, never a failed
+// run: the plan's exit code remains the verdict and the diff is omitted.
+func capturePlanShowJSON(planFile string, body []byte, sink EventSink) {
+	if planFile == "" {
+		return
+	}
+	if err := os.WriteFile(planFile+".show.json", body, 0o600); err != nil {
+		sink.Emit(Event{
+			Ts:    time.Now().UTC(),
+			Level: LevelSystem,
+			Msg:   fmt.Sprintf("plan show json not captured: %v", err),
+		})
+	}
 }
 
 // planOutcomeMsg is the human line beside the structured payload: the

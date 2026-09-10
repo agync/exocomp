@@ -381,6 +381,12 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 		redirected := filepath.Join(job.private, "plan.tfplan")
 		spec.Argv = setPlanOutPath(argv, redirected)
 		defer relocatePlan(redirected, planDst, sink)
+		// The driver's own reportPlanOutcome writes the plan's show-json beside
+		// the redirected plan file (it reads the run env while it is still
+		// live); relocate that companion the same way so the sealer finds both
+		// beside the planned -out path. A missing source is a no-op, exactly as
+		// for the plan file itself.
+		defer relocatePlan(redirected+".show.json", planDst+".show.json", sink)
 	}
 	// `apply <planfile>` reads a saved plan the caller decrypted into the data
 	// dir, which the sandbox denies just the same. Stage it into the granted

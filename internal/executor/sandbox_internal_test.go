@@ -179,6 +179,23 @@ func TestRelocatePlanMovesTheArtifact(t *testing.T) {
 
 	// A missing source is a no-op, not a panic or an error.
 	relocatePlan(filepath.Join(job, "absent.tfplan"), filepath.Join(t.TempDir(), "x.tfplan"), discardSink{})
+
+	// The show-json companion rides out of the job dir the same way, under the
+	// exact sibling name the driver wires up, so the sealer finds both beside
+	// the requested -out path.
+	showSrc := filepath.Join(job, "plan.tfplan.show.json")
+	if err := os.WriteFile(showSrc, []byte(`{"resource_changes":[]}`), 0o600); err != nil {
+		t.Fatalf("write show json: %v", err)
+	}
+	showDst := filepath.Join(t.TempDir(), "artifacts", "ws.tfplan.show.json")
+	relocatePlan(showSrc, showDst, discardSink{})
+	body2, err := os.ReadFile(showDst)
+	if err != nil || string(body2) != `{"resource_changes":[]}` {
+		t.Fatalf("relocated show json = %q / %v", body2, err)
+	}
+	if _, err := os.Stat(showSrc); !os.IsNotExist(err) {
+		t.Errorf("source show json still present after relocation")
+	}
 }
 
 // TestStagePlanInputCopiesIntoTheJobDir: an `apply <planfile>` naming a plan in
