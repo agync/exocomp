@@ -66,14 +66,18 @@ func TestDaemonSealsAPIPlan(t *testing.T) {
 	if err := os.WriteFile(planPath, []byte(planBody), 0o600); err != nil {
 		t.Fatalf("write plan: %v", err)
 	}
+	showJSON := `{"resource_changes":[{"address":"local_file.gone","change":{"actions":["delete"]}}]}`
+	if err := os.WriteFile(planPath+".show.json", []byte(showJSON), 0o600); err != nil {
+		t.Fatalf("write show json: %v", err)
+	}
 
 	ws, _ := st.WorkspaceByName(ctx, "web")
 	d := workspaceDriver{store: st, env: env, dirs: dirs}
 	d.sealAPIPlan(ctx, job, ws, executor.TofuArgv("plan", "-out="+planPath), &collectSink{})
 
 	arts, err := st.ListArtifacts(ctx, job.ID)
-	if err != nil || len(arts) != 1 {
-		t.Fatalf("ListArtifacts = %d, %v; want 1 sealed plan", len(arts), err)
+	if err != nil || len(arts) != 2 {
+		t.Fatalf("ListArtifacts = %d, %v; want 2 (sealed plan + sealed show-json)", len(arts), err)
 	}
 	saved := arts[0]
 	if !strings.HasSuffix(saved.Path, secrets.SealedSuffix) {
@@ -81,6 +85,31 @@ func TestDaemonSealsAPIPlan(t *testing.T) {
 	}
 	if _, err := os.Stat(planPath); !os.IsNotExist(err) {
 		t.Errorf("the plaintext -out survived the seal (stat err = %v)", err)
+	}
+
+	// The show-json companion is sealed under its own kind and opens back to
+	// the JSON the web renders the plan's diff from.
+	var show *store.Artifact
+	for i := range arts {
+		if arts[i].Kind == "tofu-plan-show" {
+			show = &arts[i]
+		}
+	}
+	if show == nil {
+		t.Fatal("no sealed show-json artifact recorded")
+	}
+	if !strings.HasSuffix(show.Path, secrets.SealedSuffix) {
+		t.Fatalf("show artifact %s is not sealed", show.Path)
+	}
+	showBody, err := env.OpenSealedFile(show.Path)
+	if err != nil {
+		t.Fatalf("open sealed show json: %v", err)
+	}
+	if string(showBody) != showJSON {
+		t.Errorf("decrypted show json = %q, want the captured JSON", showBody)
+	}
+	if _, err := os.Stat(planPath + ".show.json"); !os.IsNotExist(err) {
+		t.Errorf("the plaintext show json survived the seal (stat err = %v)", err)
 	}
 
 	v, err := planVerdict(ctx, st, saved)

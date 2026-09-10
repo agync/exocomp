@@ -33,10 +33,15 @@ type PlanEnvelope interface {
 // that far, and SealPlan returns a nil artifact. The digest recorded is of the
 // ciphertext, because that is what is on disk to check later. A nil envelope
 // records the plaintext path unchanged (there is nothing to seal to).
+//
+// The plan's `tofu show -json` companion (the file the executor captured beside
+// the plan at run time) is sealed and recorded the same way, as a second
+// artifact on the same job — it is what the web renders the plan's diff from.
 func (s *Service) SealPlan(ctx context.Context, env PlanEnvelope, jobID int64, path string, planSerial int64) (*store.Artifact, error) {
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
+	showJSON := path + ".show.json"
 	if env != nil {
 		sealed, err := env.SealFile(path)
 		if err != nil {
@@ -62,7 +67,44 @@ func (s *Service) SealPlan(ctx context.Context, env PlanEnvelope, jobID int64, p
 	if err != nil {
 		return nil, err
 	}
+	// The show-json companion is sealed best-effort: it is enrichment for the
+	// plan-detail render, never the plan itself, so a seal or record failure
+	// here must not turn a good plan into a failed run. The one obligation is
+	// confidentiality — a failed seal removes the plaintext, which carries
+	// plan attribute values, instead of leaving it around.
+	_ = s.sealPlanShowJSON(ctx, env, jobID, showJSON, planSerial)
 	return &saved, nil
+}
+
+// sealPlanShowJSON seals and records the show-json companion of a saved plan
+// under its own artifact kind, sharing the plan's job and serial. There is
+// nothing to do when the plan has no companion — a plan sealed before the
+// capture existed, or one that never wrote an -out file.
+func (s *Service) sealPlanShowJSON(ctx context.Context, env PlanEnvelope, jobID int64, path string, planSerial int64) error {
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if env != nil {
+		sealed, err := env.SealFile(path)
+		if err != nil {
+			_ = os.Remove(path)
+			return err
+		}
+		path = sealed
+	}
+	sum, size, err := fileDigest(path)
+	if err != nil {
+		return err
+	}
+	_, err = s.store.CreateArtifact(ctx, store.Artifact{
+		JobID:      jobID,
+		Kind:       reactive.PlanShowArtifactKind,
+		Path:       path,
+		SHA256:     sum,
+		Size:       size,
+		PlanSerial: planSerial,
+	})
+	return err
 }
 
 // OpenPlanForRun writes a saved plan out in the clear for the one run that

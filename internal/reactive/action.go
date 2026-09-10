@@ -22,6 +22,14 @@ const WorkspaceRunbookPrefix = "workspace:"
 // records so an approval can show the plan the apply will consume.
 const PlanArtifactKind = "tofu-plan"
 
+// PlanShowArtifactKind labels the `tofu show -json` the executor captured
+// beside a saved plan at plan time. It is the diff the plan-detail page and
+// the approval surface render: the raw plan file tofu wrote is not a show-json
+// document, and re-running tofu show later cannot be hermetic (the run's
+// private TF_DATA_DIR is gone), so the JSON is captured while the run env is
+// live and sealed as its own artifact.
+const PlanShowArtifactKind = "tofu-plan-show"
+
 // Trigger is what a job this package enqueues records as its origin.
 const Trigger = "event"
 

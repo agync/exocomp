@@ -82,6 +82,59 @@ func TestSealPlanMissingFileIsNil(t *testing.T) {
 	}
 }
 
+// TestSealPlanRecordsShowJSONCompanion: a plan whose executor captured a
+// `tofu show -json` companion records TWO artifacts on the same job — the
+// plan and the show-json under its own kind. A nil envelope records the
+// plaintext show path unchanged (the same seam the plan itself uses); the
+// sealed round trip is pinned by the daemon seal test (serve_planseal_test.go).
+func TestSealPlanRecordsShowJSONCompanion(t *testing.T) {
+	ctx := context.Background()
+	st := openStore(t)
+	svc := service.New(st, t.TempDir(), nil)
+	jobID := seedPlanJob(t, st, "web", executor.TofuPlanOutcome{Operation: "plan", Changes: true})
+
+	dir := t.TempDir()
+	plan := filepath.Join(dir, "web.tfplan")
+	if err := os.WriteFile(plan, []byte("tfplan-body"), 0o600); err != nil {
+		t.Fatalf("write plan: %v", err)
+	}
+	showPath := plan + ".show.json"
+	if err := os.WriteFile(showPath, []byte(`{"resource_changes":[{"address":"x","change":{"actions":["create"]}}]}`), 0o600); err != nil {
+		t.Fatalf("write show json: %v", err)
+	}
+
+	saved, err := svc.SealPlan(ctx, nil, jobID, plan, 7)
+	if err != nil {
+		t.Fatalf("SealPlan: %v", err)
+	}
+	if saved == nil || saved.Kind != "tofu-plan" {
+		t.Fatalf("plan artifact = %+v, want the tofu-plan row", saved)
+	}
+
+	arts, err := st.ListArtifacts(ctx, jobID)
+	if err != nil {
+		t.Fatalf("ListArtifacts: %v", err)
+	}
+	if len(arts) != 2 {
+		t.Fatalf("ListArtifacts = %d, want 2 (plan + show-json)", len(arts))
+	}
+	var show *store.Artifact
+	for i := range arts {
+		if arts[i].Kind == "tofu-plan-show" {
+			show = &arts[i]
+		}
+	}
+	if show == nil {
+		t.Fatal("no show-json artifact recorded")
+	}
+	if show.JobID != jobID || show.PlanSerial != 7 {
+		t.Errorf("show artifact = %+v, want same job and serial as the plan", show)
+	}
+	if show.Path != showPath {
+		t.Errorf("show artifact path = %q, want the plaintext companion %q under a nil envelope", show.Path, showPath)
+	}
+}
+
 // TestPlanWorkspaceHonorsTrigger: the API plan carries the "api" trigger the
 // daemon reads to decide it must seal the plan, while a caller that sets none
 // keeps the manual default so a CLI plan seals its own.
