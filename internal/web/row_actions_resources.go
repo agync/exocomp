@@ -1,5 +1,11 @@
 package web
 
+// glyphRoute is the checks netgroup slot's 13px location glyph (SPEC §5.1):
+// three nodes on two links — the designer's sources/route path verbatim. It
+// lives beside the row-action glyphs because it is the same per-verb fixed
+// shape language; the checks template renders it, never the row actions.
+const glyphRoute = "M6 8.2v7.6M18 9.2c0 4.8-5.5 4.3-9.3 6.9"
+
 // scheduleRowActions is the v0.6 row-action set for one schedule: Disable or
 // Enable as the verb glyph (the state toggles), with Open (the spec modal) and
 // Remove (confirmed, last) in the chevron menu. "Run now" is deferred — a

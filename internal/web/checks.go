@@ -122,6 +122,15 @@ func (t checkTargetRow) NetgroupClass() string {
 	return "ok"
 }
 
+// WhereLocation renders the netgroup slot's location word (SPEC §5.1): the
+// covered group's name, else "away" — the store's own miss label.
+func (t checkTargetRow) WhereLocation() string {
+	if t.Netgroup == "" || t.Netgroup == "away" {
+		return "away"
+	}
+	return t.Netgroup
+}
+
 // DownSummary is the at-a-glance fail counter the card header carries when any
 // target is down: "N of M down" (the tile ring and DOWN chips carry the
 // per-target detail). Empty when nothing is down or the check is disabled.

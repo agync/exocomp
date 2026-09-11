@@ -110,7 +110,9 @@ func TestNetgroupsReachableFromChecks(t *testing.T) {
 	if !strings.Contains(page, `href="/checks?tab=netgroups" role="tab"`) {
 		t.Error("checks page missing the Netgroups tab link (F7)")
 	}
-	if strings.Contains(page, `href="/netgroups"`) {
+	// The nav carries no standalone Netgroups item — the /netgroups hrefs on
+	// this page are the where-slot location links, not nav items.
+	if strings.Contains(page, `class="navitem" href="/netgroups"`) {
 		t.Error("nav still carries a standalone Netgroups item (F7)")
 	}
 }

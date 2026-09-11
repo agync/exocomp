@@ -368,13 +368,14 @@ func TestCheckRm(t *testing.T) {
 	}
 }
 
-// TestChecksNetgroupAndRecency: location is prose, not an equal-rank chip (F2)
-// — a target a registered netgroup covers reads "address is on <group>", one
-// no group covers reads the away miss, an http URL target renders no location
-// verdict at all (its liveness is not a location). A target the sweep has seen
-// renders how long ago its status changed, right-aligned in its tile header
-// (F13); a never-seen target is a single dim UNOBSERVED chip with its
-// cold-start reason and no location chip (F3).
+// TestChecksNetgroupAndRecency: the netgroup slot (SPEC §5.1) is the row's
+// second line — a route glyph (13px) + "on {netgroup}" (a link to /netgroups)
+// · age — so the location claim reads down the column. Location stays meta,
+// never a chip (F2); a target no registered netgroup covers reads "on away".
+// An UNOBSERVED target explains itself in the same slot: "on {netgroup} ·
+// away — not probed from here" (wait). Latency is omitted (no probe-latency
+// data exists). An http URL target renders no location verdict at all (its
+// liveness is not a location).
 func TestChecksNetgroupAndRecency(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -437,22 +438,23 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 		t.Fatalf("/checks = %d, want 200", code)
 	}
 
-	// Location is prose, not an equal-rank chip (F2): the covered target names
-	// its group, the uncovered one names the miss. The per-target clock sits
-	// right-aligned in the tile header (F13) and the header carries the
-	// at-a-glance down counter.
+	// Location is meta, never a chip (F2): the covered target links its group
+	// (→ /netgroups), the uncovered one reads the away miss, and the age rides
+	// the same slot. The at-a-glance down counter still names the header.
 	for _, want := range []string{
-		`address is on <b>home</b>`,
-		`address not on any netgroup (away)`,
-		`3h ago`, `2h ago`,
+		`<a class="mono" href="/netgroups">on home</a>`,
+		"on away",
+		"· 3h ago", "· 2h ago",
 		`1 of 2 down`,
+		// The where slot always opens with the 13px route glyph (three nodes).
+		"M6 8.2v7.6M18 9.2c0 4.8-5.5 4.3-9.3 6.9",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/checks missing %q", want)
 		}
 	}
 	// Reachability and location are never two equal chips on the same tile: the
-	// netgroup is prose, so no home/away chip survives the rebuild.
+	// netgroup is a link inside the where slot, so no home/away chip survives.
 	if strings.Contains(page, `>home</span>`) || strings.Contains(page, `>away</span>`) {
 		t.Error("a netgroup still renders as a chip on the checks surface (F2)")
 	}
@@ -460,23 +462,24 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 	// The http target renders no location verdict at all: cut its card and
 	// check for any location prose.
 	seg := page[strings.Index(page, "web-health"):]
-	if strings.Contains(seg, "address is on") || strings.Contains(seg, "not on any netgroup") {
+	if strings.Contains(seg, "on home") || strings.Contains(seg, "on away") {
 		t.Error("http target rendered a location verdict")
 	}
 
-	// The never-seen tile is a single dim UNOBSERVED chip with its cold-start
-	// reason, never a location chip (F3).
-	cold := page[strings.Index(page, "cold"):]
+	// The never-seen tile is a single dim UNOBSERVED chip that explains itself
+	// in the same where slot, never a location chip (F3). Checks render by
+	// name, so "cold" sits between the others — slice to the next card.
+	cold := page[strings.Index(page, "cold"):strings.Index(page, "web-health")]
 	for _, want := range []string{
 		`<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>`,
-		"never seen yet — first result decides",
+		"on home · away — not probed from here",
 	} {
 		if !strings.Contains(cold, want) {
 			t.Errorf("cold-start tile missing %q", want)
 		}
 	}
-	if strings.Contains(cold, "address is on") || strings.Contains(cold, "not on any netgroup") {
-		t.Error("cold-start tile paired UNOBSERVED with a location chip (F3)")
+	if strings.Contains(cold, "never seen yet") || strings.Contains(cold, "on away") {
+		t.Error("cold-start tile reads a stale copy or the away miss")
 	}
 }
 

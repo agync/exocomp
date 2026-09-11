@@ -4,8 +4,12 @@ package web
 // flip into reactive events on a transition (docs/architecture/reactive.md
 // "Checks"). Each row lists its targets with the status the sweep last
 // observed, the netgroup the probed address belongs to (home/away — none for
-// an http target), and how long ago that status changed. A check carries no
-// secret material, so — like schedules — the write controls here are plain
+// an http target), and how long ago that status changed. The location claim
+// is the target tile's second line — a fixed netgroup slot (SPEC §5.1): route
+// glyph + "on {netgroup}" (a link → Netgroups) · age, so it reads down the
+// column; an UNOBSERVED target explains itself in the same slot ("on
+// {netgroup} · away — not probed from here"). A check carries no secret
+// material, so — like schedules — the write controls here are plain
 // operator-scope: no reauth, no confirm_token.
 templ checksList(vm checksVM) {
 	@layout(vm.Page) {
@@ -87,23 +91,33 @@ templ checksList(vm checksVM) {
 										<div class="thead">
 											<span class="mono">{ t.Name }</span>
 											<span class="meta mono">{ t.Spec() }{ t.ExpectNote() }</span>
-											if t.Changed != "" {
-												<span class="meta mono tend">{ t.Changed } ago</span>
-											}
 										</div>
 										<div class="tstate">
 											if t.IsUp() || t.IsDown() {
 												@chip(t.StatusClass(), t.StatusLabel())
 												if t.URL == "" {
-													if t.Netgroup == "" || t.Netgroup == "away" {
-														<span class="meta">address not on any netgroup (away)</span>
-													} else {
-														<span class="meta">address is on <b>{ t.Netgroup }</b></span>
-													}
+													<div class="where">
+														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
+														if t.Netgroup == "" || t.Netgroup == "away" {
+															<span class="mono">on away</span>
+														} else {
+															<a class="mono" href="/netgroups">on { t.Netgroup }</a>
+														}
+														if t.Changed != "" {
+															<span class="meta mono">· { t.Changed } ago</span>
+														}
+													</div>
 												}
 											} else {
 												<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>
-												<span class="meta">never seen yet — first result decides</span>
+												if t.URL == "" {
+													<div class="where">
+														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
+														<span class="away">{ "on " + t.WhereLocation() + " · away — not probed from here" }</span>
+													</div>
+												} else {
+													<span class="meta">never seen yet — first result decides</span>
+												}
 											}
 										</div>
 									</li>
