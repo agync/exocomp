@@ -75,6 +75,12 @@ type Spec struct {
 	// it grants the same ports. Empty is the default posture: no declaration,
 	// no widening.
 	EgressPorts []int
+	// SSHIdentityFiles are single ssh identity key files this job may read on
+	// top of the files its kind grants — how an ansible run loads a key stored
+	// outside the source checkout. Carried to the job row so whichever process
+	// claims it grants the same files. Empty is the default posture: no
+	// declaration, no widening.
+	SSHIdentityFiles []string
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -204,6 +210,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			RunnerName:          spec.RunnerName,
 			Privileged:          spec.Privileged,
 			EgressPorts:         spec.EgressPorts,
+			SSHIdentityFiles:    spec.SSHIdentityFiles,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
@@ -505,14 +512,15 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 	}
 
 	res, runErr := q.driver.Run(ctx, executor.Spec{
-		JobID:       job.ID,
-		Kind:        job.Kind,
-		Argv:        job.Args.Argv,
-		Dir:         job.Args.Dir,
-		DirReadOnly: job.Args.DirReadOnly,
-		Timeout:     timeout,
-		Privileged:  job.Args.Privileged,
-		EgressPorts: job.Args.EgressPorts,
+		JobID:            job.ID,
+		Kind:             job.Kind,
+		Argv:             job.Args.Argv,
+		Dir:              job.Args.Dir,
+		DirReadOnly:      job.Args.DirReadOnly,
+		Timeout:          timeout,
+		Privileged:       job.Args.Privileged,
+		EgressPorts:      job.Args.EgressPorts,
+		SSHIdentityFiles: job.Args.SSHIdentityFiles,
 	}, sink)
 
 	// The job's own outcome must be recorded even when the queue is shutting
