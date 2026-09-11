@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — job-log regressions fixed (spacing + status chip)
+
+- **The log clock and the message are separated again** (70px clock column +
+  8px gap, per SPEC §3) — the column gap the shell grid lost was squeezing the
+  timestamp against the message.
+- **The run card and the output card keep their 12px gap again** on the
+  no-scroll job page (the `.page-job` flex layout had dropped `gap`).
+- **A terminal job shows ONE status chip.** Previously a terminal page rendered
+  both the streaming pin (stale at `FOLLOWING TAIL`) and the separate
+  `ENDED · nothing to follow` pill; the pin now renders only while a job is
+  live, so a finished job reads exactly one ended state.
+
 ## 2026-09-11 — `check update` re-points a probe in place (G4)
 
 - **`exocomp check update <name> --target … [--interval …]` replaces a check's
