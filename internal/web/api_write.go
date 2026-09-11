@@ -553,6 +553,9 @@ type playbookRunRequest struct {
 	// execution path should enforce as a per-job cgroup cap, mirroring the
 	// local --runner flag. Empty is the default, uncapped path.
 	Runner string `json:"runner"`
+	// EgressPorts are the outbound TCP ports the sandboxed run may open on top
+	// of the ansible kind's SSH port 22, validated (1..65535) before enqueue.
+	EgressPorts []int `json:"egress_ports"`
 }
 
 // apiPlaybookRun enqueues an ansible playbook through RunPlaybook and returns the
@@ -585,6 +588,14 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 	}
 
 	passthrough, vars, err := service.AnsiblePassthrough(req.Limit, req.Tags, req.SkipTags, req.Check, req.Diff, req.ExtraVars)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+
+	// A junk egress port is refused here, at the write face, so a typo never
+	// reaches a job row.
+	egressPorts, err := store.NormalizeEgressPorts(req.EgressPorts)
 	if err != nil {
 		s.badRequest(w, err.Error())
 		return
@@ -661,6 +672,7 @@ func (s *Server) apiPlaybookRun(w http.ResponseWriter, r *http.Request) {
 		IdempotencyKey:      idempotencyKey(r, routePlaybook),
 		Timeout:             timeout,
 		RunnerName:          req.Runner,
+		EgressPorts:         egressPorts,
 		Actor:               actorFromRequest(r),
 	})
 	if err != nil {

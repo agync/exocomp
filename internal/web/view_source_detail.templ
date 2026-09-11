@@ -138,6 +138,8 @@ templ sourceDetail(vm sourceDetailVM) {
 								<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
 								<label for="rp-tags">Tags</label>
 								<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
+								<label for="rp-egress">Egress ports (TCP, comma-separated)</label>
+								<input id="rp-egress" name="egress" type="text" autocomplete="off" placeholder="2222 (empty: SSH port 22 only)"/>
 								<label for="rp-secrets">Run secrets binding</label>
 								<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
 								@toggle("check", "check mode (dry run)", false, false)

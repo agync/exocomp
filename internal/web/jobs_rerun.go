@@ -115,6 +115,7 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 		TolerateUnreachable: tolerate,
 		Timeout:             time.Duration(job.Args.Timeout),
 		Privileged:          privileged,
+		EgressPorts:         job.Args.EgressPorts,
 	}
 
 	// The operator who clicked rerun owns the new run, not whoever submitted the

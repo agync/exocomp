@@ -3,9 +3,11 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/service"
@@ -174,6 +176,28 @@ func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, sourceDetail(vm))
 }
 
+// parseFormEgress turns the launch drawer's egress field into the validated
+// port set a run carries. The field may name several ports comma-separated;
+// junk — a non-integer or a port outside 1..65535 — is refused here, at the
+// form parse, so a typo never reaches a job row.
+func parseFormEgress(r *http.Request) ([]int, error) {
+	var ports []int
+	for _, v := range r.Form["egress"] {
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			n, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("egress port %q is not a number", part)
+			}
+			ports = append(ports, n)
+		}
+	}
+	return store.NormalizeEgressPorts(ports)
+}
+
 // handleSourceRunPlaybook mirrors apiPlaybookRun (api_write.go): the same
 // service.ResolveSourcePlaybook/ResolveInventory resolution and the same
 // service.RunPlaybook call, differing only in the Enqueuer (this listener's
@@ -211,6 +235,11 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 	passthrough, vars, err := service.AnsiblePassthrough(
 		r.PostFormValue("limit"), r.PostFormValue("tags"), "",
 		r.Form.Has("check"), r.Form.Has("diff"), nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	egressPorts, err := parseFormEgress(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -269,6 +298,7 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 		DirReadOnly:         readOnly,
 		Passthrough:         passthrough,
 		ExtraVars:           vars,
+		EgressPorts:         egressPorts,
 		Privileged:          privileged,
 		TolerateUnreachable: r.Form.Has("tolerate_unreachable"),
 		IdempotencyKey:      idempotencyKey(r, routePlaybook),

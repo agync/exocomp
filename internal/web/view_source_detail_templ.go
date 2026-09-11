@@ -507,7 +507,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"> <details class=\"opts\"><summary>Options — inventory, limit, tags, secrets, run modes</summary> <label for=\"rp-inventory\">Inventory</label> <input id=\"rp-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rp-limit\">Limit</label> <input id=\"rp-limit\" name=\"limit\" type=\"text\" autocomplete=\"off\" placeholder=\"host or group pattern\"> <label for=\"rp-tags\">Tags</label> <input id=\"rp-tags\" name=\"tags\" type=\"text\" autocomplete=\"off\"> <label for=\"rp-secrets\">Run secrets binding</label> <input id=\"rp-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\"> <details class=\"opts\"><summary>Options — inventory, limit, tags, secrets, run modes</summary> <label for=\"rp-inventory\">Inventory</label> <input id=\"rp-inventory\" name=\"inventory\" type=\"text\" autocomplete=\"off\" placeholder=\"registered name or path (empty: source ansible.cfg / discovery)\"> <label for=\"rp-limit\">Limit</label> <input id=\"rp-limit\" name=\"limit\" type=\"text\" autocomplete=\"off\" placeholder=\"host or group pattern\"> <label for=\"rp-tags\">Tags</label> <input id=\"rp-tags\" name=\"tags\" type=\"text\" autocomplete=\"off\"> <label for=\"rp-egress\">Egress ports (TCP, comma-separated)</label> <input id=\"rp-egress\" name=\"egress\" type=\"text\" autocomplete=\"off\" placeholder=\"2222 (empty: SSH port 22 only)\"> <label for=\"rp-secrets\">Run secrets binding</label> <input id=\"rp-secrets\" name=\"run_secrets\" type=\"text\" autocomplete=\"off\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -542,7 +542,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var26 string
 				templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 157, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 159, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 				if templ_7745c5c3_Err != nil {
@@ -565,7 +565,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var27 templ.SafeURL
 				templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/sources/" + vm.Source.Name + "/run/command"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 163, Col: 95}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 165, Col: 95}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 				if templ_7745c5c3_Err != nil {
@@ -606,7 +606,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var28 string
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 182, Col: 67}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 184, Col: 67}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
