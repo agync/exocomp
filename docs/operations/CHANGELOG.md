@@ -6,6 +6,34 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — the plan-diff view is readable (v0.11, §4.1)
+
+- **The plan-detail diff renders three value shapes** (SPEC §4.1, the
+  `plan-diff-readability` request): inline `old → new` for a short scalar
+  change, two full-width `− / +` lines for a longer scalar, and an indented
+  `<pre>` object diff with key-by-key `− / +` leaves for a map or list value.
+  Server-set fields (`uid`, `resource_version`) render `[redacted ·
+  server-set]` and never count as a change; secret-backed values stay
+  `[redacted · secret]` on every surface. No `line-through` anywhere — old and
+  new are carried by colour, tint, and the arrow, matching the phone approval.
+- **The false diffs are gone.** The attribute classifier compared before/after
+  as JSON strings, and Go map key order is not stable, so byte-identical maps
+  read as changed (`id → id`, `metadata → metadata`). It now compares the
+  decoded values with `reflect.DeepEqual` (order-independent) and flattens maps
+  to leaf rows (`data.marker`, `metadata[0]`), so the row cell `N changed · M
+  same` and the `N attributes unchanged · show` footer count the same list and
+  always agree.
+- **The literal `continue` text is gone.** The template rendered a Go
+  `continue` in a loop body as text; it now loops the changed set only.
+- **Each attribute is its own grid row** (`150px minmax(0,1fr)`), so a wrapped
+  value never pushes its key out of column; the `show`/`hide` disclosure lists
+  the unchanged attributes (objects as `1 block · N keys · unchanged`), and a
+  `raw` drawer opens the minified before/after pair.
+- **NO-OP resources render `unchanged`** on the plan-detail page (previously
+  dropped); the phone and `/api/v1` still filter them out.
+- **The apply/destroy confirm reuses the same grid**, capped at three
+  attribute rows per resource then `N more →`.
+
 ## 2026-09-10 — the plan-detail diff renders from a captured show-json (v0.10, fix)
 
 - **The plan-detail page and the approval surfaces show the diff again.**
