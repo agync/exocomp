@@ -1801,11 +1801,16 @@ body { overflow-x: clip; }
 .rule-row .fired { display: flex; gap: 6px; min-width: 0; font: 400 11px var(--font-mono); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rule-row .th-actions { text-align: right; }
 .rule-explain { position: relative; }
+/* The summary is the ACTIONS slot's explain · ▾ pair (SCREENS 1d) — one
+ * disclosure control, two glyphs. The native <details> marker is a stray
+ * character that must not render beside them: list-style:none hides it on
+ * Firefox, the webkit details-marker rule on Chrome/Safari. */
 .rule-explain summary {
-  width: 30px; height: 30px; margin-left: auto; list-style: none;
-  display: inline-flex; align-items: center; justify-content: center;
+  height: 30px; padding: 0 7px; margin-left: auto; list-style: none;
+  display: inline-flex; align-items: center; gap: 6px; justify-content: center;
   border-radius: 9px; cursor: pointer; color: var(--ink-500);
 }
+.rule-explain summary::-webkit-details-marker { display: none; }
 .rule-explain summary:hover { background: var(--surface-control); color: var(--ink-100); }
 .rule-explain summary svg { width: 16px; height: 16px; }
 .rule-explain .expr-full {

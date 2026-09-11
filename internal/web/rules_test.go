@@ -174,6 +174,53 @@ func TestRulesSurfaceGated(t *testing.T) {
 	}
 }
 
+// TestRulesNoOrphanSeparator is the QA delta's rules mutation: the `then`
+// line draws a separator ONLY between two rendered verbs — a rule with guards
+// reads `then <action> · [guard …]`, a no-guards rule reads `then <action>`
+// with NO trailing separator — and the ACTIONS slot renders exactly the
+// explain · ▾ pair per rule (SCREENS 1d), never a stray marker or an orphan
+// separator alone. The native <details> disclosure triangle must stay
+// suppressed (list-style:none + the webkit marker), so it never reads as a
+// third stray character.
+func TestRulesNoOrphanSeparator(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedRules(t, h)
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	code, page := getBody(t, client, ts.URL+"/rules")
+	if code != http.StatusOK {
+		t.Fatalf("/rules = %d, want 200", code)
+	}
+	// Exactly the guarded rules draw the separator: restart-nginx (cooldown)
+	// and converge (egress · gate) = 2; the notify rule never does.
+	if n := strings.Count(page, `<span class="sep">·</span>`); n != 2 {
+		t.Errorf("rules page draws %d separators, want 2 (one per guarded rule)", n)
+	}
+	// The no-guards rule reads `then log only · no action, no guards` with the
+	// action span closing the div — no trailing separator.
+	if !strings.Contains(page, "log only · no action, no guards</span> </div>") {
+		t.Error("a no-guards rule must render then <action> with NO trailing separator")
+	}
+	// ACTIONS = explain · ▾ (SCREENS 1d): one chevron per rule, no extra.
+	if n := strings.Count(page, `d="M6 9l6 6 6-6"`); n != 3 {
+		t.Errorf("rules ACTIONS renders %d chevrons, want one per rule (explain · ▾)", n)
+	}
+	if n := strings.Count(page, `aria-label="Explain last evaluation"`); n != 3 {
+		t.Errorf("rules ACTIONS renders %d explain verbs, want one per rule", n)
+	}
+	// The native disclosure triangle is suppressed, not left as a stray glyph.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".rule-explain summary::-webkit-details-marker { display: none; }") {
+		t.Error("app.css must suppress the native details marker (webkit)")
+	}
+	summary := ruleDecl(app, ".rule-explain summary {")
+	if !strings.Contains(summary, "list-style: none") {
+		t.Error(".rule-explain summary must carry list-style:none")
+	}
+}
+
 // jobOf returns the seeded fire job's id — the first (only) job on the row.
 func jobOf(t *testing.T, h *harness) int64 {
 	t.Helper()
