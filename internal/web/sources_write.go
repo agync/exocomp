@@ -62,7 +62,10 @@ func (s *Server) handleSourceAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PostFormValue("name")
 	if err := naming.ValidateComponent("source", name); err != nil {
-		s.fail(w, r, err)
+		// A bad name is the operator's input, not an internal failure: 400
+		// with the naming rule, the same status the store's ErrValidation
+		// paths (checks/schedules) render.
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	location := strings.TrimSpace(r.PostFormValue("location"))

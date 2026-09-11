@@ -84,6 +84,26 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	}
 }
 
+func TestSourceAddBadNameIs400(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	// A name outside the [A-Za-z0-9._-] rule (a space) is the operator's
+	// input error: 400 with the rule, never a 500 "internal error".
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"Home Lab"}, "location": {"/srv/tree"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("bad-name add = %d, want 400 (a validation error, not a 500)", resp.StatusCode)
+	}
+	if _, err := h.store.SourceByName(context.Background(), "Home Lab"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("bad-name source must not be created (err=%v)", err)
+	}
+}
+
 func TestSourceEnableDisable(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
