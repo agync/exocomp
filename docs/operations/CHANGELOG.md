@@ -6,6 +6,40 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — events filters + job output surface (v0.12)
+
+- **The Events filter row is a source switch + outcome chips.** `all · checks
+  · alerts` is a segmented switch (a scope — never accent, `all` resets);
+  `ignored · matched · suppressed · gated · fired · error` are chips always
+  present in funnel order, zero-count ones dim and unlinked. The URL composes
+  `?source=checks&outcome=fired` (legacy `?filter=` values and the singular
+  `source=check` still work); the active chip is the row's only accent fill and
+  its trailing × clears it; the footer restates the filter and offers `show
+  all`. Counts are right-aligned tabular cells (compact `12.4k` from five
+  digits), and the `o` key cycles the outcome group (TUI parity). The keys
+  hint moved onto the funnel card.
+- **The job Output status is one pin chip, left.** A terminal job reads
+  `LOG COMPLETE · N lines` (or `LOG CUT · N lines` when the stream ended
+  without the run's verdict) — never `FOLLOWING TAIL`, and never a second
+  static chip. The server renders the initial state; JS only moves it. The
+  chip sits in a fixed left slot (min 208px) so the filter · wrap · Raw
+  controls never shift, and the last log line repeats the completion
+  (`▸ succeeded — exit 0 · N lines · log complete`).
+- **The Output bar gained a `Raw ↗` verb** (plain-text log, new tab) beside
+  the header's Raw-log glyph.
+- **Actions are right-anchored, and the apply glyph means applicable.** Plans
+  tray and workspaces-list ACTIONS cells right-align; the constant verb (diff /
+  plan / ▾) holds the same slot on every row; the apply play glyph appears only
+  on the latest SAVED plan whose serial equals the Tofu state — a stale,
+  consumed, or superseded plan carries no marker, and stale is said in the
+  LIFECYCLE cell (`stale · serial 10`).
+- **Smaller surfaces:** each check row's second line opens with a route glyph +
+  `on <netgroup>` link · age (a never-seen target reads `away — not probed from
+  here`); the source Playbook launcher preselects the first found playbook and
+  gains Limit / Egress / Tolerate fields with the CLI echo; the Rules page is a
+  two-line row (one-line CEL expression · then + guards · LAST FIRED) with the
+  full expression expandable inline.
+
 ## 2026-09-11 — job-log regressions fixed (spacing + status chip)
 
 - **The log clock and the message are separated again** (70px clock column +

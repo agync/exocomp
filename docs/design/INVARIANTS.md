@@ -142,6 +142,28 @@ stylesheet; phone is not a second design.
   documented exception. The app bar's right meta slot stays visible on phone
   (clock · count · last 24h) — it is not hidden.
 
+## Events + job output (v0.12)
+
+The round that rebuilt the Events filter row and the job Output status. Source:
+`events-job-output/SPEC.md` in the v0.11 handoff. Four invariants, each a hard
+rule:
+
+- **Filters: scope is a switch, state is a chip.** A dimension with exactly one
+  value at a time (event source) is a segmented switch; a closed enum you filter
+  by (event outcome) is a chip row in enum order, all positions always present,
+  zero-count positions dim and unlinked. The active chip is the only accent
+  fill on the row and is its own clear.
+- **One status word per surface.** A live-updating status chip (the job log's
+  pin) is rendered by the server in its initial state and moved by JS; never a
+  second static copy of the same fact.
+- **A count is a column.** Word and number are two cells (tabular, right
+  aligned), never `word · N` in one run of text.
+- **Constant verbs hold fixed slots from the right edge.** In any glyph cluster
+  the always-present verbs own the right-most positions on every row; a
+  conditional verb (apply) is prepended on the left and is absent — not
+  disabled, not a placeholder — when it does not apply. A constant glyph never
+  changes x between rows or states.
+
 ## Component vocabulary (one of each, everywhere)
 
 chip · card · tray-table (44px radius-10 rows in a padded card) · quiet/danger

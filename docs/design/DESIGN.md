@@ -433,12 +433,13 @@ rule, and the rows alternate none/`--surface-tray` with hover on
 deliberately non-stackable short tables (system, workflows) are untouched.
 
 **Check cards (F1/F2/F3).** One card per check over a target grid on the tray
-(`minmax(300px, 1fr)`). Reachability is the only chip; location is prose
-(`address is on <group>` / `address not on any netgroup (away)`), so two
-states never claim equal rank. A never-seen target is a single dim UNOBSERVED
-chip with `never seen yet — first result decides`, never a location chip. A
-down tile carries the inset fail ring; the per-target clock right-aligns in
-the tile header.
+(`minmax(300px, 1fr)`). Reachability is the only chip; location is a fixed
+meta slot in the row's second line — a route glyph + `on <netgroup>` (link to
+Netgroups) · age, so the location claim reads down the column — never a chip
+(invariant 5). A never-seen target is a single dim UNOBSERVED chip with
+`on <netgroup> · away — not probed from here`, never a location chip. A down
+tile carries the inset fail ring; the per-target clock right-aligns in the
+tile header.
 
 **Launch drawer (F4).** The source detail leads with identity and facts; the
 launcher is a right-anchored 460px `<dialog>` opened by intent, JS-off via
