@@ -423,3 +423,70 @@ func TestSandboxDeniesAnUngrantedDevShmFile(t *testing.T) {
 		t.Errorf("the read failed for a reason other than the sandbox: %v\n%s", err, out)
 	}
 }
+
+// TestSandboxReadsAnIdentityFileOutsideTheCheckoutOnceGranted is the G5
+// acceptance proof under real nono: an ssh identity key stored OUTSIDE the
+// source checkout is unreadable to a job unless the per-job read grant names
+// it, and readable the moment the grant does — the same file, the same
+// sandbox, differing only in the declared grant. The key lives beside the work
+// dir (the source checkout stand-in) and is granted through ReadFiles, exactly
+// how the ansible driver folds Spec.SSHIdentityFiles.
+func TestSandboxReadsAnIdentityFileOutsideTheCheckoutOnceGranted(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	requireNono(t)
+
+	data := sandboxDataDir(t)
+	work := t.TempDir() // the source checkout a job reads from and runs in
+	keys := t.TempDir() // the key's real home, outside the checkout
+
+	identity := filepath.Join(keys, "id_ed25519")
+	if err := os.WriteFile(identity, []byte("not-a-real-key\n"), 0o600); err != nil {
+		t.Fatalf("write identity: %v", err)
+	}
+
+	// DENIED-WITHOUT: the same profile shape the ansible driver builds, minus
+	// the identity grant, refuses the read — "Load key … Permission denied" is
+	// exactly this denial at the ssh layer.
+	denied := executor.ProfileFor(executor.KindAnsible, executor.SandboxOptions{
+		DataDir:    data,
+		WritePaths: []string{work},
+	})
+	argv, err := denied.Command([]string{"cat", identity})
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	runIn := func(argv []string) ([]byte, error) {
+		cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
+		cmd.Dir = work
+		return cmd.CombinedOutput()
+	}
+	out, err := runIn(argv)
+	if err == nil {
+		t.Fatalf("the key read without the grant:\n%s", out)
+	}
+	if !strings.Contains(string(out), "Permission denied") {
+		t.Errorf("denial came from somewhere other than the sandbox: %v\n%s", err, out)
+	}
+
+	// ALLOWED-WITH: the grant names the file, and the very same read succeeds.
+	granted := executor.ProfileFor(executor.KindAnsible, executor.SandboxOptions{
+		DataDir:    data,
+		WritePaths: []string{work},
+		ReadFiles:  []string{identity},
+	})
+	argv, err = granted.Command([]string{"cat", identity})
+	if err != nil {
+		t.Fatalf("build command: %v", err)
+	}
+	out, err = runIn(argv)
+	if err != nil {
+		t.Fatalf("the granted identity read was denied: %v\n%s", err, out)
+	}
+	if !strings.Contains(string(out), "not-a-real-key") {
+		t.Errorf("granted read did not return the key bytes: %q", out)
+	}
+}

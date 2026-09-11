@@ -160,6 +160,13 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	// it by default. It is a single file, world-readable in the normal case,
 	// and holds no secret — the shadow file, which does, is never granted.
 	sb.ReadFiles = append(slices.Clone(sb.ReadFiles), passwdFile)
+	// A job may declare ssh identity key files it must load (a key stored
+	// outside the source checkout). Each is granted read-only as a single file,
+	// never as a directory — a `~/.ssh` directory grant would widen to every
+	// key and known_hosts beside the one declared. The backing slice is cloned
+	// before the append because sb is a.sandbox, which a sibling run sharing
+	// this driver reuses.
+	sb.ReadFiles = append(slices.Clone(sb.ReadFiles), spec.SSHIdentityFiles...)
 	// CollectionsPath is a joined ANSIBLE_COLLECTIONS_PATH value — per-source
 	// collections ahead of the shared fallback (ADR 0015). Each component is a
 	// real directory, so each is granted individually; the joined string itself

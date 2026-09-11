@@ -45,6 +45,12 @@ type Spec struct {
 	// nonstandard SSH port. Empty is the default posture: no declaration, no
 	// widening — the profile stays the kind's own.
 	EgressPorts []int
+	// SSHIdentityFiles are single ssh identity key files this one job may read
+	// on top of the files its kind grants. The ansible sandboxed driver folds
+	// them into the profile's ReadFiles, so a play can load a key stored
+	// outside the source checkout. Empty is the default posture: no
+	// declaration, no widening.
+	SSHIdentityFiles []string
 }
 
 // Result is what a driver reports about a process that ran to completion.
