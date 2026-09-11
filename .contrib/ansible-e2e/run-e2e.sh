@@ -1,9 +1,9 @@
 #!/bin/sh
 # Ansible e2e driver for exocomp. Boots the throwaway daemon (sandbox tier
-# DISABLED — the local-sandboxed ansible tier grants SSH egress to port 22
-# only, and the lima node listens on a loopback high port; see README),
-# prepares the lima node + source checkout, registers netgroup/check/rule, and
-# runs the scenario matrix (test-plan.md) through the CLI.
+# ENFORCING — the ansible jobs carry --egress 2222, the lima node's loopback
+# forward, so the sandboxed run reaches it; see README), prepares the lima node
+# + source checkout, registers netgroup/check/rule, and runs the scenario
+# matrix (test-plan.md) through the CLI.
 #
 # Usage: run-e2e.sh [--scenario A0x] [--keep-daemon] [--keep-data]
 set -eu
@@ -38,11 +38,10 @@ pass() { log "PASS $1"; }
 fail() { log "FAIL $1"; exit 1; }
 
 EXOCOMP_BIN="${EXOCOMP_BIN:-$ROOT/bin/exocomp}"
-export EXOCOMP_SANDBOX=disabled
 export EXOCOMP_E2E_DATA="$SCRATCH"   # daemon.sh's own default is the tofu rig's path — pin ours
 
 "$DAEMON" status >/dev/null 2>&1 || \
-    EXOCOMP_SANDBOX=disabled EXOCOMP_BIN="$EXOCOMP_BIN" \
+    EXOCOMP_BIN="$EXOCOMP_BIN" \
         "$DAEMON" start $([ "$KEEP_DATA" = 1 ] && echo --keep-data)
 . "$SCRATCH/tokens.env"
 
@@ -67,7 +66,7 @@ ensure_node_probe() {
         run_cli rule add onboard-node0 --source check \
             --expr 'event.status == "firing" && event.labels["netgroup"] == "lab"' \
             --action playbook --repo-source infra --playbook plays/site.yml \
-            --limit node0 -y
+            --limit node0 --egress 2222 -y
     fi
 }
 
@@ -98,7 +97,7 @@ wait_check() { # wait_check <up|down> <max_ticks>
 scenario_A01() { # happy path — playbook run through the queue
     log "A01 happy path playbook run"
     ensure_node_probe
-    out=$(run_cli playbook run plays/site.yml --source infra -e marker_content=hello-exocomp-ansible 2>&1)
+    out=$(run_cli playbook run plays/site.yml --source infra --egress 2222 -e marker_content=hello-exocomp-ansible 2>&1)
     printf '%s\n' "$out" | grep -q "succeeded" || fail "A01 playbook did not settle succeeded: $out"
     marker=$(limactl shell "$NODE" -- cat /tmp/exocomp-e2e/marker.txt 2>/dev/null)
     [ "$marker" = "hello-exocomp-ansible" ] || fail "A01 marker = '$marker', want hello-exocomp-ansible"

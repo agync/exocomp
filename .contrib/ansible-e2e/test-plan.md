@@ -3,16 +3,17 @@
 Faces: CLI (A01–A04), web (the demo recording, `.agents/brain/screenshots/ansible-e2e/`).
 Node: `exocomp-node0` (rootless Fedora 44, `test/lima/node-fedora.yaml`,
 SSH forward pinned to `127.0.0.1:2222`).
-Daemon: throwaway, `EXOCOMP_SANDBOX=disabled` (see README for why), data at
-`/tmp/exocomp-throwaway/ansible-e2e`.
+Daemon: throwaway, ENFORCING sandbox tier (ansible jobs carry `--egress 2222`),
+data at `/tmp/exocomp-throwaway/ansible-e2e`.
 
 ## A01 · happy path — playbook run through the queue
 
-`exocomp playbook run plays/site.yml --source infra` enqueues an ansible job;
-it settles succeeded (exit 0) and the marker file exists on the VM with the
-expected content (`limactl shell exocomp-node0 -- cat
+`exocomp playbook run plays/site.yml --source infra --egress 2222` enqueues an
+ansible job; it settles succeeded (exit 0) and the marker file exists on the VM
+with the expected content (`limactl shell exocomp-node0 -- cat
 /tmp/exocomp-e2e/marker.txt` == `hello-exocomp-ansible`). A green-but-empty
-play (zero hosts) is not a pass — the marker is the independent proof.
+play (zero hosts) is not a pass — the marker is the independent proof. The
+`--egress 2222` grant is what lets the SANDBOXED run reach the loopback port.
 
 ## A02 · source surface
 
@@ -38,9 +39,11 @@ With the VM stopped, the check holds down (departure → resolved event). On
 `limactl start` the join is declared after the 3-probe hysteresis (firing
 event, `netgroup=lab`) and the `onboard-node0` rule matches
 (`event.status == "firing" && event.labels["netgroup"] == "lab"`), queueing
-`plays/site.yml --limit node0` from `infra`. The job settles succeeded and the
-marker is written. The event row names the rule; the job's trigger reads
-`event`, runbook `rule:onboard-node0`.
+`plays/site.yml --limit node0` from `infra` with the rule's `--egress 2222`
+grant. The job settles succeeded and the marker is written. The event row names
+the rule; the job's trigger reads `event`, runbook `rule:onboard-node0`. This
+scenario is the G3 proof: the rule-fired playbook reaches the VM through the
+ENFORCING sandbox thanks to the per-job egress grant.
 
 ## Demo beats (web recording)
 

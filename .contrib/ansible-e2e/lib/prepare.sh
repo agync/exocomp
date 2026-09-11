@@ -36,6 +36,17 @@ host=$(limactl show-ssh --format=config "$INSTANCE" 2>/dev/null | sed -n 's/^  H
 port=$(limactl show-ssh --format=config "$INSTANCE" 2>/dev/null | sed -n 's/^  Port *//p')
 [ -n "$host" ] && [ -n "$port" ] || { log "could not derive host/port from show-ssh"; exit 1; }
 
+# The sandboxed tier grants the source checkout read-only, but the lima
+# identity key lives at ~/.lima/_config/user — outside that grant — so a
+# SANDBOXED run cannot load it. Copy the key into the checkout per-run (a
+# gitignored rig artifact, like the ssh_config) and point the config at it.
+KEY_SRC=$(limactl show-ssh --format=config "$INSTANCE" 2>/dev/null |
+    sed -n 's/^  IdentityFile *"\(.*\)"/\1/p' | head -1)
+: "${KEY_SRC:?could not derive the lima identity key path}"
+cp "$KEY_SRC" "$INFRA/lima-identity"
+chmod 600 "$INFRA/lima-identity"
+sed -i "s|IdentityFile \".*\"|IdentityFile \"$INFRA/lima-identity\"|" "$INFRA/ssh_config"
+
 cat >"$INFRA/inventory.ini" <<EOF
 [node0]
 lima-exocomp-node0
@@ -44,4 +55,4 @@ lima-exocomp-node0
 ansible_ssh_common_args=-F $INFRA/ssh_config
 EOF
 
-log "node0 -> $host:$port (config written to $INFRA)"
+log "node0 -> $host:$port (config + identity key written to $INFRA)"

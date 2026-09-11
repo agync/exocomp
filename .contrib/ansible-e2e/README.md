@@ -35,15 +35,16 @@ run-e2e.sh       scenario driver (A01–A04)
 
 ```sh
 make build
-EXOCOMP_SANDBOX=disabled .contrib/ansible-e2e/run-e2e.sh
+.contrib/ansible-e2e/run-e2e.sh
 ```
 
-`EXOCOMP_SANDBOX=disabled` is required today: the local-sandboxed ansible tier
-grants SSH egress to port 22 only, and lima forwards SSH to a loopback high
-port (2222 in this template). The per-job ansible egress fix is tracked — see
-`.agents/brain/.opencode/plans/v11-plan-diff-readability-round.md` (the ansible
-waves). With the sandbox disabled the run is the plain unsandboxed tier —
-throwaway data only.
+The daemon runs the ENFORCING sandbox tier. The ansible jobs carry
+`--egress 2222` — the lima node's loopback SSH forward — so the sandboxed run
+reaches it: A01 (`playbook run --source infra --egress 2222`) and the
+`onboard-node0` rule (`--egress 2222`) both write the marker through the
+kernel sandbox. This is the G3 acceptance proof: a nonstandard-port inventory
+host is reachable from the sandboxed ansible tier via the per-job egress grant
+(empty by default = the port-22 posture).
 
 The node's SSH port is pinned to `127.0.0.1:2222` via `ssh.localPort` in
 `test/lima/node-fedora.yaml`, so the check target and the inventory survive VM

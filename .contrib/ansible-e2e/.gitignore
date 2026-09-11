@@ -1,2 +1,3 @@
 projects/infra/inventory.ini
 projects/infra/ssh_config
+projects/infra/lima-identity
