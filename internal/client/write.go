@@ -136,6 +136,18 @@ func (c *Client) ApplyWorkspace(ctx context.Context, name string, req WorkspaceR
 	}
 }
 
+// DestroyWorkspace enqueues a tofu destroy of one workspace's whole state and
+// returns the job id. There is no gated form — a destroy has no plan for a
+// policy to read, so the daemon answers the plain enqueue envelope.
+func (c *Client) DestroyWorkspace(ctx context.Context, name string, req WorkspaceRequest) (JobEnqueued, error) {
+	kind, data, err := c.do(ctx, http.MethodPost,
+		"/api/v1/workspaces/"+pathEscape(name)+"/destroy", nil, req.body(), req.IdempotencyKey)
+	if err != nil {
+		return JobEnqueued{}, err
+	}
+	return decodeEnqueued(kind, data)
+}
+
 // PlaybookRequest is the body of a playbook run. Playbook and Inventory are
 // resolved on the DAEMON — Source rebases the playbook onto that source's
 // checkout, Inventory names a registered inventory — so no path here means a

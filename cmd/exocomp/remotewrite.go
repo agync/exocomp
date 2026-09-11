@@ -274,6 +274,14 @@ func runRemoteWorkspace(cmd *cobra.Command, rc *client.Client, op workspaceOp) e
 		return renderRemoteEnqueued(cmd, mode, job)
 	}
 
+	if op.op == "destroy" {
+		job, err := rc.DestroyWorkspace(cmd.Context(), op.workspace, req)
+		if err != nil {
+			return remoteFail(cmd, mode, err)
+		}
+		return renderRemoteEnqueued(cmd, mode, job)
+	}
+
 	if err := remotePlanRef(op.planRef); err != nil {
 		return err
 	}

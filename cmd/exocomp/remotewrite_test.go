@@ -21,13 +21,15 @@ import (
 type writeAPIStub struct {
 	mu sync.Mutex
 
-	runBody   map[string]any
-	runIdem   string
-	planBody  map[string]any
-	planIdem  string
-	applyBody map[string]any
-	decision  map[string]any
-	streams   int
+	runBody     map[string]any
+	runIdem     string
+	planBody    map[string]any
+	planIdem    string
+	applyBody   map[string]any
+	destroyBody map[string]any
+	destroyIdem string
+	decision    map[string]any
+	streams     int
 
 	// applyGated makes an apply answer with the pending envelope.
 	applyGated bool
@@ -89,6 +91,13 @@ func (s *writeAPIStub) handler(t *testing.T) http.Handler {
 			})
 			return
 		}
+		_ = wire.WriteSuccess(w, client.KindJobEnqueued,
+			client.JobEnqueued{JobID: stubJobID, State: "queued"})
+	})
+	mux.HandleFunc("POST /api/v1/workspaces/{name}/destroy", func(w http.ResponseWriter, r *http.Request) {
+		s.mu.Lock()
+		s.destroyBody, s.destroyIdem = s.body(t, r), r.Header.Get("Idempotency-Key")
+		s.mu.Unlock()
 		_ = wire.WriteSuccess(w, client.KindJobEnqueued,
 			client.JobEnqueued{JobID: stubJobID, State: "queued"})
 	})
@@ -309,8 +318,39 @@ func TestRemotePlaybookRunCarriesEgressPorts(t *testing.T) {
 	}
 }
 
-// A gated apply reports the approval, its deadline AND its TTL, so the operator
-// reads the fail-closed auto-reject as intended.
+// TestRemoteWorkspaceDestroyEnqueues: `workspace destroy` is the scriptable twin
+// of the destroy write route — it POSTs the run-secrets/timeout/runner body to
+// /api/v1/workspaces/{name}/destroy and prints the enqueued job id.
+func TestRemoteWorkspaceDestroyEnqueues(t *testing.T) {
+	stub := &writeAPIStub{}
+	pinnedRemote(t, stub.handler(t))
+
+	out, _, err := runRoot(t, []string{
+		"--remote", "box", "--idempotency-key", "destroy-1",
+		"workspace", "destroy", "edge", "--run-secrets", "aws", "--timeout", "90s",
+		"--runner", "fedora-ee",
+	})
+	if err != nil {
+		t.Fatalf("remote workspace destroy: %v", err)
+	}
+	if strings.TrimSpace(out) != "job 9 queued for the remote daemon" {
+		t.Fatalf("output = %q", out)
+	}
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	if stub.destroyBody["run_secrets"] != "aws" || stub.destroyBody["timeout"] != "1m30s" {
+		t.Fatalf("posted %+v", stub.destroyBody)
+	}
+	if stub.destroyBody["runner"] != "fedora-ee" {
+		t.Fatalf("posted %+v, want runner = fedora-ee", stub.destroyBody)
+	}
+	if stub.destroyIdem != "destroy-1" {
+		t.Errorf("Idempotency-Key = %q", stub.destroyIdem)
+	}
+}
+
+// TestRemoteWorkspaceApplyGated reports the approval, its deadline AND its TTL,
+// so the operator reads the fail-closed auto-reject as intended.
 func TestRemoteWorkspaceApplyGated(t *testing.T) {
 	stub := &writeAPIStub{applyGated: true}
 	pinnedRemote(t, stub.handler(t))

@@ -54,6 +54,7 @@ func newWorkspaceCmd() *cobra.Command {
 		newWorkspaceListCmd(),
 		newWorkspacePlanCmd(),
 		newWorkspaceApplyCmd(),
+		newWorkspaceDestroyCmd(),
 		newWorkspaceAdoptCmd(),
 		newWorkspaceEgressCmd(),
 		newWorkspaceOfflineCmd(),
@@ -787,6 +788,51 @@ func newWorkspaceApplyCmd() *cobra.Command {
 	return apply
 }
 
+// newWorkspaceDestroyCmd is the scriptable twin of the destroy write route: it
+// enqueues a `tofu destroy` of the workspace's whole state through the one
+// queue. Locally the job follows to its end like a plan or an apply; with
+// --remote it is enqueued on that daemon and this command prints the job id.
+func newWorkspaceDestroyCmd() *cobra.Command {
+	var (
+		timeout    time.Duration
+		runSecrets string
+		runnerName string
+	)
+	destroy := &cobra.Command{
+		Use:   "destroy <name>",
+		Short: "Destroy a workspace's resources through the queue",
+		Long: "Runs tofu destroy against the workspace's state: every resource " +
+			"the workspace manages is torn down, with no undo. The job runs through " +
+			"the same queue as a plan or an apply, against a running `exocomp serve` " +
+			"when there is one, and is serialized with every other run on the " +
+			"workspace by the same concurrency key.\n\n" +
+			"With --remote the destroy is enqueued on that daemon and this command " +
+			"prints the job id; watch it with `jobs follow`. --runner travels with a " +
+			"--remote destroy the same as a local one, enforced by the daemon that " +
+			"claims the job.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			op := workspaceOp{workspace: args[0], op: "destroy", runSecrets: runSecrets,
+				runnerName: runnerName, timeout: timeout, idempotencyKey: idempotencyKey(cmd)}
+			rc, remote, err := remoteClient(cmd)
+			if err != nil {
+				return err
+			}
+			if remote {
+				return runRemoteWorkspace(cmd, rc, op)
+			}
+			return exitWith(runWorkspaceOp(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), op))
+		},
+	}
+	destroy.Flags().DurationVar(&timeout, "timeout", 0, "kill the run after this long (0: no limit)")
+	destroy.Flags().StringVar(&runSecrets, "run-secrets", "",
+		"bind a run_secret set as provider/TF_VAR_ env for the run")
+	destroy.Flags().StringVar(&runnerName, "runner", "",
+		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
+	return destroy
+}
+
 // exitWith turns a job's exit code into this process's. A cobra RunE cannot
 // carry one, and the store and the envelope are already released by here.
 func exitWith(code int, err error) error {
@@ -806,8 +852,8 @@ type workspaceOp struct {
 	runSecrets string
 	runnerName string
 	timeout    time.Duration
-	// idempotencyKey dedups a retried plan/apply to one job; empty on the
-	// unchanged path.
+	// idempotencyKey dedups a retried plan/apply/destroy to one job; empty on
+	// the unchanged path.
 	idempotencyKey string
 }
 
@@ -878,6 +924,8 @@ func runWorkspaceOp(ctx context.Context, out, warn io.Writer, op workspaceOp) (c
 		return runWorkspacePlan(ctx, svc, enq, st, env, out, op, ws, dirs)
 	case "apply":
 		return runWorkspaceApply(ctx, svc, enq, st, env, out, op, ws, dirs)
+	case "destroy":
+		return runWorkspaceDestroy(ctx, svc, enq, st, out, op, ws)
 	case "adopt":
 		return runWorkspaceAdopt(ctx, st, env, dir, dirs, ws, out, warn)
 	default:
@@ -1016,6 +1064,29 @@ func runWorkspaceApply(ctx context.Context, svc *service.Service, enq service.En
 		}
 	}
 
+	return workspaceExit(ctx, st, out, final, op.op)
+}
+
+// runWorkspaceDestroy enqueues the destroy through the service verb and reports
+// the job, exactly as runWorkspaceApply reports its own: the verb assembles the
+// `tofu destroy -auto-approve` spec, the enqueuer choice (daemon vs in-process)
+// is the caller's, and the exit code is the job's.
+func runWorkspaceDestroy(ctx context.Context, svc *service.Service, enq service.Enqueuer,
+	st *store.Store, out io.Writer, op workspaceOp, ws store.Workspace) (int, error) {
+	res, err := svc.DestroyWorkspace(ctx, enq, service.DestroyInput{
+		Workspace:      ws.Name,
+		TofuDir:        ws.TofuDir,
+		RunSecrets:     op.runSecrets,
+		RunnerName:     op.runnerName,
+		IdempotencyKey: op.idempotencyKey,
+		Timeout:        op.timeout,
+	})
+	if err != nil {
+		return 0, err
+	}
+	final := res.Job
+	_, _ = fmt.Fprintf(out, "job %d  state: %s  duration: %s\n",
+		final.ID, final.State, jobDuration(final))
 	return workspaceExit(ctx, st, out, final, op.op)
 }
 
