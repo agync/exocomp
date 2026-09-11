@@ -146,6 +146,11 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	opts.Env = append(slices.Clone(opts.Env), ansibleScratchEnv(job, controlPath)...)
 
 	sb := a.sandbox
+	// A job may declare extra SSH egress ports (a nonstandard inventory port)
+	// on top of the kind's port 22. The backing slice is cloned before the
+	// append because sb is a.sandbox, which a sibling run sharing this driver
+	// reuses; ProfileFor sorts and de-duplicates the final set afterwards.
+	sb.ConnectPorts = append(slices.Clone(sb.ConnectPorts), spec.EgressPorts...)
 	// ansible-core forks a worker per host and coordinates them with POSIX
 	// semaphores, which live in /dev/shm; without it the run dies at startup
 	// with "Unable to use multiprocessing".

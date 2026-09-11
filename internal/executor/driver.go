@@ -39,6 +39,12 @@ type Spec struct {
 	// its plain inner driver instead of wrapping it. Off by default, so the
 	// zero-value Spec keeps the daemon's effective tier exactly as before.
 	Privileged bool
+	// EgressPorts are extra outbound TCP ports this one job may open on top of
+	// the ports its kind grants. The ansible sandboxed driver folds them into
+	// the profile's ConnectPorts, so a job can reach an inventory host on a
+	// nonstandard SSH port. Empty is the default posture: no declaration, no
+	// widening — the profile stays the kind's own.
+	EgressPorts []int
 }
 
 // Result is what a driver reports about a process that ran to completion.
