@@ -48,6 +48,7 @@ func newRunCmd() *cobra.Command {
 		wait         bool
 		privileged   bool
 		egress       []string
+		sshIdentity  []string
 	)
 	cmd := &cobra.Command{
 		Use:   "run <source> <playbook>",
@@ -64,20 +65,25 @@ func newRunCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			identityFiles, err := parseSSHIdentityFiles(sshIdentity)
+			if err != nil {
+				return err
+			}
 			if privileged {
 				warnPrivileged(cmd.ErrOrStderr())
 			}
 			return runWithHooks(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), runSpec{
-				sourceName:   args[0],
-				playbook:     args[1],
-				inventory:    inventory,
-				vaultProject: vaultProject,
-				runSecrets:   runSecrets,
-				runnerName:   runnerName,
-				timeout:      timeout,
-				wait:         wait,
-				privileged:   privileged,
-				egressPorts:  egressPorts,
+				sourceName:       args[0],
+				playbook:         args[1],
+				inventory:        inventory,
+				vaultProject:     vaultProject,
+				runSecrets:       runSecrets,
+				runnerName:       runnerName,
+				timeout:          timeout,
+				wait:             wait,
+				privileged:       privileged,
+				egressPorts:      egressPorts,
+				sshIdentityFiles: identityFiles,
 			})
 		},
 	}
@@ -96,6 +102,8 @@ func newRunCmd() *cobra.Command {
 		"run the play step UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 	cmd.Flags().StringSliceVar(&egress, "egress", nil,
 		"grant the play step outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
+	cmd.Flags().StringSliceVar(&sshIdentity, "ssh-identity", nil,
+		"grant the play step read access to an ssh identity key file (repeatable; each file is granted individually, never its directory)")
 
 	cmd.AddCommand(newRunStatusCmd())
 	return cmd
@@ -144,6 +152,9 @@ type runSpec struct {
 	// run may open on top of the kind's SSH port 22, validated at the flag
 	// parse.
 	egressPorts []int
+	// sshIdentityFiles are single ssh identity key files the play step may
+	// read, validated and absolutized at the flag parse.
+	sshIdentityFiles []string
 }
 
 // runWithHooks resolves a source's hooks + gate and composes them with the main
@@ -256,6 +267,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 			RunnerName:          rs.runnerName,
 			Privileged:          rs.privileged,
 			EgressPorts:         rs.egressPorts,
+			SSHIdentityFiles:    rs.sshIdentityFiles,
 			Timeout:             rs.timeout,
 		},
 	})

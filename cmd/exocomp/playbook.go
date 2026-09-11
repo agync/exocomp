@@ -42,6 +42,7 @@ func newPlaybookCmd() *cobra.Command {
 		noFollow     bool
 		privileged   bool
 		egress       []string
+		sshIdentity  []string
 	)
 
 	run := &cobra.Command{
@@ -78,6 +79,10 @@ func newPlaybookCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			identityFiles, err := parseSSHIdentityFiles(sshIdentity)
+			if err != nil {
+				return err
+			}
 
 			rc, remote, err := remoteClient(cmd)
 			if err != nil {
@@ -86,6 +91,10 @@ func newPlaybookCmd() *cobra.Command {
 			if privileged && remote {
 				return errors.New("playbook run: --privileged applies to a local run; " +
 					"a --remote run's tier is the daemon's, set on that host")
+			}
+			if len(identityFiles) > 0 && remote {
+				return errors.New("playbook run: --ssh-identity applies to a local run; " +
+					"a --remote run resolves paths on the daemon, which does not offer this grant yet")
 			}
 			if privileged {
 				warnPrivileged(warn)
@@ -137,6 +146,7 @@ func newPlaybookCmd() *cobra.Command {
 						tolerateUnreachable: tolerateUnre,
 						privileged:          privileged,
 						egressPorts:         egressPorts,
+						sshIdentityFiles:    identityFiles,
 					})
 				}
 				args[0] = pb
@@ -164,6 +174,7 @@ func newPlaybookCmd() *cobra.Command {
 				dirReadOnly:         sourceReadOnly,
 				privileged:          privileged,
 				egressPorts:         egressPorts,
+				sshIdentityFiles:    identityFiles,
 			})
 			if err != nil {
 				return err
@@ -211,6 +222,8 @@ func newPlaybookCmd() *cobra.Command {
 		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 	run.Flags().StringSliceVar(&egress, "egress", nil,
 		"grant this run outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
+	run.Flags().StringSliceVar(&sshIdentity, "ssh-identity", nil,
+		"grant this run read access to an ssh identity key file (repeatable; each file is granted individually, never its directory)")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -260,6 +273,9 @@ type playbookSpec struct {
 	// egressPorts are the extra outbound TCP ports the sandboxed run may open
 	// on top of the kind's SSH port 22, validated at the flag parse.
 	egressPorts []int
+	// sshIdentityFiles are single ssh identity key files the run may read,
+	// validated and absolutized at the flag parse.
+	sshIdentityFiles []string
 }
 
 // ansiblePassthrough splits the operator's flags into the argv passthrough and
@@ -295,6 +311,34 @@ func parseEgressPorts(values []string) ([]int, error) {
 	clean, err := store.NormalizeEgressPorts(ports)
 	if err != nil {
 		return nil, fmt.Errorf("--egress: %w", err)
+	}
+	return clean, nil
+}
+
+// parseSSHIdentityFiles turns a --ssh-identity declaration into the validated
+// path set a job carries. Each value is absolutized against the caller's
+// working directory — the same treatment the playbook path gets — then
+// validated absolute, de-duplicated, and sorted by the store seam, so a
+// relative grant the sandbox would refuse at build time is refused here, at
+// the parse, before any job is created.
+func parseSSHIdentityFiles(values []string) ([]string, error) {
+	paths := make([]string, 0, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		abs, err := filepath.Abs(v)
+		if err != nil {
+			return nil, fmt.Errorf("--ssh-identity %q: %w", v, err)
+		}
+		paths = append(paths, abs)
+	}
+	if len(paths) == 0 {
+		return nil, nil
+	}
+	clean, err := store.NormalizeSSHIdentityFiles(paths)
+	if err != nil {
+		return nil, fmt.Errorf("--ssh-identity: %w", err)
 	}
 	return clean, nil
 }
@@ -360,6 +404,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		DirReadOnly:         spec.dirReadOnly,
 		Privileged:          spec.privileged,
 		EgressPorts:         spec.egressPorts,
+		SSHIdentityFiles:    spec.sshIdentityFiles,
 	})
 	if err != nil {
 		return 0, err

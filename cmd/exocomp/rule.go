@@ -55,6 +55,7 @@ func newRuleAddCmd() *cobra.Command {
 		requireApproval bool
 		timeout         time.Duration
 		egress          []string
+		sshIdentity     []string
 	)
 
 	cmd := &cobra.Command{
@@ -112,6 +113,14 @@ func newRuleAddCmd() *cobra.Command {
 					return perr
 				}
 				ruleAction.Egress = ports
+				// A declared identity set is validated at the parse (absolute
+				// paths only); a relative key refuses the rule rather than
+				// reaching a run as a grant the sandbox would refuse.
+				identities, ierr := parseSSHIdentityFiles(sshIdentity)
+				if ierr != nil {
+					return ierr
+				}
+				ruleAction.SSHIdentityFiles = identities
 				if tags != "" {
 					ruleAction.Tags = strings.Split(tags, ",")
 				}
@@ -195,6 +204,8 @@ func newRuleAddCmd() *cobra.Command {
 		"playbook action: ansible --tags, comma-separated")
 	cmd.Flags().StringSliceVar(&egress, "egress", nil,
 		"playbook action: grant each run outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
+	cmd.Flags().StringSliceVar(&sshIdentity, "ssh-identity", nil,
+		"playbook action: grant each run read access to an ssh identity key file (repeatable; each file is granted individually, never its directory)")
 	cmd.Flags().BoolVar(&check, "check", false, "playbook action: ansible --check dry run")
 	cmd.Flags().BoolVar(&diff, "diff", false, "playbook action: ansible --diff")
 	cmd.Flags().DurationVar(&cooldown, "cooldown", 0, "refuse to fire again within this long")
