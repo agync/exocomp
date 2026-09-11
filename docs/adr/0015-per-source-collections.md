@@ -83,9 +83,17 @@ granted write on the per-source collections dir, read on the requirements and
 tool tree, HTTPS egress) — `ansible-galaxy` and its galaxy-server interaction
 are as untrusted as a manifest's build backend. Like uv's download cache, the
 galaxy download/temp cache needs an explicit daemon-pre-created, granted write
-path (Landlock grants attach only to existing paths): the resolver redirects
-galaxy's HOME/TMPDIR onto a granted per-source scratch dir, so a fresh provision
-under the enforcing tier does not fail closed for lack of a writable temp.
+path (Landlock grants attach only to existing paths). The cache lives at
+`<data dir>/cache/galaxy`, a sibling of the collections cache root, and is
+split so the resolver's `HOME` — `<data dir>/cache/galaxy/home` — is
+**never granted**: nono keeps its own protected state root under `$HOME` and
+refuses to launch when a grant would let the sandboxed process reach it, so a
+grant covering the home dir (the earlier `cache/collections/.galaxy-cache`
+layout) failed every sandboxed resolve. Only the directories galaxy actually
+writes — `ANSIBLE_HOME` (`~/.ansible`, which carries `GALAXY_CACHE_DIR` and
+`DEFAULT_LOCAL_TMP`) and `TMPDIR` — are granted, so a fresh provision under
+the enforcing tier writes its download/temp tree exactly where the kernel
+allows.
 
 ### Resolution
 

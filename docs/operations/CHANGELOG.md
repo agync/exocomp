@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — sandboxed collections resolve no longer trips over the galaxy cache
+
+- **The resolver's galaxy cache moved out of the collections cache root.**
+  The collections resolver granted its cache dir write and redirected the
+  resolver's `HOME` onto it, and nono refused to launch: the recursive grant
+  covered nono's own protected state root under that `HOME`
+  (`cache/collections/.galaxy-cache/.local/state/nono`), so every playbook
+  whose source declared collections failed its deps step under the enforcing
+  sandbox tier. The galaxy cache now lives at `<data dir>/cache/galaxy` (a
+  sibling of `cache/collections`, still inside the backed-up cache tree) and
+  the resolver's `HOME` under it is deliberately not granted — the profile
+  grants only the directories ansible-galaxy writes (`ANSIBLE_HOME`'s
+  `~/.ansible` and `TMPDIR`), the same shape the ansible run driver already
+  uses for its own `~/.ansible`. A sandboxed resolve that could not reach
+  ansible-galaxy before now provisions normally.
+
 ## 2026-09-11 — the add-source dialog validates per-field
 
 - **The source-add modal gets the forms pattern.** Name and path/git-URL
