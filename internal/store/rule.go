@@ -39,6 +39,11 @@ type RuleAction struct {
 	Check   bool     `json:"check,omitempty"`
 	Diff    bool     `json:"diff,omitempty"`
 	Timeout Duration `json:"timeout,omitempty"`
+	// Egress are extra outbound TCP ports this playbook action's runs may open
+	// on top of the kind's built-in SSH port, for an inventory host on a
+	// nonstandard port. Empty is the default posture: a rule without the field
+	// stays on port 22.
+	Egress []int `json:"egress,omitempty"`
 }
 
 // Rule is one row of the rule table: a CEL expression over a normalized event

@@ -132,6 +132,12 @@ type JobArgs struct {
 	// tier exactly as before. Setting it is operator-gated at every face that
 	// enqueues (see docs/security/threat-model.md).
 	Privileged bool `json:"privileged,omitempty"`
+	// EgressPorts are extra outbound TCP ports this ansible job may open on top
+	// of the kind's built-in SSH port, so a sandboxed run can reach an inventory
+	// host on a nonstandard port. They live on the row so whichever process
+	// claims the job grants the same ports. Empty is the default posture: no
+	// declaration, no widening — the profile stays port 22.
+	EgressPorts []int `json:"egress_ports,omitempty"`
 }
 
 // JobCaptures is a bootstrap chain's capture wiring on a job row. Workflow is the

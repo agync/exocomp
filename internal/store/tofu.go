@@ -59,6 +59,14 @@ func normalizeEgressPorts(ports []int) ([]int, error) {
 	return out, nil
 }
 
+// NormalizeEgressPorts is the exported seam the CLI, service, and API write
+// faces validate an ansible job's declared egress through — the same guard the
+// workspace egress write applies, so a junk port is refused at every face that
+// declares one.
+func NormalizeEgressPorts(ports []int) ([]int, error) {
+	return normalizeEgressPorts(ports)
+}
+
 // TFState is one stored state version. Ciphertext is exactly the body tofu
 // pushed: an envelope encrypted by tofu's own state encryption, opaque to
 // every backup target and never decrypted here.
