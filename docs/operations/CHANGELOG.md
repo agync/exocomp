@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — per-run ssh identity read grant
+
+- **A sandboxed ansible run can load an ssh identity key stored outside the source
+  checkout.** `playbook run --ssh-identity <path>` (repeatable) grants one run read access
+  to the named key files, and `rule add --action playbook --ssh-identity <path>` and
+  `exocomp run --ssh-identity` do the same for a playbook rule's runs and a lifecycle
+  workflow's play step. Each path is granted as a single file, never a directory, and the
+  declaration is per run and empty by default — a run that declares nothing keeps the
+  sandbox's default-deny posture. A relative path is refused when declared, and an identity
+  pointing at the data dir is refused by the profile guard. Previously a key outside the
+  checkout failed with "Load key … Permission denied", and the ansible-e2e rig worked around
+  it by copying the per-run key into the checkout.
+
 ## 2026-09-12 — sandboxed collections resolve no longer trips over the galaxy cache
 
 - **The resolver's galaxy cache moved out of the collections cache root.**

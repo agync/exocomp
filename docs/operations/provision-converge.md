@@ -166,8 +166,11 @@ captured 2 output(s) to inventory /…/edge.json naming 0 host(s)
   data dir. A job whose inventory host answers on a nonstandard SSH port
   declares it with `playbook run --egress <port>` (or a playbook rule's
   `--egress`) and the sandbox opens that port too; a job or rule that declares
-  nothing keeps port 22 and nothing else. A connection using a key file
-  elsewhere on the box still needs the `disabled` tier today
+  nothing keeps port 22 and nothing else. A connection using a key file stored
+  elsewhere on the box declares that file with `playbook run --ssh-identity
+  <path>` (or a playbook rule's `--ssh-identity`) and the sandbox grants that
+  one file read-only — never a directory, so the rest of the keys' home stays
+  out of the job's reach
   ([ADR 0005](../adr/0005-job-sandboxing-nono.md)). Cloud VMs on port 22 with
   credentials from the vault or a run-secret are unaffected.
 - **The recorded `known_hosts` is not yet what the run verifies against.** The

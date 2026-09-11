@@ -208,6 +208,35 @@ sockets placed inside it. `AF_UNIX` addresses cap at 108 bytes, so `<data dir>/r
 than 57 bytes cannot support the tier; the probe checks it at startup and degrades loudly
 with the measurement. The packaged path, `/var/lib/exocomp/run`, is 20.
 
+### Read grants for ssh identity files
+
+An ansible job reads the source checkout, its own private tree, and the pinned tool paths —
+and nothing else on the box. A play whose inventory names an ssh identity key stored
+elsewhere (a fleet key deliberately kept out of the checkout) fails with "Load key …
+Permission denied", the sandbox refusing the read.
+
+`playbook run --ssh-identity <path>...` grants one run read access to the named identity
+files, and `rule add --action playbook --ssh-identity <path>` does the same for a
+playbook-action rule's runs:
+
+```
+exocomp playbook run site.yml --source infra --limit web --ssh-identity /keys/fleet
+exocomp rule add onboard-node0 --expr '...' --action playbook \
+  --repo-source infra --playbook plays/onboard.yml --limit node0 --ssh-identity /keys/fleet
+```
+
+Each path is granted as a **single file, never a directory**: granting `~/.ssh` would widen
+to every key and `known_hosts` beside the one named, so the declaration names each file and
+the sandbox opens exactly that file. The declaration is per job and empty by default — a job
+or rule that has declared nothing grants no key outside the checkout — and a relative path is
+refused when declared, because a relative grant would mean "wherever this process happens to
+be" under the sandbox.
+
+The grant passes through the same profile guard every grant does: a declared identity that
+would cover the data dir (the database, `host.key`, the keyring) is refused when the profile
+is built. And like egress it only means anything under the sandbox: a fleet degraded to the
+`disabled` tier applies no path grants at all, so the declaration is inert there.
+
 ## Signals
 
 | Signal | Behaviour |

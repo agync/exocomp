@@ -47,6 +47,14 @@ the daemon default is `enforcing`. It is operator-only, off by default, and audi
 for trusted, operator-authored work that genuinely needs host access. See the per-run override in
 [serve.md](serve.md) and [security/threat-model.md](../security/threat-model.md).
 
+`--ssh-identity <path>` (repeatable) grants the run **read access to an ssh identity key
+file stored outside the source checkout** — a fleet key the operator does not want copied
+into the tree. Each path is granted as a single file, never a directory, and the declaration
+is per run and empty by default; a run that declares nothing keeps the sandbox's default-deny
+posture. The key file must be named by an absolute (or working-directory-relative) path, and
+`exocomp run --ssh-identity` grants the same files to a lifecycle workflow's play step.
+See [serve.md](serve.md) for the security posture.
+
 ## Extra vars, and where their values live
 
 `-e/--extra-var` is repeatable and takes two forms:
