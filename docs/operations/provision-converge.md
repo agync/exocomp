@@ -161,12 +161,15 @@ captured 2 output(s) to inventory /…/edge.json naming 0 host(s)
 
 ## Limits worth knowing
 
-- **Sandbox egress is port 22.** The `enforcing` tier grants an ansible
-  job outbound TCP on 22 only, and grants no path outside the data dir. A host
-  on a non-standard SSH port, or a connection using a key file elsewhere on the
-  box, needs the `disabled` tier today ([ADR 0005](../adr/0005-job-sandboxing-nono.md)).
-  Cloud VMs on port 22 with credentials from the vault or a run-secret are
-  unaffected.
+- **Sandbox egress is port 22 unless a job declares more.** The `enforcing` tier
+  grants an ansible job outbound TCP on 22 by default and no path outside the
+  data dir. A job whose inventory host answers on a nonstandard SSH port
+  declares it with `playbook run --egress <port>` (or a playbook rule's
+  `--egress`) and the sandbox opens that port too; a job or rule that declares
+  nothing keeps port 22 and nothing else. A connection using a key file
+  elsewhere on the box still needs the `disabled` tier today
+  ([ADR 0005](../adr/0005-job-sandboxing-nono.md)). Cloud VMs on port 22 with
+  credentials from the vault or a run-secret are unaffected.
 - **The recorded `known_hosts` is not yet what the run verifies against.** The
   pin is recorded and backed up; wiring it into the run as
   `UserKnownHostsFile`, alongside loading the fleet key into a per-job ssh-agent,

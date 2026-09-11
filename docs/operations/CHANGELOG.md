@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — per-job ansible egress ports (G3)
+
+- **A sandboxed ansible job can open a nonstandard inventory port.** The
+  `enforcing` tier granted only TCP 22, so an inventory host answering on a
+  high port (a lima guest's loopback forward) was denied at connect time. A
+  job can now declare extra outbound ports with `playbook run --egress <port>`
+  (repeatable, or comma-separated), `run --egress`, or a playbook rule's
+  `rule add --action playbook --egress`; the API (`egress_ports`) and the
+  source-detail launcher carry the same field. The grant is additive on top of
+  port 22, validated (`1..65535`), and **empty by default**: a job or rule
+  that declares nothing keeps exactly the port-22 posture. Ports are threaded
+  through the whole run path — queue, job row, executor sandbox profile,
+  remote playbook request, and web rerun — so no face silently drops the
+  declaration, and the port is sorted/de-duplicated into the sandbox profile
+  like the tofu egress grants.
+
 ## 2026-09-11 — the plan-diff view is readable (v0.11, §4.1)
 
 - **The plan-detail diff renders three value shapes** (SPEC §4.1, the

@@ -173,6 +173,35 @@ placement: exocomp's own surfaces are loopback TCP inside the data dir's recorde
 no exocomp unix socket exists for a job to reach, and no podman socket is mounted into the
 container. `exocomp doctor` prints this rather than implying a denial it cannot make.
 
+### Extra ansible egress ports
+
+An ansible job reaches TCP 22 and nothing else, which covers an inventory host answering
+on the standard SSH port. A host behind a port forward — a lima guest's loopback forward,
+a bastion hop — answers on a high port instead, and the sandbox denies it.
+
+`playbook run --egress <port>...` grants extra outbound ports to one ansible run on top of
+the built-in SSH grant, and `rule add --action playbook --egress <port>` does the same for
+a playbook-action rule's runs:
+
+```
+exocomp playbook run site.yml --source infra --limit web --egress 2222
+exocomp rule add onboard-node0 --expr '...' --action playbook \
+  --repo-source infra --playbook plays/onboard.yml --limit node0 --egress 2222
+```
+
+The declaration is per job and empty by default: a job or rule that has declared nothing
+keeps exactly the port-22 posture, and a grant on one run never touches another's. Ports
+are validated (`1..65535`) and de-duplicated when declared, so a typo is refused at the
+CLI/API rather than reaching a run.
+
+This is a deliberate widening, and its limit is the same one the tofu section above
+states: **Landlock filters egress by port, not by destination.** Granting 2222 permits a
+run to open 2222 to *any* host, not only the intended inventory node — the grant cannot be
+scoped to the node's address. Declare only the ports a run genuinely needs, and keep
+host-level restriction a network-layer job. The grant also only means anything under the
+sandbox: a fleet degraded to the `disabled` tier enforces no egress port limit at all, so
+this declaration is inert there.
+
 **The data dir has to be short.** A sandboxed job's `TMPDIR` lives under
 `<data dir>/run/job-<n>/`, and the tools that run there coordinate their workers over unix
 sockets placed inside it. `AF_UNIX` addresses cap at 108 bytes, so `<data dir>/run` longer
