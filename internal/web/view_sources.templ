@@ -27,25 +27,16 @@ templ sourcesList(vm sourcesVM) {
 					A path is read directly (writable is opt-in); a git URL is cloned and
 					pinned to a ref via a generated deploy key sealed into the envelope.
 				</p>
-				<form method="post" action="/sources/add" class="writeform" id="src-add-form">
-					<label for="src-name">Name</label>
-					<input id="src-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="src-location">Path or git URL</label>
-					<input
-						id="src-location"
-						name="location"
-						type="text"
-						required
-						autocomplete="off"
-						placeholder="/abs/or/relative/path · git@host:org/repo.git · https://host/org/repo.git"
-					/>
+				<form method="post" action="/sources/add" class="writeform" id="src-add-form" novalidate data-src-form>
+					@fieldInput(vm.Form.nameField())
+					@fieldInput(vm.Form.locationField())
 					<p class="meta" id="src-hint"></p>
 					<div id="src-path-fields">
 						<label class="checkline"><input type="checkbox" name="writable" id="src-writable"/> writable (default is read-only)</label>
 					</div>
 					<div id="src-git-fields" hidden>
 						<label for="src-ref">Ref</label>
-						<input id="src-ref" name="ref" type="text" autocomplete="off" placeholder="main"/>
+						<input id="src-ref" name="ref" type="text" autocomplete="off" placeholder="main" value={ vm.Form.effective().Ref }/>
 						if !vm.SealAvailable {
 							<p class="meta">Sealing is not available on this surface (this process holds no envelope).</p>
 						} else {
@@ -61,8 +52,17 @@ templ sourcesList(vm sourcesVM) {
 							</div>
 						}
 					</div>
-					<div class="actions"><button type="submit" class="btn primary">Add source</button></div>
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText())
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add source</button></div>
 				</form>
+				if vm.Form != nil {
+					<script>
+					exoModalOpen("sources-add");
+					var srcBad = document.querySelector('#sources-add input[aria-invalid="true"]');
+					if (srcBad) srcBad.focus();
+					</script>
+				}
+				@sourceFormJS()
 				<script>
 				(function () {
 					var loc = document.getElementById("src-location");
@@ -192,4 +192,100 @@ templ sourceReauthNotice(p page) {
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p>
 		</div>
 	}
+}
+
+// sourceFormJS is the add-source form's progressive enhancement, mirroring the
+// netgroup form: novalidate (the daemon is authoritative), submit intercepted
+// and POSTed with fetch — a 422 swaps the form fragment in place with the
+// server-rendered refusals (JS-off gets the same bytes as a full re-render),
+// anything else follows the redirect and its success flash. After a refusal a
+// field re-validates on blur and clears when right; the primary disables only
+// while submitting. The path/git toggle and the confirm-token panel are the
+// form's own script (above); this one owns validation and the submit wire.
+templ sourceFormJS() {
+	<script>
+	(function () {
+		function sourceFormWire() {
+			var form = document.getElementById("src-add-form");
+			if (!form || form.dataset.srcWired) return;
+			form.dataset.srcWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.remove("is-error");
+					meta.textContent = input.name === "name"
+						? "Letters, digits, dots, hyphens, underscores."
+						: "An absolute path, or a git@host / https://host clone URL.";
+				}
+			}
+
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rules the server holds to — a
+			// name shape refusal — on blur so a mistake surfaces before submit.
+			// Empty is left alone (that's a submit-time required check); the
+			// daemon stays authoritative on uniqueness, so submit still asks it.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				if (input.name === "name" && !/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) {
+					showError(input, "Names can't have spaces or special characters.");
+					return;
+				}
+				restoreMeta(input);
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("src-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("src-add-form");
+							form.dataset.srcRefused = "1";
+							sourceFormWire();
+							var bad = form.querySelector('input[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="location"]');
+				if (!input) return;
+				validateField(input);
+			}, true);
+		}
+		sourceFormWire();
+	})();
+	</script>
 }

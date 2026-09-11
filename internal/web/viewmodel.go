@@ -488,6 +488,65 @@ type sourcesVM struct {
 	// needs to seal the generated deploy key.
 	Operator      bool
 	SealAvailable bool
+	// Form is the add-source dialog's refusal state (the netgroup pattern):
+	// nil at rest, the filled form with field errors on a 422 re-render.
+	Form *sourceFormVM
+}
+
+// sourceFormVM is the add-source dialog's refusal state. ErrName and
+// ErrLocation hold the human sentences (the raw validator words go to the log
+// at the same call site); ErrForm is the whole-submit refusal for the status
+// line (a duplicate, a missing sealer). FirstInvalid names the control to
+// focus; Submitting drives the status line's "Adding" and disables the primary.
+type sourceFormVM struct {
+	Name         string
+	Location     string
+	Ref          string
+	ErrName      string
+	ErrLocation  string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *sourceFormVM) effective() sourceFormVM {
+	if f == nil {
+		return sourceFormVM{}
+	}
+	return *f
+}
+
+func (f *sourceFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *sourceFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// nameField and locationField build the reusable field's render state from the
+// form's current values and refusals, mirroring the netgroup panel's fieldInput
+// list.
+func (f *sourceFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "src-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "homelab", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *sourceFormVM) locationField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "src-location", Label: "Path or git URL", Name: "location", Value: v.Location,
+		Placeholder: "/abs/or/relative/path · git@host:org/repo.git · https://host/org/repo.git",
+		Help:        "An absolute path, or a git@host / https://host clone URL.",
+		ErrMsg:      v.ErrLocation, FirstInvalid: v.FirstInvalid == "location",
+	}
 }
 
 type schedulesVM struct {

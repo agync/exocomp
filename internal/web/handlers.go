@@ -189,18 +189,10 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.sources(r)
+	vm, err := s.sourcesVMFor(r, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
-	}
-	ident, _ := identityOf(r.Context())
-	vm := sourcesVM{
-		Page: s.pageFor(r, "Sources", "sources"), Sources: rows,
-		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
-	}
-	if vm.Operator {
-		vm.Page.Add = &pageAdd{Target: "sources-add", Label: "source"}
 	}
 	s.render(w, r, http.StatusOK, sourcesList(vm))
 }

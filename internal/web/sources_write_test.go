@@ -84,7 +84,7 @@ func TestSourceAddPathCreatesSource(t *testing.T) {
 	}
 }
 
-func TestSourceAddBadNameIs400(t *testing.T) {
+func TestSourceAddBadNameIs422(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -92,15 +92,45 @@ func TestSourceAddBadNameIs400(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	// A name outside the [A-Za-z0-9._-] rule (a space) is the operator's
-	// input error: 400 with the rule, never a 500 "internal error".
+	// input error: the dialog re-renders at 422 with the ▲ field refusal and
+	// the typed value kept — the netgroup pattern, never a 500 "internal
+	// error".
 	resp := postForm(t, client, ts.URL+"/sources/add",
 		url.Values{"name": {"Home Lab"}, "location": {"/srv/tree"}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad-name add = %d, want 400 (a validation error, not a 500)", resp.StatusCode)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad-name add = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`id="sources-add"`, // the dialog re-renders open
+		`value="Home Lab"`, // the typed value survives
+		`Use letters, digits, dots, hyphens, underscores.`, // the field's human copy
+		`aria-invalid="true"`,                              // on the invalid control
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("422 source-add missing %q", want)
+		}
 	}
 	if _, err := h.store.SourceByName(context.Background(), "Home Lab"); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("bad-name source must not be created (err=%v)", err)
+	}
+}
+
+func TestSourceAddEmptyLocationIs422(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/add",
+		url.Values{"name": {"homelab"}, "location": {""}}, nil)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty-location add = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `A path or git URL is required.`) {
+		t.Errorf("422 source-add missing the location refusal: %s", body)
 	}
 }
 
@@ -289,9 +319,14 @@ func TestSourceAddGitNoSealer503(t *testing.T) {
 
 	resp := postForm(t, client, ts.URL+"/sources/add",
 		url.Values{"name": {"infra"}, "location": {"git@example.com:infra.git"}, "confirm_token": {op}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusServiceUnavailable {
-		t.Fatalf("add git-looking location with nil Sealer = %d, want 503", resp.StatusCode)
+	body := readBody(t, resp)
+	// No sealer is a submit-time refusal, not a bare 503: the dialog
+	// re-renders at 422 with the status line naming it (values kept).
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("add git-looking location with nil Sealer = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "Sealing is not available on this surface") {
+		t.Errorf("no-sealer 422 missing the status-line refusal: %s", body)
 	}
 }
 

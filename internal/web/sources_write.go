@@ -50,40 +50,90 @@ type sourceGitResultVM struct {
 	PublicAuthorizedKey string
 }
 
+// The add-source dialog's human refusal copy (the netgroup pattern): the raw
+// validator words go to the log; the form's meta lines and status line carry
+// these sentences.
+const (
+	sourceNameRefusal     = "Use letters, digits, dots, hyphens, underscores."
+	sourceLocationRefusal = "A path or git URL is required."
+	sourceSubmitRefusal   = "Could not add the source — check the daemon log."
+)
+
+func sourceDuplicateRefusal(name string) string {
+	return "A source named " + name + " already exists."
+}
+
 // handleSourceAdd is the single "Add a source" entry point: it reads the one
 // "Path or git URL" field the form submits and routes on
 // source.LooksLikeGitURL, so the operator never has to pick a kind up front.
-// The guard, reauth, and sealer checks the git branch needs stay inside
-// addGitSource — a path add never touches them.
+// Field refusals re-render the dialog at 422 with the typed values kept (the
+// netgroup pattern): the daemon stays authoritative, the client rules only
+// shape the response. The guard, reauth, and sealer checks the git branch
+// needs stay inside addGitSource — a path add never touches them.
 func (s *Server) handleSourceAdd(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
 		return
 	}
 	name := r.PostFormValue("name")
+	location := strings.TrimSpace(r.PostFormValue("location"))
+	form := sourceFormVM{Name: name, Location: location, Ref: r.PostFormValue("ref")}
+
 	if err := naming.ValidateComponent("source", name); err != nil {
-		// A bad name is the operator's input, not an internal failure: 400
-		// with the naming rule, the same status the store's ErrValidation
-		// paths (checks/schedules) render.
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.log.Info("web: source add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrName = sourceNameRefusal
+		form.FirstInvalid = "name"
+		s.sourceRefusal(w, r, form)
 		return
 	}
-	location := strings.TrimSpace(r.PostFormValue("location"))
 	if location == "" {
-		http.Error(w, "path or git URL is required", http.StatusBadRequest)
+		s.log.Info("web: source add refused", "err", "empty location", "by", ident.token.Name)
+		form.ErrLocation = sourceLocationRefusal
+		form.FirstInvalid = "location"
+		s.sourceRefusal(w, r, form)
 		return
 	}
 	if source.LooksLikeGitURL(location) {
-		s.addGitSource(w, r, ident, name, location)
+		s.addGitSource(w, r, ident, name, location, form)
 		return
 	}
-	s.addPathSource(w, r, ident, name, location)
+	s.addPathSource(w, r, ident, name, location, form)
+}
+
+// sourceRefusal re-renders the sources surface at 422 with the add dialog
+// carrying its refusals — the JS-off path, and the fragment body a JS submit
+// swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) sourceRefusal(w http.ResponseWriter, r *http.Request, form sourceFormVM) {
+	vm, err := s.sourcesVMFor(r, &form)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, sourcesList(vm))
+}
+
+// sourcesVMFor builds the sources surface with the add dialog's refusal state.
+func (s *Server) sourcesVMFor(r *http.Request, form *sourceFormVM) (sourcesVM, error) {
+	rows, err := s.sources(r)
+	if err != nil {
+		return sourcesVM{}, err
+	}
+	ident, _ := identityOf(r.Context())
+	vm := sourcesVM{
+		Page: s.pageFor(r, "Sources", "sources"), Sources: rows,
+		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+		Form: form,
+	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "sources-add", Label: "source"}
+	}
+	return vm, nil
 }
 
 // addPathSource registers a plain path source: no secret material, so it is
 // operator-gated only (handleSourceAdd's writeGuard), like the source's other
 // non-sensitive edits.
-func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident identity, name, rawPath string) {
+func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident identity, name, rawPath string, form sourceFormVM) {
 	// An absolute path is cleaned as-is; a relative path is kept verbatim
 	// (cleaned) so it resolves against the data volume at run time, mirroring the
 	// CLI. Read/write is the writable checkbox, defaulting off (read-only).
@@ -93,10 +143,15 @@ func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident ide
 		Name: name, Kind: store.SourcePath, URI: uri, Writable: writable, Enabled: true,
 	}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
-			http.Error(w, "a source named "+name+" already exists", http.StatusConflict)
+			s.log.Info("web: source add refused", "err", err.Error(), "by", ident.token.Name)
+			form.ErrName = sourceDuplicateRefusal(name)
+			form.FirstInvalid = "name"
+			s.sourceRefusal(w, r, form)
 			return
 		}
-		s.fail(w, r, err)
+		s.log.Error("web: source add", "err", err.Error())
+		form.ErrForm = sourceSubmitRefusal
+		s.sourceRefusal(w, r, form)
 		return
 	}
 	s.log.Info("web: source add-path", "source", name, "writable", writable, "by", ident.token.Name)
@@ -107,23 +162,27 @@ func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident ide
 // (mirrors cmd/exocomp/source.go's `source add --url`), so it needs the
 // Sealer (nil -> 503) and reauth, the same shape as secrets add. The generated
 // public key is shown exactly once, inline, never redirected or logged.
-func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident identity, name, url string) {
+func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident identity, name, url string, form sourceFormVM) {
 	if s.sealer == nil {
-		http.Error(w, "sealing is not available on this surface", http.StatusServiceUnavailable)
+		s.log.Info("web: source add refused", "err", "no sealer", "by", ident.token.Name)
+		form.ErrForm = "Sealing is not available on this surface (this process holds no envelope)."
+		s.sourceRefusal(w, r, form)
 		return
 	}
 	if err := s.reauth(r); err != nil {
 		s.render(w, r, http.StatusOK, sourceReauthNotice(s.pageFor(r, "Sources", "sources")))
 		return
 	}
-	ref := r.PostFormValue("ref")
+	ref := form.Ref
 	if ref == "" {
 		ref = "main"
 	}
 
 	key, err := source.GenerateDeployKey(name)
 	if err != nil {
-		s.fail(w, r, err)
+		s.log.Error("web: source add-git", "err", err.Error())
+		form.ErrForm = sourceSubmitRefusal
+		s.sourceRefusal(w, r, form)
 		return
 	}
 	secretName := sourceDeployKeySecretName(name)
@@ -137,10 +196,15 @@ func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident iden
 		DeployKeySecret: secretName, Enabled: true,
 	}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
-			http.Error(w, "a source named "+name+" already exists", http.StatusConflict)
+			s.log.Info("web: source add refused", "err", err.Error(), "by", ident.token.Name)
+			form.ErrName = sourceDuplicateRefusal(name)
+			form.FirstInvalid = "name"
+			s.sourceRefusal(w, r, form)
 			return
 		}
-		s.fail(w, r, err)
+		s.log.Error("web: source add-git", "err", err.Error())
+		form.ErrForm = sourceSubmitRefusal
+		s.sourceRefusal(w, r, form)
 		return
 	}
 
@@ -149,7 +213,8 @@ func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident iden
 		if derr := s.store.DeleteSource(r.Context(), name); derr != nil {
 			s.log.Error("web: source add-git rollback failed", "source", name, "seal_err", err, "rollback_err", derr)
 		}
-		s.fail(w, r, err)
+		form.ErrForm = sourceSubmitRefusal
+		s.sourceRefusal(w, r, form)
 		return
 	}
 	if _, err := s.store.CreateSecret(r.Context(), store.SecretRow{
@@ -159,7 +224,8 @@ func (s *Server) addGitSource(w http.ResponseWriter, r *http.Request, ident iden
 		if derr := s.store.DeleteSource(r.Context(), name); derr != nil {
 			s.log.Error("web: source add-git rollback failed", "source", name, "store_err", err, "rollback_err", derr)
 		}
-		s.fail(w, r, err)
+		form.ErrForm = sourceSubmitRefusal
+		s.sourceRefusal(w, r, form)
 		return
 	}
 
