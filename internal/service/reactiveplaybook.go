@@ -95,5 +95,6 @@ func (s *Service) BuildPlaybookSpec(ctx context.Context, _ reactive.Event, rule 
 		Dir:         loc.Root,
 		DirReadOnly: loc.ReadOnly,
 		Source:      rule.Action.Source,
+		EgressPorts: rule.Action.Egress,
 	}, nil
 }

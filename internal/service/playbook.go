@@ -45,6 +45,10 @@ type PlaybookInput struct {
 	// is operator-gated at the calling face; the verb only carries it onto the
 	// spec and records the escalation. Off by default is normal tiering.
 	Privileged bool
+	// EgressPorts are extra outbound TCP ports this run may open on top of the
+	// ansible kind's built-in SSH port, for an inventory host on a nonstandard
+	// port. Empty is the default posture: no declaration, no widening.
+	EgressPorts []int
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -77,6 +81,7 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		Timeout:             in.Timeout,
 		RunnerName:          in.RunnerName,
 		Privileged:          in.Privileged,
+		EgressPorts:         in.EgressPorts,
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {
