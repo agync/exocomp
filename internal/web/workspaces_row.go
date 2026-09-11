@@ -22,7 +22,7 @@ func workspaceRowActions(wsr workspaceWriteRow) []rowAction {
 			})
 		}
 		acts = append(acts, rowAction{
-			Name: "Plan", Path: glyphPlan,
+			Name: "Plan", Path: glyphPlan, Label: "plan",
 			Form: "/workspaces/" + wsr.Name + "/plan",
 		})
 	} else {

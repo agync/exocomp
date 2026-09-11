@@ -11,7 +11,18 @@ package web
 templ rowActions(acts []rowAction) {
 	<div class="rowacts">
 		for _, a := range rowGlyphs(acts) {
-			if a.Form != "" && a.Confirm != "" {
+			if a.Label != "" {
+				if a.Form != "" {
+					<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+						for k, v := range a.Hidden {
+							<input type="hidden" name={ k } value={ v }/>
+						}
+						<button type="submit" class="raglyph-label" aria-label={ a.Name } title={ a.Name }>{ a.Label }</button>
+					</form>
+				} else {
+					<a class="raglyph-label" href={ templ.SafeURL(a.Href) } aria-label={ a.Name } title={ a.Name }>{ a.Label }</a>
+				}
+			} else if a.Form != "" && a.Confirm != "" {
 				<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form" data-confirm={ a.Confirm }>
 					for k, v := range a.Hidden {
 						<input type="hidden" name={ k } value={ v }/>

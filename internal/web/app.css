@@ -577,6 +577,17 @@ td.right, th.right { text-align: right; }
 tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 .raglyph:hover { background: var(--surface-control); color: var(--ink-100); }
 .raglyph:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--radius-chip); }
+/* A labeled row verb ("plan" on the workspaces list — SPEC §5 SCREENS 1c
+ * [apply] · plan · ▾): a text button that shares the glyph verbs' 34px slot,
+ * sitting between the apply glyph and the chevron so the fixed verbs keep
+ * their right-edge slots. */
+.raglyph-label {
+  height: 34px; padding: 0 10px; flex: none; text-decoration: none;
+  display: inline-flex; align-items: center;
+  background: transparent; color: var(--ink-500); border: 0;
+  font: 400 12.5px var(--font-mono); border-radius: 9px; cursor: pointer;
+}
+.raglyph-label:hover { background: var(--surface-control); color: var(--ink-100); }
 
 /* The chevron menu: a <details> whose summary is the chevron trigger. JS-off
  * it toggles the item list inline; with JS it becomes the floating menu. */
@@ -1727,7 +1738,7 @@ body { overflow-x: clip; }
 .events-row .evt-outcome.fail { color: var(--signal-fail); }
 .events-row .evt-reason { color: var(--ink-200); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .events-row .evt-reason a { color: var(--accent-text); }
-.events-row .evt-chev { font: var(--type-log); color: var(--ink-600); }
+.events-row .evt-chev { font-size: 12px; line-height: 1; color: var(--ink-400); width: 20px; text-align: center; flex: none; }
 /* The expand pane spans the grid below its row (the 8th grid item). */
 .events-row .evt-pane { grid-column: 1 / -1; }
 

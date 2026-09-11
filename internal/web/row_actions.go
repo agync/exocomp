@@ -28,6 +28,10 @@ type rowAction struct {
 	Href    string // non-empty: a plain link
 	Count   string // optional right-aligned mono count
 	Menu    bool   // force this action into the menu, never a row glyph
+	// Label makes the row verb a LABELED text button ("plan") instead of a
+	// glyph — the workspaces list renders Plan as a word per SPEC §5
+	// (SCREENS 1c [apply] · plan · ▾); a glyph-only row keeps Label empty.
+	Label string
 	// Danger places the item last, in --signal-fail, with "asks first".
 	Danger bool
 }
