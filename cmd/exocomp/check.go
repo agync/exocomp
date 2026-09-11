@@ -29,6 +29,7 @@ func newCheckCmd() *cobra.Command {
 	}
 	cmd.AddCommand(
 		newCheckAddCmd(),
+		newCheckUpdateCmd(),
 		newCheckListCmd(),
 		newCheckEnableCmd(),
 		newCheckDisableCmd(),
@@ -106,6 +107,80 @@ func newCheckAddCmd() *cobra.Command {
 	cmd.Flags().IntVar(&expect, "expect", 0, "http: required status (default: any 2xx/3xx)")
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("interval")
+	return cmd
+}
+
+// newCheckUpdateCmd re-points a stored check in place: targets replace the
+// stored set, interval replaces the cadence, kind stays whatever the row held.
+// Because check_state keys on (check_id, target_name), a re-point that keeps a
+// target's NAME preserves its state — the next sweep can flip the kept row and
+// emit a real transition, which is what rm+add (state cascaded away) never can.
+func newCheckUpdateCmd() *cobra.Command {
+	var (
+		interval time.Duration
+		targets  []string
+		kind     string
+	)
+
+	cmd := &cobra.Command{
+		Use:     "update <name> --target <name=spec> [--interval <duration>]",
+		Short:   "Re-point a probe check, keeping its state",
+		Example: "exocomp check update at-home --interval 5m --target laptop=192.168.1.50:22",
+		Long: "Replaces the check's targets (and optionally its interval) in place. " +
+			"The kind is not updatable: targets keep the stored kind's shape. " +
+			"A target whose NAME is kept across the update keeps its state row, so " +
+			"the sweep can flip it and emit a real transition; rm+add would cascade " +
+			"the state away.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if kind != "" {
+				return errors.New("check update: --kind is not updatable; the stored kind is kept")
+			}
+			if len(targets) == 0 {
+				return errors.New("check update: need at least one --target")
+			}
+
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			cur, err := st.GetCheck(cmd.Context(), name)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("check update: %q not found", name)
+				}
+				return err
+			}
+			parsed, err := store.ParseCheckTargets(cur.Kind, targets, false)
+			if err != nil {
+				return fmt.Errorf("check update: %w", err)
+			}
+			// A non-positive --interval means the flag was omitted; keep the
+			// stored cadence, the same sentinel convention as the timeout
+			// flags (a 0s probe interval is meaningless anyway).
+			intervalS := int64(interval.Seconds())
+			if intervalS <= 0 {
+				intervalS = cur.IntervalS
+			}
+
+			updated, err := st.UpdateCheck(cmd.Context(), name, parsed, intervalS)
+			if err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("check update: %q not found", name)
+				}
+				return validationError(err)
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s updated: %d target(s) every %s\n",
+				updated.Name, len(updated.Targets), store.CheckIntervalLabel(updated.IntervalS))
+			return err
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "", "not updatable; the stored kind is kept")
+	cmd.Flags().DurationVar(&interval, "interval", 0, "probe interval as a Go duration (e.g. 5m, 30s)")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=ip:port (tcp), name=ip (ping), or name=url (http); repeatable")
 	return cmd
 }
 

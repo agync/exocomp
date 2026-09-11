@@ -220,3 +220,83 @@ func TestCheckAddPingRefusedWhenBinaryMissing(t *testing.T) {
 		t.Errorf("refused ping check was written anyway: %+v", rows)
 	}
 }
+
+// TestCheckUpdateRoundTrip: `check update` re-points a stored check's targets
+// and interval in place, printing the new target count and interval, keeping
+// the kind. A re-point with the target NAME kept is what lets the sweep flip
+// the preserved state row and emit a real transition.
+func TestCheckUpdateRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m", "--target", "laptop=192.168.1.50:22"); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+
+	out, err := runCheckCmd(t, "check", "update", "at-home",
+		"--target", "laptop=127.0.0.1:2222", "--interval", "30s")
+	if err != nil {
+		t.Fatalf("check update: %v", err)
+	}
+	for _, want := range []string{"updated", "1 target", "30s"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("update output missing %q:\n%s", want, out)
+		}
+	}
+
+	rows := checks(t)
+	if len(rows) != 1 || rows[0].Kind != store.CheckTCP || rows[0].IntervalS != 30 ||
+		len(rows[0].Targets) != 1 || rows[0].Targets[0].Address != "127.0.0.1" || rows[0].Targets[0].Port != 2222 {
+		t.Fatalf("checks = %+v, want one tcp check re-pointed to 127.0.0.1:2222", rows)
+	}
+
+	// --interval omitted keeps the stored cadence (30s from the update above).
+	if _, err := runCheckCmd(t, "check", "update", "at-home",
+		"--target", "nas=192.168.1.60:22"); err != nil {
+		t.Fatalf("check update without --interval: %v", err)
+	}
+	if rows := checks(t); len(rows) != 1 || rows[0].IntervalS != 30 ||
+		len(rows[0].Targets) != 1 || rows[0].Targets[0].Name != "nas" {
+		t.Fatalf("checks after interval-kept update = %+v", rows)
+	}
+}
+
+// TestCheckUpdateRejectsBadInput: a refused update must neither change the
+// stored row nor write a row that can never probe — junk targets, a --kind
+// flag (kind is not updatable), a bad interval, and a missing check are all
+// refused loudly.
+func TestCheckUpdateRejectsBadInput(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:22"); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+
+	for _, args := range [][]string{
+		{"check", "update", "at-home", "--target", "no-equals"},
+		{"check", "update", "at-home", "--target", "a=127.0.0.1:70000"},
+		{"check", "update", "at-home", "--kind", "tcp", "--target", "a=127.0.0.1:22"},
+	} {
+		out, err := runCheckCmd(t, args...)
+		if err == nil {
+			t.Fatalf("check %v accepted, want a refusal:\n%s", args, out)
+		}
+	}
+
+	// The stored row is untouched after the refusals.
+	rows := checks(t)
+	if len(rows) != 1 || rows[0].IntervalS != 300 || len(rows[0].Targets) != 1 || rows[0].Targets[0].Port != 22 {
+		t.Fatalf("checks after refusals = %+v, want the original untouched", rows)
+	}
+
+	// A missing check reports not-found.
+	out, err := runCheckCmd(t, "check", "update", "nope",
+		"--target", "a=127.0.0.1:22", "--interval", "5m")
+	if err == nil {
+		t.Fatalf("update of a missing check succeeded:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("missing error = %v, want it to name the miss", err)
+	}
+}
