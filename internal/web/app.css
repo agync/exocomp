@@ -1613,9 +1613,6 @@ body { overflow-x: clip; }
 .funnel-ct.wait { color: var(--signal-wait); }
 .funnel-ct.fired { color: var(--ink-500); }
 .funnel-ct.fired.on { color: var(--accent-text); }
-.funnel-note {
-  margin-left: auto; font: var(--type-log); color: var(--ink-500);
-}
 .funnel-bar {
   display: flex; gap: 3px; height: 8px; border-radius: 4px; overflow: hidden;
 }
@@ -1678,17 +1675,24 @@ body { overflow-x: clip; }
 }
 
 /* ---- Events: tray table ----
- * Rows float in a padded tray like every list, but the grid carries the
- * design's column schema (RECEIVED · ALERT · SOURCE · RULE · OUTCOME · REASON ·
- * chevron) and each row toggles the inline two-pane below it. The whole row is
+ * Rows float in a padded tray like every list; the grid carries the design's
+ * column schema (RECEIVED · EVENT · SOURCE · MATCHED RULE · OUTCOME · REASON
+ * · ▸) and each row toggles the inline two-pane below it. The whole row is
  * focusable and the focus ring rings the full 44px cell. */
 .events-tray { padding: 6px; }
-/* Events rows (R11): the tray is now a stacked list, not a seven-column table —
- * each row is a button of two .line rows (alert · outcome · chevron over
- * source · rule and the received clock · age), whole row focusable. The old
- * table header is gone; the reason moved into the expand pane. */
+/* The tray grid (SPEC §1a, SCREENS 1a): one 44px line per event, columns
+ * 152px · 1.1fr · 84px · 150px · 96px · 1.5fr · 20px, gap 14. The OUTCOME
+ * cell is left-aligned in its 96px slot (never centered); the REASON cell is
+ * ink-200 (the design's "ink-300" — no such token exists), one line,
+ * ellipsis. The same DOM re-flows into the phone two-line form at ≤719px. */
+.events-head {
+  display: grid; grid-template-columns: 152px minmax(0,1.1fr) 84px 150px 96px minmax(0,1.5fr) 20px;
+  gap: 14px; align-items: center; height: 38px; padding: 8px 14px;
+  font: 600 10.5px var(--font-mono); letter-spacing: .8px; color: var(--ink-500);
+}
 .events-row {
-  display: flex; flex-direction: column; gap: 5px; padding: 11px 12px;
+  display: grid; grid-template-columns: 152px minmax(0,1.1fr) 84px 150px 96px minmax(0,1.5fr) 20px;
+  gap: 14px; align-items: center; min-height: 44px; padding: 11px 14px;
   margin-top: 2px; border-radius: var(--radius-row); cursor: pointer;
   font: var(--type-log); text-align: left; background: none; border: 0;
   width: 100%; color: inherit;
@@ -1699,35 +1703,24 @@ body { overflow-x: clip; }
   outline: var(--focus-ring); outline-offset: var(--focus-offset);
   position: relative; z-index: 1;
 }
-.events-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
-.events-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
-.events-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.events-row .line > :last-child { flex: none; }
-.evt-time { font: var(--type-log); color: var(--ink-500); }
-.evt-alert {
-  font: var(--type-log); color: var(--ink-100);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.evt-source { font: var(--type-log); color: var(--ink-500); }
-.evt-rule {
-  font: var(--type-log); color: var(--ink-400);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.evt-outcome {
-  display: inline-flex; align-items: center; gap: 6px;
+.events-row .evt-received { color: var(--ink-500); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.events-row .evt-alert { color: var(--ink-100); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-row .evt-source { color: var(--ink-500); white-space: nowrap; }
+.events-row .evt-rule { color: var(--ink-400); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-row .evt-outcome {
+  display: inline-flex; align-items: center; gap: 6px; justify-content: flex-start;
   font: var(--type-keyword); letter-spacing: .4px;
 }
-.evt-outcome.ignored { color: var(--ink-500); }
-.evt-outcome.matched { color: var(--ink-200); }
-.evt-outcome.wait { color: var(--signal-wait); }
-.evt-outcome.fired { color: var(--accent-text); }
-.evt-outcome.fail { color: var(--signal-fail); }
-.evt-reason {
-  font: var(--type-log); color: var(--ink-500); text-decoration: none;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-a.evt-reason { color: var(--accent-text); }
-.evt-chev { font: var(--type-log); color: var(--ink-600); justify-self: end; }
+.events-row .evt-outcome.ignored { color: var(--ink-500); }
+.events-row .evt-outcome.matched { color: var(--ink-200); }
+.events-row .evt-outcome.wait { color: var(--signal-wait); }
+.events-row .evt-outcome.fired { color: var(--accent-text); }
+.events-row .evt-outcome.fail { color: var(--signal-fail); }
+.events-row .evt-reason { color: var(--ink-200); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-row .evt-reason a { color: var(--accent-text); }
+.events-row .evt-chev { font: var(--type-log); color: var(--ink-600); }
+/* The expand pane spans the grid below its row (the 8th grid item). */
+.events-row .evt-pane { grid-column: 1 / -1; }
 
 /* ---- Events: expand pane ----
  * One row's pane stacks on the void: the reason line, the trace kicker + table,
@@ -1898,11 +1891,24 @@ a.evt-reason { color: var(--accent-text); }
   /* Pre-shipped row/stack contract (SPEC §4, inert until the Wave-2 lanes ship
    * their markup). */
   .jobs-head, .events-head { display: none; }
-  .jobs-row, .queue-row, .events-row { display: flex; flex-direction: column; gap: 5px; height: auto; padding: 11px 12px; }
-  .jobs-row .line, .queue-row .line, .events-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
-  .jobs-row .line + .line, .queue-row .line + .line, .events-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
-  .jobs-row .line > :first-child, .queue-row .line > :first-child, .events-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .jobs-row .line > :last-child, .queue-row .line > :last-child, .events-row .line > :last-child { flex: none; }
+  .jobs-row, .queue-row { display: flex; flex-direction: column; gap: 5px; height: auto; padding: 11px 12px; }
+  .jobs-row .line, .queue-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+  .jobs-row .line + .line, .queue-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+  .jobs-row .line > :first-child, .queue-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .jobs-row .line > :last-child, .queue-row .line > :last-child { flex: none; }
+  /* Events tray phone (SPEC 1a): the same seven grid cells re-flow into two
+   * lines — event · outcome · chevron over source · rule · received — one
+   * structure, not a second template. The reason column drops out of the row
+   * (the expand pane still carries it). */
+  .events-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; height: auto; padding: 11px 12px; }
+  .events-row .evt-alert { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .events-row .evt-outcome { flex: none; }
+  .events-row .evt-chev { flex: none; }
+  .events-row .evt-source, .events-row .evt-rule, .events-row .evt-received { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
+  .events-row .evt-rule::before { content: " · "; }
+  .events-row .evt-received { flex: none; margin-left: auto; white-space: nowrap; }
+  .events-row .evt-reason { display: none; }
+  .events-row .evt-pane { width: 100%; }
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   .queue-idle .idle-full { display: none; }
   .queue-idle code, .queue-row .verb { display: none; }

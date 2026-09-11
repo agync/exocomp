@@ -221,7 +221,6 @@ func TestEventsFunnel(t *testing.T) {
 		"<b>4</b><small>in</small>", "<b>2</b><small>ignored</small>",
 		"<b>1</b><small>matched</small>", "<b>1</b><small>fired</small>",
 		`aria-label="Alert funnel, last 24 hours"`,
-		"nothing ran without being on this page first",
 		"stale-alert",
 	} {
 		if !strings.Contains(page, want) {
@@ -262,7 +261,7 @@ func TestEventsFiredReason(t *testing.T) {
 		t.Fatalf("events status = %d", code)
 	}
 	for _, want := range []string{
-		fmt.Sprintf("job %d · succeeded · exit 0", job.ID),
+		fmt.Sprintf("job #%d · succeeded · exit 0", job.ID),
 		`href="/jobs/` + itoa(job.ID) + `"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -271,8 +270,8 @@ func TestEventsFiredReason(t *testing.T) {
 	}
 }
 
-// TestEventsGatedReason is the GATE for GATED enrichment: the reason names the
-// approval and its TTL, and links to it.
+// TestEventsGatedReason is the GATE for GATED enrichment: the reason reads
+// "awaiting approval" and links to the approval.
 func TestEventsGatedReason(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -295,7 +294,7 @@ func TestEventsGatedReason(t *testing.T) {
 		t.Fatalf("events status = %d", code)
 	}
 	for _, want := range []string{
-		fmt.Sprintf("awaiting approval %d · TTL 30m", approval.ID),
+		"awaiting approval",
 		`href="/approvals/` + itoa(approval.ID) + `"`,
 	} {
 		if !strings.Contains(page, want) {
@@ -305,7 +304,8 @@ func TestEventsGatedReason(t *testing.T) {
 }
 
 // TestEventsSuppressedReasons: the suppressed reason maps to the design copy
-// for a silence and a cooldown.
+// for a silence, a cooldown ("cooldown {d} left") and a duplicate ("duplicate
+// of #{id}").
 func TestEventsSuppressedReasons(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -323,6 +323,20 @@ func TestEventsSuppressedReasons(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateEvent cooldown: %v", err)
 	}
+	anchor, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"node_disk_82pct"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+	})
+	if err != nil {
+		t.Fatalf("CreateEvent anchor: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"node_disk_82pct"}`,
+		Outcome: store.OutcomeSuppressed,
+		Reason:  fmt.Sprintf("duplicate of event %d within 5m", anchor.ID),
+	}); err != nil {
+		t.Fatalf("CreateEvent duplicate: %v", err)
+	}
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -334,7 +348,8 @@ func TestEventsSuppressedReasons(t *testing.T) {
 	}
 	for _, want := range []string{
 		"swallowed · silence pve-02 · lifts 16:00",
-		"cooldown 6h · next eligible 14:22",
+		"cooldown 6h left",
+		"duplicate of #" + itoa(anchor.ID),
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("suppressed event missing %q", want)
@@ -682,7 +697,6 @@ func TestEventsFunnelGrid(t *testing.T) {
 		`class="funnel-ct matched"`, `class="funnel-ct wait"`,
 		`class="funnel-ct fired on"`,
 		`class="bar funnel-bar"`,
-		`class="funnel-note">nothing ran without being on this page first</p>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("funnel grid missing %q", want)
@@ -693,17 +707,19 @@ func TestEventsFunnelGrid(t *testing.T) {
 	}
 }
 
-// TestEventsRowLines is the GATE for R11's row restructure: each tray row is
-// two .line rows — alert + outcome + chevron, then source · rule + time · rel
-// ago — and the reason leaves the row entirely for the expand pane's
-// "reason · …" line (SPEC §2.5), keeping the chevron and data-index cursor.
-func TestEventsRowLines(t *testing.T) {
+// TestEventsTrayGrid is the GATE for the tray's 7-column single-line desktop
+// grid (SPEC §1a, SCREENS 1a): RECEIVED · EVENT · SOURCE · MATCHED RULE ·
+// OUTCOME · REASON · ▸ in one 44px row. The header carries the six labels,
+// the RECEIVED cell keeps "HH:MM:SS · Nm ago" in ONE cell, the reason renders
+// in the row with its link, and the phone re-flows the same DOM — never a
+// second template.
+func TestEventsTrayGrid(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	if _, err := h.store.CreateEvent(ctx, store.Event{
 		Source: "alertmanager", Normalized: `{"name":"disk_full"}`,
 		Outcome: store.OutcomeMatched, MatchedRule: "notify-on-failure",
-		Reason: "log only — rule has no action",
+		Reason: "notify only; no job",
 	}); err != nil {
 		t.Fatalf("CreateEvent: %v", err)
 	}
@@ -718,22 +734,82 @@ func TestEventsRowLines(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="events-row" role="button" tabindex="0" data-index="0"`,
-		`class="evt-alert">disk_full</span>`,
+		// The header names the six labelled columns; the chevron slot is bare.
+		`<span>RECEIVED</span><span>EVENT</span><span>SOURCE</span><span>MATCHED RULE</span><span>OUTCOME</span><span>REASON</span>`,
+		// The seven cells in grid order: received · alert · source · rule ·
+		// outcome · reason · chevron.
+		`<span class="evt-received"`,
+		`<span class="evt-alert">disk_full</span>`,
+		`<span class="evt-source">alertmanager</span>`,
+		`<span class="evt-rule">notify-on-failure</span>`,
 		`class="evt-outcome matched"`,
-		`class="evt-chev" aria-hidden="true">▸</span>`,
-		"alertmanager · notify-on-failure",
+		`<span class="evt-chev" aria-hidden="true">▸</span>`,
+		// The reason renders in the row (the "why" column), matched copy with
+		// the rule name.
+		`<span class="evt-reason">rule notify-on-failure · not yet run</span>`,
+		// The RECEIVED cell keeps clock · age in one cell.
 		" ago",
-		"reason · log only — rule has no action",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("row missing %q", want)
+			t.Errorf("tray grid missing %q", want)
 		}
 	}
-	if n := strings.Count(page, `<div class="line">`); n != 2 {
-		t.Errorf("row does not render exactly two .line rows, got %d", n)
+	// The RECEIVED cell is one cell: "HH:MM:SS · Nm ago" in a single span.
+	rec := strings.Index(page, `<span class="evt-received"`)
+	if rec < 0 {
+		t.Fatal("tray row received cell missing")
 	}
-	if strings.Contains(page, `class="evt-reason"`) {
-		t.Error("reason leaked into the row markup (R11: pane only)")
+	recEnd := strings.Index(page[rec:], "</span>")
+	one := page[rec : rec+recEnd+len("</span>")]
+	if strings.Count(one, "<span") != 1 {
+		t.Error("the RECEIVED cell must be a single span, not split across cells")
+	}
+	if !strings.Contains(one, " · ") || !strings.Contains(one, " ago") {
+		t.Error("the RECEIVED cell must read '{clock} · {rel} ago' in one cell")
+	}
+	// The reason stays answerable in the expand pane too (the phone re-flow
+	// drops the column, not the why).
+	if !strings.Contains(page, "reason · rule notify-on-failure · not yet run") {
+		t.Error("the expand pane lost its reason line")
+	}
+	// The old two-.line wrappers are gone: one structure, re-flowed.
+	if strings.Contains(page, `<div class="line">`) {
+		t.Error("the tray row must not carry the old .line wrappers")
+	}
+	// The desktop grid and the phone re-flow are CSS, not a second template.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, "grid-template-columns: 152px minmax(0,1.1fr) 84px 150px 96px minmax(0,1.5fr) 20px") {
+		t.Error("app.css missing the 7-column tray grid")
+	}
+}
+
+// TestEventsMatchedReason pins the matched REASON copy (SPEC §1a): a matched
+// event reads "rule {name} · not yet run", the rule name from the event row —
+// not the stored emission-time sentence.
+func TestEventsMatchedReason(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`,
+		Outcome: store.OutcomeMatched, MatchedRule: "onboard-node0",
+		Reason: "notify only; no job",
+	}); err != nil {
+		t.Fatalf("CreateEvent matched: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, "rule onboard-node0 · not yet run") {
+		t.Error("matched reason must read 'rule {name} · not yet run'")
+	}
+	if strings.Contains(page, "log only — rule has no action") {
+		t.Error("the old matched sentence must be gone")
 	}
 }
 

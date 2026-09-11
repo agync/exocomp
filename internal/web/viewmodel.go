@@ -1563,26 +1563,6 @@ func receivedClock(t, now time.Time) string {
 	return t.UTC().Format("Mon 15:04")
 }
 
-// compactDuration renders a duration the way a reason column reads a cooldown
-// or an approval TTL: "6h", "30m", "45s" — no trailing zero units.
-func compactDuration(d time.Duration) string {
-	if d < 0 {
-		d = -d
-	}
-	switch {
-	case d == 0:
-		return "0s"
-	case d >= time.Hour && d%time.Hour == 0:
-		return fmt.Sprintf("%dh", int64(d/time.Hour))
-	case d >= time.Minute && d%time.Minute == 0:
-		return fmt.Sprintf("%dm", int64(d/time.Minute))
-	case d >= time.Second && d%time.Second == 0:
-		return fmt.Sprintf("%ds", int64(d/time.Second))
-	default:
-		return d.String()
-	}
-}
-
 // decodeSteps reads a stored trace_json into the row's step list, the same
 // read the trace page makes. A malformed or absent trace yields nil so the
 // pane renders "No trace recorded" rather than failing the page.
@@ -1612,9 +1592,9 @@ func prettyJSON(raw string) string {
 }
 
 // enrichSuppressed maps a guardrail's stored reason to the design's reason
-// copy: a silence reads "swallowed · silence {scope} · lifts {t}", a cooldown
-// reads "cooldown {d} · next eligible {t}". A dedup or a daily cap keeps its
-// stored sentence.
+// copy (SPEC §1a): a silence reads "swallowed · silence {scope} · lifts {t}",
+// a cooldown reads "cooldown {d} left", a duplicate reads
+// "duplicate of #{id}". Anything else keeps its stored sentence.
 func enrichSuppressed(reason string) string {
 	if strings.HasPrefix(reason, "silenced: ") {
 		rest := reason[len("silenced: "):]
@@ -1629,7 +1609,18 @@ func enrichSuppressed(reason string) string {
 		return "swallowed · silence " + silenceName(scope) + " · lifts " + lifts
 	}
 	if strings.HasPrefix(reason, "cooldown ") {
-		return strings.Replace(reason, ", next eligible ", " · next eligible ", 1)
+		rest := reason[len("cooldown "):]
+		if i := strings.Index(rest, ","); i > 0 {
+			return "cooldown " + rest[:i] + " left"
+		}
+		return reason
+	}
+	if strings.HasPrefix(reason, "duplicate of event ") {
+		rest := reason[len("duplicate of event "):]
+		if i := strings.Index(rest, " "); i > 0 {
+			return "duplicate of #" + rest[:i]
+		}
+		return reason
 	}
 	return reason
 }

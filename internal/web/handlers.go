@@ -868,26 +868,26 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 }
 
 // enrichEventRow turns the stored one-line reason into the reason column's
-// copy. FIRED and GATED override the emission-time sentence with live facts:
-// the fired reason was "job {id} queued" but the operator is asking what the
-// job became; a gated event names the approval and its TTL. A suppressed
-// silence or cooldown maps to the design copy; ignored and matched are the
-// design's fixed sentences. Anything without a mapping keeps the stored
-// reason.
+// copy (SPEC §1a): FIRED and GATED override the emission-time sentence with
+// live facts — the fired reason reads "job #{id} · {state} · exit {n}", a
+// gated event reads "awaiting approval" and links to the approval; a
+// suppressed cooldown or duplicate maps to "cooldown {d} left" /
+// "duplicate of #{id}"; ignored reads "no rule matched" and a matched event
+// names its rule ("rule {name} · not yet run"). Anything without a mapping
+// keeps the stored reason.
 func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event) eventRow {
 	switch e.Outcome {
 	case store.OutcomeFired:
 		if e.JobID != nil {
 			if job, err := s.store.GetJob(ctx, *e.JobID); err == nil {
-				row.Reason = fmt.Sprintf("job %d · %s · exit %s", job.ID, job.State, exitOf(job))
+				row.Reason = fmt.Sprintf("job #%d · %s · exit %s", job.ID, job.State, exitOf(job))
 				row.ReasonLink = "/jobs/" + itoa64(job.ID)
 			}
 		}
 	case store.OutcomeGated:
 		if e.JobID != nil {
 			if approval, err := s.store.ApprovalByJob(ctx, *e.JobID); err == nil {
-				row.Reason = fmt.Sprintf("awaiting approval %d · TTL %s",
-					approval.ID, compactDuration(approval.ExpiresAt.Sub(approval.RequestedAt)))
+				row.Reason = "awaiting approval"
 				row.ReasonLink = "/approvals/" + itoa64(approval.ID)
 			}
 		}
@@ -896,7 +896,9 @@ func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event
 	case store.OutcomeIgnored:
 		row.Reason = "no rule matched"
 	case store.OutcomeMatched:
-		row.Reason = "log only — rule has no action"
+		if e.MatchedRule != "" {
+			row.Reason = "rule " + e.MatchedRule + " · not yet run"
+		}
 	}
 	return row
 }

@@ -45,7 +45,6 @@ templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
 			@funnelSeg("gated", gated)
 			@funnelSeg("fired", fired)
 		</div>
-		<p class="funnel-note">nothing ran without being on this page first</p>
 	</div>
 }
 
@@ -114,15 +113,18 @@ templ countCell(n int) {
 	<span class="count"><span class="full">{ commaCount(n) }</span><span class="k">{ compactCount(n) }</span></span>
 }
 
-// eventsTray is the stacked list of received alerts. Each row is a button of
-// two lines — the alert with its outcome and chevron, then source · rule and
-// the received clock · age — and the expand pane below it carries the reason,
-// the evaluation trace, then the normalized payload behind a button. The
-// reason never renders in the row itself (SPEC §2.5): it answers "why" only
-// once the operator opens the pane. The footer repeats the state and the
-// second reset (SPEC §1.4).
+// eventsTray is the stacked list of received alerts (SPEC §1a, SCREENS 1a).
+// On desktop each row is ONE 44px line in the seven-column grid RECEIVED ·
+// EVENT · SOURCE · MATCHED RULE · OUTCOME · REASON · ▸; the expand pane
+// below carries the evaluation trace and the normalized payload. The reason
+// (the "why") renders in the row itself with its link; the pane keeps the
+// same line so the phone re-flow (which drops the column) still answers why.
+// The footer repeats the state and the second reset (SPEC §1.4).
 templ eventsTray(vm eventsVM) {
 	<div class="card events-tray">
+		<div class="events-head" aria-hidden="true">
+			<span>RECEIVED</span><span>EVENT</span><span>SOURCE</span><span>MATCHED RULE</span><span>OUTCOME</span><span>REASON</span>
+		</div>
 		for i, e := range vm.Rows {
 			@eventTrayPair(i, e)
 		}
@@ -139,23 +141,30 @@ templ eventsTray(vm eventsVM) {
 	</p>
 }
 
-// eventTrayPair is one row button and its expand pane. The row keeps the
-// keyboard cursor index on data-index; the pane id is the aria-controls target
-// so j/k/↵/e and a click agree on what expanded.
+// eventTrayPair is one row button and its expand pane. The row is the seven
+// grid cells — received clock · age, alert, source, matched rule, the outcome
+// glyph + keyword (left-aligned in its 96px slot), the reason (with its link),
+// the chevron — and the pane spans the grid below. The row keeps the keyboard
+// cursor index on data-index; the pane id is the aria-controls target so
+// j/k/↵/e and a click agree on what expanded.
 templ eventTrayPair(i int, e eventRow) {
 	<div class="events-row" role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
-		<div class="line">
-			<span class="evt-alert">{ e.Name }</span>
-			<span class={ "evt-outcome", e.TokenClass() }>
-				<span class="evt-glyph" aria-hidden="true">{ e.TokenGlyph() }</span>
-				<span class="evt-word">{ e.TokenWord() }</span>
-			</span>
-			<span class="evt-chev" aria-hidden="true">▸</span>
-		</div>
-		<div class="line">
-			<span class="evt-source">{ e.Source } · { orDash(e.Rule) }</span>
-			<span class="evt-time">{ e.Received } · { e.Rel } ago</span>
-		</div>
+		<span class="evt-received" aria-hidden="true">{ e.Received } · { e.Rel } ago</span>
+		<span class="evt-alert">{ e.Name }</span>
+		<span class="evt-source">{ e.Source }</span>
+		<span class="evt-rule">{ orDash(e.Rule) }</span>
+		<span class={ "evt-outcome", e.TokenClass() }>
+			<span class="evt-glyph" aria-hidden="true">{ e.TokenGlyph() }</span>
+			<span class="evt-word">{ e.TokenWord() }</span>
+		</span>
+		<span class="evt-reason">
+			if e.ReasonLink != "" {
+				<a href={ templ.SafeURL(e.ReasonLink) }>{ e.Reason }</a>
+			} else {
+				{ e.Reason }
+			}
+		</span>
+		<span class="evt-chev" aria-hidden="true">▸</span>
 		<div class="evt-pane expanded" id={ "evt-pane-" + itoa64(e.ID) } hidden>
 			@eventReason(e)
 			<div class="pane-kicker kicker-accent pane-trace">EXPLAIN · RULE EVALUATION TRACE</div>
