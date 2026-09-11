@@ -455,6 +455,7 @@ td.right, th.right { text-align: right; }
    * pairs (Rotate/Remove, Plan/Apply) on one line even in a narrow column. */
   .card.tray td[data-label="Actions"] {
     display: flex; align-items: center; gap: 8px;
+    justify-content: flex-end;
     min-width: 170px; white-space: nowrap;
   }
   /* An attention row (a never-synced source, F5) tints and carries the wait
@@ -616,10 +617,16 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 }
 .target.down { box-shadow: inset 0 0 0 1px var(--fail-border); }
 .target .thead { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
-.target .thead .tend { margin-left: auto; font: var(--type-log); color: var(--ink-500); white-space: nowrap; }
 .target .tstate { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .target .tstate .meta { color: var(--ink-500); }
 .target .tstate .meta b { color: var(--ink-400); font-weight: 600; }
+/* Checks netgroup slot (SPEC §5.1): the tile's second line opens with the route
+ * glyph + "on {netgroup}" (a link → Netgroups) · age — location stays meta,
+ * never a chip. An unobserved tile explains itself in the same slot in wait. */
+.target .where { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 12px var(--font-mono); color: var(--ink-500); }
+.target .where svg { width: 13px; height: 13px; flex: none; }
+.target .where a { color: var(--ink-400); }
+.target .where .away { color: var(--signal-wait); }
 
 /* An unbounded mono value — a 70-char CEL expression, a long git URI or path —
  * wraps inside a capped column instead of forcing the whole wide table to scroll
@@ -689,7 +696,7 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .app.page-job .content-col > header { flex: none; }
 .app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; gap: var(--gap-card); }
 .app.page-job main > * { flex: none; }
-.app.page-job main > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.app.page-job main > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px; }
 .app.page-job main > .card.output > .output-head { flex: none; }
 .app.page-job main > .card.output > .logwrap2 { flex: 1; min-height: 0; }
 .app.page-job main > .card.output > .logwrap2 > #log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
@@ -733,7 +740,7 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .tray-table .row:hover { background: var(--surface-control); }
 .tray-table .row.applicable { background: var(--surface-row); }
 .tray-table .row.applicable:hover { background: var(--surface-row); }
-.tray-table .tt-col { min-height: 30px; color: var(--ink-500); font: var(--type-keyword); letter-spacing: .4px; }
+.tt-col { min-height: 30px; color: var(--ink-500); font: var(--type-keyword); letter-spacing: .4px; }
 .plans .row { grid-template-columns: 52px 70px 150px minmax(0,1fr) 150px 120px; }
 /* The CHANGES · VERDICT cell: counters in signal colour, the resource names,
  * a drift note, then the policy verdict (SPEC §2.2). */
@@ -745,8 +752,14 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .plans .cv .verdict.wait { color: var(--signal-wait); }
 .plans .cv .verdict.fail { color: var(--signal-fail); }
 .plans .cv .quiet { color: var(--ink-600); }
-.plans .pl-life { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
-.plans .pl-life .stale { color: var(--signal-wait); font: 400 11px var(--font-mono); white-space: nowrap; }
+/* Actions + lifecycle cells (SPEC §4): the ACTIONS cluster hugs the cell's
+ * right edge so the constant diff verb keeps the same x on every row; the
+ * stale note rides the LIFECYCLE cell beside the SAVED chip and never
+ * ellipsizes. */
+.tray-table .th-actions { text-align: right; }
+.tray-table .actions { display: flex; justify-content: flex-end; gap: 4px; }
+.tray-table .lifecycle { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.tray-table .lifecycle .stale { font: 400 11px var(--font-mono); color: var(--signal-wait); white-space: nowrap; }
 .n-add { color: var(--signal-ok); } .n-chg { color: var(--signal-wait); } .n-del { color: var(--signal-fail); }
 
 /* ---- Plan detail (SPEC §4, lift.css §diff) ----
@@ -1210,14 +1223,26 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 /* The log's scroll container is the box; the Tail button floats over its
  * bottom-right corner. */
 .logwrap2 { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
-/* Pin pill (T1): the follow state of the streaming log. */
-.pin { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 12px;
-       border-radius: 9px; font: var(--type-keyword); letter-spacing: .4px; }
+/* Pin chip (T1, SPEC §2): the one status word for the streaming log, a fixed
+ * slot (32px, min-width 208px = the longest state) so filter · wrap · Raw never
+ * shift. The server renders the initial data-state; JS only moves it between
+ * following/paused/complete/cut. complete swaps the breathing dot for the check
+ * glyph via the hidden attribute — no display rule fights [hidden]. */
+.pin {
+  display: inline-flex; align-items: center; gap: 7px;
+  height: 32px; min-width: 208px; box-sizing: border-box; padding: 0 12px;
+  border-radius: 9px; font: var(--type-keyword); letter-spacing: .4px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
 .pin .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.pin .n { font-weight: 400; }
 .pin[data-state="following"] { background: var(--accent-tint); color: var(--accent-text); }
 .pin[data-state="following"] .dot { animation: var(--breathe); }
 .pin[data-state="paused"] { background: var(--wait-tint); color: var(--signal-wait); }
-.pin[data-state="ended"] { background: var(--surface-control); color: var(--ink-500); font: var(--type-body); }
+.pin[data-state="complete"] { background: var(--surface-control); color: var(--ink-400); }
+.pin[data-state="complete"] .n { color: var(--ink-500); }
+.pin[data-state="complete"] svg { width: 13px; height: 13px; }
+.pin[data-state="cut"] { background: var(--wait-tint); color: var(--signal-wait); }
 /* Tail button: only rendered while paused. */
 .tail-btn { position: absolute; right: 22px; bottom: 16px; height: 34px; padding: 0 14px 0 12px;
             display: inline-flex; align-items: center; gap: 8px; border: 0;
@@ -1230,18 +1255,6 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * in the templ so the SSE rows carry it too; this rule is the desktop/fallback
  * twin for the same layout. */
 .log .line { display: grid; grid-template-columns: 70px 1fr; column-gap: 8px; }
-/* The Live tail toolbar: kicker on the left, search + raw-log glyph on the
- * right. Search uses the compact 30px height (the card-foot ladder), and the
- * raw-log button reuses the .raglyph icon-button shape (R4, one glyph set). */
-.logbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.logbar .kicker { margin: 0; }
-.logtools { display: flex; align-items: center; gap: 8px; }
-.logtools .logsearch { color: var(--ink-500); font: var(--type-body); }
-.logtools input[type="search"] {
-  min-height: 30px; padding: 0 10px; width: 180px;
-  border-radius: var(--radius-control); border: 1px solid var(--hairline);
-  background: var(--surface-control); color: var(--ink-100);
-}
 /* One event per line, its timestamp dimmed so the message carries the eye and a
  * repeated stamp does not dominate the wall of output. */
 .log .logln { display: block; padding: 1px 0; }
@@ -1513,29 +1526,27 @@ body { overflow-x: clip; }
 .verdict-band .bandverbs { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .verdict-band .bandverbs a { font: 500 13px var(--font-ui); }
 
-/* ---- Output card (2.3): the retuned log tail ----
- * The header carries the line meta, the ENDED pill, the filter input
- * (placeholder only, J6) and the wrap toggle; the log's state bands render in
- * the run's signal tint. */
-.outputbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-.outputtitle { font: var(--type-bar); color: var(--ink-100); }
-.outputmeta { font: var(--type-log); color: var(--ink-500); }
-/* The retuned Output head (R8): two control groups — title · line-meta, then
- * the filter · wrap pair — each its own flex row inside the .outputbar. The
- * phone block stacks them into two rows. */
-.output-head .controls { display: flex; align-items: center; gap: 8px; }
-.outputbar .logtools { display: flex; align-items: center; gap: 8px; }
-.outputbar .logtools input[type="search"] {
+/* ---- Output bar (SPEC §2/§3): the retuned log tail ----
+ * Bar = title · pin chip · meta, then the controls right. The chip is a fixed
+ * slot (32px, min-width 208px = the longest state) so filter · wrap · Raw never
+ * shift; the pin's server-set data-state is the one status word (the static
+ * ENDED pill is gone). The log's state bands render in the run's signal tint. */
+.output-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0 14px; }
+.output-bar .lead { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.output-bar .title { font: 500 13px var(--font-ui); color: var(--ink-200); }
+.output-bar .meta { font: 400 11px var(--font-mono); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.output-bar .controls { display: flex; align-items: center; gap: 8px; }
+.output-bar input[type="search"] {
   min-height: 30px; padding: 0 10px; width: 200px;
   border-radius: var(--radius-control); border: 1px solid var(--hairline);
   background: var(--surface-control); color: var(--ink-100);
 }
-.pill {
-  display: inline-flex; align-items: center;
-  padding: 3px 10px; border-radius: var(--radius-chip);
-  background: var(--surface-control); color: var(--ink-500);
-  font: var(--type-keyword); letter-spacing: .4px; text-transform: uppercase;
-}
+/* Raw ↗ verb (SPEC §3): a labelled 32px verb at the bar's right end — glyph
+ * 15px + Raw + ↗; phone keeps the glyph only. */
+.verb-raw { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; color: var(--ink-400); font: 400 11px var(--font-mono); text-decoration: none; }
+.verb-raw:hover { background: var(--surface-control); color: var(--ink-100); text-decoration: none; }
+.verb-raw svg { width: 15px; height: 15px; }
+.verb-raw .ext { color: var(--ink-500); }
 .logwrap {
   min-height: 30px; padding: 0 12px;
   border-radius: var(--radius-control); border: 1px solid var(--hairline);
@@ -1547,6 +1558,7 @@ body { overflow-x: clip; }
 .log .logband { display: block; padding: 2px 10px; margin: 2px 0; border-radius: var(--radius-chip); }
 .log .logband .ts { color: var(--ink-500); user-select: none; margin-right: 6px; }
 .log .logband.run { background: var(--accent-tint); color: var(--accent-text); }
+.log .logband.ok { background: var(--ok-tint); color: var(--signal-ok); }
 .log .logband.fail { background: color-mix(in srgb, var(--signal-fail) 8%, transparent); color: var(--signal-fail); }
 .log .logband.wait { background: color-mix(in srgb, var(--signal-wait) 8%, transparent); color: var(--signal-wait); }
 
@@ -1613,32 +1625,55 @@ body { overflow-x: clip; }
 .funnel-seg.gated { background: var(--signal-wait); }
 .funnel-seg.fired { background: var(--accent-fill); }
 
-/* ---- Events: filter chips ----
- * One pill per outcome and source split; the active chip wears the accent tint
- * (never colour alone — the label always reads). The keys hint sits right. */
-.filters {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+/* ---- Events: filter row (SPEC §1) ----
+ * One 34px line at ≥1100px: the SOURCE segmented switch (all · checks · alerts,
+ * exactly one on, all = reset — a scope, never accent), a 1px divider, then the
+ * OUTCOME chips in funnel order, all six always present. The active outcome
+ * chip is the only accent fill on the row and is its own clear (the trailing ×
+ * resets ?outcome=). The chips are scoped to .filters because the bare .chip
+ * is the repo's state pill used on many surfaces. */
+.filters { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; min-height: 34px; }
+.filters .group { display: flex; align-items: center; gap: 10px; }
+.filters .divider { width: 1px; height: 22px; background: var(--hairline-faint); }
+.filters .switch {
+  display: flex; height: 34px; padding: 3px; box-sizing: border-box; gap: 2px;
+  border-radius: var(--radius-control); background: var(--surface-tray);
 }
-.filter-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.filter-chip {
-  display: inline-flex; align-items: center;
-  height: 34px; padding: 0 13px; border-radius: 10px;
-  background: var(--surface-tray); color: var(--ink-400);
-  font: var(--type-log); text-decoration: none;
+.filters .switch a {
+  display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px;
+  border-radius: 8px; color: var(--ink-400); font: 400 13px var(--font-mono); text-decoration: none;
 }
-.filter-chip:hover { color: var(--ink-100); text-decoration: none; }
-.filter-chip.active {
-  background: var(--accent-tint); color: var(--accent-text);
+.filters .switch a:hover { background: var(--surface-control); color: var(--ink-100); }
+.filters .switch a[aria-pressed="true"] { background: var(--surface-control); color: var(--ink-100); font-weight: 500; }
+.filters .group--outcome { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.filters .chip {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px;
+  border-radius: var(--radius-control); background: var(--surface-tray); color: var(--ink-400);
+  font: 400 13px var(--font-mono); text-decoration: none;
 }
-.keys-hint {
-  margin-left: auto; height: 34px; display: inline-flex; align-items: center;
-  gap: 4px; padding: 0 13px; background: var(--surface-card);
-  border-radius: 10px; font: var(--type-log); color: var(--ink-500);
+.filters .chip:hover { background: var(--surface-control); color: var(--ink-100); }
+.filters .chip[aria-pressed="true"] { background: var(--accent-fill); color: var(--accent-on); font-weight: 500; padding-right: 8px; }
+.filters .chip[aria-pressed="true"] .count { color: rgba(255,255,255,.85); }
+.filters .chip[aria-pressed="true"] svg { width: 14px; height: 14px; }
+.filters .chip[aria-disabled="true"] { background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-faint); color: var(--ink-500); pointer-events: none; }
+.filters .count {
+  min-width: 22px; text-align: right; font-size: 11px; font-weight: 400; color: var(--ink-500);
+  font-variant-numeric: tabular-nums;
 }
-.keys-hint kbd {
-  font: 600 var(--type-log); color: var(--ink-400);
-  border: 1px solid var(--hairline); border-radius: 4px;
-  padding: 0 4px; background: var(--surface-control);
+.filters .switch a[aria-pressed="true"] .count { color: var(--ink-400); }
+/* The count cell carries the full twin and the compact k-form; the stylesheet
+ * shows the full form on desktop and the k-form on phone (both spans are in the
+ * DOM, identical below 1,000). */
+.filters .count .k { display: none; }
+/* The keys hint lives on the funnel card's meta line (SPEC §1.6), adding the
+ * o outcome cycle; hidden ≤719px. */
+.keys {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 400 11px var(--font-mono); color: var(--ink-500); white-space: nowrap;
+}
+.keys kbd {
+  font: inherit; color: var(--ink-400); background: var(--surface-control);
+  border-radius: 4px; padding: 1px 5px;
 }
 
 /* ---- Events: tray table ----
@@ -1740,6 +1775,46 @@ a.evt-reason { color: var(--accent-text); }
 .events-foot { margin-top: 12px; font: var(--type-log); color: var(--ink-500); }
 .events-empty { padding: 26px 30px; }
 
+/* ---- Rules: two-line row (SPEC §5.3) ----
+ * Grid 170 / 1fr / 110 / 80: RULE (name + enabled keyword) · WHEN · THEN ·
+ * LAST FIRED · ACTIONS. Line one of WHEN · THEN is the CEL expression, one
+ * line, ellipsis — it never wraps; line two is then + action + the guards as
+ * 20px surface-control words (the gate guard the wait tint — the one guard
+ * that stops the run). The explain glyph expands the full expression inline. */
+.rule-row {
+  display: grid; grid-template-columns: 170px minmax(0,1fr) 110px 80px;
+  gap: 16px; align-items: center; padding: 10px 14px; border-radius: var(--radius-control);
+}
+.rule-row .rule-id { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rule-row .rule-id .mono { font: 500 12.5px var(--font-mono); color: var(--ink-100); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-row .when-then { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.rule-row .expr { color: var(--ink-200); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font: 400 12.5px var(--font-mono); }
+.rule-row .then { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font: 400 12px var(--font-mono); color: var(--ink-500); }
+.rule-row .sep { color: var(--ink-600); }
+.rule-row .guard {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
+  border-radius: 6px; background: var(--surface-control); color: var(--ink-400);
+  font-variant-numeric: tabular-nums;
+}
+.rule-row .guard--gate { background: var(--wait-tint); color: var(--signal-wait); }
+.rule-row .fired { display: flex; gap: 6px; min-width: 0; font: 400 11px var(--font-mono); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rule-row .th-actions { text-align: right; }
+.rule-explain { position: relative; }
+.rule-explain summary {
+  width: 30px; height: 30px; margin-left: auto; list-style: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; cursor: pointer; color: var(--ink-500);
+}
+.rule-explain summary:hover { background: var(--surface-control); color: var(--ink-100); }
+.rule-explain summary svg { width: 16px; height: 16px; }
+.rule-explain .expr-full {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
+  min-width: 320px; max-width: min(560px, 80vw); margin: 0; padding: 12px 14px;
+  background: var(--surface-control); color: var(--ink-200);
+  border: 1px solid var(--hairline); border-radius: 11px;
+  font: var(--type-log); white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
 
 /* ---- Phone shell: one 719px breakpoint (SPEC §0, v0.9) ----
  * Everything at or below 719px is a phone. 720-1099 keeps the desktop layout
@@ -1821,7 +1896,7 @@ a.evt-reason { color: var(--accent-text); }
 
   /* Pre-shipped row/stack contract (SPEC §4, inert until the Wave-2 lanes ship
    * their markup). */
-  .keys-hint, .jobs-head, .events-head { display: none; }
+  .jobs-head, .events-head { display: none; }
   .jobs-row, .queue-row, .events-row { display: flex; flex-direction: column; gap: 5px; height: auto; padding: 11px 12px; }
   .jobs-row .line, .queue-row .line, .events-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
   .jobs-row .line + .line, .queue-row .line + .line, .events-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
@@ -1856,9 +1931,9 @@ a.evt-reason { color: var(--accent-text); }
 
   .output-head { flex-direction: column; align-items: stretch; gap: 8px; height: auto; padding: 8px 10px 2px; }
   .output-head .controls { display: flex; gap: 8px; }
-  .output-head input { flex: 1; width: auto; height: 40px; font-size: 12.5px; }
   .output-head .wrap { height: 40px; box-shadow: inset 0 0 0 1px var(--hairline); }
-  .output-head .ended { background: none; padding: 0; height: auto; }
+  .pin { min-width: 0; }
+  .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext { display: none; }
   .log{height:300px;white-space:pre; overflow:auto; font-size:12px; }
   .log .line { grid-template-columns: 60px 1fr; width: max-content; min-width: 100%; }
   .log.wrap .line { white-space: pre-wrap; width: auto; }
@@ -1868,6 +1943,13 @@ a.evt-reason { color: var(--accent-text); }
   .funnel .counts b { font: 600 24px/1 var(--font-mono); letter-spacing: -0.8px; display: block; }
   .funnel .counts small { font-size: 11px; color: var(--ink-500); }
   .funnel .bar { height: 6px; }
+  .funnel .keys, .filters .divider { display: none; }
+  .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 48px; padding: 4px; border-radius: 12px; width: 100%; }
+  .filters .switch a { height: auto; justify-content: center; border-radius: 9px; }
+  .filters .group--outcome { width: 100%; }
+  .filters .chips .chip { height: 44px; padding: 0 14px; border-radius: 11px; }
+  .filters .count { min-width: 0; }
+  .filters .count .full { display: none; }
   .chips { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
   .chips .chip { height: 36px; flex: none; font-size: 12.5px; }
   .events-row .expanded { border-radius: var(--radius-row); padding: 12px 14px; gap: 10px; }
