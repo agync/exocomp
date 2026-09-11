@@ -358,3 +358,54 @@ func (vm planDetailVM) RingClass() string {
 	}
 	return "ring-dim"
 }
+
+// IsNoOp reports a row the plan-detail page renders "unchanged": a no-op or
+// read action never shows an attribute grid or a changed count (SPEC §4.1).
+func (rc planResource) IsNoOp() bool {
+	return rc.Action == "no-op" || rc.Action == "read"
+}
+
+// ConfirmAttrs are the confirm dialog's attribute rows for one resource: the
+// first three changed attrs, the compact cap (SPEC §4.1).
+func (rc planResource) ConfirmAttrs() []planAttr {
+	all := rc.ChangedAttrs()
+	if len(all) <= 3 {
+		return all
+	}
+	return all[:3]
+}
+
+// ConfirmMore is how many changed attrs the cap hid, rendered as "N more →".
+func (rc planResource) ConfirmMore() int {
+	if rc.Changed() <= 3 {
+		return 0
+	}
+	return rc.Changed() - 3
+}
+
+// ObjectMeta is the object diff footer's count phrase "N of K keys changed".
+// The raw verb is the template's native details drawer; a redacted object
+// never reveals the minified pair the engine keeps on RawBefore/RawAfter —
+// the coarse redaction is resource-granular (invariant 4).
+func (at planAttr) ObjectMeta() string {
+	if at.Object == nil {
+		return ""
+	}
+	return fmt.Sprintf("%d of %d keys changed", at.Object.KeysChanged, at.Object.KeysTotal)
+}
+
+// SameValue is the expanded unchanged list's value cell: a scalar's display
+// value, an unchanged object as "1 block · N keys · unchanged" (or {} when
+// empty). A redacted resource shows the marker — the resource is opaque.
+func (at planAttr) SameValue() string {
+	if at.Redacted {
+		return redactedValue
+	}
+	if at.Shape == attrShapeObject {
+		if at.ObjectKeys == 0 {
+			return "{}"
+		}
+		return fmt.Sprintf("1 block · %d keys · unchanged", at.ObjectKeys)
+	}
+	return at.BeforeDisplay
+}

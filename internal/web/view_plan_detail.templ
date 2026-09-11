@@ -3,10 +3,10 @@ package web
 // planDetailPage is the plan-detail surface (SPEC §4): breadcrumb, one card
 // with the lifecycle chips and the +N ~N −N verdict, the structured diff from
 // the sealed plan (destroys first in their own fail block, then the
-// ACTION · RESOURCE · ATTRIBUTES rows with expandable old→new strikes, secret
-// values redacted), and the apply confirm dialog that repeats the diff and
-// asks. The footer verb and the header's apply glyph open the confirm; with JS
-// off, ?launch=1 renders it already open.
+// ACTION · RESOURCE · ATTRIBUTES rows with the §4.1 value shapes — inline
+// old→new, block, object — secret values redacted), and the apply confirm
+// dialog that repeats the diff and asks. The footer verb and the header's
+// apply glyph open the confirm; with JS off, ?launch=1 renders it already open.
 templ planDetailPage(vm planDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Workspace, Href: "/workspaces/" + vm.Workspace}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)})
@@ -72,40 +72,110 @@ templ planDetailPage(vm planDetailVM) {
 			@planConfirmDialog(vm)
 		}
 	}
+	<script>
+	(function () {
+		// The unchanged footer's show/hide verb flips the .show-same class on
+		// the SAME .attrs container that holds the .same-row list (SPEC §4.1).
+		var buttons = document.querySelectorAll("button[data-exo-same]");
+		for (var i = 0; i < buttons.length; i++) {
+			buttons[i].addEventListener("click", function () {
+				var attrs = this.closest(".attrs");
+				if (!attrs) return;
+				attrs.classList.toggle("show-same");
+				this.textContent = attrs.classList.contains("show-same") ? "hide" : "show";
+			});
+		}
+	})();
+	</script>
 }
 
 // diffRow is one resource of the plan diff: the ACTION keyword with its signal
-// dot, the resource address, and the "N changed · M same" count, expanding to
-// the attribute grid (SPEC §4). A changed attribute renders the old→new
-// strike — old in fail-strike on the fail tint, new in ok on the ok tint; an
-// unchanged remainder collapses to "N attributes unchanged". Secret-backed
-// values render the redaction marker, never the value, as on the phone.
+// dot, the resource address, and the count cell — the "N changed · M same"
+// row cell (changed count in wait) or the single word "unchanged" for a NO-OP
+// row (SPEC §4.1). A changed resource expands to its attribute grid: one grid
+// per attribute row (inline old→new, block, or object), the unchanged footer
+// with its show/hide disclosure. The loop renders the changed set ONLY — a
+// skipped attribute never renders, so no loop-body skip word exists (B1).
+// Secret-backed values render the redaction marker, never the value.
 templ diffRow(rc planResource, compact bool) {
 	<details class={ "diff-row", templ.KV("compact", compact) }>
 		<summary>
 			<span class={ "action", rc.ActionClass() }><span class="dot" aria-hidden="true"></span>{ rc.ActionWord() }</span>
 			<span class="addr">{ rc.Address }</span>
-			<span class="count">{ itoa(int64(rc.Changed())) } changed · { itoa(int64(rc.Same())) } same</span>
-		</summary>
-		<div class="attrs">
-			for _, at := range rc.Attrs {
-				if at.Same {
-					continue
+			<span class="count">
+				if rc.IsNoOp() {
+					<span class="unchanged">unchanged</span>
+				} else {
+					<span class="count-chg">{ itoa(int64(rc.Changed())) } changed</span> · { itoa(int64(rc.Same())) } same
 				}
-				<div class="row">
-					<span class="k">{ at.Name }</span>
-					if at.Redacted {
-						<span class="v redacted">[redacted · secret]</span>
-					} else {
-						<span class="v"><span class="old">{ at.Before }</span><span class="arrow" aria-hidden="true">→</span><span class="new">{ at.After }</span></span>
+			</span>
+		</summary>
+		if !rc.IsNoOp() {
+			<div class="attrs">
+				if compact {
+					for _, at := range rc.ConfirmAttrs() {
+						@attrRow(at)
+					}
+					if rc.ConfirmMore() > 0 {
+						<div class="more">{ itoa(int64(rc.ConfirmMore())) } more →</div>
+					}
+				} else {
+					for _, at := range rc.ChangedAttrs() {
+						@attrRow(at)
+					}
+					if rc.Same() > 0 {
+						<div class="same-row">
+							for _, at := range rc.UnchangedAttrs() {
+								<div class="attr">
+									<span class="k">{ at.Name }</span>
+									<div class="v">{ at.SameValue() }</div>
+								</div>
+							}
+						</div>
+						<div class="foot">
+							<span></span>
+							<span>{ itoa(int64(rc.Same())) } attributes unchanged · <button type="button" data-exo-same>show</button></span>
+						</div>
+					}
+				}
+			</div>
+		}
+	</details>
+}
+
+// attrRow is one attribute of the grid (SPEC §4.1): key in the 150px column,
+// the value cell in the rest. Inline shape renders the old→new pair with the
+// arrow; block renders two full-width − / + lines; object renders the indented
+// pre with the N of K keys changed · raw footer. A redacted value renders the
+// single marker — never the value, as on the phone.
+templ attrRow(at planAttr) {
+	<div class="attr">
+		<span class="k">{ at.Name }</span>
+		<div class="v">
+			if at.Shape == attrShapeObject && at.Object != nil {
+				<pre class="obj">&#123;
+					for _, ln := range at.Object.Lines {
+						<div class={ ln.Status }>{ ln.Indent }{ ln.Key } { ln.Value }</div>
+					}
+				&#125;</pre>
+				<div class="obj-meta"><span>{ at.ObjectMeta() }</span>
+					if !at.Redacted {
+						<span> · </span>
+						<details class="obj-raw"><summary>raw</summary><pre>{ at.Object.RawBefore }</pre><pre>{ at.Object.RawAfter }</pre></details>
 					}
 				</div>
-			}
-			if rc.Same() > 0 {
-				<div class="row unchanged">{ itoa(int64(rc.Same())) } attributes unchanged</div>
+			} else if at.Redacted {
+				<span class="redacted">{ at.BeforeDisplay }</span>
+			} else if at.Shape == attrShapeBlock {
+				<span class="block">
+					<span class="ln del"><span aria-hidden="true">−</span><span>{ at.BeforeDisplay }</span></span>
+					<span class="ln add"><span aria-hidden="true">+</span><span>{ at.AfterDisplay }</span></span>
+				</span>
+			} else {
+				<span class="old">{ at.BeforeDisplay }</span><span class="arrow" aria-hidden="true">→</span><span class="new">{ at.AfterDisplay }</span>
 			}
 		</div>
-	</details>
+	</div>
 }
 
 // planConfirmDialog is the apply/destroy ask (SPEC §4): a native <dialog> that
