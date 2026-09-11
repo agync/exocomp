@@ -4,8 +4,11 @@ package web
 // events into jobs, and the guardrails that bound them. Rules are
 // CLI-managed — mutation stays on `exocomp rule add|enable|disable|rm` — so
 // unlike sources/secrets/runners there are no write controls here at all, for
-// any token. The expression is shown verbatim so an operator sees exactly
-// what fires a job.
+// any token. Each rule is a two-line row (SPEC §5.3): line one the CEL
+// expression (one line, ellipsis — never wraps), line two `then` + the action
+// + the 20px guard words (egress / cooldown / gate in wait-tint); LAST FIRED
+// reads the rule_fire ledger; the explain glyph expands the full expression
+// inline (a client-side <details>, no route).
 templ rulesList(vm rulesVM) {
 	@layout(vm.Page) {
 		<div class="card span2 mt18 tray">
@@ -15,39 +18,52 @@ templ rulesList(vm rulesVM) {
 			if len(vm.Rules) == 0 {
 				<p class="meta">No rules registered — rules are written on the CLI.</p>
 			} else {
-				<div class="tablewrap stackable">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">Rule</th>
-								if vm.ShowEnabledColumn() {
-									<th scope="col">Enabled</th>
-								}
-								<th scope="col">Source</th>
-								<th scope="col">Action</th>
-								<th scope="col">Cooldown</th>
-								<th scope="col">Cap</th>
-								<th scope="col">Approval</th>
-								<th scope="col">Expression</th>
-							</tr>
-						</thead>
-						<tbody>
-							for _, rl := range vm.Rules {
-								<tr>
-									<td data-label="Rule">{ rl.Name }</td>
-									if vm.ShowEnabledColumn() {
-										<td data-label="Enabled">@enabledChip(rl.Enabled, true)</td>
+				<div class="rules-list">
+					<div class="rule-row tt-col">
+						<span>RULE</span>
+						<span>WHEN · THEN</span>
+						<span>LAST FIRED</span>
+						<span class="th-actions">ACTIONS</span>
+					</div>
+					for _, rl := range vm.Rules {
+						<div class="rule-row">
+							<div class="rule-id">
+								<span class="mono">{ rl.Name }</span>
+								@enabledChip(rl.Enabled, false)
+							</div>
+							<div class="when-then">
+								<div class="expr">{ rl.Expr }</div>
+								<div class="then">
+									<span>then</span>
+									<span class="mono">{ rl.Action }</span>
+									if rl.HasGuards() {
+										<span class="sep">·</span>
+										if rl.Egress != "" {
+											<span class="guard">{ rl.Egress }</span>
+										}
+										if rl.Cooldown != "" {
+											<span class="guard">{ rl.Cooldown }</span>
+										}
+										if rl.Gate != "" {
+											<span class="guard guard--gate">{ rl.Gate }</span>
+										}
 									}
-									<td class="mono" data-label="Source">{ rl.SourceFilter }</td>
-									<td class="mono wrap" data-label="Action">{ rl.Action }</td>
-									<td class="mono" data-label="Cooldown">{ rl.Cooldown }</td>
-									<td class="mono" data-label="Cap">{ rl.Cap }</td>
-									<td data-label="Approval">{ rl.Approval }</td>
-									<td class="mono wrap" data-label="Expression">{ rl.Expr }</td>
-								</tr>
-							}
-						</tbody>
-					</table>
+								</div>
+							</div>
+							<div class="fired">
+								<span class="mono">{ rl.LastFire }</span>
+								if rl.FireFact != "" {
+									<span class="mono">{ rl.FireFact }</span>
+								}
+							</div>
+							<details class="rule-explain">
+								<summary aria-label="Explain last evaluation" title="Explain last evaluation">
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphInfo }></path></svg>
+								</summary>
+								<div class="expr-full mono">{ rl.Expr }</div>
+							</details>
+						</div>
+					}
 				</div>
 			}
 		</div>

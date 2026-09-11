@@ -7,13 +7,16 @@ import (
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
 // seedRules registers a shell rule with a source filter and guardrails, a
 // playbook rule with a required approval, and a bare notify rule with no
 // filter, so the page renders every action shape and both guardrail edges
-// (the `rule list` labels included).
+// (the two-line row's guards, SPEC §5.3). It also fires the playbook rule
+// (job #1 · exit 0) and the notify rule (no job) into the rule_fire ledger, so
+// LAST FIRED reads both outcomes; the shell rule stays never-fired.
 func seedRules(t *testing.T, h *harness) {
 	t.Helper()
 	ctx := context.Background()
@@ -34,22 +37,55 @@ func seedRules(t *testing.T, h *harness) {
 		ActionKind:   store.ActionPlaybook,
 		Action: store.RuleAction{
 			Source: "infra", Playbook: "site.yml", Limit: "laptops",
+			Egress: []int{22, 443},
 		},
 		RequireApproval: true,
 	}); err != nil {
 		t.Fatalf("seed playbook rule: %v", err)
 	}
-	if _, err := h.store.CreateRule(ctx, store.NewRule{
+	pageMe, err := h.store.CreateRule(ctx, store.NewRule{
 		Name: "page-me", CELExpr: "true", ActionKind: store.ActionNotify,
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatalf("seed notify rule: %v", err)
+	}
+
+	// The playbook rule's fire names a real, settled job (exit 0).
+	job, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue fire job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+		t.Fatalf("start fire job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {
+		t.Fatalf("settle fire job: %v", err)
+	}
+	if err := h.store.SetJobExitCode(ctx, job.ID, 0); err != nil {
+		t.Fatalf("set fire job exit: %v", err)
+	}
+	converge, err := h.store.GetRule(ctx, "converge")
+	if err != nil {
+		t.Fatalf("get playbook rule: %v", err)
+	}
+	if _, err := h.store.RecordRuleFire(ctx, converge.ID, &job.ID, ""); err != nil {
+		t.Fatalf("record playbook fire: %v", err)
+	}
+	// The notify rule matched but produced no job.
+	if _, err := h.store.RecordRuleFire(ctx, pageMe.ID, nil, ""); err != nil {
+		t.Fatalf("record notify fire: %v", err)
 	}
 }
 
 // TestRulesSurfaceGated is the gate for the rules view: token-gated (no
-// session refused, session renders), shows every rule with the action and
-// guardrails `rule list` renders, and — rules stay CLI-managed — exposes no
-// write control to any session, operator included.
+// session refused, session renders), shows every rule as a two-line row (SPEC
+// §5.3) — line one the CEL expression (one line, ellipsis), line two `then` +
+// action + the 20px guard words (egress / cooldown / gate in wait-tint) — and
+// LAST FIRED from the rule_fire ledger. Rules stay CLI-managed: no write
+// control to any session, operator included.
 func TestRulesSurfaceGated(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -72,44 +108,56 @@ func TestRulesSurfaceGated(t *testing.T) {
 		t.Fatalf("/rules redirect = %q, want /login…", loc)
 	}
 
-	// Operator: the surface renders with every rule, its action, and the
-	// guardrails — and no write control of any kind.
+	// Operator: the surface renders every rule, its action phrase, the guards,
+	// the ledger's LAST FIRED — and no write control of any kind.
 	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	code, page := getBody(t, op, ts.URL+"/rules")
 	if code != http.StatusOK {
 		t.Fatalf("/rules with session = %d, want 200", code)
 	}
+	converge, err := h.store.GetRule(context.Background(), "converge")
+	if err != nil {
+		t.Fatalf("GetRule converge: %v", err)
+	}
+	fire, err := h.store.LastRuleFire(context.Background(), converge.ID)
+	if err != nil {
+		t.Fatalf("LastRuleFire: %v", err)
+	}
 	for _, want := range []string{
-		`scope="col"`, "All rules",
+		"All rules",
 		"restart-nginx", "converge", "page-me",
-		`<th scope="col">Rule</th>`,
-		`<th scope="col">Source</th>`, `<th scope="col">Action</th>`,
-		`<th scope="col">Cooldown</th>`, `<th scope="col">Cap</th>`,
-		`<th scope="col">Approval</th>`, `<th scope="col">Expression</th>`,
-		"alertmanager", "check", "any",
+		"RULE", "WHEN · THEN", "LAST FIRED",
+		`class="th-actions"`,
 		"shell systemctl restart nginx",
-		"playbook infra site.yml (limit laptops)",
-		"notify",
-		"30m0s", "5", "-", "required",
+		"playbook infra/site.yml",
+		"log only · no action, no guards",
+		"cooldown 30m",
+		"egress 22, 443",
+		"gate approval · TTL 30m",
+		`class="guard guard--gate">gate approval · TTL 30m`,
 		`event.labels.severity == &#34;critical&#34;`,
 		`event.labels.netgroup == &#34;home&#34;`,
+		`aria-label="Explain last evaluation"`,
+		fire.Ts.Local().Format("15:04:05"),
+		"job #" + itoa64(jobOf(t, h)) + " · exit 0",
+		"matched · no job",
 		`href="/rules" aria-current="page"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/rules (operator) missing %q", want)
 		}
 	}
+	// The ENABLED/DISABLED keyword names every rule's posture (SPEC §5.3) —
+	// the new two-line row supersedes the F12 column-hiding for rules.
+	for _, want := range []string{
+		`<span class="chip ok"><span class="dot"></span>ENABLED</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/rules missing %q", want)
+		}
+	}
 	if strings.Contains(page, "<form") || strings.Contains(page, `method="post"`) {
 		t.Error("/rules (operator) must expose no mutation form")
-	}
-	// The default ENABLED chip is hidden (F12) — the column header carries the
-	// default; only a divergent DISABLED would chip. With every rule enabled,
-	// the whole column (header + cells) is dropped (W17).
-	if strings.Contains(page, `<span class="chip ok"><span class="dot"></span>ENABLED</span>`) {
-		t.Error("/rules still renders the default ENABLED chip (F12)")
-	}
-	if strings.Contains(page, `<th scope="col">Enabled</th>`) {
-		t.Error("/rules still renders the ENABLED column with all rows enabled (W17)")
 	}
 
 	// Readonly: renders identically, still no write control.
@@ -124,6 +172,19 @@ func TestRulesSurfaceGated(t *testing.T) {
 	if strings.Contains(page, "<form") || strings.Contains(page, `method="post"`) {
 		t.Error("/rules (readonly) must expose no mutation form")
 	}
+}
+
+// jobOf returns the seeded fire job's id — the first (only) job on the row.
+func jobOf(t *testing.T, h *harness) int64 {
+	t.Helper()
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) == 0 {
+		t.Fatal("no seeded fire job")
+	}
+	return jobs[0].ID
 }
 
 // TestRulesNavElsewhere: the Rules nav item appears on other pages too, so it

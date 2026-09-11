@@ -6,6 +6,12 @@ package web
 // shape language; the checks template renders it, never the row actions.
 const glyphRoute = "M6 8.2v7.6M18 9.2c0 4.8-5.5 4.3-9.3 6.9"
 
+// glyphInfo is the rules row's explain affordance (SPEC §5.3): a lowercase i
+// in a circle — the "explain last evaluation" glyph that expands the full CEL
+// expression inline. The designer's set has no explain verb, so it is drawn to
+// the same stroke contract (24 viewBox, stroke 1.8, round caps).
+const glyphInfo = "M12 4a8 8 0 1 1 0 0zM12 9v6M12 5.5v2"
+
 // scheduleRowActions is the v0.6 row-action set for one schedule: Disable or
 // Enable as the verb glyph (the state toggles), with Open (the spec modal) and
 // Remove (confirmed, last) in the chevron menu. "Run now" is deferred — a
