@@ -271,6 +271,10 @@ templ outputCard(vm jobDetailVM) {
 			<span class="controls">
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
 				<button type="button" class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>
+				<button type="button" class="verb-tail" id="log-tail" hidden>
+					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphTail }></path></svg>
+					<span class="word">Tail</span><small id="log-tail-n">+0</small>
+				</button>
 				<a class="verb-raw" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" title="Raw log — plain text, opens in a new tab">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={ glyphDocument }></path></svg>
 					<span class="word">Raw</span><span class="ext">↗</span>
@@ -287,10 +291,6 @@ templ outputCard(vm jobDetailVM) {
 					}
 				}
 			</div>
-			<button type="button" class="tail-btn" id="log-tail" hidden>
-				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphTail }></path></svg>
-				Tail <small id="log-tail-n">+0</small>
-			</button>
 		</div>
 	</div>
 	<script>

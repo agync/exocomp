@@ -1052,6 +1052,76 @@ func TestJobDetailOutputHeadRows(t *testing.T) {
 	}
 }
 
+// TestJobDetailTailInToolbar is the QA delta for Tail: the Tail +N verb lives
+// in the Output toolbar's right group BETWEEN wrap and Raw ↗ — never a
+// floating button over the log box. It renders hidden (the JS reveals it when
+// the operator scrolls up) and the streaming JS still re-points at the same
+// ids, now toolbar-anchored. The .tail-btn rule (position:absolute over the
+// log) is retired.
+func TestJobDetailTailInToolbar(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// Terminal page: the verb renders in the bar, hidden, before Raw.
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	wrap := strings.Index(body, `class="logwrap wrap" id="logwrap"`)
+	tail := strings.Index(body, `class="verb-tail" id="log-tail"`)
+	raw := strings.Index(body, `class="verb-raw"`)
+	if wrap < 0 || tail < 0 || raw < 0 || tail <= wrap || raw <= tail {
+		t.Error("the Tail verb must sit between wrap and Raw in the Output toolbar")
+	}
+	for _, want := range []string{
+		`class="verb-tail" id="log-tail" hidden`,
+		`<span class="word">Tail</span><small id="log-tail-n">+0</small>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("toolbar Tail verb missing %q", want)
+		}
+	}
+	if strings.Contains(body, "tail-btn") {
+		t.Error("the floating .tail-btn button must be gone from the page")
+	}
+	// The log box is a plain child of the card — no button inside it.
+	logOpen := strings.Index(body, `<div id="log" class="log"`)
+	logClose := strings.Index(body[logOpen:], "</div>")
+	if logClose >= 0 && strings.Contains(body[logOpen:logOpen+logClose], "verb-tail") {
+		t.Error("the Tail verb must not render inside the log box")
+	}
+
+	// Live page: the streaming JS re-points at the toolbar verb by id.
+	live := seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	_, liveBody := getBody(t, client, ts.URL+"/jobs/"+itoa64(live.ID))
+	if !strings.Contains(liveBody, `id="log-pin" data-state="following"`) {
+		t.Error("the live page must render the pin following")
+	}
+	if !strings.Contains(liveBody, `var tailBtn = document.getElementById("log-tail")`) {
+		t.Error("the streaming JS must re-point at the toolbar Tail verb")
+	}
+
+	// CSS: the Tail verb is a 32px labelled toolbar verb; the absolute
+	// floating rule and the relative log wrapper are retired.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".verb-tail {") {
+		t.Error("app.css missing the .verb-tail toolbar verb")
+	}
+	if strings.Contains(app, ".tail-btn") {
+		t.Error("app.css still carries the floating .tail-btn rule")
+	}
+	if strings.Contains(app, ".logwrap2 { position: relative") {
+		t.Error("the log wrapper must not anchor a floating button")
+	}
+	// Phone keeps it usable: the word drops, the glyph and the +N stay.
+	if !strings.Contains(app, ".verb-tail .word { display: none; }") {
+		t.Error("the phone block must drop the Tail word (glyph + N)")
+	}
+}
+
 // TestJobDetailPinStates is the pin's server-set data-state (§2): complete on
 // a terminal page whose event list carries a terminal band, cut on a terminal
 // page without one (an interrupted runner), following on a live page — and a

@@ -1227,9 +1227,8 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   border-radius: var(--radius-chip); padding: 12px 14px; margin: 0;
   max-height: 60vh; overflow: auto; white-space: pre-wrap; color: var(--ink-200);
 }
-/* The log's scroll container is the box; the Tail button floats over its
- * bottom-right corner. */
-.logwrap2 { position: relative; display: flex; flex-direction: column; min-height: 0; flex: 1; }
+/* The log's scroll container is the box itself — nothing floats over it. */
+.logwrap2 { display: flex; flex-direction: column; min-height: 0; flex: 1; }
 /* Pin chip (T1, SPEC §2): the one status word for the streaming log, a fixed
  * slot (32px, min-width 208px = the longest state) so filter · wrap · Raw never
  * shift. The server renders the initial data-state; JS only moves it between
@@ -1250,13 +1249,16 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .pin[data-state="complete"] .n { color: var(--ink-500); }
 .pin[data-state="complete"] svg { width: 13px; height: 13px; }
 .pin[data-state="cut"] { background: var(--wait-tint); color: var(--signal-wait); }
-/* Tail button: only rendered while paused. */
-.tail-btn { position: absolute; right: 22px; bottom: 16px; height: 34px; padding: 0 14px 0 12px;
-            display: inline-flex; align-items: center; gap: 8px; border: 0;
-            border-radius: var(--radius-control); background: var(--accent-fill); color: var(--accent-on);
-            font: var(--type-button); cursor: pointer; }
-.tail-btn:hover { filter: brightness(1.08); }
-.tail-btn small { font: 400 11px var(--font-mono); opacity: .85; }
+/* Tail verb (SPEC §2, copy.txt): a labelled 32px toolbar verb in the Output
+ * bar's right group, BEFORE Raw. The server renders it hidden; the streaming
+ * JS reveals it only while the operator is scrolled up (paused), so the log
+ * box never wears a floating button. [hidden] is explicit because the author
+ * display rule would otherwise beat the UA's hidden handling. */
+.verb-tail { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; color: var(--ink-400); font: 400 11px var(--font-mono); cursor: pointer; background: none; border: 0; }
+.verb-tail[hidden] { display: none; }
+.verb-tail:hover { background: var(--surface-control); color: var(--ink-100); }
+.verb-tail svg { width: 15px; height: 15px; }
+.verb-tail small { font: 400 11px var(--font-mono); opacity: .85; }
 /* One log line: a fixed HH:MM:SS clock column (70px) with an 8px gap to the
  * message (SPEC §3, lift.css 70px/1fr + gap 0 8px) — the line grid is inlined
  * in the templ so the SSE rows carry it too; this rule is the desktop/fallback
@@ -1952,7 +1954,7 @@ body { overflow-x: clip; }
   .output-head .controls { display: flex; gap: 8px; }
   .output-head .wrap { height: 40px; box-shadow: inset 0 0 0 1px var(--hairline); }
   .pin { min-width: 0; }
-  .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext { display: none; }
+  .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext, .verb-tail .word { display: none; }
   .log{height:300px;white-space:pre; overflow:auto; font-size:12px; }
   .log .line { grid-template-columns: 60px 1fr; width: max-content; min-width: 100%; }
   .log.wrap .line { white-space: pre-wrap; width: auto; }
