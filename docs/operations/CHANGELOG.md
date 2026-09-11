@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the destroy apply verb
+
+- **`tofu destroy` is now a live verb, not a render-only affordance.** A
+  workspace's resources can be torn down through the one queue, exactly like a
+  plan or an apply: `POST /api/v1/workspaces/{name}/destroy` (operator bearer),
+  the browser's `Destroy` verb on the workspace detail page (its confirm dialog
+  repeats "Destroys — no undo" and requires the hidden `confirmed=1` field, the
+  same guard every destructive form carries), and `exocomp workspace destroy
+  <name>` locally or with `--remote`. The enqueued row records `tofu destroy
+  -auto-approve` against the workspace's concurrency key, so a destroy never
+  races a plan or an apply. A destroy has no plan for a policy to read, so it is
+  a plain enqueue — never gated, and refused outright without confirmation on
+  the browser face.
+
 ## 2026-09-12 — per-run ssh identity read grant
 
 - **A sandboxed ansible run can load an ssh identity key stored outside the source
