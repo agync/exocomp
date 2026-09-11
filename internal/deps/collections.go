@@ -25,6 +25,55 @@ const galaxyBinaryName = "ansible-galaxy"
 // rebuilt rather than trusted (the venv plane's readyMarker, mirrored).
 const galaxyReadyMarker = ".exocomp-galaxy-ready"
 
+// Galaxy cache layout. The resolver's HOME must never be a granted path: nono
+// keeps its own protected state root under $HOME (the same rule jobDir in the
+// executor documents) and refuses to launch when a grant would let the
+// sandboxed process reach it. So the galaxy cache root is split into an
+// ungranted HOME and granted children that cover exactly what ansible-galaxy
+// writes.
+
+// galaxyCacheHomeSubdir is the resolver's HOME directory under the galaxy
+// cache root. It is created for the resolver but never granted.
+const galaxyCacheHomeSubdir = "home"
+
+// galaxyAnsibleSubdir is the ANSIBLE_HOME directory under the resolver's HOME,
+// granted read+write: ansible-galaxy's GALAXY_CACHE_DIR and DEFAULT_LOCAL_TMP
+// both default under it (ANSIBLE_HOME defaults to ~/.ansible), so this one
+// directory covers every write the resolver makes — the collections half of
+// the uv-cache grant, and the same ~/.ansible the ansible run driver grants.
+const galaxyAnsibleSubdir = ".ansible"
+
+// galaxyTmpSubdir is the resolver's TMPDIR under the galaxy cache root,
+// granted read+write so a library that falls back to gettempdir() lands on a
+// path the sandbox allows instead of nono's write-only /tmp.
+const galaxyTmpSubdir = "tmp"
+
+// GalaxyHome is the resolver's HOME under a galaxy cache root. It is created
+// by the daemon and deliberately never granted.
+func GalaxyHome(cacheRoot string) string {
+	return filepath.Join(cacheRoot, galaxyCacheHomeSubdir)
+}
+
+// GalaxyAnsibleHome is the ANSIBLE_HOME directory under a galaxy cache root's
+// HOME: the granted write path that carries galaxy's download and temp caches.
+func GalaxyAnsibleHome(cacheRoot string) string {
+	return filepath.Join(GalaxyHome(cacheRoot), galaxyAnsibleSubdir)
+}
+
+// GalaxyTmpDir is the resolver's TMPDIR under a galaxy cache root, granted
+// read+write.
+func GalaxyTmpDir(cacheRoot string) string {
+	return filepath.Join(cacheRoot, galaxyTmpSubdir)
+}
+
+// GalaxyCacheGrants are the write paths a resolver needs under a galaxy cache
+// root: ANSIBLE_HOME and TMPDIR. The resolver's HOME itself is never among
+// them — a grant on HOME would cover nono's protected state root under it and
+// be refused at launch.
+func GalaxyCacheGrants(cacheRoot string) []string {
+	return []string{GalaxyAnsibleHome(cacheRoot), GalaxyTmpDir(cacheRoot)}
+}
+
 // CollectionsSpec describes the collections to ensure for one source's galaxy
 // manifest.
 type CollectionsSpec struct {
@@ -50,10 +99,14 @@ type CollectionsSpec struct {
 	// directly, which the hermetic unit tests and a host with no sandbox both
 	// rely on.
 	Sandbox SandboxLauncher
-	// GalaxyCacheDir, when set, is exported as HOME and TMPDIR so galaxy's
-	// download/temp cache lands on a granted, backed-up path instead of the
-	// daemon's home — which the sandbox does not grant. Empty leaves galaxy's
-	// defaults (the daemon's home), for a host with no sandbox.
+	// GalaxyCacheDir, when set, is the galaxy cache root: the resolver's HOME
+	// and TMPDIR are redirected under it — HOME onto a child directory that is
+	// deliberately not granted (nono keeps its own state under $HOME and
+	// refuses a grant that reaches it), ANSIBLE_HOME and TMPDIR onto granted
+	// children — so galaxy's download/temp cache lands on a granted,
+	// backed-up path instead of the daemon's home, which the sandbox does not
+	// grant. Empty leaves galaxy's defaults (the daemon's home), for a host
+	// with no sandbox.
 	GalaxyCacheDir string
 	// KeepN is the newest-N retention window PruneCollections applies to this
 	// source's other collections dirs after a successful provision (the dir
@@ -138,11 +191,15 @@ func provisionCollections(ctx context.Context, spec CollectionsSpec, dir string)
 	// Same rationale as VenvSpec.UVCacheDir: under the sandbox tier a Landlock
 	// write grant attaches only to a path that already exists, and galaxy's own
 	// mkdir of its download/temp tree would need write on the ungranted parent
-	// cache tree. Create the granted cache dir here in the daemon so galaxy
-	// fills its subtree.
+	// cache tree. Create the granted cache dirs here in the daemon so galaxy
+	// fills their subtrees, along with its ungranted HOME (GalaxyHome) so the
+	// resolver never has to create it.
 	if spec.GalaxyCacheDir != "" {
-		if err := os.MkdirAll(spec.GalaxyCacheDir, 0o700); err != nil {
-			return fmt.Errorf("deps: galaxy cache dir: %w", err)
+		dirs := append([]string{GalaxyHome(spec.GalaxyCacheDir)}, GalaxyCacheGrants(spec.GalaxyCacheDir)...)
+		for _, d := range dirs {
+			if err := os.MkdirAll(d, 0o700); err != nil {
+				return fmt.Errorf("deps: galaxy cache dir: %w", err)
+			}
 		}
 	}
 	// A leftover partial from an earlier failed attempt must not confuse galaxy.
@@ -193,17 +250,24 @@ func runGalaxy(ctx context.Context, galaxy string, spec CollectionsSpec, dir str
 }
 
 // galaxyEnv is the resolver environment: the daemon's environment with HOME
-// and TMPDIR redirected onto the granted galaxy cache dir, so galaxy's
-// download/temp cache lands on a path the sandbox grants instead of the
-// daemon's home. The redirect replaces existing entries rather than appending:
-// getenv returns the first match, so a late duplicate would be inert.
+// redirected onto the galaxy cache root's ungranted home directory, and
+// ANSIBLE_HOME and TMPDIR redirected onto the granted children under it. HOME
+// stays ungranted because nono keeps its own state under $HOME and refuses a
+// grant that reaches it; ANSIBLE_HOME and TMPDIR are the paths ansible-galaxy
+// actually writes, and the profile grants exactly those. The redirects replace
+// existing entries rather than appending: getenv returns the first match, so a
+// late duplicate would be inert.
 func galaxyEnv(cacheDir string) []string {
 	env := os.Environ()
 	if cacheDir == "" {
 		return env
 	}
-	redirect := map[string]string{"HOME": cacheDir, "TMPDIR": cacheDir}
-	out := make([]string, 0, len(env)+2)
+	redirect := map[string]string{
+		"HOME":         GalaxyHome(cacheDir),
+		"ANSIBLE_HOME": GalaxyAnsibleHome(cacheDir),
+		"TMPDIR":       GalaxyTmpDir(cacheDir),
+	}
+	out := make([]string, 0, len(env)+3)
 	for _, kv := range env {
 		name, _, ok := strings.Cut(kv, "=")
 		if ok && redirect[name] != "" {
@@ -211,8 +275,8 @@ func galaxyEnv(cacheDir string) []string {
 		}
 		out = append(out, kv)
 	}
-	for _, name := range []string{"HOME", "TMPDIR"} {
-		out = append(out, name+"="+cacheDir)
+	for _, name := range []string{"HOME", "ANSIBLE_HOME", "TMPDIR"} {
+		out = append(out, name+"="+redirect[name])
 	}
 	return out
 }

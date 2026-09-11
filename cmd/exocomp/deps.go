@@ -26,11 +26,14 @@ const uvCacheSubdir = "uv-cache"
 // PATH, or a per-source venv's sibling when the run resolved one.
 const galaxyTool = "ansible-galaxy"
 
-// galaxyCacheSubdir is galaxy's download/temp cache, under the collections
-// cache root so it is backed up with the collections it seeds. It is a granted
-// write path under the resolver sandbox; galaxy's default cache lives under
-// the daemon home, which the sandbox does not grant.
-const galaxyCacheSubdir = ".galaxy-cache"
+// galaxyCacheDir is galaxy's download/temp cache root under the data dir, a
+// sibling of the collections cache root rather than a child of it. It is a
+// granted write path under the resolver sandbox; galaxy's default cache lives
+// under the daemon home, which the sandbox does not grant. Keeping it out of
+// cache/collections stops it being mistaken for a per-source collections dir,
+// and the resolver's HOME inside it stays ungranted — nono refuses a grant
+// that would reach its own state root under a granted HOME.
+const galaxyCacheDir = "cache/galaxy"
 
 // resolveProjectVenv resolves the per-source uv venv a playbook run executes
 // inside (ADR 0011). It discovers the project's Python manifest from the
@@ -128,7 +131,7 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	// galaxy that actually executes is granted — the venv's sibling when one
 	// was resolved, the image's otherwise (ADR 0015).
 	if sandboxed(ctx) {
-		galaxyCache := filepath.Join(cacheRoot, galaxyCacheSubdir)
+		galaxyCache := filepath.Join(dataDir, galaxyCacheDir)
 		read := []string{manifest.Root}
 		if spec.GalaxyBinary != "" {
 			read = append(read, executor.ToolGrants(spec.GalaxyBinary)...)
@@ -140,7 +143,7 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 			DataDir:    dataDir,
 			VenvDir:    filepath.Join(cacheRoot, source),
 			ReadPaths:  read,
-			WritePaths: []string{galaxyCache},
+			WritePaths: deps.GalaxyCacheGrants(galaxyCache),
 		})
 	}
 	return deps.EnsureCollections(ctx, spec)

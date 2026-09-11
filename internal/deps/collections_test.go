@@ -22,7 +22,7 @@ func fakeGalaxy(t *testing.T, counter, envfile string) string {
 	path := filepath.Join(dir, "ansible-galaxy")
 	script := `#!/bin/sh
 echo "$@" >> "` + counter + `"
-{ echo "HOME=$HOME"; echo "TMPDIR=$TMPDIR"; echo "PWD=$PWD"; } > "` + envfile + `"
+{ echo "HOME=$HOME"; echo "ANSIBLE_HOME=$ANSIBLE_HOME"; echo "TMPDIR=$TMPDIR"; echo "PWD=$PWD"; } > "` + envfile + `"
 for a in "$@"; do target="$a"; done
 mkdir -p "$target/ansible_collections/community/general" || exit 1
 exit 0
@@ -202,11 +202,13 @@ func TestEnsureCollectionsOfflineFlag(t *testing.T) {
 	}
 }
 
-// TestEnsureCollectionsRedirectsHomeAndTmpdir: the granted GalaxyCacheDir is
-// pre-created before ansible-galaxy runs (a Landlock write grant attaches only
-// to an existing path), and galaxy's HOME and TMPDIR are redirected onto it so
-// its download/temp cache lands where the sandbox grants instead of the
-// daemon's home.
+// TestEnsureCollectionsRedirectsHomeAndTmpdir: the granted galaxy cache dirs
+// are pre-created before ansible-galaxy runs (a Landlock write grant attaches
+// only to an existing path), galaxy's HOME is redirected onto the cache root's
+// ungranted home directory, and its ANSIBLE_HOME and TMPDIR are redirected
+// onto the granted children — so its download/temp cache lands where the
+// sandbox grants instead of the daemon's home, while the HOME nono keeps its
+// state under stays outside every grant.
 func TestEnsureCollectionsRedirectsHomeAndTmpdir(t *testing.T) {
 	cache := t.TempDir()
 	project := t.TempDir()
@@ -223,20 +225,68 @@ func TestEnsureCollectionsRedirectsHomeAndTmpdir(t *testing.T) {
 	if _, err := EnsureCollections(context.Background(), spec); err != nil {
 		t.Fatalf("EnsureCollections: %v", err)
 	}
-	if fi, err := os.Stat(galaxyCache); err != nil || !fi.IsDir() {
-		t.Fatalf("GalaxyCacheDir not pre-created before ansible-galaxy ran: %v", err)
+	for _, d := range []string{
+		GalaxyHome(galaxyCache),
+		GalaxyAnsibleHome(galaxyCache),
+		GalaxyTmpDir(galaxyCache),
+	} {
+		if fi, err := os.Stat(d); err != nil || !fi.IsDir() {
+			t.Fatalf("galaxy cache dir %s not pre-created before ansible-galaxy ran: %v", d, err)
+		}
 	}
 	body, err := os.ReadFile(envfile)
 	if err != nil {
 		t.Fatalf("read galaxy env: %v", err)
 	}
 	env := string(body)
-	if !strings.Contains(env, "HOME="+galaxyCache) {
-		t.Errorf("HOME not redirected onto GalaxyCacheDir:\n%s", env)
+	if !strings.Contains(env, "HOME="+GalaxyHome(galaxyCache)) {
+		t.Errorf("HOME not redirected onto the ungranted galaxy home:\n%s", env)
 	}
-	if !strings.Contains(env, "TMPDIR="+galaxyCache) {
-		t.Errorf("TMPDIR not redirected onto GalaxyCacheDir:\n%s", env)
+	if !strings.Contains(env, "ANSIBLE_HOME="+GalaxyAnsibleHome(galaxyCache)) {
+		t.Errorf("ANSIBLE_HOME not redirected onto the granted galaxy home child:\n%s", env)
 	}
+	if !strings.Contains(env, "TMPDIR="+GalaxyTmpDir(galaxyCache)) {
+		t.Errorf("TMPDIR not redirected onto the granted galaxy tmp:\n%s", env)
+	}
+}
+
+// TestGalaxyCacheGrantsNeverCoverResolverHome is the guard behind the galaxy
+// cache layout: the resolver's HOME is deliberately never granted, because
+// nono keeps its protected state roots under $HOME and refuses to launch when
+// a grant would let the sandboxed process reach them. Every grant a galaxy
+// cache root produces must stay clear of both state-root shapes nono
+// protects.
+func TestGalaxyCacheGrantsNeverCoverResolverHome(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "cache", "galaxy")
+	home := GalaxyHome(root)
+	for _, stateRoot := range []string{
+		filepath.Join(home, ".local", "state", "nono"),
+		filepath.Join(home, ".nono"),
+	} {
+		for _, grant := range GalaxyCacheGrants(root) {
+			if coversDir(grant, stateRoot) {
+				t.Errorf("grant %q covers nono state root %q", grant, stateRoot)
+			}
+		}
+	}
+	// The strongest form: no grant is the HOME itself or an ancestor of it.
+	for _, grant := range GalaxyCacheGrants(root) {
+		if coversDir(grant, home) {
+			t.Errorf("grant %q covers the resolver HOME %q", grant, home)
+		}
+	}
+}
+
+// coversDir reports whether a grant on dir reaches path recursively — the
+// semantics nono gives every path grant, and executor.covers (package-private
+// there) — so the guard test asserts the same relationship the launcher would
+// refuse.
+func coversDir(dir, path string) bool {
+	dir, path = filepath.Clean(dir), filepath.Clean(path)
+	if dir == path {
+		return true
+	}
+	return strings.HasPrefix(path, dir+string(filepath.Separator))
 }
 
 // TestEnsureCollectionsPrunesStaleSiblings: a successful provision self-bounds

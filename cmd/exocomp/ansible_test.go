@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -343,5 +344,61 @@ func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
 	}
 	if !strings.Contains(launcher, "--read "+venvBin) {
 		t.Errorf("resolver profile does not read-grant the venv bin dir:\n%s", launcher)
+	}
+}
+
+// TestResolveSourceCollectionsSandboxProvisionsWithoutOverlappingNonoState is
+// the live-bug regression: the collections resolver granted its galaxy cache
+// dir write and redirected the resolver's HOME onto it, and nono refused to
+// launch because the recursive grant covered its own protected state root
+// under the granted HOME ("Refusing to grant ... overlaps protected nono
+// state root .../.galaxy-cache/.local/state/nono"). A resolve that never
+// reaches ansible-galaxy under the enforcing tier is the bug; this test
+// requires the provision to succeed, which only happens when the launcher
+// started and the fake galaxy ran confined. A real nono is required — a fake
+// launcher cannot reproduce a refusal only the launcher itself makes.
+func TestResolveSourceCollectionsSandboxProvisionsWithoutOverlappingNonoState(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
+	if _, err := exec.LookPath(executor.NonoBinary); err != nil {
+		t.Skipf("%s not on PATH", executor.NonoBinary)
+	}
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.once.Do(func() {})
+
+	binDir := t.TempDir()
+	fakeGalaxyBinary(t, binDir, filepath.Join(t.TempDir(), "galaxy-invocations"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	project := t.TempDir()
+	writeFile(t, filepath.Join(project, "requirements.yml"), "collections:\n  - community.sops\n")
+	play := filepath.Join(project, "site.yml")
+	dataDir := t.TempDir()
+
+	c, err := resolveSourceCollections(context.Background(), dataDir, play)
+	if err != nil {
+		t.Fatalf("resolve under the enforcing tier failed: %v", err)
+	}
+	if !c.Created {
+		t.Fatal("expected a fresh collections provision through the resolver sandbox")
+	}
+	if _, statErr := os.Stat(filepath.Join(c.Dir, ".exocomp-galaxy-ready")); statErr != nil {
+		t.Fatalf("provisioned collections dir missing its ready marker: %v", statErr)
+	}
+	// The resolver HOME must never be granted: nono keeps its protected state
+	// root under $HOME and a grant covering it would refuse the launch above.
+	// The galaxy cache root's home and its granted children are created for
+	// the resolver by the daemon.
+	for _, d := range []string{
+		filepath.Join(dataDir, "cache", "galaxy", "home"),
+		filepath.Join(dataDir, "cache", "galaxy", "home", ".ansible"),
+		filepath.Join(dataDir, "cache", "galaxy", "tmp"),
+	} {
+		if fi, statErr := os.Stat(d); statErr != nil || !fi.IsDir() {
+			t.Errorf("galaxy cache dir %s not pre-created: %v", d, statErr)
+		}
 	}
 }
