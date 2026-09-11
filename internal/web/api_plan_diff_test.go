@@ -228,6 +228,44 @@ func TestAPIApprovalPlanBeforeAfter(t *testing.T) {
 	}
 }
 
+// TestAPIApprovalPlanNoOpDropped: classifyPlan now KEEPS no-op/read rows (the
+// plan-detail page renders them unchanged), so the wire projection drops them
+// IN the bucket loop — a no-op would otherwise land in `changes` and corrupt
+// LineCount. The /api/v1 plan view never shows a resource the operator is not
+// asked to approve. Mutation check: drop the in-loop filter and this goes red.
+func TestAPIApprovalPlanNoOpDropped(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	const planJSON = `{"resource_changes":[
+		{"address":"null_resource.idle","change":{"actions":["no-op"],"before":{"a":1},"after":{"a":1}}},
+		{"address":"null_resource.pub","change":{"actions":["create"],"after":{"region":"eu-west-1"}}}
+	]}`
+	approval := h.sealedPlanApproval(t, planJSON)
+	path := "/api/v1/approvals/" + itoa64(approval.ID) + "/plan"
+
+	op := h.mint(t, "op", "operator")
+	code, _, body := bearerGet(t, ts.URL, path, op)
+	if code != http.StatusOK {
+		t.Fatalf("operator plan status = %d, want 200 (%s)", code, body)
+	}
+	var v wire.ApprovalPlanView
+	decodeData(t, body, &v)
+	if len(v.Creates) != 1 || v.Creates[0].Address != "null_resource.pub" {
+		t.Fatalf("creates = %+v, want only the created resource", v.Creates)
+	}
+	if len(v.Changes) != 0 || len(v.Destroys) != 0 {
+		t.Fatalf("no-op leaked into changes/destroys: changes=%+v destroys=%+v", v.Changes, v.Destroys)
+	}
+	if v.LineCount != 1 {
+		t.Fatalf("line_count = %d, want 1 (the no-op must not count)", v.LineCount)
+	}
+	if strings.Contains(body, "null_resource.idle") {
+		t.Fatalf("no-op address leaked into the wire view: %s", body)
+	}
+}
+
 // TestAPIApprovalPlanNoPlan proves an approval with no plan artifact is a 404,
 // not an empty success — matching what the web path shows when there is nothing
 // to render.

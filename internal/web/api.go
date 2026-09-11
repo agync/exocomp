@@ -589,6 +589,13 @@ func (s *Server) apiApprovalPlan(w http.ResponseWriter, r *http.Request) {
 	}
 	rows := make([]wire.PlanResourceView, 0, len(resources))
 	for _, rc := range resources {
+		// classifyPlan keeps no-op/read rows for the plan-detail page; the
+		// /api/v1 plan view drops them IN the bucket loop, before
+		// NewApprovalPlanView, so they never land in `changes` or corrupt
+		// LineCount.
+		if rc.Action == "no-op" || rc.Action == "read" {
+			continue
+		}
 		row := wire.PlanResourceView{Address: rc.Address, Action: rc.Action, Redacted: rc.Redacted}
 		for _, at := range rc.Attrs {
 			row.Attrs = append(row.Attrs, wire.PlanAttrView{Name: at.Name, Before: at.Before, Value: at.After, Redacted: at.Redacted})
