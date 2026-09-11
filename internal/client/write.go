@@ -158,6 +158,10 @@ type PlaybookRequest struct {
 	// should enforce as a per-job cgroup cap, mirroring the local --runner
 	// flag. Empty is the default, uncapped path.
 	Runner string `json:"runner,omitempty"`
+	// EgressPorts are the outbound TCP ports the daemon should grant the run on
+	// top of the ansible kind's SSH port 22, for an inventory host on a
+	// nonstandard port. Empty is the default posture: no widening.
+	EgressPorts []int `json:"egress_ports,omitempty"`
 	// IdempotencyKey travels as a header, not a body field.
 	IdempotencyKey string `json:"-"`
 }

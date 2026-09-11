@@ -47,6 +47,7 @@ func newRunCmd() *cobra.Command {
 		timeout      time.Duration
 		wait         bool
 		privileged   bool
+		egress       []string
 	)
 	cmd := &cobra.Command{
 		Use:   "run <source> <playbook>",
@@ -59,6 +60,10 @@ func newRunCmd() *cobra.Command {
 			"source checkout.",
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			egressPorts, err := parseEgressPorts(egress)
+			if err != nil {
+				return err
+			}
 			if privileged {
 				warnPrivileged(cmd.ErrOrStderr())
 			}
@@ -72,6 +77,7 @@ func newRunCmd() *cobra.Command {
 				timeout:      timeout,
 				wait:         wait,
 				privileged:   privileged,
+				egressPorts:  egressPorts,
 			})
 		},
 	}
@@ -88,6 +94,8 @@ func newRunCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")
 	cmd.Flags().BoolVar(&privileged, "privileged", false,
 		"run the play step UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
+	cmd.Flags().StringSliceVar(&egress, "egress", nil,
+		"grant the play step outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
 
 	cmd.AddCommand(newRunStatusCmd())
 	return cmd
@@ -132,6 +140,10 @@ type runSpec struct {
 	// privileged runs the play step unsandboxed (the disabled tier). Only the
 	// play carries it; the hook and gate steps keep the daemon's tier.
 	privileged bool
+	// egressPorts are the extra outbound TCP ports the play step's sandboxed
+	// run may open on top of the kind's SSH port 22, validated at the flag
+	// parse.
+	egressPorts []int
 }
 
 // runWithHooks resolves a source's hooks + gate and composes them with the main
@@ -243,6 +255,7 @@ func composeRunSteps(root string, readOnly bool, playbook, invPath, invName stri
 			TolerateUnreachable: rs.tolerateUnreachable,
 			RunnerName:          rs.runnerName,
 			Privileged:          rs.privileged,
+			EgressPorts:         rs.egressPorts,
 			Timeout:             rs.timeout,
 		},
 	})

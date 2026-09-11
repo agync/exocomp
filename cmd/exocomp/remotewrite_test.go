@@ -279,6 +279,36 @@ func TestRemotePlaybookRunCarriesRunner(t *testing.T) {
 	}
 }
 
+// TestRemotePlaybookRunCarriesEgressPorts: --egress on a remote playbook run
+// travels in the request body as egress_ports, so the daemon grants the same
+// ports a local run would — a security-posture flag must never go silent on
+// the wire.
+func TestRemotePlaybookRunCarriesEgressPorts(t *testing.T) {
+	stub := &writeAPIStub{}
+	pinnedRemote(t, stub.handler(t))
+
+	out, _, err := runRoot(t, []string{
+		"--remote", "box", "playbook", "run", "site.yml", "--source", "demo",
+		"--no-follow", "--egress", "2222",
+	})
+	if err != nil {
+		t.Fatalf("remote playbook run: %v", err)
+	}
+	if strings.TrimSpace(out) != "job 9 queued for the remote daemon" {
+		t.Fatalf("output = %q", out)
+	}
+	stub.mu.Lock()
+	defer stub.mu.Unlock()
+	egress, ok := stub.runBody["egress_ports"]
+	if !ok {
+		t.Fatalf("posted body %+v carries no egress_ports", stub.runBody)
+	}
+	list, ok := egress.([]any)
+	if !ok || len(list) != 1 || list[0].(float64) != 2222 {
+		t.Fatalf("egress_ports = %v, want [2222]", egress)
+	}
+}
+
 // A gated apply reports the approval, its deadline AND its TTL, so the operator
 // reads the fail-closed auto-reject as intended.
 func TestRemoteWorkspaceApplyGated(t *testing.T) {

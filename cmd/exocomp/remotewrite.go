@@ -193,6 +193,9 @@ type remotePlaybookOp struct {
 	timeout             time.Duration
 	idempotencyKey      string
 	runnerName          string
+	// egressPorts are the validated outbound TCP ports the daemon should grant
+	// the run on top of the ansible kind's SSH port 22.
+	egressPorts []int
 }
 
 // runRemotePlaybook enqueues a playbook on the remote daemon and, unless
@@ -222,6 +225,7 @@ func runRemotePlaybook(cmd *cobra.Command, rc *client.Client, op remotePlaybookO
 		TolerateUnreachable: op.tolerateUnreachable,
 		IdempotencyKey:      op.idempotencyKey,
 		Runner:              op.runnerName,
+		EgressPorts:         op.egressPorts,
 	}
 	if op.timeout > 0 {
 		req.Timeout = op.timeout.String()

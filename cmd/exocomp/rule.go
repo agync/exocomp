@@ -54,6 +54,7 @@ func newRuleAddCmd() *cobra.Command {
 		dailyCap        int
 		requireApproval bool
 		timeout         time.Duration
+		egress          []string
 	)
 
 	cmd := &cobra.Command{
@@ -104,6 +105,13 @@ func newRuleAddCmd() *cobra.Command {
 				ruleAction.Source = repoSource
 				ruleAction.Playbook = playbook
 				ruleAction.Limit = limit
+				// A declared egress set is validated at the parse (1..65535); a
+				// junk port refuses the rule rather than silently dropping it.
+				ports, perr := parseEgressPorts(egress)
+				if perr != nil {
+					return perr
+				}
+				ruleAction.Egress = ports
 				if tags != "" {
 					ruleAction.Tags = strings.Split(tags, ",")
 				}
@@ -185,6 +193,8 @@ func newRuleAddCmd() *cobra.Command {
 		"playbook action: ansible --limit host pattern (required: default-deny)")
 	cmd.Flags().StringVar(&tags, "tags", "",
 		"playbook action: ansible --tags, comma-separated")
+	cmd.Flags().StringSliceVar(&egress, "egress", nil,
+		"playbook action: grant each run outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
 	cmd.Flags().BoolVar(&check, "check", false, "playbook action: ansible --check dry run")
 	cmd.Flags().BoolVar(&diff, "diff", false, "playbook action: ansible --diff")
 	cmd.Flags().DurationVar(&cooldown, "cooldown", 0, "refuse to fire again within this long")

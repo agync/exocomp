@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -39,6 +41,7 @@ func newPlaybookCmd() *cobra.Command {
 		tolerateUnre bool
 		noFollow     bool
 		privileged   bool
+		egress       []string
 	)
 
 	run := &cobra.Command{
@@ -69,6 +72,13 @@ func newPlaybookCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out, warn := cmd.OutOrStdout(), cmd.ErrOrStderr()
 
+			// A junk --egress value fails here, at the parse, before any job is
+			// created or any store opened.
+			egressPorts, err := parseEgressPorts(egress)
+			if err != nil {
+				return err
+			}
+
 			rc, remote, err := remoteClient(cmd)
 			if err != nil {
 				return err
@@ -89,7 +99,7 @@ func newPlaybookCmd() *cobra.Command {
 					skipTags: skipTags, extraVars: extraVars, check: check, diff: diff,
 					tolerateUnreachable: tolerateUnre, wait: wait, noFollow: noFollow,
 					timeout: timeout, idempotencyKey: idempotencyKey(cmd),
-					runnerName: runnerName,
+					runnerName: runnerName, egressPorts: egressPorts,
 				}))
 			}
 			if noFollow {
@@ -126,6 +136,7 @@ func newPlaybookCmd() *cobra.Command {
 						extraVars:           vars,
 						tolerateUnreachable: tolerateUnre,
 						privileged:          privileged,
+						egressPorts:         egressPorts,
 					})
 				}
 				args[0] = pb
@@ -152,6 +163,7 @@ func newPlaybookCmd() *cobra.Command {
 				dir:                 sourceDir,
 				dirReadOnly:         sourceReadOnly,
 				privileged:          privileged,
+				egressPorts:         egressPorts,
 			})
 			if err != nil {
 				return err
@@ -197,6 +209,8 @@ func newPlaybookCmd() *cobra.Command {
 		"a run whose only non-success is unreachable hosts settles degraded, not failed, and does not page (a task failure on a reachable host still fails)")
 	run.Flags().BoolVar(&privileged, "privileged", false,
 		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
+	run.Flags().StringSliceVar(&egress, "egress", nil,
+		"grant this run outbound TCP on <port> (repeatable, or comma-separated) on top of the sandbox's SSH port 22")
 
 	cmd := &cobra.Command{
 		Use:   "playbook",
@@ -243,6 +257,9 @@ type playbookSpec struct {
 	privileged bool
 	// idempotencyKey dedups a retried run to one job; empty on the unchanged path.
 	idempotencyKey string
+	// egressPorts are the extra outbound TCP ports the sandboxed run may open
+	// on top of the kind's SSH port 22, validated at the flag parse.
+	egressPorts []int
 }
 
 // ansiblePassthrough splits the operator's flags into the argv passthrough and
@@ -251,6 +268,35 @@ type playbookSpec struct {
 // identically; this wrapper keeps the CLI call site and its signature.
 func ansiblePassthrough(limit, tags, skipTags string, check, diff bool, extraVars []string) ([]string, map[string]string, error) {
 	return service.AnsiblePassthrough(limit, tags, skipTags, check, diff, extraVars)
+}
+
+// parseEgressPorts turns a --egress declaration into the validated port set a
+// job carries. Each value may itself be a comma list (a flag may repeat, or
+// name several ports at once); junk — a non-integer, or a port outside
+// 1..65535 — is refused here, at the parse, so a typo never reaches a job row.
+func parseEgressPorts(values []string) ([]int, error) {
+	ports := make([]int, 0, len(values))
+	for _, v := range values {
+		for _, part := range strings.Split(v, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			n, err := strconv.Atoi(part)
+			if err != nil {
+				return nil, fmt.Errorf("--egress %q is not a port number", part)
+			}
+			ports = append(ports, n)
+		}
+	}
+	if len(ports) == 0 {
+		return nil, nil
+	}
+	clean, err := store.NormalizeEgressPorts(ports)
+	if err != nil {
+		return nil, fmt.Errorf("--egress: %w", err)
+	}
+	return clean, nil
 }
 
 // runPlaybook returns the job's exit code, and an error only when the job
@@ -313,6 +359,7 @@ func runPlaybook(ctx context.Context, out, warn io.Writer, spec playbookSpec) (c
 		Dir:                 spec.dir,
 		DirReadOnly:         spec.dirReadOnly,
 		Privileged:          spec.privileged,
+		EgressPorts:         spec.egressPorts,
 	})
 	if err != nil {
 		return 0, err
