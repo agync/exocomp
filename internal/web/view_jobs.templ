@@ -258,10 +258,12 @@ templ outputCard(vm jobDetailVM) {
 				<span class="outputmeta mono ml-auto">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
 			</span>
 			<span class="logtools controls ml-auto">
-				<span class="pin" id="log-pin" data-state="following" role="status">
-					<span class="dot" aria-hidden="true"></span>
-					<span class="pinword">FOLLOWING TAIL</span>
-				</span>
+				if !vm.Job.State.Terminal() {
+					<span class="pin" id="log-pin" data-state="following" role="status">
+						<span class="dot" aria-hidden="true"></span>
+						<span class="pinword">FOLLOWING TAIL</span>
+					</span>
+				}
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
 				<button type="button" class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>
 			</span>
@@ -371,7 +373,7 @@ templ rerunDialog(vm jobDetailVM) {
 // beside it. The line is its own grid (60px 1fr) so the clock column never
 // clips; the wrap toggle flips the .log container to pre-wrap.
 templ logLine(e eventLine) {
-	<span class={ "line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system") } style="display:grid;grid-template-columns:60px 1fr">
+	<span class={ "line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system") } style="display:grid;grid-template-columns:70px 1fr;column-gap:8px">
 		<span class="ts">{ e.Ts }</span>
 		<span class="msg">{ e.Msg }</span>
 	</span>

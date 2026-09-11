@@ -687,7 +687,7 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
  * every other page keeps its natural min-height:100vh growth. */
 .app.page-job .content-col { height: 100vh; min-height: 0; }
 .app.page-job .content-col > header { flex: none; }
-.app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; gap: var(--gap-card); }
 .app.page-job main > * { flex: none; }
 .app.page-job main > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .app.page-job main > .card.output > .output-head { flex: none; }
@@ -1225,9 +1225,11 @@ main > .pageheader + dialog + .card { margin-top: 0; }
             font: var(--type-button); cursor: pointer; }
 .tail-btn:hover { filter: brightness(1.08); }
 .tail-btn small { font: 400 11px var(--font-mono); opacity: .85; }
-/* One log line: a fixed HH:MM:SS clock column (60px) beside the message (R9).
- * The Shell owns this grid so the templ/SSE rows carry no inline style. */
-.log .line { display: grid; grid-template-columns: 60px 1fr; }
+/* One log line: a fixed HH:MM:SS clock column (70px) with an 8px gap to the
+ * message (SPEC §3, lift.css 70px/1fr + gap 0 8px) — the line grid is inlined
+ * in the templ so the SSE rows carry it too; this rule is the desktop/fallback
+ * twin for the same layout. */
+.log .line { display: grid; grid-template-columns: 70px 1fr; column-gap: 8px; }
 /* The Live tail toolbar: kicker on the left, search + raw-log glyph on the
  * right. Search uses the compact 30px height (the card-foot ladder), and the
  * raw-log button reuses the .raglyph icon-button shape (R4, one glyph set). */
@@ -1244,7 +1246,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * repeated stamp does not dominate the wall of output. */
 .log .logln { display: block; padding: 1px 0; }
 .log .logln + .logln { border-top: 1px solid transparent; }
-.log .ts { color: var(--ink-500); user-select: none; margin-right: 6px; }
+.log .ts { color: var(--ink-500); user-select: none; }
+.log .line .ts { margin-right: 0; }
+.log .logln .ts, .log .logband .ts { margin-right: 6px; }
 .log .err { color: var(--signal-fail); }
 .log .err .ts { color: var(--signal-fail); opacity: 0.55; }
 .log .sys { color: var(--ink-500); }

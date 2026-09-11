@@ -1025,7 +1025,7 @@ func TestJobDetailLogPreLines(t *testing.T) {
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
 		`<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">`,
-		`<span class="line" style="display:grid;grid-template-columns:60px 1fr">`,
+		`<span class="line" style="display:grid;grid-template-columns:70px 1fr;column-gap:8px">`,
 		`<span class="ts">`,
 		`<span class="msg">`,
 		`class="logband fail"`,
