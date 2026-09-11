@@ -952,10 +952,10 @@ func (h *harness) seedPlanDiffWithShow(t *testing.T, ws string, planSerial int64
 
 // TestPlanDetailPageRendersDiff: the plan-detail page (SPEC §4) is the tray's
 // diff deep-link target. It renders the +N ~N −N counters, the diff rows with
-// the action keywords, the old→new strike of a changed attribute, the
-// unchanged collapse, and the redaction marker for a secret-backed value —
-// all from the SAME classifyPlan the phone and /api/v1 read, never from a
-// second parser.
+// the action keywords, the old→new inline cell of a changed attribute (display
+// renderer quoted, §4.1), the unchanged footer, and the redaction marker for a
+// secret-backed value — all from the SAME classifyPlan the phone and /api/v1
+// read, never from a second parser.
 func TestPlanDetailPageRendersDiff(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -983,10 +983,12 @@ func TestPlanDetailPageRendersDiff(t *testing.T) {
 		">DESTROY<",
 		">CREATE<",
 		"kubernetes_config_map.marker",
-		"1 changed · 1 same",
-		">old<",
-		">new<",
-		"1 attributes unchanged",
+		`>1 changed<`,
+		` · 1 same<`,
+		`>&#34;old&#34;<`,
+		`>&#34;new&#34;<`,
+		"1 attributes unchanged · ",
+		`>show<`,
 		"[redacted · secret]",
 		"Apply plan #" + strconv.FormatInt(art.ID, 10) + " →",
 		"asks first · same as exocomp ws apply web --plan " + strconv.FormatInt(art.ID, 10),
@@ -1039,8 +1041,8 @@ func TestPlanDetailRendersDiffFromShowJSON(t *testing.T) {
 		">UPDATE<",
 		">DESTROY<",
 		">CREATE<",
-		">old<",
-		">new<",
+		`>&#34;old&#34;<`,
+		`>&#34;new&#34;<`,
 		"[redacted · secret]",
 	} {
 		if !strings.Contains(body, want) {
