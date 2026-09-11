@@ -138,6 +138,13 @@ func TestTofuFlagsFollowTheCommandPath(t *testing.T) {
 			want: "plan -no-color -input=false -detailed-exitcode -out=/srv/plans/edge.tfplan",
 		},
 		{
+			// Destroy runs the same non-interactive path as apply: -auto-approve
+			// is what answers tofu's "destroy all resources?" prompt.
+			name: "destroy",
+			argv: executor.TofuArgv("destroy", "-auto-approve"),
+			want: "destroy -no-color -input=false -auto-approve",
+		},
+		{
 			name: "caller's own flags survive",
 			argv: executor.TofuArgv("plan", "-no-color", "-input=true", "-detailed-exitcode"),
 			want: "plan -no-color -input=true -detailed-exitcode",

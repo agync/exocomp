@@ -72,6 +72,66 @@ func (s *Service) PlanWorkspace(ctx context.Context, enq Enqueuer, in PlanInput)
 	return PlanResult{Job: job, PlanPath: planPath}, nil
 }
 
+// DestroyInput is a resolved tofu destroy: run `tofu destroy -auto-approve`
+// against the workspace's whole state. There is no saved plan or gate — a
+// destroy has nothing for a plan policy to read, so it is a plain enqueue like
+// a fresh plan, not a routed one.
+type DestroyInput struct {
+	Workspace      string
+	TofuDir        string
+	RunSecrets     string
+	IdempotencyKey string
+	Timeout        time.Duration
+	// RunnerName names a registered runner whose memory_max/cpu_quota the
+	// sandboxed execution path should enforce as a per-job cgroup cap. Empty
+	// is the default, uncapped path.
+	RunnerName string
+	// Trigger records who asked (TriggerManual/TriggerAPI); empty defaults to
+	// manual, so the daemon's per-trigger post-run steps (sealing a plan) do
+	// not misfire for a run that writes nothing.
+	Trigger string
+	// Actor identifies a non-CLI caller (an API token) for the job's event
+	// ledger; the zero value records nothing (see recordActor).
+	Actor Actor
+}
+
+// DestroyResult carries the enqueued destroy job.
+type DestroyResult struct {
+	Job store.Job
+}
+
+// DestroyWorkspace assembles a tofu destroy job and enqueues it — the one
+// queue, exactly as a plan or an apply enqueues (AGENTS.md invariant 5). The
+// argv is the non-interactive `tofu destroy -auto-approve` the driver runs
+// against the workspace's state, serialized with every other tofu run by the
+// workspace concurrency key.
+func (s *Service) DestroyWorkspace(ctx context.Context, enq Enqueuer, in DestroyInput) (DestroyResult, error) {
+	trigger := in.Trigger
+	if trigger == "" {
+		trigger = TriggerManual
+	}
+	spec := queue.Spec{
+		Runbook:          WorkspaceRunbook(in.Workspace),
+		Kind:             executor.KindTofu,
+		Trigger:          trigger,
+		Argv:             executor.TofuArgv("destroy", "-auto-approve"),
+		Dir:              in.TofuDir,
+		RunSecretBinding: in.RunSecrets,
+		RunnerName:       in.RunnerName,
+		ConcurrencyKey:   workspaceConcurrencyKey(in.Workspace),
+		IdempotencyKey:   in.IdempotencyKey,
+		Timeout:          in.Timeout,
+	}
+	job, err := enq.Enqueue(ctx, spec)
+	if err != nil {
+		return DestroyResult{}, err
+	}
+	if err := s.recordActor(ctx, job.ID, in.Actor); err != nil {
+		return DestroyResult{}, err
+	}
+	return DestroyResult{Job: job}, nil
+}
+
 // PlanGate is a saved plan's recorded policy verdict, reduced to the two
 // outcomes that route an apply: deny makes the plan unconsumable, and
 // require-approval sends it through the gate. Policy names the rule that decided.

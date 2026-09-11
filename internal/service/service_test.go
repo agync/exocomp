@@ -173,6 +173,45 @@ func TestRunPlaybookPropagatesEnqueueError(t *testing.T) {
 	}
 }
 
+func TestDestroyWorkspaceAssemblesTofuDestroySpec(t *testing.T) {
+	enq := &fakeEnqueuer{}
+	svc := service.New(nil, t.TempDir(), fixedClock())
+
+	res, err := svc.DestroyWorkspace(context.Background(), enq, service.DestroyInput{
+		Workspace:      "web",
+		TofuDir:        "/roots/web",
+		RunSecrets:     "provider",
+		IdempotencyKey: "idem-9",
+		Timeout:        time.Minute,
+	})
+	if err != nil {
+		t.Fatalf("DestroyWorkspace: %v", err)
+	}
+	if len(enq.enqueued) != 1 {
+		t.Fatalf("DestroyWorkspace enqueued %d, want 1", len(enq.enqueued))
+	}
+	spec := enq.enqueued[0]
+	if spec.Runbook != "workspace:web" || spec.Kind != executor.KindTofu {
+		t.Errorf("spec header = %q/%q", spec.Runbook, spec.Kind)
+	}
+	if spec.ConcurrencyKey != "tofu:web" {
+		t.Errorf("concurrency key = %q, want tofu:web", spec.ConcurrencyKey)
+	}
+	if spec.Dir != "/roots/web" || spec.RunSecretBinding != "provider" || spec.IdempotencyKey != "idem-9" {
+		t.Errorf("destroy options lost: %+v", spec)
+	}
+	if got := strings.Join(spec.Argv, " "); !strings.Contains(got, "destroy") || !strings.Contains(got, "-auto-approve") {
+		t.Errorf("argv = %q, want tofu destroy -auto-approve", got)
+	}
+	if res.Job.ID == 0 {
+		t.Errorf("verb returned no job id")
+	}
+	// Destroy is a plain enqueue: never the approval gate.
+	if len(enq.gated) != 0 {
+		t.Errorf("DestroyWorkspace gated %d, want a plain enqueue", len(enq.gated))
+	}
+}
+
 func TestPlanWorkspaceAssemblesTofuPlanSpec(t *testing.T) {
 	enq := &fakeEnqueuer{}
 	artifacts := t.TempDir()
