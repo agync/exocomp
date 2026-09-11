@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — the add-source dialog validates per-field
+
+- **The source-add modal gets the forms pattern.** Name and path/git-URL
+  fields now carry always-present meta lines, the name is validated on blur
+  (a space or special character is refused with human copy), and a server-side
+  refusal re-renders the dialog at 422 with the typed values kept and the ▲
+  field message — the same treatment the netgroup form got in v0.8. A bad name
+  previously surfaced as a bare 500 "internal error"; a missing location was a
+  bare 400. Submit-time refusals (a duplicate name, a missing envelope sealer)
+  now land in the form's status line instead of error pages.
+
 ## 2026-09-11 — designer QA pass 2 (v0.12)
 
 - **The workspaces-list verbs match SCREENS 1c** — `[apply] · plan · ▾`:
