@@ -1325,25 +1325,29 @@ type planLine struct {
 	Redacted bool
 }
 
-// eventsVM is the events screen: the last-24h funnel card, the outcome and
-// source filter chips, and the tray table of received alerts with the stored
-// payload and evaluation trace inline. Filter is the active chip ("all" when
-// none); Funnel is the 24h window while the chip counts and Total describe
-// the rows in view and the whole store respectively. Empty hides the chips
-// (R7: nothing to filter); NoMatch keeps them with the filtered-empty line.
+// outcomeOrder is the six outcome chips' funnel order — the closed enum, all
+// positions always present so a fixed order teaches where each word lives.
+var outcomeOrder = []string{"ignored", "matched", "suppressed", "gated", "fired", "error"}
+
+// eventsVM is the events screen: the last-24h funnel card, the filter row
+// (source switch + outcome chips, always the closed enum), and the tray table
+// of received alerts with the stored payload and evaluation trace inline.
+// Source is the active source split ("" all · "checks" · "alerts"); Outcome
+// the active chip ("" none or one of the six). Chips count the rows in view
+// per split and outcome; Funnel is the 24h window the footer reads. Empty
+// hides the tray (the W5 copy) — the filter row stays, the enum never hides.
 type eventsVM struct {
 	Page    page
 	Funnel  store.EventOutcomeCounts
 	Rows    []eventRow
 	Chips   eventsChips
-	Filter  string
-	Total   int64
+	Source  string
+	Outcome string
 	Empty   bool
-	NoMatch bool
 }
 
-// ChipCount is the count the chip named key carries — the rows in view that
-// share its outcome or source split.
+// ChipCount is the count the chip or segment named key carries — the rows in
+// view that share its outcome or source split.
 func (vm eventsVM) ChipCount(key string) int {
 	switch key {
 	case "all":
@@ -1366,6 +1370,103 @@ func (vm eventsVM) ChipCount(key string) int {
 		return vm.Chips.Error
 	}
 	return 0
+}
+
+// FunnelCount is the last-24h count of one outcome — the footer's "{count}
+// {outcome}", from the same windowed funnel the card renders, never the tray
+// rows.
+func (vm eventsVM) FunnelCount(o string) int {
+	switch o {
+	case "ignored":
+		return vm.Funnel.Ignored
+	case "matched":
+		return vm.Funnel.Matched
+	case "suppressed":
+		return vm.Funnel.Suppressed
+	case "gated":
+		return vm.Funnel.Gated
+	case "fired":
+		return vm.Funnel.Fired
+	case "error":
+		return vm.Funnel.Error
+	}
+	return 0
+}
+
+// FooterCount is the footer's "of {count}" number: the active outcome's
+// last-24h count, or the whole funnel when no outcome is filtered.
+func (vm eventsVM) FooterCount() int {
+	if vm.Outcome != "" {
+		return vm.FunnelCount(vm.Outcome)
+	}
+	return vm.Funnel.Total()
+}
+
+// SourceHref is the href a source segment carries: the segment's own source
+// with the active outcome preserved (params compose), "all" (name == "") the
+// reset that drops the source param.
+func (vm eventsVM) SourceHref(name string) string {
+	var q []string
+	if name != "" {
+		q = append(q, "source="+name)
+	}
+	if vm.Outcome != "" {
+		q = append(q, "outcome="+vm.Outcome)
+	}
+	return eventsHref(q)
+}
+
+// OutcomeHref is the href an outcome chip carries. The active chip's own href
+// is the reset (the outcome param removed, the source kept) — clicking the
+// active chip is the clear — while any other chip composes its outcome with
+// the active source.
+func (vm eventsVM) OutcomeHref(o string) string {
+	var q []string
+	if vm.Source != "" {
+		q = append(q, "source="+vm.Source)
+	}
+	if o != "" && o != vm.Outcome {
+		q = append(q, "outcome="+o)
+	}
+	return eventsHref(q)
+}
+
+func eventsHref(q []string) string {
+	if len(q) == 0 {
+		return "/events"
+	}
+	return "/events?" + strings.Join(q, "&")
+}
+
+// commaCount renders a count with thousands separators ("1,204") for the
+// count cell's full twin.
+func commaCount(n int) string {
+	if n < 1000 {
+		return itoa(int64(n))
+	}
+	return commaCount(n/1000) + "," + countPad3(n%1000)
+}
+
+func countPad3(n int) string {
+	s := itoa(int64(n))
+	if n < 100 {
+		s = "0" + s
+	}
+	if n < 10 {
+		s = "0" + s
+	}
+	return s
+}
+
+// compactCount renders a count's compact twin ("1.2k", "12.4k") for the
+// count cell's k-form, which the phone stylesheet shows from four digits and
+// desktop from five; the full twin carries the separator form.
+func compactCount(n int) string {
+	if n < 1000 {
+		return itoa(int64(n))
+	}
+	tenths := (n*10 + 500) / 1000
+	return itoa(int64(tenths/10)) + "." + itoa(int64(tenths%10)) + "k"
 }
 
 // eventsChips are the per-chip counts. They count the rows in view (the page

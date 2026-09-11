@@ -1,34 +1,32 @@
 package web
 
-// eventsList is the Events screen: a last-24h funnel card, filter chips
-// (outcome + source split), and a tray of every received alert with the
-// stored payload and evaluation trace inline — so "why didn't it fire?" is
-// answerable by expanding (the brief's Event vocabulary). The ?filter= chip is
-// a plain GET so a filtered view stays linkable; the empty state hides the
-// chips (R7) and the funnel shows a zero bar.
+// eventsList is the Events screen: a last-24h funnel card, the filter row
+// (source switch + outcome chips, the closed enum always present), and a tray
+// of every received alert with the stored payload and evaluation trace inline
+// — so "why didn't it fire?" is answerable by expanding. The filter row is a
+// plain GET (?source=…&outcome=…) so a filtered view stays linkable; the
+// empty store hides the tray (W5) but never the enum.
 templ eventsList(vm eventsVM) {
 	@layout(vm.Page) {
 		@eventsFunnel(vm.Funnel.Total(), vm.Funnel.Ignored, vm.Funnel.Matched, vm.Funnel.Suppressed, vm.Funnel.Gated, vm.Funnel.Fired)
+		@eventsFilters(vm)
 		if vm.Empty {
 			<div class="card span2 mt18 events-empty">
 				<p class="meta">No events yet. Point an alert source at exocomp ingest and they land here.</p>
 			</div>
 		} else {
-			@eventsFilters(vm)
-			if vm.NoMatch {
-				<p class="meta mt14">No events match <span class="mono">{ vm.Filter }</span>.</p>
-			}
 			@eventsTray(vm)
 		}
 		@eventsKeys()
 	}
 }
 
-// eventsFunnel is the last-24h counts plus the proportional outcome bar and
-// the one sentence below it. Each closed outcome renders as a monospace
-// numeral over a small label (SPEC §2.5); the bar weights only the five
-// outcomes of the closed enum, never the error sink, so the ratio never
-// implies work of unknown length.
+// eventsFunnel is the last-24h counts plus the proportional outcome bar, the
+// one sentence below it, and the keyboard hint (SPEC §1.6) right of the
+// counts — the hint leaves the filter row, which carries filters only. Each
+// closed outcome renders as a monospace numeral over a small label (SPEC
+// §2.5); the bar weights only the five outcomes of the closed enum, never the
+// error sink, so the ratio never implies work of unknown length.
 templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
 	<div class="card funnel" role="region" aria-label="Alert funnel, last 24 hours">
 		<div class="counts funnel-counts">
@@ -38,6 +36,7 @@ templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
 			<span class="funnel-ct wait"><b>{ itoa(int64(suppressed)) }</b><small>suppressed</small></span>
 			<span class="funnel-ct wait"><b>{ itoa(int64(gated)) }</b><small>gated</small></span>
 			<span class={ "funnel-ct fired", templ.KV("on", fired > 0) }><b>{ itoa(int64(fired)) }</b><small>fired</small></span>
+			<span class="keys" aria-hidden="true"><kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> expand · <kbd>e</kbd> explain · <kbd>o</kbd> outcome</span>
 		</div>
 		<div class="bar funnel-bar" aria-hidden="true">
 			@funnelSeg("ignored", ignored)
@@ -58,32 +57,61 @@ templ funnelSeg(kind string, n int) {
 	}
 }
 
-// eventsFilters is the chip row: source splits first (D4), then the outcome
-// chips, then the keyboard hint on the right. Counts are rows in view.
+// eventsFilters is the filter row (SPEC §1): the SOURCE segmented switch
+// (all · checks · alerts, exactly one on, all = reset, never accent — it is a
+// scope), the 1px divider, then the OUTCOME chips in funnel order — all six
+// always present, a zero count a <span aria-disabled> hairline ring, never a
+// link. The groups are named by role=group + aria-label + title; no visible
+// kicker on desktop. data-source/data-outcome name the active state so the
+// `o` key can cycle the outcome group (TUI parity).
 templ eventsFilters(vm eventsVM) {
-	<div class="filters">
-		<div class="filter-chips" role="group" aria-label="Filter events">
-			@filterChip("all", vm.Filter == "all", vm.ChipCount("all"))
-			@filterChip("checks", vm.Filter == "checks", vm.ChipCount("checks"))
-			@filterChip("alerts", vm.Filter == "alerts", vm.ChipCount("alerts"))
-			@filterChip("ignored", vm.Filter == "ignored", vm.ChipCount("ignored"))
-			@filterChip("matched", vm.Filter == "matched", vm.ChipCount("matched"))
-			@filterChip("suppressed", vm.Filter == "suppressed", vm.ChipCount("suppressed"))
-			@filterChip("gated", vm.Filter == "gated", vm.ChipCount("gated"))
-			@filterChip("fired", vm.Filter == "fired", vm.ChipCount("fired"))
-			@filterChip("error", vm.Filter == "error", vm.ChipCount("error"))
+	<div class="filters" data-source={ vm.Source } data-outcome={ vm.Outcome }>
+		<div class="group" role="group" aria-label="Event source">
+			<div class="switch" title="Source — where the event came from">
+				<a href={ templ.SafeURL(vm.SourceHref("")) } aria-pressed={ boolAttr(vm.Source == "") }><span>all</span>@countCell(vm.ChipCount("all"))</a>
+				<a href={ templ.SafeURL(vm.SourceHref("checks")) } aria-pressed={ boolAttr(vm.Source == "checks") }><span>checks</span>@countCell(vm.ChipCount("checks"))</a>
+				<a href={ templ.SafeURL(vm.SourceHref("alerts")) } aria-pressed={ boolAttr(vm.Source == "alerts") }><span>alerts</span>@countCell(vm.ChipCount("alerts"))</a>
+			</div>
 		</div>
-		<span class="keys-hint"><kbd>j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> expand · <kbd>e</kbd> explain</span>
+		<span class="divider" aria-hidden="true"></span>
+		<div class="group group--outcome chips" role="group" aria-label="Event outcome" title="Outcome — what the pipeline decided">
+			for _, o := range outcomeOrder {
+				@outcomeChip(vm, o)
+			}
+		</div>
 	</div>
 }
 
-// filterChip is one outcome or source chip: a link that re-runs the page under
-// that filter. The active chip carries the accent (aria-pressed mirrors it for
-// a reader that never sees colour).
-templ filterChip(key string, active bool, n int) {
-	<a class={ "filter-chip", templ.KV("active", active) } href={ templ.SafeURL("/events?filter=" + key) } aria-pressed={ boolAttr(active) }>
-		{ key } · { itoa(int64(n)) }
-	</a>
+// outcomeChip is one outcome chip: the active one is the only accent fill on
+// the row, its href the reset (?outcome= removed, the source kept) and its
+// trailing × the clear glyph; a zero count renders as a disabled span with
+// the hairline ring — no link, no hover — so the enum shape never changes.
+templ outcomeChip(vm eventsVM, o string) {
+	if o == vm.Outcome {
+		<a class="chip" href={ templ.SafeURL(vm.OutcomeHref(o)) } aria-pressed="true" title="Clear filter">
+			{ o }
+			@countCell(vm.ChipCount(o))
+			<svg class="clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"></path></svg>
+		</a>
+	} else if vm.ChipCount(o) == 0 {
+		<span class="chip" aria-disabled="true">
+			{ o }
+			@countCell(0)
+		</span>
+	} else {
+		<a class="chip" href={ templ.SafeURL(vm.OutcomeHref(o)) }>
+			{ o }
+			@countCell(vm.ChipCount(o))
+		</a>
+	}
+}
+
+// countCell is the count's own tabular cell (SPEC §1.2): the word and the
+// number are two columns, never "· N" inline. It carries the full twin
+// ("1,204") and the compact k-form ("12.4k"); the stylesheet shows the k-form
+// from five digits on desktop and four on phone.
+templ countCell(n int) {
+	<span class="count"><span class="full">{ commaCount(n) }</span><span class="k">{ compactCount(n) }</span></span>
 }
 
 // eventsTray is the stacked list of received alerts. Each row is a button of
@@ -91,14 +119,24 @@ templ filterChip(key string, active bool, n int) {
 // the received clock · age — and the expand pane below it carries the reason,
 // the evaluation trace, then the normalized payload behind a button. The
 // reason never renders in the row itself (SPEC §2.5): it answers "why" only
-// once the operator opens the pane.
+// once the operator opens the pane. The footer repeats the state and the
+// second reset (SPEC §1.4).
 templ eventsTray(vm eventsVM) {
 	<div class="card events-tray">
 		for i, e := range vm.Rows {
 			@eventTrayPair(i, e)
 		}
 	</div>
-	<p class="events-foot">showing latest { itoa(int64(len(vm.Rows))) } of { itoa(vm.Total) } · retained 90d</p>
+	<p class="events-foot">
+		showing latest { itoa(int64(len(vm.Rows))) } of { commaCount(vm.FooterCount()) }
+		if vm.Outcome != "" {
+			{ vm.Outcome } · { commaCount(vm.Funnel.Total()) } in view
+		}
+		· retained 90d
+		if vm.Outcome != "" {
+			· <a href="/events">show all</a>
+		}
+	</p>
 }
 
 // eventTrayPair is one row button and its expand pane. The row keeps the
@@ -161,11 +199,14 @@ templ eventReason(e eventRow) {
 }
 
 // eventsKeys wires the tray's keyboard map: j/k move the current row, Enter
-// and e expand it (e also brings the trace into view), Esc collapses. Clicking
-// a row toggles its pane; clicking the payload button or a reason link inside
-// it keeps their own behaviour — the row handler skips anchors and buttons.
-// The payload button is additive: with no script the pane still shows the
-// reason and trace, and the payload card stays inert behind the button.
+// and e expand it (e also brings the trace into view), o cycles the outcome
+// group through none → ignored → matched → suppressed → gated → fired → none
+// (TUI parity, so a full pass returns to showing every event), Esc collapses.
+// Clicking a row toggles its pane; clicking the payload button or a reason
+// link inside it keeps their own behaviour — the row handler skips anchors
+// and buttons. The payload button is additive: with no script the pane still
+// shows the reason and trace, and the payload card stays inert behind the
+// button.
 templ eventsKeys() {
 	<script>
 	(function () {
@@ -229,6 +270,19 @@ templ eventsKeys() {
 			} else if (e.key === "e") {
 				e.preventDefault();
 				toggle(currentRow(), true);
+			} else if (e.key === "o") {
+				e.preventDefault();
+				var filters = document.querySelector(".filters");
+				if (!filters) return;
+				var src = filters.getAttribute("data-source") || "";
+				var cur = filters.getAttribute("data-outcome") || "";
+				var order = ["", "ignored", "matched", "suppressed", "gated", "fired"];
+				var idx = order.indexOf(cur);
+				var next = idx >= 0 ? order[(idx + 1) % order.length] : order[1];
+				var q = [];
+				if (src) q.push("source=" + src);
+				if (next) q.push("outcome=" + next);
+				window.location.href = "/events" + (q.length ? "?" + q.join("&") : "");
 			} else if (e.key === "Escape") {
 				var opened = currentRow();
 				if (isOpen(opened)) toggle(opened, false);

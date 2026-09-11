@@ -29,8 +29,10 @@ func seedEvents(t *testing.T, h *harness) {
 	}
 }
 
-// TestEventsSourceChip: the ?filter=checks chip narrows the page to that
-// source's rows only, and the active chip carries the pressed state.
+// TestEventsSourceChip: the source switch narrows the page to that source's
+// rows only, and exactly one segment carries the pressed state (all = reset).
+// The store's singular ?source=check and the legacy ?filter=checks alias both
+// resolve onto the same split.
 func TestEventsSourceChip(t *testing.T) {
 	h := newHarness(t)
 	seedEvents(t, h)
@@ -39,7 +41,7 @@ func TestEventsSourceChip(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	code, page := getBody(t, client, ts.URL+"/events?filter=checks")
+	code, page := getBody(t, client, ts.URL+"/events?source=checks")
 	if code != 200 {
 		t.Fatalf("events status = %d", code)
 	}
@@ -49,13 +51,42 @@ func TestEventsSourceChip(t *testing.T) {
 	if strings.Contains(page, "alertmanager-alert") {
 		t.Error("filtered page leaked a row from another source")
 	}
-	if !strings.Contains(page, `href="/events?filter=checks" aria-pressed="true"`) {
-		t.Error("the checks chip is not marked active")
+	if !strings.Contains(page, `href="/events?source=checks" aria-pressed="true"`) {
+		t.Error("the checks segment is not marked pressed")
+	}
+	// Exactly one segment is on: all is unpressed when a split is active.
+	if !strings.Contains(page, `href="/events" aria-pressed="false"`) {
+		t.Error("the all segment must unpin when another split is active")
+	}
+	// Unfiltered, the all segment is the one pressed (the reset).
+	_, unfiltered := getBody(t, client, ts.URL+"/events")
+	if !strings.Contains(unfiltered, `href="/events" aria-pressed="true"`) {
+		t.Error("the all segment must be pressed only when no source is active")
+	}
+
+	// Singular alias: the store vocabulary's ?source=check links keep working.
+	_, singular := getBody(t, client, ts.URL+"/events?source=check")
+	if !strings.Contains(singular, "check-alert") || strings.Contains(singular, "alertmanager-alert") {
+		t.Error("the singular ?source=check alias must filter like checks")
+	}
+	if !strings.Contains(singular, `href="/events?source=checks" aria-pressed="true"`) {
+		t.Error("the singular alias must still mark the checks segment pressed")
+	}
+
+	// Legacy alias: ?filter=checks keeps working.
+	_, legacy := getBody(t, client, ts.URL+"/events?filter=checks")
+	if !strings.Contains(legacy, "check-alert") || strings.Contains(legacy, "alertmanager-alert") {
+		t.Error("the legacy ?filter=checks alias must filter checks")
+	}
+	if !strings.Contains(legacy, `href="/events?source=checks" aria-pressed="true"`) {
+		t.Error("the legacy alias must still mark the checks segment pressed")
 	}
 }
 
 // TestEventsChipCounts: the chips count the rows in view across the outcome
-// and source splits, and the "all" chip sums to the tray.
+// and source splits, and the "all" segment sums to the tray. Every count is
+// its own tabular cell rendered as a full/compact pair, and all six outcome
+// chips render in funnel order.
 func TestEventsChipCounts(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -76,12 +107,66 @@ func TestEventsChipCounts(t *testing.T) {
 		t.Fatalf("events status = %d", code)
 	}
 	for _, want := range []string{
-		"all · 3", "checks · 1", "alerts · 2", "ignored · 2", "fired · 1",
+		`<span class="count"><span class="full">3</span><span class="k">3</span></span>`,
+		`<span class="count"><span class="full">2</span><span class="k">2</span></span>`,
+		`<span class="count"><span class="full">1</span><span class="k">1</span></span>`,
 		"check-alert", "alertmanager-alert", "fire-alert",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("unfiltered events page missing %q", want)
 		}
+	}
+	// The groups are named by aria-label + title, never a visible kicker.
+	for _, want := range []string{
+		`role="group" aria-label="Event source"`,
+		`role="group" aria-label="Event outcome"`,
+		`title="Source — where the event came from"`,
+		`<span class="divider" aria-hidden="true">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("filter row missing %q", want)
+		}
+	}
+	// All six outcome chips render in funnel order, zero counts as disabled
+	// spans (matched/suppressed/gated/error are zero in this fixture).
+	funnelOrder := []string{"ignored", "matched", "suppressed", "gated", "fired", "error"}
+	prev := -1
+	for _, o := range funnelOrder {
+		i := strings.Index(page, ">"+o+"<")
+		if i < 0 {
+			t.Errorf("outcome chip %q is missing from the row", o)
+			continue
+		}
+		if i < prev {
+			t.Errorf("outcome chips must render in funnel order, %q out of place", o)
+		}
+		prev = i
+	}
+	if !strings.Contains(page, `<span class="chip" aria-disabled="true">matched`) {
+		t.Error("a zero-count outcome must render as a disabled span, not a link")
+	}
+}
+
+// TestCountFormatting pins the count cell helpers: thousands separators on the
+// full twin ("1,204") and the compact k-form ("1.2k", "12.4k").
+func TestCountFormatting(t *testing.T) {
+	if got := commaCount(999); got != "999" {
+		t.Errorf("commaCount(999) = %q, want 999", got)
+	}
+	if got := commaCount(1204); got != "1,204" {
+		t.Errorf("commaCount(1204) = %q, want 1,204", got)
+	}
+	if got := commaCount(12040); got != "12,040" {
+		t.Errorf("commaCount(12040) = %q, want 12,040", got)
+	}
+	if got := compactCount(1204); got != "1.2k" {
+		t.Errorf("compactCount(1204) = %q, want 1.2k", got)
+	}
+	if got := compactCount(12400); got != "12.4k" {
+		t.Errorf("compactCount(12400) = %q, want 12.4k", got)
+	}
+	if got := compactCount(999); got != "999" {
+		t.Errorf("compactCount(999) = %q, want 999", got)
 	}
 }
 
@@ -296,7 +381,9 @@ func TestEventsExpandPane(t *testing.T) {
 }
 
 // TestEventsOutcomeChipFilter: the outcome chip narrows the tray to that
-// outcome's rows.
+// outcome's rows. The active chip is the only accent on the row and carries
+// the trailing × clear: its href is the reset (the outcome param removed) and
+// its title reads "Clear filter". The legacy ?filter=fired alias still works.
 func TestEventsOutcomeChipFilter(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -317,25 +404,46 @@ func TestEventsOutcomeChipFilter(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	code, page := getBody(t, client, ts.URL+"/events?filter=ignored")
+	code, page := getBody(t, client, ts.URL+"/events?outcome=fired")
 	if code != 200 {
 		t.Fatalf("events status = %d", code)
 	}
-	if !strings.Contains(page, "chk-alert") {
-		t.Error("filtered page missing the ignored row")
+	if !strings.Contains(page, "fire-alert") {
+		t.Error("filtered page missing the fired row")
 	}
-	if strings.Contains(page, "fire-alert") {
-		t.Error("filtered page leaked a non-ignored row")
+	if strings.Contains(page, "chk-alert") {
+		t.Error("filtered page leaked a non-fired row")
 	}
-	if !strings.Contains(page, `href="/events?filter=ignored" aria-pressed="true"`) {
-		t.Error("the ignored chip is not marked active")
+	if !strings.Contains(page, `<a class="chip" href="/events" aria-pressed="true" title="Clear filter">fired`) {
+		t.Error("the active chip must be the accent, its href the reset, and carry the Clear filter title")
+	}
+	// The trailing × glyph rides inside the active chip.
+	if !strings.Contains(page, `<svg class="clear" width="14" height="14"`) {
+		t.Error("the active chip must carry the trailing × clear glyph")
+	}
+	// The all segment is pressed (no source filter) and the fired chip pressed.
+	if !strings.Contains(page, `href="/events" aria-pressed="true"`) {
+		t.Error("the all segment must be pressed alongside an outcome filter")
+	}
+
+	// Legacy alias: ?filter=fired keeps working.
+	_, legacy := getBody(t, client, ts.URL+"/events?filter=fired")
+	if !strings.Contains(legacy, "fire-alert") || strings.Contains(legacy, "chk-alert") {
+		t.Error("the legacy ?filter=fired alias must filter fired")
+	}
+
+	// Composing: the source switch preserves the active outcome (the href
+	// escapes the & of the composed query).
+	_, composed := getBody(t, client, ts.URL+"/events?source=checks&outcome=fired")
+	if !strings.Contains(composed, `href="/events?source=checks&amp;outcome=fired" aria-pressed="true"`) {
+		t.Error("the source segments must preserve the composed outcome param")
 	}
 }
 
-// TestEventsFilterHiddenWhenEmpty is the GATE for R7: with zero events and no
-// filter the chips and tray are hidden and the W5 empty copy shows; with an
-// active filter that matches nothing, the chips stay and the filtered-empty
-// line reads.
+// TestEventsFilterHiddenWhenEmpty: the closed enum supersedes the old
+// empty-hide — the source switch and all six outcome chips render even with
+// zero events (zero counts as disabled spans), while the tray gives way to the
+// W5 empty copy. The old "No events match" branch is gone.
 func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -346,8 +454,14 @@ func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("/events status = %d", code)
 	}
-	if strings.Contains(page, "filter-chip") {
-		t.Error("the filter chips render with zero events (R7)")
+	if !strings.Contains(page, `class="switch"`) {
+		t.Error("the source switch must render even with zero events (closed enum)")
+	}
+	if !strings.Contains(page, `class="group group--outcome chips"`) {
+		t.Error("the outcome chips must render even with zero events (closed enum)")
+	}
+	if !strings.Contains(page, `aria-disabled="true"`) {
+		t.Error("the zero-count outcome chips must render as disabled spans")
 	}
 	if !strings.Contains(page, "No events yet. Point an alert source at exocomp ingest") {
 		t.Error("the empty-state copy is missing")
@@ -355,24 +469,8 @@ func TestEventsFilterHiddenWhenEmpty(t *testing.T) {
 	if !strings.Contains(page, "<b>0</b><small>in</small>") {
 		t.Error("the funnel does not read 0 on an empty store")
 	}
-
-	// An active filter with nothing matching keeps the chips and shows the
-	// filtered-empty line (there are rows, just none gated).
-	if _, err := h.store.CreateEvent(context.Background(), store.Event{
-		Source: "check", Normalized: `{"name":"chk-alert"}`,
-		Outcome: store.OutcomeIgnored, Reason: "no rule matched",
-	}); err != nil {
-		t.Fatalf("CreateEvent: %v", err)
-	}
-	code, filtered := getBody(t, client, ts.URL+"/events?filter=gated")
-	if code != 200 {
-		t.Fatalf("/events?filter=gated status = %d", code)
-	}
-	if !strings.Contains(filtered, "filter-chip") {
-		t.Error("the filter chips hide even with an active filter")
-	}
-	if !strings.Contains(filtered, "No events match") {
-		t.Error("the filtered-empty line is missing")
+	if strings.Contains(page, "No events match") {
+		t.Error("the 'No events match' branch must be removed")
 	}
 }
 
@@ -675,8 +773,11 @@ func TestEventsPayloadAfterTrace(t *testing.T) {
 	}
 }
 
-// TestEventsFooter is the GATE for the footer copy (copy.txt): the enum-closed
-// sentence leaves the page, leaving "showing latest {n} of {t} · retained 90d".
+// TestEventsFooter is the GATE for the footer copy (copy.txt): with no outcome
+// filter it reads "showing latest {n} of {total} · retained 90d"; with one,
+// "showing latest {n} of {count} {outcome} · {total} in view · retained 90d ·
+// show all", where {count} is the outcome's last-24h count and {total} the
+// funnel total.
 func TestEventsFooter(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -688,6 +789,12 @@ func TestEventsFooter(t *testing.T) {
 			t.Fatalf("CreateEvent: %v", err)
 		}
 	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"fire-alert"}`,
+		Outcome: store.OutcomeFired, Reason: "job 1 queued",
+	}); err != nil {
+		t.Fatalf("CreateEvent fired: %v", err)
+	}
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -697,13 +804,56 @@ func TestEventsFooter(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("events status = %d", code)
 	}
-	if !strings.Contains(page, "showing latest 3 of 3 · retained 90d") {
-		t.Error("footer does not read 'showing latest 3 of 3 · retained 90d'")
+	if !strings.Contains(page, "showing latest 4 of 4 · retained 90d") {
+		t.Error("footer without an outcome filter must read 'showing latest 4 of 4 · retained 90d'")
 	}
-	for _, gone := range []string{"the enum is closed", " events · retained"} {
-		if strings.Contains(page, gone) {
-			t.Errorf("footer still carries the dropped copy %q", gone)
+	if strings.Contains(page, "show all") {
+		t.Error("footer without an outcome filter has nothing to show all")
+	}
+
+	code, fired := getBody(t, client, ts.URL+"/events?outcome=fired")
+	if code != 200 {
+		t.Fatalf("events?outcome=fired status = %d", code)
+	}
+	if !strings.Contains(fired, `showing latest 1 of 1 fired · 4 in view · retained 90d · <a href="/events">show all</a>`) {
+		t.Error("footer with an outcome filter must read 'showing latest 1 of 1 fired · 4 in view · retained 90d · show all'")
+	}
+}
+
+// TestEventsKeysHintInFunnel pins the keys hint move (§1.6): the hint leaves
+// the filter row for the funnel card's meta line, gains "o outcome", and the
+// keydown handler cycles the outcome group with o.
+func TestEventsKeysHintInFunnel(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "check", Normalized: `{"name":"at-home"}`,
+		Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/events")
+	funnel := strings.Index(page, `class="card funnel"`)
+	keys := strings.Index(page, `<span class="keys" aria-hidden="true">`)
+	if funnel < 0 || keys < funnel {
+		t.Error("the keys hint must live inside the funnel card")
+	}
+	for _, want := range []string{
+		`j</kbd> <kbd>k</kbd> move · <kbd>↵</kbd> expand · <kbd>e</kbd> explain · <kbd>o</kbd> outcome`,
+		`data-source="" data-outcome=""`, // the filters row names the active state for the o key
+		`} else if (e.key === "o") {`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("keys hint missing %q", want)
 		}
+	}
+	if strings.Contains(page, `class="keys-hint"`) {
+		t.Error("the old .keys-hint markup must leave the filter row")
 	}
 }
 

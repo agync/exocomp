@@ -743,6 +743,64 @@ func (s *Server) handleDecide(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, approvalSurface(vm))
 }
 
+// resolveEventsFilters maps the events URL params onto the canonical filter
+// state: source is the switch's split ("" all · "checks" · "alerts", the store
+// vocabulary's singular "check" accepted as an alias), outcome one of the six
+// chips or "". The legacy ?filter= values keep working as aliases
+// (filter=checks → source=checks, filter=fired → outcome=fired) so existing
+// links survive; the explicit params win when both are present.
+func resolveEventsFilters(source, outcome, filter string) (string, string) {
+	source = normalizeSource(source)
+	outcome = normalizeOutcome(outcome)
+	if source == "" {
+		source = filterSource(filter)
+	}
+	if outcome == "" {
+		outcome = filterOutcome(filter)
+	}
+	return source, outcome
+}
+
+func normalizeSource(s string) string {
+	switch s {
+	case "check", "checks":
+		return "checks"
+	case "alerts":
+		return "alerts"
+	default:
+		return ""
+	}
+}
+
+func normalizeOutcome(o string) string {
+	switch o {
+	case "ignored", "matched", "suppressed", "gated", "fired", "error":
+		return o
+	default:
+		return ""
+	}
+}
+
+func filterSource(filter string) string {
+	switch filter {
+	case "checks", "check":
+		return "checks"
+	case "alerts":
+		return "alerts"
+	default:
+		return ""
+	}
+}
+
+func filterOutcome(filter string) string {
+	switch filter {
+	case "ignored", "matched", "suppressed", "gated", "fired", "error":
+		return filter
+	default:
+		return ""
+	}
+}
+
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	now := s.now()
@@ -758,19 +816,16 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		limit = 500
 	}
 
-	filter := r.URL.Query().Get("filter")
+	source, outcome := resolveEventsFilters(r.URL.Query().Get("source"), r.URL.Query().Get("outcome"), r.URL.Query().Get("filter"))
 	ef := store.EventFilter{Limit: limit}
-	switch filter {
-	case "", "all":
-		filter = "all"
+	switch source {
 	case "checks":
 		ef.Source = reactive.SourceCheck
 	case "alerts":
 		ef.NotSource = reactive.SourceCheck
-	case "ignored", "matched", "suppressed", "gated", "fired", "error":
-		ef.Outcomes = []store.EventOutcome{store.EventOutcome(filter)}
-	default:
-		filter = "all"
+	}
+	if outcome != "" {
+		ef.Outcomes = []store.EventOutcome{store.EventOutcome(outcome)}
 	}
 
 	events, err := s.store.ListEvents(ctx, ef)
@@ -792,10 +847,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	vm := eventsVM{
 		Page:    s.pageFor(r, "Events", "events"),
 		Funnel:  funnel,
-		Filter:  filter,
-		Total:   int64(ledger.Total()),
-		Empty:   ledger.Total() == 0 && filter == "all",
-		NoMatch: ledger.Total() > 0 && len(events) == 0,
+		Source:  source,
+		Outcome: outcome,
+		Empty:   ledger.Total() == 0,
 	}
 	for _, e := range events {
 		row := eventRow{
