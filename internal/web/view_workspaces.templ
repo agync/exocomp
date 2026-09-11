@@ -38,7 +38,14 @@ templ workspacesList(vm workspacesVM) {
 				<p class="meta">No workspace registered — exocomp ws add on the host defines one.</p>
 			} else {
 				<div class="tablewrap stackable">
-					<table>
+					<table class="ws-table">
+						<colgroup>
+							<col style="width:120px"/>
+							<col style="width:130px"/>
+							<col style="width:140px"/>
+							<col/>
+							<col style="width:120px"/>
+						</colgroup>
 						<thead>
 							<tr>
 								<th scope="col">Name</th>
@@ -53,34 +60,40 @@ templ workspacesList(vm workspacesVM) {
 								<tr data-href={ templ.SafeURL("/workspaces/" + wsr.Name) }>
 									<td data-label="Name" class="ws-name"><a href={ templ.SafeURL("/workspaces/" + wsr.Name) }>{ wsr.Name }</a></td>
 									<td data-label="Posture" class="ws-cell">
-										<b class="mono">{ wsr.PostureLabel() }</b>
-										<small class="mono">{ wsr.PostureMeta() }</small>
+										<div class="ws-stack">
+											<b class="mono">{ wsr.PostureLabel() }</b>
+											<small class="mono">{ wsr.PostureMeta() }</small>
+										</div>
 									</td>
 									<td data-label="Drift" class="ws-cell">
-										@chip(wsr.DriftClass(), wsr.DriftLabel())
-										if wsr.ApprovalID > 0 {
-											<a class="ws-meta" href={ templ.SafeURL("/approvals/" + itoa(wsr.ApprovalID)) }>approval #{ itoa(wsr.ApprovalID) }</a>
-										}
+										<div class="ws-stack">
+											@chip(wsr.DriftClass(), wsr.DriftLabel())
+											if wsr.ApprovalID > 0 {
+												<a class="ws-meta" href={ templ.SafeURL("/approvals/" + itoa(wsr.ApprovalID)) }>approval #{ itoa(wsr.ApprovalID) }</a>
+											}
+										</div>
 									</td>
 									<td data-label="Tofu state" class="ws-cell">
-										<span class="ws-line">
-											<b class="mono">{ wsr.StateLine() }</b>
-											if wsr.HasState() {
-												<span class="ws-encrypted">
-													<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>
-													ENCRYPTED
-												</span>
+										<div class="ws-stack">
+											<span class="ws-line">
+												<b class="mono">{ wsr.StateLine() }</b>
+												if wsr.HasState() {
+													<span class="ws-encrypted">
+														<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>
+														ENCRYPTED
+													</span>
+												}
+											</span>
+											if wsr.Locked {
+												<small class="mono ws-lockline">{ wsr.LockLine() }
+													<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/unlock") } class="inline-form" data-confirm={ "Force-unlock " + wsr.Name + "?" }>
+														<button type="submit" class="ws-unlock">force-unlock</button>
+													</form>
+												</small>
+											} else {
+												<small class="mono">{ wsr.PlanMeta() }</small>
 											}
-										</span>
-										if wsr.Locked {
-											<small class="mono ws-lockline">{ wsr.LockLine() }
-												<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/unlock") } class="inline-form" data-confirm={ "Force-unlock " + wsr.Name + "?" }>
-													<button type="submit" class="ws-unlock">force-unlock</button>
-												</form>
-											</small>
-										} else {
-											<small class="mono">{ wsr.PlanMeta() }</small>
-										}
+										</div>
 									</td>
 									if vm.Operator {
 										<td data-label="Actions" class="right">

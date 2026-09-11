@@ -527,6 +527,63 @@ func TestWorkspacesListApplyGateHonest(t *testing.T) {
 	}
 }
 
+// TestWorkspacesListOneRowGrid is the QA delta for the workspaces table: the
+// five cells (NAME · POSTURE · DRIFT · TOFU STATE · ACTIONS) stay table cells
+// in ONE row with the actions in the fixed right-edge slot. The root cause was
+// .ws-cell { display:flex } on a <td> — it overrides the td's table-cell
+// display, the browser wraps each flex-td in an anonymous cell and the row
+// collapses. The fix keeps the <table>, moves the flex column onto an inner
+// .ws-stack wrapper, and pins the columns with a colgroup at the SPEC widths
+// 120/130/140/1fr/120.
+func TestWorkspacesListOneRowGrid(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces = %d, want 200", code)
+	}
+	// The colgroup pins the SPEC column widths.
+	for _, want := range []string{
+		"<colgroup>",
+		`<col style="width:120px">`,
+		`<col style="width:130px">`,
+		`<col style="width:140px">`,
+		`<col style="width:120px">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("workspaces table missing colgroup column %q", want)
+		}
+	}
+	// One row of exactly five cells, the actions cell the fixed right-edge
+	// slot (the DOM proxy for the shared-baseline row — the layout that breaks
+	// when a td stops being a table-cell).
+	tr := strings.Index(page, `<tr data-href=`)
+	if tr < 0 {
+		t.Fatal("workspaces list has no data row")
+	}
+	row := page[tr : tr+strings.Index(page[tr:], "</tr>")]
+	if n := strings.Count(row, "<td"); n != 5 {
+		t.Errorf("workspace row has %d cells, want the five-cell one-row layout", n)
+	}
+	if !strings.Contains(row, `data-label="Actions" class="right"`) {
+		t.Error("the actions cell must be the fixed right-edge slot")
+	}
+	// The CSS side: the flex column lives on the inner .ws-stack wrapper, and
+	// the .ws-cell td itself is a plain table-cell (no display:flex).
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".ws-stack { display: flex; flex-direction: column;") {
+		t.Error("app.css missing the .ws-stack inner wrapper")
+	}
+	if strings.Contains(app, ".ws-cell { display: flex") {
+		t.Error("app.css still sets display:flex on the .ws-cell td (row collapse)")
+	}
+}
+
 // TestWorkspacesListApplyOrder: on an applicable row the actions cluster reads
 // [apply]·plan·▾ left-to-right — apply prepended, plan and the chevron in
 // their fixed right slots — so the constant verbs never move between rows.

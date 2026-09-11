@@ -470,11 +470,18 @@ td.right, th.right { text-align: right; }
  * The v0.10 rows are the 64px two-line density the job list uses: each data
  * cell stacks a bold line over a mono meta, so POSTURE, DRIFT and TOFU STATE
  * read at a glance. The ENCRYPTED keyword is the state's at-rest guarantee,
- * a 12px padlock + keyword in the ok signal — never colour-only. */
+ * a 12px padlock + keyword in the ok signal — never colour-only.
+ * The flex-column lives on the inner .ws-stack wrapper, never on the <td>
+ * itself: a display:flex <td> overrides table-cell and the browser collapses
+ * the row into one stacked column (the QA-delta root cause). The colgroup
+ * pins the SPEC §1c widths 120/130/140/1fr/120 as auto-layout hints — the
+ * actions cell's own min-width:170px (W9) then keeps the glyph cluster on
+ * one line in the fixed right-edge slot. */
 .ws-name a { font: 600 13px var(--font-ui); color: var(--ink-100); }
-.ws-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; align-items: flex-start; }
-.ws-cell b { font: var(--type-log); color: var(--ink-100); white-space: nowrap; }
-.ws-cell small { font: var(--type-log); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ws-cell { min-width: 0; vertical-align: top; }
+.ws-stack { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; min-width: 0; }
+.ws-stack b { font: var(--type-log); color: var(--ink-100); white-space: nowrap; }
+.ws-stack small { font: var(--type-log); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ws-line { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .ws-encrypted {
   display: inline-flex; align-items: center; gap: 3px; flex: none;
@@ -484,7 +491,7 @@ td.right, th.right { text-align: right; }
 .ws-meta { font: 400 12px var(--font-mono); color: var(--signal-wait); white-space: nowrap; }
 /* The LOCKED meta ends in the force-unlock button — never ellipsized, so the
  * verb is always reachable even with a long holder name. */
-.ws-cell small.ws-lockline { overflow: visible; }
+.ws-stack small.ws-lockline { overflow: visible; }
 .ws-unlock {
   padding: 0; border: 0; background: none; cursor: pointer;
   font: 400 12px var(--font-mono); color: var(--signal-wait); text-decoration: underline;
