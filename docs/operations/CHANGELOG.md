@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — designer QA pass 2 (v0.12)
+
+- **The workspaces-list verbs match SCREENS 1c** — `[apply] · plan · ▾`:
+  `plan` is a labeled text verb, not the plus-shaped clipboard glyph (the `+`
+  had no in-row meaning), so the fixed right-edge slots read correctly.
+- **The Rules ACTIONS slot has no stray separator** — the explain verb is a
+  clean info icon (a true circle + i) beside the `▾`, never a pipe-like
+  artifact; a separator only ever sits between two rendered verbs.
+- **The Events expand glyph is a real chevron** — `▸` at 12px ink-400 in the
+  20px slot (it had collapsed to a ~2px dot at the old font size).
+
 ## 2026-09-11 — designer QA deltas (v0.12)
 
 - **The Events tray is the seven-column grid again** (SPEC §1a): RECEIVED ·
