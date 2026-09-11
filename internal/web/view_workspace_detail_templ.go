@@ -176,7 +176,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " plans · newest first · latest is applicable</p><div class=\"tray-table plans\"><div class=\"row tt-col\"><span>PLAN</span> <span>SERIAL</span> <span>SEALED</span> <span>CHANGES · VERDICT</span> <span>LIFECYCLE</span> <span>ACTIONS</span></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, " plans · newest first · latest is applicable</p><div class=\"tray-table plans\"><div class=\"row tt-col\"><span>PLAN</span> <span>SERIAL</span> <span>SEALED</span> <span>CHANGES · VERDICT</span> <span>LIFECYCLE</span> <span class=\"th-actions\">ACTIONS</span></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -353,7 +353,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div><div class=\"pl-life\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</div><div class=\"lifecycle\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -369,7 +369,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 						var templ_7745c5c3_Var20 templ.SafeURL
 						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/jobs/" + itoa(plan.ConsumedBy)))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 79}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 78}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 						if templ_7745c5c3_Err != nil {
@@ -382,7 +382,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 						var templ_7745c5c3_Var21 string
 						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(plan.ConsumedBy))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 106}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 84, Col: 105}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 						if templ_7745c5c3_Err != nil {
@@ -399,9 +399,9 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var22 string
-						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs("stale · state at serial " + itoa64(vm.Row.Serial))
+						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs("stale · serial " + itoa64(vm.Row.Serial))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 87, Col: 82}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspace_detail.templ`, Line: 87, Col: 72}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 						if templ_7745c5c3_Err != nil {
@@ -412,7 +412,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"verbs\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</div><div class=\"actions\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}

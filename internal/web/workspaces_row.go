@@ -1,21 +1,19 @@
 package web
 
-// workspaceRowActions is the v0.6 row-action set for one workspace row: Plan
-// and Apply verb glyphs for runs-in-server workspaces, and a Backend-config
+// workspaceRowActions is the v0.6 row-action set for one workspace row: Apply
+// and Plan verb glyphs for runs-in-server workspaces, and a Backend-config
 // menu item that opens the workspace detail page (where the exact backend
 // block lives). A state-only workspace has no Plan/Apply — its row shows a
-// Backend glyph (links the same detail page) plus the chevron menu. Apply
-// appears only while a SAVED plan exists (SPEC §5: one apply per workspace,
-// and the list never offers an apply the detail tray would refuse). The row
-// itself opens the detail page (data-href).
+// Backend glyph (links the same detail page) plus the chevron menu. The
+// cluster is [apply]·plan·▾ flush right (SPEC §4): Plan and the chevron hold
+// the two right-most slots on every row, and the conditional Apply is prepended
+// LEFT only while an applicable plan exists (serial-equal — the detail tray's
+// rule), so plan and ▾ never move. Without apply the same two glyphs sit in
+// the same two slots, and the TOFU STATE meta reads "no saved plan".
 func workspaceRowActions(wsr workspaceWriteRow) []rowAction {
 	acts := []rowAction{}
 	if !wsr.StateOnly() {
-		acts = append(acts, rowAction{
-			Name: "Plan", Path: glyphPlan,
-			Form: "/workspaces/" + wsr.Name + "/plan",
-		})
-		if len(wsr.Plans) > 0 {
+		if wsr.ApplicablePlan() {
 			acts = append(acts, rowAction{
 				Name: "Apply", Path: glyphApply,
 				Form:    "/workspaces/" + wsr.Name + "/apply",
@@ -23,6 +21,10 @@ func workspaceRowActions(wsr workspaceWriteRow) []rowAction {
 				Confirm: "Apply " + wsr.Name + "?",
 			})
 		}
+		acts = append(acts, rowAction{
+			Name: "Plan", Path: glyphPlan,
+			Form: "/workspaces/" + wsr.Name + "/plan",
+		})
 	} else {
 		acts = append(acts, rowAction{
 			Name: "Backend", Path: glyphOpen,

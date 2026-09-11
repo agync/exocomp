@@ -459,6 +459,13 @@ func TestWorkspacesPageSavedPlans(t *testing.T) {
 		`/workspaces/web/plans/` + strconv.FormatInt(latest.ID, 10),
 		`/workspaces/web/plans/` + strconv.FormatInt(older.ID, 10),
 		"a Policy verdict rides on the plan: deny · require-approval",
+		// The ACTIONS column right-alignment contract (SPEC §4): the header is
+		// right-aligned and the cell is the flex-end actions cluster.
+		`class="th-actions"`,
+		`<div class="actions">`,
+		// The LIFECYCLE cell carries the lift.css lifecycle name, whose stale
+		// word never ellipsizes (nowrap, wait).
+		`class="lifecycle">`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("workspace detail missing %q", want)
@@ -477,6 +484,100 @@ func TestWorkspacesPageSavedPlans(t *testing.T) {
 	}
 	if strings.Contains(body, `action="/workspaces/web/apply"`) {
 		t.Fatal("workspace detail page still posts an apply form")
+	}
+}
+
+// TestWorkspacesListApplyGateHonest: the list's apply glyph is gated on
+// serial-equal applicability, not on "any saved plan exists" — a SAVED plan
+// the Tofu state has moved past (stale) shows NO apply on the list, exactly
+// as the detail tray refuses it, and the TOFU STATE meta reads "no saved
+// plan". Mutation: gate the apply on len(Plans)>0 and this flips red.
+func TestWorkspacesListApplyGateHonest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ws := h.seedWorkspace(t, "web")
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	// The plan is saved against serial 1; the state has moved to serial 2.
+	h.seedPlanArtifactSerial(t, "web", 1)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces = %d", code)
+	}
+	if strings.Contains(page, `aria-label="Apply"`) {
+		t.Error("workspaces list offers apply for a stale plan")
+	}
+	if strings.Contains(page, `action="/workspaces/web/apply"`) {
+		t.Error("workspaces list posts an apply form for a stale plan")
+	}
+	if !strings.Contains(page, "no saved plan") {
+		t.Error("workspaces list missing the no-saved-plan TOFU STATE meta")
+	}
+}
+
+// TestWorkspacesListApplyOrder: on an applicable row the actions cluster reads
+// [apply]·plan·▾ left-to-right — apply prepended, plan and the chevron in
+// their fixed right slots — so the constant verbs never move between rows.
+func TestWorkspacesListApplyOrder(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ws := h.seedWorkspace(t, "web")
+	if _, err := h.store.AppendTFState(context.Background(), store.NewTFState{
+		WorkspaceID: ws.ID, Ciphertext: []byte("state"),
+	}); err != nil {
+		t.Fatalf("AppendTFState: %v", err)
+	}
+	h.seedPlanArtifactSerial(t, "web", 1)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces = %d", code)
+	}
+	apply := strings.Index(page, `aria-label="Apply"`)
+	plan := strings.Index(page, `aria-label="Plan"`)
+	chev := strings.Index(page, `class="rachev"`)
+	if apply < 0 || apply >= plan || plan >= chev {
+		t.Error("applicable row actions are not [apply]·plan·▾ left-to-right")
+	}
+	if strings.Contains(page, "no saved plan") {
+		t.Error("an applicable row must not read no saved plan")
+	}
+}
+
+// TestWorkspacesListNoSavedPlanMeta: a runs-in-server workspace with no saved
+// plan reads "no saved plan" in the TOFU STATE meta (the apply glyph is off).
+func TestWorkspacesListNoSavedPlanMeta(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/workspaces")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces = %d", code)
+	}
+	if !strings.Contains(page, "no saved plan") {
+		t.Error("no-plan workspace missing the no-saved-plan TOFU STATE meta")
+	}
+	if strings.Contains(page, `aria-label="Apply"`) {
+		t.Error("no-plan workspace still offers apply")
 	}
 }
 
@@ -638,11 +739,19 @@ func TestWorkspaceDetailPage(t *testing.T) {
 	for _, want := range []string{
 		`data-href="/workspaces/web"`,
 		`aria-label="Plan"`,
-		`aria-label="Apply"`,
 	} {
 		if !strings.Contains(list, want) {
 			t.Errorf("workspaces list missing %q", want)
 		}
+	}
+	// The list apply gate is serial-equal (SPEC §4): the plan is stale, so the
+	// list carries no apply glyph and its TOFU STATE meta reads the no-plan
+	// line — the same honesty the detail tray's stale refusal promises.
+	if strings.Contains(list, `aria-label="Apply"`) {
+		t.Error("workspaces list offers apply for a stale plan")
+	}
+	if !strings.Contains(list, "no saved plan") {
+		t.Error("workspaces list missing the no-saved-plan TOFU STATE meta")
 	}
 	if strings.Contains(list, "Saved plans") || strings.Contains(list, "Backend config — web") {
 		t.Error("Saved plans / Backend config must not render as per-row modals on the list (R8)")
@@ -662,7 +771,7 @@ func TestWorkspaceDetailPage(t *testing.T) {
 		`>Plan</button>`,
 		`kicker">Saved plans`,
 		"SAVED",
-		"stale · state at serial 2",
+		"stale · serial 2",
 		`kicker">Backend config`,
 		"backend &#34;http&#34;",
 		"tofu init -backend-config=&lt;(exocomp workspace backend web --config)",
@@ -671,6 +780,11 @@ func TestWorkspaceDetailPage(t *testing.T) {
 		if !strings.Contains(detail, want) {
 			t.Errorf("workspace detail missing %q", want)
 		}
+	}
+	// The stale copy is the short "stale · serial N" (SPEC §4) — the old
+	// "stale · state at serial N" is retired.
+	if strings.Contains(detail, "stale · state at serial") {
+		t.Error("workspace detail still renders the old stale copy")
 	}
 	// The single-apply rule: a stale SAVED plan carries NO apply glyph (the
 	// only apply candidate lost its affordance to the moved state), and the
@@ -701,6 +815,12 @@ func TestWorkspacesListStateColumns(t *testing.T) {
 	if err != nil {
 		t.Fatalf("WorkspaceByName: %v", err)
 	}
+	// Seed the plan before the state job so the state job stays the workspace's
+	// newest (the POSTURE meta names it). The plan's own job is older. Saved
+	// against serial 2 (set below), the plan keeps the row applicable, so the
+	// TOFU STATE meta still reads the writer facts — a no-plan row would read
+	// "no saved plan" instead (TestWorkspacesListNoSavedPlanMeta).
+	h.seedPlanArtifactSerial(t, "web", 2)
 	job, err := h.queue.Enqueue(ctx, queue.Spec{
 		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
 		Argv: []string{"/bin/true"},
@@ -751,6 +871,10 @@ func TestWorkspacesListStateColumns(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("workspaces list missing %q", want)
 		}
+	}
+	// The applicable plan keeps the writer meta: no no-saved-plan line.
+	if strings.Contains(body, "no saved plan") {
+		t.Error("applicable workspace still reads no saved plan")
 	}
 }
 

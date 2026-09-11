@@ -282,6 +282,30 @@ func (r workspaceWriteRow) LockLine() string {
 	return "lock held by " + r.LockHolder + " since " + r.LockSince
 }
 
+// ApplicablePlan reports whether the workspace holds a plan the list's apply
+// gate would offer: the latest SAVED plan whose serial equals the Tofu state.
+// The list fills only the plan facts applicability needs, so this is the same
+// honest gate the detail tray's planArtifactRow.Applicable expresses.
+func (r workspaceWriteRow) ApplicablePlan() bool {
+	for _, p := range r.Plans {
+		if p.Applicable() {
+			return true
+		}
+	}
+	return false
+}
+
+// PlanMeta renders the TOFU STATE cell's second line for a runs-in-server row:
+// "no saved plan" when no saved plan is applicable (the apply glyph is off),
+// else the ordinary writer meta. A state-only workspace never plans, so its
+// writer meta stands.
+func (r workspaceWriteRow) PlanMeta() string {
+	if r.StateOnly() || r.ApplicablePlan() {
+		return r.StateMeta()
+	}
+	return "no saved plan"
+}
+
 // StateLabel and StateClass render the serial as a labelled chip, never
 // colour-only: no state pushed yet is dim, a pushed serial is ok.
 func (r workspaceWriteRow) StateLabel() string {
@@ -348,8 +372,19 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 				s.fail(w, r, err)
 				return
 			}
-			for _, p := range plans {
-				row.Plans = append(row.Plans, planArtifactRow{ID: p.ID})
+			// Fill the plan facts the list's apply gate reads — lifecycle,
+			// serial, staleness — through the SAME dedupe/lifecycle reduction
+			// the detail tray uses, so the list never offers an apply the tray
+			// would refuse (SPEC §4, fold SF2).
+			for _, meta := range dedupedPlanRows(plans) {
+				p := meta.Artifact
+				row.Plans = append(row.Plans, planArtifactRow{
+					ID:         p.ID,
+					PlanSerial: p.PlanSerial,
+					Lifecycle:  meta.Lifecycle,
+					ConsumedBy: meta.ConsumedBy,
+					Stale:      p.PlanSerial > 0 && p.PlanSerial < row.Serial,
+				})
 			}
 		}
 		vm.Workspaces = append(vm.Workspaces, row)

@@ -306,9 +306,9 @@ func workspacesList(vm workspacesVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var16 string
-						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(wsr.StateMeta())
+						templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(wsr.PlanMeta())
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 82, Col: 48}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workspaces.templ`, Line: 82, Col: 47}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 						if templ_7745c5c3_Err != nil {
