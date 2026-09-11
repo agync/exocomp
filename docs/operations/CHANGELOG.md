@@ -6,6 +6,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — Events page spacing fixes
+
+- **The filter row is centered between the funnel card and the tray** — the
+  source switch + outcome chips had no vertical margin, so they sat flush
+  against the funnel card (0px above vs the 12px below). Equal `--gap-card`
+  spacing both sides now.
+- **The funnel counts read `2 in` / `1 ignored`, not `2in` / `1ignored`** — a
+  6px gap between each count number and its label.
+
 ## 2026-09-11 — events filters + job output surface (v0.12)
 
 - **The Events filter row is a source switch + outcome chips.** `all · checks
