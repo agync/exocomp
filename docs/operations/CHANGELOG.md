@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — designer QA deltas (v0.12)
+
+- **The Events tray is the seven-column grid again** (SPEC §1a): RECEIVED ·
+  EVENT · SOURCE · MATCHED RULE · OUTCOME · REASON · ▸ in one 44px row. The
+  OUTCOME glyph+keyword sit left-aligned in their 96px slot; RECEIVED reads
+  `HH:MM:SS · Nm ago` in one cell; and the REASON column now tells the story
+  in the row itself — `job #N · <state> · exit <c>` (linked), `no rule
+  matched`, `rule <name> · not yet run`, `cooldown <t> left` /
+  `duplicate of #N`, `awaiting approval` (linked). The funnel caption is gone.
+- **The Workspaces list is one row again** — `.ws-cell` was `display:flex` on
+  the `<td>`, which broke the table layout so POSTURE · DRIFT · TOFU STATE ·
+  ACTIONS piled into one stacked column. The flex moved to an inner wrapper
+  (tds stay table-cells, `min-width:0`) and the columns are pinned.
+- **Rules ACTIONS has no orphan separator** — a separator only ever sits
+  between two rendered verbs; the explain·▾ disclosure renders without a stray
+  marker.
+- **`Tail +N` is a toolbar verb, not a floating button** — it moved out of
+  the log box into the Output toolbar before `Raw ↗`, hidden until the
+  operator scrolls up.
+
 ## 2026-09-11 — Events page spacing fixes
 
 - **The filter row is centered between the funnel card and the tray** — the
