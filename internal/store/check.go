@@ -131,63 +131,8 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 	if n.IntervalS <= 0 {
 		return Check{}, fmt.Errorf("%w: store: check %q interval_s must be positive, got %d", ErrValidation, n.Name, n.IntervalS)
 	}
-	if len(n.Targets) == 0 {
-		return Check{}, fmt.Errorf("%w: store: check %q needs at least one target", ErrValidation, n.Name)
-	}
-
-	seen := make(map[string]bool, len(n.Targets))
-	for i, t := range n.Targets {
-		if !ValidName(t.Name) {
-			return Check{}, fmt.Errorf("%w: store: check %q target %d name %q must match [A-Za-z0-9_.-]+",
-				ErrValidation, n.Name, i, t.Name)
-		}
-		if seen[t.Name] {
-			return Check{}, fmt.Errorf("%w: store: check %q has a duplicated target name %q", ErrValidation, n.Name, t.Name)
-		}
-		seen[t.Name] = true
-
-		switch n.Kind {
-		case CheckTCP:
-			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
-					ErrValidation, n.Name, t.Name, t.Address, err)
-			}
-			if t.Port < 1 || t.Port > 65535 {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q port %d out of range 1..65535",
-					ErrValidation, n.Name, t.Name, t.Port)
-			}
-		case CheckPing:
-			if _, err := netip.ParseAddr(t.Address); err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
-					ErrValidation, n.Name, t.Name, t.Address, err)
-			}
-			if t.Port != 0 {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q carries a port; ping probes an address",
-					ErrValidation, n.Name, t.Name)
-			}
-			// Rootless fail-closed: a binary on PATH alone does not mean the
-			// host can send ICMP (ping_group_range/setuid), so the kind is
-			// refused unless the binary exists AND a live loopback probe
-			// answers. A check that is silently all-down is the observability
-			// failure this refusal exists to prevent.
-			if err := pingCapable(); err != nil {
-				return Check{}, fmt.Errorf("store: check %q kind ping: %w", n.Name, err)
-			}
-		case CheckHTTP:
-			u, err := url.Parse(t.URL)
-			if err != nil {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q does not parse: %w",
-					ErrValidation, n.Name, t.Name, t.URL, err)
-			}
-			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q url %q must be an http(s) URL with a host",
-					ErrValidation, n.Name, t.Name, t.URL)
-			}
-			if t.Expect != 0 && (t.Expect < 100 || t.Expect > 599) {
-				return Check{}, fmt.Errorf("%w: store: check %q target %q expect %d out of range 100..599",
-					ErrValidation, n.Name, t.Name, t.Expect)
-			}
-		}
+	if err := validateCheckTargets(n.Name, n.Kind, n.Targets); err != nil {
+		return Check{}, err
 	}
 
 	targets, err := json.Marshal(n.Targets)
@@ -207,6 +152,105 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 		return Check{}, wrap("create check", err)
 	}
 	return s.getCheck(ctx, id)
+}
+
+// UpdateCheck re-points a stored check's targets and interval in place. The
+// kind is read from the stored row and never replaced; the target shape rules
+// are the same CreateCheck enforces, so a row that reads is a row that probes.
+// check_state rows key on (check_id, target_name), so a re-point that keeps a
+// target's NAME preserves its state — the sweep can flip the kept row and emit
+// a real transition. That is the whole point of `check update` over rm+add,
+// which cascades the state away.
+func (s *Store) UpdateCheck(ctx context.Context, name string, targets []CheckTarget, intervalS int64) (Check, error) {
+	cur, err := s.GetCheck(ctx, name)
+	if err != nil {
+		return Check{}, err
+	}
+	if intervalS <= 0 {
+		return Check{}, fmt.Errorf("%w: store: check %q interval_s must be positive, got %d", ErrValidation, name, intervalS)
+	}
+	if err := validateCheckTargets(name, cur.Kind, targets); err != nil {
+		return Check{}, err
+	}
+
+	targetsJSON, err := json.Marshal(targets)
+	if err != nil {
+		return Check{}, fmt.Errorf("store: update check: encode targets: %w", err)
+	}
+	now := time.Now().UTC()
+	if _, err := s.db.ExecContext(ctx, `
+		UPDATE check_row SET targets_json = ?, interval_s = ?, updated_at = ?
+		WHERE id = ?`,
+		string(targetsJSON), intervalS, now.UnixMilli(), cur.ID); err != nil {
+		return Check{}, wrap("update check", err)
+	}
+	return s.getCheck(ctx, cur.ID)
+}
+
+// validateCheckTargets enforces the per-kind target shape CreateCheck and
+// UpdateCheck share, so an update's refusal rules can never drift from a
+// create's. The ping kind's capability probe (binary on PATH AND a live
+// loopback answer) re-runs on a ping update too: validate-at-write is
+// deliberate, a check that is silently all-down is the failure it prevents.
+func validateCheckTargets(name, kind string, targets []CheckTarget) error {
+	if len(targets) == 0 {
+		return fmt.Errorf("%w: store: check %q needs at least one target", ErrValidation, name)
+	}
+	seen := make(map[string]bool, len(targets))
+	for i, t := range targets {
+		if !ValidName(t.Name) {
+			return fmt.Errorf("%w: store: check %q target %d name %q must match [A-Za-z0-9_.-]+",
+				ErrValidation, name, i, t.Name)
+		}
+		if seen[t.Name] {
+			return fmt.Errorf("%w: store: check %q has a duplicated target name %q", ErrValidation, name, t.Name)
+		}
+		seen[t.Name] = true
+
+		switch kind {
+		case CheckTCP:
+			if _, err := netip.ParseAddr(t.Address); err != nil {
+				return fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
+					ErrValidation, name, t.Name, t.Address, err)
+			}
+			if t.Port < 1 || t.Port > 65535 {
+				return fmt.Errorf("%w: store: check %q target %q port %d out of range 1..65535",
+					ErrValidation, name, t.Name, t.Port)
+			}
+		case CheckPing:
+			if _, err := netip.ParseAddr(t.Address); err != nil {
+				return fmt.Errorf("%w: store: check %q target %q address %q is not an IP literal: %w",
+					ErrValidation, name, t.Name, t.Address, err)
+			}
+			if t.Port != 0 {
+				return fmt.Errorf("%w: store: check %q target %q carries a port; ping probes an address",
+					ErrValidation, name, t.Name)
+			}
+			// Rootless fail-closed: a binary on PATH alone does not mean the
+			// host can send ICMP (ping_group_range/setuid), so the kind is
+			// refused unless the binary exists AND a live loopback probe
+			// answers. A check that is silently all-down is the observability
+			// failure this refusal exists to prevent.
+			if err := pingCapable(); err != nil {
+				return fmt.Errorf("store: check %q kind ping: %w", name, err)
+			}
+		case CheckHTTP:
+			u, err := url.Parse(t.URL)
+			if err != nil {
+				return fmt.Errorf("%w: store: check %q target %q url %q does not parse: %w",
+					ErrValidation, name, t.Name, t.URL, err)
+			}
+			if (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+				return fmt.Errorf("%w: store: check %q target %q url %q must be an http(s) URL with a host",
+					ErrValidation, name, t.Name, t.URL)
+			}
+			if t.Expect != 0 && (t.Expect < 100 || t.Expect > 599) {
+				return fmt.Errorf("%w: store: check %q target %q expect %d out of range 100..599",
+					ErrValidation, name, t.Name, t.Expect)
+			}
+		}
+	}
+	return nil
 }
 
 // getCheck returns the check with the given id.

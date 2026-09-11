@@ -374,3 +374,122 @@ func TestCheckPingAddsWhenHostCanICMP(t *testing.T) {
 		t.Fatalf("created kind = %q", created.Kind)
 	}
 }
+
+// TestCheckUpdatePreservesState is the whole point of `check update`: a
+// re-point that keeps the target NAME leaves its check_state row untouched, so
+// the sweep can flip that kept row and emit a real transition. If the update
+// wiped or re-keyed state, the re-point could only cold-start (seeding without
+// emitting) exactly like rm+add did.
+func TestCheckUpdatePreservesState(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	created, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	firstSeen := time.Now().Add(-time.Hour)
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 3, Emitted: store.CheckUp,
+		FirstSeen: firstSeen, LastChange: time.Now(),
+		RecentObservations: `[{"observed_at":"2024-05-01T12:00:00Z","status":"up","consecutive":3}]`,
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+
+	updated, err := st.UpdateCheck(ctx, "at-home",
+		[]store.CheckTarget{{Name: "laptop", Address: "127.0.0.1", Port: 2222}}, 30)
+	if err != nil {
+		t.Fatalf("update check: %v", err)
+	}
+	if updated.Kind != store.CheckTCP || updated.IntervalS != 30 || len(updated.Targets) != 1 ||
+		updated.Targets[0].Address != "127.0.0.1" || updated.Targets[0].Port != 2222 {
+		t.Fatalf("updated = %+v", updated)
+	}
+
+	kept, err := st.GetCheckState(ctx, created.ID, "laptop")
+	if err != nil {
+		t.Fatalf("state after update: %v", err)
+	}
+	if kept.Consecutive != 3 || kept.Emitted != store.CheckUp ||
+		kept.FirstSeen.UnixMilli() != firstSeen.UTC().UnixMilli() {
+		t.Fatalf("state = %+v, want it preserved across the update", kept)
+	}
+}
+
+// TestCheckUpdateValidationRefusals mirrors CreateCheck's shape rules but
+// against the STORED check's kind: a kind is read from the row and never
+// replaced, so an http-shaped target on a stored tcp check (the only way to
+// attempt a kind change here) is refused. A refused update must leave the
+// stored row untouched.
+func TestCheckUpdateValidationRefusals(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	if _, err := st.CreateCheck(ctx, checkFixture()); err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+
+	cases := []struct {
+		name      string
+		targets   []store.CheckTarget
+		intervalS int64
+		wantErr   string
+	}{
+		{"no targets", nil, 300, "at least one target"},
+		{"duplicate target name", []store.CheckTarget{
+			{Name: "dup", Address: "192.168.1.1", Port: 22},
+			{Name: "dup", Address: "192.168.1.2", Port: 22},
+		}, 300, "duplicated target name"},
+		{"target name charset", []store.CheckTarget{{Name: "bad/name", Address: "192.168.1.1", Port: 22}}, 300, "must match"},
+		{"tcp address is a hostname", []store.CheckTarget{{Name: "web", Address: "web.lan", Port: 443}}, 300, "not an IP literal"},
+		{"tcp port zero", []store.CheckTarget{{Name: "web", Address: "192.168.1.1", Port: 0}}, 300, "port 0 out of range"},
+		{"tcp port too high", []store.CheckTarget{{Name: "web", Address: "192.168.1.1", Port: 70000}}, 300, "port 70000 out of range"},
+		{"zero interval", []store.CheckTarget{{Name: "web", Address: "192.168.1.1", Port: 22}}, 0, "interval_s must be positive"},
+		{"negative interval", []store.CheckTarget{{Name: "web", Address: "192.168.1.1", Port: 22}}, -30, "interval_s must be positive"},
+		// Kind is read from the stored row and never replaced: an http-shaped
+		// target against the stored tcp check must be refused.
+		{"kind-changing http target", []store.CheckTarget{{Name: "web", URL: "http://web.lan/health"}}, 300, "not an IP literal"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := st.UpdateCheck(ctx, "at-home", tc.targets, tc.intervalS)
+			if err == nil {
+				t.Fatalf("UpdateCheck succeeded, want refusal %q", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.wantErr)
+			}
+			if !errors.Is(err, store.ErrValidation) {
+				t.Fatalf("err = %v, want it to carry ErrValidation (operator input, not a store failure)", err)
+			}
+		})
+	}
+
+	// A refused update is a no-op on the stored row.
+	got, err := st.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check: %v", err)
+	}
+	if got.IntervalS != 300 || len(got.Targets) != 2 || got.Targets[1].Address != "192.168.1.60" {
+		t.Fatalf("stored check changed after refusals: %+v", got)
+	}
+}
+
+func TestCheckUpdateNotFound(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	_, err := st.UpdateCheck(ctx, "missing",
+		[]store.CheckTarget{{Name: "a", Address: "192.168.1.1", Port: 22}}, 300)
+	if !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
