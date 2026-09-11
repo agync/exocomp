@@ -44,6 +44,11 @@ type RuleAction struct {
 	// nonstandard port. Empty is the default posture: a rule without the field
 	// stays on port 22.
 	Egress []int `json:"egress,omitempty"`
+	// SSHIdentityFiles are single ssh identity key files this playbook action's
+	// runs may read, the rule mirror of `playbook run --ssh-identity`. Each is
+	// granted read-only as a single file. Empty is the default posture: a rule
+	// without the field grants no key outside the checkout.
+	SSHIdentityFiles []string `json:"ssh_identity_files,omitempty"`
 }
 
 // Rule is one row of the rule table: a CEL expression over a normalized event

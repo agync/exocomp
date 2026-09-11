@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -138,6 +140,49 @@ type JobArgs struct {
 	// claims the job grants the same ports. Empty is the default posture: no
 	// declaration, no widening — the profile stays port 22.
 	EgressPorts []int `json:"egress_ports,omitempty"`
+	// SSHIdentityFiles are single ssh identity key files this job may read on
+	// top of the sandbox's own grants, so a play can load a key stored outside
+	// the source checkout. Each is granted read-only as a single file, never as
+	// a directory, and no entry may cover the data dir (the profile guard
+	// refuses one). They live on the row so whichever process claims the job
+	// grants the same files. Empty is the default posture: no declaration, no
+	// widening.
+	SSHIdentityFiles []string `json:"ssh_identity_files,omitempty"`
+}
+
+// ErrInvalidSSHIdentity reports a declared ssh identity path the sandbox could
+// never grant: a non-absolute path. The profile guard refuses a relative grant
+// at build time; refusing it at write time is the same mistake-surfacing a
+// junk egress port gets, so a typo never reaches a job row.
+var ErrInvalidSSHIdentity = errors.New("store: ssh identity file must be an absolute path")
+
+// normalizeSSHIdentityFiles validates, de-duplicates, and sorts a declared ssh
+// identity path set. It refuses a relative path rather than silently dropping
+// it: a relative grant would mean "wherever this process happens to be", which
+// the sandbox refuses, so a typo surfaces when declared.
+func normalizeSSHIdentityFiles(paths []string) ([]string, error) {
+	out := make([]string, 0, len(paths))
+	for _, p := range paths {
+		if p == "" {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			return nil, fmt.Errorf("%w: %q", ErrInvalidSSHIdentity, p)
+		}
+		clean := filepath.Clean(p)
+		if !slices.Contains(out, clean) {
+			out = append(out, clean)
+		}
+	}
+	slices.Sort(out)
+	return out, nil
+}
+
+// NormalizeSSHIdentityFiles is the exported seam write faces validate a
+// declared ssh identity set through — the mirror of NormalizeEgressPorts, so a
+// relative path is refused at every face that declares one.
+func NormalizeSSHIdentityFiles(paths []string) ([]string, error) {
+	return normalizeSSHIdentityFiles(paths)
 }
 
 // JobCaptures is a bootstrap chain's capture wiring on a job row. Workflow is the
