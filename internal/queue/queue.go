@@ -69,6 +69,12 @@ type Spec struct {
 	DedupKey       string
 	IdempotencyKey string
 	Timeout        time.Duration
+	// EgressPorts are extra outbound TCP ports this job may open on top of the
+	// ports its kind grants — how an ansible job reaches an inventory host on a
+	// nonstandard SSH port. Carried to the job row so whichever process claims
+	// it grants the same ports. Empty is the default posture: no declaration,
+	// no widening.
+	EgressPorts []int
 }
 
 // Options configures a Queue. The zero value is usable.
@@ -197,6 +203,7 @@ func (q *Queue) Enqueue(ctx context.Context, spec Spec) (store.Job, error) {
 			Captures:            spec.Captures,
 			RunnerName:          spec.RunnerName,
 			Privileged:          spec.Privileged,
+			EgressPorts:         spec.EgressPorts,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
@@ -505,6 +512,7 @@ func (q *Queue) execute(ctx context.Context, job store.Job) {
 		DirReadOnly: job.Args.DirReadOnly,
 		Timeout:     timeout,
 		Privileged:  job.Args.Privileged,
+		EgressPorts: job.Args.EgressPorts,
 	}, sink)
 
 	// The job's own outcome must be recorded even when the queue is shutting

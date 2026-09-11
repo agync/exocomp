@@ -46,6 +46,7 @@ func (q *Queue) EnqueueGated(ctx context.Context, spec Spec) (store.Job, error) 
 			TolerateUnreachable: spec.TolerateUnreachable,
 			Captures:            spec.Captures,
 			RunnerName:          spec.RunnerName,
+			EgressPorts:         spec.EgressPorts,
 		},
 		ConcurrencyKey: spec.ConcurrencyKey,
 		DedupKey:       spec.DedupKey,
