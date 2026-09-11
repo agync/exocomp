@@ -1,0 +1,25 @@
+# site.yml — the demo play: a real, idempotent, observable change on node0.
+# The marker file is the independent proof the host was touched; a job that
+# settles succeeded WITHOUT the marker existing is not a pass.
+- name: onboard node0
+  hosts: node0
+  gather_facts: true
+  vars:
+    marker_content: "hello-exocomp-ansible"
+  tasks:
+    - name: ensure the e2e directory exists
+      ansible.builtin.file:
+        path: /tmp/exocomp-e2e
+        state: directory
+        mode: "0755"
+
+    - name: write the marker
+      ansible.builtin.copy:
+        dest: /tmp/exocomp-e2e/marker.txt
+        content: "{{ marker_content }}\n"
+        mode: "0644"
+      register: marker_written
+
+    - name: report the marker
+      ansible.builtin.debug:
+        msg: "node0 marker -> {{ marker_content }}"

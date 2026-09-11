@@ -8,6 +8,14 @@ base:
 cpus: 2
 memory: "2GiB"
 
+# Fix the SSH forward's host port so a probe check and an inventory survive VM
+# restarts — lima otherwise re-assigns the loopback port on every boot, which
+# silently moves the ansible target (the lima-infra-validation "never cache
+# the port" rule). Only ONE instance of this template may run at a time (the
+# host port would collide).
+ssh:
+  localPort: 2222
+
 # Empty lists are treated as unset by Lima's base-template merge, so the
 # inherited home-directory mount is kept but forced read-only instead.
 mounts:
