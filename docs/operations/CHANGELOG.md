@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-11 — `check update` re-points a probe in place (G4)
+
+- **`exocomp check update <name> --target … [--interval …]` replaces a check's
+  targets and cadence without losing its history.** Previously a re-point was
+  `check rm` + `check add`, which cascades the `check_state` rows away — so the
+  re-created check cold-started, seeding without emitting, and a re-point could
+  never produce a transition. The update keeps the row and rewrites
+  `targets_json`/`interval_s`/`updated_at`; because state keys on
+  `(check_id, target_name)`, a re-point that KEEPS a target's name lets the
+  sweep flip the preserved row and emit a real transition (the lima port-churn
+  case). Kind is read from the stored row and is not updatable; targets and
+  interval validate exactly as `check add` does. An omitted `--interval` keeps
+  the stored cadence. The web checks page is unchanged (CLI-only this round).
+
 ## 2026-09-11 — per-job ansible egress ports (G3)
 
 - **A sandboxed ansible job can open a nonstandard inventory port.** The
