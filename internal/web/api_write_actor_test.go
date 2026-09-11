@@ -66,6 +66,35 @@ func TestAPIPlanRecordsActorOnJobEvents(t *testing.T) {
 	}
 }
 
+// TestAPIDestroyRecordsActorOnJobEvents covers the destroy write: the enqueued
+// job's ledger carries the requesting token and the api face, exactly like a
+// plan or an apply.
+func TestAPIDestroyRecordsActorOnJobEvents(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+	h.seedWorkspace(t, "web")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/workspaces/web/destroy", token, "", nil)
+	if code != 200 {
+		t.Fatalf("destroy status = %d (%s)", code, body)
+	}
+	_, _, data := decodeEnvelope(t, body)
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil {
+		t.Fatalf("destroy data: %v", err)
+	}
+
+	_, payload, found := findActorEvent(t, h, jv.JobID)
+	if !found {
+		t.Fatalf("job %d has no actor event", jv.JobID)
+	}
+	if payload.ActorName != "op" || payload.Face != "api" {
+		t.Errorf("actor payload = %+v, want name=op face=api", payload)
+	}
+}
+
 // TestAPIApplyRecordsActorOnJobEvents covers the fresh (non-gated) apply path.
 func TestAPIApplyRecordsActorOnJobEvents(t *testing.T) {
 	h := newHarness(t)

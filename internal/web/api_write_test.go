@@ -264,6 +264,72 @@ func postPlanJobID(t *testing.T, base, token string, hdr map[string]string) int6
 	return jv.JobID
 }
 
+// TestAPIDestroyEnqueuesThroughService is the lane's GATE: a destroy request
+// enqueues a `tofu destroy -auto-approve` job through the ONE queue (invariant
+// 5) — the row carries the runbook and concurrency key only the service verb's
+// spec assembly sets, proving the write never bypassed the service for a direct
+// mutation, and the argv names the destroy op, not a plan or an apply.
+func TestAPIDestroyEnqueuesThroughService(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+	h.seedWorkspace(t, "web")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/workspaces/web/destroy", token, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("destroy status = %d, want 200 (%s)", code, body)
+	}
+	kind, _, data := decodeEnvelope(t, body)
+	if kind != kindJobEnqueued {
+		t.Fatalf("destroy kind = %q, want %q (%s)", kind, kindJobEnqueued, body)
+	}
+	var jv jobEnqueuedView
+	if err := json.Unmarshal(data, &jv); err != nil || jv.JobID == 0 {
+		t.Fatalf("destroy data has no job_id: %v (%s)", err, body)
+	}
+	job, err := h.store.GetJob(context.Background(), jv.JobID)
+	if err != nil {
+		t.Fatalf("GetJob: %v", err)
+	}
+	if job.Runbook != service.WorkspaceRunbook("web") {
+		t.Fatalf("destroy job runbook = %q, want %q — write did not route through the service verb",
+			job.Runbook, service.WorkspaceRunbook("web"))
+	}
+	if job.ConcurrencyKey != "tofu:web" {
+		t.Fatalf("destroy job concurrency_key = %q, want tofu:web", job.ConcurrencyKey)
+	}
+	if !strings.Contains(strings.Join(job.Args.Argv, " "), "destroy -auto-approve") {
+		t.Fatalf("destroy job argv = %v, want tofu destroy -auto-approve", job.Args.Argv)
+	}
+}
+
+// TestAPIDestroyScopeGate: a destroy on the write half is operator-scope like a
+// plan or an apply — a readonly token is forbidden (403 wire error) before any
+// job is created, and no token is unauthenticated (401).
+func TestAPIDestroyScopeGate(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+
+	ro := h.mint(t, "ro", "readonly")
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/workspaces/web/destroy", ro, "", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly destroy status = %d, want 403 (%s)", code, body)
+	}
+	if kind, ecode, _ := decodeEnvelope(t, body); kind != "error" || ecode != "forbidden" {
+		t.Fatalf("readonly destroy envelope = %s, want error/forbidden", body)
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a refused destroy still created %d job(s)", len(jobs))
+	}
+}
+
 // TestAPIApplyFreshEnqueues: a fresh apply (no saved plan) enqueues an
 // auto-approve run and returns its job id.
 func TestAPIApplyFreshEnqueues(t *testing.T) {

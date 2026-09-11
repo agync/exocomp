@@ -104,6 +104,8 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspacePlan))
 	mux.HandleFunc("POST /api/v1/workspaces/{name}/apply",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspaceApply))
+	mux.HandleFunc("POST /api/v1/workspaces/{name}/destroy",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiWorkspaceDestroy))
 	mux.HandleFunc("POST /api/v1/playbooks/run",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("enqueue writes", "operator"), s.apiPlaybookRun))
 	mux.HandleFunc("POST /api/v1/jobs/{id}/cancel",
@@ -227,6 +229,7 @@ func actorFromRequest(r *http.Request) service.Actor {
 const (
 	routePlan     = "workspace.plan"
 	routeApply    = "workspace.apply"
+	routeDestroy  = "workspace.destroy"
 	routePlaybook = "playbook.run"
 )
 
@@ -408,6 +411,38 @@ func (s *Server) apiWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	run := res.Run
 	defer run.Release()
 	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: run.Job.ID, State: string(run.Job.State)})
+}
+
+// apiWorkspaceDestroy enqueues a tofu destroy through DestroyWorkspace — the
+// one-queue twin of the apply, minus the plan: a destroy has nothing for a plan
+// policy to read, so it is a plain enqueue, never gated. The argv the row
+// records is `tofu destroy -auto-approve`; the daemon that claims it runs the
+// same workspace driver as any other tofu job.
+func (s *Server) apiWorkspaceDestroy(w http.ResponseWriter, r *http.Request) {
+	req, timeout, ok := s.decodeWrite(w, r)
+	if !ok {
+		return
+	}
+	ws, err := s.store.WorkspaceByName(r.Context(), r.PathValue("name"))
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	res, err := s.service().DestroyWorkspace(r.Context(), s.enqueuer(), service.DestroyInput{
+		Workspace:      ws.Name,
+		TofuDir:        ws.TofuDir,
+		RunSecrets:     req.RunSecrets,
+		RunnerName:     req.Runner,
+		IdempotencyKey: idempotencyKey(r, routeDestroy),
+		Timeout:        timeout,
+		Trigger:        service.TriggerAPI,
+		Actor:          actorFromRequest(r),
+	})
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, kindJobEnqueued, jobEnqueuedView{JobID: res.Job.ID, State: string(res.Job.State)})
 }
 
 // --- approval decision ------------------------------------------------------
