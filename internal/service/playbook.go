@@ -49,6 +49,11 @@ type PlaybookInput struct {
 	// ansible kind's built-in SSH port, for an inventory host on a nonstandard
 	// port. Empty is the default posture: no declaration, no widening.
 	EgressPorts []int
+	// SSHIdentityFiles are single ssh identity key files this run may read on
+	// top of the files its kind grants, so a play can load a key stored outside
+	// the source checkout. Empty is the default posture: no declaration, no
+	// widening.
+	SSHIdentityFiles []string
 	// Actor identifies a non-CLI caller (an API token) for the job's event
 	// ledger; the zero value records nothing (see recordActor).
 	Actor Actor
@@ -82,6 +87,7 @@ func (s *Service) RunPlaybook(ctx context.Context, enq Enqueuer, in PlaybookInpu
 		RunnerName:          in.RunnerName,
 		Privileged:          in.Privileged,
 		EgressPorts:         in.EgressPorts,
+		SSHIdentityFiles:    in.SSHIdentityFiles,
 	}
 	job, err := enq.Enqueue(ctx, spec)
 	if err != nil {

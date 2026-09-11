@@ -90,11 +90,12 @@ func (s *Service) BuildPlaybookSpec(ctx context.Context, _ reactive.Event, rule 
 	// The inventory stays empty: a rule playbook runs against the checkout's
 	// own ./ansible.cfg inventory discovery, like a bare `playbook run --source`.
 	return queue.Spec{
-		Kind:        executor.KindAnsible,
-		Argv:        executor.AnsibleArgv(abs, "", passthrough...),
-		Dir:         loc.Root,
-		DirReadOnly: loc.ReadOnly,
-		Source:      rule.Action.Source,
-		EgressPorts: rule.Action.Egress,
+		Kind:             executor.KindAnsible,
+		Argv:             executor.AnsibleArgv(abs, "", passthrough...),
+		Dir:              loc.Root,
+		DirReadOnly:      loc.ReadOnly,
+		Source:           rule.Action.Source,
+		EgressPorts:      rule.Action.Egress,
+		SSHIdentityFiles: rule.Action.SSHIdentityFiles,
 	}, nil
 }
