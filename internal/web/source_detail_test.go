@@ -9,7 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -45,6 +47,77 @@ func seedGitSource(t *testing.T, h *harness) string {
 		t.Fatalf("seed git source: %v", err)
 	}
 	return "git-src"
+}
+
+// TestSourcePlaybookLauncherPreselectsFirst: the Playbook select carries the
+// real playbook list with the FIRST found playbook preselected — no placeholder
+// option (SPEC §5.2) — so the launcher states one concrete run before any
+// input. The meta reads "N playbooks found at {ref}".
+func TestSourcePlaybookLauncherPreselectsFirst(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		`<option value="site.yml" selected>site.yml</option>`,
+		"1 playbooks found at main",
+		`>Queue run — site.yml @ main<`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("playbook launcher missing %q", want)
+		}
+	}
+	if strings.Contains(page, "— choose a discovered playbook —") {
+		t.Error("playbook select still renders a placeholder option")
+	}
+}
+
+// TestSourcePlaybookLauncherMeta: the launcher's meta names the source's last
+// playbook run ("last run job #N · state"), the Limit field reads the
+// --limit contract, the Egress field is prefilled from the last run's ports
+// (the source's current posture), the Tolerate checkbox states its degraded
+// outcome, and the CLI echo repeats the primary's whole ask.
+func TestSourcePlaybookLauncherMeta(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	job, err := h.queue.Enqueue(context.Background(), queue.Spec{
+		Runbook: "playbook", Kind: "shell", Trigger: "manual",
+		Argv:   []string{"/bin/sh", "-c", "echo ran; exit 0"},
+		Source: name, EgressPorts: []int{22, 443},
+	})
+	if err != nil {
+		t.Fatalf("enqueue playbook job: %v", err)
+	}
+	h.waitJobState(t, job.ID, store.StateSucceeded, 5*time.Second)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	for _, want := range []string{
+		"1 playbooks found at main · last run job #" + itoa64(job.ID) + " · succeeded",
+		`placeholder="all hosts"`,
+		"ansible --limit pattern",
+		`value="22, 443"`,
+		"ports the runner may reach · same as --egress",
+		`· may end <span class="wait-text">DEGRADED</span>`,
+		"asks nothing else · same as exocomp run tree site.yml --egress 22,443",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("playbook launcher missing %q", want)
+		}
+	}
 }
 
 // TestSourceNeverSyncedSurfaces is the GATE for F5: a never-synced source reads
@@ -335,7 +408,7 @@ func TestSourceLaunchDrawerTolerateToggle(t *testing.T) {
 	}
 	for _, want := range []string{
 		`name="tolerate_unreachable" value="1" class="toggle-cb"`,
-		`Offline hosts are skipped and the job settles <span class="wait-text">DEGRADED</span> instead of FAILED when the rest succeed. CLI: --tolerate-unreachable`,
+		`· may end <span class="wait-text">DEGRADED</span>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("launch drawer missing %q", want)

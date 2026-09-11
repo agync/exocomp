@@ -116,38 +116,45 @@ templ sourceDetail(vm sourceDetailVM) {
 								</select>
 								<p class="meta">{ vm.PlaybooksNote() }</p>
 							} else {
+								// The first found playbook is PRESELECTED — the
+								// launcher states one concrete run before any input
+								// (SPEC §5.2), so there is no placeholder option.
+								// An unknown ?playbook= prefill (a free path)
+								// selects the "other path…" sentinel instead.
 								<select id="rp-select" name="playbook">
-									<option value="">— choose a discovered playbook —</option>
 									for _, pb := range vm.Playbooks {
-										if vm.PlaybookKnown() && pb == vm.Playbook {
+										if pb == vm.Playbook {
 											<option value={ pb } selected>{ pb }</option>
 										} else {
 											<option value={ pb }>{ pb }</option>
 										}
 									}
-									<option value="__other__">other path…</option>
+									<option value="__other__" selected?={ !vm.PlaybookKnown() }>other path…</option>
 								</select>
+								<p class="meta">{ vm.PlaybooksMeta() }</p>
 							}
-							<label for="rp-path">Or a path relative to the checkout</label>
-							<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
+							<label for="rp-limit">Limit</label>
+							<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="all hosts"/>
+							<p class="meta">ansible --limit pattern</p>
+							<label for="rp-egress">Egress ports (TCP, comma-separated)</label>
+							<input id="rp-egress" name="egress" type="text" autocomplete="off" value={ vm.EgressPrefill() }/>
+							<p class="meta">ports the runner may reach · same as --egress</p>
+							<div class="toggle-row">
+								@toggle("tolerate_unreachable", "Tolerate unreachable hosts", false, false)
+								<p class="meta">· may end <span class="wait-text">DEGRADED</span></p>
+							</div>
 							<details class="opts">
-								<summary>Options — inventory, limit, tags, secrets, run modes</summary>
+								<summary>More — path, inventory, tags, secrets, run modes</summary>
+								<label for="rp-path">Or a path relative to the checkout</label>
+								<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
 								<label for="rp-inventory">Inventory</label>
 								<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
-								<label for="rp-limit">Limit</label>
-								<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern"/>
 								<label for="rp-tags">Tags</label>
 								<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
-								<label for="rp-egress">Egress ports (TCP, comma-separated)</label>
-								<input id="rp-egress" name="egress" type="text" autocomplete="off" placeholder="2222 (empty: SSH port 22 only)"/>
 								<label for="rp-secrets">Run secrets binding</label>
 								<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
 								@toggle("check", "check mode (dry run)", false, false)
 								@toggle("diff", "show diff", false, false)
-								<div class="toggle-row">
-									@toggle("tolerate_unreachable", "Tolerate unreachable hosts", false, false)
-									<p class="meta">Offline hosts are skipped and the job settles <span class="wait-text">DEGRADED</span> instead of FAILED when the rest succeed. CLI: --tolerate-unreachable</p>
-								</div>
 								<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
 								<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
 							</details>
@@ -158,7 +165,7 @@ templ sourceDetail(vm sourceDetailVM) {
 							<div class="actions">
 								<button type="submit" class="btn primary">{ vm.QueueLabel() }</button>
 							</div>
-							<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
+							<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>

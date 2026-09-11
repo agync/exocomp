@@ -58,11 +58,22 @@ type sourceDetailVM struct {
 	// ?tab= query param.
 	Tab string
 	// Playbook prefills the Playbook tab from ?playbook=; if it is one of the
-	// discovered paths it is pre-selected, otherwise it seeds the free-path input.
+	// discovered paths it is pre-selected, otherwise it seeds the free-path
+	// input. With no prefill, the first discovered playbook is preselected
+	// (SPEC §5.2 — the launcher states one concrete run before any input).
 	Playbook string
 	// Launch opens the launch drawer already open — the JS-off fallback for the
 	// ?launch=1 query, which renders the <dialog> with its open attribute.
 	Launch bool
+	// Egress carries the source's current run posture — the last playbook run's
+	// declared ports (SPEC §5.2, "prefilled from the source default"). Empty is
+	// the port-22 default. The Egress field's value and the CLI echo format it
+	// differently (display "22, 443" vs --egress 22,443).
+	Egress []int
+	// LastRunID/LastRunState name the source's newest playbook job for the
+	// launcher meta ("last run job #N · state"); LastRunID 0 = nothing has run.
+	LastRunID    int64
+	LastRunState string
 }
 
 // PlaybookKnown reports whether the prefilled playbook is one of the discovered
@@ -131,6 +142,47 @@ func (vm sourceDetailVM) LaunchMeta() string {
 	return vm.Source.Name + " @ " + vm.Source.Ref + " · queues through the one queue"
 }
 
+// EgressPrefill is the Egress field's value (SPEC §5.2): the source's current
+// run posture's ports, comma-and-space joined — the way the designer's field
+// reads ("22, 443"). Empty is the port-22 default posture.
+func (vm sourceDetailVM) EgressPrefill() string { return joinPorts(vm.Egress, ", ") }
+
+// PlaybooksMeta is the Playbook select's always-present meta (SPEC §5.2): "N
+// playbooks found at {ref}" plus the source's last playbook run when one
+// exists. A ref-less source omits "at {ref}".
+func (vm sourceDetailVM) PlaybooksMeta() string {
+	line := itoa(int64(len(vm.Playbooks))) + " playbooks found"
+	if vm.Source.Ref != "" {
+		line += " at " + vm.Source.Ref
+	}
+	if vm.LastRunID != 0 {
+		line += " · last run job #" + itoa64(vm.LastRunID) + " · " + vm.LastRunState
+	}
+	return line
+}
+
+// CliEcho is the launcher's one-line contract below the primary (SPEC §5.2):
+// the exact CLI equivalent of what Queue run submits, so the operator sees the
+// run's whole ask at once. The --egress flag appears only when ports are
+// declared, joined bare (the CLI's comma form).
+func (vm sourceDetailVM) CliEcho() string {
+	line := "asks nothing else · same as exocomp run " + vm.Source.Name + " " + vm.RunLabel()
+	if len(vm.Egress) > 0 {
+		line += " --egress " + joinPorts(vm.Egress, ",")
+	}
+	return line
+}
+
+// joinPorts renders a declared egress port set as one comma-joined run; the
+// separator is the caller's (display "22, 443", CLI "22,443").
+func joinPorts(ports []int, sep string) string {
+	parts := make([]string, 0, len(ports))
+	for _, p := range ports {
+		parts = append(parts, itoa64(int64(p)))
+	}
+	return strings.Join(parts, sep)
+}
+
 func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := service.ValidSourceName(name); err != nil {
@@ -172,8 +224,38 @@ func (s *Server) handleSourceDetail(w http.ResponseWriter, r *http.Request) {
 			vm.Playbooks = pbs
 		}
 	}
+	// No prefill means the first discovered playbook is preselected (SPEC
+	// §5.2) — the launcher states one concrete run before any input.
+	if vm.Playbook == "" && len(vm.Playbooks) > 0 {
+		vm.Playbook = vm.Playbooks[0]
+	}
+	// The meta names the source's newest playbook job and the Egress field
+	// prefills its declared ports (the source's current posture). A lookup
+	// failure reads as "no run yet" rather than 500ing the launcher.
+	if job, jerr := s.lastPlaybookRun(r.Context(), name); jerr == nil && job != nil {
+		vm.LastRunID = job.ID
+		vm.LastRunState = string(job.State)
+		vm.Egress = job.Args.EgressPorts
+	}
 
 	s.render(w, r, http.StatusOK, sourceDetail(vm))
+}
+
+// lastPlaybookRun is the source's newest playbook job, or nil when no playbook
+// has ever run from it. ListJobs returns oldest first, so the newest is the
+// last matching row; a job carries the source name as a display fact.
+func (s *Server) lastPlaybookRun(ctx context.Context, name string) (*store.Job, error) {
+	jobs, err := s.store.ListJobs(ctx, store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		return nil, err
+	}
+	for i := len(jobs) - 1; i >= 0; i-- {
+		if jobs[i].Args.Source == name {
+			j := jobs[i]
+			return &j, nil
+		}
+	}
+	return nil, nil
 }
 
 // parseFormEgress turns the launch drawer's egress field into the validated
