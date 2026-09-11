@@ -30,6 +30,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 					<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/plan") } class="inline-form">
 						<button type="submit" class="btn">Plan</button>
 					</form>
+					<a class="btn danger" href={ templ.SafeURL("?destroy=1") }>Destroy</a>
 				</div>
 			}
 		</div>
@@ -160,5 +161,29 @@ templ workspaceDetail(vm workspaceDetailVM) {
 				</script>
 			}
 		</div>
+	if vm.Operator && !vm.Row.StateOnly() {
+			<dialog class="modal plan-confirm" id="ws-destroy-confirm" aria-labelledby="ws-destroy-title" open?={ vm.Destroy }>
+				<div class="modal-head">
+					<div class="kicker">{ vm.DestroyKicker() }</div>
+					<h2 id="ws-destroy-title">Destroy every resource on { vm.Row.Name }</h2>
+					<button type="button" class="modal-close" data-modal-dismiss aria-label="Close">
+						<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"></path></svg>
+					</button>
+				</div>
+				<div class="modal-body">
+					<div class="destroy-block" role="alert">
+						<div class="block-head"><span class="keyword">Destroys — no undo</span></div>
+						<p class="meta">tofu destroy tears down every resource this workspace manages — the whole state, not one plan's subset. The job runs through the same queue as a plan or an apply, confirmed by this dialog only.</p>
+					</div>
+					<div class="actions">
+						<form method="post" action={ templ.SafeURL("/workspaces/" + vm.Row.Name + "/destroy") } class="inline-form">
+							<input type="hidden" name="confirmed" value="1"/>
+							<button type="submit" class="btn danger">Queue destroy — { vm.Row.Name }</button>
+						</form>
+						<button type="button" class="btn" data-modal-dismiss>Cancel</button>
+					</div>
+				</div>
+			</dialog>
+		}
 	}
 }

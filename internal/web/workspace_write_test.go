@@ -1295,6 +1295,88 @@ func TestPlanDetailConfirmOpensWithoutJS(t *testing.T) {
 	}
 }
 
+// TestWorkspaceDetailDestroyQueuesViaConfirm is the lane's web GATE: the
+// workspace detail page offers a Destroy verb that opens a confirm dialog, and
+// the CONFIRMED post enqueues a `tofu destroy -auto-approve` job through the
+// one queue. ?destroy=1 renders the native <dialog> already open without JS
+// (mirroring the plan detail's ?launch=1); a confirmed-less post is refused
+// before anything is enqueued, so the affordance can never queue without the
+// dialog's hidden confirmed=1 field.
+func TestWorkspaceDetailDestroyQueuesViaConfirm(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web?destroy=1")
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web?destroy=1 = %d (%s)", code, body)
+	}
+	for _, want := range []string{
+		`href="?destroy=1"`,
+		`class="modal plan-confirm" id="ws-destroy-confirm" aria-labelledby="ws-destroy-title" open`,
+		">DESTROY · WORKSPACE WEB<",
+		">Destroy every resource on web<",
+		">Queue destroy — web<",
+		`action="/workspaces/web/destroy"`,
+		`name="confirmed" value="1"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("destroy confirm missing %q", want)
+		}
+	}
+	// The verb is operator + runs-in-server only: a state-only workspace shows no
+	// Destroy affordance.
+	code, body = getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("GET /workspaces/web = %d", code)
+	}
+	if !strings.Contains(body, `href="?destroy=1"`) {
+		t.Error("runs-in-server workspace detail missing the Destroy verb")
+	}
+
+	// A confirmed-less destroy is refused and mutates nothing.
+	resp := postForm(t, client, ts.URL+"/workspaces/web/destroy", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("confirmed-less destroy status = %d, want 400", resp.StatusCode)
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("a confirmed-less destroy still enqueued %d job(s)", len(jobs))
+	}
+
+	// The confirmed post enqueues the destroy through the one queue: the row's
+	// argv names tofu destroy, and the job lands queued for a worker to claim.
+	resp = postForm(t, client, ts.URL+"/workspaces/web/destroy", url.Values{"confirmed": {"1"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("confirmed destroy status = %d, want 303", resp.StatusCode)
+	}
+	jobs, err = h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	var destroyJob *store.Job
+	for i := range jobs {
+		if strings.Contains(strings.Join(jobs[i].Args.Argv, " "), "destroy -auto-approve") {
+			destroyJob = &jobs[i]
+			break
+		}
+	}
+	if destroyJob == nil {
+		t.Fatalf("no destroy job enqueued; jobs = %+v", jobs)
+	}
+	if destroyJob.ConcurrencyKey != "tofu:web" {
+		t.Errorf("destroy job concurrency_key = %q, want tofu:web", destroyJob.ConcurrencyKey)
+	}
+}
+
 // TestPlanDetailStaleRefuses: a plan the Tofu state has moved past renders the
 // REFUSED copy in fail and a live "Plan again" primary that posts the Plan verb
 // — never a disabled button (invariant 7). Mutation check: drop the stale test

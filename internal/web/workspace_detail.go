@@ -25,6 +25,14 @@ type workspaceDetailVM struct {
 	Operator bool
 	Row      workspaceWriteRow
 	Config   api.BackendBlock
+	// Destroy renders the destroy confirm dialog already open with no JS
+	// (?destroy=1), the workspace-level twin of the plan detail's ?launch=1.
+	Destroy bool
+}
+
+// DestroyKicker is the destroy confirm's eyebrow: DESTROY · WORKSPACE X.
+func (vm workspaceDetailVM) DestroyKicker() string {
+	return "DESTROY · WORKSPACE " + strings.ToUpper(vm.Row.Name)
 }
 
 // handleWorkspaceDetail renders one workspace's detail page. It is the home of
@@ -45,6 +53,9 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 	vm := workspaceDetailVM{
 		Page: s.pageFor(r, name, "workspaces"), Operator: canWrite(ident),
 		Row: workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial},
+		// ?destroy=1 is the JS-off fallback that renders the destroy confirm
+		// dialog already open, mirroring the plan detail's ?launch=1.
+		Destroy: r.URL.Query().Get("destroy") == "1",
 	}
 	addr, err := api.ReadAddress(filepath.Join(s.dataDir, api.AddressFile))
 	if err != nil {

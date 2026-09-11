@@ -31,6 +31,7 @@ func (s *Server) registerWorkspaceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("GET /workspaces/{name}/plans/{id}", s.requireAuth(s.handleWorkspacePlanDetail))
 	mux.HandleFunc("POST /workspaces/{name}/plan", s.requireAuth(s.handleWorkspacePlan))
 	mux.HandleFunc("POST /workspaces/{name}/apply", s.requireAuth(s.handleWorkspaceApply))
+	mux.HandleFunc("POST /workspaces/{name}/destroy", s.requireAuth(s.handleWorkspaceDestroy))
 	mux.HandleFunc("POST /workspaces/{name}/backend/reveal", s.requireAuth(s.handleWorkspaceBackendReveal))
 	mux.HandleFunc("POST /workspaces/{name}/unlock", s.requireAuth(s.handleWorkspaceUnlock))
 }
@@ -568,6 +569,57 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	s.log.Info("web: workspace apply", "job", run.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
 	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(run.Job.ID, 10),
 		"job "+strconv.FormatInt(run.Job.ID, 10)+" enqueued")
+}
+
+// handleWorkspaceDestroy is the browser face of the destroy verb: the same
+// DestroyWorkspace pure-enqueue the /api/v1 route calls, behind the confirm
+// dialog's mandatory confirmed=1 field. It mirrors handleWorkspaceApply's
+// shape — writeGuard, workspace lookup, optional timeout, redirect to the job —
+// so a destroy started here and one started by a bearer token reach the same
+// queued row (invariant 5). The confirm guard is the dialog's, the same hidden
+// field every destructive form in the UI posts; a confirmed-less destroy is
+// refused before anything is enqueued.
+func (s *Server) handleWorkspaceDestroy(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	if !r.Form.Has("confirmed") {
+		http.Error(w, "destroy requires confirmation", http.StatusBadRequest)
+		return
+	}
+	name := r.PathValue("name")
+	ws, err := s.store.WorkspaceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no workspace named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	timeout, err := parseOptionalDuration(r, "timeout")
+	if err != nil {
+		http.Error(w, "timeout: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	res, err := s.service().DestroyWorkspace(r.Context(), s.enqueuer(), service.DestroyInput{
+		Workspace:      ws.Name,
+		TofuDir:        ws.TofuDir,
+		RunSecrets:     r.PostFormValue("run_secrets"),
+		RunnerName:     r.PostFormValue("runner"),
+		IdempotencyKey: idempotencyKey(r, routeDestroy),
+		Timeout:        timeout,
+		Actor:          service.Actor{Kind: service.ActorKindToken, Name: ident.token.Name},
+	})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: workspace destroy", "job", res.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
+	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
+		"job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
 }
 
 // handleWorkspaceUnlock force-releases a workspace's state lock from the list
