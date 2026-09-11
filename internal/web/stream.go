@@ -246,13 +246,29 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 		if err != nil {
 			return
 		}
+		current, err := s.store.GetJob(r.Context(), id)
+		if err != nil {
+			return
+		}
+		// The same bandFor re-render the server-rendered tail applies, so a
+		// system line that is one of the run's state bands arrives as the
+		// styled .logband on the wire too — the tail and the reloaded page
+		// agree on the terminal line, and the done handler can read the last
+		// band to flash complete/cut.
+		facts := parseJobOutcome(events)
+		rerunParent := rerunOf(events)
 		for _, e := range events {
 			if e.Seq <= cursor {
 				continue
 			}
 			cursor = e.Seq
+			band, bandClass := "", ""
+			if e.Level == store.LevelSystem {
+				band, bandClass = bandFor(current, e.Msg, facts, rerunParent)
+			}
 			payload, _ := json.Marshal(map[string]any{
 				"seq": e.Seq, "ts": sseTS(e.Ts), "level": e.Level, "msg": e.Msg,
+				"band": band, "band_class": bandClass,
 			})
 			if _, err := fmt.Fprintf(w, "event: line\ndata: %s\n\n", payload); err != nil {
 				return
@@ -260,8 +276,7 @@ func (s *Server) tailJobEvents(w http.ResponseWriter, r *http.Request, id int64,
 			lastWrite = now
 		}
 
-		current, err := s.store.GetJob(r.Context(), id)
-		if err == nil && current.State.Terminal() {
+		if current.State.Terminal() {
 			_, _ = fmt.Fprint(w, "event: done\ndata: {}\n\n")
 			flusher.Flush()
 			return

@@ -436,6 +436,12 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 		Operator: canWrite(ident), Source: source, CanSchedule: canScheduleJob(job),
 		Rerunnable: len(job.Args.Argv) > 0,
 	}
+	// The Output meta's "ended {hh:mm:ss}" reads the terminal run's finished
+	// clock; a live job keeps the streaming form instead.
+	vm.EndedClock = ""
+	if job.FinishedAt != nil {
+		vm.EndedClock = logClock(*job.FinishedAt)
+	}
 	// J3/S6: three routes flash to /jobs/{id} and the layout renders the banner
 	// for every page, but on the job's own page the fact is the dashed "rerun
 	// of #N" chip — the banner is dropped here, at the render seam, not at the
@@ -529,6 +535,25 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(vm.Events) > 0 {
 		vm.LastSeq = vm.Events[len(vm.Events)-1].Seq
+	}
+	// The last terminal band repeats completion with the rendered line count
+	// (copy.txt): "▸ succeeded — exit 0 · N lines · log complete". The running
+	// band is not terminal, so a live job's tail never reads complete.
+	for i := len(vm.Events) - 1; i >= 0; i-- {
+		if vm.Events[i].Band != "" && vm.Events[i].BandClass != "run" {
+			vm.Events[i].Band += fmt.Sprintf(" · %d lines · log complete", len(vm.Events))
+			break
+		}
+	}
+	// The pin's initial data-state is server-set (§2): complete when the
+	// terminal stream carries its verdict band, cut when the runner was lost
+	// before it could write one, following on a live page.
+	vm.PinState = "following"
+	if job.State.Terminal() {
+		vm.PinState = "complete"
+		if !hasTerminalBand(vm.Events) {
+			vm.PinState = "cut"
+		}
 	}
 	if rule, ok := strings.CutPrefix(job.Runbook, "rule:"); ok {
 		vm.FiredRule = rule
@@ -1219,10 +1244,10 @@ func unreachableSince(events []store.JobEvent, hosts []string) (latest time.Time
 }
 
 // bandFor re-renders one of the run's state bands with the copy strings: the
-// queue writes "running …", "failed (exit N)" and "degraded (exit N, …)", and
-// the output card shows the load-bearing copy in their place. Everything else
-// is a plain system line. rerunOfID is the parent the child's ledger recorded
-// (0 for a run that is not a rerun).
+// queue writes "running …", "succeeded (exit N)", "failed (exit N)" and
+// "degraded (exit N, …)", and the output card shows the load-bearing copy in
+// their place. Everything else is a plain system line. rerunOfID is the parent
+// the child's ledger recorded (0 for a run that is not a rerun).
 func bandFor(job store.Job, msg string, facts jobOutcomeFacts, rerunOfID int64) (string, string) {
 	switch {
 	case strings.HasPrefix(msg, "running UNSANDBOXED"):
@@ -1242,8 +1267,12 @@ func bandFor(job store.Job, msg string, facts jobOutcomeFacts, rerunOfID int64) 
 			return line, "run"
 		}
 		return "▸ running — " + msg[len("running "):], "run"
+	case strings.HasPrefix(msg, "succeeded (exit "):
+		// The succeeded verdict band is the ok-tint twin of the failed one;
+		// the VM appends the "· N lines · log complete" completion tail.
+		return "▸ succeeded — exit " + exitOf(job), "ok"
 	case strings.HasPrefix(msg, "failed (exit "):
-		return "▸ failed — exit " + exitOf(job) + " · unreachable hosts not tolerated · ntfy notified", "fail"
+		return "▸ failed — exit " + exitOf(job), "fail"
 	case strings.HasPrefix(msg, "degraded (exit "):
 		return fmt.Sprintf("▸ degraded — exit %s tolerated · %d hosts unreachable (%s) · reachable hosts succeeded",
 			exitOf(job), len(facts.Unreachable), strings.Join(facts.Unreachable, ", ")), "wait"

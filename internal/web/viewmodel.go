@@ -766,14 +766,17 @@ func (j jobRow) ReasonClass() string {
 	return "reason"
 }
 
-// outputMeta renders the Output card's "stdout + stderr · {n} lines · complete"
-// line; a live job reads "live" instead of "complete".
-func outputMeta(n int, terminal bool) string {
-	s := fmt.Sprintf("stdout + stderr · %d lines", n)
+// outputMeta renders the Output bar's meta line: "stdout + stderr · ended
+// {hh:mm:ss}" on a terminal job, "stdout + stderr · {n} lines · streaming" on
+// a live one (copy.txt). The count lives in the pin chip, never twice here.
+func outputMeta(n int, terminal bool, ended string) string {
 	if terminal {
-		return s + " · complete"
+		if ended != "" {
+			return fmt.Sprintf("stdout + stderr · ended %s", ended)
+		}
+		return fmt.Sprintf("stdout + stderr · %d lines", n)
 	}
-	return s + " · live"
+	return fmt.Sprintf("stdout + stderr · %d lines · streaming", n)
 }
 
 // RunbookLabel strips the "rule:" prefix a rule-triggered job's runbook
@@ -874,6 +877,15 @@ type jobDetailVM struct {
 	// alone, the rerun dialog footer's "@ {ref}".
 	RefLabel string
 	Ref      string
+	// PinState is the Output pin's server-set data-state (§2): "complete" on a
+	// terminal page whose event list carries a terminal band, "cut" on a
+	// terminal page without one (an interrupted/lost runner), "following" on a
+	// live page. JS only moves the chip between following and paused (and the
+	// done flash), so a terminal page never reads FOLLOWING TAIL without JS.
+	PinState string
+	// EndedClock is the terminal run's finished HH:MM:SS clock for the meta's
+	// "ended {hh:mm:ss}"; empty on a live job or one with no finished_at.
+	EndedClock string
 }
 
 // triggerEvent is the provenance link on a rule-triggered job's detail view:
@@ -891,10 +903,56 @@ type eventLine struct {
 	Level string
 	Msg   string
 	// Band is the copy-formatted terminal-band line when this event is one of
-	// the run's state bands (▸ running / ▸ failed / ▸ degraded); empty on a
-	// plain log line. BandClass is the band's state class (run|fail|wait).
+	// the run's state bands (▸ running / ▸ succeeded / ▸ failed / ▸ degraded);
+	// empty on a plain log line. BandClass is the band's state class
+	// (run|ok|fail|wait).
 	Band      string
 	BandClass string
+}
+
+// hasTerminalBand reports whether an event list carries one of the run's
+// terminal verdict bands (succeeded/failed/degraded), the distinction that
+// makes the complete pin data-backed: a terminal page whose stream ends with
+// no such line (an interrupted or lost runner) reads cut instead. The running
+// band (class "run") is not terminal.
+func hasTerminalBand(lines []eventLine) bool {
+	for _, l := range lines {
+		if l.Band != "" && l.BandClass != "run" {
+			return true
+		}
+	}
+	return false
+}
+
+// glyphCheck is the pin's 13px check glyph (SPEC §2 complete state); the dot
+// covers every other state.
+const glyphCheck = "M5 19L19 5M5 19l4 4"
+
+// pinWord is the pin's keyword for a state; the count or scrolled-up tail
+// rides the .n span beside it.
+func pinWord(state string) string {
+	switch state {
+	case "cut":
+		return "LOG CUT"
+	case "complete":
+		return "LOG COMPLETE"
+	case "paused":
+		return "PAUSED"
+	default:
+		return "FOLLOWING TAIL"
+	}
+}
+
+// pinCount is the .n tail: " · {n} lines" on complete/cut, " · scrolled up"
+// on paused, empty on following.
+func pinCount(state string, n int) string {
+	switch state {
+	case "complete", "cut":
+		return fmt.Sprintf(" · %d lines", n)
+	case "paused":
+		return " · scrolled up"
+	}
+	return ""
 }
 
 // jobRerunVM prefills the "Run again" resubmit modal from the original job. The

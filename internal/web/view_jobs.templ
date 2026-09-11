@@ -247,29 +247,35 @@ templ verdictHost(h jobVerdictHost) {
 	</div>
 }
 
-// outputCard is the retuned log tail (2.3, J6): the Output header with the
-// line meta, the filter input (placeholder only), the wrap toggle, the ENDED
-// line, and the log with the run's state bands re-rendered from copy.
+// outputCard is the retuned log tail (2.3, J6, §2/§3): the Output bar leads
+// with the title · pin chip · meta, then the controls (filter · wrap · Raw ↗)
+// hug the right. The pin renders on every job page with its server-set
+// data-state — complete on a terminal page whose stream carries its verdict
+// band, cut on one without, following on a live page — and the static ENDED
+// pill is gone (the pin is the one status word). The log's state bands
+// re-render from copy.
 templ outputCard(vm jobDetailVM) {
 	<div class="card output">
-		<div class="outputbar output-head">
-			<span class="controls">
-				<span class="outputtitle">Output</span>
-				<span class="outputmeta mono ml-auto">{ outputMeta(len(vm.Events), vm.Job.State.Terminal()) }</span>
+		<div class="output-bar output-head">
+			<span class="lead">
+				<span class="title">Output</span>
+				<span class="pin" id="log-pin" data-state={ vm.PinState } role="status">
+					<span class="dot" aria-hidden="true" hidden?={ vm.PinState == "complete" }></span>
+					<svg class="check" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" hidden?={ vm.PinState != "complete" }>
+						<path d={ glyphCheck }></path>
+					</svg>
+					<span class="pinword">{ pinWord(vm.PinState) }</span><span class="n">{ pinCount(vm.PinState, len(vm.Events)) }</span>
+				</span>
+				<span class="meta mono">{ outputMeta(len(vm.Events), vm.Job.State.Terminal(), vm.EndedClock) }</span>
 			</span>
-			<span class="logtools controls ml-auto">
-				if !vm.Job.State.Terminal() {
-					<span class="pin" id="log-pin" data-state="following" role="status">
-						<span class="dot" aria-hidden="true"></span>
-						<span class="pinword">FOLLOWING TAIL</span>
-					</span>
-				}
+			<span class="controls">
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>
 				<button type="button" class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>
+				<a class="verb-raw" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" title="Raw log — plain text, opens in a new tab">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={ glyphDocument }></path></svg>
+					<span class="word">Raw</span><span class="ext">↗</span>
+				</a>
 			</span>
-			if vm.Job.State.Terminal() {
-				<span class="pill ended mono">ENDED · nothing to follow</span>
-			}
 		</div>
 		<div class="logwrap2">
 			<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">
@@ -383,7 +389,8 @@ templ logLine(e eventLine) {
 // EventSource — no framework, the brief's "SSE for live updates". since is
 // the Seq of the last event this page already rendered; the server backfills
 // everything after it, so nothing written between render and connect is
-// skipped. On "done" it reloads rather than just closing: the terminal status
+// skipped. On "done" the pin flashes the terminal state from the last band
+// (complete/cut) and the page reloads rather than closing: the terminal status
 // chip, the full log, and the now-enabled Schedule button are all rendered
 // server-side, and a reload is the simplest way to get the true final state
 // rather than reconstructing it in JS.
@@ -408,24 +415,34 @@ templ jobStream(id int64, since int64) {
 		var following = true; // pinned to the tail; false once the operator scrolls up
 		var sincePin = 0;     // lines appended while unpinned, for the Tail +N badge
 		var es = new EventSource("/jobs/" + job + "/stream?since=" + since);
-		function setPin(state) {
+		// setPin moves the chip between the four states; tail is the .n span's
+		// text (the " · N lines" count, " · scrolled up"), empty on following.
+		// The dot vs check glyph is the state's shape: complete swaps in the
+		// check, every other state keeps the dot.
+		function setPin(state, tail) {
 			if (!pin) return;
 			pin.setAttribute("data-state", state);
+			var dot = pin.querySelector(".dot");
+			var check = pin.querySelector(".check");
+			if (dot) dot.hidden = state === "complete";
+			if (check) check.hidden = state !== "complete";
 			var word = pin.querySelector(".pinword");
-			if (word) word.textContent = state === "following" ? "FOLLOWING TAIL" : state === "paused" ? "PAUSED · scrolled up" : "ENDED · nothing to follow";
+			if (word) word.textContent = state === "following" ? "FOLLOWING TAIL" : state === "paused" ? "PAUSED" : state === "cut" ? "LOG CUT" : "LOG COMPLETE";
+			var nEl = pin.querySelector(".n");
+			if (nEl) nEl.textContent = tail || "";
 		}
 		function rePin() {
 			following = true;
 			sincePin = 0;
 			log.scrollTop = log.scrollHeight;
-			setPin("following");
+			setPin("following", "");
 			if (tailBtn) tailBtn.hidden = true;
 		}
 		// The operator scrolling up unpins; reaching the bottom re-pins.
 		log.addEventListener("scroll", function () {
 			if (following && log.scrollTop + log.clientHeight < log.scrollHeight - 6) {
 				following = false;
-				setPin("paused");
+				setPin("paused", " · scrolled up");
 			} else if (!following && log.scrollTop + log.clientHeight >= log.scrollHeight - 6) {
 				rePin();
 			}
@@ -433,18 +450,32 @@ templ jobStream(id int64, since int64) {
 		if (tailBtn) tailBtn.addEventListener("click", rePin);
 		es.addEventListener("line", function (ev) {
 			var d = JSON.parse(ev.data);
-			var span = document.createElement("span");
-			span.className = "line" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
-			span.style.display = "grid";
-			span.style.gridTemplateColumns = "60px 1fr";
-			var ts = document.createElement("span");
-			ts.className = "ts";
-			ts.textContent = d.ts.slice(11, 19);
-			span.appendChild(ts);
-			var msg = document.createElement("span");
-			msg.className = "msg";
-			msg.textContent = d.msg;
-			span.appendChild(msg);
+			var span;
+			// A system line that bandFor re-renders arrives as the styled band
+			// (the same .logband the server renders), so the tail and the
+			// reloaded page agree on the terminal line.
+			if (d.band) {
+				span = document.createElement("div");
+				span.className = "logband " + d.band_class;
+				var bts = document.createElement("span");
+				bts.className = "ts";
+				bts.textContent = d.ts.slice(11, 19);
+				span.appendChild(bts);
+				span.appendChild(document.createTextNode(" " + d.band));
+			} else {
+				span = document.createElement("span");
+				span.className = "line" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
+				span.style.display = "grid";
+				span.style.gridTemplateColumns = "60px 1fr";
+				var ts = document.createElement("span");
+				ts.className = "ts";
+				ts.textContent = d.ts.slice(11, 19);
+				span.appendChild(ts);
+				var msg = document.createElement("span");
+				msg.className = "msg";
+				msg.textContent = d.msg;
+				span.appendChild(msg);
+			}
 			log.appendChild(span);
 			if (window.exoFilterLog) window.exoFilterLog();
 			if (following) {
@@ -457,7 +488,17 @@ templ jobStream(id int64, since int64) {
 				}
 			}
 		});
-		es.addEventListener("done", function () { location.reload(); });
+		es.addEventListener("done", function () {
+			// Flash the terminal state from the last band before the reload
+			// renders the true final page: a verdict band (ok/fail/wait) means
+			// complete, anything else (or none) means the stream ended without
+			// the terminal line.
+			var bands = log.querySelectorAll(".logband");
+			var last = bands.length ? bands[bands.length - 1].className : "";
+			var state = (last.indexOf("ok") !== -1 || last.indexOf("fail") !== -1 || last.indexOf("wait") !== -1) ? "complete" : "cut";
+			setPin(state, "");
+			location.reload();
+		});
 		es.onerror = function () {
 			// Only a permanently-closed stream is a real failure worth
 			// surfacing: EventSource fires onerror on every transient drop

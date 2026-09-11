@@ -352,9 +352,14 @@ func seedJobWithRecap(t *testing.T, h *harness, state store.JobState, code int, 
 			n++
 		}
 	}
-	band := fmt.Sprintf("failed (exit %d)", code)
-	if state == store.StateDegraded {
+	var band string
+	switch state {
+	case store.StateDegraded:
 		band = fmt.Sprintf("degraded (exit %d, %d host(s) unreachable, tolerated)", code, n)
+	case store.StateSucceeded:
+		band = fmt.Sprintf("succeeded (exit %d)", code)
+	default:
+		band = fmt.Sprintf("failed (exit %d)", code)
 	}
 	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: job.ID, Level: store.LevelSystem, Msg: band}); err != nil {
 		t.Fatalf("append band: %v", err)
@@ -420,9 +425,10 @@ func TestJobDetailFailedRendersVerdictBand(t *testing.T) {
 	if strings.Contains(body, `<span class="tolerated">tolerated</span>`) {
 		t.Error("a FAILED run must not render the tolerated verdict tail")
 	}
-	// The terminal band re-renders from copy (2.3).
-	if !strings.Contains(body, `▸ failed — exit 4 · unreachable hosts not tolerated · ntfy notified`) {
-		t.Error("failed detail missing the copy-formatted failed band")
+	// The terminal band re-renders from copy (2.3) and repeats completion with
+	// the rendered line count: 2 fatals + 4 recap + 1 band = 7 events.
+	if !strings.Contains(body, `▸ failed — exit 4 · 7 lines · log complete`) {
+		t.Error("failed detail missing the copy-formatted completion band")
 	}
 }
 
@@ -462,15 +468,18 @@ func TestJobDetailDegradedRendersVerdictBand(t *testing.T) {
 	if strings.Contains(body, `FAILED · EXIT`) {
 		t.Error("a DEGRADED run must not render the FAILED keyword")
 	}
-	// The degraded band re-renders from copy (2.3).
-	if !strings.Contains(body, `▸ degraded — exit 4 tolerated · 2 hosts unreachable (hypnotoad, lrrr) · reachable hosts succeeded`) {
-		t.Error("degraded detail missing the copy-formatted degraded band")
+	// The degraded band re-renders from copy (2.3) and repeats completion with the
+	// rendered line count: 2 fatals + 4 recap + 1 band = 7 events.
+	if !strings.Contains(body, `▸ degraded — exit 4 tolerated · 2 hosts unreachable (hypnotoad, lrrr) · reachable hosts succeeded · 7 lines · log complete`) {
+		t.Error("degraded detail missing the copy-formatted completion band")
 	}
 }
 
-// TestJobDetailOutputCardRetune is J6: the Output header carries the line
-// meta and the ENDED pill, the filter input is placeholder-only (no "Search
-// log" label), and the wrap toggle is present.
+// TestJobDetailOutputCardRetune is J6 + §2/§3: the Output bar leads with
+// Output · pin · meta then the controls (filter · wrap · Raw ↗); a terminal
+// page's pin is server-rendered complete (never following); the static ENDED
+// pill is gone; the meta reads "stdout + stderr · ended {hh:mm:ss}"; the last
+// log line repeats completion; the Raw ↗ verb sits after wrap.
 func TestJobDetailOutputCardRetune(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -482,12 +491,18 @@ func TestJobDetailOutputCardRetune(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
-		`<div class="outputbar output-head">`,
-		`<span class="outputtitle">Output</span>`,
-		`<span class="outputmeta mono ml-auto">stdout + stderr · 5 lines · complete</span>`,
-		`<span class="pill ended mono">ENDED · nothing to follow</span>`,
+		`<div class="output-bar output-head">`,
+		`<span class="title">Output</span>`,
+		`id="log-pin" data-state="complete"`,
+		`<span class="pinword">LOG COMPLETE</span><span class="n"> · 5 lines</span>`,
+		`<span class="dot" aria-hidden="true" hidden></span>`,
+		`<svg class="check" width="13" height="13"`,
+		`<span class="meta mono">stdout + stderr · ended `,
 		`<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log">`,
 		`class="logwrap wrap" id="logwrap"`,
+		`<a class="verb-raw" href="/jobs/` + itoa64(job.ID) + `/raw" target="_blank" title="Raw log — plain text, opens in a new tab">`,
+		`<span class="word">Raw</span><span class="ext">↗</span>`,
+		`▸ failed — exit 4 · 5 lines · log complete`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("output card missing %q", want)
@@ -495,6 +510,25 @@ func TestJobDetailOutputCardRetune(t *testing.T) {
 	}
 	if strings.Contains(body, "Search log") {
 		t.Error("the search control must be placeholder-only (J6)")
+	}
+	// The old ENDED vocabulary retires here (lane D retires the CSS).
+	for _, gone := range []string{"ENDED · nothing to follow", `class="pill ended mono"`, `data-state="following"`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("output card still carries the retired %q", gone)
+		}
+	}
+	// The Raw ↗ verb sits after the wrap toggle, so the verbs never shift.
+	wrap := strings.Index(body, `class="logwrap wrap" id="logwrap"`)
+	raw := strings.Index(body, `class="verb-raw"`)
+	if wrap < 0 || raw <= wrap {
+		t.Error("the Raw ↗ verb must sit after the wrap toggle")
+	}
+	// The output meta's clock is HH:MM:SS.
+	if i := strings.Index(body, `stdout + stderr · ended `); i >= 0 {
+		clock := body[i+len(`stdout + stderr · ended `):][:8]
+		if len(clock) != 8 || clock[2] != ':' || clock[5] != ':' {
+			t.Errorf("output meta clock must read HH:MM:SS, got %q", clock)
+		}
 	}
 }
 
@@ -979,9 +1013,9 @@ func TestJobDetailHostTableSecondLine(t *testing.T) {
 	}
 }
 
-// TestJobDetailOutputHeadRows is R8: the Output header is two rows — the title
-// with the line meta, then the filter + wrap controls — with ENDED as a plain
-// mono line on phone (the pill styling it keeps on desktop).
+// TestJobDetailOutputHeadRows is R8/§2: the Output header is one bar whose
+// lead is Output · pin · meta (the pin a fixed slot between the title and the
+// meta), with the filter · wrap · Raw controls on the right.
 func TestJobDetailOutputHeadRows(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -994,17 +1028,119 @@ func TestJobDetailOutputHeadRows(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
-		`<div class="outputbar output-head">`,
+		`<div class="output-bar output-head">`,
+		`<span class="lead">`,
+		`<span class="title">Output</span>`,
+		`<span class="pin" id="log-pin" data-state="complete"`,
+		`<span class="meta mono">stdout + stderr · ended `,
 		`<span class="controls">`,
-		`<span class="outputtitle">Output</span>`,
-		`<span class="outputmeta mono ml-auto">stdout + stderr · `,
-		`<span class="logtools controls ml-auto">`,
 		`<input id="log-search"`,
 		`class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>`,
-		`<span class="pill ended mono">ENDED · nothing to follow</span>`,
+		`<span class="word">Raw</span><span class="ext">↗</span>`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("output head missing %q", want)
+		}
+	}
+	// Output · pin · meta come before the controls.
+	title := strings.Index(body, `<span class="title">Output</span>`)
+	pin := strings.Index(body, `id="log-pin"`)
+	meta := strings.Index(body, `stdout + stderr · ended `)
+	controls := strings.Index(body, `<span class="controls">`)
+	if title < 0 || title >= pin || pin >= meta || meta >= controls {
+		t.Errorf("output head must lead with Output · pin · meta then controls (indexes %d %d %d %d)", title, pin, meta, controls)
+	}
+}
+
+// TestJobDetailPinStates is the pin's server-set data-state (§2): complete on
+// a terminal page whose event list carries a terminal band, cut on a terminal
+// page without one (an interrupted runner), following on a live page — and a
+// terminal page never reads following.
+func TestJobDetailPinStates(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// Terminal with a terminal band -> complete (the check glyph replaces the
+	// dot, so the pin is data-backed, not JS).
+	failed := seedFailedWithRecap(t, h, 4, []string{"PLAY RECAP"})
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(failed.ID))
+	if !strings.Contains(body, `id="log-pin" data-state="complete"`) {
+		t.Error("a terminal job with a terminal band must render the pin complete")
+	}
+	if strings.Contains(body, `data-state="following"`) {
+		t.Error("a terminal page must never render the pin following")
+	}
+
+	// Terminal without a terminal band (cancelled mid-run, no verdict line)
+	// -> cut.
+	cut, err := h.store.CreateGatedJob(ctx, store.NewJob{
+		Runbook: "playbook", Kind: executor.KindAnsible, Trigger: "manual",
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
+	})
+	if err != nil {
+		t.Fatalf("seed cut job: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, cut.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
+		t.Fatalf("start cut job: %v", err)
+	}
+	if _, err := h.store.AppendJobEvent(ctx, store.JobEvent{JobID: cut.ID, Level: store.LevelInfo, Msg: "ansible-playbook 2.17.4"}); err != nil {
+		t.Fatalf("append line: %v", err)
+	}
+	if err := h.store.TransitionJob(ctx, cut.ID, store.StateRunning, store.StateCancelled); err != nil {
+		t.Fatalf("cancel cut job: %v", err)
+	}
+	_, body = getBody(t, client, ts.URL+"/jobs/"+itoa64(cut.ID))
+	if !strings.Contains(body, `id="log-pin" data-state="cut"`) {
+		t.Error("a terminal job without a terminal band must render the pin cut")
+	}
+	if !strings.Contains(body, `<span class="pinword">LOG CUT</span><span class="n"> · 1 lines</span>`) {
+		t.Error("the cut pin must read LOG CUT with the rendered line count")
+	}
+	if !strings.Contains(body, `<span class="dot" aria-hidden="true"></span>`) {
+		t.Error("the cut pin must show the dot, not the check glyph")
+	}
+
+	// Live -> following.
+	live := seedStartedJob(t, h, "playbook", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	_, body = getBody(t, client, ts.URL+"/jobs/"+itoa64(live.ID))
+	if !strings.Contains(body, `id="log-pin" data-state="following"`) {
+		t.Error("a live job must render the pin following")
+	}
+	if !strings.Contains(body, `<span class="pinword">FOLLOWING TAIL</span>`) {
+		t.Error("the live pin must read FOLLOWING TAIL")
+	}
+	if !strings.Contains(body, `stdout + stderr · 0 lines · streaming`) {
+		t.Error("the live output meta must read 'N lines · streaming'")
+	}
+}
+
+// TestJobDetailSucceededBand is the succeeded terminal band (§2): the queue's
+// "succeeded (exit N)" system line re-renders as the ok-tint band, the last
+// log line repeats completion with the rendered line count, and the pin reads
+// complete with the ended meta.
+func TestJobDetailSucceededBand(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedJobWithRecap(t, h, store.StateSucceeded, 0, []string{
+		"ok: [node0] => changed=0",
+		"PLAY RECAP",
+		"node0 : ok=1 changed=0 unreachable=0 failed=0 skipped=0",
+	}, []string{}, store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`class="logband ok">`,
+		`▸ succeeded — exit 0 · 4 lines · log complete`,
+		`id="log-pin" data-state="complete"`,
+		`stdout + stderr · ended `,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("succeeded detail missing %q", want)
 		}
 	}
 }
