@@ -244,18 +244,10 @@ func (s *Server) handleWorkflowDetail(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.policies(r)
+	vm, err := s.policiesVMFor(r, nil, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
-	}
-	ident, _ := identityOf(r.Context())
-	vm := policiesVM{
-		Page: s.pageFor(r, "Plan policies", "policies"), Policies: rows,
-		Operator: canWrite(ident),
-	}
-	if vm.Operator {
-		vm.Page.Add = &pageAdd{Target: "policies-add", Label: "policy"}
 	}
 	s.render(w, r, http.StatusOK, policiesList(vm))
 }

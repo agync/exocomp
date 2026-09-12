@@ -13,21 +13,41 @@ templ policiesList(vm policiesVM) {
 		if vm.Operator {
 			@modal("policies-add", "Add a policy") {
 				<p class="meta">Mirrors <code>exocomp policy add</code>: the expression is compiled against the sealed plan (one variable, <code>plan</code>) before the policy is stored — one that cannot decide is refused now rather than failing silently at seal time.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/policies/add") } class="writeform">
-					<label for="pl-name">Name</label>
-					<input id="pl-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="pl-workspace">Workspace</label>
-					<input id="pl-workspace" name="workspace" type="text" required autocomplete="off"/>
-					<label for="pl-action">On match</label>
-					<select id="pl-action" name="action">
-						<option value="deny">deny — the sealed plan becomes unconsumable</option>
-						<option value="require_approval">require_approval — the apply is gated</option>
-					</select>
-					<label for="pl-expr">CEL expression</label>
-					<input id="pl-expr" name="expr" type="text" required autocomplete="off" placeholder="plan.resource_changes.exists(c, c.change.actions.exists(a, a == &#34;delete&#34;))"/>
-					<div class="actions"><button type="submit" class="btn primary">Add policy</button></div>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/policies/add") } class="writeform" id="policy-add-form" novalidate data-policy-form>
+					@fieldInput(vm.Form.nameField())
+					@fieldInput(vm.Form.workspaceField())
+					<label class="field">
+						<span class="label">On match</span>
+						<select class="control" id="pl-action" name="action" aria-invalid?={ vm.Form.effective().ErrAction != "" } aria-describedby="pl-action-meta" autofocus?={ vm.Form.effective().FirstInvalid == "action" }>
+							<option value="deny" selected?={ vm.Form.actionIs("deny") }>deny — the sealed plan becomes unconsumable</option>
+							<option value="require_approval" selected?={ vm.Form.actionIs("require_approval") }>require_approval — the apply is gated</option>
+						</select>
+						<span id="pl-action-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrAction != "") }>
+							if vm.Form.effective().ErrAction != "" {
+								<span class="msg">{ vm.Form.effective().ErrAction }</span>
+							} else {
+								On match is deny or require_approval.
+							}
+						</span>
+					</label>
+					@fieldInput(vm.Form.exprField())
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding policy")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add policy</button></div>
 				</form>
+				if vm.Form != nil {
+					// A JS-off refusal re-renders the whole page; open the dialog and
+					// focus the first invalid control after it is in the DOM.
+					<script>
+					exoModalOpen("policies-add");
+					var plBad = document.querySelector('#policies-add [aria-invalid="true"]');
+					if (plBad) plBad.focus();
+					</script>
+				}
+				@policyFormJS()
 			}
+		}
+		if vm.Notice != "" {
+			<p class="error" role="alert">▲ { vm.Notice }</p>
 		}
 		<div class="card span2 mt18 tray">
 			<div class="kicker">CEL gates</div>
@@ -76,4 +96,100 @@ templ policiesList(vm policiesVM) {
 			}
 		</div>
 	}
+}
+
+// policyFormJS is the add-policy form's progressive enhancement, mirroring the
+// netgroup/source/check/schedule forms: novalidate (the daemon is
+// authoritative), submit intercepted and POSTed with fetch — a 422 swaps the
+// form fragment in place with the server-rendered refusals (JS-off gets the
+// same bytes as a full re-render), anything else follows the redirect and its
+// success flash. The name re-validates on blur and clears when right; the
+// primary disables only while submitting.
+templ policyFormJS() {
+	<script>
+	(function () {
+		function policyFormWire() {
+			var form = document.getElementById("policy-add-form");
+			if (!form || form.dataset.policyWired) return;
+			form.dataset.policyWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (!meta) return;
+				meta.classList.remove("is-error");
+				meta.textContent = input.name === "name"
+					? "Letters, digits, dots, hyphens, underscores."
+					: "The workspace this gate covers.";
+			}
+
+			// showError paints a refusal on a field without changing its geometry
+			// (the meta line always exists), mirroring the server's human copy.
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rule the server holds to — a
+			// name shape refusal — on blur so a mistake surfaces before submit.
+			// Empty is left alone (that's a submit-time required check); the
+			// daemon stays authoritative on compilation, so submit still asks it.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				if (input.name === "name" && !/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) {
+					showError(input, "Names can't have spaces or special characters.");
+					return;
+				}
+				restoreMeta(input);
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding policy';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("policy-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("policy-add-form");
+							form.dataset.policyRefused = "1";
+							policyFormWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="workspace"]');
+				if (!input) return;
+				validateField(input);
+			}, true);
+		}
+		policyFormWire();
+	})();
+	</script>
 }

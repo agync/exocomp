@@ -846,6 +846,89 @@ type policiesVM struct {
 	// Operator gates the add/rm controls (policies_write.go); readonly and
 	// approve scopes keep the plain read-only listing.
 	Operator bool
+	// Form is the add-policy dialog's render state: nil at rest, the filled
+	// form with field refusals on a 422 re-render. Notice is a whole-surface
+	// refusal line (an rm that found nothing to remove) rendered above the
+	// tray at 4xx — never a flash.
+	Form   *policyFormVM
+	Notice string
+}
+
+// policyFormVM is the add-policy dialog's refusal state (forms/SPEC.md).
+// Err* hold the translated sentences — the raw validator words go to the log
+// at the same call site — and FixName is the one-click slug the fix link
+// applies. FirstInvalid names the control to focus; Submitting drives the
+// status line's verb and disables the primary.
+type policyFormVM struct {
+	Name         string
+	Workspace    string
+	Action       string
+	Expr         string
+	ErrName      string
+	FixName      string
+	ErrWorkspace string
+	ErrAction    string
+	ErrExpr      string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *policyFormVM) effective() policyFormVM {
+	if f == nil {
+		return policyFormVM{}
+	}
+	return *f
+}
+
+func (f *policyFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *policyFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+func (f *policyFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "pl-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "no-destroy", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *policyFormVM) workspaceField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "pl-workspace", Label: "Workspace", Name: "workspace", Value: v.Workspace,
+		Placeholder: "prod", Help: "The workspace this gate covers.",
+		ErrMsg: v.ErrWorkspace, FirstInvalid: v.FirstInvalid == "workspace",
+	}
+}
+
+func (f *policyFormVM) exprField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "pl-expr", Label: "CEL expression", Name: "expr", Value: v.Expr,
+		Placeholder: `plan.resource_changes.exists(c, c.change.actions.exists(a, a == "delete"))`,
+		Help:        "A CEL expression over plan.",
+		ErrMsg:      v.ErrExpr, FirstInvalid: v.FirstInvalid == "expr",
+	}
+}
+
+// actionIs reports whether the add form's action select should show k: the
+// typed value on a 422 re-render, the deny default at rest.
+func (f *policyFormVM) actionIs(k string) bool {
+	v := f.effective()
+	if v.Action == "" {
+		return k == "deny"
+	}
+	return v.Action == k
 }
 
 // runnersVM is the runners surface: an inventory of the registered
