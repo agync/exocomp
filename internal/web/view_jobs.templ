@@ -119,16 +119,22 @@ templ jobDetail(vm jobDetailVM) {
 			@modal("job-schedule", "Schedule this job") {
 				<p class="meta">Creates a recurring <span class="mono">shell</span> schedule that replays this job's exact command on a cron. Kind is fixed at shell — a schedule keeps no vault, run-secrets, or working-directory binding a playbook/command job may have used.</p>
 				<form method="post" action={ scheduleAction(vm.Page.Base, vm.Job.ID) } class="writeform">
-					<label for="js-name">Name</label>
-					<input id="js-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="js-cron">Cron expression</label>
-					<input id="js-cron" name="cron" type="text" required autocomplete="off" placeholder="0 */5 * * * * or @every 5m"/>
+					@fieldInput(vm.ScheduleForm.nameField())
+					@fieldInput(vm.ScheduleForm.cronField())
 					<label>Kind</label>
 					<p class="meta mono">shell</p>
 					<label>Command (read-only, from this job)</label>
 					<p class="meta mono">{ joinArgv(vm.Job.Argv) }</p>
-					<div class="actions"><button type="submit" class="btn primary">Add schedule</button></div>
+					@formStatus(vm.ScheduleForm.Pending(), vm.ScheduleForm.ErrFormText(), "Adding schedule")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.ScheduleForm.Pending() }>Add schedule</button></div>
 				</form>
+				if vm.ScheduleForm != nil {
+					<script>
+					exoModalOpen("job-schedule");
+					var schedBad = document.querySelector('#job-schedule input[aria-invalid="true"]');
+					if (schedBad) schedBad.focus();
+					</script>
+				}
 			}
 		}
 		<p class="meta" id="jobs-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>

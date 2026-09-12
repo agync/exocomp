@@ -328,11 +328,13 @@ func TestJobScheduleRefusesNonAnsibleJob(t *testing.T) {
 	}
 }
 
-// TestJobScheduleInvalidName400 is the F5 regression: the job-detail "Schedule
-// this job" form used to 500 on an empty or invalid name, because the store's
-// validation sentinel surfaced as a generic error. It now refuses a bad name
-// with 400 before CreateSchedule, and no schedule row is written.
-func TestJobScheduleInvalidName400(t *testing.T) {
+// TestJobScheduleInvalidName422 is the F5 regression: the job-detail "Schedule
+// this job" form used to 500 on an empty or invalid name (the store's
+// validation sentinel surfaced as a generic error), then refused with a bare
+// "invalid schedule name" 400. It now re-renders the detail at 422 with the
+// name field's ▲ refusal and the typed cron value kept — and no schedule row
+// is written.
+func TestJobScheduleInvalidName422(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -346,8 +348,14 @@ func TestJobScheduleInvalidName400(t *testing.T) {
 			url.Values{"name": {name}, "cron": {"@every 5m"}}, nil)
 		body := readBody(t, resp)
 		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Fatalf("schedule with name %q = %d, want 400 (%s)", name, resp.StatusCode, body)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("schedule with name %q = %d, want 422 (%s)", name, resp.StatusCode, body)
+		}
+		if !strings.Contains(body, `class="meta is-error"`) {
+			t.Errorf("schedule name %q refusal missing the is-error meta line:\n%s", name, body)
+		}
+		if !strings.Contains(body, `value="@every 5m"`) {
+			t.Errorf("schedule name %q refusal lost the typed cron value:\n%s", name, body)
 		}
 	}
 
@@ -357,5 +365,76 @@ func TestJobScheduleInvalidName400(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("invalid-name schedule attempts wrote %d rows, want 0", len(rows))
+	}
+}
+
+// TestJobScheduleRefusalMetaAtRest pins the forms pattern's always-present meta
+// line: the Schedule dialog's name and cron fields render their help text at
+// rest (never the field anatomy missing), and a refusal fills the one field's
+// meta with the ▲ sentence while the other keeps its help — geometry never
+// changes between rest and refusal.
+func TestJobScheduleRefusalMetaAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedSchedulableJob(t, h, []string{"/bin/true"})
+	h.waitJobState(t, job.ID, store.StateSucceeded, 3*time.Second)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	_, rest := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`id="js-name-meta"`,
+		`id="js-cron-meta"`,
+		"Letters, digits, dots, hyphens, underscores.",
+		"Six fields with seconds first, or @every 5m / @daily.",
+	} {
+		if !strings.Contains(rest, want) {
+			t.Errorf("schedule dialog at rest missing %q", want)
+		}
+	}
+	if strings.Contains(rest, "▲") {
+		t.Error("schedule dialog at rest must not carry a refusal")
+	}
+
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(job.ID)+"/schedule",
+		url.Values{"name": {"nightly"}, "cron": {"not-a-cron"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad-cron schedule = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `cron expression can&#39;t be parsed — try 0 */5 * * * * or @every 5m.`) || !strings.Contains(body, `class="meta is-error"`) {
+		t.Errorf("cron refusal missing the field's is-error meta line:\n%s", body)
+	}
+	if !strings.Contains(body, `value="nightly"`) {
+		t.Errorf("cron refusal lost the typed name value:\n%s", body)
+	}
+	if !strings.Contains(body, `value="not-a-cron"`) {
+		t.Errorf("cron refusal lost the typed cron value:\n%s", body)
+	}
+}
+
+// TestJobSchedule422NeverEchoesConfirmToken pins the fieldMeta exception: the
+// 422 re-render echoes the form's own fields and nothing else — a posted
+// confirm_token (the reauth value the source git branch carries) never appears
+// in the re-rendered body.
+func TestJobSchedule422NeverEchoesConfirmToken(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedSchedulableJob(t, h, []string{"/bin/true"})
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(job.ID)+"/schedule",
+		url.Values{"name": {"spaced name"}, "cron": {"@every 5m"}, "confirm_token": {"exo_9_tokens3cret"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("schedule = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if strings.Contains(body, "tokens3cret") {
+		t.Error("422 re-render echoed a posted confirm_token")
 	}
 }

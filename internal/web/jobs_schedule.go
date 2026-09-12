@@ -53,22 +53,34 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
+
+	name := r.PostFormValue("name")
+	cronExpr := r.PostFormValue("cron")
+	form := jobScheduleForm{Name: name, Cron: cronExpr}
+
+	// The shape refusal is a server-side guard, unreachable through the form
+	// (the UI gates the Schedule button on canScheduleJob): a crafted POST to a
+	// non-schedulable job gets the 400, not a re-render — there is no dialog
+	// on the page to carry it.
 	if !canScheduleJob(job) {
 		http.Error(w, "this job cannot be replayed as a shell schedule: it needs a command and no --source working directory", http.StatusBadRequest)
 		return
 	}
-
-	name := r.PostFormValue("name")
 	// The schedule-add form's ValidName gate, so an empty or spaced name from
 	// the job-detail form is refused here rather than surfacing the store's
 	// validation sentinel as a 500.
 	if !store.ValidName(name) {
-		http.Error(w, "invalid schedule name", http.StatusBadRequest)
+		s.log.Info("web: job schedule refused", "err", "bad schedule name", "by", ident.token.Name)
+		form.ErrName = scheduleNameRefusal(name)
+		form.FirstInvalid = "name"
+		s.jobScheduleRefusal(w, r, form)
 		return
 	}
-	cronExpr := r.PostFormValue("cron")
 	if err := sched.ValidateCron(cronExpr); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.log.Info("web: job schedule refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrCron = scheduleCronRefusal
+		form.FirstInvalid = "cron"
+		s.jobScheduleRefusal(w, r, form)
 		return
 	}
 
@@ -83,11 +95,16 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 		Args: store.ScheduleArgs{Argv: job.Args.Argv},
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		http.Error(w, "a schedule named "+name+" already exists", http.StatusConflict)
+		s.log.Info("web: job schedule refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrName = scheduleDuplicateRefusal(name)
+		form.FirstInvalid = "name"
+		s.jobScheduleRefusal(w, r, form)
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		http.Error(w, validationFlash(err), http.StatusBadRequest)
+		s.log.Error("web: job schedule", "err", err.Error())
+		form.ErrForm = scheduleSubmitRefusal
+		s.jobScheduleRefusal(w, r, form)
 		return
 	}
 	if err != nil {
@@ -98,11 +115,51 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/schedules", "scheduled "+created.Name)
 }
 
+// The schedule dialog's human refusal copy (the netgroup/source pattern): the
+// raw validator words go to the log; the form's meta lines and status line
+// carry these sentences.
+const (
+	scheduleNameCharsRefusal = "Names use letters, digits, dots, hyphens and underscores."
+	scheduleCronRefusal      = "That cron expression can't be parsed — try 0 */5 * * * * or @every 5m."
+	scheduleSubmitRefusal    = "Could not add the schedule — nothing was saved."
+)
+
+// scheduleNameRefusal translates a bad schedule-name value the way the
+// netgroup/source forms do: empty is the required sentence, a spaced name the
+// spaces sentence, anything else the charset sentence.
+func scheduleNameRefusal(name string) string {
+	if strings.TrimSpace(name) == "" {
+		return "Give the schedule a name."
+	}
+	if strings.ContainsAny(name, " ") {
+		return "Names can't have spaces."
+	}
+	return scheduleNameCharsRefusal
+}
+
+func scheduleDuplicateRefusal(name string) string {
+	return "A schedule named " + name + " already exists."
+}
+
 // validationFlash renders a store.ErrValidation error as a flash line without
-// the store's wrapped "store: validation: store: ..." prefix, so the browser
-// shows one actionable sentence instead of the doubled internal namespace.
+// the store's wrapped "store: validation: store: ..." prefix. The checks lane
+// still calls it; this lane's schedule handler renders its ErrValidation as the
+// human scheduleSubmitRefusal instead.
 func validationFlash(err error) string {
 	msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
 	msg = strings.TrimPrefix(msg, "store: validation: ")
 	return msg
+}
+
+// jobScheduleRefusal re-renders the job detail at 422 with the Schedule dialog
+// carrying its refusals — the JS-off path, and the fragment body a JS submit
+// swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) jobScheduleRefusal(w http.ResponseWriter, r *http.Request, form jobScheduleForm) {
+	vm, err := s.jobDetailVMFor(w, r)
+	if err != nil {
+		return
+	}
+	vm.ScheduleForm = &form
+	vm.ScheduleOpen = true
+	s.render(w, r, http.StatusUnprocessableEntity, jobDetail(vm))
 }

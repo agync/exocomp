@@ -1544,6 +1544,12 @@ type jobDetailVM struct {
 	// alone, the rerun dialog footer's "@ {ref}".
 	RefLabel string
 	Ref      string
+	// ScheduleForm is the Schedule dialog's refusal state (the netgroup
+	// pattern): nil at rest, the filled form on a 422 re-render. ScheduleOpen
+	// renders the dialog open for the JS-off fallback, mirroring the source
+	// add dialog's vm.Form.
+	ScheduleForm *jobScheduleForm
+	ScheduleOpen bool
 	// PinState is the Output pin's server-set data-state (§2): "complete" on a
 	// terminal page whose event list carries a terminal band, "cut" on a
 	// terminal page without one (an interrupted/lost runner), "following" on a
@@ -1655,6 +1661,62 @@ func (r jobRerunVM) Summary() string {
 		parts = append(parts, "tolerate unreachable")
 	}
 	return strings.Join(parts, " · ")
+}
+
+// jobScheduleForm is the job-detail Schedule dialog's refusal state (the
+// netgroup pattern): nil at rest, the filled form with field errors on a 422
+// re-render. ErrName/ErrCron hold the human sentences (the raw validator words
+// go to the log at the same call site); ErrForm is the whole-submit refusal
+// for the status line. FirstInvalid names the control to focus; Submitting
+// drives the status line's "Adding schedule" and disables the primary.
+type jobScheduleForm struct {
+	Name         string
+	Cron         string
+	ErrName      string
+	ErrCron      string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *jobScheduleForm) effective() jobScheduleForm {
+	if f == nil {
+		return jobScheduleForm{}
+	}
+	return *f
+}
+
+func (f *jobScheduleForm) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *jobScheduleForm) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// nameField and cronField build the reusable field's render state from the
+// form's current values and refusals, mirroring the source form's fieldInput
+// list.
+func (f *jobScheduleForm) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "js-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "nightly", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *jobScheduleForm) cronField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "js-cron", Label: "Cron expression", Name: "cron", Value: v.Cron,
+		Placeholder: "0 */5 * * * * or @every 5m",
+		Help:        "Six fields with seconds first, or @every 5m / @daily.",
+		ErrMsg:      v.ErrCron, FirstInvalid: v.FirstInvalid == "cron",
+	}
 }
 
 // RerunQueueLabel is the rerun dialog's submit-button contract: the thing
