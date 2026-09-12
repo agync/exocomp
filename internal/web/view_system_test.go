@@ -52,7 +52,8 @@ func TestSystemShellIdentity(t *testing.T) {
 		// with the meta beside it, no longer read-only.
 		`title="Doctor — run the self-check"`,
 		`action="/system/doctor"`,
-		`title="Recovery kit — reprint · read-only: exocomp kit"`,
+		`title="Recovery kit — reprint"`,
+		`action="/system/kit/reprint"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("identity strip missing %q", want)

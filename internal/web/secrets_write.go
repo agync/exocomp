@@ -222,6 +222,9 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A rotation changes the envelope the recovery kit's derivation rule draws
+	// from, so the kit is stale until it is reprinted (SPEC §7 A3).
+	s.bumpKitChanges(r.Context())
 	s.log.Info("web: secret rotate", "secret", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/secrets", "rotated "+name)
 }

@@ -206,6 +206,9 @@ func (s *Server) handleBackupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: backup add", "target", created.Name, "kind", created.Kind, "job", job.ID, "by", ident.token.Name)
+	// A new target changes what the recovery kit prints (the target list), so
+	// the kit is stale until it is reprinted (SPEC §7 A3).
+	s.bumpKitChanges(r.Context())
 	s.redirectFlash(w, r, "/system/backups",
 		"added "+created.Name+" · backup queued as job #"+itoa64(job.ID))
 }

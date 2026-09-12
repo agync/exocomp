@@ -476,6 +476,9 @@ type systemVM struct {
 	// Doctor is the identity strip's Doctor glyph meta (SPEC §7 A1): the
 	// newest self-check job's age and finding count, linking to the job page.
 	Doctor doctorMeta
+	// Kit is the identity strip's Recovery-kit meta (SPEC §7 A3): the date the
+	// kit was last printed and how many invalidating changes landed since.
+	Kit kitMeta
 }
 
 // doctorMeta is the /system identity strip's Doctor meta (SPEC §7 A1). HasRun
@@ -489,6 +492,17 @@ type doctorMeta struct {
 	Age    string
 	Count  int
 	Stale  bool
+}
+
+// kitMeta is the /system identity strip's Recovery-kit meta (SPEC §7 A3): the
+// date the kit was last printed ("" when it has never been printed) and how
+// many invalidating changes landed since — the honest staleness accounting
+// behind "N changes since". Stale tints the meta when a change landed since
+// the print.
+type kitMeta struct {
+	Printed string
+	Changes int
+	Stale   bool
 }
 
 // litestreamObserved is everything the daemon observes about the Litestream

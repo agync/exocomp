@@ -218,6 +218,7 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	// signal() read, the colour now carries armed/none/tripped too.
 	vm.Page.Signal.DeadManState = vm.Deadman.StateClass
 	vm.Doctor = s.doctorMeta(r.Context())
+	vm.Kit = s.kitMeta(r.Context())
 	return vm, nil
 }
 

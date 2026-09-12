@@ -134,6 +134,9 @@ func (s *Server) handleDeadmanArm(w http.ResponseWriter, r *http.Request) {
 	// empty rather than inheriting the old one's.
 	_ = s.store.DeleteSetting(r.Context(), store.SettingDeadmanPagedAt)
 	_ = s.store.DeleteSetting(r.Context(), store.SettingDeadmanPingedAt)
+	// Arming changes what the recovery kit prints (the heartbeat URL), so the
+	// kit is stale until it is reprinted (SPEC §7 A3).
+	s.bumpKitChanges(r.Context())
 	s.log.Info("web: deadman arm", "threshold", form.Threshold,
 		"heartbeat", heartbeat != "", "by", ident.token.Name)
 	s.redirectFlash(w, r, from, "dead-man armed")

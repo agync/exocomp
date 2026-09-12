@@ -46,6 +46,14 @@ const (
 	// ping: every succeeded backup pings the sealed deadman/heartbeat_url, so
 	// the card reads "pinged {age} ago" from this one value.
 	SettingDeadmanPingedAt = "deadman.pinged_at"
+	// SettingKitPrintedAt is the date the recovery kit was last printed
+	// ("2026-08-14"), written by the /system reprint verb. Empty means the kit
+	// has never been printed — the identity strip shows no kit meta at all.
+	SettingKitPrintedAt = "kit.printed_at"
+	// SettingKitChanges counts the invalidating changes since the last print —
+	// a dead-man arm, a backup add-target, or a secret rotation (SPEC §7 A3).
+	// The /system reprint verb resets it to zero.
+	SettingKitChanges = "kit.changes"
 )
 
 // PutSetting upserts a non-secret configuration value.
