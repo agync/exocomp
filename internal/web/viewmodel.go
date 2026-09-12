@@ -463,6 +463,10 @@ type systemVM struct {
 	// the store's ONE rule (LastSucceededBackupTime), the same read the
 	// powerline's vm.Page.Signal.DeadMan makes — never a second computation.
 	Deadman deadmanVM
+	// Ntfy is the ntfy leg's judgment (SPEC §2): the ON/REFUSED/OFF state, the
+	// topic label, and the sealed keys' presence the card renders. Presence,
+	// never values.
+	Ntfy ntfyCardVM
 }
 
 // deadmanVM is the dead-man leg's render state (SPEC §1): the state word and
@@ -566,6 +570,68 @@ type viewDeadmanVM struct {
 	Page    page
 	Deadman deadmanVM
 }
+
+// ntfyCardVM is the ntfy leg's render state (SPEC §2): the channel judgment
+// (ON/REFUSED/OFF), the topic label (notify.ntfy_topic — the one unsealed
+// display string), the server class (a fact about the URL, never the URL), the
+// Detail setting, and the sealed keys' presence. Values never render — a
+// sealed key is SEALED or MISSING, nothing else.
+type ntfyCardVM struct {
+	State       NtfyState
+	TopicLabel  string
+	ServerClass string
+	Detail      string
+	URLSealed   bool
+	TopicSealed bool
+	TokenSealed bool
+}
+
+// ChipClass colours the ntfy leg's state chip: ok for ON, fail for REFUSED,
+// dim for OFF.
+func (n ntfyCardVM) ChipClass() string {
+	switch n.State {
+	case NtfyStateOn:
+		return "ok"
+	case NtfyStateRefused:
+		return "fail"
+	default:
+		return "dim"
+	}
+}
+
+// Word is the chip's UPPERCASE mono word (the CSS uppercases; the value stays
+// the copy's spelling).
+func (n ntfyCardVM) Word() string {
+	switch n.State {
+	case NtfyStateOn:
+		return "ON"
+	case NtfyStateRefused:
+		return "REFUSED"
+	default:
+		return "OFF"
+	}
+}
+
+// ntfyTestStatus is the drawer's Test-verb status line: Class "ok" or "fail",
+// and the message copy. Msg carries the whole ok line ("test delivered ·
+// 12:24:51 · exocomp-7f3a") or the failure sentence ("the server refused the
+// token"); the template adds the ✓/▲ glyph.
+type ntfyTestStatus struct {
+	Class string
+	Msg   string
+}
+
+// ntfyVM is the /system/ntfy drawer (SPEC §2.2): the leg judgment, the sealed
+// presence rows, the Detail two-position switch, the fixed fan-out table, and
+// the Test/Save verbs with their status line.
+type ntfyVM struct {
+	Page     page
+	Operator bool
+	Leg      ntfyCardVM
+	Status   ntfyTestStatus
+}
+
+func (vm ntfyVM) HasStatus() bool { return vm.Status.Class != "" }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
 // run's tree comes from, whether its ref is signed, and the commit its last

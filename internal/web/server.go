@@ -317,6 +317,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /events/{id}", s.requireAuth(s.handleEventTrace))
 	mux.HandleFunc("GET /system", s.requireAuth(s.handleSystem))
 	mux.HandleFunc("GET /system/deadman", s.requireAuth(s.handleDeadman))
+	mux.HandleFunc("GET /system/ntfy", s.requireAuth(s.handleNtfy))
 
 	// Post-v1 read surfaces (registration and mutation stay CLI/local-auth).
 	mux.HandleFunc("GET /sources", s.requireAuth(s.handleSources))

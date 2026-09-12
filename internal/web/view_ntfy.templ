@@ -1,0 +1,151 @@
+package web
+
+// viewNtfy is the /system/ntfy drawer (SPEC §2.2, artboard 1c): the ntfy leg's
+// channel page. Sealed keys render as presence rows (key · dot string · SEALED
+// or MISSING — a value never renders), the Detail switch tweaks
+// notify.ntfy_detail, WHAT A PUSH SAYS shows the live sample, and What pages
+// is a read-only table (no routing knobs exist in code — a table, not
+// toggles). Test posts one push and writes the status line; Save persists the
+// Detail position. The × returns to /system; the phone app-bar back chevron
+// points there too.
+templ viewNtfy(vm ntfyVM) {
+	@layout(vm.Page) {
+		<div class="ntfy-drawer" aria-label="Push channel">
+			<div class="drawer-head">
+				<span class="kicker">SYSTEM · NTFY</span>
+				<h3>Push channel</h3>
+				<a class="drawer-close" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system")) } aria-label="Close" title="Close">
+					<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"></path></svg>
+				</a>
+			</div>
+
+			<div class="presence-list" aria-label="Sealed keys">
+				<div class="presence">
+					<span class="key">ntfy/url</span>
+					<span class="val">
+						if vm.Leg.URLSealed {
+							{ sealedDots(14) }
+							if vm.Leg.ServerClass != "" {
+								<span class="sub">{ vm.Leg.ServerClass }</span>
+							}
+						}
+					</span>
+					<span class={ "word", templ.KV("missing", !vm.Leg.URLSealed) }>{ presenceWord(vm.Leg.URLSealed) }</span>
+				</div>
+				<div class="presence">
+					<span class="key">ntfy/topic</span>
+					<span class="val">{ vm.Leg.TopicLabel }</span>
+					<span class={ "word", templ.KV("missing", !vm.Leg.TopicSealed) }>{ presenceWord(vm.Leg.TopicSealed) }</span>
+				</div>
+				<div class="presence">
+					<span class="key">ntfy/token</span>
+					<span class="val">
+						if vm.Leg.TokenSealed {
+							{ sealedDots(18) }
+						}
+					</span>
+					<span class={ "word", templ.KV("missing", !vm.Leg.TokenSealed) }>{ presenceWord(vm.Leg.TokenSealed) }</span>
+				</div>
+			</div>
+			<p class="meta">values never render · <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets")) }>rotate in Secrets</a></p>
+
+			<form id="ntfy-save-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/save")) } class="writeform" novalidate>
+				<label class="field">
+					<span class="label">Detail</span>
+					<span class="field-switch" data-ntfy-detail>
+						<button type="submit" name="detail" value="descriptive" aria-pressed={ boolAttr(vm.Leg.Detail != "terse") }>descriptive</button>
+						<button type="submit" name="detail" value="terse" aria-pressed={ boolAttr(vm.Leg.Detail == "terse") }>terse</button>
+					</span>
+					<span class="meta" id="ntfy-detail-meta">notify.ntfy_detail · terse names nothing — for a phone you do not control</span>
+				</label>
+			</form>
+
+			<div class="sample-card" aria-label="What a push says">
+				<div class="kicker">WHAT A PUSH SAYS</div>
+				<div class="sample descriptive" id="ntfy-sample-desc" hidden?={ vm.Leg.Detail == "terse" }>
+					<p class="lead">1 approval waiting · apply tofu/prod-net</p>
+					<p>expires in 29m, then auto-rejects · { hostname() }</p>
+					<p class="actions">[ Approve ]&nbsp;&nbsp;[ Reject ]</p>
+				</div>
+				<div class="sample terse" id="ntfy-sample-terse" hidden?={ vm.Leg.Detail != "terse" }>
+					<p class="lead">exocomp: action required</p>
+					<p>open exocomp to see what</p>
+					<p class="note">no action buttons in terse</p>
+				</div>
+			</div>
+
+			<div class="fanout-table" aria-label="What pages">
+				<div class="kicker">WHAT PAGES</div>
+				<table>
+					<thead>
+						<tr><th scope="col">EVENT</th><th scope="col">PRIORITY</th><th scope="col">RE-NOTIFY</th></tr>
+					</thead>
+					<tbody>
+						<tr><td>approval waiting</td><td><span class="chip wait"><span class="dot"></span>high</span></td><td>every 10m · max</td></tr>
+						<tr><td>job failed · degraded</td><td>default</td><td>once per job</td></tr>
+						<tr><td>dead-man tripped</td><td><span class="chip wait"><span class="dot"></span>high</span></td><td>once</td></tr>
+					</tbody>
+				</table>
+				<p class="meta">one transport, fixed fan-out · quiet hours are a scoped mute, not a setting here</p>
+			</div>
+
+			@ntfyStatus(vm.Status)
+
+			<div class="actions">
+				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")) } class="inline-form">
+					<button type="submit" class="btn quiet">Test</button>
+				</form>
+				<button type="submit" class="btn primary" form="ntfy-save-form" name="detail" value={ vm.Leg.Detail }>Save</button>
+			</div>
+		</div>
+		@ntfyDrawerJS(vm.Leg.Detail)
+	}
+}
+
+// ntfyStatus is the Test verb's status line: the ok copy in ink, the refusal
+// or delivery failure in the form-status error shape (copy.txt). The ▲ on the
+// failure line is the form-status CSS's ::before, so only the ok line carries
+// its glyph in the markup.
+templ ntfyStatus(st ntfyTestStatus) {
+	<div class={ "form-status", templ.KV("is-error", st.Class == "fail"), templ.KV("is-ok", st.Class == "ok") } role="status" aria-live="polite">
+		if st.Class == "ok" {
+			<span class="msg">✓ { st.Msg }</span>
+		}
+		if st.Class == "fail" {
+			<span class="msg">{ st.Msg }</span>
+			<a href="#" data-retry>Retry</a>
+		}
+	</div>
+}
+
+// ntfyDrawerJS makes the Detail switch live: a switch click flips the pressed
+// state, swaps WHAT A PUSH SAYS to the matching sample, and retargets the Save
+// primary — without submitting (JS-off, the switch buttons are plain submits
+// that persist their own value, and Save carries the server-rendered one).
+templ ntfyDrawerJS(detail string) {
+	<script>
+	(function () {
+		var sw = document.querySelector(".field-switch[data-ntfy-detail]");
+		var save = document.querySelector('button[form="ntfy-save-form"]');
+		var desc = document.getElementById("ntfy-sample-desc");
+		var terse = document.getElementById("ntfy-sample-terse");
+		if (!sw || !save || !desc || !terse) return;
+		var buttons = sw.querySelectorAll("button");
+		function pick(value) {
+			for (var i = 0; i < buttons.length; i++) {
+				buttons[i].setAttribute("aria-pressed",
+					buttons[i].value === value ? "true" : "false");
+			}
+			save.value = value;
+			desc.hidden = value === "terse";
+			terse.hidden = value !== "terse";
+		}
+		for (var i = 0; i < buttons.length; i++) {
+			buttons[i].addEventListener("click", function (ev) {
+				pick(this.value);
+				ev.preventDefault();
+			});
+		}
+	})();
+	</script>
+}

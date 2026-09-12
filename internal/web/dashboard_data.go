@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"exocomp.dev/exocomp/internal/litestream"
-	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
@@ -770,9 +769,20 @@ func (s *Server) signal(ctx context.Context) SignalLine {
 		sig.DeadManState = "wait"
 	}
 
-	if _, err := s.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
+	// A11 (SPEC §8 step 6): the ntfy segment has three states. REFUSED — a
+	// public topic without a token, refused at load — reads `ntfy refused`
+	// (fail), not off; the judgment is re-derived by the ntfy seam from the
+	// sealed keys' presence, never from a rendered value.
+	switch state, _ := s.ntfyLegState(ctx); state {
+	case NtfyStateOn:
 		sig.Ntfy = "on"
 		sig.NtfyState = "ok"
+	case NtfyStateRefused:
+		sig.Ntfy = "refused"
+		sig.NtfyState = "fail"
+	default:
+		sig.Ntfy = "off"
+		sig.NtfyState = "dim"
 	}
 
 	if s.dataDir != "" {

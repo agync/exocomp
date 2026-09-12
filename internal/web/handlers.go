@@ -208,6 +208,7 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	vm.Host = hostname()
 	vm.Uptime = s.uptimeLabel()
 	vm.BackupsWord, vm.BackupsState = backupsPowerWord(backups)
+	vm.Ntfy = s.ntfyCardVM(r.Context())
 
 	vm.Deadman = s.deadmanVM(r)
 	// The self-care powerline's dead-man segment takes the card's chip colour
