@@ -305,7 +305,7 @@ func TestBackupRestoreConfirmedBody(t *testing.T) {
 		`exoModalOpen("restore-backups")`,
 		">RUN ON THE HOST<",
 		">exocomp restore</pre>",
-		">Copy</button>",
+		`class="copy-i"`,
 		"the daemon cannot replace the store it serves · this is the recovery kit path",
 	} {
 		if !strings.Contains(body, want) {
