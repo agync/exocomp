@@ -48,7 +48,10 @@ func TestSystemShellIdentity(t *testing.T) {
 		`<span class="host">` + hostname() + `</span>`,
 		" · up ",
 		"is the control plane itself OK",
-		`title="Doctor — run the self-check · read-only: exocomp doctor"`,
+		// The header glyphs are live since L-S5 (A1/A3): each is a POST verb
+		// with the meta beside it, no longer read-only.
+		`title="Doctor — run the self-check"`,
+		`action="/system/doctor"`,
 		`title="Recovery kit — reprint · read-only: exocomp kit"`,
 	} {
 		if !strings.Contains(page, want) {

@@ -35,7 +35,16 @@ templ systemPage(vm systemVM) {
 				<span class="meta">· on <span class="host">{ vm.Host }</span> · { vm.Uptime }</span>
 			</span>
 			<span class="right">
-				<span class="hglyph" title="Doctor — run the self-check · read-only: exocomp doctor">@legGlyph(glyphDoctor)</span>
+				<span class="hg">
+					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/doctor") } class="hglyphform" aria-label="Doctor — run the self-check">
+						<button type="submit" class="hglyph" title="Doctor — run the self-check">@legGlyph(glyphDoctor)</button>
+					</form>
+					if vm.Doctor.HasRun {
+						<a class={ "hglyphmeta", templ.KV("wait", vm.Doctor.Stale) } href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.Doctor.JobID))) }>
+							doctor { vm.Doctor.Age } ago · { itoa(int64(vm.Doctor.Count)) } findings
+						</a>
+					}
+				</span>
 				<span class="hglyph" title="Recovery kit — reprint · read-only: exocomp kit">@legGlyph(glyphKit)</span>
 				<span class="pub">
 					<span class="label">public URL</span>

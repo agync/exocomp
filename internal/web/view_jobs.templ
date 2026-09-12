@@ -99,6 +99,9 @@ templ jobDetail(vm jobDetailVM) {
 			</div>
 		}
 		@runCard(vm)
+		if len(vm.Findings) > 0 {
+			@findingsCard(vm)
+		}
 		if vm.Verdict != nil {
 			@verdictBand(vm)
 		}
@@ -142,6 +145,24 @@ templ jobDetail(vm jobDetailVM) {
 			@jobStream(vm.Job.ID, vm.LastSeq, vm.Page.Base)
 		}
 	}
+}
+
+// findingsCard is a kind=doctor job's self-check rows (SPEC §7 A1): one row
+// per subsystem finding, name + status chip + detail, under the count header
+// the identity strip's meta reads from the same events.
+templ findingsCard(vm jobDetailVM) {
+	<div class="card mt14 doctor-findings">
+		<div class="kicker">Self-check · { itoa(int64(len(vm.Findings))) } findings</div>
+		<div class="finding-rows">
+			for _, f := range vm.Findings {
+				<div class="row">
+					<span class="mono">{ f.Name }</span>
+					@chip(f.Class, f.Word())
+					<span class="detail">{ orDash(f.Detail) }</span>
+				</div>
+			}
+		</div>
+	</div>
 }
 
 // runCard is the job detail's lead block (2.1): the chip row, then the stacked

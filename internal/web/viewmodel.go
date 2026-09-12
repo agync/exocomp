@@ -12,6 +12,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // page is the chrome every screen renders inside: which nav item is active, who
@@ -472,6 +473,22 @@ type systemVM struct {
 	// card and the /system/litestream page render, plus the generated config
 	// for the ▾ view. It is one derivation (deriveLitestream) with two faces.
 	Litestream litestreamVM
+	// Doctor is the identity strip's Doctor glyph meta (SPEC §7 A1): the
+	// newest self-check job's age and finding count, linking to the job page.
+	Doctor doctorMeta
+}
+
+// doctorMeta is the /system identity strip's Doctor meta (SPEC §7 A1). HasRun
+// is false until a self-check has been queued — the strip then renders the
+// glyph alone, never a fabricated age. Count is the number of findings that
+// need attention (warn|fail) in the newest self-check; Stale tints the meta
+// when there are any.
+type doctorMeta struct {
+	HasRun bool
+	JobID  int64
+	Age    string
+	Count  int
+	Stale  bool
 }
 
 // litestreamObserved is everything the daemon observes about the Litestream
@@ -2382,7 +2399,40 @@ type jobDetailVM struct {
 	// EndedClock is the terminal run's finished HH:MM:SS clock for the meta's
 	// "ended {hh:mm:ss}"; empty on a live job or one with no finished_at.
 	EndedClock string
+	// Findings are a kind=doctor job's self-check rows (SPEC §7 A1): one per
+	// subsystem entry, parsed from the job's structured finding events. Empty
+	// on every other kind.
+	Findings []doctorFindingRow
 }
+
+// doctorFindingRow is one self-check finding on a doctor job's page: the
+// subsystem, its status word, and the detail line — the same wire.HealthEntry
+// `exocomp doctor --output json` emits, carried to the page as the event's
+// structured payload. Class is the status's signal colour.
+type doctorFindingRow struct {
+	Name   string
+	Status string
+	Detail string
+	Class  string
+}
+
+// doctorFindingClass maps a finding's status onto the chip palette: ok quiet,
+// warn wait, fail loud, unknown dim — unknown is a state, not a fault.
+func doctorFindingClass(status string) string {
+	switch status {
+	case wire.HealthOK:
+		return "ok"
+	case wire.HealthWarn:
+		return "wait"
+	case wire.HealthFail:
+		return "fail"
+	default:
+		return "dim"
+	}
+}
+
+// Word renders the finding's status the way chips read it: the uppercase word.
+func (f doctorFindingRow) Word() string { return strings.ToUpper(f.Status) }
 
 // triggerEvent is the provenance link on a rule-triggered job's detail view:
 // the event whose rule enqueued it, enough to link through to its trace.

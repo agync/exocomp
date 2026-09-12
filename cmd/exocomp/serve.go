@@ -22,6 +22,7 @@ import (
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/deadman"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/notify"
@@ -1038,7 +1039,13 @@ func serveDriver(dir string, st *store.Store, env *secrets.Envelope, srv *api.Se
 		cli:     cliJobDriver{store: st, env: env, dataDir: dir},
 		hook:    hookJobDriver{store: st, env: env, dataDir: dir},
 		verify:  verifyJobDriver{},
-		rest:    sched.NewDriver(executor.NewScopedShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
+		// The doctor self-check runs the probe in-process over the daemon's
+		// already-open store — the same store every other probe reads, with a
+		// no-op close for the probe seam.
+		doctor: health.NewJobDriver(dir, func() (health.Store, func() error, error) {
+			return st, func() error { return nil }, nil
+		}),
+		rest: sched.NewDriver(executor.NewScopedShell(), backup.NewRunner(st, env, backup.Options{Quiesce: quiesce}, targetEnv)),
 	}, nil
 }
 
@@ -1051,6 +1058,7 @@ type kindRouter struct {
 	cli     executor.Driver
 	hook    executor.Driver
 	verify  executor.Driver
+	doctor  executor.Driver
 	rest    executor.Driver
 }
 
@@ -1067,6 +1075,8 @@ func (r kindRouter) Run(ctx context.Context, spec executor.Spec, sink executor.E
 		return r.hook.Run(ctx, spec, sink)
 	case verify.JobKind:
 		return r.verify.Run(ctx, spec, sink)
+	case health.JobKind:
+		return r.doctor.Run(ctx, spec, sink)
 	default:
 		return r.rest.Run(ctx, spec, sink)
 	}

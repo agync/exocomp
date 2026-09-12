@@ -66,9 +66,16 @@
  * read-only header glyphs (Doctor · Recovery kit). The Change verb is the ONE
  * existing public-URL write's markup only; A7 owns its form spec. */
 .sys-identity .host { color:var(--ink-200); }
+.sys-identity .hg { display:inline-flex; align-items:center; gap:6px; }
+.sys-identity .hglyphform { display:inline-flex; margin:0; }
 .sys-identity .hglyph { display:inline-flex; align-items:center; justify-content:center;
   width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
 .sys-identity .hglyph svg { width:18px; height:18px; }
+.sys-identity button.hglyph { border:0; background:transparent; padding:0; cursor:pointer; }
+.sys-identity button.hglyph:hover { color:var(--ink-100); }
+.sys-identity .hglyphmeta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+.sys-identity .hglyphmeta.wait { color:var(--signal-wait); }
+.sys-identity .hglyphmeta a { color:var(--ink-500); }
 .sys-identity .pub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .sys-identity .pub .label { font-size:13px; color:var(--ink-500); }
 .sys-identity .pub .val { color:var(--ink-200); }
@@ -80,6 +87,13 @@
   border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
   font:var(--type-button); cursor:pointer; }
 .sys-identity .change:hover { color:var(--ink-100); }
+
+/* doctor job findings card (A1): one row per subsystem finding */
+.doctor-findings { padding:18px 22px; }
+.doctor-findings .finding-rows { display:flex; flex-direction:column; gap:6px; }
+.doctor-findings .row { display:grid; grid-template-columns:auto auto minmax(0,1fr); gap:10px;
+  align-items:center; font:400 13px/1.4 var(--font-mono); }
+.doctor-findings .row .detail { color:var(--ink-500); min-width:0; }
 
 /* segmented switch inside a field (Threshold · Kind · Detail · From) */
 .field-switch { display:grid; height:40px; padding:3px; box-sizing:border-box; border-radius:var(--radius-row);

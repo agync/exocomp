@@ -13,6 +13,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/deadman"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/version"
@@ -216,6 +217,7 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	// (SPEC §0.1) without recomputing the age: the word stays the ONE-rule age
 	// signal() read, the colour now carries armed/none/tripped too.
 	vm.Page.Signal.DeadManState = vm.Deadman.StateClass
+	vm.Doctor = s.doctorMeta(r.Context())
 	return vm, nil
 }
 
@@ -754,6 +756,12 @@ func (s *Server) jobDetailVMFor(w http.ResponseWriter, r *http.Request) (jobDeta
 
 	vm.RunCard = s.runCardVM(r.Context(), job, source, src, facts, actorName, face, runner, rerunOf(events))
 	vm.Verdict = s.jobVerdict(job, facts, events)
+	// A kind=doctor job's findings (SPEC §7 A1): the self-check's subsystem
+	// entries as rows, parsed from the job's own structured events. Every
+	// other kind renders no findings.
+	if job.Kind == health.JobKind {
+		vm.Findings = parseDoctorFindings(events)
+	}
 
 	rerunParent := rerunOf(events)
 	for _, e := range events {
