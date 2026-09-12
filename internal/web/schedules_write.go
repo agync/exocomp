@@ -39,6 +39,10 @@ const (
 	scheduleJitterRefusal      = "The jitter is a whole number of seconds — like 300."
 	scheduleJitterNegative     = "The jitter can't be negative."
 	scheduleSubmitRefusal      = "Couldn't add the schedule — nothing was saved."
+	// scheduleRemoveConfirmRefusal is the rm verb's confirm-gate refusal
+	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
+	// safety, and a confirmed-less remove is refused on the row.
+	scheduleRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 )
 
 func scheduleNameRefusal(name string) (msg, fix string) {
@@ -191,7 +195,7 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 // carrying its refusals — the JS-off path, and the fragment body a JS submit
 // swaps in place. Refusals never flash: flash is success-only (write.go).
 func (s *Server) scheduleRefusal(w http.ResponseWriter, r *http.Request, form scheduleFormVM) {
-	vm, err := s.schedulesVMFor(r, &form)
+	vm, err := s.schedulesVMFor(r, &form, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -200,11 +204,19 @@ func (s *Server) scheduleRefusal(w http.ResponseWriter, r *http.Request, form sc
 }
 
 // schedulesVMFor builds the schedules surface, optionally carrying the add
-// dialog's refusal state (nil = fresh form).
-func (s *Server) schedulesVMFor(r *http.Request, form *scheduleFormVM) (schedulesVM, error) {
+// dialog's refusal state (nil = fresh form) and a refused row verb's state
+// (nil at rest; the refusal renders on the row, forms/SPEC.md).
+func (s *Server) schedulesVMFor(r *http.Request, form *scheduleFormVM, refusal *rowRefusal) (schedulesVM, error) {
 	rows, err := s.schedules(r)
 	if err != nil {
 		return schedulesVM{}, err
+	}
+	if refusal != nil {
+		for i := range rows {
+			if rows[i].Name == refusal.Name {
+				rows[i].Refusal = refusal.Msg
+			}
+		}
 	}
 	ident, _ := identityOf(r.Context())
 	vm := schedulesVM{
@@ -234,7 +246,11 @@ func (s *Server) handleScheduleSetEnabled(w http.ResponseWriter, r *http.Request
 	name := r.PathValue("name")
 	if err := s.store.SetScheduleEnabled(r.Context(), name, enabled); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no schedule named "+name, http.StatusNotFound)
+			verb := "enable"
+			if !enabled {
+				verb = "disable"
+			}
+			http.Error(w, "No schedule named "+name+" exists to "+verb+".", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -253,14 +269,14 @@ func (s *Server) handleScheduleRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		s.scheduleRowRefusal(w, r, name, scheduleRemoveConfirmRefusal)
 		return
 	}
-	name := r.PathValue("name")
 	if err := s.store.DeleteSchedule(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no schedule named "+name, http.StatusNotFound)
+			http.Error(w, "No schedule named "+name+" exists to remove.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -268,6 +284,19 @@ func (s *Server) handleScheduleRm(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: schedule rm", "schedule", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/schedules", "removed "+name)
+}
+
+// scheduleRowRefusal re-renders the schedules surface at 422 with a refused
+// row verb's refusal on the refused row — the forms/SPEC.md button-verb shape:
+// a refusal renders on the surface that holds the verb, never a flash (flash
+// is success-only, write.go).
+func (s *Server) scheduleRowRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.schedulesVMFor(r, nil, &rowRefusal{Name: name, Msg: msg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, schedulesList(vm))
 }
 
 // formScheduleArgs shapes ScheduleArgs from the add form the same way

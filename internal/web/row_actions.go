@@ -34,6 +34,19 @@ type rowAction struct {
 	Label string
 	// Danger places the item last, in --signal-fail, with "asks first".
 	Danger bool
+	// Refusal is the row verb's refusal sentence (forms/SPEC.md): non-empty
+	// when the last submit of this row's verb was refused and the re-render
+	// carries the copy back. rowActions renders one ▲ status line on the row —
+	// never a flash (flash is success-only). The row constructors read it from
+	// the row type's own Refusal field.
+	Refusal string
+}
+
+// rowRefusal is one refused row verb's re-render state: the row's name and the
+// human sentence to show on it (forms/SPEC.md words). nil at rest.
+type rowRefusal struct {
+	Name string
+	Msg  string
 }
 
 // The per-verb glyph set — the same shape means the same verb on every

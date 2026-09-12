@@ -19,11 +19,15 @@ func workspaceRowActions(wsr workspaceWriteRow) []rowAction {
 				Form:    "/workspaces/" + wsr.Name + "/apply",
 				Hidden:  map[string]string{"confirmed": "1"},
 				Confirm: "Apply " + wsr.Name + "?",
+				// Refusal is the row verb's one refused submit (forms/SPEC.md):
+				// rendered as the ▲ status line by rowActions, never a flash.
+				Refusal: wsr.Refusal,
 			})
 		}
 		acts = append(acts, rowAction{
 			Name: "Plan", Path: glyphPlan, Label: "plan",
-			Form: "/workspaces/" + wsr.Name + "/plan",
+			Form:    "/workspaces/" + wsr.Name + "/plan",
+			Refusal: wsr.Refusal,
 		})
 	} else {
 		acts = append(acts, rowAction{

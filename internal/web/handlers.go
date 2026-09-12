@@ -199,7 +199,7 @@ func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
-	vm, err := s.schedulesVMFor(r, nil)
+	vm, err := s.schedulesVMFor(r, nil, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return

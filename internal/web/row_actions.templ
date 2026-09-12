@@ -84,6 +84,24 @@ templ rowActions(acts []rowAction, base string) {
 			</details>
 		}
 	</div>
+	if r := rowActsRefusal(acts); r != "" {
+		// A refused row verb re-renders the whole surface with the refusal on
+		// the row (forms/SPEC.md): a ▲ status line where the operator acted,
+		// never a flash. No Retry link — the verb button is right there.
+		<div class="form-status is-error" role="alert"><span class="msg">{ r }</span></div>
+	}
+}
+
+// rowActsRefusal returns the row's refusal sentence — the first action's
+// non-empty Refusal, empty at rest. rowActions renders it as the row's ▲
+// status line; a row can only carry the one refusal of its last refused verb.
+func rowActsRefusal(acts []rowAction) string {
+	for _, a := range acts {
+		if a.Refusal != "" {
+			return a.Refusal
+		}
+	}
+	return ""
 }
 
 // rowGlyphs returns the row's verb-glyph actions: the first two non-menu

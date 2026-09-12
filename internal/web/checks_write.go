@@ -40,6 +40,10 @@ const (
 	checkExpectRefusal     = "The expected status is a whole number, like 200."
 	checkExpectKindRefusal = "An expected status pins an http target only."
 	checkSubmitRefusal     = "Couldn't add the check — nothing was saved."
+	// checkRemoveConfirmRefusal is the rm verb's confirm-gate refusal
+	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
+	// safety, and a confirmed-less remove is refused on the row.
+	checkRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 )
 
 func checkNameRefusal(name string) (msg, fix string) {
@@ -195,7 +199,7 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 // carrying its refusals — the JS-off path, and the fragment body a JS submit
 // swaps in place. Refusals never flash: flash is success-only (write.go).
 func (s *Server) checkRefusal(w http.ResponseWriter, r *http.Request, form checkFormVM) {
-	vm, err := s.checksVMFor(r, nil, &form)
+	vm, err := s.checksVMFor(r, nil, &form, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -232,7 +236,11 @@ func (s *Server) handleCheckSetEnabled(w http.ResponseWriter, r *http.Request, e
 	name := r.PathValue("name")
 	if err := s.store.SetCheckEnabled(r.Context(), name, enabled); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no check named "+name, http.StatusNotFound)
+			verb := "enable"
+			if !enabled {
+				verb = "disable"
+			}
+			http.Error(w, "No check named "+name+" exists to "+verb+".", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -251,14 +259,14 @@ func (s *Server) handleCheckRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		s.checkRowRefusal(w, r, name, checkRemoveConfirmRefusal)
 		return
 	}
-	name := r.PathValue("name")
 	if err := s.store.DeleteCheck(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no check named "+name, http.StatusNotFound)
+			http.Error(w, "No check named "+name+" exists to remove.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -266,4 +274,17 @@ func (s *Server) handleCheckRm(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: check rm", "check", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/checks", "removed "+name)
+}
+
+// checkRowRefusal re-renders the checks surface at 422 with a refused row
+// verb's refusal on the refused check card — the forms/SPEC.md button-verb
+// shape: a refusal renders on the surface that holds the verb, never a flash
+// (flash is success-only, write.go).
+func (s *Server) checkRowRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.checksVMFor(r, nil, nil, &rowRefusal{Name: name, Msg: msg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
 }

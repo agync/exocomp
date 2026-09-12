@@ -73,7 +73,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 // carrying its refusals — the JS-off path, and the fragment body a JS submit
 // swaps in place. Refusals never flash: flash is success-only (write.go).
 func (s *Server) netgroupRefusal(w http.ResponseWriter, r *http.Request, form netgroupFormVM) {
-	vm, err := s.checksVMFor(r, &form, nil)
+	vm, err := s.checksVMFor(r, &form, nil, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -86,14 +86,14 @@ func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		s.netgroupRowRefusal(w, r, name, netgroupRemoveConfirmRefusal)
 		return
 	}
-	name := r.PathValue("name")
 	if err := s.store.DeleteNetgroup(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no netgroup named "+name, http.StatusNotFound)
+			http.Error(w, "No netgroup named "+name+" exists to remove.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -103,10 +103,30 @@ func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/checks?tab=netgroups", "removed "+name)
 }
 
+// netgroupRowRefusal re-renders the netgroups tab at 422 with the rm verb's
+// refusal on the refused row — the forms/SPEC.md button-verb shape: a refusal
+// renders on the surface that holds the verb, never a flash (flash is
+// success-only, write.go). The tab is forced to netgroups the way the add
+// form's refusal does, so the refusal lands where the operator acted.
+func (s *Server) netgroupRowRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.checksVMFor(r, nil, nil, &rowRefusal{Name: name, Msg: msg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Tab = "netgroups"
+	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
+}
+
 // netgroupSubmitRefusal is the whole-submit status line (forms/copy.txt): the
 // daemon did not take the netgroup and nothing was saved. The raw cause goes
 // to the log at the same call site — never to the operator.
 const netgroupSubmitRefusal = "Couldn't reach exocompd — nothing was saved."
+
+// netgroupRemoveConfirmRefusal is the rm verb's confirm-gate refusal
+// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
+// safety, and a confirmed-less remove is refused on the row.
+const netgroupRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 
 // netgroupAddedFlash is the one legitimate success flash (forms/copy.txt):
 // what was added and how many ranges, shown only after the dialog closed. The

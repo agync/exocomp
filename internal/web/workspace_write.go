@@ -186,6 +186,10 @@ type workspaceWriteRow struct {
 	StateWrittenBy int64
 	ExternalWrites int
 	ExternalSerial int64
+	// Refusal is a row verb's refusal sentence (forms/SPEC.md), carried to the
+	// rowActions partial by workspaceRowActions: non-empty only on a refused
+	// row apply/plan re-render.
+	Refusal string
 }
 
 // StateOnly reports the "state-only" surface distinction: an empty TofuDir
@@ -331,7 +335,7 @@ func (r workspaceWriteRow) StateClass() string {
 }
 
 func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
-	vm, err := s.workspacesVMFor(r)
+	vm, err := s.workspacesVMFor(r, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -340,9 +344,11 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 }
 
 // workspacesVMFor builds the Workspaces list's render state, shared by the GET
-// handler and the unlock verb-refusal re-render so a refused unlock shows the
-// same list the operator left, with the status line added.
-func (s *Server) workspacesVMFor(r *http.Request) (workspacesVM, error) {
+// handler and the verb-refusal re-renders so a refused unlock or row verb shows
+// the same list the operator left, with the status line added. refusal is a
+// refused row verb's state (nil at rest; the refusal renders on the row,
+// forms/SPEC.md).
+func (s *Server) workspacesVMFor(r *http.Request, refusal *rowRefusal) (workspacesVM, error) {
 	ident, _ := identityOf(r.Context())
 	vm := workspacesVM{Page: s.pageFor(r, "Workspaces", "workspaces"), Operator: canWrite(ident)}
 	if vm.Operator {
@@ -404,6 +410,13 @@ func (s *Server) workspacesVMFor(r *http.Request) (workspacesVM, error) {
 		}
 		vm.Workspaces = append(vm.Workspaces, row)
 	}
+	if refusal != nil {
+		for i := range vm.Workspaces {
+			if vm.Workspaces[i].Name == refusal.Name {
+				vm.Workspaces[i].Refusal = refusal.Msg
+			}
+		}
+	}
 	return vm, nil
 }
 
@@ -435,7 +448,7 @@ func (s *Server) handleWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.store.WorkspaceByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no workspace named "+name, http.StatusNotFound)
+			http.Error(w, "No workspace named "+name+" exists to plan.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -493,7 +506,7 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	ws, err := s.store.WorkspaceByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no workspace named "+name, http.StatusNotFound)
+			http.Error(w, "No workspace named "+name+" exists to apply.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -578,11 +591,12 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		s.planConfirmRefusal(w, r, ws.Name, saved.ID, "Policy "+denied.Policy+" denies this plan — nothing was applied.")
 		return
 	case errors.As(err, &policed):
-		// A fresh apply (no saved plan) cannot name a plan page to re-render;
-		// the confirm dialog always carries a plan, so this edge — a crafted
-		// plan-less apply — keeps the plain conflict.
+		// A fresh apply (no saved plan) is the row's Apply verb — it cannot
+		// name a plan page to re-render, so the refusal renders on the row
+		// (forms/SPEC.md), never a flash. The confirm dialog always carries a
+		// plan, so that path keeps the planConfirmRefusal above.
 		if saved == nil {
-			http.Error(w, err.Error(), http.StatusConflict)
+			s.workspaceRowRefusal(w, r, ws.Name, "This workspace has plan policies enabled, so a fresh apply can't be adjudicated — plan and apply that plan by id.")
 			return
 		}
 		s.planConfirmRefusal(w, r, ws.Name, saved.ID, "This workspace has plan policies enabled, so a fresh apply can't be adjudicated — plan and apply that plan by id.")
@@ -634,6 +648,20 @@ func (s *Server) planConfirmRefusal(w http.ResponseWriter, r *http.Request, ws s
 	vm.Launch = true
 	vm.ConfirmErr = msg
 	s.render(w, r, http.StatusUnprocessableEntity, planDetailPage(vm))
+}
+
+// workspaceRowRefusal re-renders the Workspaces list at 422 with a refused row
+// verb's refusal on the refused row — the forms/SPEC.md button-verb shape: a
+// refusal renders on the surface that holds the verb (the row's actions cell),
+// never a flash (flash is success-only, write.go). The row verbs (apply, plan)
+// post no plan id, so their refusals land here rather than on a plan page.
+func (s *Server) workspaceRowRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.workspacesVMFor(r, &rowRefusal{Name: name, Msg: msg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, workspacesList(vm))
 }
 
 // handleWorkspaceDestroy is the browser face of the destroy verb: the same
@@ -752,7 +780,7 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 // renders on the surface that holds the input, never a flash (flash is
 // success-only, write.go).
 func (s *Server) unlockRefusal(w http.ResponseWriter, r *http.Request, msg string) {
-	vm, err := s.workspacesVMFor(r)
+	vm, err := s.workspacesVMFor(r, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return

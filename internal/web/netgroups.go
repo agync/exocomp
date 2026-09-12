@@ -18,10 +18,13 @@ type netgroupsVM struct {
 }
 
 // netgroupRow is one named CIDR set on the netgroups surface. Prefixes are
-// config, not values, so they travel in full.
+// config, not values, so they travel in full. Refusal is the rm verb's refusal
+// sentence, carried to the rowActions partial by netgroupRowActions
+// (forms/SPEC.md): non-empty only on a refused rm re-render.
 type netgroupRow struct {
 	Name     string
 	Prefixes []string
+	Refusal  string
 }
 
 // Join renders the prefixes as the comma list `netgroup list` shows, the same

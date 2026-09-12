@@ -52,7 +52,18 @@ const (
 	secretExpiryRefusal       = "That's not a duration — like 720h or 30d."
 	secretSubmitRefusal       = "Couldn't seal the secret — nothing was saved."
 	secretRotateSubmitRefusal = "Couldn't rotate the secret — nothing was saved."
+	// secretRemoveConfirmRefusal is the rm verb's confirm-gate refusal
+	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
+	// safety, and a confirmed-less remove is refused on the row.
+	secretRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 )
+
+// secretBoundRefusal is the rm verb's binding refusal (forms/SPEC.md): a bound
+// secret stays, and the row says so — the CLI's --force override stays on the
+// CLI, so the row's copy names the binding without offering it.
+func secretBoundRefusal(name string) string {
+	return "Nothing was removed — " + name + " is still bound as a run secret."
+}
 
 func secretMissingRefusal(name string) string {
 	return "No secret called " + name + "."
@@ -219,7 +230,7 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 // dialog carrying its refusals — the JS-off path, and the fragment body a JS
 // submit swaps in place. Refusals never flash: flash is success-only (write.go).
 func (s *Server) secretRefusal(w http.ResponseWriter, r *http.Request, form *secretAddFormVM, rotate *secretRotateFormVM) {
-	vm, err := s.secretsVMFor(r, form, rotate)
+	vm, err := s.secretsVMFor(r, form, rotate, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -228,11 +239,20 @@ func (s *Server) secretRefusal(w http.ResponseWriter, r *http.Request, form *sec
 }
 
 // secretsVMFor builds the secrets surface with the write dialogs' refusal
-// state; the GET path (handlers.go) builds the same shape without either.
-func (s *Server) secretsVMFor(r *http.Request, form *secretAddFormVM, rotate *secretRotateFormVM) (secretsVM, error) {
+// state and a refused row verb's state (nil at rest; the rm refusal renders
+// on the refused row, forms/SPEC.md); the GET path (handlers.go) builds the
+// same shape without either.
+func (s *Server) secretsVMFor(r *http.Request, form *secretAddFormVM, rotate *secretRotateFormVM, refusal *rowRefusal) (secretsVM, error) {
 	rows, err := s.secrets(r)
 	if err != nil {
 		return secretsVM{}, err
+	}
+	if refusal != nil {
+		for i := range rows {
+			if rows[i].Name == refusal.Name {
+				rows[i].Refusal = refusal.Msg
+			}
+		}
 	}
 	ident, _ := identityOf(r.Context())
 	vm := secretsVM{
@@ -251,23 +271,25 @@ func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		s.secretRowRefusal(w, r, name, secretRemoveConfirmRefusal)
 		return
 	}
-	name := r.PathValue("name")
 	refs, err := s.secretBindings(r, name)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	if len(refs) > 0 && !r.Form.Has("force") {
-		http.Error(w, "refusing to delete "+name+": still bound by run-secret(s); pass force to override", http.StatusConflict)
+		// The row has no force control (the CLI's --force stays CLI); the
+		// bound secret is refused on the row, never a flash.
+		s.secretRowRefusal(w, r, name, secretBoundRefusal(name))
 		return
 	}
 	if err := s.store.DeleteSecret(r.Context(), name); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no secret named "+name, http.StatusNotFound)
+			http.Error(w, "No secret named "+name+" exists to remove.", http.StatusNotFound)
 			return
 		}
 		s.fail(w, r, err)
@@ -275,6 +297,19 @@ func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: secret rm", "secret", name, "forced_bindings", len(refs), "by", ident.token.Name)
 	s.redirectFlash(w, r, "/secrets", "deleted "+name)
+}
+
+// secretRowRefusal re-renders the secrets surface at 422 with the rm verb's
+// refusal on the refused row — the forms/SPEC.md button-verb shape: a refusal
+// renders on the surface that holds the verb, never a flash (flash is
+// success-only, write.go).
+func (s *Server) secretRowRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.secretsVMFor(r, nil, nil, &rowRefusal{Name: name, Msg: msg})
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, secretsList(vm))
 }
 
 // secretBindings returns the run-secret bindings that reference a secret, the

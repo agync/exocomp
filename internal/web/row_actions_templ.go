@@ -750,8 +750,39 @@ func rowActions(acts []rowAction, base string) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		if r := rowActsRefusal(acts); r != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "   <div class=\"form-status is-error\" role=\"alert\"><span class=\"msg\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var47 string
+			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(r)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 91, Col: 70}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "</span></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
 		return nil
 	})
+}
+
+// rowActsRefusal returns the row's refusal sentence — the first action's
+// non-empty Refusal, empty at rest. rowActions renders it as the row's ▲
+// status line; a row can only carry the one refusal of its last refused verb.
+func rowActsRefusal(acts []rowAction) string {
+	for _, a := range acts {
+		if a.Refusal != "" {
+			return a.Refusal
+		}
+	}
+	return ""
 }
 
 // rowGlyphs returns the row's verb-glyph actions: the first two non-menu

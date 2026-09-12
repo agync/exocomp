@@ -23,11 +23,15 @@ func scheduleRowActions(sc scheduleRow) []rowAction {
 		acts = append(acts, rowAction{
 			Name: "Disable", Path: glyphDisable,
 			Form: "/schedules/" + sc.Name + "/disable",
+			// Refusal is the row's one refused verb (forms/SPEC.md): rendered
+			// as the ▲ status line by rowActions, never a flash.
+			Refusal: sc.Refusal,
 		})
 	} else {
 		acts = append(acts, rowAction{
 			Name: "Enable", Path: glyphEnable,
-			Form: "/schedules/" + sc.Name + "/enable",
+			Form:    "/schedules/" + sc.Name + "/enable",
+			Refusal: sc.Refusal,
 		})
 	}
 	acts = append(acts,
@@ -55,11 +59,15 @@ func checkRowActions(ck checkRow) []rowAction {
 		acts = append(acts, rowAction{
 			Name: "Disable", Path: glyphDisable,
 			Form: "/checks/" + ck.Name + "/disable",
+			// Refusal is the row's one refused verb (forms/SPEC.md): rendered
+			// as the ▲ status line by rowActions, never a flash.
+			Refusal: ck.Refusal,
 		})
 	} else {
 		acts = append(acts, rowAction{
 			Name: "Enable", Path: glyphEnable,
-			Form: "/checks/" + ck.Name + "/enable",
+			Form:    "/checks/" + ck.Name + "/enable",
+			Refusal: ck.Refusal,
 		})
 	}
 	acts = append(acts,
@@ -87,6 +95,9 @@ func netgroupRowActions(ng netgroupRow) []rowAction {
 			Form:    "/netgroups/" + ng.Name + "/rm",
 			Hidden:  map[string]string{"confirmed": "1"},
 			Confirm: "Remove netgroup " + ng.Name + "?",
+			// Refusal is the row's one refused verb (forms/SPEC.md): rendered
+			// as the ▲ status line by rowActions, never a flash.
+			Refusal: ng.Refusal,
 		},
 	}
 }

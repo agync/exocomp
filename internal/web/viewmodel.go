@@ -528,6 +528,10 @@ type scheduleRow struct {
 	JitterS             int
 	TolerateUnreachable bool
 	LastRun             string
+	// Refusal is the row verb's refusal sentence, carried to the rowActions
+	// partial by scheduleRowActions (forms/SPEC.md): non-empty only on a
+	// refused row-verb re-render.
+	Refusal string
 }
 
 func (r scheduleRow) LastClass() string { return stateClass(r.LastState) }
@@ -1161,6 +1165,10 @@ type secretRow struct {
 	LastUsed string // clock, or "never"
 	Expiry   expiryMarker
 	Bindings []secretBindingRow
+	// Refusal is the rm verb's refusal sentence, carried to the rowActions
+	// partial by secretRowActions (forms/SPEC.md): non-empty only on a refused
+	// rm re-render. The sealed material stays absent — invariant 4.
+	Refusal string
 }
 
 // secretBindingRow is one run-secret binding that injects a secret and the env

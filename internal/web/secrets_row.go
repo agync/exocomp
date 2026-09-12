@@ -19,6 +19,10 @@ func secretRowActions(sc secretRow, sealAvailable bool) []rowAction {
 		Form:    "/secrets/" + sc.Name + "/rm",
 		Hidden:  map[string]string{"confirmed": "1"},
 		Confirm: "Delete secret " + sc.Name + "?",
+		// Refusal is the rm verb's refusal (forms/SPEC.md): rendered as the ▲
+		// status line by rowActions, never a flash. The Rotate modal carries
+		// its own refusal inside the dialog, so it never reads this field.
+		Refusal: sc.Refusal,
 	})
 	if len(sc.Bindings) > 0 {
 		acts = append(acts, rowAction{

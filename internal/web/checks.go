@@ -43,6 +43,10 @@ type checkRow struct {
 	// Base is the surface's origin sub-path ("" at the root), so the row's
 	// Go-built hrefs re-prefix the same way every other URL site does.
 	Base string
+	// Refusal is the row verb's refusal sentence, carried to the rowActions
+	// partial by checkRowActions (forms/SPEC.md): non-empty only on a refused
+	// row-verb re-render.
+	Refusal string
 }
 
 // checkTargetRow is one probe of a check: what it dials or requests, the
@@ -159,7 +163,7 @@ func (c checkRow) DownSummary() string {
 // handleChecks renders the /checks surface for the session: every probe check
 // with each target's posture and location.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
-	vm, err := s.checksVMFor(r, nil, nil)
+	vm, err := s.checksVMFor(r, nil, nil, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -168,8 +172,10 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 }
 
 // checksVMFor builds the checks view model, optionally carrying the
-// netgroup-add or check-add dialog's refusal state (nil = fresh form).
-func (s *Server) checksVMFor(r *http.Request, ngForm *netgroupFormVM, ckForm *checkFormVM) (checksVM, error) {
+// netgroup-add or check-add dialog's refusal state (nil = fresh form) and a
+// refused row verb's state (nil at rest; the refusal renders on the refused
+// check or netgroup row, forms/SPEC.md).
+func (s *Server) checksVMFor(r *http.Request, ngForm *netgroupFormVM, ckForm *checkFormVM, refusal *rowRefusal) (checksVM, error) {
 	rows, err := s.checks(r)
 	if err != nil {
 		return checksVM{}, err
@@ -177,6 +183,18 @@ func (s *Server) checksVMFor(r *http.Request, ngForm *netgroupFormVM, ckForm *ch
 	ng, err := s.netgroups(r)
 	if err != nil {
 		return checksVM{}, err
+	}
+	if refusal != nil {
+		for i := range rows {
+			if rows[i].Name == refusal.Name {
+				rows[i].Refusal = refusal.Msg
+			}
+		}
+		for i := range ng {
+			if ng[i].Name == refusal.Name {
+				ng[i].Refusal = refusal.Msg
+			}
+		}
 	}
 	ident, _ := identityOf(r.Context())
 	tab := r.URL.Query().Get("tab")
