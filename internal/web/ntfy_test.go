@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/store"
@@ -335,7 +336,7 @@ func TestNtfyDrawerWhatPages(t *testing.T) {
 		"once per job",
 		"dead-man tripped",
 		">once</td>",
-		"one transport, fixed fan-out · quiet hours are a scoped mute, not a setting here",
+		"one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>, not a setting here",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("what-pages table missing %q", want)
@@ -469,6 +470,203 @@ func TestNtfySaveDetail(t *testing.T) {
 	got, _ = h.store.GetSetting(context.Background(), store.SettingNtfyDetail)
 	if got != "descriptive" {
 		t.Fatalf("normalized detail = %q, want descriptive", got)
+	}
+}
+
+// serverWithNtfyAt builds the same surface pinned to `at`: the injected clock
+// (Options.Clock) makes the MUTES section's "in …" column deterministic, so a
+// test can assert the exact left instead of a window around the read clock.
+func serverWithNtfyAt(t *testing.T, h *harness, f NtfyDriver, at time.Time) *Server {
+	t.Helper()
+	srv, err := New(Options{
+		Store: h.store, Deriver: h.env, Plans: h.env, Ntfy: f,
+		Version: "test", DataDir: h.dir,
+		Clock: func() time.Time { return at },
+	})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+	return srv
+}
+
+// seedMutes writes one mute per scope kind, all expiring at distinct lefts
+// against `at` (global 2h, alert 1h, host 4h), and returns their ids in seed
+// order. `at` must be millisecond-aligned — the store persists UnixMilli, so a
+// sub-ms CreatedAt would read back one truncated millisecond short and shift
+// the rendered left.
+func seedMutes(t *testing.T, h *harness, at time.Time) []int64 {
+	t.Helper()
+	ctx := context.Background()
+	at = time.UnixMilli(at.UnixMilli()).UTC()
+	scopes := []store.NotifyMute{
+		{ScopeKind: store.ScopeGlobal},
+		{ScopeKind: store.ScopeAlert, ScopeValue: "disk-pressure"},
+		{ScopeKind: store.ScopeHost, ScopeValue: "aurora"},
+	}
+	left := []time.Duration{2 * time.Hour, time.Hour, 4 * time.Hour}
+	var ids []int64
+	for i, m := range scopes {
+		created, err := h.store.CreateNotifyMute(ctx, store.NotifyMute{
+			ScopeKind: m.ScopeKind, ScopeValue: m.ScopeValue,
+			Reason: "maintenance window", CreatedAt: at, ExpiresAt: at.Add(left[i]),
+			CreatedVia: "test",
+		})
+		if err != nil {
+			t.Fatalf("create %s mute: %v", m.ScopeKind, err)
+		}
+		ids = append(ids, created.ID)
+	}
+	return ids
+}
+
+// TestNtfyDrawerMutes is the MUTES section (SPEC §7 A8): one row per active
+// mute — the scope's source · host · until — each with the clear verb, and
+// the quiet-hours meta linking here. A global mute is the safety valve: its
+// clear asks first, a scoped mute's clear is one click.
+func TestNtfyDrawerMutes(t *testing.T) {
+	h := newHarness(t)
+	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
+	ids := seedMutes(t, h, at)
+	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/ntfy")
+	if code != http.StatusOK {
+		t.Fatalf("/system/ntfy = %d, want 200", code)
+	}
+	for _, want := range []string{
+		"MUTES",
+		`<th scope="col">SOURCE</th>`,
+		`<th scope="col">HOST</th>`,
+		`<th scope="col">UNTIL</th>`,
+		// global mute: the scope word, no host, its until, ask-first clear
+		">global</td>",
+		">—</td>",
+		">in 2h 00m</td>",
+		// host mute
+		">aurora</td>",
+		">in 4h 00m</td>",
+		// alert mute
+		">disk-pressure</td>",
+		">in 1h 00m</td>",
+		// the What-pages quiet-hours meta points here
+		`<a href="#mutes">quiet hours are a scoped mute</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("MUTES section missing %q", want)
+		}
+	}
+	// Every mute renders a clear verb (a dropped verb goes red here).
+	for _, id := range ids {
+		if !strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(id)+`/clear"`) {
+			t.Errorf("mute %d has no clear verb", id)
+		}
+	}
+	// The global mute's clear asks first; a scoped mute's clear is one click.
+	if !strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(ids[0])+`/clear" class="inline-form" data-confirm=`) {
+		t.Errorf("global mute clear missing the ask-first guard")
+	}
+	for _, id := range []int64{ids[1], ids[2]} {
+		if strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(id)+`/clear" class="inline-form" data-confirm=`) {
+			t.Errorf("scoped mute %d clear carried the ask-first guard", id)
+		}
+	}
+}
+
+// TestNtfyDrawerMutesEmpty is the honest empty line: no active mutes renders
+// the empty sentence, never a bare table, and the quiet-hours link still
+// points at the section.
+func TestNtfyDrawerMutesEmpty(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/ntfy")
+	if code != http.StatusOK {
+		t.Fatalf("/system/ntfy = %d, want 200", code)
+	}
+	if !strings.Contains(page, "no active mutes") {
+		t.Errorf("empty MUTES section missing the honest empty line: %s", page)
+	}
+	if !strings.Contains(page, `<a href="#mutes">quiet hours are a scoped mute</a>`) {
+		t.Errorf("quiet-hours link missing on an empty MUTES section")
+	}
+}
+
+// TestNtfyMuteClear is the clear verb: one POST lifts the mute through the
+// SAME store.DeleteNotifyMute the CLI's `mute rm` and the API's DELETE /mutes
+// call — a direct store call, not a queued job — redirects back to the
+// section, and the re-render no longer lists it (a cleared mute still listed
+// goes red here).
+func TestNtfyMuteClear(t *testing.T) {
+	h := newHarness(t)
+	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
+	ids := seedMutes(t, h, at)
+	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/ntfy")
+	if code != http.StatusOK || !strings.Contains(page, ">aurora</td>") {
+		t.Fatalf("precondition: MUTES section missing the host mute")
+	}
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[2])+"/clear", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("clear = %d, want 303; body=%s", resp.StatusCode, body)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/system/ntfy#mutes" {
+		t.Fatalf("clear Location = %q, want /system/ntfy#mutes", loc)
+	}
+
+	rows, err := h.store.ListNotifyMutes(context.Background(), true)
+	if err != nil {
+		t.Fatalf("ListNotifyMutes: %v", err)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("store mutes after clear = %+v, want the one host mute gone", rows)
+	}
+	for _, r := range rows {
+		if r.ID == ids[2] {
+			t.Fatal("cleared mute still listed in the store")
+		}
+	}
+
+	code, page = getBody(t, client, ts.URL+"/system/ntfy")
+	if code != http.StatusOK {
+		t.Fatalf("/system/ntfy after clear = %d, want 200", code)
+	}
+	if strings.Contains(page, ">aurora</td>") {
+		t.Errorf("cleared mute still rendered on the drawer")
+	}
+}
+
+// TestNtfyMuteClearReadonlyForbidden: a readonly session may not clear a
+// mute — the writeGuard's 403, and the mute stays.
+func TestNtfyMuteClearReadonlyForbidden(t *testing.T) {
+	h := newHarness(t)
+	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
+	ids := seedMutes(t, h, at)
+	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "ro", "readonly"))
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[0])+"/clear", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly clear = %d, want 403", resp.StatusCode)
+	}
+	rows, err := h.store.ListNotifyMutes(context.Background(), true)
+	if err != nil || len(rows) != 3 {
+		t.Fatalf("readonly clear touched the store: %+v (%v)", rows, err)
 	}
 }
 
