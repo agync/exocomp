@@ -1,6 +1,8 @@
 package web
 
 import (
+	"bytes"
+	"context"
 	"strings"
 	"testing"
 
@@ -133,4 +135,45 @@ func TestNetgroupSubmitAndFlash(t *testing.T) {
 	if got := netgroupAddedFlash("home", 1); got != "home added (1 range)" {
 		t.Errorf("netgroupAddedFlash(home, 1) = %q", got)
 	}
+}
+
+// TestFormStatusPendingLabel pins the parametrized submitting label: formStatus
+// renders the verb the caller names ("Adding check", "Adding schedule") while
+// submitting, and the two-argument call — what the netgroup/source exemplars
+// still make — keeps the "Adding" default, so a converted form's pending state
+// reads in its own verb without the primitive knowing the form and without
+// breaking an already-landed exemplar.
+func TestFormStatusPendingLabel(t *testing.T) {
+	cases := []struct{ label, want string }{
+		{"", "Adding"}, // the exemplars' two-argument call
+		{"Adding check", "Adding check"},
+		{"Adding schedule", "Adding schedule"},
+		{"Adding policy", "Adding policy"},
+		{"Adding runner", "Adding runner"},
+	}
+	for _, tc := range cases {
+		if got := renderFormStatus(t, true, "", tc.label); !strings.Contains(got, tc.want) {
+			t.Errorf("formStatus label %q missing %q\ngot: %s", tc.label, tc.want, got)
+		}
+	}
+	// At rest — neither submitting nor refused — the line carries no label.
+	if got := renderFormStatus(t, false, "", "Adding check"); strings.Contains(got, "Adding check") {
+		t.Errorf("pending label rendered at rest:\n%s", got)
+	}
+	// A refusal renders the ▲ sentence with Retry; the label stays out of it.
+	if got := renderFormStatus(t, true, "Couldn't reach exocompd — nothing was saved.", "Adding check"); !strings.Contains(got, "Retry") {
+		t.Errorf("refusal missing Retry:\n%s", got)
+	}
+}
+
+// renderFormStatus renders the shared status line standalone, the way any
+// surface's @formStatus(...) call composes it in a .templ file. An empty label
+// is the two-argument call's default.
+func renderFormStatus(t *testing.T, pending bool, msg, label string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	if err := formStatus(pending, msg, label).Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render formStatus: %v", err)
+	}
+	return buf.String()
 }
