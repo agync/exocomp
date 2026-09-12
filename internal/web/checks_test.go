@@ -601,6 +601,203 @@ func TestCheckRmGoneRefuses(t *testing.T) {
 	}
 }
 
+// fragmentGet issues the same GET the checks tab strip's swap JS makes: the
+// surface URL with the X-Requested-With: fragment header, so the server
+// answers with the surface region only instead of the full page.
+func fragmentGet(t *testing.T, client *http.Client, url string) (int, http.Header, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, url, nil)
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("X-Requested-With", "fragment")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("fragment GET %s: %v", url, err)
+	}
+	body := readBody(t, resp)
+	return resp.StatusCode, resp.Header, body
+}
+
+// TestChecksTabFragmentReturnsRegion: the tab strip's swap fetches the same
+// /checks?tab= URL the full page uses, and the fragment response is the
+// surface region only — the #checks-surface element, never the layout chrome
+// or a flash element — so the JS can swap it in without a full load. The
+// region carries the same two data-tab links the full page renders, with the
+// requested tab's panel active (m79).
+func TestChecksTabFragmentReturnsRegion(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	for _, tc := range []struct {
+		url, panel string
+	}{
+		{ts.URL + "/checks", "at-home"},
+		{ts.URL + "/checks?tab=netgroups", "Address classification"},
+	} {
+		code, _, body := fragmentGet(t, op, tc.url)
+		if code != http.StatusOK {
+			t.Fatalf("fragment %s = %d, want 200", tc.url, code)
+		}
+		if !strings.Contains(body, `id="checks-surface"`) {
+			t.Errorf("fragment %s missing the checks-surface region", tc.url)
+		}
+		if !strings.Contains(body, tc.panel) {
+			t.Errorf("fragment %s missing its panel", tc.url)
+		}
+	}
+
+	// The fragment is the region only: no layout chrome, no flash element.
+	_, _, body := fragmentGet(t, op, ts.URL+"/checks?tab=netgroups")
+	for _, banned := range []string{`class="appbar"`, `class="sidebar"`, `class="flash"`, `class="powerline"`} {
+		if strings.Contains(body, banned) {
+			t.Errorf("fragment leaks layout chrome %q", banned)
+		}
+	}
+	for _, want := range []string{`data-tab="probes"`, `data-tab="netgroups"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("fragment missing the tab link %q", want)
+		}
+	}
+}
+
+// TestChecksTabJSOffStillFullLoads: the data-tab links are plain full-load
+// anchors (the JS-off path — no <noscript> needed), and the page ships the
+// swap script that intercepts them with the fragment fetch, the header, the
+// region id, and the re-wire hooks the swapped region's one-shot scripts need.
+func TestChecksTabJSOffStillFullLoads(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`<a class="tab" data-tab="probes" href="/checks" role="tab" aria-selected="true">Probes</a>`,
+		`<a class="tab" data-tab="netgroups" href="/checks?tab=netgroups" role="tab" aria-selected="false">Netgroups</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks missing the full-load anchor %q", want)
+		}
+	}
+	for _, want := range []string{
+		`X-Requested-With`, `"fragment"`, `checks-surface`,
+		`exoWireCheckForm`, `exoWireNetgroupForm`, `exoEnhanceSelects`,
+		`history.pushState`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks missing the swap-script %q", want)
+		}
+	}
+}
+
+// TestChecksTabActiveTabMovesWithSwap: the fragment's strip marks the
+// requested tab active — aria-selected rides the server-rendered region, so
+// the swap carries the active-tab state with it. The JS-off full load of the
+// same URL renders the identical strip, so both paths agree.
+func TestChecksTabActiveTabMovesWithSwap(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, _, frag := fragmentGet(t, op, ts.URL+"/checks?tab=netgroups")
+	for _, want := range []string{
+		`data-tab="netgroups" href="/checks?tab=netgroups" role="tab" aria-selected="true"`,
+		`data-tab="probes" href="/checks" role="tab" aria-selected="false"`,
+	} {
+		if !strings.Contains(frag, want) {
+			t.Errorf("netgroups fragment missing %q", want)
+		}
+	}
+	_, _, frag = fragmentGet(t, op, ts.URL+"/checks")
+	for _, want := range []string{
+		`data-tab="probes" href="/checks" role="tab" aria-selected="true"`,
+		`data-tab="netgroups" href="/checks?tab=netgroups" role="tab" aria-selected="false"`,
+	} {
+		if !strings.Contains(frag, want) {
+			t.Errorf("probes fragment missing %q", want)
+		}
+	}
+
+	code, page := getBody(t, op, ts.URL+"/checks?tab=netgroups")
+	if code != http.StatusOK {
+		t.Fatalf("/checks?tab=netgroups = %d, want 200", code)
+	}
+	if !strings.Contains(page, `data-tab="netgroups" href="/checks?tab=netgroups" role="tab" aria-selected="true"`) {
+		t.Error("JS-off netgroups load does not mark the tab active")
+	}
+}
+
+// TestChecksTabSwapNeverRefiresFlash: a swap is a partial render, so it can
+// neither re-fire the flash the full page consumed nor render a pending one —
+// and the fragment render still consumes the cookie, so a later full load
+// stays quiet. The flash-cookie model survives the swap (m79).
+func TestChecksTabSwapNeverRefiresFlash(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// A real flash (the redirectFlash shape) renders on the full page and that
+	// render consumes it.
+	req, _ := http.NewRequest(http.MethodGet, ts.URL+"/checks", nil)
+	req.AddCookie(&http.Cookie{Name: flashCookie, Value: "added at-home"})
+	resp, err := op.Do(req)
+	if err != nil {
+		t.Fatalf("GET /checks with flash cookie: %v", err)
+	}
+	if !strings.Contains(readBody(t, resp), "added at-home") {
+		t.Error("full page did not render the flash")
+	}
+
+	// A swap after that shows the region only: no flash element, no message.
+	_, _, frag := fragmentGet(t, op, ts.URL+"/checks?tab=netgroups")
+	for _, banned := range []string{"added at-home", `class="flash"`} {
+		if strings.Contains(frag, banned) {
+			t.Errorf("fragment re-fired the consumed flash %q", banned)
+		}
+	}
+
+	// A fragment request that itself carries a flash cookie consumes it
+	// without rendering it — the swap can neither resurrect a flash nor strand
+	// one un-rendered.
+	req, _ = http.NewRequest(http.MethodGet, ts.URL+"/checks?tab=netgroups", nil)
+	req.Header.Set("Accept", "text/html")
+	req.Header.Set("X-Requested-With", "fragment")
+	req.AddCookie(&http.Cookie{Name: flashCookie, Value: "added at-home"})
+	resp, err = op.Do(req)
+	if err != nil {
+		t.Fatalf("fragment with flash cookie: %v", err)
+	}
+	frag = readBody(t, resp)
+	if strings.Contains(frag, "added at-home") || strings.Contains(frag, `class="flash"`) {
+		t.Error("fragment rendered a pending flash")
+	}
+	cleared := false
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value == "" {
+			cleared = true
+		}
+	}
+	if !cleared {
+		t.Error("fragment render did not consume the flash cookie")
+	}
+
+	// And a later full load shows nothing.
+	_, later := getBody(t, op, ts.URL+"/checks?tab=netgroups")
+	if strings.Contains(later, "added at-home") {
+		t.Error("flash re-fired on the full page after a fragment fetch")
+	}
+}
+
 // TestChecksNetgroupAndRecency: the netgroup slot (SPEC §5.1) is the row's
 // second line — a route glyph (13px) + "on {netgroup}" (a link to /netgroups)
 // · age — so the location claim reads down the column. Location stays meta,
