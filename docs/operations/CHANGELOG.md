@@ -6,6 +6,14 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the backups row keeps its table height
+
+- **The /system/backups row renders at ~64px, uniform across cells.** The
+  KIND / RETENTION / SCHEDULE cells stay table-cells — the `display:flex` on
+  the `<td>`s that escaped them from the table's row layout and ballooned the
+  row to 132px is gone — and the two-line column moves onto an inner `.bk-cell`
+  wrapper. The row keeps `min-height:64px`; the six cells share one height.
+
 ## 2026-09-12 — the v0.13 round-3 residuals close
 
 - **The /system/backups row stops clipping.** The rows are `min-height:64px`
