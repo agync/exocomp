@@ -3,8 +3,10 @@ package web
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -277,11 +279,14 @@ func TestLitestreamPageConfigAndRestore(t *testing.T) {
 			t.Errorf("/system/litestream missing %q", want)
 		}
 	}
-	// Read-only: the whole leg surface carries no form and no input.
-	for _, leak := range []string{"<form", "<input"} {
-		if strings.Contains(page, leak) {
-			t.Errorf("/system/litestream must be read-only — found %q", leak)
-		}
+	// A6 (SPEC §7) landed the Set-target form on this page, so it is no longer
+	// form-free; what must not exist is a verb that pretends the daemon runs
+	// the sidecar (ADR 0012 — the daemon generates config and observes).
+	if !strings.Contains(page, `action="/system/litestream/target"`) {
+		t.Error("/system/litestream missing the Set-target form")
+	}
+	if strings.Contains(page, `action="/system/litestream/pause"`) {
+		t.Error("a pause verb would pretend the daemon runs litestream")
 	}
 }
 
@@ -315,6 +320,169 @@ func TestLitestreamPowerlineNoSidecar(t *testing.T) {
 
 	if !strings.Contains(page, `data-state="fail">rpo —</a>`) {
 		t.Error("powerline rpo segment must read fail rpo — for a set target with no sidecar")
+	}
+}
+
+// TestLitestreamPageSetTargetForm is the GATE for A6's form (SPEC §7 A6): the
+// /system/litestream page renders the Set-target form — the replica-uri field,
+// the unencrypted-remote ack checkbox, the CLI echo — with the honest boundary
+// stated: the daemon cannot verify a target, so the form writes the two
+// settings only. The stored target and ack render in the controls at rest.
+func TestLitestreamPageSetTargetForm(t *testing.T) {
+	h := newHarness(t)
+	withSidecar(h)
+	setReplicaTarget(t, h, "s3://exocomp-replica/nibbler")
+	setReplicaAck(t, h)
+	page := getPage(t, h, "/system/litestream")
+
+	for _, want := range []string{
+		`id="target"`,
+		`action="/system/litestream/target"`,
+		`name="replica_target"`,
+		`value="s3://exocomp-replica/nibbler"`,
+		`name="replica_unencrypted_ack" value="1" checked`,
+		"I understand this remote is unencrypted",
+		"same as exocomp litestream target s3://exocomp-replica/nibbler --ack-unencrypted",
+		"the daemon cannot verify",
+		"writes the two settings",
+		`id="config"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/system/litestream missing %q", want)
+		}
+	}
+}
+
+// TestLitestreamSetTargetWritesBothSettings is the GATE for the A6 write (SPEC
+// §7 A6): a submit persists the replica target and the ack — the two settings,
+// nothing else — and redirects 303 with the success flash. A remote target with
+// the ack writes ack=true; a local target writes ack=false (the caveat only
+// applies to remote targets). The MUTATION — dropping either PutSetting — must
+// red this test.
+func TestLitestreamSetTargetWritesBothSettings(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	resp := postForm(t, client, ts.URL+"/system/litestream/target",
+		url.Values{"replica_target": {"s3://exocomp-replica/nibbler"}, "replica_unencrypted_ack": {"1"}}, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("set target = %d, want 303", resp.StatusCode)
+	}
+	if raw, err := h.store.GetSetting(ctx, litestream.SettingReplicaTarget); err != nil || raw != "s3://exocomp-replica/nibbler" {
+		t.Fatalf("replica_target = %q (%v), want the submitted uri", raw, err)
+	}
+	if ack, err := h.store.GetSetting(ctx, litestream.SettingReplicaAck); err != nil || ack != "true" {
+		t.Fatalf("replica_unencrypted_ack = %q (%v), want true", ack, err)
+	}
+
+	// Success-only flash: the 303 carries the one-line result, and no refusal
+	// can flash (the refusals re-render 422 with the field meta instead).
+	code, page := getBody(t, client, ts.URL+"/system/litestream")
+	if code != http.StatusOK {
+		t.Fatalf("/system/litestream after write = %d, want 200", code)
+	}
+	if !strings.Contains(page, "replica target set") {
+		t.Error("success flash did not render")
+	}
+
+	// A local target writes ack=false — the caveat only bites remote.
+	resp = postForm(t, client, ts.URL+"/system/litestream/target",
+		url.Values{"replica_target": {"/mnt/nas/exocomp-replica"}}, nil)
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("local set target = %d, want 303", resp.StatusCode)
+	}
+	if raw, _ := h.store.GetSetting(ctx, litestream.SettingReplicaTarget); raw != "/mnt/nas/exocomp-replica" {
+		t.Fatalf("replica_target after local write = %q", raw)
+	}
+	if ack, _ := h.store.GetSetting(ctx, litestream.SettingReplicaAck); ack != "false" {
+		t.Fatalf("replica_unencrypted_ack after local write = %q, want false", ack)
+	}
+}
+
+// TestLitestreamSetTargetRefusesRemoteWithoutAck is the GATE for the ack guard
+// (SPEC §7 A6): a remote target without the acknowledgement is refused at 422
+// with the human refusal on the ack's meta line, and neither setting is
+// written — a refusal re-renders, it never flashes a success. The MUTATION —
+// dropping the guard — must red this test.
+func TestLitestreamSetTargetRefusesRemoteWithoutAck(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/litestream/target",
+		url.Values{"replica_target": {"s3://exocomp-replica/nibbler"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unacked remote = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		"A remote target is not encrypted by Litestream",
+		`name="replica_unencrypted_ack"`,
+		`value="s3://exocomp-replica/nibbler"`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("refusal page missing %q", want)
+		}
+	}
+	ctx := context.Background()
+	if _, err := h.store.GetSetting(ctx, litestream.SettingReplicaTarget); err == nil {
+		t.Fatal("an unacked remote target must not be persisted")
+	}
+	if _, err := h.store.GetSetting(ctx, litestream.SettingReplicaAck); err == nil {
+		t.Fatal("an unacked remote target must not write the ack")
+	}
+}
+
+// TestLitestreamSetTargetRefusesJunkTarget: a target that does not parse is
+// refused on the field with the human copy, the typed value survives for the
+// operator to correct, and nothing is persisted.
+func TestLitestreamSetTargetRefusesJunkTarget(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/litestream/target",
+		url.Values{"replica_target": {"gopher://nope"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("junk target = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		"path, file://, s3:// or sftp://",
+		`value="gopher://nope"`,
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("refusal page missing %q", want)
+		}
+	}
+	if _, err := h.store.GetSetting(context.Background(), litestream.SettingReplicaTarget); err == nil {
+		t.Fatal("a refused target must not be persisted")
+	}
+}
+
+// TestLitestreamSetTargetReadonlyRefused pins the write floor: a readonly
+// token is refused the write, and nothing is persisted.
+func TestLitestreamSetTargetReadonlyRefused(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "ro", "readonly"))
+
+	resp := postForm(t, client, ts.URL+"/system/litestream/target",
+		url.Values{"replica_target": {"/mnt/nas/exocomp-replica"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("set target with readonly = %d, want 403", resp.StatusCode)
+	}
+	if _, err := h.store.GetSetting(context.Background(), litestream.SettingReplicaTarget); err == nil {
+		t.Fatal("readonly set-target must not write the target")
 	}
 }
 
