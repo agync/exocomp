@@ -6,6 +6,32 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the /system Litestream leg: six word-states and the config view
+
+- **The Litestream leg of the self-care page grows from a stub to the six
+  word-states (SPEC §3).** The card now derives one state from the persisted
+  replica target (`litestream.replica_target`), the sidecar binary's presence
+  (`litestream.Presence()`, which the web never called before), and the replica's
+  newest frame's age: `REPLICATING` (ok, the lag figure) · `STALE` (wait, ≥10m)
+  · `BEHIND` (fail, ≥1h) · `REMOTE` (dim — only litestream can read a remote
+  replica's lag; the unencrypted-ack setting is made visible) · `NO REPLICA`
+  (dim) · `NO SIDECAR` (fail — a configured leg with no engine, which today
+  collapsed into "no replica") · plus the wait `UNPARSEABLE` for a stored target
+  that no longer parses. Facts render the replica uri (userinfo scrubbed), the
+  checkpoint frame (number + time, read from the replica's own frame files) and
+  the sidecar fact; the sentence names the host command (`systemctl status
+  litestream`) where the daemon cannot tell. The powerline's `rpo` segment now
+  reads fail `rpo —` for a set target with no engine instead of dim `unknown`.
+- **The `/system/litestream` leg page lands: the full-width card plus the ▾
+  views.** `config` renders the generated litestream.yml read-only — the same
+  bytes `exocomp litestream config` emits, with credentials referenced by name
+  in the emitted file, never a value — and `restore from replica` deep-links
+  into the DR drawer's replica mode (`/system/backups?from=litestream#restore`;
+  the drawer template and typed confirm land with the backups lane). The whole
+  surface is read-only by design (ADR 0012): the daemon generates config and
+  observes, it never runs litestream, so there is no pause verb anywhere on it.
+
+
 ## 2026-09-12 — /system's ntfy leg: card, drawer, and a real push path
 
 - **The ntfy leg card lands the three-word judgment ON / REFUSED / OFF
