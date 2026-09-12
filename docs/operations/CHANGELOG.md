@@ -6,6 +6,37 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — /system's ntfy leg: card, drawer, and a real push path
+
+- **The ntfy leg card lands the three-word judgment ON / REFUSED / OFF
+  (SPEC §2.1).** ON figures the topic label (`notify.ntfy_topic`, the one
+  unsealed display string) with the server class — a fact about the URL,
+  never the URL — and carries the sealed-key facts plus the 3-row fan-out
+  mini table. REFUSED is the NewNtfy refusal re-derived from the sealed
+  secrets the daemon holds (a public topic without a token): a fail chip with
+  `Seal token` → `/secrets?key=ntfy/token` (the row focus lands with A2),
+  the why-refused sentence, and the "pages nothing" fact. OFF reads
+  `no channel · nothing sealed` with a quiet `Set up` → Secrets and the
+  sentence naming `exocomp setup notify`.
+- **The `/system/ntfy` drawer (SPEC §2.2) renders sealed keys as presence
+  rows** — key · dot string · `SEALED`/`MISSING` — with the binding meta
+  "values never render · rotate in Secrets"; a value never reaches the page
+  (invariant 4). The Detail two-position switch persists `notify.ntfy_detail`
+  via Save, WHAT A PUSH SAYS shows the live descriptive/terse sample, and
+  What pages is a read-only EVENT · PRIORITY · RE-NOTIFY table (no routing
+  knobs exist in code; quiet hours are a scoped mute elsewhere).
+- **The Test verb finally has a push path.** The web surface holds no open
+  envelope, so the ntfy leg's judgment and test push ride a Maintenance-style
+  daemon seam (`web.NtfyDriver`): `newNtfySeam` re-derives the NewNtfy rule
+  and sends one test push (`exocomp: test push · {host} · {HH:MM:SS}`)
+  through the same `LoadNtfy` transport the daemon builds, writing the
+  delivered or refused status line. Both `serve` and the standalone web
+  process wire it.
+- **A11: the powerline stops lying.** A public topic without a token now
+  reads `ntfy refused` (fail) on the powerline — not `off` — re-derived from
+  the sealed keys' presence, never a rendered value.
+
+
 ## 2026-09-12 — the dead-man leg lands (SPEC §1)
 
 - **The dead-man card reads ARMED / NONE / TRIPPED, the figure changing meaning
