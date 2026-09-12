@@ -24,7 +24,7 @@ func TestRowActionsPartial(t *testing.T) {
 		{Name: "Remove", Path: glyphRemove, Form: "/w/p/rm", Danger: true},
 	}
 	var buf bytes.Buffer
-	if err := rowActions(acts).Render(context.Background(), &buf); err != nil {
+	if err := rowActions(acts, "").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render rowActions: %v", err)
 	}
 	out := buf.String()

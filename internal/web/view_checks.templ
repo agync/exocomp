@@ -16,7 +16,7 @@ templ checksList(vm checksVM) {
 		if vm.Operator && vm.Tab == "probes" {
 			@modal("checks-add", "Add a check") {
 				<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
-				<form method="post" action="/checks/add" class="writeform">
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform">
 					<label for="ck-name">Name</label>
 					<input id="ck-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
 					<label for="ck-kind">Kind</label>
@@ -59,14 +59,14 @@ templ checksList(vm checksVM) {
 		}
 		<p class="meta">
 			A check watches reachability; nothing fires until a rule matches — rules
-			are written on the CLI and read at <a href="/rules">/rules</a>.
+			are written on the CLI and read at <a href={ urlWithBase(vm.Page.Base, "/rules") }>/rules</a>.
 		</p>
 		<div class="tabs segmented" role="tablist" aria-label="Checks">
-			<a class="tab" href="/checks" role="tab" aria-selected={ boolAttr(vm.Tab != "netgroups") }>Probes</a>
-			<a class="tab" href="/checks?tab=netgroups" role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
+			<a class="tab" href={ urlWithBase(vm.Page.Base, "/checks") } role="tab" aria-selected={ boolAttr(vm.Tab != "netgroups") }>Probes</a>
+			<a class="tab" href={ urlWithBase(vm.Page.Base, "/checks?tab=netgroups") } role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
 		</div>
 		if vm.Tab == "netgroups" {
-			@netgroupsPanel(vm.Netgroups, vm.Operator, vm.NetgroupForm)
+			@netgroupsPanel(vm.Netgroups, vm.Operator, vm.NetgroupForm, vm.Page.Base)
 		} else {
 			if !vm.Operator {
 				<p class="meta">Read-only: managing checks needs an operator token.</p>
@@ -78,7 +78,7 @@ templ checksList(vm checksVM) {
 					for _, ck := range vm.Checks {
 						<li class={ "checkcard", templ.KV("disabled", !ck.Enabled) }>
 							<header>
-								<a class="mono" href="/events?source=check">{ ck.Name }</a>
+								<a class="mono" href={ urlWithBase(vm.Page.Base, "/events?source=check") }>{ ck.Name }</a>
 								<span class="meta mono">{ ck.Kind } · every { ck.Interval }</span>
 								@enabledChip(ck.Enabled, false)
 								if summary := ck.DownSummary(); summary != "" {
@@ -101,7 +101,7 @@ templ checksList(vm checksVM) {
 														if t.Netgroup == "" || t.Netgroup == "away" {
 															<span class="mono">on away</span>
 														} else {
-															<a class="mono" href="/netgroups">on { t.Netgroup }</a>
+															<a class="mono" href={ urlWithBase(vm.Page.Base, "/netgroups") }>on { t.Netgroup }</a>
 														}
 														if t.Changed != "" {
 															<span class="meta mono">· { t.Changed } ago</span>
@@ -125,7 +125,7 @@ templ checksList(vm checksVM) {
 							</ul>
 							if vm.Operator {
 								<div class="checkactions">
-									@rowActions(checkRowActions(ck))
+									@rowActions(checkRowActions(ck), vm.Page.Base)
 								</div>
 							}
 						</li>

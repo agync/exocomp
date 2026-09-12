@@ -27,7 +27,7 @@ templ approvalsList(vm dashboardVM) {
 											<span class="num">{ a.Deadline }</span>
 										}
 									</td>
-									<td class="right" data-label=""><a class="btn primary" href={ templ.SafeURL("/approvals/" + itoa(a.ID)) }>Review</a></td>
+									<td class="right" data-label=""><a class="btn primary" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/approvals/" + itoa(a.ID))) }>Review</a></td>
 								</tr>
 							}
 						</tbody>
@@ -36,7 +36,7 @@ templ approvalsList(vm dashboardVM) {
 			}
 		</div>
 		<p class="meta" id="approvals-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
-		@approvalsLive(vm.ApprovalFP)
+		@approvalsLive(vm.ApprovalFP, vm.Page.Base)
 	}
 }
 
@@ -53,13 +53,14 @@ templ approvalsList(vm dashboardVM) {
 // drop EventSource is already retrying; onopen clears it on every successful
 // (re)connect, so a quiet live list whose fingerprint matched never wears a
 // stale banner.
-templ approvalsLive(fp string) {
-	<script data-fp={ fp }>
+templ approvalsLive(fp, base string) {
+	<script data-fp={ fp } data-base={ base }>
 	(function () {
 		var script = document.currentScript;
 		var fp = script.getAttribute("data-fp") || "";
+		var base = script.getAttribute("data-base") || "";
 		var stale = document.getElementById("approvals-stale");
-		var es = new EventSource("/approvals/stream?fp=" + encodeURIComponent(fp));
+		var es = new EventSource(base + "/approvals/stream?fp=" + encodeURIComponent(fp));
 		es.addEventListener("approvals", function () {
 			if (stale) stale.hidden = true;
 			location.reload();
@@ -88,7 +89,7 @@ templ approvalsLive(fp string) {
 templ approvalSurface(vm approvalVM) {
 	@layout(vm.Page) {
 		<div class="phone">
-			@breadcrumb(breadcrumbCrumb{Label: "Approvals", Href: "/approvals"}, breadcrumbCrumb{Label: "#" + itoa(vm.ID)})
+			@breadcrumb(breadcrumbCrumb{Label: "Approvals", Href: urlWithBase(vm.Page.Base, "/approvals")}, breadcrumbCrumb{Label: "#" + itoa(vm.ID)})
 			<h1>Approve run</h1>
 			<p class="meta">{ vm.Runbook } · <span class="mono">{ vm.Kind }</span>{ workspaceSuffix(vm.Workspace) }</p>
 
@@ -128,7 +129,7 @@ templ approvalSurface(vm approvalVM) {
 						<span class="keyword">Plan is stale</span>
 						<p>{ vm.StaleNotice }</p>
 						<div class="actions">
-							<form method="post" action={ decideAction(vm.ID) }>
+							<form method="post" action={ decideAction(vm.Page.Base, vm.ID) }>
 								<input type="hidden" name="decision" value="reject"/>
 								<button type="submit" class="btn danger">Discard plan</button>
 							</form>
@@ -157,11 +158,11 @@ templ approvalSurface(vm approvalVM) {
 					<!-- decision -->
 					if vm.CanDecide {
 						<div class="actions">
-							<form method="post" action={ decideAction(vm.ID) }>
+							<form method="post" action={ decideAction(vm.Page.Base, vm.ID) }>
 								<input type="hidden" name="decision" value="reject"/>
 								<button type="submit" class="btn danger">Reject</button>
 							</form>
-							<form method="post" action={ decideAction(vm.ID) }>
+							<form method="post" action={ decideAction(vm.Page.Base, vm.ID) }>
 								<input type="hidden" name="decision" value="approve"/>
 								<button type="submit" class="btn primary">Approve</button>
 							</form>
@@ -172,7 +173,7 @@ templ approvalSurface(vm approvalVM) {
 				}
 
 				<!-- (6) global kill: hold-to-confirm, expiry mandatory, lists what it does and does not touch -->
-				@globalKill()
+				@globalKill(vm.Page.Base)
 				@countdownScript()
 			}
 		</div>
@@ -200,11 +201,11 @@ templ planDetail(l planLine) {
 // globalKill is the mute/kill ladder's top rung. It never fires one-tap: the
 // confirm lists what it touches and what it does not, requires an expiry, and
 // commits by hold-to-confirm.
-templ globalKill() {
+templ globalKill(base string) {
 	<details class="approve-block mt26">
 		<summary class="keyword">Silence &amp; global kill</summary>
 		<p class="meta">A silence always expires — there is no "until I turn it off". The global kill pauses every rule.</p>
-		<form method="post" action="/kill">
+		<form method="post" action={ urlWithBase(base, "/kill") }>
 			<label for="kill-expiry">Expiry (mandatory)</label>
 			<input id="kill-expiry" name="expiry" type="text" inputmode="text" placeholder="2h" required class="kill-expiry"/>
 			<p class="meta">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p>

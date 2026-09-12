@@ -19,7 +19,7 @@ templ jobsList(vm dashboardVM) {
 					<span>#</span><span>Playbook</span><span>State</span><span>Trigger</span><span>Ran</span>
 				</div>
 				for _, j := range vm.Queue {
-					@jobsRow(j)
+					@jobsRow(j, vm.Page.Base)
 				}
 			}
 		</div>
@@ -45,8 +45,8 @@ templ jobsList(vm dashboardVM) {
 // with its one-fact reason); line 2 the trigger and the ran meta. On desktop
 // the .line wrappers are display:contents so the five cells flow into the
 // five-column grid; on phone they are the two stacked flex rows (SPEC §2.3).
-templ jobsRow(j jobRow) {
-	<a class="jobs-row" href={ templ.SafeURL("/jobs/" + itoa64(j.ID)) }>
+templ jobsRow(j jobRow, base string) {
+	<a class="jobs-row" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
 		<span class="line">
 			<span class="num">{ itoa64(j.ID) }</span>
 			<span class="cell">
@@ -81,7 +81,7 @@ templ jobsRow(j jobRow) {
 // trigger stays a page-level button beside the breadcrumb.
 templ jobDetail(vm jobDetailVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: "/jobs"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
+		@breadcrumb(breadcrumbCrumb{Label: "Jobs", Href: urlWithBase(vm.Page.Base, "/jobs")}, breadcrumbCrumb{Label: "#" + itoa64(vm.Job.ID)})
 		if vm.Operator && vm.Job.State.Terminal() && vm.CanSchedule {
 			<div class="actions mb10">
 				<button
@@ -104,9 +104,9 @@ templ jobDetail(vm jobDetailVM) {
 		}
 		if vm.FiredRule != "" {
 			<p class="meta mt8">
-				fired by rule <a href="/rules">{ vm.FiredRule }</a>
+				fired by rule <a href={ urlWithBase(vm.Page.Base, "/rules") }>{ vm.FiredRule }</a>
 				if vm.TriggerEvent != nil {
-					· event <a href={ templ.SafeURL("/events/" + itoa64(vm.TriggerEvent.ID)) }>#{ itoa64(vm.TriggerEvent.ID) }</a>
+					· event <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/events/" + itoa64(vm.TriggerEvent.ID))) }>#{ itoa64(vm.TriggerEvent.ID) }</a>
 					(<span class="mono">{ vm.TriggerEvent.Source }</span> { vm.TriggerEvent.Name }) at { vm.TriggerEvent.Time }
 				}
 			</p>
@@ -118,7 +118,7 @@ templ jobDetail(vm jobDetailVM) {
 		if vm.Operator && vm.CanSchedule {
 			@modal("job-schedule", "Schedule this job") {
 				<p class="meta">Creates a recurring <span class="mono">shell</span> schedule that replays this job's exact command on a cron. Kind is fixed at shell — a schedule keeps no vault, run-secrets, or working-directory binding a playbook/command job may have used.</p>
-				<form method="post" action={ scheduleAction(vm.Job.ID) } class="writeform">
+				<form method="post" action={ scheduleAction(vm.Page.Base, vm.Job.ID) } class="writeform">
 					<label for="js-name">Name</label>
 					<input id="js-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
 					<label for="js-cron">Cron expression</label>
@@ -133,7 +133,7 @@ templ jobDetail(vm jobDetailVM) {
 		}
 		<p class="meta" id="jobs-stale" role="alert" hidden>Live updates stopped — reload to reconnect.</p>
 		if !vm.Job.State.Terminal() {
-			@jobStream(vm.Job.ID, vm.LastSeq)
+			@jobStream(vm.Job.ID, vm.LastSeq, vm.Page.Base)
 		}
 	}
 }
@@ -154,7 +154,7 @@ templ runCard(vm jobDetailVM) {
 				<span class="chip dim"><span class="dot"></span>check mode</span>
 			}
 			if vm.RunCard.RerunOf > 0 {
-				<a class="chip chip--dashed" href={ templ.SafeURL("/jobs/" + itoa64(vm.RunCard.RerunOf)) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
+				<a class="chip chip--dashed" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.RunCard.RerunOf))) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
 			}
 		</div>
 		<div class="head">
@@ -275,7 +275,7 @@ templ outputCard(vm jobDetailVM) {
 					<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphTail }></path></svg>
 					<span class="word">Tail</span><small id="log-tail-n">+0</small>
 				</button>
-				<a class="verb-raw" href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID) + "/raw") } target="_blank" title="Raw log — plain text, opens in a new tab">
+				<a class="verb-raw" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.Job.ID) + "/raw")) } target="_blank" title="Raw log — plain text, opens in a new tab">
 					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d={ glyphDocument }></path></svg>
 					<span class="word">Raw</span><span class="ext">↗</span>
 				</a>
@@ -336,8 +336,8 @@ templ rerunDialog(vm jobDetailVM) {
 			</button>
 		</div>
 		<div class="modal-body">
-			<p class="meta">Same playbook, ref, inventory and secrets as <a href={ templ.SafeURL("/jobs/" + itoa64(vm.Job.ID)) }>#{ itoa64(vm.Job.ID) }</a>. Change only what is listed here.</p>
-			<form method="post" action={ rerunAction(vm.Job.ID) } class="writeform">
+			<p class="meta">Same playbook, ref, inventory and secrets as <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.Job.ID))) }>#{ itoa64(vm.Job.ID) }</a>. Change only what is listed here.</p>
+			<form method="post" action={ rerunAction(vm.Page.Base, vm.Job.ID) } class="writeform">
 				<div class="facts">
 					<div><span>Playbook</span><b class="mono">{ vm.RunCard.Title }</b></div>
 					if vm.Source != "" {
@@ -401,8 +401,8 @@ templ logLine(e eventLine) {
 // already retrying; onopen clears it on every successful (re)connect, so a
 // long quiet job that only heartbeats never wears a stale banner. The
 // reload-on-done is the terminal path.
-templ jobStream(id int64, since int64) {
-	<script data-job={ itoa64(id) } data-since={ itoa64(since) }>
+templ jobStream(id int64, since int64, base string) {
+	<script data-job={ itoa64(id) } data-since={ itoa64(since) } data-base={ base }>
 	(function () {
 		var script = document.currentScript;
 		var job = script.getAttribute("data-job");
@@ -414,7 +414,8 @@ templ jobStream(id int64, since int64) {
 		var tailN = document.getElementById("log-tail-n");
 		var following = true; // pinned to the tail; false once the operator scrolls up
 		var sincePin = 0;     // lines appended while unpinned, for the Tail +N badge
-		var es = new EventSource("/jobs/" + job + "/stream?since=" + since);
+		var base = script.getAttribute("data-base") || "";
+		var es = new EventSource(base + "/jobs/" + job + "/stream?since=" + since);
 		// setPin moves the chip between the four states; tail is the .n span's
 		// text (the " · N lines" count, " · scrolled up"), empty on following.
 		// The dot vs check glyph is the state's shape: complete swaps in the

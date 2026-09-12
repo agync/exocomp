@@ -766,7 +766,7 @@ func TestApprovalsPageLiveScript(t *testing.T) {
 	if !strings.Contains(page, `data-fp="`) {
 		t.Fatal("approvals page renders the approvalsLive script without the data-fp fingerprint")
 	}
-	if !strings.Contains(page, `new EventSource("/approvals/stream?fp="`) {
+	if !strings.Contains(page, `new EventSource(base + "/approvals/stream?fp="`) {
 		t.Fatal("approvals page does not open the browser stream with the ?fp= fingerprint")
 	}
 	if strings.Contains(page, "seenFirst") {

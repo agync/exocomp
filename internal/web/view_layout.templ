@@ -19,8 +19,8 @@ templ layout(p page) {
 				html[data-theme="light"]{background:#F5F2EC}
 				html[data-theme="dark"]{background:#0A0C0D}
 			</style>
-			<link rel="stylesheet" href={ AssetURL("/assets/tokens.css") }/>
-			<link rel="stylesheet" href={ AssetURL("/assets/app.css") }/>
+			<link rel="stylesheet" href={ urlWithBase(p.Base, AssetURL("/assets/tokens.css")) }/>
+			<link rel="stylesheet" href={ urlWithBase(p.Base, AssetURL("/assets/app.css")) }/>
 			@themeInit()
 			@navInit()
 			@modalInit()
@@ -31,7 +31,7 @@ templ layout(p page) {
 				<div class="scrim" onclick="exoCloseNav()" aria-hidden="true"></div>
 				<aside class="sidebar" aria-label="Primary">
 					<div class="side-top">
-						<a class="brandlink" href="/">
+						<a class="brandlink" href={ urlWithBase(p.Base, "/") }>
 							<span class="brand-slot">@brandMark()</span>
 							<span class="wordmark">exocomp</span>
 						</a>
@@ -42,25 +42,25 @@ templ layout(p page) {
 					</div>
 					<nav class="side-nav">
 						<div class="navgroup">Operate</div>
-						@navlink(p.Nav, "dashboard", "/", "Dashboard", iconDashboard, "", "")
-						@navlink(p.Nav, "approvals", "/approvals", "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait")
-						@navlink(p.Nav, "jobs", "/jobs", "Jobs", iconJobs, "", "")
-						@navlink(p.Nav, "events", "/events", "Events", iconEvents, "", "")
-						@navlink(p.Nav, "workflows", "/workflows", "Workflows", iconWorkflows, "", "")
+						@navlink(p.Nav, "dashboard", urlWithBase(p.Base, "/"), "Dashboard", iconDashboard, "", "")
+						@navlink(p.Nav, "approvals", urlWithBase(p.Base, "/approvals"), "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait")
+						@navlink(p.Nav, "jobs", urlWithBase(p.Base, "/jobs"), "Jobs", iconJobs, "", "")
+						@navlink(p.Nav, "events", urlWithBase(p.Base, "/events"), "Events", iconEvents, "", "")
+						@navlink(p.Nav, "workflows", urlWithBase(p.Base, "/workflows"), "Workflows", iconWorkflows, "", "")
 						<div class="navgroup">Automate</div>
-						@navlink(p.Nav, "checks", "/checks", "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail")
-						@navlink(p.Nav, "rules", "/rules", "Rules", iconRules, "", "")
-						@navlink(p.Nav, "schedules", "/schedules", "Schedules", iconSchedules, "", "")
-						@navlink(p.Nav, "policies", "/policies", "Policies", iconPolicies, "", "")
+						@navlink(p.Nav, "checks", urlWithBase(p.Base, "/checks"), "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail")
+						@navlink(p.Nav, "rules", urlWithBase(p.Base, "/rules"), "Rules", iconRules, "", "")
+						@navlink(p.Nav, "schedules", urlWithBase(p.Base, "/schedules"), "Schedules", iconSchedules, "", "")
+						@navlink(p.Nav, "policies", urlWithBase(p.Base, "/policies"), "Policies", iconPolicies, "", "")
 						<div class="navgroup">Provision</div>
-						@navlink(p.Nav, "sources", "/sources", "Sources", iconSources, badgeNum(p.Badges.Sources), "wait")
-						@navlink(p.Nav, "workspaces", "/workspaces", "Workspaces", iconWorkspaces, "", "")
-						@navlink(p.Nav, "runners", "/runners", "Runners", iconRunners, "", "")
+						@navlink(p.Nav, "sources", urlWithBase(p.Base, "/sources"), "Sources", iconSources, badgeNum(p.Badges.Sources), "wait")
+						@navlink(p.Nav, "workspaces", urlWithBase(p.Base, "/workspaces"), "Workspaces", iconWorkspaces, "", "")
+						@navlink(p.Nav, "runners", urlWithBase(p.Base, "/runners"), "Runners", iconRunners, "", "")
 						<div class="navgroup">Access</div>
-						@navlink(p.Nav, "secrets", "/secrets", "Secrets", iconSecrets, "", "")
-						@navlink(p.Nav, "tokens", "/tokens", "Tokens", iconTokens, "", "")
+						@navlink(p.Nav, "secrets", urlWithBase(p.Base, "/secrets"), "Secrets", iconSecrets, "", "")
+						@navlink(p.Nav, "tokens", urlWithBase(p.Base, "/tokens"), "Tokens", iconTokens, "", "")
 						<div class="navdivider" role="separator" aria-hidden="true"></div>
-						@navlink(p.Nav, "system", "/system", "System", iconSystem, "", "")
+						@navlink(p.Nav, "system", urlWithBase(p.Base, "/system"), "System", iconSystem, "", "")
 					</nav>
 					<div class="side-foot">
 						@themeToggle()
@@ -71,7 +71,7 @@ templ layout(p page) {
 						<button type="button" class="hamburger" onclick="exoToggleDrawer()" aria-label="Open navigation">
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
 						</button>
-						<a class="brandlink" href="/">
+						<a class="brandlink" href={ urlWithBase(p.Base, "/") }>
 							@brandMark()
 							<span class="wordmark">exocomp</span>
 						</a>
@@ -86,7 +86,7 @@ templ layout(p page) {
 								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
 							</button>
 						}
-						<a class="brandlink" href="/">
+						<a class="brandlink" href={ urlWithBase(p.Base, "/") }>
 							@brandMark()
 							<span class="wordmark">exocomp</span>
 						</a>
@@ -227,16 +227,16 @@ const (
 // a grey fact. The server version lives on /system, not here.
 templ powerline(p page) {
 	<footer class="powerline" role="contentinfo">
-		<a class={ "pl-seg", templ.KV("wait", p.Signal.DeadManState == "wait"), templ.KV("ok", p.Signal.DeadManState == "ok") } href="/system">
+		<a class={ "pl-seg", templ.KV("wait", p.Signal.DeadManState == "wait"), templ.KV("ok", p.Signal.DeadManState == "ok") } href={ urlWithBase(p.Base, "/system") }>
 			<span class="dot" aria-hidden="true"></span>dead-man { p.Signal.DeadMan }
 			if p.Signal.DeadMan == "none" {
 				<span>— set one</span>
 			}
 		</a>
-		<a class={ "pl-seg", templ.KV("dim", p.Signal.NtfyState == "dim"), templ.KV("ok", p.Signal.NtfyState == "ok") } href="/system">
+		<a class={ "pl-seg", templ.KV("dim", p.Signal.NtfyState == "dim"), templ.KV("ok", p.Signal.NtfyState == "ok") } href={ urlWithBase(p.Base, "/system") }>
 			<span class="dot" aria-hidden="true"></span>ntfy { p.Signal.Ntfy }
 		</a>
-		<a class={ "pl-seg", templ.KV("ok", p.Signal.DiskState == "ok"), templ.KV("fail", p.Signal.DiskState == "fail") } href="/system">
+		<a class={ "pl-seg", templ.KV("ok", p.Signal.DiskState == "ok"), templ.KV("fail", p.Signal.DiskState == "fail") } href={ urlWithBase(p.Base, "/system") }>
 			<span class="dot" aria-hidden="true"></span>disk { p.Signal.Disk }
 		</a>
 		if p.Who != "" {
@@ -633,8 +633,10 @@ templ layoutReady() {
 
 // loginPage bootstraps a browser session from a token. The token is pasted
 // once and exchanged for the session cookie; the fingerprint is shown so the
-// operator can confirm they are pinning the certificate they minted.
-templ loginPage(errMsg, next, fingerprint string, insecure bool) {
+// operator can confirm they are pinning the certificate they minted. base is
+// the surface's origin sub-path ("" at the root origin), re-prefixing the
+// form action and the embedded assets.
+templ loginPage(errMsg, next, fingerprint string, insecure bool, base string) {
 	<!doctype html>
 	<html lang="en">
 		<head>
@@ -648,8 +650,8 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 				html[data-theme="light"]{background:#F5F2EC}
 				html[data-theme="dark"]{background:#0A0C0D}
 			</style>
-			<link rel="stylesheet" href={ AssetURL("/assets/tokens.css") }/>
-			<link rel="stylesheet" href={ AssetURL("/assets/app.css") }/>
+			<link rel="stylesheet" href={ urlWithBase(base, AssetURL("/assets/tokens.css")) }/>
+			<link rel="stylesheet" href={ urlWithBase(base, AssetURL("/assets/app.css")) }/>
 			@themeInit()
 		</head>
 		<body>
@@ -667,7 +669,7 @@ templ loginPage(errMsg, next, fingerprint string, insecure bool) {
 					if insecure {
 						<p class="error" role="alert">This sign-in is not secure. Anyone on this network could read it.</p>
 					}
-					<form method="post" action="/login">
+					<form method="post" action={ urlWithBase(base, "/login") }>
 						<input type="hidden" name="next" value={ next }/>
 						<label for="token">Access token</label>
 						<input id="token" name="token" type="password" autocomplete="off" autofocus required aria-describedby="fp"/>

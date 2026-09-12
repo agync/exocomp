@@ -6,11 +6,11 @@ package web
 // renders without the shell (the checks page owns the tabs), and carries the
 // operator add/remove controls. A netgroup holds no secret material, so the
 // write controls here are plain operator-scope, like schedules.
-templ netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM) {
+templ netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM, base string) {
 	if operator {
 		@modal("netgroups-add", "Add a netgroup") {
 			<p class="meta">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p>
-			<form method="post" action="/netgroups/add" class="writeform" id="netgroup-add-form" novalidate data-netgroup-form>
+			<form method="post" action={ urlWithBase(base, "/netgroups/add") } class="writeform" id="netgroup-add-form" novalidate data-netgroup-form>
 				@fieldInput(form.nameField())
 				@fieldInput(form.cidrField())
 				@formStatus(form.Pending(), form.ErrFormText())
@@ -52,11 +52,11 @@ templ netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM) {
 					<tbody>
 						for _, ng := range rows {
 							<tr>
-								<td data-label="Netgroup"><a href="/events?source=check">{ ng.Name }</a></td>
+								<td data-label="Netgroup"><a href={ urlWithBase(base, "/events?source=check") }>{ ng.Name }</a></td>
 								<td class="mono wrap" data-label="CIDRs">{ ng.Display() }</td>
 								if operator {
 									<td data-label="Actions">
-										@rowActions(netgroupRowActions(ng))
+										@rowActions(netgroupRowActions(ng), base)
 									</td>
 								}
 							</tr>

@@ -814,7 +814,7 @@ func TestInsecureBannerHumanCopy(t *testing.T) {
 	}
 
 	buf.Reset()
-	if err := loginPage("", "", "", true).Render(context.Background(), &buf); err != nil {
+	if err := loginPage("", "", "", true, "").Render(context.Background(), &buf); err != nil {
 		t.Fatalf("render loginPage: %v", err)
 	}
 	login := buf.String()
@@ -843,8 +843,16 @@ func TestDashboardInsecureBannerVerb(t *testing.T) {
 	if !strings.Contains(out, `Anyone on this network can read your sign-in.`) {
 		t.Errorf("banner sentence missing:\n%s", out)
 	}
-	if !strings.Contains(out, `<a class="verb" href="https://" data-tls>Serve over TLS →</a>`) {
+	if !strings.Contains(out, `<a class="verb" href="https://" data-tls data-tls-base="">Serve over TLS →</a>`) {
 		t.Errorf("banner verb must be the Serve-over-TLS link:\n%s", out)
+	}
+	var buf2 bytes.Buffer
+	vm2 := dashboardVM{Page: page{Insecure: true, Base: "/exocomp"}}
+	if err := dashboard(vm2).Render(context.Background(), &buf2); err != nil {
+		t.Fatalf("render dashboard: %v", err)
+	}
+	if !strings.Contains(buf2.String(), `data-tls-base="/exocomp"`) {
+		t.Errorf("banner TLS verb must carry the surface's base path")
 	}
 }
 

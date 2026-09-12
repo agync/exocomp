@@ -194,7 +194,8 @@ func TestJobDetailStaleBannerAndHeartbeat(t *testing.T) {
 		`id="jobs-stale"`,                      // the stale banner element
 		`es.readyState === EventSource.CLOSED`, // surfaces only a closed stream
 		`es.onopen`,                            // clears on reconnect
-		`new EventSource("/jobs/" + job + "/stream?since=" + since)`, // opens the tail with the cursor
+		`new EventSource(base + "/jobs/" + job + "/stream?since=" + since)`, // opens the tail with the cursor
+		`data-base="`,       // the JS base seam
 		`location.reload()`, // done reloads for true final state
 	} {
 		if !strings.Contains(page, want) {

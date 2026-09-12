@@ -26,7 +26,7 @@ templ runnersList(vm runnersVM) {
 		if vm.Operator {
 			@modal("runners-add", "Add a runner") {
 				<p class="meta">Mirrors <code>exocomp runner add</code>: a base image plus either a bootstrap script or a Containerfile path — not both. Container tier deferred: this registers a definition, nothing builds or runs it.</p>
-				<form method="post" action="/runners/add" class="writeform">
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/runners/add") } class="writeform">
 					<label for="rn-name">Name</label>
 					<input id="rn-name" name="name" type="text" required autocomplete="off" pattern="[a-z0-9][a-z0-9._-]*"/>
 					<label for="rn-mode">Mode</label>
@@ -93,7 +93,7 @@ templ runnersList(vm runnersVM) {
 									<td class="mono" data-label="Created">{ rn.Created }</td>
 									if vm.Operator {
 										<td data-label="Actions">
-											<form method="post" action={ templ.SafeURL("/runners/" + rn.Name + "/rm") } class="inline-form" data-confirm={ "Remove runner " + rn.Name + "?" }>
+											<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/runners/" + rn.Name + "/rm")) } class="inline-form" data-confirm={ "Remove runner " + rn.Name + "?" }>
 												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Remove</button>
 											</form>

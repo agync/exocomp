@@ -153,9 +153,9 @@ func workflowsList(vm workflowsVM) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var8 string
-					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs("/workflows/" + f.ID)
+					templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(vm.Page.Base, "/workflows/"+f.ID))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 39, Col: 44}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 39, Col: 71}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 					if templ_7745c5c3_Err != nil {
@@ -166,9 +166,9 @@ func workflowsList(vm workflowsVM) templ.Component {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var9 templ.SafeURL
-					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/workflows/" + f.ID))
+					templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/workflows/"+f.ID)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 40, Col: 71}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 40, Col: 98}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 					if templ_7745c5c3_Err != nil {
@@ -181,7 +181,7 @@ func workflowsList(vm workflowsVM) templ.Component {
 					var templ_7745c5c3_Var10 string
 					templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(f.ID)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 40, Col: 80}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 40, Col: 107}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 					if templ_7745c5c3_Err != nil {
@@ -277,7 +277,7 @@ func workflowDetail(vm workflowVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Workflows", Href: "/workflows"}, breadcrumbCrumb{Label: "Workflow"}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Workflows", Href: urlWithBase(vm.Page.Base, "/workflows")}, breadcrumbCrumb{Label: "Workflow"}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -361,9 +361,9 @@ func workflowDetail(vm workflowVM) templ.Component {
 							return templ_7745c5c3_Err
 						}
 						var templ_7745c5c3_Var17 templ.SafeURL
-						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/jobs/" + itoa64(*st.JobID)))
+						templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/"+itoa64(*st.JobID))))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 89, Col: 77}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 89, Col: 104}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 						if templ_7745c5c3_Err != nil {
@@ -376,7 +376,7 @@ func workflowDetail(vm workflowVM) templ.Component {
 						var templ_7745c5c3_Var18 string
 						templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(*st.JobID))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 89, Col: 100}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_workflows.templ`, Line: 89, Col: 127}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 						if templ_7745c5c3_Err != nil {

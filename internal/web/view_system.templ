@@ -40,7 +40,7 @@ templ systemPage(vm systemVM) {
 					<p class="meta">Not set.</p>
 				}
 				if vm.Operator {
-					<form method="post" action="/system/public-url" class="writeform">
+					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="writeform">
 						<label for="pub-url">Public URL</label>
 						<input id="pub-url" name="url" type="url" required autocomplete="off" placeholder="https://exocomp.example.ts.net" value={ vm.PublicURL }/>
 						<button type="submit" class="btn primary">Save</button>

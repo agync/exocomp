@@ -30,7 +30,7 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := s.sanitizeNext(r.URL.Query().Get("next"))
-	s.render(w, r, http.StatusOK, loginPage("", next, s.fingerprint, s.insecure))
+	s.render(w, r, http.StatusOK, loginPage("", next, s.fingerprint, s.insecure, s.base))
 }
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -48,12 +48,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			// Tell the operator to retry rather than run the KDF unbounded.
 			w.Header().Set("Retry-After", "1")
 			s.render(w, r, http.StatusServiceUnavailable,
-				loginPage("The server is busy verifying other sign-ins. Try again in a moment.", next, s.fingerprint, s.insecure))
+				loginPage("The server is busy verifying other sign-ins. Try again in a moment.", next, s.fingerprint, s.insecure, s.base))
 			return
 		}
 		if errors.Is(err, ErrUnauthenticated) || errors.Is(err, ErrMalformedToken) {
 			s.render(w, r, http.StatusUnauthorized,
-				loginPage("That token is not valid, is expired, or was revoked.", next, s.fingerprint, s.insecure))
+				loginPage("That token is not valid, is expired, or was revoked.", next, s.fingerprint, s.insecure, s.base))
 			return
 		}
 		s.log.Error("web: login", "err", err)

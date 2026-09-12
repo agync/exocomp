@@ -17,7 +17,7 @@ templ eventsList(vm eventsVM) {
 		} else {
 			@eventsTray(vm)
 		}
-		@eventsKeys()
+		@eventsKeys(vm.Page.Base)
 	}
 }
 
@@ -136,7 +136,7 @@ templ eventsTray(vm eventsVM) {
 		}
 		· retained 90d
 		if vm.Outcome != "" {
-			· <a href="/events">show all</a>
+			· <a href={ urlWithBase(vm.Page.Base, "/events") }>show all</a>
 		}
 	</p>
 }
@@ -216,9 +216,11 @@ templ eventReason(e eventRow) {
 // and buttons. The payload button is additive: with no script the pane still
 // shows the reason and trace, and the payload card stays inert behind the
 // button.
-templ eventsKeys() {
-	<script>
+templ eventsKeys(base string) {
+	<script data-base={ base }>
 	(function () {
+		var script = document.currentScript;
+		var base = script.getAttribute("data-base") || "";
 		var tray = document.querySelector(".events-tray");
 		if (!tray) return;
 		var rows = Array.prototype.slice.call(tray.querySelectorAll(".events-row[data-index]"));
@@ -291,7 +293,7 @@ templ eventsKeys() {
 				var q = [];
 				if (src) q.push("source=" + src);
 				if (next) q.push("outcome=" + next);
-				window.location.href = "/events" + (q.length ? "?" + q.join("&") : "");
+				window.location.href = base + "/events" + (q.length ? "?" + q.join("&") : "");
 			} else if (e.key === "Escape") {
 				var opened = currentRow();
 				if (isOpen(opened)) toggle(opened, false);
@@ -305,7 +307,7 @@ templ eventsKeys() {
 // pass/fail exactly as it was decided, not recomputed.
 templ eventTrace(vm traceVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Events", Href: "/events"}, breadcrumbCrumb{Label: "#" + itoa64(vm.Event.ID)})
+		@breadcrumb(breadcrumbCrumb{Label: "Events", Href: urlWithBase(vm.Page.Base, "/events")}, breadcrumbCrumb{Label: "#" + itoa64(vm.Event.ID)})
 		<h1>Event #{ itoa64(vm.Event.ID) }</h1>
 		<p class="meta">
 			<span class="mono">{ vm.Event.Source }</span> · { vm.Event.Name } ·
@@ -314,7 +316,7 @@ templ eventTrace(vm traceVM) {
 		</p>
 		if vm.Event.JobID != nil {
 			<p class="meta mt8">
-				enqueued job <a href={ templ.SafeURL("/jobs/" + itoa64(*vm.Event.JobID)) }>#{ itoa64(*vm.Event.JobID) }</a>
+				enqueued job <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(*vm.Event.JobID))) }>#{ itoa64(*vm.Event.JobID) }</a>
 			</p>
 		}
 		if len(vm.CheckObservations) > 0 {

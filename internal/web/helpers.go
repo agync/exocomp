@@ -56,9 +56,9 @@ func swallowedText(b bannerVM) string {
 }
 
 // decideAction is the POST target for a phone decision. It is a same-origin
-// path, so templ.SafeURL is honest here.
-func decideAction(id int64) templ.SafeURL {
-	return templ.SafeURL("/approvals/" + strconv.FormatInt(id, 10) + "/decide")
+// path, so templ.SafeURL is honest here; base re-prefixes it under --base-path.
+func decideAction(base string, id int64) templ.SafeURL {
+	return templ.SafeURL(urlWithBase(base, "/approvals/"+strconv.FormatInt(id, 10)+"/decide"))
 }
 
 func urlEscape(s string) string { return url.QueryEscape(s) }
@@ -69,13 +69,13 @@ func urlEscape(s string) string { return url.QueryEscape(s) }
 func joinArgv(argv []string) string { return strings.Join(argv, " ") }
 
 // scheduleAction is the POST target for turning a job into a shell schedule.
-func scheduleAction(id int64) templ.SafeURL {
-	return templ.SafeURL("/jobs/" + strconv.FormatInt(id, 10) + "/schedule")
+func scheduleAction(base string, id int64) templ.SafeURL {
+	return templ.SafeURL(urlWithBase(base, "/jobs/"+strconv.FormatInt(id, 10)+"/schedule"))
 }
 
 // rerunAction is the POST target for resubmitting a finished job with tweaks.
-func rerunAction(id int64) templ.SafeURL {
-	return templ.SafeURL("/jobs/" + strconv.FormatInt(id, 10) + "/rerun")
+func rerunAction(base string, id int64) templ.SafeURL {
+	return templ.SafeURL(urlWithBase(base, "/jobs/"+strconv.FormatInt(id, 10)+"/rerun"))
 }
 
 // extraVarLines renders a job's stored extra-vars as sorted "key=val" lines for

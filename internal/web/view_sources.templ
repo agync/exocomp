@@ -27,7 +27,7 @@ templ sourcesList(vm sourcesVM) {
 					A path is read directly (writable is opt-in); a git URL is cloned and
 					pinned to a ref via a generated deploy key sealed into the envelope.
 				</p>
-				<form method="post" action="/sources/add" class="writeform" id="src-add-form" novalidate data-src-form>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/sources/add") } class="writeform" id="src-add-form" novalidate data-src-form>
 					@fieldInput(vm.Form.nameField())
 					@fieldInput(vm.Form.locationField())
 					<p class="meta" id="src-hint"></p>
@@ -141,8 +141,8 @@ templ sourcesList(vm sourcesVM) {
 						</thead>
 						<tbody>
 							for _, sc := range vm.Sources {
-								<tr data-href={ templ.SafeURL("/sources/" + sc.Name) } class={ templ.KV("attention", sc.NeverSynced()) }>
-									<td data-label="Source"><a href={ templ.SafeURL("/sources/" + sc.Name) }>{ sc.Name }</a></td>
+								<tr data-href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name)) } class={ templ.KV("attention", sc.NeverSynced()) }>
+									<td data-label="Source"><a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name)) }>{ sc.Name }</a></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
 									<td class="mono wrap" data-label="URI">{ orDash(sc.URI) }</td>
 									<td class="mono wrap" data-label="Ref">{ orDash(sc.Ref) }</td>
@@ -173,7 +173,7 @@ templ sourcesList(vm sourcesVM) {
 // already sealed into the envelope and never appears here.
 templ sourceGitResult(vm sourceGitResultVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Registered " + vm.Name})
+		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: urlWithBase(vm.Page.Base, "/sources")}, breadcrumbCrumb{Label: "Registered " + vm.Name})
 		<h1>Registered { vm.Name }</h1>
 		<div class="card span2 mt18">
 			<div class="kicker">Add this deploy key to the forge — it is not shown again</div>
@@ -186,7 +186,7 @@ templ sourceGitResult(vm sourceGitResultVM) {
 
 templ sourceReauthNotice(p page) {
 	@layout(p) {
-		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: "Confirm"})
+		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: urlWithBase(p.Base, "/sources")}, breadcrumbCrumb{Label: "Confirm"})
 		<h1>Confirm required</h1>
 		<div class="card span2 mt18">
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p>

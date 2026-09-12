@@ -48,7 +48,7 @@ func planDetailPage(vm planDetailVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Workspace, Href: "/workspaces/" + vm.Workspace}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)}).Render(ctx, templ_7745c5c3_Buffer)
+			templ_7745c5c3_Err = breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: urlWithBase(vm.Page.Base, "/workspaces")}, breadcrumbCrumb{Label: vm.Workspace, Href: urlWithBase(vm.Page.Base, "/workspaces/"+vm.Workspace)}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)}).Render(ctx, templ_7745c5c3_Buffer)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -88,9 +88,9 @@ func planDetailPage(vm planDetailVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var5 templ.SafeURL
-				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL("/jobs/" + itoa(vm.ConsumedBy)))
+				templ_7745c5c3_Var5, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/"+itoa(vm.ConsumedBy))))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 17, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 17, Col: 100}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var5))
 				if templ_7745c5c3_Err != nil {
@@ -103,7 +103,7 @@ func planDetailPage(vm planDetailVM) templ.Component {
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(vm.ConsumedBy))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 17, Col: 98}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 17, Col: 125}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
@@ -1055,9 +1055,9 @@ func planConfirmDialog(vm planDetailVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var56 templ.SafeURL
-			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(vm.ConfirmForm()))
+			templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, vm.ConfirmForm())))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 223, Col: 65}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_plan_detail.templ`, Line: 223, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 			if templ_7745c5c3_Err != nil {

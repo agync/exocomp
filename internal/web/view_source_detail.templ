@@ -12,7 +12,7 @@ package web
 // open attribute, so the launcher still opens without script.
 templ sourceDetail(vm sourceDetailVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: "/sources"}, breadcrumbCrumb{Label: vm.Source.Name})
+		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: urlWithBase(vm.Page.Base, "/sources")}, breadcrumbCrumb{Label: vm.Source.Name})
 		<div class="card span2 mt18">
 			<div class="detailmeta">
 				<span class="chip"><span class="dot"></span>{ vm.Source.Kind }</span>
@@ -39,15 +39,15 @@ templ sourceDetail(vm sourceDetailVM) {
 				<div class="rowactions">
 					<button type="button" class="btn primary" data-modal-open="launch">Launch a run</button>
 					if vm.Source.Enabled {
-						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/disable") } class="inline-form">
+						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/disable")) } class="inline-form">
 							<button type="submit" class="btn quiet">Disable</button>
 						</form>
 					} else {
-						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/enable") } class="inline-form">
+						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/enable")) } class="inline-form">
 							<button type="submit" class="btn quiet">Enable</button>
 						</form>
 					}
-					<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/rm") } class="inline-form" data-confirm={ "Delete source " + vm.Source.Name + "? Its cached Python venv and ansible collections are removed with it." }>
+					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/rm")) } class="inline-form" data-confirm={ "Delete source " + vm.Source.Name + "? Its cached Python venv and ansible collections are removed with it." }>
 						<input type="hidden" name="confirmed" value="1"/>
 						<button type="submit" class="btn danger">Delete</button>
 					</form>
@@ -108,7 +108,7 @@ templ sourceDetail(vm sourceDetailVM) {
 						>Command</button>
 					</div>
 					<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
-						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/playbook") } class="writeform">
+						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/playbook")) } class="writeform">
 							<label for="rp-select">Playbook</label>
 							if len(vm.Playbooks) == 0 {
 								<select id="rp-select" name="playbook" disabled>
@@ -169,7 +169,7 @@ templ sourceDetail(vm sourceDetailVM) {
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
-						<form method="post" action={ templ.SafeURL("/sources/" + vm.Source.Name + "/run/command") } class="writeform">
+						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/command")) } class="writeform">
 							<label for="rc-host">Host pattern</label>
 							<input id="rc-host" name="host" type="text" required autocomplete="off" placeholder="web or fedora:!nas"/>
 							<label for="rc-command">Command</label>

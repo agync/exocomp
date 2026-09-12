@@ -57,8 +57,8 @@ templ workspacesList(vm workspacesVM) {
 						</thead>
 						<tbody>
 							for _, wsr := range vm.Workspaces {
-								<tr data-href={ templ.SafeURL("/workspaces/" + wsr.Name) }>
-									<td data-label="Name" class="ws-name"><a href={ templ.SafeURL("/workspaces/" + wsr.Name) }>{ wsr.Name }</a></td>
+								<tr data-href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + wsr.Name)) }>
+									<td data-label="Name" class="ws-name"><a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + wsr.Name)) }>{ wsr.Name }</a></td>
 									<td data-label="Posture" class="ws-cell">
 										<div class="ws-stack">
 											<b class="mono">{ wsr.PostureLabel() }</b>
@@ -69,7 +69,7 @@ templ workspacesList(vm workspacesVM) {
 										<div class="ws-stack">
 											@chip(wsr.DriftClass(), wsr.DriftLabel())
 											if wsr.ApprovalID > 0 {
-												<a class="ws-meta" href={ templ.SafeURL("/approvals/" + itoa(wsr.ApprovalID)) }>approval #{ itoa(wsr.ApprovalID) }</a>
+												<a class="ws-meta" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/approvals/" + itoa(wsr.ApprovalID))) }>approval #{ itoa(wsr.ApprovalID) }</a>
 											}
 										</div>
 									</td>
@@ -86,7 +86,7 @@ templ workspacesList(vm workspacesVM) {
 											</span>
 											if wsr.Locked {
 												<small class="mono ws-lockline">{ wsr.LockLine() }
-													<form method="post" action={ templ.SafeURL("/workspaces/" + wsr.Name + "/unlock") } class="inline-form" data-confirm={ "Force-unlock " + wsr.Name + "?" }>
+													<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + wsr.Name + "/unlock")) } class="inline-form" data-confirm={ "Force-unlock " + wsr.Name + "?" }>
 														<button type="submit" class="ws-unlock">force-unlock</button>
 													</form>
 												</small>
@@ -97,7 +97,7 @@ templ workspacesList(vm workspacesVM) {
 									</td>
 									if vm.Operator {
 										<td data-label="Actions" class="right">
-											@rowActions(workspaceRowActions(wsr))
+											@rowActions(workspaceRowActions(wsr), vm.Page.Base)
 										</td>
 									}
 								</tr>

@@ -36,8 +36,8 @@ templ workflowsList(vm workflowsVM) {
 						</thead>
 						<tbody>
 							for _, f := range vm.Workflows {
-								<tr data-href={ "/workflows/" + f.ID }>
-									<td class="mono"><a href={ templ.SafeURL("/workflows/" + f.ID) }>{ f.ID }</a></td>
+								<tr data-href={ urlWithBase(vm.Page.Base, "/workflows/" + f.ID) }>
+									<td class="mono"><a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workflows/" + f.ID)) }>{ f.ID }</a></td>
 									<td>@chip(f.StateClass(), string(f.State))</td>
 									<td class="right num">{ f.Progress() }</td>
 									<td>@stepDots(f.Steps)</td>
@@ -57,7 +57,7 @@ templ workflowsList(vm workflowsVM) {
 // never recomputed.
 templ workflowDetail(vm workflowVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Workflows", Href: "/workflows"}, breadcrumbCrumb{Label: "Workflow"})
+		@breadcrumb(breadcrumbCrumb{Label: "Workflows", Href: urlWithBase(vm.Page.Base, "/workflows")}, breadcrumbCrumb{Label: "Workflow"})
 		<h1>Workflow</h1>
 		<p class="meta"><span class="mono">{ vm.ID }</span></p>
 		if vm.NotFound {
@@ -86,7 +86,7 @@ templ workflowDetail(vm workflowVM) {
 									<td>@chip(st.StatusClass(), string(st.Status))</td>
 									<td>
 										if st.JobID != nil {
-											<a class="mono" href={ templ.SafeURL("/jobs/" + itoa64(*st.JobID)) }>#{ itoa64(*st.JobID) }</a>
+											<a class="mono" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(*st.JobID))) }>#{ itoa64(*st.JobID) }</a>
 										} else {
 											<span class="meta">-</span>
 										}

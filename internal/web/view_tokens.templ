@@ -16,7 +16,7 @@ templ tokensPage(vm tokensVM) {
 		} else {
 			@modal("tokens-mint", "Mint a token") {
 				<p class="meta">The secret is shown once, with a QR to pair a phone. Confirm with your own access token.</p>
-				<form method="post" action="/tokens/new" class="writeform">
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/tokens/new") } class="writeform">
 					<label for="tk-name">Token name</label>
 					<input id="tk-name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9._-]+" placeholder="blank to auto-generate"/>
 					<label for="tk-scope">Scope</label>
@@ -56,7 +56,7 @@ templ tokensPage(vm tokensVM) {
 												<button type="button" class="btn" data-modal-open={ "tk-rotate-" + t.Name }>Rotate</button>
 												@modal("tk-rotate-"+t.Name, "Rotate "+t.Name) {
 													<p class="meta">Reseals a fresh secret onto this token — same id, name, and scope — and drops the old secret and any sessions it holds.</p>
-													<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/rotate") } class="writeform">
+													<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/rotate")) } class="writeform">
 														<label for={ "tk-rot-exp-" + t.Name }>New expiry (optional)</label>
 														<input id={ "tk-rot-exp-" + t.Name } name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
 														<label for={ "tk-rot-ct-" + t.Name }>Confirm: your access token</label>
@@ -64,7 +64,7 @@ templ tokensPage(vm tokensVM) {
 														<div class="actions"><button type="submit" class="btn primary">Rotate</button></div>
 													</form>
 												}
-												<form method="post" action={ templ.SafeURL("/tokens/" + t.Name + "/revoke") } class="inline-form" data-confirm={ "Revoke token " + t.Name + "?" }>
+												<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/revoke")) } class="inline-form" data-confirm={ "Revoke token " + t.Name + "?" }>
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>
 												</form>
@@ -86,10 +86,10 @@ templ tokensPage(vm tokensVM) {
 templ tokenResult(vm tokenResultVM) {
 	@layout(vm.Page) {
 		if vm.Rotated {
-			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Rotated " + vm.Name})
+			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: urlWithBase(vm.Page.Base, "/tokens")}, breadcrumbCrumb{Label: "Rotated " + vm.Name})
 			<h1>Rotated { vm.Name }</h1>
 		} else {
-			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Minted " + vm.Name})
+			@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: urlWithBase(vm.Page.Base, "/tokens")}, breadcrumbCrumb{Label: "Minted " + vm.Name})
 			<h1>Minted { vm.Name }</h1>
 		}
 		<div class="card span2 mt18">
@@ -116,7 +116,7 @@ templ tokenResult(vm tokenResultVM) {
 
 templ tokensReauthNotice(p page) {
 	@layout(p) {
-		@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: "/tokens"}, breadcrumbCrumb{Label: "Confirm"})
+		@breadcrumb(breadcrumbCrumb{Label: "Tokens", Href: urlWithBase(p.Base, "/tokens")}, breadcrumbCrumb{Label: "Confirm"})
 		<h1>Confirm required</h1>
 		<div class="card span2 mt18">
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the write.</p>

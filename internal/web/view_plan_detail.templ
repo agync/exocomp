@@ -9,12 +9,12 @@ package web
 // apply glyph open the confirm; with JS off, ?launch=1 renders it already open.
 templ planDetailPage(vm planDetailVM) {
 	@layout(vm.Page) {
-		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: "/workspaces"}, breadcrumbCrumb{Label: vm.Workspace, Href: "/workspaces/" + vm.Workspace}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)})
+		@breadcrumb(breadcrumbCrumb{Label: "Workspaces", Href: urlWithBase(vm.Page.Base, "/workspaces")}, breadcrumbCrumb{Label: vm.Workspace, Href: urlWithBase(vm.Page.Base, "/workspaces/" + vm.Workspace)}, breadcrumbCrumb{Label: "plan #" + itoa(vm.ID)})
 		<div class={ "card span2 mt18 plan-detail", vm.RingClass() }>
 			<div class="detailmeta">
 				@chip(vm.LifecycleClass(), vm.Lifecycle)
 				if vm.ConsumedBy != 0 {
-					<a class="mono" href={ templ.SafeURL("/jobs/" + itoa(vm.ConsumedBy)) }>#{ itoa(vm.ConsumedBy) }</a>
+					<a class="mono" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa(vm.ConsumedBy))) }>#{ itoa(vm.ConsumedBy) }</a>
 				}
 				if vm.Latest {
 					@chip("run", "LATEST")
@@ -220,7 +220,7 @@ templ planConfirmDialog(vm planDetailVM) {
 			</dl>
 			<div class="actions">
 				if !vm.Denied() {
-					<form method="post" action={ templ.SafeURL(vm.ConfirmForm()) } class="inline-form">
+					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, vm.ConfirmForm())) } class="inline-form">
 						if !vm.Stale {
 							<input type="hidden" name="plan" value={ itoa(vm.ID) }/>
 							<input type="hidden" name="confirmed" value="1"/>

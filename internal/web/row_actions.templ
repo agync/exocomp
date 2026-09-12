@@ -7,13 +7,14 @@ package web
 // is a <details> whose summary toggles the item list inline (POST and link
 // items work; modal items are inert without JS, same as data-modal-open
 // today); a selectInit-style upgrade turns it into the floating menu with
-// Esc/arrows/Enter and above-flip.
-templ rowActions(acts []rowAction) {
+// Esc/arrows/Enter and above-flip. base re-prefixes the root-absolute Form
+// actions; a.Href arrives already prefixed from the Go constructors.
+templ rowActions(acts []rowAction, base string) {
 	<div class="rowacts">
 		for _, a := range rowGlyphs(acts) {
 			if a.Label != "" {
 				if a.Form != "" {
-					<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+					<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form">
 						for k, v := range a.Hidden {
 							<input type="hidden" name={ k } value={ v }/>
 						}
@@ -23,7 +24,7 @@ templ rowActions(acts []rowAction) {
 					<a class="raglyph-label" href={ templ.SafeURL(a.Href) } aria-label={ a.Name } title={ a.Name }>{ a.Label }</a>
 				}
 			} else if a.Form != "" && a.Confirm != "" {
-				<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form" data-confirm={ a.Confirm }>
+				<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form" data-confirm={ a.Confirm }>
 					for k, v := range a.Hidden {
 						<input type="hidden" name={ k } value={ v }/>
 					}
@@ -32,7 +33,7 @@ templ rowActions(acts []rowAction) {
 					</button>
 				</form>
 			} else if a.Form != "" {
-				<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+				<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form">
 					for k, v := range a.Hidden {
 						<input type="hidden" name={ k } value={ v }/>
 					}
@@ -56,14 +57,14 @@ templ rowActions(acts []rowAction) {
 						<li class={ "ramenu-item", templ.KV("danger", a.Danger) } role="menuitem">
 							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
 							if a.Form != "" && a.Confirm != "" {
-								<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form" data-confirm={ a.Confirm }>
+								<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form" data-confirm={ a.Confirm }>
 									for k, v := range a.Hidden {
 										<input type="hidden" name={ k } value={ v }/>
 									}
 									<button type="submit" class="ramenu-btn">{ a.Name }</button>
 								</form>
 							} else if a.Form != "" {
-								<form method="post" action={ templ.SafeURL(a.Form) } class="inline-form">
+								<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form">
 									for k, v := range a.Hidden {
 										<input type="hidden" name={ k } value={ v }/>
 									}
