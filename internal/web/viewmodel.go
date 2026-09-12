@@ -1727,6 +1727,531 @@ type backupRow struct {
 	Age       string
 	Freshness string // ok|wait|fail per 24h/48h thresholds
 	Drill     bool
+	// RunningJobID is the job whose backup run is in flight, 0 otherwise. The
+	// card draws A9's `● RUNNING · job #…` from it; the run's job is the newest
+	// for the target's "backup:<name>" concurrency key, because the job opens
+	// the run the moment it is claimed.
+	RunningJobID int64
+}
+
+// backupsVM is the /system/backups management surface (SPEC §4.1): every
+// target with its retention, schedule and last run, the Add-target dialog,
+// and the Restore DR drawer. AddForm is the add dialog's render state (nil at
+// rest, the filled form with refusals on a 422 re-render); RetentionForm is
+// one row's edit-retention dialog state (nil at rest, else the one refused
+// row's form, which the 422 re-render re-opens); Restore is the DR drawer's
+// state (nil at rest, the filled drawer on a 422 re-render, or the opened
+// drawer for a deep link). Snapshots is the cross-target snapshot read the
+// drawer's radios draw (fold S-3). Notice is a whole-surface refusal line (an
+// rm that found nothing to remove) rendered above the tray at 4xx — never a
+// flash.
+type backupsVM struct {
+	Page          page
+	Operator      bool
+	Targets       []backupTargetRow
+	Snapshots     []snapshotRow
+	AddForm       *backupAddFormVM
+	RetentionForm *backupRetentionFormVM
+	Restore       *restoreFormVM
+	Notice        string
+}
+
+// backupTargetRow is one row of the /system/backups tray table (SPEC §4.1):
+// its posture (TARGET · KIND · RETENTION · SCHEDULE) and the newest run's
+// facts (LAST RUN). URI is scrubbed of userinfo for the KIND cell — a target
+// whose --uri embeds credentials must not echo them (invariant 4).
+type backupTargetRow struct {
+	Name      string
+	Kind      string
+	URI       string
+	Retention string
+	Enabled   bool
+	Base      string
+	// Schedule facts: Cadence is the target's kind=backup schedule cron ("" =
+	// none) and the add dialog's prefill source; Next is the human "next in
+	// {t}" line.
+	Cadence string
+	Next    string
+	// Last-run facts.
+	HasRun   bool
+	State    string // running|succeeded|failed|cancelled|never
+	Snapshot string
+	Age      string
+	Bytes    string
+	Duration string
+	JobID    int64
+	// DrillOK/DrillAge read the target's newest backup-drill job: a succeeded
+	// drill marks the newest snapshot "drilled {age} ago ok" (A4's data).
+	DrillOK  bool
+	DrillAge string
+	// FailedSeq counts consecutive failed runs, the "{n} failed in a row"
+	// fact of a FAILED row.
+	FailedSeq int
+	Reason    string
+	// Refusal is a row verb's refusal sentence (forms/SPEC.md), carried to the
+	// rowActions partial by backupRowActions: non-empty only on a refused
+	// row-verb re-render.
+	Refusal string
+}
+
+// RetentionLabel is the RETENTION cell's first line: the parsed policy words
+// ("daily 7 · weekly 4", "keep all") or "—" for a git target.
+func (r backupTargetRow) RetentionLabel() string {
+	if r.Kind == backup.KindGit {
+		return "—"
+	}
+	switch r.Retention {
+	case "none":
+		return "keep all"
+	case "":
+		return "daily 7 · weekly 4"
+	}
+	parts := strings.Split(r.Retention, ",")
+	words := make([]string, 0, len(parts))
+	for _, p := range parts {
+		k, v, ok := strings.Cut(strings.TrimSpace(p), "=")
+		if ok {
+			words = append(words, k+" "+v)
+		}
+	}
+	if len(words) == 0 {
+		return r.Retention
+	}
+	return strings.Join(words, " · ")
+}
+
+// RetentionMeta is the RETENTION cell's second line: the one honest
+// consequence ("prunes after run", "never prunes · grows", "git keeps
+// history").
+func (r backupTargetRow) RetentionMeta() string {
+	if r.Kind == backup.KindGit {
+		return "git keeps history"
+	}
+	if r.Retention == "none" {
+		return "never prunes · grows"
+	}
+	return "prunes after run"
+}
+
+// RetentionClass names the RETENTION cell's signal: unbounded growth ("keep
+// all") is a wait finding, the pruned policies quiet, a git target dim.
+func (r backupTargetRow) RetentionClass() string {
+	if r.Retention == "none" {
+		return "wait"
+	}
+	if r.Kind == backup.KindGit {
+		return "dim"
+	}
+	return "ok"
+}
+
+// HasSchedule reports whether the target carries a kind=backup schedule (the
+// SCHEDULE cell's cadence line and its "add one" fallback).
+func (r backupTargetRow) HasSchedule() bool { return r.Cadence != "" }
+
+// StateClass names the LAST RUN state word's chip colour, mirroring the job
+// palette: ok for succeeded, fail for failed/cancelled, run for running, dim
+// for never.
+func (r backupTargetRow) StateClass() string {
+	switch r.State {
+	case "succeeded":
+		return "ok"
+	case "failed":
+		return "fail"
+	case "running":
+		return "run"
+	case "cancelled":
+		return "fail"
+	default:
+		return "dim"
+	}
+}
+
+// LastRunWord is the LAST RUN cell's chip word, "" for a never-run target
+// (which renders as plain dim text, not a chip).
+func (r backupTargetRow) LastRunWord() string {
+	if !r.HasRun {
+		return ""
+	}
+	return strings.ToUpper(r.State)
+}
+
+// LastRunLine is the LAST RUN cell's first line after the chip: the snapshot
+// and age for a success, the age for a failure, the elapsed + job for a
+// running run (A9), "never ran" for a target with no history.
+func (r backupTargetRow) LastRunLine() string {
+	switch r.State {
+	case "running":
+		return r.Duration + " · job #" + itoa64(r.JobID)
+	case "succeeded":
+		return "#" + r.Snapshot + " " + r.Age + " ago"
+	case "failed":
+		return r.Age + " ago"
+	case "cancelled":
+		return r.Age + " ago"
+	default:
+		return "never ran"
+	}
+}
+
+// LastRunMeta is the LAST RUN cell's second line: the bytes + duration +
+// job + drill facts of a success, the reason + job + failed-in-a-row of a
+// failure, the job of a cancelled run.
+func (r backupTargetRow) LastRunMeta() string {
+	switch r.State {
+	case "succeeded":
+		parts := []string{}
+		if r.Bytes != "" {
+			parts = append(parts, "+"+r.Bytes)
+		}
+		if r.Duration != "" {
+			parts = append(parts, r.Duration)
+		}
+		if r.JobID > 0 {
+			parts = append(parts, "job #"+itoa64(r.JobID))
+		}
+		if r.DrillOK {
+			parts = append(parts, "drill "+r.DrillAge+" ago ok")
+		}
+		return strings.Join(parts, " · ")
+	case "failed":
+		parts := []string{}
+		if r.Reason != "" {
+			parts = append(parts, truncateMeta(r.Reason, lastRunReasonCap))
+		}
+		if r.JobID > 0 {
+			parts = append(parts, "job #"+itoa64(r.JobID))
+		}
+		if r.FailedSeq > 1 {
+			parts = append(parts, itoa(int64(r.FailedSeq))+" failed in a row")
+		}
+		return strings.Join(parts, " · ")
+	case "cancelled":
+		if r.JobID > 0 {
+			return "job #" + itoa64(r.JobID)
+		}
+	}
+	return ""
+}
+
+// ShortFact is the Backups card's third id-cluster cell: a running run's
+// `● RUNNING · job #…` (A9), a success's snapshot, or empty for a failure
+// (its FAILED chip and age carry the fact).
+func (r backupRow) ShortFact() string {
+	if r.State == "running" {
+		return "● RUNNING · job #" + itoa64(r.RunningJobID)
+	}
+	if r.Snapshot != "" {
+		return "#" + r.Snapshot
+	}
+	return ""
+}
+
+// backupsCardChip derives the Backups card's state chip from the freshness
+// rows the card draws (copy.txt): OK (ok), {n} OF {m} FAILING (wait; fail when
+// n ≥ 2 or n = m), NONE (wait) when no target exists or one has never run.
+func backupsCardChip(rows []backupRow) (string, string) {
+	nFailed, nNever := 0, 0
+	for _, r := range rows {
+		switch r.State {
+		case "failed":
+			nFailed++
+		case "never":
+			nNever++
+		}
+	}
+	switch {
+	case nFailed > 0:
+		if nFailed >= 2 || nFailed == len(rows) {
+			return itoa(int64(nFailed)) + " OF " + itoa(int64(len(rows))) + " FAILING", "fail"
+		}
+		return "1 OF " + itoa(int64(len(rows))) + " FAILING", "wait"
+	case len(rows) == 0 || nNever > 0:
+		return "NONE", "wait"
+	default:
+		return "OK", "ok"
+	}
+}
+
+// retentionCells splits a stored retention spec into the edit dialog's cells
+// (daily · weekly · keep all). "none" is keep-all; an unparseable spec leaves
+// the cells empty and the meta shows the raw value.
+func retentionCells(spec string) (daily, weekly string, keepAll bool) {
+	if spec == "none" {
+		return "", "", true
+	}
+	for _, part := range strings.Split(spec, ",") {
+		k, v, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if ok {
+			switch k {
+			case "daily":
+				daily = v
+			case "weekly":
+				weekly = v
+			}
+		}
+	}
+	return daily, weekly, false
+}
+
+// retentionFormFor dereferences one row's edit-retention dialog state, filling
+// the at-rest form from the row's stored retention so the modal opens with the
+// current policy.
+func (vm backupsVM) retentionFormFor(row backupTargetRow) backupRetentionFormVM {
+	f := vm.retentionForm(row.Name)
+	if vm.RetentionForm == nil || vm.RetentionForm.Name != row.Name {
+		f.Daily, f.Weekly, f.KeepAll = retentionCells(row.Retention)
+	}
+	return f
+}
+
+// NewestAge is the drawer's From meta "snapshot · {age} old": the newest
+// snapshot's age across targets.
+func (f *restoreFormVM) NewestAge() string {
+	if len(f.Snapshots) == 0 {
+		return "—"
+	}
+	return f.Snapshots[0].Age
+}
+
+// snapshotRow is one recoverable point in time in the Restore drawer's radios
+// (SPEC §4.3, fold S-3): a SUCCEEDED run's snapshot across ANY target, newest
+// first. ID is the short snapshot id the typed confirm must match (the CLI's
+// shortID length). Drilled marks the newest snapshot of a target whose newest
+// drill job succeeded — a drill verifies the newest snapshot at drill time
+// (A4's data source), so only that one is proven.
+type snapshotRow struct {
+	ID       string
+	Target   string
+	Age      string
+	Size     string
+	Drilled  bool
+	DrillAge string
+}
+
+// restoreFormVM is the Restore DR drawer's render state (SPEC §4.3). Mode is
+// the From switch: "snapshot" (the DR path) or "replica" (litestream mode —
+// m76's restore-from-replica deep-links the drawer with Mode=replica, the
+// same form and the same typed-confirm gate, where the typed confirm matches
+// the word "replica"). Open reports whether the drawer should auto-open.
+// Snapshots are the radios' rows; Selected is the checked radio's snapshot
+// id; Confirm is the typed id. LossAge and Waiting name the WHAT HAPPENS loss
+// for the selected snapshot (its age and the pending approvals that would
+// die); RunningJobs is the "the queue drains · {n} running jobs finish"
+// count; Lag is the replica meta for the From switch. ErrConfirm is the hard
+// rule (c) refusal — a typed id that does not match the selected snapshot —
+// and ErrForm a whole-submit refusal.
+type restoreFormVM struct {
+	Mode        string
+	Open        bool
+	Snapshots   []snapshotRow
+	Selected    string
+	Confirm     string
+	LossAge     string
+	Waiting     int
+	RunningJobs int
+	Lag         string
+	ErrConfirm  string
+	ErrForm     string
+	Submitting  bool
+}
+
+func (f *restoreFormVM) effective() restoreFormVM {
+	if f == nil {
+		return restoreFormVM{}
+	}
+	return *f
+}
+
+// SelectedSnapshot returns the radio the operator picked, nil when nothing is
+// selected — the source of the danger button's label and the loss line.
+func (f *restoreFormVM) SelectedSnapshot() *snapshotRow {
+	for i := range f.Snapshots {
+		if f.Snapshots[i].ID == f.Selected {
+			return &f.Snapshots[i]
+		}
+	}
+	return nil
+}
+
+// WaitingLabel is the WHAT HAPPENS loss count, pluralised the way the copy
+// reads ("1 waiting approval" · "2 waiting approvals").
+func (f *restoreFormVM) WaitingLabel() string {
+	if f.Waiting == 1 {
+		return "1 waiting approval"
+	}
+	return itoa(int64(f.Waiting)) + " waiting approvals"
+}
+
+// Pending reports whether the drawer is mid-submit, disabling the primary.
+func (f *restoreFormVM) Pending() bool { return f != nil && f.Submitting }
+
+// ErrFormText is the whole-submit refusal for the status line.
+func (f *restoreFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// backupAddFormVM is the Add-target dialog's refusal state (forms/SPEC.md).
+// Name, Kind, Repository, Daily, Weekly, KeepAll and ScheduleCron are the
+// typed values a 422 re-render echoes. The repository password is never
+// carried or rendered — it is derived on the daemon side when the first
+// backup runs (invariant 4), so the form has no password field at all.
+// Sibling names the newest existing target whose cadence prefilled
+// ScheduleCron ("" when none). Err* hold the human sentences; ErrForm the
+// whole-submit refusal; FirstInvalid names the control to focus; Submitting
+// drives the status line and disables the primary.
+type backupAddFormVM struct {
+	Name         string
+	Kind         string
+	Repository   string
+	Daily        string
+	Weekly       string
+	KeepAll      bool
+	ScheduleCron string
+	Sibling      string
+	ErrName      string
+	FixName      string
+	ErrKind      string
+	ErrRepo      string
+	ErrRetention string
+	ErrSchedule  string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *backupAddFormVM) effective() backupAddFormVM {
+	if f == nil {
+		return backupAddFormVM{}
+	}
+	return *f
+}
+
+func (f *backupAddFormVM) Pending() bool { return f != nil && f.Submitting }
+
+func (f *backupAddFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// kindIs reports whether the Kind segmented switch shows k: the typed value on
+// a 422 re-render, the restic_local default at rest.
+func (f *backupAddFormVM) kindIs(k string) bool {
+	v := f.effective()
+	if v.Kind == "" {
+		return k == backup.KindResticLocal
+	}
+	return v.Kind == k
+}
+
+func (f *backupAddFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "bk-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "nas01",
+		Help:        "How the dead-man, the powerline and the recovery kit will name it.",
+		ErrMsg:      v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *backupAddFormVM) repoField() fieldMeta {
+	v := f.effective()
+	help := "restic -r syntax · the repository password is derived on the daemon side, never stored or shown."
+	if v.Kind == backup.KindGit {
+		help = "A git remote — restic kinds take a repository, git takes a remote."
+	}
+	return fieldMeta{
+		ID: "bk-repo", Label: "Repository", Name: "repository", Value: v.Repository,
+		Placeholder: "local:/var/backups/exocomp · s3:s3.us-west-002.backblazeb2.com/exocomp · git@forge.lan:ops/exocomp-config.git",
+		Help:        help,
+		ErrMsg:      v.ErrRepo, FirstInvalid: v.FirstInvalid == "repository",
+	}
+}
+
+func (f *backupAddFormVM) scheduleField() fieldMeta {
+	v := f.effective()
+	help := "Creates a kind=backup schedule on /schedules · edit it there."
+	if v.Sibling != "" {
+		help = "Same cadence as " + v.Sibling + " · creates a kind=backup schedule on /schedules · edit it there."
+	}
+	return fieldMeta{
+		ID: "bk-schedule", Label: "Schedule", Name: "schedule", Value: v.ScheduleCron,
+		Placeholder: "0 2 * * * * or @every 24h · empty = no schedule",
+		Help:        help,
+		ErrMsg:      v.ErrSchedule, FirstInvalid: v.FirstInvalid == "schedule",
+	}
+}
+
+// RetentionValue renders the retention cells into the stored spec: "none"
+// for keep-all, the "daily=d,weekly=w" form from whichever cells are set
+// (both empty is the default policy — a week of dailies and a month of
+// weeklies, which the engine applies when the spec is empty).
+func (f *backupAddFormVM) RetentionValue() string {
+	v := f.effective()
+	return retentionSpec(v.Daily, v.Weekly, v.KeepAll)
+}
+
+// backupRetentionFormVM is one row's edit-retention dialog state: the one
+// refused row's cells on a 422 re-render, so the modal re-opens filled.
+// KeepAll maps the "never prunes · grows" (--retention none) case.
+type backupRetentionFormVM struct {
+	Name         string
+	Daily        string
+	Weekly       string
+	KeepAll      bool
+	ErrDaily     string
+	ErrWeekly    string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+// retentionForm dereferences the edit-retention state for one row: the
+// refused form when the row is the target, else an at-rest form for that name.
+func (vm backupsVM) retentionForm(name string) backupRetentionFormVM {
+	if vm.RetentionForm != nil && vm.RetentionForm.Name == name {
+		return *vm.RetentionForm
+	}
+	return backupRetentionFormVM{Name: name}
+}
+
+func (f backupRetentionFormVM) effective() backupRetentionFormVM {
+	return f
+}
+
+func (f backupRetentionFormVM) Pending() bool { return f.Submitting }
+
+func (f backupRetentionFormVM) ErrFormText() string {
+	return f.ErrForm
+}
+
+// RetentionValue renders the edit-retention cells into the stored spec, the
+// mirror of backupAddFormVM.RetentionValue.
+func (f *backupRetentionFormVM) RetentionValue() string {
+	v := f.effective()
+	return retentionSpec(v.Daily, v.Weekly, v.KeepAll)
+}
+
+// retentionSpec builds the stored retention string from the edit dialog's
+// cells: "none" for keep-all, the set cells joined, "" for the default.
+func retentionSpec(daily, weekly string, keepAll bool) string {
+	if keepAll {
+		return "none"
+	}
+	var parts []string
+	if daily != "" {
+		parts = append(parts, "daily="+daily)
+	}
+	if weekly != "" {
+		parts = append(parts, "weekly="+weekly)
+	}
+	return strings.Join(parts, ",")
 }
 
 // workspaceRow is one tofu workspace with its drift marker.

@@ -1,0 +1,455 @@
+package web
+
+import "exocomp.dev/exocomp/internal/backup"
+
+// backupsList is the /system/backups management surface (SPEC §4.1, artboard
+// 1e): the tray-table of every target (TARGET · KIND · RETENTION · SCHEDULE ·
+// LAST RUN · ACTIONS), the Add-target dialog, each row's edit-retention
+// dialog, and the Restore DR drawer. The run verb is absent on a DISABLED row
+// and the chevron never moves (backupRowActions). The drawer is a standalone
+// partial (restoreDrawer) so m76's litestream leg can deep-link it in replica
+// mode (fold: the drawer contract is this file's).
+templ backupsList(vm backupsVM) {
+	@layout(vm.Page) {
+		if vm.Operator {
+			@backupAddDialog(vm)
+		}
+		<section class="sys-bkbar">
+			<span class="sys-bk-meta">{ itoa(int64(len(vm.Targets))) } targets · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
+			if vm.Operator {
+				<span class="sys-bk-verbs">
+					<button type="button" class="btn danger ring" data-modal-open="restore-backups">Restore</button>
+					<button type="button" class="btn quiet" data-modal-open="backups-add">Add target</button>
+				</span>
+			}
+		</section>
+		if vm.Notice != "" {
+			<p class="error" role="alert">{ vm.Notice }</p>
+		}
+		<div class="card span2 mt18 tray">
+			<div class="kicker">System / Backups</div>
+			<h3>Targets</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing backups needs an operator token.</p>
+			}
+			if len(vm.Targets) == 0 {
+				<p class="meta">No backup targets — add one with the Add target button or <code>exocomp backup add-target</code>.</p>
+			} else {
+				<div class="tablewrap stackable bk-table">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">TARGET</th>
+								<th scope="col">KIND</th>
+								<th scope="col">RETENTION</th>
+								<th scope="col">SCHEDULE</th>
+								<th scope="col">LAST RUN</th>
+								if vm.Operator {
+									<th scope="col" class="actions-col">ACTIONS</th>
+								}
+							</tr>
+						</thead>
+						<tbody>
+							for _, row := range vm.Targets {
+								<tr class={ "bk-row", templ.KV("is-disabled", !row.Enabled) }>
+									<td data-label="TARGET">
+										<span class="bk-target-name">{ row.Name }</span>
+										<span class="bk-target-state">@enabledChip(row.Enabled, false)</span>
+									</td>
+									<td data-label="KIND" class="bk-kind">
+										<span class="mono">{ row.Kind }</span>
+										<span class="mono uri" title={ row.URI }>{ row.URI }</span>
+									</td>
+									<td data-label="RETENTION" class="bk-ret">
+										<span class={ "mono", row.RetentionClass() }>{ row.RetentionLabel() }</span>
+										<span class="meta">{ row.RetentionMeta() }</span>
+									</td>
+									<td data-label="SCHEDULE" class="bk-sched">
+										if row.HasSchedule() {
+											<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="mono">{ row.Cadence }</a>
+											<span class="meta">{ row.Next }</span>
+										} else {
+											<span class="meta wait-text">no schedule</span>
+											<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="meta">add one</a>
+										}
+									</td>
+									<td data-label="LAST RUN" class="bk-lastrun">
+										<span class="lr-line">
+											if row.LastRunWord() != "" {
+												@chip(row.StateClass(), row.LastRunWord())
+											}
+											<span class={ "lr-text", templ.KV("dim", !row.HasRun) }>{ row.LastRunLine() }</span>
+										</span>
+										<span class="lr-meta">{ row.LastRunMeta() }</span>
+									</td>
+									if vm.Operator {
+										<td data-label="ACTIONS" class="actions-col">
+											@rowActions(backupRowActions(row), vm.Page.Base)
+										</td>
+									}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+		<p class="sys-bk-footer">
+			<span>▾ holds: edit retention · disable · drill now · ─ · remove asks first</span>
+			<span class="right">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
+		</p>
+
+		@restoreDrawer(vm.Restore, vm.Page.Base)
+
+		for _, row := range vm.Targets {
+			if vm.Operator {
+				@backupRetentionDialog(vm, row)
+			}
+		}
+		if vm.Restore != nil && vm.Restore.Open {
+			<script>exoModalOpen("restore-backups");</script>
+		}
+	}
+}
+
+// backupAddDialog is the Add-target dialog (SPEC §4.2): Name · Kind segmented
+// (three real kinds — the B-1 fold cut restic_sftp, which no engine or CLI
+// handles) · Repository · Retention cells · Schedule prefilled from the newest
+// sibling. The primary is ONE verb — "Add and queue first backup — {name}" —
+// that registers the target, creates its schedule and queues the first backup.
+// The repository password is never a field: it is derived on the daemon side
+// when the first backup runs (invariant 4).
+templ backupAddDialog(vm backupsVM) {
+	@modal("backups-add", "Add a backup target") {
+		<p class="kicker">SYSTEM · BACKUPS</p>
+		<form method="post" action={ urlWithBase(vm.Page.Base, "/system/backups/add") } class="writeform" id="backup-add-form" novalidate data-backup-add>
+			@fieldInput(vm.AddForm.nameField())
+			<label class="field">
+				<span class="label">Kind</span>
+				<div class="seg" role="radiogroup" aria-label="Kind">
+					<label><input type="radio" name="kind" value={ backup.KindResticLocal } checked?={ vm.AddForm.kindIs(backup.KindResticLocal) }/>restic_local</label>
+					<label><input type="radio" name="kind" value={ backup.KindResticS3 } checked?={ vm.AddForm.kindIs(backup.KindResticS3) }/>restic_s3</label>
+					<label><input type="radio" name="kind" value={ backup.KindGit } checked?={ vm.AddForm.kindIs(backup.KindGit) }/>git</label>
+				</div>
+				<span class={ "meta", templ.KV("is-error", vm.AddForm.effective().ErrKind != "") }>
+					if vm.AddForm.effective().ErrKind != "" {
+						<span class="msg">▲ { vm.AddForm.effective().ErrKind }</span>
+					} else {
+						restic kinds take a repository and retention · git takes a remote.
+					}
+				</span>
+			</label>
+			@fieldInput(vm.AddForm.repoField())
+			<label class="field">
+				<span class="label">Retention</span>
+				<span class="ret-cells">
+					<label class="ret-cell">daily <input class="control" type="number" name="daily" min="0" value={ vm.AddForm.effective().Daily } aria-invalid?={ vm.AddForm.effective().ErrRetention != "" }/></label>
+					<label class="ret-cell">weekly <input class="control" type="number" name="weekly" min="0" value={ vm.AddForm.effective().Weekly } aria-invalid?={ vm.AddForm.effective().ErrRetention != "" }/></label>
+				</span>
+				<label class="checkline"><input type="checkbox" name="keep_all" value="1" checked?={ vm.AddForm.effective().KeepAll }/> keep all — never prunes</label>
+				<span class={ "meta", templ.KV("is-error", vm.AddForm.effective().ErrRetention != "") }>
+					if vm.AddForm.effective().ErrRetention != "" {
+						<span class="msg">▲ { vm.AddForm.effective().ErrRetention }</span>
+					} else {
+						Default: a week of dailies and a month of weeklies · keep all never prunes (--retention none).
+					}
+				</span>
+			</label>
+			@fieldInput(vm.AddForm.scheduleField())
+			@formStatus(vm.AddForm.Pending(), vm.AddForm.ErrFormText(), "Adding target")
+			<div class="actions">
+				<button type="submit" class="btn primary" id="backup-add-submit" disabled?={ vm.AddForm.Pending() }>Add and queue first backup — { vm.AddForm.effective().Name }</button>
+			</div>
+			<p class="echo">same as exocomp backup add-target { vm.AddForm.effective().Name } --kind { vm.AddForm.effective().Kind } --uri … --retention daily={ vm.AddForm.effective().Daily },weekly={ vm.AddForm.effective().Weekly } &nbsp;then&nbsp; exocomp backup run { vm.AddForm.effective().Name }</p>
+		</form>
+		@backupAddFormJS()
+	}
+}
+
+// backupRetentionDialog is one row's edit-retention dialog: the two number
+// cells + keep-all the add dialog uses, prefilled from the row's stored
+// retention.
+templ backupRetentionDialog(vm backupsVM, row backupTargetRow) {
+	@modal("retention-"+row.Name, "Edit retention — "+row.Name) {
+		<form method="post" action={ urlWithBase(vm.Page.Base, "/system/backups/" + row.Name + "/retention") } class="writeform" data-retention-form>
+			@retentionCellsInput(vm.retentionFormFor(row))
+			@formStatus(vm.retentionFormFor(row).Pending(), vm.retentionFormFor(row).ErrFormText(), "Saving retention")
+			<div class="actions">
+				<button type="submit" class="btn primary" disabled?={ vm.retentionFormFor(row).Pending() }>Save retention</button>
+			</div>
+		</form>
+	}
+}
+
+// retentionCellsInput is the shared daily · weekly · keep-all control group.
+templ retentionCellsInput(f backupRetentionFormVM) {
+	<label class="field">
+		<span class="label">Retention</span>
+		<span class="ret-cells">
+			<label class="ret-cell">daily <input class="control" type="number" name="daily" min="0" value={ f.effective().Daily } aria-invalid?={ f.effective().ErrDaily != "" }/></label>
+			<label class="ret-cell">weekly <input class="control" type="number" name="weekly" min="0" value={ f.effective().Weekly } aria-invalid?={ f.effective().ErrWeekly != "" }/></label>
+		</span>
+		<label class="checkline"><input type="checkbox" name="keep_all" value="1" checked?={ f.effective().KeepAll }/> keep all — never prunes</label>
+		<span class={ "meta", templ.KV("is-error", f.effective().ErrDaily != "" || f.effective().ErrWeekly != "") }>
+			if f.effective().ErrDaily != "" || f.effective().ErrWeekly != "" {
+				if f.effective().ErrDaily != "" {
+					<span class="msg">▲ { f.effective().ErrDaily }</span>
+				} else {
+					<span class="msg">▲ { f.effective().ErrWeekly }</span>
+				}
+			} else {
+				Default: a week of dailies and a month of weeklies · keep all never prunes (--retention none).
+			}
+		</span>
+	</label>
+}
+
+// restoreDrawer is the Restore DR drawer (SPEC §4.3, fail ring): the From
+// switch, the snapshot radios newest-first across targets, WHAT HAPPENS with
+// the loss in fail, and the typed confirm — the round's hard rule (c), no
+// second confirm after it. The danger button rings until the typed id matches
+// the selected snapshot's id (restoreDrawerJS), then fills. In replica mode
+// (m76's litestream deep link, ?restore=replica) the radios give way to the
+// word "replica" as the confirm target and the CLI echo shows
+// --from-litestream. The live daemon cannot replace the store it runs on, so
+// a confirmed restore names the recovery-kit CLI path instead of pretending.
+templ restoreDrawer(f *restoreFormVM, base string) {
+	@modal("restore-backups", "Restore the control plane") {
+		<p class="kicker fail">SYSTEM · BACKUPS · DISASTER RECOVERY</p>
+		<p class="lede">This replaces exocomp's own store. It is the path you take when the daemon's disk is gone — not a way to undo a change. Undo lives on Tofu state serials and plan history.</p>
+		<form method="post" action={ urlWithBase(base, "/system/backups/restore") } class="writeform" id="restore-backups-form" novalidate data-restore>
+			<label class="field">
+				<span class="label">From</span>
+				<div class="seg" role="radiogroup" aria-label="From">
+					<label><input type="radio" name="from" value="snapshot" checked?={ f.effective().Mode != "replica" }/> snapshot</label>
+					<label><input type="radio" name="from" value="replica" checked?={ f.effective().Mode == "replica" }/> replica</label>
+				</div>
+				<span class="meta">snapshot · { f.NewestAge() } old, verified by the drill · replica · { orDash(f.effective().Lag) } behind, unverified</span>
+			</label>
+			if f.effective().Mode == "replica" {
+				<div class="restore-replica-note">
+					<p class="meta">Restore exocomp.db only, from the Litestream replica, onto a data dir that already holds the keyring. This is the fast-RPO path — the full restic restore still comes first.</p>
+				</div>
+			} else {
+				<fieldset class="snaps">
+					<legend>Snapshot</legend>
+					for _, snap := range f.effective().Snapshots {
+						<label class="snap-row" data-snap={ snap.ID }>
+							<input type="radio" name="snapshot" value={ snap.ID } checked?={ f.effective().Selected == snap.ID }/>
+							<span class="mono snap-id">#{ snap.ID }</span>
+							<span class="snap-facts">{ snap.Target } · { snap.Age } ago · { orDash(snap.Size) }</span>
+							if snap.Drilled {
+								<span class="snap-drill ok">drilled { snap.DrillAge } ago (ok)</span>
+							}
+						</label>
+					}
+					<span class="meta">newest first across every target · all { itoa(int64(len(f.effective().Snapshots))) } snapshots</span>
+				</fieldset>
+			}
+			<div class="wh">
+				<p><b>1 ·</b> the queue drains · { itoa(int64(f.effective().RunningJobs)) } running jobs finish, nothing new starts</p>
+				<p><b>2 ·</b> the store is replaced from <span class="mono">{ f.selectedLabel() }</span> · { f.effective().LossAge } of events, jobs and { f.WaitingLabel() } are lost <span class="fail-text">(fail)</span></p>
+				<p><b>3 ·</b> the daemon restarts · you sign in again · doctor runs</p>
+			</div>
+			<label class="field">
+				<span class="label">{ f.confirmLabel() }</span>
+				<input class="control" id="restore-confirm" name="confirm" value={ f.effective().Confirm } spellcheck="false" placeholder={ f.confirmPlaceholder() } aria-invalid?={ f.effective().ErrConfirm != "" } aria-describedby="restore-confirm-meta" autocomplete="off"/>
+				<span id="restore-confirm-meta" class={ "meta", templ.KV("is-error", f.effective().ErrConfirm != "") }>
+					if f.effective().ErrConfirm != "" {
+						<span class="msg">▲ { f.effective().ErrConfirm }</span>
+					} else {
+						the dialog is the safety — no second confirm after this
+					}
+				</span>
+			</label>
+			@formStatus(f.effective().Submitting, f.ErrFormText(), "Confirming restore")
+			<div class="actions">
+				<button type="submit" class="btn danger ring" id="restore-submit" data-required-id={ f.requiredID() }>{ f.buttonLabel() }</button>
+			</div>
+			<p class="echo">{ f.echoLine() }</p>
+		</form>
+		@restoreDrawerJS()
+	}
+}
+
+// selectedLabel is the WHAT HAPPENS replacement source: the selected
+// snapshot's id, or "the replica" in replica mode.
+func (f *restoreFormVM) selectedLabel() string {
+	if f.effective().Mode == "replica" {
+		return "the replica"
+	}
+	if sel := f.SelectedSnapshot(); sel != nil {
+		return "#" + sel.ID
+	}
+	return "#…"
+}
+
+// confirmLabel adapts the typed-confirm field to the selected source: the
+// snapshot-id wording at rest, the source wording in replica mode.
+func (f *restoreFormVM) confirmLabel() string {
+	if f.effective().Mode == "replica" {
+		return "Type the source to confirm"
+	}
+	return "Type the snapshot id to confirm"
+}
+
+func (f *restoreFormVM) confirmPlaceholder() string {
+	if f.effective().Mode == "replica" {
+		return "replica"
+	}
+	if sel := f.SelectedSnapshot(); sel != nil {
+		return sel.ID
+	}
+	return ""
+}
+
+// requiredID is the value the typed confirm must match: the selected
+// snapshot's id, or the word "replica" — the contract the danger button's
+// ring and the restore handler both key off.
+func (f *restoreFormVM) requiredID() string {
+	if f.effective().Mode == "replica" {
+		return "replica"
+	}
+	if sel := f.SelectedSnapshot(); sel != nil {
+		return sel.ID
+	}
+	return ""
+}
+
+// buttonLabel is the danger primary's verb, filling once the typed id matches
+// (the ring comes off in restoreDrawerJS): "Restore from #a3f9c2" on the DR
+// path, "Restore from replica" in litestream mode.
+func (f *restoreFormVM) buttonLabel() string {
+	if f.effective().Mode == "replica" {
+		return "Restore from replica"
+	}
+	if sel := f.SelectedSnapshot(); sel != nil {
+		return "Restore from #" + sel.ID
+	}
+	return "Restore"
+}
+
+// echoLine is the CLI echo incl. --from-litestream, with the recovery-kit
+// note.
+func (f *restoreFormVM) echoLine() string {
+	if f.effective().Mode == "replica" {
+		return "same as exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
+	}
+	sel := ""
+	if s := f.SelectedSnapshot(); s != nil {
+		sel = s.ID
+	}
+	return "same as exocomp restore --snapshot " + sel + " · from a replica: exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
+}
+
+// backupAddFormJS is the add-target form's progressive enhancement: the
+// primary's label tracks the typed name (the "Add and queue first backup —
+// {name}" one verb), and a JS submit swaps a 422's refusals in place (JS-off
+// gets the same bytes as a full re-render).
+templ backupAddFormJS() {
+	<script>
+	(function () {
+		function backupAddWire() {
+			var form = document.getElementById("backup-add-form");
+			if (!form || form.dataset.backupAddWired) return;
+			form.dataset.backupAddWired = "1";
+			var primary = document.getElementById("backup-add-submit");
+			var name = form.querySelector('input[name="name"]');
+			if (primary && name) {
+				var base = "Add and queue first backup — ";
+				function syncLabel() { primary.textContent = base + name.value.trim(); }
+				name.addEventListener("input", syncLabel);
+				syncLabel();
+			}
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding target';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("backup-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							backupAddWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+		}
+		backupAddWire();
+	})();
+	</script>
+}
+
+// restoreDrawerJS wires the danger button's ring-to-fill and the form's JS
+// submit: the button carries class "ring" (inset fail border) until the typed
+// confirm equals the selected snapshot's id (or "replica" in litestream
+// mode), then fills. A wrong id submits and comes back as the server's ▲
+// refusal (hard rule c, JS-off identical).
+templ restoreDrawerJS() {
+	<script>
+	(function () {
+		function restoreWire() {
+			var form = document.getElementById("restore-backups-form");
+			if (!form || form.dataset.restoreWired) return;
+			form.dataset.restoreWired = "1";
+			var btn = document.getElementById("restore-submit");
+			var confirm = form.querySelector('input[name="confirm"]');
+			function syncRing() {
+				if (!btn) return;
+				var required = btn.getAttribute("data-required-id") || "";
+				var match = confirm.value.trim().toLowerCase() === required.toLowerCase();
+				btn.classList.toggle("ring", !match);
+			}
+			form.addEventListener("input", syncRing);
+			form.addEventListener("change", syncRing);
+			syncRing();
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var status = form.querySelector(".form-status");
+				btn.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Confirming restore';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("restore-backups-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							restoreWire();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					btn.disabled = false;
+					status.textContent = "";
+				});
+			});
+		}
+		restoreWire();
+	})();
+	</script>
+}

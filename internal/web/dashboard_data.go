@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
@@ -279,6 +280,13 @@ func (s *Server) backups(r *http.Request) ([]backupRow, error) {
 			row.Freshness = backupFreshness(age)
 			if run.State != "succeeded" {
 				row.Freshness = "fail"
+			}
+			if run.State == "running" {
+				// A9: the card draws `● RUNNING · job #…`. The run's job is the
+				// newest for the target's "backup:<name>" key (the job opens the
+				// run when it is claimed), read regardless of state so a
+				// mid-transition job still names it.
+				row.RunningJobID = s.newestJobID(r.Context(), backup.ConcurrencyKey(t.Name))
 			}
 		}
 		out = append(out, row)

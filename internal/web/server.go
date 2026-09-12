@@ -327,6 +327,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /system/deadman", s.requireAuth(s.handleDeadman))
 	mux.HandleFunc("GET /system/ntfy", s.requireAuth(s.handleNtfy))
 	mux.HandleFunc("GET /system/litestream", s.requireAuth(s.handleLitestream))
+	mux.HandleFunc("GET /system/backups", s.requireAuth(s.handleBackups))
 
 	// Post-v1 read surfaces (registration and mutation stay CLI/local-auth).
 	mux.HandleFunc("GET /sources", s.requireAuth(s.handleSources))
