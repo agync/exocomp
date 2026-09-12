@@ -32,6 +32,20 @@ const (
 	// choice even when run against a stopped daemon's data dir, not only the
 	// resolved posture a live process can probe.
 	SettingSecretStaging = "secret.staging_backend"
+	// SettingDeadmanThreshold is the dead-man trip threshold: how long without
+	// a SUCCEEDED backup before the dead-man trips. A Go duration ("48h"); the
+	// web Arm dialog writes one of the segmented values (24h/48h/72h/7d). A
+	// duration that does not parse, or an empty value, means the dead-man is
+	// NONE and nothing trips.
+	SettingDeadmanThreshold = "deadman.threshold"
+	// SettingDeadmanPagedAt is the "paged ntfy · once" marker: the unix-ms
+	// timestamp of the last dead-man-tripped page, so the trip monitor pages
+	// once per trip and every surface reads "paged ntfy · once · {age} ago".
+	SettingDeadmanPagedAt = "deadman.paged_at"
+	// SettingDeadmanPingedAt is the unix-ms timestamp of the last heartbeat
+	// ping: every succeeded backup pings the sealed deadman/heartbeat_url, so
+	// the card reads "pinged {age} ago" from this one value.
+	SettingDeadmanPingedAt = "deadman.pinged_at"
 )
 
 // PutSetting upserts a non-secret configuration value.
@@ -61,4 +75,16 @@ func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 		return "", wrap("get setting", err)
 	}
 	return value, nil
+}
+
+// DeleteSetting removes a stored value. Deleting an absent key is a no-op, so
+// a disarm or a re-arm can clear a marker unconditionally.
+func (s *Store) DeleteSetting(ctx context.Context, key string) error {
+	if key == "" {
+		return errors.New("store: delete setting: empty key")
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM setting WHERE key = ?`, key); err != nil {
+		return wrap("delete setting", err)
+	}
+	return nil
 }

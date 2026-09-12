@@ -62,3 +62,39 @@ func TestLastSucceededBackupTime(t *testing.T) {
 		t.Fatal("an empty store must report no succeeded backup")
 	}
 }
+
+// TestNewestSucceededBackupRun pins the row behind the ONE rule: the newest
+// SUCCEEDED run returns with its target name, a newer FAILED run never takes
+// its place, and an empty store reports ok=false.
+func TestNewestSucceededBackupRun(t *testing.T) {
+	t.Parallel()
+	s, _ := open(t)
+	ctx := context.Background()
+
+	good := time.Now().Add(-3 * time.Hour).UTC()
+	seedDeadManRun(t, s, store.BackupSucceeded, good)
+	bad := time.Now().Add(-30 * time.Minute).UTC()
+	seedDeadManRun(t, s, store.BackupFailed, bad)
+
+	run, target, ok, err := s.NewestSucceededBackupRun(ctx)
+	if err != nil {
+		t.Fatalf("NewestSucceededBackupRun: %v", err)
+	}
+	if !ok {
+		t.Fatal("NewestSucceededBackupRun reported no success though one exists")
+	}
+	if run.FinishedAt == nil || run.FinishedAt.UnixMilli() != good.UnixMilli() {
+		t.Fatalf("NewestSucceededBackupRun = finished %v, want the succeeded run %v", run.FinishedAt, good)
+	}
+	if run.State != store.BackupSucceeded {
+		t.Fatalf("NewestSucceededBackupRun state = %q, want succeeded", run.State)
+	}
+	if target.Name == "" {
+		t.Fatal("NewestSucceededBackupRun returned no target name")
+	}
+
+	empty, _ := open(t)
+	if _, _, ok, err := empty.NewestSucceededBackupRun(ctx); err != nil || ok {
+		t.Fatalf("empty store = ok %v, err %v; want no success and no error", ok, err)
+	}
+}

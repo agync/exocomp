@@ -60,16 +60,20 @@ func NewUnifiedPush(reg PushRegistry, log *slog.Logger) *UnifiedPush {
 	}
 	return &UnifiedPush{
 		reg:    reg,
-		client: guardedClient(),
+		client: GuardedClient(),
 		log:    log,
 		now:    func() time.Time { return time.Now().UTC() },
 	}
 }
 
-// guardedClient is an HTTP client whose dialer refuses to connect to a private,
-// loopback, link-local, or metadata address — checked on the concrete IP the
-// socket is about to reach, after DNS.
-func guardedClient() *http.Client {
+// GuardedClient is an HTTP client whose dialer refuses to connect to a
+// private, loopback, link-local, or metadata address — checked on the concrete
+// IP the socket is about to reach, after DNS. It is the dial-time half of the
+// two-layer SSRF guard, shared by every transport that dials a client-supplied
+// endpoint. The dead-man's heartbeat ping uses it for the same reason a push
+// endpoint does: the heartbeat URL is operator-supplied, so a re-pointed name
+// must not reach the daemon's own network.
+func GuardedClient() *http.Client {
 	dialer := &net.Dialer{Timeout: pushTimeout, Control: dialControl}
 	return &http.Client{
 		Timeout: pushTimeout,

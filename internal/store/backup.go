@@ -234,3 +234,38 @@ func (s *Store) LastSucceededBackupTime(ctx context.Context) (time.Time, bool) {
 	}
 	return time.UnixMilli(when).UTC(), true
 }
+
+// NewestSucceededBackupRun returns the newest SUCCEEDED run across all targets
+// with its target — the row behind the ONE dead-man age
+// (LastSucceededBackupTime), so a face can name the last good backup's target
+// and snapshot without computing a second age. It shares the rule's
+// state = succeeded filter, so facts and age can never disagree. ok=false when
+// nothing has ever succeeded.
+func (s *Store) NewestSucceededBackupRun(ctx context.Context) (BackupRun, BackupTarget, bool, error) {
+	var (
+		run        BackupRun
+		t          BackupTarget
+		startedAt  int64
+		finishedAt sql.NullInt64
+	)
+	err := s.db.QueryRowContext(ctx, `
+		SELECT r.id, r.target_id, r.started_at, r.finished_at, r.state, r.snapshot_id, r.bytes_added, r.error,
+		       t.id, t.name, t.kind, t.uri, t.retention, t.enabled
+		FROM backup_run r
+		JOIN backup_target t ON t.id = r.target_id
+		WHERE r.state = ?
+		ORDER BY COALESCE(r.finished_at, r.started_at) DESC
+		LIMIT 1`, BackupSucceeded).Scan(
+		&run.ID, &run.TargetID, &startedAt, &finishedAt, &run.State,
+		&run.SnapshotID, &run.BytesAdded, &run.Error,
+		&t.ID, &t.Name, &t.Kind, &t.URI, &t.Retention, &t.Enabled)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return BackupRun{}, BackupTarget{}, false, nil
+		}
+		return BackupRun{}, BackupTarget{}, false, wrap("newest succeeded backup run", err)
+	}
+	run.StartedAt = time.UnixMilli(startedAt).UTC()
+	run.FinishedAt = timePtr(finishedAt)
+	return run, t, true, nil
+}

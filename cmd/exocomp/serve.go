@@ -20,6 +20,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/backup"
+	"exocomp.dev/exocomp/internal/deadman"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/hooks"
 	"exocomp.dev/exocomp/internal/metrics"
@@ -68,6 +69,12 @@ const defaultReloadInterval = time.Minute
 // closed, re-publishes the ones halfway through their window, and turns a
 // plan that found changes into a drift event.
 const defaultSweepInterval = 30 * time.Second
+
+// deadmanInterval is how often the daemon re-reads the dead-man's ONE age rule.
+// It is the same cadence as the reactive sweep: a trip is paged within half a
+// minute of crossing the threshold and a succeeded backup's heartbeat ping
+// lands within the same window.
+const deadmanInterval = 30 * time.Second
 
 // defaultLeaseTTL is how long the cross-host active lease stays live without a
 // renew, and defaultLeaseRenew how often the active daemon refreshes it. The
@@ -327,7 +334,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// The reactive surfaces are mounted on the one listener before it binds:
 	// routes are fixed at start, and a second listener would be a second
 	// authentication story.
-	engine, err := reactiveEngine(ctx, st, q, env, warn, dir, opts)
+	engine, dm, err := reactiveEngine(ctx, st, q, env, warn, dir, opts)
 	if err != nil {
 		return err
 	}
@@ -429,6 +436,17 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		sweepReactive(jobCtx, st, engine, warn, opts.sweepInterval)
 	}()
 
+	// The dead-man trip monitor runs beside the reactive sweep: it compares the
+	// ONE backup-age rule to the operator's threshold, pages the fan-out once
+	// when it trips, and pings the sealed heartbeat URL on each new succeeded
+	// backup. It shares this process's notifier (built in reactiveEngine), so
+	// the push path is the daemon's, not the web surface's.
+	dmDone := make(chan struct{})
+	go func() {
+		defer close(dmDone)
+		dm.Run(jobCtx, deadmanInterval)
+	}()
+
 	// The step-ledger sequencer runs here, after the boot job-sweep (openJobStore
 	// retired interrupted rows) and after the queue's workers are draining: its
 	// first pass is ResumeAll, so a workflow a crash left mid-flight continues
@@ -464,6 +482,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	<-sweepDone
 	<-seqDone
 	<-leaseDone
+	<-dmDone
 	if err == nil {
 		err = webFailure
 	}
@@ -530,9 +549,11 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 
 // reactiveEngine builds the rule engine, with push configured from sealed
 // secrets. An operator who has not sealed an ntfy endpoint gets a working
-// daemon and a silent phone, not a daemon that refuses to start.
+// daemon and a silent phone, not a daemon that refuses to start. It also builds
+// the dead-man trip monitor over the same notifier, so the daemon-side push
+// path shares the one fan-out every other event uses.
 func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
-	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, error) {
+	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, *deadman.Monitor, error) {
 	look := func(ctx context.Context, name string) ([]byte, error) {
 		row, err := st.GetSecret(ctx, name)
 		if err != nil {
@@ -552,7 +573,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 
 	ntfyT, err := notify.LoadNtfy(ctx, look)
 	if err != nil {
-		return nil, fmt.Errorf("serve: %w", err)
+		return nil, nil, fmt.Errorf("serve: %w", err)
 	}
 	if ntfyT != nil {
 		// An unset or unrecognized value stays the documented default
@@ -566,7 +587,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 
 	goalertT, err := notify.LoadGoAlert(ctx, look)
 	if err != nil {
-		return nil, fmt.Errorf("serve: %w", err)
+		return nil, nil, fmt.Errorf("serve: %w", err)
 	}
 	if goalertT != nil {
 		transports = append(transports, goalertT)
@@ -590,7 +611,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 			notify.SecretGoAlertURL, notify.SecretGoAlertKey)
 	}
 
-	return reactive.New(reactive.Options{
+	engine, err := reactive.New(reactive.Options{
 		Store:       st,
 		Queue:       q,
 		Deriver:     env,
@@ -602,6 +623,18 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 			return secrets.NewRedactor(knownSecrets(ctx, st, env, warn))
 		},
 	})
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// The dead-man monitor reads the heartbeat URL plaintext only to ping it;
+	// everything it reports comes from the store, so the web never sees the
+	// value. Its host is the daemon's, named in the page a mute can hold.
+	host := leaseHostname()
+	monitor := deadman.NewMonitor(deadman.Options{
+		Store: st, Look: look, Notifier: notifier, Host: host, Logger: slog.Default(),
+	})
+	return engine, monitor, nil
 }
 
 // printHooks tells the operator where each source posts. The tokens are
