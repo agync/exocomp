@@ -916,9 +916,9 @@ func TestBackupsRowsColumnMap(t *testing.T) {
 		t.Fatalf("/system/backups = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`<td data-label="KIND" class="bk-kind"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></td>`,
-		`<td data-label="RETENTION" class="bk-ret"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></td>`,
-		`<td data-label="SCHEDULE" class="bk-sched"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></td>`,
+		`<td data-label="KIND" class="bk-kind"><span class="bk-cell"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></span></td>`,
+		`<td data-label="RETENTION" class="bk-ret"><span class="bk-cell"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></span></td>`,
+		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></span></td>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("backups row cell missing %q", want)
@@ -1012,6 +1012,48 @@ func TestBackupsKindCellSizes(t *testing.T) {
 	}
 	if strings.Contains(css, ".bk-kind .uri { font-size:11px;") {
 		t.Error("the KIND path must not fall back to the 11px ink-500 sub-line")
+	}
+}
+
+// TestBackupsRowCellsStayTableCells is the R7c fourth-pass gate for the row
+// height: the KIND/RETENTION/SCHEDULE tds stay table-cells (their rule carries
+// no display:flex — a flex td escapes the table's row layout and the row
+// balloons to 132px), and the two-line column moves onto an inner .bk-cell
+// wrapper. The row keeps min-height 64px.
+func TestBackupsRowCellsStayTableCells(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/backups")
+	if code != http.StatusOK {
+		t.Fatalf("/system/backups = %d, want 200", code)
+	}
+	// Each posture cell wraps its two lines in the inner .bk-cell so the td
+	// itself stays a table-cell (the DOM proxy for the row's shared height).
+	for _, want := range []string{
+		`<td data-label="KIND" class="bk-kind"><span class="bk-cell"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></span></td>`,
+		`<td data-label="RETENTION" class="bk-ret"><span class="bk-cell"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></span></td>`,
+		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></span></td>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("backups row cell missing the .bk-cell wrapper: %q", want)
+		}
+	}
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".bk-cell { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }") {
+		t.Error("the two-line column must live on the inner .bk-cell wrapper")
+	}
+	if !strings.Contains(css, ".bk-kind, .bk-ret, .bk-sched { vertical-align:middle; min-width:0; }") {
+		t.Error("the posture tds must stay table-cells (vertical-align middle)")
+	}
+	if strings.Contains(css, ".bk-kind, .bk-ret, .bk-sched { display:flex") {
+		t.Error("display:flex on the posture tds escapes the table's row layout")
+	}
+	if !strings.Contains(css, ".bk-row { min-height:64px; align-items:center; }") {
+		t.Error("the row must keep min-height 64px")
 	}
 }
 
