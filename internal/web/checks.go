@@ -26,6 +26,9 @@ type checksVM struct {
 	// fresh form (help at rest, dialog closed), and a refusal re-renders the
 	// surface at 422 with the form filled and the dialog open.
 	NetgroupForm *netgroupFormVM
+	// Form is the check-add dialog's render state (the same shape): nil at
+	// rest, the filled form with field refusals on a 422 re-render.
+	Form *checkFormVM
 }
 
 // checkRow is one probe check on the checks surface, with each target's last
@@ -156,7 +159,7 @@ func (c checkRow) DownSummary() string {
 // handleChecks renders the /checks surface for the session: every probe check
 // with each target's posture and location.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
-	vm, err := s.checksVMFor(r, nil)
+	vm, err := s.checksVMFor(r, nil, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
@@ -165,8 +168,8 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 }
 
 // checksVMFor builds the checks view model, optionally carrying the
-// netgroup-add form's refusal state (nil = fresh form).
-func (s *Server) checksVMFor(r *http.Request, form *netgroupFormVM) (checksVM, error) {
+// netgroup-add or check-add dialog's refusal state (nil = fresh form).
+func (s *Server) checksVMFor(r *http.Request, ngForm *netgroupFormVM, ckForm *checkFormVM) (checksVM, error) {
 	rows, err := s.checks(r)
 	if err != nil {
 		return checksVM{}, err
@@ -180,15 +183,19 @@ func (s *Server) checksVMFor(r *http.Request, form *netgroupFormVM) (checksVM, e
 	if tab != "netgroups" {
 		tab = "probes"
 	}
-	// A netgroup refusal re-renders the surface the form lives on, whatever
-	// tab the POST arrived under.
-	if form != nil {
+	// A refusal re-renders the surface the form lives on, whatever tab the
+	// POST arrived under: the netgroup form on the netgroups tab, the check
+	// form on the probes tab.
+	if ngForm != nil {
 		tab = "netgroups"
+	}
+	if ckForm != nil {
+		tab = "probes"
 	}
 	vm := checksVM{
 		Page: s.pageFor(r, "Checks", "checks"), Checks: rows,
 		Operator: canWrite(ident), Netgroups: ng, Tab: tab,
-		NetgroupForm: form,
+		NetgroupForm: ngForm, Form: ckForm,
 	}
 	if vm.Operator {
 		if tab == "netgroups" {

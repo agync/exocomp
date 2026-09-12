@@ -73,7 +73,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 // carrying its refusals — the JS-off path, and the fragment body a JS submit
 // swaps in place. Refusals never flash: flash is success-only (write.go).
 func (s *Server) netgroupRefusal(w http.ResponseWriter, r *http.Request, form netgroupFormVM) {
-	vm, err := s.checksVMFor(r, &form)
+	vm, err := s.checksVMFor(r, &form, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return

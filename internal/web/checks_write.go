@@ -2,9 +2,9 @@ package web
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -15,7 +15,9 @@ import (
 // confirm_token. The name=spec targets are parsed by the shared
 // store.ParseCheckTargets (blank-skipping for the form's empty rows), so a
 // check added from the browser is held to exactly the same per-kind rules as
-// one added from the CLI.
+// one added from the CLI. Refusals re-render the dialog at 422 with every
+// field's message at once (forms/SPEC.md); the raw validator words go to the
+// log, never the operator.
 
 func init() { registerWrite((*Server).registerCheckWrite) }
 
@@ -26,61 +28,159 @@ func (s *Server) registerCheckWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /checks/{name}/rm", s.requireAuth(s.handleCheckRm))
 }
 
+// The add dialog's human refusal copy (forms/copy.txt): one sentence in the
+// field's terms, never the validator's regex or a status code.
+const (
+	checkNameCharset       = "Names use letters, digits, dots, hyphens and underscores."
+	checkIntervalRequired  = "Give the interval as a duration — like 5m or 90s."
+	checkIntervalBad       = "The interval needs a unit — like 5m, 90s or 1h."
+	checkIntervalNonPos    = "The interval must be more than zero — like 5m."
+	checkKindRefusal       = "Kind is tcp, ping or http."
+	checkTargetEmpty       = "Add at least one target, like laptop=192.168.1.50:22."
+	checkExpectRefusal     = "The expected status is a whole number, like 200."
+	checkExpectKindRefusal = "An expected status pins an http target only."
+	checkSubmitRefusal     = "Couldn't add the check — nothing was saved."
+)
+
+func checkNameRefusal(name string) (msg, fix string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "Give the check a name.", ""
+	}
+	if strings.Contains(name, " ") {
+		msg = "Names can't have spaces."
+	} else {
+		msg = checkNameCharset
+	}
+	return msg, netgroupSlug(name)
+}
+
+func checkIntervalRefusal(v string) string {
+	if strings.TrimSpace(v) == "" {
+		return checkIntervalRequired
+	}
+	return checkIntervalBad
+}
+
+func checkDuplicateRefusal(name string) string {
+	return "A check named " + name + " already exists."
+}
+
+// checkTargetRefusal translates a ParseCheckTargets refusal into the target
+// group's sentence (forms/copy.txt), naming the offending spec mono and
+// unquoted. The parser's raw words stay in the error, which the caller logs.
+func checkTargetRefusal(err error) (item, msg string) {
+	raw := err.Error()
+	item = raw
+	if rest, ok := strings.CutPrefix(raw, `"`); ok {
+		if end := strings.IndexByte(rest, '"'); end >= 0 {
+			item = rest[:end]
+		}
+	}
+	switch {
+	case strings.Contains(raw, "must be name=spec"):
+		return item, " must be name=spec — like laptop=192.168.1.50:22."
+	case strings.Contains(raw, "must be ip:port"):
+		return item, " is a tcp target needing ip:port — like laptop=192.168.1.50:22."
+	case strings.Contains(raw, "is not a number"):
+		return item, " port isn't a number — like laptop=192.168.1.50:22."
+	default:
+		return item, " isn't a target this kind can probe."
+	}
+}
+
 func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
 		return
 	}
-	name := r.PostFormValue("name")
-	kind := r.PostFormValue("kind")
-	interval, err := time.ParseDuration(r.PostFormValue("interval"))
+	form := checkFormVM{
+		Name: r.PostFormValue("name"), Kind: r.PostFormValue("kind"),
+		Interval: r.PostFormValue("interval"), Targets: r.PostForm["target"],
+		Expect: r.PostFormValue("expect"),
+	}
+
+	// Validate every field up front so all refusals render at once (forms/
+	// SPEC.md); the daemon stays authoritative on uniqueness and the ping
+	// capability probe.
+	var causes []string
+	if !store.ValidName(form.Name) {
+		form.ErrName, form.FixName = checkNameRefusal(form.Name)
+		causes = append(causes, "name "+form.Name)
+	}
+	d, err := time.ParseDuration(form.Interval)
 	if err != nil {
-		s.redirectFlash(w, r, "/checks", fmt.Sprintf("interval must be a Go duration (e.g. 5m): %v", err))
-		return
+		form.ErrInterval = checkIntervalRefusal(form.Interval)
+		causes = append(causes, err.Error())
+	} else if d <= 0 {
+		form.ErrInterval = checkIntervalNonPos
+		causes = append(causes, "interval "+form.Interval)
 	}
-	if interval <= 0 {
-		s.redirectFlash(w, r, "/checks", "interval must be a positive Go duration (e.g. 5m)")
-		return
+	validKind := form.Kind == store.CheckTCP || form.Kind == store.CheckPing || form.Kind == store.CheckHTTP
+	if !validKind {
+		form.ErrKind = checkKindRefusal
+		causes = append(causes, "kind "+form.Kind)
 	}
-	switch kind {
-	case store.CheckTCP, store.CheckPing, store.CheckHTTP:
-	default:
-		s.redirectFlash(w, r, "/checks", fmt.Sprintf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
-		return
+	var targets []store.CheckTarget
+	if validKind {
+		parsed, terr := store.ParseCheckTargets(form.Kind, form.Targets, true)
+		if terr != nil {
+			form.ErrTargetItem, form.ErrTarget = checkTargetRefusal(terr)
+			causes = append(causes, terr.Error())
+		} else if len(parsed) == 0 {
+			form.ErrTarget = checkTargetEmpty
+			causes = append(causes, "no targets")
+		} else {
+			targets = parsed
+		}
 	}
-	targets, err := store.ParseCheckTargets(kind, r.PostForm["target"], true)
-	if err != nil {
-		s.redirectFlash(w, r, "/checks", err.Error())
-		return
+	expect, eerr := formExpect(r)
+	if eerr != nil {
+		form.ErrExpect = checkExpectRefusal
+		causes = append(causes, eerr.Error())
+	} else if expect != 0 && form.Kind != store.CheckHTTP {
+		form.ErrExpect = checkExpectKindRefusal
+		causes = append(causes, "expect on non-http")
 	}
-	if len(targets) == 0 {
-		s.redirectFlash(w, r, "/checks", "need at least one target")
-		return
-	}
-	expect, err := formExpect(r)
-	if err != nil {
-		s.redirectFlash(w, r, "/checks", err.Error())
+
+	if form.ErrName != "" || form.ErrKind != "" || form.ErrInterval != "" ||
+		form.ErrTarget != "" || form.ErrExpect != "" {
+		switch {
+		case form.ErrName != "":
+			form.FirstInvalid = "name"
+		case form.ErrKind != "":
+			form.FirstInvalid = "kind"
+		case form.ErrInterval != "":
+			form.FirstInvalid = "interval"
+		case form.ErrTarget != "":
+			form.FirstInvalid = "target"
+		case form.ErrExpect != "":
+			form.FirstInvalid = "expect"
+		}
+		s.log.Info("web: check add refused", "err", strings.Join(causes, "; "), "by", ident.token.Name)
+		s.checkRefusal(w, r, form)
 		return
 	}
 	if expect != 0 {
-		if kind != store.CheckHTTP {
-			s.redirectFlash(w, r, "/checks", "expected status applies to kind http")
-			return
-		}
 		for i := range targets {
 			targets[i].Expect = expect
 		}
 	}
 
 	created, err := s.store.CreateCheck(r.Context(), store.NewCheck{
-		Name: name, Kind: kind, IntervalS: int64(interval.Seconds()), Targets: targets,
+		Name: form.Name, Kind: form.Kind, IntervalS: int64(d.Seconds()), Targets: targets,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		s.redirectFlash(w, r, "/checks", "a check named "+name+" already exists")
+		s.log.Info("web: check add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrName = checkDuplicateRefusal(form.Name)
+		form.FirstInvalid = "name"
+		s.checkRefusal(w, r, form)
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		s.redirectFlash(w, r, "/checks", validationFlash(err))
+		s.log.Info("web: check add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrForm = checkSubmitRefusal
+		s.checkRefusal(w, r, form)
 		return
 	}
 	if err != nil {
@@ -89,6 +189,18 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: check add", "check", created.Name, "kind", created.Kind, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/checks", "added "+created.Name)
+}
+
+// checkRefusal re-renders the checks surface at 422 with the add dialog
+// carrying its refusals — the JS-off path, and the fragment body a JS submit
+// swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) checkRefusal(w http.ResponseWriter, r *http.Request, form checkFormVM) {
+	vm, err := s.checksVMFor(r, nil, &form)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
 }
 
 // formExpect parses the optional expected-status field; blank means no pin.

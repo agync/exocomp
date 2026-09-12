@@ -16,45 +16,57 @@ templ checksList(vm checksVM) {
 		if vm.Operator && vm.Tab == "probes" {
 			@modal("checks-add", "Add a check") {
 				<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform">
-					<label for="ck-name">Name</label>
-					<input id="ck-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+"/>
-					<label for="ck-kind">Kind</label>
-					<select id="ck-kind" name="kind">
-						<option value="tcp" selected>tcp</option>
-						<option value="ping">ping</option>
-						<option value="http">http</option>
-					</select>
-					<label for="ck-interval">Interval (Go duration, e.g. 5m)</label>
-					<input id="ck-interval" name="interval" type="text" required autocomplete="off" placeholder="5m"/>
-					<label for="ck-target">Targets (<code>name=ip:port</code>, <code>name=ip</code>, or <code>name=url</code>; repeat as needed)</label>
-					<input id="ck-target" name="target" type="text" autocomplete="off" placeholder="laptop=192.168.1.50:22"/>
-					<input name="target" type="text" autocomplete="off" placeholder="nas=192.168.1.60:22"/>
-					<input name="target" type="text" autocomplete="off" placeholder="web=https://web.lan/health"/>
-					<input name="target" type="text" autocomplete="off"/>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform" id="check-add-form" novalidate data-check-form>
+					@fieldInput(vm.Form.nameField())
+					<label class="field">
+						<span class="label">Kind</span>
+						<select class="control" id="ck-kind" name="kind" aria-invalid?={ vm.Form.effective().ErrKind != "" } aria-describedby="ck-kind-meta" autofocus?={ vm.Form.effective().FirstInvalid == "kind" }>
+							<option value="tcp" selected?={ vm.Form.kindSelected("tcp") }>tcp</option>
+							<option value="ping" selected?={ vm.Form.kindSelected("ping") }>ping</option>
+							<option value="http" selected?={ vm.Form.kindSelected("http") }>http</option>
+						</select>
+						<span id="ck-kind-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrKind != "") }>
+							if vm.Form.effective().ErrKind != "" {
+								<span class="msg">{ vm.Form.effective().ErrKind }</span>
+							} else {
+								Kind is tcp, ping or http.
+							}
+						</span>
+					</label>
+					@fieldInput(vm.Form.intervalField())
+					<label class="field">
+						<span class="label">Targets</span>
+						for i, t := range vm.Form.targetInputs() {
+							<input class="control" name="target" type="text" spellcheck="false" autocomplete="off" placeholder={ targetPlaceholder(i) } value={ t } aria-invalid?={ vm.Form.effective().ErrTarget != "" } aria-describedby="ck-target-meta"/>
+						}
+						<span id="ck-target-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrTarget != "") }>
+							if vm.Form.effective().ErrTarget != "" {
+								<span class="msg">
+									if vm.Form.effective().ErrTargetItem != "" {
+										<span class="item">{ vm.Form.effective().ErrTargetItem }</span>
+									}
+									{ vm.Form.effective().ErrTarget }
+								</span>
+							} else {
+								Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
+							}
+						</span>
+					</label>
 					<button type="button" class="btn" id="ck-add-target">Add target</button>
-					<label for="ck-expect">HTTP expected status (optional, http kind only)</label>
-					<input id="ck-expect" name="expect" type="number" min="100" max="599" autocomplete="off" placeholder="200"/>
-					<div class="actions"><button type="submit" class="btn primary">Add check</button></div>
-					<script>
-					(function () {
-						var btn = document.getElementById("ck-add-target");
-						var form = btn && btn.closest("form");
-						if (!btn || !form) return;
-						// The four baseline inputs stay the JS-off baseline; this grows the
-						// form past them, capped so the DOM cannot grow unbounded.
-						btn.addEventListener("click", function () {
-							var inputs = form.querySelectorAll('input[name="target"]');
-							if (inputs.length >= 10) return;
-							var last = inputs[inputs.length - 1];
-							var clone = last.cloneNode(false);
-							clone.value = "";
-							last.after(clone);
-							clone.focus();
-						});
-					})();
-					</script>
+					@fieldInput(vm.Form.expectField())
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding check")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add check</button></div>
 				</form>
+				if vm.Form != nil {
+					// A JS-off refusal re-renders the whole page; open the dialog and
+					// focus the first invalid control after it is in the DOM.
+					<script>
+					exoModalOpen("checks-add");
+					var ckBad = document.querySelector('#checks-add [aria-invalid="true"]');
+					if (ckBad) ckBad.focus();
+					</script>
+				}
+				@checkFormJS()
 			}
 		}
 		<p class="meta">
@@ -134,4 +146,147 @@ templ checksList(vm checksVM) {
 			}
 		}
 	}
+}
+
+// checkFormJS is the check-add form's progressive enhancement, mirroring the
+// netgroup/source forms: novalidate (the daemon is authoritative), submit
+// intercepted and POSTed with fetch — a 422 swaps the form fragment in place
+// with the server-rendered refusals (JS-off gets the same bytes as a full
+// re-render), anything else follows the redirect and its success flash. After
+// a refusal a field re-validates on blur and clears when right; the primary
+// disables only while submitting. The Add target control lives here too so a
+// 422-swapped fragment re-wires it.
+templ checkFormJS() {
+	<script>
+	(function () {
+		function checkFormWire() {
+			var form = document.getElementById("check-add-form");
+			if (!form || form.dataset.checkWired) return;
+			form.dataset.checkWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (!meta) return;
+				meta.classList.remove("is-error");
+				switch (input.name) {
+				case "name":
+					meta.textContent = "Letters, digits, dots, hyphens, underscores.";
+					break;
+				case "interval":
+					meta.textContent = "A Go duration — 5m, 90s, 1h.";
+					break;
+				case "expect":
+					meta.textContent = "A whole status code, like 200 or 404.";
+					break;
+				case "target":
+					meta.textContent = "Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).";
+					break;
+				}
+			}
+
+			// showError paints a refusal on a field without changing its geometry
+			// (the meta line always exists), mirroring the server's human copy.
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rules the server holds to — a
+			// name shape or interval-unit refusal — on blur so a mistake
+			// surfaces before submit. Empty is left alone (that's a
+			// submit-time required check); the daemon stays authoritative on
+			// uniqueness, target shape, and the ping capability, so submit
+			// still asks the server.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				var v = input.value.trim();
+				if (input.name === "name") {
+					if (!/^[A-Za-z0-9_.-]+$/.test(v)) {
+						showError(input, "Names can't have spaces or special characters.");
+						return;
+					}
+				} else if (input.name === "interval") {
+					if (!/^[0-9.]/.test(v)) {
+						showError(input, "The interval needs a unit — like 5m, 90s or 1h.");
+						return;
+					}
+				} else if (input.name === "expect") {
+					if (!/^\d+$/.test(v)) {
+						showError(input, "The expected status is a whole number, like 200.");
+						return;
+					}
+				} else if (input.name === "target") {
+					if (!/=/.test(v) || v.indexOf("=") === 0) {
+						showError(input, "Targets are name=spec — like laptop=192.168.1.50:22.");
+						return;
+					}
+				}
+				restoreMeta(input);
+			}
+
+			// The four baseline target rows stay the JS-off baseline; Add target
+			// grows the form past them, capped so the DOM cannot grow unbounded.
+			var addBtn = document.getElementById("ck-add-target");
+			if (addBtn) {
+				addBtn.addEventListener("click", function () {
+					var inputs = form.querySelectorAll('input[name="target"]');
+					if (inputs.length >= 10) return;
+					var last = inputs[inputs.length - 1];
+					var clone = last.cloneNode(false);
+					clone.value = "";
+					last.after(clone);
+					clone.focus();
+				});
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding check';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("check-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("check-add-form");
+							form.dataset.checkRefused = "1";
+							checkFormWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="interval"], input[name="expect"], input[name="target"]');
+				if (!input) return;
+				validateField(input);
+			}, true);
+		}
+		checkFormWire();
+	})();
+	</script>
 }

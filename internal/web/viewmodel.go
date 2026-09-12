@@ -322,6 +322,118 @@ func (f *netgroupFormVM) cidrField() fieldMeta {
 	}
 }
 
+// checkFormVM is the check-add dialog's refusal state (forms/SPEC.md). Err*
+// hold the translated sentences — the raw validator words go to the log at
+// the same call site — and FixName is the one-click slug the fix link applies.
+// Targets carries the repeated target inputs so a refusal re-renders every
+// typed row. FirstInvalid names the control to focus; Submitting drives the
+// status line's verb and disables the primary.
+type checkFormVM struct {
+	Name          string
+	Kind          string
+	Interval      string
+	Targets       []string
+	Expect        string
+	ErrName       string
+	FixName       string
+	ErrKind       string
+	ErrInterval   string
+	ErrTargetItem string
+	ErrTarget     string
+	ErrExpect     string
+	ErrForm       string
+	FirstInvalid  string
+	Submitting    bool
+}
+
+func (f *checkFormVM) effective() checkFormVM {
+	if f == nil {
+		return checkFormVM{}
+	}
+	return *f
+}
+
+func (f *checkFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *checkFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+func (f *checkFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "at-home", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *checkFormVM) intervalField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-interval", Label: "Interval (a duration)", Name: "interval",
+		Value: v.Interval, Placeholder: "5m",
+		Help:   "A Go duration — 5m, 90s, 1h.",
+		ErrMsg: v.ErrInterval, FirstInvalid: v.FirstInvalid == "interval",
+	}
+}
+
+func (f *checkFormVM) expectField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-expect", Label: "HTTP expected status (optional, http kind only)",
+		Name: "expect", Value: v.Expect, Placeholder: "200",
+		Help:   "A whole status code, like 200 or 404.",
+		ErrMsg: v.ErrExpect, FirstInvalid: v.FirstInvalid == "expect",
+	}
+}
+
+// kindSelected reports whether the add form's kind select should show k: the
+// typed value on a 422 re-render, the tcp default at rest.
+func (f *checkFormVM) kindSelected(k string) bool {
+	v := f.effective()
+	if v.Kind == "" {
+		return k == "tcp"
+	}
+	return v.Kind == k
+}
+
+// targetInputs is the repeated target field's rows: the typed values on a 422
+// re-render, else the four baseline rows, capped at the same ten the Add
+// target control enforces so the JS-off path cannot grow the DOM unbounded.
+func (f *checkFormVM) targetInputs() []string {
+	v := f.effective()
+	out := v.Targets
+	for i := len(out); i < 4; i++ {
+		out = append(out, "")
+	}
+	if len(out) > 10 {
+		out = out[:10]
+	}
+	return out
+}
+
+// targetPlaceholder names the shape a target row is an example of; the first
+// three rows carry a worked example, later rows are blank.
+func targetPlaceholder(i int) string {
+	switch i {
+	case 0:
+		return "laptop=192.168.1.50:22"
+	case 1:
+		return "nas=192.168.1.60:22"
+	case 2:
+		return "web=https://web.lan/health"
+	default:
+		return ""
+	}
+}
+
 // workflowSummary is the dashboard's in-flight-workflows card.
 type workflowSummary struct {
 	InFlight int

@@ -225,10 +225,169 @@ func flashMessage(t *testing.T, resp *http.Response, wantPath string) string {
 	return ""
 }
 
+// TestCheckFormAtRest renders the checks-add dialog for an operator and
+// asserts the forms-round anatomy: the reusable field pattern with
+// always-present meta lines (help at rest), the kind select's own meta line,
+// the repeated target group's shared meta, aria wiring tying each control to
+// its meta, a form-status line, and novalidate so the daemon stays
+// authoritative.
+func TestCheckFormAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="checks-add"`,
+		`action="/checks/add"`,
+		`id="check-add-form" novalidate`,
+		`aria-describedby="ck-name-meta"`,
+		`aria-describedby="ck-kind-meta"`,
+		`aria-describedby="ck-interval-meta"`,
+		`aria-describedby="ck-target-meta"`,
+		`aria-describedby="ck-expect-meta"`,
+		`id="ck-name-meta"`,
+		`id="ck-kind-meta"`,
+		`id="ck-interval-meta"`,
+		`id="ck-target-meta"`,
+		`id="ck-expect-meta"`,
+		"Letters, digits, dots, hyphens, underscores.",
+		"Kind is tcp, ping or http.",
+		"A Go duration — 5m, 90s, 1h.",
+		"Targets are name=spec",
+		"A whole status code, like 200 or 404.",
+		`role="status" aria-live="polite"`,
+		"Add check",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("check form missing %q", want)
+		}
+	}
+	// The four baseline target rows are the JS-off baseline.
+	for _, want := range []string{
+		`placeholder="laptop=192.168.1.50:22"`,
+		`placeholder="nas=192.168.1.60:22"`,
+		`placeholder="web=https://web.lan/health"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("check form missing baseline target row %q", want)
+		}
+	}
+	// At rest no control carries a refusal and the metas are plain help text.
+	if !strings.Contains(page, `placeholder="at-home" aria-describedby="ck-name-meta">`) {
+		t.Error("at-rest name control carries an aria-invalid refusal")
+	}
+	if !strings.Contains(page, `id="ck-name-meta" class="meta">Letters`) {
+		t.Error("at-rest name meta is not plain help text")
+	}
+}
+
+// TestCheckFormRefusalsRender asserts the 422 re-render fills every meta line
+// at once (name, kind, interval, target, expect), keeps the typed values, and
+// never flashes: a refusal is the form's own surface, flash is success-only.
+func TestCheckFormRefusalsRender(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{
+			"name": {"bad name!"}, "kind": {store.CheckTCP}, "interval": {"abc"},
+			"target": {"laptop"}, "expect": {"x"},
+		}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`aria-invalid="true"`,
+		"Names can&#39;t have spaces.",
+		"The interval needs a unit — like 5m, 90s or 1h.",
+		"must be name=spec",
+		"The expected status is a whole number, like 200.",
+		`value="bad name!"`,
+		`exoModalOpen("checks-add")`,
+		`autofocus`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("422 re-render missing %q", want)
+		}
+	}
+	// A refusal never flashes: the render consumes the flash cookie (an empty
+	// clearing Set-Cookie), so no flash MESSAGE may ride this response.
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("check refusal carried a flash message")
+		}
+	}
+}
+
+// TestCheckFormKindRefusal asserts a kind the daemon cannot probe refuses on
+// the kind select's own meta line (checks_write.go's old kind flash).
+func TestCheckFormKindRefusal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{"name": {"bad"}, "kind": {"weird"}, "interval": {"5m"},
+			"target": {"laptop=192.168.1.50:22"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("kind refusal status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "Kind is tcp, ping or http.") {
+		t.Errorf("kind refusal missing the kind-select sentence")
+	}
+	if _, err := h.store.GetCheck(context.Background(), "bad"); err == nil {
+		t.Fatal("a check was created despite an invalid kind")
+	}
+}
+
+// TestCheckFormDuplicateRenders asserts a duplicate refusal lands on the name
+// field's meta line and keeps the valid fields at rest.
+func TestCheckFormDuplicateRenders(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	}); err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{"name": {"at-home"}, "kind": {store.CheckTCP}, "interval": {"5m"},
+			"target": {"laptop=192.168.1.50:22"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "A check named at-home already exists.") {
+		t.Errorf("duplicate 422 missing the name-field sentence")
+	}
+	// The interval and target fields are valid and must stay at rest.
+	if strings.Contains(body, `id="ck-interval" aria-invalid`) {
+		t.Error("duplicate 422 flagged the interval field invalid")
+	}
+}
+
 // TestCheckAddValidatesTargets: a tcp target without its ip:port shape is
 // refused before the store sees it (the same parseCheckTargets `check add`
-// runs), the rejection resolves as a flash-carrying redirect, and no row
-// lands.
+// runs): the rejection re-renders the form at 422 with the target field's
+// sentence, and no row lands.
 func TestCheckAddValidatesTargets(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -237,20 +396,24 @@ func TestCheckAddValidatesTargets(t *testing.T) {
 
 	resp := postForm(t, op, ts.URL+"/checks/add",
 		url.Values{"name": {"bad"}, "kind": {store.CheckTCP}, "interval": {"5m"}, "target": {"laptop"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "laptop") {
-		t.Errorf("flash message %q does not name the rejected target", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("target refusal status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "must be name=spec") {
+		t.Errorf("422 re-render missing the target-field sentence")
 	}
 	if _, err := h.store.GetCheck(context.Background(), "bad"); err == nil {
 		t.Fatal("a check was created despite an invalid target")
 	}
 }
 
-// TestCheckAddBadNameFlashes: a name the store's ValidName gate refuses is
-// operator input, not a store failure: it must come back as a flash-carrying
-// redirect, never a bare 500, and no row lands.
-func TestCheckAddBadNameFlashes(t *testing.T) {
+// TestCheckAddBadNameRefused: a name the store's ValidName gate refuses is
+// operator input, not a store failure: the form re-renders at 422 with the
+// name field's human sentence — never the validator's regex — and no row
+// lands.
+func TestCheckAddBadNameRefused(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -259,19 +422,26 @@ func TestCheckAddBadNameFlashes(t *testing.T) {
 	resp := postForm(t, op, ts.URL+"/checks/add",
 		url.Values{"name": {"bad name!"}, "kind": {store.CheckTCP}, "interval": {"5m"},
 			"target": {"laptop=192.168.1.50:22"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "must match") {
-		t.Errorf("flash message %q does not report the name refusal", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("name refusal status = %d, want 422", resp.StatusCode)
+	}
+	if strings.Contains(body, "must match") {
+		t.Error("name refusal leaks the validator regex")
+	}
+	if !strings.Contains(body, "Names can&#39;t have spaces.") {
+		t.Errorf("name refusal missing the human sentence")
 	}
 	if _, err := h.store.GetCheck(context.Background(), "bad name!"); err == nil {
 		t.Fatal("a check was created despite an invalid name")
 	}
 }
 
-// TestCheckAddDuplicateFlashes: re-adding a name that exists is refused with
-// a flash-carrying redirect, not a 409, and the original row survives.
-func TestCheckAddDuplicateFlashes(t *testing.T) {
+// TestCheckAddDuplicateRefused: re-adding a name that exists re-renders the
+// form at 422 with the duplicate sentence on the name field, and the original
+// row survives.
+func TestCheckAddDuplicateRefused(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -288,10 +458,13 @@ func TestCheckAddDuplicateFlashes(t *testing.T) {
 	resp := postForm(t, op, ts.URL+"/checks/add",
 		url.Values{"name": {"at-home"}, "kind": {store.CheckTCP}, "interval": {"5m"},
 			"target": {"laptop=192.168.1.50:22"}}, nil)
-	msg := flashMessage(t, resp, "/checks")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "already exists") {
-		t.Errorf("flash message %q does not report the duplicate", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "A check named at-home already exists.") {
+		t.Errorf("duplicate 422 missing the duplicate sentence")
 	}
 	if _, err := h.store.GetCheck(ctx, "at-home"); err != nil {
 		t.Fatalf("original check vanished: %v", err)
