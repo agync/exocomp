@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the plan detail page loses its destroy mode
+
+- **The plan-detail `?destroy=1` mode is removed — the confirm dialog is
+  apply-only.** The mode's primary posted to the workspace apply route, so
+  "Queue destroy — <ws>" enqueued an apply, never a destroy; repointing it at
+  the workspace destroy verb would tear down the whole workspace when the dialog
+  showed only one plan's diff. The workspace-level Destroy verb on the workspace
+  detail page (this release) is the one destroy affordance. A saved plan's diff
+  still shows the resources it tears down; only the dead mode is gone.
+
 ## 2026-09-12 — the destroy apply verb
 
 - **`tofu destroy` is now a live verb, not a render-only affordance.** A
