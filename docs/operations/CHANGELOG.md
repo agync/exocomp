@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the secrets and tokens write forms adopt the forms anatomy
+
+- **The seal-a-secret, mint-token, and per-row rotate dialogs, plus the revoke
+  button, now render through the shared field-input and form-status
+  primitives.** Every typed field carries an always-present meta line (help
+  text at rest, a ▲ human-copy refusal on error) and a form-status line sits
+  above each primary. A refused submit re-renders the same dialog at HTTP 422
+  with the non-secret typed values (name, kind, scope, expires) kept and the
+  right dialog re-opened; a sealed secret's value and the confirm token never
+  re-render, so a refusal cannot echo the plaintext (invariant 4). Refusals
+  that used to answer as bare error pages — a duplicate secret or token name,
+  an unparseable duration, a self rotate or revoke, a missing revoke
+  confirmation — now render on the surface with human copy, and flash remains
+  success-only.
+
+
 ## 2026-09-12 — checks, schedules, policies, runners add forms adopt the forms pattern
 
 - **The four resource add dialogs now refuse per-field, at 422, never by
