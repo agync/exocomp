@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — three web surface nits
+
+- **The netgroup-add modal resets on close.** The form is a native `<dialog>`
+  rendered once, so a typed value or refusal survived close/reopen; a `close`
+  listener inside the form's own JS now clears the fields and any painted
+  error, so the next open starts clean. The shared modal primitives stay
+  generic.
+- **The app bar's glyph actions right-align.** The header's Raw log / Rerun
+  actions (job detail) and plan verbs now carry `margin-left: auto`, so a page
+  that renders actions without a meta slot still sits them at the bar's right
+  end.
+- **The dashboard queue label drops its dead links.** The `In the queue`
+  heading and `all jobs →` link are gone; the queue rows link to the jobs
+  themselves.
+
 ## 2026-09-12 — base-path exposure and ingress-consistent public URL
 
 - **`/system` shows the effective base path** the surface is served under:
