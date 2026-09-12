@@ -173,7 +173,7 @@ templ approvalSurface(vm approvalVM) {
 				}
 
 				<!-- (6) global kill: hold-to-confirm, expiry mandatory, lists what it does and does not touch -->
-				@globalKill(vm.Page.Base)
+				@globalKill(vm)
 				@countdownScript()
 			}
 		</div>
@@ -200,15 +200,18 @@ templ planDetail(l planLine) {
 
 // globalKill is the mute/kill ladder's top rung. It never fires one-tap: the
 // confirm lists what it touches and what it does not, requires an expiry, and
-// commits by hold-to-confirm.
-templ globalKill(base string) {
-	<details class="approve-block mt26">
+// commits by hold-to-confirm. The expiry is a typed field in the forms pattern
+// (meta line always rendered), and a refusal re-renders this same screen at 422
+// with the details left open — never a flash.
+templ globalKill(vm approvalVM) {
+	<details class="approve-block mt26" open?={ vm.Kill != nil }>
 		<summary class="keyword">Silence &amp; global kill</summary>
 		<p class="meta">A silence always expires — there is no "until I turn it off". The global kill pauses every rule.</p>
-		<form method="post" action={ urlWithBase(base, "/kill") }>
-			<label for="kill-expiry">Expiry (mandatory)</label>
-			<input id="kill-expiry" name="expiry" type="text" inputmode="text" placeholder="2h" required class="kill-expiry"/>
+		<form method="post" action={ urlWithBase(vm.Page.Base, "/kill") }>
+			<input type="hidden" name="approval_id" value={ itoa(vm.ID) }/>
+			@fieldInput(vm.Kill.expiryField())
 			<p class="meta">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p>
+			@formStatus(vm.Kill.Pending(), vm.Kill.ErrFormText(), "Pausing everything")
 			<button type="button" class="btn danger hold" id="killbtn"
 				onpointerdown="exoHoldStart(this)" onpointerup="exoHoldCancel(this)" onpointerleave="exoHoldCancel(this)">
 				<span class="fill"></span>Hold to pause everything

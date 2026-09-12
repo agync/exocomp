@@ -1,7 +1,9 @@
 package web
 
 import (
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -40,16 +42,27 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad form", http.StatusBadRequest)
 		return
 	}
+	expiry := r.PostFormValue("expiry")
+	form := jobKillForm{Expiry: expiry}
+	approvalID, _ := strconv.Atoi(r.PostFormValue("approval_id"))
+	approvalID64 := int64(approvalID)
 	// The hold-to-confirm gesture is client-side UX (globalKill's onpointerdown
 	// timer); the server re-asserts it so a stray or scripted POST without the
-	// hold cannot fire the switch.
+	// hold cannot fire the switch. A missed hold is the status line's refusal;
+	// a bad expiry the field's — both re-render this screen at 422 (forms
+	// pattern), never a flash.
 	if r.PostFormValue("confirmed") != "1" {
-		http.Error(w, "hold to confirm is required", http.StatusBadRequest)
+		s.log.Info("web: kill refused", "err", "not held", "by", ident.token.Name)
+		form.ErrForm = killHoldRefusal
+		s.killRefusal(w, r, approvalID64, form)
 		return
 	}
-	dur, err := time.ParseDuration(r.PostFormValue("expiry"))
+	dur, err := time.ParseDuration(expiry)
 	if err != nil || dur <= 0 {
-		http.Error(w, "expiry must be a positive duration (e.g. 2h)", http.StatusBadRequest)
+		s.log.Info("web: kill refused", "err", "bad expiry", "by", ident.token.Name)
+		form.ErrExpiry = killExpiryRefusal
+		form.FirstInvalid = "expiry"
+		s.killRefusal(w, r, approvalID64, form)
 		return
 	}
 
@@ -65,4 +78,32 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, s.url("/"), http.StatusSeeOther)
+}
+
+// The kill form's human refusal copy (the forms pattern): the raw validator
+// words go to the log; the field and status lines carry these sentences.
+const (
+	killExpiryRefusal = "The expiry needs a positive duration — like 2h or 45m."
+	killHoldRefusal   = "Hold the button to confirm the pause."
+)
+
+// killRefusal re-renders the approval surface the kill form was on at 422 with
+// the form's refusals filled. The approval id travels as a hidden field so the
+// re-render lands on the same decision screen.
+func (s *Server) killRefusal(w http.ResponseWriter, r *http.Request, approvalID int64, form jobKillForm) {
+	if approvalID <= 0 {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+	vm, err := s.approvalVM(r, approvalID, "")
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "bad form", http.StatusBadRequest)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	vm.Kill = &form
+	s.render(w, r, http.StatusUnprocessableEntity, approvalSurface(vm))
 }

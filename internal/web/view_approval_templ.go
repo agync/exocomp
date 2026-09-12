@@ -533,7 +533,7 @@ func approvalSurface(vm approvalVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = globalKill(vm.Page.Base).Render(ctx, templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = globalKill(vm).Render(ctx, templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -715,8 +715,10 @@ func planDetail(l planLine) templ.Component {
 
 // globalKill is the mute/kill ladder's top rung. It never fires one-tap: the
 // confirm lists what it touches and what it does not, requires an expiry, and
-// commits by hold-to-confirm.
-func globalKill(base string) templ.Component {
+// commits by hold-to-confirm. The expiry is a typed field in the forms pattern
+// (meta line always rendered), and a refusal re-renders this same screen at 422
+// with the details left open — never a flash.
+func globalKill(vm approvalVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -737,20 +739,59 @@ func globalKill(base string) templ.Component {
 			templ_7745c5c3_Var32 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<details class=\"approve-block mt26\"><summary class=\"keyword\">Silence &amp; global kill</summary><p class=\"meta\">A silence always expires — there is no \"until I turn it off\". The global kill pauses every rule.</p><form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "<details class=\"approve-block mt26\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if vm.Kill != nil {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " open")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "><summary class=\"keyword\">Silence &amp; global kill</summary><p class=\"meta\">A silence always expires — there is no \"until I turn it off\". The global kill pauses every rule.</p><form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var33 templ.SafeURL
-		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(base, "/kill"))
+		templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/kill"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 208, Col: 57}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 210, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, "\"><label for=\"kill-expiry\">Expiry (mandatory)</label> <input id=\"kill-expiry\" name=\"expiry\" type=\"text\" inputmode=\"text\" placeholder=\"2h\" required class=\"kill-expiry\"><p class=\"meta\">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p><button type=\"button\" class=\"btn danger hold\" id=\"killbtn\" onpointerdown=\"exoHoldStart(this)\" onpointerup=\"exoHoldCancel(this)\" onpointerleave=\"exoHoldCancel(this)\"><span class=\"fill\"></span>Hold to pause everything</button> <input type=\"hidden\" name=\"confirmed\" id=\"kill-confirmed\" value=\"0\"></form></details><script>\n\tvar exoHoldTimer = null;\n\tfunction exoHoldStart(btn) {\n\t\tbtn.classList.add(\"holding\");\n\t\texoHoldTimer = setTimeout(function () {\n\t\t\tdocument.getElementById(\"kill-confirmed\").value = \"1\";\n\t\t\tbtn.closest(\"form\").requestSubmit();\n\t\t}, 1200);\n\t}\n\tfunction exoHoldCancel(btn) {\n\t\tbtn.classList.remove(\"holding\");\n\t\tif (exoHoldTimer) { clearTimeout(exoHoldTimer); exoHoldTimer = null; }\n\t}\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\"><input type=\"hidden\" name=\"approval_id\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var34 string
+		templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(itoa(vm.ID))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_approval.templ`, Line: 211, Col: 62}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = fieldInput(vm.Kill.expiryField()).Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<p class=\"meta\">This pauses the reactive engine. Running jobs finish. Schedules still fire. It does not cancel anything already applied.</p>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = formStatus(vm.Kill.Pending(), vm.Kill.ErrFormText(), "Pausing everything").Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<button type=\"button\" class=\"btn danger hold\" id=\"killbtn\" onpointerdown=\"exoHoldStart(this)\" onpointerup=\"exoHoldCancel(this)\" onpointerleave=\"exoHoldCancel(this)\"><span class=\"fill\"></span>Hold to pause everything</button> <input type=\"hidden\" name=\"confirmed\" id=\"kill-confirmed\" value=\"0\"></form></details><script>\n\tvar exoHoldTimer = null;\n\tfunction exoHoldStart(btn) {\n\t\tbtn.classList.add(\"holding\");\n\t\texoHoldTimer = setTimeout(function () {\n\t\t\tdocument.getElementById(\"kill-confirmed\").value = \"1\";\n\t\t\tbtn.closest(\"form\").requestSubmit();\n\t\t}, 1200);\n\t}\n\tfunction exoHoldCancel(btn) {\n\t\tbtn.classList.remove(\"holding\");\n\t\tif (exoHoldTimer) { clearTimeout(exoHoldTimer); exoHoldTimer = null; }\n\t}\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -779,12 +820,12 @@ func countdownScript() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var34 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var34 == nil {
-			templ_7745c5c3_Var34 = templ.NopComponent
+		templ_7745c5c3_Var35 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var35 == nil {
+			templ_7745c5c3_Var35 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<script>\n\t(function () {\n\t\tvar el = document.getElementById(\"countdown\");\n\t\tif (!el) return;\n\t\tvar deadline = parseInt(el.getAttribute(\"data-deadline\"), 10);\n\t\tif (!isFinite(deadline) || deadline <= 0) return;\n\t\tfunction pad(n) { return n < 10 ? \"0\" + n : \"\" + n; }\n\t\tfunction render() {\n\t\t\tvar ms = deadline - Date.now();\n\t\t\tif (ms <= 0) {\n\t\t\t\tel.textContent = \"Expired — the window closed\";\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tvar total = Math.floor(ms / 1000);\n\t\t\tvar m = Math.floor(total / 60);\n\t\t\tvar s = total % 60;\n\t\t\tel.textContent = m + \"m \" + pad(s) + \"s left\";\n\t\t}\n\t\trender();\n\t\tsetInterval(render, 1000);\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "<script>\n\t(function () {\n\t\tvar el = document.getElementById(\"countdown\");\n\t\tif (!el) return;\n\t\tvar deadline = parseInt(el.getAttribute(\"data-deadline\"), 10);\n\t\tif (!isFinite(deadline) || deadline <= 0) return;\n\t\tfunction pad(n) { return n < 10 ? \"0\" + n : \"\" + n; }\n\t\tfunction render() {\n\t\t\tvar ms = deadline - Date.now();\n\t\t\tif (ms <= 0) {\n\t\t\t\tel.textContent = \"Expired — the window closed\";\n\t\t\t\treturn;\n\t\t\t}\n\t\t\tvar total = Math.floor(ms / 1000);\n\t\t\tvar m = Math.floor(total / 60);\n\t\t\tvar s = total % 60;\n\t\t\tel.textContent = m + \"m \" + pad(s) + \"s left\";\n\t\t}\n\t\trender();\n\t\tsetInterval(render, 1000);\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -2056,6 +2056,53 @@ type approvalVM struct {
 	// Provenance is the standing guardrail copy and what matched.
 	Provenance string
 	CanDecide  bool
+	// Kill is the global-kill form's refusal state (the forms pattern): nil at
+	// rest, the filled form on a 422 re-render with the kill details open.
+	Kill *jobKillForm
+}
+
+// jobKillForm is the approval surface's "Silence & global kill" form refusal
+// state: the typed expiry, the field's sentence (ErrExpiry), and the status
+// line's whole-submit sentence (ErrForm — the hold-to-confirm gesture).
+type jobKillForm struct {
+	Expiry       string
+	ErrExpiry    string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *jobKillForm) effective() jobKillForm {
+	if f == nil {
+		return jobKillForm{}
+	}
+	return *f
+}
+
+func (f *jobKillForm) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *jobKillForm) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// expiryField builds the expiry control's render state (the forms pattern):
+// the field's help at rest, the refusal sentence on a 422 re-render.
+func (f *jobKillForm) expiryField() fieldMeta {
+	v := f.effective()
+	err := ""
+	if f != nil {
+		err = f.ErrExpiry
+	}
+	return fieldMeta{
+		ID: "kill-expiry", Label: "Expiry", Name: "expiry", Value: v.Expiry,
+		Placeholder: "2h", Help: "A silence always expires — like 2h or 45m.",
+		ErrMsg: err, FirstInvalid: f != nil && f.FirstInvalid == "expiry",
+	}
 }
 
 // planLine is one resource line of a plan diff. Secret-backed values never
