@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — scoped mutes surface on /system/ntfy (SPEC §7 A8)
+
+- **Mutes stop being invisible.** The /system/ntfy drawer gains a MUTES
+  section (SPEC §7 A8): one row per active mute across SOURCE · HOST · UNTIL,
+  newest first, each with a one-click `clear` verb. The source cell names the
+  alert an alert-scoped mute covers or the word `global`; the host cell the
+  host a host-scoped mute covers; until is the countdown face (`in 2h 05m`).
+  A global mute is the safety valve — its clear asks first through the shared
+  confirm dialog, a scoped mute's clear is one click. Clearing lifts the row
+  through the same `store.DeleteNotifyMute` the CLI's `mute rm` and the API's
+  DELETE /mutes call — a direct store call, not a queued job, exactly how
+  mutes are set. The What-pages meta's quiet-hours phrase now links here, so
+  "quiet hours are a scoped mute" lands on the list that shows them.
+
+
 ## 2026-09-12 — the public-URL Change form gets its spec (SPEC §7 A7)
 
 - **The identity strip's public-URL Change form carries the forms anatomy.**
