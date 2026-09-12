@@ -127,9 +127,9 @@ func TestDashboardPostV1Sections(t *testing.T) {
 	}
 }
 
-// TestSystemPageHealth is the GATE for /system: the control-plane health card
-// (running version + Litestream RPO) and the backups card, moved off the
-// dashboard and the powerline, render on the shipped table chrome.
+// TestSystemPageHealth is the GATE for /system: the self-care shell (SPEC §0)
+// renders the identity strip, the four leg-card stubs and the powerline of
+// per-leg anchors.
 func TestSystemPageHealth(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
@@ -142,12 +142,15 @@ func TestSystemPageHealth(t *testing.T) {
 		t.Fatalf("system status = %d", code)
 	}
 	for _, want := range []string{
-		`aria-labelledby="self-h"`,
-		`aria-labelledby="backups-h"`,
-		`scope="col"`,
-		"Running version",
-		"Litestream RPO",
-		"no replica configured",
+		`class="sys-identity"`,
+		`class="sys-legs"`,
+		`id="deadman"`, `id="ntfy"`, `id="litestream"`, `id="backups"`,
+		`class="sys-powerline"`,
+		`href="/system#deadman"`,
+		`href="/system#ntfy"`,
+		`href="/system#litestream"`,
+		`href="/system#backups"`,
+		"rpo ",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("system page missing %q", want)
@@ -278,9 +281,10 @@ func TestPoliciesVerdict(t *testing.T) {
 	}
 }
 
-// TestSystemBackupsNeverIsWait is the GATE for W19: a backup target with no run
-// yet renders its NEVER fact as a wait chip (a gap, not a failure) — the same
-// colour Sources' NEVER and the powerline dead-man use.
+// TestSystemBackupsNeverIsWait is the GATE for W19 on the self-care shell: a
+// backup target with no run yet reads as a wait gap (never a fail) — the
+// dead-man segment quotes the same ONE rule, so "dead-man none — set one" and
+// the backups segment both land in wait while nothing has succeeded.
 func TestSystemBackupsNeverIsWait(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -298,10 +302,13 @@ func TestSystemBackupsNeverIsWait(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("system status = %d", code)
 	}
-	if !strings.Contains(page, `<span class="chip wait"><span class="dot"></span>never</span>`) {
-		t.Error("a never-run backup target must render a wait NEVER chip (W19)")
+	if !strings.Contains(page, `data-state="wait">backups none</a>`) {
+		t.Error("a never-run backup target must read as a wait gap on the powerline (W19)")
 	}
-	if strings.Contains(page, `<span class="chip fail"><span class="dot"></span>never</span>`) {
-		t.Error("never must never read as fail (W19)")
+	if strings.Contains(page, "backups 1 failing") || strings.Contains(page, `data-state="fail">backups`) {
+		t.Error("a never-run target must never read as fail (W19)")
+	}
+	if !strings.Contains(page, "dead-man none") || !strings.Contains(page, "— set one") {
+		t.Error("a never-succeeded estate must read dead-man none, not a fake age")
 	}
 }

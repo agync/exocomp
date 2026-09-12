@@ -63,6 +63,7 @@ func TestBasePathTemplateNavAndForms(t *testing.T) {
 		`href="/exocomp/system"`,
 		`href="/exocomp/assets/tokens.css?v=`,
 		`href="/exocomp/assets/app.css?v=`,
+		`href="/exocomp/assets/lift.css?v=`,
 		`action="/exocomp/checks/add"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -223,6 +224,7 @@ func TestNoBasePathTemplateDefaultUnchanged(t *testing.T) {
 	for _, want := range []string{
 		`href="/approvals"`,
 		`href="/jobs"`,
+		`href="/assets/lift.css?v=`,
 		`action="/checks/add"`,
 	} {
 		if !strings.Contains(body, want) {

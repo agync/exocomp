@@ -69,7 +69,7 @@ func TestPublicURLPathlessStillSaves(t *testing.T) {
 	}
 }
 
-func TestSystemPageShowsEffectiveBasePath(t *testing.T) {
+func TestSystemShellBasePrefixed(t *testing.T) {
 	h := newHarnessBase(t, "/exocomp")
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -81,12 +81,27 @@ func TestSystemPageShowsEffectiveBasePath(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("GET /exocomp/system = %d, want 200", code)
 	}
-	if !strings.Contains(body, `Base path: <span class="mono">/exocomp</span>`) {
-		t.Errorf("system page missing the effective base path: %s", body)
+	for _, want := range []string{
+		`href="/exocomp/system#deadman"`,
+		`href="/exocomp/system#ntfy"`,
+		`href="/exocomp/system#litestream"`,
+		`href="/exocomp/system#backups"`,
+		`href="/exocomp/system/deadman"`,
+		`href="/exocomp/system/ntfy"`,
+		`href="/exocomp/system/litestream"`,
+		`href="/exocomp/system/backups"`,
+		`action="/exocomp/system/public-url"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("system shell missing the prefixed %q", want)
+		}
+	}
+	if strings.Contains(body, `href="/system#deadman"`) {
+		t.Error("system shell anchor not prefixed under --base-path")
 	}
 }
 
-func TestSystemPageShowsOriginRootByDefault(t *testing.T) {
+func TestSystemShellOriginRoot(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -98,7 +113,10 @@ func TestSystemPageShowsOriginRootByDefault(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("GET /system = %d, want 200", code)
 	}
-	if !strings.Contains(body, `Base path: <span class="mono">origin root</span>`) {
-		t.Errorf("system page missing the origin-root base path: %s", body)
+	if !strings.Contains(body, `href="/system#deadman"`) {
+		t.Error("system shell anchor missing at the origin root")
+	}
+	if strings.Contains(body, "/exocomp/system") {
+		t.Error("origin-root system shell carries a phantom prefix")
 	}
 }
