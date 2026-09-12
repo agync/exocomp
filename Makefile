@@ -50,7 +50,10 @@ test: ## Run the fast test suite (-short, skips heavy integration tests)
 	go test -short ./...
 
 test-race: ## Run the full test suite with the race detector
-	go test -race ./...
+	# 30m per-binary alarm: the race-instrumented web suite grew past the
+	# framework's 10m default on loaded hosts (two lima VMs, the deployed
+	# service). The fast -short gate keeps the default budget.
+	go test -race -timeout 30m ./...
 
 clean: ## Remove build artifacts
 	rm -rf bin/ dist/
