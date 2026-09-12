@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the audit HIGHs land (SPEC §7 A1–A3)
+
+- **The Doctor glyph on /system is now a verb.** It queues the self-check as a
+  kind=doctor job through the one queue (invariant 5); the daemon routes it to
+  a new driver that runs the one health.Probe in-process and emits one finding
+  event per subsystem entry. The job page renders the findings as rows (name ·
+  status chip · detail) under a count header, and the identity strip reads
+  `doctor {age} ago · {n} findings`, linking to the job page. The exit code is
+  the worst status: a FAIL finding fails the job, every other status is a state
+  to read. `exocomp doctor` stays the scriptable twin.
+- **The /secrets page says who uses each sealed secret.** The `ntfy/*` keys and
+  `deadman/heartbeat_url` list their /system leg with a link in the Used by
+  cell, so a rotation names its consumer; `/secrets?key=ntfy/token` (the href
+  m75's Seal-token verb already renders) focuses that row. The leg map is
+  exact — a backup target's restic password is derived from the DEK
+  (`restic-repo:<target>`), never a sealed row, so no `backup/*/password` key
+  exists to annotate.
+- **The recovery kit never goes stale silently.** The identity strip's
+  Recovery-kit glyph is the reprint verb: it stamps the printed date and
+  resets the staleness counter, and the strip reads `kit printed {date} · {n}
+  changes since`. The counter is fed by the three write verbs that invalidate
+  the kit's printed contents — dead-man arm (the heartbeat URL), backup
+  add-target (the target list), and secret rotation.
+
 ## 2026-09-12 — the backups leg lands (SPEC §4)
 
 - **The /system Backups card draws real freshness.** The stub becomes the §0.1
