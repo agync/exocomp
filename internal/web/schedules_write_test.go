@@ -79,68 +79,196 @@ func TestScheduleAddCreates(t *testing.T) {
 	}
 }
 
+// TestScheduleFormAtRest renders the schedules-add dialog for an operator and
+// asserts the forms-round anatomy: the reusable field pattern with
+// always-present meta lines (help at rest), the kind select's own meta line,
+// aria wiring tying each control to its meta, a form-status line, and
+// novalidate so the daemon stays authoritative.
+func TestScheduleFormAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/schedules")
+	if code != http.StatusOK {
+		t.Fatalf("/schedules = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="schedules-add"`,
+		`action="/schedules/add"`,
+		`id="schedule-add-form" novalidate`,
+		`aria-describedby="sc-name-meta"`,
+		`aria-describedby="sc-kind-meta"`,
+		`aria-describedby="sc-cron-meta"`,
+		`aria-describedby="sc-argv-meta"`,
+		`aria-describedby="sc-target-meta"`,
+		`aria-describedby="sc-ck-meta"`,
+		`aria-describedby="sc-jitter-meta"`,
+		`id="sc-name-meta"`,
+		`id="sc-kind-meta"`,
+		`id="sc-cron-meta"`,
+		`id="sc-argv-meta"`,
+		`id="sc-target-meta"`,
+		`id="sc-ck-meta"`,
+		`id="sc-jitter-meta"`,
+		"Letters, digits, dots, hyphens, underscores.",
+		"Kind is shell, backup, play or drill.",
+		"A 5-field cron or an @every",
+		"The command (shell) or playbook command (play).",
+		"A whole number of seconds — like 300.",
+		`role="status" aria-live="polite"`,
+		"Add schedule",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("schedule form missing %q", want)
+		}
+	}
+	// At rest no control carries a refusal and the metas are plain help text.
+	if !strings.Contains(page, `placeholder="nightly-backup" aria-describedby="sc-name-meta">`) {
+		t.Error("at-rest name control carries an aria-invalid refusal")
+	}
+	if !strings.Contains(page, `id="sc-name-meta" class="meta">Letters`) {
+		t.Error("at-rest name meta is not plain help text")
+	}
+}
+
+// TestScheduleFormRefusalsRender asserts the 422 re-render fills every meta
+// line at once (name, cron, argv, jitter), keeps the typed values, and never
+// flashes: a refusal is the form's own surface, flash is success-only.
+func TestScheduleFormRefusalsRender(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/schedules/add",
+		url.Values{
+			"name": {"bad name!"}, "cron": {"not a cron expr"}, "kind": {"shell"},
+			"argv": {""}, "jitter": {"abc"},
+		}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`aria-invalid="true"`,
+		"Names can&#39;t have spaces.",
+		"Give a 5-field cron or an @every — like 0 */5 * * * * or @every 5m.",
+		"Give a command — shell and play kinds need one.",
+		"The jitter is a whole number of seconds — like 300.",
+		`value="bad name!"`,
+		`exoModalOpen("schedules-add")`,
+		`autofocus`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("422 re-render missing %q", want)
+		}
+	}
+	// A refusal never flashes: the render consumes the flash cookie (an empty
+	// clearing Set-Cookie), so no flash MESSAGE may ride this response.
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("schedule refusal carried a flash message")
+		}
+	}
+}
+
+// TestScheduleFormConcurrencyRefused asserts the backup/drill concurrency-key
+// refusal lands on the concurrency field's meta line (schedules_write.go's
+// old kind-message flash).
+func TestScheduleFormConcurrencyRefused(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/schedules/add",
+		url.Values{"name": {"nightly"}, "cron": {"@every 24h"}, "kind": {"backup"},
+			"concurrency_key": {"lock"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("concurrency refusal status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "the concurrency key does not apply") {
+		t.Errorf("concurrency refusal missing the field sentence")
+	}
+	if _, err := h.store.GetSchedule(context.Background(), "nightly"); err == nil {
+		t.Fatal("a schedule was created despite a disallowed concurrency key")
+	}
+}
+
 // TestScheduleAddValidatesCron: an unparseable cron expression is refused
-// before the store sees it, the rejection resolves as a flash-carrying
-// redirect, and no row lands.
+// before the store sees it; the form re-renders at 422 with the cron field's
+// sentence, and no row lands.
 func TestScheduleAddValidatesCron(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	op := h.mint(t, "laptop", "operator")
-	client := login(t, ts.URL, op)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	resp := postForm(t, client, ts.URL+"/schedules/add",
+	resp := postForm(t, op, ts.URL+"/schedules/add",
 		url.Values{"name": {"bad"}, "cron": {"not a cron expr"}, "kind": {"shell"}, "argv": {"true"}}, nil)
-	msg := flashMessage(t, resp, "/schedules")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "not a cron expression") {
-		t.Errorf("flash message %q does not report the cron error", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("cron refusal status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "Give a 5-field cron or an @every") {
+		t.Errorf("cron refusal missing the cron-field sentence")
 	}
 	if _, err := h.store.GetSchedule(context.Background(), "bad"); err == nil {
 		t.Fatal("a schedule was created despite an invalid cron expression")
 	}
 }
 
-// TestScheduleAddShellNeedsCommand: kind shell with no command is refused,
-// the rejection resolves as a flash-carrying redirect, and no row lands.
+// TestScheduleAddShellNeedsCommand: kind shell with no command re-renders the
+// form at 422 with the argv field's sentence, and no row lands.
 func TestScheduleAddShellNeedsCommand(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	op := h.mint(t, "laptop", "operator")
-	client := login(t, ts.URL, op)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	resp := postForm(t, client, ts.URL+"/schedules/add",
+	resp := postForm(t, op, ts.URL+"/schedules/add",
 		url.Values{"name": {"empty-shell"}, "cron": {"@every 5m"}, "kind": {"shell"}}, nil)
-	msg := flashMessage(t, resp, "/schedules")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "needs a command") {
-		t.Errorf("flash message %q does not report the missing command", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("argv refusal status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "Give a command — shell and play kinds need one.") {
+		t.Errorf("argv refusal missing the argv-field sentence")
 	}
 	if _, err := h.store.GetSchedule(context.Background(), "empty-shell"); err == nil {
 		t.Fatal("a schedule was created despite a missing shell command")
 	}
 }
 
-// TestScheduleAddRefusesBadName: a name the ValidName gate refuses is
-// refused before the store sees it — with a flash-carrying redirect, not a bare
-// 500, and no row lands. The same guard surfaces through `schedule add`,
-// so a schedule that could never be addressed by the web cannot be created there
-// either.
+// TestScheduleAddRefusesBadName: a name the ValidName gate refuses re-renders
+// the form at 422 with the name field's human sentence — never the banned
+// "invalid schedule name" — and no row lands.
 func TestScheduleAddRefusesBadName(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	op := h.mint(t, "laptop", "operator")
-	client := login(t, ts.URL, op)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	for _, name := range []string{"", "bad name!", "a/b"} {
-		resp := postForm(t, client, ts.URL+"/schedules/add",
+		resp := postForm(t, op, ts.URL+"/schedules/add",
 			url.Values{"name": {name}, "cron": {"@every 5m"}, "kind": {"shell"}, "argv": {"true"}}, nil)
-		msg := flashMessage(t, resp, "/schedules")
+		body := readBody(t, resp)
 		_ = resp.Body.Close()
-		if !strings.Contains(msg, "invalid schedule name") {
-			t.Errorf("name %q: flash message %q does not report the name refusal", name, msg)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("name %q: status = %d, want 422", name, resp.StatusCode)
+		}
+		if strings.Contains(body, "invalid schedule name") {
+			t.Errorf("name %q: refusal leaks the banned old copy", name)
+		}
+		if !strings.Contains(body, "Name") {
+			t.Errorf("name %q: refusal missing the name-field sentence", name)
 		}
 		if _, err := h.store.GetSchedule(context.Background(), name); err == nil {
 			t.Fatalf("name %q: a schedule was created despite an invalid name", name)
@@ -148,26 +276,29 @@ func TestScheduleAddRefusesBadName(t *testing.T) {
 	}
 }
 
-// TestScheduleAddDuplicateFlashes: re-adding a name that exists is refused
-// with a flash-carrying redirect, not a 409, and the original row survives.
-func TestScheduleAddDuplicateFlashes(t *testing.T) {
+// TestScheduleAddDuplicateRefused: re-adding a name that exists re-renders the
+// form at 422 with the duplicate sentence on the name field, and the original
+// row survives.
+func TestScheduleAddDuplicateRefused(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
-	op := h.mint(t, "laptop", "operator")
-	client := login(t, ts.URL, op)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	ctx := context.Background()
 
 	if _, err := h.store.CreateSchedule(ctx, newTogglerSchedule()); err != nil {
 		t.Fatalf("CreateSchedule: %v", err)
 	}
 
-	resp := postForm(t, client, ts.URL+"/schedules/add",
+	resp := postForm(t, op, ts.URL+"/schedules/add",
 		url.Values{"name": {"toggler"}, "cron": {"@every 5m"}, "kind": {"shell"}, "argv": {"true"}}, nil)
-	msg := flashMessage(t, resp, "/schedules")
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if !strings.Contains(msg, "already exists") {
-		t.Errorf("flash message %q does not report the duplicate", msg)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "A schedule named toggler already exists.") {
+		t.Errorf("duplicate 422 missing the duplicate sentence")
 	}
 	if _, err := h.store.GetSchedule(ctx, "toggler"); err != nil {
 		t.Fatalf("original schedule vanished: %v", err)

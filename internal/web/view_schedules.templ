@@ -13,30 +13,44 @@ templ schedulesList(vm schedulesVM) {
 		if vm.Operator {
 			@modal("schedules-add", "Add a schedule") {
 				<p class="meta">Mirrors <code>exocomp schedule add</code>: kind decides which fields apply. Command is whitespace-split (no quoting) — a command needing quoted arguments still wants the CLI.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/schedules/add") } class="writeform">
-					<label for="sc-name">Name</label>
-					<input id="sc-name" name="name" type="text" required autocomplete="off" pattern="[A-Za-z0-9._-]+" value={ vm.Prefill.Name }/>
-					<label for="sc-cron">Cron expression</label>
-					<input id="sc-cron" name="cron" type="text" required autocomplete="off" placeholder="0 */5 * * * * or @every 5m"/>
-					<label for="sc-kind">Kind</label>
-					<select id="sc-kind" name="kind">
-						<option value="shell" selected?={ vm.Prefill.Kind == "" || vm.Prefill.Kind == "shell" }>shell</option>
-						<option value="backup" selected?={ vm.Prefill.Kind == "backup" }>backup</option>
-						<option value="play" selected?={ vm.Prefill.Kind == "play" }>play</option>
-						<option value="drill" selected?={ vm.Prefill.Kind == "drill" }>drill</option>
-					</select>
-					<label for="sc-argv">Command (shell/play kinds)</label>
-					<input id="sc-argv" name="argv" type="text" autocomplete="off" placeholder="shell: the command; play: playbook.yml [--extra-vars ...]" value={ vm.Prefill.Argv }/>
-					<label for="sc-target">Target (backup/drill: target name, empty = every enabled target; play: standing inventory name)</label>
-					<input id="sc-target" name="target" type="text" autocomplete="off" value={ vm.Prefill.Target }/>
-					<label for="sc-ck">Concurrency key (shell/play only)</label>
-					<input id="sc-ck" name="concurrency_key" type="text" autocomplete="off"/>
-					<label for="sc-jitter">Jitter seconds (optional)</label>
-					<input id="sc-jitter" name="jitter" type="number" min="0" autocomplete="off" placeholder="0"/>
-					<label class="checkline"><input type="checkbox" name="check" value="1"/> play kind: run in check mode (config-drift schedule)</label>
-					<label class="checkline"><input type="checkbox" name="tolerate_unreachable" value="1"/> play kind: tolerate unreachable hosts (roaming-fleet converge)</label>
-					<div class="actions"><button type="submit" class="btn primary">Add schedule</button></div>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/schedules/add") } class="writeform" id="schedule-add-form" novalidate data-schedule-form>
+					@fieldInput(vm.Form.nameField(vm.Prefill))
+					@fieldInput(vm.Form.cronField())
+					<label class="field">
+						<span class="label">Kind</span>
+						<select class="control" id="sc-kind" name="kind" aria-invalid?={ vm.Form.effective().ErrKind != "" } aria-describedby="sc-kind-meta" autofocus?={ vm.Form.effective().FirstInvalid == "kind" }>
+							<option value="shell" selected?={ vm.Form.kindIs(vm.Prefill, "shell") }>shell</option>
+							<option value="backup" selected?={ vm.Form.kindIs(vm.Prefill, "backup") }>backup</option>
+							<option value="play" selected?={ vm.Form.kindIs(vm.Prefill, "play") }>play</option>
+							<option value="drill" selected?={ vm.Form.kindIs(vm.Prefill, "drill") }>drill</option>
+						</select>
+						<span id="sc-kind-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrKind != "") }>
+							if vm.Form.effective().ErrKind != "" {
+								<span class="msg">{ vm.Form.effective().ErrKind }</span>
+							} else {
+								Kind is shell, backup, play or drill.
+							}
+						</span>
+					</label>
+					@fieldInput(vm.Form.argvField(vm.Prefill))
+					@fieldInput(vm.Form.targetField(vm.Prefill))
+					@fieldInput(vm.Form.concurrencyField())
+					@fieldInput(vm.Form.jitterField())
+					<label class="checkline"><input type="checkbox" name="check" value="1" checked?={ vm.Form.effective().Check }/> play kind: run in check mode (config-drift schedule)</label>
+					<label class="checkline"><input type="checkbox" name="tolerate_unreachable" value="1" checked?={ vm.Form.effective().TolerateUnreachable }/> play kind: tolerate unreachable hosts (roaming-fleet converge)</label>
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding schedule")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add schedule</button></div>
 				</form>
+				if vm.Form != nil {
+					// A JS-off refusal re-renders the whole page; open the dialog and
+					// focus the first invalid control after it is in the DOM.
+					<script>
+					exoModalOpen("schedules-add");
+					var scBad = document.querySelector('#schedules-add [aria-invalid="true"]');
+					if (scBad) scBad.focus();
+					</script>
+				}
+				@scheduleFormJS()
 			}
 			if vm.Prefill.Open {
 				<script>exoModalOpen("schedules-add");</script>
@@ -132,4 +146,131 @@ for _, sc := range vm.Schedules {
 			}
 		}
 	}
+}
+
+// scheduleFormJS is the add-schedule form's progressive enhancement, mirroring
+// the netgroup/source/check forms: novalidate (the daemon is authoritative),
+// submit intercepted and POSTed with fetch — a 422 swaps the form fragment in
+// place with the server-rendered refusals (JS-off gets the same bytes as a
+// full re-render), anything else follows the redirect and its success flash.
+// After a refusal a field re-validates on blur and clears when right; the
+// primary disables only while submitting.
+templ scheduleFormJS() {
+	<script>
+	(function () {
+		function scheduleFormWire() {
+			var form = document.getElementById("schedule-add-form");
+			if (!form || form.dataset.scheduleWired) return;
+			form.dataset.scheduleWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (!meta) return;
+				meta.classList.remove("is-error");
+				switch (input.name) {
+				case "name":
+					meta.textContent = "Letters, digits, dots, hyphens, underscores.";
+					break;
+				case "cron":
+					meta.textContent = "A 5-field cron or an @every — like 0 */5 * * * * or @every 5m.";
+					break;
+				case "argv":
+					meta.textContent = "The command (shell) or playbook command (play).";
+					break;
+				case "target":
+					meta.textContent = "backup/drill: target name, empty = every target; play: inventory name.";
+					break;
+				case "concurrency_key":
+					meta.textContent = "One run at a time per key.";
+					break;
+				case "jitter":
+					meta.textContent = "A whole number of seconds — like 300.";
+					break;
+				}
+			}
+
+			// showError paints a refusal on a field without changing its geometry
+			// (the meta line always exists), mirroring the server's human copy.
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rules the server holds to — a
+			// name shape or cron-shape refusal — on blur so a mistake surfaces
+			// before submit. Empty is left alone (that's a submit-time required
+			// check); the daemon stays authoritative on uniqueness and the
+			// per-kind field matrix, so submit still asks the server.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				var v = input.value.trim();
+				if (input.name === "name") {
+					if (!/^[A-Za-z0-9_.-]+$/.test(v)) {
+						showError(input, "Names can't have spaces or special characters.");
+						return;
+					}
+				} else if (input.name === "cron") {
+					if (v.indexOf("@") !== 0 && v.split(/\s+/).length < 5) {
+						showError(input, "Give a 5-field cron or an @every — like 0 */5 * * * * or @every 5m.");
+						return;
+					}
+				} else if (input.name === "jitter") {
+					if (!/^\d+$/.test(v)) {
+						showError(input, "The jitter is a whole number of seconds — like 300.");
+						return;
+					}
+				}
+				restoreMeta(input);
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding schedule';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("schedule-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("schedule-add-form");
+							form.dataset.scheduleRefused = "1";
+							scheduleFormWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="cron"], input[name="jitter"]');
+				if (!input) return;
+				validateField(input);
+			}, true);
+		}
+		scheduleFormWire();
+	})();
+	</script>
 }

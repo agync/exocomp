@@ -670,7 +670,148 @@ type schedulesVM struct {
 	Page      page
 	Operator  bool
 	Schedules []scheduleRow
-	Prefill   schedulePrefill
+	// Prefill carries the add form's deep-link values and Open flag;
+	// Form is the add dialog's refusal state (nil at rest, the filled form
+	// with field refusals on a 422 re-render). The field builders merge the
+	// prefill into a fresh form so a deep link still lands filled.
+	Prefill schedulePrefill
+	Form    *scheduleFormVM
+}
+
+// scheduleFormVM is the schedule-add dialog's refusal state (forms/SPEC.md).
+// Err* hold the translated sentences — the raw validator words go to the log
+// at the same call site — and FixName is the one-click slug the fix link
+// applies. FirstInvalid names the control to focus; Submitting drives the
+// status line's verb and disables the primary.
+type scheduleFormVM struct {
+	Name                string
+	Cron                string
+	Kind                string
+	Argv                string
+	Target              string
+	ConcurrencyKey      string
+	Jitter              string
+	Check               bool
+	TolerateUnreachable bool
+	ErrName             string
+	FixName             string
+	ErrCron             string
+	ErrKind             string
+	ErrArgv             string
+	ErrTarget           string
+	ErrConcurrency      string
+	ErrJitter           string
+	ErrForm             string
+	FirstInvalid        string
+	Submitting          bool
+}
+
+func (f *scheduleFormVM) effective() scheduleFormVM {
+	if f == nil {
+		return scheduleFormVM{}
+	}
+	return *f
+}
+
+func (f *scheduleFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *scheduleFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// prefillMerged returns the at-rest field value, falling back to the deep-link
+// prefill only on a fresh form (a 422 re-render always echoes what was typed).
+func (f *scheduleFormVM) prefillMerged(typed, pre string) string {
+	if f != nil {
+		return typed
+	}
+	if typed == "" {
+		return pre
+	}
+	return typed
+}
+
+func (f *scheduleFormVM) nameField(p schedulePrefill) fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-name", Label: "Name", Name: "name", Value: f.prefillMerged(v.Name, p.Name),
+		Placeholder: "nightly-backup", Help: "Letters, digits, dots, hyphens, underscores.",
+		ErrMsg: v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *scheduleFormVM) cronField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-cron", Label: "Cron expression", Name: "cron", Value: v.Cron,
+		Placeholder: "0 */5 * * * * or @every 5m",
+		Help:        "A 5-field cron or an @every — like 0 */5 * * * * or @every 5m.",
+		ErrMsg:      v.ErrCron, FirstInvalid: v.FirstInvalid == "cron",
+	}
+}
+
+func (f *scheduleFormVM) argvField(p schedulePrefill) fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-argv", Label: "Command (shell/play kinds)", Name: "argv",
+		Value:       f.prefillMerged(v.Argv, p.Argv),
+		Placeholder: "shell: the command; play: playbook.yml [--extra-vars ...]",
+		Help:        "The command (shell) or playbook command (play).",
+		ErrMsg:      v.ErrArgv, FirstInvalid: v.FirstInvalid == "argv",
+	}
+}
+
+func (f *scheduleFormVM) targetField(p schedulePrefill) fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-target", Label: "Target (backup/drill: target name, empty = every enabled target; play: standing inventory name)",
+		Name: "target", Value: f.prefillMerged(v.Target, p.Target),
+		Placeholder: "",
+		Help:        "backup/drill: target name, empty = every target; play: inventory name.",
+		ErrMsg:      v.ErrTarget, FirstInvalid: v.FirstInvalid == "target",
+	}
+}
+
+func (f *scheduleFormVM) concurrencyField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-ck", Label: "Concurrency key (shell/play only)", Name: "concurrency_key",
+		Value: v.ConcurrencyKey, Placeholder: "",
+		Help:   "One run at a time per key.",
+		ErrMsg: v.ErrConcurrency, FirstInvalid: v.FirstInvalid == "concurrency",
+	}
+}
+
+func (f *scheduleFormVM) jitterField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "sc-jitter", Label: "Jitter seconds (optional)", Name: "jitter",
+		Value: v.Jitter, Placeholder: "0",
+		Help:   "A whole number of seconds — like 300.",
+		ErrMsg: v.ErrJitter, FirstInvalid: v.FirstInvalid == "jitter",
+	}
+}
+
+// kindIs reports whether the add form's kind select should show k: the typed
+// value on a 422 re-render, else the deep-link prefill's kind, else the shell
+// default.
+func (f *scheduleFormVM) kindIs(p schedulePrefill, k string) bool {
+	v := f.effective()
+	if f == nil {
+		if v.Kind == "" && p.Kind != "" {
+			v.Kind = p.Kind
+		}
+		if v.Kind == "" {
+			v.Kind = store.ScheduleShell
+		}
+	}
+	return v.Kind == k
 }
 
 // ShowEnabledColumn reports whether any schedule is disabled: the ENABLED

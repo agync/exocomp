@@ -26,48 +26,157 @@ func (s *Server) registerScheduleWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /schedules/{name}/rm", s.requireAuth(s.handleScheduleRm))
 }
 
+// The add dialog's human refusal copy (forms/copy.txt): one sentence in the
+// field's terms, never the validator's words or a status code. The raw causes
+// go to the log at each call site below.
+const (
+	scheduleCronRefusal        = "Give a 5-field cron or an @every — like 0 */5 * * * * or @every 5m."
+	scheduleKindRefusal        = "Kind is shell, backup, play or drill."
+	scheduleArgvRequired       = "Give a command — shell and play kinds need one."
+	scheduleArgvForbidden      = "backup and drill kinds take no command — leave it empty."
+	scheduleTargetRequired     = "Play kind needs a target inventory name."
+	scheduleConcurrencyRefusal = "backup and drill kinds key each fire by target — the concurrency key does not apply."
+	scheduleJitterRefusal      = "The jitter is a whole number of seconds — like 300."
+	scheduleJitterNegative     = "The jitter can't be negative."
+	scheduleSubmitRefusal      = "Couldn't add the schedule — nothing was saved."
+)
+
+func scheduleNameRefusal(name string) (msg, fix string) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return "Give the schedule a name.", ""
+	}
+	if strings.Contains(name, " ") {
+		msg = "Names can't have spaces."
+	} else {
+		msg = "Names use letters, digits, dots, hyphens and underscores."
+	}
+	return msg, netgroupSlug(name)
+}
+
+func scheduleDuplicateRefusal(name string) string {
+	return "A schedule named " + name + " already exists."
+}
+
 func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
 		return
 	}
-	name := r.PostFormValue("name")
-	if !store.ValidName(name) {
-		s.redirectFlash(w, r, "/schedules", "invalid schedule name")
+	form := scheduleFormVM{
+		Name: r.PostFormValue("name"), Cron: r.PostFormValue("cron"),
+		Kind: r.PostFormValue("kind"), Argv: r.PostFormValue("argv"),
+		Target: r.PostFormValue("target"), ConcurrencyKey: r.PostFormValue("concurrency_key"),
+		Jitter: r.PostFormValue("jitter"),
+		Check:  r.Form.Has("check"), TolerateUnreachable: r.Form.Has("tolerate_unreachable"),
+	}
+
+	// Validate every field up front so all refusals render at once (forms/
+	// SPEC.md); the daemon stays authoritative on uniqueness.
+	var causes []string
+	if !store.ValidName(form.Name) {
+		form.ErrName, form.FixName = scheduleNameRefusal(form.Name)
+		causes = append(causes, "name "+form.Name)
+	}
+	if err := sched.ValidateCron(form.Cron); err != nil {
+		form.ErrCron = scheduleCronRefusal
+		causes = append(causes, err.Error())
+	}
+	switch form.Kind {
+	case store.ScheduleShell, store.ScheduleBackup, sched.KindPlay, store.ScheduleDrill:
+	default:
+		form.ErrKind = scheduleKindRefusal
+		causes = append(causes, "kind "+form.Kind)
+	}
+	argv := strings.Fields(form.Argv)
+	switch form.Kind {
+	case store.ScheduleShell:
+		if len(argv) == 0 {
+			form.ErrArgv = scheduleArgvRequired
+			causes = append(causes, "shell needs a command")
+		}
+	case store.ScheduleBackup, store.ScheduleDrill:
+		if len(argv) != 0 {
+			form.ErrArgv = scheduleArgvForbidden
+			causes = append(causes, "argv on "+form.Kind)
+		}
+	case sched.KindPlay:
+		if len(argv) == 0 {
+			form.ErrArgv = scheduleArgvRequired
+			causes = append(causes, "play needs a command")
+		}
+		if form.Target == "" {
+			form.ErrTarget = scheduleTargetRequired
+			causes = append(causes, "play needs a target")
+		}
+	}
+	if (form.Kind == store.ScheduleBackup || form.Kind == store.ScheduleDrill) && form.ConcurrencyKey != "" {
+		form.ErrConcurrency = scheduleConcurrencyRefusal
+		causes = append(causes, "concurrency key on "+form.Kind)
+	}
+	if _, err := formJitter(r); err != nil {
+		if strings.HasPrefix(strings.TrimSpace(form.Jitter), "-") {
+			form.ErrJitter = scheduleJitterNegative
+		} else {
+			form.ErrJitter = scheduleJitterRefusal
+		}
+		causes = append(causes, "jitter "+form.Jitter)
+	}
+
+	if form.ErrName != "" || form.ErrCron != "" || form.ErrKind != "" ||
+		form.ErrArgv != "" || form.ErrTarget != "" || form.ErrConcurrency != "" ||
+		form.ErrJitter != "" {
+		switch {
+		case form.ErrName != "":
+			form.FirstInvalid = "name"
+		case form.ErrCron != "":
+			form.FirstInvalid = "cron"
+		case form.ErrKind != "":
+			form.FirstInvalid = "kind"
+		case form.ErrArgv != "":
+			form.FirstInvalid = "argv"
+		case form.ErrTarget != "":
+			form.FirstInvalid = "target"
+		case form.ErrConcurrency != "":
+			form.FirstInvalid = "concurrency"
+		case form.ErrJitter != "":
+			form.FirstInvalid = "jitter"
+		}
+		s.log.Info("web: schedule add refused", "err", strings.Join(causes, "; "), "by", ident.token.Name)
+		s.scheduleRefusal(w, r, form)
 		return
 	}
-	cronExpr := r.PostFormValue("cron")
-	if err := sched.ValidateCron(cronExpr); err != nil {
-		s.redirectFlash(w, r, "/schedules", err.Error())
-		return
-	}
-	kind := r.PostFormValue("kind")
-	args, err := formScheduleArgs(r, kind)
+
+	args, err := formScheduleArgs(r, form.Kind)
 	if err != nil {
-		s.redirectFlash(w, r, "/schedules", err.Error())
-		return
-	}
-	concurrencyKey := r.PostFormValue("concurrency_key")
-	if (kind == store.ScheduleBackup || kind == store.ScheduleDrill) && concurrencyKey != "" {
-		s.redirectFlash(w, r, "/schedules", fmt.Sprintf("kind %s keys each fire by target; concurrency key does not apply", kind))
+		s.log.Info("web: schedule add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrForm = scheduleSubmitRefusal
+		s.scheduleRefusal(w, r, form)
 		return
 	}
 	jitter, err := formJitter(r)
 	if err != nil {
-		s.redirectFlash(w, r, "/schedules", err.Error())
+		s.log.Info("web: schedule add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrForm = scheduleSubmitRefusal
+		s.scheduleRefusal(w, r, form)
 		return
 	}
 
 	created, err := s.store.CreateSchedule(r.Context(), store.NewSchedule{
-		Name: name, CronExpr: cronExpr, Kind: kind, Args: args,
-		ConcurrencyKey: concurrencyKey, JitterS: jitter,
+		Name: form.Name, CronExpr: form.Cron, Kind: form.Kind, Args: args,
+		ConcurrencyKey: form.ConcurrencyKey, JitterS: jitter,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		s.redirectFlash(w, r, "/schedules", "a schedule named "+name+" already exists")
+		s.log.Info("web: schedule add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrName = scheduleDuplicateRefusal(form.Name)
+		form.FirstInvalid = "name"
+		s.scheduleRefusal(w, r, form)
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		s.redirectFlash(w, r, "/schedules", validationFlash(err))
+		s.log.Info("web: schedule add refused", "err", err.Error(), "by", ident.token.Name)
+		form.ErrForm = scheduleSubmitRefusal
+		s.scheduleRefusal(w, r, form)
 		return
 	}
 	if err != nil {
@@ -76,6 +185,37 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: schedule add", "schedule", created.Name, "kind", created.Kind, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/schedules", "added "+created.Name)
+}
+
+// scheduleRefusal re-renders the schedules surface at 422 with the add dialog
+// carrying its refusals — the JS-off path, and the fragment body a JS submit
+// swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) scheduleRefusal(w http.ResponseWriter, r *http.Request, form scheduleFormVM) {
+	vm, err := s.schedulesVMFor(r, &form)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, schedulesList(vm))
+}
+
+// schedulesVMFor builds the schedules surface, optionally carrying the add
+// dialog's refusal state (nil = fresh form).
+func (s *Server) schedulesVMFor(r *http.Request, form *scheduleFormVM) (schedulesVM, error) {
+	rows, err := s.schedules(r)
+	if err != nil {
+		return schedulesVM{}, err
+	}
+	ident, _ := identityOf(r.Context())
+	vm := schedulesVM{
+		Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows,
+		Operator: canWrite(ident), Prefill: s.schedulePrefillFor(r),
+		Form: form,
+	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "schedules-add", Label: "schedule"}
+	}
+	return vm, nil
 }
 
 func (s *Server) handleScheduleEnable(w http.ResponseWriter, r *http.Request) {

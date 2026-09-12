@@ -199,18 +199,10 @@ func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleSchedules(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.schedules(r)
+	vm, err := s.schedulesVMFor(r, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
-	}
-	ident, _ := identityOf(r.Context())
-	vm := schedulesVM{
-		Page: s.pageFor(r, "Schedules", "schedules"), Schedules: rows,
-		Operator: canWrite(ident), Prefill: s.schedulePrefillFor(r),
-	}
-	if vm.Operator {
-		vm.Page.Add = &pageAdd{Target: "schedules-add", Label: "schedule"}
 	}
 	s.render(w, r, http.StatusOK, schedulesList(vm))
 }
