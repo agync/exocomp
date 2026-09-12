@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-13 — the powerline reconciles
+
+- **The /system page-level powerline is gone.** The strip of per-leg anchors
+  under the identity strip (version · litestream · dead-man · ntfy · backups)
+  duplicated the global bottom `.powerline`, which already carries the liveness
+  signals; the page now ends at the four leg cards. Litestream and backups stay
+  on their /system cards — they are not merged into the global footer.
+- **The bottom powerline takes the `|` separators.** The `.pl-seg`s carry the
+  page-level look — 14px side padding with an inset hairline — and the
+  powerline's flex gap drops to zero, so the hairline is the separator.
+  Dead-man / ntfy / disk render as `dead-man none` / `ntfy off` / `disk 42%
+  free`, then the signed-in operator.
+- **The dead-man gap drops its `— set one` suffix.** The segment reads the bare
+  word (`dead-man none`) in wait — the fix verb belongs to the card, and the
+  same rule now colours the ntfy `refused` state in fail on the one remaining
+  strip.
+
 ## 2026-09-12 — the sandboxed elevation denial names its fix
 
 - **A failed sandboxed run whose become's sudo was loader-denied gets the
