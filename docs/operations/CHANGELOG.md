@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — workspaces verb forms adopt the forms pattern
+
+- **The workspaces write verbs render their refusals on the surface, never a
+  flash.** Force-unlock, the destroy confirm, and the plan confirm's apply now
+  re-render the page holding the button at 422 with a ▲ status line (the shared
+  `formStatus` primitive) carrying human copy, instead of a bare error page; a
+  refusal never flashes. Success keeps the one success-only flash. The destroy
+  and plan-confirm dialogs stay open on the refusal re-render so the copy sits
+  where the operator acted. The backend-reveal fetch already renders its
+  refusal on the surface and never navigates, so it is unchanged.
+
+
 ## 2026-09-12 — the jobs, source-launcher, and approval forms join the forms pattern
 
 - **Every typed-input web form now renders through the forms primitives** —
