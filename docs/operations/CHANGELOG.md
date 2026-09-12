@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the v0.13 round-3 residuals close
+
+- **The /system/backups row stops clipping.** The rows are `min-height:64px`
+  with centered cells — never a fixed height — so the two-line cells grow
+  instead of truncating; only the KIND path ellipsizes (now at 12px ink-400,
+  kind line at mono 13). The topbar meta pluralises (`1 target` / `N
+  targets`) and the footer splits to two lines at 1280: the verbs left, the
+  freshness ladder right, in a wrapping flex row.
+- **The identity strip sits on the grid.** `.sys-identity` carries the 20px
+  bottom gap that was missing between the strip and the card grid.
+- **The appbar bottom reads as a real boundary.** The bottom border is the
+  full hairline, not the faint one, so the cut holds when the strip scrolls
+  under it.
+- **The ntfy OFF figure quiets down.** The leg figures a dim `—` with `no
+  channel · nothing sealed` as the note, instead of `no channel` at figure
+  size.
+
 ## 2026-09-12 — the v0.13 round-2 residuals close
 
 - **The public-URL Change form is gone when closed.** The form now lives
