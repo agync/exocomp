@@ -1,0 +1,16 @@
+package web
+
+// litestreamCard is the litestream leg of the /system self-care page
+// (SPEC §3): a STUB this round with the §0.1 anatomy, id=litestream. L-S3
+// fills it: the six word-states incl. NO SIDECAR, read-only (no pause verb).
+templ litestreamCard(vm systemVM) {
+	<section class="leg" id="litestream" aria-label="Litestream">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphReplica)<span>Litestream</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
+}

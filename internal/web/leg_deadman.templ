@@ -1,0 +1,17 @@
+package web
+
+// deadmanCard is the dead-man leg of the /system self-care page (SPEC §1): a
+// STUB this round with the §0.1 anatomy (word · figure · facts · one verb),
+// id=deadman the powerline anchor lands on. L-S1 fills it: ARMED/NONE/TRIPPED,
+// the Arm dialog, and the Queue-backup verb.
+templ deadmanCard(vm systemVM) {
+	<section class="leg" id="deadman" aria-label="Dead-man">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
+}
