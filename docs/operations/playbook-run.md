@@ -135,6 +135,39 @@ read each one's events through `AnsibleCheckChanges`, and raise an event when
 or gate on it. Wiring that sweep is the remaining step; the outcome and the
 read-back helper are in place for it.
 
+## Self-host targets, `become`, and `--privileged`
+
+A playbook that targets the host the daemon runs on can fail in a way that
+looks like a broken system: the run reports a `sudo` error about a missing
+shared library. It is the sandbox enforcing invariant 6, not a host fault.
+
+- The inventory may resolve the local host to `connection: local` (the
+  homelab inventory does this dynamically when the inventory hostname is the
+  local one). With `become` enabled, the escalation's `sudo` then runs
+  **inside** the sandbox, not over SSH.
+- The sandbox is default-deny: it grants the source, the venv, and the
+  collections, never the setuid sudo's private libraries. A sandboxed process
+  that could invoke setuid-root `sudo` would be an escape, so the grant model
+  denies it and the loader reports a missing `libsudo_util`. A failed
+  sandboxed run whose output carries that signature now appends an explicit
+  hint: re-run with `--privileged` or run the elevated part outside the agent
+  surface.
+- The sandbox must not be widened to "allow sudo" — a sandbox that permits
+  escalation is not a sandbox. Escalation is the operator's explicit, per-run
+  decision.
+
+Two ways to run an elevated playbook:
+
+1. **Run the self-host part separately, as privileged.** Keep the ordinary
+   playbook run covering the remote hosts (for example `--limit` that
+   excludes the self host), then queue a separate run for the self-host /
+   elevated part with `--privileged`.
+2. **Run the whole thing privileged.** Mark the single run elevated:
+   `--privileged` on the CLI, or the operator-gated `privileged` toggle on the
+   web rerun / source launcher. This is an explicit, operator-scoped opt-out
+   of the kernel sandbox for one run; it cannot enforce per-job caps, so a
+   run that also names a runner is refused rather than run uncapped.
+
 Related: [Ad-hoc runs and the unreachable-tolerant outcome](adhoc-and-partial.md) ·
 [Reacting to alerts](reactive.md) · [Gating tofu plans](plan-policy.md) ·
 [Provision → onboard → converge](provision-converge.md) ·
