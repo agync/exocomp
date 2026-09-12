@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — `serve --base-path` web-surface spine
+
+- **The web surface can be served under an origin sub-path.** `exocomp serve
+  --base-path /exocomp` (and `exocomp web --base-path`) strips the prefix
+  inbound (`http.StripPrefix`) and re-prefixes every Go-built URL and redirect
+  outbound, so a request to `/exocomp/login` renders, an unauthenticated
+  request bounces to `/exocomp/login?next=/exocomp/...` (exactly one prefix),
+  post-write flash redirects land back inside the prefix, and the Go-built
+  hrefs on the job detail, plan detail, checks, workspaces, and events pages
+  carry the prefix. A bare `/exocomp` lands on the dashboard. The default (no
+  `--base-path`) behavior is unchanged. The template URL sweep (login form
+  action, asset links, nav) is a follow-up lane; the reactive ingress on the
+  loopback listener is untouched by this change.
+
 ## 2026-09-12 — the plan detail page loses its destroy mode
 
 - **The plan-detail `?destroy=1` mode is removed — the confirm dialog is

@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-12 — base-path round: correction of fact
+
+- **The plan-review's claim that `http.StripPrefix` leaves `RequestURI`
+  unrewritten is wrong for this toolchain.** A probe against go1.26.8 shows
+  StripPrefix rewrites both `URL.Path` and `URL.RawPath` (net/http/server.go
+  `StripPrefix`), so the handler-visible `RequestURI()` is the STRIPPED path.
+  The base-path spine therefore prepends the base path exactly once to
+  `RequestURI`-derived values (`url()`/`urlWithBase`), and the "no double
+  prefix" requirement is met by idempotence, not by assuming the prefix
+  survives the strip. `docs/log.md` records the fact; code is the source of
+  truth.
+
 ## 2026-09-07 — responsive round (v0.9)
 
 - **The design pages codify the responsive principles.** The web surfaces
