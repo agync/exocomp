@@ -259,7 +259,7 @@ func urlWithBase(base, path string) string {
 // channel would panic.
 func (s *Server) StopStreams() { s.streamStopOnce.Do(func() { close(s.streamStop) }) }
 
-//go:embed tokens.css app.css
+//go:embed tokens.css app.css lift.css
 var assetFS embed.FS
 
 // assetVer is a short content hash of the embedded stylesheets, appended to
@@ -270,7 +270,7 @@ var assetFS embed.FS
 // at once while an unchanged one still caches.
 var assetVer = func() string {
 	h := sha256.New()
-	for _, name := range []string{"tokens.css", "app.css"} {
+	for _, name := range []string{"tokens.css", "app.css", "lift.css"} {
 		b, err := assetFS.ReadFile(name)
 		if err != nil {
 			return "dev"

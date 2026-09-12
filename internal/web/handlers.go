@@ -14,6 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/version"
 	"exocomp.dev/exocomp/internal/wire"
 )
 
@@ -168,11 +169,15 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, dashboard(vm))
 }
 
-// handleSystem renders the control plane's view of itself: version + Litestream
-// RPO and backup freshness (moved off the dashboard and the powerline).
+// handleSystem renders the control plane's self-care surface (SPEC §0): the
+// identity strip (build stamp + host), the four leg cards, and the powerline
+// of per-leg anchors. The four legs render as stubs this round — the leg
+// lanes fill the card bodies next. The public-URL Change verb posts to the
+// landed L-B3 write (system_write.go); this handler only marks up its value.
 func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
 	vm := systemVM{Page: s.pageFor(r, "System", "system"), Operator: canWrite(ident)}
+	vm.Page.Meta = "is the control plane itself OK"
 	vm.Self = s.selfObs(r.Context())
 	if v, err := s.store.GetSetting(r.Context(), store.SettingPublicURL); err == nil {
 		vm.PublicURL = v
@@ -185,6 +190,13 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vm.Backups = backups
+
+	vm.Version = version.Version
+	vm.Commit = version.Commit
+	vm.Platform = platformLabel()
+	vm.Host = hostname()
+	vm.Uptime = s.uptimeLabel()
+	vm.BackupsWord, vm.BackupsState = backupsPowerWord(backups)
 
 	s.render(w, r, http.StatusOK, systemPage(vm))
 }

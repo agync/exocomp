@@ -1,88 +1,148 @@
 package web
 
-// systemPage is the control-plane's view of itself: the health of the running
-// binary (version + Litestream replication RPO) and backup freshness. These
-// moved off the glance dashboard and the footer — the dashboard answers "is the
-// managed estate OK?", this answers "is the control plane itself OK?".
+// v0.13 system-management glyphs (SCREENS.txt GLYPHS): stroke SVGs, 24
+// viewBox, currentColor. A multi-part glyph (bell, archive, doctor) is one
+// path with several M subpaths. The litestream replica box is a rounded-rect
+// path (the artboard draws it as a rect element).
+const (
+	glyphDeadman  = "M3 12h4l2-6 4 12 2-6h6"
+	glyphNtfy     = "M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 21h4"
+	glyphReplica  = "M5 3h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 21h10a2 2 0 0 0 2-2V9"
+	glyphBackups  = "M3 7h18v4H3zM5 11v9h14v-9M10 15h4"
+	glyphDoctor   = "M12 3l8 3v6c0 4.5-3.4 7.8-8 9-4.6-1.2-8-4.5-8-9V6zM9 12l2 2 4-4"
+	glyphKit      = "M5 6h14v14H5zM7 9h10M7 12h10M7 15h10"
+)
+
+// legGlyph renders one stroke-SVG glyph at the 18px size the leg headers and
+// header glyphs use.
+templ legGlyph(d string) {
+	<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+		<path d={ d }></path>
+	</svg>
+}
+
+// systemPage is the /system self-care surface (SPEC §0, artboard 1a): the
+// identity strip, the four leg cards in a 2×2 grid, and the powerline of
+// per-leg anchors. The four legs render as stubs this round — the leg lanes
+// fill the card bodies next. The public-URL Change verb is markup only; the
+// write backend is L-B3's (system_write.go).
 templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
-		<div class="cards mt18">
-			<section class="card span2 tray" aria-labelledby="self-h">
-				<div class="kicker">Control-plane health</div>
-				<h3 id="self-h">This control plane</h3>
-				<div class="tablewrap">
-					<table>
-						<thead>
-							<tr><th scope="col">Signal</th><th scope="col">State</th><th scope="col">Detail</th></tr>
-						</thead>
-						<tbody>
-							<tr>
-								<td>Running version</td>
-								<td class="mono">{ vm.Self.Version }</td>
-								<td class="meta">the binary an upgrade replaces</td>
-							</tr>
-							<tr>
-								<td>Litestream RPO</td>
-								<td>@chip(vm.Self.LSClass, vm.Self.LSAge)</td>
-								<td class="meta">{ vm.Self.LSDetail }</td>
-							</tr>
-						</tbody>
-					</table>
-				</div>
-			</section>
+		<section class="sys-identity" aria-label="Control-plane identity">
+			<span class="id">
+				<span class="version">exocomp { vm.Version }</span>
+				<span class="meta">· { vm.Commit } · { vm.Platform }</span>
+				<span class="meta">· on <span class="host">{ vm.Host }</span> · { vm.Uptime }</span>
+			</span>
+			<span class="right">
+				<span class="hglyph" title="Doctor — run the self-check · read-only: exocomp doctor">@legGlyph(glyphDoctor)</span>
+				<span class="hglyph" title="Recovery kit — reprint · read-only: exocomp kit">@legGlyph(glyphKit)</span>
+				<span class="pub">
+					<span class="label">public URL</span>
+					if vm.PublicURL != "" {
+						<a class="val" href={ vm.PublicURL }>{ vm.PublicURL }</a>
+					} else {
+						<span class="val none">not set</span>
+					}
+					if vm.Operator {
+						<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" aria-label="Change public URL">
+							<input type="url" name="url" value={ vm.PublicURL } required autocomplete="off"/>
+							<button type="submit" class="change">Change</button>
+						</form>
+					}
+				</span>
+			</span>
+		</section>
 
-			<section class="card span2" aria-labelledby="pub-h">
-				<h3 id="pub-h">Public URL</h3>
-				<p class="meta">The base URL a phone companion dials, and the root of an approval link. It seeds the pairing QR on the tokens page; when unset, pairing falls back to the address the browser reached this page on.</p>
-				if vm.PublicURL != "" {
-					<p>Current: <span class="mono">{ vm.PublicURL }</span></p>
-				} else {
-					<p class="meta">Not set.</p>
-				}
-				if vm.BasePath != "" {
-					<p>Base path: <span class="mono">{ vm.BasePath }</span></p>
-				} else {
-					<p>Base path: <span class="mono">origin root</span></p>
-				}
-				if vm.Operator {
-					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="writeform">
-						<label for="pub-url">Public URL</label>
-						<input id="pub-url" name="url" type="url" required autocomplete="off" placeholder="https://exocomp.example.ts.net" value={ vm.PublicURL }/>
-						<button type="submit" class="btn primary">Save</button>
-					</form>
-					<p class="meta mt8"><code>exocomp serve --public-url</code> also sets this.</p>
-				}
-			</section>
+		<div class="sys-legs">
+			@deadmanCard(vm)
+			@ntfyCard(vm)
+			@litestreamCard(vm)
+			@backupsCard(vm)
+		</div>
 
-			<section class="card span2 tray" aria-labelledby="backups-h">
-				<div class="kicker">Backup freshness</div>
-				<h3 id="backups-h">Backups</h3>
-				if len(vm.Backups) == 0 {
-					<p class="meta">No backup targets configured.</p>
-				} else {
-					<div class="tablewrap">
-						<table>
-							<thead>
-								<tr><th scope="col">Target</th><th scope="col">Snapshot</th><th scope="col" class="right">Age</th></tr>
-							</thead>
-							<tbody>
-								for _, b := range vm.Backups {
-									<tr>
-										<td>
-											{ b.Name }
-											if b.Drill {
-												<span class="chip dim ml6">drill</span>
-											}
-										</td>
-										<td class="mono">{ orDash(b.Snapshot) }</td>
-										<td class="right">@chip(b.Freshness, b.Age)</td>
-									</tr>
-								}
-							</tbody>
-						</table>
-					</div>
+		<div class="sys-powerline" aria-label="System signals">
+			<span class="seg version">{ vm.Version }</span>
+			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#litestream")) } data-state={ vm.Self.LSClass }>rpo { vm.Self.LSAge }</a>
+			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#deadman")) } data-state={ vm.Page.Signal.DeadManState }>
+				dead-man { vm.Page.Signal.DeadMan }
+				if vm.Page.Signal.DeadMan == "none" {
+					<span> — set one</span>
 				}
-			</section>
+			</a>
+			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#ntfy")) } data-state={ vm.Page.Signal.NtfyState }>ntfy { vm.Page.Signal.Ntfy }</a>
+			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#backups")) } data-state={ vm.BackupsState }>{ vm.BackupsWord }</a>
+		</div>
+
+		<div class="sys-phone">
+			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")) }>
+				<span class="name">Dead-man</span>
+				<span class="meta">—</span>
+			</a>
+			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy")) }>
+				<span class="name">ntfy</span>
+				<span class="meta">—</span>
+			</a>
+			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream")) }>
+				<span class="name">Litestream</span>
+				<span class="meta">—</span>
+			</a>
+			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/backups")) }>
+				<span class="name">Backups</span>
+				<span class="meta">—</span>
+			</a>
 		</div>
 	}
+}
+
+// The four leg cards are STUB partials: each carries the §0.1 anatomy
+// (word · figure · facts · one verb) with honest empty content, and its id is
+// the powerline anchor's land target. The leg lanes L-S1..L-S4 replace the
+// bodies next.
+templ deadmanCard(vm systemVM) {
+	<section class="leg" id="deadman" aria-label="Dead-man">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
+}
+
+templ ntfyCard(vm systemVM) {
+	<section class="leg" id="ntfy" aria-label="ntfy">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphNtfy)<span>ntfy</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
+}
+
+templ litestreamCard(vm systemVM) {
+	<section class="leg" id="litestream" aria-label="Litestream">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphReplica)<span>Litestream</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
+}
+
+templ backupsCard(vm systemVM) {
+	<section class="leg" id="backups" aria-label="Backups">
+		<div class="leg-head">
+			<span class="name">@legGlyph(glyphBackups)<span>Backups</span></span>
+			<span class="verbs"></span>
+		</div>
+		<div class="leg-figure"><span class="value dim">—</span></div>
+		<dl class="leg-facts"></dl>
+		<p class="leg-sentence"></p>
+	</section>
 }

@@ -1,0 +1,127 @@
+/* exocomp — system management round · lift-ready CSS · tokens only (../tokens.css).
+ * Shell, tray-table, chip, field, dialog and row-action rules are already in
+ * realign/AUDIT.md §4, forms/lift.css, tofu/lift.css — this file adds only the
+ * self-care page pieces. No raw hex.
+ *
+ * L-S0 integration notes (the page shell owns this file):
+ * - the handoff's `.powerline` is renamed to `.sys-powerline`: the repo's
+ *   global fixed-footer strip already owns the `.powerline` class
+ *   (view_layout.templ), so the /system page strip must not collide with it.
+ * - the §0.2 phone collapse is `.sys-phone`, shown only at <=720px; the
+ *   `.sys-legs` grid hides at that width (cards -> two-line rows). */
+
+/* identity strip */
+.sys-identity { background:var(--surface-card); border-radius:var(--radius-card); padding:16px 22px;
+  display:flex; align-items:center; justify-content:space-between; gap:24px; flex-wrap:wrap;
+  font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+.sys-identity .version { font:600 19px/1.3 var(--font-mono); letter-spacing:-.4px; color:var(--ink-100); }
+.sys-identity .meta { font-size:13px; color:var(--ink-500); }
+
+/* leg grid + card anatomy */
+.sys-legs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--gap-card); }
+@media (max-width:720px) { .sys-legs { display:none; } }
+.leg { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px;
+  display:flex; flex-direction:column; gap:14px; }
+.leg[data-state="wait"] { box-shadow:inset 0 0 0 1px var(--wait-border); }
+.leg[data-state="fail"] { box-shadow:inset 0 0 0 1px var(--fail-border); }
+.leg-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.leg-head .name { display:flex; align-items:center; gap:10px; font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
+.leg-head .name svg { width:18px; height:18px; color:var(--ink-400); }
+.leg-head .verbs { display:flex; align-items:center; gap:4px; }   /* ≤2 glyphs then ▾, fixed from the right */
+.leg-figure { display:flex; align-items:baseline; gap:12px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+.leg-figure .value { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
+.leg-figure .value.dim { color:var(--ink-500); }
+.leg-figure .value.wait, .leg-figure .note.wait { color:var(--signal-wait); }
+.leg-figure .value.fail, .leg-figure .note.fail { color:var(--signal-fail); }
+.leg-figure .note { font-size:13px; color:var(--ink-500); }
+.leg-facts { display:grid; grid-template-columns:auto minmax(0,1fr); gap:6px 16px;
+  font:400 13px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; }
+.leg-facts dt { color:var(--ink-500); margin:0; }
+.leg-facts dd { color:var(--ink-200); margin:0; min-width:0; }
+.leg-facts dd.ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.leg-sentence { font:400 12px/1.55 var(--font-ui); color:var(--ink-500); text-wrap:pretty; }
+.leg-mini { display:flex; flex-direction:column; gap:2px; font:400 12px/1 var(--font-mono); }
+.leg-mini > div { display:grid; gap:12px; height:28px; align-items:center; padding:0 10px; border-radius:var(--radius-chip); }
+.leg-mini > div.on { background:var(--surface-tray); }
+
+/* powerline as anchors */
+.sys-powerline { height:36px; display:flex; align-items:center; padding:0 30px; background:var(--surface-rail);
+  border-top:1px solid var(--hairline-faint); font:400 11px/1 var(--font-mono); font-variant-numeric:tabular-nums; }
+.sys-powerline .seg { color:var(--ink-400); }
+.sys-powerline .seg.version { color:var(--ink-500); }
+.sys-powerline a { color:var(--ink-400); padding:0 14px; box-shadow:inset 1px 0 0 var(--hairline-faint); }
+.sys-powerline a[data-state="wait"] { color:var(--signal-wait); }
+.sys-powerline a[data-state="fail"] { color:var(--signal-fail); }
+.sys-powerline a[data-state="dim"] { color:var(--ink-500); }
+
+/* phone leg rows */
+.sys-phone { display:flex; flex-direction:column; gap:var(--gap-card); }
+@media (min-width:721px) { .sys-phone { display:none; } }
+.leg-row { background:var(--surface-card); border-radius:var(--radius-card); padding:14px 16px;
+  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; align-items:center; color:inherit; }
+.leg-row .name { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
+.leg-row .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+
+/* L-S0 shell additions — the identity strip's right cluster and the two
+ * read-only header glyphs (Doctor · Recovery kit). The Change verb is the ONE
+ * existing public-URL write's markup only; A7 owns its form spec. */
+.sys-identity .host { color:var(--ink-200); }
+.sys-identity .hglyph { display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
+.sys-identity .hglyph svg { width:18px; height:18px; }
+.sys-identity .pub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.sys-identity .pub .label { font-size:13px; color:var(--ink-500); }
+.sys-identity .pub .val { color:var(--ink-200); }
+.sys-identity .pub .val.none { color:var(--ink-500); }
+.sys-identity .pubform { display:inline-flex; align-items:center; gap:8px; }
+.sys-identity .pubform input[type="url"] { width:16em; height:30px; padding:0 10px; border-radius:var(--radius-control);
+  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100); font:var(--type-button); }
+.sys-identity .change { height:30px; padding:0 12px; border-radius:var(--radius-control);
+  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
+  font:var(--type-button); cursor:pointer; }
+.sys-identity .change:hover { color:var(--ink-100); }
+
+/* segmented switch inside a field (Threshold · Kind · Detail · From) */
+.field-switch { display:grid; height:40px; padding:3px; box-sizing:border-box; border-radius:var(--radius-row);
+  background:var(--surface-control); gap:2px; font:400 13px/1 var(--font-mono); }
+.field-switch > button { border:0; border-radius:var(--radius-chip); background:transparent; color:var(--ink-400); font:inherit; cursor:pointer; }
+.field-switch > button:hover { color:var(--ink-100); }
+.field-switch > button[aria-pressed="true"] { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
+.field-switch > button:focus-visible { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
+
+/* presence rows (sealed keys) */
+.presence { display:grid; grid-template-columns:110px minmax(0,1fr) auto; gap:12px; height:36px; align-items:center;
+  padding:0 12px; border-radius:9px; font:400 13px/1 var(--font-mono); }
+.presence .key { color:var(--ink-500); }
+.presence .val { color:var(--ink-200); }
+.presence .word { font:600 11px/1 var(--font-mono); letter-spacing:.4px; color:var(--signal-ok); }
+.presence .word.missing { color:var(--signal-fail); }
+
+/* consequence block (AT ZERO · WHAT HAPPENS) */
+.consequence { background:var(--surface-card); border-radius:var(--radius-row); padding:12px 14px;
+  display:flex; flex-direction:column; gap:6px; font:400 12px/1.6 var(--font-mono); color:var(--ink-400); }
+.consequence .kicker { font:600 11px/1 var(--font-mono); letter-spacing:1.4px; color:var(--ink-500); }
+.consequence .loss { color:var(--signal-fail); }
+
+/* danger verb: ring until confirmed */
+.btn-danger { height:34px; padding:0 14px; border-radius:var(--radius-control); border:0; background:transparent;
+  color:var(--signal-fail); box-shadow:inset 0 0 0 1px var(--fail-border); font:var(--type-button); cursor:pointer; }
+.btn-danger:hover { background:var(--fail-tint); }
+.btn-danger.primary { height:44px; width:100%; }
+.btn-danger[data-armed="true"] { background:var(--signal-fail); color:var(--accent-on); box-shadow:none; }
+
+/* backups management list: two-line 64px rows */
+.backups-grid { display:grid; grid-template-columns:150px 96px 130px 150px minmax(0,1fr) 84px; gap:14px; align-items:center; padding:0 14px; }
+.backups-grid.row { height:64px; margin-top:2px; border-radius:var(--radius-row); font:400 13px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; }
+.backups-grid.row:hover { background:var(--surface-tray); }
+.backups-grid.row > span { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.backups-grid.row .sub { font-size:11px; color:var(--ink-500); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.backups-grid.row .sub.wait { color:var(--signal-wait); }
+.backups-grid.row .actions { flex-direction:row; justify-content:flex-end; gap:4px; }
+.backups-grid.row .run { color:var(--accent-text); }   /* absent, not disabled, on DISABLED rows */
+
+/* snapshot radios */
+.snap { display:grid; grid-template-columns:16px 90px minmax(0,1fr) auto; gap:12px; align-items:center; height:40px;
+  padding:0 12px; border-radius:9px; cursor:pointer; font:400 13px/1 var(--font-mono); font-variant-numeric:tabular-nums; }
+.snap:has(:checked) { background:var(--surface-control); }
+.snap .drilled { font-size:11px; color:var(--signal-ok); }

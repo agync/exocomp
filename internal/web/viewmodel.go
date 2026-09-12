@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"runtime"
 	"strings"
 	"time"
 
@@ -439,17 +440,25 @@ type workflowSummary struct {
 	InFlight int
 }
 
-// systemVM is the /system surface: the control plane's health of itself — the
-// running binary version and Litestream replication RPO — plus backup
-// freshness. Both moved off the glance dashboard (and the version off the
-// powerline) so the dashboard stays the managed-estate view.
+// systemVM is the /system self-care surface (SPEC §0): the running binary's
+// build stamp and host (the identity strip), the four leg cards in the 2×2
+// grid, and the powerline of per-leg anchors. Version/Commit/Platform/Host/
+// Uptime feed the identity strip; BackupsWord/BackupsState feed the powerline's
+// backups segment (the same rows the card draws, never a second read).
 type systemVM struct {
-	Page      page
-	Self      selfObs
-	Backups   []backupRow
-	Operator  bool
-	PublicURL string // daemon.public_url, "" when unset
-	BasePath  string // the --base-path the surface is served under, "" at the root
+	Page         page
+	Self         selfObs
+	Backups      []backupRow
+	Operator     bool
+	PublicURL    string // daemon.public_url, "" when unset
+	BasePath     string // the --base-path the surface is served under, "" at the root
+	Version      string
+	Commit       string
+	Platform     string // "{os}/{arch}" (runtime.GOOS/runtime.GOARCH)
+	Host         string // the host the daemon runs on, "" when the OS cannot answer
+	Uptime       string // "up 6d 04h" from the daemon start time
+	BackupsWord  string // "backups ok" | "backups none" | "backups {n} failing"
+	BackupsState string // ok|wait|fail — the card chip's colour for the strip
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
@@ -2639,6 +2648,39 @@ func (s *Server) uptimeLabel() string {
 		return fmt.Sprintf("up %dd %02dh", h/24, h%24)
 	}
 	return "up " + humanAge(up)
+}
+
+// platformLabel is the identity strip's "{os}/{arch}" — the same shape the
+// CLI doctor reports, so the page and the CLI never disagree about the build.
+func platformLabel() string { return runtime.GOOS + "/" + runtime.GOARCH }
+
+// backupsPowerWord derives the self-care powerline's backups segment from the
+// freshness rows the Backups card draws (never a second read): "backups ok"
+// when every enabled target's newest run succeeded, "backups none" when no
+// target exists or one has never run (a gap, wait — never a fail), and
+// "backups {n} failing" when runs have failed — wait for one, fail for two or
+// more, the card chip's own rule.
+func backupsPowerWord(rows []backupRow) (string, string) {
+	nFailed := 0
+	nNever := 0
+	for _, r := range rows {
+		switch r.State {
+		case "failed":
+			nFailed++
+		case "never":
+			nNever++
+		}
+	}
+	if len(rows) == 0 || nNever > 0 {
+		return "backups none", "wait"
+	}
+	if nFailed == 0 {
+		return "backups ok", "ok"
+	}
+	if nFailed >= 2 {
+		return fmt.Sprintf("backups %d failing", nFailed), "fail"
+	}
+	return "backups 1 failing", "wait"
 }
 
 // orNever renders an optional lifecycle timestamp, using "never" for the nil
