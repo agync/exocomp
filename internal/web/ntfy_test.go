@@ -182,7 +182,9 @@ func TestNtfyCardRefused(t *testing.T) {
 }
 
 // TestNtfyCardOff is the OFF card: nothing sealed, quiet Set up, and the
-// sentence that names the setup command.
+// sentence that names the setup command. The figure is a dim `—` with the
+// `no channel · nothing sealed` note — never a loud `no channel` at figure
+// size (R13).
 func TestNtfyCardOff(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{})
@@ -197,14 +199,17 @@ func TestNtfyCardOff(t *testing.T) {
 	for _, want := range []string{
 		"chip dim",
 		">OFF</span>",
-		">no channel</span>",
-		"nothing sealed",
+		`<span class="value dim">—</span>`,
+		"no channel · nothing sealed",
 		">Set up</a>",
 		"exocomp setup notify",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("OFF card missing %q", want)
 		}
+	}
+	if strings.Contains(page, ">no channel</span>") {
+		t.Error("the OFF figure must be a dim '—', never 'no channel' at figure size")
 	}
 }
 

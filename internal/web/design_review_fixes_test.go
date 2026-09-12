@@ -509,8 +509,8 @@ func TestBackupsHeaderMetaVerbsAndFooter(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system/backups = %d, want 200", code)
 	}
-	if !strings.Contains(page, ">System / Backups · 1 targets · any one recovers the system") {
-		t.Error("the topbar meta must carry the breadcrumb and the targets line")
+	if !strings.Contains(page, ">System / Backups · 1 target · any one recovers the system") {
+		t.Error("the topbar meta must carry the breadcrumb and the singular targets line")
 	}
 	if strings.Contains(page, `class="kicker">System / Backups</div>`) {
 		t.Error("the card must not repeat the SYSTEM / BACKUPS kicker")
@@ -561,8 +561,11 @@ func TestBackupsListRowsTwoLine(t *testing.T) {
 	if !strings.Contains(css, ".bk-lastrun {") || !strings.Contains(css, ".lr-meta {") {
 		t.Error("the LAST RUN cell lacks the two-line stack")
 	}
-	if !strings.Contains(css, "height:64px;") {
-		t.Error("the backups rows must be two-line 64px")
+	if !strings.Contains(css, ".bk-row { min-height:64px; align-items:center;") {
+		t.Error("the backups rows must be min-height 64px, never a fixed height")
+	}
+	if strings.Contains(css, ".bk-row { height:64px;") {
+		t.Error("a fixed row height clips the two-line cells — use min-height")
 	}
 }
 
@@ -929,15 +932,86 @@ func TestBackupsRowsColumnMap(t *testing.T) {
 	if !strings.Contains(css, ".bk-table tbody tr.bk-row td { padding:12px 0;") {
 		t.Error("backups rows must pad 12px 0, not stack to a 90px row")
 	}
-	if !strings.Contains(css, ".bk-kind .mono, .bk-ret .mono, .bk-sched .mono { white-space:nowrap;") {
-		t.Error("the posture cells must keep their two lines nowrapped")
+	if !strings.Contains(css, ".bk-kind .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; font-size:13px;") {
+		t.Error("the KIND cell must keep its line nowrapped at mono 13 with the path ellipsis")
 	}
-	// The footer picks the ` · ` separator, not the right-aligned ladder.
-	if !strings.Contains(page, "remove asks first</span> <span class=\"right\">· freshness ok &lt; 24h") {
-		t.Error("the footer's two sentences must join with a ' · ' separator")
+	if !strings.Contains(css, ".bk-ret .mono, .bk-sched .mono { white-space:nowrap; }") {
+		t.Error("the RETENTION and SCHEDULE lines must stay nowrapped")
 	}
-	if strings.Contains(css, ".sys-bk-footer .right { margin-left:auto") {
-		t.Error("the footer must not ALSO right-align the ladder (pick ONE: separator or ladder)")
+	if strings.Contains(css, ".bk-ret .mono, .bk-sched .mono { white-space:nowrap; overflow:hidden") {
+		t.Error("only the KIND path may ellipsize — the text cells never clip")
+	}
+	// The footer splits to TWO lines: the verbs left, the freshness ladder
+	// right, in a flex row that wraps at 1280.
+	if !strings.Contains(css, ".sys-bk-footer { display:flex; flex-wrap:wrap;") {
+		t.Error("the footer must be a wrapping flex row so the ladder splits onto its own line")
+	}
+	if !strings.Contains(css, ".sys-bk-footer .right { margin-left:auto;") {
+		t.Error("the freshness ladder must sit at the footer's right")
+	}
+}
+
+// ---- R7c · the backups row unfixes: min-height, cell sizes, plural, footer ----
+
+// TestBackupsMetaCountPluralises is the R7c gate for the topbar meta line:
+// ONE target reads `1 target`, several read `N targets` — never a bare
+// `N targets` for a single row.
+func TestBackupsMetaCountPluralises(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/system/backups")
+	if !strings.Contains(page, "System / Backups · 1 target ·") {
+		t.Error("a single target must read '1 target', not '1 targets'")
+	}
+	seedTarget(t, h, "nas02", "restic_local", "/var/backups/nas02", "", true)
+	_, page = getBody(t, client, ts.URL+"/system/backups")
+	if !strings.Contains(page, "System / Backups · 2 targets ·") {
+		t.Error("multiple targets must read 'N targets'")
+	}
+}
+
+// TestBackupsRowMinHeightNotFixed is the R7c gate for the row itself: the
+// rows are min-height 64px with centered cells and 12px 0 cell padding —
+// NEVER a fixed height or a clip on the row (the KIND path ellipsis is the
+// only overflow allowed, and it lives in the cell, not the row).
+func TestBackupsRowMinHeightNotFixed(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".bk-row { min-height:64px; align-items:center; }") {
+		t.Error("the row must be min-height 64px with centered cells, not a fixed height")
+	}
+	if strings.Contains(css, ".bk-row { height:64px;") {
+		t.Error("a fixed row height clips the two-line cells — use min-height")
+	}
+	if !strings.Contains(css, ".bk-table tbody tr.bk-row td { padding:12px 0;") {
+		t.Error("the row's cells must pad 12px 0")
+	}
+}
+
+// TestBackupsKindCellSizes is the R7c gate for the KIND cell: the kind line
+// is mono 13, the path line drops to 12px ink-400 with the cell ellipsis.
+func TestBackupsKindCellSizes(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".bk-kind .uri { font-size:12px; color:var(--ink-400);") {
+		t.Error("the KIND path must render at 12px ink-400")
+	}
+	if strings.Contains(css, ".bk-kind .uri { font-size:11px;") {
+		t.Error("the KIND path must not fall back to the 11px ink-500 sub-line")
 	}
 }
 
@@ -1039,5 +1113,60 @@ func TestDeadmanPagedFactHierarchy(t *testing.T) {
 	css := cssOf(t, h, ts, client, "lift.css")
 	if !strings.Contains(css, ".paged-word { color:var(--ink-100)") || !strings.Contains(css, ".paged-facts { color:var(--ink-400)") {
 		t.Error("the paged fact's hierarchy must keep only ntfy loud")
+	}
+}
+
+// ---- R11 · the identity strip carries the card-grid gap ----
+
+// TestSysIdentityStripGap is the R11 gate: the strip sits flush on the card
+// grid — it must carry the §0.1 grid gap as its bottom margin.
+func TestSysIdentityStripGap(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	start := strings.Index(css, ".sys-identity {")
+	if start < 0 {
+		t.Fatal("lift.css lacks the .sys-identity rule")
+	}
+	block := css[start:]
+	end := strings.Index(block, "}")
+	if end < 0 {
+		t.Fatal("lift.css .sys-identity rule is unclosed")
+	}
+	if !strings.Contains(block[:end], "margin-bottom:20px") {
+		t.Error("the identity strip must carry the 20px bottom gap onto the card grid")
+	}
+}
+
+// ---- R12 · the appbar bottom reads as a real boundary ----
+
+// TestAppbarBottomHairline is the R12 gate: the appbar's bottom border is the
+// full hairline, never the faint one — the strip scrolling under it must read
+// as a cut. The mutation (back to --hairline-faint) reds this test.
+func TestAppbarBottomHairline(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "app.css")
+	start := strings.Index(css, ".appbar {")
+	if start < 0 {
+		t.Fatal("app.css lacks the .appbar rule")
+	}
+	block := css[start:]
+	end := strings.Index(block, "}")
+	if end < 0 {
+		t.Fatal("app.css .appbar rule is unclosed")
+	}
+	block = block[:end]
+	if !strings.Contains(block, "border-bottom: 1px solid var(--hairline);") {
+		t.Error("the appbar bottom border must be the full hairline")
+	}
+	if strings.Contains(block, "var(--hairline-faint)") {
+		t.Error("the appbar bottom border must not be the faint hairline")
 	}
 }
