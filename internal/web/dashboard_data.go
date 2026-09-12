@@ -751,10 +751,11 @@ func rpoFreshness(age time.Duration) string {
 }
 
 // signal builds the powerline's is-the-control-plane-alive strip: newest backup
-// age (the dead-man), push transport presence, and disk headroom. Each segment
+// age (the dead-man), push transport state, and disk headroom. Each segment
 // also carries the signal state the strip renders in (F10): a dead-man with no
-// backup is a wait state with a fix verb, ntfy-off is deliberate dim, disk is
-// ok until it threatens. The dead-man reads the store's ONE rule
+// backup is a wait state with a fix verb, ntfy has three states (on · refused
+// · off), disk is ok until it threatens. The dead-man reads the store's ONE
+// rule
 // (LastSucceededBackupTime): succeeded runs only, always finished — a failed or
 // still-running newest run never masks an older good backup.
 func (s *Server) signal(ctx context.Context) SignalLine {
