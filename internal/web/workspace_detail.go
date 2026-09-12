@@ -52,7 +52,7 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 	ident, _ := identityOf(r.Context())
 	vm := workspaceDetailVM{
 		Page: s.pageFor(r, name, "workspaces"), Operator: canWrite(ident),
-		Row: workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial},
+		Row: workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial, Base: s.basePath()},
 		// ?destroy=1 is the JS-off fallback that renders the destroy confirm
 		// dialog already open, mirroring the plan detail's ?launch=1.
 		Destroy: r.URL.Query().Get("destroy") == "1",

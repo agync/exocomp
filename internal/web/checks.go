@@ -37,6 +37,9 @@ type checkRow struct {
 	Interval string
 	Enabled  bool
 	Targets  []checkTargetRow
+	// Base is the surface's origin sub-path ("" at the root), so the row's
+	// Go-built hrefs re-prefix the same way every other URL site does.
+	Base string
 }
 
 // checkTargetRow is one probe of a check: what it dials or requests, the
@@ -232,6 +235,7 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 		row := checkRow{
 			Name: c.Name, Kind: c.Kind, Enabled: c.Enabled,
 			Interval: store.CheckIntervalLabel(c.IntervalS),
+			Base:     s.basePath(),
 		}
 		states, err := s.store.ListCheckStates(r.Context(), c.ID)
 		if err != nil {

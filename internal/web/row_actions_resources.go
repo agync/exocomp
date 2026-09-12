@@ -65,7 +65,7 @@ func checkRowActions(ck checkRow) []rowAction {
 	acts = append(acts,
 		rowAction{
 			Name: "Open", Path: glyphOpen, Menu: true,
-			Href: "/events?source=check",
+			Href: urlWithBase(ck.Base, "/events?source=check"),
 		},
 		rowAction{
 			Name: "Remove", Path: glyphRemove, Menu: true,

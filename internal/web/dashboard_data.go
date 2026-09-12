@@ -341,7 +341,7 @@ func (s *Server) workspaceListRows(ctx context.Context, pending []approvalRow) (
 	}
 	var out []workspaceWriteRow
 	for _, w := range list {
-		row := workspaceWriteRow{Name: w.Name, TofuDir: w.TofuDir, Serial: w.Serial}
+		row := workspaceWriteRow{Name: w.Name, TofuDir: w.TofuDir, Serial: w.Serial, Base: s.basePath()}
 		row.ApprovalID = drifting[w.Name]
 		if lock, err := s.store.GetTFLock(ctx, w.ID); err == nil {
 			row.Locked = true

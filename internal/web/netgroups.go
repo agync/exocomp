@@ -36,7 +36,7 @@ func (r netgroupRow) Display() string { return strings.Join(r.Prefixes, " · ") 
 // /checks, so the standalone page points there. The write routes
 // (netgroups_write.go) repoint the same way; the API route stays.
 func (s *Server) handleNetgroups(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/checks?tab=netgroups", http.StatusFound)
+	http.Redirect(w, r, s.url("/checks?tab=netgroups"), http.StatusFound)
 }
 
 // netgroups reads every registered CIDR set into rows.

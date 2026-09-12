@@ -128,7 +128,7 @@ func (s *Server) handleWorkspacePlanDetail(w http.ResponseWriter, r *http.Reques
 	if vm.CanPlan {
 		if vm.JobID != 0 {
 			vm.Page.Actions = append(vm.Page.Actions, pageAction{
-				Href: "/jobs/" + itoa(vm.JobID), Label: "Plan text", Glyph: glyphDocument,
+				Href: s.url("/jobs/" + itoa(vm.JobID)), Label: "Plan text", Glyph: glyphDocument,
 			})
 		}
 		vm.Page.Actions = append(vm.Page.Actions, pageAction{

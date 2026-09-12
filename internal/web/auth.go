@@ -281,7 +281,10 @@ func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 			if wantsHTML(r) {
-				http.Redirect(w, r, "/login?next="+urlEscape(r.URL.RequestURI()), http.StatusSeeOther)
+				// The request path StripPrefix handed the handler is the STRIPPED
+				// one; url() re-prefixes it so next sends the browser back into the
+				// surface (never double-prefixed — urlWithBase is idempotent).
+				http.Redirect(w, r, s.url("/login?next="+urlEscape(s.url(r.URL.RequestURI()))), http.StatusSeeOther)
 				return
 			}
 			w.Header().Set("WWW-Authenticate", `Bearer realm="exocomp"`)

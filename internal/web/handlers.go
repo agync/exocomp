@@ -26,10 +26,10 @@ const queueGlance = 50
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	// An already-authenticated browser has no business on the login form.
 	if _, err := s.resolve(r); err == nil {
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, s.url("/"), http.StatusSeeOther)
 		return
 	}
-	next := sanitizeNext(r.URL.Query().Get("next"))
+	next := s.sanitizeNext(r.URL.Query().Get("next"))
 	s.render(w, r, http.StatusOK, loginPage("", next, s.fingerprint, s.insecure))
 }
 
@@ -39,7 +39,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := r.PostFormValue("token")
-	next := sanitizeNext(r.PostFormValue("next"))
+	next := s.sanitizeNext(r.PostFormValue("next"))
 
 	row, err := s.authenticateTokenGated(r, token, s.now())
 	if err != nil {
@@ -84,7 +84,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 		Secure:   !s.insecure,
 		SameSite: http.SameSiteStrictMode,
 	})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	http.Redirect(w, r, s.url("/login"), http.StatusSeeOther)
 }
 
 func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
@@ -444,17 +444,17 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	// the stacked title, and the compact Raw log / Rerun actions (SPEC §2.0).
 	// Rerun opens the resubmit dialog via the JS-off ?rerun=1 path; Raw log is
 	// the plain text tail in a new tab.
-	vm.Page.BackHref = "/jobs"
+	vm.Page.BackHref = s.url("/jobs")
 	vm.Page.TitleSub = vm.Job.Title
 	// T1: the job detail page is a no-page-scroll flex column — the log box
 	// owns the scroll and ends above the powerline (app.css .page-job).
 	vm.Page.PageClass = "page-job"
 	vm.Page.Actions = append(vm.Page.Actions, pageAction{
-		Href: "/jobs/" + itoa64(id) + "/raw", Label: "Raw log", Kind: "control", Glyph: glyphDocument,
+		Href: s.url("/jobs/" + itoa64(id) + "/raw"), Label: "Raw log", Kind: "control", Glyph: glyphDocument,
 	})
 	if vm.Operator && vm.Job.State.Terminal() && vm.Rerunnable {
 		vm.Page.Actions = append(vm.Page.Actions, pageAction{
-			Href: "/jobs/" + itoa64(id) + "?rerun=1", Label: "Rerun", Kind: "accent", Glyph: glyphRotate,
+			Href: s.url("/jobs/" + itoa64(id) + "?rerun=1"), Label: "Rerun", Kind: "accent", Glyph: glyphRotate,
 		})
 	}
 
@@ -873,14 +873,14 @@ func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event
 		if e.JobID != nil {
 			if job, err := s.store.GetJob(ctx, *e.JobID); err == nil {
 				row.Reason = fmt.Sprintf("job #%d · %s · exit %s", job.ID, job.State, exitOf(job))
-				row.ReasonLink = "/jobs/" + itoa64(job.ID)
+				row.ReasonLink = s.url("/jobs/" + itoa64(job.ID))
 			}
 		}
 	case store.OutcomeGated:
 		if e.JobID != nil {
 			if approval, err := s.store.ApprovalByJob(ctx, *e.JobID); err == nil {
 				row.Reason = "awaiting approval"
-				row.ReasonLink = "/approvals/" + itoa64(approval.ID)
+				row.ReasonLink = s.url("/approvals/" + itoa64(approval.ID))
 			}
 		}
 	case store.OutcomeSuppressed:
@@ -1078,13 +1078,13 @@ func (s *Server) runCardTiles(ctx context.Context, source string, job store.Job,
 	if source != "" {
 		tile := configTile{Label: "Source", Value: source + " ↗"}
 		if src != nil {
-			tile.Link = "/sources/" + src.Name
+			tile.Link = s.url("/sources/" + src.Name)
 		}
 		tiles = append(tiles, tile)
 	}
 	if src != nil {
 		if val := refLabel(*src); val != "" {
-			tiles = append(tiles, configTile{Label: "Ref", Value: val, Link: "/sources/" + src.Name})
+			tiles = append(tiles, configTile{Label: "Ref", Value: val, Link: s.url("/sources/" + src.Name)})
 		}
 	}
 	if job.Args.Inventory != "" {
@@ -1214,13 +1214,13 @@ func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store
 				down = downSince.Format("15:04")
 			}
 			v.Verb = "Open checks — " + hosts + " DOWN since " + down + " →"
-			v.VerbHref = "/checks"
+			v.VerbHref = s.url("/checks")
 			v.VerbSecond = "Rerun limited to " + hosts + " →"
-			v.VerbSecondHref = "/jobs/" + itoa64(job.ID) + "?rerun=1&limit=" +
-				url.QueryEscape(strings.Join(facts.Unreachable, ","))
+			v.VerbSecondHref = s.url("/jobs/" + itoa64(job.ID) + "?rerun=1&limit=" +
+				url.QueryEscape(strings.Join(facts.Unreachable, ",")))
 		} else {
 			v.Verb = "Rerun tolerating unreachable hosts →"
-			v.VerbHref = "/jobs/" + itoa64(job.ID) + "?rerun=1"
+			v.VerbHref = s.url("/jobs/" + itoa64(job.ID) + "?rerun=1")
 			v.VerbMeta = "settles DEGRADED when the reachable hosts succeed · " +
 				"same as exocomp job rerun " + itoa64(job.ID) + " --tolerate-unreachable"
 		}
@@ -1365,12 +1365,19 @@ func pathID(r *http.Request) (int64, bool) {
 
 // sanitizeNext keeps a post-login redirect on this origin: a path beginning
 // with a single slash. Anything else (a scheme, a //host) falls back to the
-// dashboard, so the login form cannot be turned into an open redirect.
-func sanitizeNext(next string) string {
+// home page (the base path under a prefix, "/" at the root), so the login form
+// cannot be turned into an open redirect. A valid path that is not yet
+// prefixed is prefixed, so a bare deep link still lands inside the surface;
+// urlWithBase leaves an already-prefixed path alone, so next never double
+// prefixes.
+func (s *Server) sanitizeNext(next string) string {
 	if len(next) == 0 || next[0] != '/' || (len(next) > 1 && next[1] == '/') {
-		return "/"
+		if s.base == "" {
+			return "/"
+		}
+		return s.base
 	}
-	return next
+	return s.url(next)
 }
 
 func clock(t time.Time) string { return t.Format("2006-01-02 15:04:05Z") }

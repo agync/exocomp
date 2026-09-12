@@ -64,5 +64,5 @@ func (s *Server) handleKill(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err)
 		return
 	}
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	http.Redirect(w, r, s.url("/"), http.StatusSeeOther)
 }

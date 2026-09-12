@@ -28,12 +28,12 @@ func workspaceRowActions(wsr workspaceWriteRow) []rowAction {
 	} else {
 		acts = append(acts, rowAction{
 			Name: "Backend", Path: glyphOpen,
-			Href: "/workspaces/" + wsr.Name,
+			Href: urlWithBase(wsr.Base, "/workspaces/"+wsr.Name),
 		})
 	}
 	acts = append(acts, rowAction{
 		Name: "Backend config", Path: glyphOpen, Menu: true,
-		Href: "/workspaces/" + wsr.Name,
+		Href: urlWithBase(wsr.Base, "/workspaces/"+wsr.Name),
 	})
 	return acts
 }
