@@ -1242,8 +1242,9 @@ func TestPlanDetailRendersDiffFromShowJSON(t *testing.T) {
 
 // TestPlanDetailConfirmOpensWithoutJS: ?launch=1 renders the native <dialog>
 // confirm already open (no JS), with the kicker, the ask, the fact grid, and
-// the queue primary; the destroy variant (?destroy=1) reads kicker DESTROY
-// with the −N counters and the danger ring.
+// the queue primary. ?destroy=1 no longer switches the dialog to a destroy
+// ask — the plan-detail destroy mode is removed, so the URL renders the same
+// apply confirm.
 func TestPlanDetailConfirmOpensWithoutJS(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -1279,18 +1280,28 @@ func TestPlanDetailConfirmOpensWithoutJS(t *testing.T) {
 		}
 	}
 
-	// Destroy mode: same dialog, kicker DESTROY, the −N verdict, danger ring.
+	// ?destroy=1 renders the same apply confirm as ?launch=1 — the dialog is
+	// apply-only and the URL can no longer reach a destroy ask.
 	code, body = getBody(t, client, ts.URL+"/workspaces/web/plans/"+strconv.FormatInt(art.ID, 10)+"?destroy=1")
 	if code != http.StatusOK {
 		t.Fatalf("GET plan detail ?destroy=1 = %d (%s)", code, body)
 	}
 	for _, want := range []string{
-		">DESTROY · WORKSPACE WEB<",
-		">Destroy 0 resource(s) on web<",
-		">Queue destroy — web<",
+		">APPLY PLAN #" + strconv.FormatInt(art.ID, 10) + " · WORKSPACE WEB<",
+		">Change 1 resource(s) on web<",
+		">Queue apply — web @ plan #" + strconv.FormatInt(art.ID, 10) + "<",
+		`action="/workspaces/web/apply"`,
 	} {
 		if !strings.Contains(body, want) {
-			t.Errorf("destroy confirm missing %q", want)
+			t.Errorf("?destroy=1 did not render the apply confirm, missing %q", want)
+		}
+	}
+	for _, banned := range []string{
+		">DESTROY · WORKSPACE WEB<",
+		">Queue destroy — web<",
+	} {
+		if strings.Contains(body, banned) {
+			t.Errorf("?destroy=1 still renders destroy-mode copy %q", banned)
 		}
 	}
 }
