@@ -99,8 +99,9 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 	}
 
 	// A standalone web process owns no scheduler or job queue, so it exposes no
-	// maintenance seam: the daemon that runs jobs is the one to cordon.
-	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, opts.basePath, opts.addr, opts.insecure, warn)
+	// maintenance seam: the daemon that runs jobs is the one to cordon. It does
+	// hold the envelope, so the ntfy leg's judgment and test push work here.
+	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, newNtfySeam(st, env), opts.basePath, opts.addr, opts.insecure, warn)
 	if err != nil {
 		return err
 	}
@@ -162,9 +163,11 @@ func (w *webSurface) Shutdown(ctx context.Context) error {
 // deciding approvals through decider. It runs the ADR 0009 bind guard first: a
 // non-loopback address refuses to bind without an active token, and
 // --insecure-http is loud. decider is the caller's reactive engine, so an
-// approval decided here releases the job into that process's queue.
+// approval decided here releases the job into that process's queue. ntfy is
+// the ntfy leg's seam (the daemon's judgment + test push); a caller that wants
+// no push surface passes nil.
 func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
-	decider web.Decider, maint web.Maintenance, basePath, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
+	decider web.Decider, maint web.Maintenance, ntfy web.NtfyDriver, basePath, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
 	guardWarn, err := web.RequireTokenForBind(ctx, st, addr, insecure, time.Now().UTC())
 	if err != nil {
 		return nil, err
@@ -190,6 +193,7 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		Plans:       env,
 		Sealer:      env,
 		Maint:       maint,
+		Ntfy:        ntfy,
 		Insecure:    insecure,
 		Fingerprint: fingerprint,
 		Version:     version.String(),

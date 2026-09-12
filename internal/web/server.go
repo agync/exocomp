@@ -55,6 +55,11 @@ type Options struct {
 	// daemon's control seam; a nil Maint (a web-only process that runs no jobs
 	// and no scheduler) makes the maintenance routes answer "not available here".
 	Maint Maintenance
+	// Ntfy drives the ntfy leg's judgment and test push (SPEC §2). It is the
+	// daemon's seam over the sealed ntfy secrets; a nil Ntfy (a surface built
+	// without one) degrades the leg to presence-only and answers the Test verb
+	// with "not available here".
+	Ntfy NtfyDriver
 	// Sealer seals plaintext into the envelope for the sensitive write surface
 	// (secrets add/rotate, a git source's deploy key). A nil Sealer (a web-only
 	// process holding no envelope) fail-closes those routes to a 503.
@@ -86,6 +91,7 @@ type Server struct {
 	decider     Decider
 	plans       PlanOpener
 	maint       Maintenance
+	ntfy        NtfyDriver
 	sealer      Sealer
 	insecure    bool
 	fingerprint string
@@ -195,6 +201,7 @@ func New(opts Options) (*Server, error) {
 		decider:                opts.Decider,
 		plans:                  opts.Plans,
 		maint:                  opts.Maint,
+		ntfy:                   opts.Ntfy,
 		sealer:                 opts.Sealer,
 		insecure:               opts.Insecure,
 		fingerprint:            opts.Fingerprint,

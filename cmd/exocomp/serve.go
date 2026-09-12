@@ -394,7 +394,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// loopback state backend above stays loopback-only and takes no LAN token.
 	var surface *webSurface
 	if opts.webAddr != "" {
-		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, opts.basePath, opts.webAddr, opts.webInsecure, warn)
+		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, newNtfySeam(st, env), opts.basePath, opts.webAddr, opts.webInsecure, warn)
 		if err != nil {
 			shutdownCtx, cancel := context.WithTimeout(finalCtx, shutdownGrace)
 			defer cancel()
