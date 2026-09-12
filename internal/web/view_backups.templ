@@ -92,13 +92,19 @@ templ backupsList(vm backupsVM) {
 											if row.LastRunWord() != "" {
 												@chip(row.StateClass(), row.LastRunWord())
 											}
-											<span class={ "lr-text", templ.KV("dim", !row.HasRun) }>{ row.LastRunLine() }</span>
+											if row.HasRun {
+												<span class="lr-text">{ row.LastRunLine() }</span>
+											}
 											if row.State == "running" && row.JobID > 0 {
 												<span class="lr-sep"> · </span><a class="lr-job" href={ urlWithBase(vm.Page.Base, "/jobs/" + itoa64(row.JobID)) }>job #{ row.JobID }</a>
 											}
 										</span>
 										<span class="lr-meta">
-											{ row.LastRunMeta() }
+											if row.HasRun {
+												{ row.LastRunMeta() }
+											} else {
+												never ran
+											}
 											if row.JobID > 0 && row.State != "running" {
 												<span class="lr-sep"> · </span><a class="lr-job" href={ urlWithBase(vm.Page.Base, "/jobs/" + itoa64(row.JobID)) }>job #{ row.JobID }</a>
 											}
@@ -118,7 +124,7 @@ templ backupsList(vm backupsVM) {
 		</div>
 		<p class="sys-bk-footer">
 			<span>▾ holds: history · edit retention · disable · drill now · ─ · remove asks first</span>
-			<span class="right"> · freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
+			<span class="right">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
 		</p>
 
 		@restoreDrawer(vm.Restore, vm.Page.Base)
@@ -592,7 +598,7 @@ if vm.Operator {
 		</div>
 		<p class="sys-bk-footer">
 			<span>forget asks first · absent on the newest and drilled snapshots</span>
-			<span class="right"> · a drill verifies the newest snapshot · the Restore drawer never deletes</span>
+			<span class="right">a drill verifies the newest snapshot · the Restore drawer never deletes</span>
 		</p>
 	}
 }

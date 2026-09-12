@@ -497,7 +497,8 @@ func TestPowerlineLitestreamWord(t *testing.T) {
 // TestBackupsHeaderMetaVerbsAndFooter is the R7 gate: meta left, verbs right
 // (verbs push with margin-left:auto), the card's repeated SYSTEM / BACKUPS
 // kicker dropped (the topbar breadcrumbs), and the footer's two sentences
-// joined by a ` · `.
+// joined by a ` · ` (the ladder's join dot is the ::before, so its span does
+// not carry it in markup).
 func TestBackupsHeaderMetaVerbsAndFooter(t *testing.T) {
 	h := newHarness(t)
 	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
@@ -515,8 +516,8 @@ func TestBackupsHeaderMetaVerbsAndFooter(t *testing.T) {
 	if strings.Contains(page, `class="kicker">System / Backups</div>`) {
 		t.Error("the card must not repeat the SYSTEM / BACKUPS kicker")
 	}
-	if !strings.Contains(page, "remove asks first</span> <span class=\"right\">· freshness ok &lt; 24h") {
-		t.Error("the footer's two sentences must be joined by a ' · '")
+	if !strings.Contains(page, "remove asks first</span> <span class=\"right\">freshness ok &lt; 24h") {
+		t.Error("the footer's ladder span must not carry the leading join dot in markup")
 	}
 	css := cssOf(t, h, ts, client, "lift.css")
 	if !strings.Contains(css, ".sys-bk-verbs { margin-left:auto;") {
@@ -617,8 +618,8 @@ func TestBackupHistoryBackLinkAndCopy(t *testing.T) {
 	if i < 0 || !strings.Contains(page[i:], "forget removes a snapshot through the one queue · drilled snapshots") {
 		t.Error("the meta must read '…drilled snapshots', not 'absent on the newest and drilled'")
 	}
-	if !strings.Contains(page, "forget asks first · absent on the newest and drilled snapshots</span> <span class=\"right\">· a drill verifies") {
-		t.Error("the footer's sentences must be joined by a ' · '")
+	if !strings.Contains(page, "forget asks first · absent on the newest and drilled snapshots</span> <span class=\"right\">a drill verifies") {
+		t.Error("the footer's ladder span must not carry the leading join dot in markup")
 	}
 }
 
@@ -1054,6 +1055,100 @@ func TestBackupsRowCellsStayTableCells(t *testing.T) {
 	}
 	if !strings.Contains(css, ".bk-row { min-height:64px; align-items:center; }") {
 		t.Error("the row must keep min-height 64px")
+	}
+}
+
+// ---- round-4 · the 08 recapture nits ----
+
+// TestBackupsFooterStacksNarrow is the nit (1) gate: at ≤1440 the freshness
+// ladder drops onto its OWN line — the footer stacks the two rows in a column
+// with a 4px row gap (the wrapped rows were crammed at gap 0), and the ladder
+// drops its join dot with it (the "·" is a ::before, not markup). The
+// mutation (the media query gone, or the base row gap back to 0) reds here.
+func TestBackupsFooterStacksNarrow(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".sys-bk-footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px;") {
+		t.Error("the footer's wrapped rows must carry a 4px row gap, never gap 0")
+	}
+	if !strings.Contains(css, `.sys-bk-footer .right::before { content:"·";`) {
+		t.Error("the footer's join dot must be the ladder's ::before so the stack can drop it")
+	}
+	if !strings.Contains(css, "@media (max-width:1440px)") {
+		t.Error("the footer must stack the rows in a ≤1440 media query")
+	}
+	if mqStart := strings.Index(css, "@media (max-width:1440px)"); mqStart >= 0 {
+		mq := css[mqStart:]
+		if !strings.Contains(mq, ".sys-bk-footer { flex-direction:column") {
+			t.Error("the ≤1440 footer must stack the two rows in a column")
+		}
+		if !strings.Contains(mq, ".sys-bk-footer .right::before { content:none;") {
+			t.Error("the stacked ladder must drop its join dot")
+		}
+	}
+	// The ladder's span carries no leading join dot in markup — the ::before
+	// is the join, dropped when stacked.
+	_, page := getBody(t, client, ts.URL+"/system/backups")
+	if !strings.Contains(page, `<span class="right">freshness ok &lt; 24h`) {
+		t.Error("the ladder's span must not carry the leading join dot in markup")
+	}
+}
+
+// TestBackupsPostureSecondLinesTwelveMono is the nit (2) gate: the posture
+// cells' SECOND line is 12px MONO ink-400 across all three — the KIND path
+// already is, the RETENTION and SCHEDULE meta were 11px sans. The mutation
+// (back to 11px, or the sans --type-body) reds here.
+func TestBackupsPostureSecondLinesTwelveMono(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, `.bk-ret .meta, .bk-sched .meta { font:400 12px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--ink-400); }`) {
+		t.Error("the RETENTION and SCHEDULE meta must be 12px mono ink-400, never the 11px sans sub-line")
+	}
+	if strings.Contains(css, ".bk-ret .meta { font-size:11px") {
+		t.Error("the RETENTION meta must not fall back to the 11px sub-line")
+	}
+	if strings.Contains(css, ".bk-sched .meta { font-size:11px") {
+		t.Error("the SCHEDULE meta must not fall back to the 11px sub-line")
+	}
+	if strings.Contains(css, ".bk-ret .meta { font-size:11px; color:var(--ink-500); }") || strings.Contains(css, ".bk-sched .meta { font-size:11px; color:var(--ink-500); }") {
+		t.Error("the 11px ink-500 sub-line rules must be gone")
+	}
+}
+
+// TestBackupsNeverRanMetaSized is the nit (3) gate: a never-run target's LAST
+// RUN shows `never ran` at the META size — the word renders inside the
+// .lr-meta span, never as the oversized .lr-text line. The mutation (the word
+// back in the line slot) reds here.
+func TestBackupsNeverRanMetaSized(t *testing.T) {
+	h := newHarness(t)
+	seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/backups")
+	if code != http.StatusOK {
+		t.Fatalf("/system/backups = %d, want 200", code)
+	}
+	if !strings.Contains(page, `<span class="lr-meta">never ran`) {
+		t.Error("a never-run row's 'never ran' must render inside the .lr-meta span at the meta size")
+	}
+	if strings.Contains(page, `lr-text">never ran`) || strings.Contains(page, `lr-text dim">never ran`) {
+		t.Error("'never ran' must not render as the oversized .lr-text line")
+	}
+	// The first line holds no word for a never-run target — the meta line owns
+	// the word.
+	if !strings.Contains(page, `<span class="lr-line">`) {
+		t.Error("the LAST RUN cell must keep its two-line stack")
 	}
 }
 

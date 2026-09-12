@@ -672,7 +672,8 @@ func TestReviewV05BCSSGuards(t *testing.T) {
 }
 
 // TestRowActionsCSSGuards pins the v0.6 row-actions CSS: the glyph button, the
-// chevron menu, the destructive "asks first" note, and the phone 48px floor.
+// chevron menu, the destructive "asks first" note, the danger-item divider,
+// and the phone 48px floor.
 func TestRowActionsCSSGuards(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -684,10 +685,22 @@ func TestRowActionsCSSGuards(t *testing.T) {
 		".raglyph {",
 		".ramenu-panel {",
 		".ramenu-item.danger::after { content: \" — asks first\";",
+		".ramenu-sep {",
 		".raglyph { width: 44px; height: 44px; }",
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing row-actions rule %q", want)
+		}
+	}
+	// The "asks first" note sits INLINE beside the item text — the mutation
+	// (margin-left:auto floating it to the menu edge, the stray "—" read)
+	// reds here.
+	start := strings.Index(app, ".ramenu-item.danger::after {")
+	if start >= 0 {
+		block := app[start:]
+		end := strings.Index(block, "}")
+		if end > 0 && strings.Contains(block[:end], "margin-left") {
+			t.Error("the asks-first note must not float to the menu edge — it reads as a stray dash")
 		}
 	}
 }

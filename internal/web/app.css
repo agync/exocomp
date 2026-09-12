@@ -621,7 +621,12 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 .ramenu-item:hover { background: var(--surface-row); }
 .ramenu-item.danger { color: var(--signal-fail); }
 .ramenu-item.danger > svg { color: var(--signal-fail); }
-.ramenu-item.danger::after { content: " — asks first"; color: var(--ink-500); margin-left: auto; font: var(--type-body); }
+.ramenu-item.danger::after { content: " — asks first"; color: var(--ink-500); font: var(--type-body); }
+/* A destructive item's rule (08-4): the divider before the danger item is a
+ * real role=separator row — a 1px hairline rule across the panel padding,
+ * never a stray "—" menu item. The asks-first note sits inline beside the
+ * item text; floated to the edge it read as a stray dash. */
+.ramenu-sep { height: 1px; margin: 0 10px; background: var(--hairline); }
 .ramenu-btn {
   background: none; border: 0; padding: 0;
   font: inherit; color: inherit; cursor: pointer; text-align: left;

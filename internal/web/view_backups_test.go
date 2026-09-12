@@ -116,6 +116,7 @@ func TestBackupsListColumns(t *testing.T) {
 	for _, want := range []string{
 		"nas01", "restic_local", "daily 7 · weekly 4", "prunes after run",
 		`title="Queue backup — nas01"`,
+		`aria-label="Queue backup — nas01"`,
 		"SUCCEEDED", "#a3f9c2", "drill ",
 		"ago ok",
 		"/system/backups/nas01/run",

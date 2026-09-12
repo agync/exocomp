@@ -59,6 +59,41 @@ func TestRowActionsPartial(t *testing.T) {
 	}
 }
 
+// TestRowActionsDangerSeparator is the nit (4) gate: a destructive menu item
+// is introduced by a VISUAL DIVIDER (a role=separator row) — never a stray
+// "—" item — and a lone danger item (its own menu) draws no leading divider.
+// The mutation (the divider dropped, or the stray dash back) reds here.
+func TestRowActionsDangerSeparator(t *testing.T) {
+	acts := []rowAction{
+		{Name: "Open", Path: glyphOpen, Menu: true, Modal: "w-open"},
+		{Name: "Remove", Path: glyphRemove, Menu: true, Form: "/w/p/rm", Danger: true},
+	}
+	var buf bytes.Buffer
+	if err := rowActions(acts, "").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render rowActions: %v", err)
+	}
+	out := buf.String()
+	div := strings.Index(out, `class="ramenu-sep" role="separator"`)
+	if div < 0 {
+		t.Error("the menu must draw a visual divider before the danger item")
+	}
+	if open := strings.Index(out, ">Open</button>"); open < 0 || div < open {
+		t.Error("the divider must sit between the items and the danger item, never before the first")
+	}
+	// A lone danger item renders no leading divider.
+	var lone bytes.Buffer
+	if err := rowActions([]rowAction{{Name: "Remove", Path: glyphRemove, Menu: true, Form: "/w/p/rm", Danger: true}}, "").Render(context.Background(), &lone); err != nil {
+		t.Fatalf("render lone: %v", err)
+	}
+	if strings.Contains(lone.String(), "ramenu-sep") {
+		t.Error("a lone danger item must not draw a leading divider")
+	}
+	// No stray "—"-only menu item anywhere.
+	if strings.Contains(out, `role="menuitem">—`) {
+		t.Error("the menu must not render a stray em-dash item")
+	}
+}
+
 // TestResourceRowActions pins the v0.6 row-action wiring for schedules, checks
 // cards, and netgroups: each uses the rowActions partial (glyphs + menu), with
 // the destructive Remove confirmed and last, and the per-resource verbs
