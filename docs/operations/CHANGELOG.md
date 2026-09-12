@@ -6,6 +6,36 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the dead-man leg lands (SPEC §1)
+
+- **The dead-man card reads ARMED / NONE / TRIPPED, the figure changing meaning
+  per state but never its slot.** NONE draws `—` ("no threshold, no heartbeat ·
+  nothing trips if backups stop") with the single `Arm` verb as the fix; ARMED
+  draws the time-left (`32h 30m` · "until it trips") with the last-good/threshold/
+  heartbeat facts and a pencil `Arm`; TRIPPED flips to time-since (`49h 02m` ·
+  "since a backup succeeded · threshold 48h") with newest-runs, heartbeat and
+  `paged ntfy · once · 1h 02m ago` facts, and the primary verb becomes the fix:
+  `Queue backup — {newest target}`. `Disarm` lives under the card's ▾, in fail,
+  asking first. Every face's age comes from the store's ONE rule
+  (`LastSucceededBackupTime`) — a FAILED or RUNNING newer run never masks an
+  older good backup, and the /system powerline's dead-man segment takes the
+  card's chip colour without recomputing the age.
+- **The Arm dialog sets `deadman.threshold` (segmented 24h · 48h · 72h · 7d,
+  default 48h) and seals the heartbeat URL as `deadman/heartbeat_url`.** The
+  URL is a `type=password` field with a Show/Hide eye that exists only while
+  the input is unsealed, is validated against the push-endpoint SSRF guard, and
+  is never echoed — a re-render or the card can never show the value. The
+  read-only AT ZERO block states the three consequences; the threshold alone
+  arms the internal half (heartbeat: not wired). Disarm removes both halves.
+- **The daemon runs a trip monitor (new `internal/deadman` package).** It
+  compares the ONE age rule to the threshold on a 30s cadence, pages the
+  notify fan-out exactly once per trip (`dead-man tripped` · high · the body
+  naming the time-since and host), and pings the sealed heartbeat URL on every
+  new succeeded backup, stamping `deadman.pinged_at` and clearing the
+  `deadman.paged_at` once-marker so a later trip pages again. The push rides
+  the notifier the daemon already builds (the maintenance-seam shape), never a
+  second transport.
+
 ## 2026-09-12 — /system becomes the self-care shell
 
 - **The /system page restructures to the v0.13 self-care anatomy (SPEC §0).** One
