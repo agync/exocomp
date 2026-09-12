@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -197,7 +198,77 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
-	return drv.Run(ctx, spec, sink)
+	// A failed run may be the sandbox denying become's sudo (the loader-denied
+	// /usr/libexec/sudo) — enforcement, not a broken host. The stderr observer
+	// lets the driver recognize the signature after the process exits and append
+	// the operator's action to the failure. A privileged run left at
+	// runUnsandboxed above, so only a run the sandbox actually wrapped is ever
+	// enriched.
+	hint := &elevationHintObserver{inner: sink}
+	res, err := drv.Run(ctx, spec, hint)
+	if err == nil && res.ExitCode != 0 && becomeDenied(hint.stderrLines()) {
+		emitElevationHint(sink)
+	}
+	return res, err
+}
+
+// elevationHintCopy is the operator-facing line appended to a sandboxed run
+// whose failure is the sandbox denying become's sudo. The loader-denied sudo
+// is correct enforcement (invariant 6), not a broken host; the hint names the
+// operator's two ways out. It is diagnosis copy only — the un-granted sudo
+// stays denied.
+const elevationHintCopy = "the sandbox denied privilege escalation (sudo) — re-run with " +
+	"--privileged (operator-gated, unsandboxed) or run the elevated part outside " +
+	"the agent surface"
+
+// becomeDenied reports whether the run's standard error carries the signature
+// of the sandbox refusing become's sudo: a line naming sudo whose shared-object
+// loader was denied (ld prints `cannot open shared object file` for the
+// un-granted lib). Parsing enriches the failure; the exit code stays the
+// verdict (invariant 3).
+func becomeDenied(stderr []string) bool {
+	for _, line := range stderr {
+		if strings.Contains(line, "sudo") && strings.Contains(line, "cannot open shared object file") {
+			return true
+		}
+	}
+	return false
+}
+
+// elevationHintObserver forwards every event and retains the standard-error
+// lines so the driver can inspect a failed run's stderr after the process
+// exits. Only stderr is kept: the become-denied signature is a stderr line,
+// and stdout is not retained so a normal run's memory stays as before.
+type elevationHintObserver struct {
+	inner  EventSink
+	mu     sync.Mutex
+	stderr []string
+}
+
+func (o *elevationHintObserver) Emit(e Event) {
+	if e.Level == LevelError {
+		o.mu.Lock()
+		o.stderr = append(o.stderr, e.Msg)
+		o.mu.Unlock()
+	}
+	o.inner.Emit(e)
+}
+
+func (o *elevationHintObserver) stderrLines() []string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return append([]string(nil), o.stderr...)
+}
+
+// emitElevationHint appends the operator's action to a failed sandboxed run
+// whose stderr carried the become-denied signature. The level matches the
+// failure it explains.
+func emitElevationHint(sink EventSink) {
+	sink.Emit(Event{
+		Ts:    time.Now().UTC(),
+		Level: LevelError,
+		Msg:   elevationHintCopy,
+	})
 }
 
 // collectionsReadGrants splits a joined ANSIBLE_COLLECTIONS_PATH value into the
