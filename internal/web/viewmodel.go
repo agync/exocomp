@@ -480,6 +480,49 @@ type systemVM struct {
 	// Kit is the identity strip's Recovery-kit meta (SPEC §7 A3): the date the
 	// kit was last printed and how many invalidating changes landed since.
 	Kit kitMeta
+	// PubForm is the identity strip's public-URL Change form refusal state
+	// (forms/SPEC.md, SPEC §7 A7): nil at rest, the filled form on a 422
+	// re-render. Value echoes the typed value so a refusal keeps it; ErrMsg is
+	// the field meta's ▲ sentence, ErrForm the form-status line's.
+	PubForm *pubFormVM
+}
+
+// pubFormVM is the public-URL Change form's refusal state. Value echoes the
+// typed value on a 422 re-render; ErrMsg carries the validPublicURL guard's
+// human copy on the field meta (never a flash), ErrForm a whole-submit failure
+// on the 20px status line. Submitting drives the pending state.
+type pubFormVM struct {
+	Value      string
+	ErrMsg     string
+	ErrForm    string
+	Submitting bool
+}
+
+func (f *pubFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *pubFormVM) ErrMsgText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrMsg
+}
+
+func (f *pubFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// ValueFor resolves the control's value: the typed value on a 422 re-render,
+// else the stored public URL.
+func (f *pubFormVM) ValueFor(current string) string {
+	if f != nil {
+		return f.Value
+	}
+	return current
 }
 
 // doctorMeta is the /system identity strip's Doctor meta (SPEC §7 A1). HasRun

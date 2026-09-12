@@ -24,8 +24,9 @@ templ legGlyph(d string) {
 // systemPage is the /system self-care surface (SPEC §0, artboard 1a): the
 // identity strip, the four leg cards in a 2×2 grid, and the powerline of
 // per-leg anchors. The four legs render as stubs this round — the leg lanes
-// fill the card bodies next. The public-URL Change verb is markup only; the
-// write backend is L-B3's (system_write.go).
+// fill the card bodies next. The public-URL Change form carries the forms
+// anatomy (SPEC §7 A7): the always-present field meta, the 20px status line,
+// and the 422 re-render that keeps the typed value.
 templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
 		<section class="sys-identity" aria-label="Control-plane identity">
@@ -63,11 +64,22 @@ templ systemPage(vm systemVM) {
 						<span class="val none">not set</span>
 					}
 					if vm.Operator {
-						<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" aria-label="Change public URL">
-							<input type="url" name="url" value={ vm.PublicURL } required autocomplete="off"/>
-							<button type="submit" class="change">Change</button>
-						</form>
-					}
+						<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" id="pubform" aria-label="Change public URL" novalidate data-pubform>
+						<input type="url" name="url" id="pub-url" value={ vm.PubForm.ValueFor(vm.PublicURL) } autocomplete="off" spellcheck="false"
+							aria-invalid?={ vm.PubForm.ErrMsgText() != "" }
+							aria-describedby="pub-url-meta"/>
+						<span id="pub-url-meta" class={ "meta", templ.KV("is-error", vm.PubForm.ErrMsgText() != "") }>
+							if vm.PubForm.ErrMsgText() != "" {
+								<span class="msg">{ vm.PubForm.ErrMsgText() }</span>
+							} else {
+								approval links and the kit use this
+							}
+						</span>
+						@formStatus(vm.PubForm.Pending(), vm.PubForm.ErrFormText(), "Changing")
+						<button type="submit" class="change" disabled?={ vm.PubForm.Pending() }>Change</button>
+					</form>
+					@pubFormJS()
+				}
 				</span>
 			</span>
 		</section>
@@ -111,6 +123,58 @@ templ systemPage(vm systemVM) {
 			</a>
 		</div>
 	}
+}
+
+// pubFormJS is the Change form's progressive enhancement: the form is
+// novalidate (the validPublicURL guard is authoritative), so submit is
+// intercepted and POSTed with fetch — a 422 swaps the form fragment in place
+// with the server-rendered refusal and the typed value kept (JS-off gets the
+// same bytes as a full re-render), anything else follows the redirect and its
+// success flash. A refusal never flashes.
+templ pubFormJS() {
+	<script>
+	(function () {
+		function pubFormWire() {
+			var form = document.getElementById("pubform");
+			if (!form || form.dataset.pubformWired) return;
+			form.dataset.pubformWired = "1";
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Changing';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("pubform");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("pubform");
+							form.dataset.pubformRefused = "1";
+							pubFormWire();
+							var bad = form.querySelector('input[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+		}
+		pubFormWire();
+	})();
+	</script>
 }
 
 // The four leg cards live in leg_deadman.templ / leg_ntfy.templ /
