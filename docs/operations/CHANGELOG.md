@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the litestream target gets a web form (SPEC §7 A6)
+
+- **The /system/litestream page can set the replica target.** The A6 form
+  writes the two settings the daemon can persist — `litestream.replica_target`
+  and `litestream.replica_unencrypted_ack` — on the landed fieldInput/formStatus
+  anatomy, with the CLI echo (`exocomp litestream target … --ack-unencrypted`
+  for a remote target). A remote target without the ack is refused on the
+  checkbox at 422, the same caveat the CLI enforces at persistence; a local
+  target writes ack=false. The form states its own boundary in its header: the
+  daemon cannot verify a target (no probe exists), so it writes the two
+  settings and no more — there is still no pause verb (ADR 0012).
+
+
 ## 2026-09-12 — the schedules↔backups linkage reads both ways (SPEC §7 A5)
 
 - **A `backup`/`drill` schedule row on /schedules links back to its target.**
