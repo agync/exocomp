@@ -71,14 +71,14 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 	// validation sentinel as a 500.
 	if !store.ValidName(name) {
 		s.log.Info("web: job schedule refused", "err", "bad schedule name", "by", ident.token.Name)
-		form.ErrName = scheduleNameRefusal(name)
+		form.ErrName = jobScheduleNameRefusal(name)
 		form.FirstInvalid = "name"
 		s.jobScheduleRefusal(w, r, form)
 		return
 	}
 	if err := sched.ValidateCron(cronExpr); err != nil {
 		s.log.Info("web: job schedule refused", "err", err.Error(), "by", ident.token.Name)
-		form.ErrCron = scheduleCronRefusal
+		form.ErrCron = jobScheduleCronRefusal
 		form.FirstInvalid = "cron"
 		s.jobScheduleRefusal(w, r, form)
 		return
@@ -96,14 +96,14 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		s.log.Info("web: job schedule refused", "err", err.Error(), "by", ident.token.Name)
-		form.ErrName = scheduleDuplicateRefusal(name)
+		form.ErrName = jobScheduleDuplicateRefusal(name)
 		form.FirstInvalid = "name"
 		s.jobScheduleRefusal(w, r, form)
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
 		s.log.Error("web: job schedule", "err", err.Error())
-		form.ErrForm = scheduleSubmitRefusal
+		form.ErrForm = jobScheduleSubmitRefusal
 		s.jobScheduleRefusal(w, r, form)
 		return
 	}
@@ -119,32 +119,32 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 // raw validator words go to the log; the form's meta lines and status line
 // carry these sentences.
 const (
-	scheduleNameCharsRefusal = "Names use letters, digits, dots, hyphens and underscores."
-	scheduleCronRefusal      = "That cron expression can't be parsed — try 0 */5 * * * * or @every 5m."
-	scheduleSubmitRefusal    = "Could not add the schedule — nothing was saved."
+	jobScheduleNameCharsRefusal = "Names use letters, digits, dots, hyphens and underscores."
+	jobScheduleCronRefusal      = "That cron expression can't be parsed — try 0 */5 * * * * or @every 5m."
+	jobScheduleSubmitRefusal    = "Could not add the schedule — nothing was saved."
 )
 
-// scheduleNameRefusal translates a bad schedule-name value the way the
+// jobScheduleNameRefusal translates a bad schedule-name value the way the
 // netgroup/source forms do: empty is the required sentence, a spaced name the
 // spaces sentence, anything else the charset sentence.
-func scheduleNameRefusal(name string) string {
+func jobScheduleNameRefusal(name string) string {
 	if strings.TrimSpace(name) == "" {
 		return "Give the schedule a name."
 	}
 	if strings.ContainsAny(name, " ") {
 		return "Names can't have spaces."
 	}
-	return scheduleNameCharsRefusal
+	return jobScheduleNameCharsRefusal
 }
 
-func scheduleDuplicateRefusal(name string) string {
+func jobScheduleDuplicateRefusal(name string) string {
 	return "A schedule named " + name + " already exists."
 }
 
 // validationFlash renders a store.ErrValidation error as a flash line without
 // the store's wrapped "store: validation: store: ..." prefix. The checks lane
 // still calls it; this lane's schedule handler renders its ErrValidation as the
-// human scheduleSubmitRefusal instead.
+// human jobScheduleSubmitRefusal instead.
 func validationFlash(err error) string {
 	msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
 	msg = strings.TrimPrefix(msg, "store: validation: ")

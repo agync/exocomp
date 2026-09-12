@@ -373,10 +373,10 @@ func TestJobScheduleInvalidName422(t *testing.T) {
 // or kill surfaces render leaks a validator word, a status code, or a banned
 // meta-word.
 func TestF4RefusalCopyClean(t *testing.T) {
-	assertClean(t, "schedule name", scheduleNameRefusal(""), scheduleNameRefusal("spaced name"), scheduleNameRefusal("a/b"))
-	assertClean(t, "schedule cron", scheduleCronRefusal)
-	assertClean(t, "schedule submit", scheduleSubmitRefusal)
-	assertClean(t, "schedule duplicate", scheduleDuplicateRefusal("home"))
+	assertClean(t, "schedule name", jobScheduleNameRefusal(""), jobScheduleNameRefusal("spaced name"), jobScheduleNameRefusal("a/b"))
+	assertClean(t, "schedule cron", jobScheduleCronRefusal)
+	assertClean(t, "schedule submit", jobScheduleSubmitRefusal)
+	assertClean(t, "schedule duplicate", jobScheduleDuplicateRefusal("home"))
 	assertClean(t, "rerun limit", rerunLimitRefusal)
 	assertClean(t, "source playbook", sourcePlaybookRefusal)
 	assertClean(t, "source limit", sourceLimitRefusal)
