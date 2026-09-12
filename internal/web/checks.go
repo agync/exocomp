@@ -161,15 +161,30 @@ func (c checkRow) DownSummary() string {
 }
 
 // handleChecks renders the /checks surface for the session: every probe check
-// with each target's posture and location.
+// with each target's posture and location. A request carrying the tab strip's
+// fragment header (checksTabJS) gets the surface region only — checksSurface
+// without the layout chrome — so the swap JS can move it in place without a
+// full load. The full render and the fragment come from the same checksVMFor
+// and the same checksSurface templ, so the two cannot drift.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	vm, err := s.checksVMFor(r, nil, nil, nil)
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
+	if r.Header.Get(fragmentHeader) == fragmentMode {
+		s.render(w, r, http.StatusOK, checksSurface(vm))
+		return
+	}
 	s.render(w, r, http.StatusOK, checksList(vm))
 }
+
+// The in-page tab strip's fragment contract (m79): the swap JS (checksTabJS)
+// fetches the SAME /checks?tab= URL the full page renders, signalling the
+// fragment mode with this header. A plain browser hit — JS-off, or a curl —
+// never sends it and keeps the full render, so one URL serves both depths.
+const fragmentHeader = "X-Requested-With"
+const fragmentMode = "fragment"
 
 // checksVMFor builds the checks view model, optionally carrying the
 // netgroup-add or check-add dialog's refusal state (nil = fresh form) and a

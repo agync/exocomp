@@ -213,6 +213,9 @@ templ netgroupFormJS() {
 				});
 			}
 		}
+		// Exposed so the checks tab strip's swap (checksTabJS) can re-wire a
+		// freshly swapped-in form the way a 422 swap re-runs this wire.
+		window.exoWireNetgroupForm = netgroupFormWire;
 		netgroupFormWire();
 	})();
 	</script>

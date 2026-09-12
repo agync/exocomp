@@ -13,73 +13,88 @@ package web
 // operator-scope: no reauth, no confirm_token.
 templ checksList(vm checksVM) {
 	@layout(vm.Page) {
-		if vm.Operator && vm.Tab == "probes" {
-			@modal("checks-add", "Add a check") {
-				<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform" id="check-add-form" novalidate data-check-form>
-					@fieldInput(vm.Form.nameField())
-					<label class="field">
-						<span class="label">Kind</span>
-						<select class="control" id="ck-kind" name="kind" aria-invalid?={ vm.Form.effective().ErrKind != "" } aria-describedby="ck-kind-meta" autofocus?={ vm.Form.effective().FirstInvalid == "kind" }>
-							<option value="tcp" selected?={ vm.Form.kindSelected("tcp") }>tcp</option>
-							<option value="ping" selected?={ vm.Form.kindSelected("ping") }>ping</option>
-							<option value="http" selected?={ vm.Form.kindSelected("http") }>http</option>
-						</select>
-						<span id="ck-kind-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrKind != "") }>
-							if vm.Form.effective().ErrKind != "" {
-								<span class="msg">{ vm.Form.effective().ErrKind }</span>
-							} else {
-								Kind is tcp, ping or http.
-							}
-						</span>
-					</label>
-					@fieldInput(vm.Form.intervalField())
-					<label class="field">
-						<span class="label">Targets</span>
-						for i, t := range vm.Form.targetInputs() {
-							<input class="control" name="target" type="text" spellcheck="false" autocomplete="off" placeholder={ targetPlaceholder(i) } value={ t } aria-invalid?={ vm.Form.effective().ErrTarget != "" } aria-describedby="ck-target-meta"/>
-						}
-						<span id="ck-target-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrTarget != "") }>
-							if vm.Form.effective().ErrTarget != "" {
-								<span class="msg">
-									if vm.Form.effective().ErrTargetItem != "" {
-										<span class="item">{ vm.Form.effective().ErrTargetItem }</span>
-									}
-									{ vm.Form.effective().ErrTarget }
-								</span>
-							} else {
-								Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
-							}
-						</span>
-					</label>
-					<button type="button" class="btn" id="ck-add-target">Add target</button>
-					@fieldInput(vm.Form.expectField())
-					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding check")
-					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add check</button></div>
-				</form>
-				if vm.Form != nil {
-					// A JS-off refusal re-renders the whole page; open the dialog and
-					// focus the first invalid control after it is in the DOM.
-					<script>
-					exoModalOpen("checks-add");
-					var ckBad = document.querySelector('#checks-add [aria-invalid="true"]');
-					if (ckBad) ckBad.focus();
-					</script>
-				}
-				@checkFormJS()
-			}
-		}
 		<p class="meta">
 			A check watches reachability; nothing fires until a rule matches — rules
 			are written on the CLI and read at <a href={ urlWithBase(vm.Page.Base, "/rules") }>/rules</a>.
 		</p>
+		@checksSurface(vm)
+		@checksTabJS()
+	}
+}
+
+// checksSurface is the /checks surface region the tab strip's client-side swap
+// moves (m79): the tab strip and the active panel, rendered without the layout
+// chrome. The full page embeds it (checksList) and the fragment handler renders
+// it alone for the tab-swap fetch, so the two renders cannot drift. Region id
+// "checks-surface" is the swap contract: the strip links carry data-tab, and
+// the fragment's aria-selected is server-set so the active tab rides the swap.
+// The one-shot scripts the region carries (the add-form wire functions, the
+// select enhancer) are re-wired by the swap JS per the form-fragment precedent.
+templ checksSurface(vm checksVM) {
+	<div id="checks-surface">
 		<div class="tabs segmented" role="tablist" aria-label="Checks">
-			<a class="tab" href={ urlWithBase(vm.Page.Base, "/checks") } role="tab" aria-selected={ boolAttr(vm.Tab != "netgroups") }>Probes</a>
-			<a class="tab" href={ urlWithBase(vm.Page.Base, "/checks?tab=netgroups") } role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
+			<a class="tab" data-tab="probes" href={ urlWithBase(vm.Page.Base, "/checks") } role="tab" aria-selected={ boolAttr(vm.Tab != "netgroups") }>Probes</a>
+			<a class="tab" data-tab="netgroups" href={ urlWithBase(vm.Page.Base, "/checks?tab=netgroups") } role="tab" aria-selected={ boolAttr(vm.Tab == "netgroups") }>Netgroups</a>
 		</div>
 		if vm.Tab == "netgroups" {
 			@netgroupsPanel(vm.Netgroups, vm.Operator, vm.NetgroupForm, vm.Page.Base)
 		} else {
+			if vm.Operator {
+				@modal("checks-add", "Add a check") {
+					<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
+					<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform" id="check-add-form" novalidate data-check-form>
+						@fieldInput(vm.Form.nameField())
+						<label class="field">
+							<span class="label">Kind</span>
+							<select class="control" id="ck-kind" name="kind" aria-invalid?={ vm.Form.effective().ErrKind != "" } aria-describedby="ck-kind-meta" autofocus?={ vm.Form.effective().FirstInvalid == "kind" }>
+								<option value="tcp" selected?={ vm.Form.kindSelected("tcp") }>tcp</option>
+								<option value="ping" selected?={ vm.Form.kindSelected("ping") }>ping</option>
+								<option value="http" selected?={ vm.Form.kindSelected("http") }>http</option>
+							</select>
+							<span id="ck-kind-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrKind != "") }>
+								if vm.Form.effective().ErrKind != "" {
+									<span class="msg">{ vm.Form.effective().ErrKind }</span>
+								} else {
+									Kind is tcp, ping or http.
+								}
+							</span>
+						</label>
+						@fieldInput(vm.Form.intervalField())
+						<label class="field">
+							<span class="label">Targets</span>
+							for i, t := range vm.Form.targetInputs() {
+								<input class="control" name="target" type="text" spellcheck="false" autocomplete="off" placeholder={ targetPlaceholder(i) } value={ t } aria-invalid?={ vm.Form.effective().ErrTarget != "" } aria-describedby="ck-target-meta"/>
+							}
+							<span id="ck-target-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrTarget != "") }>
+								if vm.Form.effective().ErrTarget != "" {
+									<span class="msg">
+										if vm.Form.effective().ErrTargetItem != "" {
+											<span class="item">{ vm.Form.effective().ErrTargetItem }</span>
+										}
+										{ vm.Form.effective().ErrTarget }
+									</span>
+								} else {
+									Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
+								}
+							</span>
+						</label>
+						<button type="button" class="btn" id="ck-add-target">Add target</button>
+						@fieldInput(vm.Form.expectField())
+						@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding check")
+						<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add check</button></div>
+					</form>
+					if vm.Form != nil {
+						// A JS-off refusal re-renders the whole page; open the dialog and
+						// focus the first invalid control after it is in the DOM.
+						<script>
+						exoModalOpen("checks-add");
+						var ckBad = document.querySelector('#checks-add [aria-invalid="true"]');
+						if (ckBad) ckBad.focus();
+						</script>
+					}
+					@checkFormJS()
+				}
+			}
 			if !vm.Operator {
 				<p class="meta">Read-only: managing checks needs an operator token.</p>
 			}
@@ -145,7 +160,70 @@ templ checksList(vm checksVM) {
 				</ul>
 			}
 		}
-	}
+	</div>
+}
+
+// checksTabJS is the checks tab strip's progressive enhancement (m79): the
+// data-tab links stay full-load anchors without JS, and with JS a click
+// fetches the same ?tab= URL with an X-Requested-With: fragment header and
+// swaps the #checks-surface region in place. The active tab's aria-selected
+// rides the server-rendered region, so the swap moves the tab state with it.
+// The fetch is a GET, so a swap never carries a refusal or a write, and the
+// fragment is a partial render with no flash element, so a swap cannot re-fire
+// a consumed flash. The click path is delegated on document, so it survives
+// region swaps; the region's own one-shot scripts are re-wired per the
+// form-fragment precedent (the wire functions are dataset-guarded and the
+// select enhancer walks a root, so re-running both is idempotent). The
+// pushState keeps the address in sync with the visible tab, so refresh and
+// share behave exactly as the JS-off full load would.
+templ checksTabJS() {
+	<script>
+	(function () {
+		function swapTab(href) {
+			return fetch(href, {
+				credentials: "same-origin",
+				headers: { "Accept": "text/html", "X-Requested-With": "fragment" }
+			}).then(function (resp) {
+				if (!resp.ok) return false;
+				return resp.text().then(function (html) {
+					var doc = new DOMParser().parseFromString(html, "text/html");
+					var next = doc.getElementById("checks-surface");
+					var region = document.getElementById("checks-surface");
+					if (!next || !region) return false;
+					region.outerHTML = next.outerHTML;
+					region = document.getElementById("checks-surface");
+					if (window.exoWireCheckForm) window.exoWireCheckForm();
+					if (window.exoWireNetgroupForm) window.exoWireNetgroupForm();
+					if (window.exoEnhanceSelects) window.exoEnhanceSelects(region);
+					return true;
+				});
+			});
+		}
+		var busy = false;
+		document.addEventListener("click", function (e) {
+			var tab = e.target.closest("a[data-tab]");
+			if (!tab || busy) return;
+			if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+			if (tab.getAttribute("aria-selected") === "true") return;
+			e.preventDefault();
+			busy = true;
+			var href = tab.getAttribute("href");
+			swapTab(href).then(function (ok) {
+				if (ok) { history.pushState(null, "", href); busy = false; }
+				else { busy = false; window.location = href; }
+			}).catch(function () {
+				busy = false;
+				window.location = href;
+			});
+		});
+		window.addEventListener("popstate", function () {
+			var href = location.pathname + location.search;
+			swapTab(href).then(function (ok) {
+				if (!ok) location.reload();
+			}).catch(function () { location.reload(); });
+		});
+	})();
+	</script>
 }
 
 // checkFormJS is the check-add form's progressive enhancement, mirroring the
@@ -155,7 +233,9 @@ templ checksList(vm checksVM) {
 // re-render), anything else follows the redirect and its success flash. After
 // a refusal a field re-validates on blur and clears when right; the primary
 // disables only while submitting. The Add target control lives here too so a
-// 422-swapped fragment re-wires it.
+// 422-swapped fragment re-wires it. The wire function is exposed as
+// exoWireCheckForm so the checks tab strip's swap (checksTabJS) can re-wire a
+// freshly swapped-in form the same way a 422 swap does.
 templ checkFormJS() {
 	<script>
 	(function () {
@@ -286,6 +366,7 @@ templ checkFormJS() {
 				validateField(input);
 			}, true);
 		}
+		window.exoWireCheckForm = checkFormWire;
 		checkFormWire();
 	})();
 	</script>
