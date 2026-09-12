@@ -483,3 +483,80 @@ func TestSecretRotateRefusalKeepsExpiresNotValue(t *testing.T) {
 		}
 	}
 }
+
+// TestSecretsUsedByLegColumn is the GATE for A2's "who uses this": the
+// leg-owned sealed secrets (ntfy/*, deadman/heartbeat_url) list their /system
+// leg with a link in the Used by cell, so a rotation names its consumer. A
+// secret no leg reads stays leg-free. Dropping the leg line must red.
+func TestSecretsUsedByLegColumn(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for _, sec := range []store.SecretRow{
+		{Name: "ntfy/token", Kind: "token", Source: store.SecretSourceUser, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "ntfy/token|token"},
+		{Name: "deadman/heartbeat_url", Kind: "url", Source: store.SecretSourceUser, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "deadman/heartbeat_url|url"},
+		{Name: "api-token", Kind: "token", Source: store.SecretSourceUser, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "api-token|token"},
+	} {
+		if _, err := h.store.CreateSecret(ctx, sec); err != nil {
+			t.Fatalf("CreateSecret %s: %v", sec.Name, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`href="/system/ntfy"`,
+		`href="/system/deadman"`,
+		"ntfy/token",
+		"deadman/heartbeat_url",
+		"api-token",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets used-by column missing %q", want)
+		}
+	}
+	// The generic secret is leg-free: its row's used-by cell shows no leg.
+	if strings.Contains(page, `id="secret-api-token"`) &&
+		!strings.Contains(page, "unbound — safe to remove") {
+		t.Error("generic secret lost its unbound note")
+	}
+}
+
+// TestSecretsKeyDeepLinkFocus is the GATE for A2's deep-link focus: /secrets?
+// key=ntfy/token (the href m75's Seal-token verb renders) focuses that row;
+// an unknown key leaves every row unfocused. Dropping the focus must red.
+func TestSecretsKeyDeepLinkFocus(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ntfy/token", Kind: "token", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "ntfy/token|token",
+	}); err != nil {
+		t.Fatalf("CreateSecret: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/secrets?key=ntfy/token")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets?key= = %d, want 200", code)
+	}
+	if !strings.Contains(page, `id="secret-ntfy/token" class="row-focus"`) {
+		t.Error("/secrets?key=ntfy/token does not focus the row")
+	}
+
+	code, page = getBody(t, client, ts.URL+"/secrets?key=nope")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets?key=nope = %d, want 200", code)
+	}
+	if strings.Contains(page, `class="row-focus"`) {
+		t.Error("/secrets?key=nope focused a row")
+	}
+}

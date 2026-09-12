@@ -258,7 +258,10 @@ func (s *Server) secretsVMFor(r *http.Request, form *secretAddFormVM, rotate *se
 	vm := secretsVM{
 		Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows,
 		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
-		Form: form, Rotate: rotate,
+		// A2: a refusal re-render keeps the ?key= deep-link focus, so a
+		// refused rotate on the focused row re-renders the row focused.
+		FocusKey: r.URL.Query().Get("key"),
+		Form:     form, Rotate: rotate,
 	}
 	if vm.Operator {
 		vm.Page.Add = &pageAdd{Target: "secrets-add", Label: "secret"}

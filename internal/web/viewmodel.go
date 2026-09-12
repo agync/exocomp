@@ -1397,6 +1397,10 @@ type secretsVM struct {
 	// process with no envelope, disabling add/rotate with a note.
 	Operator      bool
 	SealAvailable bool
+	// FocusKey is the ?key= deep-link value (SPEC §7 A2): the sealed secret
+	// whose row the page focuses — the target of m75's Seal-token href
+	// /secrets?key=ntfy/token. Empty renders no row focused.
+	FocusKey string
 	// Form is the add-secret dialog's refusal state (the netgroup pattern):
 	// nil at rest, the filled form with field errors on a 422 re-render.
 	Form *secretAddFormVM
@@ -1418,6 +1422,9 @@ type secretRow struct {
 	LastUsed string // clock, or "never"
 	Expiry   expiryMarker
 	Bindings []secretBindingRow
+	// UsedBy lists the /system legs that read this secret (SPEC §7 A2),
+	// empty when no leg consumes it.
+	UsedBy []usedByRow
 	// Refusal is the rm verb's refusal sentence, carried to the rowActions
 	// partial by secretRowActions (forms/SPEC.md): non-empty only on a refused
 	// rm re-render. The sealed material stays absent — invariant 4.
@@ -1429,6 +1436,14 @@ type secretRow struct {
 type secretBindingRow struct {
 	Binding string
 	EnvName string
+}
+
+// usedByRow is one /system leg that reads a sealed secret (SPEC §7 A2 "who
+// uses this"): the leg's name and the page it lives on, so a rotation names
+// its consumer. Only keys a leg actually consumes get a row.
+type usedByRow struct {
+	Name string
+	Href string
 }
 
 // expiryMarker is a secret's staleness state rendered as a labelled chip: an

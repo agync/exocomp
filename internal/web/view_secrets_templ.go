@@ -139,11 +139,9 @@ func secretBindings(rows []secretBindingRow) templ.Component {
 	})
 }
 
-// secretsList is the secrets surface: the sealed-value inventory (lifecycle
-// metadata + bindings, never the value/nonce/ciphertext — invariant 4), plus
-// the operator write controls. Sealing needs the envelope; a nil Sealer shows a
-// note instead of the form. Add/rotate are gated by a confirm-token re-auth.
-func secretsList(vm secretsVM) templ.Component {
+// secretLegs lists the /system legs that read a secret (SPEC §7 A2): the leg
+// name linking to its page, so a rotation names its consumer. Never a value.
+func secretLegs(rows []usedByRow, base string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -164,7 +162,68 @@ func secretsList(vm secretsVM) templ.Component {
 			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var9 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		for _, u := range rows {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<div class=\"meta\">used by <a href=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var9 templ.SafeURL
+			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(base, u.Href))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 28, Col: 63}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var10 string
+			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(u.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 28, Col: 74}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</a></div>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		return nil
+	})
+}
+
+// secretsList is the secrets surface: the sealed-value inventory (lifecycle
+// metadata + bindings, never the value/nonce/ciphertext — invariant 4), plus
+// the operator write controls. Sealing needs the envelope; a nil Sealer shows a
+// note instead of the form. Add/rotate are gated by a confirm-token re-auth.
+func secretsList(vm secretsVM) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var11 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var11 == nil {
+			templ_7745c5c3_Var11 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var12 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -176,12 +235,12 @@ func secretsList(vm secretsVM) templ.Component {
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<p class=\"meta\">Values are sealed with age and never leave the server — this page is metadata only. Runs receive a secret through a binding, never an echo.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "<p class=\"meta\">Values are sealed with age and never leave the server — this page is metadata only. Runs receive a secret through a binding, never an echo.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Var10 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+				templ_7745c5c3_Var13 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 					templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 					templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 					if !templ_7745c5c3_IsBuffer {
@@ -194,25 +253,25 @@ func secretsList(vm secretsVM) templ.Component {
 					}
 					ctx = templ.InitializeContext(ctx)
 					if !vm.SealAvailable {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 9, "<p class=\"meta\">Sealing is not available on this surface (this process holds no envelope).</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<p class=\"meta\">Sealing is not available on this surface (this process holds no envelope).</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "<p class=\"meta\">The value is sealed into the envelope and never shown again. Confirm with your own access token.</p><form method=\"post\" action=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<p class=\"meta\">The value is sealed into the envelope and never shown again. Confirm with your own access token.</p><form method=\"post\" action=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var11 templ.SafeURL
-						templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/secrets/add"))
+						var templ_7745c5c3_Var14 templ.SafeURL
+						templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/secrets/add"))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 40, Col: 75}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 48, Col: 75}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 11, "\" class=\"writeform\" id=\"secrets-add-form\" novalidate data-secret-form data-pending=\"Adding secret\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "\" class=\"writeform\" id=\"secrets-add-form\" novalidate data-secret-form data-pending=\"Adding secret\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -228,7 +287,7 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 12, "<label class=\"checkline\"><input type=\"checkbox\" name=\"generate\" value=\"1\"> generate a random value instead</label>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, "<label class=\"checkline\"><input type=\"checkbox\" name=\"generate\" value=\"1\"> generate a random value instead</label>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -236,7 +295,7 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 13, "<label for=\"se-cf\">Confirm: your access token</label> <input id=\"se-cf\" name=\"confirm_token\" type=\"password\" autocomplete=\"off\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, "<label for=\"se-cf\">Confirm: your access token</label> <input id=\"se-cf\" name=\"confirm_token\" type=\"password\" autocomplete=\"off\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -244,27 +303,27 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 14, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if vm.Form.Pending() {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 15, " disabled")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " disabled")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 16, ">Seal secret</button></div></form>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, ">Seal secret</button></div></form>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if vm.Form != nil {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "<script>\n\t\t\t\t\t\texoModalOpen(\"secrets-add\");\n\t\t\t\t\t\tvar seBad = document.querySelector('#secrets-add input[aria-invalid=\"true\"]');\n\t\t\t\t\t\tif (seBad) seBad.focus();\n\t\t\t\t\t\t</script>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<script>\n\t\t\t\t\t\texoModalOpen(\"secrets-add\");\n\t\t\t\t\t\tvar seBad = document.querySelector('#secrets-add input[aria-invalid=\"true\"]');\n\t\t\t\t\t\tif (seBad) seBad.focus();\n\t\t\t\t\t\t</script>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, " ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -275,121 +334,165 @@ func secretsList(vm secretsVM) templ.Component {
 					}
 					return nil
 				})
-				templ_7745c5c3_Err = modal("secrets-add", "Seal a secret").Render(templ.WithChildren(ctx, templ_7745c5c3_Var10), templ_7745c5c3_Buffer)
+				templ_7745c5c3_Err = modal("secrets-add", "Seal a secret").Render(templ.WithChildren(ctx, templ_7745c5c3_Var13), templ_7745c5c3_Buffer)
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, " <div class=\"card span2 mt18 tray\"><div class=\"kicker\">Sealed values</div><h3>All secrets</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " <div class=\"card span2 mt18 tray\"><div class=\"kicker\">Sealed values</div><h3>All secrets</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if !vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<p class=\"meta\">Read-only: managing secrets needs an operator token. The sealed value never appears on this surface.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<p class=\"meta\">Read-only: managing secrets needs an operator token. The sealed value never appears on this surface.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if len(vm.Secrets) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<p class=\"meta\">No secrets sealed.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p class=\"meta\">No secrets sealed.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "<div class=\"tablewrap stackable\"><table><thead><tr><th scope=\"col\">Name</th><th scope=\"col\">Kind</th><th scope=\"col\">Source</th><th scope=\"col\">Created</th><th scope=\"col\">Last rotated</th><th scope=\"col\">Last used</th><th scope=\"col\">Expiry</th><th scope=\"col\">Used by</th>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<div class=\"tablewrap stackable\"><table data-focus=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var15 string
+				templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(vm.FocusKey)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 80, Col: 36}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "\"><thead><tr><th scope=\"col\">Name</th><th scope=\"col\">Kind</th><th scope=\"col\">Source</th><th scope=\"col\">Created</th><th scope=\"col\">Last rotated</th><th scope=\"col\">Last used</th><th scope=\"col\">Expiry</th><th scope=\"col\">Used by</th>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Operator {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<th scope=\"col\">Actions</th>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<th scope=\"col\">Actions</th>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, sc := range vm.Secrets {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<tr><td data-label=\"Name\">")
+					var templ_7745c5c3_Var16 = []any{templ.KV("row-focus", vm.FocusKey == sc.Name)}
+					templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var16...)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var12 string
-					templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Name)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 91, Col: 40}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</td><td class=\"mono\" data-label=\"Kind\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var13 string
-					templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(sc.Kind))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 92, Col: 61}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "</td><td data-label=\"Source\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var14 string
-					templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(sc.Source))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 93, Col: 52}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "</td><td class=\"mono\" data-label=\"Created\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var15 string
-					templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Created)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 94, Col: 59}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</td><td class=\"mono\" data-label=\"Last rotated\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var16 string
-					templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Rotated)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 95, Col: 64}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "</td><td class=\"mono\" data-label=\"Last used\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<tr id=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var17 string
-					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(sc.LastUsed)
+					templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs("secret-" + sc.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 96, Col: 62}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 98, Col: 36}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "</td><td data-label=\"Expiry\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" class=\"")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var18 string
+					templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var16).String())
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 1, Col: 0}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "\"><td data-label=\"Name\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var19 string
+					templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Name)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 99, Col: 40}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</td><td class=\"mono\" data-label=\"Kind\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var20 string
+					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(sc.Kind))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 100, Col: 61}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</td><td data-label=\"Source\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var21 string
+					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(sc.Source))
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 101, Col: 52}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "</td><td class=\"mono\" data-label=\"Created\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var22 string
+					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Created)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 102, Col: 59}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</td><td class=\"mono\" data-label=\"Last rotated\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var23 string
+					templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Rotated)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 103, Col: 64}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</td><td class=\"mono\" data-label=\"Last used\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var24 string
+					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(sc.LastUsed)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 104, Col: 62}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</td><td data-label=\"Expiry\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -397,7 +500,11 @@ func secretsList(vm secretsVM) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "</td><td data-label=\"Used by\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</td><td data-label=\"Used by\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = secretLegs(sc.UsedBy, vm.Page.Base).Render(ctx, templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -405,12 +512,12 @@ func secretsList(vm secretsVM) templ.Component {
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "</td>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</td>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.Operator {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "<td data-label=\"Actions\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<td data-label=\"Actions\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -418,28 +525,28 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "</td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "</tr>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "</tr>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</tbody></table></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "</tbody></table><script>\n\t\t\t\t\t(function () {\n\t\t\t\t\t\tvar table = document.querySelector('table[data-focus]');\n\t\t\t\t\t\tvar key = table ? table.getAttribute(\"data-focus\") : \"\";\n\t\t\t\t\t\tif (key) {\n\t\t\t\t\t\t\tvar el = document.getElementById(\"secret-\" + key);\n\t\t\t\t\t\t\tif (el) el.scrollIntoView({ block: \"center\" });\n\t\t\t\t\t\t}\n\t\t\t\t\t})();\n\t\t\t\t\t</script></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator && vm.SealAvailable {
 				for _, sc := range vm.Secrets {
-					templ_7745c5c3_Var18 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_Var25 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 						if !templ_7745c5c3_IsBuffer {
@@ -451,46 +558,46 @@ func secretsList(vm secretsVM) templ.Component {
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"meta\">The value is sealed into the envelope and never shown again. Confirm with your own access token.</p><form method=\"post\" action=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<p class=\"meta\">The value is sealed into the envelope and never shown again. Confirm with your own access token.</p><form method=\"post\" action=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var19 templ.SafeURL
-						templ_7745c5c3_Var19, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets/"+sc.Name+"/rotate")))
+						var templ_7745c5c3_Var26 templ.SafeURL
+						templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets/"+sc.Name+"/rotate")))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 115, Col: 109}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 136, Col: 109}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var19))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "\" class=\"writeform\" id=\"")
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var20 string
-						templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-form-" + sc.Name)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 115, Col: 166}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" class=\"writeform\" id=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "\" novalidate data-secret-rotate data-name=\"")
+						var templ_7745c5c3_Var27 string
+						templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-form-" + sc.Name)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 136, Col: 166}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var21 string
-						templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Name)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 115, Col: 218}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" novalidate data-secret-rotate data-name=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\" data-pending=\"Rotating secret\">")
+						var templ_7745c5c3_Var28 string
+						templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(sc.Name)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 136, Col: 218}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" data-pending=\"Rotating secret\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -498,7 +605,7 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "<label class=\"checkline\"><input type=\"checkbox\" name=\"generate\" value=\"1\"> generate a random value instead</label>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "<label class=\"checkline\"><input type=\"checkbox\" name=\"generate\" value=\"1\"> generate a random value instead</label>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -506,33 +613,33 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "<label for=\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<label for=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var22 string
-						templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs("scf-" + sc.Name)
+						var templ_7745c5c3_Var29 string
+						templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs("scf-" + sc.Name)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 119, Col: 35}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 140, Col: 35}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\">Confirm: your access token</label> <input id=\"")
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var23 string
-						templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs("scf-" + sc.Name)
-						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 120, Col: 34}
-						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\">Confirm: your access token</label> <input id=\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" name=\"confirm_token\" type=\"password\" autocomplete=\"off\">")
+						var templ_7745c5c3_Var30 string
+						templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs("scf-" + sc.Name)
+						if templ_7745c5c3_Err != nil {
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 141, Col: 34}
+						}
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" name=\"confirm_token\" type=\"password\" autocomplete=\"off\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -540,31 +647,31 @@ func secretsList(vm secretsVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if vm.rotatePending() {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, " disabled")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, " disabled")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, ">Rotate</button></div></form>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, ">Rotate</button></div></form>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = modal("secret-rotate-"+sc.Name, "Rotate "+sc.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var18), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = modal("secret-rotate-"+sc.Name, "Rotate "+sc.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var25), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " ")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, " ")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Var24 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+					templ_7745c5c3_Var31 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 						templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 						templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 						if !templ_7745c5c3_IsBuffer {
@@ -576,7 +683,7 @@ func secretsList(vm secretsVM) templ.Component {
 							}()
 						}
 						ctx = templ.InitializeContext(ctx)
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<p class=\"meta\">Run-secret bindings that inject this secret and the env var each maps it to. Values are never shown.</p>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<p class=\"meta\">Run-secret bindings that inject this secret and the env var each maps it to. Values are never shown.</p>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -586,43 +693,43 @@ func secretsList(vm secretsVM) templ.Component {
 						}
 						return nil
 					})
-					templ_7745c5c3_Err = modal("secret-bindings-"+sc.Name, "Bindings — "+sc.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var24), templ_7745c5c3_Buffer)
+					templ_7745c5c3_Err = modal("secret-bindings-"+sc.Name, "Bindings — "+sc.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var31), templ_7745c5c3_Buffer)
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, " ")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, " ")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Rotate != nil {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<script data-modal=\"")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<script data-modal=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var25 string
-					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-" + vm.Rotate.Name)
+					var templ_7745c5c3_Var32 string
+					templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-" + vm.Rotate.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 131, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 152, Col: 58}
 					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "\" data-form=\"")
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					var templ_7745c5c3_Var26 string
-					templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-form-" + vm.Rotate.Name)
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 131, Col: 111}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "\" data-form=\"")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "\">\n\t\t\t\t(function () {\n\t\t\t\t\tvar s = document.currentScript;\n\t\t\t\t\texoModalOpen(s.getAttribute(\"data-modal\"));\n\t\t\t\t\tvar seRotBad = document.querySelector('#' + s.getAttribute(\"data-form\") + ' input[aria-invalid=\"true\"]');\n\t\t\t\t\tif (seRotBad) seRotBad.focus();\n\t\t\t\t})();\n\t\t\t\t</script>")
+					var templ_7745c5c3_Var33 string
+					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs("secret-rotate-form-" + vm.Rotate.Name)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_secrets.templ`, Line: 152, Col: 111}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "\">\n\t\t\t\t(function () {\n\t\t\t\t\tvar s = document.currentScript;\n\t\t\t\t\texoModalOpen(s.getAttribute(\"data-modal\"));\n\t\t\t\t\tvar seRotBad = document.querySelector('#' + s.getAttribute(\"data-form\") + ' input[aria-invalid=\"true\"]');\n\t\t\t\t\tif (seRotBad) seRotBad.focus();\n\t\t\t\t})();\n\t\t\t\t</script>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -630,7 +737,7 @@ func secretsList(vm secretsVM) templ.Component {
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout(vm.Page).Render(templ.WithChildren(ctx, templ_7745c5c3_Var9), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout(vm.Page).Render(templ.WithChildren(ctx, templ_7745c5c3_Var12), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -654,12 +761,12 @@ func secretReauthNotice(p page) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var27 == nil {
-			templ_7745c5c3_Var27 = templ.NopComponent
+		templ_7745c5c3_Var34 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var34 == nil {
+			templ_7745c5c3_Var34 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var28 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var35 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -675,13 +782,13 @@ func secretReauthNotice(p page) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, " <h1>Confirm required</h1><div class=\"card span2 mt18\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " <h1>Confirm required</h1><div class=\"card span2 mt18\"><p class=\"error\" role=\"alert\">That access token did not match this session. Re-enter your own token to confirm the sealed write.</p></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = layout(p).Render(templ.WithChildren(ctx, templ_7745c5c3_Var28), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = layout(p).Render(templ.WithChildren(ctx, templ_7745c5c3_Var35), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -713,12 +820,12 @@ func secretFormJS() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var29 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var29 == nil {
-			templ_7745c5c3_Var29 = templ.NopComponent
+		templ_7745c5c3_Var36 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var36 == nil {
+			templ_7745c5c3_Var36 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<script>\n\t(function () {\n\t\tfunction restoreMeta(input) {\n\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\tif (meta) {\n\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\tmeta.textContent = input.name === \"name\"\n\t\t\t\t\t? \"Letters, digits, dots, hyphens, underscores, slashes.\"\n\t\t\t\t\t: \"\";\n\t\t\t}\n\t\t}\n\t\tfunction showError(input, msg) {\n\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\tif (meta) {\n\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t}\n\t\t}\n\t\tfunction validateField(input) {\n\t\t\tif (input.value.trim() === \"\") return;\n\t\t\tif (input.name === \"name\" && !/^[A-Za-z0-9._\\/-]+$/.test(input.value.trim())) {\n\t\t\t\tshowError(input, \"Names can't have spaces.\");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\trestoreMeta(input);\n\t\t}\n\t\tfunction wireForm(form) {\n\t\t\tif (!form || form.dataset.secretWired) return;\n\t\t\tform.dataset.secretWired = \"1\";\n\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\tvar pending = form.getAttribute(\"data-pending\") || \"Adding secret\";\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar retry = e.target.closest(\"[data-retry]\");\n\t\t\t\tif (retry) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.requestSubmit();\n\t\t\t\t}\n\t\t\t});\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"]');\n\t\t\t\tif (input) validateField(input);\n\t\t\t}, true);\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tif (status) status.innerHTML = '<span class=\"dot\"></span>' + pending;\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(form.id);\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(form.id);\n\t\t\t\t\t\t\tif (!form) return;\n\t\t\t\t\t\t\twireForm(form);\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\twireForm(document.getElementById(\"secrets-add-form\"));\n\t\tvar rots = document.querySelectorAll(\"form[data-secret-rotate]\");\n\t\tfor (var i = 0; i < rots.length; i++) wireForm(rots[i]);\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "<script>\n\t(function () {\n\t\tfunction restoreMeta(input) {\n\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\tif (meta) {\n\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\tmeta.textContent = input.name === \"name\"\n\t\t\t\t\t? \"Letters, digits, dots, hyphens, underscores, slashes.\"\n\t\t\t\t\t: \"\";\n\t\t\t}\n\t\t}\n\t\tfunction showError(input, msg) {\n\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\tif (meta) {\n\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t}\n\t\t}\n\t\tfunction validateField(input) {\n\t\t\tif (input.value.trim() === \"\") return;\n\t\t\tif (input.name === \"name\" && !/^[A-Za-z0-9._\\/-]+$/.test(input.value.trim())) {\n\t\t\t\tshowError(input, \"Names can't have spaces.\");\n\t\t\t\treturn;\n\t\t\t}\n\t\t\trestoreMeta(input);\n\t\t}\n\t\tfunction wireForm(form) {\n\t\t\tif (!form || form.dataset.secretWired) return;\n\t\t\tform.dataset.secretWired = \"1\";\n\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\tvar pending = form.getAttribute(\"data-pending\") || \"Adding secret\";\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar retry = e.target.closest(\"[data-retry]\");\n\t\t\t\tif (retry) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.requestSubmit();\n\t\t\t\t}\n\t\t\t});\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"]');\n\t\t\t\tif (input) validateField(input);\n\t\t\t}, true);\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tif (status) status.innerHTML = '<span class=\"dot\"></span>' + pending;\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(form.id);\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(form.id);\n\t\t\t\t\t\t\tif (!form) return;\n\t\t\t\t\t\t\twireForm(form);\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\twireForm(document.getElementById(\"secrets-add-form\"));\n\t\tvar rots = document.querySelectorAll(\"form[data-secret-rotate]\");\n\t\tfor (var i = 0; i < rots.length; i++) wireForm(rots[i]);\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

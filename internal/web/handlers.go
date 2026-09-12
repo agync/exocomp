@@ -520,6 +520,8 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 	vm := secretsVM{
 		Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows,
 		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+		// A2: /secrets?key=ntfy/token (m75's Seal-token href) focuses the row.
+		FocusKey: r.URL.Query().Get("key"),
 	}
 	if vm.Operator {
 		vm.Page.Add = &pageAdd{Target: "secrets-add", Label: "secret"}

@@ -689,14 +689,20 @@ func (s *Server) secrets(r *http.Request) ([]secretRow, error) {
 	now := s.now()
 	var out []secretRow
 	for _, sec := range list {
-		out = append(out, secretRow{
+		row := secretRow{
 			Name: sec.Name, Kind: sec.Kind, Source: sec.Source,
 			Created:  clock(sec.CreatedAt),
 			Rotated:  orNever(sec.RotatedAt),
 			LastUsed: orNever(sec.LastUsedAt),
 			Expiry:   secretExpiry(sec.ExpiresAt, now),
 			Bindings: byName[sec.Name],
-		})
+		}
+		// A2 "who uses this": the /system leg that reads this secret, when
+		// one exists.
+		if leg := usedByLeg(sec.Name); leg.Name != "" {
+			row.UsedBy = append(row.UsedBy, leg)
+		}
+		out = append(out, row)
 	}
 	return out, nil
 }
