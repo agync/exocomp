@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -207,6 +209,208 @@ func TestSecretsRowActions(t *testing.T) {
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/secrets missing row-action marker %q", want)
+		}
+	}
+}
+
+// postSecret sends a secrets write POST and returns status + body without
+// following a redirect, for the 422-render assertions.
+func postSecret(t *testing.T, client *http.Client, target string, form url.Values) (int, string) {
+	t.Helper()
+	resp := postForm(t, client, target, form, nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	return resp.StatusCode, string(body)
+}
+
+// TestSecretAddFormAtRest renders /secrets for an operator and asserts the
+// seal dialog's forms-round anatomy: every fieldInput control carries an
+// always-present meta line (help text at rest), the aria wiring ties each
+// control to its meta, a form-status line sits above the primary, and the form
+// is novalidate so the daemon stays authoritative. The value field's meta
+// states the sealed contract; the control itself always renders empty.
+func TestSecretAddFormAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+
+	code, page := getBody(t, op, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="secrets-add"`,
+		`action="/secrets/add"`,
+		`id="secrets-add-form" novalidate`,
+		`aria-describedby="se-name-meta"`,
+		`aria-describedby="se-kind-meta"`,
+		`aria-describedby="se-val-meta"`,
+		`aria-describedby="se-exp-meta"`,
+		`id="se-name-meta"`,
+		`id="se-kind-meta"`,
+		`id="se-val-meta"`,
+		`id="se-exp-meta"`,
+		"Letters, digits, dots, hyphens, underscores, slashes.",
+		"Sealed into the envelope — never shown again.",
+		"A duration — e.g. 720h, 30d.",
+		`role="status" aria-live="polite"`,
+		"Seal secret",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("seal form missing %q", want)
+		}
+	}
+	// At rest no control is flagged invalid; the value control renders empty.
+	if !strings.Contains(page, `placeholder="deploy-token" aria-describedby="se-name-meta">`) {
+		t.Error("at-rest name control carries an aria-invalid refusal")
+	}
+	if !strings.Contains(page, `id="se-val-meta" class="meta">Sealed into the envelope`) {
+		t.Error("at-rest value meta is not plain help text")
+	}
+	if !strings.Contains(page, `id="se-val" name="value" value=""`) {
+		t.Error("value control does not render empty at rest")
+	}
+}
+
+// TestSecretAddRefusalRenders is the invariant-4 load-bearing assertion: a 422
+// re-render keeps the NON-secret typed values (name, kind, expires) with ▲
+// human-copy refusals on their meta lines and the add dialog re-opened, but the
+// secret VALUE and the confirm_token never re-render (assert the body lacks
+// them).
+func TestSecretAddRefusalRenders(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+
+	code, page := postSecret(t, op, ts.URL+"/secrets/add",
+		url.Values{"name": {"Bad Name"}, "kind": {"token"}, "value": {"supersecretvalue"},
+			"expires": {"nope"}, "confirm_token": {tok}})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("refusal status = %d, want 422", code)
+	}
+	for _, want := range []string{
+		`id="se-name"`, `value="Bad Name"`, "Names can&#39;t have spaces.",
+		`value="token"`, `value="nope"`, "That&#39;s not a duration — like 720h or 30d.",
+		` aria-invalid aria-describedby="se-name-meta"`, `exoModalOpen("secrets-add")`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("seal 422 missing %q", want)
+		}
+	}
+	// Invariant 4: the sealed value and the confirm token never re-render.
+	for _, forbidden := range []string{"supersecretvalue", tok} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("seal 422 re-rendered a secret %q", forbidden)
+		}
+	}
+}
+
+// TestSecretAddDuplicateRefuses: a duplicate name lands on the name field's
+// meta line at 422, and the sealed value still never re-renders.
+func TestSecretAddDuplicateRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "dup", Kind: "generic", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "dup|generic",
+	}); err != nil {
+		t.Fatalf("seed secret: %v", err)
+	}
+
+	code, page := postSecret(t, op, ts.URL+"/secrets/add",
+		url.Values{"name": {"dup"}, "value": {"duplicatesecretvalue"}, "confirm_token": {tok}})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("duplicate status = %d, want 422", code)
+	}
+	if !strings.Contains(page, "A secret called dup already exists.") {
+		t.Errorf("duplicate 422 missing the name-field sentence")
+	}
+	if strings.Contains(page, "duplicatesecretvalue") {
+		t.Error("duplicate 422 re-rendered the sealed value")
+	}
+}
+
+// TestSecretRotateFormAtRest renders the rotate dialog for a seeded secret and
+// asserts the field anatomy: a never-echoing value control and an expires
+// control, each with its always-present meta line and a status line.
+func TestSecretRotateFormAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ssh-key", Kind: "ssh", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "ssh-key|ssh",
+	}); err != nil {
+		t.Fatalf("seed secret: %v", err)
+	}
+
+	code, page := getBody(t, op, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="secret-rotate-form-ssh-key" novalidate`,
+		`aria-describedby="sv-ssh-key-meta"`,
+		`aria-describedby="se-exp-ssh-key-meta"`,
+		`id="sv-ssh-key-meta"`,
+		`id="se-exp-ssh-key-meta"`,
+		"Sealed into the envelope — never shown again.",
+		"A duration — e.g. 720h, 30d.",
+		`role="status" aria-live="polite"`,
+		"Rotate",
+		`name="confirm_token"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("rotate form missing %q", want)
+		}
+	}
+}
+
+// TestSecretRotateRefusalKeepsExpiresNotValue: a rotate 422 keeps the typed
+// expires value and re-opens the right dialog, but never re-renders the new
+// value or the confirm token (invariant 4).
+func TestSecretRotateRefusalKeepsExpiresNotValue(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ssh-key", Kind: "ssh", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "ssh-key|ssh",
+	}); err != nil {
+		t.Fatalf("seed secret: %v", err)
+	}
+
+	code, page := postSecret(t, op, ts.URL+"/secrets/ssh-key/rotate",
+		url.Values{"value": {"rotatedsecretvalue"}, "expires": {"nope"}, "confirm_token": {tok}})
+	if code != http.StatusUnprocessableEntity {
+		t.Fatalf("rotate refusal status = %d, want 422", code)
+	}
+	for _, want := range []string{
+		`value="nope"`, "That&#39;s not a duration — like 720h or 30d.",
+		`data-modal="secret-rotate-ssh-key"`,
+		`id="se-exp-ssh-key-meta"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("rotate 422 missing %q", want)
+		}
+	}
+	for _, forbidden := range []string{"rotatedsecretvalue", tok} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("rotate 422 re-rendered a secret %q", forbidden)
 		}
 	}
 }

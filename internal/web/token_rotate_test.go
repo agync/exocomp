@@ -69,7 +69,9 @@ func TestRotateDropsOldSessionsAndSecret(t *testing.T) {
 
 // TestRotateSelfRefused: mirrors the revoke self-guard — a session cannot
 // rotate the token it is authenticated with, since rotation invalidates the
-// secret currently authenticating the request.
+// secret currently authenticating the request. The refusal re-renders the
+// tokens surface at 422 with the human sentence on the rotate dialog's status
+// line.
 func TestRotateSelfRefused(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -87,11 +89,16 @@ func TestRotateSelfRefused(t *testing.T) {
 	resp := postForm(t, client, ts.URL+"/tokens/abn/rotate",
 		url.Values{"confirm_token": {op}}, nil)
 	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("self rotate = %d, want 409; body=%s", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("self rotate = %d, want 422; body=%s", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "refusing to rotate") {
-		t.Fatalf("body missing refusal message: %s", body)
+	for _, want := range []string{
+		"That&#39;s the token this session is bound to",
+		`role="status" aria-live="polite"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("self rotate refusal missing %q", want)
+		}
 	}
 
 	after, err := h.store.GetTokenByName(ctx, "abn")
