@@ -120,9 +120,10 @@ func TestBackupHistoryPageRows(t *testing.T) {
 		t.Fatalf("history = %d, want 200", code)
 	}
 	// One row per snapshot, newest first; the drilled mark and its outcome on
-	// the newest row.
+	// the newest row. The breadcrumb lives in the topbar title (R8b), never a
+	// card kicker.
 	for _, want := range []string{
-		"System / Backups / nas01",
+		`<h1 class="appbar-title">System · Backups · nas01</h1>`,
 		"#a3f9c2", "#8e1d07", "#c04b91",
 		"drilled ", "ago ok",
 		"120.0 MB verified",

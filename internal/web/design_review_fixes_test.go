@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -41,8 +42,8 @@ func TestNtfyCardFanOutOwnGrid(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px;") {
-		t.Error("fan-out rows lack their own minmax(0,1fr) 72px 120px grid")
+	if !strings.Contains(css, ".leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center; height:24px;") {
+		t.Error("fan-out rows lack their own minmax(0,1fr) 72px 120px grid at 24px")
 	}
 	if strings.Contains(css, "height:28px") {
 		t.Error("fan-out rows still carry a fixed 28px height that wraps their cells")
@@ -811,5 +812,232 @@ func TestPhonePowerlineScrolls(t *testing.T) {
 	}
 	if !strings.Contains(css, "@media (max-width:720px)") {
 		t.Error("the phone powerline rule must live in the ≤720 media block")
+	}
+}
+
+// ---- R2b · the Change form lives inside the strip; closed renders nothing ----
+
+// TestSystemPubFormInsideStrip is the R2b GATE (BLOCK): the Change form is a
+// flex child INSIDE the identity strip — the closed page renders no stray URL
+// input BELOW the strip — and the closed form's `hidden` beats the .pubform
+// display rule (the ghost was `[hidden]` losing to display:flex). The
+// mutation (the form back below the strip, or the CSS hidden guard dropped)
+// reds here.
+func TestSystemPubFormInsideStrip(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	i := strings.Index(page, `id="pubform"`)
+	if i < 0 {
+		t.Fatal("the Change form is missing")
+	}
+	// The form and its URL input render INSIDE the strip, before the strip's
+	// closing </section> — never a stray sibling below it (the ghost).
+	stripEnd := strings.Index(page, "</section>")
+	if stripEnd < 0 || i > stripEnd {
+		t.Error("the Change form must live inside the identity strip, never below it")
+	}
+	if ui := strings.Index(page, `id="pub-url"`); ui < 0 || ui > stripEnd {
+		t.Error("the closed page must render no stray URL input below the strip")
+	}
+	// The closed form's hidden attribute beats the .pubform display rule.
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".pubform[hidden] { display:none !important") {
+		t.Error("the closed form's hidden must beat the .pubform display rule")
+	}
+}
+
+// ---- R1b · the backups mini table owns its grid ----
+
+// TestBackupsCardMiniTableOwnGrid is the R1b gate for the Backups card's mini
+// table: name · state · age as its OWN three-column grid
+// (minmax(0,1fr) 88px 64px, 24px rows) — the same row shape the fan-out uses,
+// never the two-column fact-grid or auto-justified columns.
+func TestBackupsCardMiniTableOwnGrid(t *testing.T) {
+	h := newHarness(t)
+	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 4*time.Minute)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".bk-card-row { display:grid; grid-template-columns:minmax(0,1fr) 88px 64px; gap:12px; align-items:center; height:24px;") {
+		t.Error("backups mini rows lack their own minmax(0,1fr) 88px 64px grid at 24px")
+	}
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	i := strings.Index(page, `<section class="leg" id="backups"`)
+	if i < 0 {
+		t.Fatal("backups card missing")
+	}
+	card := page[i:]
+	for _, want := range []string{
+		`class="bk-card-row"`,
+		">nas01</span>",
+		">SUCCEEDED</span>",
+		">4m</span>",
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("backups mini row missing %q", want)
+		}
+	}
+}
+
+// ---- R7b · /system/backups column map and row height ----
+
+// TestBackupsRowsColumnMap is the R7b gate: each posture cell owns its
+// content — KIND (kind + path), RETENTION (policy + consequence), SCHEDULE
+// (no schedule + add-one link) — the rows pad 12px 0, and the posture cells
+// keep their two lines nowrapped (the review saw a misassigned map and 90px
+// rows).
+func TestBackupsRowsColumnMap(t *testing.T) {
+	h := newHarness(t)
+	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/backups")
+	if code != http.StatusOK {
+		t.Fatalf("/system/backups = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`<td data-label="KIND" class="bk-kind"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></td>`,
+		`<td data-label="RETENTION" class="bk-ret"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></td>`,
+		`<td data-label="SCHEDULE" class="bk-sched"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></td>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("backups row cell missing %q", want)
+		}
+	}
+	// SCHEDULE's content stays in its own cell — never the retention cell.
+	if strings.Contains(page, `bk-ret">no schedule`) {
+		t.Error("the schedule content leaked into the retention cell")
+	}
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".bk-table tbody tr.bk-row td { padding:12px 0;") {
+		t.Error("backups rows must pad 12px 0, not stack to a 90px row")
+	}
+	if !strings.Contains(css, ".bk-kind .mono, .bk-ret .mono, .bk-sched .mono { white-space:nowrap;") {
+		t.Error("the posture cells must keep their two lines nowrapped")
+	}
+	// The footer picks the ` · ` separator, not the right-aligned ladder.
+	if !strings.Contains(page, "remove asks first</span> <span class=\"right\">· freshness ok &lt; 24h") {
+		t.Error("the footer's two sentences must join with a ' · ' separator")
+	}
+	if strings.Contains(css, ".sys-bk-footer .right { margin-left:auto") {
+		t.Error("the footer must not ALSO right-align the ladder (pick ONE: separator or ladder)")
+	}
+}
+
+// ---- R8b · the history card drops the repeated kicker ----
+
+// TestBackupHistoryCardDropsKicker is the R8b gate: the history card drops
+// its SYSTEM/BACKUPS/target kicker — the topbar breadcrumb already carries it
+// — and keeps the title.
+func TestBackupHistoryCardDropsKicker(t *testing.T) {
+	h := newHarness(t)
+	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "daily=7,weekly=4", true)
+	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/backups/nas01/history")
+	if code != http.StatusOK {
+		t.Fatalf("history = %d, want 200", code)
+	}
+	if strings.Contains(page, `<div class="kicker">System / Backups / nas01</div>`) {
+		t.Error("the history card must not repeat the topbar's SYSTEM / BACKUPS / target kicker")
+	}
+	if !strings.Contains(page, `<h3>Snapshot history</h3>`) {
+		t.Error("the history card must keep its title")
+	}
+}
+
+// ---- round-2 nits ----
+
+// TestDeadmanLastGoodTwelveCharID is the nit: the dead-man card's last-good
+// snapshot id is the 12-char cut the rest of the surface uses, never 6.
+func TestDeadmanLastGoodTwelveCharID(t *testing.T) {
+	h := newHarness(t)
+	seedBackup(t, h, "nas01", store.BackupSucceeded, time.Now().Add(-16*time.Hour).UTC())
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/system")
+	if !strings.Contains(page, ">16h 00m ago · nas01 #a3f9c2deadbe</dd>") {
+		t.Error("the dead-man last-good id must be the 12-char cut, not the 6-char one")
+	}
+}
+
+// TestBackupRestoreHidesAfterReveal is the nit: the reveal hides the confirm
+// form and the pre-confirm drawer hides the run-host block — the hidden
+// attribute must beat the display rules (.writeform, .run-host) — and the
+// reveal relabels the verb `Shown` so it never reads as re-pressable.
+func TestBackupRestoreHidesAfterReveal(t *testing.T) {
+	h := newHarness(t)
+	seedSnapshotTarget(t, h, "nas01", "a3f9c2abcdef1234567890ab", 16*time.Hour)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, "#restore-backups-form[hidden] { display:none") {
+		t.Error("the revealed drawer must hide the confirm form — .writeform must not beat [hidden]")
+	}
+	if !strings.Contains(css, "#run-host[hidden] { display:none") {
+		t.Error("the pre-confirm drawer must not render the run-host block — [hidden] must beat .run-host")
+	}
+	// The reveal JS relabels the verb so it never reads as re-pressable.
+	_, page := getBody(t, client, ts.URL+"/system/backups")
+	if !strings.Contains(page, `btn.textContent = "Shown"`) {
+		t.Error("the reveal must relabel the verb 'Shown' so it does not read as re-pressable")
+	}
+}
+
+// TestDeadmanPagedFactHierarchy is the nit (14): the paged fact's hierarchy —
+// only `ntfy` reads loud, `once` + the age dim — via the fact's own spans,
+// never one flat string.
+func TestDeadmanPagedFactHierarchy(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	finished := time.Now().Add(-(49*time.Hour + 2*time.Minute)).UTC()
+	seedBackup(t, h, "nas01", store.BackupSucceeded, finished)
+	seedHeartbeat(t, h)
+	if err := h.store.PutSetting(ctx, store.SettingDeadmanThreshold, "48h"); err != nil {
+		t.Fatalf("PutSetting threshold: %v", err)
+	}
+	if err := h.store.PutSetting(ctx, store.SettingDeadmanPagedAt,
+		itoa64(time.Now().Add(-(1*time.Hour + 2*time.Minute)).UTC().UnixMilli())); err != nil {
+		t.Fatalf("PutSetting paged_at: %v", err)
+	}
+	if err := h.store.PutSetting(ctx, store.SettingDeadmanPingedAt,
+		itoa64(finished.UnixMilli())); err != nil {
+		t.Fatalf("PutSetting pinged_at: %v", err)
+	}
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/system")
+	if !strings.Contains(page, `<dd><span class="paged-word">ntfy</span><span class="paged-facts"> · once · 1h 02m ago</span></dd>`) {
+		t.Error("the paged fact must split ntfy from its dim once + age")
+	}
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".paged-word { color:var(--ink-100)") || !strings.Contains(css, ".paged-facts { color:var(--ink-400)") {
+		t.Error("the paged fact's hierarchy must keep only ntfy loud")
 	}
 }

@@ -172,7 +172,7 @@ func TestDeadmanTripped(t *testing.T) {
 		"since a backup succeeded · threshold 48h",
 		"nas01 succeeded 49h 02m ago · b2-offsite failed 61h 00m ago",
 		"last ping 49h 02m ago · the external service is paging",
-		"ntfy · once · 1h 02m ago",
+		`<dd><span class="paged-word">ntfy</span><span class="paged-facts"> · once · 1h 02m ago</span></dd>`,
 		"Clears itself the moment any target&#39;s run SUCCEEDS. A failed or still-running newer run does not mask the age.",
 		`>Queue backup — nas01</button>`,
 		`action="/system/deadman/queue"`,
