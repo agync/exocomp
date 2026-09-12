@@ -219,6 +219,10 @@ a:visited { color: var(--accent-text); }
 }
 .appbar-title { font: var(--type-bar); color: var(--ink-100); margin: 0; }
 .appbar-meta { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
+/* The header's glyph actions right-align like the meta slot; a page that
+ * renders actions without a meta (the job page's Raw log / Rerun) must still
+ * sit them at the bar's right end. */
+.appbar-actions { margin-left: auto; }
 .appbar-action { display: inline-flex; align-items: center; }
 /* The app-bar menu button, back chevron, and brandmark are the phone shell's
  * chrome (SPEC §2.0): on desktop the sidebar carries the brand, so these render

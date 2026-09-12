@@ -770,6 +770,25 @@ func TestResponsiveOneBreakpoint(t *testing.T) {
 	}
 }
 
+// TestAppbarActionsRightAligned pins the N1 fix: the header's glyph actions
+// (Raw log / Rerun on the job page) must sit at the bar's right end like the
+// meta slot, so .appbar-actions carries its own margin-left: auto instead of
+// relying on a meta slot most action pages do not render.
+func TestAppbarActionsRightAligned(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".appbar-actions") {
+		t.Error("app.css missing the .appbar-actions rule")
+	}
+	if !strings.Contains(app, ".appbar-actions { margin-left: auto; }") {
+		t.Error(".appbar-actions must right-align with margin-left: auto")
+	}
+}
+
 // TestPhoneShellSlots pins the phone shell chrome (R13): the app bar renders
 // the 44x44 menu button and the brandmark, and the wordmark stays in the DOM —
 // it is hidden only by CSS, never dropped from markup.
