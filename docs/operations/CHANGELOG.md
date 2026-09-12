@@ -6,6 +6,29 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the jobs, source-launcher, and approval forms join the forms pattern
+
+- **Every typed-input web form now renders through the forms primitives** —
+  `fieldInput` (label · control · always-present meta line) and
+  `formStatus(…, verb)` — and a field refusal re-renders the same surface at
+  422 with the typed values kept, exactly like the landed netgroup and
+  source-add exemplars. The job-detail **Schedule** dialog (bad name or cron
+  expression), the **Rerun** modal's Limit field, the source launcher's
+  **Playbook** tab (playbook/limit/egress/timeout) and **Command** tab
+  (host/command/timeout), and the approval surface's **Silence & global kill**
+  expiry all follow it. The banned refusals are gone from those surfaces: the
+  schedule handler's "invalid schedule name" and store-wrapped validation
+  flash, and the launcher's raw `http.Error` lines, are replaced with human
+  sentences on the field or the status line ("Choose a playbook, or give a
+  path relative to the checkout.", "Egress ports are numbers from 1 to 65535 —
+  like 22, 443."). A refusal never flashes; the flash stays success-only. A
+  posted `confirm_token` never echoes on any 422 re-render (the source git
+  reauth exception the primitives document). The button-verb forms on these
+  surfaces — source disable/enable/rm and the approval Reject/Approve — already
+  flashed success-only and keep rendering their refusals on the surface, so
+  they are pinned by tests rather than changed.
+
+
 ## 2026-09-12 — the secrets and tokens write forms adopt the forms anatomy
 
 - **The seal-a-secret, mint-token, and per-row rotate dialogs, plus the revoke

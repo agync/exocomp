@@ -368,6 +368,27 @@ func TestJobScheduleInvalidName422(t *testing.T) {
 	}
 }
 
+// TestF4RefusalCopyClean pins this lane's refusal copy against the words table
+// (forms/SPEC.md): none of the sentences the schedule, rerun, source-launcher,
+// or kill surfaces render leaks a validator word, a status code, or a banned
+// meta-word.
+func TestF4RefusalCopyClean(t *testing.T) {
+	assertClean(t, "schedule name", scheduleNameRefusal(""), scheduleNameRefusal("spaced name"), scheduleNameRefusal("a/b"))
+	assertClean(t, "schedule cron", scheduleCronRefusal)
+	assertClean(t, "schedule submit", scheduleSubmitRefusal)
+	assertClean(t, "schedule duplicate", scheduleDuplicateRefusal("home"))
+	assertClean(t, "rerun limit", rerunLimitRefusal)
+	assertClean(t, "source playbook", sourcePlaybookRefusal)
+	assertClean(t, "source limit", sourceLimitRefusal)
+	assertClean(t, "source egress", sourceEgressRefusal)
+	assertClean(t, "source timeout", sourceTimeoutRefusal)
+	assertClean(t, "source host", sourceHostRefusal)
+	assertClean(t, "source command", sourceCommandRefusal)
+	assertClean(t, "source submit", sourceRunSubmitRefusal)
+	assertClean(t, "kill expiry", killExpiryRefusal)
+	assertClean(t, "kill hold", killHoldRefusal)
+}
+
 // TestJobScheduleRefusalMetaAtRest pins the forms pattern's always-present meta
 // line: the Schedule dialog's name and cron fields render their help text at
 // rest (never the field anatomy missing), and a refusal fills the one field's
