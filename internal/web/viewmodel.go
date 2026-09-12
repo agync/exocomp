@@ -20,6 +20,10 @@ type page struct {
 	Who      string
 	Scope    string
 	Insecure bool
+	// Base is the origin sub-path the surface is served under ("" at the root
+	// origin). pageFor fills it from the server's --base-path; the URL sweep
+	// re-prefixes root-absolute hrefs from it.
+	Base string
 	// BackHref is the detail page's back-chevron target (SPEC §2.0): the
 	// phone app bar swaps its menu button for a back chevron when set. Empty
 	// renders the menu button. TitleSub stacks under Title ("Job #5" / the
@@ -1472,7 +1476,7 @@ func (vm eventsVM) SourceHref(name string) string {
 	if vm.Outcome != "" {
 		q = append(q, "outcome="+vm.Outcome)
 	}
-	return eventsHref(q)
+	return eventsHref(vm.Page.Base, q)
 }
 
 // OutcomeHref is the href an outcome chip carries. The active chip's own href
@@ -1487,14 +1491,15 @@ func (vm eventsVM) OutcomeHref(o string) string {
 	if o != "" && o != vm.Outcome {
 		q = append(q, "outcome="+o)
 	}
-	return eventsHref(q)
+	return eventsHref(vm.Page.Base, q)
 }
 
-func eventsHref(q []string) string {
+func eventsHref(base string, q []string) string {
+	path := "/events"
 	if len(q) == 0 {
-		return "/events"
+		return urlWithBase(base, path)
 	}
-	return "/events?" + strings.Join(q, "&")
+	return urlWithBase(base, path) + "?" + strings.Join(q, "&")
 }
 
 // commaCount renders a count with thousands separators ("1,204") for the

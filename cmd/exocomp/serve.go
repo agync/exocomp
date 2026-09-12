@@ -94,6 +94,7 @@ type serveOptions struct {
 	forceLease     bool
 	hookAllow      string
 	publicURL      string
+	basePath       string
 	sandbox        string
 	webAddr        string
 	webInsecure    bool
@@ -144,6 +145,8 @@ func newServeCmd() *cobra.Command {
 		"comma-separated CIDRs webhooks may come from (empty: any)")
 	cmd.Flags().StringVar(&opts.publicURL, "public-url", "",
 		"base URL decision links point at (empty: the bound loopback address)")
+	cmd.Flags().StringVar(&opts.basePath, "base-path", "",
+		"origin sub-path the web surface is served under (e.g. /exocomp); empty serves at the origin root")
 	cmd.Flags().StringVar(&opts.webAddr, "web-addr", "",
 		"also serve the token-gated LAN web+API surface here over TLS (ADR 0009); empty starts no web listener")
 	cmd.Flags().BoolVar(&opts.webInsecure, "web-insecure-http", false,
@@ -384,7 +387,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// loopback state backend above stays loopback-only and takes no LAN token.
 	var surface *webSurface
 	if opts.webAddr != "" {
-		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, opts.webAddr, opts.webInsecure, warn)
+		surface, err = startWebSurface(ctx, st, env, dir, engine, cordon, opts.basePath, opts.webAddr, opts.webInsecure, warn)
 		if err != nil {
 			shutdownCtx, cancel := context.WithTimeout(finalCtx, shutdownGrace)
 			defer cancel()

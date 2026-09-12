@@ -57,7 +57,7 @@ func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
 	}
 
 	// A non-loopback web bind with no active token refuses (ADR 0009 gate).
-	if _, err := startWebSurface(ctx, st, env, dir, engine, nil, "0.0.0.0:0", true, io.Discard); err == nil {
+	if _, err := startWebSurface(ctx, st, env, dir, engine, nil, "", "0.0.0.0:0", true, io.Discard); err == nil {
 		t.Fatal("expected a non-loopback web bind with no token to refuse")
 	}
 
@@ -66,7 +66,7 @@ func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
 	if err != nil {
 		t.Fatalf("mint token: %v", err)
 	}
-	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, "0.0.0.0:0", true, io.Discard)
+	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, "", "0.0.0.0:0", true, io.Discard)
 	if err != nil {
 		t.Fatalf("start web surface: %v", err)
 	}

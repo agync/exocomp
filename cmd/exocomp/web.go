@@ -35,6 +35,7 @@ const webShutdownGrace = 5 * time.Second
 type webOptions struct {
 	addr     string
 	insecure bool
+	basePath string
 }
 
 func newWebCmd() *cobra.Command {
@@ -56,6 +57,8 @@ func newWebCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.addr, "addr", opts.addr, "address to bind (host:port)")
 	cmd.Flags().BoolVar(&opts.insecure, "insecure-http", false,
 		"serve cleartext HTTP instead of TLS (loud, never the documented path)")
+	cmd.Flags().StringVar(&opts.basePath, "base-path", "",
+		"origin sub-path the web surface is served under (e.g. /exocomp); empty serves at the origin root")
 	return cmd
 }
 
@@ -97,7 +100,7 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 
 	// A standalone web process owns no scheduler or job queue, so it exposes no
 	// maintenance seam: the daemon that runs jobs is the one to cordon.
-	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, opts.addr, opts.insecure, warn)
+	surface, err := startWebSurface(ctx, st, env, dir, engine, nil, opts.basePath, opts.addr, opts.insecure, warn)
 	if err != nil {
 		return err
 	}
@@ -161,7 +164,7 @@ func (w *webSurface) Shutdown(ctx context.Context) error {
 // --insecure-http is loud. decider is the caller's reactive engine, so an
 // approval decided here releases the job into that process's queue.
 func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope, dir string,
-	decider web.Decider, maint web.Maintenance, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
+	decider web.Decider, maint web.Maintenance, basePath, addr string, insecure bool, warn io.Writer) (*webSurface, error) {
 	guardWarn, err := web.RequireTokenForBind(ctx, st, addr, insecure, time.Now().UTC())
 	if err != nil {
 		return nil, err
@@ -191,6 +194,7 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		Fingerprint: fingerprint,
 		Version:     version.String(),
 		DataDir:     dir,
+		BasePath:    basePath,
 	})
 	if err != nil {
 		return nil, err

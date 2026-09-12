@@ -8,6 +8,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -63,6 +65,11 @@ type Options struct {
 	Fingerprint string
 	// Version is the string the footer signal line prints.
 	Version string
+	// BasePath is the origin sub-path the surface is served under (e.g.
+	// "/exocomp"). Empty serves at the origin root — the default. The mux
+	// strips it inbound (http.StripPrefix) and every outbound URL and
+	// redirect re-prefixes it; see url().
+	BasePath string
 	// DataDir is statfs'd for the footer's disk-headroom signal. Empty leaves
 	// the disk field blank.
 	DataDir string
@@ -84,8 +91,12 @@ type Server struct {
 	fingerprint string
 	version     string
 	dataDir     string
-	log         *slog.Logger
-	clock       func() time.Time
+	// base is the normalized --base-path the surface is served under; "" is
+	// the origin root. Inbound requests have it stripped and outbound URLs
+	// re-prefix it.
+	base  string
+	log   *slog.Logger
+	clock func() time.Time
 	// startedAt is when the daemon process came up — the "since daemon start"
 	// anchor the events surface labels its cold-start state with. Set from the
 	// injectable clock so a test clock keeps it deterministic.
@@ -160,6 +171,16 @@ func New(opts Options) (*Server, error) {
 	if opts.Deriver == nil {
 		return nil, errors.New("web: no deriver")
 	}
+	// The base path is a path, not a scheme or host: it must begin with a
+	// single slash and carry no trailing slash, so `/exocomp/` and `/exocomp`
+	// name the same origin and a bare "/" collapses to the root origin.
+	base := opts.BasePath
+	for strings.HasSuffix(base, "/") {
+		base = strings.TrimSuffix(base, "/")
+	}
+	if base != "" && base[0] != '/' {
+		return nil, errors.New("web: base path must begin with /: " + opts.BasePath)
+	}
 	log := opts.Logger
 	if log == nil {
 		log = slog.Default()
@@ -179,6 +200,7 @@ func New(opts Options) (*Server, error) {
 		fingerprint:            opts.Fingerprint,
 		version:                opts.Version,
 		dataDir:                opts.DataDir,
+		base:                   base,
 		log:                    log,
 		clock:                  clock,
 		heartbeat:              approvalsStreamHeartbeat,
@@ -208,6 +230,29 @@ func New(opts Options) (*Server, error) {
 }
 
 func (s *Server) now() time.Time { return s.clock().UTC() }
+
+// basePath is the normalized origin sub-path the surface is served under: ""
+// at the root origin, "/exocomp" under a prefix. It is the seam L-B2's
+// template sweep re-prefixes its URLs from.
+func (s *Server) basePath() string { return s.base }
+
+// url re-prefixes a root-absolute path with the surface's base path, so every
+// redirect and Go-built URL lands inside the prefix. Callers pass the STRIPPED
+// root path (the shape handlers see); the prefix is added exactly once.
+func (s *Server) url(path string) string { return urlWithBase(s.base, path) }
+
+// urlWithBase joins a root-absolute path onto a base path. Empty base keeps
+// the root origin; a path that already carries the base is left alone, so the
+// helper never double-prefixes.
+func urlWithBase(base, path string) string {
+	if base == "" {
+		return path
+	}
+	if strings.HasPrefix(path, base) {
+		return path
+	}
+	return base + path
+}
 
 // StopStreams ends every attached approvals stream. It is idempotent: surface
 // shutdown can be reached twice (tests, error paths), and a second close of the
@@ -290,7 +335,35 @@ func (s *Server) Handler() http.Handler {
 	// (agent-interface §3.5); registerMCP adds POST /mcp.
 	s.registerMCP(mux)
 
-	return securityHeaders(mux)
+	// The base path is stripped here, at the surface edge: handlers route and
+	// build URLs against the stripped path, and url() re-prefixes what leaves.
+	// StripPrefix with an empty prefix is the identity handler, so the default
+	// (no --base-path) serves byte-identically to an unwrapped mux. baseRoot
+	// sits outside the strip so it sees the ORIGINAL request: a bare /exocomp
+	// is folded onto /exocomp/ before the strip yields "/".
+	return baseRoot(s.base, http.StripPrefix(s.base, securityHeaders(mux)))
+}
+
+// baseRoot folds a request for the bare base path (https://origin/exocomp with
+// no trailing slash) onto the base path plus a slash, so StripPrefix yields "/"
+// and the surface's root route serves it exactly as it serves the origin root.
+// A bare base otherwise strips to an empty path that matches no mux pattern.
+func baseRoot(base string, next http.Handler) http.Handler {
+	if base == "" {
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == base {
+			r2 := new(http.Request)
+			*r2 = *r
+			r2.URL = new(url.URL)
+			*r2.URL = *r.URL
+			r2.URL.Path = base + "/"
+			r2.URL.RawPath = ""
+			r = r2
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // render writes a templ component as an HTML response.
@@ -309,7 +382,7 @@ func (s *Server) render(w http.ResponseWriter, r *http.Request, status int, c te
 // pageFor builds the chrome for an authenticated request: who is signed in and
 // the footer signal line.
 func (s *Server) pageFor(r *http.Request, title, nav string) page {
-	p := page{Title: title, Nav: nav, Insecure: s.insecure, Signal: s.signal(r.Context())}
+	p := page{Title: title, Nav: nav, Insecure: s.insecure, Signal: s.signal(r.Context()), Base: s.base}
 	p.Badges = s.navBadges(r.Context())
 	// Flash comes from the redirect cookie (server-set only), never a URL
 	// parameter — a deep link can name no message it owns.
