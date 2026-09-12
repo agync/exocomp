@@ -17,8 +17,9 @@ import (
 // TestPowerlineSignalSegments is the GATE for the F10 realign: each powerline
 // segment is dot + word in its signal color and links to where it is fixed, so
 // a gap reads as a verb, not a grey fact. A fresh harness has no backup (dead-man
-// none → wait + "— set one"), no push transport (ntfy off → deliberate dim),
-// and no data dir (disk —, no state class).
+// none → wait), no push transport (ntfy off → deliberate dim), and no data dir
+// (disk —, no state class). The dead-man gap reads bare `dead-man none` — the
+// "— set one" suffix left with m96 (mutation: re-adding it reds this test).
 func TestPowerlineSignalSegments(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -32,7 +33,6 @@ func TestPowerlineSignalSegments(t *testing.T) {
 	for _, want := range []string{
 		`class="pl-seg wait"`,
 		`dead-man none`,
-		`— set one`,
 		`class="pl-seg dim"`,
 		`ntfy off`,
 		`href="/system"`,
@@ -44,6 +44,7 @@ func TestPowerlineSignalSegments(t *testing.T) {
 	for _, gone := range []string{
 		`pl-item`,
 		`pl-item warn`,
+		`— set one`,
 	} {
 		if strings.Contains(page, gone) {
 			t.Errorf("powerline still carries the old grey-fact markup %q", gone)

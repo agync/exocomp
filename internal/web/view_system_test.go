@@ -116,10 +116,12 @@ func TestSystemShellLegGrid(t *testing.T) {
 	}
 }
 
-// TestSystemShellPowerline is the GATE for the §0.1 powerline: the version
-// lead plus four per-segment anchors, each onto its leg card. Dropping any one
-// anchor must red (mutation).
-func TestSystemShellPowerline(t *testing.T) {
+// TestSystemShellNoPagePowerline is the GATE for the m96 reconcile: the
+// /system page-level `.sys-powerline` (version · litestream · dead-man · ntfy ·
+// backups) is GONE — it was redundant with the global bottom `.powerline`, and
+// litestream + backups stay on their leg cards only. Re-adding the strip (or
+// its "System signals" label) must red (mutation).
+func TestSystemShellNoPagePowerline(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -129,22 +131,23 @@ func TestSystemShellPowerline(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
-	if !strings.Contains(page, `class="sys-powerline"`) {
-		t.Error("missing the self-care powerline")
-	}
-	for _, want := range []string{
-		`href="/system#deadman"`,
-		`href="/system#ntfy"`,
+	for _, gone := range []string{
+		`class="sys-powerline"`,
+		`aria-label="System signals"`,
 		`href="/system#litestream"`,
 		`href="/system#backups"`,
-		"dead-man ",
-		"ntfy ",
-		"litestream ",
-		"backups ",
 	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("powerline missing segment %q", want)
+		if strings.Contains(page, gone) {
+			t.Errorf("page-level powerline still renders %q", gone)
 		}
+	}
+	// The one strip left is the global bottom powerline: it renders on /system
+	// too, and its segments carry the pl-seg class.
+	if !strings.Contains(page, `<footer class="powerline"`) {
+		t.Error("the global bottom powerline must still render on /system")
+	}
+	if !strings.Contains(page, `class="pl-seg"`) && !strings.Contains(page, `class="pl-seg `) {
+		t.Error("the bottom powerline segment is missing the pl-seg class")
 	}
 }
 

@@ -234,11 +234,8 @@ templ powerline(p page) {
 	<footer class="powerline" role="contentinfo">
 		<a class={ "pl-seg", templ.KV("wait", p.Signal.DeadManState == "wait"), templ.KV("ok", p.Signal.DeadManState == "ok") } href={ urlWithBase(p.Base, "/system") }>
 			<span class="dot" aria-hidden="true"></span>dead-man { p.Signal.DeadMan }
-			if p.Signal.DeadMan == "none" {
-				<span>— set one</span>
-			}
 		</a>
-		<a class={ "pl-seg", templ.KV("dim", p.Signal.NtfyState == "dim"), templ.KV("ok", p.Signal.NtfyState == "ok") } href={ urlWithBase(p.Base, "/system") }>
+		<a class={ "pl-seg", templ.KV("dim", p.Signal.NtfyState == "dim"), templ.KV("ok", p.Signal.NtfyState == "ok"), templ.KV("fail", p.Signal.NtfyState == "fail") } href={ urlWithBase(p.Base, "/system") }>
 			<span class="dot" aria-hidden="true"></span>ntfy { p.Signal.Ntfy }
 		</a>
 		<a class={ "pl-seg", templ.KV("ok", p.Signal.DiskState == "ok"), templ.KV("fail", p.Signal.DiskState == "fail") } href={ urlWithBase(p.Base, "/system") }>

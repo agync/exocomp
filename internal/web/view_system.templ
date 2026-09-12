@@ -22,11 +22,10 @@ templ legGlyph(d string) {
 }
 
 // systemPage is the /system self-care surface (SPEC §0, artboard 1a): the
-// identity strip, the four leg cards in a 2×2 grid, and the powerline of
-// per-leg anchors. The four legs render as stubs this round — the leg lanes
-// fill the card bodies next. The public-URL Change form carries the forms
-// anatomy (SPEC §7 A7): the always-present field meta, the 20px status line,
-// and the 422 re-render that keeps the typed value.
+// identity strip and the four leg cards in a 2×2 grid. The four legs render as
+// stubs this round — the leg lanes fill the card bodies next. The public-URL
+// Change form carries the forms anatomy (SPEC §7 A7): the always-present field
+// meta, the 20px status line, and the 422 re-render that keeps the typed value.
 templ systemPage(vm systemVM) {
 	@layout(vm.Page) {
 		<section class="sys-identity" aria-label="Control-plane identity">
@@ -101,19 +100,6 @@ templ systemPage(vm systemVM) {
 			@ntfyCard(vm)
 			@litestreamCard(vm.Litestream, vm.Page.Base)
 			@backupsCard(vm)
-		</div>
-
-		<div class="sys-powerline" aria-label="System signals">
-			<span class="seg version">{ vm.Version }</span>
-			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#litestream")) } data-state={ vm.Self.LSClass }>litestream { vm.Self.LSWord }</a>
-			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#deadman")) } data-state={ vm.Page.Signal.DeadManState }>
-				dead-man { vm.Page.Signal.DeadMan }
-				if vm.Page.Signal.DeadMan == "none" {
-					<span> — set one</span>
-				}
-			</a>
-			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#ntfy")) } data-state={ vm.Page.Signal.NtfyState }>ntfy { vm.Page.Signal.Ntfy }</a>
-			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#backups")) } data-state={ vm.BackupsState }>{ vm.BackupsWord }</a>
 		</div>
 
 		<div class="sys-phone">
@@ -202,5 +188,4 @@ templ pubFormJS() {
 
 // The four leg cards live in leg_deadman.templ / leg_ntfy.templ /
 // leg_litestream.templ / leg_backups.templ — each carries the §0.1 anatomy
-// (word · figure · facts · one verb) and its id is the powerline anchor's
-// land target. The leg lanes L-S1..L-S4 own those files.
+// (word · figure · facts · one verb). The leg lanes L-S1..L-S4 own those files.

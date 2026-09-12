@@ -128,8 +128,8 @@ func TestDashboardPostV1Sections(t *testing.T) {
 }
 
 // TestSystemPageHealth is the GATE for /system: the self-care shell (SPEC §0)
-// renders the identity strip, the four leg-card stubs and the powerline of
-// per-leg anchors.
+// renders the identity strip and the four leg-card stubs. The per-leg powerline
+// anchors are gone with m96 — the leg cards themselves are the land targets.
 func TestSystemPageHealth(t *testing.T) {
 	h := newHarness(t)
 	seedPostV1(t, h)
@@ -145,16 +145,13 @@ func TestSystemPageHealth(t *testing.T) {
 		`class="sys-identity"`,
 		`class="sys-legs"`,
 		`id="deadman"`, `id="ntfy"`, `id="litestream"`, `id="backups"`,
-		`class="sys-powerline"`,
-		`href="/system#deadman"`,
-		`href="/system#ntfy"`,
-		`href="/system#litestream"`,
-		`href="/system#backups"`,
-		"litestream ",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("system page missing %q", want)
 		}
+	}
+	if strings.Contains(page, `class="sys-powerline"`) {
+		t.Error("the page-level powerline must be gone (m96)")
 	}
 }
 
@@ -282,9 +279,10 @@ func TestPoliciesVerdict(t *testing.T) {
 }
 
 // TestSystemBackupsNeverIsWait is the GATE for W19 on the self-care shell: a
-// backup target with no run yet reads as a wait gap (never a fail) — the
-// dead-man segment quotes the same ONE rule, so "dead-man none — set one" and
-// the backups segment both land in wait while nothing has succeeded.
+// backup target with no run yet reads as a wait gap (never a fail) on the
+// Backups leg card — the dead-man segment quotes the same ONE rule, so
+// "dead-man none" and the backups chip both land in wait while nothing has
+// succeeded.
 func TestSystemBackupsNeverIsWait(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -302,13 +300,16 @@ func TestSystemBackupsNeverIsWait(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("system status = %d", code)
 	}
-	if !strings.Contains(page, `data-state="wait">backups none</a>`) {
-		t.Error("a never-run backup target must read as a wait gap on the powerline (W19)")
+	if !strings.Contains(page, `<span class="chip wait"><span class="dot"></span>NONE</span>`) {
+		t.Error("a never-run backup target must read as a wait gap on the Backups card (W19)")
 	}
 	if strings.Contains(page, "backups 1 failing") || strings.Contains(page, `data-state="fail">backups`) {
 		t.Error("a never-run target must never read as fail (W19)")
 	}
-	if !strings.Contains(page, "dead-man none") || !strings.Contains(page, "— set one") {
+	if !strings.Contains(page, "dead-man none") {
 		t.Error("a never-succeeded estate must read dead-man none, not a fake age")
+	}
+	if strings.Contains(page, "— set one") {
+		t.Error("the dead-man segment must not carry the '— set one' suffix (m96)")
 	}
 }

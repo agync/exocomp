@@ -462,11 +462,12 @@ func TestDeadmanNoneRingIsWait(t *testing.T) {
 	}
 }
 
-// ---- R6 · the powerline names the leg + its word, not the retired rpo metric ----
+// ---- R6 · the litestream leg names itself + its word, not the retired rpo metric ----
 
 // TestPowerlineLitestreamWord is the R6 gate: with a set target and no
-// sidecar the segment reads `litestream no sidecar` in fail — the segment
-// names the leg and its word, never the retired `rpo` metric.
+// sidecar the litestream leg card reads `NO SIDECAR` in fail — the leg names
+// itself and its word, never the retired `rpo` metric. The /system footer
+// segment is gone with m96; the card is the loud surface.
 func TestPowerlineLitestreamWord(t *testing.T) {
 	h := newHarness(t)
 	noSidecar(h)
@@ -479,16 +480,11 @@ func TestPowerlineLitestreamWord(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
-	if !strings.Contains(page, `data-state="fail">litestream no sidecar</a>`) {
-		t.Error("powerline litestream segment must read 'litestream no sidecar' in fail")
+	if !strings.Contains(page, `data-state="fail"`) || !strings.Contains(page, "NO SIDECAR") {
+		t.Error("the litestream leg card must read fail 'NO SIDECAR'")
 	}
 	if strings.Contains(page, ">rpo ") {
-		t.Error("the rpo metric name is retired from the powerline")
-	}
-	// A healthy leg names the leg + its word at ink-400, like dead-man and ntfy.
-	_, page = getBody(t, client, ts.URL+"/system")
-	if !strings.Contains(page, ">litestream no sidecar</a>") {
-		t.Error("powerline missing the litestream word")
+		t.Error("the rpo metric name is retired from the self-care page")
 	}
 }
 
@@ -802,20 +798,41 @@ func TestDeadmanArmHeartbeatMeta(t *testing.T) {
 	}
 }
 
-// TestPhonePowerlineScrolls is the phone-powerline nit: at ≤720 the powerline
-// is a single overflow-x row — all segments or none, never a wrapped stack.
+// TestPhonePowerlineScrolls is the phone-powerline nit: at ≤720 the global
+// bottom powerline is a single overflow-x row — all segments or none, never a
+// wrapped stack (app.css owns the mobile .powerline block; the /system page
+// level strip is gone with m96).
 func TestPhonePowerlineScrolls(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".sys-powerline { overflow-x:auto;") {
+	app := cssOf(t, h, ts, client, "app.css")
+	if !strings.Contains(app, ".powerline{position:sticky;bottom:0;height:36px;font-size:12px;") {
 		t.Error("the phone powerline must be a single scrollable row")
 	}
-	if !strings.Contains(css, "@media (max-width:720px)") {
-		t.Error("the phone powerline rule must live in the ≤720 media block")
+	if !strings.Contains(app, "overflow-x:auto") {
+		t.Error("the phone powerline row must scroll horizontally")
+	}
+}
+
+// TestPowerlineSeparators is the m96 separator GATE: the bottom powerline
+// adopts the /system page-level look — the pl-seg carries the `|` hairline
+// (padding:0 14px + inset 1px 0 0) and the powerline's gap drops to 0 so the
+// hairline is the separator. Dropping either reds this test.
+func TestPowerlineSeparators(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	if !strings.Contains(app, "box-shadow: inset 1px 0 0 var(--hairline-faint);") {
+		t.Error("the pl-seg must carry the inset hairline separator")
+	}
+	if !strings.Contains(app, "align-items: center; gap: 0;") {
+		t.Error("the powerline gap must be 0 so the hairline separates")
 	}
 }
 

@@ -3,12 +3,8 @@
  * realign/AUDIT.md §4, forms/lift.css, tofu/lift.css — this file adds only the
  * self-care page pieces. No raw hex.
  *
- * L-S0 integration notes (the page shell owns this file):
- * - the handoff's `.powerline` is renamed to `.sys-powerline`: the repo's
- *   global fixed-footer strip already owns the `.powerline` class
- *   (view_layout.templ), so the /system page strip must not collide with it.
- * - the §0.2 phone collapse is `.sys-phone`, shown only at <=720px; the
- *   `.sys-legs` grid hides at that width (cards -> two-line rows). */
+ * The §0.2 phone collapse is `.sys-phone`, shown only at <=720px; the
+ * `.sys-legs` grid hides at that width (cards -> two-line rows). */
 
 /* identity strip */
 .sys-identity { background:var(--surface-card); border-radius:var(--radius-card); padding:16px 22px;
@@ -112,16 +108,6 @@
 .leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center; height:24px;
   justify-items:start; padding:0 10px; border-radius:var(--radius-chip); }
 .leg-mini > div.on { background:var(--surface-tray); }
-
-/* powerline as anchors */
-.sys-powerline { height:36px; display:flex; align-items:center; padding:0 30px; background:var(--surface-rail);
-  border-top:1px solid var(--hairline-faint); font:400 11px/1 var(--font-mono); font-variant-numeric:tabular-nums; }
-.sys-powerline .seg { color:var(--ink-400); }
-.sys-powerline .seg.version { color:var(--ink-500); }
-.sys-powerline a { color:var(--ink-400); padding:0 14px; box-shadow:inset 1px 0 0 var(--hairline-faint); }
-.sys-powerline a[data-state="wait"] { color:var(--signal-wait); }
-.sys-powerline a[data-state="fail"] { color:var(--signal-fail); }
-.sys-powerline a[data-state="dim"] { color:var(--ink-500); }
 
 /* phone leg rows */
 .sys-phone { display:flex; flex-direction:column; gap:var(--gap-card); }
@@ -326,12 +312,6 @@
 .push-sample .push-actions { display:flex; gap:8px; margin:0; }
 .push-sample .push-actions .btn { height:30px; padding:0 12px; font:var(--type-button); }
 .push-sample .note { font:400 11px/1.4 var(--font-mono); color:var(--ink-500); margin:0; }
-
-/* phone powerline (nit): at ≤720 the self-care powerline is a single
- * scrollable row — all segments or none, never a wrapped stack. */
-@media (max-width:720px) {
-  .sys-powerline { overflow-x:auto; }
-}
 
 /* L-S3 leg page: the full-width litestream card and the ▾ config view. The
  * config renders read-only in a mono block; secrets are named in the emitted

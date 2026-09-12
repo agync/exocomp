@@ -130,15 +130,12 @@ func TestSystemShellBasePrefixed(t *testing.T) {
 		t.Fatalf("GET /exocomp/system = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`href="/exocomp/system#deadman"`,
-		`href="/exocomp/system#ntfy"`,
-		`href="/exocomp/system#litestream"`,
-		`href="/exocomp/system#backups"`,
 		`href="/exocomp/system/deadman"`,
 		`href="/exocomp/system/ntfy"`,
 		`href="/exocomp/system/litestream"`,
 		`href="/exocomp/system/backups"`,
 		`action="/exocomp/system/public-url"`,
+		`<footer class="powerline"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("system shell missing the prefixed %q", want)
@@ -161,8 +158,8 @@ func TestSystemShellOriginRoot(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("GET /system = %d, want 200", code)
 	}
-	if !strings.Contains(body, `href="/system#deadman"`) {
-		t.Error("system shell anchor missing at the origin root")
+	if !strings.Contains(body, `<footer class="powerline"`) {
+		t.Error("system shell missing the bottom powerline at the origin root")
 	}
 	if strings.Contains(body, "/exocomp/system") {
 		t.Error("origin-root system shell carries a phantom prefix")

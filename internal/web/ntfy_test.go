@@ -676,7 +676,8 @@ func TestNtfyMuteClearReadonlyForbidden(t *testing.T) {
 }
 
 // TestPowerlineNtfyRefused is the A11 gate (SPEC §8 step 6): the token-missing
-// public-topic case reads `ntfy refused` in fail on the powerline — not off.
+// public-topic case reads `ntfy refused` in fail on the bottom powerline — not
+// off.
 func TestPowerlineNtfyRefused(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
@@ -694,7 +695,7 @@ func TestPowerlineNtfyRefused(t *testing.T) {
 	if !strings.Contains(page, `>ntfy refused</a>`) {
 		t.Errorf("powerline missing ntfy refused: %s", page)
 	}
-	if !strings.Contains(page, `href="/system#ntfy" data-state="fail">ntfy refused`) {
+	if !strings.Contains(page, `class="pl-seg fail"`) {
 		t.Errorf("refused segment not fail-coloured: %s", page)
 	}
 }

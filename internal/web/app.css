@@ -1324,7 +1324,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .powerline {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
   height: var(--powerline-h);
-  display: flex; align-items: center; gap: 20px;
+  display: flex; align-items: center; gap: 0;
   padding: 0 16px;
   background: var(--surface-rail);
   border-top: 1px solid var(--hairline-faint);
@@ -1334,6 +1334,8 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   display: inline-flex; align-items: center; gap: 6px;
   font: var(--type-log); color: var(--ink-500);
   text-decoration: none;
+  padding: 0 14px;
+  box-shadow: inset 1px 0 0 var(--hairline-faint);
 }
 .pl-seg .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .pl-seg.ok   { color: var(--signal-ok); }

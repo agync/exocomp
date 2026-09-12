@@ -445,9 +445,8 @@ func TestDeadmanPowerlineReadsOneRule(t *testing.T) {
 		t.Errorf("powerline reads the failed run's age")
 	}
 	// The segment carries the card's chip colour (armed → ok) from the same
-	// state the card draws.
-	if !strings.Contains(page, `href="/system#deadman"`) ||
-		!strings.Contains(page, `data-state="ok"`) {
+	// state the card draws, via the layout pl-seg's state class.
+	if !strings.Contains(page, `class="pl-seg ok"`) {
 		t.Errorf("powerline dead-man segment missing the armed state colour")
 	}
 }
