@@ -28,7 +28,12 @@ type harness struct {
 
 // newHarness builds the surface with the queue's workers running, so a released
 // job actually runs. The queue stops when the test's context is cancelled.
-func newHarness(t *testing.T) *harness {
+func newHarness(t *testing.T) *harness { return newHarnessBase(t, "") }
+
+// newHarnessBase builds the same surface under a base path: "" is the origin
+// root, "/exocomp" the prefixed origin. It exists so the base-path tests drive
+// the identical wiring `exocomp web --base-path /exocomp` builds.
+func newHarnessBase(t *testing.T, base string) *harness {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("web harness integration")
@@ -62,7 +67,7 @@ func newHarness(t *testing.T) *harness {
 
 	srv, err := New(Options{
 		Store: st, Deriver: env, Decider: engine, Plans: env, Sealer: env,
-		Version: "test", DataDir: dir,
+		Version: "test", DataDir: dir, BasePath: base,
 	})
 	if err != nil {
 		t.Fatalf("web.New: %v", err)
