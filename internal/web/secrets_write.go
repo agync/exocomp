@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"regexp"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -12,8 +14,10 @@ import (
 
 // Secrets add/rotate seal a plaintext into the envelope, so they need the Sealer
 // (nil → 503) and are gated behind reauth. The submitted value is a password
-// field — never echoed, flashed, redirected, or logged (invariant 4). Delete is
-// guarded by the run-secret bindings that reference the secret.
+// field — never echoed, flashed, redirected, or logged (invariant 4): a 422
+// re-render keeps the non-secret fields only, and the value field always
+// renders empty. Delete is guarded by the run-secret bindings that reference
+// the secret (its refusal handling rides the shared row-actions region).
 
 func init() { registerWrite((*Server).registerSecretWrite) }
 
@@ -21,6 +25,41 @@ func (s *Server) registerSecretWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /secrets/add", s.requireAuth(s.handleSecretAdd))
 	mux.HandleFunc("POST /secrets/{name}/rotate", s.requireAuth(s.handleSecretRotate))
 	mux.HandleFunc("POST /secrets/{name}/rm", s.requireAuth(s.handleSecretRm))
+}
+
+// secretNamePattern bounds a secret's name — the shape the form's pattern
+// attribute used to carry, now held server-side (the daemon is authoritative).
+var secretNamePattern = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+
+func validSecretName(s string) bool { return secretNamePattern.MatchString(s) }
+
+// validDuration reports whether s parses as a positive duration; empty means
+// "no expiry" and is not a refusal.
+func validDuration(s string) bool {
+	if s == "" {
+		return true
+	}
+	d, err := time.ParseDuration(s)
+	return err == nil && d > 0
+}
+
+// The seal-a-secret and rotate dialogs' human refusal copy (forms/copy.txt):
+// the raw validator words go to the log; the meta lines and status line carry
+// these sentences.
+const (
+	secretNameRefusal         = "Use letters, digits, dots, hyphens, underscores, slashes."
+	secretValueRefusal        = "Give the secret a value, or generate one."
+	secretExpiryRefusal       = "That's not a duration — like 720h or 30d."
+	secretSubmitRefusal       = "Couldn't seal the secret — nothing was saved."
+	secretRotateSubmitRefusal = "Couldn't rotate the secret — nothing was saved."
+)
+
+func secretMissingRefusal(name string) string {
+	return "No secret called " + name + "."
+}
+
+func secretNameSpaced() string {
+	return "Names can't have spaces."
 }
 
 func (s *Server) handleSecretAdd(w http.ResponseWriter, r *http.Request) {
@@ -38,6 +77,40 @@ func (s *Server) handleSecretAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PostFormValue("name")
 	kind := formKind(r)
+	expires := r.PostFormValue("expires")
+	form := secretAddFormVM{Name: name, Kind: kind, Expires: expires}
+
+	// Validate up front so every refusal renders at once (the daemon stays
+	// authoritative: these rules only shape the response).
+	if !validSecretName(name) {
+		s.log.Info("web: secret add refused", "err", "name shape", "by", ident.token.Name)
+		if strings.Contains(name, " ") {
+			form.ErrName = secretNameSpaced()
+		} else {
+			form.ErrName = secretNameRefusal
+		}
+	}
+	if !r.Form.Has("generate") && r.PostFormValue("value") == "" {
+		s.log.Info("web: secret add refused", "err", "empty value", "by", ident.token.Name)
+		form.ErrValue = secretValueRefusal
+	}
+	if !validDuration(expires) {
+		s.log.Info("web: secret add refused", "err", "bad expiry", "by", ident.token.Name)
+		form.ErrExpires = secretExpiryRefusal
+	}
+	switch {
+	case form.ErrName != "":
+		form.FirstInvalid = "name"
+	case form.ErrValue != "":
+		form.FirstInvalid = "value"
+	case form.ErrExpires != "":
+		form.FirstInvalid = "expires"
+	}
+	if form.ErrName != "" || form.ErrValue != "" || form.ErrExpires != "" {
+		s.secretRefusal(w, r, &form, nil)
+		return
+	}
+
 	value, err := formSecretValue(r)
 	if err != nil {
 		s.fail(w, r, err)
@@ -45,7 +118,9 @@ func (s *Server) handleSecretAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	sealed, err := s.sealer.Seal(name, kind, value)
 	if err != nil {
-		s.fail(w, r, err)
+		s.log.Error("web: secret add", "err", err.Error())
+		form.ErrForm = secretSubmitRefusal
+		s.secretRefusal(w, r, &form, nil)
 		return
 	}
 	if _, err := s.store.CreateSecret(r.Context(), store.SecretRow{
@@ -53,10 +128,15 @@ func (s *Server) handleSecretAdd(w http.ResponseWriter, r *http.Request) {
 		AAD: sealed.Name + "|" + sealed.Kind, Source: r.PostFormValue("source"), ExpiresAt: formExpiresAt(r),
 	}); err != nil {
 		if errors.Is(err, store.ErrDuplicate) {
-			http.Error(w, "a secret named "+name+" already exists; rotate it instead", http.StatusConflict)
+			s.log.Info("web: secret add refused", "err", err.Error(), "by", ident.token.Name)
+			form.ErrName = "A secret called " + name + " already exists."
+			form.FirstInvalid = "name"
+			s.secretRefusal(w, r, &form, nil)
 			return
 		}
-		s.fail(w, r, err)
+		s.log.Error("web: secret add", "err", err.Error())
+		form.ErrForm = secretSubmitRefusal
+		s.secretRefusal(w, r, &form, nil)
 		return
 	}
 	s.log.Info("web: secret add", "secret", name, "kind", kind, "by", ident.token.Name)
@@ -80,10 +160,31 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	existing, err := s.store.GetSecret(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no secret named "+name, http.StatusNotFound)
+			s.log.Info("web: secret rotate refused", "err", "no such secret", "by", ident.token.Name)
+			form := secretRotateFormVM{Name: name, ErrForm: secretMissingRefusal(name)}
+			s.secretRefusal(w, r, nil, &form)
 			return
 		}
 		s.fail(w, r, err)
+		return
+	}
+	expires := r.PostFormValue("expires")
+	form := secretRotateFormVM{Name: name, Expires: expires}
+
+	if !r.Form.Has("generate") && r.PostFormValue("value") == "" {
+		s.log.Info("web: secret rotate refused", "err", "empty value", "by", ident.token.Name)
+		form.ErrValue = secretValueRefusal
+		form.FirstInvalid = "value"
+	}
+	if !validDuration(expires) {
+		s.log.Info("web: secret rotate refused", "err", "bad expiry", "by", ident.token.Name)
+		form.ErrExpires = secretExpiryRefusal
+		if form.FirstInvalid == "" {
+			form.FirstInvalid = "expires"
+		}
+	}
+	if form.ErrValue != "" || form.ErrExpires != "" {
+		s.secretRefusal(w, r, nil, &form)
 		return
 	}
 	value, err := formSecretValue(r)
@@ -93,11 +194,15 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	sealed, err := s.sealer.Seal(existing.Name, existing.Kind, value)
 	if err != nil {
-		s.fail(w, r, err)
+		s.log.Error("web: secret rotate", "err", err.Error())
+		form.ErrForm = secretRotateSubmitRefusal
+		s.secretRefusal(w, r, nil, &form)
 		return
 	}
 	if err := s.store.RotateSecret(r.Context(), name, sealed.Nonce, sealed.Ciphertext); err != nil {
-		s.fail(w, r, err)
+		s.log.Error("web: secret rotate", "err", err.Error())
+		form.ErrForm = secretRotateSubmitRefusal
+		s.secretRefusal(w, r, nil, &form)
 		return
 	}
 	if r.Form.Has("expires") {
@@ -108,6 +213,37 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: secret rotate", "secret", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/secrets", "rotated "+name)
+}
+
+// secretRefusal re-renders the secrets surface at 422 with the add or rotate
+// dialog carrying its refusals — the JS-off path, and the fragment body a JS
+// submit swaps in place. Refusals never flash: flash is success-only (write.go).
+func (s *Server) secretRefusal(w http.ResponseWriter, r *http.Request, form *secretAddFormVM, rotate *secretRotateFormVM) {
+	vm, err := s.secretsVMFor(r, form, rotate)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, secretsList(vm))
+}
+
+// secretsVMFor builds the secrets surface with the write dialogs' refusal
+// state; the GET path (handlers.go) builds the same shape without either.
+func (s *Server) secretsVMFor(r *http.Request, form *secretAddFormVM, rotate *secretRotateFormVM) (secretsVM, error) {
+	rows, err := s.secrets(r)
+	if err != nil {
+		return secretsVM{}, err
+	}
+	ident, _ := identityOf(r.Context())
+	vm := secretsVM{
+		Page: s.pageFor(r, "Secrets", "secrets"), Secrets: rows,
+		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
+		Form: form, Rotate: rotate,
+	}
+	if vm.Operator {
+		vm.Page.Add = &pageAdd{Target: "secrets-add", Label: "secret"}
+	}
+	return vm, nil
 }
 
 func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {

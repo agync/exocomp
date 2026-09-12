@@ -16,23 +16,36 @@ templ tokensPage(vm tokensVM) {
 		} else {
 			@modal("tokens-mint", "Mint a token") {
 				<p class="meta">The secret is shown once, with a QR to pair a phone. Confirm with your own access token.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/tokens/new") } class="writeform">
-					<label for="tk-name">Token name</label>
-					<input id="tk-name" name="name" type="text" autocomplete="off" pattern="[A-Za-z0-9._-]+" placeholder="blank to auto-generate"/>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/tokens/new") } class="writeform" id="tokens-new-form" novalidate data-token-new data-pending="Creating token">
+					@fieldInput(vm.Form.nameField())
 					<label for="tk-scope">Scope</label>
 					<select id="tk-scope" name="scope">
-						<option value="operator" selected>operator</option>
-						<option value="readonly">readonly</option>
-						<option value="approve">approve</option>
+						<option value="operator" selected?={ vm.Form.effective().Scope != "readonly" && vm.Form.effective().Scope != "approve" }>operator</option>
+						<option value="readonly" selected?={ vm.Form.effective().Scope == "readonly" }>readonly</option>
+						<option value="approve" selected?={ vm.Form.effective().Scope == "approve" }>approve</option>
 					</select>
-					<label for="tk-exp">Expires (optional, e.g. 720h)</label>
-					<input id="tk-exp" name="expires" type="text" autocomplete="off" placeholder="never"/>
+					<p class="meta">What the token may do — operator, readonly, or approve.</p>
+					@fieldInput(vm.Form.expiresField())
 					<label for="tk-cf">Confirm: your access token</label>
-					<input id="tk-cf" name="confirm_token" type="password" required autocomplete="off"/>
-					<div class="actions"><button type="submit" class="btn primary">Mint token</button></div>
+					<input id="tk-cf" name="confirm_token" type="password" autocomplete="off"/>
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Creating token")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Mint token</button></div>
 				</form>
+				if vm.Form != nil {
+					<script>
+					exoModalOpen("tokens-mint");
+					var tkBad = document.querySelector('#tokens-mint input[aria-invalid="true"]');
+					if (tkBad) tkBad.focus();
+					</script>
+				}
+				@tokenFormJS()
 			}
 			<div class="card span2 tray">
+				if vm.RefusalMsg != "" {
+					<div data-refusal-status data-target={ vm.RefusalName }>
+						@formStatus(false, vm.RefusalMsg, "Revoking token")
+					</div>
+				}
 				<h3>All tokens</h3>
 				if len(vm.Tokens) == 0 {
 					<p class="meta">No active tokens.</p>
@@ -56,15 +69,15 @@ templ tokensPage(vm tokensVM) {
 												<button type="button" class="btn" data-modal-open={ "tk-rotate-" + t.Name }>Rotate</button>
 												@modal("tk-rotate-"+t.Name, "Rotate "+t.Name) {
 													<p class="meta">Reseals a fresh secret onto this token — same id, name, and scope — and drops the old secret and any sessions it holds.</p>
-													<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/rotate")) } class="writeform">
-														<label for={ "tk-rot-exp-" + t.Name }>New expiry (optional)</label>
-														<input id={ "tk-rot-exp-" + t.Name } name="expires" type="text" autocomplete="off" placeholder="keep expiry"/>
+													<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/rotate")) } class="writeform" id={ "token-rotate-form-" + t.Name } novalidate data-token-rotate data-rowform={ t.Name } data-pending="Rotating token">
+														@fieldInput(vm.rotateExpiresField(t.Name))
 														<label for={ "tk-rot-ct-" + t.Name }>Confirm: your access token</label>
-														<input id={ "tk-rot-ct-" + t.Name } name="confirm_token" type="password" required autocomplete="off"/>
-														<div class="actions"><button type="submit" class="btn primary">Rotate</button></div>
+														<input id={ "tk-rot-ct-" + t.Name } name="confirm_token" type="password" autocomplete="off"/>
+														@formStatus(vm.rotatePending(), vm.rotateErrForm(), "Rotating token")
+														<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.rotatePending() }>Rotate</button></div>
 													</form>
 												}
-												<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/revoke")) } class="inline-form" data-confirm={ "Revoke token " + t.Name + "?" }>
+												<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/tokens/" + t.Name + "/revoke")) } class="inline-form" data-confirm={ "Revoke token " + t.Name + "?" } data-rowform={ t.Name }>
 													<input type="hidden" name="confirmed" value="1"/>
 													<button type="submit" class="btn danger">Revoke</button>
 												</form>
@@ -77,6 +90,16 @@ templ tokensPage(vm tokensVM) {
 							</tbody>
 						</table>
 					</div>
+				}
+				if vm.Rotate != nil {
+					<script data-modal={ "tk-rotate-" + vm.Rotate.Name } data-form={ "token-rotate-form-" + vm.Rotate.Name }>
+					(function () {
+						var s = document.currentScript;
+						exoModalOpen(s.getAttribute("data-modal"));
+						var tkRotBad = document.querySelector('#' + s.getAttribute("data-form") + ' input[aria-invalid="true"]');
+						if (tkRotBad) tkRotBad.focus();
+					})();
+					</script>
 				}
 			</div>
 		}
@@ -122,4 +145,108 @@ templ tokensReauthNotice(p page) {
 			<p class="error" role="alert">That access token did not match this session. Re-enter your own token to confirm the write.</p>
 		</div>
 	}
+}
+
+// tokenFormJS wires the mint and rotate forms' progressive enhancement,
+// mirroring the netgroup/source forms: novalidate (the daemon is authoritative),
+// submit intercepted and POSTed with fetch — a 422 swaps the form fragment in
+// place with the server-rendered refusals (JS-off gets the same bytes as a full
+// re-render) — and anything else follows the redirect and its success flash.
+// The status line's Retry re-submits the same form. A page-level refusal (a
+// self rotate/revoke, a missing revoke confirmation) renders as a status line
+// whose Retry re-submits the refused row's form (the operator already confirmed
+// once).
+templ tokenFormJS() {
+	<script>
+	(function () {
+		document.addEventListener("click", function (e) {
+			var status = e.target.closest("[data-refusal-status]");
+			if (!status) return;
+			var retry = e.target.closest("[data-retry]");
+			if (!retry) return;
+			e.preventDefault();
+			var form = document.querySelector('form[data-rowform="' + status.getAttribute("data-target") + '"]');
+			if (form) form.submit();
+		});
+
+		function restoreMeta(input) {
+			input.removeAttribute("aria-invalid");
+			var meta = document.getElementById(input.getAttribute("aria-describedby"));
+			if (meta) {
+				meta.classList.remove("is-error");
+				meta.textContent = input.name === "name"
+					? "Letters, digits, dots, hyphens, underscores. Blank mints a device-pairing token."
+					: "A duration — e.g. 720h, 30d.";
+			}
+		}
+		function showError(input, msg) {
+			input.setAttribute("aria-invalid", "true");
+			var meta = document.getElementById(input.getAttribute("aria-describedby"));
+			if (meta) {
+				meta.classList.add("is-error");
+				meta.textContent = "▲ " + msg;
+			}
+		}
+		function validateField(input) {
+			if (input.value.trim() === "") return;
+			if (input.name === "name" && !/^[A-Za-z0-9._-]+$/.test(input.value.trim())) {
+				showError(input, "Names can't have spaces.");
+				return;
+			}
+			restoreMeta(input);
+		}
+		function wireForm(form) {
+			if (!form || form.dataset.tokenWired) return;
+			form.dataset.tokenWired = "1";
+			var primary = form.querySelector('button[type="submit"]');
+			var status = form.querySelector(".form-status");
+			var pending = form.getAttribute("data-pending") || "Creating token";
+			form.addEventListener("click", function (e) {
+				var retry = e.target.closest("[data-retry]");
+				if (retry) {
+					e.preventDefault();
+					form.requestSubmit();
+				}
+			});
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="expires"]');
+				if (input) validateField(input);
+			}, true);
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				primary.disabled = true;
+				if (status) status.innerHTML = '<span class="dot"></span>' + pending;
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById(form.id);
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById(form.id);
+							if (!form) return;
+							wireForm(form);
+							var bad = form.querySelector('input[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					if (status) status.textContent = "";
+				});
+			});
+		}
+		wireForm(document.getElementById("tokens-new-form"));
+		var rots = document.querySelectorAll("form[data-token-rotate]");
+		for (var i = 0; i < rots.length; i++) wireForm(rots[i]);
+	})();
+	</script>
 }

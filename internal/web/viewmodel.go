@@ -1140,6 +1140,12 @@ type secretsVM struct {
 	// process with no envelope, disabling add/rotate with a note.
 	Operator      bool
 	SealAvailable bool
+	// Form is the add-secret dialog's refusal state (the netgroup pattern):
+	// nil at rest, the filled form with field errors on a 422 re-render.
+	Form *secretAddFormVM
+	// Rotate is the rotate dialog's refusal state: nil at rest, else the one
+	// refused row's form, which the 422 re-render re-opens.
+	Rotate *secretRotateFormVM
 }
 
 // secretRow is one sealed secret's public face: its name, kind, how it was
@@ -1170,6 +1176,140 @@ type secretBindingRow struct {
 type expiryMarker struct {
 	Label string // EXPIRED | expires in Nd | no expiry
 	Class string // fail | wait | dim
+}
+
+// secretAddFormVM is the seal-a-secret dialog's refusal state (the netgroup
+// pattern). Name, Kind, and Expires are the non-secret typed values a 422
+// re-render keeps; the secret value and confirm_token are never carried back —
+// the value field renders empty always, so a refusal can never echo the
+// plaintext (invariant 4: sealed = presence, never value). ErrForm is the
+// whole-submit refusal for the status line; FirstInvalid names the control to
+// focus; Submitting drives the status line and disables the primary.
+type secretAddFormVM struct {
+	Name         string
+	Kind         string
+	Expires      string
+	ErrName      string
+	ErrExpires   string
+	ErrValue     string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *secretAddFormVM) effective() secretAddFormVM {
+	if f == nil {
+		return secretAddFormVM{}
+	}
+	return *f
+}
+
+func (f *secretAddFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *secretAddFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+func (f *secretAddFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "se-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "deploy-token", Help: "Letters, digits, dots, hyphens, underscores, slashes.",
+		ErrMsg: v.ErrName, FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *secretAddFormVM) kindField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "se-kind", Label: "Kind", Name: "kind", Value: v.Kind,
+		Placeholder: "generic", Help: "What kind of value this is — e.g. generic, token.",
+		FirstInvalid: v.FirstInvalid == "kind",
+	}
+}
+
+// valueField is the sealed-value control: Value is always empty — the plaintext
+// lives in the operator's clipboard, never in re-rendered HTML (invariant 4).
+func (f *secretAddFormVM) valueField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "se-val", Label: "Value", Name: "value", Value: "",
+		Help:   "Sealed into the envelope — never shown again.",
+		ErrMsg: v.ErrValue, FirstInvalid: v.FirstInvalid == "value",
+	}
+}
+
+func (f *secretAddFormVM) expiresField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "se-exp", Label: "Expires (optional)", Name: "expires", Value: v.Expires,
+		Placeholder: "never", Help: "A duration — e.g. 720h, 30d.",
+		ErrMsg: v.ErrExpires, FirstInvalid: v.FirstInvalid == "expires",
+	}
+}
+
+// secretRotateFormVM is the rotate dialog's refusal state, one per refused row.
+// Name is the target secret so the 422 re-render re-opens the right dialog.
+// Expires is the only non-secret typed value kept; the new value never
+// re-renders (invariant 4).
+type secretRotateFormVM struct {
+	Name         string
+	Expires      string
+	ErrValue     string
+	ErrExpires   string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *secretRotateFormVM) effective() secretRotateFormVM {
+	if f == nil {
+		return secretRotateFormVM{}
+	}
+	return *f
+}
+
+// rotateForm dereferences the rotate refusal state for one row: the refused
+// form when the row is the target, else an at-rest form for that name.
+func (vm secretsVM) rotateForm(name string) secretRotateFormVM {
+	if vm.Rotate != nil && vm.Rotate.Name == name {
+		return *vm.Rotate
+	}
+	return secretRotateFormVM{Name: name}
+}
+
+func (vm secretsVM) rotatePending() bool {
+	return vm.Rotate != nil && vm.Rotate.Submitting
+}
+
+func (vm secretsVM) rotateErrForm() string {
+	if vm.Rotate == nil {
+		return ""
+	}
+	return vm.Rotate.ErrForm
+}
+
+func (vm secretsVM) rotateValueField(name string) fieldMeta {
+	f := vm.rotateForm(name)
+	return fieldMeta{
+		ID: "sv-" + name, Label: "New value", Name: "value", Value: "",
+		Placeholder: "new value", Help: "Sealed into the envelope — never shown again.",
+		ErrMsg: f.ErrValue, FirstInvalid: f.FirstInvalid == "value",
+	}
+}
+
+func (vm secretsVM) rotateExpiresField(name string) fieldMeta {
+	f := vm.rotateForm(name)
+	return fieldMeta{
+		ID: "se-exp-" + name, Label: "Expires (optional)", Name: "expires", Value: f.Expires,
+		Placeholder: "keep expiry", Help: "A duration — e.g. 720h, 30d.",
+		ErrMsg: f.ErrExpires, FirstInvalid: f.FirstInvalid == "expires",
+	}
 }
 
 // bannerVM carries the pause/silence/mute state that rides every screen until
