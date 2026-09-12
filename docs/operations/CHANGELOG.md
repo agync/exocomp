@@ -16,9 +16,16 @@ Newest first.
   post-write flash redirects land back inside the prefix, and the Go-built
   hrefs on the job detail, plan detail, checks, workspaces, and events pages
   carry the prefix. A bare `/exocomp` lands on the dashboard. The default (no
-  `--base-path`) behavior is unchanged. The template URL sweep (login form
-  action, asset links, nav) is a follow-up lane; the reactive ingress on the
-  loopback listener is untouched by this change.
+  `--base-path`) behavior is unchanged. The template URL sweep also landed:
+  every template-emitted root-absolute site re-prefixes through the `page.Base`
+  seam — the embedded assets, the sidebar/rail/app-bar brand and nav links, the
+  powerline, every resource add-form action, the dynamic `/jobs`, `/sources`,
+  `/schedules`, `/workspaces`, `/tokens` hrefs, the row-action forms
+  (`rowAction.Form`), the phone decision/kill forms, the login form action, and
+  the client-side SSE/event/`data-tls` URLs — while the Go-emitted hrefs
+  (`pageAction.Href`, `BackHref`, `rowAction.Href`, events chips/reason links,
+  `configTile.Link`, degraded-run verbs) render as-is, never double-prefixed.
+  The reactive ingress on the loopback listener is untouched by this change.
 
 ## 2026-09-12 — the plan detail page loses its destroy mode
 
