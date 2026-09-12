@@ -388,18 +388,21 @@ func TestWorkspacesPageConfigure(t *testing.T) {
 	}
 }
 
-// TestWorkspaceApplyUnadjudicatedPlanRefused409: an apply by saved-plan id on
-// a policied workspace whose plan carries no recorded verdict is unconsumable —
-// the browser face maps it to a 409 with the actionable message, not a 500,
-// mirroring the API face's state-conflict mapping, and nothing enqueues.
-func TestWorkspaceApplyUnadjudicatedPlanRefused409(t *testing.T) {
+// TestWorkspaceApplyUnadjudicatedPlanRefused: an apply by saved-plan id on a
+// policied workspace whose plan carries no recorded verdict is unconsumable.
+// The browser face re-renders the plan-detail page at 422 with the confirm
+// dialog open and the ▲ refusal in the status line — never a flash (flash is
+// success-only) — and nothing enqueues.
+func TestWorkspaceApplyUnadjudicatedPlanRefused(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	ctx := context.Background()
 	h.seedWorkspace(t, "prod")
 	h.seedPlanPolicy(t, "prod", "no-destroy", store.PolicyDeny)
-	art := h.seedPlanArtifact(t, "prod")
+	art := h.seedPlanDiff(t, "prod", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old"},"after":{"value":"new"}}}
+	]}`)
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
@@ -407,11 +410,19 @@ func TestWorkspaceApplyUnadjudicatedPlanRefused409(t *testing.T) {
 		url.Values{"plan": {strconv.FormatInt(art.ID, 10)}}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusConflict {
-		t.Fatalf("unadjudicated plan apply = %d, want 409 (%s)", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unadjudicated plan apply = %d, want 422 (%s)", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "unconsumable") || !strings.Contains(body, "verdict") {
-		t.Fatalf("unadjudicated plan apply body missing the actionable message: %s", body)
+	for _, want := range []string{
+		`id="plan-confirm" aria-labelledby="plan-confirm-title" open`,
+		"This plan carries no policy verdict, so nothing was applied — run plan again and apply that plan by id.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("unadjudicated refusal missing %q", want)
+		}
+	}
+	if strings.Contains(body, "class=\"flash\"") {
+		t.Error("unadjudicated refusal flashed")
 	}
 	jobs, err := h.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook("prod")})
 	if err != nil {
@@ -1348,11 +1359,25 @@ func TestWorkspaceDetailDestroyQueuesViaConfirm(t *testing.T) {
 		t.Error("runs-in-server workspace detail missing the Destroy verb")
 	}
 
-	// A confirmed-less destroy is refused and mutates nothing.
+	// A confirmed-less destroy is refused on the surface and mutates nothing:
+	// the detail page re-renders at 422 with the confirm dialog open and the ▲
+	// refusal in the status line — never a flash (flash is success-only).
 	resp := postForm(t, client, ts.URL+"/workspaces/web/destroy", url.Values{}, nil)
+	body = readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("confirmed-less destroy status = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("confirmed-less destroy status = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`id="ws-destroy-confirm" aria-labelledby="ws-destroy-title" open`,
+		"Nothing was queued — confirm the destroy in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("confirmed-less destroy refusal missing %q", want)
+		}
+	}
+	if strings.Contains(body, "class=\"flash\"") {
+		t.Error("confirmed-less destroy refusal flashed")
 	}
 	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
 	if err != nil {
@@ -1560,5 +1585,179 @@ func TestWorkspacesPageReRecordNotDoubleCount(t *testing.T) {
 	}
 	if strings.Contains(body, `aria-label="Apply plan #`+strconv.FormatInt(first.ID, 10)+`"`) {
 		t.Error("consumed first plan still carries an apply glyph")
+	}
+}
+
+// ---- Forms sweep: button-verb refusals render on the surface ----
+
+// TestWorkspaceUnlockNotLockedRefusal: the force-unlock verb on a workspace
+// nobody has locked is refused on the list surface — the page re-renders at 422
+// with the ▲ status line, never a flash (flash is success-only).
+func TestWorkspaceUnlockNotLockedRefusal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unlock not-locked = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		"web is not locked",
+		`class="form-status is-error"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("not-locked refusal missing %q", want)
+		}
+	}
+	if strings.Contains(body, "class=\"flash\"") {
+		t.Error("not-locked refusal flashed")
+	}
+}
+
+// TestWorkspaceUnlockLiveJobRefusal: a tflock held by a live (non-terminal) job
+// is a system working, not a leftover — the unlock is refused on the surface,
+// the lock stays, and nothing flashes.
+func TestWorkspaceUnlockLiveJobRefusal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	ws := h.seedWorkspace(t, "web")
+	// A gated job waits on a human approval — a non-terminal lock owner the
+	// unlock must refuse (a plain queued job's worker would run it to terminal
+	// first).
+	job, err := h.queue.EnqueueGated(ctx, queue.Spec{
+		Runbook: service.WorkspaceRunbook("web"), Kind: "tofu", Trigger: "manual",
+		Argv: []string{"/bin/true"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue job: %v", err)
+	}
+	if _, err := h.store.AcquireTFLock(ctx, store.TFLock{
+		WorkspaceID: ws.ID, LockID: "live", Who: "tofu", Operation: "OperationTypePlan", JobID: &job.ID,
+	}); err != nil {
+		t.Fatalf("AcquireTFLock: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("unlock live-job = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "job "+strconv.FormatInt(job.ID, 10)+" is still running; cancel it first") {
+		t.Errorf("live-job refusal missing the job copy: %s", body)
+	}
+	if strings.Contains(body, "class=\"flash\"") {
+		t.Error("live-job refusal flashed")
+	}
+	if _, err := h.store.GetTFLock(ctx, ws.ID); errors.Is(err, store.ErrNotFound) {
+		t.Fatal("refused unlock released the live lock")
+	}
+}
+
+// TestWorkspacePlanSuccessFlashes: the Plan verb's success is the one flash —
+// a 303 to the job page with the enqueued message; nothing refuses on this
+// button beyond the server's generic failures.
+func TestWorkspacePlanSuccessFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces/web/plan", url.Values{}, nil)
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 {
+		t.Fatalf("plan enqueued %d jobs, want 1", len(jobs))
+	}
+	msg := flashMessage(t, resp, "/jobs/"+strconv.FormatInt(jobs[0].ID, 10))
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "enqueued") {
+		t.Errorf("plan flash %q missing the enqueued word", msg)
+	}
+}
+
+// TestWorkspacePlanConfirmSuccessFlashes: the apply confirm's success is the
+// one flash — a 303 to the job page with the enqueued message, so the confirm's
+// success-only flash is pinned.
+func TestWorkspacePlanConfirmSuccessFlashes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	art := h.seedPlanDiff(t, "web", 1, `{"resource_changes":[
+		{"address":"kubernetes_config_map.marker","change":{"actions":["update"],"before":{"value":"old"},"after":{"value":"new"}}}
+	]}`)
+	h.seedPlanVerdict(t, art, "no_match", "")
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/workspaces/web/apply",
+		url.Values{"plan": {strconv.FormatInt(art.ID, 10)}, "confirmed": {"1"}}, nil)
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	var applyJobs []store.Job
+	for _, j := range jobs {
+		if strings.Contains(strings.Join(j.Args.Argv, " "), "apply") {
+			applyJobs = append(applyJobs, j)
+		}
+	}
+	if len(applyJobs) != 1 {
+		t.Fatalf("confirm enqueued %d apply jobs, want 1", len(applyJobs))
+	}
+	msg := flashMessage(t, resp, "/jobs/"+strconv.FormatInt(applyJobs[0].ID, 10))
+	_ = resp.Body.Close()
+	if !strings.Contains(msg, "enqueued") {
+		t.Errorf("confirm flash %q missing the enqueued word", msg)
+	}
+}
+
+// TestWorkspaceBackendRevealRefusalCopy: the reveal fetch's refusal copy stays
+// human and on the surface (the fetch never navigates, so it never flashes) —
+// the one non-form surface in the lane (SPEC §2.4).
+func TestWorkspaceBackendRevealRefusalCopy(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	if err := api.WriteAddress(filepath.Join(h.dir, api.AddressFile), "127.0.0.1:9443"); err != nil {
+		t.Fatalf("WriteAddress: %v", err)
+	}
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, body := getBody(t, client, ts.URL+"/workspaces/web")
+	if code != http.StatusOK {
+		t.Fatalf("/workspaces/web = %d", code)
+	}
+	if !strings.Contains(body, "reveal refused") {
+		t.Error("reveal fetch missing its surface refusal copy")
+	}
+	if strings.Contains(body, `id="be-reveal"`) {
+		// The refusal copy must not carry the banned words table's vocabulary.
+		for _, banned := range []string{"invalid", "error", "oops", "please", "sorry"} {
+			idx := strings.Index(body, "reveal refused")
+			if idx < 0 {
+				continue
+			}
+			if strings.Contains(body[idx-200:idx+200], banned) {
+				t.Errorf("reveal refusal copy carries banned word %q", banned)
+			}
+		}
 	}
 }
