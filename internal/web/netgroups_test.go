@@ -253,6 +253,34 @@ func TestNetgroupAddBadNameRefuses(t *testing.T) {
 	}
 }
 
+// TestNetgroupFormResetsOnClose pins the N1 fix: the netgroup-add modal is a
+// native <dialog> rendered once, so its typed value and refusal survive a
+// close/reopen unless the form's own JS resets them on the close event. The
+// close listener must live inside netgroupFormJS (the shared modal primitives
+// stay generic), reach the dialog via the form's closest("dialog"), and clear
+// the fields and any painted error so the next open starts clean.
+func TestNetgroupFormResetsOnClose(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks?tab=netgroups")
+	if code != http.StatusOK {
+		t.Fatalf("/checks?tab=netgroups = %d, want 200", code)
+	}
+	// The close listener is bound to the netgroup-add dialog itself, resolved
+	// from the form so it stays correct however the modal is hosted.
+	for _, want := range []string{
+		`form.closest("dialog")`,
+		`addEventListener("close"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("netgroupFormJS missing the close-reset listener marker %q", want)
+		}
+	}
+}
+
 // TestNetgroupRefusalDoesNotPersist: a refusal re-renders at 422 with the
 // errors filled, but a fresh GET of /checks shows the meta lines at rest — no
 // error residue is stored or re-rendered.

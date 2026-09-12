@@ -194,6 +194,24 @@ templ netgroupFormJS() {
 				if (!input) return;
 				validateField(input);
 			}, true);
+
+			// The dialog is rendered once and its inputs survive close/reopen,
+			// so a close (×, Esc, backdrop) must reset the typed value and any
+			// painted refusal — the next open starts clean.
+			var dialog = form.closest("dialog");
+			if (dialog) {
+				dialog.addEventListener("close", function () {
+					var inputs = form.querySelectorAll('input[name="name"], input[name="cidrs"]');
+					for (var i = 0; i < inputs.length; i++) {
+						inputs[i].value = "";
+						restoreMeta(inputs[i]);
+					}
+					var status = form.querySelector(".form-status");
+					if (status) status.textContent = "";
+					var primary = form.querySelector('button[type="submit"]');
+					if (primary) primary.disabled = false;
+				});
+			}
 		}
 		netgroupFormWire();
 	})();
