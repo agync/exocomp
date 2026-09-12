@@ -6,6 +6,28 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the backups 08 nits close
+
+- **The freshness ladder drops onto its own line at ≤1440.** The
+  /system/backups footer stacks the two sentences in a column with a 4px gap —
+  the wrapped rows were crammed at gap 0 — and the ladder's join dot is now a
+  `::before` the stacked line drops, so the second row reads cleanly.
+- **The posture cells' second lines are 12px mono.** RETENTION and SCHEDULE
+  meta join the KIND path at 12px JetBrains Mono ink-400 — the three second
+  lines are uniform; the 11px sans sub-line is gone.
+- **`never ran` renders at the meta size.** A never-run target's LAST RUN shows
+  the word on the small second line, never as the oversized 13px first line.
+- **The ▾ menu's danger item gets a real rule.** A `role=separator` hairline
+  divider introduces the destructive item — the design's `─ · remove asks
+  first` — and the "asks first" note sits inline beside the verb instead of
+  floating to the menu edge, where it read as a stray `—` item.
+- **The play glyph carries its label.** The run verb on an enabled row renders
+  with `title`/`aria-label` "Queue backup — {target}" (verified live; the
+  ACTIONS cell uses the shared rowActions partial).
+- **R2b re-verified live: the closed identity strip is clean.** The /system
+  strip at rest renders the hidden pubform inside the strip and nothing below
+  it — a 20px grid gap to the legs, no stray input or meta at 1280 or 1920.
+
 ## 2026-09-12 — the backups row keeps its table height
 
 - **The /system/backups row renders at ~64px, uniform across cells.** The
