@@ -118,12 +118,12 @@ func TestDashboardSummaryCards(t *testing.T) {
 	}
 	_ = approval // the ID isn't asserted; only its effect on the card is
 
-	// Queue section: the section label names the live queue, the active jobs
-	// render as /jobs two-line rows (each its own link), and the newest settled
-	// job appears in the LAST N RUNS group.
+	// Queue section: the section label names the live queue's state (the
+	// "In the queue" heading and its "all jobs →" link are gone — the rows
+	// link to the jobs themselves), the active jobs render as /jobs two-line
+	// rows (each its own link), and the newest settled job appears in the
+	// LAST N RUNS group.
 	for _, want := range []string{
-		`<div class="section-label"><b>In the queue</b>`,
-		`all jobs →`,
 		`1 running, oldest queued `,
 		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(running.ID) + `">`,
 		`<span class="chip run"><span class="dot"></span>running</span>`,
@@ -135,6 +135,13 @@ func TestDashboardSummaryCards(t *testing.T) {
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing queue marker %q", want)
+		}
+	}
+	// The queue section label carries no heading or "all jobs" link of its
+	// own; the rows are the links to the jobs (N1).
+	for _, gone := range []string{"In the queue", "all jobs →"} {
+		if strings.Contains(page, gone) {
+			t.Errorf("dashboard queue label still carries %q", gone)
 		}
 	}
 
@@ -177,14 +184,16 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 	for _, want := range []string{
 		`<a class="tile" href="/approvals">`,
 		"none waiting",
-		`In the queue`,
-		`· idle`,
+		`idle`,
 		`○ QUEUE IDLE`,
 		`Nothing queued, nothing running. Every run — manual, scheduled, reactive — lands here first.`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing approvals count marker %q", want)
 		}
+	}
+	if strings.Contains(page, "In the queue") || strings.Contains(page, "all jobs →") {
+		t.Error("dashboard queue label still carries the heading or all-jobs link (N1)")
 	}
 	if strings.Contains(page, `aria-labelledby="needsyou-h"`) {
 		t.Error("a calm approvals card should not render in the attention band (F6)")

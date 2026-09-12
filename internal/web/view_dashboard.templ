@@ -58,9 +58,7 @@ templ dashboard(vm dashboardVM) {
 		}
 		<section class="band" aria-label="Queue">
 			<div class="section-label">
-				<b>In the queue</b>
-				<span>· { vm.Jobs.SectionSummary() }</span>
-				<a href={ urlWithBase(vm.Page.Base, "/jobs") }>all jobs →</a>
+				<span>{ vm.Jobs.SectionSummary() }</span>
 			</div>
 			<div class="card queue">
 				if vm.Jobs.Idle() {
