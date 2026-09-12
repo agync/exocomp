@@ -253,18 +253,10 @@ func (s *Server) handlePolicies(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRunners(w http.ResponseWriter, r *http.Request) {
-	rows, err := s.runners(r)
+	vm, err := s.runnersVMFor(r, nil, "")
 	if err != nil {
 		s.fail(w, r, err)
 		return
-	}
-	ident, _ := identityOf(r.Context())
-	vm := runnersVM{
-		Page: s.pageFor(r, "Runners", "runners"), Runners: rows,
-		Operator: canWrite(ident),
-	}
-	if vm.Operator {
-		vm.Page.Add = &pageAdd{Target: "runners-add", Label: "runner"}
 	}
 	s.render(w, r, http.StatusOK, runnersList(vm))
 }

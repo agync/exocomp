@@ -940,6 +940,133 @@ type runnersVM struct {
 	Page     page
 	Operator bool
 	Runners  []runnerRow
+	// Form is the add-runner dialog's render state: nil at rest, the filled
+	// form with field refusals on a 422 re-render. Notice is a whole-surface
+	// refusal line (an rm that found nothing to remove) rendered above the
+	// tray at 4xx — never a flash.
+	Form   *runnerFormVM
+	Notice string
+}
+
+// runnerFormVM is the add-runner dialog's refusal state (forms/SPEC.md).
+// Err* hold the translated sentences — the raw validator words go to the log
+// at the same call site — and FixName is the one-click slug the fix link
+// applies. FirstInvalid names the control to focus; Submitting drives the
+// status line's verb and disables the primary.
+type runnerFormVM struct {
+	Name             string
+	Mode             string
+	Base             string
+	Bootstrap        string
+	Containerfile    string
+	Packages         string
+	AnsibleCore      string
+	MemoryMax        string
+	CPUQuota         string
+	ErrName          string
+	FixName          string
+	ErrMode          string
+	ErrBase          string
+	ErrBootstrap     string
+	ErrContainerfile string
+	ErrForm          string
+	FirstInvalid     string
+	Submitting       bool
+}
+
+func (f *runnerFormVM) effective() runnerFormVM {
+	if f == nil {
+		return runnerFormVM{}
+	}
+	return *f
+}
+
+func (f *runnerFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *runnerFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+func (f *runnerFormVM) nameField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-name", Label: "Name", Name: "name", Value: v.Name,
+		Placeholder: "fedora-ee",
+		Help:        "A lowercase letter or digit, then letters, digits, dots, hyphens, underscores.",
+		ErrMsg:      v.ErrName, FixValue: v.FixName,
+		FirstInvalid: v.FirstInvalid == "name",
+	}
+}
+
+func (f *runnerFormVM) baseField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-base", Label: "Base image", Name: "base", Value: v.Base,
+		Placeholder: "registry.fedoraproject.org/fedora-minimal:44",
+		Help:        "A base image reference, like registry.fedoraproject.org/fedora-minimal:44.",
+		ErrMsg:      v.ErrBase, FirstInvalid: v.FirstInvalid == "base",
+	}
+}
+
+func (f *runnerFormVM) containerfileField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-containerfile", Label: "Containerfile path (Model B; excludes bootstrap)",
+		Name: "containerfile", Value: v.Containerfile, Placeholder: "",
+		Help:   "A Containerfile path in the source (Model B).",
+		ErrMsg: v.ErrContainerfile, FirstInvalid: v.FirstInvalid == "containerfile",
+	}
+}
+
+func (f *runnerFormVM) packagesField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-packages", Label: "Packages (comma-separated)", Name: "packages",
+		Value: v.Packages, Placeholder: "sshpass, rsync",
+		Help: "Comma-separated.",
+	}
+}
+
+func (f *runnerFormVM) ansibleField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-ansible-core", Label: "ansible-core version pin", Name: "ansible_core",
+		Value: v.AnsibleCore, Placeholder: "",
+		Help: "A version pin, like 2.18.1.",
+	}
+}
+
+func (f *runnerFormVM) memoryField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-memory-max", Label: "Memory ceiling", Name: "memory_max",
+		Value: v.MemoryMax, Placeholder: "2G",
+		Help: "A size, like 2G.",
+	}
+}
+
+func (f *runnerFormVM) cpuField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "rn-cpu-quota", Label: "CPU ceiling", Name: "cpu_quota",
+		Value: v.CPUQuota, Placeholder: "200%",
+		Help: "A percentage, like 200%.",
+	}
+}
+
+// modeIs reports whether the add form's mode select should show k: the typed
+// value on a 422 re-render, the cached default at rest.
+func (f *runnerFormVM) modeIs(k string) bool {
+	v := f.effective()
+	if v.Mode == "" {
+		return k == "cached"
+	}
+	return v.Mode == k
 }
 
 // runnerRow is one registered runner's public face: its build mode, base

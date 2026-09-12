@@ -26,31 +26,56 @@ templ runnersList(vm runnersVM) {
 		if vm.Operator {
 			@modal("runners-add", "Add a runner") {
 				<p class="meta">Mirrors <code>exocomp runner add</code>: a base image plus either a bootstrap script or a Containerfile path — not both. Container tier deferred: this registers a definition, nothing builds or runs it.</p>
-				<form method="post" action={ urlWithBase(vm.Page.Base, "/runners/add") } class="writeform">
-					<label for="rn-name">Name</label>
-					<input id="rn-name" name="name" type="text" required autocomplete="off" pattern="[a-z0-9][a-z0-9._-]*"/>
-					<label for="rn-mode">Mode</label>
-					<select id="rn-mode" name="mode">
-						<option value="cached">cached</option>
-						<option value="onthefly">onthefly</option>
-					</select>
-					<label for="rn-base">Base image</label>
-					<input id="rn-base" name="base" type="text" required autocomplete="off" placeholder="registry.fedoraproject.org/fedora-minimal:44"/>
-					<label for="rn-bootstrap">Bootstrap script (Model A; excludes Containerfile)</label>
-					<textarea id="rn-bootstrap" name="bootstrap" rows="6" placeholder="#!/bin/sh&#10;dnf install -y sshpass rsync"></textarea>
-					<label for="rn-containerfile">Containerfile path (Model B; excludes bootstrap)</label>
-					<input id="rn-containerfile" name="containerfile" type="text" autocomplete="off"/>
-					<label for="rn-packages">Packages (comma-separated)</label>
-					<input id="rn-packages" name="packages" type="text" autocomplete="off" placeholder="sshpass, rsync"/>
-					<label for="rn-ansible-core">ansible-core version pin</label>
-					<input id="rn-ansible-core" name="ansible_core" type="text" autocomplete="off"/>
-					<label for="rn-memory-max">Memory ceiling</label>
-					<input id="rn-memory-max" name="memory_max" type="text" autocomplete="off" placeholder="2G"/>
-					<label for="rn-cpu-quota">CPU ceiling</label>
-					<input id="rn-cpu-quota" name="cpu_quota" type="text" autocomplete="off" placeholder="200%"/>
-					<div class="actions"><button type="submit" class="btn primary">Add runner</button></div>
+				<form method="post" action={ urlWithBase(vm.Page.Base, "/runners/add") } class="writeform" id="runner-add-form" novalidate data-runner-form>
+					@fieldInput(vm.Form.nameField())
+					<label class="field">
+						<span class="label">Mode</span>
+						<select class="control" id="rn-mode" name="mode" aria-invalid?={ vm.Form.effective().ErrMode != "" } aria-describedby="rn-mode-meta" autofocus?={ vm.Form.effective().FirstInvalid == "mode" }>
+							<option value="cached" selected?={ vm.Form.modeIs("cached") }>cached</option>
+							<option value="onthefly" selected?={ vm.Form.modeIs("onthefly") }>onthefly</option>
+						</select>
+						<span id="rn-mode-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrMode != "") }>
+							if vm.Form.effective().ErrMode != "" {
+								<span class="msg">{ vm.Form.effective().ErrMode }</span>
+							} else {
+								Mode is cached or onthefly.
+							}
+						</span>
+					</label>
+					@fieldInput(vm.Form.baseField())
+					<label class="field">
+						<span class="label">Bootstrap script (Model A; excludes Containerfile)</span>
+						<textarea class="control" id="rn-bootstrap" name="bootstrap" rows="6" spellcheck="false" placeholder="#!/bin/sh&#10;dnf install -y sshpass rsync" aria-describedby="rn-bootstrap-meta">{ vm.Form.effective().Bootstrap }</textarea>
+						<span id="rn-bootstrap-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrBootstrap != "") }>
+							if vm.Form.effective().ErrBootstrap != "" {
+								<span class="msg">{ vm.Form.effective().ErrBootstrap }</span>
+							} else {
+								The script that builds the image (Model A).
+							}
+						</span>
+					</label>
+					@fieldInput(vm.Form.containerfileField())
+					@fieldInput(vm.Form.packagesField())
+					@fieldInput(vm.Form.ansibleField())
+					@fieldInput(vm.Form.memoryField())
+					@fieldInput(vm.Form.cpuField())
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding runner")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add runner</button></div>
 				</form>
+				if vm.Form != nil {
+					// A JS-off refusal re-renders the whole page; open the dialog and
+					// focus the first invalid control after it is in the DOM.
+					<script>
+					exoModalOpen("runners-add");
+					var rnBad = document.querySelector('#runners-add [aria-invalid="true"]');
+					if (rnBad) rnBad.focus();
+					</script>
+				}
+				@runnerFormJS()
 			}
+		}
+		if vm.Notice != "" {
+			<p class="error" role="alert">▲ { vm.Notice }</p>
 		}
 		<div class="card span2 mt18 tray">
 			<div class="kicker">Container tier deferred</div>
@@ -107,4 +132,107 @@ templ runnersList(vm runnersVM) {
 			}
 		</div>
 	}
+}
+
+// runnerFormJS is the add-runner form's progressive enhancement, mirroring the
+// netgroup/source/check/schedule/policy forms: novalidate (the daemon is
+// authoritative), submit intercepted and POSTed with fetch — a 422 swaps the
+// form fragment in place with the server-rendered refusals (JS-off gets the
+// same bytes as a full re-render), anything else follows the redirect and its
+// success flash. The name re-validates on blur and clears when right; the
+// primary disables only while submitting.
+templ runnerFormJS() {
+	<script>
+	(function () {
+		function runnerFormWire() {
+			var form = document.getElementById("runner-add-form");
+			if (!form || form.dataset.runnerWired) return;
+			form.dataset.runnerWired = "1";
+
+			function restoreMeta(input) {
+				input.removeAttribute("aria-invalid");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (!meta) return;
+				meta.classList.remove("is-error");
+				switch (input.name) {
+				case "name":
+					meta.textContent = "A lowercase letter or digit, then letters, digits, dots, hyphens, underscores.";
+					break;
+				case "base":
+					meta.textContent = "A base image reference, like registry.fedoraproject.org/fedora-minimal:44.";
+					break;
+				}
+			}
+
+			// showError paints a refusal on a field without changing its geometry
+			// (the meta line always exists), mirroring the server's human copy.
+			function showError(input, msg) {
+				input.setAttribute("aria-invalid", "true");
+				var meta = document.getElementById(input.getAttribute("aria-describedby"));
+				if (meta) {
+					meta.classList.add("is-error");
+					meta.textContent = "▲ " + msg;
+				}
+			}
+
+			// validateField runs the same client rules the server holds to — a
+			// name shape refusal — on blur so a mistake surfaces before submit.
+			// Empty is left alone (that's a submit-time required check); the
+			// daemon stays authoritative on the model matrix, so submit still
+			// asks the server.
+			function validateField(input) {
+				if (input.value.trim() === "") return;
+				var v = input.value.trim();
+				if (input.name === "name" && !/^[a-z0-9][a-z0-9._-]*$/.test(v)) {
+					showError(input, "Names start with a lowercase letter or digit and hold letters, digits, dots, hyphens and underscores.");
+					return;
+				}
+				restoreMeta(input);
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Adding runner';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("runner-add-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("runner-add-form");
+							form.dataset.runnerRefused = "1";
+							runnerFormWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// Validate on blur always (not just after a refusal) so a mistake
+			// surfaces as soon as the operator leaves the field.
+			form.addEventListener("blur", function (e) {
+				var input = e.target.closest('input[name="name"], input[name="base"]');
+				if (!input) return;
+				validateField(input);
+			}, true);
+		}
+		runnerFormWire();
+	})();
+	</script>
 }
