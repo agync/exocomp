@@ -36,7 +36,6 @@ type planDetailVM struct {
 	Recorded   string
 	Prose      string
 	Resources  []planResource
-	Destroy    bool
 	Launch     bool
 	Runner     string
 	Changes    planChangesRow
@@ -102,9 +101,8 @@ func (s *Server) handleWorkspacePlanDetail(w http.ResponseWriter, r *http.Reques
 		JobID:      art.JobID,
 		Stale:      art.PlanSerial > 0 && art.PlanSerial < ws.Serial,
 		// ?launch=1 is the JS-off fallback that renders the confirm dialog
-		// already open; ?destroy=1 opens the same dialog in DESTROY mode.
-		Launch:  r.URL.Query().Get("launch") == "1" || r.URL.Query().Get("destroy") == "1",
-		Destroy: r.URL.Query().Get("destroy") == "1",
+		// already open.
+		Launch: r.URL.Query().Get("launch") == "1",
 	}
 
 	// Lifecycle comes from the deduped tray view of this workspace's plans, so
@@ -243,21 +241,13 @@ func (vm planDetailVM) ChangeResources() []planResource {
 	return out
 }
 
-// Kicker is the confirm dialog's eyebrow: APPLY PLAN #n · WORKSPACE X, or
-// DESTROY · WORKSPACE X when the confirm was opened for a destroy.
+// Kicker is the confirm dialog's eyebrow: APPLY PLAN #n · WORKSPACE X.
 func (vm planDetailVM) Kicker() string {
-	if vm.Destroy {
-		return "DESTROY · WORKSPACE " + strings.ToUpper(vm.Workspace)
-	}
 	return fmt.Sprintf("APPLY PLAN #%d · WORKSPACE %s", vm.ID, strings.ToUpper(vm.Workspace))
 }
 
-// ConfirmTitle names the ask: "Change N resource(s) on <ws>", or "Destroy N
-// resource(s) on <ws>" in destroy mode.
+// ConfirmTitle names the ask: "Change N resource(s) on <ws>".
 func (vm planDetailVM) ConfirmTitle() string {
-	if vm.Destroy {
-		return fmt.Sprintf("Destroy %d resource(s) on %s", vm.Changes.Destroy, vm.Workspace)
-	}
 	return fmt.Sprintf("Change %d resource(s) on %s", vm.Changes.Create+vm.Changes.Update+vm.Changes.Destroy, vm.Workspace)
 }
 
@@ -327,9 +317,6 @@ func (vm planDetailVM) ConfirmPrimary() string {
 	}
 	if vm.RequiresApproval() {
 		return "Queue apply — awaits approval"
-	}
-	if vm.Destroy {
-		return "Queue destroy — " + vm.Workspace
 	}
 	return "Queue apply — " + vm.Workspace + " @ plan #" + itoa(vm.ID)
 }

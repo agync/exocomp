@@ -178,14 +178,14 @@ templ attrRow(at planAttr) {
 	</div>
 }
 
-// planConfirmDialog is the apply/destroy ask (SPEC §4): a native <dialog> that
+// planConfirmDialog is the apply ask (SPEC §4): a native <dialog> that
 // repeats the diff below the kicker and title, a 4-row fact grid (Summary ·
-// Against · Policy · Runner), and one primary — Queue apply, Queue destroy,
-// Queue apply — awaits approval, or Plan again for a stale plan. A deny
-// verdict shows the refusal with no primary; Cancel is always there. The
-// primary posts the SAME workspace apply verb the tray used, so the server
-// gate (deny refusal, require-approval routing) stays authoritative. ?launch=1
-// renders the dialog open with no JS.
+// Against · Policy · Runner), and one primary — Queue apply, Queue apply —
+// awaits approval, or Plan again for a stale plan. A deny verdict shows the
+// refusal with no primary; Cancel is always there. The primary posts the SAME
+// workspace apply verb the tray used, so the server gate (deny refusal,
+// require-approval routing) stays authoritative. ?launch=1 renders the dialog
+// open with no JS.
 templ planConfirmDialog(vm planDetailVM) {
 	<dialog class="modal plan-confirm" id="plan-confirm" aria-labelledby="plan-confirm-title" open?={ vm.Launch }>
 		<div class="modal-head">
