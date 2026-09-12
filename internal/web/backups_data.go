@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,9 +15,9 @@ import (
 
 // This file is the backups leg's read side (SPEC §4): the /system/backups
 // list rows, the cross-target snapshot list for the Restore drawer (fold
-// S-3), and the card-chip derivation. The restic/git machinery stays
-// internal/backup's — the web reads the CRUD and the run rows, never a
-// repository.
+// S-3), the drill outcome read (SPEC §7 A4), and the per-target snapshot
+// history page (A12). The restic/git machinery stays internal/backup's — the
+// web reads the CRUD and the run rows, never a repository.
 
 // handleBackups renders the /system/backups management list (SPEC §4.1).
 // ?restore=replica is the L-S3 deep link: it opens the Restore drawer in
@@ -87,6 +89,87 @@ func (s *Server) backupsVMFor(r *http.Request, addForm *backupAddFormVM, retenti
 	return vm, nil
 }
 
+// handleBackupHistory renders one target's snapshot history page (SPEC §7
+// A4/A12): one snapshot per row with forget under the forgettable rows' ▾.
+// The TARGET name on the management list links here.
+func (s *Server) handleBackupHistory(w http.ResponseWriter, r *http.Request) {
+	vm, err := s.historyVMFor(r, r.PathValue("name"))
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "No backup target named "+r.PathValue("name")+" exists.", http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, backupsHistory(vm))
+}
+
+// historyVMFor builds the target history page's render state. GetBackupTarget
+// reports a missing target as ErrNotFound, which the handlers turn into a
+// 404.
+func (s *Server) historyVMFor(r *http.Request, name string) (backupsHistoryVM, error) {
+	target, err := s.store.GetBackupTarget(r.Context(), name)
+	if err != nil {
+		return backupsHistoryVM{}, err
+	}
+	ident, _ := identityOf(r.Context())
+	vm := backupsHistoryVM{
+		Page:     s.pageFor(r, "Backups · "+target.Name, "system"),
+		Operator: canWrite(ident),
+		Target:   target.Name, Kind: target.Kind, Enabled: target.Enabled,
+	}
+	vm.Page.BackHref = s.url("/system/backups")
+	rows, err := s.backupHistoryRows(r.Context(), target)
+	if err != nil {
+		return backupsHistoryVM{}, err
+	}
+	vm.Snapshots = rows
+	return vm, nil
+}
+
+// backupHistoryRows reads one target's snapshots into history rows (SPEC §7
+// A12): every SUCCEEDED run that produced a snapshot id, newest first. The
+// drilled mark and its outcome land on the newest row when the target's
+// newest drill job succeeded (A4). Forget renders only on a forgettable row —
+// never the newest snapshot, never a drilled one.
+func (s *Server) backupHistoryRows(ctx context.Context, t store.BackupTarget) ([]historySnapRow, error) {
+	drillAge, drillBytes, drillDuration := s.drillFacts(ctx, t.Name)
+	runs, err := s.store.ListBackupRuns(ctx, t.ID, 0)
+	if err != nil {
+		return nil, err
+	}
+	now := s.now()
+	var out []historySnapRow
+	for _, run := range runs {
+		if run.State != store.BackupSucceeded || run.SnapshotID == "" {
+			continue
+		}
+		row := historySnapRow{
+			ID: shortID(run.SnapshotID), FullID: run.SnapshotID,
+			Age: humanAge(now.Sub(runFinishedAt(run))),
+		}
+		if run.BytesAdded > 0 {
+			row.Size = humanBytes(int(run.BytesAdded))
+		}
+		// A drill verifies the newest snapshot at drill time, so only the
+		// newest row of a drilled target carries the mark and its outcome.
+		if len(out) == 0 && drillAge != "" {
+			row.Newest = true
+			row.Drilled = true
+			row.DrillAge = drillAge
+			row.DrillBytes = drillBytes
+			row.DrillDuration = drillDuration
+		}
+		// Forget is ABSENT on the newest snapshot and on any drilled one
+		// (SPEC §7 A12): the newest is the recovery point and a drilled one is
+		// the one the drill just proved. Either guard alone blocks the row.
+		row.Forget = len(out) > 0 && !row.Drilled
+		out = append(out, row)
+	}
+	return out, nil
+}
+
 // backupListRows enriches every target into its tray-table row: posture
 // (retention, schedule, URI scrubbed of userinfo) and the newest run's LAST
 // RUN facts, the drill mark from the target's newest drill job, and the
@@ -149,19 +232,78 @@ func (s *Server) backupListRows(ctx context.Context) ([]backupTargetRow, error) 
 	return out, nil
 }
 
-// FillDrill reads the target's newest backup-drill job into the row: a
-// succeeded drill marks the newest snapshot "drilled {age} ago ok".
+// FillDrill reads the target's newest succeeded drill job into the row: a
+// succeeded drill marks the newest snapshot "drilled {age} ago ok" and, when
+// the job left its outcome event, carries the restored bytes + duration
+// (A4). drillFacts is the one read every drill fact draws.
 func (r *backupTargetRow) FillDrill(ctx context.Context, s *Server) {
-	jobs, err := s.store.ListJobs(ctx, store.JobFilter{ConcurrencyKey: backup.DrillConcurrencyKey(r.Name)})
-	if err != nil || len(jobs) == 0 {
-		return
-	}
-	drill := jobs[len(jobs)-1] // ListJobs is oldest-first; the last is the newest.
-	if drill.State != store.StateSucceeded {
+	age, bytes, duration := s.drillFacts(ctx, r.Name)
+	if age == "" {
 		return
 	}
 	r.DrillOK = true
-	r.DrillAge = humanAge(s.now().Sub(jobFinishedAt(drill)))
+	r.DrillAge = age
+	r.DrillBytes = bytes
+	r.DrillDuration = duration
+}
+
+// drillFacts reads the target's newest succeeded drill job's outcome (SPEC
+// §7 A4): the ok mark's age plus, parsed from the job's own "restore drill
+// OK: … file(s) verified (N bytes)" event — the only trace a drill leaves,
+// it never writes a backup_run row — the restored bytes and the drill's wall
+// time. All three are empty when no succeeded drill (or no parseable
+// outcome) exists. The exit code stays the judge; the parsed line only
+// enriches the UI (invariant 3).
+func (s *Server) drillFacts(ctx context.Context, name string) (age, bytes, duration string) {
+	jobs, err := s.store.ListJobs(ctx, store.JobFilter{ConcurrencyKey: backup.DrillConcurrencyKey(name)})
+	if err != nil || len(jobs) == 0 {
+		return "", "", ""
+	}
+	drill := jobs[len(jobs)-1] // ListJobs is oldest-first; the last is the newest.
+	if drill.State != store.StateSucceeded {
+		return "", "", ""
+	}
+	age = humanAge(s.now().Sub(jobFinishedAt(drill)))
+	if events, err := s.store.ListJobEvents(ctx, drill.ID); err == nil {
+		for _, ev := range events {
+			if n, ok := parseDrillBytes(ev.Msg); ok {
+				bytes = humanBytes(int(n))
+				duration = runDuration(drillDuration(drill))
+				break
+			}
+		}
+	}
+	return age, bytes, duration
+}
+
+// parseDrillBytes extracts the verified-byte count from a drill job's outcome
+// event line — "… N file(s) verified (M bytes)" — returning false for any
+// line that is not a drill outcome, so a job's other events never fake one.
+func parseDrillBytes(msg string) (int64, bool) {
+	open := strings.Index(msg, "verified (")
+	end := strings.Index(msg, " bytes)")
+	if open < 0 || end < 0 || end < open {
+		return 0, false
+	}
+	start := open + len("verified (")
+	if start >= end {
+		return 0, false
+	}
+	n, err := strconv.Atoi(msg[start:end])
+	if err != nil {
+		return 0, false
+	}
+	return int64(n), true
+}
+
+// drillDuration is a settled drill job's own wall time — the A4 duration
+// fact. A succeeded job always has both stamps; a crash-reconciled row
+// reports zero rather than a fabricated span.
+func drillDuration(drill store.Job) time.Duration {
+	if drill.StartedAt != nil && drill.FinishedAt != nil {
+		return drill.FinishedAt.Sub(*drill.StartedAt)
+	}
+	return 0
 }
 
 // newestJobID returns the newest job id for a concurrency key, 0 when none.
@@ -259,17 +401,14 @@ func (s *Server) backupSnapshots(ctx context.Context) ([]snapshotRow, error) {
 }
 
 // targetDrilled reports whether the target's newest backup-drill job
-// succeeded, and how long ago, the "drilled {age} ago ok" mark's data.
+// succeeded, and how long ago, the "drilled {age} ago ok" mark's data — the
+// same drillFacts read the LAST RUN cell and the history page draw.
 func (s *Server) targetDrilled(ctx context.Context, name string) (bool, string) {
-	jobs, err := s.store.ListJobs(ctx, store.JobFilter{ConcurrencyKey: backup.DrillConcurrencyKey(name)})
-	if err != nil || len(jobs) == 0 {
+	age, _, _ := s.drillFacts(ctx, name)
+	if age == "" {
 		return false, ""
 	}
-	drill := jobs[len(jobs)-1]
-	if drill.State != store.StateSucceeded {
-		return false, ""
-	}
-	return true, humanAge(s.now().Sub(jobFinishedAt(drill)))
+	return true, age
 }
 
 // runFinishedAt is the settled instant of a succeeded run (finished_at when

@@ -1802,6 +1802,55 @@ type backupsVM struct {
 	Notice        string
 }
 
+// backupsHistoryVM is the per-target snapshot history page (SPEC §7 A4/A12):
+// the one page where a snapshot row's ▾ holds forget. Target names the target
+// the page belongs to; Snapshots are its rows, newest first. Notice is a
+// whole-surface refusal line (a forget that named no row) rendered above the
+// tray at 4xx — never a flash.
+type backupsHistoryVM struct {
+	Page      page
+	Operator  bool
+	Target    string
+	Kind      string
+	Enabled   bool
+	Snapshots []historySnapRow
+	Notice    string
+}
+
+// historySnapRow is one recoverable point in time on a target's history page
+// (SPEC §7 A12): a SUCCEEDED run's snapshot, newest first. ID is the short id
+// the row renders; FullID the stored id the forget form posts. Drilled marks
+// the newest snapshot of a drilled target and carries the drill's outcome
+// (A4's history face). Forget is the forget verb's gate: it renders only on a
+// forgettable row — never the newest, never a drilled one. Refusal is the
+// row's forget-refusal sentence on a 422 re-render.
+type historySnapRow struct {
+	ID            string
+	FullID        string
+	Age           string
+	Size          string
+	Newest        bool
+	Drilled       bool
+	DrillAge      string
+	DrillBytes    string
+	DrillDuration string
+	Forget        bool
+	Refusal       string
+}
+
+// DrillFacts is the drilled row's outcome line on the history page (A4): the
+// restored bytes and duration, empty when the drill job left no parseable
+// outcome.
+func (r historySnapRow) DrillFacts() string {
+	if r.DrillBytes == "" {
+		return ""
+	}
+	if r.DrillDuration == "" {
+		return r.DrillBytes + " verified"
+	}
+	return r.DrillBytes + " verified · " + r.DrillDuration
+}
+
 // backupTargetRow is one row of the /system/backups tray table (SPEC §4.1):
 // its posture (TARGET · KIND · RETENTION · SCHEDULE) and the newest run's
 // facts (LAST RUN). URI is scrubbed of userinfo for the KIND cell — a target
@@ -1828,8 +1877,13 @@ type backupTargetRow struct {
 	JobID    int64
 	// DrillOK/DrillAge read the target's newest backup-drill job: a succeeded
 	// drill marks the newest snapshot "drilled {age} ago ok" (A4's data).
-	DrillOK  bool
-	DrillAge string
+	// DrillBytes/DrillDuration are the drill's own outcome — the restored
+	// bytes and wall time parsed from its "restore drill OK" event — empty
+	// when the job left no parseable line (A4).
+	DrillOK       bool
+	DrillAge      string
+	DrillBytes    string
+	DrillDuration string
 	// FailedSeq counts consecutive failed runs, the "{n} failed in a row"
 	// fact of a FAILED row.
 	FailedSeq int
@@ -1958,6 +2012,9 @@ func (r backupTargetRow) LastRunMeta() string {
 		}
 		if r.DrillOK {
 			parts = append(parts, "drill "+r.DrillAge+" ago ok")
+			if fact := r.DrillFact(); fact != "" {
+				parts = append(parts, fact)
+			}
 		}
 		return strings.Join(parts, " · ")
 	case "failed":
@@ -1978,6 +2035,19 @@ func (r backupTargetRow) LastRunMeta() string {
 		}
 	}
 	return ""
+}
+
+// DrillFact is the LAST RUN second line's drill-outcome fragment (SPEC §7
+// A4): the restored bytes and the drill's duration, empty when the drill job
+// left no parseable outcome.
+func (r backupTargetRow) DrillFact() string {
+	if r.DrillBytes == "" {
+		return ""
+	}
+	if r.DrillDuration == "" {
+		return r.DrillBytes + " verified"
+	}
+	return r.DrillBytes + " verified · " + r.DrillDuration
 }
 
 // ShortFact is the Backups card's third id-cluster cell: a running run's

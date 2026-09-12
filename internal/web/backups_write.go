@@ -33,6 +33,7 @@ func (s *Server) registerBackupsWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /system/backups/{name}/disable", s.requireAuth(s.handleBackupDisable))
 	mux.HandleFunc("POST /system/backups/{name}/retention", s.requireAuth(s.handleBackupRetention))
 	mux.HandleFunc("POST /system/backups/{name}/remove", s.requireAuth(s.handleBackupRemove))
+	mux.HandleFunc("POST /system/backups/{name}/forget", s.requireAuth(s.handleBackupForget))
 	mux.HandleFunc("POST /system/backups/restore", s.requireAuth(s.handleBackupRestore))
 }
 
@@ -50,6 +51,15 @@ const (
 	backupScheduleRefusal  = "That schedule can't be parsed — try 0 2 * * * * or @every 24h."
 	backupAddSubmitRefusal = "Couldn't add the target — nothing was saved."
 	backupRemoveConfirm    = "Nothing was removed — confirm the removal in the dialog."
+	// backupForgetConfirm and backupForgetRefusal are the per-snapshot forget
+	// verb's asks-first gates (SPEC §7 A12): the confirm dialog's hidden
+	// confirmed=1 is the safety, and a snapshot that is not a forgettable row
+	// of the target is refused. The forget verb NEVER lives on the Restore
+	// drawer — a delete verb beside the restore radios is a mis-click from
+	// removing the snapshot being restored.
+	backupForgetConfirm = "Nothing was forgotten — confirm the forget in the dialog."
+	backupForgetNewest  = "The newest snapshot can't be forgotten — it is the recovery point."
+	backupForgetRefusal = "That snapshot is not on this target's history — refresh the page."
 	// backupRestoreConfirmRefusal is the DR drawer's hard rule (c): the typed
 	// id must match the selected snapshot's id. A wrong id rings the button
 	// and refuses on the drawer, never a flash.
@@ -410,6 +420,94 @@ func (s *Server) handleBackupRemove(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: backup remove", "target", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/system/backups", "removed "+name)
+}
+
+// handleBackupForget is the per-snapshot forget verb (SPEC §7 A12): it asks
+// first (the row's confirm dialog posts hidden confirmed=1, the same gate as
+// remove), refuses a snapshot that is not a forgettable row of the target —
+// the newest snapshot and any drilled one are never forgettable, and a
+// crafted POST cannot name a snapshot that is not on the history page — and
+// enqueues ONE forget job through the one queue (invariant 5). The execution
+// of the kind is the daemon-side runner leg this lane's report flags; the web
+// only ever names the target and snapshot through the queue.
+func (s *Server) handleBackupForget(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	row, err := s.store.GetBackupTarget(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "No backup target named "+name+" exists.", http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	if !r.Form.Has("confirmed") {
+		s.historyRefusal(w, r, name, shortID(r.PostFormValue("snapshot")), backupForgetConfirm)
+		return
+	}
+	snapshot := r.PostFormValue("snapshot")
+	if refusal := s.forgetRefusal(r.Context(), row, snapshot); refusal != "" {
+		s.log.Info("web: backup forget refused", "err", refusal, "target", name, "by", ident.token.Name)
+		s.historyRefusal(w, r, name, shortID(snapshot), refusal)
+		return
+	}
+	job, err := s.enqueuer().Enqueue(r.Context(), backupForgetSpec(name, snapshot))
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: backup forget", "target", name, "snapshot", snapshot, "job", job.ID, "by", ident.token.Name)
+	s.redirectFlash(w, r, "/system/backups/"+name+"/history",
+		"queued forget of #"+shortID(snapshot)+" as job #"+itoa64(job.ID))
+}
+
+// forgetRefusal is the forget verb's snapshot gate: "" when the snapshot is a
+// forgettable row of the target, else the sentence that names why — the
+// newest/drilled recovery point, or a snapshot that is no row at all.
+func (s *Server) forgetRefusal(ctx context.Context, t store.BackupTarget, snapshot string) string {
+	rows, err := s.backupHistoryRows(ctx, t)
+	if err != nil {
+		return backupForgetRefusal
+	}
+	for _, row := range rows {
+		if row.ID == shortID(snapshot) {
+			if row.Forget {
+				return ""
+			}
+			return backupForgetNewest
+		}
+	}
+	return backupForgetRefusal
+}
+
+// historyRefusal re-renders the target history page at 422 with a refused
+// forget verb's sentence on the named row (or the surface notice when the
+// row is not on the page) — never a flash.
+func (s *Server) historyRefusal(w http.ResponseWriter, r *http.Request, name, snapID, msg string) {
+	vm, err := s.historyVMFor(r, name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "No backup target named "+name+" exists.", http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	placed := false
+	for i := range vm.Snapshots {
+		if snapID != "" && vm.Snapshots[i].ID == snapID {
+			vm.Snapshots[i].Refusal = msg
+			placed = true
+		}
+	}
+	if !placed {
+		vm.Notice = msg
+	}
+	s.render(w, r, http.StatusUnprocessableEntity, backupsHistory(vm))
 }
 
 // handleBackupRestore is the DR drawer's verb (SPEC §4.3): it runs the round's

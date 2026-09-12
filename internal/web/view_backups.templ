@@ -53,9 +53,9 @@ templ backupsList(vm backupsVM) {
 							for _, row := range vm.Targets {
 								<tr class={ "bk-row", templ.KV("is-disabled", !row.Enabled) }>
 									<td data-label="TARGET">
-										<span class="bk-target-name">{ row.Name }</span>
-										<span class="bk-target-state">@enabledChip(row.Enabled, false)</span>
-									</td>
+									<a class="bk-target-name" href={ urlWithBase(vm.Page.Base, "/system/backups/"+row.Name+"/history") }>{ row.Name }</a>
+									<span class="bk-target-state">@enabledChip(row.Enabled, false)</span>
+								</td>
 									<td data-label="KIND" class="bk-kind">
 										<span class="mono">{ row.Kind }</span>
 										<span class="mono uri" title={ row.URI }>{ row.URI }</span>
@@ -449,4 +449,88 @@ templ restoreDrawerJS() {
 		restoreWire();
 	})();
 	</script>
+}
+
+// backupsHistory is the per-target snapshot history page (SPEC §7 A4/A12):
+// one snapshot per row, newest first, with the drilled mark and outcome on
+// the newest of a drilled target, and forget under a forgettable row's ▾ —
+// in fail, asks first (the shared confirm dialog), ABSENT on the newest
+// snapshot and on any drilled one. The Restore drawer never appears here and
+// never carries a forget verb (A12's mis-click rule).
+templ backupsHistory(vm backupsHistoryVM) {
+	@layout(vm.Page) {
+		<section class="sys-bkbar">
+			<span class="sys-bk-meta">{ vm.Kind } target · forget removes a snapshot through the one queue · absent on the newest and drilled</span>
+			if vm.Operator {
+				<span class="sys-bk-verbs">
+					<a class="verb" href={ urlWithBase(vm.Page.Base, "/system/backups") }>Back to targets</a>
+				</span>
+			}
+		</section>
+		if vm.Notice != "" {
+			<p class="error" role="alert">{ vm.Notice }</p>
+		}
+		<div class="card span2 mt18 tray">
+			<div class="kicker">System / Backups / { vm.Target }</div>
+			<h3>Snapshot history</h3>
+			if !vm.Operator {
+				<p class="meta">Read-only: managing backups needs an operator token.</p>
+			}
+			if len(vm.Snapshots) == 0 {
+				<p class="meta">No snapshots yet — this target's first succeeded run will list here.</p>
+			} else {
+				<div class="tablewrap stackable bk-table">
+					<table>
+						<thead>
+							<tr>
+								<th scope="col">SNAPSHOT</th>
+								<th scope="col">AGE</th>
+								<th scope="col">SIZE</th>
+								<th scope="col">DRILL</th>
+								if vm.Operator {
+									<th scope="col" class="actions-col">ACTIONS</th>
+								}
+							</tr>
+						</thead>
+						<tbody>
+							for _, snap := range vm.Snapshots {
+								<tr>
+									<td data-label="SNAPSHOT">
+										<span class="mono snap-id">#{ snap.ID }</span>
+										if snap.Newest {
+											<span class="meta">newest</span>
+										}
+									</td>
+									<td data-label="AGE" class="mono">{ snap.Age }</td>
+									<td data-label="SIZE" class="mono">{ orDash(snap.Size) }</td>
+									<td data-label="DRILL">
+										if snap.Drilled {
+											<span class="ok">drilled { snap.DrillAge } ago ok</span>
+											if snap.DrillFacts() != "" {
+												<span class="meta">{ snap.DrillFacts() }</span>
+											}
+										} else {
+											<span class="meta">—</span>
+										}
+									</td>
+									if vm.Operator {
+										<td data-label="ACTIONS" class="actions-col">
+											@rowActions(backupHistoryRowActions(snap, vm.Target), vm.Page.Base)
+											if snap.Refusal != "" {
+												<div class="form-status is-error" role="alert"><span class="msg">{ snap.Refusal }</span></div>
+											}
+										</td>
+									}
+								</tr>
+							}
+						</tbody>
+					</table>
+				</div>
+			}
+		</div>
+		<p class="sys-bk-footer">
+			<span>forget asks first · absent on the newest and drilled snapshots</span>
+			<span class="right">a drill verifies the newest snapshot · the Restore drawer never deletes</span>
+		</p>
+	}
 }
