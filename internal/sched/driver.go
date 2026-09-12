@@ -21,12 +21,13 @@ const (
 )
 
 // NewDriver returns a Driver that dispatches on spec.Kind: KindShell to
-// shell, KindBackup and backup.DrillJobKind to backup. A Queue takes exactly
-// one Driver, but a scheduler fires argv jobs, backup jobs, and restore-drill
-// jobs into the same queue, so something has to route between the underlying
-// drivers. A drill routes to the same backup driver a real backup does — it
-// is a *backup.Runner underneath, and Runner.Run itself tells the two kinds
-// apart — so this router never grows a third slot for it.
+// shell, KindBackup, backup.DrillJobKind, and backup.ForgetJobKind to backup.
+// A Queue takes exactly one Driver, but a scheduler fires argv jobs, backup
+// jobs, restore-drill jobs, and forget jobs into the same queue, so something
+// has to route between the underlying drivers. The drill and the forget route
+// to the same backup driver a real backup does — they are a *backup.Runner
+// underneath, and Runner.Run itself tells the kinds apart — so this router
+// never grows another slot for either.
 func NewDriver(shell, backup executor.Driver) executor.Driver {
 	return kindDriver{shell: shell, backup: backup}
 }
@@ -40,7 +41,7 @@ func (d kindDriver) Run(ctx context.Context, spec executor.Spec, sink executor.E
 	switch spec.Kind {
 	case KindShell:
 		return d.shell.Run(ctx, spec, sink)
-	case KindBackup, backup.DrillJobKind:
+	case KindBackup, backup.DrillJobKind, backup.ForgetJobKind:
 		return d.backup.Run(ctx, spec, sink)
 	default:
 		return executor.Result{}, fmt.Errorf("sched: no driver for kind %q", spec.Kind)
