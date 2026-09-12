@@ -6,6 +6,42 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — checks, schedules, policies, runners add forms adopt the forms pattern
+
+- **The four resource add dialogs now refuse per-field, at 422, never by
+  flash.** The checks, schedules, policies, and runners add forms carry the
+  forms-round anatomy: every field has an always-present meta line (help at
+  rest, `▲` message on refusal), a refusal re-renders the same dialog with
+  the typed values kept, and flash is success-only — a refusal never leaves
+  the surface it belongs to. The raw validator words (a duration parser's
+  text, a cron error, a CEL compile error, a name constraint) go to the log,
+  never the operator.
+- **Checks:** interval, kind, targets, expected status, duplicate, and name
+  refusals — previously green flashes carrying `%v` and `err.Error()` copy —
+  are now per-field sentences (`Kind is tcp, ping or http.`, `Add at least
+  one target, like laptop=192.168.1.50:22.`, `A check named at-home already
+  exists.`). The kind select and the repeated target group get always-present
+  meta lines; the Add-target control still grows the form (capped at ten) and
+  re-wires after a refused submit.
+- **Schedules:** the banned "invalid schedule name" flash is gone — the name
+  field says `Names can't have spaces.` or `Give the schedule a name.` — and
+  the cron, argv, target, concurrency-key, and jitter refusals each land on
+  their own field's meta line (e.g. `Give a 5-field cron or an @every — like
+  0 */5 * * * * or @every 5m.`). The deep-link prefill (`?from_job=`,
+  `?name=`, …) still lands filled and auto-opens the dialog.
+- **Policies:** an empty workspace, an unknown action, an uncompilable
+  expression, and a duplicate name — previously bare 500s and a 409 — are now
+  field sentences at 422. The action select gets an always-present meta line.
+  Removing a policy that is already gone re-renders the surface at 404 with
+  `No policy named {name} exists to remove.` shown on it, replacing the bare
+  error page.
+- **Runners:** a refused name, mode, base, or both-models conflict —
+  previously bare 500s and a 409 — are now field sentences at 422. The mode
+  select and the bootstrap textarea get always-present meta lines. Removing a
+  runner that is already gone re-renders the surface at 404 with the sentence
+  shown on it.
+
+
 ## 2026-09-12 — three web surface nits
 
 - **The netgroup-add modal resets on close.** The form is a native `<dialog>`
