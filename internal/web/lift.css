@@ -252,9 +252,10 @@
 .run-cmd pre { margin:0; padding:8px 12px; border-radius:var(--radius-chip); background:var(--surface-tray);
   border:1px solid var(--hairline); font:600 13px/1.4 var(--font-mono); color:var(--ink-100);
   white-space:nowrap; overflow-x:auto; flex:1; min-width:0; }
-.run-cmd .copybtn { height:30px; padding:0 12px; border-radius:var(--radius-control);
+.run-cmd .copybtn { position:static; width:30px; height:30px; padding:0; flex:none;
+  border-radius:var(--radius-control);
   border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
-  font:var(--type-button); cursor:pointer; }
+  display:inline-flex; align-items:center; justify-content:center; cursor:pointer; }
 .run-cmd .copybtn:hover { color:var(--ink-100); }
 .run-cmd .copybtn.copied { color:var(--signal-ok); }
 .run-host > .meta { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); }

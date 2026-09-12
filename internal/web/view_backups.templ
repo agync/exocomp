@@ -298,7 +298,10 @@ templ runHostBody(f *restoreFormVM) {
 	<span class="kicker fail">RUN ON THE HOST</span>
 	<div class="run-cmd">
 		<pre class="run-cmd-code">{ f.cliCommand() }</pre>
-		<button type="button" class="copybtn" aria-label="Copy to clipboard" title="Copy">Copy</button>
+		<button type="button" class="copybtn" aria-label="Copy to clipboard" title="Copy">
+			<svg class="copy-i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+			<svg class="copy-ok" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+		</button>
 	</div>
 	<p class="meta">the daemon cannot replace the store it serves · this is the recovery kit path</p>
 }
