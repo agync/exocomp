@@ -541,6 +541,66 @@ func TestCheckRm(t *testing.T) {
 	}
 }
 
+// TestCheckRmRefusalOnRow: a confirmed-less remove re-renders the checks
+// surface at 422 with the refusal on the row — the forms/SPEC.md button-verb
+// shape — never a flash, and nothing is removed.
+func TestCheckRmRefusalOnRow(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	seedTCPCheck(t, h)
+
+	resp := postForm(t, op, ts.URL+"/checks/at-home/rm", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — confirm the removal in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rm refusal missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm refusal flashed")
+		}
+	}
+	if _, err := h.store.GetCheck(ctx, "at-home"); err != nil {
+		t.Fatal("refused rm removed the check")
+	}
+}
+
+// TestCheckRmGoneRefuses: removing a check that is already gone keeps the
+// appropriate 404 with human copy — never a flash.
+func TestCheckRmGoneRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/nope/rm", url.Values{"confirmed": {"1"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("rm gone status = %d, want 404", resp.StatusCode)
+	}
+	if !strings.Contains(body, "No check named nope exists to remove.") {
+		t.Errorf("rm gone refusal missing the on-surface sentence")
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm gone refusal flashed")
+		}
+	}
+}
+
 // TestChecksNetgroupAndRecency: the netgroup slot (SPEC §5.1) is the row's
 // second line — a route glyph (13px) + "on {netgroup}" (a link to /netgroups)
 // · age — so the location claim reads down the column. Location stays meta,

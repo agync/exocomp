@@ -366,6 +366,71 @@ func TestScheduleRm(t *testing.T) {
 	}
 }
 
+// TestScheduleRmRefusalOnRow: a confirmed-less remove re-renders the schedules
+// surface at 422 with the refusal on the row — the forms/SPEC.md button-verb
+// shape — never a flash, and nothing is removed.
+func TestScheduleRmRefusalOnRow(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, newTogglerSchedule()); err != nil {
+		t.Fatalf("CreateSchedule: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/schedules/toggler/rm", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — confirm the removal in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rm refusal missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm refusal flashed")
+		}
+	}
+	if _, err := h.store.GetSchedule(ctx, "toggler"); err != nil {
+		t.Fatal("refused rm removed the schedule")
+	}
+}
+
+// TestScheduleRmGoneRefuses: removing a schedule that is already gone keeps
+// the appropriate 404 with human copy — never a flash — and the surface is
+// not crashed.
+func TestScheduleRmGoneRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/schedules/nope/rm", url.Values{"confirmed": {"1"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("rm gone status = %d, want 404", resp.StatusCode)
+	}
+	if !strings.Contains(body, "No schedule named nope exists to remove.") {
+		t.Errorf("rm gone refusal missing the on-surface sentence")
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm gone refusal flashed")
+		}
+	}
+}
+
 // TestScheduleDetailModalRendersSpec: the Schedules page renders each row's
 // full spec into a per-row modal — reachable by a readonly identity, since
 // viewing a schedule's spec needs only auth, not an operator token.

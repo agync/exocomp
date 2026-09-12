@@ -355,6 +355,70 @@ func TestNetgroupRm(t *testing.T) {
 	}
 }
 
+// TestNetgroupRmRefusalOnRow: a confirmed-less remove re-renders the checks
+// surface (netgroups tab) at 422 with the refusal on the row — the
+// forms/SPEC.md button-verb shape — never a flash, and nothing is removed.
+func TestNetgroupRmRefusalOnRow(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.0.0/16")},
+	}); err != nil {
+		t.Fatalf("CreateNetgroup: %v", err)
+	}
+
+	resp := postForm(t, op, ts.URL+"/netgroups/home/rm", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — confirm the removal in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rm refusal missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm refusal flashed")
+		}
+	}
+	if _, err := h.store.GetNetgroup(ctx, "home"); err != nil {
+		t.Fatal("refused rm removed the netgroup")
+	}
+}
+
+// TestNetgroupRmGoneRefuses: removing a netgroup that is already gone keeps
+// the appropriate 404 with human copy — never a flash.
+func TestNetgroupRmGoneRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/netgroups/nope/rm", url.Values{"confirmed": {"1"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("rm gone status = %d, want 404", resp.StatusCode)
+	}
+	if !strings.Contains(body, "No netgroup named nope exists to remove.") {
+		t.Errorf("rm gone refusal missing the on-surface sentence")
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm gone refusal flashed")
+		}
+	}
+}
+
 // TestAPINetgroupsList: a readonly token reads the netgroup.list projection
 // with the seeded group's prefixes, the same bytes `netgroup list --output
 // json` emits.

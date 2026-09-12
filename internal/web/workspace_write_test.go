@@ -1727,6 +1727,49 @@ func TestWorkspacePlanConfirmSuccessFlashes(t *testing.T) {
 	}
 }
 
+// TestWorkspaceApplyPolicedRowRefusal: the row's Apply verb posts no plan id,
+// so on a policied workspace it is a fresh apply the gate refuses — the
+// refusal re-renders the Workspaces list at 422 on the row (forms/SPEC.md),
+// never a flash, and nothing is enqueued.
+func TestWorkspaceApplyPolicedRowRefusal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	h.seedWorkspace(t, "web")
+	h.seedPlanPolicy(t, "web", "no-destroy", store.PolicyDeny)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	resp := postForm(t, client, ts.URL+"/workspaces/web/apply",
+		url.Values{"confirmed": {"1"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("policed row apply = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"This workspace has plan policies enabled, so a fresh apply can&#39;t be adjudicated — plan and apply that plan by id.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("policed row apply refusal missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("policed row apply refusal flashed")
+		}
+	}
+	jobs, err := h.store.ListJobs(ctx, store.JobFilter{Runbook: service.WorkspaceRunbook("web")})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatal("a fresh apply slipped past the policy gate")
+	}
+}
+
 // TestWorkspaceBackendRevealRefusalCopy: the reveal fetch's refusal copy stays
 // human and on the surface (the fetch never navigates, so it never flashes) —
 // the one non-form surface in the lane (SPEC §2.4).

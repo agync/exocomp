@@ -87,9 +87,74 @@ func TestResourceRowActions(t *testing.T) {
 	}
 }
 
-// TestResourceRowActionsRender pins the row-actions markup on the schedules,
-// checks, and netgroups pages: each carries the glyph buttons + the chevron
-// menu (netgroups has no chevron — one action).
+// TestRowActionsRefusalRenders pins the row-verb refusal: a rowAction carrying
+// a Refusal sentence renders the ▲ status line on the row (forms/SPEC.md) —
+// never a flash (flash is success-only) — and an at-rest row renders none.
+func TestRowActionsRefusalRenders(t *testing.T) {
+	acts := []rowAction{
+		{Name: "Remove", Path: glyphRemove, Form: "/ng/home/rm",
+			Refusal: "Nothing was removed — confirm the removal in the dialog."},
+	}
+	var buf bytes.Buffer
+	if err := rowActions(acts, "").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render rowActions: %v", err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		`form-status is-error`,
+		`role="alert"`,
+		`Nothing was removed — confirm the removal in the dialog.`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rowActions refusal missing %q", want)
+		}
+	}
+	if strings.Contains(out, "flash") {
+		t.Error("a row refusal must never render a flash")
+	}
+
+	var rest bytes.Buffer
+	if err := rowActions([]rowAction{{Name: "Remove", Path: glyphRemove, Form: "/ng/home/rm"}}, "").Render(context.Background(), &rest); err != nil {
+		t.Fatalf("render rowActions rest: %v", err)
+	}
+	if strings.Contains(rest.String(), "is-error") {
+		t.Error("at-rest rowActions rendered a refusal line")
+	}
+}
+
+// TestResourceRowRefusals pins the constructor wiring: each row verb's
+// constructor carries the row's Refusal onto the row-actions so rowActions can
+// render it — never the menu's link-only or modal-only actions.
+func TestResourceRowRefusals(t *testing.T) {
+	sched := scheduleRowActions(scheduleRow{Name: "nightly", Enabled: true, Refusal: "nope"})
+	if rowActsRefusal(sched) != "nope" {
+		t.Errorf("schedule row refusal lost: %q", rowActsRefusal(sched))
+	}
+	ck := checkRowActions(checkRow{Name: "presence", Enabled: true, Refusal: "nope"})
+	if rowActsRefusal(ck) != "nope" {
+		t.Errorf("check row refusal lost: %q", rowActsRefusal(ck))
+	}
+	ng := netgroupRowActions(netgroupRow{Name: "home", Refusal: "nope"})
+	if rowActsRefusal(ng) != "nope" {
+		t.Errorf("netgroup row refusal lost: %q", rowActsRefusal(ng))
+	}
+	sc := secretRowActions(secretRow{Name: "api-token", Refusal: "nope"}, true)
+	if rowActsRefusal(sc) != "nope" {
+		t.Errorf("secret row refusal lost: %q", rowActsRefusal(sc))
+	}
+	wsr := workspaceRowActions(workspaceWriteRow{Name: "web", TofuDir: "/srv/tofu/web", Refusal: "nope"})
+	if rowActsRefusal(wsr) != "nope" {
+		t.Errorf("workspace row refusal lost: %q", rowActsRefusal(wsr))
+	}
+	// A refused row never renders a flash in the row partial.
+	var buf bytes.Buffer
+	if err := rowActions(sched, "").Render(context.Background(), &buf); err != nil {
+		t.Fatalf("render rowActions: %v", err)
+	}
+	if strings.Contains(buf.String(), "flash") {
+		t.Error("a row refusal must never render a flash")
+	}
+}
 func TestResourceRowActionsRender(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -13,7 +14,8 @@ import (
 // TestSecretRmRequiresConfirmation: the hidden confirmed=1 field is the
 // server-side gate the secrets Delete form's dialog re-submission carries —
 // a session alone must not be able to destroy a sealed secret. A
-// confirmed-less rm reads 400 and the secret survives; with confirmed=1
+// confirmed-less rm re-renders the surface at 422 with the refusal on the row
+// (forms/SPEC.md, never a flash) and the secret survives; with confirmed=1
 // it lands.
 
 func TestSecretRmRequiresConfirmation(t *testing.T) {
@@ -34,8 +36,11 @@ func TestSecretRmRequiresConfirmation(t *testing.T) {
 
 	resp := postForm(t, client, ts.URL+"/secrets/ssh-key/rm", url.Values{}, nil)
 	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("rm without confirmed = %d, want 400 (%s)", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("rm without confirmed = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "Nothing was removed — confirm the removal in the dialog.") {
+		t.Errorf("confirmed-less rm refusal missing the on-row sentence")
 	}
 	if _, err := h.store.GetSecret(ctx, "ssh-key"); err != nil {
 		t.Fatalf("secret vanished despite refused rm: %v", err)

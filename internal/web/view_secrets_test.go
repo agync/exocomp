@@ -223,6 +223,75 @@ func postSecret(t *testing.T, client *http.Client, target string, form url.Value
 	return resp.StatusCode, string(body)
 }
 
+// TestSecretRmBoundRefusalOnRow: removing a bound secret re-renders the
+// secrets surface at 422 with the refusal on the row — the forms/SPEC.md
+// button-verb shape — never a flash, and the secret stays. The row has no
+// force control (the CLI's --force stays CLI), so the refusal names the
+// binding without offering the override.
+func TestSecretRmBoundRefusalOnRow(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "api-token", Kind: "token", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "a", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSecret: %v", err)
+	}
+	if _, err := h.store.AddRunSecret(ctx, store.RunSecret{
+		Binding: "deploy-app", EnvName: "API_TOKEN", SecretName: "api-token",
+	}); err != nil {
+		t.Fatalf("bind api-token: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	status, body := postSecret(t, op, ts.URL+"/secrets/api-token/rm", url.Values{"confirmed": {"1"}})
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422", status)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — api-token is still bound as a run secret.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rm refusal missing %q", want)
+		}
+	}
+	if _, err := h.store.GetSecret(ctx, "api-token"); err != nil {
+		t.Fatal("refused rm removed the bound secret")
+	}
+}
+
+// TestSecretRmRefusalOnRow: a confirmed-less remove re-renders the secrets
+// surface at 422 with the refusal on the row — never a flash.
+func TestSecretRmRefusalOnRow(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
+		Name: "ssh-key", Kind: "ssh", Source: store.SecretSourceUser,
+		Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "a", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatalf("CreateSecret: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	status, body := postSecret(t, op, ts.URL+"/secrets/ssh-key/rm", url.Values{})
+	if status != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422", status)
+	}
+	if !strings.Contains(body, "Nothing was removed — confirm the removal in the dialog.") {
+		t.Errorf("rm refusal missing the confirm-gate sentence")
+	}
+	if _, err := h.store.GetSecret(ctx, "ssh-key"); err != nil {
+		t.Fatal("refused rm removed the secret")
+	}
+}
+
 // TestSecretAddFormAtRest renders /secrets for an operator and asserts the
 // seal dialog's forms-round anatomy: every fieldInput control carries an
 // always-present meta line (help text at rest), the aria wiring ties each
