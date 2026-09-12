@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the checks tab strip swaps in place
+
+- **The /checks Probes↔Netgroups strip becomes a client-side fragment swap.**
+  The tab links carry `data-tab`; a delegated handler fetches the same `?tab=`
+  URL with an `X-Requested-With: fragment` header and swaps the
+  `#checks-surface` region in place, so switching tabs no longer reloads the
+  page. The active tab's `aria-selected` rides the server-rendered region, and
+  the swapped region's one-shot form wiring is re-run per the 422
+  form-fragment precedent. JS-off keeps the plain full-load anchors; the swap
+  is a GET, so it can never re-fire a consumed flash; back/forward replay the
+  swap through pushState.
+
+
 ## 2026-09-12 — the audit HIGHs land (SPEC §7 A1–A3)
 
 - **The Doctor glyph on /system is now a verb.** It queues the self-check as a
