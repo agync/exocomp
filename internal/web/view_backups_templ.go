@@ -1621,16 +1621,13 @@ func (f *restoreFormVM) buttonLabel() string {
 }
 
 // echoLine is the CLI echo incl. --from-litestream, with the recovery-kit
-// note.
+// note. The CLI restore names no snapshot — it restores the newest, so the
+// echo never pretends a --snapshot flag (round rule: no verb that pretends).
 func (f *restoreFormVM) echoLine() string {
 	if f.effective().Mode == "replica" {
 		return "same as exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
 	}
-	sel := ""
-	if s := f.SelectedSnapshot(); s != nil {
-		sel = s.ID
-	}
-	return "same as exocomp restore --snapshot " + sel + " · from a replica: exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
+	return "same as exocomp restore — the CLI restores the newest snapshot · from a replica: exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
 }
 
 // backupAddFormJS is the add-target form's progressive enhancement: the

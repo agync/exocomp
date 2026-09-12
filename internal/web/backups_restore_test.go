@@ -125,7 +125,7 @@ func TestBackupRestoreTypedConfirm(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system/backups = %d, want 200", code)
 	}
-	if !strings.Contains(page, "run exocomp restore --snapshot "+id+" on the host (recovery kit)") {
+	if !strings.Contains(page, "the recovery-kit CLI (exocomp restore) restores the newest snapshot") {
 		t.Error("confirmed restore flash missing the recovery-kit CLI path")
 	}
 }
@@ -154,6 +154,16 @@ func TestBackupRestoreReplicaMode(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("replica drawer missing %q", want)
 		}
+	}
+
+	// The litestream leg (m76) deep-links as ?from=litestream#restore — the
+	// alias opens the same replica drawer.
+	code, page = getBody(t, client, ts.URL+"/system/backups?from=litestream")
+	if code != http.StatusOK {
+		t.Fatalf("litestream alias = %d, want 200", code)
+	}
+	if !strings.Contains(page, `value="replica" checked`) {
+		t.Error("?from=litestream alias does not open the replica drawer")
 	}
 
 	// Wrong word — refused by the same gate.

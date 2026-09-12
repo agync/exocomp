@@ -23,7 +23,7 @@ import (
 // contract m76 keys off.
 func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 	var restore *restoreFormVM
-	if r.URL.Query().Get("restore") == "replica" {
+	if r.URL.Query().Get("restore") == "replica" || r.URL.Query().Get("from") == "litestream" {
 		restore = &restoreFormVM{Mode: "replica", Open: true}
 	}
 	vm, err := s.backupsVMFor(r, nil, nil, restore)

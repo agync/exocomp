@@ -457,7 +457,7 @@ func (s *Server) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.redirectFlash(w, r, "/system/backups",
-		"restore from #"+selected+" confirmed — run exocomp restore --snapshot "+selected+" on the host (recovery kit)")
+		"restore from #"+selected+" confirmed — the recovery-kit CLI (exocomp restore) restores the newest snapshot")
 }
 
 // currentSnapshots is the drawer's radio source at submit time, so a typed id
