@@ -459,6 +459,112 @@ type systemVM struct {
 	Uptime       string // "up 6d 04h" from the daemon start time
 	BackupsWord  string // "backups ok" | "backups none" | "backups {n} failing"
 	BackupsState string // ok|wait|fail — the card chip's colour for the strip
+	// Deadman is the dead-man leg's card state (SPEC §1). The age it quotes is
+	// the store's ONE rule (LastSucceededBackupTime), the same read the
+	// powerline's vm.Page.Signal.DeadMan makes — never a second computation.
+	Deadman deadmanVM
+}
+
+// deadmanVM is the dead-man leg's render state (SPEC §1): the state word and
+// class, the figure that changes MEANING per state (time-left → time-since)
+// but never its slot, and the facts every state draws. The age is the store's
+// ONE rule (LastSucceededBackupTime) — the handler quotes it once and nothing
+// here recomputes it.
+type deadmanVM struct {
+	State          string // "none" | "armed" | "tripped"
+	StateClass     string // wait | ok | fail
+	StateWord      string // NONE | ARMED | TRIPPED
+	Figure         string // "31h 12m" | "—" | "49h 02m"
+	FigureClass    string // dim | "" | fail — the figure's ink per state
+	FigureMeta     string
+	Threshold      string // the raw threshold ("48h"), "" when unset
+	LastGood       string // "{age} ago · {target} #{snapshot}" or "never"
+	Heartbeat      string
+	HeartbeatClass string // "" | fail — TRIPPED's heartbeat fact reads loud
+	NewestRuns     string // TRIPPED's per-target newest-run line, "" otherwise
+	Paged          string // "ntfy · once · {age} ago", "" unless TRIPPED
+	QueueTarget    string // TRIPPED's Queue-backup target, "" when none enabled
+	Sentence       string
+	Operator       bool
+	// Form is the Arm dialog's refusal state (forms/SPEC.md): nil at rest, the
+	// filled form with field refusals on a 422 re-render.
+	Form *deadmanFormVM
+}
+
+// deadmanFormVM is the Arm dialog's refusal state. Threshold echoes the typed
+// segment on a 422; the heartbeat value is NEVER carried back — the field
+// renders empty always (invariant 4: sealed is a presence, never a value).
+type deadmanFormVM struct {
+	Threshold    string
+	ErrThreshold string
+	ErrHeartbeat string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+	// Open re-opens the dialog on the JS-off 422 re-render.
+	Open bool
+}
+
+// deadmanDefaultThreshold is the Arm dialog's segmented default: 48h, the
+// backup freshness ladder's fail step, so the Backups chip and the dead-man
+// agree (SPEC §1.2).
+const deadmanDefaultThreshold = "48h"
+
+func (f *deadmanFormVM) effective() deadmanFormVM {
+	if f == nil {
+		return deadmanFormVM{}
+	}
+	return *f
+}
+
+func (f *deadmanFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *deadmanFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// ErrThresholdText and ErrHeartbeatText dereference the field refusals nil-safe
+// (the dialog renders with a nil form at rest), so the template never touches
+// the pointer fields directly.
+func (f *deadmanFormVM) ErrThresholdText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrThreshold
+}
+
+func (f *deadmanFormVM) ErrHeartbeatText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrHeartbeat
+}
+
+// thresholdSelected reports whether the segmented switch's k-th position is
+// on: the typed value on a 422 re-render, else the card's current threshold,
+// else the 48h default — exactly one segment is on.
+func (f *deadmanFormVM) thresholdSelected(current, k string) bool {
+	v := current
+	if f != nil && f.Threshold != "" {
+		v = f.Threshold
+	}
+	if v == "" {
+		v = deadmanDefaultThreshold
+	}
+	return v == k
+}
+
+// viewDeadmanVM is the /system/deadman leg page (SPEC §0.2 phone rows land on
+// it): the page chrome around the same full-width card the /system grid
+// renders. The card carries its own verbs and the Arm dialog.
+type viewDeadmanVM struct {
+	Page    page
+	Deadman deadmanVM
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a

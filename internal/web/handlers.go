@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/deadman"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
@@ -171,10 +172,21 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 
 // handleSystem renders the control plane's self-care surface (SPEC §0): the
 // identity strip (build stamp + host), the four leg cards, and the powerline
-// of per-leg anchors. The four legs render as stubs this round — the leg
-// lanes fill the card bodies next. The public-URL Change verb posts to the
-// landed L-B3 write (system_write.go); this handler only marks up its value.
+// of per-leg anchors. The public-URL Change verb posts to the landed L-B3
+// write (system_write.go); this handler only marks up its value.
 func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
+	vm, err := s.systemVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, systemPage(vm))
+}
+
+// systemVMFor builds the full /system surface, dead-man leg included. It is
+// split out of handleSystem so the Arm dialog's JS-off refusal re-render can
+// rebuild the same page holding the refused form (deadman_write.go).
+func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	ident, _ := identityOf(r.Context())
 	vm := systemVM{Page: s.pageFor(r, "System", "system"), Operator: canWrite(ident)}
 	vm.Page.Meta = "is the control plane itself OK"
@@ -186,8 +198,7 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 
 	backups, err := s.backups(r)
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return systemVM{}, err
 	}
 	vm.Backups = backups
 
@@ -198,7 +209,217 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 	vm.Uptime = s.uptimeLabel()
 	vm.BackupsWord, vm.BackupsState = backupsPowerWord(backups)
 
-	s.render(w, r, http.StatusOK, systemPage(vm))
+	vm.Deadman = s.deadmanVM(r)
+	// The self-care powerline's dead-man segment takes the card's chip colour
+	// (SPEC §0.1) without recomputing the age: the word stays the ONE-rule age
+	// signal() read, the colour now carries armed/none/tripped too.
+	vm.Page.Signal.DeadManState = vm.Deadman.StateClass
+	return vm, nil
+}
+
+// handleDeadman renders the /system/deadman leg page: the same dead-man card
+// full-width under the page chrome, with the Arm dialog and Disarm verb.
+func (s *Server) handleDeadman(w http.ResponseWriter, r *http.Request) {
+	vm, err := s.deadmanVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, deadmanPage(vm))
+}
+
+func (s *Server) deadmanVMFor(r *http.Request) (viewDeadmanVM, error) {
+	vm := viewDeadmanVM{Page: s.pageFor(r, "Dead-man", "system")}
+	vm.Page.Meta = "last good backup age vs the trip threshold"
+	vm.Deadman = s.deadmanVM(r)
+	return vm, nil
+}
+
+// deadmanVM reads the dead-man leg's render state. The age it quotes is the
+// store's ONE rule (LastSucceededBackupTime) — the same read the powerline's
+// vm.Page.Signal.DeadMan makes, never a second computation. Everything else is
+// enrichment: the threshold and the sealed heartbeat's presence, the markers
+// the daemon's trip monitor writes, and the target/snapshot facts that name
+// the good backup without re-deriving its age.
+func (s *Server) deadmanVM(r *http.Request) deadmanVM {
+	ctx := r.Context()
+	now := s.now()
+	dm := deadmanVM{
+		State: "none", StateClass: "wait", StateWord: "NONE",
+		Figure: "—", FigureClass: "dim", LastGood: "never",
+		Heartbeat: "not wired — no external heartbeat yet",
+	}
+
+	// The ONE age rule, read once.
+	when, ever := s.store.LastSucceededBackupTime(ctx)
+
+	if run, target, ok, err := s.store.NewestSucceededBackupRun(ctx); ok {
+		finished := run.FinishedAt
+		if finished == nil {
+			finished = &run.StartedAt
+		}
+		dm.LastGood = deadman.CountdownAge(now.Sub(*finished)) + " ago · " + target.Name +
+			" #" + deadmanShortID(run.SnapshotID)
+	} else if err != nil {
+		s.log.Error("web: deadman", "err", err.Error())
+	}
+
+	threshold, terr := s.store.GetSetting(ctx, store.SettingDeadmanThreshold)
+	threshold = strings.TrimSpace(threshold)
+	if terr == nil && threshold != "" {
+		dm.Threshold = threshold
+		parsed, perr := time.ParseDuration(threshold)
+		switch {
+		case !ever || perr != nil:
+			// Armed with nothing ever succeeded — or a threshold that will not
+			// parse — is unbounded age: TRIPPED, fail-closed.
+			dm.State = "tripped"
+			dm.StateClass = "fail"
+			dm.StateWord = "TRIPPED"
+			dm.Figure = "—"
+			dm.FigureClass = "fail"
+			dm.FigureMeta = "since a backup succeeded · threshold " + threshold
+		case now.Sub(when) < parsed:
+			dm.State = "armed"
+			dm.StateClass = "ok"
+			dm.StateWord = "ARMED"
+			dm.Figure = deadman.CountdownAge(parsed - now.Sub(when))
+			dm.FigureClass = ""
+			dm.FigureMeta = "until it trips"
+		default:
+			dm.State = "tripped"
+			dm.StateClass = "fail"
+			dm.StateWord = "TRIPPED"
+			dm.Figure = deadman.CountdownAge(now.Sub(when))
+			dm.FigureClass = "fail"
+			dm.FigureMeta = "since a backup succeeded · threshold " + threshold
+		}
+	}
+
+	// The heartbeat fact is presence, never a value: sealed heartbeats read
+	// wired, and the ping clock comes from the marker the monitor stamps.
+	hbWired := false
+	if _, err := s.store.GetSecret(ctx, deadman.SecretHeartbeatURL); err == nil {
+		hbWired = true
+	}
+	if dm.State == "none" {
+		dm.FigureMeta = "no threshold · nothing trips if backups stop"
+		if !hbWired {
+			dm.FigureMeta = "no threshold, no heartbeat · nothing trips if backups stop"
+		}
+	}
+	if hbWired {
+		pingedAgo := "never"
+		if pinged, perr := s.store.GetSetting(ctx, store.SettingDeadmanPingedAt); perr == nil {
+			if when, ok := msTime(pinged); ok {
+				pingedAgo = deadman.CountdownAge(now.Sub(when)) + " ago"
+			}
+		}
+		if dm.State == "tripped" {
+			dm.Heartbeat = "last ping " + pingedAgo + " · the external service is paging"
+			dm.HeartbeatClass = "fail"
+		} else {
+			dm.Heartbeat = "wired · sealed deadman/heartbeat_url · pinged " + pingedAgo
+		}
+	}
+
+	switch dm.State {
+	case "tripped":
+		if paged, perr := s.store.GetSetting(ctx, store.SettingDeadmanPagedAt); perr == nil {
+			if when, ok := msTime(paged); ok {
+				dm.Paged = "ntfy · once · " + deadman.CountdownAge(now.Sub(when)) + " ago"
+			}
+		}
+		dm.NewestRuns = s.deadmanNewestRuns(r)
+		targets, err := s.store.ListBackupTargets(ctx, false)
+		if err == nil && len(targets) > 0 {
+			dm.QueueTarget = targets[0].Name
+		}
+		dm.Sentence = "Clears itself the moment any target's run SUCCEEDS. A failed or still-running newer run does not mask the age."
+	case "armed":
+		dm.Sentence = "At zero: the heartbeat goes silent and the external service pages you; ntfy pages once; the dashboard band and doctor read TRIPPED until a backup succeeds."
+	}
+
+	ident, _ := identityOf(r.Context())
+	dm.Operator = canWrite(ident)
+	return dm
+}
+
+// deadmanNewestRuns is the TRIPPED card's per-target fact: each target's newest
+// run with its state (or disabled), the same newest-run read the backups rows
+// make — capped at three so the fact stays one line.
+func (s *Server) deadmanNewestRuns(r *http.Request) string {
+	ctx := r.Context()
+	now := s.now()
+	targets, err := s.store.ListBackupTargets(ctx, true)
+	if err != nil {
+		return ""
+	}
+	var parts []string
+	for _, t := range targets {
+		if len(parts) == 3 {
+			break
+		}
+		if !t.Enabled {
+			parts = append(parts, t.Name+" disabled")
+			continue
+		}
+		runs, err := s.store.ListBackupRuns(ctx, t.ID, 1)
+		if err != nil || len(runs) == 0 {
+			parts = append(parts, t.Name+" never ran")
+			continue
+		}
+		run := runs[0]
+		when := run.StartedAt
+		if run.FinishedAt != nil {
+			when = *run.FinishedAt
+		}
+		parts = append(parts, t.Name+" "+run.State+" "+deadman.CountdownAge(now.Sub(when))+" ago")
+	}
+	return strings.Join(parts, " · ")
+}
+
+// deadmanRefusal re-renders the page the Arm submit came from at 422 with the
+// dialog's refusal state re-opened (JS-off gets the same bytes a JS re-render
+// would swap in).
+func (s *Server) deadmanRefusal(w http.ResponseWriter, r *http.Request, from string, form *deadmanFormVM) {
+	form.Open = true
+	if from == "/system/deadman" {
+		vm, err := s.deadmanVMFor(r)
+		if err != nil {
+			s.fail(w, r, err)
+			return
+		}
+		vm.Deadman.Form = form
+		s.render(w, r, http.StatusUnprocessableEntity, deadmanPage(vm))
+		return
+	}
+	vm, err := s.systemVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.Deadman.Form = form
+	s.render(w, r, http.StatusUnprocessableEntity, systemPage(vm))
+}
+
+// msTime parses a stored unix-ms timestamp; ok=false on garbage.
+func msTime(raw string) (time.Time, bool) {
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return time.UnixMilli(n).UTC(), true
+}
+
+// deadmanShortID renders a snapshot id at the length a card fact scans (the
+// same truncation the CLI's backup list uses, at the shorter display size the
+// fixture draws).
+func deadmanShortID(id string) string {
+	if len(id) > 6 {
+		return id[:6]
+	}
+	return id
 }
 
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,13 @@
+package web
+
+// deadmanPage is the /system/deadman leg page (SPEC §0.2: the phone rows and
+// the powerline anchor land here): the full-width dead-man card — the same
+// partial the /system grid renders — under the page chrome. The card carries
+// its verbs and the Arm dialog, so a phone user arms and disarms here too.
+templ deadmanPage(vm viewDeadmanVM) {
+	@layout(vm.Page) {
+		<section class="leg" id="deadman" aria-label="Dead-man" data-state={ vm.Deadman.StateClass }>
+			@deadmanCardInner(vm.Deadman, vm.Page.Base, "/system/deadman")
+		</section>
+	}
+}

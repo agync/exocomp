@@ -1,17 +1,279 @@
 package web
 
-// deadmanCard is the dead-man leg of the /system self-care page (SPEC §1): a
-// STUB this round with the §0.1 anatomy (word · figure · facts · one verb),
-// id=deadman the powerline anchor lands on. L-S1 fills it: ARMED/NONE/TRIPPED,
-// the Arm dialog, and the Queue-backup verb.
+// v0.13 dead-man card glyphs (SCREENS.txt GLYPHS): the Arm pencil (two small
+// strokes, 24 viewBox) and the eye/eye-slash the Show/Hide toggle draws.
+const (
+	glyphDeadmanArm = "M4 20l4-1 10-10-3-3L5 16zM13 7l3 3"
+	glyphDeadmanEye = "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"
+	glyphDeadmanEyeOff = "M5 5l14 14"
+)
+
+// deadmanCard is the dead-man leg of the /system self-care page (SPEC §1):
+// the ARMED/NONE/TRIPPED card under id=deadman, the id the powerline anchors
+// land on. The figure changes MEANING by state (time-left → time-since) but
+// never its slot; verbs are ≤2 then ▾, and Disarm lives under ▾ and asks
+// first. The Arm dialog rides the card so both /system and /system/deadman
+// get exactly one copy of it.
 templ deadmanCard(vm systemVM) {
-	<section class="leg" id="deadman" aria-label="Dead-man">
-		<div class="leg-head">
-			<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
-			<span class="verbs"></span>
-		</div>
-		<div class="leg-figure"><span class="value dim">—</span></div>
-		<dl class="leg-facts"></dl>
-		<p class="leg-sentence"></p>
+	<section class="leg" id="deadman" aria-label="Dead-man" data-state={ vm.Deadman.StateClass }>
+		@deadmanCardInner(vm.Deadman, vm.Page.Base, "/system")
 	</section>
+}
+
+// deadmanCardInner is the card body both the /system grid and the
+// /system/deadman page render — the same anatomy on both, full-width on the
+// leg page. from is the page that opened the writes, so a refusal re-renders
+// the page the operator acted on.
+templ deadmanCardInner(dm deadmanVM, base, from string) {
+	<style>
+	/* dead-man card scoped pieces: the threshold segmented switch and the
+	 * heartbeat Show/Hide control. Everything else rides the shared leg and
+	 * field anatomy (lift.css / app.css). Radios keep the Arm dialog honest
+	 * JS-off: exactly one threshold posts. */
+	.dm-seg { display:grid; grid-template-columns:repeat(4,minmax(0,auto)); height:40px; padding:3px;
+	  box-sizing:border-box; gap:2px; border-radius:var(--radius-row); background:var(--surface-control);
+	  font:400 13px/1 var(--font-mono); }
+	.dm-seg input { position:absolute; opacity:0; pointer-events:none; }
+	.dm-seg label { min-width:52px; display:grid; place-items:center; border-radius:var(--radius-chip);
+	  color:var(--ink-400); cursor:pointer; }
+	.dm-seg label:hover { color:var(--ink-100); }
+	.dm-seg input:checked + label { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
+	.dm-seg input:focus-visible + label { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
+	.dm-hb { display:flex; align-items:center; gap:6px; }
+	.dm-hb input.control { height:40px; width:100%; min-width:0; padding:0 12px; border-radius:var(--radius-control);
+	  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
+	  font:var(--type-button); font-family:var(--font-mono); }
+	.dm-hb input.control::placeholder { color:var(--ink-600); }
+	.dm-hb input.control[aria-invalid="true"] { box-shadow:inset 0 0 0 1px var(--signal-fail); }
+	.dm-eye { width:34px; height:34px; flex:0 0 auto; border-radius:var(--radius-control); border:0;
+	  background:transparent; color:var(--ink-400); cursor:pointer; }
+	.dm-eye svg { width:18px; height:18px; }
+	.dm-eye[aria-pressed="true"] { color:var(--accent-text); }
+	</style>
+
+	<div class="leg-head">
+		<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
+		<span class={ "chip", dm.StateClass }><span class="dot"></span>{ dm.StateWord }</span>
+		<span class="verbs">
+			if dm.State == "none" {
+				if dm.Operator {
+					<button type="button" class="btn primary" data-modal-open="deadman-arm">Arm</button>
+				}
+			} else if dm.State == "armed" {
+				if dm.Operator {
+					<button type="button" class="raglyph" data-modal-open="deadman-arm" aria-label="Arm — change the threshold or heartbeat" title="Arm — change the threshold or heartbeat">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphDeadmanArm }></path></svg>
+					</button>
+				}
+				@deadmanMenu(dm, base, from)
+			} else {
+				if dm.Operator && dm.QueueTarget != "" {
+					<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/deadman/queue")) } class="inline-form">
+						<input type="hidden" name="target" value={ dm.QueueTarget }/>
+						<input type="hidden" name="from" value={ from }/>
+						<button type="submit" class="btn primary">Queue backup — { dm.QueueTarget }</button>
+					</form>
+				}
+				@deadmanMenu(dm, base, from)
+			}
+		</span>
+	</div>
+	<div class="leg-figure">
+		<span class={ "value", dm.FigureClass }>{ dm.Figure }</span>
+		if dm.FigureMeta != "" {
+			<span class={ "note", dm.FigureClass }>{ dm.FigureMeta }</span>
+		}
+	</div>
+	<dl class="leg-facts">
+		<dt>last good backup</dt>
+		<dd>{ dm.LastGood }</dd>
+		if dm.Threshold != "" {
+			<dt>threshold</dt>
+			<dd>{ dm.Threshold } without a succeeded backup</dd>
+		}
+		if dm.State == "tripped" && dm.NewestRuns != "" {
+			<dt>newest runs</dt>
+			<dd class="ellipsis">{ dm.NewestRuns }</dd>
+		}
+		<dt>heartbeat</dt>
+		<dd class={ "ellipsis", templ.KV("is-fail", dm.HeartbeatClass == "fail") }>{ dm.Heartbeat }</dd>
+		if dm.Paged != "" {
+			<dt>paged</dt>
+			<dd>{ dm.Paged }</dd>
+		}
+	</dl>
+	if dm.Sentence != "" {
+		<p class="leg-sentence">{ dm.Sentence }</p>
+	}
+	@deadmanArmDialog(dm.Form, dm.Threshold, dm.Operator, base, from)
+}
+
+// deadmanMenu is the card's ▾: the one verb under it, Disarm, in fail and
+// asking first through the shared form[data-confirm] guard (layoutReady).
+templ deadmanMenu(dm deadmanVM, base, from string) {
+	if dm.Operator {
+		<details class="ramenu">
+			<summary class="rachev" aria-label="More actions" title="More actions">
+				<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg>
+			</summary>
+			<ul class="ramenu-panel" role="menu">
+				<li class="ramenu-item danger" role="menuitem">
+					<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/deadman/disarm")) } class="inline-form" data-confirm="Disarm the dead-man? The threshold and the sealed heartbeat URL are removed — nothing trips if backups stop.">
+						<input type="hidden" name="from" value={ from }/>
+						<button type="submit" class="ramenu-btn">Disarm</button>
+					</form>
+				</li>
+			</ul>
+		</details>
+	}
+}
+
+// deadmanArmDialog is the "Arm the dead-man" dialog (SPEC §1.2): the threshold
+// segmented switch (24h · 48h · 72h · 7d, 48h default), the sealed heartbeat
+// URL with a Show/Hide eye that exists ONLY on this unsealed input (a check of
+// a paste, never a reveal), and the read-only AT ZERO block. The value never
+// re-renders — a refusal can never echo the plaintext (invariant 4).
+templ deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base, from string) {
+	@modal("deadman-arm", "Arm the dead-man") {
+		<div class="kicker">SYSTEM · DEAD-MAN</div>
+		<p class="meta">Two halves. The threshold is the rule exocomp enforces itself; the heartbeat is the external ping that makes silence loud when exocomp is the thing that died.</p>
+		<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/deadman/arm")) } class="writeform" id="deadman-arm-form" novalidate data-deadman-form>
+			<label class="field">
+				<span class="label">Threshold</span>
+				<span class="dm-seg">
+					for _, k := range []string{"24h", "48h", "72h", "7d"} {
+						<input type="radio" id={ "dm-thr-" + k } name="threshold" value={ k } checked?={ form.thresholdSelected(threshold, k) }/>
+						<label for={ "dm-thr-" + k }>{ k }</label>
+					}
+				</span>
+				<span id="dm-thr-meta" class={ "meta", templ.KV("is-error", form.ErrFormText() != "" || form.ErrThresholdText() != "") }>
+					if form.ErrThresholdText() != "" {
+						<span class="msg">{ form.ErrThresholdText() }</span>
+					} else {
+						trips after this long without a SUCCEEDED backup · 48h is the freshness ladder's fail step
+					}
+				</span>
+			</label>
+			<label class="field">
+				<span class="label">Heartbeat URL</span>
+				<span class="dm-hb">
+					<input class="control" type="password" id="dm-heartbeat" name="heartbeat_url" value="" spellcheck="false" autocomplete="off" placeholder="https://…" aria-invalid?={ form.ErrHeartbeatText() != "" } aria-describedby="dm-heartbeat-meta"/>
+					<button type="button" class="dm-eye" id="dm-eye" aria-pressed="false" title="Show" data-eye aria-label="Show">
+						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphDeadmanEye }></path></svg>
+					</button>
+				</span>
+				<span id="dm-heartbeat-meta" class={ "meta", templ.KV("is-error", form.ErrHeartbeatText() != "") }>
+					if form.ErrHeartbeatText() != "" {
+						<span class="msg">{ form.ErrHeartbeatText() }</span>
+					} else {
+						show to check what you pasted · sealed as deadman/heartbeat_url on Arm, then never shown here again
+					}
+				</span>
+			</label>
+			<div class="consequence" aria-label="At zero">
+				<span class="kicker">AT ZERO</span>
+				<span>pings stop → the heartbeat service pages you</span>
+				<span>ntfy pages once · high</span>
+				<span class="loss">dashboard band, powerline, doctor read TRIPPED until a backup succeeds</span>
+			</div>
+			<input type="hidden" name="from" value={ from }/>
+			@formStatus(form.Pending(), form.ErrFormText(), "Arming")
+			<div class="actions"><button type="submit" class="btn primary" disabled?={ form.Pending() }>Arm</button></div>
+		</form>
+		@deadmanFormJS()
+	}
+	if form != nil && form.Open {
+		// A JS-off refusal re-renders the whole page; open the dialog and
+		// focus the first invalid control after it is in the DOM.
+		<script>
+		exoModalOpen("deadman-arm");
+		var dmBad = document.querySelector('#deadman-arm input[aria-invalid="true"]');
+		if (dmBad) dmBad.focus();
+		</script>
+	}
+}
+
+// deadmanFormJS is the Arm dialog's progressive enhancement: the Show/Hide eye
+// (the eye exists only on this unsealed input — toggling it shows the TYPED
+// value in the browser, which is not a reveal of a sealed secret) and the
+// fetch submit that swaps a 422's form fragment in place (JS-off gets the same
+// bytes as a full re-render).
+templ deadmanFormJS() {
+	<script>
+	(function () {
+		function deadmanFormWire() {
+			var form = document.getElementById("deadman-arm-form");
+			if (!form || form.dataset.deadmanWired) return;
+			form.dataset.deadmanWired = "1";
+
+			var eye = form.querySelector("[data-eye]");
+			var hb = form.querySelector('input[name="heartbeat_url"]');
+			var eyePath = eye ? eye.querySelector("path") : null;
+			function eyeVerb(show) {
+				eye.setAttribute("aria-pressed", show ? "true" : "false");
+				eye.setAttribute("title", show ? "Hide" : "Show");
+				eye.setAttribute("aria-label", show ? "Hide" : "Show");
+				if (eyePath) eyePath.setAttribute("d", show ? "M5 5l14 14" : "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z");
+			}
+			if (eye && hb) {
+				eye.addEventListener("click", function () {
+					var show = eye.getAttribute("aria-pressed") !== "true";
+					hb.type = show ? "text" : "password";
+					eyeVerb(show);
+				});
+			}
+
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Arming';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("deadman-arm-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("deadman-arm-form");
+							form.dataset.deadmanRefused = "1";
+							deadmanFormWire();
+							var bad = form.querySelector('input[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+
+			// The dialog is rendered once and its inputs survive close/reopen,
+			// so a close must drop the typed heartbeat — a resealed value must
+			// never linger in the DOM.
+			var dialog = form.closest("dialog");
+			if (dialog) {
+				dialog.addEventListener("close", function () {
+					hb.value = "";
+					hb.type = "password";
+					if (eye) eyeVerb(false);
+					var status = form.querySelector(".form-status");
+					if (status) status.textContent = "";
+					var primary = form.querySelector('button[type="submit"]');
+					if (primary) primary.disabled = false;
+				});
+			}
+		}
+		deadmanFormWire();
+	})();
+	</script>
 }
