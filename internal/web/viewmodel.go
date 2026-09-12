@@ -853,16 +853,32 @@ type ntfyTestStatus struct {
 }
 
 // ntfyVM is the /system/ntfy drawer (SPEC §2.2): the leg judgment, the sealed
-// presence rows, the Detail two-position switch, the fixed fan-out table, and
-// the Test/Save verbs with their status line.
+// presence rows, the Detail two-position switch, the fixed fan-out table, the
+// MUTES section (SPEC §7 A8), and the Test/Save verbs with their status line.
 type ntfyVM struct {
 	Page     page
 	Operator bool
 	Leg      ntfyCardVM
 	Status   ntfyTestStatus
+	Mutes    []muteRow
 }
 
 func (vm ntfyVM) HasStatus() bool { return vm.Status.Class != "" }
+
+// muteRow is one active mute in the drawer's MUTES section (SPEC §7 A8): the
+// source and host it covers, when it lifts, and the clear verb. Source is the
+// alert name an alert-scoped mute covers and the word "global" for a global
+// one; host is the host a host-scoped mute covers; both render "—" when the
+// scope has no such dimension. A global mute is the safety valve — clearing
+// it asks first, so ClearConfirm carries the confirm sentence, empty for a
+// one-click clear.
+type muteRow struct {
+	ID           int64
+	Source       string
+	Host         string
+	Until        string
+	ClearConfirm string
+}
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
 // run's tree comes from, whether its ref is signed, and the commit its last

@@ -3,11 +3,12 @@ package web
 // viewNtfy is the /system/ntfy drawer (SPEC §2.2, artboard 1c): the ntfy leg's
 // channel page. Sealed keys render as presence rows (key · dot string · SEALED
 // or MISSING — a value never renders), the Detail switch tweaks
-// notify.ntfy_detail, WHAT A PUSH SAYS shows the live sample, and What pages
-// is a read-only table (no routing knobs exist in code — a table, not
-// toggles). Test posts one push and writes the status line; Save persists the
-// Detail position. The × returns to /system; the phone app-bar back chevron
-// points there too.
+// notify.ntfy_detail, WHAT A PUSH SAYS shows the live sample, What pages is a
+// read-only table (no routing knobs exist in code — a table, not toggles),
+// and MUTES lists the active scoped mutes (SPEC §7 A8) with a clear verb per
+// row — the quiet-hours meta links here. Test posts one push and writes the
+// status line; Save persists the Detail position. The × returns to /system;
+// the phone app-bar back chevron points there too.
 templ viewNtfy(vm ntfyVM) {
 	@layout(vm.Page) {
 		<div class="ntfy-drawer" aria-label="Push channel">
@@ -86,7 +87,46 @@ templ viewNtfy(vm ntfyVM) {
 						<tr><td>dead-man tripped</td><td><span class="chip wait"><span class="dot"></span>high</span></td><td>once</td></tr>
 					</tbody>
 				</table>
-				<p class="meta">one transport, fixed fan-out · quiet hours are a scoped mute, not a setting here</p>
+				<p class="meta">one transport, fixed fan-out · <a href="#mutes">quiet hours are a scoped mute</a>, not a setting here</p>
+			</div>
+
+			<div class="mutes-table" id="mutes" aria-label="Mutes">
+				<div class="kicker">MUTES</div>
+				<table>
+					<thead>
+						<tr>
+							<th scope="col">SOURCE</th>
+							<th scope="col">HOST</th>
+							<th scope="col">UNTIL</th>
+							<th scope="col"></th>
+						</tr>
+					</thead>
+					<tbody>
+						if len(vm.Mutes) == 0 {
+							<tr><td colspan="4">no active mutes · nothing is held</td></tr>
+						} else {
+							for _, m := range vm.Mutes {
+								<tr>
+									<td>{ m.Source }</td>
+									<td>{ m.Host }</td>
+									<td>{ m.Until }</td>
+									<td>
+										if m.ClearConfirm != "" {
+											<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/mutes/" + itoa64(m.ID) + "/clear")) } class="inline-form" data-confirm={ m.ClearConfirm }>
+												<button type="submit" class="btn quiet">clear</button>
+											</form>
+										} else {
+											<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/mutes/" + itoa64(m.ID) + "/clear")) } class="inline-form">
+												<button type="submit" class="btn quiet">clear</button>
+											</form>
+										}
+									</td>
+								</tr>
+							}
+						}
+					</tbody>
+				</table>
+				<p class="meta">a mute holds the push, never the job · set one with exocomp mute add or the API</p>
 			</div>
 
 			@ntfyStatus(vm.Status)
