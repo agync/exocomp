@@ -71,6 +71,7 @@ templ schedulesList(vm schedulesVM) {
 							<tr>
 								<th scope="col">Schedule</th>
 								<th scope="col">Kind</th>
+								<th scope="col">Target</th>
 								<th scope="col">Cron</th>
 								<th scope="col">Next fire</th>
 								<th scope="col">Last outcome</th>
@@ -87,6 +88,15 @@ for _, sc := range vm.Schedules {
 							<tr data-modal-row={ "sched-" + sc.Name }>
 								<td data-label="Schedule"><button type="button" class="cellact" data-modal-open={ "sched-" + sc.Name }>{ sc.Name }</button></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
+									<td data-label="Target">
+										if sc.BackupTarget() != "" {
+											<a href={ urlWithBase(vm.Page.Base, "/system/backups") } class="mono">{ sc.BackupTarget() }</a>
+										} else if sc.Kind == "backup" || sc.Kind == "drill" {
+											<span class="meta">every target</span>
+										} else {
+											<span class="mono">{ orDash(sc.Target) }</span>
+										}
+									</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
 									<td class="mono" data-label="Next fire">{ sc.Next }</td>
 									<td data-label="Last outcome">

@@ -803,6 +803,19 @@ type scheduleRow struct {
 
 func (r scheduleRow) LastClass() string { return stateClass(r.LastState) }
 
+// BackupTarget is the backup/drill schedule's back-link target (A5): the
+// stored Args.Target reference its fires operate on — the same reference the
+// scheduler's fire-time concurrency keys backup:<target> / drill:<target>
+// derive from (internal/sched). Empty for an every-target schedule and for
+// kinds that carry no backup target (shell, play), which render no back-link
+// to /system/backups.
+func (r scheduleRow) BackupTarget() string {
+	if (r.Kind == store.ScheduleBackup || r.Kind == store.ScheduleDrill) && r.Target != "" {
+		return r.Target
+	}
+	return ""
+}
+
 // workflowRow is one step-ledger chain (ADR 0008): the provision->onboard->
 // converge and TF->ansible handoff workflows. Steps carries the ordered ledger
 // for the detail view; the dashboard shows the derived state and a step tally.
