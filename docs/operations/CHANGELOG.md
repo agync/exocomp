@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the shared row-actions verbs render their refusals on the row
+
+- **Every single-button row verb that renders through the shared `rowActions`
+  partial adopts the forms-pattern refusal contract.** The schedules and checks
+  remove/disable/enable verbs, the netgroups and secrets remove verbs, and the
+  workspaces row apply/plan verbs now re-render the surface holding the row at
+  422 with the refusal in a ▲ status line on that row (the shared partial's
+  own line, no template churn), carrying human copy — a refused bound-secret
+  remove, a policed fresh apply, and a confirmed-less remove all say what
+  happened and that nothing was removed. A refusal never flashes; success keeps
+  the one success-only flash. A row verb whose row has already vanished keeps
+  an appropriate 404 with human copy.
+
+
 ## 2026-09-12 — the workspace detail gains the Tofu state tray
 
 - **The workspace detail page's identity card becomes the SPEC §2.1 4-tile
