@@ -6,6 +6,32 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — /system becomes the self-care shell
+
+- **The /system page restructures to the v0.13 self-care anatomy (SPEC §0).** One
+  identity strip leads the page — `exocomp {version}` · commit · `{os}/{arch}` ·
+  `on {host} · up {uptime}` — with the one existing write verb on the right:
+  `public URL` value plus a quiet `Change` button posting to the landed
+  `/system/public-url` backend (markup only; the write is untouched). Below it,
+  the four leg cards (Dead-man · ntfy · Litestream · Backups) render in a 2×2
+  grid as stub partials carrying the §0.1 anatomy — header glyph · name · verbs
+  slot, dim `—` figure, empty facts grid, sentence — under the ids the
+  powerline anchors land on. The page's own powerline (36px surface-rail, a
+  separate strip from the app-wide footer) renders `{version} · rpo {lag} ·
+  dead-man {age} · ntfy {state} · backups {state}`, each leg segment an
+  `<a href="/system#leg">` anchor coloured by its card's state; the dead-man
+  segment quotes the store's ONE succeeded-age rule and reads `dead-man none —
+  set one` until the first success. At ≤720px the cards collapse to two-line
+  rows linking `/system/{deadman,ntfy,litestream,backups}` (the leg pages land
+  in the same round). Doctor and Recovery kit render as read-only header
+  glyphs naming their CLI (`exocomp doctor` / `exocomp kit`) until the doctor
+  job and kit reprint verbs land. The round's page CSS ships as a new `lift.css`
+  asset (embedded, version-hashed and loaded like `app.css`), with the handoff's
+  `.powerline` renamed to `.sys-powerline` so it cannot collide with the global
+  footer strip of the same class. A never-run backup target reads as a wait gap
+  (`backups none`, never fail) on the powerline, matching the dead-man's `none`.
+
+
 ## 2026-09-12 — the shared row-actions verbs render their refusals on the row
 
 - **Every single-button row verb that renders through the shared `rowActions`
