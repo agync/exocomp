@@ -6,6 +6,27 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the per-snapshot forget verb runs end to end (SPEC §7 A12)
+
+- **Forget goes executable.** The `backup-forget` job the web verb enqueues
+  now has a daemon-side leg: internal/sched routes the kind to the backup
+  Runner, whose new `runForget` leg parses the argv (`exocomp-forget
+  {target} {snapshot-id}`), resolves the target, and runs
+  `restic forget {id} --prune` against its repository with the derived
+  password carried by a 0600 file — the same shape the backup engine's own
+  prune path uses — deciding success by exit code alone and settling the job
+  with a structured `target {t}: forgot snapshot={id}` outcome event.
+- **The guardrails ride on the runner too.** As defense-in-depth beside the
+  web page's gate, the leg refuses the newest snapshot and any drilled one
+  (both are the recovery point) and refuses an id that is no succeeded run of
+  the target, so a stale or crafted id never reaches restic; a refused or
+  failed forget settles the job failed like a bad drill does. A forget is
+  keyed under the target's backup concurrency key, so it can never race a
+  backup or a retention prune of the same repository. The verb names one
+  snapshot, so the command is a plain `forget {id} --prune` — the target's
+  retention policy is re-applied on the next backup's prune.
+
+
 ## 2026-09-12 — scoped mutes surface on /system/ntfy (SPEC §7 A8)
 
 - **Mutes stop being invisible.** The /system/ntfy drawer gains a MUTES
