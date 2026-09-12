@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the public-URL Change form gets its spec (SPEC §7 A7)
+
+- **The identity strip's public-URL Change form carries the forms anatomy.**
+  The url field's meta line always renders — `approval links and the kit use
+  this` at rest, the ▲ sentence in signal-fail on a refusal — above the 20px
+  form-status line and the Change primary, so an error never resizes the
+  strip. The validPublicURL guard's refusal re-renders /system at 422 with
+  the field meta filled and the typed value kept: a path-bearing or malformed
+  URL is refused on the surface with human copy, never a flash, and the
+  pending state reads "● Changing".
+
+
 ## 2026-09-12 — the litestream target gets a web form (SPEC §7 A6)
 
 - **The /system/litestream page can set the replica target.** The A6 form
