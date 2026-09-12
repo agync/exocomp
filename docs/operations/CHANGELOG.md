@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the workspace detail gains the Tofu state tray
+
+- **The workspace detail page's identity card becomes the SPEC §2.1 4-tile
+  grid** (Dir · Backend · Provider mirror · Tofu state), and the Tofu state
+  tile links to a new read-only STATE tray (SPEC §2.3) beside the Backend
+  card. The tray lists the workspace's stored `tfstate` serials newest-first
+  from the store (`ListTFStates`), adoption as the first serial, each with the
+  writer (job link, "outside exocomp", or the adoption line) and when it was
+  written.
+- **Browse renders a sealed diff only where one exists.** A serial browses to
+  its plan's show-json diff (the plan-detail page) when a sealed
+  `tofu-plan-show` companion was captured for a plan made against it; every
+  other serial reads a "no sealed diff" note. Read-only: no rollback op
+  exists, so the tray offers none. The §5 TOFU STATE list column is unchanged
+  (regression-covered).
+
 ## 2026-09-12 — workspaces verb forms adopt the forms pattern
 
 - **The workspaces write verbs render their refusals on the surface, never a
