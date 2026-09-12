@@ -16,6 +16,13 @@ import (
 // every other execution path instead of being a direct CLI invocation.
 const JobKind = "backup"
 
+// ForgetJobKind is the queue.Spec/executor.Spec kind a per-snapshot forget
+// job carries (SPEC §7 A12). It is its own kind rather than JobKind so `jobs
+// list` and the job-failure sweep tell a forget's outcome apart from an
+// actual backup's without parsing argv; internal/sched routes it to the same
+// Runner a backup schedule uses (see internal/sched/driver.go).
+const ForgetJobKind = "backup-forget"
+
 // backupArgv0 is the argv[0] a backup job's spec carries. It is never exec'd
 // — Runner intercepts kind JobKind before any shell driver would try — but a
 // job row needs a non-empty, legible argv: queue.Enqueue rejects an empty
@@ -56,11 +63,12 @@ type Runner struct {
 	store     *store.Store
 	run       runFunc
 	targetEnv func(store.BackupTarget) map[string]string
-	// env, stageRoot, and driver serve DrillJobKind only: a drill needs the
-	// live envelope to derive a target's restic password (LiveSource), a
-	// throwaway directory to restore into, and the subprocess driver — the
-	// same three Options the backup leg above gets through the Engine it
-	// closes over instead.
+	// env, stageRoot, and driver serve DrillJobKind and ForgetJobKind only: a
+	// drill needs the live envelope to derive a target's restic password
+	// (LiveSource), a throwaway directory to restore into, and the subprocess
+	// driver; a forget needs the envelope and the driver for its restic
+	// invocation — the same three Options the backup leg above gets through
+	// the Engine it closes over instead.
 	env       *secrets.Envelope
 	stageRoot string
 	driver    executor.Driver
@@ -77,14 +85,18 @@ func NewRunner(st *store.Store, env *secrets.Envelope, opts Options, targetEnv f
 	}
 }
 
-// Run implements executor.Driver. spec.Argv is the job's Argv (see Argv);
-// the exit code is 0 when the target's one leg succeeded, 1 otherwise —
+// Run implements executor.Driver. spec.Argv is the job's Argv (see Argv); a
+// drill or forget spec dispatches to its own leg (runDrill, runForget). The
+// exit code is 0 when the target's one leg succeeded, 1 otherwise —
 // exit-code-only correctness, same as every other driver (AGENTS.md
 // invariant 3). The engine writes the target's backup_run row itself, so a
 // job succeeding or failing here always has one to show for it.
 func (r *Runner) Run(ctx context.Context, spec executor.Spec, sink executor.EventSink) (executor.Result, error) {
 	if spec.Kind == DrillJobKind {
 		return r.runDrill(ctx, spec, sink)
+	}
+	if spec.Kind == ForgetJobKind {
+		return r.runForget(ctx, spec, sink)
 	}
 
 	started := time.Now()
