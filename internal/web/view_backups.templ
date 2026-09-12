@@ -224,7 +224,11 @@ templ retentionCellsInput(f backupRetentionFormVM) {
 // give way to the word "replica" as the confirm target.
 templ restoreDrawer(f *restoreFormVM, base string) {
 	@modal("restore-backups", "Restore the control plane") {
-		<p class="kicker fail">SYSTEM · BACKUPS · DISASTER RECOVERY</p>
+		<p class="kicker fail">SYSTEM · BACKUPS · DISASTER RECOVERY
+			if f.effective().Mode == "replica" {
+				<span class="from"> · FROM REPLICA</span>
+			}
+		</p>
 		<p class="lede">This replaces exocomp's own store. It is the path you take when the daemon's disk is gone — not a way to undo a change. Undo lives on Tofu state serials and plan history.</p>
 		if f.Confirmed {
 			@runHostBody(f)

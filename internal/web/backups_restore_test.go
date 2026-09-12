@@ -166,6 +166,7 @@ func TestBackupRestoreReplicaMode(t *testing.T) {
 		">Show the restore command</button>",
 		"Type the source to confirm",
 		"exocomp restore --from-litestream",
+		"FROM REPLICA",
 		`value="replica" checked`,
 	} {
 		if !strings.Contains(page, want) {
