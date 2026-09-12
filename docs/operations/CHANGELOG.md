@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the sandboxed elevation denial names its fix
+
+- **A failed sandboxed run whose become's sudo was loader-denied gets the
+  action line.** When the run's stderr carries the become-denied signature — a
+  line naming `sudo` whose shared-object loader was denied, the sandbox
+  refusing the un-granted `/usr/libexec/sudo` — the failure grows `the sandbox
+  denied privilege escalation (sudo) — re-run with --privileged (operator-
+  gated, unsandboxed) or run the elevated part outside the agent surface`.
+  Diagnosis copy only: escalation stays denied, and the hint never fires on a
+  plain task failure or a privileged run.
+
 ## 2026-09-12 — the backups 08 nits close
 
 - **The freshness ladder drops onto its own line at ≤1440.** The
