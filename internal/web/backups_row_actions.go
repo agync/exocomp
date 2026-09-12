@@ -51,6 +51,10 @@ func backupRowActions(row backupTargetRow) []rowAction {
 	}
 	acts = append(acts,
 		rowAction{
+			Name: "History", Path: glyphOpen, Menu: true,
+			Href: urlWithBase(row.Base, "/system/backups/"+row.Name+"/history"),
+		},
+		rowAction{
 			Name: "Drill now", Path: glyphDrill, Menu: true,
 			Form: "/system/backups/" + row.Name + "/drill",
 		},

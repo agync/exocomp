@@ -64,14 +64,21 @@ templ viewNtfy(vm ntfyVM) {
 			<div class="sample-card" aria-label="What a push says">
 				<div class="kicker">WHAT A PUSH SAYS</div>
 				<div class="sample descriptive" id="ntfy-sample-desc" hidden?={ vm.Leg.Detail == "terse" }>
-					<p class="lead">1 approval waiting · apply tofu/prod-net</p>
-					<p>expires in 29m, then auto-rejects · { hostname() }</p>
-					<p class="actions">[ Approve ]&nbsp;&nbsp;[ Reject ]</p>
+					<div class="push-sample">
+						<p class="title">1 approval waiting · apply tofu/prod-net</p>
+						<p class="body">expires in 29m, then auto-rejects · { hostname() }</p>
+						<p class="push-actions">
+							<button type="button" class="btn quiet small" disabled>Approve</button>
+							<button type="button" class="btn quiet small" disabled>Reject</button>
+						</p>
+					</div>
 				</div>
 				<div class="sample terse" id="ntfy-sample-terse" hidden?={ vm.Leg.Detail != "terse" }>
-					<p class="lead">exocomp: action required</p>
-					<p>open exocomp to see what</p>
-					<p class="note">no action buttons in terse</p>
+					<div class="push-sample">
+						<p class="title">exocomp: action required</p>
+						<p class="body">open exocomp to see what</p>
+						<p class="note">no action buttons in terse</p>
+					</div>
 				</div>
 			</div>
 

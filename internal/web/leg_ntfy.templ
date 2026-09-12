@@ -21,7 +21,7 @@ templ ntfyCard(vm systemVM) {
 		<div class="leg-figure">
 			if vm.Ntfy.State == NtfyStateOn || vm.Ntfy.State == NtfyStateRefused {
 				if vm.Ntfy.TopicLabel != "" {
-					<span class="value">{ vm.Ntfy.TopicLabel }</span>
+					<span class="value topic">{ vm.Ntfy.TopicLabel }</span>
 					<span class="note">topic · { vm.Ntfy.ServerClass } server</span>
 				} else {
 					<span class="value">—</span>

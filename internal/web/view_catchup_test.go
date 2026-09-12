@@ -150,7 +150,7 @@ func TestSystemPageHealth(t *testing.T) {
 		`href="/system#ntfy"`,
 		`href="/system#litestream"`,
 		`href="/system#backups"`,
-		"rpo ",
+		"litestream ",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("system page missing %q", want)

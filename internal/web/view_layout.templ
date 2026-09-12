@@ -78,11 +78,15 @@ templ layout(p page) {
 						</a>
 					</header>
 					<header class="appbar">
-						if p.BackHref != "" {
+if p.BackHref != "" {
+						if p.BackLabel != "" {
+							<a class="back" href={ templ.SafeURL(p.BackHref) } onclick="exoCloseNav()" aria-label={ "Back to " + p.BackLabel }>‹ <span>{ p.BackLabel }</span></a>
+						} else {
 							<a class="back" href={ templ.SafeURL(p.BackHref) } onclick="exoCloseNav()" aria-label="Back to jobs">
 								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-10 10M14 5l-7 7"></path></svg>
 							</a>
-						} else {
+						}
+					} else {
 							<button type="button" class="hamburger" onclick="exoToggleDrawer()" aria-label="Menu">
 								<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"></path></svg>
 							</button>

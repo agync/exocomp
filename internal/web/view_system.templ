@@ -36,6 +36,17 @@ templ systemPage(vm systemVM) {
 				<span class="meta">· on <span class="host">{ vm.Host }</span> · { vm.Uptime }</span>
 			</span>
 			<span class="right">
+				<span class="pub">
+					<span class="label">public URL</span>
+					if vm.PublicURL != "" {
+						<a class="val" href={ vm.PublicURL }>{ vm.PublicURL }</a>
+					} else {
+						<span class="val none">not set</span>
+					}
+					if vm.Operator {
+						<button type="submit" form="pubform" class="change" data-pub-toggle>Change</button>
+					}
+				</span>
 				<span class="hg">
 					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/doctor") } class="hglyphform" aria-label="Doctor — run the self-check">
 						<button type="submit" class="hglyph" title="Doctor — run the self-check">@legGlyph(glyphDoctor)</button>
@@ -56,33 +67,32 @@ templ systemPage(vm systemVM) {
 						</span>
 					}
 				</span>
-				<span class="pub">
-					<span class="label">public URL</span>
-					if vm.PublicURL != "" {
-						<a class="val" href={ vm.PublicURL }>{ vm.PublicURL }</a>
-					} else {
-						<span class="val none">not set</span>
-					}
-					if vm.Operator {
-						<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" id="pubform" aria-label="Change public URL" novalidate data-pubform>
-						<input type="url" name="url" id="pub-url" value={ vm.PubForm.ValueFor(vm.PublicURL) } autocomplete="off" spellcheck="false"
-							aria-invalid?={ vm.PubForm.ErrMsgText() != "" }
-							aria-describedby="pub-url-meta"/>
-						<span id="pub-url-meta" class={ "meta", templ.KV("is-error", vm.PubForm.ErrMsgText() != "") }>
-							if vm.PubForm.ErrMsgText() != "" {
-								<span class="msg">{ vm.PubForm.ErrMsgText() }</span>
-							} else {
-								approval links and the kit use this
-							}
-						</span>
-						@formStatus(vm.PubForm.Pending(), vm.PubForm.ErrFormText(), "Changing")
-						<button type="submit" class="change" disabled?={ vm.PubForm.Pending() }>Change</button>
-					</form>
-					@pubFormJS()
-				}
-				</span>
 			</span>
 		</section>
+		if vm.Operator {
+			// The Change form rests CLOSED: at rest the server marks it hidden
+			// and the row's Change toggle opens it inline below the strip; a
+			// 422 re-render (data-open) and JS-off (the noscript reveal) both
+			// show it. The toggle is the form's own submit via the form
+			// attribute, so JS-off posts the same bytes a full re-render does.
+			<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" id="pubform" aria-label="Change public URL" novalidate data-pubform data-open?={ vm.PubForm != nil } hidden?={ vm.PubForm == nil }>
+				<input type="url" name="url" id="pub-url" value={ vm.PubForm.ValueFor(vm.PublicURL) } autocomplete="off" spellcheck="false"
+					aria-invalid?={ vm.PubForm.ErrMsgText() != "" }
+					aria-describedby="pub-url-meta"/>
+				<span id="pub-url-meta" class={ "meta", templ.KV("is-error", vm.PubForm.ErrMsgText() != "") }>
+					if vm.PubForm.ErrMsgText() != "" {
+						<span class="msg">{ vm.PubForm.ErrMsgText() }</span>
+					} else {
+						approval links and the kit use this
+					}
+				</span>
+				@formStatus(vm.PubForm.Pending(), vm.PubForm.ErrFormText(), "Changing")
+			</form>
+			<noscript>
+				<style>#pubform[hidden]{display:flex}</style>
+			</noscript>
+			@pubFormJS()
+		}
 
 		<div class="sys-legs">
 			@deadmanCard(vm)
@@ -93,7 +103,7 @@ templ systemPage(vm systemVM) {
 
 		<div class="sys-powerline" aria-label="System signals">
 			<span class="seg version">{ vm.Version }</span>
-			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#litestream")) } data-state={ vm.Self.LSClass }>rpo { vm.Self.LSAge }</a>
+			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#litestream")) } data-state={ vm.Self.LSClass }>litestream { vm.Self.LSWord }</a>
 			<a class="seg" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system#deadman")) } data-state={ vm.Page.Signal.DeadManState }>
 				dead-man { vm.Page.Signal.DeadMan }
 				if vm.Page.Signal.DeadMan == "none" {
@@ -125,12 +135,14 @@ templ systemPage(vm systemVM) {
 	}
 }
 
-// pubFormJS is the Change form's progressive enhancement: the form is
-// novalidate (the validPublicURL guard is authoritative), so submit is
-// intercepted and POSTed with fetch — a 422 swaps the form fragment in place
-// with the server-rendered refusal and the typed value kept (JS-off gets the
-// same bytes as a full re-render), anything else follows the redirect and its
-// success flash. A refusal never flashes.
+// pubFormJS is the Change form's progressive enhancement: the form rests
+// CLOSED (the server renders it hidden; JS-off reveals it through the noscript
+// rule) and the row's Change toggle expands it inline below the strip. Once
+// expanded, the toggle is the form's own submit (form attribute), intercepted
+// and POSTed with fetch — a 422 swaps the form fragment in place with the
+// server-rendered refusal and the typed value kept (a refusal re-renders with
+// data-open, so it never re-collapses), anything else follows the redirect and
+// its success flash.
 templ pubFormJS() {
 	<script>
 	(function () {
@@ -138,11 +150,20 @@ templ pubFormJS() {
 			var form = document.getElementById("pubform");
 			if (!form || form.dataset.pubformWired) return;
 			form.dataset.pubformWired = "1";
+			var toggle = document.querySelector('[data-pub-toggle]');
+			if (!toggle) return;
+			// A closed form expands on Change; an open one submits.
+			toggle.addEventListener("click", function (e) {
+				if (!form.hidden) return;
+				e.preventDefault();
+				form.hidden = false;
+				var first = form.querySelector("input");
+				if (first) first.focus();
+			});
 			form.addEventListener("submit", function (e) {
 				e.preventDefault();
-				var primary = form.querySelector('button[type="submit"]');
 				var status = form.querySelector(".form-status");
-				primary.disabled = true;
+				toggle.disabled = true;
 				status.innerHTML = '<span class="dot"></span>Changing';
 				fetch(form.getAttribute("action"), {
 					method: "POST",
@@ -167,7 +188,7 @@ templ pubFormJS() {
 					if (loc) { window.location = loc; return; }
 					window.location.reload();
 				}).catch(function () {
-					primary.disabled = false;
+					toggle.disabled = false;
 					status.textContent = "";
 				});
 			});

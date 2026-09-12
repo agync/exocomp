@@ -210,6 +210,14 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	vm.Host = hostname()
 	vm.Uptime = s.uptimeLabel()
 	vm.BackupsWord, vm.BackupsState = backupsPowerWord(backups)
+	// The Backups card's figure quotes the SAME ONE age rule the Dead-man card
+	// quotes (LastSucceededBackupTime) — never a second computation.
+	vm.BackupsAge, vm.BackupsAgeClass = "—", "dim"
+	if when, ever := s.store.LastSucceededBackupTime(r.Context()); ever {
+		age := s.now().Sub(when)
+		vm.BackupsAge = humanAge(age)
+		vm.BackupsAgeClass = backupFreshness(age)
+	}
 	vm.Ntfy = s.ntfyCardVM(r.Context())
 
 	vm.Deadman = s.deadmanVM(r)
@@ -234,7 +242,7 @@ func (s *Server) handleDeadman(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deadmanVMFor(r *http.Request) (viewDeadmanVM, error) {
-	vm := viewDeadmanVM{Page: s.pageFor(r, "Dead-man", "system")}
+	vm := viewDeadmanVM{Page: s.pageFor(r, "System · Dead-man", "system")}
 	vm.Page.Meta = "last good backup age vs the trip threshold"
 	vm.Deadman = s.deadmanVM(r)
 	return vm, nil

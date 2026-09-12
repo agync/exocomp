@@ -296,20 +296,20 @@ func viewNtfy(vm ntfyVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "><p class=\"lead\">1 approval waiting · apply tofu/prod-net</p><p>expires in 29m, then auto-rejects · ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "><div class=\"push-sample\"><p class=\"title\">1 approval waiting · apply tofu/prod-net</p><p class=\"body\">expires in 29m, then auto-rejects · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var21 string
 			templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(hostname())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 68, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 69, Col: 71}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</p><p class=\"actions\">[ Approve ]&nbsp;&nbsp;[ Reject ]</p></div><div class=\"sample terse\" id=\"ntfy-sample-terse\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</p><p class=\"push-actions\"><button type=\"button\" class=\"btn quiet small\" disabled>Approve</button> <button type=\"button\" class=\"btn quiet small\" disabled>Reject</button></p></div></div><div class=\"sample terse\" id=\"ntfy-sample-terse\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -319,7 +319,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "><p class=\"lead\">exocomp: action required</p><p>open exocomp to see what</p><p class=\"note\">no action buttons in terse</p></div></div><div class=\"fanout-table\" aria-label=\"What pages\"><div class=\"kicker\">WHAT PAGES</div><table><thead><tr><th scope=\"col\">EVENT</th><th scope=\"col\">PRIORITY</th><th scope=\"col\">RE-NOTIFY</th></tr></thead> <tbody><tr><td>approval waiting</td><td><span class=\"chip wait\"><span class=\"dot\"></span>high</span></td><td>every 10m · max</td></tr><tr><td>job failed · degraded</td><td>default</td><td>once per job</td></tr><tr><td>dead-man tripped</td><td><span class=\"chip wait\"><span class=\"dot\"></span>high</span></td><td>once</td></tr></tbody></table><p class=\"meta\">one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>, not a setting here</p></div><div class=\"mutes-table\" id=\"mutes\" aria-label=\"Mutes\"><div class=\"kicker\">MUTES</div><table><thead><tr><th scope=\"col\">SOURCE</th><th scope=\"col\">HOST</th><th scope=\"col\">UNTIL</th><th scope=\"col\"></th></tr></thead> <tbody>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "><div class=\"push-sample\"><p class=\"title\">exocomp: action required</p><p class=\"body\">open exocomp to see what</p><p class=\"note\">no action buttons in terse</p></div></div></div><div class=\"fanout-table\" aria-label=\"What pages\"><div class=\"kicker\">WHAT PAGES</div><table><thead><tr><th scope=\"col\">EVENT</th><th scope=\"col\">PRIORITY</th><th scope=\"col\">RE-NOTIFY</th></tr></thead> <tbody><tr><td>approval waiting</td><td><span class=\"chip wait\"><span class=\"dot\"></span>high</span></td><td>every 10m · max</td></tr><tr><td>job failed · degraded</td><td>default</td><td>once per job</td></tr><tr><td>dead-man tripped</td><td><span class=\"chip wait\"><span class=\"dot\"></span>high</span></td><td>once</td></tr></tbody></table><p class=\"meta\">one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>, not a setting here</p></div><div class=\"mutes-table\" id=\"mutes\" aria-label=\"Mutes\"><div class=\"kicker\">MUTES</div><table><thead><tr><th scope=\"col\">SOURCE</th><th scope=\"col\">HOST</th><th scope=\"col\">UNTIL</th><th scope=\"col\"></th></tr></thead> <tbody>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -337,7 +337,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 					var templ_7745c5c3_Var22 string
 					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(m.Source)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 110, Col: 23}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 117, Col: 23}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 					if templ_7745c5c3_Err != nil {
@@ -350,7 +350,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 					var templ_7745c5c3_Var23 string
 					templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(m.Host)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 111, Col: 21}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 118, Col: 21}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 					if templ_7745c5c3_Err != nil {
@@ -363,7 +363,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 					var templ_7745c5c3_Var24 string
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(m.Until)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 112, Col: 22}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 119, Col: 22}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -381,7 +381,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 						var templ_7745c5c3_Var25 templ.SafeURL
 						templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/mutes/"+itoa64(m.ID)+"/clear")))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 115, Col: 129}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 122, Col: 129}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 						if templ_7745c5c3_Err != nil {
@@ -394,7 +394,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 						var templ_7745c5c3_Var26 string
 						templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(m.ClearConfirm)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 115, Col: 181}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 122, Col: 181}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 						if templ_7745c5c3_Err != nil {
@@ -412,7 +412,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 						var templ_7745c5c3_Var27 templ.SafeURL
 						templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/mutes/"+itoa64(m.ID)+"/clear")))
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 119, Col: 129}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 126, Col: 129}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 						if templ_7745c5c3_Err != nil {
@@ -444,7 +444,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 			var templ_7745c5c3_Var28 templ.SafeURL
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 135, Col: 94}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 142, Col: 94}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -457,7 +457,7 @@ func viewNtfy(vm ntfyVM) templ.Component {
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Leg.Detail)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 138, Col: 103}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 145, Col: 103}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -536,7 +536,7 @@ func ntfyStatus(st ntfyTestStatus) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(st.Msg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 152, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 159, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -555,7 +555,7 @@ func ntfyStatus(st ntfyTestStatus) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(st.Msg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 155, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_ntfy.templ`, Line: 162, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {

@@ -510,15 +510,18 @@ func (s *Server) historyRefusal(w http.ResponseWriter, r *http.Request, name, sn
 	s.render(w, r, http.StatusUnprocessableEntity, backupsHistory(vm))
 }
 
-// handleBackupRestore is the DR drawer's verb (SPEC §4.3): it runs the round's
-// hard rule (c) — the typed id must match the selected snapshot's id — and
-// then refuses to fake a restore over the live store. A restore replaces the
-// store this daemon runs on and needs the offline recovery identity
+// handleBackupRestore is the DR drawer's verb (SPEC §4.3, D3): it runs the
+// round's hard rule (c) — the typed id must match the selected snapshot's id —
+// and then REFUSES to fake a restore over the live store. A restore replaces
+// the store this daemon runs on and needs the offline recovery identity
 // (backup.RestoreLatest's checkDest refuses a destination that already holds a
-// keyring), so the live web cannot execute it: the confirm gate passes and the
-// flash names the recovery-kit CLI path. A wrong id rings the button and
-// refuses on the drawer — never a flash. Replica mode (m76's deep link) types
-// the word "replica" through the same gate.
+// keyring), so the live web cannot execute it: a valid typed confirm changes
+// the drawer body to the RUN ON THE HOST block — the recovery-kit command
+// (`exocomp restore` / `--from-litestream`) with its Copy verb — re-rendered
+// at 200 with the drawer open (JS reveals it in place; this is the JS-off
+// path). A wrong id rings the button and refuses on the drawer at 422 — never
+// a flash. Replica mode (m76's deep link) types the word "replica" through the
+// same gate.
 func (s *Server) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
@@ -552,13 +555,13 @@ func (s *Server) handleBackupRestore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: backup restore confirmed", "from", form.Mode, "snapshot", selected, "by", ident.token.Name)
-	if form.Mode == "replica" {
-		s.redirectFlash(w, r, "/system/backups",
-			"restore from replica confirmed — run exocomp restore --from-litestream on the host (recovery kit)")
+	form.Confirmed = true
+	vm, err := s.backupsVMFor(r, nil, nil, form)
+	if err != nil {
+		s.fail(w, r, err)
 		return
 	}
-	s.redirectFlash(w, r, "/system/backups",
-		"restore from #"+selected+" confirmed — the recovery-kit CLI (exocomp restore) restores the newest snapshot")
+	s.render(w, r, http.StatusOK, backupsList(vm))
 }
 
 // currentSnapshots is the drawer's radio source at submit time, so a typed id

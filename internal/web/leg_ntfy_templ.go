@@ -108,14 +108,14 @@ func ntfyCard(vm systemVM) templ.Component {
 		}
 		if vm.Ntfy.State == NtfyStateOn || vm.Ntfy.State == NtfyStateRefused {
 			if vm.Ntfy.TopicLabel != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<span class=\"value\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<span class=\"value topic\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Ntfy.TopicLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 24, Col: 45}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 24, Col: 51}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {

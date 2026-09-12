@@ -780,7 +780,7 @@ func deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "show to check what you pasted · sealed as deadman/heartbeat_url on Arm, then never shown here again")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "pinged after every succeeded backup · printed on the recovery kit · sealed as deadman/heartbeat_url on Arm, then never shown here again")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

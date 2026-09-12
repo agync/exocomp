@@ -30,10 +30,14 @@ type page struct {
 	Base string
 	// BackHref is the detail page's back-chevron target (SPEC §2.0): the
 	// phone app bar swaps its menu button for a back chevron when set. Empty
-	// renders the menu button. TitleSub stacks under Title ("Job #5" / the
-	// mono playbook) on the phone shell; empty renders a single-line title.
-	BackHref string
-	TitleSub string
+	// renders the menu button. BackLabel upgrades that back affordance to a
+	// worded `‹ {label}` quiet link (R8's `‹ targets` on the backup-history
+	// page); empty keeps the glyph chevron. TitleSub stacks under Title
+	// ("Job #5" / the mono playbook) on the phone shell; empty renders a
+	// single-line title.
+	BackHref  string
+	BackLabel string
+	TitleSub  string
 	// Actions is the phone app bar's action list (SPEC §2.0): the 36px
 	// compact buttons (Raw log control, Rerun accent). It coexists with Add:
 	// Add stays the desktop page-add verb, Actions the phone app-bar list.
@@ -462,6 +466,13 @@ type systemVM struct {
 	Uptime       string // "up 6d 04h" from the daemon start time
 	BackupsWord  string // "backups ok" | "backups none" | "backups {n} failing"
 	BackupsState string // ok|wait|fail — the card chip's colour for the strip
+	// BackupsAge is the Backups card's FIGURE: the ONE age rule (the newest
+	// SUCCEEDED run across enabled targets, LastSucceededBackupTime) — the
+	// same read the Dead-man card quotes, so the two cards agree. "—" (dim)
+	// when nothing has ever succeeded; BackupsAgeClass carries the freshness
+	// ladder's colour for the figure.
+	BackupsAge      string
+	BackupsAgeClass string // ok|wait|fail|dim
 	// Deadman is the dead-man leg's card state (SPEC §1). The age it quotes is
 	// the store's ONE rule (LastSucceededBackupTime), the same read the
 	// powerline's vm.Page.Signal.DeadMan makes — never a second computation.
@@ -1038,6 +1049,10 @@ type selfObs struct {
 	LSAge        string // RPO age, or "unknown"
 	LSClass      string // ok|wait|fail|dim
 	LSDetail     string
+	// LSWord is the self-care powerline's litestream segment word — the leg
+	// plus its word ("litestream no sidecar", "litestream 4m"), never the
+	// retired `rpo` metric name.
+	LSWord string
 }
 
 // sourcesVM, schedulesVM, workflowsVM, workflowVM and policiesVM are the
@@ -1942,6 +1957,7 @@ func scheduleTitle(j jobRow) string {
 type backupRow struct {
 	Name      string
 	Kind      string
+	Enabled   bool
 	State     string
 	Snapshot  string
 	Age       string
@@ -2151,12 +2167,13 @@ func (r backupTargetRow) LastRunWord() string {
 }
 
 // LastRunLine is the LAST RUN cell's first line after the chip: the snapshot
-// and age for a success, the age for a failure, the elapsed + job for a
-// running run (A9), "never ran" for a target with no history.
+// and age for a success, the age for a failure, the elapsed for a running run
+// (the job link renders beside it, R7's "only job # links"), "never ran" for
+// a target with no history.
 func (r backupTargetRow) LastRunLine() string {
 	switch r.State {
 	case "running":
-		return r.Duration + " · job #" + itoa64(r.JobID)
+		return r.Duration
 	case "succeeded":
 		return "#" + r.Snapshot + " " + r.Age + " ago"
 	case "failed":
@@ -2168,27 +2185,28 @@ func (r backupTargetRow) LastRunLine() string {
 	}
 }
 
-// LastRunMeta is the LAST RUN cell's second line: the bytes + duration +
-// job + drill facts of a success, the reason + job + failed-in-a-row of a
-// failure, the job of a cancelled run.
+// LastRunMeta is the LAST RUN cell's second line (R7): it LEADS with the drill
+// slot — `drill —` when never drilled, `drill {age} ago ok` + the drill's
+// outcome (A4) when the newest drill succeeded — then the run's own bytes and
+// duration. The job id is not in the string: the template renders it as its
+// own link so only `job #N` reads as a link, never the whole line.
 func (r backupTargetRow) LastRunMeta() string {
 	switch r.State {
 	case "succeeded":
 		parts := []string{}
+		if r.DrillOK {
+			parts = append(parts, "drill "+r.DrillAge+" ago ok")
+		} else {
+			parts = append(parts, "drill —")
+		}
+		if fact := r.DrillFact(); fact != "" {
+			parts = append(parts, fact)
+		}
 		if r.Bytes != "" {
 			parts = append(parts, "+"+r.Bytes)
 		}
 		if r.Duration != "" {
 			parts = append(parts, r.Duration)
-		}
-		if r.JobID > 0 {
-			parts = append(parts, "job #"+itoa64(r.JobID))
-		}
-		if r.DrillOK {
-			parts = append(parts, "drill "+r.DrillAge+" ago ok")
-			if fact := r.DrillFact(); fact != "" {
-				parts = append(parts, fact)
-			}
 		}
 		return strings.Join(parts, " · ")
 	case "failed":
@@ -2196,17 +2214,12 @@ func (r backupTargetRow) LastRunMeta() string {
 		if r.Reason != "" {
 			parts = append(parts, truncateMeta(r.Reason, lastRunReasonCap))
 		}
-		if r.JobID > 0 {
-			parts = append(parts, "job #"+itoa64(r.JobID))
-		}
 		if r.FailedSeq > 1 {
 			parts = append(parts, itoa(int64(r.FailedSeq))+" failed in a row")
 		}
 		return strings.Join(parts, " · ")
 	case "cancelled":
-		if r.JobID > 0 {
-			return "job #" + itoa64(r.JobID)
-		}
+		return ""
 	}
 	return ""
 }
@@ -2224,25 +2237,19 @@ func (r backupTargetRow) DrillFact() string {
 	return r.DrillBytes + " verified · " + r.DrillDuration
 }
 
-// ShortFact is the Backups card's third id-cluster cell: a running run's
-// `● RUNNING · job #…` (A9), a success's snapshot, or empty for a failure
-// (its FAILED chip and age carry the fact).
-func (r backupRow) ShortFact() string {
-	if r.State == "running" {
-		return "● RUNNING · job #" + itoa64(r.RunningJobID)
-	}
-	if r.Snapshot != "" {
-		return "#" + r.Snapshot
-	}
-	return ""
-}
-
 // backupsCardChip derives the Backups card's state chip from the freshness
 // rows the card draws (copy.txt): OK (ok), {n} OF {m} FAILING (wait; fail when
-// n ≥ 2 or n = m), NONE (wait) when no target exists or one has never run.
+// n ≥ 2 or n = m), NONE (wait) when no ENABLED target exists or one has never
+// run. A DISABLED target is not a failure and not a gap — it is skipped, so an
+// OK target keeps the chip OK (R4).
 func backupsCardChip(rows []backupRow) (string, string) {
 	nFailed, nNever := 0, 0
+	nEnabled := 0
 	for _, r := range rows {
+		if !r.Enabled {
+			continue
+		}
+		nEnabled++
 		switch r.State {
 		case "failed":
 			nFailed++
@@ -2252,11 +2259,11 @@ func backupsCardChip(rows []backupRow) (string, string) {
 	}
 	switch {
 	case nFailed > 0:
-		if nFailed >= 2 || nFailed == len(rows) {
-			return itoa(int64(nFailed)) + " OF " + itoa(int64(len(rows))) + " FAILING", "fail"
+		if nFailed >= 2 || nFailed == nEnabled {
+			return itoa(int64(nFailed)) + " OF " + itoa(int64(nEnabled)) + " FAILING", "fail"
 		}
-		return "1 OF " + itoa(int64(len(rows))) + " FAILING", "wait"
-	case len(rows) == 0 || nNever > 0:
+		return "1 OF " + itoa(int64(nEnabled)) + " FAILING", "wait"
+	case nEnabled == 0 || nNever > 0:
 		return "NONE", "wait"
 	default:
 		return "OK", "ok"
@@ -2344,6 +2351,11 @@ type restoreFormVM struct {
 	ErrConfirm  string
 	ErrForm     string
 	Submitting  bool
+	// Confirmed is true once the typed id has matched: the drawer body then
+	// changes to the RUN ON THE HOST block — the recovery-kit command with its
+	// Copy verb — instead of the confirm form. JS reveals it in place; the
+	// server sets it on a JS-off valid submit (D3).
+	Confirmed bool
 }
 
 func (f *restoreFormVM) effective() restoreFormVM {
@@ -3863,14 +3875,19 @@ func platformLabel() string { return runtime.GOOS + "/" + runtime.GOARCH }
 
 // backupsPowerWord derives the self-care powerline's backups segment from the
 // freshness rows the Backups card draws (never a second read): "backups ok"
-// when every enabled target's newest run succeeded, "backups none" when no
-// target exists or one has never run (a gap, wait — never a fail), and
+// when every ENABLED target's newest run succeeded, "backups none" when no
+// enabled target exists or one has never run (a gap, wait — never a fail), and
 // "backups {n} failing" when runs have failed — wait for one, fail for two or
-// more, the card chip's own rule.
+// more, the card chip's own rule. A disabled target contributes nothing.
 func backupsPowerWord(rows []backupRow) (string, string) {
 	nFailed := 0
 	nNever := 0
+	nEnabled := 0
 	for _, r := range rows {
+		if !r.Enabled {
+			continue
+		}
+		nEnabled++
 		switch r.State {
 		case "failed":
 			nFailed++
@@ -3878,7 +3895,7 @@ func backupsPowerWord(rows []backupRow) (string, string) {
 			nNever++
 		}
 	}
-	if len(rows) == 0 || nNever > 0 {
+	if nEnabled == 0 || nNever > 0 {
 		return "backups none", "wait"
 	}
 	if nFailed == 0 {

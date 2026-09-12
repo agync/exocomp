@@ -44,7 +44,7 @@ func (s *Server) handleBackups(w http.ResponseWriter, r *http.Request) {
 func (s *Server) backupsVMFor(r *http.Request, addForm *backupAddFormVM, retentionForm *backupRetentionFormVM, restore *restoreFormVM) (backupsVM, error) {
 	ident, _ := identityOf(r.Context())
 	vm := backupsVM{
-		Page: s.pageFor(r, "System / Backups", "system"), Operator: canWrite(ident),
+		Page: s.pageFor(r, "System · Backups", "system"), Operator: canWrite(ident),
 		AddForm: addForm, RetentionForm: retentionForm, Restore: restore,
 	}
 	rows, err := s.backupListRows(r.Context())
@@ -115,11 +115,12 @@ func (s *Server) historyVMFor(r *http.Request, name string) (backupsHistoryVM, e
 	}
 	ident, _ := identityOf(r.Context())
 	vm := backupsHistoryVM{
-		Page:     s.pageFor(r, "Backups · "+target.Name, "system"),
+		Page:     s.pageFor(r, "System · Backups · "+target.Name, "system"),
 		Operator: canWrite(ident),
 		Target:   target.Name, Kind: target.Kind, Enabled: target.Enabled,
 	}
 	vm.Page.BackHref = s.url("/system/backups")
+	vm.Page.BackLabel = "targets"
 	rows, err := s.backupHistoryRows(r.Context(), target)
 	if err != nil {
 		return backupsHistoryVM{}, err

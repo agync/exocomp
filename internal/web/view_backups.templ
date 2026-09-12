@@ -15,7 +15,7 @@ templ backupsList(vm backupsVM) {
 			@backupAddDialog(vm)
 		}
 		<section class="sys-bkbar">
-			<span class="sys-bk-meta">{ itoa(int64(len(vm.Targets))) } targets · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
+			<span class="sys-bk-meta">System / Backups · { itoa(int64(len(vm.Targets))) } targets · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
 			if vm.Operator {
 				<span class="sys-bk-verbs">
 					<button type="button" class="btn danger ring" data-modal-open="restore-backups">Restore</button>
@@ -27,7 +27,6 @@ templ backupsList(vm backupsVM) {
 			<p class="error" role="alert">{ vm.Notice }</p>
 		}
 		<div class="card span2 mt18 tray">
-			<div class="kicker">System / Backups</div>
 			<h3>Targets</h3>
 			if !vm.Operator {
 				<p class="meta">Read-only: managing backups needs an operator token.</p>
@@ -79,8 +78,16 @@ templ backupsList(vm backupsVM) {
 												@chip(row.StateClass(), row.LastRunWord())
 											}
 											<span class={ "lr-text", templ.KV("dim", !row.HasRun) }>{ row.LastRunLine() }</span>
+											if row.State == "running" && row.JobID > 0 {
+												<span class="lr-sep"> · </span><a class="lr-job" href={ urlWithBase(vm.Page.Base, "/jobs/" + itoa64(row.JobID)) }>job #{ row.JobID }</a>
+											}
 										</span>
-										<span class="lr-meta">{ row.LastRunMeta() }</span>
+										<span class="lr-meta">
+											{ row.LastRunMeta() }
+											if row.JobID > 0 && row.State != "running" {
+												<span class="lr-sep"> · </span><a class="lr-job" href={ urlWithBase(vm.Page.Base, "/jobs/" + itoa64(row.JobID)) }>job #{ row.JobID }</a>
+											}
+										</span>
 									</td>
 									if vm.Operator {
 										<td data-label="ACTIONS" class="actions-col">
@@ -95,8 +102,8 @@ templ backupsList(vm backupsVM) {
 			}
 		</div>
 		<p class="sys-bk-footer">
-			<span>▾ holds: edit retention · disable · drill now · ─ · remove asks first</span>
-			<span class="right">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
+			<span>▾ holds: history · edit retention · disable · drill now · ─ · remove asks first</span>
+			<span class="right"> · freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
 		</p>
 
 		@restoreDrawer(vm.Restore, vm.Page.Base)
@@ -126,7 +133,7 @@ templ backupAddDialog(vm backupsVM) {
 			@fieldInput(vm.AddForm.nameField())
 			<label class="field">
 				<span class="label">Kind</span>
-				<div class="seg" role="radiogroup" aria-label="Kind">
+				<div class="field-seg" role="radiogroup" aria-label="Kind">
 					<label><input type="radio" name="kind" value={ backup.KindResticLocal } checked?={ vm.AddForm.kindIs(backup.KindResticLocal) }/>restic_local</label>
 					<label><input type="radio" name="kind" value={ backup.KindResticS3 } checked?={ vm.AddForm.kindIs(backup.KindResticS3) }/>restic_s3</label>
 					<label><input type="radio" name="kind" value={ backup.KindGit } checked?={ vm.AddForm.kindIs(backup.KindGit) }/>git</label>
@@ -204,72 +211,96 @@ templ retentionCellsInput(f backupRetentionFormVM) {
 	</label>
 }
 
-// restoreDrawer is the Restore DR drawer (SPEC §4.3, fail ring): the From
-// switch, the snapshot radios newest-first across targets, WHAT HAPPENS with
-// the loss in fail, and the typed confirm — the round's hard rule (c), no
-// second confirm after it. The danger button rings until the typed id matches
-// the selected snapshot's id (restoreDrawerJS), then fills. In replica mode
-// (m76's litestream deep link, ?restore=replica) the radios give way to the
-// word "replica" as the confirm target and the CLI echo shows
-// --from-litestream. The live daemon cannot replace the store it runs on, so
-// a confirmed restore names the recovery-kit CLI path instead of pretending.
+// restoreDrawer is the Restore DR drawer (SPEC §4.3, D3): the From segmented
+// switch, the custom 44px snapshot radio rows newest-first across targets,
+// WHAT HAPPENS (its kicker + the loss in a fail span), and the typed confirm —
+// the round's hard rule (c), no second confirm after it. Before the typed id
+// matches, the verb reads `Show the restore command` (quiet, fail ring) —
+// never `Restore from …`, a button that pretends the live daemon can replace
+// the store it serves. A valid typed confirm changes the drawer body to the
+// RUN ON THE HOST block: the recovery-kit command (`exocomp restore` /
+// --from-litestream) with its Copy verb and the sentence naming the kit path.
+// In replica mode (m76's litestream deep link, ?restore=replica) the radios
+// give way to the word "replica" as the confirm target.
 templ restoreDrawer(f *restoreFormVM, base string) {
 	@modal("restore-backups", "Restore the control plane") {
 		<p class="kicker fail">SYSTEM · BACKUPS · DISASTER RECOVERY</p>
 		<p class="lede">This replaces exocomp's own store. It is the path you take when the daemon's disk is gone — not a way to undo a change. Undo lives on Tofu state serials and plan history.</p>
-		<form method="post" action={ urlWithBase(base, "/system/backups/restore") } class="writeform" id="restore-backups-form" novalidate data-restore>
-			<label class="field">
-				<span class="label">From</span>
-				<div class="seg" role="radiogroup" aria-label="From">
-					<label><input type="radio" name="from" value="snapshot" checked?={ f.effective().Mode != "replica" }/> snapshot</label>
-					<label><input type="radio" name="from" value="replica" checked?={ f.effective().Mode == "replica" }/> replica</label>
+		if f.Confirmed {
+			@runHostBody(f)
+		} else {
+			<form method="post" action={ urlWithBase(base, "/system/backups/restore") } class="writeform" id="restore-backups-form" novalidate data-restore>
+				<label class="field">
+					<span class="label">From</span>
+					<div class="field-seg" role="radiogroup" aria-label="From">
+						<label><input type="radio" name="from" value="snapshot" checked?={ f.effective().Mode != "replica" }/> snapshot</label>
+						<label><input type="radio" name="from" value="replica" checked?={ f.effective().Mode == "replica" }/> replica</label>
+					</div>
+					<span class="meta">snapshot · { f.NewestAge() } old, verified by the drill · replica · { orDash(f.effective().Lag) } behind, unverified</span>
+				</label>
+				if f.effective().Mode == "replica" {
+					<div class="restore-replica-note">
+						<p class="meta">Restore exocomp.db only, from the Litestream replica, onto a data dir that already holds the keyring. This is the fast-RPO path — the full restic restore still comes first.</p>
+					</div>
+				} else {
+					<div class="snaps">
+						<span class="label">Snapshot</span>
+						for _, snap := range f.effective().Snapshots {
+							<label class="snap-row" data-snap={ snap.ID }>
+								<input type="radio" name="snapshot" value={ snap.ID } checked?={ f.effective().Selected == snap.ID }/>
+								<span class="snap-main">
+									<span class="mono snap-id">#{ snap.ID }</span>
+									<span class="snap-facts">{ snap.Target } · { snap.Age } ago · { orDash(snap.Size) }</span>
+									if snap.Drilled {
+										<span class="snap-drill ok">drilled { snap.DrillAge } ago (ok)</span>
+									}
+								</span>
+							</label>
+						}
+						<span class="meta">newest first across every target · all { itoa(int64(len(f.effective().Snapshots))) } snapshots</span>
+					</div>
+				}
+				<div class="wh">
+					<span class="kicker">WHAT HAPPENS</span>
+					<p><b>1 ·</b> the queue drains · { itoa(int64(f.effective().RunningJobs)) } running jobs finish, nothing new starts</p>
+					<p><b>2 ·</b> the store is replaced from <span class="mono">{ f.selectedLabel() }</span> · { f.effective().LossAge } of events, jobs and { f.WaitingLabel() } are lost <span class="fail">(fail)</span></p>
+					<p><b>3 ·</b> the daemon restarts · you sign in again · doctor runs</p>
 				</div>
-				<span class="meta">snapshot · { f.NewestAge() } old, verified by the drill · replica · { orDash(f.effective().Lag) } behind, unverified</span>
-			</label>
-			if f.effective().Mode == "replica" {
-				<div class="restore-replica-note">
-					<p class="meta">Restore exocomp.db only, from the Litestream replica, onto a data dir that already holds the keyring. This is the fast-RPO path — the full restic restore still comes first.</p>
+				<label class="field">
+					<span class="label">{ f.confirmLabel() }</span>
+					<input class="control" id="restore-confirm" name="confirm" value={ f.effective().Confirm } spellcheck="false" placeholder={ f.confirmPlaceholder() } aria-invalid?={ f.effective().ErrConfirm != "" } aria-describedby="restore-confirm-meta" autocomplete="off"/>
+					<span id="restore-confirm-meta" class={ "meta", templ.KV("is-error", f.effective().ErrConfirm != "") }>
+						if f.effective().ErrConfirm != "" {
+							<span class="msg">▲ { f.effective().ErrConfirm }</span>
+						} else {
+							the dialog is the safety — no second confirm after this
+						}
+					</span>
+				</label>
+				@formStatus(f.effective().Submitting, f.ErrFormText(), "Showing the restore command")
+				<div class="actions">
+					<button type="submit" class="btn quiet ring" id="restore-submit" data-required-id={ f.requiredID() }>{ f.buttonLabel() }</button>
 				</div>
-			} else {
-				<fieldset class="snaps">
-					<legend>Snapshot</legend>
-					for _, snap := range f.effective().Snapshots {
-						<label class="snap-row" data-snap={ snap.ID }>
-							<input type="radio" name="snapshot" value={ snap.ID } checked?={ f.effective().Selected == snap.ID }/>
-							<span class="mono snap-id">#{ snap.ID }</span>
-							<span class="snap-facts">{ snap.Target } · { snap.Age } ago · { orDash(snap.Size) }</span>
-							if snap.Drilled {
-								<span class="snap-drill ok">drilled { snap.DrillAge } ago (ok)</span>
-							}
-						</label>
-					}
-					<span class="meta">newest first across every target · all { itoa(int64(len(f.effective().Snapshots))) } snapshots</span>
-				</fieldset>
-			}
-			<div class="wh">
-				<p><b>1 ·</b> the queue drains · { itoa(int64(f.effective().RunningJobs)) } running jobs finish, nothing new starts</p>
-				<p><b>2 ·</b> the store is replaced from <span class="mono">{ f.selectedLabel() }</span> · { f.effective().LossAge } of events, jobs and { f.WaitingLabel() } are lost <span class="fail-text">(fail)</span></p>
-				<p><b>3 ·</b> the daemon restarts · you sign in again · doctor runs</p>
+			</form>
+			<div class="run-host" id="run-host" hidden>
+				@runHostBody(f)
 			</div>
-			<label class="field">
-				<span class="label">{ f.confirmLabel() }</span>
-				<input class="control" id="restore-confirm" name="confirm" value={ f.effective().Confirm } spellcheck="false" placeholder={ f.confirmPlaceholder() } aria-invalid?={ f.effective().ErrConfirm != "" } aria-describedby="restore-confirm-meta" autocomplete="off"/>
-				<span id="restore-confirm-meta" class={ "meta", templ.KV("is-error", f.effective().ErrConfirm != "") }>
-					if f.effective().ErrConfirm != "" {
-						<span class="msg">▲ { f.effective().ErrConfirm }</span>
-					} else {
-						the dialog is the safety — no second confirm after this
-					}
-				</span>
-			</label>
-			@formStatus(f.effective().Submitting, f.ErrFormText(), "Confirming restore")
-			<div class="actions">
-				<button type="submit" class="btn danger ring" id="restore-submit" data-required-id={ f.requiredID() }>{ f.buttonLabel() }</button>
-			</div>
-			<p class="echo">{ f.echoLine() }</p>
-		</form>
+		}
 		@restoreDrawerJS()
 	}
+}
+
+// runHostBody is the confirmed drawer's body (D3): the kicker in fail, the
+// recovery-kit command in a code block with the shared copybtn (whose sibling
+// <pre> is the command), and the sentence that the live daemon cannot replace
+// the store it serves — this is the recovery-kit path.
+templ runHostBody(f *restoreFormVM) {
+	<span class="kicker fail">RUN ON THE HOST</span>
+	<div class="run-cmd">
+		<pre class="run-cmd-code">{ f.cliCommand() }</pre>
+		<button type="button" class="copybtn" aria-label="Copy to clipboard" title="Copy">Copy</button>
+	</div>
+	<p class="meta">the daemon cannot replace the store it serves · this is the recovery kit path</p>
 }
 
 // selectedLabel is the WHAT HAPPENS replacement source: the selected
@@ -316,27 +347,22 @@ func (f *restoreFormVM) requiredID() string {
 	return ""
 }
 
-// buttonLabel is the danger primary's verb, filling once the typed id matches
-// (the ring comes off in restoreDrawerJS): "Restore from #a3f9c2" on the DR
-// path, "Restore from replica" in litestream mode.
+// buttonLabel is the pre-confirm verb (D3): `Show the restore command`, quiet
+// with a fail ring while the typed id does not match — never a `Restore from
+// …` button that pretends the live daemon can replace the store it serves.
 func (f *restoreFormVM) buttonLabel() string {
-	if f.effective().Mode == "replica" {
-		return "Restore from replica"
-	}
-	if sel := f.SelectedSnapshot(); sel != nil {
-		return "Restore from #" + sel.ID
-	}
-	return "Restore"
+	return "Show the restore command"
 }
 
-// echoLine is the CLI echo incl. --from-litestream, with the recovery-kit
-// note. The CLI restore names no snapshot — it restores the newest, so the
-// echo never pretends a --snapshot flag (round rule: no verb that pretends).
-func (f *restoreFormVM) echoLine() string {
+// cliCommand is the RUN ON THE HOST block's command: the recovery-kit CLI path
+// the confirmed drawer hands the operator. The CLI restores the newest
+// snapshot, so the snapshot face names no --snapshot flag (round rule: no verb
+// that pretends); replica mode names --from-litestream.
+func (f *restoreFormVM) cliCommand() string {
 	if f.effective().Mode == "replica" {
-		return "same as exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
+		return "exocomp restore --from-litestream"
 	}
-	return "same as exocomp restore — the CLI restores the newest snapshot · from a replica: exocomp restore --from-litestream · the CLI path is on the recovery kit for when this page is gone"
+	return "exocomp restore"
 }
 
 // backupAddFormJS is the add-target form's progressive enhancement: the
@@ -397,8 +423,10 @@ templ backupAddFormJS() {
 // restoreDrawerJS wires the danger button's ring-to-fill and the form's JS
 // submit: the button carries class "ring" (inset fail border) until the typed
 // confirm equals the selected snapshot's id (or "replica" in litestream
-// mode), then fills. A wrong id submits and comes back as the server's ▲
-// refusal (hard rule c, JS-off identical).
+// mode), then drops the ring. A matching typed id reveals the RUN ON THE HOST
+// block in place — no POST, the drawer never restores; a wrong id submits and
+// comes back as the server's ▲ refusal (hard rule c, JS-off identical, and
+// JS-off's valid submit re-renders the confirmed body).
 templ restoreDrawerJS() {
 	<script>
 	(function () {
@@ -408,6 +436,7 @@ templ restoreDrawerJS() {
 			form.dataset.restoreWired = "1";
 			var btn = document.getElementById("restore-submit");
 			var confirm = form.querySelector('input[name="confirm"]');
+			var host = document.getElementById("run-host");
 			function syncRing() {
 				if (!btn) return;
 				var required = btn.getAttribute("data-required-id") || "";
@@ -418,6 +447,14 @@ templ restoreDrawerJS() {
 			form.addEventListener("change", syncRing);
 			syncRing();
 			form.addEventListener("submit", function (e) {
+				var required = btn.getAttribute("data-required-id") || "";
+				var match = confirm.value.trim().toLowerCase() === required.toLowerCase();
+				if (match && host) {
+					e.preventDefault();
+					form.hidden = true;
+					host.hidden = false;
+					return;
+				}
 				e.preventDefault();
 				var status = form.querySelector(".form-status");
 				btn.disabled = true;
@@ -460,12 +497,8 @@ templ restoreDrawerJS() {
 templ backupsHistory(vm backupsHistoryVM) {
 	@layout(vm.Page) {
 		<section class="sys-bkbar">
-			<span class="sys-bk-meta">{ vm.Kind } target · forget removes a snapshot through the one queue · absent on the newest and drilled</span>
-			if vm.Operator {
-				<span class="sys-bk-verbs">
-					<a class="verb" href={ urlWithBase(vm.Page.Base, "/system/backups") }>Back to targets</a>
-				</span>
-			}
+			<a class="sys-bk-back" href={ urlWithBase(vm.Page.Base, "/system/backups") }>‹ targets</a>
+			<span class="sys-bk-meta">{ vm.Kind } target · forget removes a snapshot through the one queue · drilled snapshots</span>
 		</section>
 		if vm.Notice != "" {
 			<p class="error" role="alert">{ vm.Notice }</p>
@@ -513,14 +546,18 @@ templ backupsHistory(vm backupsHistoryVM) {
 											<span class="meta">—</span>
 										}
 									</td>
-									if vm.Operator {
-										<td data-label="ACTIONS" class="actions-col">
+if vm.Operator {
+									<td data-label="ACTIONS" class="actions-col">
+										if len(backupHistoryRowActions(snap, vm.Target)) == 0 {
+											<span class="meta">—</span>
+										} else {
 											@rowActions(backupHistoryRowActions(snap, vm.Target), vm.Page.Base)
-											if snap.Refusal != "" {
-												<div class="form-status is-error" role="alert"><span class="msg">{ snap.Refusal }</span></div>
-											}
-										</td>
-									}
+										}
+										if snap.Refusal != "" {
+											<div class="form-status is-error" role="alert"><span class="msg">{ snap.Refusal }</span></div>
+										}
+									</td>
+								}
 								</tr>
 							}
 						</tbody>
@@ -530,7 +567,7 @@ templ backupsHistory(vm backupsHistoryVM) {
 		</div>
 		<p class="sys-bk-footer">
 			<span>forget asks first · absent on the newest and drilled snapshots</span>
-			<span class="right">a drill verifies the newest snapshot · the Restore drawer never deletes</span>
+			<span class="right"> · a drill verifies the newest snapshot · the Restore drawer never deletes</span>
 		</p>
 	}
 }

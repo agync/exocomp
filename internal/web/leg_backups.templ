@@ -15,24 +15,21 @@ templ backupsCard(vm systemVM) {
 			</span>
 		</div>
 		<div class="leg-figure">
-			<div class="bk-card-rows">
-				for _, row := range vm.Backups {
-					<div class="bk-card-row">
-						<span class="bk-id">
-							<span class="bk-name">{ row.Name }</span>
-							<span class="bk-kind">{ row.Kind }</span>
-							<span class="bk-snap mono">{ row.ShortFact() }</span>
-						</span>
-						<span class={ "bk-state", row.StateClass() }>{ row.State }</span>
-						<span class="bk-age">{ row.Age }</span>
-					</div>
-				}
-			</div>
+			<span class={ "value", vm.BackupsAgeClass }>{ vm.BackupsAge }</span>
+			<span class={ "note", vm.BackupsAgeClass }>since the newest SUCCEEDED run</span>
+		</div>
+		<div class="bk-card-rows" aria-label="Targets">
+			for _, row := range vm.Backups {
+				<div class="bk-card-row">
+					<span class="bk-name">{ row.Name }</span>
+					<span class={ "bk-state", row.StateClass() }>{ row.StateWord() }</span>
+					<span class="bk-age">{ row.AgeLine() }</span>
+				</div>
+			}
 		</div>
 		<dl class="leg-facts"></dl>
 		<p class="leg-sentence">
-			any one target recovers the system · freshness ok &lt; 24h · wait &lt; 48h · fail ·
-			restore is the DR path · a running run does not move the age
+			any one target recovers the system · restore is the DR path
 		</p>
 	</section>
 }
@@ -51,7 +48,7 @@ func backupsCardChipClass(rows []backupRow) string {
 
 // StateClass on backupRow mirrors the target-row palette for the card's state
 // word: ok for succeeded, fail for failed, run for a RUNNING breathe, dim for
-// never.
+// a disabled or never-run target.
 func (r backupRow) StateClass() string {
 	switch r.State {
 	case "succeeded":
@@ -60,7 +57,35 @@ func (r backupRow) StateClass() string {
 		return "fail"
 	case "running":
 		return "run"
+	case "disabled":
+		return "dim"
 	default:
 		return "dim"
 	}
+}
+
+// StateWord is the mini table's state word: the UPPERCASE run state, DISABLED
+// for a disabled target, NEVER for one that has not run.
+func (r backupRow) StateWord() string {
+	switch r.State {
+	case "succeeded":
+		return "SUCCEEDED"
+	case "failed":
+		return "FAILED"
+	case "running":
+		return "RUNNING"
+	case "disabled":
+		return "DISABLED"
+	default:
+		return "NEVER"
+	}
+}
+
+// AgeLine is the mini table's age cell: the age (or "never ran"), with a
+// RUNNING run's job id named beside its elapsed time (A9).
+func (r backupRow) AgeLine() string {
+	if r.State == "running" {
+		return r.Age + " · job #" + itoa64(r.RunningJobID)
+	}
+	return r.Age
 }

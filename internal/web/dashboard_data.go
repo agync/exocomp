@@ -252,17 +252,25 @@ func (j jobRow) PhoneMeta() string {
 	return "#" + itoa64(j.ID) + " · " + fact
 }
 
-// backups reads each enabled target's newest run into a freshness row on the
-// 24h/48h ladder.
+// backups reads every target's newest run into a freshness row on the
+// 24h/48h ladder. A DISABLED target renders as its own row (DISABLED · never
+// ran) and contributes nothing to the chip or powerline — a disabled target
+// is not a failure (R4). Snapshot ids truncate to the short 12-char form every
+// other face uses; the full 64-hex id never reaches /system.
 func (s *Server) backups(r *http.Request) ([]backupRow, error) {
-	targets, err := s.store.ListBackupTargets(r.Context(), false)
+	targets, err := s.store.ListBackupTargets(r.Context(), true)
 	if err != nil {
 		return nil, err
 	}
 	now := s.now()
 	var out []backupRow
 	for _, t := range targets {
-		row := backupRow{Name: t.Name, Kind: t.Kind, State: "never", Age: "never", Freshness: "wait"}
+		row := backupRow{Name: t.Name, Kind: t.Kind, Enabled: t.Enabled, State: "never", Age: "never ran", Freshness: "wait"}
+		if !t.Enabled {
+			row.State = "disabled"
+			out = append(out, row)
+			continue
+		}
 		runs, err := s.store.ListBackupRuns(r.Context(), t.ID, 1)
 		if err != nil {
 			return nil, err
@@ -270,7 +278,7 @@ func (s *Server) backups(r *http.Request) ([]backupRow, error) {
 		if len(runs) > 0 {
 			run := runs[0]
 			row.State = run.State
-			row.Snapshot = run.SnapshotID
+			row.Snapshot = shortID(run.SnapshotID)
 			when := run.StartedAt
 			if run.FinishedAt != nil {
 				when = *run.FinishedAt
@@ -725,6 +733,7 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSAge = "unknown"
 		so.LSClass = "dim"
 		so.LSDetail = "no replica configured"
+		so.LSWord = "no replica"
 		return so
 	}
 
@@ -733,6 +742,7 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSAge = "unknown"
 		so.LSClass = "wait"
 		so.LSDetail = "replica target unparseable"
+		so.LSWord = "unparseable"
 		return so
 	}
 	so.LSConfigured = true
@@ -744,6 +754,7 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSAge = "—"
 		so.LSClass = "fail"
 		so.LSDetail = "target set · litestream not on PATH"
+		so.LSWord = "no sidecar"
 		return so
 	}
 
@@ -753,14 +764,17 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSClass = "dim"
 		if target.Remote() {
 			so.LSDetail = "remote replica — frame age readable only by litestream"
+			so.LSWord = "remote"
 		} else {
 			so.LSDetail = "no frames replicated yet"
+			so.LSWord = "stale"
 		}
 		return so
 	}
 	so.LSAge = humanAge(age)
 	so.LSClass = rpoFreshness(age)
 	so.LSDetail = "newest replicated frame"
+	so.LSWord = humanAge(age)
 	return so
 }
 

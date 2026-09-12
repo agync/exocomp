@@ -309,17 +309,18 @@ func TestLitestreamCardChevronViews(t *testing.T) {
 	}
 }
 
-// TestLitestreamPowerlineNoSidecar: the powerline's rpo segment must not stay
-// dim "unknown" while the card reads fail NO SIDECAR — a configured target
-// with no engine is loud in both places.
+// TestLitestreamPowerlineNoSidecar: the powerline's litestream segment must
+// not stay dim "unknown" while the card reads fail NO SIDECAR — a configured
+// target with no engine is loud in both places, and the segment names the leg
+// + its word (`litestream no sidecar`), never the retired `rpo` metric.
 func TestLitestreamPowerlineNoSidecar(t *testing.T) {
 	h := newHarness(t)
 	noSidecar(h)
 	setReplicaTarget(t, h, "/mnt/nas/exocomp-replica")
 	page := getPage(t, h, "/system")
 
-	if !strings.Contains(page, `data-state="fail">rpo —</a>`) {
-		t.Error("powerline rpo segment must read fail rpo — for a set target with no sidecar")
+	if !strings.Contains(page, `data-state="fail">litestream no sidecar</a>`) {
+		t.Error("powerline litestream segment must read fail 'litestream no sidecar' for a set target with no sidecar")
 	}
 }
 

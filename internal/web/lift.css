@@ -16,6 +16,57 @@
   font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .sys-identity .version { font:600 19px/1.3 var(--font-mono); letter-spacing:-.4px; color:var(--ink-100); }
 .sys-identity .meta { font-size:13px; color:var(--ink-500); }
+.sys-identity .host { color:var(--ink-200); }
+/* The right cluster is ONE row at rest (R2): the public-URL cluster sits LEFT
+ * of the Doctor · Kit glyphs at the strip's FAR RIGHT — the glyphs no longer
+ * float above the value. */
+.sys-identity .right { display:flex; align-items:center; gap:14px; }
+.sys-identity .hg { display:inline-flex; align-items:center; gap:6px; }
+.sys-identity .hglyphform { display:inline-flex; margin:0; }
+.sys-identity .hglyph { display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
+.sys-identity .hglyph svg { width:18px; height:18px; }
+.sys-identity button.hglyph { border:0; background:transparent; padding:0; cursor:pointer; }
+.sys-identity button.hglyph:hover { color:var(--ink-100); }
+.sys-identity .hglyphmeta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+.sys-identity .hglyphmeta.wait { color:var(--signal-wait); }
+.sys-identity .hglyphmeta a { color:var(--ink-500); }
+/* The pub cluster at rest is one line: label · value (or `not set` in wait) ·
+ * the Change toggle. The Change form expands below the strip on click (R2). */
+.sys-identity .pub { display:inline-flex; align-items:center; gap:10px; }
+.sys-identity .pub .label { font-size:13px; color:var(--ink-500); }
+.sys-identity .pub .val { color:var(--ink-200); }
+.sys-identity .pub .val.none { color:var(--signal-wait); }
+.sys-identity .change { height:30px; padding:0 12px; border-radius:var(--radius-control);
+  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
+  font:var(--type-button); cursor:pointer; }
+.sys-identity .change:hover { color:var(--ink-100); }
+.sys-identity .change:disabled { opacity:.55; cursor:default; }
+/* The Change form rides the shared field anatomy below the strip: control ·
+ * meta line · form-status, always rendered so a refusal never resizes. At
+ * rest the server marks it hidden; the row's Change toggle opens it (R2). */
+.pubform { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.pubform input[type="url"] { width:16em; height:30px; padding:0 10px; border-radius:var(--radius-control);
+  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
+  font:var(--type-button); font-family:var(--font-mono); }
+.pubform input[type="url"]::placeholder { color:var(--ink-600); }
+.pubform input[type="url"][aria-invalid="true"] { box-shadow:inset 0 0 0 1px var(--signal-fail); }
+.pubform .meta { min-height:18px; font:400 12px/18px var(--font-ui); color:var(--ink-500);
+  display:flex; gap:7px; flex-wrap:wrap; }
+.pubform .meta.is-error { color:var(--signal-fail); }
+.pubform .meta.is-error::before { content:"▲"; font:400 10px var(--font-mono); margin-right:6px; }
+.pubform:not([hidden]) { display:flex; }
+/* Phone (≤720): the identity strip drops to the version word + the one-line
+ * public-URL footer (`public URL not set · change`); the Doctor/Kit glyphs and
+ * the commit/platform/host/uptime meta give way (R2). The Change form is
+ * never permanently open there either — the resting state is the closed one. */
+@media (max-width:720px) {
+  .sys-identity .id .meta { display:none; }
+  .sys-identity .hg { display:none; }
+  .sys-identity .pub { flex-wrap:nowrap; min-width:0; }
+  .sys-identity .pub .label { display:none; }
+  .sys-identity .pub .val { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+}
 
 /* leg grid + card anatomy */
 .sys-legs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--gap-card); }
@@ -30,6 +81,7 @@
 .leg-head .verbs { display:flex; align-items:center; gap:4px; }   /* ≤2 glyphs then ▾, fixed from the right */
 .leg-figure { display:flex; align-items:baseline; gap:12px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .leg-figure .value { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
+.leg-figure .value.topic { font:600 19px/1.3 var(--font-mono); letter-spacing:-.4px; color:var(--ink-100); }
 .leg-figure .value.dim { color:var(--ink-500); }
 .leg-figure .value.wait, .leg-figure .note.wait { color:var(--signal-wait); }
 .leg-figure .value.fail, .leg-figure .note.fail { color:var(--signal-fail); }
@@ -40,8 +92,13 @@
 .leg-facts dd { color:var(--ink-200); margin:0; min-width:0; }
 .leg-facts dd.ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .leg-sentence { font:400 12px/1.55 var(--font-ui); color:var(--ink-500); text-wrap:pretty; }
+/* 3-column mini tables (ntfy fan-out, backups targets): each row is its OWN
+ * grid — never the fact-grid's `auto minmax(0,1fr)` two-column rule, which a
+ * 3-column table collapses under — and no fixed row height wraps the cells
+ * (R1). The thirds: the event (flex), the priority word, the re-notify fact. */
 .leg-mini { display:flex; flex-direction:column; gap:2px; font:400 12px/1 var(--font-mono); }
-.leg-mini > div { display:grid; gap:12px; height:28px; align-items:center; padding:0 10px; border-radius:var(--radius-chip); }
+.leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center;
+  padding:0 10px; border-radius:var(--radius-chip); }
 .leg-mini > div.on { background:var(--surface-tray); }
 
 /* powerline as anchors */
@@ -62,44 +119,6 @@
 .leg-row .name { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
 .leg-row .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
 
-/* L-S0 shell additions — the identity strip's right cluster and the two
- * read-only header glyphs (Doctor · Recovery kit). The Change verb is the ONE
- * existing public-URL write's markup only; A7 owns its form spec. */
-.sys-identity .host { color:var(--ink-200); }
-.sys-identity .hg { display:inline-flex; align-items:center; gap:6px; }
-.sys-identity .hglyphform { display:inline-flex; margin:0; }
-.sys-identity .hglyph { display:inline-flex; align-items:center; justify-content:center;
-  width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
-.sys-identity .hglyph svg { width:18px; height:18px; }
-.sys-identity button.hglyph { border:0; background:transparent; padding:0; cursor:pointer; }
-.sys-identity button.hglyph:hover { color:var(--ink-100); }
-.sys-identity .hglyphmeta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
-.sys-identity .hglyphmeta.wait { color:var(--signal-wait); }
-.sys-identity .hglyphmeta a { color:var(--ink-500); }
-.sys-identity .pub { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.sys-identity .pub .label { font-size:13px; color:var(--ink-500); }
-.sys-identity .pub .val { color:var(--ink-200); }
-.sys-identity .pub .val.none { color:var(--ink-500); }
-/* The Change form carries the forms anatomy (A7): control · meta line ·
- * form-status · primary, all always rendered so a refusal never resizes the
- * strip. The meta and status lines re-declare the shared field rules here
- * because the pubform is not a .field (its label is the strip's own). */
-.sys-identity .pubform { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.sys-identity .pubform input[type="url"] { width:16em; height:30px; padding:0 10px; border-radius:var(--radius-control);
-  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
-  font:var(--type-button); font-family:var(--font-mono); }
-.sys-identity .pubform input[type="url"]::placeholder { color:var(--ink-600); }
-.sys-identity .pubform input[type="url"][aria-invalid="true"] { box-shadow:inset 0 0 0 1px var(--signal-fail); }
-.sys-identity .pubform .meta { min-height:18px; font:400 12px/18px var(--font-ui); color:var(--ink-500);
-  display:flex; gap:7px; flex-wrap:wrap; }
-.sys-identity .pubform .meta.is-error { color:var(--signal-fail); }
-.sys-identity .pubform .meta.is-error::before { content:"▲"; font:400 10px var(--font-mono); margin-right:6px; }
-.sys-identity .change { height:30px; padding:0 12px; border-radius:var(--radius-control);
-  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
-  font:var(--type-button); cursor:pointer; }
-.sys-identity .change:hover { color:var(--ink-100); }
-.sys-identity .change:disabled { opacity:.55; cursor:default; }
-
 /* doctor job findings card (A1): one row per subsystem finding */
 .doctor-findings { padding:18px 22px; }
 .doctor-findings .finding-rows { display:flex; flex-direction:column; gap:6px; }
@@ -107,13 +126,25 @@
   align-items:center; font:400 13px/1.4 var(--font-mono); }
 .doctor-findings .row .detail { color:var(--ink-500); min-width:0; }
 
-/* segmented switch inside a field (Threshold · Kind · Detail · From) */
-.field-switch { display:grid; height:40px; padding:3px; box-sizing:border-box; border-radius:var(--radius-row);
-  background:var(--surface-control); gap:2px; font:400 13px/1 var(--font-mono); }
+/* segmented switch inside a field (Threshold · Detail · From · Kind): a
+ * nowrap flex row so a two-segment switch (Detail) never wraps its segments
+ * (R9). The `.field-seg` radios hide natively; the pressed segment fills. */
+.field-switch { display:flex; flex-wrap:nowrap; height:40px; padding:3px; box-sizing:border-box;
+  border-radius:var(--radius-row); background:var(--surface-control); gap:2px;
+  font:400 13px/1 var(--font-mono); align-items:center; }
 .field-switch > button { border:0; border-radius:var(--radius-chip); background:transparent; color:var(--ink-400); font:inherit; cursor:pointer; }
 .field-switch > button:hover { color:var(--ink-100); }
 .field-switch > button[aria-pressed="true"] { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
 .field-switch > button:focus-visible { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
+.field-seg { display:flex; flex-wrap:nowrap; align-items:center; height:40px; padding:3px;
+  box-sizing:border-box; gap:2px; border-radius:var(--radius-row); background:var(--surface-control);
+  font:400 13px/1 var(--font-mono); }
+.field-seg input { position:absolute; opacity:0; pointer-events:none; }
+.field-seg label { min-width:52px; padding:0 16px; display:grid; place-items:center; border-radius:var(--radius-chip);
+  color:var(--ink-400); cursor:pointer; }
+.field-seg label:hover { color:var(--ink-100); }
+.field-seg input:checked + label { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
+.field-seg input:focus-visible + label { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
 
 /* presence rows (sealed keys) */
 .presence { display:grid; grid-template-columns:110px minmax(0,1fr) auto; gap:12px; height:36px; align-items:center;
@@ -136,21 +167,133 @@
 .btn-danger.primary { height:44px; width:100%; }
 .btn-danger[data-armed="true"] { background:var(--signal-fail); color:var(--accent-on); box-shadow:none; }
 
-/* backups management list: two-line 64px rows */
-.backups-grid { display:grid; grid-template-columns:150px 96px 130px 150px minmax(0,1fr) 84px; gap:14px; align-items:center; padding:0 14px; }
-.backups-grid.row { height:64px; margin-top:2px; border-radius:var(--radius-row); font:400 13px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; }
-.backups-grid.row:hover { background:var(--surface-tray); }
-.backups-grid.row > span { display:flex; flex-direction:column; gap:4px; min-width:0; }
-.backups-grid.row .sub { font-size:11px; color:var(--ink-500); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.backups-grid.row .sub.wait { color:var(--signal-wait); }
-.backups-grid.row .actions { flex-direction:row; justify-content:flex-end; gap:4px; }
-.backups-grid.row .run { color:var(--accent-text); }   /* absent, not disabled, on DISABLED rows */
+/* backups card mini table (R4): one row per target — name · state · age —
+ * the same 3-cell row shape the ntfy fan-out uses. */
+.bk-card-rows { display:flex; flex-direction:column; gap:2px; font:400 12px/1 var(--font-mono); }
+.bk-card-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:center;
+  padding:0 10px; border-radius:var(--radius-chip); }
+.bk-card-row:first-child { background:var(--surface-tray); }
+.bk-card-row .bk-name { color:var(--ink-200); }
+.bk-card-row .bk-state { font-weight:500; }
+.bk-card-row .bk-state.ok { color:var(--signal-ok); }
+.bk-card-row .bk-state.fail { color:var(--signal-fail); }
+.bk-card-row .bk-state.run { color:var(--accent-text); }
+.bk-card-row .bk-age { color:var(--ink-500); }
 
-/* snapshot radios */
-.snap { display:grid; grid-template-columns:16px 90px minmax(0,1fr) auto; gap:12px; align-items:center; height:40px;
-  padding:0 12px; border-radius:9px; cursor:pointer; font:400 13px/1 var(--font-mono); font-variant-numeric:tabular-nums; }
-.snap:has(:checked) { background:var(--surface-control); }
-.snap .drilled { font-size:11px; color:var(--signal-ok); }
+/* /system/backups header + footer (R7): the topbar is the breadcrumb — meta
+ * left, verbs right (margin-left:auto, 24px gap) — and the footer's two
+ * sentences join with a ` · `. The `‹ targets` back link sits at the left of
+ * the history page's topbar (R8). */
+.sys-bkbar { display:flex; align-items:center; gap:24px; }
+.sys-bk-meta { flex:1; min-width:0; font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+.sys-bk-verbs { margin-left:auto; }
+.sys-bk-back { font:400 12px/1.4 var(--font-mono); color:var(--ink-400); text-decoration:none; }
+.sys-bk-back:hover { color:var(--ink-100); text-decoration:underline; }
+.sys-bk-footer { display:flex; justify-content:space-between; gap:24px; font:400 12px/1.4 var(--font-mono);
+  color:var(--ink-500); }
+.sys-bk-footer .right { margin-left:auto; }
+
+/* backups management list rows (R7): two-line 64px — the LAST RUN cell stacks
+ * the chip + line over the drill-led meta line, and every other data cell
+ * stacks a bold line over a mono sub-line. */
+.bk-row { height:64px; }
+.bk-row.is-disabled td { color:var(--ink-500); }
+.bk-kind, .bk-ret, .bk-sched { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }
+.bk-kind .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+.bk-kind .uri { font-size:11px; color:var(--ink-500); }
+.bk-ret .meta { font-size:11px; color:var(--ink-500); }
+.bk-sched .meta { font-size:11px; color:var(--ink-500); }
+.bk-lastrun { min-width:0; }
+.lr-line, .lr-meta { display:flex; align-items:center; gap:6px; min-width:0; flex-wrap:wrap; }
+.lr-line .lr-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.lr-text.dim { color:var(--ink-500); }
+.lr-meta { font-size:11px; color:var(--ink-500); }
+.lr-job { color:var(--ink-200); }
+.lr-job:hover { color:var(--ink-100); text-decoration:underline; }
+.lr-sep { color:var(--ink-600); }
+
+/* restore drawer snapshot rows (R3): a plain surface of custom 44px radio
+ * rows — 16px dot, label INLINE — never a browser fieldset's border+legend. */
+.snaps { background:var(--surface-card); border-radius:var(--radius-row); padding:12px 14px;
+  display:flex; flex-direction:column; gap:4px; }
+.snaps > .label { font:600 13px/1 var(--font-ui); color:var(--ink-100); }
+.snap-row { display:grid; grid-template-columns:16px minmax(0,1fr); gap:12px; align-items:center; height:44px;
+  padding:0 12px; border-radius:9px; cursor:pointer; font:400 13px/1 var(--font-mono);
+  font-variant-numeric:tabular-nums; }
+.snap-row input { width:16px; height:16px; margin:0; appearance:none; border-radius:50%;
+  border:1px solid var(--hairline); }
+.snap-row input:checked { border-color:var(--accent-fill); background:var(--accent-fill); box-shadow:inset 0 0 0 2px var(--surface-control); }
+.snap-row input:focus-visible { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
+.snap-row:has(:checked) { background:var(--surface-control); }
+.snap-main { display:flex; flex-direction:column; gap:4px; min-width:0; }
+.snap-main .snap-id { color:var(--ink-200); }
+.snap-main .snap-facts { font-size:11px; color:var(--ink-500); }
+.snap-main .snap-drill.ok { font-size:11px; color:var(--signal-ok); }
+.snaps > .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+
+/* WHAT HAPPENS (R3): the kicker heads the three numbered lines. */
+.wh { background:var(--surface-card); border-radius:var(--radius-row); padding:12px 14px;
+  display:flex; flex-direction:column; gap:6px; font:400 12px/1.6 var(--font-mono); color:var(--ink-400); }
+.wh .kicker { font:600 11px/1 var(--font-mono); letter-spacing:1.4px; color:var(--ink-500); }
+.wh p { margin:0; }
+.wh p b { color:var(--ink-200); }
+.wh .fail { color:var(--signal-fail); }
+.modal-body .kicker.fail { color:var(--signal-fail); }
+.fail { color:var(--signal-fail); }
+
+/* RUN ON THE HOST (D3): the confirmed drawer's command block — the kicker in
+ * fail, the recovery-kit command in a mono code block beside the shared
+ * copybtn, and the recovery-kit sentence. */
+.run-host { background:var(--surface-card); border-radius:var(--radius-row); padding:12px 14px;
+  display:flex; flex-direction:column; gap:8px; }
+.run-host .kicker { font:600 11px/1 var(--font-mono); letter-spacing:1.4px; color:var(--signal-fail); }
+.run-cmd { display:flex; align-items:center; gap:10px; min-width:0; }
+.run-cmd pre { margin:0; padding:8px 12px; border-radius:var(--radius-chip); background:var(--surface-tray);
+  border:1px solid var(--hairline); font:600 13px/1.4 var(--font-mono); color:var(--ink-100);
+  white-space:nowrap; overflow-x:auto; flex:1; min-width:0; }
+.run-cmd .copybtn { height:30px; padding:0 12px; border-radius:var(--radius-control);
+  border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
+  font:var(--type-button); cursor:pointer; }
+.run-cmd .copybtn:hover { color:var(--ink-100); }
+.run-cmd .copybtn.copied { color:var(--signal-ok); }
+.run-host > .meta { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); }
+/* The pre-confirm verb is a QUIET fail-ringed button (D3): the ring drops when
+ * the typed id matches (restoreDrawerJS), exactly the ring the header Restore
+ * verb wears until the operator opens the drawer. */
+.modal#restore-backups .actions .btn.quiet { background:var(--surface-control); color:var(--ink-400);
+  border:1px solid var(--hairline); }
+.modal#restore-backups .actions .btn.quiet:hover { color:var(--ink-100); }
+.modal#restore-backups .actions .btn.quiet.ring { background:transparent; color:var(--signal-fail);
+  border:0; box-shadow:inset 0 0 0 1px var(--fail-border); }
+.modal#restore-backups .actions .btn.quiet.ring:hover { background:var(--fail-tint); }
+
+/* ntfy drawer (R9): the page is a drawer column; the head rows the kicker ·
+ * title · × close (the close never wraps under the title); the sealed-key
+ * presence list and WHAT A PUSH SAYS's phone-push card rest on the rail. */
+.ntfy-drawer { display:flex; flex-direction:column; gap:var(--gap-card); max-width:720px; margin:0 auto; }
+.ntfy-drawer .drawer-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.ntfy-drawer .drawer-head .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
+.ntfy-drawer .drawer-head h3 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
+.ntfy-drawer .drawer-close { display:inline-flex; align-items:center; justify-content:center;
+  width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
+.ntfy-drawer .drawer-close:hover { color:var(--ink-100); }
+.presence-list { display:flex; flex-direction:column; gap:4px; background:var(--surface-card);
+  border-radius:var(--radius-card); padding:14px 16px; }
+.sample-card { background:var(--surface-card); border-radius:var(--radius-card); padding:14px 16px; }
+.sample-card .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
+.push-sample { background:var(--surface-rail); border-radius:var(--radius-row); padding:12px;
+  display:flex; flex-direction:column; gap:8px; font:400 12px/1.5 var(--font-ui); }
+.push-sample .title { font:600 13px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
+.push-sample .body { font:400 12px/1.5 var(--font-ui); color:var(--ink-400); margin:0; }
+.push-sample .push-actions { display:flex; gap:8px; margin:0; }
+.push-sample .push-actions .btn { height:30px; padding:0 12px; font:var(--type-button); }
+.push-sample .note { font:400 11px/1.4 var(--font-mono); color:var(--ink-500); margin:0; }
+
+/* phone powerline (nit): at ≤720 the self-care powerline is a single
+ * scrollable row — all segments or none, never a wrapped stack. */
+@media (max-width:720px) {
+  .sys-powerline { overflow-x:auto; }
+}
 
 /* L-S3 leg page: the full-width litestream card and the ▾ config view. The
  * config renders read-only in a mono block; secrets are named in the emitted

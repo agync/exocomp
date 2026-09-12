@@ -23,10 +23,11 @@ func seedSnapshotTarget(t *testing.T, h *harness, name string, snapshot string, 
 }
 
 // TestBackupRestoreDrawerRenders is the GATE for the DR drawer's shape (SPEC
-// §4.3): kicker, lede, the From switch with its meta, snapshot radios
-// newest-first across targets with the drilled ok mark, WHAT HAPPENS with the
-// loss in fail, the typed confirm, the danger button, and the CLI echo incl.
-// --from-litestream.
+// §4.3, D3): kicker, lede, the From segmented switch with its meta, the custom
+// snapshot rows newest-first across targets with the drilled ok mark, WHAT
+// HAPPENS with its kicker and the loss in a fail span, the typed confirm, the
+// quiet `Show the restore command` verb (never a pretend Restore), and the
+// hidden RUN ON THE HOST command block.
 func TestBackupRestoreDrawerRenders(t *testing.T) {
 	h := newHarness(t)
 	seedSnapshotTarget(t, h, "nas01", "a3f9c2abcdef1234567890ab", 16*time.Hour)
@@ -48,32 +49,41 @@ func TestBackupRestoreDrawerRenders(t *testing.T) {
 		"#a3f9c2", "nas01", "b2-offsite", "#8e1d07",
 		"drilled", "ago ok",
 		"newest first across every target",
+		">WHAT HAPPENS<",
 		"the queue drains", "waiting approval",
 		"are lost",
+		`<span class="fail">(fail)</span>`,
 		"Type the snapshot id to confirm",
 		"the dialog is the safety — no second confirm after this",
-		"Restore from #a3f9c2",
-		"exocomp restore --from-litestream",
-		"recovery kit",
+		">Show the restore command</button>",
+		"exocomp restore",
+		"this is the recovery kit path",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("restore drawer missing %q", want)
 		}
 	}
-	// The danger button rings until the typed id matches; it carries the
-	// expected confirm value as its contract.
+	// The pre-confirm verb never pretends: no `Restore from …` button.
+	for _, banned := range []string{"Restore from #", ">Restore from replica<"} {
+		if strings.Contains(page, banned) {
+			t.Errorf("restore drawer must not render %q", banned)
+		}
+	}
+	// The typed-confirm gate stays: the button carries the required id.
 	if !strings.Contains(page, `id="restore-submit"`) {
-		t.Error("missing the danger submit button")
+		t.Error("missing the restore submit button")
 	}
 	if !strings.Contains(page, "restore-backups") {
 		t.Error("missing the drawer id")
 	}
 }
 
-// TestBackupRestoreTypedConfirm is the GATE for the round's hard rule (c): a
-// typed id that does not match the selected snapshot is refused on the drawer
-// with the human sentence (never a flash); the matching id passes and names
-// the recovery-kit CLI path.
+// TestBackupRestoreTypedConfirm is the GATE for the round's hard rule (c) and
+// D3: a typed id that does not match the selected snapshot is refused on the
+// drawer with the human sentence (never a flash); the matching id passes and
+// the drawer body changes to the RUN ON THE HOST block — the recovery-kit
+// command with its Copy verb, re-rendered at 200 (JS reveals it in place; this
+// is the JS-off path).
 func TestBackupRestoreTypedConfirm(t *testing.T) {
 	h := newHarness(t)
 	id := seedSnapshotTarget(t, h, "nas01", "a3f9c2abcdef1234567890ab", 16*time.Hour)
@@ -111,22 +121,29 @@ func TestBackupRestoreTypedConfirm(t *testing.T) {
 		t.Error("empty-confirm refusal missing the human sentence")
 	}
 
-	// Correct id — the gate passes; the live daemon cannot replace its own
-	// store, so the verb names the recovery-kit CLI path.
+	// Correct id — the gate passes; the drawer body changes to the RUN ON THE
+	// HOST block, never a pretend success or a flash.
 	resp = postForm(t, client, ts.URL+"/system/backups/restore", url.Values{
 		"from": {"snapshot"}, "snapshot": {id}, "confirm": {id},
 	}, nil)
+	body = readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("correct-id restore = %d, want 303", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("correct-id restore = %d, want 200 (drawer re-render)", resp.StatusCode)
 	}
-	// The flash names the CLI path (recovery kit), never a pretend success.
-	code, page := getBody(t, client, ts.URL+"/system/backups")
-	if code != http.StatusOK {
-		t.Fatalf("/system/backups = %d, want 200", code)
+	for _, want := range []string{
+		`exoModalOpen("restore-backups")`,
+		">RUN ON THE HOST<",
+		">exocomp restore</pre>",
+		">Copy</button>",
+		"the daemon cannot replace the store it serves · this is the recovery kit path",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("confirmed drawer missing %q", want)
+		}
 	}
-	if !strings.Contains(page, "the recovery-kit CLI (exocomp restore) restores the newest snapshot") {
-		t.Error("confirmed restore flash missing the recovery-kit CLI path")
+	if strings.Contains(body, "restore from") {
+		t.Error("a confirmed restore must not flash a pretend success")
 	}
 }
 
@@ -146,7 +163,7 @@ func TestBackupRestoreReplicaMode(t *testing.T) {
 		t.Fatalf("deep link = %d, want 200", code)
 	}
 	for _, want := range []string{
-		"Restore from replica",
+		">Show the restore command</button>",
 		"Type the source to confirm",
 		"exocomp restore --from-litestream",
 		`value="replica" checked`,
@@ -178,13 +195,18 @@ func TestBackupRestoreReplicaMode(t *testing.T) {
 		t.Error("replica wrong-confirm refusal missing the sentence")
 	}
 
-	// The word "replica" passes.
+	// The word "replica" passes: the drawer re-renders the confirmed body at
+	// 200 (JS reveals it in place; this is the JS-off path).
 	resp = postForm(t, client, ts.URL+"/system/backups/restore", url.Values{
 		"from": {"replica"}, "confirm": {"replica"},
 	}, nil)
+	body = readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("replica confirm = %d, want 303", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("replica confirm = %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(body, ">exocomp restore --from-litestream</pre>") {
+		t.Error("replica confirmed body missing the --from-litestream command")
 	}
 }
 

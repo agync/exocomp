@@ -38,7 +38,7 @@ const (
 // and ack.
 func (s *Server) litestreamPageVMFor(r *http.Request) litestreamPageVM {
 	vm := litestreamPageVM{
-		Page: s.pageFor(r, "System / Litestream", "system"),
+		Page: s.pageFor(r, "System · Litestream", "system"),
 		LS:   s.litestreamVM(r.Context()),
 		Form: s.litestreamFormAtRest(r.Context()),
 	}
@@ -106,7 +106,7 @@ func (s *Server) handleLitestreamSetTarget(w http.ResponseWriter, r *http.Reques
 // refused form, so the field refusals and the typed target survive JS-off.
 func (s *Server) litestreamRefusal(w http.ResponseWriter, r *http.Request, form *litestreamFormVM) {
 	vm := litestreamPageVM{
-		Page: s.pageFor(r, "System / Litestream", "system"),
+		Page: s.pageFor(r, "System · Litestream", "system"),
 		LS:   s.litestreamVM(r.Context()),
 		Form: *form,
 	}

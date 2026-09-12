@@ -220,8 +220,8 @@ func TestBackupsListRunningRow(t *testing.T) {
 		t.Fatalf("/system = %d, want 200", code)
 	}
 	for _, want := range []string{
-		"● RUNNING · job #",
-		"a running run does not move the age",
+		">RUNNING</span>",
+		"job #",
 		`href="/system/backups"`, ">Manage</a>",
 	} {
 		if !strings.Contains(card, want) {

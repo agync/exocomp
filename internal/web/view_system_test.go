@@ -139,7 +139,7 @@ func TestSystemShellPowerline(t *testing.T) {
 		`href="/system#backups"`,
 		"dead-man ",
 		"ntfy ",
-		"rpo ",
+		"litestream ",
 		"backups ",
 	} {
 		if !strings.Contains(page, want) {
