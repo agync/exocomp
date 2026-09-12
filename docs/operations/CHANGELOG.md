@@ -6,6 +6,31 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the v0.13 round-2 residuals close
+
+- **The public-URL Change form is gone when closed.** The form now lives
+  INSIDE the identity strip and renders nothing until `Change` is pressed —
+  the stray ~216px input and its meta line below the strip are gone (`hidden`
+  beats the display rule). Open, it expands to a full-width surface-rail row
+  within the strip with its own meta line.
+- **The fan-out and Backups mini tables own their grids.** Both take explicit
+  columns (`minmax(0,1fr) 72px 120px` / `minmax(0,1fr) 88px 64px`), all
+  left-aligned at 24px rows, instead of auto-justified thirds with a wide
+  gap.
+- **The /system/backups rows map their columns.** KIND owns the kind + path,
+  RETENTION the policy + consequence, SCHEDULE `no schedule` / `add one`;
+  each row pads 12px 0 and every posture cell stays exactly two lines. The
+  footer keeps the ` · ` separator (the right-aligned ladder is dropped).
+- **The history card drops its repeated kicker.** `SYSTEM / BACKUPS / nas01`
+  no longer re-rides a topbar that already says `System · Backups · nas01`;
+  the card keeps `Snapshot history`.
+- **The round-2 nits.** The dead-man card's last-good snapshot id is the
+  12-char cut like everywhere else; the Restore drawer's reveal hides the
+  confirm form (and the pre-confirm drawer hides the run-host block) so
+  `Show the restore command` can never read as re-pressable — the verb
+  relabels `Shown` and disables; the paged fact's hierarchy splits `ntfy`
+  (loud) from `once · {age} ago` (dim).
+
 ## 2026-09-12 — the v0.13 designer-review close-out
 
 - **The identity strip's Change form rests closed.** The public-URL form
