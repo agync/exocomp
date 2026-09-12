@@ -31,6 +31,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 						<button type="submit" class="btn">Plan</button>
 					</form>
 					<a class="btn danger" href={ templ.SafeURL("?destroy=1") }>Destroy</a>
+					@formStatus(false, vm.PlanErr)
 				</div>
 			}
 		</div>
@@ -175,6 +176,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 						<div class="block-head"><span class="keyword">Destroys — no undo</span></div>
 						<p class="meta">tofu destroy tears down every resource this workspace manages — the whole state, not one plan's subset. The job runs through the same queue as a plan or an apply, confirmed by this dialog only.</p>
 					</div>
+					@formStatus(false, vm.DestroyErr)
 					<div class="actions">
 						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + vm.Row.Name + "/destroy")) } class="inline-form">
 							<input type="hidden" name="confirmed" value="1"/>

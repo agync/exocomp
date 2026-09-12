@@ -1,7 +1,6 @@
 package web
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -40,6 +39,10 @@ type planDetailVM struct {
 	Runner     string
 	Changes    planChangesRow
 	Verdict    planVerdictRow
+	// ConfirmErr is the apply confirm's button-verb refusal (forms/SPEC.md): a
+	// refused apply re-renders this page with the ▲ status line inside the
+	// dialog — never a flash (flash is success-only).
+	ConfirmErr string
 }
 
 // handleWorkspacePlanDetail renders one saved plan's page, making the tray's
@@ -50,42 +53,42 @@ type planDetailVM struct {
 // page chrome and a notice, never the resource values.
 func (s *Server) handleWorkspacePlanDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
-	ws, err := s.store.WorkspaceByName(r.Context(), name)
-	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no workspace named "+name, http.StatusNotFound)
-			return
-		}
-		s.fail(w, r, err)
-		return
-	}
-	id, perr := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	if perr != nil || id <= 0 {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil || id <= 0 {
 		http.Error(w, "plan id must be a positive integer", http.StatusBadRequest)
 		return
 	}
-	art, err := s.store.GetArtifact(r.Context(), id)
+	vm, err := s.planDetailVMFor(r, name, id)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no plan "+r.PathValue("id"), http.StatusNotFound)
-			return
-		}
-		s.fail(w, r, err)
+		s.renderWorkspaceErr(w, r, name, err)
 		return
 	}
+	s.render(w, r, http.StatusOK, planDetailPage(vm))
+}
+
+// planDetailVMFor builds the plan-detail page's render state, shared by the GET
+// handler and the apply confirm's refusal re-render so a refused apply shows
+// the same page the operator left, with the confirm dialog open and the status
+// line added.
+func (s *Server) planDetailVMFor(r *http.Request, name string, id int64) (planDetailVM, error) {
+	ws, err := s.store.WorkspaceByName(r.Context(), name)
+	if err != nil {
+		return planDetailVM{}, err
+	}
+	art, err := s.store.GetArtifact(r.Context(), id)
+	if err != nil {
+		return planDetailVM{}, err
+	}
 	if art.Kind != reactive.PlanArtifactKind {
-		http.Error(w, "artifact "+itoa(id)+" is not a plan", http.StatusNotFound)
-		return
+		return planDetailVM{}, store.ErrNotFound
 	}
 	if art.JobID != 0 {
 		job, jerr := s.store.GetJob(r.Context(), art.JobID)
 		if jerr != nil {
-			s.fail(w, r, jerr)
-			return
+			return planDetailVM{}, jerr
 		}
 		if job.Runbook != reactive.WorkspaceRunbook(name) {
-			http.Error(w, "no plan "+itoa(id)+" on workspace "+name, http.StatusNotFound)
-			return
+			return planDetailVM{}, store.ErrNotFound
 		}
 	}
 
@@ -174,7 +177,7 @@ func (s *Server) handleWorkspacePlanDetail(w http.ResponseWriter, r *http.Reques
 	}
 	vm.Prose = s.planProse(vm)
 
-	s.render(w, r, http.StatusOK, planDetailPage(vm))
+	return vm, nil
 }
 
 // planChangesFromResources tallies a classified plan's resources into the

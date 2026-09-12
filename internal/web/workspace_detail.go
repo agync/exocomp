@@ -28,6 +28,11 @@ type workspaceDetailVM struct {
 	// Destroy renders the destroy confirm dialog already open with no JS
 	// (?destroy=1), the workspace-level twin of the plan detail's ?launch=1.
 	Destroy bool
+	// PlanErr and DestroyErr are the button-verb refusals (forms/SPEC.md): a
+	// refused Plan or Destroy re-renders this page with the ▲ status line on
+	// the verb's surface — never a flash (flash is success-only).
+	PlanErr    string
+	DestroyErr string
 }
 
 // DestroyKicker is the destroy confirm's eyebrow: DESTROY · WORKSPACE X.
@@ -40,14 +45,22 @@ func (vm workspaceDetailVM) DestroyKicker() string {
 // itself opens it and keeps only the Plan/Apply glyphs.
 func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
+	vm, err := s.workspaceDetailVMFor(r, name, r.URL.Query().Get("destroy") == "1")
+	if err != nil {
+		s.renderWorkspaceErr(w, r, name, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, workspaceDetail(vm))
+}
+
+// workspaceDetailVMFor builds the detail page's render state, shared by the GET
+// handler and the Plan/Destroy verb-refusal re-renders so a refused verb shows
+// the same page the operator left, with the status line added. destroy keeps
+// the confirm dialog open on the re-render.
+func (s *Server) workspaceDetailVMFor(r *http.Request, name string, destroy bool) (workspaceDetailVM, error) {
 	ws, err := s.store.WorkspaceByName(r.Context(), name)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "no workspace named "+name, http.StatusNotFound)
-			return
-		}
-		s.fail(w, r, err)
-		return
+		return workspaceDetailVM{}, err
 	}
 	ident, _ := identityOf(r.Context())
 	vm := workspaceDetailVM{
@@ -55,12 +68,11 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 		Row: workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial, Base: s.basePath()},
 		// ?destroy=1 is the JS-off fallback that renders the destroy confirm
 		// dialog already open, mirroring the plan detail's ?launch=1.
-		Destroy: r.URL.Query().Get("destroy") == "1",
+		Destroy: destroy,
 	}
 	addr, err := api.ReadAddress(filepath.Join(s.dataDir, api.AddressFile))
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return workspaceDetailVM{}, err
 	}
 	if addr != "" {
 		vm.Config = api.NewBackendBlock(s.deriver, addr, configExampleWorkspace)
@@ -69,8 +81,7 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 	if !vm.Row.StateOnly() && vm.Operator {
 		plans, err := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 20)
 		if err != nil {
-			s.fail(w, r, err)
-			return
+			return workspaceDetailVM{}, err
 		}
 		now := s.now()
 		for _, meta := range dedupedPlanRows(plans) {
@@ -86,8 +97,7 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 			row.Stale = p.PlanSerial > 0 && p.PlanSerial < ws.Serial
 			row.Changes, row.Verdict, err = s.planJobSurface(r.Context(), p)
 			if err != nil {
-				s.fail(w, r, err)
-				return
+				return workspaceDetailVM{}, err
 			}
 			if p.JobID != 0 {
 				if job, jerr := s.store.GetJob(r.Context(), p.JobID); jerr == nil && job.FinishedAt != nil {
@@ -97,7 +107,7 @@ func (s *Server) handleWorkspaceDetail(w http.ResponseWriter, r *http.Request) {
 			vm.Row.Plans = append(vm.Row.Plans, row)
 		}
 	}
-	s.render(w, r, http.StatusOK, workspaceDetail(vm))
+	return vm, nil
 }
 
 // planRowMeta is one deduped saved plan of a workspace: the sealing artifact,

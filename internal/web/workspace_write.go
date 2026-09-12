@@ -44,6 +44,10 @@ type workspacesVM struct {
 	// for the Configure modal's how-to. Its workspace name is a placeholder; a
 	// row's Backend config gives the exact block. Empty Address when unbound.
 	Config api.BackendBlock
+	// UnlockErr is the force-unlock verb's refusal (forms/SPEC.md): a refused
+	// unlock re-renders this list with the ▲ status line — never a flash
+	// (flash is success-only).
+	UnlockErr string
 }
 
 // configExampleWorkspace is the placeholder name the Configure modal's example
@@ -327,6 +331,18 @@ func (r workspaceWriteRow) StateClass() string {
 }
 
 func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
+	vm, err := s.workspacesVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.render(w, r, http.StatusOK, workspacesList(vm))
+}
+
+// workspacesVMFor builds the Workspaces list's render state, shared by the GET
+// handler and the unlock verb-refusal re-render so a refused unlock shows the
+// same list the operator left, with the status line added.
+func (s *Server) workspacesVMFor(r *http.Request) (workspacesVM, error) {
 	ident, _ := identityOf(r.Context())
 	vm := workspacesVM{Page: s.pageFor(r, "Workspaces", "workspaces"), Operator: canWrite(ident)}
 	if vm.Operator {
@@ -337,13 +353,11 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	// card and the /approvals list read, so the surfaces never disagree.
 	approvals, err := s.store.ListApprovals(r.Context(), true)
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return workspacesVM{}, err
 	}
 	pending, err := s.pendingApprovalsFrom(r, approvals)
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return workspacesVM{}, err
 	}
 	// The backend config block needs the state backend's own bound address,
 	// recorded the same way the CLI reads it (api.ReadAddress): the file a
@@ -352,16 +366,14 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 	// note instead of a block.
 	addr, err := api.ReadAddress(filepath.Join(s.dataDir, api.AddressFile))
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return workspacesVM{}, err
 	}
 	if addr != "" {
 		vm.Config = api.NewBackendBlock(s.deriver, addr, configExampleWorkspace)
 	}
 	rows, err := s.workspaceListRows(r.Context(), pending)
 	if err != nil {
-		s.fail(w, r, err)
-		return
+		return workspacesVM{}, err
 	}
 	for _, row := range rows {
 		if addr != "" {
@@ -373,8 +385,7 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 
 			plans, err := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(row.Name), reactive.PlanArtifactKind, 20)
 			if err != nil {
-				s.fail(w, r, err)
-				return
+				return workspacesVM{}, err
 			}
 			// Fill the plan facts the list's apply gate reads — lifecycle,
 			// serial, staleness — through the SAME dedupe/lifecycle reduction
@@ -393,7 +404,22 @@ func (s *Server) handleWorkspaces(w http.ResponseWriter, r *http.Request) {
 		}
 		vm.Workspaces = append(vm.Workspaces, row)
 	}
-	s.render(w, r, http.StatusOK, workspacesList(vm))
+	return vm, nil
+}
+
+// renderWorkspaceErr maps a workspace lookup failure to its wire shape: a
+// missing workspace is a plain 404, anything else a server failure. It is the
+// shared prelude of the GET handlers and their verb-refusal re-renders.
+func (s *Server) renderWorkspaceErr(w http.ResponseWriter, r *http.Request, name string, err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "no workspace named "+name, http.StatusNotFound)
+		return true
+	}
+	s.fail(w, r, err)
+	return true
 }
 
 // handleWorkspacePlan mirrors apiWorkspacePlan (api_write.go): the same
@@ -509,14 +535,13 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		var unadjudicated *service.PlanUnadjudicatedError
 		switch {
 		case errors.As(err, &mismatch):
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			s.planConfirmRefusal(w, r, ws.Name, saved.ID, "This plan belongs to a different workspace — nothing was applied.")
 			return
 		case errors.As(err, &unadjudicated):
-			// The API face maps the state-conflict sentinel this unwraps to a 409
-			// with its message; an unconsumable plan is a refusal of the asked-for
-			// apply, not a server failure.
-
-			http.Error(w, err.Error(), http.StatusConflict)
+			// A plan with no recorded verdict is unconsumable: the refusal
+			// renders on the plan's confirm dialog (forms/SPEC.md) — never a
+			// flash (flash is success-only).
+			s.planConfirmRefusal(w, r, ws.Name, saved.ID, "This plan carries no policy verdict, so nothing was applied — run plan again and apply that plan by id.")
 			return
 		case err != nil:
 			s.fail(w, r, err)
@@ -550,10 +575,17 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	var policed *service.FreshApplyPolicedError
 	switch {
 	case errors.As(err, &denied):
-		http.Error(w, err.Error(), http.StatusConflict)
+		s.planConfirmRefusal(w, r, ws.Name, saved.ID, "Policy "+denied.Policy+" denies this plan — nothing was applied.")
 		return
 	case errors.As(err, &policed):
-		http.Error(w, err.Error(), http.StatusConflict)
+		// A fresh apply (no saved plan) cannot name a plan page to re-render;
+		// the confirm dialog always carries a plan, so this edge — a crafted
+		// plan-less apply — keeps the plain conflict.
+		if saved == nil {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		s.planConfirmRefusal(w, r, ws.Name, saved.ID, "This workspace has plan policies enabled, so a fresh apply can't be adjudicated — plan and apply that plan by id.")
 		return
 	case err != nil:
 		s.fail(w, r, err)
@@ -574,6 +606,36 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 		"job "+strconv.FormatInt(run.Job.ID, 10)+" enqueued")
 }
 
+// destroyRefusal re-renders the workspace detail page at 422 with the destroy
+// confirm dialog open and the verb's refusal in the status line — the
+// button-verb refusal shape: on the surface that holds the input, never a
+// flash (flash is success-only).
+func (s *Server) destroyRefusal(w http.ResponseWriter, r *http.Request, msg string) {
+	name := r.PathValue("name")
+	vm, err := s.workspaceDetailVMFor(r, name, true)
+	if err != nil {
+		s.renderWorkspaceErr(w, r, name, err)
+		return
+	}
+	vm.DestroyErr = msg
+	s.render(w, r, http.StatusUnprocessableEntity, workspaceDetail(vm))
+}
+
+// planConfirmRefusal re-renders the plan-detail page at 422 with the apply
+// confirm dialog open and the verb's refusal in the status line — the
+// button-verb refusal shape: on the surface that holds the input (the plan's
+// confirm dialog), never a flash (flash is success-only).
+func (s *Server) planConfirmRefusal(w http.ResponseWriter, r *http.Request, ws string, planID int64, msg string) {
+	vm, err := s.planDetailVMFor(r, ws, planID)
+	if err != nil {
+		s.renderWorkspaceErr(w, r, ws, err)
+		return
+	}
+	vm.Launch = true
+	vm.ConfirmErr = msg
+	s.render(w, r, http.StatusUnprocessableEntity, planDetailPage(vm))
+}
+
 // handleWorkspaceDestroy is the browser face of the destroy verb: the same
 // DestroyWorkspace pure-enqueue the /api/v1 route calls, behind the confirm
 // dialog's mandatory confirmed=1 field. It mirrors handleWorkspaceApply's
@@ -588,7 +650,7 @@ func (s *Server) handleWorkspaceDestroy(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "destroy requires confirmation", http.StatusBadRequest)
+		s.destroyRefusal(w, r, "Nothing was queued — confirm the destroy in the dialog.")
 		return
 	}
 	name := r.PathValue("name")
@@ -647,7 +709,7 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 	held, err := s.store.GetTFLock(r.Context(), ws.ID)
 	if errors.Is(err, store.ErrNotFound) {
-		http.Error(w, name+" is not locked", http.StatusConflict)
+		s.unlockRefusal(w, r, name+" is not locked")
 		return
 	}
 	if err != nil {
@@ -656,7 +718,7 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 	}
 	if held.JobID != nil {
 		if owner, err := s.store.GetJob(r.Context(), *held.JobID); err == nil && !owner.State.Terminal() {
-			http.Error(w, "job "+itoa64(owner.ID)+" is still "+string(owner.State)+"; cancel it first", http.StatusConflict)
+			s.unlockRefusal(w, r, "job "+itoa64(owner.ID)+" is still running; cancel it first")
 			return
 		} else if err != nil && !errors.Is(err, store.ErrNotFound) {
 			s.fail(w, r, err)
@@ -683,6 +745,20 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.redirectFlash(w, r, "/workspaces", name+" unlocked")
+}
+
+// unlockRefusal re-renders the Workspaces list at 422 with the unlock verb's
+// refusal in the status line — the forms/SPEC.md button-verb shape: a refusal
+// renders on the surface that holds the input, never a flash (flash is
+// success-only, write.go).
+func (s *Server) unlockRefusal(w http.ResponseWriter, r *http.Request, msg string) {
+	vm, err := s.workspacesVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.UnlockErr = msg
+	s.render(w, r, http.StatusUnprocessableEntity, workspacesList(vm))
 }
 
 // unlockAuditJob picks the job an unlock's audit event belongs on: the job the

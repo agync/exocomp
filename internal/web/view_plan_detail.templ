@@ -218,6 +218,7 @@ templ planConfirmDialog(vm planDetailVM) {
 				<div><dt>Policy</dt><dd class={ "mono", vm.PolicyClass() }>{ vm.PolicyLabel() }</dd></div>
 				<div><dt>Runner</dt><dd class="mono">{ vm.Runner }</dd></div>
 			</dl>
+			@formStatus(false, vm.ConfirmErr)
 			<div class="actions">
 				if !vm.Denied() {
 					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, vm.ConfirmForm())) } class="inline-form">

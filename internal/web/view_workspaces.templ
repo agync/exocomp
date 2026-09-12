@@ -37,6 +37,7 @@ templ workspacesList(vm workspacesVM) {
 			if len(vm.Workspaces) == 0 {
 				<p class="meta">No workspace registered — exocomp ws add on the host defines one.</p>
 			} else {
+				@formStatus(false, vm.UnlockErr)
 				<div class="tablewrap stackable">
 					<table class="ws-table">
 						<colgroup>
