@@ -2,6 +2,15 @@ package web
 
 import "exocomp.dev/exocomp/internal/backup"
 
+// targetCountLabel pluralises the /system/backups topbar meta: ONE target
+// reads `1 target`, several read `N targets`.
+func targetCountLabel(n int) string {
+	if n == 1 {
+		return "1 target"
+	}
+	return itoa(int64(n)) + " targets"
+}
+
 // backupsList is the /system/backups management surface (SPEC §4.1, artboard
 // 1e): the tray-table of every target (TARGET · KIND · RETENTION · SCHEDULE ·
 // LAST RUN · ACTIONS), the Add-target dialog, each row's edit-retention
@@ -15,7 +24,7 @@ templ backupsList(vm backupsVM) {
 			@backupAddDialog(vm)
 		}
 		<section class="sys-bkbar">
-			<span class="sys-bk-meta">System / Backups · { itoa(int64(len(vm.Targets))) } targets · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
+			<span class="sys-bk-meta">System / Backups · { targetCountLabel(len(vm.Targets)) } · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
 			if vm.Operator {
 				<span class="sys-bk-verbs">
 					<button type="button" class="btn danger ring" data-modal-open="restore-backups">Restore</button>

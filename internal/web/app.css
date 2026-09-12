@@ -215,7 +215,7 @@ a:visited { color: var(--accent-text); }
   display: flex; align-items: center; gap: 14px;
   height: 58px; padding: 0 30px;
   background: var(--surface-rail);
-  border-bottom: 1px solid var(--hairline-faint);
+  border-bottom: 1px solid var(--hairline);
 }
 .appbar-title { font: var(--type-bar); color: var(--ink-100); margin: 0; }
 .appbar-meta { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
