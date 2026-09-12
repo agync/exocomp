@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the schedules↔backups linkage reads both ways (SPEC §7 A5)
+
+- **A `backup`/`drill` schedule row on /schedules links back to its target.**
+  The row's new Target cell renders the target name — the same `Args.Target`
+  reference the scheduler's fire-time concurrency keys `backup:<target>` and
+  `drill:<target>` derive from — as a link to /system/backups, the target's
+  row on the backups management list. An every-target schedule reads
+  "every target" and a play row's standing inventory renders plain, so the
+  link stays a backup/drill fact. The backups SCHEDULE cell's link to
+  /schedules is unchanged; the linkage now reads both ways.
+
+
 ## 2026-09-12 — the backups audit lands (SPEC §7 A4 · A12 · A10)
 
 - **The drill outcome has a surface.** A succeeded restore drill now reads as
