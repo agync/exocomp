@@ -1,16 +1,57 @@
 package web
 
-// litestreamPage is the /system/litestream leg surface (SPEC §3.2): the
-// full-width card plus the ▾ views — the generated config, rendered read-only
-// with secrets referenced by name (never a value), and the deep link into the
-// DR drawer's replica mode (the drawer's template and typed confirm are L-S4's;
-// this lane only names the link). Read-only by design (ADR 0012): the daemon
-// generates config and observes, it never runs litestream, so this surface
-// carries no verb that mutates anything.
+// litestreamPage is the /system/litestream leg surface (SPEC §3.2 + §7 A6): the
+// full-width card, the ▾ views — the generated config, rendered read-only with
+// secrets referenced by name (never a value), and the deep link into the DR
+// drawer's replica mode (the drawer's template and typed confirm are L-S4's;
+// this lane only names the link) — and the Set-target form (A6): the replica
+// uri and the unencrypted-remote ack, the two settings the daemon can persist.
+// The daemon cannot verify a replica target (no probe exists), so the form
+// only writes the two settings and echoes the CLI; there is still no pause
+// verb (ADR 0012).
 templ litestreamPage(vm litestreamPageVM) {
 	@layout(vm.Page) {
 		<div class="ls-page">
 			@litestreamCard(vm.LS, vm.Page.Base)
+
+			<section class="ls-target" id="target" aria-label="Set the replica target">
+				<style>
+				/* Set-target section (SPEC §7 A6): the honest boundary — the daemon
+				 * cannot verify a replica, so the form writes the two settings and
+				 * echoes the CLI. Scoped so the form rides the shared writeform/field
+				 * anatomy without touching lift.css. */
+				.ls-target { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px; }
+				.ls-target header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; }
+				.ls-target header h1 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
+				.ls-target header .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+				.ls-target .echo { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); margin-top:14px; }
+				</style>
+				<header>
+					<h1>Replica target</h1>
+					<span class="meta">writes the two settings · the daemon cannot verify a target</span>
+				</header>
+				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream/target")) } class="writeform" id="litestream-target-form" novalidate data-litestream-target>
+					@fieldInput(vm.Form.targetField())
+					<label class="field">
+						<span class="label">Encryption</span>
+						<label class={ "checkline", templ.KV("warn", vm.Form.ErrAckText() != "") }>
+							<input type="checkbox" name="replica_unencrypted_ack" value="1" checked?={ vm.Form.ackChecked() } aria-invalid?={ vm.Form.ErrAckText() != "" } aria-describedby="ls-ack-meta"/>
+							I understand this remote is unencrypted
+						</label>
+						<span id="ls-ack-meta" class={ "meta", templ.KV("is-error", vm.Form.ErrAckText() != "") }>
+							if vm.Form.ErrAckText() != "" {
+								<span class="msg">{ vm.Form.ErrAckText() }</span>
+							} else {
+								Litestream does not encrypt WAL frames — tick this for a remote (s3://, sftp://) target.
+							}
+						</span>
+					</label>
+					@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Setting target")
+					<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Set target</button></div>
+					<p class="echo">{ vm.Form.cliEcho() }</p>
+				</form>
+				@litestreamTargetJS()
+			</section>
 
 			<section class="ls-config" id="config" aria-label="Generated litestream config">
 				<header>
@@ -25,4 +66,52 @@ templ litestreamPage(vm litestreamPageVM) {
 			</section>
 		</div>
 	}
+}
+
+// litestreamTargetJS is the Set-target form's progressive enhancement: the
+// fetch submit that swaps a 422's form fragment in place (JS-off gets the same
+// bytes as a full re-render, and the redirect follows the 303's Location).
+templ litestreamTargetJS() {
+	<script>
+	(function () {
+		function litestreamTargetWire() {
+			var form = document.getElementById("litestream-target-form");
+			if (!form || form.dataset.litestreamTargetWired) return;
+			form.dataset.litestreamTargetWired = "1";
+			form.addEventListener("submit", function (e) {
+				e.preventDefault();
+				var primary = form.querySelector('button[type="submit"]');
+				var status = form.querySelector(".form-status");
+				primary.disabled = true;
+				status.innerHTML = '<span class="dot"></span>Setting target';
+				fetch(form.getAttribute("action"), {
+					method: "POST",
+					body: new FormData(form),
+					credentials: "same-origin",
+					headers: { "Accept": "text/html" }
+				}).then(function (resp) {
+					if (resp.status === 422) {
+						return resp.text().then(function (html) {
+							var doc = new DOMParser().parseFromString(html, "text/html");
+							var next = doc.getElementById("litestream-target-form");
+							if (!next) return;
+							form.outerHTML = next.outerHTML;
+							form = document.getElementById("litestream-target-form");
+							litestreamTargetWire();
+							var bad = form.querySelector('[aria-invalid="true"]');
+							if (bad) bad.focus();
+						});
+					}
+					var loc = resp.headers.get("Location");
+					if (loc) { window.location = loc; return; }
+					window.location.reload();
+				}).catch(function () {
+					primary.disabled = false;
+					status.textContent = "";
+				});
+			});
+		}
+		litestreamTargetWire();
+	})();
+	</script>
 }

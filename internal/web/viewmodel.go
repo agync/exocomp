@@ -10,6 +10,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -547,12 +548,113 @@ type litestreamVM struct {
 	ConfigErr  string // the config view's refusal, "" at rest
 }
 
-// litestreamPageVM is the /system/litestream surface (SPEC §3.2): the
+// litestreamPageVM is the /system/litestream surface (SPEC §3.2 + §7 A6): the
 // full-width card plus the ▾ config view, both driven by the same litestreamVM
-// the /system card renders.
+// the /system card renders, and the Set-target form (A6) that persists the
+// replica target and the unencrypted-remote ack.
 type litestreamPageVM struct {
 	Page page
 	LS   litestreamVM
+	// Form is the Set-target form's render state (SPEC §7 A6): the target and
+	// ack values the controls show at rest, plus the refusal state the write
+	// handler fills on a 422. The daemon cannot verify a replica target (no
+	// probe exists), so this is ALL the form writes — the two settings — and
+	// the CLI echo is the honest boundary.
+	Form litestreamFormVM
+}
+
+// litestreamFormVM is the Set-target form's render state (SPEC §7 A6). Target
+// echoes the typed URI on a 422 so the operator can correct it; Ack is the
+// checkbox's state. Whether the daemon can reach the target is deliberately
+// not a field: the daemon cannot verify a replica, so the form writes the two
+// settings and no more.
+type litestreamFormVM struct {
+	Target       string
+	Ack          bool
+	ErrTarget    string
+	ErrAck       string
+	ErrForm      string
+	FirstInvalid string
+	Submitting   bool
+}
+
+func (f *litestreamFormVM) effective() litestreamFormVM {
+	if f == nil {
+		return litestreamFormVM{}
+	}
+	return *f
+}
+
+func (f *litestreamFormVM) Pending() bool {
+	return f != nil && f.Submitting
+}
+
+func (f *litestreamFormVM) ErrFormText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrForm
+}
+
+// ErrTargetText and ErrAckText dereference the field refusals nil-safe (the
+// page renders with a nil form at rest), so the template never touches the
+// pointer fields directly.
+func (f *litestreamFormVM) ErrTargetText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrTarget
+}
+
+func (f *litestreamFormVM) ErrAckText() string {
+	if f == nil {
+		return ""
+	}
+	return f.ErrAck
+}
+
+// targetField is the replica-uri control on the landed fieldInput anatomy: the
+// typed value on a 422, the stored target at rest. The value renders as stored
+// (the operator's own config — an edit control, not a fact), so a target that
+// embeds credentials carries the same cleartext warning the CLI gives at the
+// point of storage.
+func (f *litestreamFormVM) targetField() fieldMeta {
+	v := f.effective()
+	help := "litestream.replica_target · a path, file://, s3:// or sftp:// — the daemon cannot verify it."
+	if backup.HasURIUserinfo(v.Target) {
+		help = "litestream.replica_target · this URI embeds credentials — stored in cleartext, as the CLI warns."
+	}
+	return fieldMeta{
+		ID: "ls-target", Label: "Replica-uri", Name: "replica_target",
+		Value: v.Target, Placeholder: "/mnt/nas/exocomp-replica · s3://bucket/prefix · sftp://host/db",
+		Help: help, ErrMsg: v.ErrTarget,
+		FirstInvalid: v.FirstInvalid == "replica_target",
+	}
+}
+
+// ackChecked is the checkbox's checked state: the stored ack at rest, the
+// submitted value on a 422 re-render.
+func (f *litestreamFormVM) ackChecked() bool {
+	if f == nil {
+		return false
+	}
+	return f.Ack
+}
+
+// cliEcho is the CLI command the form's values correspond to (SPEC §7 A6): the
+// target with --ack-unencrypted when the typed target is remote and acked. The
+// echo scrubs any userinfo the target carries — a rendered page never echoes a
+// credential (invariant 4).
+func (f *litestreamFormVM) cliEcho() string {
+	v := f.effective()
+	scrubbed := scrubReplica(v.Target)
+	if scrubbed == "" {
+		return "same as exocomp litestream target ‹uri›"
+	}
+	if target, err := litestream.ParseTarget(v.Target); err == nil && target.Remote() && v.Ack {
+		return "same as exocomp litestream target " + scrubbed + " --ack-unencrypted"
+	}
+	return "same as exocomp litestream target " + scrubbed
 }
 
 // deadmanVM is the dead-man leg's render state (SPEC §1): the state word and
