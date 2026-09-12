@@ -39,6 +39,11 @@ templ systemPage(vm systemVM) {
 				} else {
 					<p class="meta">Not set.</p>
 				}
+				if vm.BasePath != "" {
+					<p>Base path: <span class="mono">{ vm.BasePath }</span></p>
+				} else {
+					<p>Base path: <span class="mono">origin root</span></p>
+				}
 				if vm.Operator {
 					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="writeform">
 						<label for="pub-url">Public URL</label>

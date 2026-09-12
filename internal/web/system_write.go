@@ -27,7 +27,7 @@ func (s *Server) handleSetPublicURL(w http.ResponseWriter, r *http.Request) {
 	}
 	raw := strings.TrimSpace(r.PostFormValue("url"))
 	if !validPublicURL(raw) {
-		http.Error(w, "public URL must be an absolute http or https URL", http.StatusBadRequest)
+		http.Error(w, publicURLError(raw), http.StatusBadRequest)
 		return
 	}
 	if err := s.store.PutSetting(r.Context(), store.SettingPublicURL, raw); err != nil {
@@ -38,11 +38,26 @@ func (s *Server) handleSetPublicURL(w http.ResponseWriter, r *http.Request) {
 	s.redirectFlash(w, r, "/system", "public URL set")
 }
 
-// validPublicURL accepts only an absolute http(s) URL with a host.
+// validPublicURL accepts only an absolute http(s) URL with a host, rooted at
+// the origin: the reactive ingress serves /hook and /approval at the root with
+// no path support (internal/reactive/token.go, ingress.go), so a public-url
+// carrying a path would emit decision links nothing serves.
 func validPublicURL(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil {
 		return false
 	}
-	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" &&
+		(u.Path == "" || u.Path == "/")
+}
+
+// publicURLError explains why a public URL was refused. A well-formed absolute
+// URL that fails validation can only fail on its path; a malformed one is told
+// apart so the copy names the actual problem.
+func publicURLError(raw string) string {
+	u, err := url.Parse(raw)
+	if err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" {
+		return "public URL must be at the origin root — the ingress serves /hook and /approval links there, so a path would point them at nothing"
+	}
+	return "public URL must be an absolute http or https URL"
 }

@@ -337,6 +337,7 @@ type systemVM struct {
 	Backups   []backupRow
 	Operator  bool
 	PublicURL string // daemon.public_url, "" when unset
+	BasePath  string // the --base-path the surface is served under, "" at the root
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a

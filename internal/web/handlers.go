@@ -177,6 +177,7 @@ func (s *Server) handleSystem(w http.ResponseWriter, r *http.Request) {
 	if v, err := s.store.GetSetting(r.Context(), store.SettingPublicURL); err == nil {
 		vm.PublicURL = v
 	}
+	vm.BasePath = s.basePath()
 
 	backups, err := s.backups(r)
 	if err != nil {
