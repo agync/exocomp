@@ -119,8 +119,9 @@ func TestSourceRunPlaybookCarriesEgress(t *testing.T) {
 	}
 }
 
-// TestSourceRunPlaybookRefusesJunkEgress: a junk port on the launcher form is a
-// 400, and no job is created.
+// TestSourceRunPlaybookRefusesJunkEgress: a junk port on the launcher form is
+// a 422 with the egress field's refusal, the typed value kept, and no job is
+// created — the forms pattern, never a bare 400.
 func TestSourceRunPlaybookRefusesJunkEgress(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -132,9 +133,14 @@ func TestSourceRunPlaybookRefusesJunkEgress(t *testing.T) {
 	for _, egress := range []string{"0", "70000", "abc"} {
 		resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
 			url.Values{"playbook": {"site.yml"}, "egress": {egress}}, nil)
+		body := readBody(t, resp)
 		_ = resp.Body.Close()
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Fatalf("egress=%s run = %d, want 400", egress, resp.StatusCode)
+		if resp.StatusCode != http.StatusUnprocessableEntity {
+			t.Fatalf("egress=%s run = %d, want 422 (%s)", egress, resp.StatusCode, body)
+		}
+		if !strings.Contains(body, `id="rp-egress-meta" class="meta is-error"`) ||
+			!strings.Contains(body, "Egress ports are numbers from 1 to 65535") {
+			t.Errorf("egress=%s refusal missing the field's is-error meta:\n%s", egress, body)
 		}
 	}
 	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})

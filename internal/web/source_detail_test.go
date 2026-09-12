@@ -110,7 +110,7 @@ func TestSourcePlaybookLauncherMeta(t *testing.T) {
 		`placeholder="all hosts"`,
 		"ansible --limit pattern",
 		`value="22, 443"`,
-		"ports the runner may reach · same as --egress",
+		"Ports the runner may reach — same as --egress.",
 		`· may end <span class="wait-text">DEGRADED</span>`,
 		"asks nothing else · same as exocomp run tree site.yml --egress 22,443",
 	} {
@@ -179,7 +179,7 @@ func TestSourceLaunchDrawer(t *testing.T) {
 		`class="modal drawer" id="launch"`,
 		`>Launch a run</button>`,
 		`data-modal-open="launch"`,
-		`<select id="rp-select" name="playbook" disabled>`,
+		`<select id="rp-select" name="playbook" disabled aria-describedby="rp-select-meta">`,
 		`<option value="">path — none discovered yet</option>`,
 		`this source has never synced. Sync brings the checkout down and reads its layout.`,
 		`Queue run — a path @ refs/heads/main`,
@@ -230,9 +230,10 @@ func TestSourceDetailRendersLauncherForOperator(t *testing.T) {
 		t.Error("operator's source detail must render both run forms")
 	}
 	// The Command tab posts the timeout the route parses — the field the
-	// drawer rebuild dropped while the Playbook tab kept it (MED).
-	if !strings.Contains(body, `<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>`) ||
-		!strings.Contains(body, `<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit">`) {
+	// drawer rebuild dropped while the Playbook tab kept it (MED). It now
+	// renders through fieldInput with its always-present meta line.
+	if !strings.Contains(body, `<input class="control" id="rc-timeout" name="timeout" value="" spellcheck="false" placeholder="no limit" aria-describedby="rc-timeout-meta">`) ||
+		!strings.Contains(body, `id="rc-timeout-meta"`) {
 		t.Error("launch drawer Command tab lost its Timeout field (MED)")
 	}
 	// Discovery lists the seeded playbook as a <select> option.
@@ -512,7 +513,8 @@ func TestSourceRunPlaybookFreePath(t *testing.T) {
 }
 
 // TestSourceRunPlaybookRequiresPlaybook: an empty playbook (neither select nor
-// free-path) is a 400, and no job is created.
+// free-path) re-renders the drawer at 422 with the select's meta line refusing
+// — the forms pattern — and no job is created.
 func TestSourceRunPlaybookRequiresPlaybook(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -522,9 +524,26 @@ func TestSourceRunPlaybookRequiresPlaybook(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook", url.Values{}, nil)
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("empty playbook run = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty playbook run = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`id="rp-select-meta" class="meta is-error"`,
+		"Choose a playbook, or give a path relative to the checkout.",
+		`open`, // the drawer re-renders open
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("empty-playbook 422 missing %q", want)
+		}
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{Runbook: "playbook"})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 0 {
+		t.Fatalf("an empty-playbook run created %d job(s)", len(jobs))
 	}
 }
 
@@ -564,7 +583,8 @@ func TestSourceRunCommandEnqueues(t *testing.T) {
 	}
 }
 
-// TestSourceRunCommandRequiresCommand: an empty command field is a 400.
+// TestSourceRunCommandRequiresCommand: an empty command field re-renders the
+// drawer at 422 with the field's is-error meta line — the forms pattern.
 func TestSourceRunCommandRequiresCommand(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -574,9 +594,17 @@ func TestSourceRunCommandRequiresCommand(t *testing.T) {
 	client := login(t, ts.URL, op)
 
 	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/command", url.Values{"host": {"web"}}, nil)
+	body := readBody(t, resp)
 	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("empty command run = %d, want 400", resp.StatusCode)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty command run = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `id="rc-command-meta" class="meta is-error"`) ||
+		!strings.Contains(body, "Give the command to run.") {
+		t.Errorf("empty-command 422 missing the field refusal:\n%s", body)
+	}
+	if !strings.Contains(body, `value="web"`) {
+		t.Errorf("empty-command 422 lost the typed host value:\n%s", body)
 	}
 }
 
@@ -628,6 +656,87 @@ func TestRunSurfaceRemoved(t *testing.T) {
 	}
 }
 
+// TestSourceRunPlaybook422KeepsValues pins the forms pattern on the launcher's
+// Playbook tab: a junk egress re-renders the drawer at 422 with the typed
+// limit/timeout values and the field refusal kept, and a posted confirm_token
+// never echoes.
+func TestSourceRunPlaybook422KeepsValues(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/playbook",
+		url.Values{"playbook": {"site.yml"}, "limit": {"web"}, "egress": {"99999"},
+			"timeout": {"10m"}, "confirm_token": {"exo_9_never_echo"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("junk-egress playbook run = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`value="web"`, // the typed limit survives
+		`value="10m"`, // the typed timeout survives
+		`id="rp-egress-meta" class="meta is-error"`,
+		"Egress ports are numbers from 1 to 65535 — like 22, 443.",
+		`open`, // the drawer re-renders open
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("playbook 422 missing %q", want)
+		}
+	}
+	if strings.Contains(body, "never_echo") {
+		t.Error("422 re-render echoed a posted confirm_token")
+	}
+}
+
+// TestSourceRunCommand422KeepsValues pins the forms pattern on the launcher's
+// Command tab: a bad timeout re-renders the drawer at 422 with the typed
+// host/command values kept and the timeout field's refusal on its meta line.
+func TestSourceRunCommand422KeepsValues(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/"+name+"/run/command",
+		url.Values{"host": {"web"}, "command": {"uptime"}, "timeout": {"5x"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad-timeout command run = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`value="web"`,    // the typed host survives
+		`value="uptime"`, // the typed command survives
+		`value="5x"`,     // the typed timeout survives
+		`id="rc-timeout-meta" class="meta is-error"`,
+		"The timeout is a duration — like 10m or 1h.",
+		`open`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("command 422 missing %q", want)
+		}
+	}
+
+	// An empty host is refused on the host field, keeping the command.
+	resp = postForm(t, client, ts.URL+"/sources/"+name+"/run/command",
+		url.Values{"host": {""}, "command": {"uptime"}}, nil)
+	body = readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("empty-host command run = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `id="rc-host-meta" class="meta is-error"`) ||
+		!strings.Contains(body, "Give a host pattern") {
+		t.Errorf("empty-host 422 missing the host refusal:\n%s", body)
+	}
+}
+
 // seedUnsyncedPath registers a PATH source with a checkout on disk but no sync
 // recorded: discovery finds real playbooks, and because a path source has no
 // sync verb at all (`source sync` refuses a non-git source), the launcher's
@@ -664,8 +773,8 @@ func TestSourcePathSelectEnabledWhenPlaybooksFound(t *testing.T) {
 		t.Fatalf("/sources/%s = %d", name, code)
 	}
 	for _, want := range []string{
-		`<select id="rp-select" name="playbook">`, // enabled, not disabled
-		`>site.yml</option>`,                      // the discovered playbook is selectable
+		`<select id="rp-select" name="playbook" aria-describedby="rp-select-meta">`, // enabled, not disabled
+		`>site.yml</option>`, // the discovered playbook is selectable
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("path source launcher missing %q", want)

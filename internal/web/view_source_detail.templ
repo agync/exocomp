@@ -111,84 +111,91 @@ templ sourceDetail(vm sourceDetailVM) {
 						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/playbook")) } class="writeform">
 							<label for="rp-select">Playbook</label>
 							if len(vm.Playbooks) == 0 {
-								<select id="rp-select" name="playbook" disabled>
+								<select id="rp-select" name="playbook" disabled aria-invalid?={ vm.playbookRefused() } aria-describedby="rp-select-meta">
 									<option value="">path — none discovered yet</option>
 								</select>
-								<p class="meta">{ vm.PlaybooksNote() }</p>
+								<span id="rp-select-meta" class={ "meta", templ.KV("is-error", vm.playbookRefused()) }>
+									if vm.playbookRefused() {
+										<span class="msg">{ vm.playbookRefusal() }</span>
+									} else {
+										{ vm.PlaybooksNote() }
+									}
+								</span>
 							} else {
 								// The first found playbook is PRESELECTED — the
 								// launcher states one concrete run before any input
 								// (SPEC §5.2), so there is no placeholder option.
 								// An unknown ?playbook= prefill (a free path)
-								// selects the "other path…" sentinel instead.
-								<select id="rp-select" name="playbook">
+								// selects the "other path…" sentinel instead. A
+								// refusal re-render keeps the form's posted choice.
+								<select id="rp-select" name="playbook" aria-invalid?={ vm.playbookRefused() } aria-describedby="rp-select-meta">
 									for _, pb := range vm.Playbooks {
-										if pb == vm.Playbook {
+										if selectedPlaybook(vm, pb) {
 											<option value={ pb } selected>{ pb }</option>
 										} else {
 											<option value={ pb }>{ pb }</option>
 										}
 									}
-									<option value="__other__" selected?={ !vm.PlaybookKnown() }>other path…</option>
+									<option value="__other__" selected?={ otherPathSelected(vm) }>other path…</option>
 								</select>
-								<p class="meta">{ vm.PlaybooksMeta() }</p>
+								<span id="rp-select-meta" class={ "meta", templ.KV("is-error", vm.playbookRefused()) }>
+									if vm.playbookRefused() {
+										<span class="msg">{ vm.playbookRefusal() }</span>
+									} else {
+										{ vm.PlaybooksMeta() }
+									}
+								</span>
 							}
-							<label for="rp-limit">Limit</label>
-							<input id="rp-limit" name="limit" type="text" autocomplete="off" placeholder="all hosts"/>
-							<p class="meta">ansible --limit pattern</p>
-							<label for="rp-egress">Egress ports (TCP, comma-separated)</label>
-							<input id="rp-egress" name="egress" type="text" autocomplete="off" value={ vm.EgressPrefill() }/>
-							<p class="meta">ports the runner may reach · same as --egress</p>
+							@fieldInput(vm.RunForm.limitField())
+							@fieldInput(vm.RunForm.egressField(vm.EgressPrefill()))
 							<div class="toggle-row">
-								@toggle("tolerate_unreachable", "Tolerate unreachable hosts", false, false)
+								@toggle("tolerate_unreachable", "Tolerate unreachable hosts", vm.toggleState("tolerate_unreachable"), false)
 								<p class="meta">· may end <span class="wait-text">DEGRADED</span></p>
 							</div>
 							<details class="opts">
 								<summary>More — path, inventory, tags, secrets, run modes</summary>
 								<label for="rp-path">Or a path relative to the checkout</label>
-								<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ vm.FreePrefill() }/>
+								<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ freePathValue(vm) }/>
 								<label for="rp-inventory">Inventory</label>
 								<input id="rp-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
 								<label for="rp-tags">Tags</label>
 								<input id="rp-tags" name="tags" type="text" autocomplete="off"/>
 								<label for="rp-secrets">Run secrets binding</label>
 								<input id="rp-secrets" name="run_secrets" type="text" autocomplete="off"/>
-								@toggle("check", "check mode (dry run)", false, false)
-								@toggle("diff", "show diff", false, false)
-								<label for="rp-timeout">Timeout (optional, e.g. 10m)</label>
-								<input id="rp-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+								@toggle("check", "check mode (dry run)", vm.toggleState("check"), false)
+								@toggle("diff", "show diff", vm.toggleState("diff"), false)
+								@fieldInput(vm.RunForm.timeoutField("rp-timeout"))
 							</details>
 							<div class="privileged">
-								@toggle("privileged", "Run unsandboxed (privileged)", false, true)
+								@toggle("privileged", "Run unsandboxed (privileged)", vm.toggleState("privileged"), true)
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
+							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
 							<div class="actions">
-								<button type="submit" class="btn primary">{ vm.QueueLabel() }</button>
+								<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
 							</div>
 							<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
 						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/command")) } class="writeform">
-							<label for="rc-host">Host pattern</label>
-							<input id="rc-host" name="host" type="text" required autocomplete="off" placeholder="web or fedora:!nas"/>
-							<label for="rc-command">Command</label>
-							<input id="rc-command" name="command" type="text" required autocomplete="off" placeholder="systemctl status nginx"/>
-							@toggle("shell", "run through the shell module (pipes/redirects)", false, false)
-							@toggle("become", "become (privilege escalation)", false, false)
+							@fieldInput(vm.RunForm.hostField())
+							@fieldInput(vm.RunForm.commandField())
+							@toggle("shell", "run through the shell module (pipes/redirects)", vm.toggleState("shell"), false)
+							@toggle("become", "become (privilege escalation)", vm.toggleState("become"), false)
 							<label for="rc-inventory">Inventory</label>
 							<input id="rc-inventory" name="inventory" type="text" autocomplete="off" placeholder="registered name or path (empty: source ansible.cfg / discovery)"/>
-							<label for="rc-timeout">Timeout (optional, e.g. 10m)</label>
-							<input id="rc-timeout" name="timeout" type="text" autocomplete="off" placeholder="no limit"/>
+							@fieldInput(vm.RunForm.timeoutField("rc-timeout"))
 							<label for="rc-secrets">Run secrets binding</label>
 							<input id="rc-secrets" name="run_secrets" type="text" autocomplete="off"/>
-							@toggle("require_approval", "require approval before it runs", false, false)
+							@toggle("require_approval", "require approval before it runs", vm.toggleState("require_approval"), false)
 							<div class="privileged">
-								@toggle("privileged", "Run unsandboxed (privileged)", false, true)
+								@toggle("privileged", "Run unsandboxed (privileged)", vm.toggleState("privileged"), true)
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
+							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
 							<div class="actions">
-								<button type="submit" class="btn primary">{ vm.QueueLabel() }</button>
+								<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
 							</div>
 							<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 						</form>
