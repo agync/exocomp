@@ -32,20 +32,68 @@ func TestPublicURLRefusesAPath(t *testing.T) {
 	op := h.mint(t, "abn", "operator")
 	client := login(t, ts.URL, op)
 
+	// A7: the validPublicURL guard's refusal is a field refusal — it re-renders
+	// /system at 422 with the field's ▲ meta line, the typed value kept, and no
+	// flash (forms/SPEC.md: flash is success-only). A 303 redirect would be a
+	// flash and this test would red.
 	resp := postForm(t, client, ts.URL+"/system/public-url",
 		url.Values{"url": {"https://exocomp.example.ts.net/exocomp"}}, nil)
 	body := readBody(t, resp)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("path-bearing public url = %d, want 400 (%s)", resp.StatusCode, body)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("path-bearing public url = %d, want 422 (%s)", resp.StatusCode, body)
 	}
-	if !strings.Contains(body, "origin root") {
+	if !strings.Contains(body, `id="pub-url-meta" class="meta is-error"`) {
+		t.Errorf("path refusal missing the field's is-error meta: %s", body)
+	}
+	// The words table (forms/SPEC.md) is binding: the refusal is one sentence
+	// naming the origin-root reason, never "invalid"/"error" or a status code.
+	// (The page's aria-invalid attribute carries the word "invalid" — the check
+	// is on the copy.)
+	refusal := "public URL must be at the origin root — the ingress serves /hook and /approval links there, so a path would point them at nothing"
+	if !strings.Contains(body, refusal) {
 		t.Errorf("path refusal copy missing the origin-root reason: %s", body)
 	}
-	if strings.Contains(body, "invalid") {
-		t.Error("path refusal copy uses the word 'invalid'")
+	if !strings.Contains(body, `value="https://exocomp.example.ts.net/exocomp"`) {
+		t.Errorf("path refusal lost the typed value on the re-render: %s", body)
 	}
 	if got, _ := h.store.GetSetting(ctx, store.SettingPublicURL); got != "https://exocomp.example.ts.net" {
 		t.Fatalf("path-bearing url overwrote the setting: %q", got)
+	}
+}
+
+// TestPublicURLMetaAtRest pins the forms anatomy on the Change form at rest:
+// the field's meta line always renders its help (approval links and the kit
+// use this), the 20px form status line always renders, and neither carries a
+// refusal. Dropping the meta line reds this test (mutation).
+func TestPublicURLMetaAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	if err := h.store.PutSetting(ctx, store.SettingPublicURL, "https://exocomp.example.ts.net"); err != nil {
+		t.Fatalf("PutSetting: %v", err)
+	}
+
+	op := h.mint(t, "abn", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="pub-url-meta"`,
+		"approval links and the kit use this",
+		`aria-describedby="pub-url-meta"`,
+		`class="form-status" role="status" aria-live="polite"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("Change form at rest missing %q", want)
+		}
+	}
+	if strings.Contains(page, `class="meta is-error"`) {
+		t.Error("Change form at rest must not carry a field refusal")
 	}
 }
 

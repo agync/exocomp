@@ -79,12 +79,21 @@ func TestSetPublicURL(t *testing.T) {
 		t.Fatalf("public url = %q, want the posted value", got)
 	}
 
-	// A non-absolute / non-http URL is rejected and does not overwrite.
+	// A non-absolute / non-http URL is rejected and does not overwrite: the
+	// refusal re-renders /system at 422 with the field's ▲ meta line (A7) —
+	// never a flash.
 	resp = postForm(t, client, ts.URL+"/system/public-url",
 		url.Values{"url": {"not-a-url"}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("bad url = %d, want 400", resp.StatusCode)
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad url = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, `id="pub-url-meta" class="meta is-error"`) ||
+		!strings.Contains(body, "Give the public URL as a full address") {
+		t.Errorf("bad url refusal missing the field's is-error meta:\n%s", body)
+	}
+	if !strings.Contains(body, `value="not-a-url"`) {
+		t.Errorf("bad url refusal lost the typed value:\n%s", body)
 	}
 	if got, _ := h.store.GetSetting(ctx, store.SettingPublicURL); got != "https://exocomp.example.ts.net" {
 		t.Fatalf("bad url overwrote the setting: %q", got)
