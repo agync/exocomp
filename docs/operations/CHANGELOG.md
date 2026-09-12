@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — base-path exposure and ingress-consistent public URL
+
+- **`/system` shows the effective base path** the surface is served under:
+  the origin root when `serve` runs without `--base-path`, otherwise the
+  prefix (e.g. `/exocomp`), read-only.
+- **The public-URL write refuses a URL carrying a path.** The reactive
+  ingress serves `/hook/{token}` and `/approval/{id}/{decision}` on the
+  loopback listener at the origin root with no path support, and decision
+  links are rooted at the public URL — so a path-bearing public URL would
+  emit decision links nothing serves. The refusal says that in plain
+  words.
+
 ## 2026-09-12 — `serve --base-path` web-surface spine
 
 - **The web surface can be served under an origin sub-path.** `exocomp serve
