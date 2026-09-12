@@ -784,6 +784,16 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .tray-table .lifecycle .stale { font: 400 11px var(--font-mono); color: var(--signal-wait); white-space: nowrap; }
 .n-add { color: var(--signal-ok); } .n-chg { color: var(--signal-wait); } .n-del { color: var(--signal-fail); }
 
+/* ---- Workspace detail: §2.1 identity tiles + §2.3 Tofu state tray ----
+ * The identity card's 4-tile grid reuses the run-card .config tiles; the tile
+ * links (Backend, Tofu state) take the link hover the counts tiles share, and
+ * the tray's column template is SERIAL · WRITTEN BY · WHEN · DIFF. */
+.detail-tiles .tile { text-decoration: none; }
+.detail-tiles a.tile:hover, .detail-tiles a.tile:focus-visible { border-color: var(--accent-border); text-decoration: none; }
+.detail-tiles .tile .tmeta { font: 400 11px var(--font-mono); color: var(--ink-500); }
+.state .row { grid-template-columns: 76px minmax(0,1fr) 104px 150px; }
+.state .adoption { font: 400 12px var(--font-mono); color: var(--ink-400); }
+
 /* ---- Plan detail (SPEC §4, lift.css §diff) ----
  * The plan-detail card: the lifecycle chips, the +N ~N −N verdict, and the
  * structured diff parsed from `tofu show -json`. The ring is the dominant

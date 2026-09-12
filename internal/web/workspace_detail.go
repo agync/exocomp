@@ -33,6 +33,12 @@ type workspaceDetailVM struct {
 	// the verb's surface — never a flash (flash is success-only).
 	PlanErr    string
 	DestroyErr string
+	// StateTray is the §2.3 Tofu state tray: the workspace's stored tfstate
+	// serials, newest first, the first serial the adoption. ProviderOffline
+	// drives the §2.1 Provider mirror tile (workspace.resolve from the local
+	// mirror only).
+	StateTray       []stateTrayRow
+	ProviderOffline bool
 }
 
 // DestroyKicker is the destroy confirm's eyebrow: DESTROY · WORKSPACE X.
@@ -68,7 +74,11 @@ func (s *Server) workspaceDetailVMFor(r *http.Request, name string, destroy bool
 		Row: workspaceWriteRow{Name: ws.Name, TofuDir: ws.TofuDir, Serial: ws.Serial, Base: s.basePath()},
 		// ?destroy=1 is the JS-off fallback that renders the destroy confirm
 		// dialog already open, mirroring the plan detail's ?launch=1.
-		Destroy: destroy,
+		Destroy:         destroy,
+		ProviderOffline: ws.OfflineProviders,
+	}
+	if err := s.buildStateTray(r, &vm, ws); err != nil {
+		return workspaceDetailVM{}, err
 	}
 	addr, err := api.ReadAddress(filepath.Join(s.dataDir, api.AddressFile))
 	if err != nil {
@@ -108,6 +118,56 @@ func (s *Server) workspaceDetailVMFor(r *http.Request, name string, destroy bool
 		}
 	}
 	return vm, nil
+}
+
+// buildStateTray fills the §2.3 Tofu state tray: the workspace's stored tfstate
+// serials, newest first, from ListTFStates — the DATA SOURCE. The plan-show
+// companion is a PLAN document with no serial field, so it can only authorize a
+// browse, never name a row. The FIRST serial of the lineage is the adoption
+// (`workspace adopt` pushes the first tfstate row); it has no companion, so it
+// reads. A serial browses to its show-json diff only when a sealed
+// `tofu-plan-show` companion exists for a plan made against that serial; every
+// other serial renders a "no sealed diff" note. Read-only — no rollback op
+// exists.
+func (s *Server) buildStateTray(r *http.Request, vm *workspaceDetailVM, ws store.Workspace) error {
+	states, err := s.store.ListTFStates(r.Context(), ws.ID, 0)
+	if err != nil {
+		return err
+	}
+	// browseBy maps a serial to the saved-plan id whose job sealed a show-json
+	// companion — the plan-detail page renders that companion's diff.
+	browseBy := map[int64]int64{}
+	showJobs := map[int64]bool{}
+	if shows, serr := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanShowArtifactKind, 100); serr == nil {
+		for _, sh := range shows {
+			showJobs[sh.JobID] = true
+		}
+	}
+	if plans, perr := s.planArtifactsFor(r.Context(), reactive.WorkspaceRunbook(ws.Name), reactive.PlanArtifactKind, 100); perr == nil {
+		for _, p := range plans { // newest first
+			if showJobs[p.JobID] && p.PlanSerial > 0 {
+				if _, ok := browseBy[p.PlanSerial]; !ok {
+					browseBy[p.PlanSerial] = p.ID
+				}
+			}
+		}
+	}
+	now := s.now()
+	for _, st := range states { // newest first
+		row := stateTrayRow{Serial: st.Serial, When: finishedRel(st.CreatedAt, now)}
+		if st.CreatedByJob != nil {
+			row.JobID = *st.CreatedByJob
+		}
+		row.BrowseID = browseBy[st.Serial]
+		vm.StateTray = append(vm.StateTray, row)
+	}
+	// The FIRST serial of the lineage is the adoption; it has no companion, so
+	// it reads, never browses.
+	if n := len(vm.StateTray); n > 0 {
+		vm.StateTray[n-1].Adoption = true
+		vm.StateTray[n-1].BrowseID = 0
+	}
+	return nil
 }
 
 // planRowMeta is one deduped saved plan of a workspace: the sealing artifact,

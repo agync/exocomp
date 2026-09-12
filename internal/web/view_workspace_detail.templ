@@ -16,15 +16,26 @@ templ workspaceDetail(vm workspaceDetailVM) {
 				@chip(vm.Row.TypeClass(), vm.Row.TypeLabel())
 				@chip(vm.Row.StateClass(), vm.Row.StateLabel())
 			</div>
-			<dl class="kv">
-				<div><dt>Serial</dt><dd class="mono">{ itoa64(vm.Row.Serial) }</dd></div>
-				if !vm.Row.StateOnly() {
-					<div><dt>Dir</dt><dd class="mono">{ vm.Row.TofuDir }</dd></div>
-				}
-				if vm.Config.Address != "" {
-					<div><dt>State backend</dt><dd class="mono">{ vm.Config.Address }</dd></div>
-				}
-			</dl>
+			<div class="config detail-tiles">
+				<div class="tile">
+					<span>Dir</span>
+					<b class="mono">{ vm.TileDir() }</b>
+				</div>
+				<a class="tile" href="#tofu-state">
+					<span>Backend</span>
+					<b class="mono">{ vm.TileBackend() }</b>
+					<span class="tmeta">http · loopback</span>
+				</a>
+				<div class={ "tile", templ.KV("wait", vm.TileProviderWait()) }>
+					<span>Provider mirror</span>
+					<b>{ vm.TileProvider() }</b>
+				</div>
+				<a class="tile" href="#tofu-state">
+					<span>Tofu state</span>
+					<b>{ vm.TileState() }</b>
+					<span class="tmeta">browse →</span>
+				</a>
+			</div>
 			if vm.Operator && !vm.Row.StateOnly() {
 				<div class="rowactions">
 					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + vm.Row.Name + "/plan")) } class="inline-form">
@@ -105,7 +116,8 @@ templ workspaceDetail(vm workspaceDetailVM) {
 				<p class="meta mt8">a Policy verdict rides on the plan: deny · require-approval</p>
 			}
 		</div>
-		<div class="card span2 mt18 backend">
+		<div class="cards mt18">
+		<div class="card backend">
 			<div class="kicker">Backend config</div>
 			<h3>Backend</h3>
 			if vm.Row.Backend.Address == "" {
@@ -161,6 +173,49 @@ templ workspaceDetail(vm workspaceDetailVM) {
 				})();
 				</script>
 			}
+		</div>
+		<div class="card state-tray" id="tofu-state">
+			<div class="kicker">Tofu state</div>
+			<h3>State</h3>
+			if len(vm.StateTray) == 0 {
+				<p class="meta">No state stored yet — this workspace holds no tfstate.</p>
+			} else {
+				<p class="meta">{ itoa(int64(len(vm.StateTray))) } serials · newest first · <span class="ws-encrypted"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>ENCRYPTED AT REST</span></p>
+				<div class="tray-table state">
+					<div class="row tt-col state">
+						<span>SERIAL</span>
+						<span>WRITTEN BY</span>
+						<span>WHEN</span>
+						<span class="th-actions">DIFF</span>
+					</div>
+					for _, row := range vm.StateTray {
+						<div class="row state">
+							<span class="mono">serial { itoa64(row.Serial) }</span>
+							<span>
+								if row.Adoption {
+									<span class="adoption">workspace adopt · migrated from backend</span>
+								} else if row.JobID != 0 {
+									<a class="mono" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(row.JobID))) }>job #{ itoa64(row.JobID) }</a>
+								} else {
+									<span class="quiet">outside exocomp</span>
+								}
+							</span>
+							<span class="mono">{ row.When }</span>
+							<span class="actions">
+								if row.Browseable() {
+									<a class="verb" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + vm.Row.Name + "/plans/" + itoa64(row.BrowseID))) } aria-label={ "Browse serial " + itoa64(row.Serial) + " diff" } title="Browse diff">
+										<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphDiff }></path></svg>
+									</a>
+								} else {
+									<span class="quiet">no sealed diff</span>
+								}
+							</span>
+						</div>
+					}
+				</div>
+				<p class="meta mt8">read-only · the adoption is the first serial</p>
+			}
+		</div>
 		</div>
 	if vm.Operator && !vm.Row.StateOnly() {
 			<dialog class="modal plan-confirm" id="ws-destroy-confirm" aria-labelledby="ws-destroy-title" open?={ vm.Destroy }>

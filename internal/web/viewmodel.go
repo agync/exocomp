@@ -1493,6 +1493,60 @@ type workspaceRow struct {
 	LastJob string
 }
 
+// stateTrayRow is one stored tfstate serial of the workspace detail's Tofu
+// state tray (SPEC §2.3): the serial, when it was written, and who wrote it —
+// a job link, "outside exocomp", or the adoption line for the FIRST serial.
+// BrowseID is the saved-plan id whose sealed `tofu-plan-show` companion renders
+// the serial's show-json diff; 0 means no companion, so the row reads a "no
+// sealed diff" note instead of a browse verb.
+type stateTrayRow struct {
+	Serial   int64
+	When     string
+	JobID    int64
+	Adoption bool
+	BrowseID int64
+}
+
+// Browseable reports whether this serial has a sealed show-json companion to
+// browse to.
+func (r stateTrayRow) Browseable() bool { return r.BrowseID != 0 }
+
+// TileDir is the §2.1 identity grid's Dir tile: the workspace's tofu root, or
+// a dash for the state-only shape (no dir to run from).
+func (vm workspaceDetailVM) TileDir() string {
+	if vm.Row.StateOnly() {
+		return "—"
+	}
+	return vm.Row.TofuDir
+}
+
+// TileBackend is the §2.1 Backend tile: the recorded state-backend address,
+// or a "not recorded" line before the daemon has one.
+func (vm workspaceDetailVM) TileBackend() string {
+	if vm.Config.Address == "" {
+		return "not recorded"
+	}
+	return vm.Config.Address
+}
+
+// TileProvider is the §2.1 Provider mirror tile: online, or "offline · mirror
+// only" in wait when the workspace resolves providers from the local mirror.
+func (vm workspaceDetailVM) TileProvider() string {
+	if vm.ProviderOffline {
+		return "offline · mirror only"
+	}
+	return "online"
+}
+
+// TileProviderWait reports the provider-mirror tile's wait state (offline).
+func (vm workspaceDetailVM) TileProviderWait() bool { return vm.ProviderOffline }
+
+// TileState is the §2.1 Tofu state tile: the stored serial count, the value
+// whose link lands on the tray card below.
+func (vm workspaceDetailVM) TileState() string {
+	return itoa(int64(len(vm.StateTray))) + " serials"
+}
+
 // jobDetailVM is the streamed job view: its header plus the events seen so far.
 type jobDetailVM struct {
 	Page     page
