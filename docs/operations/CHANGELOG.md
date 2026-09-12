@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the backups audit lands (SPEC §7 A4 · A12 · A10)
+
+- **The drill outcome has a surface.** A succeeded restore drill now reads as
+  `drill {age} ago ok · {bytes} verified · {duration}` in the LAST RUN second
+  line and on the target's history page — the restored bytes parsed from the
+  drill job's own outcome event, the duration its wall time. A drill whose job
+  left no outcome still draws the plain `drill {age} ago ok` mark; the exit
+  code stays the judge (A4).
+- **Each target gets a snapshot history page.** `/system/backups/{name}/history`
+  (the TARGET name now links to it) lists one snapshot per row — id, age, size,
+  the drilled mark and outcome on the newest of a drilled target. Per-snapshot
+  forget lives under a forgettable row's ▾ in fail, asks first, and is ABSENT on
+  the newest snapshot and on any drilled one — server-side too, so a crafted
+  POST cannot forget the recovery point (A12).
+- **Forget goes through the one queue.** The verb enqueues one kind
+  `backup-forget` job (argv `exocomp-forget {target} {snapshot-id}`) under the
+  target's backup concurrency key, so a forget can never race a backup or a
+  retention prune of the same repository. The daemon-side runner leg for the
+  kind is the follow-up (the web names only the target and snapshot through the
+  queue). Forget never appears on the Restore drawer — a delete verb beside the
+  restore radios is a mis-click.
+- **The Backups card chip fails at two.** `1 OF {m} FAILING` still reads wait,
+  but TWO failing targets read fail (A10).
+
 ## 2026-09-12 — the checks tab strip swaps in place
 
 - **The /checks Probes↔Netgroups strip becomes a client-side fragment swap.**
