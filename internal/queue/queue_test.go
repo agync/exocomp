@@ -2,6 +2,7 @@ package queue_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -444,6 +445,26 @@ func readMarkers(t *testing.T, path string) []string {
 	return strings.Fields(string(data))
 }
 
+// barrierScript writes "start", then waits for a second "start" (the peer
+// job's) before writing "end", so the overlap proof does not depend on a
+// wall-clock window. The wait is bounded: a serialized run must fail the test,
+// not hang it — a second start that never arrives ends the job non-zero after
+// the deadline instead of waiting forever.
+func barrierScript(path string) []string {
+	script := fmt.Sprintf(`echo start >> %s
+deadline=$(( $(date +%%s) + 15 ))
+while [ "$(grep -c '^start$' %s 2>/dev/null || true)" -lt 2 ]; do
+  if [ "$(date +%%s)" -ge "$deadline" ]; then
+    echo 'barrier timed out: peer start never seen' >&2
+    echo end >> %s
+    exit 1
+  fi
+  sleep 0.05
+done
+echo end >> %s`, path, path, path, path)
+	return []string{"/bin/sh", "-c", script}
+}
+
 func TestSharedConcurrencyKeySerializes(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -483,7 +504,7 @@ func TestDistinctConcurrencyKeysOverlap(t *testing.T) {
 
 	markers := filepath.Join(t.TempDir(), "markers")
 	for _, key := range []string{"workspace-a", "workspace-b"} {
-		spec := shellSpec(markerScript(markers)...)
+		spec := shellSpec(barrierScript(markers)...)
 		spec.ConcurrencyKey = key
 		if _, err := q.Enqueue(ctx, spec); err != nil {
 			t.Fatalf("enqueue: %v", err)
