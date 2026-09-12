@@ -332,8 +332,47 @@ func TestJobRerunModalPrefills(t *testing.T) {
 	if strings.Contains(body, `name="diff" value="1" class="toggle-cb" checked`) {
 		t.Error("diff toggle must be off for a run without --diff")
 	}
-	if !strings.Contains(body, `name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value="web"`) {
+	if !strings.Contains(body, `id="jr-limit" name="limit" value="web"`) {
 		t.Error("limit field must be prefilled from the argv")
+	}
+	if !strings.Contains(body, `id="jr-limit-meta"`) {
+		t.Error("limit field must render its meta line at rest")
+	}
+}
+
+// TestJobRerunLimit422KeepsValues pins the forms pattern on the rerun modal's
+// Limit field: a limit carrying a newline re-renders the job detail at 422 with
+// the dialog open, the typed value kept, the field's is-error meta line filled,
+// and nothing enqueued.
+func TestJobRerunLimit422KeepsValues(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	orig := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	resp := postForm(t, client, ts.URL+"/jobs/"+itoa64(orig.ID)+"/rerun",
+		url.Values{"limit": {"web\nhost2"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("newline-limit rerun = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`id="jr-limit-meta" class="meta is-error"`,
+		"one host or group pattern", // the refusal copy (apostrophe HTML-escaped)
+		"web\nhost2",                // the typed limit value survives
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rerun 422 missing %q", want)
+		}
+	}
+	jobs, err := h.store.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatalf("ListJobs: %v", err)
+	}
+	if len(jobs) != 1 || jobs[0].ID != orig.ID {
+		t.Fatalf("a refused rerun still enqueued a job: %+v", jobs)
 	}
 }
 

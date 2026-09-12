@@ -1644,6 +1644,20 @@ type jobRerunVM struct {
 	Command    string
 	Inventory  string
 	ExtraVars  []string
+	// ErrLimit is the Limit field's refusal (the forms pattern): empty at rest,
+	// the ▲ sentence on a 422 re-render that keeps the typed value.
+	ErrLimit string
+}
+
+// limitField builds the Limit control's render state (the forms pattern): the
+// field's help at rest, the refusal sentence on a 422 re-render.
+func (r jobRerunVM) limitField() fieldMeta {
+	return fieldMeta{
+		ID: "jr-limit", Label: "Limit", Name: "limit", Value: r.Limit,
+		Placeholder: "host or group pattern",
+		Help:        "ansible --limit pattern — empty means all hosts.",
+		ErrMsg:      r.ErrLimit, FirstInvalid: r.ErrLimit != "",
+	}
 }
 
 // Summary is the rerun dialog footer's mono line naming the enabled options:

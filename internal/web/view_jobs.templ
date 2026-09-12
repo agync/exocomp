@@ -352,8 +352,7 @@ templ rerunDialog(vm jobDetailVM) {
 					<div><span>Ref</span><b class="mono">{ orDash(vm.RefLabel) }</b></div>
 					<div><span>Inventory</span><b class="mono">{ orDash(vm.Rerun.Inventory) }</b></div>
 				</div>
-				<label for="jr-limit">Limit</label>
-				<input id="jr-limit" name="limit" type="text" autocomplete="off" placeholder="host or group pattern" value={ vm.Rerun.Limit }/>
+				@fieldInput(vm.Rerun.limitField())
 				<span class="kicker">OPTIONS</span>
 				<div class="toggle-row">
 					@toggle("check", "Check mode", vm.Rerun.Check, false)

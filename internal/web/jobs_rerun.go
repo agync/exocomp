@@ -37,6 +37,10 @@ func (s *Server) registerJobRerunWrite(mux *http.ServeMux) {
 // job stream and every job face show why this run exists.
 const rerunTrigger = "rerun"
 
+// rerunLimitRefusal is the Limit field's human copy (the forms pattern): the
+// raw validator word goes to the log, the meta line carries this sentence.
+const rerunLimitRefusal = "The limit is one host or group pattern — it can't carry a newline."
+
 func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
@@ -75,7 +79,18 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 	limit := strings.TrimSpace(r.PostFormValue("limit"))
 	tags := strings.TrimSpace(r.PostFormValue("tags"))
 	if err := validRerunValue("--limit", limit); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		s.log.Info("web: rerun refused", "err", err.Error(), "by", ident.token.Name)
+		vm, verr := s.jobDetailVMFor(w, r)
+		if verr != nil {
+			return
+		}
+		vm.Rerun.Check = r.Form.Has("check")
+		vm.Rerun.Diff = r.Form.Has("diff")
+		vm.Rerun.Tolerate = r.Form.Has("tolerate_unreachable")
+		vm.Rerun.Limit = limit
+		vm.Rerun.ErrLimit = rerunLimitRefusal
+		vm.RerunOpen = true
+		s.render(w, r, http.StatusUnprocessableEntity, jobDetail(vm))
 		return
 	}
 	if err := validRerunValue("--tags", tags); err != nil {
