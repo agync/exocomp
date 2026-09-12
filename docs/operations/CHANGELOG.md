@@ -6,6 +6,47 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the backups leg lands (SPEC §4)
+
+- **The /system Backups card draws real freshness.** The stub becomes the §0.1
+  card: a state chip (OK · `{n} OF {m} FAILING` · NONE), a target-freshness mini
+  table (name · kind · snapshot/`● RUNNING · job #…` on the left, state word and
+  age on the right), the one `Manage` verb linking to `/system/backups`, and a
+  sentence that a running run does not move the age (A9).
+- **`/system/backups` lands as the management list (SPEC §4.1).** Every target
+  renders as a two-line row across TARGET · KIND · RETENTION · SCHEDULE · LAST
+  RUN · ACTIONS: enabled/disabled word, scrubbed-kind URI (a `--uri` that embeds
+  credentials renders `***@`, never the token), the parsed retention policy
+  (`daily 7 · weekly 4`, `keep all / never prunes · grows`, git's `—`), the
+  kind=backup schedule cadence or a `no schedule / add one` gap, and the newest
+  run with its bytes · duration · job link · `drill N ago ok` mark · failed-in-a-
+  row count. The run verb is absent on a DISABLED row and the chevron never
+  moves. **A9**: a RUNNING run draws `● RUNNING · {elapsed} · job #{id}`.
+- **The Add-target dialog (SPEC §4.2) is ONE verb.** Name · Kind segmented (the
+  three real kinds — `restic_sftp` is cut, no engine or CLI handles it) ·
+  Repository · Retention cells (daily · weekly · keep-all) · Schedule prefilled
+  from the newest sibling. The primary `Add and queue first backup — {name}`
+  registers the target, creates its kind=backup schedule, and queues the first
+  backup through the one queue (invariant 5); a schedule-name collision or a
+  failed enqueue rolls the target back. The repository password is never a form
+  field — it is derived on the daemon side when the first backup runs.
+- **The store's unwired verbs (store/backup.go:101-133) get web controls.**
+  run / drill-now enqueue the same kind jobs the CLI and a drill schedule fire;
+  enable/disable and edit-retention write the row; remove asks first (the shared
+  confirm dialog). A crafted run POST against a disabled target is refused on
+  the row.
+- **The Restore DR drawer (SPEC §4.3) is the round's typed-confirm gate.** Fail
+  ring, `SYSTEM · BACKUPS · DISASTER RECOVERY` kicker, From switch
+  snapshot|replica, snapshot radios newest-first across targets with the drilled
+  ok mark (the new cross-target read, fold S-3), WHAT HAPPENS with the loss in
+  fail, and `Type the snapshot id to confirm` — the danger button rings until
+  the typed id matches, then fills. The live daemon cannot replace the store it
+  runs on, so a confirmed restore names the recovery-kit CLI path
+  (`exocomp restore --snapshot {id}` / `--from-litestream`) rather than
+  pretending. Replica mode deep-links via `/system/backups?restore=replica`
+  (m76's litestream leg keys off the drawer's `from=replica` + word confirm).
+
+
 ## 2026-09-12 — the /system Litestream leg: six word-states and the config view
 
 - **The Litestream leg of the self-care page grows from a stub to the six
