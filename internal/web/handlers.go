@@ -374,24 +374,38 @@ func actorFace(events []store.JobEvent) string {
 }
 
 func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
+	vm, err := s.jobDetailVMFor(w, r)
+	if err != nil {
+		return // jobDetailVMFor already wrote the failure response
+	}
+	s.render(w, r, http.StatusOK, jobDetail(vm))
+}
+
+// jobDetailVMFor builds the job detail page's render state: the run card, the
+// event tail, the verdict band, and the schedule/rerun dialog prefills. A
+// lookup or build failure writes the failure response and returns a non-nil
+// error so the caller never double-renders. The schedule and rerun handlers
+// share it for their 422 re-renders, which only override the dialog's form
+// state on top.
+func (s *Server) jobDetailVMFor(w http.ResponseWriter, r *http.Request) (jobDetailVM, error) {
 	id, ok := pathID(r)
 	if !ok {
 		http.NotFound(w, r)
-		return
+		return jobDetailVM{}, errors.New("bad job id")
 	}
 	job, err := s.store.GetJob(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
 		http.NotFound(w, r)
-		return
+		return jobDetailVM{}, err
 	}
 	if err != nil {
 		s.fail(w, r, err)
-		return
+		return jobDetailVM{}, err
 	}
 	events, err := s.store.ListJobEvents(r.Context(), id)
 	if err != nil {
 		s.fail(w, r, err)
-		return
+		return jobDetailVM{}, err
 	}
 	ident, _ := identityOf(r.Context())
 	source := job.Args.Source
@@ -444,7 +458,7 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 	actor, aerr := s.service().JobActor(r.Context(), job.ID)
 	if aerr != nil {
 		s.fail(w, r, aerr)
-		return
+		return jobDetailVM{}, aerr
 	}
 	actorName, face := "operator", "cli"
 	if actor.Kind != "" {
@@ -535,10 +549,10 @@ func (s *Server) handleJobDetail(w http.ResponseWriter, r *http.Request) {
 			// Only a missing row is benign — a manually enqueued job that
 			// happens to carry a rule runbook shows the rule line, no event.
 			s.fail(w, r, err)
-			return
+			return jobDetailVM{}, err
 		}
 	}
-	s.render(w, r, http.StatusOK, jobDetail(vm))
+	return vm, nil
 }
 
 // handleJobRaw serves a job's full event log as plain text — one message per
