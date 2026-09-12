@@ -6,6 +6,50 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-12 — the v0.13 designer-review close-out
+
+- **The identity strip's Change form rests closed.** The public-URL form
+  collapses to the one resting row (`public URL · value · Change`) and
+  expands inline below the strip on click; a 422 re-render and JS-off both
+  still show it. Doctor and Recovery-kit glyphs sit at the strip's far right
+  on the same row, and the phone footer reads one line (`public URL not set ·
+  change`).
+- **The Restore drawer stops pretending.** Before confirm the verb is `Show
+  the restore command` (quiet, fail ring, still gated by the typed id); a
+  valid confirm changes the drawer body to the RUN ON THE HOST block — the
+  recovery-kit command (`exocomp restore` / `--from-litestream`) with a Copy
+  verb and the sentence that the daemon cannot replace the store it serves.
+  The From switch takes the segmented shape, the snapshot rows become custom
+  44px radios (16px dot, inline label) instead of a browser fieldset, WHAT
+  HAPPENS gains its kicker, and the loss's `(fail)` renders as a coloured
+  span, never a raw word.
+- **The Backups card reads the ONE age rule.** Its figure quotes the newest
+  SUCCEEDED-run age the Dead-man card quotes, snapshot ids truncate to the
+  12-char short form everywhere (the full 64-hex never reaches /system), the
+  targets mini table reads name · state · age, a disabled target never pushes
+  the chip off OK, and the sentence shortens to the DR path.
+- **The self-care powerline names the leg, not the metric.** `rpo` is
+  retired: the litestream segment reads `litestream no sidecar` (fail) or the
+  age, and the dead-man NONE ring is pinned to wait (amber) with the chip dot
+  in wait — accent stays reserved for the Arm primary inside the card.
+- **The backups list and history headers close.** The /system/backups topbar
+  is the breadcrumb (meta left, verbs right, the card's repeated kicker
+  dropped), the footer joins its sentences with ` · `, the row ▾ gains
+  `history`, and rows are two-line 64px with the drill outcome leading LAST
+  RUN's second line (`drill —` / `drill 3d ago ok`) and only `job #N`
+  linking. The history page's `Back to targets` becomes a `‹ targets` link at
+  the topbar's left, its meta names drilled snapshots, and the no-verb row's
+  ACTIONS cell reads `—`.
+- **The ntfy drawer reads as a drawer.** The Detail switch's segments never
+  wrap, the × close sits in the head, WHAT A PUSH SAYS is the phone-push card
+  (surface-rail, 12px pad, Approve/Reject as quiet buttons), and the topic
+  presence row shows its label.
+- **The leg pages carry the System breadcrumb.** /system/litestream,
+  /system/deadman and /system/backups read `System · {Leg}` in the topbar.
+  The Arm dialog's heartbeat meta regains `pinged after every succeeded
+  backup · printed on the recovery kit`, and the phone powerline scrolls as
+  one row instead of wrapping.
+
 ## 2026-09-12 — the per-snapshot forget verb runs end to end (SPEC §7 A12)
 
 - **Forget goes executable.** The `backup-forget` job the web verb enqueues
