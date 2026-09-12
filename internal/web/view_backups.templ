@@ -456,6 +456,10 @@ templ restoreDrawerJS() {
 					e.preventDefault();
 					form.hidden = true;
 					host.hidden = false;
+					// The verb reads Shown and is disabled once the command is
+					// on screen — never a re-pressable `Show the restore
+					// command`.
+					if (btn) { btn.disabled = true; btn.textContent = "Shown"; }
 					return;
 				}
 				e.preventDefault();
@@ -507,7 +511,6 @@ templ backupsHistory(vm backupsHistoryVM) {
 			<p class="error" role="alert">{ vm.Notice }</p>
 		}
 		<div class="card span2 mt18 tray">
-			<div class="kicker">System / Backups / { vm.Target }</div>
 			<h3>Snapshot history</h3>
 			if !vm.Operator {
 				<p class="meta">Read-only: managing backups needs an operator token.</p>

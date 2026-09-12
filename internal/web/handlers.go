@@ -340,7 +340,10 @@ func (s *Server) deadmanVM(r *http.Request) deadmanVM {
 	case "tripped":
 		if paged, perr := s.store.GetSetting(ctx, store.SettingDeadmanPagedAt); perr == nil {
 			if when, ok := msTime(paged); ok {
-				dm.Paged = "ntfy · once · " + deadman.CountdownAge(now.Sub(when)) + " ago"
+				age := deadman.CountdownAge(now.Sub(when)) + " ago"
+				dm.PagedChannel = "ntfy"
+				dm.PagedMeta = " · once · " + age
+				dm.Paged = dm.PagedChannel + dm.PagedMeta
 			}
 		}
 		dm.NewestRuns = s.deadmanNewestRuns(r)
@@ -425,12 +428,12 @@ func msTime(raw string) (time.Time, bool) {
 	return time.UnixMilli(n).UTC(), true
 }
 
-// deadmanShortID renders a snapshot id at the length a card fact scans (the
-// same truncation the CLI's backup list uses, at the shorter display size the
-// fixture draws).
+// deadmanShortID renders a snapshot id at the length a card fact scans — the
+// same first-12-chars cut the CLI's backup list and the rest of the surface
+// use.
 func deadmanShortID(id string) string {
-	if len(id) > 6 {
-		return id[:6]
+	if len(id) > 12 {
+		return id[:12]
 	}
 	return id
 }

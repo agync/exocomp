@@ -99,7 +99,7 @@ templ deadmanCardInner(dm deadmanVM, base, from string) {
 		<dd class={ "ellipsis", templ.KV("is-fail", dm.HeartbeatClass == "fail") }>{ dm.Heartbeat }</dd>
 		if dm.Paged != "" {
 			<dt>paged</dt>
-			<dd>{ dm.Paged }</dd>
+			<dd><span class="paged-word">{ dm.PagedChannel }</span><span class="paged-facts">{ dm.PagedMeta }</span></dd>
 		}
 	</dl>
 	if dm.Sentence != "" {

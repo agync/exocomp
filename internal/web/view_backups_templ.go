@@ -1829,7 +1829,7 @@ func restoreDrawerJS() templ.Component {
 			templ_7745c5c3_Var86 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<script>\n\t(function () {\n\t\tfunction restoreWire() {\n\t\t\tvar form = document.getElementById(\"restore-backups-form\");\n\t\t\tif (!form || form.dataset.restoreWired) return;\n\t\t\tform.dataset.restoreWired = \"1\";\n\t\t\tvar btn = document.getElementById(\"restore-submit\");\n\t\t\tvar confirm = form.querySelector('input[name=\"confirm\"]');\n\t\t\tvar host = document.getElementById(\"run-host\");\n\t\t\tfunction syncRing() {\n\t\t\t\tif (!btn) return;\n\t\t\t\tvar required = btn.getAttribute(\"data-required-id\") || \"\";\n\t\t\t\tvar match = confirm.value.trim().toLowerCase() === required.toLowerCase();\n\t\t\t\tbtn.classList.toggle(\"ring\", !match);\n\t\t\t}\n\t\t\tform.addEventListener(\"input\", syncRing);\n\t\t\tform.addEventListener(\"change\", syncRing);\n\t\t\tsyncRing();\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\tvar required = btn.getAttribute(\"data-required-id\") || \"\";\n\t\t\t\tvar match = confirm.value.trim().toLowerCase() === required.toLowerCase();\n\t\t\t\tif (match && host) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.hidden = true;\n\t\t\t\t\thost.hidden = false;\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\te.preventDefault();\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tbtn.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Confirming restore';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"restore-backups-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\trestoreWire();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tbtn.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\trestoreWire();\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "<script>\n\t(function () {\n\t\tfunction restoreWire() {\n\t\t\tvar form = document.getElementById(\"restore-backups-form\");\n\t\t\tif (!form || form.dataset.restoreWired) return;\n\t\t\tform.dataset.restoreWired = \"1\";\n\t\t\tvar btn = document.getElementById(\"restore-submit\");\n\t\t\tvar confirm = form.querySelector('input[name=\"confirm\"]');\n\t\t\tvar host = document.getElementById(\"run-host\");\n\t\t\tfunction syncRing() {\n\t\t\t\tif (!btn) return;\n\t\t\t\tvar required = btn.getAttribute(\"data-required-id\") || \"\";\n\t\t\t\tvar match = confirm.value.trim().toLowerCase() === required.toLowerCase();\n\t\t\t\tbtn.classList.toggle(\"ring\", !match);\n\t\t\t}\n\t\t\tform.addEventListener(\"input\", syncRing);\n\t\t\tform.addEventListener(\"change\", syncRing);\n\t\t\tsyncRing();\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\tvar required = btn.getAttribute(\"data-required-id\") || \"\";\n\t\t\t\tvar match = confirm.value.trim().toLowerCase() === required.toLowerCase();\n\t\t\t\tif (match && host) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.hidden = true;\n\t\t\t\t\thost.hidden = false;\n\t\t\t\t\t// The verb reads Shown and is disabled once the command is\n\t\t\t\t\t// on screen — never a re-pressable `Show the restore\n\t\t\t\t\t// command`.\n\t\t\t\t\tif (btn) { btn.disabled = true; btn.textContent = \"Shown\"; }\n\t\t\t\t\treturn;\n\t\t\t\t}\n\t\t\t\te.preventDefault();\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tbtn.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Confirming restore';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"restore-backups-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\trestoreWire();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tbtn.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\trestoreWire();\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1883,7 +1883,7 @@ func backupsHistory(vm backupsHistoryVM) templ.Component {
 			var templ_7745c5c3_Var89 templ.SafeURL
 			templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/system/backups"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 503, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 507, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 			if templ_7745c5c3_Err != nil {
@@ -1896,7 +1896,7 @@ func backupsHistory(vm backupsHistoryVM) templ.Component {
 			var templ_7745c5c3_Var90 string
 			templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Kind)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 504, Col: 38}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 508, Col: 38}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 			if templ_7745c5c3_Err != nil {
@@ -1914,7 +1914,7 @@ func backupsHistory(vm backupsHistoryVM) templ.Component {
 				var templ_7745c5c3_Var91 string
 				templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Notice)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 507, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 511, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
 				if templ_7745c5c3_Err != nil {
@@ -1925,157 +1925,144 @@ func backupsHistory(vm backupsHistoryVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, " <div class=\"card span2 mt18 tray\"><div class=\"kicker\">System / Backups / ")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var92 string
-			templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Target)
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 510, Col: 53}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</div><h3>Snapshot history</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, " <div class=\"card span2 mt18 tray\"><h3>Snapshot history</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if !vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<p class=\"meta\">Read-only: managing backups needs an operator token.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "<p class=\"meta\">Read-only: managing backups needs an operator token.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
 			if len(vm.Snapshots) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "<p class=\"meta\">No snapshots yet — this target's first succeeded run will list here.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<p class=\"meta\">No snapshots yet — this target's first succeeded run will list here.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "<div class=\"tablewrap stackable bk-table\"><table><thead><tr><th scope=\"col\">SNAPSHOT</th><th scope=\"col\">AGE</th><th scope=\"col\">SIZE</th><th scope=\"col\">DRILL</th>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "<div class=\"tablewrap stackable bk-table\"><table><thead><tr><th scope=\"col\">SNAPSHOT</th><th scope=\"col\">AGE</th><th scope=\"col\">SIZE</th><th scope=\"col\">DRILL</th>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if vm.Operator {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "<th scope=\"col\" class=\"actions-col\">ACTIONS</th>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "<th scope=\"col\" class=\"actions-col\">ACTIONS</th>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "</tr></thead> <tbody>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "</tr></thead> <tbody>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				for _, snap := range vm.Snapshots {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "<tr><td data-label=\"SNAPSHOT\"><span class=\"mono snap-id\">#")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 176, "<tr><td data-label=\"SNAPSHOT\"><span class=\"mono snap-id\">#")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var92 string
+					templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(snap.ID)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 538, Col: 47}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 177, "</span> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					if snap.Newest {
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "<span class=\"meta\">newest</span>")
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "</td><td data-label=\"AGE\" class=\"mono\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var93 string
-					templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(snap.ID)
+					templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(snap.Age)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 535, Col: 47}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 543, Col: 53}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 178, "</span> ")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					if snap.Newest {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 179, "<span class=\"meta\">newest</span>")
-						if templ_7745c5c3_Err != nil {
-							return templ_7745c5c3_Err
-						}
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</td><td data-label=\"AGE\" class=\"mono\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 180, "</td><td data-label=\"SIZE\" class=\"mono\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					var templ_7745c5c3_Var94 string
-					templ_7745c5c3_Var94, templ_7745c5c3_Err = templ.JoinStringErrs(snap.Age)
+					templ_7745c5c3_Var94, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(snap.Size))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 540, Col: 53}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 544, Col: 63}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var94))
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "</td><td data-label=\"SIZE\" class=\"mono\">")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					var templ_7745c5c3_Var95 string
-					templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(snap.Size))
-					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 541, Col: 63}
-					}
-					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "</td><td data-label=\"DRILL\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 181, "</td><td data-label=\"DRILL\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if snap.Drilled {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, "<span class=\"ok\">drilled ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 182, "<span class=\"ok\">drilled ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						var templ_7745c5c3_Var96 string
-						templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(snap.DrillAge)
+						var templ_7745c5c3_Var95 string
+						templ_7745c5c3_Var95, templ_7745c5c3_Err = templ.JoinStringErrs(snap.DrillAge)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 544, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 547, Col: 51}
 						}
-						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
+						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var95))
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, " ago ok</span> ")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 183, " ago ok</span> ")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if snap.DrillFacts() != "" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "<span class=\"meta\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 184, "<span class=\"meta\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var97 string
-							templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(snap.DrillFacts())
+							var templ_7745c5c3_Var96 string
+							templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(snap.DrillFacts())
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 546, Col: 50}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 549, Col: 50}
 							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "</span>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 185, "</span>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
 					} else {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "<span class=\"meta\">—</span>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 186, "<span class=\"meta\">—</span>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "</td>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 187, "</td>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 					if vm.Operator {
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "<td data-label=\"ACTIONS\" class=\"actions-col\">")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 188, "<td data-label=\"ACTIONS\" class=\"actions-col\">")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 						if len(backupHistoryRowActions(snap, vm.Target)) == 0 {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<span class=\"meta\">—</span> ")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 189, "<span class=\"meta\">—</span> ")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
@@ -2086,40 +2073,40 @@ func backupsHistory(vm backupsHistoryVM) templ.Component {
 							}
 						}
 						if snap.Refusal != "" {
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "<div class=\"form-status is-error\" role=\"alert\"><span class=\"msg\">")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 190, "<div class=\"form-status is-error\" role=\"alert\"><span class=\"msg\">")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							var templ_7745c5c3_Var98 string
-							templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(snap.Refusal)
+							var templ_7745c5c3_Var97 string
+							templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(snap.Refusal)
 							if templ_7745c5c3_Err != nil {
-								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 560, Col: 90}
+								return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_backups.templ`, Line: 563, Col: 90}
 							}
-							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
+							_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
-							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</span></div>")
+							templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 191, "</span></div>")
 							if templ_7745c5c3_Err != nil {
 								return templ_7745c5c3_Err
 							}
 						}
-						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "</td>")
+						templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 192, "</td>")
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "</tr>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 193, "</tr>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "</tbody></table></div>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 194, "</tbody></table></div>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 196, "</div><p class=\"sys-bk-footer\"><span>forget asks first · absent on the newest and drilled snapshots</span> <span class=\"right\">· a drill verifies the newest snapshot · the Restore drawer never deletes</span></p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 195, "</div><p class=\"sys-bk-footer\"><span>forget asks first · absent on the newest and drilled snapshots</span> <span class=\"right\">· a drill verifies the newest snapshot · the Restore drawer never deletes</span></p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

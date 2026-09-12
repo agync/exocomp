@@ -32,7 +32,10 @@
 .sys-identity .hglyphmeta.wait { color:var(--signal-wait); }
 .sys-identity .hglyphmeta a { color:var(--ink-500); }
 /* The pub cluster at rest is one line: label · value (or `not set` in wait) ·
- * the Change toggle. The Change form expands below the strip on click (R2). */
+ * the Change toggle. The Change form is a flex child INSIDE the strip: at
+ * rest it is hidden (rendering nothing), and on click it expands to a
+ * full-width surface-rail row within the strip — never a stray sibling below
+ * it (R2b). */
 .sys-identity .pub { display:inline-flex; align-items:center; gap:10px; }
 .sys-identity .pub .label { font-size:13px; color:var(--ink-500); }
 .sys-identity .pub .val { color:var(--ink-200); }
@@ -42,10 +45,13 @@
   font:var(--type-button); cursor:pointer; }
 .sys-identity .change:hover { color:var(--ink-100); }
 .sys-identity .change:disabled { opacity:.55; cursor:default; }
-/* The Change form rides the shared field anatomy below the strip: control ·
- * meta line · form-status, always rendered so a refusal never resizes. At
- * rest the server marks it hidden; the row's Change toggle opens it (R2). */
-.pubform { display:flex; flex-direction:column; gap:4px; min-width:0; }
+/* The Change form rides the shared field anatomy as a flex child of the strip
+ * (control · meta line · form-status, always rendered so a refusal never
+ * resizes). `hidden` beats the display rule — the closed form renders NOTHING
+ * until Change is pressed; the open form is a full-width surface-rail row
+ * inside the strip (R2b). */
+.pubform { display:flex; flex-direction:column; gap:4px; min-width:0; flex-basis:100%; }
+.pubform[hidden] { display:none !important; }
 .pubform input[type="url"] { width:16em; height:30px; padding:0 10px; border-radius:var(--radius-control);
   border:1px solid var(--hairline); background:var(--surface-control); color:var(--ink-100);
   font:var(--type-button); font-family:var(--font-mono); }
@@ -55,7 +61,8 @@
   display:flex; gap:7px; flex-wrap:wrap; }
 .pubform .meta.is-error { color:var(--signal-fail); }
 .pubform .meta.is-error::before { content:"▲"; font:400 10px var(--font-mono); margin-right:6px; }
-.pubform:not([hidden]) { display:flex; }
+.pubform:not([hidden]) { display:flex; background:var(--surface-rail); border-radius:var(--radius-row);
+  padding:8px 12px; }
 /* Phone (≤720): the identity strip drops to the version word + the one-line
  * public-URL footer (`public URL not set · change`); the Doctor/Kit glyphs and
  * the commit/platform/host/uptime meta give way (R2). The Change form is
@@ -91,14 +98,19 @@
 .leg-facts dt { color:var(--ink-500); margin:0; }
 .leg-facts dd { color:var(--ink-200); margin:0; min-width:0; }
 .leg-facts dd.ellipsis { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* The paged fact's hierarchy (14): only `ntfy` reads loud — the channel word
+ * at the strongest ink — while `once` and the age stay dim. */
+.leg-facts dd .paged-word { color:var(--ink-100); }
+.leg-facts dd .paged-facts { color:var(--ink-400); }
 .leg-sentence { font:400 12px/1.55 var(--font-ui); color:var(--ink-500); text-wrap:pretty; }
 /* 3-column mini tables (ntfy fan-out, backups targets): each row is its OWN
  * grid — never the fact-grid's `auto minmax(0,1fr)` two-column rule, which a
- * 3-column table collapses under — and no fixed row height wraps the cells
- * (R1). The thirds: the event (flex), the priority word, the re-notify fact. */
+ * 3-column table collapses under — with explicit fixed columns, 24px rows and
+ * every cell left-aligned (R1b). The thirds: the event (flex), the priority
+ * word, the re-notify fact. */
 .leg-mini { display:flex; flex-direction:column; gap:2px; font:400 12px/1 var(--font-mono); }
-.leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center;
-  padding:0 10px; border-radius:var(--radius-chip); }
+.leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center; height:24px;
+  justify-items:start; padding:0 10px; border-radius:var(--radius-chip); }
 .leg-mini > div.on { background:var(--surface-tray); }
 
 /* powerline as anchors */
@@ -168,10 +180,11 @@
 .btn-danger[data-armed="true"] { background:var(--signal-fail); color:var(--accent-on); box-shadow:none; }
 
 /* backups card mini table (R4): one row per target — name · state · age —
- * the same 3-cell row shape the ntfy fan-out uses. */
+ * the same 3-cell row shape the ntfy fan-out uses, with its own column sizes
+ * and 24px rows (R1b). */
 .bk-card-rows { display:flex; flex-direction:column; gap:2px; font:400 12px/1 var(--font-mono); }
-.bk-card-row { display:grid; grid-template-columns:minmax(0,1fr) auto auto; gap:12px; align-items:center;
-  padding:0 10px; border-radius:var(--radius-chip); }
+.bk-card-row { display:grid; grid-template-columns:minmax(0,1fr) 88px 64px; gap:12px; align-items:center; height:24px;
+  justify-items:start; padding:0 10px; border-radius:var(--radius-chip); }
 .bk-card-row:first-child { background:var(--surface-tray); }
 .bk-card-row .bk-name { color:var(--ink-200); }
 .bk-card-row .bk-state { font-weight:500; }
@@ -189,17 +202,20 @@
 .sys-bk-verbs { margin-left:auto; }
 .sys-bk-back { font:400 12px/1.4 var(--font-mono); color:var(--ink-400); text-decoration:none; }
 .sys-bk-back:hover { color:var(--ink-100); text-decoration:underline; }
-.sys-bk-footer { display:flex; justify-content:space-between; gap:24px; font:400 12px/1.4 var(--font-mono);
-  color:var(--ink-500); }
-.sys-bk-footer .right { margin-left:auto; }
+/* The footer's two sentences join with a ` · ` and flow as ONE line — the
+ * separator, never the right-aligned ladder (R7b picks the separator). */
+.sys-bk-footer { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
 
 /* backups management list rows (R7): two-line 64px — the LAST RUN cell stacks
  * the chip + line over the drill-led meta line, and every other data cell
- * stacks a bold line over a mono sub-line. */
+ * stacks a bold line over a mono sub-line. The cells pad 12px 0 and each
+ * posture cell's lines stay nowrapped, so a row is exactly two lines, never a
+ * wrapped 90px stack (R7b). */
 .bk-row { height:64px; }
 .bk-row.is-disabled td { color:var(--ink-500); }
+.bk-table tbody tr.bk-row td { padding:12px 0; }
 .bk-kind, .bk-ret, .bk-sched { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }
-.bk-kind .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
+.bk-kind .mono, .bk-ret .mono, .bk-sched .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; }
 .bk-kind .uri { font-size:11px; color:var(--ink-500); }
 .bk-ret .meta { font-size:11px; color:var(--ink-500); }
 .bk-sched .meta { font-size:11px; color:var(--ink-500); }
@@ -259,6 +275,12 @@
 .run-cmd .copybtn:hover { color:var(--ink-100); }
 .run-cmd .copybtn.copied { color:var(--signal-ok); }
 .run-host > .meta { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); }
+/* The drawer's reveal flips [hidden] between the confirm form and the
+ * run-host block; the hidden attribute must beat the display rules (.writeform,
+ * .run-host) so the pre-confirm drawer shows neither a ghost command box nor a
+ * re-pressable verb after the reveal (R2b-class nits). */
+#restore-backups-form[hidden] { display:none; }
+#run-host[hidden] { display:none; }
 /* The pre-confirm verb is a QUIET fail-ringed button (D3): the ring drops when
  * the typed id matches (restoreDrawerJS), exactly the ring the header Restore
  * verb wears until the operator opens the drawer. */

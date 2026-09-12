@@ -728,7 +728,9 @@ type deadmanVM struct {
 	Heartbeat      string
 	HeartbeatClass string // "" | fail — TRIPPED's heartbeat fact reads loud
 	NewestRuns     string // TRIPPED's per-target newest-run line, "" otherwise
-	Paged          string // "ntfy · once · {age} ago", "" unless TRIPPED
+	Paged          string // "ntfy · once · {age} ago", "" unless TRIPPED — the fact's presence
+	PagedChannel   string // "ntfy" — the fact's loud word
+	PagedMeta      string // " · once · {age} ago" — the dim rest of the fact
 	QueueTarget    string // TRIPPED's Queue-backup target, "" when none enabled
 	Sentence       string
 	Operator       bool

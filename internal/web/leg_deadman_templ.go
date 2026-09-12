@@ -418,43 +418,56 @@ func deadmanCardInner(dm deadmanVM, base, from string) templ.Component {
 			return templ_7745c5c3_Err
 		}
 		if dm.Paged != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<dt>paged</dt><dd>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<dt>paged</dt><dd><span class=\"paged-word\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var24 string
-			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(dm.Paged)
+			templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(dm.PagedChannel)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 102, Col: 17}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 102, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</dd>")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</dl>")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		if dm.Sentence != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"leg-sentence\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "</span><span class=\"paged-facts\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var25 string
-			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(dm.Sentence)
+			templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(dm.PagedMeta)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 106, Col: 39}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 102, Col: 98}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, "</span></dd>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</dl>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		if dm.Sentence != "" {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<p class=\"leg-sentence\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var26 string
+			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(dm.Sentence)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 106, Col: 39}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -485,52 +498,52 @@ func deadmanMenu(dm deadmanVM, base, from string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var26 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var26 == nil {
-			templ_7745c5c3_Var26 = templ.NopComponent
+		templ_7745c5c3_Var27 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var27 == nil {
+			templ_7745c5c3_Var27 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
 		if dm.Operator {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "<details class=\"ramenu\"><summary class=\"rachev\" aria-label=\"More actions\" title=\"More actions\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "<details class=\"ramenu\"><summary class=\"rachev\" aria-label=\"More actions\" title=\"More actions\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var27 string
-			templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(glyphChevron)
+			var templ_7745c5c3_Var28 string
+			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(glyphChevron)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 117, Col: 193}
-			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "\"></path></svg></summary><ul class=\"ramenu-panel\" role=\"menu\"><li class=\"ramenu-item danger\" role=\"menuitem\"><form method=\"post\" action=\"")
-			if templ_7745c5c3_Err != nil {
-				return templ_7745c5c3_Err
-			}
-			var templ_7745c5c3_Var28 templ.SafeURL
-			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, "/system/deadman/disarm")))
-			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 121, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\" class=\"inline-form\" data-confirm=\"Disarm the dead-man? The threshold and the sealed heartbeat URL are removed — nothing trips if backups stop.\"><input type=\"hidden\" name=\"from\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "\"></path></svg></summary><ul class=\"ramenu-panel\" role=\"menu\"><li class=\"ramenu-item danger\" role=\"menuitem\"><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var29 string
-			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(from)
+			var templ_7745c5c3_Var29 templ.SafeURL
+			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, "/system/deadman/disarm")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 122, Col: 51}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 121, Col: 92}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\"> <button type=\"submit\" class=\"ramenu-btn\">Disarm</button></form></li></ul></details>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "\" class=\"inline-form\" data-confirm=\"Disarm the dead-man? The threshold and the sealed heartbeat URL are removed — nothing trips if backups stop.\"><input type=\"hidden\" name=\"from\" value=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var30 string
+			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(from)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 122, Col: 51}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "\"> <button type=\"submit\" class=\"ramenu-btn\">Disarm</button></form></li></ul></details>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -560,12 +573,12 @@ func deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var30 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var30 == nil {
-			templ_7745c5c3_Var30 = templ.NopComponent
+		templ_7745c5c3_Var31 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var31 == nil {
+			templ_7745c5c3_Var31 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Var31 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_Var32 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
 			if !templ_7745c5c3_IsBuffer {
@@ -577,228 +590,228 @@ func deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "<div class=\"kicker\">SYSTEM · DEAD-MAN</div><p class=\"meta\">Two halves. The threshold is the rule exocomp enforces itself; the heartbeat is the external ping that makes silence loud when exocomp is the thing that died.</p><form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"kicker\">SYSTEM · DEAD-MAN</div><p class=\"meta\">Two halves. The threshold is the rule exocomp enforces itself; the heartbeat is the external ping that makes silence loud when exocomp is the thing that died.</p><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var32 templ.SafeURL
-			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, "/system/deadman/arm")))
+			var templ_7745c5c3_Var33 templ.SafeURL
+			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, "/system/deadman/arm")))
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 140, Col: 86}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "\" class=\"writeform\" id=\"deadman-arm-form\" novalidate data-deadman-form><label class=\"field\"><span class=\"label\">Threshold</span> <span class=\"dm-seg\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" class=\"writeform\" id=\"deadman-arm-form\" novalidate data-deadman-form><label class=\"field\"><span class=\"label\">Threshold</span> <span class=\"dm-seg\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			for _, k := range []string{"24h", "48h", "72h", "7d"} {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<input type=\"radio\" id=\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				var templ_7745c5c3_Var33 string
-				templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs("dm-thr-" + k)
-				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 145, Col: 44}
-				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" name=\"threshold\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "<input type=\"radio\" id=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
-				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(k)
+				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs("dm-thr-" + k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 145, Col: 73}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 145, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\"")
-				if templ_7745c5c3_Err != nil {
-					return templ_7745c5c3_Err
-				}
-				if form.thresholdSelected(threshold, k) {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " checked")
-					if templ_7745c5c3_Err != nil {
-						return templ_7745c5c3_Err
-					}
-				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "> <label for=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "\" name=\"threshold\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
-				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs("dm-thr-" + k)
+				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 146, Col: 32}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 145, Col: 73}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if form.thresholdSelected(threshold, k) {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, " checked")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "> <label for=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var36 string
-				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(k)
+				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs("dm-thr-" + k)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 146, Col: 38}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 146, Col: 32}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</label>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var37 string
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(k)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 146, Col: 38}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</label>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var37 = []any{"meta", templ.KV("is-error", form.ErrFormText() != "" || form.ErrThresholdText() != "")}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var37...)
+			var templ_7745c5c3_Var38 = []any{"meta", templ.KV("is-error", form.ErrFormText() != "" || form.ErrThresholdText() != "")}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var38...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<span id=\"dm-thr-meta\" class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<span id=\"dm-thr-meta\" class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var38 string
-			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var37).String())
+			var templ_7745c5c3_Var39 string
+			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var38).String())
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 1, Col: 0}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if form.ErrThresholdText() != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"msg\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<span class=\"msg\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var39 string
-				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(form.ErrThresholdText())
+				var templ_7745c5c3_Var40 string
+				templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(form.ErrThresholdText())
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 151, Col: 49}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "trips after this long without a SUCCEEDED backup · 48h is the freshness ladder's fail step")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "trips after this long without a SUCCEEDED backup · 48h is the freshness ladder's fail step")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 60, "</span></label> <label class=\"field\"><span class=\"label\">Heartbeat URL</span> <span class=\"dm-hb\"><input class=\"control\" type=\"password\" id=\"dm-heartbeat\" name=\"heartbeat_url\" value=\"\" spellcheck=\"false\" autocomplete=\"off\" placeholder=\"https://…\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, "</span></label> <label class=\"field\"><span class=\"label\">Heartbeat URL</span> <span class=\"dm-hb\"><input class=\"control\" type=\"password\" id=\"dm-heartbeat\" name=\"heartbeat_url\" value=\"\" spellcheck=\"false\" autocomplete=\"off\" placeholder=\"https://…\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if form.ErrHeartbeatText() != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 61, " aria-invalid")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " aria-invalid")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 62, " aria-describedby=\"dm-heartbeat-meta\"> <button type=\"button\" class=\"dm-eye\" id=\"dm-eye\" aria-pressed=\"false\" title=\"Show\" data-eye aria-label=\"Show\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, " aria-describedby=\"dm-heartbeat-meta\"> <button type=\"button\" class=\"dm-eye\" id=\"dm-eye\" aria-pressed=\"false\" title=\"Show\" data-eye aria-label=\"Show\"><svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var40 string
-			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(glyphDeadmanEye)
+			var templ_7745c5c3_Var41 string
+			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(glyphDeadmanEye)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 162, Col: 198}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 63, "\"></path></svg></button></span> ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "\"></path></svg></button></span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var41 = []any{"meta", templ.KV("is-error", form.ErrHeartbeatText() != "")}
-			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var41...)
+			var templ_7745c5c3_Var42 = []any{"meta", templ.KV("is-error", form.ErrHeartbeatText() != "")}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var42...)
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 64, "<span id=\"dm-heartbeat-meta\" class=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "<span id=\"dm-heartbeat-meta\" class=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var42 string
-			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var41).String())
+			var templ_7745c5c3_Var43 string
+			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var42).String())
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 1, Col: 0}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 65, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if form.ErrHeartbeatText() != "" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 66, "<span class=\"msg\">")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "<span class=\"msg\">")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				var templ_7745c5c3_Var43 string
-				templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(form.ErrHeartbeatText())
+				var templ_7745c5c3_Var44 string
+				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(form.ErrHeartbeatText())
 				if templ_7745c5c3_Err != nil {
 					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 167, Col: 49}
 				}
-				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 67, "</span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "</span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 68, "pinged after every succeeded backup · printed on the recovery kit · sealed as deadman/heartbeat_url on Arm, then never shown here again")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "pinged after every succeeded backup · printed on the recovery kit · sealed as deadman/heartbeat_url on Arm, then never shown here again")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 69, "</span></label><div class=\"consequence\" aria-label=\"At zero\"><span class=\"kicker\">AT ZERO</span> <span>pings stop → the heartbeat service pages you</span> <span>ntfy pages once · high</span> <span class=\"loss\">dashboard band, powerline, doctor read TRIPPED until a backup succeeds</span></div><input type=\"hidden\" name=\"from\" value=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "</span></label><div class=\"consequence\" aria-label=\"At zero\"><span class=\"kicker\">AT ZERO</span> <span>pings stop → the heartbeat service pages you</span> <span>ntfy pages once · high</span> <span class=\"loss\">dashboard band, powerline, doctor read TRIPPED until a backup succeeds</span></div><input type=\"hidden\" name=\"from\" value=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var44 string
-			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(from)
+			var templ_7745c5c3_Var45 string
+			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(from)
 			if templ_7745c5c3_Err != nil {
 				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_deadman.templ`, Line: 179, Col: 48}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 70, "\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -806,17 +819,17 @@ func deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if form.Pending() {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, " disabled")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, " disabled")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 73, ">Arm</button></div></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, ">Arm</button></div></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -826,12 +839,12 @@ func deadmanArmDialog(form *deadmanFormVM, threshold string, operator bool, base
 			}
 			return nil
 		})
-		templ_7745c5c3_Err = modal("deadman-arm", "Arm the dead-man").Render(templ.WithChildren(ctx, templ_7745c5c3_Var31), templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = modal("deadman-arm", "Arm the dead-man").Render(templ.WithChildren(ctx, templ_7745c5c3_Var32), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if form != nil && form.Open {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 74, "  <script>\n\t\texoModalOpen(\"deadman-arm\");\n\t\tvar dmBad = document.querySelector('#deadman-arm input[aria-invalid=\"true\"]');\n\t\tif (dmBad) dmBad.focus();\n\t\t</script>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "  <script>\n\t\texoModalOpen(\"deadman-arm\");\n\t\tvar dmBad = document.querySelector('#deadman-arm input[aria-invalid=\"true\"]');\n\t\tif (dmBad) dmBad.focus();\n\t\t</script>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -861,12 +874,12 @@ func deadmanFormJS() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var45 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var45 == nil {
-			templ_7745c5c3_Var45 = templ.NopComponent
+		templ_7745c5c3_Var46 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var46 == nil {
+			templ_7745c5c3_Var46 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 75, "<script>\n\t(function () {\n\t\tfunction deadmanFormWire() {\n\t\t\tvar form = document.getElementById(\"deadman-arm-form\");\n\t\t\tif (!form || form.dataset.deadmanWired) return;\n\t\t\tform.dataset.deadmanWired = \"1\";\n\n\t\t\tvar eye = form.querySelector(\"[data-eye]\");\n\t\t\tvar hb = form.querySelector('input[name=\"heartbeat_url\"]');\n\t\t\tvar eyePath = eye ? eye.querySelector(\"path\") : null;\n\t\t\tfunction eyeVerb(show) {\n\t\t\t\teye.setAttribute(\"aria-pressed\", show ? \"true\" : \"false\");\n\t\t\t\teye.setAttribute(\"title\", show ? \"Hide\" : \"Show\");\n\t\t\t\teye.setAttribute(\"aria-label\", show ? \"Hide\" : \"Show\");\n\t\t\t\tif (eyePath) eyePath.setAttribute(\"d\", show ? \"M5 5l14 14\" : \"M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z\");\n\t\t\t}\n\t\t\tif (eye && hb) {\n\t\t\t\teye.addEventListener(\"click\", function () {\n\t\t\t\t\tvar show = eye.getAttribute(\"aria-pressed\") !== \"true\";\n\t\t\t\t\thb.type = show ? \"text\" : \"password\";\n\t\t\t\t\teyeVerb(show);\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Arming';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"deadman-arm-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"deadman-arm-form\");\n\t\t\t\t\t\t\tform.dataset.deadmanRefused = \"1\";\n\t\t\t\t\t\t\tdeadmanFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// The dialog is rendered once and its inputs survive close/reopen,\n\t\t\t// so a close must drop the typed heartbeat — a resealed value must\n\t\t\t// never linger in the DOM.\n\t\t\tvar dialog = form.closest(\"dialog\");\n\t\t\tif (dialog) {\n\t\t\t\tdialog.addEventListener(\"close\", function () {\n\t\t\t\t\thb.value = \"\";\n\t\t\t\t\thb.type = \"password\";\n\t\t\t\t\tif (eye) eyeVerb(false);\n\t\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\t\tif (primary) primary.disabled = false;\n\t\t\t\t});\n\t\t\t}\n\t\t}\n\t\tdeadmanFormWire();\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 76, "<script>\n\t(function () {\n\t\tfunction deadmanFormWire() {\n\t\t\tvar form = document.getElementById(\"deadman-arm-form\");\n\t\t\tif (!form || form.dataset.deadmanWired) return;\n\t\t\tform.dataset.deadmanWired = \"1\";\n\n\t\t\tvar eye = form.querySelector(\"[data-eye]\");\n\t\t\tvar hb = form.querySelector('input[name=\"heartbeat_url\"]');\n\t\t\tvar eyePath = eye ? eye.querySelector(\"path\") : null;\n\t\t\tfunction eyeVerb(show) {\n\t\t\t\teye.setAttribute(\"aria-pressed\", show ? \"true\" : \"false\");\n\t\t\t\teye.setAttribute(\"title\", show ? \"Hide\" : \"Show\");\n\t\t\t\teye.setAttribute(\"aria-label\", show ? \"Hide\" : \"Show\");\n\t\t\t\tif (eyePath) eyePath.setAttribute(\"d\", show ? \"M5 5l14 14\" : \"M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z\");\n\t\t\t}\n\t\t\tif (eye && hb) {\n\t\t\t\teye.addEventListener(\"click\", function () {\n\t\t\t\t\tvar show = eye.getAttribute(\"aria-pressed\") !== \"true\";\n\t\t\t\t\thb.type = show ? \"text\" : \"password\";\n\t\t\t\t\teyeVerb(show);\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Arming';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"deadman-arm-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"deadman-arm-form\");\n\t\t\t\t\t\t\tform.dataset.deadmanRefused = \"1\";\n\t\t\t\t\t\t\tdeadmanFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// The dialog is rendered once and its inputs survive close/reopen,\n\t\t\t// so a close must drop the typed heartbeat — a resealed value must\n\t\t\t// never linger in the DOM.\n\t\t\tvar dialog = form.closest(\"dialog\");\n\t\t\tif (dialog) {\n\t\t\t\tdialog.addEventListener(\"close\", function () {\n\t\t\t\t\thb.value = \"\";\n\t\t\t\t\thb.type = \"password\";\n\t\t\t\t\tif (eye) eyeVerb(false);\n\t\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\t\tif (primary) primary.disabled = false;\n\t\t\t\t});\n\t\t\t}\n\t\t}\n\t\tdeadmanFormWire();\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
