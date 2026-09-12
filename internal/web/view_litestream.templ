@@ -1,0 +1,28 @@
+package web
+
+// litestreamPage is the /system/litestream leg surface (SPEC §3.2): the
+// full-width card plus the ▾ views — the generated config, rendered read-only
+// with secrets referenced by name (never a value), and the deep link into the
+// DR drawer's replica mode (the drawer's template and typed confirm are L-S4's;
+// this lane only names the link). Read-only by design (ADR 0012): the daemon
+// generates config and observes, it never runs litestream, so this surface
+// carries no verb that mutates anything.
+templ litestreamPage(vm litestreamPageVM) {
+	@layout(vm.Page) {
+		<div class="ls-page">
+			@litestreamCard(vm.LS, vm.Page.Base)
+
+			<section class="ls-config" id="config" aria-label="Generated litestream config">
+				<header>
+					<h1>Generated config</h1>
+					<span class="meta">read-only · regenerate with <code>exocomp litestream config</code></span>
+				</header>
+				if vm.LS.Config != "" {
+					<pre class="ls-yml">{ vm.LS.Config }</pre>
+				} else {
+					<p class="meta empty">{ vm.LS.ConfigErr }</p>
+				}
+			</section>
+		</div>
+	}
+}

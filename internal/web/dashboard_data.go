@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net/http"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -710,7 +713,6 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSDetail = "no replica configured"
 		return so
 	}
-	so.LSConfigured = true
 
 	target, perr := litestream.ParseTarget(raw)
 	if perr != nil {
@@ -719,6 +721,18 @@ func (s *Server) selfObs(ctx context.Context) selfObs {
 		so.LSDetail = "replica target unparseable"
 		return so
 	}
+	so.LSConfigured = true
+
+	if path, _ := s.litestreamPresence(); path == "" {
+		// NO SIDECAR: a configured leg with no engine is a fault, loud in the
+		// powerline too — the strip must not read dim "unknown" while the card
+		// reads fail NO SIDECAR (SPEC §3.1).
+		so.LSAge = "—"
+		so.LSClass = "fail"
+		so.LSDetail = "target set · litestream not on PATH"
+		return so
+	}
+
 	age, _, ok, ferr := litestream.ReplicaFreshness(target, s.now())
 	if ferr != nil || !ok {
 		so.LSAge = "unknown"
@@ -748,6 +762,90 @@ func rpoFreshness(age time.Duration) string {
 	default:
 		return "ok"
 	}
+}
+
+// litestreamVM gathers what the daemon observes about the Litestream leg — the
+// persisted replica target, the sidecar binary's presence, and the replica's
+// newest frame — and delegates to the pure deriveLitestream for the word-state.
+// The generated config for the ▾ view is rendered here too: the same bytes
+// `exocomp litestream config` emits, secrets referenced by name in the file,
+// never a value.
+func (s *Server) litestreamVM(ctx context.Context) litestreamVM {
+	o := litestreamObserved{host: hostname()}
+	o.binPath, o.version = s.litestreamPresence()
+
+	raw, err := s.store.GetSetting(ctx, litestream.SettingReplicaTarget)
+	if err != nil || raw == "" {
+		return deriveLitestream(o)
+	}
+	o.raw = raw
+
+	target, perr := litestream.ParseTarget(raw)
+	if perr != nil {
+		o.parseErr = perr
+		return deriveLitestream(o)
+	}
+	o.remote = target.Remote()
+
+	if ack, aerr := s.store.GetSetting(ctx, litestream.SettingReplicaAck); aerr == nil {
+		o.ack = ack == "true"
+	}
+
+	o.age, o.mtime, o.freshOK, o.freshErr = litestream.ReplicaFreshness(target, s.now())
+	if o.freshOK {
+		o.frameNo = lsFrameNumber(target.Path)
+	}
+
+	v := deriveLitestream(o)
+	if cfg, cerr := litestream.GenerateConfig(litestream.Config{
+		DBPath: filepath.Join(s.dataDir, "exocomp.db"),
+		Target: target, AckUnencrypted: o.ack,
+	}); cerr == nil {
+		v.Config = cfg
+	} else {
+		v.ConfigErr = cerr.Error()
+	}
+	return v
+}
+
+// lsFrameNumber reads the newest numbered WAL frame file in a litestream file
+// replica and returns its frame number — the filename's decimal digits. The
+// layout (generations/{gen}/wal/{frame}.wal.lz4) is the one
+// internal/litestream/status_test.go pins; the number is the checkpoint fact's
+// {n}, read from the replica itself exactly like the age is. 0 means no frame
+// file carried a number, so the card never fakes a checkpoint.
+func lsFrameNumber(path string) int64 {
+	var newest time.Time
+	no := int64(0)
+	_ = filepath.WalkDir(path, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || d == nil || d.IsDir() {
+			return nil
+		}
+		name := d.Name()
+		if !strings.HasSuffix(name, ".wal.lz4") && !strings.HasSuffix(name, ".wal") {
+			return nil
+		}
+		base := strings.TrimSuffix(name, ".wal.lz4")
+		base = strings.TrimSuffix(base, ".wal")
+		base = strings.TrimLeft(base, "0")
+		if base == "" {
+			return nil
+		}
+		n, perr := strconv.ParseInt(base, 10, 64)
+		if perr != nil {
+			return nil
+		}
+		info, ierr := d.Info()
+		if ierr != nil {
+			return nil
+		}
+		m := info.ModTime()
+		if no == 0 || m.After(newest) {
+			no, newest = n, m
+		}
+		return nil
+	})
+	return no
 }
 
 // signal builds the powerline's is-the-control-plane-alive strip: newest backup

@@ -125,3 +125,18 @@
   padding:0 12px; border-radius:9px; cursor:pointer; font:400 13px/1 var(--font-mono); font-variant-numeric:tabular-nums; }
 .snap:has(:checked) { background:var(--surface-control); }
 .snap .drilled { font-size:11px; color:var(--signal-ok); }
+
+/* L-S3 leg page: the full-width litestream card and the ▾ config view. The
+ * config renders read-only in a mono block; secrets are named in the emitted
+ * yml, never a value, so the block needs no redaction chrome. */
+.ls-page { display:flex; flex-direction:column; gap:var(--gap-card); }
+.ls-page .leg { border:0; }   /* a full-width card, not a 2×2 grid cell */
+.ls-config { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px; }
+.ls-config header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; }
+.ls-config header h1 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
+.ls-config header .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+.ls-config header .meta code { font:400 12px/1.4 var(--font-mono); }
+.ls-yml { margin:0; padding:14px 16px; border-radius:var(--radius-row); background:var(--surface-tray);
+  border:1px solid var(--hairline); font:400 12px/1.6 var(--font-mono); color:var(--ink-200);
+  overflow:auto; tab-size:4; white-space:pre; }
+.ls-config .empty { font:400 13px/1.4 var(--font-mono); color:var(--ink-500); }

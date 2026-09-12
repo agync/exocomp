@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
@@ -467,6 +468,60 @@ type systemVM struct {
 	// topic label, and the sealed keys' presence the card renders. Presence,
 	// never values.
 	Ntfy ntfyCardVM
+	// Litestream is the leg's own VM: the six word-states and the facts the
+	// card and the /system/litestream page render, plus the generated config
+	// for the ▾ view. It is one derivation (deriveLitestream) with two faces.
+	Litestream litestreamVM
+}
+
+// litestreamObserved is everything the daemon observes about the Litestream
+// leg (SPEC §3): the persisted replica target, the sidecar binary's presence,
+// and the replica's newest frame. deriveLitestream is a pure function of these
+// observations, so the six-word state machine is testable without the binary
+// installed and the card, the leg page, and the powerline never disagree.
+type litestreamObserved struct {
+	raw      string // SettingReplicaTarget verbatim, "" when unset
+	remote   bool   // the parsed target's Remote() verdict (target.go)
+	parseErr error  // non-nil when the stored target no longer parses
+	binPath  string // litestream.Presence() path, "" when the binary is absent
+	version  string // the version line ("" when absent or the probe failed)
+	age      time.Duration
+	mtime    time.Time
+	frameNo  int64 // the newest frame's number, 0 when unreadable
+	freshOK  bool  // litestream.ReplicaFreshness ok
+	freshErr error
+	ack      bool // SettingReplicaAck == "true"
+	host     string
+}
+
+// litestreamVM is the Litestream leg of the /system self-care page (SPEC §3):
+// the derived word-state plus the facts the card and the /system/litestream
+// page render, and the generated config for the ▾ view. Read-only by design —
+// the daemon generates config and observes, it never runs litestream (ADR
+// 0012) — so the VM carries no verb that mutates anything.
+type litestreamVM struct {
+	State      string // REPLICATING|STALE|BEHIND|REMOTE|NO REPLICA|NO SIDECAR|UNPARSEABLE
+	StateClass string // ok|wait|fail|dim — the chip, ring and figure colour
+	Figure     string
+	FigureNote string
+	Replica    string // scrubbed target URI, "" when none
+	Checkpoint string // "frame {n} · {HH:MM:SS}", "" when unobservable
+	Sidecar    string // the sidecar fact, "" on NO SIDECAR
+	Encryption string // the remote ack fact, "" unless REMOTE
+	ConfigCmd  string // "exocomp litestream config" (the NO SIDECAR config fact)
+	SetOne     string // "exocomp litestream target ‹uri›" (NO REPLICA / UNPARSEABLE)
+	Fix        string // "install litestream on {host}, then doctor" (NO SIDECAR)
+	Sentence   string
+	Config     string // the generated yml, "" when ConfigErr is set
+	ConfigErr  string // the config view's refusal, "" at rest
+}
+
+// litestreamPageVM is the /system/litestream surface (SPEC §3.2): the
+// full-width card plus the ▾ config view, both driven by the same litestreamVM
+// the /system card renders.
+type litestreamPageVM struct {
+	Page page
+	LS   litestreamVM
 }
 
 // deadmanVM is the dead-man leg's render state (SPEC §1): the state word and
@@ -2806,6 +2861,138 @@ func humanAge(d time.Duration) string {
 	default:
 		return fmt.Sprintf("%dd", int(d.Hours()/24))
 	}
+}
+
+// lagLabel renders the RPO lag the way the card's figure reads it: "42m" on a
+// whole minute, "2m 10s" with seconds, "1h 05m" past the hour — never a
+// trailing zero unit, so a fresh replica reads "2m 10s" and a stale one "42m"
+// (SPEC §3.1).
+func lagLabel(d time.Duration) string {
+	if d < 0 {
+		d = -d
+	}
+	switch {
+	case d < time.Minute:
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	case d < time.Hour:
+		if int(d.Seconds())%60 == 0 {
+			return fmt.Sprintf("%dm", int(d.Minutes()))
+		}
+		return fmt.Sprintf("%dm %02ds", int(d.Minutes()), int(d.Seconds())%60)
+	default:
+		if int(d.Minutes())%60 == 0 {
+			return fmt.Sprintf("%dh", int(d.Hours()))
+		}
+		return fmt.Sprintf("%dh %02dm", int(d.Hours()), int(d.Minutes())%60)
+	}
+}
+
+// sidecarFact renders the sidecar fact from the presence probe: the versioned
+// "litestream 0.3.13 present · runs beside the daemon" when the binary answers,
+// "litestream present" when only the binary is found, "litestream binary not on
+// PATH" when absent. unsure switches to the "is it running? exocomp cannot
+// tell" form the STALE/BEHIND cards use, where the binary exists but the lag
+// says it is not keeping up (copy.txt "sidecar unsure").
+func sidecarFact(o litestreamObserved, unsure bool) string {
+	if o.binPath == "" {
+		return "litestream binary not on PATH"
+	}
+	if unsure {
+		return "present · is it running? exocomp cannot tell"
+	}
+	ver := strings.TrimPrefix(o.version, "litestream ")
+	if ver == "" {
+		return "litestream present"
+	}
+	return "litestream " + ver + " present · runs beside the daemon"
+}
+
+// scrubReplica renders the stored target for the replica fact with any embedded
+// userinfo removed (backup.ScrubURIUserinfo) — a target may carry a password in
+// its authority, and a fact must never echo it.
+func scrubReplica(raw string) string {
+	return backup.ScrubURIUserinfo(raw)
+}
+
+// deriveLitestream is the six-word-state derivation (SPEC §3.1), a pure
+// function of what the daemon observes. Order is load-bearing: a missing target
+// is a gap (dim NO REPLICA), an unparseable target a misconfiguration (wait
+// UNPARSEABLE), a set target with no engine a fault (fail NO SIDECAR), a remote
+// replica's unreadable lag a fact (dim REMOTE), and only then does the frame's
+// age pick REPLICATING (ok <10m) / STALE (wait) / BEHIND (fail ≥1h). A local
+// leg with no readable frame is the STALE card's "is it running? exocomp cannot
+// tell" — the design draws no seventh word for it, so the wait state carries
+// the honest facts instead.
+func deriveLitestream(o litestreamObserved) litestreamVM {
+	v := litestreamVM{}
+	switch {
+	case o.raw == "":
+		v.State, v.StateClass = "NO REPLICA", "dim"
+		v.Figure, v.FigureNote = "—", "no target · the store lives on this disk only"
+		v.Sidecar = sidecarFact(o, false)
+		v.SetOne = "exocomp litestream target ‹uri›"
+		v.Sentence = "Backups still recover the system; this leg only shortens the loss window from a day to minutes."
+		v.ConfigErr = "no replica target configured — run `exocomp litestream target <uri>` first"
+
+	case o.parseErr != nil:
+		v.State, v.StateClass = "UNPARSEABLE", "wait"
+		v.Figure, v.FigureNote = "—", "target unparseable · fix the target"
+		v.Replica = scrubReplica(o.raw)
+		v.SetOne = "exocomp litestream target ‹uri›"
+		v.Sentence = "The target as stored does not parse; fix it with the CLI."
+		v.ConfigErr = "fix the target — exocomp litestream target ‹uri›"
+
+	case o.binPath == "":
+		v.State, v.StateClass = "NO SIDECAR", "fail"
+		v.Figure, v.FigureNote = "—", "target set · litestream binary not on PATH · nothing replicates"
+		v.Replica = scrubReplica(o.raw)
+		v.ConfigCmd = "exocomp litestream config"
+		v.Fix = "install litestream on " + o.host + ", then doctor"
+		v.Sentence = "The RPO chip used to say 'no replica configured' for this too. A configured leg with no engine is a failure, not a gap."
+
+	case o.remote:
+		v.State, v.StateClass = "REMOTE", "dim"
+		v.Figure, v.FigureNote = "unknown", "lag · only litestream can read a remote replica"
+		v.Replica = scrubReplica(o.raw)
+		if o.ack {
+			v.Encryption = "none · unencrypted remote acknowledged"
+		} else {
+			v.Encryption = "none · not acknowledged"
+		}
+		v.Sidecar = sidecarFact(o, false)
+		v.Sentence = "Configured and not observable — a fact, not a fault. Lag reads from the host: litestream replicas"
+
+	case !o.freshOK || o.freshErr != nil:
+		v.State, v.StateClass = "STALE", "wait"
+		v.Figure, v.FigureNote = "—", "no frames replicated yet"
+		v.Replica = scrubReplica(o.raw)
+		v.Sidecar = "present · is it running? exocomp cannot tell"
+		v.Sentence = "Check the sidecar on " + o.host + ": systemctl status litestream"
+
+	default:
+		v.Replica = scrubReplica(o.raw)
+		if o.frameNo > 0 {
+			v.Checkpoint = fmt.Sprintf("frame %d · %s", o.frameNo, o.mtime.UTC().Format("15:04:05"))
+		}
+		switch rpoFreshness(o.age) {
+		case "fail":
+			v.State, v.StateClass = "BEHIND", "fail"
+			v.Figure, v.FigureNote = lagLabel(o.age), "behind · ok < 10m · wait < 1h · fail"
+			v.Sidecar = "present · is it running? exocomp cannot tell"
+			v.Sentence = "Check the sidecar on " + o.host + ": systemctl status litestream"
+		case "wait":
+			v.State, v.StateClass = "STALE", "wait"
+			v.Figure, v.FigureNote = lagLabel(o.age), "behind · ok < 10m · wait < 1h · fail"
+			v.Sidecar = "present · is it running? exocomp cannot tell"
+			v.Sentence = "Check the sidecar on " + o.host + ": systemctl status litestream"
+		default:
+			v.State, v.StateClass = "REPLICATING", "ok"
+			v.Figure, v.FigureNote = lagLabel(o.age), "behind · RPO"
+			v.Sidecar = sidecarFact(o, false)
+			v.Sentence = "exocomp writes the config and reads the lag; it does not run the sidecar, so there is no pause here. Fast restore: exocomp restore --from-litestream"
+		}
+	}
+	return v
 }
 
 // uptimeLabel renders the app bar's "up 6d 04h" fact from the daemon's start

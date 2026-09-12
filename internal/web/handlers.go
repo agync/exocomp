@@ -191,6 +191,7 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	vm := systemVM{Page: s.pageFor(r, "System", "system"), Operator: canWrite(ident)}
 	vm.Page.Meta = "is the control plane itself OK"
 	vm.Self = s.selfObs(r.Context())
+	vm.Litestream = s.litestreamVM(r.Context())
 	if v, err := s.store.GetSetting(r.Context(), store.SettingPublicURL); err == nil {
 		vm.PublicURL = v
 	}
@@ -421,6 +422,18 @@ func deadmanShortID(id string) string {
 		return id[:6]
 	}
 	return id
+}
+
+// handleLitestream renders the /system/litestream leg surface (SPEC §3.2): the
+// full-width card plus the ▾ views — the generated config (read-only yml,
+// secrets by name) and the deep link into the DR drawer's replica mode (the
+// drawer itself is L-S4's). Read-only by design (ADR 0012): the daemon
+// generates config and observes, it never runs litestream, so there is no
+// pause verb on this surface.
+func (s *Server) handleLitestream(w http.ResponseWriter, r *http.Request) {
+	vm := litestreamPageVM{Page: s.pageFor(r, "System / Litestream", "system"), LS: s.litestreamVM(r.Context())}
+	vm.Page.Meta = "the fast-RPO leg · read-only · no pause verb"
+	s.render(w, r, http.StatusOK, litestreamPage(vm))
 }
 
 func (s *Server) handleSources(w http.ResponseWriter, r *http.Request) {

@@ -17,6 +17,7 @@ import (
 	"github.com/a-h/templ"
 
 	"exocomp.dev/exocomp/internal/health"
+	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/mcp"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
@@ -122,6 +123,12 @@ type Server struct {
 	// always uses internal/health.Probe.
 	probe  func(ctx context.Context) wire.HealthView
 	health healthCache
+	// litestreamPresence reports the Litestream sidecar binary's presence and
+	// version line. It is a field only so a test can fake an installed or
+	// missing binary; production always uses litestream.Presence
+	// (internal/litestream/status.go). The card's NO SIDECAR state and the
+	// powerline's rpo segment both derive from it.
+	litestreamPresence func() (string, string)
 	// mcpSrv is the MCP adapter that serves POST /mcp, the one agent MCP
 	// surface — HTTP and bearer-scoped, no ambient stdio path (mcp_http.go).
 	mcpSrv *mcp.Server
@@ -223,6 +230,7 @@ func New(opts Options) (*Server, error) {
 	srv.probe = func(ctx context.Context) wire.HealthView {
 		return health.Probe(ctx, srv.dataDir, srv.healthOpenStore)
 	}
+	srv.litestreamPresence = litestream.Presence
 	srv.mcpSrv = mcp.New(opts.Store, opts.DataDir, clock)
 	srv.mcpSrv.SetLogger(log)
 	// This process already holds the envelope, so a gated apply through the MCP
@@ -318,6 +326,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /system", s.requireAuth(s.handleSystem))
 	mux.HandleFunc("GET /system/deadman", s.requireAuth(s.handleDeadman))
 	mux.HandleFunc("GET /system/ntfy", s.requireAuth(s.handleNtfy))
+	mux.HandleFunc("GET /system/litestream", s.requireAuth(s.handleLitestream))
 
 	// Post-v1 read surfaces (registration and mutation stay CLI/local-auth).
 	mux.HandleFunc("GET /sources", s.requireAuth(s.handleSources))
