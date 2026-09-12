@@ -65,21 +65,27 @@ templ backupsList(vm backupsVM) {
 									<span class="bk-target-state">@enabledChip(row.Enabled, false)</span>
 								</td>
 									<td data-label="KIND" class="bk-kind">
-										<span class="mono">{ row.Kind }</span>
-										<span class="mono uri" title={ row.URI }>{ row.URI }</span>
+										<span class="bk-cell">
+											<span class="mono">{ row.Kind }</span>
+											<span class="mono uri" title={ row.URI }>{ row.URI }</span>
+										</span>
 									</td>
 									<td data-label="RETENTION" class="bk-ret">
-										<span class={ "mono", row.RetentionClass() }>{ row.RetentionLabel() }</span>
-										<span class="meta">{ row.RetentionMeta() }</span>
+										<span class="bk-cell">
+											<span class={ "mono", row.RetentionClass() }>{ row.RetentionLabel() }</span>
+											<span class="meta">{ row.RetentionMeta() }</span>
+										</span>
 									</td>
 									<td data-label="SCHEDULE" class="bk-sched">
-										if row.HasSchedule() {
-											<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="mono">{ row.Cadence }</a>
-											<span class="meta">{ row.Next }</span>
-										} else {
-											<span class="meta wait-text">no schedule</span>
-											<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="meta">add one</a>
-										}
+										<span class="bk-cell">
+											if row.HasSchedule() {
+												<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="mono">{ row.Cadence }</a>
+												<span class="meta">{ row.Next }</span>
+											} else {
+												<span class="meta wait-text">no schedule</span>
+												<a href={ urlWithBase(vm.Page.Base, "/schedules") } class="meta">add one</a>
+											}
+										</span>
 									</td>
 									<td data-label="LAST RUN" class="bk-lastrun">
 										<span class="lr-line">

@@ -211,12 +211,15 @@
 
 /* backups management list rows (R7c): min-height 64px (NEVER a fixed height —
  * a fixed height clips the two-line cells), cells center and pad 12px 0, and
- * the posture cells stack two nowrapped lines. Only the KIND path ellipsizes;
- * the text cells never clip. */
+ * the posture cells stack two nowrapped lines. The posture tds themselves stay
+ * table-cells (a display:flex td escapes the table's row layout and balloons
+ * the row); the two-line column lives on the inner .bk-cell wrapper. Only the
+ * KIND path ellipsizes; the text cells never clip. */
 .bk-row { min-height:64px; align-items:center; }
 .bk-row.is-disabled td { color:var(--ink-500); }
 .bk-table tbody tr.bk-row td { padding:12px 0; }
-.bk-kind, .bk-ret, .bk-sched { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }
+.bk-kind, .bk-ret, .bk-sched { vertical-align:middle; min-width:0; }
+.bk-cell { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }
 .bk-kind .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; font-size:13px; }
 .bk-ret .mono, .bk-sched .mono { white-space:nowrap; }
 .bk-kind .uri { font-size:12px; color:var(--ink-400); }
