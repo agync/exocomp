@@ -174,7 +174,7 @@ func (s *Server) handleTokenRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: token revoke", "token", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/tokens", "revoked "+name)
+	s.redirectFlash(w, r, "/tokens", "revoked "+name)
 }
 
 func (s *Server) renderTokenResult(w http.ResponseWriter, r *http.Request, row store.APIToken, secret string, rotated bool) {

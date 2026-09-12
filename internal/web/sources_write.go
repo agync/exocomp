@@ -155,7 +155,7 @@ func (s *Server) addPathSource(w http.ResponseWriter, r *http.Request, ident ide
 		return
 	}
 	s.log.Info("web: source add-path", "source", name, "writable", writable, "by", ident.token.Name)
-	redirectFlash(w, r, "/sources", "registered "+name)
+	s.redirectFlash(w, r, "/sources", "registered "+name)
 }
 
 // addGitSource registers a git source: it generates and seals a deploy key
@@ -265,7 +265,7 @@ func (s *Server) handleSourceSetEnabled(enabled bool) http.HandlerFunc {
 			verb = "enabled"
 		}
 		s.log.Info("web: source "+verb, "source", name, "by", ident.token.Name)
-		redirectFlash(w, r, "/sources", verb+" "+name)
+		s.redirectFlash(w, r, "/sources", verb+" "+name)
 	}
 }
 
@@ -300,7 +300,7 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 	}
 	s.purgeSourceCaches(r.Context(), src)
 	s.log.Info("web: source rm", "source", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/sources", "removed "+name)
+	s.redirectFlash(w, r, "/sources", "removed "+name)
 }
 
 // purgeSourceCaches removes a deleted source's dependency caches

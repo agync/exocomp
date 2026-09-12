@@ -153,7 +153,7 @@ func (s *Server) handleJobRerun(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: rerun", "from", id, "job", res.Job.ID, "privileged", privileged,
 		"tolerate", tolerate, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
 		"job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued (rerun of "+strconv.FormatInt(id, 10)+")")
 }
 

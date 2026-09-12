@@ -95,7 +95,7 @@ func (s *Server) handleJobSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: job schedule", "job", job.ID, "schedule", created.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/schedules", "scheduled "+created.Name)
+	s.redirectFlash(w, r, "/schedules", "scheduled "+created.Name)
 }
 
 // validationFlash renders a store.ErrValidation error as a flash line without

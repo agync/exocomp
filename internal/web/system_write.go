@@ -35,7 +35,7 @@ func (s *Server) handleSetPublicURL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: public url set", "by", ident.token.Name)
-	redirectFlash(w, r, "/system", "public URL set")
+	s.redirectFlash(w, r, "/system", "public URL set")
 }
 
 // validPublicURL accepts only an absolute http(s) URL with a host.

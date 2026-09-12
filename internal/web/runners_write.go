@@ -108,7 +108,7 @@ func (s *Server) handleRunnerAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: runner add", "runner", created.Name, "mode", created.Mode, "by", ident.token.Name)
-	redirectFlash(w, r, "/runners", "registered "+created.Name)
+	s.redirectFlash(w, r, "/runners", "registered "+created.Name)
 }
 
 func (s *Server) handleRunnerRm(w http.ResponseWriter, r *http.Request) {
@@ -130,5 +130,5 @@ func (s *Server) handleRunnerRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: runner rm", "runner", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/runners", "removed "+name)
+	s.redirectFlash(w, r, "/runners", "removed "+name)
 }

@@ -60,7 +60,7 @@ func (s *Server) handleSecretAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: secret add", "secret", name, "kind", kind, "by", ident.token.Name)
-	redirectFlash(w, r, "/secrets", "sealed "+name)
+	s.redirectFlash(w, r, "/secrets", "sealed "+name)
 }
 
 func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.log.Info("web: secret rotate", "secret", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/secrets", "rotated "+name)
+	s.redirectFlash(w, r, "/secrets", "rotated "+name)
 }
 
 func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +138,7 @@ func (s *Server) handleSecretRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: secret rm", "secret", name, "forced_bindings", len(refs), "by", ident.token.Name)
-	redirectFlash(w, r, "/secrets", "deleted "+name)
+	s.redirectFlash(w, r, "/secrets", "deleted "+name)
 }
 
 // secretBindings returns the run-secret bindings that reference a secret, the

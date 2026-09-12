@@ -157,6 +157,9 @@ type workspaceWriteRow struct {
 	Serial  int64
 	Backend api.BackendBlock
 	Plans   []planArtifactRow
+	// Base is the surface's origin sub-path ("" at the root), so the row's
+	// Go-built hrefs re-prefix the same way every other URL site does.
+	Base string
 	// LastJob is the POSTURE meta for a runs-in-server row ("last #20 ·
 	// 16:57", or "no runs yet"); state-only rows read the fixed "external
 	// tofu" instead. Empty until workspaceListRows fills it.
@@ -442,7 +445,7 @@ func (s *Server) handleWorkspacePlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: workspace plan", "job", res.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
 		"job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
 }
 
@@ -560,14 +563,14 @@ func (s *Server) handleWorkspaceApply(w http.ResponseWriter, r *http.Request) {
 	if res.Gated {
 		a := res.Approval
 		s.log.Info("web: workspace apply gated", "job", a.JobID, "approval", a.ApprovalID, "by", ident.token.Name)
-		redirectFlash(w, r, "/approvals",
+		s.redirectFlash(w, r, "/approvals",
 			"job "+strconv.FormatInt(a.JobID, 10)+" gated; approval "+strconv.FormatInt(a.ApprovalID, 10)+" pending")
 		return
 	}
 	run := res.Run
 	defer run.Release()
 	s.log.Info("web: workspace apply", "job", run.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(run.Job.ID, 10),
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(run.Job.ID, 10),
 		"job "+strconv.FormatInt(run.Job.ID, 10)+" enqueued")
 }
 
@@ -618,7 +621,7 @@ func (s *Server) handleWorkspaceDestroy(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	s.log.Info("web: workspace destroy", "job", res.Job.ID, "workspace", ws.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10),
 		"job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
 }
 
@@ -679,7 +682,7 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	redirectFlash(w, r, "/workspaces", name+" unlocked")
+	s.redirectFlash(w, r, "/workspaces", name+" unlocked")
 }
 
 // unlockAuditJob picks the job an unlock's audit event belongs on: the job the

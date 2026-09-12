@@ -393,7 +393,7 @@ func (s *Server) handleSourceRunPlaybook(w http.ResponseWriter, r *http.Request)
 	}
 	s.log.Info("web: run playbook", "job", res.Job.ID, "source", name, "playbook", playbook,
 		"privileged", privileged, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10), "job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Job.ID, 10), "job "+strconv.FormatInt(res.Job.ID, 10)+" enqueued")
 }
 
 // handleSourceRunCommand parses the everyday ad-hoc form (host, command, shell,
@@ -484,12 +484,12 @@ func (s *Server) handleSourceRunCommand(w http.ResponseWriter, r *http.Request) 
 	if res.Gated {
 		a := res.Approval
 		s.log.Info("web: run command gated", "job", a.JobID, "approval", a.ApprovalID, "source", name, "by", ident.token.Name)
-		redirectFlash(w, r, "/approvals",
+		s.redirectFlash(w, r, "/approvals",
 			"job "+strconv.FormatInt(a.JobID, 10)+" gated; approval "+strconv.FormatInt(a.ApprovalID, 10)+" pending")
 		return
 	}
 	s.log.Info("web: run command", "job", res.Run.Job.ID, "source", name, "host", host, "by", ident.token.Name)
-	redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Run.Job.ID, 10),
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(res.Run.Job.ID, 10),
 		"job "+strconv.FormatInt(res.Run.Job.ID, 10)+" enqueued")
 }
 

@@ -64,7 +64,7 @@ func (s *Server) handlePolicyAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: policy add", "policy", created.Name, "workspace", created.Workspace,
 		"action", created.Action, "by", ident.token.Name)
-	redirectFlash(w, r, "/policies", "added "+created.Name)
+	s.redirectFlash(w, r, "/policies", "added "+created.Name)
 }
 
 func (s *Server) handlePolicyRm(w http.ResponseWriter, r *http.Request) {
@@ -86,5 +86,5 @@ func (s *Server) handlePolicyRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: policy rm", "policy", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/policies", "removed "+name)
+	s.redirectFlash(w, r, "/policies", "removed "+name)
 }

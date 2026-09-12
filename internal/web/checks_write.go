@@ -35,36 +35,36 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	kind := r.PostFormValue("kind")
 	interval, err := time.ParseDuration(r.PostFormValue("interval"))
 	if err != nil {
-		redirectFlash(w, r, "/checks", fmt.Sprintf("interval must be a Go duration (e.g. 5m): %v", err))
+		s.redirectFlash(w, r, "/checks", fmt.Sprintf("interval must be a Go duration (e.g. 5m): %v", err))
 		return
 	}
 	if interval <= 0 {
-		redirectFlash(w, r, "/checks", "interval must be a positive Go duration (e.g. 5m)")
+		s.redirectFlash(w, r, "/checks", "interval must be a positive Go duration (e.g. 5m)")
 		return
 	}
 	switch kind {
 	case store.CheckTCP, store.CheckPing, store.CheckHTTP:
 	default:
-		redirectFlash(w, r, "/checks", fmt.Sprintf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
+		s.redirectFlash(w, r, "/checks", fmt.Sprintf("kind must be %s, %s or %s", store.CheckTCP, store.CheckPing, store.CheckHTTP))
 		return
 	}
 	targets, err := store.ParseCheckTargets(kind, r.PostForm["target"], true)
 	if err != nil {
-		redirectFlash(w, r, "/checks", err.Error())
+		s.redirectFlash(w, r, "/checks", err.Error())
 		return
 	}
 	if len(targets) == 0 {
-		redirectFlash(w, r, "/checks", "need at least one target")
+		s.redirectFlash(w, r, "/checks", "need at least one target")
 		return
 	}
 	expect, err := formExpect(r)
 	if err != nil {
-		redirectFlash(w, r, "/checks", err.Error())
+		s.redirectFlash(w, r, "/checks", err.Error())
 		return
 	}
 	if expect != 0 {
 		if kind != store.CheckHTTP {
-			redirectFlash(w, r, "/checks", "expected status applies to kind http")
+			s.redirectFlash(w, r, "/checks", "expected status applies to kind http")
 			return
 		}
 		for i := range targets {
@@ -76,11 +76,11 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		Name: name, Kind: kind, IntervalS: int64(interval.Seconds()), Targets: targets,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		redirectFlash(w, r, "/checks", "a check named "+name+" already exists")
+		s.redirectFlash(w, r, "/checks", "a check named "+name+" already exists")
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/checks", validationFlash(err))
+		s.redirectFlash(w, r, "/checks", validationFlash(err))
 		return
 	}
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: check add", "check", created.Name, "kind", created.Kind, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks", "added "+created.Name)
+	s.redirectFlash(w, r, "/checks", "added "+created.Name)
 }
 
 // formExpect parses the optional expected-status field; blank means no pin.
@@ -131,7 +131,7 @@ func (s *Server) handleCheckSetEnabled(w http.ResponseWriter, r *http.Request, e
 		verb = "disabled"
 	}
 	s.log.Info("web: check "+verb, "check", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks", verb+" "+name)
+	s.redirectFlash(w, r, "/checks", verb+" "+name)
 }
 
 func (s *Server) handleCheckRm(w http.ResponseWriter, r *http.Request) {
@@ -153,5 +153,5 @@ func (s *Server) handleCheckRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: check rm", "check", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks", "removed "+name)
+	s.redirectFlash(w, r, "/checks", "removed "+name)
 }

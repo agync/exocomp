@@ -120,8 +120,10 @@ func (s *Server) reauth(r *http.Request) error {
 
 // redirectFlash ends a mutating form with a 303 to a GET page carrying a
 // one-line result. The message is operator-facing status only — never a secret
-// (invariant 4): a value or token is shown once inline, never redirected.
-func redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
+// (invariant 4): a value or token is shown once inline, never redirected. The
+// target is re-prefixed with the base path so the 303 lands inside the surface
+// (the one place every write redirect passes through).
+func (s *Server) redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
 	// The flash is carried in a short-lived HttpOnly SameSite=Strict cookie, not
 	// a URL parameter: a deep link can name no message it owns, so an operator
 	// can never be shown a flash another site picked. The redirect itself stays
@@ -129,7 +131,7 @@ func redirectFlash(w http.ResponseWriter, r *http.Request, path, msg string) {
 	// query, like /checks?tab=netgroups, needs no separators now). The next page
 	// render consumes the cookie (render clears it) and shows the one message.
 	setFlashCookie(w, msg)
-	http.Redirect(w, r, path, http.StatusSeeOther)
+	http.Redirect(w, r, s.url(path), http.StatusSeeOther)
 }
 
 // flashCookie carries the one-shot across a redirect. It is server-set only

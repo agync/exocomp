@@ -66,7 +66,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: netgroup add", "netgroup", created.Name, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks?tab=netgroups", netgroupAddedFlash(created.Name, len(created.Prefixes)))
+	s.redirectFlash(w, r, "/checks?tab=netgroups", netgroupAddedFlash(created.Name, len(created.Prefixes)))
 }
 
 // netgroupRefusal re-renders the checks surface at 422 with the add form
@@ -100,7 +100,7 @@ func (s *Server) handleNetgroupRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: netgroup rm", "netgroup", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/checks?tab=netgroups", "removed "+name)
+	s.redirectFlash(w, r, "/checks?tab=netgroups", "removed "+name)
 }
 
 // netgroupSubmitRefusal is the whole-submit status line (forms/copy.txt): the

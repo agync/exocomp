@@ -33,28 +33,28 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PostFormValue("name")
 	if !store.ValidName(name) {
-		redirectFlash(w, r, "/schedules", "invalid schedule name")
+		s.redirectFlash(w, r, "/schedules", "invalid schedule name")
 		return
 	}
 	cronExpr := r.PostFormValue("cron")
 	if err := sched.ValidateCron(cronExpr); err != nil {
-		redirectFlash(w, r, "/schedules", err.Error())
+		s.redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 	kind := r.PostFormValue("kind")
 	args, err := formScheduleArgs(r, kind)
 	if err != nil {
-		redirectFlash(w, r, "/schedules", err.Error())
+		s.redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 	concurrencyKey := r.PostFormValue("concurrency_key")
 	if (kind == store.ScheduleBackup || kind == store.ScheduleDrill) && concurrencyKey != "" {
-		redirectFlash(w, r, "/schedules", fmt.Sprintf("kind %s keys each fire by target; concurrency key does not apply", kind))
+		s.redirectFlash(w, r, "/schedules", fmt.Sprintf("kind %s keys each fire by target; concurrency key does not apply", kind))
 		return
 	}
 	jitter, err := formJitter(r)
 	if err != nil {
-		redirectFlash(w, r, "/schedules", err.Error())
+		s.redirectFlash(w, r, "/schedules", err.Error())
 		return
 	}
 
@@ -63,11 +63,11 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 		ConcurrencyKey: concurrencyKey, JitterS: jitter,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
-		redirectFlash(w, r, "/schedules", "a schedule named "+name+" already exists")
+		s.redirectFlash(w, r, "/schedules", "a schedule named "+name+" already exists")
 		return
 	}
 	if errors.Is(err, store.ErrValidation) {
-		redirectFlash(w, r, "/schedules", validationFlash(err))
+		s.redirectFlash(w, r, "/schedules", validationFlash(err))
 		return
 	}
 	if err != nil {
@@ -75,7 +75,7 @@ func (s *Server) handleScheduleAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: schedule add", "schedule", created.Name, "kind", created.Kind, "by", ident.token.Name)
-	redirectFlash(w, r, "/schedules", "added "+created.Name)
+	s.redirectFlash(w, r, "/schedules", "added "+created.Name)
 }
 
 func (s *Server) handleScheduleEnable(w http.ResponseWriter, r *http.Request) {
@@ -105,7 +105,7 @@ func (s *Server) handleScheduleSetEnabled(w http.ResponseWriter, r *http.Request
 		verb = "disabled"
 	}
 	s.log.Info("web: schedule "+verb, "schedule", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/schedules", verb+" "+name)
+	s.redirectFlash(w, r, "/schedules", verb+" "+name)
 }
 
 func (s *Server) handleScheduleRm(w http.ResponseWriter, r *http.Request) {
@@ -127,7 +127,7 @@ func (s *Server) handleScheduleRm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: schedule rm", "schedule", name, "by", ident.token.Name)
-	redirectFlash(w, r, "/schedules", "removed "+name)
+	s.redirectFlash(w, r, "/schedules", "removed "+name)
 }
 
 // formScheduleArgs shapes ScheduleArgs from the add form the same way
