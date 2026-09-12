@@ -57,7 +57,7 @@ templ systemPage(vm systemVM) {
 						</a>
 					}
 				</span>
-				<span class="hg">
+			<span class="hg">
 					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/kit/reprint") } class="hglyphform" aria-label="Recovery kit — reprint">
 						<button type="submit" class="hglyph" title="Recovery kit — reprint">@legGlyph(glyphKit)</button>
 					</form>
@@ -68,13 +68,14 @@ templ systemPage(vm systemVM) {
 					}
 				</span>
 			</span>
-		</section>
 		if vm.Operator {
-			// The Change form rests CLOSED: at rest the server marks it hidden
-			// and the row's Change toggle opens it inline below the strip; a
-			// 422 re-render (data-open) and JS-off (the noscript reveal) both
-			// show it. The toggle is the form's own submit via the form
-			// attribute, so JS-off posts the same bytes a full re-render does.
+			// The Change form rests CLOSED and lives INSIDE the strip: at rest
+			// the server marks it hidden (rendering nothing — no stray input
+			// below the strip), and the row's Change toggle expands it to a
+			// full-width surface-rail row within the strip. A 422 re-render
+			// (data-open) and JS-off (the noscript reveal) both show it. The
+			// toggle is the form's own submit via the form attribute, so
+			// JS-off posts the same bytes a full re-render does.
 			<form method="post" action={ urlWithBase(vm.Page.Base, "/system/public-url") } class="pubform" id="pubform" aria-label="Change public URL" novalidate data-pubform data-open?={ vm.PubForm != nil } hidden?={ vm.PubForm == nil }>
 				<input type="url" name="url" id="pub-url" value={ vm.PubForm.ValueFor(vm.PublicURL) } autocomplete="off" spellcheck="false"
 					aria-invalid?={ vm.PubForm.ErrMsgText() != "" }
@@ -89,10 +90,11 @@ templ systemPage(vm systemVM) {
 				@formStatus(vm.PubForm.Pending(), vm.PubForm.ErrFormText(), "Changing")
 			</form>
 			<noscript>
-				<style>#pubform[hidden]{display:flex}</style>
+				<style>#pubform[hidden]{display:flex !important}</style>
 			</noscript>
 			@pubFormJS()
 		}
+	</section>
 
 		<div class="sys-legs">
 			@deadmanCard(vm)
@@ -137,12 +139,12 @@ templ systemPage(vm systemVM) {
 
 // pubFormJS is the Change form's progressive enhancement: the form rests
 // CLOSED (the server renders it hidden; JS-off reveals it through the noscript
-// rule) and the row's Change toggle expands it inline below the strip. Once
-// expanded, the toggle is the form's own submit (form attribute), intercepted
-// and POSTed with fetch — a 422 swaps the form fragment in place with the
-// server-rendered refusal and the typed value kept (a refusal re-renders with
-// data-open, so it never re-collapses), anything else follows the redirect and
-// its success flash.
+// rule) and the row's Change toggle expands it to a full-width row INSIDE the
+// strip. Once expanded, the toggle is the form's own submit (form attribute),
+// intercepted and POSTed with fetch — a 422 swaps the form fragment in place
+// with the server-rendered refusal and the typed value kept (a refusal
+// re-renders with data-open, so it never re-collapses), anything else follows
+// the redirect and its success flash.
 templ pubFormJS() {
 	<script>
 	(function () {

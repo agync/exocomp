@@ -379,19 +379,19 @@ func systemPage(vm systemVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</span></span></section>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "</span></span> ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "     <form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "       <form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var23 templ.SafeURL
 				templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/system/public-url"))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 78, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 79, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 				if templ_7745c5c3_Err != nil {
@@ -420,7 +420,7 @@ func systemPage(vm systemVM) templ.Component {
 				var templ_7745c5c3_Var24 string
 				templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinStringErrs(vm.PubForm.ValueFor(vm.PublicURL))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 79, Col: 87}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 80, Col: 87}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 				if templ_7745c5c3_Err != nil {
@@ -470,7 +470,7 @@ func systemPage(vm systemVM) templ.Component {
 					var templ_7745c5c3_Var27 string
 					templ_7745c5c3_Var27, templ_7745c5c3_Err = templ.JoinStringErrs(vm.PubForm.ErrMsgText())
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 84, Col: 49}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 85, Col: 49}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var27))
 					if templ_7745c5c3_Err != nil {
@@ -494,7 +494,7 @@ func systemPage(vm systemVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</form><noscript><style>#pubform[hidden]{display:flex}</style></noscript>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "</form><noscript><style>#pubform[hidden]{display:flex !important}</style></noscript>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -503,7 +503,7 @@ func systemPage(vm systemVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " <div class=\"sys-legs\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "</section><div class=\"sys-legs\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -530,7 +530,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var28 string
 			templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Version)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 105, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 107, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 			if templ_7745c5c3_Err != nil {
@@ -543,7 +543,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var29 templ.SafeURL
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system#litestream")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 106, Col: 87}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 108, Col: 87}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -556,7 +556,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var30 string
 			templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Self.LSClass)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 106, Col: 118}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 108, Col: 118}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 			if templ_7745c5c3_Err != nil {
@@ -569,7 +569,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var31 string
 			templ_7745c5c3_Var31, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Self.LSWord)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 106, Col: 148}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 108, Col: 148}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var31))
 			if templ_7745c5c3_Err != nil {
@@ -582,7 +582,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var32 templ.SafeURL
 			templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system#deadman")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 107, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 109, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 			if templ_7745c5c3_Err != nil {
@@ -595,7 +595,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var33 string
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Page.Signal.DeadManState)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 107, Col: 127}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 109, Col: 127}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -608,7 +608,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Page.Signal.DeadMan)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 108, Col: 37}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 110, Col: 37}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -631,7 +631,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var35 templ.SafeURL
 			templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system#ntfy")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 113, Col: 81}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 115, Col: 81}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 			if templ_7745c5c3_Err != nil {
@@ -644,7 +644,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var36 string
 			templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Page.Signal.NtfyState)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 113, Col: 121}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 115, Col: 121}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 			if templ_7745c5c3_Err != nil {
@@ -657,7 +657,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var37 string
 			templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Page.Signal.Ntfy)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 113, Col: 150}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 115, Col: 150}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 			if templ_7745c5c3_Err != nil {
@@ -670,7 +670,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var38 templ.SafeURL
 			templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system#backups")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 114, Col: 84}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 116, Col: 84}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 			if templ_7745c5c3_Err != nil {
@@ -683,7 +683,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var39 string
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(vm.BackupsState)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 114, Col: 115}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 116, Col: 115}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -696,7 +696,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(vm.BackupsWord)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 114, Col: 134}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 116, Col: 134}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -709,7 +709,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var41 templ.SafeURL
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 118, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 120, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -722,7 +722,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var42 templ.SafeURL
 			templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 122, Col: 85}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 124, Col: 85}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 			if templ_7745c5c3_Err != nil {
@@ -735,7 +735,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var43 templ.SafeURL
 			templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 126, Col: 91}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 128, Col: 91}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 			if templ_7745c5c3_Err != nil {
@@ -748,7 +748,7 @@ func systemPage(vm systemVM) templ.Component {
 			var templ_7745c5c3_Var44 templ.SafeURL
 			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/backups")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 130, Col: 88}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_system.templ`, Line: 132, Col: 88}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 			if templ_7745c5c3_Err != nil {
@@ -770,12 +770,12 @@ func systemPage(vm systemVM) templ.Component {
 
 // pubFormJS is the Change form's progressive enhancement: the form rests
 // CLOSED (the server renders it hidden; JS-off reveals it through the noscript
-// rule) and the row's Change toggle expands it inline below the strip. Once
-// expanded, the toggle is the form's own submit (form attribute), intercepted
-// and POSTed with fetch — a 422 swaps the form fragment in place with the
-// server-rendered refusal and the typed value kept (a refusal re-renders with
-// data-open, so it never re-collapses), anything else follows the redirect and
-// its success flash.
+// rule) and the row's Change toggle expands it to a full-width row INSIDE the
+// strip. Once expanded, the toggle is the form's own submit (form attribute),
+// intercepted and POSTed with fetch — a 422 swaps the form fragment in place
+// with the server-rendered refusal and the typed value kept (a refusal
+// re-renders with data-open, so it never re-collapses), anything else follows
+// the redirect and its success flash.
 func pubFormJS() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
