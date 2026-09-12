@@ -220,8 +220,9 @@
 .snap-row { display:grid; grid-template-columns:16px minmax(0,1fr); gap:12px; align-items:center; height:44px;
   padding:0 12px; border-radius:9px; cursor:pointer; font:400 13px/1 var(--font-mono);
   font-variant-numeric:tabular-nums; }
-.snap-row input { width:16px; height:16px; margin:0; appearance:none; border-radius:50%;
-  border:1px solid var(--hairline); }
+.snap-row input { width:16px; height:16px; min-width:16px; max-width:16px; min-height:16px; max-height:16px;
+  margin:0; padding:0; appearance:none; border-radius:50%; box-sizing:border-box;
+  border:1px solid var(--hairline); align-self:center; justify-self:start; }
 .snap-row input:checked { border-color:var(--accent-fill); background:var(--accent-fill); box-shadow:inset 0 0 0 2px var(--surface-control); }
 .snap-row input:focus-visible { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
 .snap-row:has(:checked) { background:var(--surface-control); }
