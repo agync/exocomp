@@ -48,11 +48,13 @@ func TestSystemShellIdentity(t *testing.T) {
 		`<span class="host">` + hostname() + `</span>`,
 		" · up ",
 		"is the control plane itself OK",
-		// The header glyphs are live since L-S5 (A1/A3): each is a POST verb
-		// with the meta beside it, no longer read-only.
+		// The header glyphs are live since L-S5 (A1/A3): Doctor is a POST verb
+		// with the meta beside it, and the Recovery-kit glyph opens the kit
+		// modal (whose primary posts the reprint verb).
 		`title="Doctor — run the self-check"`,
 		`action="/system/doctor"`,
-		`title="Recovery kit — reprint"`,
+		`title="Recovery kit — regenerate"`,
+		`data-modal-open="kit"`,
 		`action="/system/kit/reprint"`,
 	} {
 		if !strings.Contains(page, want) {

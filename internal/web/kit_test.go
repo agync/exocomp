@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -117,5 +119,176 @@ func TestKitMetaIdle(t *testing.T) {
 	}
 	if strings.Contains(page, "changes since") {
 		t.Error("identity strip fabricates kit meta before a print")
+	}
+}
+
+// TestKitGlyphOpensModal is the GATE for the m97 kit modal's trigger: the
+// Recovery-kit glyph is a data-modal-open verb (it OPENS the modal, it no
+// longer posts the reprint directly), and the modal itself renders on /system.
+func TestKitGlyphOpensModal(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`data-modal-open="kit"`,
+		`title="Recovery kit — regenerate"`,
+		`<dialog class="modal" id="kit"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("kit modal trigger missing %q", want)
+		}
+	}
+}
+
+// TestKitModalRendersKit is the GATE for the modal body: the regenerated kit —
+// recipients, fingerprints, salt and the derivation recipe — renders inside the
+// modal in a scrollable mono block with the shared Copy glyph, and a Download
+// verb pointing at the GET route. The recovery secret NEVER renders (mutation:
+// rendering AgeSecretKey here reds the guard).
+func TestKitModalRendersKit(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="kit"`,
+		`>RECOVERY KIT</p>`,
+		`class="run-cmd-code"`,
+		`class="copy-i"`,
+		"1 · RECOVERY KEY (SECRET - THIS IS THE ROOT)",
+		"The recovery age secret key is NOT shown here.",
+		"2 · RECIPIENTS (PUBLIC - FOR VERIFICATION)",
+		"3 · SALT (PUBLIC - NEEDED FOR EVERY DERIVATION)",
+		"    " + secrets.Salt,
+		"5 · DERIVATION RECIPE (GENERAL - ONE RULE)",
+		`action="/system/kit/reprint"`,
+		`href="/system/kit"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("kit modal missing %q", want)
+		}
+	}
+	if strings.Contains(page, "AGE-SECRET-KEY-1") || strings.Contains(page, "exo_") {
+		t.Error("kit modal leaked a recovery secret or access token")
+	}
+}
+
+// TestKitDownloadServesAttachment is the GATE for the Download verb: GET
+// /system/kit serves the raw rendered kit as text/plain with an attachment
+// disposition, and the body carries the recipe but never a secret.
+func TestKitDownloadServesAttachment(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp, err := op.Get(ts.URL + "/system/kit")
+	if err != nil {
+		t.Fatalf("GET /system/kit: %v", err)
+	}
+	body := readBody(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("kit download = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/plain") {
+		t.Errorf("kit Content-Type = %q, want text/plain", ct)
+	}
+	if cd := resp.Header.Get("Content-Disposition"); cd != `attachment; filename="recovery-kit.txt"` {
+		t.Errorf("kit Content-Disposition = %q, want the attachment", cd)
+	}
+	for _, want := range []string{
+		"exocomp · RECOVERY KIT",
+		"2 · RECIPIENTS (PUBLIC - FOR VERIFICATION)",
+		"3 · SALT (PUBLIC - NEEDED FOR EVERY DERIVATION)",
+		"5 · DERIVATION RECIPE (GENERAL - ONE RULE)",
+		"    exocomp kit derive restic/<target-id>",
+		"kit sha256 · ",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("downloaded kit missing %q", want)
+		}
+	}
+	if strings.Contains(body, "AGE-SECRET-KEY-1") || strings.Contains(body, "exo_") {
+		t.Error("downloaded kit leaked a recovery secret or access token")
+	}
+}
+
+// TestKitPrimaryRecordsPrintSuccessFlash is the GATE for the modal's primary:
+// it posts the existing reprint verb, and the redirect carries the SUCCESS-ONLY
+// flash — the 303 sets the flash cookie to the one success sentence and the
+// next /system render shows it beside the fresh kit meta.
+func TestKitPrimaryRecordsPrintSuccessFlash(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/system/kit/reprint", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("reprint status = %d, want 303", resp.StatusCode)
+	}
+	flashed := false
+	for _, c := range resp.Cookies() {
+		// The jar drops the em dash's bytes from the cookie value; the prefix
+		// is the assertion that matters — the 303 carries the one success
+		// sentence, never an error.
+		if c.Name == flashCookie && strings.HasPrefix(c.Value, "recovery kit reprinted") {
+			flashed = true
+		}
+	}
+	if !flashed {
+		t.Error("reprint 303 did not carry the success-only flash")
+	}
+
+	code, page := getBody(t, op, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	if !strings.Contains(page, "recovery kit reprinted") {
+		t.Error("the reprint flash did not render on /system")
+	}
+	if !strings.Contains(page, "kit printed "+today()+" · 0 changes since") {
+		t.Error("identity strip does not read the fresh kit meta")
+	}
+}
+
+// noKitDeriver is a Deriver with no envelope behind it: it can derive (so New
+// accepts it) but it cannot render the kit.
+type noKitDeriver struct{}
+
+func (noKitDeriver) Derive(purpose, id string) []byte {
+	return []byte("no-envelope:" + purpose + ":" + id)
+}
+
+func (noKitDeriver) Kit() (string, error) { return "", errors.New("no envelope") }
+
+// TestKitRouteNoEnvelope503 is the GATE for the fail-close: a web-only Server
+// holding no envelope (like the nil Sealer) answers the kit route 503.
+func TestKitRouteNoEnvelope503(t *testing.T) {
+	h := newHarness(t)
+	nokit, err := New(Options{Store: h.store, Deriver: noKitDeriver{}, Version: "test", DataDir: h.dir})
+	if err != nil {
+		t.Fatalf("web.New: %v", err)
+	}
+	ts := httptest.NewServer(nokit.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, _ := getBody(t, client, ts.URL+"/system/kit")
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("kit with nil envelope = %d, want 503", code)
 	}
 }
