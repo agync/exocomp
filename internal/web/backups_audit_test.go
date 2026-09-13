@@ -283,3 +283,52 @@ func TestBackupsCardChipTwoFailing(t *testing.T) {
 		}
 	}
 }
+
+// TestBackupDrawerEchoUsesTargetKind is the cross-lane contract's web face:
+// backupSnapshots fills each drawer row's Kind from its target, and the
+// confirmed drawer's RUN ON THE HOST command names --snapshot {id} for a
+// selected non-newest restic snapshot — driven through the real data path,
+// not a hand-built snapshotRow — while a git target's non-newest row stays
+// plain (git's force-push makes its older rows phantom; the echo must not
+// pretend).
+func TestBackupDrawerEchoUsesTargetKind(t *testing.T) {
+	h := newHarness(t)
+	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "daily=7,weekly=4", true)
+	seedRun(t, h, nas, store.BackupSucceeded, "8e1d07cccccc111111111111", 1_100_000_000, 40*time.Hour)
+	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
+	git := seedTarget(t, h, "git-config", "git", "git@forge.lan:ops/exocomp-config.git", "", true)
+	seedRun(t, h, git, store.BackupSucceeded, "9f4b11eeeeee222222222222", 900_000_000, 70*time.Hour)
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// An older restic snapshot selected: the command names --snapshot {id}.
+	resp := postForm(t, client, ts.URL+"/system/backups/restore", url.Values{
+		"from": {"snapshot"}, "snapshot": {"8e1d07cccccc"}, "confirm": {"8e1d07cccccc"},
+	}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("older-restic confirm = %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(body, ">exocomp restore --snapshot 8e1d07cccccc</pre>") {
+		t.Errorf("older restic row must echo the --snapshot selector: %q", body)
+	}
+
+	// A git target's non-newest row stays plain: nothing to select.
+	resp = postForm(t, client, ts.URL+"/system/backups/restore", url.Values{
+		"from": {"snapshot"}, "snapshot": {"9f4b11eeeeee"}, "confirm": {"9f4b11eeeeee"},
+	}, nil)
+	body = readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("git confirm = %d, want 200", resp.StatusCode)
+	}
+	if !strings.Contains(body, ">exocomp restore</pre>") {
+		t.Errorf("git non-newest row must echo the plain restore command")
+	}
+	if strings.Contains(body, "--snapshot") {
+		t.Errorf("git row must not echo --snapshot: %q", body)
+	}
+}
