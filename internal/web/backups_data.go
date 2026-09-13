@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -249,12 +248,12 @@ func (r *backupTargetRow) FillDrill(ctx context.Context, s *Server) {
 }
 
 // drillFacts reads the target's newest succeeded drill job's outcome (SPEC
-// §7 A4): the ok mark's age plus, parsed from the job's own "restore drill
-// OK: … file(s) verified (N bytes)" event — the only trace a drill leaves,
-// it never writes a backup_run row — the restored bytes and the drill's wall
-// time. All three are empty when no succeeded drill (or no parseable
-// outcome) exists. The exit code stays the judge; the parsed line only
-// enriches the UI (invariant 3).
+// §7 A4): the ok mark's age plus, read from the job's own "restore drill OK:
+// …" outcome event's structured raw_json payload — the only trace a drill
+// leaves, it never writes a backup_run row — the restored bytes and the
+// drill's wall time. All three are empty when no succeeded drill (or no
+// payload) exists. The exit code stays the judge; the payload only enriches
+// the UI (invariant 3).
 func (s *Server) drillFacts(ctx context.Context, name string) (age, bytes, duration string) {
 	jobs, err := s.store.ListJobs(ctx, store.JobFilter{ConcurrencyKey: backup.DrillConcurrencyKey(name)})
 	if err != nil || len(jobs) == 0 {
@@ -267,34 +266,14 @@ func (s *Server) drillFacts(ctx context.Context, name string) (age, bytes, durat
 	age = humanAge(s.now().Sub(jobFinishedAt(drill)))
 	if events, err := s.store.ListJobEvents(ctx, drill.ID); err == nil {
 		for _, ev := range events {
-			if n, ok := parseDrillBytes(ev.Msg); ok {
-				bytes = humanBytes(int(n))
+			if outcome, ok := backup.DrillOutcomeFor(ev.RawJSON); ok {
+				bytes = humanBytes(int(outcome.VerifiedBytes))
 				duration = runDuration(drillDuration(drill))
 				break
 			}
 		}
 	}
 	return age, bytes, duration
-}
-
-// parseDrillBytes extracts the verified-byte count from a drill job's outcome
-// event line — "… N file(s) verified (M bytes)" — returning false for any
-// line that is not a drill outcome, so a job's other events never fake one.
-func parseDrillBytes(msg string) (int64, bool) {
-	open := strings.Index(msg, "verified (")
-	end := strings.Index(msg, " bytes)")
-	if open < 0 || end < 0 || end < open {
-		return 0, false
-	}
-	start := open + len("verified (")
-	if start >= end {
-		return 0, false
-	}
-	n, err := strconv.Atoi(msg[start:end])
-	if err != nil {
-		return 0, false
-	}
-	return int64(n), true
 }
 
 // drillDuration is a settled drill job's own wall time — the A4 duration
