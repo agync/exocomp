@@ -3,6 +3,7 @@ package backup
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -81,6 +82,27 @@ func LiveSource(env *secrets.Envelope, t store.BackupTarget, targetEnv func(stor
 	}, nil
 }
 
+// drillOutcomeRaw builds the structured payload a drill result's outcome event
+// carries: the DrillEvent envelope with the source scrubbed of any embedded
+// userinfo exactly like the human line, so no credential can ride the payload
+// (the queue's redactor scrubs it again before the store write). DrillOutcomeFor
+// (drill.go) reads it back.
+func drillOutcomeRaw(result DrillResult) (string, error) {
+	raw, err := json.Marshal(map[string]DrillEvent{drillEventKey: {
+		Source:        ScrubURIUserinfo(result.Source),
+		SnapshotID:    result.SnapshotID,
+		RPOAgeSeconds: int64(result.RPOAge.Seconds()),
+		OK:            result.OK,
+		Reason:        result.Reason,
+		VerifiedFiles: result.VerifiedFiles,
+		VerifiedBytes: result.VerifiedBytes,
+	}})
+	if err != nil {
+		return "", fmt.Errorf("backup: drill: encode outcome: %w", err)
+	}
+	return string(raw), nil
+}
+
 // runDrill implements the DrillJobKind leg of Runner.Run: one target's
 // restore drill, fired by a kind-drill schedule fire. A drill never writes a
 // backup_run row — it is not a backup — so its only visible trace is this
@@ -122,7 +144,14 @@ func (r *Runner) runDrill(ctx context.Context, spec executor.Spec, sink executor
 	}
 	// result.Source carries "<kind>:<uri>", and a git/restic target's uri can
 	// embed userinfo (add-target warns but does not refuse it) — scrub it the
-	// same way the git and restic legs scrub their own recorded output.
-	sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: level, Msg: ScrubURIUserinfo(result.String())})
+	// same way the git and restic legs scrub their own recorded output. The
+	// structured payload rides the SAME event, its own copy of the source
+	// scrubbed by drillOutcomeRaw, so the log keeps the human line and the web
+	// gets the machine-readable outcome together.
+	raw, err := drillOutcomeRaw(result)
+	if err != nil {
+		return executor.Result{}, err
+	}
+	sink.Emit(executor.Event{Ts: time.Now().UTC(), Level: level, Msg: ScrubURIUserinfo(result.String()), RawJSON: raw})
 	return executor.Result{ExitCode: exitCode, Duration: time.Since(started)}, nil
 }

@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -54,6 +55,40 @@ func (r DrillResult) String() string {
 			r.Source, r.SnapshotID, r.RPOAge.Round(time.Second), r.VerifiedFiles, r.VerifiedBytes)
 	}
 	return fmt.Sprintf("restore drill FAILED: %s: %s", r.Source, r.Reason)
+}
+
+// drillEventKey namespaces the drill's structured outcome inside a job
+// event's raw_json.
+const drillEventKey = "backup.drill"
+
+// DrillEvent is the structured outcome the drill job attaches to its event's
+// raw_json — the machine-readable twin of the human line DrillResult.String
+// renders, carrying public data only: the source is scrubbed of embedded
+// userinfo at the emit site (drill_job.go drillOutcomeRaw), and the queue's
+// redactor scrubs the payload again before it is stored.
+type DrillEvent struct {
+	Source        string `json:"source"`
+	SnapshotID    string `json:"snapshot,omitempty"`
+	RPOAgeSeconds int64  `json:"rpo_age"`
+	OK            bool   `json:"ok"`
+	Reason        string `json:"reason,omitempty"`
+	VerifiedFiles int    `json:"verified_files"`
+	VerifiedBytes int64  `json:"verified_bytes"`
+}
+
+// DrillOutcomeFor reads a drill outcome back out of a job event's raw_json.
+// ok is false when the event carries no drill payload.
+func DrillOutcomeFor(rawJSON string) (outcome DrillEvent, ok bool) {
+	if rawJSON == "" {
+		return DrillEvent{}, false
+	}
+	var envelope struct {
+		Drill *DrillEvent `json:"backup.drill"`
+	}
+	if err := json.Unmarshal([]byte(rawJSON), &envelope); err != nil || envelope.Drill == nil {
+		return DrillEvent{}, false
+	}
+	return *envelope.Drill, true
 }
 
 // RestoreDrill restores src's newest snapshot into a throwaway directory —
