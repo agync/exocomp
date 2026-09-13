@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-13 — restore names the snapshot it would rebuild
+
+- **`exocomp restore --snapshot <id>` rebuilds a chosen restic snapshot.**
+  The id is a restic snapshot id, full or an unambiguous prefix — the same
+  first-12 short id the web drawer shows. With no `--snapshot`, restore stays
+  newest-only. Git targets refuse the selector (their leg keeps exactly one
+  snapshot), and `--snapshot` alongside `--from-litestream` is refused because
+  the replica leg has nothing to select.
+- **The DR drawer names `--snapshot {id}` when an older restic snapshot is
+  selected.** The RUN ON THE HOST command says `exocomp restore --snapshot
+  <id>` for a selected non-newest restic row — the command restores what the
+  operator picked; the newest row, a git row, and replica mode keep the plain
+  `exocomp restore` / `--from-litestream`.
+
 ## 2026-09-13 — the Recovery-kit modal regenerates
 
 - **The Recovery-kit glyph opens a stable modal instead of only flashing.**
