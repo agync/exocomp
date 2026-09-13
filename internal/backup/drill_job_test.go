@@ -32,15 +32,15 @@ func TestDrillTargetOfRejectsBadArgv(t *testing.T) {
 	}
 }
 
-// TestRunDrillScrubsCredentialSource proves the message runDrill hands to
-// sink.Emit never carries a target's embedded credential. DrillResult.Source
-// is built as "<kind>:<uri>" (drill.go) exactly like a git/restic leg's own
-// recorded output (git.go, restic.go), so a drill result for a cred-bearing
-// target must go through the same ScrubURIUserinfo before it reaches a
-// job_event row — a real restic_s3 target can carry userinfo in its endpoint
-// (resticRepo passes an "s3:https://user:pass@host/bucket" uri through
-// unparsed), which is what this reproduces without needing a reachable S3
-// endpoint.
+// TestRunDrillScrubsCredentialSource proves the message and the structured
+// payload runDrill hands to sink.Emit never carry a target's embedded
+// credential. DrillResult.Source is built as "<kind>:<uri>" (drill.go)
+// exactly like a git/restic leg's own recorded output (git.go, restic.go),
+// so a drill result for a cred-bearing target must go through the same
+// ScrubURIUserinfo before it reaches a job_event row — a real restic_s3
+// target can carry userinfo in its endpoint (resticRepo passes an
+// "s3:https://user:pass@host/bucket" uri through unparsed), which is what
+// this reproduces without needing a reachable S3 endpoint.
 func TestRunDrillScrubsCredentialSource(t *testing.T) {
 	t.Parallel()
 	const sentinel = "s3kr1t-p4ss-6e21" //nolint:gosec // test sentinel, not a real credential
@@ -60,6 +60,24 @@ func TestRunDrillScrubsCredentialSource(t *testing.T) {
 	}
 	if !strings.Contains(msg, "***@") {
 		t.Errorf("scrubbed message missing the redaction marker: %q", msg)
+	}
+
+	payload, err := drillOutcomeRaw(result)
+	if err != nil {
+		t.Fatalf("drillOutcomeRaw: %v", err)
+	}
+	if strings.Contains(payload, sentinel) {
+		t.Fatalf("drill payload leaked the credential: %q", payload)
+	}
+	outcome, ok := DrillOutcomeFor(payload)
+	if !ok {
+		t.Fatal("drill payload did not read back: " + payload)
+	}
+	if outcome.Source != KindResticS3+":s3:https://***@s3.invalid/bucket" {
+		t.Errorf("payload source not scrubbed: %q", outcome.Source)
+	}
+	if outcome.VerifiedBytes != 0 {
+		t.Errorf("payload verified bytes = %d, want 0 for a result that never ran", outcome.VerifiedBytes)
 	}
 }
 
@@ -168,6 +186,76 @@ func TestRunnerDrillsRealTarget(t *testing.T) {
 	}
 }
 
+// TestRunnerDrillEmitsStructuredOutcome: a successful drill's outcome event
+// carries a parseable raw_json payload (the backup.drill envelope, DrillEvent)
+// with the right verified counts and ok, on the SAME event whose Msg keeps the
+// human line — the A4 bytes fact's source now that the web no longer
+// text-parses the line.
+func TestRunnerDrillEmitsStructuredOutcome(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
+	t.Parallel()
+	f := newFixture(t)
+	repo := filepath.Join(t.TempDir(), "repo")
+	target := f.target(t, "nas", KindResticLocal, repo)
+
+	backupRunner := NewRunner(f.store, f.env, Options{}, func(store.BackupTarget) map[string]string {
+		return map[string]string{"RESTIC_CACHE_DIR": f.cache}
+	})
+	sink, _ := collectSink()
+	if _, err := backupRunner.Run(t.Context(), executor.Spec{Kind: JobKind, Argv: Argv(target.Name)}, sink); err != nil {
+		t.Fatalf("seed backup: %v", err)
+	}
+
+	drillRunner := NewRunner(f.store, f.env, Options{}, func(store.BackupTarget) map[string]string {
+		return map[string]string{"RESTIC_CACHE_DIR": f.cache}
+	})
+	sink, events := collectSink()
+	res, err := drillRunner.Run(t.Context(),
+		executor.Spec{Kind: DrillJobKind, Argv: DrillArgv(target.Name)}, sink)
+	if err != nil {
+		t.Fatalf("Run: %v (events: %+v)", err, events())
+	}
+	if res.ExitCode != 0 {
+		t.Fatalf("exit code = %d, want 0 (events: %+v)", res.ExitCode, events())
+	}
+
+	var sawPayload bool
+	for _, e := range events() {
+		outcome, ok := DrillOutcomeFor(e.RawJSON)
+		if !ok {
+			continue
+		}
+		sawPayload = true
+		if !outcome.OK {
+			t.Errorf("outcome ok = false, want true: %+v", outcome)
+		}
+		if outcome.Source != KindResticLocal+":"+repo {
+			t.Errorf("outcome source = %q, want %q", outcome.Source, KindResticLocal+":"+repo)
+		}
+		if outcome.SnapshotID == "" {
+			t.Error("outcome carries no snapshot id")
+		}
+		if outcome.RPOAgeSeconds < 0 {
+			t.Errorf("outcome rpo_age = %d, want a non-negative age", outcome.RPOAgeSeconds)
+		}
+		if outcome.VerifiedFiles != 3 {
+			t.Errorf("verified files = %d, want 3", outcome.VerifiedFiles)
+		}
+		if outcome.VerifiedBytes <= 0 {
+			t.Errorf("verified bytes = %d, want > 0", outcome.VerifiedBytes)
+		}
+		// The SAME event still carries the human line — the log stays readable.
+		if !strings.Contains(e.Msg, "restore drill OK") || !strings.Contains(e.Msg, outcome.SnapshotID) {
+			t.Errorf("outcome event lost the human line: %q (payload %q)", e.Msg, e.RawJSON)
+		}
+	}
+	if !sawPayload {
+		t.Errorf("no event carried a parseable drill payload: %+v", events())
+	}
+}
+
 // TestRunnerDrillCatchesCorruption proves a bad backup settles the drill job
 // failed (exit 1, no error) rather than erroring: the drill did its job, and
 // that outcome is what lets the ordinary job-failure sweep page on it.
@@ -203,13 +291,31 @@ func TestRunnerDrillCatchesCorruption(t *testing.T) {
 	}
 
 	var sawFailure bool
+	var sawPayload bool
 	for _, e := range events() {
 		if e.Level == executor.LevelError && strings.Contains(e.Msg, "restore drill FAILED") {
 			sawFailure = true
 		}
+		outcome, ok := DrillOutcomeFor(e.RawJSON)
+		if !ok {
+			continue
+		}
+		sawPayload = true
+		if outcome.OK {
+			t.Errorf("outcome ok = true for a corrupt snapshot: %+v", outcome)
+		}
+		if outcome.Reason == "" {
+			t.Error("failed outcome carries no reason")
+		}
+		if !strings.Contains(e.Msg, "restore drill FAILED") {
+			t.Errorf("failed outcome event lost the human line: %q", e.Msg)
+		}
 	}
 	if !sawFailure {
 		t.Errorf("no error-level 'restore drill FAILED' event: %+v", events())
+	}
+	if !sawPayload {
+		t.Errorf("no event carried a parseable drill payload: %+v", events())
 	}
 }
 
