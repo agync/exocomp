@@ -365,6 +365,9 @@ func (s *Server) backupSnapshots(ctx context.Context) ([]snapshotRow, error) {
 				ID: shortID(run.SnapshotID), Target: t.Name,
 				Age: humanAge(now.Sub(runFinishedAt(run))),
 			}
+			// Kind feeds the drawer echo's --snapshot decision (lane A's
+			// cliCommand); empty stays the plain command.
+			row.Kind = t.Kind
 			if run.BytesAdded > 0 {
 				row.Size = humanBytes(int(run.BytesAdded))
 			}
