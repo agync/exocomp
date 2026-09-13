@@ -383,12 +383,18 @@ func (f *restoreFormVM) buttonLabel() string {
 }
 
 // cliCommand is the RUN ON THE HOST block's command: the recovery-kit CLI path
-// the confirmed drawer hands the operator. The CLI restores the newest
-// snapshot, so the snapshot face names no --snapshot flag (round rule: no verb
-// that pretends); replica mode names --from-litestream.
+// the confirmed drawer hands the operator. Replica mode names --from-litestream.
+// A selected non-newest restic snapshot names --snapshot {id}, so the command
+// restores what the operator picked; the newest row and a git row (one snapshot,
+// nothing to select) keep the plain command, and an empty kind — the drawer
+// rows before the data leg populates Kind — defaults to plain too.
 func (f *restoreFormVM) cliCommand() string {
 	if f.effective().Mode == "replica" {
 		return "exocomp restore --from-litestream"
+	}
+	if sel := f.SelectedSnapshot(); sel != nil && sel.ID != f.Snapshots[0].ID &&
+		(sel.Kind == backup.KindResticLocal || sel.Kind == backup.KindResticS3) {
+		return "exocomp restore --snapshot " + sel.ID
 	}
 	return "exocomp restore"
 }

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -245,5 +246,52 @@ func TestBackupsSnapshotListNewestFirst(t *testing.T) {
 	}
 	if snaps[0].Target != "nas01" || snaps[1].Target != "nas01" {
 		t.Errorf("snapshot targets wrong: %s / %s", snaps[0].Target, snaps[1].Target)
+	}
+}
+
+// TestBackupRestoreEchoNamesTheSelector is the drawer echo's gate: the RUN ON
+// THE HOST command names --snapshot {id} when a non-newest restic snapshot is
+// selected, and stays plain for the newest row, a git row, an empty kind (the
+// pre-population default), and replica mode. snapshotRow.Kind is populated by
+// the backups_data leg; until it lands every drawer row reads "" and the echo
+// falls back to the plain command — so the kinds are driven here directly.
+func TestBackupRestoreEchoNamesTheSelector(t *testing.T) {
+	f := restoreFormVM{
+		Mode: "snapshot",
+		Snapshots: []snapshotRow{
+			{ID: "a3f9c2abcdef", Target: "nas01", Kind: backup.KindResticLocal},
+			{ID: "8e1d07cccccc", Target: "nas01", Kind: backup.KindResticLocal},
+			{ID: "5b2a01dddddd", Target: "offsite", Kind: backup.KindResticS3},
+			{ID: "9f4b11eeeeee", Target: "git-config", Kind: backup.KindGit},
+		},
+	}
+
+	f.Selected = f.Snapshots[0].ID
+	if got := f.cliCommand(); got != "exocomp restore" {
+		t.Errorf("newest echo = %q, want plain", got)
+	}
+	f.Selected = f.Snapshots[1].ID
+	if got := f.cliCommand(); got != "exocomp restore --snapshot 8e1d07cccccc" {
+		t.Errorf("older restic_local echo = %q, want --snapshot", got)
+	}
+	f.Selected = f.Snapshots[2].ID
+	if got := f.cliCommand(); got != "exocomp restore --snapshot 5b2a01dddddd" {
+		t.Errorf("older restic_s3 echo = %q, want --snapshot", got)
+	}
+	f.Selected = f.Snapshots[3].ID
+	if got := f.cliCommand(); got != "exocomp restore" {
+		t.Errorf("git echo = %q, want plain", got)
+	}
+
+	// An empty kind is the safe default until the data leg populates it.
+	f.Snapshots[1].Kind = ""
+	f.Selected = f.Snapshots[1].ID
+	if got := f.cliCommand(); got != "exocomp restore" {
+		t.Errorf("empty-kind echo = %q, want plain", got)
+	}
+
+	f.Mode = "replica"
+	if got := f.cliCommand(); got != "exocomp restore --from-litestream" {
+		t.Errorf("replica echo = %q, want --from-litestream", got)
 	}
 }

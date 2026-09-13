@@ -2324,10 +2324,14 @@ func (f *restoreFormVM) NewestAge() string {
 // drill job succeeded — a drill verifies the newest snapshot at drill time
 // (A4's data source), so only that one is proven.
 type snapshotRow struct {
-	ID       string
-	Target   string
-	Age      string
-	Size     string
+	ID     string
+	Target string
+	Age    string
+	Size   string
+	// Kind is the target kind that produced the row (restic_local, restic_s3,
+	// git); "" until the backups_data leg populates it (cross-lane contract),
+	// which the drawer echo treats as the plain command.
+	Kind     string
 	Drilled  bool
 	DrillAge string
 }
