@@ -31,23 +31,36 @@ func seedDrillJob(t *testing.T, h *harness, name string) int64 {
 	return job.ID
 }
 
-// drillOutcomeEvent is the info event a real restore drill emits for a good
-// snapshot (internal/backup/drill.go DrillResult.String): the one trace a
-// drill leaves — it never writes a backup_run row — and therefore A4's data
-// source. 125829120 bytes = 120.0 MB.
+// drillOutcomeEvent is the human line a real restore drill emits for a good
+// snapshot (internal/backup/drill.go DrillResult.String). It stays the
+// readable trace; the web no longer text-parses it — the verified-bytes fact
+// reads the structured payload instead, and a line that carries the figure
+// renders nothing when raw_json is absent (TestBackupsDrillMarkWithoutOutcome).
+// 125829120 bytes = 120.0 MB.
 const drillOutcomeEvent = "restore drill OK: restic_local:/var/backups/exocomp snapshot 2026-09-10T03:14:00Z, RPO 16h, 48 file(s) verified (125829120 bytes)"
+
+// drillOutcomeLine is the same drill's outcome line WITHOUT the byte figure.
+// The raw_json tests seed this shape so the verified-bytes fact can only come
+// from the structured payload, never the line (the old text-parse dies).
+const drillOutcomeLine = "restore drill OK: restic_local:/var/backups/exocomp snapshot 2026-09-10T03:14:00Z, RPO 16h"
+
+// drillOutcomeRawJSON is the structured payload the drill job attaches to the
+// outcome event's raw_json (internal/backup/drill.go DrillEvent): the A4 bytes
+// fact's source. 125829120 bytes = 120.0 MB.
+const drillOutcomeRawJSON = `{"backup.drill":{"source":"restic_local:/var/backups/exocomp","snapshot":"2026-09-10T03:14:00Z","rpo_age":57600,"ok":true,"verified_files":48,"verified_bytes":125829120}}`
 
 // TestBackupsDrillOutcomeInLastRun is the GATE for A4 on the management list:
 // the drill job's result (snapshot verified · restored bytes · duration) lands
-// in the LAST RUN second line, parsed from the drill job's own outcome event.
-// The exit code stays the judge; the parsed line only enriches the UI
-// (invariant 3).
+// in the LAST RUN second line. The bytes fact reads the job's outcome event's
+// raw_json payload — the seeded line carries no byte figure, so the figure
+// CANNOT come from text-parsing it. The exit code stays the judge; the payload
+// only enriches the UI (invariant 3).
 func TestBackupsDrillOutcomeInLastRun(t *testing.T) {
 	h := newHarness(t)
 	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/exocomp", "", true)
 	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
 	drill := seedDrillJob(t, h, "nas01")
-	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{JobID: drill, Msg: drillOutcomeEvent}); err != nil {
+	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{JobID: drill, Msg: drillOutcomeLine, RawJSON: drillOutcomeRawJSON}); err != nil {
 		t.Fatalf("append drill outcome event: %v", err)
 	}
 	job, err := h.store.GetJob(context.Background(), drill)
@@ -74,14 +87,22 @@ func TestBackupsDrillOutcomeInLastRun(t *testing.T) {
 	}
 }
 
-// TestBackupsDrillMarkWithoutOutcome pins the fallback: a succeeded drill whose
-// job carries no outcome event still draws the plain "drill N ago ok" mark —
-// never a fabricated bytes figure.
+// TestBackupsDrillMarkWithoutOutcome pins the raw_json dependency: a
+// succeeded drill whose outcome event carries ONLY the human line — no
+// structured payload — still draws the plain "drill N ago ok" mark but never
+// a bytes figure, even though the line itself holds the byte count. This is
+// the mutation the "reads raw_json, not the line" guard closes: blank the
+// payload and the fact goes empty.
 func TestBackupsDrillMarkWithoutOutcome(t *testing.T) {
 	h := newHarness(t)
 	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/exocomp", "", true)
 	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
-	seedDrillJob(t, h, "nas01")
+	drill := seedDrillJob(t, h, "nas01")
+	// The line still carries "verified (125829120 bytes)" — but the web must
+	// not read it: no raw_json payload, no bytes fact.
+	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{JobID: drill, Msg: drillOutcomeEvent}); err != nil {
+		t.Fatalf("append drill outcome event: %v", err)
+	}
 
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -89,10 +110,10 @@ func TestBackupsDrillMarkWithoutOutcome(t *testing.T) {
 
 	_, page := getBody(t, client, ts.URL+"/system/backups")
 	if !strings.Contains(page, "drill ") || !strings.Contains(page, "ago ok") {
-		t.Error("succeeded drill without an outcome event must still draw the plain mark")
+		t.Error("succeeded drill without a payload must still draw the plain mark")
 	}
 	if strings.Contains(page, "MB verified") {
-		t.Error("a drill without an outcome event must not render a bytes figure")
+		t.Error("a drill without a raw_json payload must not render a bytes figure")
 	}
 }
 
@@ -107,7 +128,7 @@ func TestBackupHistoryPageRows(t *testing.T) {
 	seedRun(t, h, nas, store.BackupSucceeded, "8e1d07cccccc111111111111", 1_100_000_000, 40*time.Hour)
 	seedRun(t, h, nas, store.BackupSucceeded, "a3f9c2abcdef1234567890ab", 1_200_000_000, 16*time.Hour)
 	drill := seedDrillJob(t, h, "nas01")
-	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{JobID: drill, Msg: drillOutcomeEvent}); err != nil {
+	if _, err := h.store.AppendJobEvent(context.Background(), store.JobEvent{JobID: drill, Msg: drillOutcomeLine, RawJSON: drillOutcomeRawJSON}); err != nil {
 		t.Fatalf("append drill outcome event: %v", err)
 	}
 
