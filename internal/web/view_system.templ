@@ -57,9 +57,7 @@ templ systemPage(vm systemVM) {
 					}
 				</span>
 			<span class="hg">
-					<form method="post" action={ urlWithBase(vm.Page.Base, "/system/kit/reprint") } class="hglyphform" aria-label="Recovery kit — reprint">
-						<button type="submit" class="hglyph" title="Recovery kit — reprint">@legGlyph(glyphKit)</button>
-					</form>
+					<button type="button" class="hglyph" data-modal-open="kit" title="Recovery kit — regenerate" aria-label="Recovery kit — regenerate">@legGlyph(glyphKit)</button>
 					if vm.Kit.Printed != "" {
 						<span class={ "hglyphmeta", templ.KV("wait", vm.Kit.Stale) }>
 							kit printed { vm.Kit.Printed } · { itoa(int64(vm.Kit.Changes)) } changes since
@@ -101,6 +99,8 @@ templ systemPage(vm systemVM) {
 			@litestreamCard(vm.Litestream, vm.Page.Base)
 			@backupsCard(vm)
 		</div>
+
+		@kitModal(vm)
 
 		<div class="sys-phone">
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")) }>
@@ -184,6 +184,32 @@ templ pubFormJS() {
 		pubFormWire();
 	})();
 	</script>
+}
+
+// kitModal is the Recovery-kit dialog (m97): the regenerated kit — recipients,
+// salt and the derivation recipe, the envelope's PUBLIC render — in a scrollable
+// mono block with the shared Copy glyph, a Download verb that pulls the same
+// text as an attachment, and a primary that records the print (the reprint
+// POST). The recovery secret never renders here: it exists in memory only at
+// mint, and the modal shows KitStructure().Render() and nothing else.
+templ kitModal(vm systemVM) {
+	@modal("kit", "Recovery kit") {
+		<p class="kicker">RECOVERY KIT</p>
+		<p class="meta">Regenerated from what is already stored — recipients, salt and the derivation recipe. The recovery secret appears only when it is minted, never on this page.</p>
+		<div class="run-cmd">
+			<pre class="run-cmd-code">{ vm.KitText }</pre>
+			<button type="button" class="copybtn" aria-label="Copy to clipboard" title="Copy">
+				<svg class="copy-i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V5a2 2 0 0 1 2-2h10"></path></svg>
+				<svg class="copy-ok" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"></path></svg>
+			</button>
+		</div>
+		<form method="post" action={ urlWithBase(vm.Page.Base, "/system/kit/reprint") } class="writeform">
+			<div class="actions">
+				<a class="btn" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/kit")) }>Download</a>
+				<button type="submit" class="btn primary">Printed — destroy the old page</button>
+			</div>
+		</form>
+	}
 }
 
 // The four leg cards live in leg_deadman.templ / leg_ntfy.templ /

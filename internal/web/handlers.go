@@ -227,6 +227,11 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	vm.Page.Signal.DeadManState = vm.Deadman.StateClass
 	vm.Doctor = s.doctorMeta(r.Context())
 	vm.Kit = s.kitMeta(r.Context())
+	// The modal renders the kit server-side; a surface with no envelope keeps
+	// the block empty rather than failing the whole page.
+	if kit, kerr := s.deriver.Kit(); kerr == nil {
+		vm.KitText = kit
+	}
 	return vm, nil
 }
 

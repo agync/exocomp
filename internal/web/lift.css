@@ -291,6 +291,15 @@
   border:0; box-shadow:inset 0 0 0 1px var(--fail-border); }
 .modal#restore-backups .actions .btn.quiet.ring:hover { background:var(--fail-tint); }
 
+/* RECOVERY KIT modal (m97): the stable form shape widened for a full card
+ * page, with the kit scrolling inside its own box (a long page, so the dialog
+ * never outgrows the viewport) beside the shared copybtn. */
+.modal#kit { width:min(46rem, calc(100vw - 32px)); }
+.modal#kit .run-cmd pre { max-height:min(440px, calc(100vh - 360px)); overflow:auto;
+  white-space:pre; }
+.modal#kit .actions .btn { width:auto; }
+.modal#kit .actions .btn.primary { flex:1; }
+
 /* ntfy drawer (R9): the page is a drawer column; the head rows the kicker ·
  * title · × close (the close never wraps under the title); the sealed-key
  * presence list and WHAT A PUSH SAYS's phone-push card rest on the rail. */

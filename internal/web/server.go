@@ -25,10 +25,15 @@ import (
 )
 
 // Deriver is the slice of the secrets envelope the web surface needs: the
-// session-cookie key and the per-job approval capability. Nothing here holds a
-// secret of its own.
+// session-cookie key, the per-job approval capability, and the recovery kit's
+// public render. Nothing here holds a secret of its own.
 type Deriver interface {
 	Derive(purpose, id string) []byte
+	// Kit renders the recovery-kit page from stored public data only
+	// (recipients, salt, recipe — never the recovery secret). The error arm
+	// is for a web-only process holding no envelope: the kit route then fails
+	// closed to a 503, like the Sealer.
+	Kit() (string, error)
 }
 
 // Decider resolves a human's decision. It is the reactive engine in production;
@@ -324,6 +329,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /events", s.requireAuth(s.handleEvents))
 	mux.HandleFunc("GET /events/{id}", s.requireAuth(s.handleEventTrace))
 	mux.HandleFunc("GET /system", s.requireAuth(s.handleSystem))
+	mux.HandleFunc("GET /system/kit", s.requireAuth(s.handleKit))
 	mux.HandleFunc("GET /system/deadman", s.requireAuth(s.handleDeadman))
 	mux.HandleFunc("GET /system/ntfy", s.requireAuth(s.handleNtfy))
 	mux.HandleFunc("GET /system/litestream", s.requireAuth(s.handleLitestream))

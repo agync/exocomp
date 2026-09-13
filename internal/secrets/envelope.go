@@ -348,6 +348,13 @@ func (e *Envelope) KitStructure() *RecoveryKit {
 	}
 }
 
+// Kit renders the recovery-kit page from stored public data only — the slice
+// the web surface serves. The error arm is for a surface that holds no
+// envelope; a live envelope renders (KitStructure never touches the DEK).
+func (e *Envelope) Kit() (string, error) {
+	return e.KitStructure().Render(), nil
+}
+
 // MemoryLock reports whether the DEK is pinned into RAM (out of swap and core
 // dumps), and why not when it is not.
 func (e *Envelope) MemoryLock() MemoryLock { return e.memLock }

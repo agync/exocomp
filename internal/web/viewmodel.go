@@ -491,6 +491,10 @@ type systemVM struct {
 	// Kit is the identity strip's Recovery-kit meta (SPEC §7 A3): the date the
 	// kit was last printed and how many invalidating changes landed since.
 	Kit kitMeta
+	// KitText is the regenerated kit the modal shows and the Download verb
+	// serves — the envelope's public render (recipients, salt, recipe). It is
+	// "" when the surface holds no envelope to render from.
+	KitText string
 	// PubForm is the identity strip's public-URL Change form refusal state
 	// (forms/SPEC.md, SPEC §7 A7): nil at rest, the filled form on a 422
 	// re-render. Value echoes the typed value so a refusal keeps it; ErrMsg is
