@@ -240,7 +240,7 @@ database has no recovery-kind keyring row.
 | Host key, kit intact | The runbook above — the recovery key unwraps the DEK, a new host key is minted and the old one revoked |
 | Recovery kit lost, host alive | `exocomp recovery-kit` re-renders the kit structure from what is already stored; it does not mint a new recovery identity, wrap the DEK to it, or revoke the old row |
 | Recovery kit lost **and** host key lost | Unrecoverable, by design; the same property any real vault has |
-| DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot and refuses a destination that already holds a keyring. There is no `--snapshot <id>` selector, no in-place restore, and no startup `PRAGMA integrity_check` gate |
+| DB corrupt, backups fine | `exocomp restore --from <kind:uri> --dest <fresh data dir>` restores the newest snapshot — for a restic kind, an older one by id with `--snapshot <id>` (full or unambiguous prefix; a git target keeps exactly one snapshot, so it has no selector). It refuses a destination that already holds a keyring. There is no in-place restore and no startup `PRAGMA integrity_check` gate |
 | One backup target unreachable | Others proceed and each gets its own `backup_run` row; there is no per-target alerting or last-success-age view in `doctor` |
 | `exocompd` will not build or run at all | The card's manual path uses only `age`, `openssl`, and `restic`. The bundles are plain git bundles and `exocomp.db` is plain SQLite |
 
