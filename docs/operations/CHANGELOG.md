@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-13 — the Recovery-kit modal regenerates
+
+- **The Recovery-kit glyph opens a stable modal instead of only flashing.**
+  The identity strip's kit glyph is now `data-modal-open="kit"` (Regenerate):
+  the modal shows the regenerated kit — the envelope's public render,
+  `KitStructure().Render()` — recipients and fingerprints, the HKDF salt and
+  the derivation recipe, in a scrollable mono block with the shared Copy
+  glyph. The recovery secret never renders: the modal and the Download both
+  serve stored public data only.
+- **Download pulls the kit as a file.** The new `GET /system/kit` route serves
+  the raw render as `text/plain` with `Content-Disposition: attachment;
+  filename="recovery-kit.txt"`; a surface holding no envelope (a web-only
+  process) fails it closed to 503, like the Sealer.
+- **The modal's primary records the print.** The reprint POST is unchanged —
+  it stamps the printed date and resets the changes counter — and the modal
+  relabels it `Printed — destroy the old page` with the success-only flash.
+  The web Server's Deriver slice grows a `Kit()` method for the render; the
+  daemon keeps passing the envelope.
+
 ## 2026-09-13 — the powerline reconciles
 
 - **The /system page-level powerline is gone.** The strip of per-leg anchors
