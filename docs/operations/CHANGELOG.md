@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-13 — the drill's outcome is structured
+
+- **The scheduled drill's outcome rides the job event's raw_json.** The
+  backup-drill job attaches a `backup.drill` structured payload — source,
+  snapshot, RPO age, ok, reason, verified file/byte counts — to the same
+  event whose line stays the readable "restore drill OK/FAILED: …" summary.
+  The source is scrubbed of embedded userinfo exactly like the line, and the
+  queue redacts the payload again before it is stored (invariant 4); a failed
+  drill carries `ok:false` with its reason.
+- **The web reads the verified-bytes fact from the payload, not the line.**
+  The drill mark's "N MB verified" figure on /system/backups and the target
+  history page now comes from `raw_json`; the line-text byte parser is gone.
+
 ## 2026-09-13 — restore names the snapshot it would rebuild
 
 - **`exocomp restore --snapshot <id>` rebuilds a chosen restic snapshot.**
