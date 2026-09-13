@@ -19,6 +19,7 @@ func newRestoreCmd() *cobra.Command {
 		dest                 string
 		identity             string
 		name                 string
+		snapshot             string
 		canary               string
 		allowUnauthenticated bool
 		targetAuthenticates  bool
@@ -32,10 +33,17 @@ func newRestoreCmd() *cobra.Command {
 		Short: "Rebuild a data dir from the newest snapshot on a target",
 		Long: "Fetches keyring.age from the target root, unwraps the data encryption key " +
 			"with the recovery identity, derives the repository password, restores the " +
-			"newest snapshot, and verifies every sha256 in its manifest. It refuses a " +
-			"destination that already holds a keyring.",
+			"newest snapshot (or the one --snapshot names), and verifies every sha256 in " +
+			"its manifest. It refuses a destination that already holds a keyring.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The replica leg restores the database only and returns before
+			// the restic source is parsed, so a --snapshot selector handed
+			// alongside it would be silently dropped — refuse it instead
+			// (a silently ignored selector is the pretend this round kills).
+			if fromLitestream && snapshot != "" {
+				return fmt.Errorf("restore: --snapshot cannot be combined with --from-litestream (the replica leg restores the database only)")
+			}
 			// The fast-RPO path recovers exocomp.db ONLY, from the Litestream
 			// replica, onto a data dir that already holds the keyring. It is a
 			// different chain from the authoritative restic restore below, so it
@@ -57,6 +65,7 @@ func newRestoreCmd() *cobra.Command {
 				return err
 			}
 			src.Name = name
+			src.Snapshot = snapshot
 			src.IdentityFile = identity
 			src.Env = restoreEnv(src.Kind)
 			src.AllowUnauthenticated = allowUnauthenticated
@@ -102,6 +111,8 @@ func newRestoreCmd() *cobra.Command {
 	cmd.Flags().StringVar(&identity, "identity", "", "age identity file holding the recovery key")
 	cmd.Flags().StringVar(&name, "target-name", "",
 		"target name the repository password was derived from; read from RECOVERY.md when empty")
+	cmd.Flags().StringVar(&snapshot, "snapshot", "",
+		"restic snapshot id (full or unambiguous prefix) to restore; empty restores the newest")
 	cmd.Flags().StringVar(&canary, "canary", "", "after restoring, open this sealed secret to prove the chain")
 	cmd.Flags().BoolVar(&targetAuthenticates, "target-authenticates", false,
 		"assert (from the recovery card, section 6) that this target authenticates its "+

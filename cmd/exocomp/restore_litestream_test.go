@@ -106,6 +106,18 @@ func TestLitestreamRestore_RefusesUnsafeReplica(t *testing.T) {
 	}
 }
 
+// TestLitestreamRestore_RefusesSnapshotSelector: --snapshot selects a restic
+// snapshot, but the replica leg restores the database only and returns before
+// the restic source is parsed, so combining them would silently drop the
+// selector — the refusal the round exists to kill.
+func TestLitestreamRestore_RefusesSnapshotSelector(t *testing.T) {
+	_, _, err := runRestore(t, "--from-litestream", "--dest", t.TempDir(),
+		"--replica", "file:///srv/r", "--snapshot", "a3f9c2abcdef")
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined with --from-litestream") {
+		t.Fatalf("err = %v, want a --snapshot + --from-litestream refusal", err)
+	}
+}
+
 // sealedDestDir builds a destination data dir holding keyring.age — the shape a
 // prior restic restore leaves — so a Litestream restore has something to open the
 // recovered database with.

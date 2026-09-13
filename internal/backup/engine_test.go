@@ -290,6 +290,125 @@ func assertRestoredChain(t *testing.T, f *fixture, dest, targetName string) {
 	}
 }
 
+// TestResticLocalRestoreByID restores the FIRST of two snapshots by id — full
+// and unambiguous prefix — and proves the restored store is the first run's,
+// not the newest's. The snapshot is a point-in-time VacuumInto taken before any
+// leg runs, so the first snapshot's DB holds no backup_run rows while the
+// newest's holds the first run; the newest restore is the control that makes
+// the discriminator meaningful.
+func TestResticLocalRestoreByID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
+	t.Parallel()
+	f := newFixture(t)
+
+	repo := filepath.Join(t.TempDir(), "nas")
+	target := f.target(t, "nas", KindResticLocal, repo)
+
+	var firstID string
+	for i := range 2 {
+		report, err := f.engine.Run(t.Context(), []Target{target})
+		if err != nil {
+			t.Fatalf("run %d: %v", i, err)
+		}
+		if err := report.Err(); err != nil {
+			t.Fatalf("run %d leg failed: %v", i, err)
+		}
+		if i == 0 {
+			firstID = report.Legs[0].SnapshotID
+		}
+	}
+	if firstID == "" {
+		t.Fatal("the first run produced no snapshot id")
+	}
+
+	if got := restoredRunCount(t, restoreByID(t, f, repo, firstID), target.ID); got != 0 {
+		t.Fatalf("restore by full id has %d runs, want 0 (the first snapshot)", got)
+	}
+	if got := restoredRunCount(t, restoreByID(t, f, repo, firstID[:12]), target.ID); got != 0 {
+		t.Fatalf("restore by 12-char prefix has %d runs, want 0 (the first snapshot)", got)
+	}
+	if got := restoredRunCount(t, restoreByID(t, f, repo, ""), target.ID); got != 1 {
+		t.Fatalf("newest control has %d runs, want 1 (the second snapshot)", got)
+	}
+}
+
+// restoreByID restores the target's repository with the given snapshot selector
+// (empty = newest) into a fresh dest and returns the dest.
+func restoreByID(t *testing.T, f *fixture, repo, snapshot string) string {
+	t.Helper()
+	dest := filepath.Join(t.TempDir(), "restored")
+	if _, err := RestoreLatest(t.Context(), Source{
+		Kind:         KindResticLocal,
+		URI:          repo,
+		IdentityFile: f.identity,
+		Env:          map[string]string{"RESTIC_CACHE_DIR": f.cache},
+		Snapshot:     snapshot,
+	}, dest); err != nil {
+		t.Fatalf("restore: %v", err)
+	}
+	return dest
+}
+
+// restoredRunCount opens a restored store and counts the target's runs.
+func restoredRunCount(t *testing.T, dest string, targetID int64) int {
+	t.Helper()
+	st, err := store.Open(filepath.Join(dest, RestoredDBName))
+	if err != nil {
+		t.Fatalf("open restored store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	runs, err := st.ListBackupRuns(t.Context(), targetID, 0)
+	if err != nil {
+		t.Fatalf("list restored runs: %v", err)
+	}
+	return len(runs)
+}
+
+// TestResticLocalRestoreUnknownID: a snapshot id that matches nothing fails
+// cleanly, as restic's own non-zero exit — the selector must never silently
+// fall back to latest.
+func TestResticLocalRestoreUnknownID(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real restic")
+	}
+	t.Parallel()
+	f := newFixture(t)
+	repo := filepath.Join(t.TempDir(), "nas")
+	target := f.target(t, "nas", KindResticLocal, repo)
+	if _, err := f.engine.Run(t.Context(), []Target{target}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	_, err := RestoreLatest(t.Context(), Source{
+		Kind:         KindResticLocal,
+		URI:          repo,
+		IdentityFile: f.identity,
+		Env:          map[string]string{"RESTIC_CACHE_DIR": f.cache},
+		Snapshot:     "000000000000000000000000",
+	}, filepath.Join(t.TempDir(), "restored"))
+	if err == nil {
+		t.Fatal("restore accepted an unknown snapshot id")
+	}
+}
+
+// TestGitRestoreRefusesSnapshotSelector: a git target keeps exactly one
+// snapshot (the backup leg force-pushes an orphan commit), so --snapshot has
+// nothing to select and the leg refuses up front — before any clone, so no repo
+// is needed to exercise the refusal.
+func TestGitRestoreRefusesSnapshotSelector(t *testing.T) {
+	t.Parallel()
+	_, err := RestoreLatest(t.Context(), Source{
+		Kind:     KindGit,
+		URI:      "file:///srv/repo",
+		Snapshot: "a3f9c2abcdef",
+	}, filepath.Join(t.TempDir(), "restored"))
+	if err == nil || !strings.Contains(err.Error(), "one snapshot") {
+		t.Fatalf("err = %v, want the single-snapshot refusal", err)
+	}
+}
+
 func TestLegsFailIndependently(t *testing.T) {
 	if testing.Short() {
 		t.Skip("requires real restic")

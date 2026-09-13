@@ -39,6 +39,11 @@ type Source struct {
 	// for the case where no age identity is at hand.
 	Password string
 	Env      map[string]string
+	// Snapshot selects one restic snapshot by id (full or unambiguous
+	// prefix); empty restores the newest. The id pins the snapshot, so the
+	// tag narrowing is skipped when it is set, and git targets refuse a
+	// selector — their leg keeps exactly one snapshot.
+	Snapshot string
 	// AllowUnauthenticated downgrades a missing manifest tag from a refusal to
 	// a loud warning. It exists for the genuinely legacy backup an operator
 	// knowingly accepts; the default refuses an untagged snapshot from a target
@@ -312,10 +317,18 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) (leg
 	// differently-named snapshot restores the wrong data. The name tag
 	// narrows further to this leg's own target, because nothing stops two
 	// targets from sharing a repository URI; it is added only when the
-	// target name is known here (the bare-password path has none).
-	argv := []string{"restic", "-r", repo, "restore", "latest", "--target", restored, "--tag", "exocomp"}
-	if leg.target != "" {
-		argv = append(argv, "--tag", leg.target)
+	// target name is known here (the bare-password path has none). An
+	// explicit --snapshot id replaces all of that: the id pins the snapshot,
+	// and the tag filters would only be able to filter the chosen snapshot
+	// out.
+	var argv []string
+	if src.Snapshot != "" {
+		argv = []string{"restic", "-r", repo, "restore", src.Snapshot, "--target", restored}
+	} else {
+		argv = []string{"restic", "-r", repo, "restore", "latest", "--target", restored, "--tag", "exocomp"}
+		if leg.target != "" {
+			argv = append(argv, "--tag", leg.target)
+		}
 	}
 	res, err := runTool(ctx, src.Driver, executor.Spec{
 		Kind: "shell",
@@ -345,6 +358,13 @@ func restoreRestic(ctx context.Context, src Source, work, extracted string) (leg
 // unpacks it. The keyring committed in the clone is this leg's root: it gives
 // both the DEK the tags are checked with and the generation it belongs to.
 func restoreGit(ctx context.Context, src Source, work, extracted string) (leg legSource, err error) {
+	// A git target keeps exactly one snapshot: the backup leg force-pushes a
+	// single orphan commit over its ref (git.go), so there is nothing a
+	// selector could pick. Refuse up front — silently restoring newest while
+	// the operator asked for an id would be the pretend the round kills.
+	if src.Snapshot != "" {
+		return legSource{}, errors.New("backup: a git target keeps exactly one snapshot, so --snapshot has nothing to select")
+	}
 	if src.IdentityFile == "" {
 		return legSource{}, errors.New("backup: an age identity is required to decrypt a git snapshot")
 	}
