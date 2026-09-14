@@ -32,6 +32,10 @@ func TestPhoneDashboardBannerStacks(t *testing.T) {
 	for _, want := range []string{
 		".banner { flex-direction: column; align-items: flex-start; gap: 6px; height: auto; overflow: visible; padding: 12px 14px; }",
 		".banner .keyword { font: 600 11px var(--font-mono); }",
+		// The TLS verb carries the global .verb glyph-button shape (34px square)
+		// and its text wraps one word per line inside it — the real cause of the
+		// banner's wrap. In the banner it is a plain text link.
+		".banner .verb { display: inline; width: auto; height: auto; color: var(--accent-text); }",
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing the R1 phone banner rule %q", want)
