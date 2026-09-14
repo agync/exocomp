@@ -6,6 +6,29 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the phone backups and system surfaces tighten
+
+- **The backups topbar verbs drop to the row scale.** `Restore` and `Add target`
+  read as 40px, 14/500 page verbs instead of the 48px touch floor, and the
+  ACTIONS cell becomes labelled bar-size ghosts — `Run now` and `More ▾`,
+  right-aligned, gap 8 — replacing the bare `▷`/`⌄`.
+- **The backups posture cells stack key over value on phone.** KIND, RETENTION
+  and SCHEDULE left-align their label over the value instead of hanging the value
+  right beside a 120px void; the override is scoped to those three cells so the
+  shared stackable-table rule is untouched. `add one` reads as a real link.
+- **The launch drawer reserves its footer.** The scroll body pads past the
+  sticky footer's height plus the safe-area inset, so the last control (the
+  `Run as allowed…` toggle) never hides under it; the options summary becomes a
+  short `More` with its field list as a 12px helper beneath it.
+- **The system page names what is not set and drops empty leg figures.** The
+  identity strip shows `public URL · not set` with a bar-size `Change` ghost; a
+  phone leg row whose figure is the `—` stub hides the line and reads 48px; and
+  the clipped bar subtitle is hidden on phone by a page class, so jobs and events
+  keep theirs.
+- **The phone shell loses two stray marks.** The first powerline segment zeroes
+  its left padding, and the hamburger drops its border and shadow to match the
+  bare brandmark.
+
 ## 2026-09-14 — the phone job surfaces tighten
 
 - **The jobs list row reads `#id · title` left with the chip right.** The number
