@@ -759,12 +759,12 @@ func TestResponsiveOneBreakpoint(t *testing.T) {
 		t.Error("app.css missing the tablet .config two-column rule")
 	}
 	// The 719 block carries the phone shell, sticky powerline foot, content
-	// padding, and the log pre/scroll column.
+	// padding, and the bounded log pane (max-height, not a fixed height).
 	for _, want := range []string{
 		".appbar{height:56px;",
 		".powerline{position:sticky;bottom:0;height:36px;",
 		"main{padding:14px 16px 50px;",
-		".log{height:300px;white-space:pre;",
+		".log{max-height:60vh;white-space:pre;",
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css 719 block missing %q", want)

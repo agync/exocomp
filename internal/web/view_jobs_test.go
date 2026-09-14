@@ -100,9 +100,12 @@ func TestJobDetailRuleNoEvent(t *testing.T) {
 	}
 }
 
-// TestJobDetailBreadcrumb: the job detail view carries a breadcrumb trail back to
-// the jobs list, ending in the current job (unlinked, aria-current).
-func TestJobDetailBreadcrumb(t *testing.T) {
+// TestJobDetailNoContentBreadcrumb is review P6: the job detail page's
+// in-content "Jobs / #4" breadcrumb is gone — the app bar already carries the
+// back chevron to /jobs and the stacked title, so the content breadcrumb is a
+// duplicate. Its absence is pinned here; the shared breadcrumb component stays
+// for pages that still need it (workflows, events, sources).
+func TestJobDetailNoContentBreadcrumb(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 
@@ -122,13 +125,25 @@ func TestJobDetailBreadcrumb(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("job detail status = %d", code)
 	}
-	for _, want := range []string{
+	for _, gone := range []string{
 		`class="breadcrumb"`,
 		`href="/jobs">Jobs</a>`,
 		`aria-current="page">#` + itoa(job.ID) + `</span>`,
 	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("job detail missing breadcrumb %q", want)
+		if strings.Contains(page, gone) {
+			t.Errorf("job detail still renders the content breadcrumb %q (P6)", gone)
+		}
+	}
+	// The phone block hides the shared breadcrumb (no stray "/") and the app
+	// bar title wrap (the desktop titlebar) so nothing duplicates the bar's
+	// back chevron at 390px.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.breadcrumb { display: none; }`,
+		`.appbar-title-wrap { display: none; }`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone hide rule %q (P6)", want)
 		}
 	}
 }
@@ -1374,5 +1389,119 @@ func TestJobDetailLogPreLines(t *testing.T) {
 		}
 	} else {
 		t.Error("log has no clock row at all")
+	}
+}
+
+// TestJobDetailSelfCheckPhone is review P3: the doctor self-check rows stack
+// on phone — name · chip on line 1, the detail full width on line 2 wrapping
+// anywhere (the detail cell clips http://127.0.0.1:39099/me… at its 130px
+// desktop column). The harness cannot switch viewports, so the guard pins the
+// phone block's .doctor-findings rules in app.css.
+func TestJobDetailSelfCheckPhone(t *testing.T) {
+	h := newHarness(t)
+	job := seedDoctorJob(t, h,
+		findingSeed{name: "data_dir", status: "ok", detail: "mode 700 — writable"},
+		findingSeed{name: "endpoint", status: "fail", detail: "http://127.0.0.1:39099/me… unreachable"})
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`class="card mt14 doctor-findings"`,
+		`<div class="finding-rows">`,
+		`<span class="mono">endpoint</span>`,
+		`<span class="detail">http://127.0.0.1:39099/me… unreachable</span>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("self-check card missing %q", want)
+		}
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.doctor-findings .finding-rows .row { display: flex; flex-direction: column;`,
+		`.doctor-findings .finding-rows .row .detail { overflow-wrap: anywhere;`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone self-check rule %q (P3)", want)
+		}
+	}
+}
+
+// TestJobDetailVerdictPhone is review P4: the run card's verdict area — chips ·
+// title · exit figure · ran line — hangs LEFT on phone (the desktop
+// .verdict-wrap is text-align:right with a 200px void beside the figure), and
+// the exit figure reads at 28px. The harness cannot switch viewports, so the
+// guard pins the phone block's .run-card rules in app.css.
+func TestJobDetailVerdictPhone(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<div class="chips">`,
+		`class="runtitle">`,
+		`<div class="verdict-wrap">`,
+		`<div class="verdict">exit 4 `,
+		`<p class="ranline">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("run card verdict area missing %q", want)
+		}
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.run-card .verdict-wrap { text-align: left; }`,
+		`.run-card .verdict { font-size: 28px;`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone verdict left-stack rule %q (P4)", want)
+		}
+	}
+}
+
+// TestJobDetailOutputPhone is review P5: the output header is a two-row bar on
+// phone, the wrap toggle is wired to a real .log.wrap rule (horizontal scroll)
+// instead of being a no-op against the pre-wrap default, and the pane is
+// bounded by max-height rather than a fixed viewport height. The harness cannot
+// switch viewports, so the guard pins the markup and the phone block's rules.
+func TestJobDetailOutputPhone(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+	})
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	for _, want := range []string{
+		`<div class="output-bar output-head">`,
+		`<span class="lead">`,
+		`<span class="controls">`,
+		`class="logwrap wrap" id="logwrap" aria-pressed="false">wrap</button>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("output head missing %q", want)
+		}
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.log.wrap { white-space: pre;`,
+		`.output-head { flex-direction: column;`,
+		`.output-head .wrap { height: 36px;`,
+		`.logwrap2 > #log { min-height: 240px; max-height: 60vh; }`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone output rule %q (P5)", want)
+		}
 	}
 }

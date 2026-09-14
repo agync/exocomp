@@ -733,7 +733,7 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
    * viewport-bound height instead of a flex fill (SPEC §3 phone). */
   .app.page-job .content-col { height: auto; min-height: 100vh; }
   .app.page-job main { display: block; overflow: auto; }
-  .app.page-job main > .card.output > .logwrap2 > #log { height: calc(100dvh - 240px); min-height: 240px; max-height: none; }
+  .app.page-job main > .card.output > .logwrap2 > #log { min-height: 240px; max-height: 60vh; }
 }
 
 /* Glyph verb button (T6): a 34px square icon action for header and row verbs
@@ -1595,6 +1595,10 @@ body { overflow-x: clip; }
   font: var(--type-button); cursor: pointer;
 }
 .logwrap:hover { color: var(--ink-100); }
+/* The wrap toggle's pressed state (P5): the log wraps by default (pre-wrap
+ * above), so the toggle's real effect is raw mode — no wrapping, horizontal
+ * scroll — instead of a dead class against the pre-wrap default. */
+.log.wrap { white-space: pre; overflow-x: auto; }
 .log.nowrap { white-space: pre; }
 .log .logband { display: block; padding: 2px 10px; margin: 2px 0; border-radius: var(--radius-chip); }
 .log .logband .ts { color: var(--ink-500); user-select: none; margin-right: 6px; }
@@ -1877,7 +1881,13 @@ body { overflow-x: clip; }
   .appbar .brandlink { display: inline-flex; }
   .appbar .brandmark { width: 20px; height: 20px; }
   .appbar .wordmark { display: none; }
-  .appbar-title-wrap { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+  /* P6: the app bar's stacked title is the desktop titlebar — the back
+   * chevron + brandmark + actions carry the phone bar, and the page content
+   * supplies the context. The breadcrumb component (the in-content "Jobs / #4"
+   * trail and any stray "/" separator) is a duplicate of the chevron on phone
+   * and hides too. */
+  .appbar-title-wrap { display: none; }
+  .breadcrumb { display: none; }
   .appbar .appbar-sub { font: 400 11px var(--font-mono); color: var(--ink-500); }
   .appbar-actions { display: inline-flex; gap: 8px; }
   main{padding:14px 16px 50px; gap:12px; }
@@ -1985,7 +1995,11 @@ body { overflow-x: clip; }
   .run-card { padding: 16px; gap: 14px; }
   .run-card .head { flex-direction: column; align-items: stretch; gap: 14px; }
   .run-card .title { font-size: 17px; letter-spacing: -0.4px; overflow-wrap: anywhere; }
-  .run-card .verdict { font-size: 26px; letter-spacing: -0.8px; }
+  /* P4: the verdict area hangs LEFT on phone — chips · title · exit figure ·
+   * ran line — where the desktop .verdict-wrap text-align:right leaves a void
+   * beside the figure at 390px. */
+  .run-card .verdict-wrap { text-align: left; }
+  .run-card .verdict { font-size: 28px; letter-spacing: -0.8px; }
   .config { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .config .tile { padding: 10px 12px; min-width: 0; }
   .config .tile b, .config .tile a { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
@@ -1998,12 +2012,20 @@ body { overflow-x: clip; }
   .host-table .row .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
   .host-table .row .recap { font-size: 11.5px; overflow-wrap: anywhere; }
 
+  /* P3: the doctor self-check rows stack on phone — name · chip on line 1,
+   * the detail full width on line 2 wrapping anywhere (the desktop detail
+   * column is 130px and clips http://127.0.0.1:39099/me…). */
+  .doctor-findings .finding-rows .row { display: flex; flex-direction: column; align-items: stretch; gap: 4px; }
+  .doctor-findings .finding-rows .row .detail { overflow-wrap: anywhere; }
+
   .output-head { flex-direction: column; align-items: stretch; gap: 8px; height: auto; padding: 8px 10px 2px; }
   .output-head .controls { display: flex; gap: 8px; }
-  .output-head .wrap { height: 40px; box-shadow: inset 0 0 0 1px var(--hairline); }
+  .output-head .wrap { height: 36px; box-shadow: inset 0 0 0 1px var(--hairline); }
   .pin { min-width: 0; }
   .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext, .verb-tail .word { display: none; }
-  .log{height:300px;white-space:pre; overflow:auto; font-size:12px; }
+  /* P5: the pane is bounded (max-height:60vh), not a fixed viewport height —
+   * a short log hugs its content, a long one scrolls inside the cap. */
+  .log{max-height:60vh;white-space:pre; overflow:auto; font-size:12px; }
   .log .line { grid-template-columns: 60px 1fr; width: max-content; min-width: 100%; }
   .log.wrap .line { white-space: pre-wrap; width: auto; }
 
