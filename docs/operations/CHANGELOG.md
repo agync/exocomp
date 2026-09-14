@@ -24,11 +24,16 @@ Newest first.
   height), the Output header is two rows, and the wrap toggle is wired to a
   real `.log.wrap` rule (raw horizontal-scroll mode) instead of a no-op against
   the pre-wrap default.
-- **The stray breadcrumb and the desktop titlebar are gone from the phone
-  bar.** The job page's in-content `Jobs / #4` breadcrumb is removed (the app
-  bar back chevron already navigates), and the phone bar hides the shared
-  `.breadcrumb` (no stray "/") and the `.appbar-title-wrap` (the desktop
-  titlebar).
+- **The stray `/` breadcrumb separator is gone from the phone bar; the page
+  title stays.** The job page's in-content `Jobs / #4` breadcrumb is removed
+  (the app bar back chevron already navigates), and the shared `.breadcrumb`
+  (with its stray "/") hides on phone. The page title remains in the bar per
+  SPEC §2.0 — the stacked title-wrap over its mono-11 sub still renders below
+  the back chevron.
+- **The log wraps by default on coarse-pointer devices.** A real phone's log
+  is `pre-wrap` by default under `@media (pointer: coarse)` (the 719 block's
+  raw column is the wrap toggle's pressed state); pressing the toggle still
+  flips to the raw horizontal-scroll column.
 
 ## 2026-09-14 — the queue and jobs tables get the phone form
 
