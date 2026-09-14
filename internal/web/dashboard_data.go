@@ -205,12 +205,14 @@ func (s *Server) recentFilesJobs(ctx context.Context, limit int) ([]store.Job, e
 	return jobs, nil
 }
 
-// SectionSummary is the queue section label's tail (SPEC §3): the word "idle"
-// when nothing is moving, else the running count with the oldest queued job's
-// age — the opposite end of the queue from the newest row the card shows.
+// SectionSummary is the queue section label's tail (SPEC §3): empty when the
+// queue is idle — the card's own "○ QUEUE IDLE" line is the statement — else
+// the running count with the oldest queued job's age, the opposite end of the
+// queue from the newest row the card shows. A bare "idle" word must never
+// float above the card (review P1).
 func (j jobSummary) SectionSummary() string {
 	if j.Idle() {
-		return "idle"
+		return ""
 	}
 	headline := itoa(int64(j.Running)) + " running"
 	for i := len(j.Rows) - 1; i >= 0; i-- {

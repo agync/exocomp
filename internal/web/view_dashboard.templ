@@ -58,7 +58,9 @@ templ dashboard(vm dashboardVM) {
 		}
 		<section class="band" aria-label="Queue">
 			<div class="section-label">
-				<span>{ vm.Jobs.SectionSummary() }</span>
+				if s := vm.Jobs.SectionSummary(); s != "" {
+					<span>{ s }</span>
+				}
 			</div>
 			<div class="card queue">
 				if vm.Jobs.Idle() {
@@ -122,15 +124,18 @@ templ approvalsCard(vm approvalSummary, base string) {
 // queueJobRow is one active job on the dashboard queue card: the /jobs
 // two-line row reduced to its glance essentials — runbook over source/meta
 // with a state chip — linked through to the job. Active rows carry no reason
-// line (D4 names facts only for settled FAILED/DEGRADED runs).
+// line (D4 names facts only for settled FAILED/DEGRADED runs). The single .line
+// keeps the phone form: title · chip on one line, never a vertical pile-up.
 templ queueJobRow(j jobRow, base string) {
 	<a class="jobs-row queue-row" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-		<span class="cell">
-			<b class="mono">{ j.Title }</b>
-			<small class="mono">{ j.SourceMeta }</small>
-		</span>
-		<span class="cell cell--state">
-			@chip(j.StateClass(), string(j.State))
+		<span class="line">
+			<span class="cell">
+				<b class="mono">{ j.Title }</b>
+				<small class="mono">{ j.SourceMeta }</small>
+			</span>
+			<span class="cell cell--state">
+				@chip(j.StateClass(), string(j.State))
+			</span>
 		</span>
 	</a>
 }
@@ -140,35 +145,44 @@ templ queueJobRow(j jobRow, base string) {
 // trigger + meta, duration + time, verb — whole row a link to the job. The
 // Rerun verb is the fifth column's own sibling link (never nested inside the
 // row link) opening the rerun dialog via ?rerun=1 (handlers.go:490), shown on
-// FAILED and DEGRADED only; phone CSS hides it and stacks the row's lines
-// through the .qmeta/.qtime nodes.
+// FAILED and DEGRADED only. The two .line wrappers keep the desktop five-column
+// grid (display:contents) and give the phone its two-line form: line 1 playbook
+// · chip, line 2 the qmeta/qtime meta nodes; phone CSS hides the verb.
 templ queueRecentRow(j jobRow, base string) {
 	<div class="queue-row">
-		<a class="cell cell--state" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-			@chip(j.StateClass(), j.StateKeyword())
-			if j.Reason != "" {
-				<span class={ j.ReasonClass() }>{ j.Reason }</span>
+		<span class="line">
+			<a class="cell cell--state" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				@chip(j.StateClass(), j.StateKeyword())
+				if j.Reason != "" {
+					<span class={ j.ReasonClass() }>{ j.Reason }</span>
+				}
+			</a>
+			<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				<b class="mono">{ j.Title }</b>
+				<small class="mono">{ "#" + itoa64(j.ID) + " · " + j.Source }</small>
+			</a>
+		</span>
+		<span class="line">
+			<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				<b>{ j.TriggerLabel }</b>
+				<small class="mono">{ j.TriggerMeta }</small>
+			</a>
+			<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				<b class="mono">{ j.Duration }</b>
+				<small class="mono">{ j.FinishedRel }</small>
+			</a>
+			<a class="cell cell--qmeta" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				<span class="qmeta">{ j.PhoneMeta() }</span>
+			</a>
+			<a class="cell cell--qtime" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
+				<span class="qtime">{ j.FinishedClock }</span>
+			</a>
+			if needsOperator(j.State) {
+				<a class="verb" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID) + "?rerun=1")) }>Rerun →</a>
+			} else {
+				<span></span>
 			}
-		</a>
-		<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-			<b class="mono">{ j.Title }</b>
-			<small class="mono">{ "#" + itoa64(j.ID) + " · " + j.Source }</small>
-			<span class="qmeta">{ j.PhoneMeta() }</span>
-		</a>
-		<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-			<b>{ j.TriggerLabel }</b>
-			<small class="mono">{ j.TriggerMeta }</small>
-		</a>
-		<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-			<b class="mono">{ j.Duration }</b>
-			<small class="mono">{ j.FinishedRel }</small>
-			<span class="qtime">{ j.FinishedClock }</span>
-		</a>
-		if needsOperator(j.State) {
-			<a class="verb" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID) + "?rerun=1")) }>Rerun →</a>
-		} else {
-			<span></span>
-		}
+		</span>
 	</div>
 }
 

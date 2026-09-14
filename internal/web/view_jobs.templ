@@ -1,5 +1,24 @@
 package web
 
+import "strings"
+
+// phoneJobMeta is the jobs row's phone second-line (review P2): the flat mono
+// TriggerMeta · Source · Age · Duration, empty pieces skipped. The operator is
+// folded into TriggerMeta (viewmodel.go:1885-87) — never a standalone field —
+// and the Age piece is the run's FinishedRel clock ("16:31 today"), the fact
+// that reads as an age next to Duration's wall time.
+func phoneJobMeta(j jobRow) string {
+	parts := []string{j.TriggerMeta}
+	if j.Source != "-" && j.Source != "" {
+		parts = append(parts, j.Source)
+	}
+	if j.FinishedRel != "" {
+		parts = append(parts, j.FinishedRel)
+	}
+	parts = append(parts, j.Duration)
+	return strings.Join(parts, " · ")
+}
+
 // jobsList is the one list every execution path shares: manual runs, scheduled
 // runs, backups, applies. One list, one detail view (the brief's "everything is
 // a job"). The count lives in the app bar (SPEC §2.3); the rows are the two-line
@@ -44,7 +63,10 @@ templ jobsList(vm dashboardVM) {
 // the job's detail page. Line 1 is the identity (number, playbook, state cell
 // with its one-fact reason); line 2 the trigger and the ran meta. On desktop
 // the .line wrappers are display:contents so the five cells flow into the
-// five-column grid; on phone they are the two stacked flex rows (SPEC §2.3).
+// five-column grid; on phone they are the two stacked flex rows (SPEC §2.3) —
+// line 2's dedicated .cell--meta carries the flat mono TriggerMeta · Source ·
+// Age · Duration (the operator folds into TriggerMeta, never a standalone
+// field) and hides the desktop trigger/ran cells.
 templ jobsRow(j jobRow, base string) {
 	<a class="jobs-row" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
 		<span class="line">
@@ -68,6 +90,9 @@ templ jobsRow(j jobRow, base string) {
 			<span class="cell">
 				<b class="mono">{ j.Duration }</b>
 				<small class="mono">{ j.FinishedRel }</small>
+			</span>
+			<span class="cell cell--meta">
+				<span class="qmeta">{ phoneJobMeta(j) }</span>
 			</span>
 		</span>
 	</a>

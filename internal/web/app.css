@@ -1942,6 +1942,13 @@ body { overflow-x: clip; }
   .jobs-row .line + .line, .queue-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
   .jobs-row .line > :first-child, .queue-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .jobs-row .line > :last-child, .queue-row .line > :last-child { flex: none; }
+  /* The jobs row's phone form (review P2): line 1 is # · title · chip (the
+   * playbook cell's source meta drops — the source fact moves to line 2), and
+   * line 2 is the one flat mono-12 meta cell. The desktop trigger/ran cells
+   * hide; their facts are the .cell--meta qmeta line. */
+  .jobs-row:not(.queue-row) .line:first-child .cell small { display: none; }
+  .jobs-row .line + .line .cell { display: none; }
+  .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Events tray phone (SPEC 1a): the same seven grid cells re-flow into two
    * lines — event · outcome · chevron over source · rule · received — one
    * structure, not a second template. The reason column drops out of the row
@@ -2035,6 +2042,10 @@ body { overflow-x: clip; }
 .queue-rule .failed { color: var(--signal-fail); letter-spacing: 0.4px; margin-left: 8px; font-style: normal; }
 .queue-row { display: grid; grid-template-columns: 200px minmax(0,1fr) 170px 130px 90px; gap: var(--gap-cell); align-items: center; height: 56px; padding: 0 14px; margin-top: 2px; border-radius: var(--radius-row); color: inherit; text-decoration: none; }
 .queue-row:hover { background: var(--surface-tray); }
+/* The recent row's two .line wrappers re-flow into the desktop grid the same
+ * way the jobs row's do (display:contents); on phone the 719 block turns them
+ * into the two stacked flex rows. */
+.queue-row .line { display: contents; }
 .queue-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .queue-row .cell--state { gap: 5px; align-items: flex-start; }
 .queue-row .reason { font: 400 11.5px var(--font-mono); color: var(--ink-500); white-space: nowrap; }
@@ -2043,11 +2054,30 @@ body { overflow-x: clip; }
 @media (max-width: 719px) {
   .queue-rule { display: flex; justify-content: space-between; }
   .queue-rule > :not(:first-child):not(:last-child) { display: none; }
+  /* The recent row's phone form (review P1): line 1 playbook · chip — the
+   * desktop DOM orders the state cell first, so the first line reverses and
+   * the chip lands right — and line 2 the qmeta (#id · reason) · qtime. The
+   * trigger/ran cells, the per-row verb, the reason under the chip (it is the
+   * qmeta's own fact now) and the playbook "#id · source" small all drop. */
+  .queue-row:not(.jobs-row) .line:first-child { flex-direction: row-reverse; }
+  .queue-row:not(.jobs-row) .line:first-child .cell { min-width: 0; }
+  .queue-row:not(.jobs-row) .line:first-child .cell--state { flex: none; }
+  .queue-row:not(.jobs-row) .line:first-child .cell:last-child { flex: 1 1 auto; }
+  .queue-row:not(.jobs-row) .line:first-child .cell b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .queue-row:not(.jobs-row) .line:first-child .cell small { display: none; }
+  .queue-row:not(.jobs-row) .cell--state .reason { display: none; }
+  .queue-row:not(.jobs-row) .line + .line .cell:not(.cell--qmeta):not(.cell--qtime) { display: none; }
+  .queue-row:not(.jobs-row) .cell--qmeta, .queue-row:not(.jobs-row) .cell--qtime { display: flex; }
+  .queue-row:not(.jobs-row) .cell--qmeta { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .queue-row:not(.jobs-row) .cell--qtime { flex: none; }
 }
 /* Phone row-node meta (SPEC §2.3/§2.5): the "#id · reason" second-line node
- * that carries the row's meta clock, and the time node. */
+ * that carries the row's meta clock, and the time node. Hidden on the desktop
+ * grid — the desktop cells already carry the same facts in their own columns —
+ * and shown by the phone stacked rows. */
 .qmeta { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
 .qtime { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; flex: none; }
+.jobs-row .cell--meta, .queue-row .cell--qmeta, .queue-row .cell--qtime { display: none; }
 /* Desktop-only small: the row meta line's <small> renders at body ink on the
  * desktop row and is dropped by the phone stacked rows (lift.css §4). */
 .jobs-row .cell small, .queue-row .cell small { font: var(--type-log); color: var(--ink-500); }
