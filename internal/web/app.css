@@ -2088,9 +2088,10 @@ body { overflow-x: clip; }
   .log.wrap .line { white-space: pre-wrap; width: auto; }
 
   .funnel { padding: 16px; gap: 12px; }
-  /* R8: the six `n label` pairs read on one line in 12px mono, the
-   * proportional bar drops — the counts already name the outcome. */
-  .funnel .counts { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 12px; overflow-x: auto; }
+  /* R8: the six `n label` pairs are wider than the phone card, so they flow
+   * and wrap in 12px mono instead of scrolling sideways; the proportional bar
+   * drops — the counts already name the outcome. */
+  .funnel .counts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }
   .funnel .counts b { font: 500 12px/1 var(--font-mono); display: inline; }
   .funnel .counts small { font: 400 12px var(--font-mono); }
   .funnel .bar { display: none; }
