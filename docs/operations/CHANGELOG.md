@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the job detail page gets the phone form
+
+- **The doctor self-check rows stack on phone.** The `.doctor-findings`
+  three-cell row becomes `name · chip` on line 1 with the detail full width on
+  line 2, wrapping anywhere — the desktop 130px detail column no longer clips
+  `http://127.0.0.1:39099/me…`.
+- **The verdict area hangs left on phone.** The run card's chips · title ·
+  `exit 1` figure (now 28px) · ran line are left-aligned at 390px instead of
+  hanging right beside a 200px void.
+- **The verdict sentence never reads "reach ."** A FAILED run with no parsed
+  host rows now says "Ansible could not reach the target." instead of joining
+  the empty host list to a trailing dot; a run that names hosts still names
+  them.
+- **The output card gets a bounded pane and a real wrap toggle.** On phone the
+  log pane is bounded by `max-height:60vh` (flexible, not a fixed viewport
+  height), the Output header is two rows, and the wrap toggle is wired to a
+  real `.log.wrap` rule (raw horizontal-scroll mode) instead of a no-op against
+  the pre-wrap default.
+- **The stray breadcrumb and the desktop titlebar are gone from the phone
+  bar.** The job page's in-content `Jobs / #4` breadcrumb is removed (the app
+  bar back chevron already navigates), and the phone bar hides the shared
+  `.breadcrumb` (no stray "/") and the `.appbar-title-wrap` (the desktop
+  titlebar).
+
 ## 2026-09-14 — the queue and jobs tables get the phone form
 
 - **The dashboard queue card is two-line rows on phone.** The LAST N RUNS
