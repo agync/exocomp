@@ -115,12 +115,28 @@ func (c *collectSink) has(msg string) bool {
 	return false
 }
 
-// TestSandboxedAnsibleElevationHintFiresOnTheSignature: a sandboxed run whose
-// stderr carries the become-denied signature — the loader refusing the
-// un-granted sudo — gains the actionable line, so the operator reads
-// enforcement, not a broken host. Flipping the signature match in becomeDenied
-// makes this red.
-func TestSandboxedAnsibleElevationHintFiresOnTheSignature(t *testing.T) {
+// TestSandboxedAnsibleElevationHintFiresOnStdoutSignature: ansible reports the
+// become failure on STDOUT, which the shell driver maps to LevelInfo, so the
+// observer must see the signature wherever it lands — this is production job
+// #5's shape and the regression this pins. A stderr-only observer is red here.
+func TestSandboxedAnsibleElevationHintFiresOnStdoutSignature(t *testing.T) {
+	t.Parallel()
+
+	script := "echo \"" + becameDeniedLine + "\"\nexit 1\n"
+	res, sink := runSandboxedEligible(t, script, false)
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if !sink.has(elevationHintCopy) {
+		t.Errorf("a failed sandboxed run whose stdout carried the become-denied signature gained no hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleElevationHintFiresOnStderrSignature: the signature on
+// stderr fires too (belt and braces); the loader message's channel varies with
+// the tool, so the match must not depend on which stream carried it.
+func TestSandboxedAnsibleElevationHintFiresOnStderrSignature(t *testing.T) {
 	t.Parallel()
 
 	script := "echo \"" + becameDeniedLine + "\" >&2\nexit 1\n"
@@ -177,19 +193,19 @@ func TestBecomeDeniedMatchesOnlyTheSignature(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		name  string
-		lines []string
-		want  bool
+		name string
+		msg  string
+		want bool
 	}{
-		{"the loader-denied sudo line", []string{becameDeniedLine}, true},
-		{"the line buried in other output", []string{"TASK [become]", becameDeniedLine, "fatal:"}, true},
-		{"a sudo line without the loader error", []string{"sudo: a password is required"}, false},
+		{"the loader-denied sudo line", becameDeniedLine, true},
+		{"the line buried in other output", "TASK [become] " + becameDeniedLine + " fatal:", true},
+		{"a sudo line without the loader error", "sudo: a password is required", false},
 		{"a loader error that does not name sudo",
-			[]string{"uname: error while loading shared libraries: libuname.so.0: cannot open shared object file"}, false},
-		{"a plain task failure", []string{"fatal: [localhost]: FAILED! => {\"msg\": \"boom\"}"}, false},
-		{"empty stderr", nil, false},
+			"uname: error while loading shared libraries: libuname.so.0: cannot open shared object file", false},
+		{"a plain task failure", "fatal: [localhost]: FAILED! => {\"msg\": \"boom\"}", false},
+		{"an empty line", "", false},
 	} {
-		if got := becomeDenied(tc.lines); got != tc.want {
+		if got := becomeDenied(tc.msg); got != tc.want {
 			t.Errorf("%s: becomeDenied = %v, want %v", tc.name, got, tc.want)
 		}
 	}

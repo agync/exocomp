@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the sandboxed elevation hint fires on the real signature
+
+- **The become-denied elevation hint now fires.** The observer added 2026-09-12
+  only retained `level=error` (stderr) events, but ansible reports the become
+  failure on STDOUT (`level=info`), so the signature was never seen and the
+  actionable line never appeared. The observer now scans every emitted message
+  (stdout or stderr) for the loader-denied sudo signature and keeps only a
+  flag, so a normal run's memory is unchanged. The regression test prints the
+  signature to stdout, matching production job #5.
+
 ## 2026-09-14 — the verdict-band host recap wraps
 
 - **The HOST table RECAP wraps on phone instead of overflowing.** The 719 block

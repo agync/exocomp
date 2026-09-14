@@ -199,14 +199,16 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
 	// A failed run may be the sandbox denying become's sudo (the loader-denied
-	// /usr/libexec/sudo) — enforcement, not a broken host. The stderr observer
-	// lets the driver recognize the signature after the process exits and append
-	// the operator's action to the failure. A privileged run left at
-	// runUnsandboxed above, so only a run the sandbox actually wrapped is ever
-	// enriched.
+	// /usr/libexec/sudo) — enforcement, not a broken host. The observer scans
+	// every emitted event for the signature so the driver can recognize it after
+	// the process exits and append the operator's action to the failure. The
+	// signature lands on stdout (LevelInfo) in the real ansible run and on
+	// stderr in other tools, so the observer does not care which stream carried
+	// it. A privileged run left at runUnsandboxed above, so only a run the
+	// sandbox actually wrapped is ever enriched.
 	hint := &elevationHintObserver{inner: sink}
 	res, err := drv.Run(ctx, spec, hint)
-	if err == nil && res.ExitCode != 0 && becomeDenied(hint.stderrLines()) {
+	if err == nil && res.ExitCode != 0 && hint.deniedSignature() {
 		emitElevationHint(sink)
 	}
 	return res, err
@@ -221,43 +223,40 @@ const elevationHintCopy = "the sandbox denied privilege escalation (sudo) — re
 	"--privileged (operator-gated, unsandboxed) or run the elevated part outside " +
 	"the agent surface"
 
-// becomeDenied reports whether the run's standard error carries the signature
-// of the sandbox refusing become's sudo: a line naming sudo whose shared-object
-// loader was denied (ld prints `cannot open shared object file` for the
-// un-granted lib). Parsing enriches the failure; the exit code stays the
-// verdict (invariant 3).
-func becomeDenied(stderr []string) bool {
-	for _, line := range stderr {
-		if strings.Contains(line, "sudo") && strings.Contains(line, "cannot open shared object file") {
-			return true
-		}
-	}
-	return false
+// becomeDenied reports whether one emitted message carries the signature of the
+// sandbox refusing become's sudo: a line naming sudo whose shared-object loader
+// was denied (ld prints `cannot open shared object file` for the un-granted
+// lib). Parsing enriches the failure; the exit code stays the verdict
+// (invariant 3).
+func becomeDenied(msg string) bool {
+	return strings.Contains(msg, "sudo") && strings.Contains(msg, "cannot open shared object file")
 }
 
-// elevationHintObserver forwards every event and retains the standard-error
-// lines so the driver can inspect a failed run's stderr after the process
-// exits. Only stderr is kept: the become-denied signature is a stderr line,
-// and stdout is not retained so a normal run's memory stays as before.
+// elevationHintObserver forwards every event unchanged and remembers whether
+// any of them carried the become-denied signature. It keeps only the flag, not
+// the lines: ansible puts the signature on stdout, which is the run's bulk, so
+// retaining stdout to scan it afterwards would grow memory with the run's
+// output. The flag is set under the mutex because Emit is called from the
+// stdout and stderr scanners concurrently.
 type elevationHintObserver struct {
 	inner  EventSink
 	mu     sync.Mutex
-	stderr []string
+	denied bool
 }
 
 func (o *elevationHintObserver) Emit(e Event) {
-	if e.Level == LevelError {
+	if becomeDenied(e.Msg) {
 		o.mu.Lock()
-		o.stderr = append(o.stderr, e.Msg)
+		o.denied = true
 		o.mu.Unlock()
 	}
 	o.inner.Emit(e)
 }
 
-func (o *elevationHintObserver) stderrLines() []string {
+func (o *elevationHintObserver) deniedSignature() bool {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return append([]string(nil), o.stderr...)
+	return o.denied
 }
 
 // emitElevationHint appends the operator's action to a failed sandboxed run
