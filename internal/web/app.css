@@ -2172,7 +2172,7 @@ body { overflow-x: clip; }
 .queue-row .reason--degraded { color: var(--signal-wait); }
 .queue-row .verb { font: 500 13px var(--font-ui); color: var(--accent-text); text-align: right; white-space: nowrap; }
 @media (max-width: 719px) {
-  .queue-rule { display: flex; justify-content: space-between; }
+  .queue-rule { display: flex; justify-content: space-between; padding: 0 12px; }
   .queue-rule > :not(:first-child):not(:last-child) { display: none; }
   /* The recent row's phone form (review P1): line 1 playbook · chip — the
    * desktop DOM orders the state cell first, so the first line reverses and
