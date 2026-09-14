@@ -709,6 +709,24 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 .btn.danger  { background: var(--fail-tint); color: var(--signal-fail); border-color: var(--fail-border); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
+/* ---- Page actions row (SPEC §2.6) ----
+ * The shared content row for a page's primary verbs: one filled accent (a
+ * .btn.primary), every other verb the --surface-control quiet fill — a danger
+ * verb keeps its fail text but loses the fill. The row scale is 40px at
+ * >=720px; the phone floor (48px) keeps row verbs tappable (INVARIANTS
+ * "Touch floor"). The app bar holds no filled accent, so a page's primary
+ * lives here, not in the bar. */
+.page-actions {
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+}
+.page-actions .btn.danger {
+  background: var(--surface-control); color: var(--signal-fail);
+  border: 1px solid var(--hairline);
+}
+@media (min-width: 720px) {
+  .page-actions .btn { min-height: 40px; height: 40px; }
+}
+
 /* ---- Job detail page: the log owns the scroll (T1) ----
  * Scoped to <main class="page-job"> so every other page keeps its normal
  * body scroll. The page becomes a no-page-scroll flex column: the header and
@@ -1132,17 +1150,16 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * compact and un-stacked. */
 .pageheader .actions { margin-top: 0; }
 .pageheader .actions .btn { width: auto; }
-/* The header's one primary verb (W1): a 34px nowrap accent button. It always
- * renders as `class="btn primary addbtn"`, so .btn.primary owns the accent
- * fill/on colors and this rule owns the size + nowrap — a two-word "Add
- * schedule" label must never wrap or climb the app-bar meta. */
+/* The app bar's right-slot verb (SPEC §2.6): the bar holds no filled accent,
+ * so the Add verb is a ghost — `.btn` supplies the --surface-control quiet
+ * fill and this rule owns the size + nowrap, so a two-word "Add schedule"
+ * label never wraps or climbs the app-bar meta. */
 .addbtn {
   min-height: 34px; height: 34px; padding: 0 14px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   border-radius: var(--radius-control);
   font: var(--type-button); white-space: nowrap; cursor: pointer;
 }
-.addbtn:hover { color: var(--accent-on); }
 
 /* ---- Modal ----
  * The native <dialog>. showModal() renders it in the browser TOP LAYER, so it is
@@ -1337,6 +1354,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   padding: 0 14px;
   box-shadow: inset 1px 0 0 var(--hairline-faint);
 }
+/* P15: the first segment never draws the leading `|` separator — the rule
+ * reads as a stray bar before dead-man at the powerline's left edge. */
+.pl-seg.pl-first { box-shadow: none; }
 .pl-seg .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .pl-seg.ok   { color: var(--signal-ok); }
 .pl-seg.wait { color: var(--signal-wait); }
@@ -1889,6 +1909,21 @@ body { overflow-x: clip; }
   .breadcrumb { display: none; }
   .appbar .appbar-sub { font: 400 11px var(--font-mono); color: var(--ink-500); }
   .appbar-actions { display: inline-flex; gap: 8px; }
+  /* §2 button system (SPEC §2.6): the app bar's slot is 36px ghosts —
+   * resting transparent, --surface-control on press — the one documented
+   * compact exception to the 48px floor. The page's primary lives in the
+   * content .page-actions row, never filled in the bar. */
+  .appbar .btn { background: transparent; }
+  .appbar .btn:hover, .appbar .btn:active { background: var(--surface-control); }
+  .appbar .btn-compact, .appbar .addbtn { min-height: 36px; height: 36px; }
+  .appbar .verb { width: 36px; height: 36px; }
+  .appbar .verb svg { width: 20px; height: 20px; }
+  /* P7: the backups topbar stacks on phone — the meta sentence full width on
+   * its own line, the verb group (the §2 page-actions row) below it. The
+   * main-scoped selectors beat lift.css's topbar row. */
+  main .sys-bkbar { flex-direction: column; gap: 8px; }
+  main .sys-bk-meta { flex: none; width: 100%; }
+  main .sys-bk-verbs { margin-left: 0; align-self: stretch; }
   main{padding:14px 16px 50px; gap:12px; }
 
   /* Powerline foot (R14): sticky at the viewport bottom, 36px, ink-split mono

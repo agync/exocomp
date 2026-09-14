@@ -59,9 +59,9 @@ func TestModalRendersHiddenAndAccessible(t *testing.T) {
 }
 
 // TestAddButtonHelper asserts components.templ's addButton renders the
-// data-modal-open trigger convention as a labeled primary button — the header's
-// one primary verb, never a bare glyph (F9). The visible text is the accessible
-// name.
+// data-modal-open trigger convention as the bar-size ghost verb — the app bar
+// holds no filled accent (SPEC §2.6), so the header's Add verb is a ghost, not
+// a primary fill. The visible text is the accessible name.
 func TestAddButtonHelper(t *testing.T) {
 	var buf bytes.Buffer
 	if err := addButton("widgets-add", "Add widget").Render(context.Background(), &buf); err != nil {
@@ -69,7 +69,7 @@ func TestAddButtonHelper(t *testing.T) {
 	}
 	out := buf.String()
 	for _, want := range []string{
-		`class="btn primary addbtn"`,
+		`class="btn addbtn"`,
 		`data-modal-open="widgets-add"`,
 		`Add widget`,
 	} {
