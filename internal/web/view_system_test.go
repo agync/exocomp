@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/version"
@@ -179,5 +180,50 @@ func TestSystemShellPhoneRows(t *testing.T) {
 		if !strings.Contains(page, want) {
 			t.Errorf("phone rows missing %q", want)
 		}
+	}
+}
+
+// TestSystemPhoneLegRowsCarryState is the GATE for P9: the phone leg rows
+// surface the same figure · chip the desktop cards compute instead of the
+// hardcoded "—" stub — a REPLICATING litestream leg's row reads its lag figure
+// and chip, and every one of the four rows carries the › chevron. The MUTATION
+// — restoring the hardcoded "—" meta — must red this test.
+func TestSystemPhoneLegRowsCarryState(t *testing.T) {
+	h := newHarness(t)
+	withSidecar(h)
+	replica := t.TempDir()
+	setReplicaTarget(t, h, replica)
+	mtime := seedReplicaFrame(t, replica, "00000000000048211", 2*time.Minute+10*time.Second)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	idx := strings.Index(page, `<div class="sys-phone">`)
+	if idx < 0 {
+		t.Fatal("missing the phone collapse container")
+	}
+	phone := page[idx:]
+	for _, want := range []string{
+		`class="leg-row" href="/system/deadman"`,
+		`class="leg-row" href="/system/ntfy"`,
+		`class="leg-row" href="/system/litestream"`,
+		`class="leg-row" href="/system/backups"`,
+		// The litestream figure from the data — not the "—" stub.
+		wantLag(mtime),
+		`class="chip ok"><span class="dot"></span>REPLICATING`,
+		`class="chip wait"><span class="dot"></span>NONE`,
+		`class="chip dim"><span class="dot"></span>OFF`,
+		`class="leg-chev" aria-hidden="true">›`,
+	} {
+		if !strings.Contains(phone, want) {
+			t.Errorf("phone leg rows missing %q", want)
+		}
+	}
+	if n := strings.Count(phone, `class="leg-chev"`); n != 4 {
+		t.Errorf("each of the four phone leg rows must carry the chevron, got %d", n)
 	}
 }

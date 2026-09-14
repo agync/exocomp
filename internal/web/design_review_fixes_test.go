@@ -418,12 +418,14 @@ func TestBackupsCardDisabledTargetIsNotFailure(t *testing.T) {
 		t.Fatalf("/system = %d, want 200", code)
 	}
 	// The chip is scoped to the backups card (the dead-man card legitimately
-	// reads NONE on this fixture).
+	// reads NONE on this fixture) — and the P9 phone rows below it carry their
+	// own state chips, so the slice ends where the card does.
 	i := strings.Index(page, `<section class="leg" id="backups"`)
 	if i < 0 {
 		t.Fatal("backups card missing")
 	}
-	card := page[i:]
+	j := strings.Index(page[i:], "</section>")
+	card := page[i : i+j]
 	if !strings.Contains(card, ">OK</span>") {
 		t.Error("chip must stay OK with a disabled target present")
 	}
@@ -736,8 +738,9 @@ func TestNtfyDrawerHeadClosePlacement(t *testing.T) {
 // ---- R10 · leg pages carry the System breadcrumb ----
 
 // TestLegPageTopbarTitles is the R10 gate: every /system leg page's topbar
-// reads `System · {Leg}` — ntfy already did; litestream was empty, deadman and
-// backups named the leg only.
+// names its leg. P10 splits the two-part "System · {Leg}" titles deadman and
+// litestream set — the phone bar reads the ONE-line leg name with a back
+// chevron to /system; backups keeps its System breadcrumb.
 func TestLegPageTopbarTitles(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -747,8 +750,8 @@ func TestLegPageTopbarTitles(t *testing.T) {
 	cases := []struct {
 		path, title string
 	}{
-		{"/system/deadman", "System · Dead-man"},
-		{"/system/litestream", "System · Litestream"},
+		{"/system/deadman", "Dead-man"},
+		{"/system/litestream", "Litestream"},
 		{"/system/backups", "System · Backups"},
 	}
 	for _, tc := range cases {
@@ -759,6 +762,27 @@ func TestLegPageTopbarTitles(t *testing.T) {
 		if !strings.Contains(page, `<h1 class="appbar-title">`+tc.title+`</h1>`) {
 			t.Errorf("%s topbar title missing %q", tc.path, tc.title)
 		}
+		// P10: the split leg titles ride a back chevron to /system on phone.
+		if tc.path != "/system/backups" && !strings.Contains(page, `<a class="back" href="/system"`) {
+			t.Errorf("%s must render the back chevron to /system (P10)", tc.path)
+		}
+	}
+}
+
+// TestDeadmanHeartbeatWrapsOnPhone is the P10 gate for the heartbeat fact: the
+// ellipsis is a desktop nicety; on the phone the sealed heartbeat URL wraps
+// under its key instead of truncating. The phone rule must beat lift.css's own
+// base ellipsis rule (same file, later in source order). The MUTATION —
+// dropping the phone wrap rule — must red this test.
+func TestDeadmanHeartbeatWrapsOnPhone(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".leg-facts dd.ellipsis { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }") {
+		t.Error("the phone block must let ellipsized leg facts (the heartbeat) wrap under their key")
 	}
 }
 

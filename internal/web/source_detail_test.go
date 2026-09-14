@@ -111,7 +111,7 @@ func TestSourcePlaybookLauncherMeta(t *testing.T) {
 		"ansible --limit pattern",
 		`value="22, 443"`,
 		"Ports the runner may reach — same as --egress.",
-		`· may end <span class="wait-text">DEGRADED</span>`,
+		`may end <span class="wait-text">DEGRADED</span>`,
 		"asks nothing else · same as exocomp run tree site.yml --egress 22,443",
 	} {
 		if !strings.Contains(page, want) {
@@ -409,7 +409,7 @@ func TestSourceLaunchDrawerTolerateToggle(t *testing.T) {
 	}
 	for _, want := range []string{
 		`name="tolerate_unreachable" value="1" class="toggle-cb"`,
-		`· may end <span class="wait-text">DEGRADED</span>`,
+		`may end <span class="wait-text">DEGRADED</span>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("launch drawer missing %q", want)
@@ -803,6 +803,55 @@ func TestSourcePathSelectEnabledWhenPlaybooksFound(t *testing.T) {
 	}
 	if strings.Contains(list, "NEVER") {
 		t.Errorf("path source must not wear a NEVER chip in the list, got:\n%s", list)
+	}
+}
+
+// TestSourceLaunchDrawerPhoneFixes is the GATE for P12/P13: the launch
+// drawer's phone pass — no leaked "·" before the DEGRADED outcome, a chevron
+// on the More disclosure, the drawer ending above the powerline foot with its
+// own sticky footer, and the playbook rows 44px tappable with a chevron. The
+// MUTATIONS — restoring the "·", dropping the chevron, or reverting the
+// playbook rows to plain text — must red this test.
+func TestSourceLaunchDrawerPhoneFixes(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	if strings.Contains(page, `<p class="meta">· may end`) {
+		t.Error("the tolerate meta must not open with a leaked '·'")
+	}
+	if !strings.Contains(page, `<p class="meta">may end <span class="wait-text">DEGRADED</span></p>`) {
+		t.Error("the tolerate meta must read 'may end DEGRADED'")
+	}
+	if !strings.Contains(page, `<summary>More — path, inventory, tags, secrets, run modes <svg class="chev"`) {
+		t.Error("the More disclosure summary must carry a chevron glyph")
+	}
+	// P13: the discovered playbook renders as an operator tappable row that
+	// opens the launcher prefilled (launch=1 opens the drawer, playbook=
+	// preselects), with the › chevron.
+	if !strings.Contains(page, `<a class="playbook-row" href="/sources/`+name+`?launch=1&amp;tab=playbook&amp;playbook=site.yml">site.yml<span class="chev" aria-hidden="true">›</span></a>`) {
+		t.Error("the discovered playbook must render as a tappable row link with the chevron")
+	}
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		".modal.drawer { inset: 0 0 36px auto; height: auto; }",
+		".modal.drawer .drawer-foot { position: sticky;",
+		"env(safe-area-inset-bottom)",
+		".modal.drawer .writeform input { height: var(--row-h); min-height: var(--row-h); }",
+		".playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px;",
+		".playbooklist .playbook-row:hover { background: var(--surface-tray);",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the drawer phone fix %q", want)
+		}
 	}
 }
 

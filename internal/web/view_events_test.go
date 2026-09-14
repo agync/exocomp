@@ -961,6 +961,88 @@ func TestEventsAppbarMetaLast24h(t *testing.T) {
 	}
 }
 
+// TestEventsRuleDedupOnPhone is the GATE for the P8 dedup: when SOURCE == RULE
+// (a job-outcome event matched by a rule of the same name), the phone line 2 —
+// `{source} → {rule}` — must print the value ONCE, never "job-outcome →
+// job-outcome". The row carries the evt-rule-dedup marker and the phone
+// stylesheet hides the rule cell (and its " → " separator) for that row; a row
+// whose source and rule differ keeps both. The MUTATION — dropping the marker
+// — must red this test.
+func TestEventsRuleDedupOnPhone(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "job-outcome", Normalized: `{"name":"job-outcome"}`,
+		Outcome: store.OutcomeMatched, MatchedRule: "job-outcome", Reason: "notify only",
+	}); err != nil {
+		t.Fatalf("CreateEvent deduped: %v", err)
+	}
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source: "alertmanager", Normalized: `{"name":"disk-full"}`,
+		Outcome: store.OutcomeMatched, MatchedRule: "notify-on-failure", Reason: "notify only",
+	}); err != nil {
+		t.Fatalf("CreateEvent distinct: %v", err)
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, `class="events-row evt-rule-dedup" role="button"`) {
+		t.Error("a row whose source equals its rule must carry the evt-rule-dedup marker")
+	}
+	if !strings.Contains(page, `class="events-row" role="button"`) {
+		t.Error("a row with distinct source and rule must not carry the dedup marker")
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, `.events-row .evt-rule::before { content: " → "; }`) {
+		t.Error("app.css must join source and rule with ' → ' on the phone line 2")
+	}
+	if !strings.Contains(app, ".events-row.evt-rule-dedup .evt-rule { display: none; }") {
+		t.Error("app.css must hide the rule cell (and its separator) when the row dedups")
+	}
+}
+
+// TestEventsFooterCountRowPopulation is the GATE for the P8 count fix: the
+// footer's "showing latest {n} of {m}" must read the SAME population the tray
+// rows come from — ListEvents has no time window, so events older than the
+// funnel's 24h still list. A footer reading the 24h funnel would say "3 of 0";
+// the all-events ledger says "3 of 3". The MUTATION — reverting FooterCount to
+// the funnel — must red this test.
+func TestEventsFooterCountRowPopulation(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	now := time.Now()
+	for i := 0; i < 3; i++ {
+		if _, err := h.store.CreateEvent(ctx, store.Event{
+			Source: "alertmanager", Normalized: `{"name":"old-alert"}`,
+			Outcome: store.OutcomeIgnored, Reason: "no rule matched",
+			ReceivedAt: now.Add(-25 * time.Hour),
+		}); err != nil {
+			t.Fatalf("CreateEvent: %v", err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("events status = %d", code)
+	}
+	if !strings.Contains(page, "showing latest 3 of 3 · retained 90d") {
+		t.Error("footer must read the row population: 'showing latest 3 of 3', not the 24h funnel's 0")
+	}
+	if strings.Contains(page, "showing latest 3 of 0") {
+		t.Error("footer must not read the 24h funnel when the rows come from the whole store")
+	}
+}
+
 // TestKeysHintCoarseCSS is the GATE for R12: the keys hint markup stays but the
 // stylesheet hides it on touch via (pointer:coarse) — asserted on the CSS, not
 // the rendered page, since the guard is a media query (Shell ships it).

@@ -355,6 +355,47 @@ func TestLitestreamPageSetTargetForm(t *testing.T) {
 	}
 }
 
+// TestLitestreamPagePhoneForm is the GATE for P11: on phone the Set-target
+// card stacks its heading over the meta sentence, the form card carries the
+// bottom padding that clears the sticky powerline foot, and the encryption
+// checkbox row gets a 44px tap target. The .ls-target rules ride the page's
+// own scoped style block; the checkline floor lives in the shared phone block.
+func TestLitestreamPagePhoneForm(t *testing.T) {
+	h := newHarness(t)
+	withSidecar(h)
+	setReplicaTarget(t, h, "s3://exocomp-replica/nibbler")
+	setReplicaAck(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/litestream")
+	if code != http.StatusOK {
+		t.Fatalf("/system/litestream = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`@media (max-width:719px)`,
+		`.ls-target header { flex-direction: column; align-items: flex-start; gap: 2px; }`,
+		`.ls-target { padding: 18px 16px 50px; }`,
+		// P10 rides here too: the bar reads the one-line leg title with a back
+		// chevron to /system.
+		`<h1 class="appbar-title">Litestream</h1>`,
+		`<a class="back" href="/system"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/system/litestream missing %q", want)
+		}
+	}
+	if strings.Contains(page, `appbar-title">System · Litestream`) {
+		t.Error("the litestream bar must not read the two-part 'System · Litestream'")
+	}
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	if !strings.Contains(app, ".writeform .checkline { min-height: 44px;") {
+		t.Error("app.css must give the litestream checkline a 44px tap target on phone")
+	}
+}
+
 // TestLitestreamSetTargetWritesBothSettings is the GATE for the A6 write (SPEC
 // §7 A6): a submit persists the replica target and the ack — the two settings,
 // nothing else — and redirects 303 with the success flash. A remote target with

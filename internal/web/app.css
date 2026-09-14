@@ -2003,18 +2003,24 @@ body { overflow-x: clip; }
   .jobs-row .line + .line .cell { display: none; }
   .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Events tray phone (SPEC 1a): the same seven grid cells re-flow into two
-   * lines — event · outcome · chevron over source · rule · received — one
+   * lines — line 1 the alert · received clock · outcome · chevron (the order
+   * properties force the wrap points), line 2 the `source → rule` pair — one
    * structure, not a second template. The reason column drops out of the row
-   * (the expand pane still carries it). */
+   * (the expand pane still carries it). When SOURCE == RULE the row dedups to
+   * the single source (the evt-rule-dedup marker hides the rule cell and its
+   * separator), so a job-outcome event never reads "job-outcome → job-outcome". */
   .events-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; height: auto; padding: 11px 12px; }
-  .events-row .evt-alert { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .events-row .evt-outcome { flex: none; }
-  .events-row .evt-chev { flex: none; }
+  .events-row .evt-alert { order: 1; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .events-row .evt-received { order: 2; flex: none; white-space: nowrap; }
+  .events-row .evt-outcome { order: 3; flex: none; }
+  .events-row .evt-chev { order: 4; flex: none; }
   .events-row .evt-source, .events-row .evt-rule, .events-row .evt-received { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
-  .events-row .evt-rule::before { content: " · "; }
-  .events-row .evt-received { flex: none; margin-left: auto; white-space: nowrap; }
+  .events-row .evt-source { order: 5; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .events-row .evt-rule { order: 6; }
+  .events-row .evt-rule::before { content: " → "; }
   .events-row .evt-reason { display: none; }
-  .events-row .evt-pane { width: 100%; }
+  .events-row .evt-pane { order: 7; width: 100%; }
+  .events-row.evt-rule-dedup .evt-rule { display: none; }
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   .queue-idle .idle-full { display: none; }
   .queue-idle code, .queue-row .verb { display: none; }
@@ -2069,7 +2075,7 @@ body { overflow-x: clip; }
   .funnel .counts small { font-size: 11px; color: var(--ink-500); }
   .funnel .bar { height: 6px; }
   .funnel .keys, .filters .divider { display: none; }
-  .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 48px; padding: 4px; border-radius: 12px; width: 100%; }
+  .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 44px; padding: 4px; border-radius: 12px; width: 100%; }
   .filters .switch a { height: auto; justify-content: center; border-radius: 9px; }
   .filters .group--outcome { width: 100%; }
   .filters .chips .chip { height: 44px; padding: 0 14px; border-radius: 11px; }
