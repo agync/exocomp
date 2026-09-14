@@ -1512,6 +1512,13 @@ func verdictSentence(job store.Job, facts jobOutcomeFacts) string {
 		return "The play failed on " + andList(facts.Failed) + "."
 	}
 	if len(reach) == 0 {
+		// A FAILED run with no parsed host rows (a syntax error, a connection
+		// failure before any recap) has an empty Unreachable list — andList
+		// would join to a bare "reach ." trailing dot. Name the hosts when
+		// known, otherwise the truthful target reading.
+		if len(facts.Unreachable) == 0 {
+			return "Ansible could not reach the target."
+		}
 		return "Ansible could not reach " + andList(facts.Unreachable) + "."
 	}
 	return "Ansible could not reach " + andList(facts.Unreachable) + "; every play on " +
