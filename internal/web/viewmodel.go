@@ -51,9 +51,11 @@ type page struct {
 	// (write.go). Never a secret value — those render once inline.
 	Flash  string
 	Signal SignalLine
-	// PageClass is an extra class on <main> for page-scoped layout rules. The
-	// job detail page uses it to make itself a no-page-scroll flex column so
-	// the log box owns the scroll (T1); every other page leaves it empty.
+	// PageClass is an extra class on the .app root for page-scoped layout
+	// rules. The job detail page uses "page-job" to make itself a no-page-
+	// scroll flex column so the log box owns the scroll (T1); the system page
+	// uses "page-system" to opt its bar subtitle out on phone (R11); every
+	// other page leaves it empty.
 	PageClass string
 	// Add is the shell header's one primary verb (F9/F15): a labeled accent
 	// button opening the page's add-modal. Nil renders no verb.
@@ -500,6 +502,14 @@ type systemVM struct {
 	// re-render. Value echoes the typed value so a refusal keeps it; ErrMsg is
 	// the field meta's ▲ sentence, ErrForm the form-status line's.
 	PubForm *pubFormVM
+}
+
+// legRowFigure reports whether a phone leg row's figure line carries a value.
+// The rows drop the line when the leg quotes the dim "—" stub, so a leg with
+// nothing to report reads one line (name · chip) at the 48px floor rather than
+// an empty figure.
+func legRowFigure(fig string) bool {
+	return fig != "" && fig != "—"
 }
 
 // pubFormVM is the public-URL Change form's refusal state. Value echoes the

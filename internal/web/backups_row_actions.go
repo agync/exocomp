@@ -16,7 +16,7 @@ func backupRowActions(row backupTargetRow) []rowAction {
 	acts := []rowAction{}
 	if row.Enabled {
 		acts = append(acts, rowAction{
-			Name: "Queue backup — " + row.Name, Path: glyphPlay,
+			Name: "Queue backup — " + row.Name, Path: glyphPlay, Label: "Run now",
 			Form:    "/system/backups/" + row.Name + "/run",
 			Refusal: row.Refusal,
 		})

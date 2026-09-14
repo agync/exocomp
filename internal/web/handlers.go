@@ -191,6 +191,7 @@ func (s *Server) systemVMFor(r *http.Request) (systemVM, error) {
 	ident, _ := identityOf(r.Context())
 	vm := systemVM{Page: s.pageFor(r, "System", "system"), Operator: canWrite(ident)}
 	vm.Page.Meta = "is the control plane itself OK"
+	vm.Page.PageClass = "page-system"
 	vm.Self = s.selfObs(r.Context())
 	vm.Litestream = s.litestreamVM(r.Context())
 	if v, err := s.store.GetSetting(r.Context(), store.SettingPublicURL); err == nil {

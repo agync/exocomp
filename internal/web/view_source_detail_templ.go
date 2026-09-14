@@ -670,27 +670,27 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<p class=\"meta\">may end <span class=\"wait-text\">DEGRADED</span></p></div><details class=\"opts\"><summary>More — path, inventory, tags, secrets, run modes <svg class=\"chev\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 71, "<p class=\"meta\">may end <span class=\"wait-text\">DEGRADED</span></p></div><details class=\"opts\"><summary>More <svg class=\"chev\" width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var34 string
 				templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(glyphChevron)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 162, Col: 270}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 162, Col: 224}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\"></path></svg></summary> <label for=\"rp-path\">Or a path relative to the checkout</label> <input id=\"rp-path\" name=\"playbook_path\" type=\"text\" autocomplete=\"off\" placeholder=\"deploy/site.yml\" value=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 72, "\"></path></svg></summary><p class=\"opts-help\">path, inventory, tags, secrets, run modes</p><label for=\"rp-path\">Or a path relative to the checkout</label> <input id=\"rp-path\" name=\"playbook_path\" type=\"text\" autocomplete=\"off\" placeholder=\"deploy/site.yml\" value=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var35 string
 				templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(freePathValue(vm))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 164, Col: 135}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 165, Col: 135}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 				if templ_7745c5c3_Err != nil {
@@ -745,7 +745,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var36 string
 				templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 182, Col: 98}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 183, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 				if templ_7745c5c3_Err != nil {
@@ -758,7 +758,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(vm.CliEcho())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 184, Col: 50}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 185, Col: 50}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
@@ -781,7 +781,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var38 templ.SafeURL
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/"+vm.Source.Name+"/run/command")))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 189, Col: 122}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 190, Col: 122}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -856,7 +856,7 @@ func sourceDetail(vm sourceDetailVM) templ.Component {
 				var templ_7745c5c3_Var39 string
 				templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(vm.QueueLabel())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 207, Col: 98}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_source_detail.templ`, Line: 208, Col: 98}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 				if templ_7745c5c3_Err != nil {

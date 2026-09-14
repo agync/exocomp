@@ -108,7 +108,7 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var6 = []any{"app", templ.KV("page-job", p.PageClass != "")}
+		var templ_7745c5c3_Var6 = []any{"app", templ.KV(p.PageClass, p.PageClass != "")}
 		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var6...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err

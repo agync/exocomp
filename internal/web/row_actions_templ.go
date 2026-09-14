@@ -454,14 +454,14 @@ func rowActions(acts []rowAction, base string) templ.Component {
 			}
 		}
 		if rowMenuCount(acts) > 0 {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<details class=\"ramenu\"><summary class=\"rachev\" aria-label=\"More actions\" title=\"More actions\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "<details class=\"ramenu\"><summary class=\"rachev\" aria-label=\"More actions\" title=\"More actions\"><span class=\"rachev-word\">More</span> <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var29 string
 			templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(glyphChevron)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 53, Col: 194}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 54, Col: 194}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 			if templ_7745c5c3_Err != nil {
@@ -511,7 +511,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 				var templ_7745c5c3_Var32 string
 				templ_7745c5c3_Var32, templ_7745c5c3_Err = templ.JoinStringErrs(a.Path)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 64, Col: 190}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 65, Col: 190}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var32))
 				if templ_7745c5c3_Err != nil {
@@ -529,7 +529,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var33 templ.SafeURL
 					templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, a.Form)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 66, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 67, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 					if templ_7745c5c3_Err != nil {
@@ -542,7 +542,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var34 string
 					templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(a.Confirm)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 66, Col: 124}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 67, Col: 124}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 					if templ_7745c5c3_Err != nil {
@@ -560,7 +560,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 						var templ_7745c5c3_Var35 string
 						templ_7745c5c3_Var35, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 68, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 69, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var35))
 						if templ_7745c5c3_Err != nil {
@@ -573,7 +573,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 						var templ_7745c5c3_Var36 string
 						templ_7745c5c3_Var36, templ_7745c5c3_Err = templ.JoinStringErrs(v)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 68, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 69, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var36))
 						if templ_7745c5c3_Err != nil {
@@ -591,7 +591,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var37 string
 					templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 70, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 71, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 					if templ_7745c5c3_Err != nil {
@@ -609,7 +609,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var38 templ.SafeURL
 					templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, a.Form)))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 73, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 74, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 					if templ_7745c5c3_Err != nil {
@@ -627,7 +627,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 						var templ_7745c5c3_Var39 string
 						templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinStringErrs(k)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 75, Col: 39}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 76, Col: 39}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 						if templ_7745c5c3_Err != nil {
@@ -640,7 +640,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 						var templ_7745c5c3_Var40 string
 						templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(v)
 						if templ_7745c5c3_Err != nil {
-							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 75, Col: 51}
+							return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 76, Col: 51}
 						}
 						_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 						if templ_7745c5c3_Err != nil {
@@ -658,7 +658,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var41 string
 					templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 77, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 78, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 					if templ_7745c5c3_Err != nil {
@@ -676,7 +676,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var42 string
 					templ_7745c5c3_Var42, templ_7745c5c3_Err = templ.JoinStringErrs(a.Modal)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 80, Col: 74}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 81, Col: 74}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var42))
 					if templ_7745c5c3_Err != nil {
@@ -689,7 +689,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var43 string
 					templ_7745c5c3_Var43, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 80, Col: 85}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 81, Col: 85}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var43))
 					if templ_7745c5c3_Err != nil {
@@ -707,7 +707,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var44 templ.SafeURL
 					templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(a.Href))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 82, Col: 58}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 83, Col: 58}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 					if templ_7745c5c3_Err != nil {
@@ -720,7 +720,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var45 string
 					templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(a.Name)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 82, Col: 69}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 83, Col: 69}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 					if templ_7745c5c3_Err != nil {
@@ -739,7 +739,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 					var templ_7745c5c3_Var46 string
 					templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinStringErrs(a.Count)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 85, Col: 44}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 86, Col: 44}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
 					if templ_7745c5c3_Err != nil {
@@ -772,7 +772,7 @@ func rowActions(acts []rowAction, base string) templ.Component {
 			var templ_7745c5c3_Var47 string
 			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(r)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 97, Col: 70}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/row_actions.templ`, Line: 98, Col: 70}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 			if templ_7745c5c3_Err != nil {

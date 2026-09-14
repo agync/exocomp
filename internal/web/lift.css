@@ -67,8 +67,12 @@
   .sys-identity .id .meta { display:none; }
   .sys-identity .hg { display:none; }
   .sys-identity .pub { flex-wrap:nowrap; min-width:0; }
-  .sys-identity .pub .label { display:none; }
+  /* R11: the key stays — `public URL · not set` says what is not set — and the
+   * Change verb is a bar-size ghost, not the filled 30px control. */
+  .sys-identity .pub .label { display:inline; }
+  .sys-identity .pub .label::after { content:" ·"; }
   .sys-identity .pub .val { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sys-identity .change { height:36px; background:transparent; border-color:transparent; }
 }
 
 /* leg grid + card anatomy */
@@ -114,7 +118,7 @@
 @media (min-width:721px) { .sys-phone { display:none; } }
 .leg-row { background:var(--surface-card); border-radius:var(--radius-card); padding:8px 16px;
   display:grid; grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"name chip chev" "meta chip chev";
-  gap:2px 12px; align-items:center; min-height:56px; color:inherit; text-decoration:none; }
+  gap:2px 12px; align-items:center; min-height:48px; color:inherit; text-decoration:none; }
 .leg-row:hover { background:var(--surface-tray); }
 .leg-row .name { grid-area:name; font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
 .leg-row .meta { grid-area:meta; font:400 12px/1.4 var(--font-mono); color:var(--ink-500);
@@ -218,6 +222,10 @@
 .bk-row.is-disabled td { color:var(--ink-500); }
 .bk-table tbody tr.bk-row td { padding:12px 0; }
 .bk-kind, .bk-ret, .bk-sched { vertical-align:middle; min-width:0; }
+/* R7: the phone stackable rule hangs each value right with a void; on the bk
+ * posture cells the label sits OVER the value, left-aligned. Scoped to these
+ * three cells — the shared `.tablewrap.stackable td` rule is untouched. */
+.tablewrap.stackable .bk-kind, .tablewrap.stackable .bk-ret, .tablewrap.stackable .bk-sched { flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:3px; }
 .bk-cell { display:flex; flex-direction:column; gap:4px; align-items:flex-start; min-width:0; }
 .bk-kind .mono { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:180px; font-size:13px; }
 .bk-ret .mono, .bk-sched .mono { white-space:nowrap; }
@@ -225,6 +233,9 @@
 /* The posture cells' second line is 12px mono ink-400 everywhere (08-2): the
  * KIND path already was; RETENTION and SCHEDULE meta were 11px sans. */
 .bk-ret .meta, .bk-sched .meta { font:400 12px/1.4 var(--font-mono); font-variant-numeric:tabular-nums; color:var(--ink-400); }
+/* R7: `add one` is a verb, not a grey fact — it reads as a link. */
+.bk-sched .bk-add { color: var(--accent-text); }
+.bk-sched .bk-add:hover { text-decoration:underline; }
 .bk-lastrun { min-width:0; }
 .lr-line, .lr-meta { display:flex; align-items:center; gap:6px; min-width:0; flex-wrap:wrap; }
 .lr-line .lr-text { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
