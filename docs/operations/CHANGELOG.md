@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — three phone layout defects fixed
+
+- **The launch drawer's Queue run stays above the powerline.** The primary sits
+  in a sticky `.drawer-actions` footer pinned to the panel bottom; the long form
+  scrolls under it, the button no longer lays out below the panel (where the
+  36px powerline foot clipped it), and the safe-area inset pads the footer.
+- **The dashboard queue recent rows keep the playbook and the clock.** The base
+  queue grid block was authored after the 719 block, so its equal-specificity
+  `display:grid`/`display:contents` won on phone and the two-line form never
+  applied — the playbook cell collapsed and the clock laid out past the
+  viewport. A phone re-assertion restores the stacked row: playbook + chip on
+  line 1, `#id · reason` + clock on line 2, all on-screen.
+- **The backups LAST RUN cell separates the chip from the reason.** The cell
+  stacks its label, chip+reason line and meta in a column; the chip holds its
+  width and the reason wraps inside the cell instead of overlapping the chip.
+
 ## 2026-09-14 — the remaining pages get the phone form
 
 - **Events rows dedup and the footer count reads the row population.** A row
