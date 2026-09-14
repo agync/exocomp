@@ -1202,13 +1202,20 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * primary fields; the privileged escalation sits in its own fail-tinted block
  * so it reads as the sharp edge it is, never a plain option. */
 .opts { margin-top: 12px; }
-.opts > summary { cursor: pointer; color: var(--ink-400); font: var(--type-button); list-style: none; }
+.opts > summary { cursor: pointer; color: var(--ink-400); font: var(--type-button); list-style: none; display: inline-flex; align-items: center; gap: 6px; }
+.opts > summary .chev { transition: transform .15s ease; }
+.opts[open] > summary .chev { transform: rotate(180deg); }
 /* The drawer footer's queue note sits on its own line below the full-width
  * button (F4), so it never rides beside it. */
 .drawer-foot { margin-top: 10px; }
-/* The discovered-playbooks card: one mono line per playbook, no bullets. */
+/* The discovered-playbooks card: one mono line per playbook, no bullets. On
+ * phone the rows are 44px tappable with a chevron and a press surface (P13),
+ * prefilling the launcher; the same layout renders at every width. */
 .playbooklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .playbooklist li { font: var(--type-log); color: var(--ink-200); }
+.playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 9px; color: inherit; text-decoration: none; }
+.playbooklist .playbook-row:hover { background: var(--surface-tray); color: var(--ink-100); }
+.playbooklist .playbook-row .chev { color: var(--ink-400); }
 /* The CLI sync note beside the Launch verb: a little room from the button. */
 .privileged {
   margin-top: 12px; padding: 12px 14px;
@@ -1977,6 +1984,9 @@ body { overflow-x: clip; }
    * .btn-compact, the one documented exception. */
   .btn, .btn.primary, .btn.danger, .actions .btn, .addbtn { min-height: 48px; height: 48px; }
   .btn-compact { min-height: 36px; height: 36px; }
+  /* P11: a checkbox row is a 44px tap target across its label on phone — the
+   * litestream unencrypted-remote ack must be tickable without a fine aim. */
+  .writeform .checkline { min-height: 44px; }
 
   /* Pre-shipped row/stack contract (SPEC §4, inert until the Wave-2 lanes ship
    * their markup). */
@@ -2078,13 +2088,25 @@ body { overflow-x: clip; }
   .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 44px; padding: 4px; border-radius: 12px; width: 100%; }
   .filters .switch a { height: auto; justify-content: center; border-radius: 9px; }
   .filters .group--outcome { width: 100%; }
-  .filters .chips .chip { height: 44px; padding: 0 14px; border-radius: 11px; }
+  .filters .chips .chip { height: 32px; padding: 0 12px; border-radius: 9px; font: 400 12px var(--font-mono); }
   .filters .count { min-width: 0; }
   .filters .count .full { display: none; }
   .chips { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
   .chips .chip { height: 36px; flex: none; font-size: 12.5px; }
   .events-row .expanded { border-radius: var(--radius-row); padding: 12px 14px; gap: 10px; }
   .events-row .expanded .payload { display: none; }
+
+  /* P12: the launch drawer ends ABOVE the phone powerline foot (its full-viewport
+   * height overlapped the sticky 36px signals), and the footer note is sticky
+   * so the queue contract stays visible while the long form scrolls. The
+   * safe-area inset keeps the sticky footer off a notched screen's home
+   * indicator. */
+  .modal.drawer { inset: 0 0 36px auto; height: auto; }
+  .modal.drawer .modal-body { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .modal.drawer .drawer-foot { position: sticky; bottom: calc(env(safe-area-inset-bottom)); margin-top: 10px; padding-top: 8px; background: var(--surface-card); }
+  /* The drawer's bare inputs keep the standard control height whether empty or
+   * filled — the global writeform min-height overreaches inside the long form. */
+  .modal.drawer .writeform input { height: var(--row-h); min-height: var(--row-h); }
 }
 
 /* Touch devices never need the keyboard hint (R12). */

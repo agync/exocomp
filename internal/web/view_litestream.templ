@@ -25,6 +25,10 @@ templ litestreamPage(vm litestreamPageVM) {
 				.ls-target header h1 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
 				.ls-target header .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
 				.ls-target .echo { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); margin-top:14px; }
+				@media (max-width:719px) {
+					.ls-target header { flex-direction: column; align-items: flex-start; gap: 2px; }
+					.ls-target { padding: 18px 16px 50px; }
+				}
 				</style>
 				<header>
 					<h1>Replica target</h1>

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -306,6 +307,14 @@ func (vm sourceDetailVM) PlaybooksMeta() string {
 		line += " · last run job #" + itoa64(vm.LastRunID) + " · " + vm.LastRunState
 	}
 	return line
+}
+
+// PlaybookHref is the launcher prefill link a discovered playbook row carries
+// (P13): ?launch=1 opens the drawer, ?playbook= preselects this path on the
+// Playbook tab. The path is query-escaped so a nested "deploy/site.yml" round-
+// trips through the ?playbook= parsing.
+func (vm sourceDetailVM) PlaybookHref(pb string) string {
+	return urlWithBase(vm.Page.Base, "/sources/"+vm.Source.Name+"?launch=1&tab=playbook&playbook="+url.QueryEscape(pb))
 }
 
 // CliEcho is the launcher's one-line contract below the primary (SPEC §5.2):

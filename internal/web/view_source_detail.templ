@@ -64,7 +64,13 @@ templ sourceDetail(vm sourceDetailVM) {
 			} else {
 				<ul class="playbooklist">
 					for _, pb := range vm.Playbooks {
-						<li class="mono">{ pb }</li>
+						<li class="mono">
+							if vm.Operator {
+								<a class="playbook-row" href={ templ.SafeURL(vm.PlaybookHref(pb)) }>{ pb }<span class="chev" aria-hidden="true">›</span></a>
+							} else {
+								{ pb }
+							}
+						</li>
 					}
 				</ul>
 			}
@@ -150,10 +156,10 @@ templ sourceDetail(vm sourceDetailVM) {
 							@fieldInput(vm.RunForm.egressField(vm.EgressPrefill()))
 							<div class="toggle-row">
 								@toggle("tolerate_unreachable", "Tolerate unreachable hosts", vm.toggleState("tolerate_unreachable"), false)
-								<p class="meta">· may end <span class="wait-text">DEGRADED</span></p>
+								<p class="meta">may end <span class="wait-text">DEGRADED</span></p>
 							</div>
 							<details class="opts">
-								<summary>More — path, inventory, tags, secrets, run modes</summary>
+								<summary>More — path, inventory, tags, secrets, run modes <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg></summary>
 								<label for="rp-path">Or a path relative to the checkout</label>
 								<input id="rp-path" name="playbook_path" type="text" autocomplete="off" placeholder="deploy/site.yml" value={ freePathValue(vm) }/>
 								<label for="rp-inventory">Inventory</label>
