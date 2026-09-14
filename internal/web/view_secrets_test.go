@@ -101,7 +101,7 @@ func TestSecretsSurfaceGated(t *testing.T) {
 
 	// Fields, columns, sources, timestamps.
 	for _, want := range []string{
-		`scope="col"`, "All secrets",
+		`scope="col"`, "Sealed values",
 		"api-token", "session-key", "ntfy-url",
 		"token", "hmac", "url", // kinds
 		store.SecretSourceUser, store.SecretSourceGenerated,
