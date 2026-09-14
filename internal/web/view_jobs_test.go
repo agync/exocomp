@@ -661,6 +661,71 @@ func TestJobsRowPhoneTwoLine(t *testing.T) {
 	}
 }
 
+// TestJobsRowPhoneLineOne pins the jobs row's phone line 1 (review P2 /
+// integrator browser pass): at 390px line 1 is ONE row — id · title · chip —
+// the name ellipsizes and the reason is never part of it (the FAILED chip says
+// the state; the exit fact is the line-2 meta's own piece now). The harness
+// cannot switch viewports, so the guard pins the phone CSS that makes line 1 a
+// single stretching row — the title cell fills and ellipsizes, the chip pins
+// right, the desktop state-cell reason drops — plus the reason's move to the
+// line-2 meta; the one-line render itself is the integrator's browser pass.
+func TestJobsRowPhoneLineOne(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	// A failed run with a reason: the guard proves the reason left line 1.
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+
+	// Line 1 is id · title · chip: the first .line opens with the id, then the
+	// title cell, then the chip cell.
+	for _, want := range []string{
+		`<a class="jobs-row" href="/jobs/` + itoa64(job.ID) + `"><span class="line"><span class="num">` + itoa64(job.ID) + `</span>`,
+		`<b class="mono">deploy/site.yml</b>`,
+		`<span class="cell cell--state">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("jobs row line 1 missing %q", want)
+		}
+	}
+
+	// The reason is the line-2 meta's fact now: it reads inside the .cell--meta
+	// qmeta, so the phone line 1 never carries the exit text at 390px.
+	metaOpen := `<span class="cell cell--meta"><span class="qmeta">`
+	idx := strings.Index(body, metaOpen)
+	if idx < 0 {
+		t.Fatal("jobs row missing the line-2 .cell--meta qmeta node")
+	}
+	meta := body[idx+len(metaOpen):]
+	if end := strings.Index(meta, "</span>"); end >= 0 {
+		meta = meta[:end]
+	}
+	if !strings.Contains(meta, "exit 4 · 2 hosts unreachable") {
+		t.Errorf("line-2 meta must carry the reason the review moved off line 1, got %q", meta)
+	}
+
+	// The phone block makes line 1 one stretching row: title cell fills and
+	// ellipsizes, chip pins right, the desktop state-cell reason drops.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.jobs-row:not(.queue-row) .line:first-child .cell { flex: 1 1 auto; min-width: 0; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .cell b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .cell--state .reason { display: none; }`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone line-1 rule %q", want)
+		}
+	}
+}
+
 // TestJobDetailFlashCleared is J3 + the flash-posture change: the write routes
 // flash to /jobs/{id} via a server-set cookie, the job's own page drops the
 // banner (handleJobDetail clears it at the render seam), and a ?flash= URL
