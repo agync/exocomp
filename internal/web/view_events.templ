@@ -148,7 +148,7 @@ templ eventsTray(vm eventsVM) {
 // cursor index on data-index; the pane id is the aria-controls target so
 // j/k/↵/e and a click agree on what expanded.
 templ eventTrayPair(i int, e eventRow) {
-	<div class={ "events-row", templ.KV("evt-rule-dedup", e.Source == e.Rule) } role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
+	<div class={ "events-row", templ.KV("evt-rule-dedup", e.Source == e.Rule), templ.KV("evt-rule-unset", e.Rule == "") } role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
 		<span class="evt-received" aria-hidden="true">{ e.Received } · { e.Rel } ago</span>
 		<span class="evt-alert">{ e.Name }</span>
 		<span class="evt-source">{ e.Source }</span>

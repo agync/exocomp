@@ -1933,6 +1933,12 @@ body { overflow-x: clip; }
   main .sys-bk-verbs { margin-left: 0; align-self: stretch; }
   main{padding:14px 16px 50px; gap:12px; }
 
+  /* R1: the insecure banner stacks on phone — the kicker on line 1, the
+   * sentence below it, so it reads whole at 390px instead of two flex columns
+   * squeezing the sentence to one word per line with its last line clipped. */
+  .banner { flex-direction: column; align-items: flex-start; gap: 6px; height: auto; overflow: visible; padding: 12px 14px; }
+  .banner .keyword { font: 600 11px var(--font-mono); }
+
   /* Powerline foot (R14): sticky at the viewport bottom, 36px, ink-split mono
    * 12. Only the signals that need a decision render — ok/dim hide (healthy is
    * quiet), the identity hides (already in the header). */
@@ -2031,6 +2037,7 @@ body { overflow-x: clip; }
   .events-row .evt-reason { display: none; }
   .events-row .evt-pane { order: 7; width: 100%; }
   .events-row.evt-rule-dedup .evt-rule { display: none; }
+  .events-row.evt-rule-unset .evt-rule { display: none; }
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   .queue-idle .idle-full { display: none; }
   .queue-idle code, .queue-row .verb { display: none; }
@@ -2080,10 +2087,12 @@ body { overflow-x: clip; }
   .log.wrap .line { white-space: pre-wrap; width: auto; }
 
   .funnel { padding: 16px; gap: 12px; }
-  .funnel .counts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; }
-  .funnel .counts b { font: 600 24px/1 var(--font-mono); letter-spacing: -0.8px; display: block; }
-  .funnel .counts small { font-size: 11px; color: var(--ink-500); }
-  .funnel .bar { height: 6px; }
+  /* R8: the six `n label` pairs read on one line in 12px mono, the
+   * proportional bar drops — the counts already name the outcome. */
+  .funnel .counts { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 12px; overflow-x: auto; }
+  .funnel .counts b { font: 500 12px/1 var(--font-mono); display: inline; }
+  .funnel .counts small { font: 400 12px var(--font-mono); }
+  .funnel .bar { display: none; }
   .funnel .keys, .filters .divider { display: none; }
   .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 44px; padding: 4px; border-radius: 12px; width: 100%; }
   .filters .switch a { height: auto; justify-content: center; border-radius: 9px; }
@@ -2156,7 +2165,7 @@ body { overflow-x: clip; }
  * way the jobs row's do (display:contents); on phone the 719 block turns them
  * into the two stacked flex rows. */
 .queue-row .line { display: contents; }
-.queue-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.queue-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--ink-100); }
 .queue-row .cell--state { gap: 5px; align-items: flex-start; }
 .queue-row .reason { font: 400 11.5px var(--font-mono); color: var(--ink-500); white-space: nowrap; }
 .queue-row .reason--degraded { color: var(--signal-wait); }
@@ -2201,6 +2210,10 @@ body { overflow-x: clip; }
 @media (max-width: 719px) {
   .queue-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; height: auto; padding: 11px 12px; }
   .queue-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+  /* R2: the base `.queue-idle` block is authored after the 719 block, so its
+   * `padding: 0 14px` defeats the phone inset; re-assert the phone box here so
+   * the kicker aligns with the rows and the LAST RUNS rule. */
+  .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   /* The LAST RUN cell's label, chip+reason line and meta stack as one column
    * so a long reason never overlaps the chip; the chip holds its width and the
    * reason wraps inside the cell instead of ellipsizing. */
