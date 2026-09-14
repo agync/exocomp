@@ -2102,8 +2102,14 @@ body { overflow-x: clip; }
    * safe-area inset keeps the sticky footer off a notched screen's home
    * indicator. */
   .modal.drawer { inset: 0 0 36px auto; height: auto; }
-  .modal.drawer .modal-body { padding-bottom: calc(24px + env(safe-area-inset-bottom)); }
-  .modal.drawer .drawer-foot { position: sticky; bottom: calc(env(safe-area-inset-bottom)); margin-top: 10px; padding-top: 8px; background: var(--surface-card); }
+  .modal.drawer .modal-body { padding-bottom: 0; }
+  /* The Queue run primary is the drawer's sticky footer: pinned to the panel
+   * bottom so the long form scrolls under it and the verb never scrolls below
+   * the panel (or under the 36px powerline foot). The safe-area inset pads it
+   * off a notched home indicator. */
+  .modal.drawer .drawer-actions { position: sticky; bottom: 0; z-index: 1; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card); border-top: 1px solid var(--hairline-faint); }
+  .modal.drawer .drawer-actions .actions { margin-top: 0; }
+  .modal.drawer .drawer-foot { margin-top: 8px; }
   /* The drawer's bare inputs keep the standard control height whether empty or
    * filled — the global writeform min-height overreaches inside the long form. */
   .modal.drawer .writeform input { height: var(--row-h); min-height: var(--row-h); }
@@ -2185,3 +2191,20 @@ body { overflow-x: clip; }
 /* Desktop-only small: the row meta line's <small> renders at body ink on the
  * desktop row and is dropped by the phone stacked rows (lift.css §4). */
 .jobs-row .cell small, .queue-row .cell small { font: var(--type-log); color: var(--ink-500); }
+
+/* The queue card's base grid block above is authored after the 719 block, so
+ * its equal-specificity `display:grid` on `.queue-row` and `display:contents`
+ * on `.queue-row .line` win on phone and the two-line form never applies (the
+ * recent row's playbook cell collapses and its clock lays out past the
+ * viewport). Re-assert the stacked flex row and its lines here, after the base
+ * block. */
+@media (max-width: 719px) {
+  .queue-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; height: auto; padding: 11px 12px; }
+  .queue-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
+  /* The LAST RUN cell's label, chip+reason line and meta stack as one column
+   * so a long reason never overlaps the chip; the chip holds its width and the
+   * reason wraps inside the cell instead of ellipsizing. */
+  .tablewrap.stackable .bk-lastrun { flex-direction: column; align-items: stretch; gap: 6px; }
+  .bk-lastrun .lr-line .chip { flex: none; }
+  .bk-lastrun .lr-line .lr-text { flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+}

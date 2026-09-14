@@ -177,10 +177,12 @@ templ sourceDetail(vm sourceDetailVM) {
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
-							<div class="actions">
-								<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+							<div class="drawer-actions">
+								<div class="actions">
+									<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+								</div>
+								<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
 							</div>
-							<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
@@ -200,10 +202,12 @@ templ sourceDetail(vm sourceDetailVM) {
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
-							<div class="actions">
-								<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+							<div class="drawer-actions">
+								<div class="actions">
+									<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+								</div>
+								<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 							</div>
-							<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 						</form>
 					</div>
 					<script>
