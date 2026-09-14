@@ -31,7 +31,7 @@ func TestPowerlineSignalSegments(t *testing.T) {
 		t.Fatalf("dashboard status = %d", code)
 	}
 	for _, want := range []string{
-		`class="pl-seg wait"`,
+		`class="pl-seg pl-first wait"`,
 		`dead-man none`,
 		`class="pl-seg dim"`,
 		`ntfy off`,
