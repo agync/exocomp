@@ -6,6 +6,27 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the phone job surfaces tighten
+
+- **The jobs list row reads `#id · title` left with the chip right.** The number
+  and title sat apart on phone; line 1 now joins them (`#id ·` in the number
+  slot, the title ellipsizing beside it) and the state chip pins to the right
+  edge. The row's line-2 meta drops a bare `exit 1` — the FAILED chip already
+  says it — while a reason with a cause (`exit 4 · 2 hosts unreachable`) stays.
+  The card's redundant "All jobs" heading is gone (the title lives in the bar).
+- **The job detail bar gets a real back chevron.** The slot rendered a
+  double-slash SVG that inherited the link purple; it is now a joined chevron in
+  ink. The run card drops its kind chip when it repeats the title (a backup
+  job's `backup`), keeping it when the tool is a real distinction (`ansible`).
+- **The job log wraps by default on phone and shares one gutter.** The 719 block
+  now sets `pre-wrap` (the round-2 capture read raw only because it was
+  fine-pointer), so the `.wrap` toggle is the raw state; the log lines take one
+  clock column (60px phone, 70px desktop) from CSS instead of a 70px inline that
+  dead-lettered the phone rule.
+- **A single-tile run configuration collapses to one line.** A run whose config
+  is just `Tolerate unreachable · off` reads as one 12px mono line under the
+  queued-by sentence; a multi-tile playbook run keeps the tile grid.
+
 ## 2026-09-14 — the phone read surfaces tighten
 
 - **The dashboard insecure banner stacks.** At 390px its kicker and sentence
