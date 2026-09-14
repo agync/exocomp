@@ -1550,3 +1550,33 @@ func TestJobDetailOutputWrapDefaultPointerIndependent(t *testing.T) {
 		t.Error("the redundant coarse wrap block must be gone; the 719 default is enough")
 	}
 }
+
+// TestJobDetailHostRecapWraps is the m108 gate for the verdict band's HOST
+// table RECAP. Desktop: the base rule ellipsizes the recap, which needs a
+// shrinkable grid track — a bare `1fr` keeps `min-width: auto`, so the column
+// widens to the nowrap content and the ellipsis never fires. Phone: the row
+// stacks and the recap owns a full-width line 2, so the 719 block must reset
+// the base `white-space: nowrap` or the long recap overflows the row. The
+// mutations — reverting either grid to `1fr`, or dropping the 719
+// `white-space: normal` reset — red this test.
+func TestJobDetailHostRecapWraps(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+
+	if got := strings.Count(app, "grid-template-columns: 150px 120px minmax(0, 1fr);"); got != 2 {
+		t.Errorf("host-table head+row grids must both use minmax(0, 1fr), found %d", got)
+	}
+	if strings.Contains(app, "grid-template-columns: 150px 120px 1fr;") {
+		t.Error("host-table grid still uses a bare 1fr (min-width:auto overflows the recap)")
+	}
+	if !strings.Contains(app, ".host-table .row .recap { color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }") {
+		t.Error("the desktop recap must keep nowrap+ellipsis")
+	}
+	if !strings.Contains(app, ".host-table .row .recap { font-size: 11.5px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }") {
+		t.Error("the 719 recap rule must reset nowrap so the full-width line wraps")
+	}
+}
