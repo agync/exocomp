@@ -185,13 +185,17 @@ func TestDashboardApprovalsCardCalm(t *testing.T) {
 	for _, want := range []string{
 		`<a class="tile" href="/approvals">`,
 		"none waiting",
-		`idle`,
 		`○ QUEUE IDLE`,
 		`Nothing queued, nothing running. Every run — manual, scheduled, reactive — lands here first.`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing approvals count marker %q", want)
 		}
+	}
+	// The queue's idle fact is the card's own "○ QUEUE IDLE" line; the section
+	// label never floats a bare "idle" word above the card (review P1).
+	if strings.Contains(page, `<span>idle</span>`) {
+		t.Error("queue section label still floats the bare idle word above the card")
 	}
 	if strings.Contains(page, "In the queue") || strings.Contains(page, "all jobs →") {
 		t.Error("dashboard queue label still carries the heading or all-jobs link (N1)")
@@ -634,6 +638,71 @@ func TestDashboardQueueRecentRunsIdle(t *testing.T) {
 	}
 	if strings.Contains(page, "○ QUEUE IDLE") == false {
 		t.Error("idle queue must render the queue-idle line")
+	}
+}
+
+// TestDashboardQueueRowTwoLine pins the queue card's phone row form (review
+// P1): every queue row carries the two .line wrappers the 719 block stacks —
+// line 1 the playbook/name cell with the state chip, line 2 the qmeta/qtime
+// phone nodes — so the five desktop cells never pile up on phone. The harness
+// cannot switch viewports, so the guard pins the markup the phone CSS consumes.
+func TestDashboardQueueRowTwoLine(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	running, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "live-job", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/sleep", "30"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue live job: %v", err)
+	}
+	h.waitJobState(t, running.ID, store.StateRunning, 3*time.Second)
+
+	var newestFail int64
+	for _, runbook := range []string{"older-fail", "recent-fail"} {
+		j, err := h.queue.Enqueue(ctx, queue.Spec{
+			Runbook: runbook, Kind: "shell", Trigger: "manual",
+			Argv: []string{"/bin/sh", "-c", "exit 1"},
+		})
+		if err != nil {
+			t.Fatalf("enqueue failing run %s: %v", runbook, err)
+		}
+		h.waitJobState(t, j.ID, store.StateFailed, 3*time.Second)
+		newestFail = j.ID
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+
+	// Active row: the two-line convention's first .line opens the row link.
+	if !strings.Contains(page, `<a class="jobs-row queue-row" href="/jobs/`+itoa64(running.ID)+`"><span class="line">`) {
+		t.Error("active queue row is missing the .line wrapper the phone two-line form needs")
+	}
+	// Recent rows: each is two .line rows (playbook · chip over meta · time).
+	if n := strings.Count(page, `<div class="queue-row"><span class="line">`); n != 2 {
+		t.Errorf("queue recent rows render %d first-lines, want 2:\n%s", n, page)
+	}
+	// The state chip lives in its own cell on the first line.
+	if !strings.Contains(page, `<a class="cell cell--state" href="/jobs/`+itoa64(newestFail)+`">`) {
+		t.Error("recent row missing the chip cell that line 1 carries")
+	}
+	// The qmeta/qtime phone nodes are the second line's meta cells.
+	if n := strings.Count(page, `<a class="cell cell--qmeta" href="/jobs/`); n != 2 {
+		t.Errorf("recent rows render %d qmeta cells, want 2:\n%s", n, page)
+	}
+	if n := strings.Count(page, `<a class="cell cell--qtime" href="/jobs/`); n != 2 {
+		t.Errorf("recent rows render %d qtime cells, want 2:\n%s", n, page)
+	}
+	// The qmeta carries the settled "#id · reason" fact for the newest row.
+	if !strings.Contains(page, `<span class="qmeta">#`+itoa64(newestFail)+` · `) {
+		t.Error("recent row qmeta is missing the #id · reason fact")
 	}
 }
 

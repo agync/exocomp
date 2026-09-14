@@ -604,6 +604,63 @@ func TestJobsListReasonLines(t *testing.T) {
 	}
 }
 
+// TestJobsRowPhoneTwoLine pins the jobs list row's phone form (review P2 / SPEC
+// §2.3): line 1 is # · title · chip and line 2 is the flat mono-12 ink-500 meta
+// TriggerMeta · Source · Age · Duration in its own .cell--meta node the 719
+// block shows. The operator is folded into TriggerMeta — there is no standalone
+// operator field on the row. The harness cannot switch viewports, so the guard
+// pins the markup the phone CSS consumes.
+func TestJobsRowPhoneTwoLine(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	// A source-bound, finished run: line 2 carries all four meta pieces.
+	job := seedJobWithRecap(t, h, store.StateSucceeded, 0, []string{
+		"ok: [node0] => changed=0",
+		"PLAY RECAP",
+		"node0 : ok=1 changed=0 unreachable=0 failed=0 skipped=0",
+	}, []string{}, store.JobArgs{Argv: []string{"/bin/true", "deploy/site.yml"}, Source: "tree"})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+
+	// Line 1: # · title · chip, in the first .line.
+	for _, want := range []string{
+		`<span class="line"><span class="num">` + itoa64(job.ID) + `</span>`,
+		`<b class="mono">deploy/site.yml</b>`,
+		`<span class="cell cell--state">`,
+		`<span class="cell cell--state"><span class="chip`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("jobs row line 1 missing %q", want)
+		}
+	}
+
+	// Line 2: the flat mono meta node — TriggerMeta · Source · Age · Duration —
+	// with the operator folded into TriggerMeta, never a standalone field.
+	metaOpen := `<span class="cell cell--meta"><span class="qmeta">`
+	idx := strings.Index(body, metaOpen)
+	if idx < 0 {
+		t.Fatal("jobs row missing the line-2 .cell--meta qmeta node")
+	}
+	meta := body[idx+len(metaOpen):]
+	if end := strings.Index(meta, "</span>"); end >= 0 {
+		meta = meta[:end]
+	}
+	if !strings.HasPrefix(meta, "cli · operator · tree · ") {
+		t.Errorf("line-2 meta must lead TriggerMeta · Source, got %q", meta)
+	}
+	// Four pieces join with three separators on top of the one inside
+	// TriggerMeta itself ("web · operator").
+	if n := strings.Count(meta, " · "); n != 4 {
+		t.Errorf("line-2 meta must join TriggerMeta · Source · Age · Duration, got %d joins in %q", n, meta)
+	}
+	if strings.Contains(body, `<span class="operator">`) {
+		t.Error("jobs row renders a standalone operator field; it is folded into TriggerMeta")
+	}
+}
+
 // TestJobDetailFlashCleared is J3 + the flash-posture change: the write routes
 // flash to /jobs/{id} via a server-set cookie, the job's own page drops the
 // banner (handleJobDetail clears it at the render seam), and a ?flash= URL
