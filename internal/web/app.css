@@ -1587,12 +1587,12 @@ body { overflow-x: clip; }
 .verdict-band .sentence { font: var(--type-body); color: var(--ink-200); }
 .host-table { background: var(--surface-void); border-radius: var(--radius-control); padding: var(--tray-inset); }
 .host-table .head {
-  display: grid; grid-template-columns: 150px 120px 1fr; gap: var(--gap-cell);
+  display: grid; grid-template-columns: 150px 120px minmax(0, 1fr); gap: var(--gap-cell);
   align-items: center; height: 30px; padding: 0 12px;
   font: 600 10.5px var(--font-mono); letter-spacing: .8px; color: var(--ink-600);
 }
 .host-table .row {
-  display: grid; grid-template-columns: 150px 120px 1fr; gap: var(--gap-cell);
+  display: grid; grid-template-columns: 150px 120px minmax(0, 1fr); gap: var(--gap-cell);
   align-items: center; height: 40px; padding: 0 12px; font: var(--type-log);
 }
 /* The row's first line (name + result) re-flows into the first two grid
@@ -2104,7 +2104,7 @@ body { overflow-x: clip; }
   .host-table .head { display: flex; justify-content: space-between; padding: 0 10px; }
   .host-table .row { display: flex; flex-direction: column; gap: 3px; height: auto; min-height: var(--row-h); padding: 9px 10px; }
   .host-table .row .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .host-table .row .recap { font-size: 11.5px; overflow-wrap: anywhere; }
+  .host-table .row .recap { font-size: 11.5px; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 
   /* P3: the doctor self-check rows stack on phone — name · chip on line 1,
    * the detail full width on line 2 wrapping anywhere (the desktop detail
