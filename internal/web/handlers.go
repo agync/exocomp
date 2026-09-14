@@ -247,7 +247,10 @@ func (s *Server) handleDeadman(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) deadmanVMFor(r *http.Request) (viewDeadmanVM, error) {
-	vm := viewDeadmanVM{Page: s.pageFor(r, "System · Dead-man", "system")}
+	// P10: the bar carries the ONE-line leg title and a back chevron to
+	// /system (the phone bar reads the leg name, never "System · Dead-man").
+	vm := viewDeadmanVM{Page: s.pageFor(r, "Dead-man", "system")}
+	vm.Page.BackHref = s.url("/system")
 	vm.Page.Meta = "last good backup age vs the trip threshold"
 	vm.Deadman = s.deadmanVM(r)
 	return vm, nil
@@ -1102,6 +1105,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	vm := eventsVM{
 		Page:    s.pageFor(r, "Events", "events"),
 		Funnel:  funnel,
+		Ledger:  ledger,
 		Source:  source,
 		Outcome: outcome,
 		Empty:   ledger.Total() == 0,

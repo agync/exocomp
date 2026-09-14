@@ -105,19 +105,27 @@ templ systemPage(vm systemVM) {
 		<div class="sys-phone">
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")) }>
 				<span class="name">Dead-man</span>
-				<span class="meta">—</span>
+				<span class="meta">{ vm.Deadman.Figure }</span>
+				@chip(vm.Deadman.StateClass, vm.Deadman.StateWord)
+				<span class="leg-chev" aria-hidden="true">›</span>
 			</a>
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy")) }>
 				<span class="name">ntfy</span>
-				<span class="meta">—</span>
+				<span class="meta">{ vm.Ntfy.Figure() }</span>
+				@chip(vm.Ntfy.ChipClass(), vm.Ntfy.Word())
+				<span class="leg-chev" aria-hidden="true">›</span>
 			</a>
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream")) }>
 				<span class="name">Litestream</span>
-				<span class="meta">—</span>
+				<span class="meta">{ vm.Litestream.Figure }</span>
+				@chip(vm.Litestream.StateClass, vm.Litestream.State)
+				<span class="leg-chev" aria-hidden="true">›</span>
 			</a>
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/backups")) }>
 				<span class="name">Backups</span>
-				<span class="meta">—</span>
+				<span class="meta">{ vm.BackupsAge }</span>
+				@chip(backupsCardChipClass(vm.Backups), backupsCardChipWord(vm.Backups))
+				<span class="leg-chev" aria-hidden="true">›</span>
 			</a>
 		</div>
 	}

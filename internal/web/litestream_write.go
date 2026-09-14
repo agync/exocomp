@@ -35,13 +35,15 @@ const (
 
 // litestreamPageVMFor builds the /system/litestream surface: the full-width
 // card, the ▾ config view, and the Set-target form holding the stored target
-// and ack.
+// and ack. P10: the bar carries the ONE-line leg title and a back chevron to
+// /system (the phone bar reads the leg name, never "System · Litestream").
 func (s *Server) litestreamPageVMFor(r *http.Request) litestreamPageVM {
 	vm := litestreamPageVM{
-		Page: s.pageFor(r, "System · Litestream", "system"),
+		Page: s.pageFor(r, "Litestream", "system"),
 		LS:   s.litestreamVM(r.Context()),
 		Form: s.litestreamFormAtRest(r.Context()),
 	}
+	vm.Page.BackHref = s.url("/system")
 	vm.Page.Meta = litestreamPageMeta
 	return vm
 }
@@ -106,10 +108,11 @@ func (s *Server) handleLitestreamSetTarget(w http.ResponseWriter, r *http.Reques
 // refused form, so the field refusals and the typed target survive JS-off.
 func (s *Server) litestreamRefusal(w http.ResponseWriter, r *http.Request, form *litestreamFormVM) {
 	vm := litestreamPageVM{
-		Page: s.pageFor(r, "System · Litestream", "system"),
+		Page: s.pageFor(r, "Litestream", "system"),
 		LS:   s.litestreamVM(r.Context()),
 		Form: *form,
 	}
+	vm.Page.BackHref = s.url("/system")
 	vm.Page.Meta = litestreamPageMeta
 	s.render(w, r, http.StatusUnprocessableEntity, litestreamPage(vm))
 }

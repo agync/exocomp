@@ -112,10 +112,15 @@
 /* phone leg rows */
 .sys-phone { display:flex; flex-direction:column; gap:var(--gap-card); }
 @media (min-width:721px) { .sys-phone { display:none; } }
-.leg-row { background:var(--surface-card); border-radius:var(--radius-card); padding:14px 16px;
-  display:grid; grid-template-columns:minmax(0,1fr) auto; gap:4px 12px; align-items:center; color:inherit; }
-.leg-row .name { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
-.leg-row .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
+.leg-row { background:var(--surface-card); border-radius:var(--radius-card); padding:8px 16px;
+  display:grid; grid-template-columns:minmax(0,1fr) auto auto; grid-template-areas:"name chip chev" "meta chip chev";
+  gap:2px 12px; align-items:center; min-height:56px; color:inherit; text-decoration:none; }
+.leg-row:hover { background:var(--surface-tray); }
+.leg-row .name { grid-area:name; font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
+.leg-row .meta { grid-area:meta; font:400 12px/1.4 var(--font-mono); color:var(--ink-500);
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.leg-row .chip { grid-area:chip; justify-self:end; }
+.leg-row .leg-chev { grid-area:chev; color:var(--ink-400); font-size:16px; line-height:1; }
 
 /* doctor job findings card (A1): one row per subsystem finding */
 .doctor-findings { padding:18px 22px; }
@@ -336,3 +341,11 @@
   border:1px solid var(--hairline); font:400 12px/1.6 var(--font-mono); color:var(--ink-200);
   overflow:auto; tab-size:4; white-space:pre; }
 .ls-config .empty { font:400 13px/1.4 var(--font-mono); color:var(--ink-500); }
+
+/* P10: on the leg pages the facts wrap on phone — an ellipsized sealed
+ * heartbeat URL must not truncate the value the operator needs to read. This
+ * rule comes AFTER the base .ellipsis rule above, so it wins in the cascade
+ * when the media query is active. */
+@media (max-width:720px) {
+  .leg-facts dd.ellipsis { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+}

@@ -860,6 +860,16 @@ func (n ntfyCardVM) Word() string {
 	}
 }
 
+// Figure is the leg's one-line figure the phone row shows: the topic label
+// when a channel is configured (ON/REFUSED), the dash otherwise — the same
+// value the card's leg-figure renders.
+func (n ntfyCardVM) Figure() string {
+	if (n.State == NtfyStateOn || n.State == NtfyStateRefused) && n.TopicLabel != "" {
+		return n.TopicLabel
+	}
+	return "—"
+}
+
 // ntfyTestStatus is the drawer's Test-verb status line: Class "ok" or "fail",
 // and the message copy. Msg carries the whole ok line ("test delivered ·
 // 12:24:51 · exocomp-7f3a") or the failure sentence ("the server refused the
@@ -3292,11 +3302,14 @@ var outcomeOrder = []string{"ignored", "matched", "suppressed", "gated", "fired"
 // of received alerts with the stored payload and evaluation trace inline.
 // Source is the active source split ("" all · "checks" · "alerts"); Outcome
 // the active chip ("" none or one of the six). Chips count the rows in view
-// per split and outcome; Funnel is the 24h window the footer reads. Empty
-// hides the tray (the W5 copy) — the filter row stays, the enum never hides.
+// per split and outcome; Funnel is the 24h window the funnel card reads;
+// Ledger counts every stored event the tray's rows come from, so the footer's
+// "of {count}" never disagrees with the rows on screen. Empty hides the tray
+// (the W5 copy) — the filter row stays, the enum never hides.
 type eventsVM struct {
 	Page    page
 	Funnel  store.EventOutcomeCounts
+	Ledger  store.EventOutcomeCounts
 	Rows    []eventRow
 	Chips   eventsChips
 	Source  string
@@ -3330,9 +3343,8 @@ func (vm eventsVM) ChipCount(key string) int {
 	return 0
 }
 
-// FunnelCount is the last-24h count of one outcome — the footer's "{count}
-// {outcome}", from the same windowed funnel the card renders, never the tray
-// rows.
+// FunnelCount is the last-24h count of one outcome — the funnel card's
+// "{count} {outcome}", from the same windowed funnel it renders.
 func (vm eventsVM) FunnelCount(o string) int {
 	switch o {
 	case "ignored":
@@ -3351,13 +3363,35 @@ func (vm eventsVM) FunnelCount(o string) int {
 	return 0
 }
 
-// FooterCount is the footer's "of {count}" number: the active outcome's
-// last-24h count, or the whole funnel when no outcome is filtered.
+// FooterCount is the footer's "of {count}" number: the active outcome's count
+// in the all-events ledger, or the whole ledger when no outcome is filtered.
+// The tray rows come from ListEvents, which has NO time window — so the count
+// must come from the same un-windowed ledger, never the 24h funnel card, or a
+// store with only old events would read "showing latest 3 of 0".
 func (vm eventsVM) FooterCount() int {
 	if vm.Outcome != "" {
-		return vm.FunnelCount(vm.Outcome)
+		return ledgerCount(vm.Ledger, vm.Outcome)
 	}
-	return vm.Funnel.Total()
+	return vm.Ledger.Total()
+}
+
+// ledgerCount is one outcome's count in an all-events tally.
+func ledgerCount(c store.EventOutcomeCounts, o string) int {
+	switch o {
+	case "ignored":
+		return c.Ignored
+	case "matched":
+		return c.Matched
+	case "suppressed":
+		return c.Suppressed
+	case "gated":
+		return c.Gated
+	case "fired":
+		return c.Fired
+	case "error":
+		return c.Error
+	}
+	return 0
 }
 
 // SourceHref is the href a source segment carries: the segment's own source
