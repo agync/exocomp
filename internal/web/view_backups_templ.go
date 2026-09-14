@@ -83,7 +83,7 @@ func backupsList(vm backupsVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if vm.Operator {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"sys-bk-verbs\"><button type=\"button\" class=\"btn danger ring\" data-modal-open=\"restore-backups\">Restore</button> <button type=\"button\" class=\"btn quiet\" data-modal-open=\"backups-add\">Add target</button></span>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 3, "<span class=\"sys-bk-verbs page-actions\"><button type=\"button\" class=\"btn danger ring\" data-modal-open=\"restore-backups\">Restore</button> <button type=\"button\" class=\"btn primary\" data-modal-open=\"backups-add\">Add target</button></span>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -493,7 +493,7 @@ func backupsList(vm backupsVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div><p class=\"sys-bk-footer\"><span>▾ holds: history · edit retention · disable · drill now · ─ · remove asks first</span> <span class=\"right\">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span></p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "</div><p class=\"sys-bk-footer\"><span>▾ holds: history · edit retention · disable · drill now · remove asks first</span> <span class=\"right\">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span></p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

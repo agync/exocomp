@@ -26,9 +26,9 @@ templ backupsList(vm backupsVM) {
 		<section class="sys-bkbar">
 			<span class="sys-bk-meta">System / Backups · { targetCountLabel(len(vm.Targets)) } · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
 			if vm.Operator {
-				<span class="sys-bk-verbs">
+				<span class="sys-bk-verbs page-actions">
 					<button type="button" class="btn danger ring" data-modal-open="restore-backups">Restore</button>
-					<button type="button" class="btn quiet" data-modal-open="backups-add">Add target</button>
+					<button type="button" class="btn primary" data-modal-open="backups-add">Add target</button>
 				</span>
 			}
 		</section>
@@ -123,7 +123,7 @@ templ backupsList(vm backupsVM) {
 			}
 		</div>
 		<p class="sys-bk-footer">
-			<span>▾ holds: history · edit retention · disable · drill now · ─ · remove asks first</span>
+			<span>▾ holds: history · edit retention · disable · drill now · remove asks first</span>
 			<span class="right">freshness ok &lt; 24h · wait &lt; 48h · fail · same as exocomp backup list</span>
 		</p>
 
