@@ -6,6 +6,39 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the remaining pages get the phone form
+
+- **Events rows dedup and the footer count reads the row population.** A row
+  whose source equals its matched rule (a `job-outcome` event matched by a rule
+  of the same name) prints the value once on the phone line 2 — `source → rule`
+  — instead of `job-outcome → job-outcome`. The footer's `showing latest {n} of
+  {m}` now reads the same un-windowed ledger the tray rows come from, so a
+  store whose events all predate the 24h funnel stops reading "3 of 0". The
+  phone row re-flows to alert · received clock · outcome chip on line 1 and the
+  source → rule pair on line 2; the source switch is 44px and the outcome chips
+  32px mono 12.
+- **The system phone leg rows surface real state.** Each `.leg-row` now shows
+  the leg's figure, its state chip (NONE/ARMED/TRIPPED, ON/REFUSED/OFF,
+  REPLICATING…, backups OK/NONE) and a `›` at 56px tappable, instead of the
+  hardcoded `—` stub.
+- **The leg pages carry one-line titles with a back chevron.** Dead-man and
+  Litestream split their two-part `System · {Leg}` bar title to the one-line
+  leg name with a back chevron to `/system`; the dead-man heartbeat fact wraps
+  under its key on phone instead of ellipsizing a sealed URL.
+- **The litestream Set-target form stacks on phone.** The `Replica target`
+  heading reads over its meta sentence, the encryption checkbox row is a 44px
+  tap target across its label, and the form card carries the bottom padding
+  that clears the powerline foot.
+- **The launch drawer sits above the powerline with a sticky footer.** Its
+  full-viewport height no longer hides the phone signals — it ends above the
+  36px foot, the `Esc closes` note is sticky at the drawer's bottom with the
+  safe-area inset, empty inputs keep the standard control height, the leaked
+  `·` before `may end DEGRADED` is gone, and the More disclosure carries a
+  rotating chevron.
+- **Discovered playbooks are tappable rows.** Each playbook is a 44px row with
+  a `›` and a press surface that opens the launcher prefilled, not a bare mono
+  line.
+
 ## 2026-09-14 — the §2 button system lands on phone
 
 - **The app bar holds no filled accent.** Every bar-slot action — the Add
