@@ -1514,3 +1514,37 @@ func TestJobDetailOutputPhone(t *testing.T) {
 		}
 	}
 }
+
+// TestJobDetailOutputCoarseWrapDefault is review P5's coarse-pointer default:
+// on a coarse device (a real phone) the log wraps by default, and the .wrap
+// toggle flips to the raw horizontal-scroll column. The harness cannot
+// evaluate media queries, so the guard pins the coarse block's rule text and
+// its source order — it must come after the 719 block's raw .log rule so it
+// wins the cascade on a coarse phone.
+func TestJobDetailOutputCoarseWrapDefault(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	raw := strings.Index(app, ".log{max-height:60vh;white-space:pre;")
+	coarse := strings.Index(app, "@media (pointer: coarse)")
+	if coarse < 0 {
+		t.Fatal("app.css missing the @media (pointer: coarse) block")
+	}
+	if raw < 0 || coarse <= raw {
+		t.Errorf("the coarse block must come after the 719 raw .log rule (raw %d, coarse %d)", raw, coarse)
+	}
+	block := app[coarse:]
+	for _, want := range []string{
+		`.log { white-space: pre-wrap; }`,
+		`.log .line { white-space: pre-wrap; width: auto; }`,
+		`.log.wrap { white-space: pre; overflow-x: auto; }`,
+		`.log.wrap .line { white-space: pre; width: max-content; }`,
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the coarse block missing the wrap rule %q (P5)", want)
+		}
+	}
+}

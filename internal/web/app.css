@@ -2048,6 +2048,17 @@ body { overflow-x: clip; }
 
 /* Touch devices never need the keyboard hint (R12). */
 @media (pointer: coarse) { .keys-hint { display: none; } }
+/* P5: on a coarse-pointer device (a real phone) the log wraps by default —
+ * the 719 block's raw pre is the wrap toggle's pressed state, not the
+ * default. This block beats the 719 raw rule by coming after it in source
+ * order; the .wrap toggle (raw horizontal scroll, .log.wrap above) is
+ * re-declared here so pressing it still flips to the raw column on coarse. */
+@media (pointer: coarse) {
+  .log { white-space: pre-wrap; }
+  .log .line { white-space: pre-wrap; width: auto; }
+  .log.wrap { white-space: pre; overflow-x: auto; }
+  .log.wrap .line { white-space: pre; width: max-content; }
+}
 
 /* Tablet / half-screen (SPEC §0): the rail is already collapsed to the menu
  * button; the config tiles widen to two columns instead of ellipsizing (R6). */
