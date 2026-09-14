@@ -6,6 +6,24 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the phone read surfaces tighten
+
+- **The dashboard insecure banner stacks.** At 390px its kicker and sentence
+  were two flex columns and the sentence wrapped one word per line with the last
+  line clipped; on phone the kicker takes line 1 (11px mono) and the sentence
+  sits below it, unclipped.
+- **The dashboard queue idle kicker realigns and the row name is ink.** The base
+  queue block is authored after the 719 block, so its `padding: 0 14px` defeated
+  the phone inset — a phone re-assertion aligns the kicker with the rows. The
+  recent row name was accent purple only because its `.cell` is an `<a>`; it now
+  renders in ink like the jobs list.
+- **The events funnel and rows work on phone.** The six `n label` counts read on
+  one line in 12px mono with the proportional bar hidden; a row whose rule is
+  unset no longer prints `source → -`, a rule-unset marker hides the rule cell
+  on phone; the outcome chips stay 32px mono 12.
+- **The secrets card drops a redundant line.** The "All secrets" heading is gone
+  — the kicker and the empty-state sentence already say it.
+
 ## 2026-09-14 — three phone layout defects fixed
 
 - **The launch drawer's Queue run stays above the powerline.** The primary sits
