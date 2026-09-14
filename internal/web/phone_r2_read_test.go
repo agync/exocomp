@@ -130,10 +130,11 @@ func TestPhoneEventsRuleUnsetMarker(t *testing.T) {
 	}
 }
 
-// TestPhoneEventsCountRowOneLine is the R8 gate for the funnel counts: on phone
-// the six `n label` pairs sit on one line in 12px mono and the proportional bar
-// is hidden. The MUTATION — restoring the 3-column grid or the bar — reds this.
-func TestPhoneEventsCountRowOneLine(t *testing.T) {
+// TestPhoneEventsCountRowFits is the R8 gate for the funnel counts: the six
+// `n label` pairs are wider than 390px, so on phone they flow in 12px mono and
+// wrap to fit the card with no horizontal scroll (a list, not a chart). The
+// proportional bar is hidden. The MUTATION — nowrap/grid or the bar — reds this.
+func TestPhoneEventsCountRowFits(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -141,7 +142,7 @@ func TestPhoneEventsCountRowOneLine(t *testing.T) {
 
 	app := cssOf(t, h, ts, client, "app.css")
 	for _, want := range []string{
-		".funnel .counts { display: flex; flex-wrap: nowrap; align-items: baseline; gap: 12px; overflow-x: auto; }",
+		".funnel .counts { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 14px; }",
 		".funnel .counts b { font: 500 12px/1 var(--font-mono); display: inline; }",
 		".funnel .counts small { font: 400 12px var(--font-mono); }",
 		".funnel .bar { display: none; }",
