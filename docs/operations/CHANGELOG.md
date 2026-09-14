@@ -10,13 +10,15 @@ Newest first.
 
 - **The dashboard insecure banner stacks.** At 390px its kicker and sentence
   were two flex columns and the sentence wrapped one word per line with the last
-  line clipped; on phone the kicker takes line 1 (11px mono) and the sentence
-  sits below it, unclipped.
+  line clipped; the wrap's real cause was the TLS verb carrying the global 34px
+  glyph-button `.verb` shape. On phone the kicker takes line 1 (11px mono), the
+  sentence sits below it, and the verb is a plain text link — unclipped.
 - **The dashboard queue idle kicker realigns and the row name is ink.** The base
   queue block is authored after the 719 block, so its `padding: 0 14px` defeated
-  the phone inset — a phone re-assertion aligns the kicker with the rows. The
-  recent row name was accent purple only because its `.cell` is an `<a>`; it now
-  renders in ink like the jobs list.
+  the phone inset — a phone re-assertion aligns the kicker with the rows, and
+  the LAST RUNS rule drops its 14px base inset to the same 12px. The recent row
+  name was accent purple only because its `.cell` is an `<a>`; it now renders in
+  ink like the jobs list.
 - **The events funnel and rows work on phone.** The six `n label` counts read on
   one line in 12px mono with the proportional bar hidden; a row whose rule is
   unset no longer prints `source → -`, a rule-unset marker hides the rule cell
