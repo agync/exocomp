@@ -16,11 +16,12 @@ Newest first.
 - **The stray `idle` word above the queue card is gone.** When the queue is
   idle the section label renders nothing — the card's own `○ QUEUE IDLE` line
   is the statement, so a bare word never floats above the card.
-- **The jobs list rows carry a flat mono meta line on phone.** Line 1 is
-  `#id · title · chip`; line 2 is the mono-12
-  `TriggerMeta · Source · ran · duration` meta (the operator folds into
-  `TriggerMeta`, never a standalone field), replacing the stacked desktop
-  trigger/ran cells.
+- **The jobs list rows carry a flat mono meta line on phone.** Line 1 is the
+  one-row `#id · title · chip` (the name ellipsizes with the chip pinned
+  right; the reason never joins it); line 2 is the mono-12
+  `TriggerMeta · Source · ran · duration` meta with the FAILED/DEGRADED reason
+  appended last (the operator folds into `TriggerMeta`, never a standalone
+  field), replacing the stacked desktop trigger/ran cells.
 
 ## 2026-09-13 — the drill's outcome is structured
 
