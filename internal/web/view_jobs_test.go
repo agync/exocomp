@@ -739,9 +739,11 @@ func TestJobsRowPhoneLineOne(t *testing.T) {
 	// ellipsizes, chip pins right, the desktop state-cell reason drops.
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
-		`.jobs-row:not(.queue-row) .line:first-child .cell { flex: 1 1 auto; min-width: 0; }`,
+		`.jobs-row:not(.queue-row) .line:first-child { justify-content: flex-start; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .num::after { content: " ·"; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .cell { flex: 0 1 auto; min-width: 0; }`,
 		`.jobs-row:not(.queue-row) .line:first-child .cell b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }`,
-		`.jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; }`,
+		`.jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; margin-left: auto; }`,
 		`.jobs-row:not(.queue-row) .line:first-child .cell--state .reason { display: none; }`,
 	} {
 		if !strings.Contains(app, want) {
@@ -1378,7 +1380,7 @@ func TestJobDetailLogPreLines(t *testing.T) {
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
 		`<div id="log" class="log" role="log" aria-live="polite" aria-label="Job log">`,
-		`<span class="line" style="display:grid;grid-template-columns:70px 1fr;column-gap:8px">`,
+		`<span class="line"><span class="ts">`,
 		`<span class="ts">`,
 		`<span class="msg">`,
 		`class="logband fail"`,
@@ -1515,36 +1517,36 @@ func TestJobDetailOutputPhone(t *testing.T) {
 	}
 }
 
-// TestJobDetailOutputCoarseWrapDefault is review P5's coarse-pointer default:
-// on a coarse device (a real phone) the log wraps by default, and the .wrap
-// toggle flips to the raw horizontal-scroll column. The harness cannot
-// evaluate media queries, so the guard pins the coarse block's rule text and
-// its source order — it must come after the 719 block's raw .log rule so it
-// wins the cascade on a coarse phone.
-func TestJobDetailOutputCoarseWrapDefault(t *testing.T) {
+// TestJobDetailOutputWrapDefaultPointerIndependent is review R5's correction:
+// the round-2 capture read raw because it was fine-pointer; the 719 block now
+// wraps by default for every pointer, so the wrap default no longer depends on
+// a coarse-pointer media query. The .wrap toggle is the raw state. The MUTATION
+// — restoring the 719 raw pre — reds this test.
+func TestJobDetailOutputWrapDefaultPointerIndependent(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
-	raw := strings.Index(app, ".log{max-height:60vh;white-space:pre;")
-	coarse := strings.Index(app, "@media (pointer: coarse)")
-	if coarse < 0 {
-		t.Fatal("app.css missing the @media (pointer: coarse) block")
+	if !strings.Contains(app, ".log{max-height:60vh;white-space:pre-wrap; overflow:auto; font-size:12px; }") {
+		t.Error("the 719 log block must wrap by default (pre-wrap), independent of pointer")
 	}
-	if raw < 0 || coarse <= raw {
-		t.Errorf("the coarse block must come after the 719 raw .log rule (raw %d, coarse %d)", raw, coarse)
+	if strings.Contains(app, ".log{max-height:60vh;white-space:pre;") {
+		t.Error("the 719 log block must not keep the raw pre default")
 	}
-	block := app[coarse:]
-	for _, want := range []string{
-		`.log { white-space: pre-wrap; }`,
-		`.log .line { white-space: pre-wrap; width: auto; }`,
-		`.log.wrap { white-space: pre; overflow-x: auto; }`,
-		`.log.wrap .line { white-space: pre; width: max-content; }`,
-	} {
-		if !strings.Contains(block, want) {
-			t.Errorf("the coarse block missing the wrap rule %q (P5)", want)
-		}
+	if !strings.Contains(app, ".log .line { grid-template-columns: 60px 1fr; width: auto;") {
+		t.Error("the 719 log line must wrap (width:auto), not hold max-content")
+	}
+	if !strings.Contains(app, ".log.wrap .line { white-space: pre; width: max-content; }") {
+		t.Error("the .wrap toggle must be the raw state (pre, max-content)")
+	}
+	// The keys-hint coarse rule stays; the now-redundant coarse wrap block does
+	// not (a coarse phone and a fine-pointer phone read the same 719 default).
+	if !strings.Contains(app, "@media (pointer: coarse) { .keys-hint { display: none; } }") {
+		t.Error("the keys-hint coarse rule must stay")
+	}
+	if strings.Contains(app, "@media (pointer: coarse) {\n  .log { white-space: pre-wrap; }") {
+		t.Error("the redundant coarse wrap block must be gone; the 719 default is enough")
 	}
 }
