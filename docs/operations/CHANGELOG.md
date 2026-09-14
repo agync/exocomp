@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the verdict-band host recap wraps
+
+- **The HOST table RECAP wraps on phone instead of overflowing.** The 719 block
+  only added `overflow-wrap: anywhere` to a rule that kept the base
+  `white-space: nowrap`, so a long `ok=2 changed=0 unreachable=0 …` recap could
+  not wrap and ran off the row. The phone rule now resets the nowrap and the
+  full-width line 2 wraps anywhere.
+- **The desktop HOST table truncates instead of overflowing.** The head and row
+  grids used a bare `1fr`, whose `min-width: auto` floor widened the track to
+  the nowrap recap and made the base `text-overflow: ellipsis` dead; both
+  become `minmax(0, 1fr)` so the recap ellipsizes at the column.
+
 ## 2026-09-14 — the phone backups and system surfaces tighten
 
 - **The backups topbar verbs drop to the row scale.** `Restore` and `Add target`
