@@ -8,7 +8,9 @@ import "strings"
 // and the Age piece is the run's FinishedRel clock ("16:31 today"), the fact
 // that reads as an age next to Duration's wall time. The D4 reason (exit code,
 // unreachable tally) appends last: it is the FAILED/DEGRADED row's own fact,
-// and line 1 keeps only id · title · chip — ellipsis eats the reason first.
+// and line 1 keeps only id · title · chip — ellipsis eats the reason first. A
+// bare "exit 1" drops: the FAILED chip already carries it and the exit code 1
+// is the common case, so the line stays a fact, not a restatement.
 func phoneJobMeta(j jobRow) string {
 	parts := []string{j.TriggerMeta}
 	if j.Source != "-" && j.Source != "" {
@@ -18,7 +20,7 @@ func phoneJobMeta(j jobRow) string {
 		parts = append(parts, j.FinishedRel)
 	}
 	parts = append(parts, j.Duration)
-	if j.Reason != "" {
+	if j.Reason != "" && j.Reason != "exit 1" {
 		parts = append(parts, j.Reason)
 	}
 	return strings.Join(parts, " · ")
@@ -34,7 +36,6 @@ templ jobsList(vm dashboardVM) {
 	@layout(vm.Page) {
 		<div class="card span2 mt18 jobslist">
 			<div class="kicker">Run ledger</div>
-			<h3>All jobs</h3>
 			<input id="jobs-filter" type="search" class="filter" autocomplete="off" placeholder="filter" aria-label="Filter jobs"/>
 			if len(vm.Queue) == 0 {
 				<p class="meta">No jobs yet. They appear when a schedule, rule or manual run fires.</p>
@@ -205,7 +206,9 @@ templ runCard(vm jobDetailVM) {
 			if vm.RunCard.DegradedChip != "" {
 				<span class="chip chip--degraded"><span class="dot"></span>{ vm.RunCard.DegradedChip }</span>
 			}
-			<span class="chip dim"><span class="dot"></span>{ vm.RunCard.Tool }</span>
+			if vm.RunCard.Tool != "" && !strings.EqualFold(vm.RunCard.Tool, vm.RunCard.Title) {
+				<span class="chip dim"><span class="dot"></span>{ vm.RunCard.Tool }</span>
+			}
 			if vm.RunCard.CheckMode {
 				<span class="chip dim"><span class="dot"></span>check mode</span>
 			}
@@ -233,12 +236,16 @@ templ runCard(vm jobDetailVM) {
 			</div>
 			<p class="sentence">{ vm.RunCard.Sentence }</p>
 		</div>
-		<div class="kicker">RUN CONFIGURATION</div>
-		<div class="config">
-			for _, t := range vm.RunCard.Tiles {
-				@configTileBox(t)
-			}
-		</div>
+		if len(vm.RunCard.Tiles) == 1 {
+			<p class="config-line">{ vm.RunCard.Tiles[0].Label } · { vm.RunCard.Tiles[0].Value }</p>
+		} else {
+			<div class="kicker">RUN CONFIGURATION</div>
+			<div class="config">
+				for _, t := range vm.RunCard.Tiles {
+					@configTileBox(t)
+				}
+			</div>
+		}
 	</article>
 }
 
@@ -431,11 +438,11 @@ templ rerunDialog(vm jobDetailVM) {
 }
 
 // logLine is one log row: the HH:MM:SS clock in a fixed column and the message
-// beside it. The line is its own grid (60px 1fr) so the clock column never
-// clips; the wrap toggle flips the .log container's .wrap class between the
-// pre-wrap default and the raw horizontal-scroll mode (app.css .log.wrap).
+// beside it. The grid is the base `.log .line` rule (70px desktop, 60px phone);
+// the wrap toggle flips the .log container's .wrap class between the pre-wrap
+// default and the raw horizontal-scroll mode (app.css .log.wrap).
 templ logLine(e eventLine) {
-	<span class={ "line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system") } style="display:grid;grid-template-columns:70px 1fr;column-gap:8px">
+	<span class={ "line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system") }>
 		<span class="ts">{ e.Ts }</span>
 		<span class="msg">{ e.Msg }</span>
 	</span>
@@ -522,8 +529,6 @@ templ jobStream(id int64, since int64, base string) {
 			} else {
 				span = document.createElement("span");
 				span.className = "line" + (d.level === "error" ? " err" : d.level === "system" ? " sys" : "");
-				span.style.display = "grid";
-				span.style.gridTemplateColumns = "60px 1fr";
 				var ts = document.createElement("span");
 				ts.className = "ts";
 				ts.textContent = d.ts.slice(11, 19);

@@ -229,6 +229,9 @@ a:visited { color: var(--accent-text); }
  * for the phone shell and hide here. The wordmark inside the app-bar brandlink
  * is likewise phone-hidden (the mark is the brand). */
 .appbar .hamburger, .appbar .back, .appbar .brandlink { display: none; }
+/* The back chevron is shell chrome, not a link: it must not inherit the
+ * a{color:accent-text} purple (R4). */
+.appbar .back { color: var(--ink-200); }
 
 /* Desktop rail: icon-only. At the top the exocomp brand mark rests in the
  * collapse toggle; hovering or focusing the toggle swaps it for the open
@@ -1555,6 +1558,10 @@ body { overflow-x: clip; }
 }
 .config .tile.is-cause { box-shadow: inset 0 0 0 1px var(--wait-border); }
 .config .tile.wait b { color: var(--signal-wait); }
+/* R6: a run whose config is a single fact reads as one mono line under the
+ * queued-by sentence, never a kicker + 90px of tile air around one key. A
+ * multi-tile run keeps the tile grid. */
+.config-line { font: 400 12px var(--font-mono); color: var(--ink-500); margin-top: 10px; }
 
 /* ---- Verdict band (2.2): FAILED/DEGRADED only ----
  * The band sits in the state tint with the state ring; the keyword line and
@@ -1623,10 +1630,11 @@ body { overflow-x: clip; }
   font: var(--type-button); cursor: pointer;
 }
 .logwrap:hover { color: var(--ink-100); }
-/* The wrap toggle's pressed state (P5): the log wraps by default (pre-wrap
+/* The wrap toggle's pressed state (P5/R5): the log wraps by default (pre-wrap
  * above), so the toggle's real effect is raw mode — no wrapping, horizontal
  * scroll — instead of a dead class against the pre-wrap default. */
 .log.wrap { white-space: pre; overflow-x: auto; }
+.log.wrap .line { white-space: pre; width: max-content; }
 .log.nowrap { white-space: pre; }
 .log .logband { display: block; padding: 2px 10px; margin: 2px 0; border-radius: var(--radius-chip); }
 .log .logband .ts { color: var(--ink-500); user-select: none; margin-right: 6px; }
@@ -2008,14 +2016,18 @@ body { overflow-x: clip; }
    * line 2 is the one flat mono-12 meta cell. The desktop trigger/ran cells
    * hide; their facts are the .cell--meta qmeta line. */
   .jobs-row:not(.queue-row) .line:first-child .cell small { display: none; }
-  /* Line 1 is ONE row at 390px (integrator pass): id · title · chip — the
-   * title cell fills and ellipsizes, the chip pins right (flex: none), and the
+  /* Line 1 is ONE row at 390px (integrator pass + R3): #id · title · chip —
+   * the number reads "#id ·" beside the title (neither floats), the title cell
+   * shrinks and ellipsizes, the chip pins right via margin-left:auto, and the
    * desktop state-cell reason (already the line-2 meta's own fact) drops so
    * the row never wraps or piles up. The reason node stays for the desktop
    * state column. */
-  .jobs-row:not(.queue-row) .line:first-child .cell { flex: 1 1 auto; min-width: 0; }
+  .jobs-row:not(.queue-row) .line:first-child { justify-content: flex-start; }
+  .jobs-row:not(.queue-row) .line:first-child .num::before { content: "#"; }
+  .jobs-row:not(.queue-row) .line:first-child .num::after { content: " ·"; }
+  .jobs-row:not(.queue-row) .line:first-child .cell { flex: 0 1 auto; min-width: 0; }
   .jobs-row:not(.queue-row) .line:first-child .cell b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; }
+  .jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; margin-left: auto; }
   .jobs-row:not(.queue-row) .line:first-child .cell--state .reason { display: none; }
   .jobs-row .line + .line .cell { display: none; }
   .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2081,11 +2093,12 @@ body { overflow-x: clip; }
   .output-head .wrap { height: 36px; box-shadow: inset 0 0 0 1px var(--hairline); }
   .pin { min-width: 0; }
   .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext, .verb-tail .word { display: none; }
-  /* P5: the pane is bounded (max-height:60vh), not a fixed viewport height —
-   * a short log hugs its content, a long one scrolls inside the cap. */
-  .log{max-height:60vh;white-space:pre; overflow:auto; font-size:12px; }
-  .log .line { grid-template-columns: 60px 1fr; width: max-content; min-width: 100%; }
-  .log.wrap .line { white-space: pre-wrap; width: auto; }
+  /* R5: the phone pane wraps by default (the base .log is pre-wrap), so the
+   * log never scrolls sideways on a phone regardless of pointer type; the
+   * .wrap toggle is the raw state. The gutter is one 60px clock column — the
+   * templ no longer inlines a 70px grid that would dead-letter it. */
+  .log{max-height:60vh;white-space:pre-wrap; overflow:auto; font-size:12px; }
+  .log .line { grid-template-columns: 60px 1fr; width: auto; min-width: 100%; }
 
   .funnel { padding: 16px; gap: 12px; }
   /* R8: the six `n label` pairs are wider than the phone card, so they flow
@@ -2128,17 +2141,6 @@ body { overflow-x: clip; }
 
 /* Touch devices never need the keyboard hint (R12). */
 @media (pointer: coarse) { .keys-hint { display: none; } }
-/* P5: on a coarse-pointer device (a real phone) the log wraps by default —
- * the 719 block's raw pre is the wrap toggle's pressed state, not the
- * default. This block beats the 719 raw rule by coming after it in source
- * order; the .wrap toggle (raw horizontal scroll, .log.wrap above) is
- * re-declared here so pressing it still flips to the raw column on coarse. */
-@media (pointer: coarse) {
-  .log { white-space: pre-wrap; }
-  .log .line { white-space: pre-wrap; width: auto; }
-  .log.wrap { white-space: pre; overflow-x: auto; }
-  .log.wrap .line { white-space: pre; width: max-content; }
-}
 
 /* Tablet / half-screen (SPEC §0): the rail is already collapsed to the menu
  * button; the config tiles widen to two columns instead of ellipsizing (R6). */
