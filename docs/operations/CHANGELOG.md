@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-14 — the §2 button system lands on phone
+
+- **The app bar holds no filled accent.** Every bar-slot action — the Add
+  verb (Add secret, Configure, …) and the text actions — is now a 36px ghost:
+  resting transparent, `--surface-control` on press. A page's primary lives
+  in the new content `.page-actions` row (40px at ≥720px, one filled accent,
+  `gap:8px` wrap); the backups topbar's Restore / Add target pair is the
+  first group.
+- **The backups topbar stacks on phone.** The meta sentence reads full width
+  on its own line under the bar instead of a ~140px column beside the
+  buttons; the Restore / Add target verbs become the row-size group with Add
+  target the one filled accent, and the `▾ holds:` footer string no longer
+  bakes a bare `· ─ ·` between drill and remove.
+- **Add secret and Configure sit at the bar's right edge.** They render inside
+  `.appbar-actions` (the `margin-left:auto` slot) as bar-size ghosts, not
+  filled 48px blocks.
+- **The powerline's first segment draws no leading `|`.** The dead-man
+  segment's left separator is dropped, so no stray rule reads before the
+  first signal.
+
 ## 2026-09-14 — the job detail page gets the phone form
 
 - **The doctor self-check rows stack on phone.** The `.doctor-findings`
