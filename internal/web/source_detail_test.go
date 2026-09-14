@@ -830,8 +830,11 @@ func TestSourceLaunchDrawerPhoneFixes(t *testing.T) {
 	if !strings.Contains(page, `<p class="meta">may end <span class="wait-text">DEGRADED</span></p>`) {
 		t.Error("the tolerate meta must read 'may end DEGRADED'")
 	}
-	if !strings.Contains(page, `<summary>More — path, inventory, tags, secrets, run modes <svg class="chev"`) {
+	if !strings.Contains(page, `<summary>More <svg class="chev"`) {
 		t.Error("the More disclosure summary must carry a chevron glyph")
+	}
+	if !strings.Contains(page, `<p class="opts-help">path, inventory, tags, secrets, run modes</p>`) {
+		t.Error("the More contents must move to a 12px helper under the summary")
 	}
 	// P13: the discovered playbook renders as an operator tappable row that
 	// opens the launcher prefilled (launch=1 opens the drawer, playbook=

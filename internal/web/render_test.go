@@ -771,9 +771,11 @@ func TestResponsiveOneBreakpoint(t *testing.T) {
 			t.Errorf("app.css 719 block missing %q", want)
 		}
 	}
-	// F3: the app bar's meta slot stays on phone — its display:none rule must
-	// not be (re)introduced.
-	if strings.Contains(app, ".appbar-meta { display: none; }") {
+	// F3: the app bar's meta slot stays on phone — no global display:none rule
+	// may exist. R11's system-page opt-out is scoped by class and stripped here
+	// so only a global hide reds this.
+	stripped := strings.ReplaceAll(app, ".app.page-system .appbar-meta { display: none; }", "")
+	if strings.Contains(stripped, ".appbar-meta { display: none; }") {
 		t.Error(".appbar-meta must stay visible on phone (F3/SPEC §2.0)")
 	}
 	// R14: the powerline foot is sticky, not the fixed desktop bar.

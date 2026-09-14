@@ -960,7 +960,7 @@ func TestBackupsRowsColumnMap(t *testing.T) {
 	for _, want := range []string{
 		`<td data-label="KIND" class="bk-kind"><span class="bk-cell"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></span></td>`,
 		`<td data-label="RETENTION" class="bk-ret"><span class="bk-cell"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></span></td>`,
-		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></span></td>`,
+		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta bk-add">add one</a></span></td>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("backups row cell missing %q", want)
@@ -1078,7 +1078,7 @@ func TestBackupsRowCellsStayTableCells(t *testing.T) {
 	for _, want := range []string{
 		`<td data-label="KIND" class="bk-kind"><span class="bk-cell"><span class="mono">restic_local</span> <span class="mono uri" title="/var/backups/nas01">/var/backups/nas01</span></span></td>`,
 		`<td data-label="RETENTION" class="bk-ret"><span class="bk-cell"><span class="mono ok">daily 7 · weekly 4</span> <span class="meta">prunes after run</span></span></td>`,
-		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta">add one</a></span></td>`,
+		`<td data-label="SCHEDULE" class="bk-sched"><span class="bk-cell"><span class="meta wait-text">no schedule</span> <a href="/schedules" class="meta bk-add">add one</a></span></td>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("backups row cell missing the .bk-cell wrapper: %q", want)
