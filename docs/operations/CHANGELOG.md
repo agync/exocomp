@@ -19,10 +19,10 @@ Newest first.
   the LAST RUNS rule drops its 14px base inset to the same 12px. The recent row
   name was accent purple only because its `.cell` is an `<a>`; it now renders in
   ink like the jobs list.
-- **The events funnel and rows work on phone.** The six `n label` counts read on
-  one line in 12px mono with the proportional bar hidden; a row whose rule is
-  unset no longer prints `source → -`, a rule-unset marker hides the rule cell
-  on phone; the outcome chips stay 32px mono 12.
+- **The events funnel and rows work on phone.** The six `n label` counts flow
+  and wrap to fit the card in 12px mono with the proportional bar hidden; a row
+  whose rule is unset no longer prints `source → -`, a rule-unset marker hides
+  the rule cell on phone; the outcome chips stay 32px mono 12.
 - **The secrets card drops a redundant line.** The "All secrets" heading is gone
   — the kicker and the empty-state sentence already say it.
 
