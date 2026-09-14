@@ -71,6 +71,12 @@ func TestPhoneQueueIdleKickerRealigned(t *testing.T) {
 	if !strings.Contains(app, ".queue-row .cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; color: var(--ink-100); }") {
 		t.Error("the queue row name cell must be ink, not the a{accent-text} purple")
 	}
+	// The LAST RUNS rule's base 14px inset sits 2px right of the rows' 12px
+	// inset; the phone rule carries the same 12px so kicker, rows and rule
+	// share one left edge.
+	if !strings.Contains(app, ".queue-rule { display: flex; justify-content: space-between; padding: 0 12px; }") {
+		t.Error("the queue rule's phone inset must match the rows and the idle kicker")
+	}
 }
 
 // TestPhoneEventsOutcomeChips pins the R8 outcome-chip rule on phone: 32px,
