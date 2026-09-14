@@ -320,6 +320,7 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
   color: var(--signal-wait);
 }
 .banner.fail .keyword { color: var(--signal-fail); }
+.banner .verb { display: inline; width: auto; height: auto; color: var(--accent-text); }
 .banner .count { color: var(--ink-400); }
 
 /* ---- Cards & grid ----
