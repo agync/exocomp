@@ -843,7 +843,7 @@ func TestSourceLaunchDrawerPhoneFixes(t *testing.T) {
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
 		".modal.drawer { inset: 0 0 36px auto; height: auto; }",
-		".modal.drawer .drawer-foot { position: sticky;",
+		".modal.drawer .drawer-actions { position: sticky;",
 		"env(safe-area-inset-bottom)",
 		".modal.drawer .writeform input { height: var(--row-h); min-height: var(--row-h); }",
 		".playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px;",
@@ -851,6 +851,40 @@ func TestSourceLaunchDrawerPhoneFixes(t *testing.T) {
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing the drawer phone fix %q", want)
+		}
+	}
+}
+
+// TestSourceLaunchDrawerPrimaryStickyFooter pins the drawer primary's phone
+// home: the Queue run button sits inside the `.drawer-actions` footer wrapper
+// the phone CSS pins to the drawer's bottom (sticky, safe-area aware), so at
+// 390px it stays above the 36px powerline foot instead of scrolling below the
+// panel and being clipped by it. Layout is browser-verified; this guard pins
+// the markup and the rule the phone form consumes. The mutation (the primary
+// back in a bare `.actions`, or the sticky rule dropped) reds this test.
+func TestSourceLaunchDrawerPrimaryStickyFooter(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	code, page := getBody(t, client, ts.URL+"/sources/"+name)
+	if code != http.StatusOK {
+		t.Fatalf("/sources/%s = %d", name, code)
+	}
+	if n := strings.Count(page, `<div class="drawer-actions"><div class="actions"><button type="submit" class="btn primary"`); n != 2 {
+		t.Errorf("drawer primary inside the sticky footer: %d occurrences, want 2 (playbook + command)", n)
+	}
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		".modal.drawer .drawer-actions { position: sticky;",
+		"calc(8px + env(safe-area-inset-bottom))",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the drawer sticky footer rule %q", want)
 		}
 	}
 }

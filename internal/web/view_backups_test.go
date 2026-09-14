@@ -500,6 +500,36 @@ func TestBackupRemoveAsksFirst(t *testing.T) {
 	}
 }
 
+// TestBackupsLastRunPhoneGap pins the LAST RUN cell's phone form: the cell
+// stacks its label, chip+reason line and meta instead of squeezing them into
+// one flex row, the chip holds its width so the reason wraps inside the cell,
+// and the reason's nowrap/ellipsis override is lifted so the chip never
+// overlaps it. Layout is browser-verified; this guard pins the rules. The
+// mutation (dropping the stack or the chip's flex:none) reds this test.
+func TestBackupsLastRunPhoneGap(t *testing.T) {
+	h := newHarness(t)
+	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "", true)
+	seedRun(t, h, nas, store.BackupFailed, "", 0, 11*time.Hour)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, page := getBody(t, client, ts.URL+"/system/backups")
+	if !strings.Contains(page, `<span class="lr-line">`) {
+		t.Error("the LAST RUN cell must keep its two-line stack")
+	}
+	app := cssOf(t, h, ts, client, "app.css")
+	for _, want := range []string{
+		".tablewrap.stackable .bk-lastrun { flex-direction: column;",
+		".bk-lastrun .lr-line .chip { flex: none; }",
+		".bk-lastrun .lr-line .lr-text {",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the LAST RUN phone rule %q", want)
+		}
+	}
+}
+
 // TestBackupDrillVerb enqueues a restore-drill job through the one queue, the
 // same kind a kind=drill schedule fire enqueues.
 func TestBackupDrillVerb(t *testing.T) {

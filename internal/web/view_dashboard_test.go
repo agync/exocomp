@@ -706,6 +706,38 @@ func TestDashboardQueueRowTwoLine(t *testing.T) {
 	}
 }
 
+// TestDashboardQueuePhoneFormAppliesAfterBase pins the cascade fix for the
+// queue card's phone row: its base grid block is authored after the 719 block,
+// so equal-specificity `display:grid` on `.queue-row` and `display:contents`
+// on `.queue-row .line` win on phone and the two-line form never applies — the
+// recent row's playbook collapses to 0px and its clock lays out past the
+// viewport. A later phone block re-asserts the stacked flex row and its two
+// lines. Layout is browser-verified; this guard pins the re-assertion. The
+// mutation (display:flex back to grid/contents) reds this test.
+func TestDashboardQueuePhoneFormAppliesAfterBase(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	// The phone re-assertion must come AFTER the base grid block, or the base
+	// rules win on phone by source order at equal specificity.
+	gridAt := strings.Index(app, ".queue-row { display: grid;")
+	flexAt := strings.LastIndex(app, ".queue-row { display: flex; flex-direction: column;")
+	if gridAt < 0 || flexAt < gridAt {
+		t.Error("app.css must re-assert the queue row's phone flex column after the base grid rule")
+	}
+	contentsAt := strings.Index(app, ".queue-row .line { display: contents; }")
+	lineFlexAt := strings.LastIndex(app, ".queue-row .line { display: flex; justify-content: space-between;")
+	if contentsAt < 0 || lineFlexAt < contentsAt {
+		t.Error("app.css must re-assert the queue row lines' phone flex after the base display:contents rule")
+	}
+	if !strings.Contains(app, ".queue-row:not(.jobs-row) .cell--qtime { flex: none; }") {
+		t.Error("app.css must pin the recent row's clock cell as flex:none on phone")
+	}
+}
+
 // TestDashboardQueueRowsCapped pins the queue card's live-row glance ceiling:
 // the rows stop at the cap (queueRowsCap, six today), newest first, while the
 // section label still states the whole active set — the oldest queued age
