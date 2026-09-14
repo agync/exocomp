@@ -2004,9 +2004,10 @@ body { overflow-x: clip; }
   .writeform .checkline { min-height: 44px; }
 
   /* Pre-shipped row/stack contract (SPEC §4, inert until the Wave-2 lanes ship
-   * their markup). */
+   * their markup). align-items:stretch cancels the desktop grid's center so the
+   * stacked lines take the row width (R3: a centred line is the floating row). */
   .jobs-head, .events-head { display: none; }
-  .jobs-row, .queue-row { display: flex; flex-direction: column; gap: 5px; height: auto; padding: 11px 12px; }
+  .jobs-row, .queue-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; height: auto; padding: 11px 12px; }
   .jobs-row .line, .queue-row .line { display: flex; justify-content: space-between; align-items: center; gap: 10px; min-width: 0; }
   .jobs-row .line + .line, .queue-row .line + .line { font: 400 12px var(--font-mono); color: var(--ink-500); font-variant-numeric: tabular-nums; }
   .jobs-row .line > :first-child, .queue-row .line > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2090,7 +2091,9 @@ body { overflow-x: clip; }
 
   .output-head { flex-direction: column; align-items: stretch; gap: 8px; height: auto; padding: 8px 10px 2px; }
   .output-head .controls { display: flex; gap: 8px; }
-  .output-head .wrap { height: 36px; box-shadow: inset 0 0 0 1px var(--hairline); }
+  /* R5/§3: the wrap toggle is a 36px ghost, the same weight as the Raw verb
+   * beside it — no fill, no ring, resting transparent. */
+  .output-head .wrap { height: 36px; background: transparent; border-color: transparent; box-shadow: none; }
   .pin { min-width: 0; }
   .output-bar .meta, .output-bar input[type="search"], .verb-raw .word, .verb-raw .ext, .verb-tail .word { display: none; }
   /* R5: the phone pane wraps by default (the base .log is pre-wrap), so the

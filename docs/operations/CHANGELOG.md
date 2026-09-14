@@ -20,9 +20,10 @@ Newest first.
   job's `backup`), keeping it when the tool is a real distinction (`ansible`).
 - **The job log wraps by default on phone and shares one gutter.** The 719 block
   now sets `pre-wrap` (the round-2 capture read raw only because it was
-  fine-pointer), so the `.wrap` toggle is the raw state; the log lines take one
-  clock column (60px phone, 70px desktop) from CSS instead of a 70px inline that
-  dead-lettered the phone rule.
+  fine-pointer), so the `.wrap` toggle is the raw state and reads as a 36px
+  ghost beside the Raw verb; the log lines take one clock column (60px phone,
+  70px desktop) from CSS instead of a 70px inline that dead-lettered the phone
+  rule.
 - **A single-tile run configuration collapses to one line.** A run whose config
   is just `Tolerate unreachable · off` reads as one 12px mono line under the
   queued-by sentence; a multi-tile playbook run keeps the tile grid.

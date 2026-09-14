@@ -89,6 +89,7 @@ func TestPhoneJobsRowLineOneLeft(t *testing.T) {
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
+		`.jobs-row, .queue-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; height: auto; padding: 11px 12px; }`,
 		`.jobs-row:not(.queue-row) .line:first-child { justify-content: flex-start; }`,
 		`.jobs-row:not(.queue-row) .line:first-child .num::before { content: "#"; }`,
 		`.jobs-row:not(.queue-row) .line:first-child .num::after { content: " ·"; }`,
@@ -244,6 +245,7 @@ func TestPhoneLogWrapDefaultAndGutter(t *testing.T) {
 		`.log{max-height:60vh;white-space:pre-wrap; overflow:auto; font-size:12px; }`,
 		`.log .line { grid-template-columns: 60px 1fr; width: auto; min-width: 100%; }`,
 		`.log.wrap .line { white-space: pre; width: max-content; }`,
+		`.output-head .wrap { height: 36px; background: transparent; border-color: transparent; box-shadow: none; }`,
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing the R5 log rule %q", want)
