@@ -6,7 +6,9 @@ import "strings"
 // TriggerMeta · Source · Age · Duration, empty pieces skipped. The operator is
 // folded into TriggerMeta (viewmodel.go:1885-87) — never a standalone field —
 // and the Age piece is the run's FinishedRel clock ("16:31 today"), the fact
-// that reads as an age next to Duration's wall time.
+// that reads as an age next to Duration's wall time. The D4 reason (exit code,
+// unreachable tally) appends last: it is the FAILED/DEGRADED row's own fact,
+// and line 1 keeps only id · title · chip — ellipsis eats the reason first.
 func phoneJobMeta(j jobRow) string {
 	parts := []string{j.TriggerMeta}
 	if j.Source != "-" && j.Source != "" {
@@ -16,6 +18,9 @@ func phoneJobMeta(j jobRow) string {
 		parts = append(parts, j.FinishedRel)
 	}
 	parts = append(parts, j.Duration)
+	if j.Reason != "" {
+		parts = append(parts, j.Reason)
+	}
 	return strings.Join(parts, " · ")
 }
 

@@ -1947,6 +1947,15 @@ body { overflow-x: clip; }
    * line 2 is the one flat mono-12 meta cell. The desktop trigger/ran cells
    * hide; their facts are the .cell--meta qmeta line. */
   .jobs-row:not(.queue-row) .line:first-child .cell small { display: none; }
+  /* Line 1 is ONE row at 390px (integrator pass): id · title · chip — the
+   * title cell fills and ellipsizes, the chip pins right (flex: none), and the
+   * desktop state-cell reason (already the line-2 meta's own fact) drops so
+   * the row never wraps or piles up. The reason node stays for the desktop
+   * state column. */
+  .jobs-row:not(.queue-row) .line:first-child .cell { flex: 1 1 auto; min-width: 0; }
+  .jobs-row:not(.queue-row) .line:first-child .cell b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; }
+  .jobs-row:not(.queue-row) .line:first-child .cell--state .reason { display: none; }
   .jobs-row .line + .line .cell { display: none; }
   .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   /* Events tray phone (SPEC 1a): the same seven grid cells re-flow into two
