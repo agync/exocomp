@@ -134,16 +134,25 @@ func TestJobDetailNoContentBreadcrumb(t *testing.T) {
 			t.Errorf("job detail still renders the content breadcrumb %q (P6)", gone)
 		}
 	}
-	// The phone block hides the shared breadcrumb (no stray "/") and the app
-	// bar title wrap (the desktop titlebar) so nothing duplicates the bar's
-	// back chevron at 390px.
+	// The phone block hides the shared breadcrumb (the stray "/" separator)
+	// while the page title STAYS in the bar (SPEC §2.0): the job page still
+	// renders the stacked title-wrap, and app.css keeps it display:flex on
+	// phone instead of hiding it with the breadcrumb.
+	for _, want := range []string{
+		`class="appbar-title-wrap">`,
+		`<h1 class="appbar-title">Job #` + itoa(job.ID) + `</h1>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("job detail must keep the app-bar page title %q (SPEC §2.0)", want)
+		}
+	}
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
 		`.breadcrumb { display: none; }`,
-		`.appbar-title-wrap { display: none; }`,
+		`.appbar-title-wrap { display: flex;`,
 	} {
 		if !strings.Contains(app, want) {
-			t.Errorf("app.css missing the phone hide rule %q (P6)", want)
+			t.Errorf("app.css missing the phone rule %q (P6)", want)
 		}
 	}
 }

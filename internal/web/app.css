@@ -1881,12 +1881,11 @@ body { overflow-x: clip; }
   .appbar .brandlink { display: inline-flex; }
   .appbar .brandmark { width: 20px; height: 20px; }
   .appbar .wordmark { display: none; }
-  /* P6: the app bar's stacked title is the desktop titlebar — the back
-   * chevron + brandmark + actions carry the phone bar, and the page content
-   * supplies the context. The breadcrumb component (the in-content "Jobs / #4"
-   * trail and any stray "/" separator) is a duplicate of the chevron on phone
-   * and hides too. */
-  .appbar-title-wrap { display: none; }
+  /* P6: the in-content "Jobs / #4" trail and any stray "/" separator are a
+   * duplicate of the back chevron on phone, so the shared .breadcrumb hides.
+   * The page title STAYS in the bar — SPEC §2.0 requires it (the stacked
+   * title-wrap with its mono-11 sub below the back chevron). */
+  .appbar-title-wrap { display: flex; flex-direction: column; gap: 0; min-width: 0; }
   .breadcrumb { display: none; }
   .appbar .appbar-sub { font: 400 11px var(--font-mono); color: var(--ink-500); }
   .appbar-actions { display: inline-flex; gap: 8px; }
