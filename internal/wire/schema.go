@@ -3,7 +3,6 @@ package wire
 import (
 	"context"
 	"encoding/json"
-	"net/netip"
 	"slices"
 	"time"
 
@@ -798,10 +797,11 @@ func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
 
 // CheckTargetView projects one probe of a check. Status is the sweep's last
 // observation of this target ("" when the sweep has never seen it); Netgroup is
-// the classification of the probed address ("" for an http URL target, "away"
-// when no registered group covers it); LastChange is when that status last
-// changed ("" when the sweep has never seen it). The address is the target's
-// location, so it travels in full.
+// the stored classification of the probed address ("" for an http URL target,
+// "away" when no registered group covered it); DurationMS is how long that
+// probe took; LastChange is when that status last changed ("" when the sweep
+// has never seen it). The address is the target's location, so it travels in
+// full.
 type CheckTargetView struct {
 	Name       string `json:"name"`
 	Address    string `json:"address,omitempty"`
@@ -810,6 +810,7 @@ type CheckTargetView struct {
 	Expect     int    `json:"expect,omitempty"`
 	Status     string `json:"status,omitempty"`
 	Netgroup   string `json:"netgroup,omitempty"`
+	DurationMS int64  `json:"duration_ms,omitempty"`
 	LastChange string `json:"last_change,omitempty"`
 }
 
@@ -824,11 +825,12 @@ type CheckView struct {
 }
 
 // NewCheckList projects checks in store order (by name), joining each target's
-// last observed status and its recency from the sweep's check_state rows and
-// its netgroup classification from the caller's one-pass map. The map is keyed
-// by the target address's canonical (unmapped) string; an http URL target has
-// no address and no netgroup.
-func NewCheckList(rows []store.Check, states map[int64][]store.CheckState, netgroups map[string]string) []CheckView {
+// last observed status, its netgroup classification, its probe duration, and
+// its recency from the sweep's check_state rows. The stored values are
+// authoritative: the sweep classified the address at observation time, so no
+// caller recomputes it, and an http URL target (no address) carries no
+// netgroup.
+func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []CheckView {
 	out := make([]CheckView, 0, len(rows))
 	for _, c := range rows {
 		byName := make(map[string]store.CheckState, len(states[c.ID]))
@@ -843,10 +845,9 @@ func NewCheckList(rows []store.Check, states map[int64][]store.CheckState, netgr
 			}
 			if st, ok := byName[t.Name]; ok {
 				v.Status = st.Status
+				v.Netgroup = st.Netgroup
+				v.DurationMS = st.LastDurationMS
 				v.LastChange = rfc3339(st.LastChange)
-			}
-			if t.Address != "" {
-				v.Netgroup = netgroups[netip.MustParseAddr(t.Address).Unmap().String()]
 			}
 			targets = append(targets, v)
 		}

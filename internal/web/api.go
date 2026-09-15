@@ -3,9 +3,7 @@ package web
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
-	"net/netip"
 	"os"
 	"strconv"
 	"sync"
@@ -625,22 +623,17 @@ func (s *Server) apiNetgroups(w http.ResponseWriter, r *http.Request) {
 	s.apiSuccess(w, wire.KindNetgroupList, wire.NewNetgroupList(rows))
 }
 
-// apiChecks lists checks with each target's last observed status, its netgroup
-// classification, and how long ago that status last changed — the same
-// projection `check list --output json` emits (wire.NewCheckList joins each
-// check's check_state rows and the caller's one-pass netgroup map).
+// apiChecks lists checks with each target's last observed status, its stored
+// netgroup classification, its probe duration, and how long ago that status
+// last changed — the same projection `check list --output json` emits
+// (wire.NewCheckList joins each check's check_state rows; the stored values are
+// authoritative).
 func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.store.ListChecks(r.Context(), false)
 	if err != nil {
 		s.apiFail(w, err)
 		return
 	}
-	groups, err := s.store.ListNetgroups(r.Context())
-	if err != nil {
-		s.apiFail(w, err)
-		return
-	}
-	var addrs []netip.Addr
 	states := make(map[int64][]store.CheckState, len(rows))
 	for _, c := range rows {
 		st, err := s.store.ListCheckStates(r.Context(), c.ID)
@@ -649,20 +642,8 @@ func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		states[c.ID] = st
-		for _, t := range c.Targets {
-			if t.Address == "" {
-				continue
-			}
-			addr, err := netip.ParseAddr(t.Address)
-			if err != nil {
-				s.apiFail(w, fmt.Errorf("check %s target %q address %q does not parse: %w",
-					c.Name, t.Name, t.Address, err))
-				return
-			}
-			addrs = append(addrs, addr)
-		}
 	}
-	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states, store.ClassifyNetgroups(addrs, groups)))
+	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states))
 }
 
 func (s *Server) apiRules(w http.ResponseWriter, r *http.Request) {

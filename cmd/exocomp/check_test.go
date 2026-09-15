@@ -113,10 +113,10 @@ func TestCheckAddListEnableDisableRmRoundTrip(t *testing.T) {
 	}
 }
 
-// TestCheckListJSONNetgroupAndRecency: a registered netgroup covering a target
-// and a seeded state row surface in the JSON projection as netgroup and
-// last_change, so a remote consumer reads location and recency — not just
-// status — the way the checks page does.
+// TestCheckListJSONNetgroupAndRecency: the netgroup the sweep stored on the
+// state row and the row's last_change surface in the JSON projection, so a
+// remote consumer reads location and recency — not just status — the way the
+// checks page does.
 func TestCheckListJSONNetgroupAndRecency(t *testing.T) {
 	useDataDir(t, t.TempDir())
 	ctx := context.Background()
@@ -144,6 +144,7 @@ func TestCheckListJSONNetgroupAndRecency(t *testing.T) {
 		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
 		Consecutive: 3, Emitted: store.CheckUp,
 		FirstSeen: lastChange.Add(-time.Hour), LastChange: lastChange,
+		Netgroup: "home", LastDurationMS: 21,
 	}); err != nil {
 		t.Fatalf("set state: %v", err)
 	}
@@ -152,7 +153,7 @@ func TestCheckListJSONNetgroupAndRecency(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check list json: %v", err)
 	}
-	for _, want := range []string{`"netgroup":"home"`, `"last_change":"2024-05-01T12:00:00Z"`} {
+	for _, want := range []string{`"netgroup":"home"`, `"duration_ms":21`, `"last_change":"2024-05-01T12:00:00Z"`} {
 		if !strings.Contains(out, want) {
 			t.Errorf("list json missing %q:\n%s", want, out)
 		}
