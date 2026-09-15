@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the TUI screens say "loading", not a false empty
+
+- **The seven v0.2 screens hold a dim `--` until their first load lands.**
+  `Init` returns every load as a batch, so Bubble Tea painted `View` before any
+  `*LoadedMsg` arrived and a populated store flashed an empty-state sentence on
+  its first frame. `Model` now carries a per-load flag — `loadedGlance` (Home,
+  Approvals, Events), `loadedJobs`, `loadedBackups`, `loadedWorkspaces`,
+  `loadedSchedules` — each set on its `*LoadedMsg` case before the error branch,
+  so a failed load renders its error instead of a permanent placeholder. The
+  placeholder is the same ASCII `--` an unset value already uses. The fixture
+  renderers, their golden frames, and every empty-state wording are unchanged.
+
 ## 2026-09-15 — the TUI run-now keys are live
 
 - **The TUI's deferred run-now keys now enqueue, and `c cancel` confirms.** `b`
