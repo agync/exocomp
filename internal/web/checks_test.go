@@ -837,11 +837,11 @@ func TestChecksTabSwapNeverRefiresFlash(t *testing.T) {
 
 // TestChecksNetgroupAndRecency: the netgroup slot (SPEC §5.1) is the row's
 // second line — a route glyph (13px) + "on {netgroup}" (a link to /netgroups)
-// · age — so the location claim reads down the column. Location stays meta,
-// never a chip (F2); a target no registered netgroup covers reads "on away".
-// An UNOBSERVED target explains itself in the same slot: "on {netgroup} ·
-// away — not probed from here" (wait). Latency is omitted (no probe-latency
-// data exists). An http URL target renders no location verdict at all (its
+// · age — so the location claim reads down the column. An observed target uses
+// the netgroup the sweep STORED on its state row; an UNOBSERVED one falls back
+// to a live classification so it still names where it will be probed ("on
+// {netgroup} · away — not probed from here"). The probe duration rides the tile
+// as dim meta. An http URL target renders no location verdict at all (its
 // liveness is not a location).
 func TestChecksNetgroupAndRecency(t *testing.T) {
 	h := newHarness(t)
@@ -887,10 +887,12 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 	for _, st := range []store.CheckState{
 		{CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
 			Consecutive: 3, Emitted: store.CheckUp,
-			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(3*time.Hour + 15*time.Minute))},
+			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(3*time.Hour + 15*time.Minute)),
+			Netgroup: "home", LastDurationMS: 21},
 		{CheckID: c.ID, TargetName: "nas", Status: store.CheckDown,
 			Consecutive: 3, Emitted: store.CheckDown,
-			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(2*time.Hour + 15*time.Minute))},
+			FirstSeen: now.Add(-24 * time.Hour), LastChange: now.Add(-(2*time.Hour + 15*time.Minute)),
+			Netgroup: "away", LastDurationMS: 2500},
 	} {
 		if err := h.store.SetCheckState(ctx, st); err != nil {
 			t.Fatalf("SetCheckState %s: %v", st.TargetName, err)
@@ -912,6 +914,7 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 		`<a class="mono" href="/netgroups">on home</a>`,
 		"on away",
 		"· 3h ago", "· 2h ago",
+		"took 21ms", "took 2.5s",
 		`1 of 2 down`,
 		// The where slot always opens with the 13px route glyph (three nodes).
 		"M6 8.2v7.6M18 9.2c0 4.8-5.5 4.3-9.3 6.9",
@@ -947,6 +950,64 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 	}
 	if strings.Contains(cold, "never seen yet") || strings.Contains(cold, "on away") {
 		t.Error("cold-start tile reads a stale copy or the away miss")
+	}
+}
+
+// TestChecksDownAndHomeAttention: a target DOWN while classified into a
+// registered netgroup is attention-worthy — the header counts it and the tile
+// carries the note — while an ordinary roaming down (down and away) stays
+// quiet. Reverting DownAndHome to always false reds this.
+func TestChecksDownAndHomeAttention(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: "home", Prefixes: []netip.Prefix{mustPrefix(t, "192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+	c, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "laptop", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "10.0.0.5", Port: 22},
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+	now := time.Now().UTC()
+	for _, st := range []store.CheckState{
+		{CheckID: c.ID, TargetName: "laptop", Status: store.CheckDown,
+			Consecutive: 3, Emitted: store.CheckDown, FirstSeen: now, LastChange: now,
+			Netgroup: "home", LastDurationMS: 21},
+		{CheckID: c.ID, TargetName: "nas", Status: store.CheckDown,
+			Consecutive: 3, Emitted: store.CheckDown, FirstSeen: now, LastChange: now,
+			Netgroup: "away", LastDurationMS: 30},
+	} {
+		if err := h.store.SetCheckState(ctx, st); err != nil {
+			t.Fatalf("SetCheckState %s: %v", st.TargetName, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+	if !strings.Contains(page, "2 of 2 down · 1 at home") {
+		t.Errorf("header does not count the down-at-home target:\n%s", page)
+	}
+	if got := strings.Count(page, "down while home — expected reachable"); got != 1 {
+		t.Errorf("down-at-home note rendered %d times, want 1", got)
+	}
+	// The roaming-down target (down and away) carries no attention note: slice
+	// its tile, which follows the laptop tile.
+	nas := page[strings.Index(page, ">nas<"):]
+	if strings.Contains(nas, "down while home") {
+		t.Error("a roaming-down target rendered the at-home note")
 	}
 }
 

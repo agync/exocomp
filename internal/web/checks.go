@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -47,6 +48,10 @@ type checkRow struct {
 	// partial by checkRowActions (forms/SPEC.md): non-empty only on a refused
 	// row-verb re-render.
 	Refusal string
+	// Snoozed and SnoozeLeft name an active check-level snooze: the card badges
+	// it so a held check never reads as running normally.
+	Snoozed    bool
+	SnoozeLeft string
 }
 
 // checkTargetRow is one probe of a check: what it dials or requests, the
@@ -62,7 +67,26 @@ type checkTargetRow struct {
 	Status   string
 	Netgroup string
 	Changed  string
+	// DurationMS is the last probe's measured duration; 0 when the sweep has
+	// never observed the target.
+	DurationMS int64
 }
+
+// HasDuration reports whether a probe duration is known for the target.
+func (t checkTargetRow) HasDuration() bool { return t.DurationMS > 0 }
+
+// DurationLabel renders the probe duration the way the CLI's DURATION column
+// does, or "" when the target is unobserved.
+func (t checkTargetRow) DurationLabel() string {
+	if !t.HasDuration() {
+		return ""
+	}
+	return (time.Duration(t.DurationMS) * time.Millisecond).String()
+}
+
+// SpecInput renders the target the way the edit dialog's name=spec rows submit
+// it, the inverse of store.ParseCheckTargets.
+func (t checkTargetRow) SpecInput() string { return t.Name + "=" + t.Spec() }
 
 // Spec renders the probe location the way the CLI's table reads it: a tcp
 // target as address:port, an http target as its URL, a ping target as the
@@ -120,6 +144,23 @@ func (t checkTargetRow) IsUnobserved() bool {
 	return t.Status != store.CheckUp && t.Status != store.CheckDown
 }
 
+// DownAndHome is the attention signal distinct from an ordinary roaming down: a
+// target that is DOWN while classified into a registered netgroup (not the
+// "away" miss, not an unclassified URL target) is something that should be on
+// the LAN and is not.
+func (t checkTargetRow) DownAndHome() bool {
+	return t.IsDown() && t.Netgroup != "" && t.Netgroup != "away"
+}
+
+// DownNote is the down-and-home tile's attention line, empty for every other
+// state so a roaming-down target stays quiet.
+func (t checkTargetRow) DownNote() string {
+	if t.DownAndHome() {
+		return "down while home — expected reachable"
+	}
+	return ""
+}
+
 // NetgroupClass maps a target's netgroup badge onto the chip palette: a named
 // group reads ok (home), a target no group covers reads dim (away). "away" is
 // both the miss label and a possible group name — the ambiguity is the
@@ -148,16 +189,23 @@ func (c checkRow) DownSummary() string {
 	if !c.Enabled {
 		return ""
 	}
-	down := 0
+	down, home := 0, 0
 	for _, t := range c.Targets {
-		if t.Status == store.CheckDown {
+		if t.IsDown() {
 			down++
+			if t.DownAndHome() {
+				home++
+			}
 		}
 	}
 	if down == 0 {
 		return ""
 	}
-	return itoa(int64(down)) + " of " + itoa(int64(len(c.Targets))) + " down"
+	summary := itoa(int64(down)) + " of " + itoa(int64(len(c.Targets))) + " down"
+	if home > 0 {
+		summary += " · " + itoa(int64(home)) + " at home"
+	}
+	return summary
 }
 
 // handleChecks renders the /checks surface for the session: every probe check
@@ -292,13 +340,22 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 				URL: t.URL, Expect: t.Expect,
 			}
 			if st, ok := state[t.Name]; ok {
+				// The sweep's stored values are authoritative: it classified
+				// the address at observation time and measured the probe.
 				tr.Status = st.Status
 				tr.Changed = humanAge(s.now().Sub(st.LastChange))
-			}
-			if t.Address != "" {
+				tr.Netgroup = st.Netgroup
+				tr.DurationMS = st.LastDurationMS
+			} else if t.Address != "" {
+				// No state row yet: classify live so the cold-start tile still
+				// names where the target will be probed, never blank.
 				tr.Netgroup = netgroups[netip.MustParseAddr(t.Address).Unmap().String()]
 			}
 			row.Targets = append(row.Targets, tr)
+		}
+		if c.Enabled && !c.SnoozedUntil.IsZero() && c.SnoozedUntil.After(s.now()) {
+			row.Snoozed = true
+			row.SnoozeLeft = c.SnoozedUntil.Sub(s.now()).Round(time.Second).String()
 		}
 		out = append(out, row)
 	}

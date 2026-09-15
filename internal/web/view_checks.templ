@@ -118,6 +118,9 @@ templ checksSurface(vm checksVM) {
 								<a class="mono" href={ urlWithBase(vm.Page.Base, "/events?source=check") }>{ ck.Name }</a>
 								<span class="meta mono">{ ck.Kind } · every { ck.Interval }</span>
 								@enabledChip(ck.Enabled, false)
+								if ck.Snoozed {
+									<span class="chip wait"><span class="dot"></span>SNOOZED · { ck.SnoozeLeft } left</span>
+								}
 								if summary := ck.DownSummary(); summary != "" {
 									<span class="meta mono fail-text">{ summary }</span>
 								}
@@ -132,6 +135,9 @@ templ checksSurface(vm checksVM) {
 										<div class="tstate">
 											if t.IsUp() || t.IsDown() {
 												@chip(t.StatusClass(), t.StatusLabel())
+												if t.HasDuration() {
+													<span class="meta mono">took { t.DurationLabel() }</span>
+												}
 												if t.URL == "" {
 													<div class="where">
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
@@ -142,6 +148,9 @@ templ checksSurface(vm checksVM) {
 														}
 														if t.Changed != "" {
 															<span class="meta mono">· { t.Changed } ago</span>
+														}
+														if t.DownNote() != "" {
+															<span class="meta mono fail-text">· { t.DownNote() }</span>
 														}
 													</div>
 												}
