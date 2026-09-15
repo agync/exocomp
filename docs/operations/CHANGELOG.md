@@ -6,6 +6,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the checks tab swap moves the app-bar add verb
+
+- **Switching the Checks tab now switches the app bar's add button.** The tab
+  strip's client-side swap replaced only the `#checks-surface` fragment, so the
+  bar's primary — `Add check` on Probes, `Add netgroup` on Netgroups — stayed
+  whatever the last full load rendered. The fragment response now also carries
+  the app bar's add region (a shared `appbarAdd` component keyed `#appbar-add`),
+  and the swap JS replaces it in place, so the bar tracks the active tab.
+
 ## 2026-09-15 — the sandboxed elevation hint fires on the real signature
 
 - **The become-denied elevation hint now fires.** The observer added 2026-09-12
