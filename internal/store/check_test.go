@@ -167,6 +167,49 @@ func TestCheckStateNetgroupRoundTrip(t *testing.T) {
 	}
 }
 
+// TestCheckStateDurationRoundTrip: the last probe's duration persists on the
+// state row and follows the upsert, so a slow target's reading is not stale.
+func TestCheckStateDurationRoundTrip(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	created, err := st.CreateCheck(ctx, checkFixture())
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 1, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		LastDurationMS: 12,
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+	got, err := st.GetCheckState(ctx, created.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if got.LastDurationMS != 12 {
+		t.Fatalf("last_duration_ms = %d, want 12", got.LastDurationMS)
+	}
+
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 2, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		LastDurationMS: 340,
+	}); err != nil {
+		t.Fatalf("set state again: %v", err)
+	}
+	got, err = st.GetCheckState(ctx, created.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state after update: %v", err)
+	}
+	if got.LastDurationMS != 340 {
+		t.Fatalf("last_duration_ms after update = %d, want 340", got.LastDurationMS)
+	}
+}
+
 func TestCheckValidationRefusals(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)

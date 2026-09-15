@@ -359,9 +359,13 @@ type CheckState struct {
 	// observation ("away" when none covered it, "" for an http URL target). The
 	// sweep stores it so every read path reads the same value.
 	Netgroup string
+	// LastDurationMS is how long the last probe took, in milliseconds. It is
+	// observation output, not configuration: a slow-but-up target is visible
+	// without a second probe.
+	LastDurationMS int64
 }
 
-const checkStateColumns = `check_id, target_name, status, consecutive, emitted, first_seen, last_change, recent_observations, netgroup`
+const checkStateColumns = `check_id, target_name, status, consecutive, emitted, first_seen, last_change, recent_observations, netgroup, last_duration_ms`
 
 // GetCheckState returns one target's state, or ErrNotFound.
 func (s *Store) GetCheckState(ctx context.Context, checkID int64, target string) (CheckState, error) {
@@ -423,18 +427,19 @@ func (s *Store) CountCheckStatesByStatus(ctx context.Context, status string) (in
 // check's life.
 func (s *Store) SetCheckState(ctx context.Context, st CheckState) error {
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO check_state (check_id, target_name, status, consecutive, emitted, first_seen, last_change, recent_observations, netgroup)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO check_state (check_id, target_name, status, consecutive, emitted, first_seen, last_change, recent_observations, netgroup, last_duration_ms)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (check_id, target_name) DO UPDATE SET
 			status              = excluded.status,
 			consecutive         = excluded.consecutive,
 			emitted             = excluded.emitted,
 			last_change         = excluded.last_change,
 			recent_observations = excluded.recent_observations,
-			netgroup            = excluded.netgroup`,
+			netgroup            = excluded.netgroup,
+			last_duration_ms    = excluded.last_duration_ms`,
 		st.CheckID, st.TargetName, st.Status, st.Consecutive, st.Emitted,
 		st.FirstSeen.UTC().UnixMilli(), st.LastChange.UTC().UnixMilli(),
-		st.RecentObservations, st.Netgroup)
+		st.RecentObservations, st.Netgroup, st.LastDurationMS)
 	if err != nil {
 		return wrap("set check state", err)
 	}
@@ -482,7 +487,8 @@ func scanCheckState(row rowScanner) (CheckState, error) {
 		lastChange  int64
 	)
 	if err := row.Scan(&st.CheckID, &st.TargetName, &st.Status, &consecutive,
-		&st.Emitted, &firstSeen, &lastChange, &st.RecentObservations, &st.Netgroup); err != nil {
+		&st.Emitted, &firstSeen, &lastChange, &st.RecentObservations, &st.Netgroup,
+		&st.LastDurationMS); err != nil {
 		return CheckState{}, err
 	}
 	st.Consecutive = int(consecutive)
