@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the TUI plan diff reads the show-json companion
+
+- **The approval plan diff and the destroy typed-confirm now parse the sealed
+  `tofu show -json` companion.** Both opened the approval's saved plan artifact
+  and JSON-parsed it, but that artifact is tofu's binary `.tfplan`, so on a real
+  destroy-carrying plan the typed-confirm modal counted zero destroys and the
+  `[d]` pager rendered empty. A package-level `planShowBlob` resolver mirrors
+  the web's: it prefers the `reactive.PlanShowArtifactKind` companion captured on
+  the same job and falls back to the plan artifact's own bytes for a plan sealed
+  before the capture existed.
+
 ## 2026-09-15 — the launch drawer reserves its footer on the form
 
 - **The phone launch drawer's sticky footer now pins to the scrollport bottom.**

@@ -77,9 +77,56 @@ func seedApproval(t *testing.T, st *store.Store, env *secrets.Envelope, jobID in
 	return a
 }
 
-// seedPlanArtifact seals a plan file through the envelope and records the
-// artifact row the approval references. destroys chooses a plan that tears a
-// resource down or one that only creates.
+// binaryPlanBlob stands in for the binary `.tfplan` tofu writes: hand it to a
+// JSON parser and nothing comes back, exactly the production failure the
+// companion artifact exists to avoid.
+var binaryPlanBlob = []byte("PK\x03\x04\x00not-json")
+
+// sealBlob seals raw bytes through the envelope and returns the sealed path.
+func sealBlob(t *testing.T, env *secrets.Envelope, name string, blob []byte) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, blob, 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+	sealed, err := env.SealFile(path)
+	if err != nil {
+		t.Fatalf("seal %s: %v", name, err)
+	}
+	return sealed
+}
+
+// seedBinaryPlanArtifact records a binary stand-in for the saved plan under
+// reactive.PlanArtifactKind — the artifact the approval references and the one
+// the TUI must NOT parse. It returns the artifact's ID.
+func seedBinaryPlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64) *int64 {
+	t.Helper()
+	art, err := st.CreateArtifact(context.Background(), store.Artifact{
+		JobID: jobID, Kind: reactive.PlanArtifactKind, Path: sealBlob(t, env, "plan.tfplan", binaryPlanBlob),
+	})
+	if err != nil {
+		t.Fatalf("create plan artifact: %v", err)
+	}
+	return &art.ID
+}
+
+// seedShowArtifact records a sealed `tofu show -json` companion on the same job
+// — the document the diff actually renders.
+func seedShowArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64, doc string) {
+	t.Helper()
+	if _, err := st.CreateArtifact(context.Background(), store.Artifact{
+		JobID: jobID, Kind: reactive.PlanShowArtifactKind, Path: sealBlob(t, env, "plan-show.json", []byte(doc)),
+	}); err != nil {
+		t.Fatalf("create show artifact: %v", err)
+	}
+}
+
+// seedPlanArtifact seeds a plan the way the executor records one: a binary
+// saved plan under reactive.PlanArtifactKind plus a sealed show-json companion
+// on the same job. It returns the saved plan's ID, which the approval
+// references. destroys chooses a plan that tears a resource down or one that
+// only creates.
 func seedPlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64, destroys bool) *int64 {
 	t.Helper()
 	var changes string
@@ -88,20 +135,21 @@ func seedPlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobI
 	} else {
 		changes = `[{"address":"aws_s3_bucket.reports-archive","change":{"actions":["create"],"after":{},"after_sensitive":{},"before_sensitive":{}}}]`
 	}
-	dir := t.TempDir()
-	path := filepath.Join(dir, "plan.json")
-	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"resource_changes":%s}`, changes)), 0o600); err != nil {
-		t.Fatalf("write plan: %v", err)
-	}
-	sealed, err := env.SealFile(path)
-	if err != nil {
-		t.Fatalf("seal plan: %v", err)
-	}
+	seedShowArtifact(t, st, env, jobID, fmt.Sprintf(`{"resource_changes":%s}`, changes))
+	return seedBinaryPlanArtifact(t, st, env, jobID)
+}
+
+// seedOperatorPlanArtifact seals a show-json document under the saved-plan kind
+// on a job with no companion — a plan sealed before the capture existed. It is
+// the fallback shape. It returns the plan artifact's ID.
+func seedOperatorPlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64) *int64 {
+	t.Helper()
+	doc := `{"resource_changes":[{"address":"aws_db_instance.legacy_reports","change":{"actions":["delete"],"after":{},"after_sensitive":{},"before_sensitive":{}}}]}`
 	art, err := st.CreateArtifact(context.Background(), store.Artifact{
-		JobID: jobID, Kind: reactive.PlanArtifactKind, Path: sealed,
+		JobID: jobID, Kind: reactive.PlanArtifactKind, Path: sealBlob(t, env, "operator-plan.json", []byte(doc)),
 	})
 	if err != nil {
-		t.Fatalf("create artifact: %v", err)
+		t.Fatalf("create operator plan artifact: %v", err)
 	}
 	return &art.ID
 }
@@ -116,29 +164,15 @@ func runCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
 	return update(t, m, cmd())
 }
 
-// seedSensitivePlanArtifact seals a plan whose *_sensitive trees carry a true
+// seedSensitivePlanArtifact seeds a plan whose *_sensitive trees carry a true
 // flag and a secret value, the fixture the [d] pager redaction test drives.
 func seedSensitivePlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64) *int64 {
 	t.Helper()
 	changes := `[{"address":"aws_db_instance.legacy_reports","change":{"actions":["update"],` +
 		`"after":{"engine":"pg14"},"after_sensitive":{"password":"s3cr3t-p@ss","sensitive":true},` +
 		`"before_sensitive":{"password":"s3cr3t-p@ss","sensitive":true}}}]`
-	dir := t.TempDir()
-	path := filepath.Join(dir, "plan.json")
-	if err := os.WriteFile(path, []byte(fmt.Sprintf(`{"resource_changes":%s}`, changes)), 0o600); err != nil {
-		t.Fatalf("write plan: %v", err)
-	}
-	sealed, err := env.SealFile(path)
-	if err != nil {
-		t.Fatalf("seal plan: %v", err)
-	}
-	art, err := st.CreateArtifact(context.Background(), store.Artifact{
-		JobID: jobID, Kind: reactive.PlanArtifactKind, Path: sealed,
-	})
-	if err != nil {
-		t.Fatalf("create artifact: %v", err)
-	}
-	return &art.ID
+	seedShowArtifact(t, st, env, jobID, fmt.Sprintf(`{"resource_changes":%s}`, changes))
+	return seedBinaryPlanArtifact(t, st, env, jobID)
 }
 
 // TestNilWriteDisablesWriteKeys proves the read-only posture: with a nil Write
@@ -497,6 +531,76 @@ func TestApprovalDiffRedactsSensitivePlan(t *testing.T) {
 	}
 	if !strings.Contains(got, "[redacted · secret]") || !strings.Contains(got, "SECRETS") {
 		t.Fatalf("diff pager did not mark the secret resource redacted:\n%s", got)
+	}
+}
+
+// TestApprovalDiffUsesShowCompanion proves the [d] pager renders the sealed
+// `tofu show -json` companion, not the binary saved plan the approval points
+// at: the fixture hands the saved plan non-JSON bytes, so only a resolver that
+// prefers the companion can produce a diff.
+func TestApprovalDiffUsesShowCompanion(t *testing.T) {
+	st := openTestStore(t)
+	w, env := newTestWrite(t)
+	job := seedGatedJob(t, st)
+	art := seedPlanArtifact(t, st, env, job.ID, true)
+	approval := seedApproval(t, st, env, job.ID, "core", 1, art)
+
+	msg := loadApprovalDiffCmd(st, w, approval)()
+	loaded, ok := msg.(diffLoadedMsg)
+	if !ok {
+		t.Fatalf("loadApprovalDiffCmd() = %T, want diffLoadedMsg", msg)
+	}
+	if loaded.err != nil {
+		t.Fatalf("load diff: %v", loaded.err)
+	}
+	got := renderApprovalDiff(loaded.model)
+	if !strings.Contains(got, "aws_db_instance.legacy_reports") || !strings.Contains(got, "DESTROYS") {
+		t.Fatalf("diff pager read the binary saved plan, not the show companion:\n%s", got)
+	}
+}
+
+// TestDestroyConfirmUsesShowCompanion proves the typed-confirm gate counts
+// destroys from the show-json companion: the binary saved plan parses to zero,
+// so the modal would silently never fire without the companion.
+func TestDestroyConfirmUsesShowCompanion(t *testing.T) {
+	st := openTestStore(t)
+	w, env := newTestWrite(t)
+	job := seedGatedJob(t, st)
+	art := seedPlanArtifact(t, st, env, job.ID, true)
+	approval := seedApproval(t, st, env, job.ID, "core", 1, art)
+
+	msg := checkDestroyCmd(st, w, approval.ID)()
+	got, ok := msg.(destroyCheckMsg)
+	if !ok {
+		t.Fatalf("checkDestroyCmd() = %T, want destroyCheckMsg", msg)
+	}
+	if got.err != nil {
+		t.Fatalf("check destroy: %v", got.err)
+	}
+	if got.destroys != 1 || got.resource != "aws_db_instance.legacy_reports" {
+		t.Fatalf("destroy summary = %d %q, want 1 aws_db_instance.legacy_reports (the binary saved plan parsed to zero)", got.destroys, got.resource)
+	}
+}
+
+// TestPlanShowBlobFallsBackWithoutCompanion proves the resolver still parses a
+// plan that has no show companion — an operator's own plan file, or one sealed
+// before the capture existed. Dropping the fallback leaves the plan unreadable.
+func TestPlanShowBlobFallsBackWithoutCompanion(t *testing.T) {
+	st := openTestStore(t)
+	_, env := newTestWrite(t)
+	job := seedGatedJob(t, st)
+	artID := seedOperatorPlanArtifact(t, st, env, job.ID)
+	art, err := st.GetArtifact(context.Background(), *artID)
+	if err != nil {
+		t.Fatalf("get artifact: %v", err)
+	}
+
+	blob, err := planShowBlob(context.Background(), env, st, art)
+	if err != nil {
+		t.Fatalf("planShowBlob: %v", err)
+	}
+	if n, first := planDestroySummary(blob); n != 1 || first != "aws_db_instance.legacy_reports" {
+		t.Fatalf("fallback parsed %d %q, want 1 aws_db_instance.legacy_reports from the plan's own bytes", n, first)
 	}
 }
 

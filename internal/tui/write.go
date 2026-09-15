@@ -16,6 +16,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -118,13 +119,32 @@ func checkDestroyCmd(st *store.Store, w *Write, approvalID int64) tea.Cmd {
 			return destroyCheckMsg{approvalID: approvalID, err: err}
 		}
 		defer func() { _ = env.Close() }()
-		blob, err := env.OpenSealedFile(art.Path)
+		blob, err := planShowBlob(ctx, env, st, art)
 		if err != nil {
 			return destroyCheckMsg{approvalID: approvalID, err: err}
 		}
 		n, first := planDestroySummary(blob)
 		return destroyCheckMsg{approvalID: approvalID, destroys: n, resource: first}
 	}
+}
+
+// planShowBlob resolves the JSON an approval's diff renders from: the sealed
+// `tofu show -json` companion the executor captured beside the saved plan
+// (reactive.PlanShowArtifactKind), falling back to the plan artifact's own
+// bytes for a plan sealed before the capture existed or an operator plan with
+// no job. The saved plan tofu wrote is a binary, not a show-json document. A
+// listing error falls through to the fallback rather than failing the read.
+func planShowBlob(ctx context.Context, env *secrets.Envelope, st *store.Store, art store.Artifact) ([]byte, error) {
+	if art.JobID != 0 {
+		if arts, err := st.ListArtifacts(ctx, art.JobID); err == nil {
+			for _, a := range arts {
+				if a.Kind == reactive.PlanShowArtifactKind {
+					return env.OpenSealedFile(a.Path)
+				}
+			}
+		}
+	}
+	return env.OpenSealedFile(art.Path)
 }
 
 // planDestroySummary counts the resources a plan would destroy and names the
@@ -179,7 +199,7 @@ func loadApprovalDiffCmd(st *store.Store, w *Write, a store.Approval) tea.Cmd {
 		if err != nil {
 			return diffLoadedMsg{err: err}
 		}
-		blob, err := env.OpenSealedFile(art.Path)
+		blob, err := planShowBlob(context.Background(), env, st, art)
 		if err != nil {
 			return diffLoadedMsg{err: err}
 		}
