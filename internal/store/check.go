@@ -102,6 +102,10 @@ type Check struct {
 	Enabled   bool
 	CreatedAt time.Time
 	UpdatedAt time.Time
+	// SnoozedUntil is when a check-level snooze expires. The zero time is not
+	// snoozed. The sweep keeps probing while snoozed so hysteresis stays
+	// current; it only suppresses transition emission.
+	SnoozedUntil time.Time
 }
 
 // NewCheck describes a check to create. It starts enabled.
@@ -112,7 +116,7 @@ type NewCheck struct {
 	Targets   []CheckTarget
 }
 
-const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created_at, updated_at`
+const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until`
 
 // CreateCheck inserts an enabled check. Names are unique. The per-kind target
 // shape is validated here so a row that reads is a row that probes: tcp and
@@ -320,6 +324,29 @@ func (s *Store) SetCheckEnabled(ctx context.Context, name string, enabled bool) 
 	return nil
 }
 
+// SetCheckSnooze sets a check's snooze expiry by name. A time at or before now
+// clears it (as does the zero time). A snoozed check is still probed and its
+// state still advances; only transition emission is suppressed until the
+// expiry passes.
+func (s *Store) SetCheckSnooze(ctx context.Context, name string, until time.Time) error {
+	ms := int64(0)
+	if !until.IsZero() {
+		ms = until.UTC().UnixMilli()
+	}
+	res, err := s.db.ExecContext(ctx, `UPDATE check_row SET snoozed_until = ? WHERE name = ?`, ms, name)
+	if err != nil {
+		return wrap("set check snooze", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("set check snooze", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: set check snooze %q: %w", name, ErrNotFound)
+	}
+	return nil
+}
+
 // DeleteCheck removes a check by name, and with it its state rows (the FK
 // cascades).
 func (s *Store) DeleteCheck(ctx context.Context, name string) error {
@@ -458,19 +485,23 @@ func CheckIntervalLabel(intervalS int64) string {
 
 func scanCheck(row rowScanner) (Check, error) {
 	var (
-		c         Check
-		targets   string
-		enabled   int
-		createdAt int64
-		updatedAt int64
+		c            Check
+		targets      string
+		enabled      int
+		createdAt    int64
+		updatedAt    int64
+		snoozedUntil int64
 	)
 	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.IntervalS, &targets,
-		&enabled, &createdAt, &updatedAt); err != nil {
+		&enabled, &createdAt, &updatedAt, &snoozedUntil); err != nil {
 		return Check{}, err
 	}
 	c.Enabled = enabled != 0
 	c.CreatedAt = time.UnixMilli(createdAt).UTC()
 	c.UpdatedAt = time.UnixMilli(updatedAt).UTC()
+	if snoozedUntil != 0 {
+		c.SnoozedUntil = time.UnixMilli(snoozedUntil).UTC()
+	}
 	if targets != "" {
 		if err := json.Unmarshal([]byte(targets), &c.Targets); err != nil {
 			return Check{}, fmt.Errorf("decode targets of check %d: %w", c.ID, err)

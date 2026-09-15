@@ -1027,3 +1027,70 @@ func TestMigration0038UpgradesFrom037(t *testing.T) {
 		t.Fatalf("last_duration_ms = %d, want 57", st.LastDurationMS)
 	}
 }
+
+// TestMigration0039UpgradesFrom038 pins a database at user_version 38 (no
+// check_row.snoozed_until), seeds a check row, then opens it with the current
+// binary: the column arrives in place, the pre-existing row defaults to not
+// snoozed, and the store can set and read a snooze expiry.
+func TestMigration0039UpgradesFrom038(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 38)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('check_row') WHERE name = 'snoozed_until'`).Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatal("check_row.snoozed_until exists at user_version 38; the pin is not honest")
+	}
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO check_row (name, kind, interval_s, targets_json, enabled, created_at, updated_at)
+		VALUES ('at-home', 'tcp', 300,
+		        '[{"name":"laptop","address":"192.168.1.50","port":22}]', 1, 1, 1)`); err != nil {
+		t.Fatalf("seed check row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0038 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 39 {
+		t.Fatalf("schema version = %d after open, want >= 39 (0039 applied)", version)
+	}
+
+	got, err := s.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get seeded check: %v", err)
+	}
+	if !got.SnoozedUntil.IsZero() {
+		t.Fatalf("seeded check snoozed_until = %v, want the default zero", got.SnoozedUntil)
+	}
+
+	until := time.Now().Add(time.Hour).UTC().Truncate(time.Millisecond)
+	if err := s.SetCheckSnooze(ctx, "at-home", until); err != nil {
+		t.Fatalf("set snooze on upgraded db: %v", err)
+	}
+	got, err = s.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check after snooze: %v", err)
+	}
+	if !got.SnoozedUntil.Equal(until) {
+		t.Fatalf("snoozed_until = %v, want %v", got.SnoozedUntil, until)
+	}
+}

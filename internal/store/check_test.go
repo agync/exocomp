@@ -210,6 +210,44 @@ func TestCheckStateDurationRoundTrip(t *testing.T) {
 	}
 }
 
+// TestSetCheckSnooze: a snooze stores its expiry and reads back on the check;
+// the zero time clears it, and an unknown name is refused.
+func TestSetCheckSnooze(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	if _, err := st.CreateCheck(ctx, checkFixture()); err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	until := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Millisecond)
+	if err := st.SetCheckSnooze(ctx, "at-home", until); err != nil {
+		t.Fatalf("set snooze: %v", err)
+	}
+	got, err := st.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check: %v", err)
+	}
+	if !got.SnoozedUntil.Equal(until) {
+		t.Fatalf("snoozed_until = %v, want %v", got.SnoozedUntil, until)
+	}
+
+	if err := st.SetCheckSnooze(ctx, "at-home", time.Time{}); err != nil {
+		t.Fatalf("clear snooze: %v", err)
+	}
+	got, err = st.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check after clear: %v", err)
+	}
+	if !got.SnoozedUntil.IsZero() {
+		t.Fatalf("snoozed_until = %v after clear, want the zero time", got.SnoozedUntil)
+	}
+
+	if err := st.SetCheckSnooze(ctx, "missing", until); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("SetCheckSnooze(missing) = %v, want ErrNotFound", err)
+	}
+}
+
 func TestCheckValidationRefusals(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)
