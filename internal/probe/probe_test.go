@@ -92,7 +92,6 @@ func TestRunTCP(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = ln.Close() }()
 	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	port, _ := strconv.Atoi(portStr)
 
@@ -100,15 +99,53 @@ func TestRunTCP(t *testing.T) {
 	if !up.Up {
 		t.Fatalf("live listener = %+v, want up", up)
 	}
-
 	_ = ln.Close()
-	down := Run(context.Background(), Spec{Kind: KindTCP, Address: host, Port: port}, Options{Timeout: time.Second})
+
+	downHost, downPort := closedLoopback(t)
+	down := Run(context.Background(), Spec{Kind: KindTCP, Address: downHost, Port: downPort}, Options{Timeout: time.Second})
 	if down.Up {
 		t.Fatalf("closed listener = %+v, want down", down)
 	}
 	if down.Duration <= 0 {
 		t.Fatalf("down.Duration = %v, want positive", down.Duration)
 	}
+}
+
+// closedLoopback binds a loopback listener, closes it, and returns its address
+// and port only once a dial is refused. Closing a listener and dialing in the
+// same breath can still connect in the kernel's teardown window, so the poll is
+// what makes the down case deterministic.
+func closedLoopback(t *testing.T) (string, int) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		_ = ln.Close()
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		_ = ln.Close()
+		t.Fatal(err)
+	}
+	_ = ln.Close()
+
+	addr := net.JoinHostPort(host, portStr)
+	d := net.Dialer{Timeout: 50 * time.Millisecond}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, derr := d.Dial("tcp", addr)
+		if derr != nil {
+			return host, port
+		}
+		_ = conn.Close()
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("port %s still accepts after the listener closed", addr)
+	return "", 0
 }
 
 func TestRunPing(t *testing.T) {
