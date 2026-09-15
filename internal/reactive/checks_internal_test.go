@@ -486,3 +486,80 @@ func TestCheckSweepCanarySkipsWhenVantageDown(t *testing.T) {
 		t.Fatalf("emitted %d event(s) while the canary is down", len(events))
 	}
 }
+
+// TestCheckSweepSnoozeSuppressesEmission: a snoozed check keeps probing and
+// advancing its state (so hysteresis stays current) but emits nothing; once
+// the snooze lapses, the same state declares the transition.
+//
+// Mutation check: drop the snoozed guard and the first sweep emits.
+func TestCheckSweepSnoozeSuppressesEmission(t *testing.T) {
+	e := labelsEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	host, port := listenLoopback(t)
+	if _, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: host, Port: port}},
+	}); err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	c, err := e.store.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check: %v", err)
+	}
+	// One observation short of a declared up transition, emitted=down.
+	if err := e.store.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: DefaultHysteresis - 1, Emitted: store.CheckDown,
+		FirstSeen: now, LastChange: now,
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	if err := e.store.SetCheckSnooze(ctx, "at-home", now.Add(time.Hour)); err != nil {
+		t.Fatalf("set snooze: %v", err)
+	}
+	c, err = e.store.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get snoozed check: %v", err)
+	}
+
+	raised, err := e.sweepCheck(ctx, c, now)
+	if err != nil {
+		t.Fatalf("snoozed sweepCheck: %v", err)
+	}
+	if raised != 0 {
+		t.Fatalf("snoozed sweep raised %d transitions, want 0", raised)
+	}
+	st, err := e.store.GetCheckState(ctx, c.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if st.Consecutive != DefaultHysteresis || st.Emitted != store.CheckDown {
+		t.Fatalf("snoozed state = consecutive %d emitted %q, want consecutive %d emitted down (advanced, not emitted)",
+			st.Consecutive, st.Emitted, DefaultHysteresis)
+	}
+
+	// The snooze lapses: the next sweep declares the already-acquired state.
+	if err := e.store.SetCheckSnooze(ctx, "at-home", time.Time{}); err != nil {
+		t.Fatalf("clear snooze: %v", err)
+	}
+	c, err = e.store.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("get check after clear: %v", err)
+	}
+	raised, err = e.sweepCheck(ctx, c, now.Add(2*time.Hour))
+	if err != nil {
+		t.Fatalf("unsnoozed sweepCheck: %v", err)
+	}
+	if raised != 1 {
+		t.Fatalf("unsnoozed sweep raised %d transitions, want 1", raised)
+	}
+	st, err = e.store.GetCheckState(ctx, c.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state after clear: %v", err)
+	}
+	if st.Emitted != store.CheckUp {
+		t.Fatalf("emitted after the snooze lapsed = %q, want up", st.Emitted)
+	}
+}

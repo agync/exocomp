@@ -251,6 +251,7 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 	}
 
 	raised := 0
+	snoozed := c.SnoozedUntil.After(now)
 	for _, r := range results {
 		if err := ctx.Err(); err != nil {
 			return raised, err
@@ -316,7 +317,10 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 		st.Netgroup = netgroup
 		st.LastDurationMS = dur.Milliseconds()
 
-		if st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
+		// A snoozed check is still probed and its state still advances, so the
+		// hysteresis is current when the snooze lapses; only the emission is
+		// withheld.
+		if !snoozed && st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
 			if err := e.emitCheckTransition(ctx, c, t, st, labels, now); err != nil {
 				// The emitted flag is not advanced, so the next sweep
 				// re-observes the same status and re-emits the transition.
