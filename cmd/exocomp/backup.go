@@ -205,13 +205,7 @@ func runBackup(ctx context.Context, w io.Writer, only string) (err error) {
 
 	specs := make([]queue.Spec, 0, len(targets))
 	for _, t := range targets {
-		specs = append(specs, queue.Spec{
-			Runbook:        "backup",
-			Kind:           backup.JobKind,
-			Trigger:        "manual",
-			Argv:           backup.Argv(t.Name),
-			ConcurrencyKey: backup.ConcurrencyKey(t.Name),
-		})
+		specs = append(specs, backup.Spec(t.Name, "manual"))
 	}
 
 	if daemonRunning(ctx, dir) {

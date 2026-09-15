@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -65,6 +66,24 @@ func TestConcurrencyKeyFormat(t *testing.T) {
 	t.Parallel()
 	if got := ConcurrencyKey("nas"); got != "backup:nas" {
 		t.Errorf("ConcurrencyKey(%q) = %q, want %q", "nas", got, "backup:nas")
+	}
+}
+
+// TestSpecPinsQueueFields pins the one shape both the `exocomp backup` CLI and
+// the TUI's run-now key enqueue. A field drifting here silently changes what
+// one of the two faces runs.
+func TestSpecPinsQueueFields(t *testing.T) {
+	t.Parallel()
+	got := Spec("nas", "manual")
+	want := queue.Spec{
+		Runbook:        "backup",
+		Kind:           JobKind,
+		Trigger:        "manual",
+		Argv:           Argv("nas"),
+		ConcurrencyKey: "backup:nas",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("Spec = %+v, want %+v", got, want)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -38,6 +39,19 @@ func Argv(target string) []string {
 // share, so two backups of the same target never run at once.
 func ConcurrencyKey(target string) string {
 	return "backup:" + target
+}
+
+// Spec builds the queue spec for one target's backup, the single shape the
+// `exocomp backup` CLI and the TUI's run-now key both enqueue. trigger records
+// who asked (the CLI passes "manual"; the TUI passes its own).
+func Spec(name, trigger string) queue.Spec {
+	return queue.Spec{
+		Runbook:        "backup",
+		Kind:           JobKind,
+		Trigger:        trigger,
+		Argv:           Argv(name),
+		ConcurrencyKey: ConcurrencyKey(name),
+	}
 }
 
 // TargetOf recovers the target name from a backup job's argv, the inverse of
