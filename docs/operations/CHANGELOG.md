@@ -6,6 +6,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the TUI run-now keys are live
+
+- **The TUI's deferred run-now keys now enqueue, and `c cancel` confirms.** `b`
+  on `[2] backups`, `l` on `[3] workspaces`, and `x` on `[4] schedules` release
+  work through the shared spec builders (`backup.Spec`, `PlanWorkspace` with
+  `service.TriggerTUI`, `sched.Specs`), each guarded on the write surface so a
+  read-only TUI stays inert; a schedule that builds no spec flashes instead of
+  enqueueing nothing. `c` on `[1] jobs` now opens a confirmation and moves the
+  job only on enter, with the state read at press time so a job that moved
+  meanwhile conflicts rather than racing. The help bars and the `[?]` overlay
+  name the live keys.
+
 ## 2026-09-15 — the run-now spec seams are importable
 
 - **The TUI's deferred run-now keys now have seams to call.** The `b` backup,
