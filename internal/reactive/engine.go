@@ -67,10 +67,11 @@ type Options struct {
 	// Clock overrides time.Now, for tests.
 	Clock func() time.Time
 	// Canary is an ip:port the sweep dials before treating a check's targets as
-	// genuinely down. When it is reachable while a target reads down, the
-	// sweep proceeds normally. Empty (or unreachable while a target is down)
-	// means the whole check's sweep is a missed observation, never a mass-down:
-	// the daemon's own uplink loss is the failure this exists to absorb.
+	// genuinely down. Empty disables it. When set and reachable, a sweep whose
+	// target read down proceeds normally; when set and unreachable while a
+	// target reads down, that check's whole sweep is a missed observation,
+	// never a mass-down — the daemon's own uplink loss is the failure this
+	// exists to absorb.
 	Canary string
 	// Logger receives failures that are nobody's job. Default slog.Default().
 	Logger *slog.Logger
