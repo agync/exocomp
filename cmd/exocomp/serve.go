@@ -1245,12 +1245,13 @@ func (d workspaceDriver) Run(ctx context.Context, spec executor.Spec, sink execu
 			})
 		}
 	}
-	// A plan the API asked for cannot be sealed by its caller, which only
-	// enqueued the row; the daemon seals its -out into a consumable artifact and
-	// records its policy verdict, so a later apply-by-id can consult it. A CLI
-	// plan carries the manual trigger and seals its own, so this runs for the
-	// "api" trigger alone.
-	if err == nil && op == "plan" && job.Trigger == service.TriggerAPI {
+	// A plan the API or the TUI asked for cannot be sealed by its caller, which
+	// only enqueued the row; the daemon seals its -out into a consumable artifact
+	// and records its policy verdict, so a later apply-by-id can consult it. A
+	// CLI plan carries the manual trigger and seals its own, so this runs for the
+	// "api" and "tui" triggers alone.
+	if err == nil && op == "plan" &&
+		(job.Trigger == service.TriggerAPI || job.Trigger == service.TriggerTUI) {
 		d.sealAPIPlan(ctx, job, ws, spec.Argv, sink)
 	}
 	return res, err

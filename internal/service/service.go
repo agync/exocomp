@@ -19,13 +19,15 @@ import (
 )
 
 // TriggerManual is the trigger a CLI-initiated run records; TriggerAPI is the
-// one an HTTP API run records. The daemon reads the plan trigger back to decide
-// whether it, rather than the caller, must seal the plan into a consumable
-// artifact: a CLI run seals its own plan post-run, an API run cannot (it only
-// enqueues), so the daemon does it for the API's "api" trigger alone.
+// one an HTTP API run records; TriggerTUI is the one a TUI run records. The
+// daemon reads the plan trigger back to decide whether it, rather than the
+// caller, must seal the plan into a consumable artifact: a CLI run seals its
+// own plan post-run, while an API or TUI run cannot (each only enqueues), so
+// the daemon does it for the "api" and "tui" triggers.
 const (
 	TriggerManual = "manual"
 	TriggerAPI    = "api"
+	TriggerTUI    = "tui"
 )
 
 // workspaceRunbookPrefix labels a queued tofu job with the workspace it belongs
