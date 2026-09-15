@@ -72,6 +72,8 @@ func (m Model) View() tea.View {
 		base = spliceOverlay(base, m.filterModalView(), 8)
 	case modalDestroy:
 		base = spliceOverlay(base, m.destroyConfirmView(), 6)
+	case modalCancelJob:
+		base = spliceOverlay(base, m.cancelModalView(), 8)
 	}
 	if m.flash != "" {
 		base = spliceOverlay(base, join(box(1, 56, []string{m.flash})), max(0, m.height-4))
@@ -235,14 +237,11 @@ func (m Model) renderHelp() string {
 	case m.active == screenJobs:
 		return styleHelp.Render("[enter] tail  [f] follow  [c] cancel  [/] filter  [?] help")
 	case m.active == screenBackups:
-		// b (run now) is reserved, not wired; the bar names only live keys.
-		return styleHelp.Render("[enter] last runs  [j/k] move  [?] help")
+		return styleHelp.Render("[b] run now  [enter] last runs  [j/k] move  [?] help")
 	case m.active == screenWorkspaces:
-		// l (plan now) is reserved, not wired.
-		return styleHelp.Render("[enter] detail  [j/k] move  [?] help")
+		return styleHelp.Render("[enter] detail  [l] plan now  [j/k] move  [?] help")
 	case m.active == screenSchedules:
-		// x (run now) is reserved, not wired.
-		return styleHelp.Render("[space] on/off  [j/k] move  [?] help")
+		return styleHelp.Render("[space] on/off  [x] run now  [j/k] move  [?] help")
 	default:
 		return styleHelp.Render("[?] help")
 	}

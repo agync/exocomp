@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -13,9 +15,11 @@ import (
 	"charm.land/bubbles/v2/table"
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
+	"exocomp.dev/exocomp/internal/sched"
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
@@ -401,6 +405,73 @@ func unmuteCmd(st *store.Store, mutes []store.NotifyMute) tea.Cmd {
 	}
 }
 
+// runBackupNowCmd enqueues one target's backup through the same spec the CLI
+// builds (backup.Spec), so the [b] run-now key releases work through the one
+// queue and lands as a job the daemon claims on its own poll (AGENTS.md
+// invariant 5).
+func runBackupNowCmd(st *store.Store, name string) tea.Cmd {
+	return func() tea.Msg {
+		gate := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+		job, err := gate.Enqueue(context.Background(), backup.Spec(name, service.TriggerTUI))
+		if err != nil {
+			return writeDoneMsg{screen: screenBackups, text: "backup: " + err.Error()}
+		}
+		return writeDoneMsg{screen: screenBackups, text: fmt.Sprintf("queued backup %s as job %d", name, job.ID)}
+	}
+}
+
+// planNowCmd enqueues a tofu plan for one workspace through the shared service
+// verb, carrying the TUI trigger so the daemon (not this enqueue-only caller)
+// seals the plan's -out file into a consumable artifact post-run. The artifacts
+// dir is created here, mirroring the web's tofuArtifactsDir: a plan writes its
+// -out file into it.
+func planNowCmd(st *store.Store, w *Write, ws store.Workspace) tea.Cmd {
+	return func() tea.Msg {
+		artifacts := filepath.Join(w.DataDir, "artifacts", "tofu")
+		if err := os.MkdirAll(artifacts, 0o700); err != nil {
+			return writeDoneMsg{screen: screenWorkspaces, text: "plan: " + err.Error()}
+		}
+		gate := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+		svc := service.New(st, w.DataDir, nil)
+		res, err := svc.PlanWorkspace(context.Background(), gate, service.PlanInput{
+			Workspace:    ws.Name,
+			TofuDir:      ws.TofuDir,
+			ArtifactsDir: artifacts,
+			Trigger:      service.TriggerTUI,
+		})
+		if err != nil {
+			return writeDoneMsg{screen: screenWorkspaces, text: "plan: " + err.Error()}
+		}
+		return writeDoneMsg{screen: screenWorkspaces, text: fmt.Sprintf("queued plan for %s as job %d", ws.Name, res.Job.ID)}
+	}
+}
+
+// runScheduleNowCmd enqueues the specs one schedule's kind builds, through the
+// exported builder a fire also uses, but with the TUI trigger and without
+// dispatch's last_run stamp or occurrence idempotency key: a manual run must
+// not consume the schedule's own occurrence. A schedule that builds no spec
+// (e.g. a backup schedule with no enabled target) flashes the empty result
+// rather than reporting a queued job that does not exist.
+func runScheduleNowCmd(st *store.Store, sc store.Schedule) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		specs, err := sched.Specs(ctx, st, nil, sc, service.TriggerTUI)
+		if err != nil {
+			return writeDoneMsg{screen: screenSchedules, text: "schedule: " + err.Error()}
+		}
+		if len(specs) == 0 {
+			return writeDoneMsg{screen: screenSchedules, text: fmt.Sprintf("schedule %s: nothing to run", sc.Name)}
+		}
+		gate := queue.New(st, enqueueOnly{}, queue.Options{Workers: 1})
+		for _, spec := range specs {
+			if _, err := gate.Enqueue(ctx, spec); err != nil {
+				return writeDoneMsg{screen: screenSchedules, text: "schedule: " + err.Error()}
+			}
+		}
+		return writeDoneMsg{screen: screenSchedules, text: fmt.Sprintf("queued %s (%d job)", sc.Name, len(specs))}
+	}
+}
+
 // cancelJobCmd moves the selected job to cancelled. The `from` state is read at
 // press time; a job that moved meanwhile fails the transition and flashes a
 // conflict rather than racing the daemon. Terminal states have nothing to
@@ -643,6 +714,10 @@ func (m Model) openDiff() (tea.Model, tea.Cmd) {
 	return m, loadApprovalDiffCmd(m.store, m.write, a)
 }
 
+// cancelSelectedJob opens the confirmation for the selected job; it enqueues
+// nothing itself. The state is captured here so the transition the confirmation
+// presses refuses a job that moved between the two keys. A terminal job has
+// nothing to cancel and flashes the refusal instead of confirming.
 func (m Model) cancelSelectedJob() (tea.Model, tea.Cmd) {
 	idx := m.jobsTable.model.Cursor()
 	if idx < 0 || idx >= len(m.jobs) {
@@ -653,7 +728,37 @@ func (m Model) cancelSelectedJob() (tea.Model, tea.Cmd) {
 		m.flash = fmt.Sprintf("job %d is %s — nothing to cancel", job.ID, job.State)
 		return m, nil
 	}
-	return m, cancelJobCmd(m.store, job.ID, job.State)
+	m.confirmCancelJob = job.ID
+	m.confirmCancelFrom = job.State
+	m.modal = modalCancelJob
+	return m, nil
+}
+
+// runSelectedBackup enqueues the selected backup target's run-now backup.
+func (m Model) runSelectedBackup() (tea.Model, tea.Cmd) {
+	idx := m.backupsTable.model.Cursor()
+	if idx < 0 || idx >= len(m.targets) {
+		return m, nil
+	}
+	return m, runBackupNowCmd(m.store, m.targets[idx].Name)
+}
+
+// planSelectedWorkspace enqueues a plan for the selected workspace.
+func (m Model) planSelectedWorkspace() (tea.Model, tea.Cmd) {
+	idx := m.workspacesTable.model.Cursor()
+	if idx < 0 || idx >= len(m.workspaces) {
+		return m, nil
+	}
+	return m, planNowCmd(m.store, m.write, m.workspaces[idx])
+}
+
+// runSelectedSchedule enqueues the selected schedule's work now.
+func (m Model) runSelectedSchedule() (tea.Model, tea.Cmd) {
+	idx := m.schedulesTable.model.Cursor()
+	if idx < 0 || idx >= len(m.schedules) {
+		return m, nil
+	}
+	return m, runScheduleNowCmd(m.store, m.schedules[idx])
 }
 
 func (m Model) toggleSelectedSchedule() (tea.Model, tea.Cmd) {
@@ -781,6 +886,10 @@ func (m Model) submitModal() (tea.Model, tea.Cmd) {
 		m.modal = modalNone
 		m.flash = ""
 		return m, m.startApproveDecide(m.confirmApproval)
+	case modalCancelJob:
+		m.modal = modalNone
+		m.flash = ""
+		return m, cancelJobCmd(m.store, m.confirmCancelJob, m.confirmCancelFrom)
 	}
 	return m, nil
 }
@@ -797,6 +906,17 @@ func (m Model) muteModalView() muteModal {
 
 func (m Model) pauseModalView() pauseModal {
 	return pauseModal{minutes: m.typed}
+}
+
+// cancelModalView is the cancel confirmation: the job id and state it would
+// move, and the two keys, rendered like the pause/mute modals.
+func (m Model) cancelModalView() string {
+	return join(box(1, 56, []string{
+		fmt.Sprintf("cancel job %d?", m.confirmCancelJob),
+		"",
+		fmt.Sprintf("it is %s — cancelling stops it now", m.confirmCancelFrom),
+		"[enter] cancel · [esc] keep",
+	}))
 }
 
 func (m Model) filterModalView() string {
@@ -848,8 +968,7 @@ func (m Model) approval(id int64) store.Approval {
 }
 
 // renderHelpOverlay is the full keymap, shown by [?] and closed by any key. It
-// mirrors docs/design/reference/tui/keymap.txt; the write keys deferred to a
-// later round are named but inert (see the lane concerns).
+// mirrors docs/design/reference/tui/keymap.txt.
 func renderHelpOverlay() string {
 	const w = 80
 	lines := []string{
@@ -865,14 +984,11 @@ func renderHelpOverlay() string {
 		"",
 		"per screen",
 		"  [1] jobs       enter tail · f follow · c cancel · / filter",
-		"  [2] backups    enter last runs",
-		"  [3] workspaces enter tail · / filter",
-		"  [4] schedules  space on/off · / filter",
+		"  [2] backups    b run now · enter last runs",
+		"  [3] workspaces enter tail · l plan now · / filter",
+		"  [4] schedules  space on/off · x run now · / filter",
 		"  [5] approvals  a approve · r reject · d diff",
 		"  [6] events     e trace · o outcome · / search",
-		"",
-		"deferred (keys reserved, not wired)",
-		"  b run backup · l plan now · x run schedule",
 	}
 	return join(lines)
 }

@@ -49,11 +49,12 @@ type Write struct {
 type modalKind int
 
 const (
-	modalNone    modalKind = iota
-	modalPause             // "pause for how many minutes?"
-	modalMute              // mute modal: expiry presets + a logged reason
-	modalFilter            // filter input for the active table
-	modalDestroy           // typed-confirm before approving a destroy-carrying plan
+	modalNone      modalKind = iota
+	modalPause               // "pause for how many minutes?"
+	modalMute                // mute modal: expiry presets + a logged reason
+	modalFilter              // filter input for the active table
+	modalDestroy             // typed-confirm before approving a destroy-carrying plan
+	modalCancelJob           // confirm before cancelling a job
 )
 
 // mutePresets are the durations the mute modal's expiry chooser cycles.
@@ -147,6 +148,12 @@ type Model struct {
 	modal   modalKind
 	typed   string
 	muteOpt int
+
+	// confirmCancelJob is the job the cancel confirmation waits on, with the
+	// state read at press time so the transition refuses a job that moved
+	// meanwhile (write.go cancelSelectedJob).
+	confirmCancelJob  int64
+	confirmCancelFrom store.JobState
 
 	// The typed-confirmation on a destroy-carrying plan: which approval waits,
 	// its destroy facts for the renderer, and the workspace name the operator must
@@ -705,6 +712,24 @@ func (m Model) handleKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 	case "space":
 		if !m.tailing && m.active == screenSchedules && m.write != nil {
 			return m.toggleSelectedSchedule()
+		}
+		return m, nil
+
+	case "b":
+		if !m.tailing && m.active == screenBackups && m.write != nil {
+			return m.runSelectedBackup()
+		}
+		return m, nil
+
+	case "l":
+		if !m.tailing && m.active == screenWorkspaces && m.write != nil {
+			return m.planSelectedWorkspace()
+		}
+		return m, nil
+
+	case "x":
+		if !m.tailing && m.active == screenSchedules && m.write != nil {
+			return m.runSelectedSchedule()
 		}
 		return m, nil
 	}

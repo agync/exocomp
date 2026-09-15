@@ -11,9 +11,11 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 
+	"exocomp.dev/exocomp/internal/backup"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -177,26 +179,39 @@ func seedSensitivePlanArtifact(t *testing.T, st *store.Store, env *secrets.Envel
 
 // TestNilWriteDisablesWriteKeys proves the read-only posture: with a nil Write
 // every write key is a no-op even when its screen carries a real row to act on,
-// and no command or overlay ever appears. Seeding each surface (a queued job, a
-// gated approval, a schedule) keeps the keys reachable, so stripping any one
-// guard goes red. d is read-only (its pager opens with nil Write) and x has no
-// handler, so neither is a write key to pin.
+// and no command or overlay ever appears, so the store is left untouched.
+// Seeding each surface (a queued job, a gated approval, a backup target, a
+// workspace, a schedule) keeps the keys reachable, so stripping any one guard
+// goes red. d is read-only (its pager opens with nil Write).
 func TestNilWriteDisablesWriteKeys(t *testing.T) {
 	st := openTestStore(t)
+	ctx := context.Background()
 	_, env := newTestWrite(t)
 	gated := seedGatedJob(t, st)
 	seedApproval(t, st, env, gated.ID, "core", 1, nil)
 	seedJob(t, st, "ansible", store.StateQueued, nil)
-	if _, err := st.CreateSchedule(context.Background(), store.NewSchedule{
+	if _, err := st.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "restic-local", Kind: "restic_local", URI: "/var/lib/exocomp/restic", Enabled: true,
+	}); err != nil {
+		t.Fatalf("create backup target: %v", err)
+	}
+	if _, err := st.CreateWorkspace(ctx, store.Workspace{Name: "core", TofuDir: t.TempDir()}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := st.CreateSchedule(ctx, store.NewSchedule{
 		Name: "nightly", CronExpr: "@daily", Kind: store.ScheduleBackup,
 	}); err != nil {
 		t.Fatalf("create schedule: %v", err)
 	}
 
+	before := len(listJobs(t, st))
+
 	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, loadJobsCmd(st)())
 	m = update(t, m, loadGlanceCmd(st)())
+	m = update(t, m, loadBackupsCmd(st)())
+	m = update(t, m, loadWorkspacesCmd(st)())
 	m = update(t, m, loadSchedulesCmd(st)())
 
 	assertInert := func(key tea.KeyPressMsg, m Model) {
@@ -225,9 +240,22 @@ func TestNilWriteDisablesWriteKeys(t *testing.T) {
 	m = update(t, m, key('1'))
 	assertInert(key('c'), m)
 
-	// Schedules: space toggles the selected schedule.
+	// Backups: b runs the selected target now.
+	m = update(t, m, key('2'))
+	assertInert(key('b'), m)
+
+	// Workspaces: l plans the selected workspace now.
+	m = update(t, m, key('3'))
+	assertInert(key('l'), m)
+
+	// Schedules: space toggles, x runs the selected schedule now.
 	m = update(t, m, key('4'))
 	assertInert(key(' '), m)
+	assertInert(key('x'), m)
+
+	if after := len(listJobs(t, st)); after != before {
+		t.Fatalf("nil Write enqueued jobs: count %d -> %d, want unchanged", before, after)
+	}
 }
 
 // TestPauseAndResume drives p through the mandatory-expiry prompt into a
@@ -617,29 +645,144 @@ func TestTUIEnqueueOnlyNeverDrains(t *testing.T) {
 	_ = st
 }
 
-// TestCancelQueuedJob moves the selected queued job to cancelled through the
-// store's one transition verb.
-func TestCancelQueuedJob(t *testing.T) {
+// TestRunNowKeysEnqueue drives b on [2], l on [3], and x on [4] and proves each
+// releases exactly one job through the shared spec builders: a backup, a
+// TUI-triggered tofu plan, and a schedule's shell spec. It is the run-now
+// wiring's end-to-end assertion; dropping a dispatch case, the nil-Write guard,
+// or the wrong trigger fails it.
+func TestRunNowKeysEnqueue(t *testing.T) {
+	st := openTestStore(t)
+	w, _ := newTestWrite(t)
+	ctx := context.Background()
+
+	target, err := st.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "restic-local", Kind: "restic_local", URI: "/var/lib/exocomp/restic", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("create backup target: %v", err)
+	}
+	if _, err := st.CreateWorkspace(ctx, store.Workspace{Name: "core", TofuDir: t.TempDir()}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly-shell", CronExpr: "@daily", Kind: store.ScheduleShell,
+		Args: store.ScheduleArgs{Argv: []string{"true"}},
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	m := New(st, w)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadBackupsCmd(st)())
+	m = update(t, m, loadWorkspacesCmd(st)())
+	m = update(t, m, loadSchedulesCmd(st)())
+
+	// [2] b: one backup job for the selected target.
+	m = update(t, m, key('2'))
+	runCmd(t, m, updateCmdNoCheck(t, m, key('b')))
+	jobs := listJobs(t, st)
+	if len(jobs) != 1 {
+		t.Fatalf("b enqueued %d jobs, want 1", len(jobs))
+	}
+	if jobs[0].Kind != backup.JobKind || jobs[0].Trigger != service.TriggerTUI || jobs[0].Runbook != "backup" {
+		t.Fatalf("b job = {kind:%q trigger:%q runbook:%q}, want backup/tui/backup",
+			jobs[0].Kind, jobs[0].Trigger, jobs[0].Runbook)
+	}
+	if argv := jobs[0].Args.Argv; len(argv) != 2 || argv[1] != target.Name {
+		t.Fatalf("b argv = %v, want the selected target %q", argv, target.Name)
+	}
+
+	// [3] l: one TUI-triggered tofu plan for the selected workspace.
+	m = update(t, m, key('3'))
+	runCmd(t, m, updateCmdNoCheck(t, m, key('l')))
+	plan := jobOfKind(listJobs(t, st), executor.KindTofu)
+	if plan == nil {
+		t.Fatal("l enqueued no tofu plan job")
+	}
+	if plan.Trigger != service.TriggerTUI || plan.Runbook != "workspace:core" {
+		t.Fatalf("l job = {trigger:%q runbook:%q}, want tui/workspace:core", plan.Trigger, plan.Runbook)
+	}
+
+	// [4] x: one shell job from the schedule's own spec builder.
+	m = update(t, m, key('4'))
+	runCmd(t, m, updateCmdNoCheck(t, m, key('x')))
+	shell := jobOfKind(listJobs(t, st), store.ScheduleShell)
+	if shell == nil {
+		t.Fatal("x enqueued no schedule job")
+	}
+	if shell.Trigger != service.TriggerTUI || shell.Runbook != "nightly-shell" {
+		t.Fatalf("x job = {trigger:%q runbook:%q}, want tui/nightly-shell", shell.Trigger, shell.Runbook)
+	}
+}
+
+func listJobs(t *testing.T, st *store.Store) []store.Job {
+	t.Helper()
+	jobs, err := st.ListJobs(context.Background(), store.JobFilter{})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	return jobs
+}
+
+func jobOfKind(jobs []store.Job, kind string) *store.Job {
+	for i := range jobs {
+		if jobs[i].Kind == kind {
+			return &jobs[i]
+		}
+	}
+	return nil
+}
+
+// TestCancelJobConfirms proves c opens the confirm and cancels nothing until
+// enter: esc leaves the job queued, enter presses the transition. The mutation
+// (making c cancel directly) reds the "nothing before enter" assertion.
+func TestCancelJobConfirms(t *testing.T) {
 	st := openTestStore(t)
 	job := seedJob(t, st, "ansible", store.StateQueued, nil)
+	ctx := context.Background()
 
 	m := New(st, &Write{})
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
 	m = update(t, m, key('1'))
 	m = update(t, m, loadJobsCmd(st)())
 
-	runCmd(t, m, updateCmdNoCheck(t, m, key('c')))
-	got, err := st.GetJob(context.Background(), job.ID)
+	m, cmd := updateCmd(t, m, key('c'))
+	if cmd != nil {
+		t.Fatal("c produced a command before the confirm; nothing may be cancelled yet")
+	}
+	if m.modal != modalCancelJob {
+		t.Fatalf("c did not open the cancel confirm, modal = %v", m.modal)
+	}
+	if got, err := st.GetJob(ctx, job.ID); err != nil || got.State != store.StateQueued {
+		t.Fatalf("before enter: job state = %v (%v), want queued", got.State, err)
+	}
+
+	// esc keeps the job.
+	m = update(t, m, specialKey(tea.KeyEscape))
+	if m.modal != modalNone {
+		t.Fatalf("esc left the confirm open, modal = %v", m.modal)
+	}
+	if got, err := st.GetJob(ctx, job.ID); err != nil || got.State != store.StateQueued {
+		t.Fatalf("after esc: job state = %v (%v), want queued", got.State, err)
+	}
+
+	// c then enter cancels.
+	m = update(t, m, key('c'))
+	if m.modal != modalCancelJob {
+		t.Fatalf("second c did not reopen the confirm, modal = %v", m.modal)
+	}
+	runCmd(t, m, updateCmdNoCheck(t, m, specialKey(tea.KeyEnter)))
+	got, err := st.GetJob(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("get job: %v", err)
 	}
 	if got.State != store.StateCancelled {
-		t.Fatalf("cancelled job state = %s, want cancelled", got.State)
+		t.Fatalf("after enter: job state = %s, want cancelled", got.State)
 	}
 }
 
 // TestCancelTerminalJobIsANoOp proves a finished job has nothing to cancel: c
-// flashes the refusal and the row stays terminal.
+// flashes the refusal, opens no confirm, and the row stays terminal.
 func TestCancelTerminalJobIsANoOp(t *testing.T) {
 	st := openTestStore(t)
 	zero := 0
@@ -653,6 +796,9 @@ func TestCancelTerminalJobIsANoOp(t *testing.T) {
 	got, cmd := updateCmd(t, m, key('c'))
 	if cmd != nil {
 		t.Fatal("c on a terminal job produced a command; nothing may be cancelled")
+	}
+	if got.modal != modalNone {
+		t.Fatalf("c on a terminal job opened a confirm, modal = %v", got.modal)
 	}
 	if !strings.Contains(got.flash, "nothing to cancel") {
 		t.Fatalf("flash = %q, want the terminal refusal", got.flash)
@@ -803,7 +949,8 @@ func TestEventsOutcomeFilterAndTrace(t *testing.T) {
 	}
 }
 
-// TestHelpOverlayShowsTheKeymap drives ? to the full keymap and back.
+// TestHelpOverlayShowsTheKeymap drives ? to the full keymap and back, and
+// proves the run-now keys moved out of the deferred block into the live map.
 func TestHelpOverlayShowsTheKeymap(t *testing.T) {
 	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
@@ -812,12 +959,41 @@ func TestHelpOverlayShowsTheKeymap(t *testing.T) {
 	if !m.helpOpen {
 		t.Fatal("? did not open the help overlay")
 	}
-	if got := m.View().Content; !strings.Contains(got, "exocomp keys") || !strings.Contains(got, "deferred") {
+	got := m.View().Content
+	if !strings.Contains(got, "exocomp keys") {
 		t.Fatalf("help overlay missing the keymap:\n%s", got)
+	}
+	for _, want := range []string{"b run now", "l plan now", "x run now"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("help overlay missing the live run-now key %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "deferred") {
+		t.Fatalf("help overlay still carries the deferred block:\n%s", got)
 	}
 	m = update(t, m, key('x'))
 	if m.helpOpen {
 		t.Fatal("a key did not close the help overlay")
+	}
+}
+
+// TestRunNowHelpBarsNameTheKeys proves each screen's help bar names its now-live
+// run-now key.
+func TestRunNowHelpBarsNameTheKeys(t *testing.T) {
+	m := New(openTestStore(t), nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+
+	m = update(t, m, key('2'))
+	if got := m.renderHelp(); !strings.Contains(got, "[b] run now") {
+		t.Fatalf("backups help bar = %q, want [b] run now", got)
+	}
+	m = update(t, m, key('3'))
+	if got := m.renderHelp(); !strings.Contains(got, "[l] plan now") {
+		t.Fatalf("workspaces help bar = %q, want [l] plan now", got)
+	}
+	m = update(t, m, key('4'))
+	if got := m.renderHelp(); !strings.Contains(got, "[x] run now") {
+		t.Fatalf("schedules help bar = %q, want [x] run now", got)
 	}
 }
 
