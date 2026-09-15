@@ -10,3 +10,5 @@ CLAUDE.md
 .agents/workflows/*.js
 # Agent brain — durable working notes and design handoff; local-only, never committed
 .agents/brain/
+# playwright-cli scratch (browser sessions, snapshots, recordings)
+.playwright-cli/
