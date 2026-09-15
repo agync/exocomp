@@ -85,6 +85,12 @@ func (r *Registry) gather(ctx context.Context) ([]gauge, error) {
 	}
 	out = append(out, drift...)
 
+	checks, err := r.checkGauges(ctx, now)
+	if err != nil {
+		return nil, err
+	}
+	out = append(out, checks...)
+
 	queue, err := r.queueGauge(ctx, now)
 	if err != nil {
 		return nil, err
@@ -126,6 +132,9 @@ const (
 	helpPaused        = "1 when a global silence is holding reactive jobs (the PAUSED banner)."
 	helpMuted         = "1 when a notify mute is holding notifications (the MUTED banner)."
 	helpDisk          = "Fraction of the data-dir filesystem in use, 0..1."
+	helpCheckUp       = "1 when a check target's last probe answered up, 0 when down; emitted only for observed targets."
+	helpCheckDuration = "Seconds the last probe of a check target took."
+	helpCheckSnoozed  = "1 when a check-level snooze is still in effect."
 )
 
 func (r *Registry) backupGauges(ctx context.Context, now time.Time) ([]gauge, error) {
@@ -211,6 +220,53 @@ func (r *Registry) lastWorkspaceCheck(ctx context.Context, name string) (time.Ti
 		}
 	}
 	return latest, found, nil
+}
+
+// checkGauges reports each observed check target's reachability and last probe
+// duration, plus whether a check-level snooze is holding emission. Only targets
+// with a check_state row are emitted: a target the sweep has never seen has no
+// verdict to report, and a 0 would read as down. The netgroup label is the
+// stored classification, not a re-derivation, so the gauge and the event carry
+// the same value.
+func (r *Registry) checkGauges(ctx context.Context, now time.Time) ([]gauge, error) {
+	checks, err := r.store.ListChecks(ctx, false)
+	if err != nil {
+		return nil, err
+	}
+	var out []gauge
+	for _, c := range checks {
+		states, err := r.store.ListCheckStates(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, st := range states {
+			up := 0.0
+			if st.Status == store.CheckUp {
+				up = 1
+			}
+			out = append(out,
+				gauge{
+					name: "exocomp_check_target_up", help: helpCheckUp,
+					labels: map[string]string{"check": c.Name, "target": st.TargetName, "netgroup": st.Netgroup},
+					value:  up,
+				},
+				gauge{
+					name: "exocomp_check_probe_duration_seconds", help: helpCheckDuration,
+					labels: map[string]string{"check": c.Name, "target": st.TargetName},
+					value:  float64(st.LastDurationMS) / 1000,
+				},
+			)
+		}
+		snoozed := 0.0
+		if !c.SnoozedUntil.IsZero() && c.SnoozedUntil.After(now) {
+			snoozed = 1
+		}
+		out = append(out, gauge{
+			name: "exocomp_check_snoozed", help: helpCheckSnoozed,
+			labels: map[string]string{"check": c.Name}, value: snoozed,
+		})
+	}
+	return out, nil
 }
 
 func (r *Registry) queueGauge(ctx context.Context, now time.Time) ([]gauge, error) {

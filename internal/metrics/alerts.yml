@@ -66,3 +66,26 @@ groups:
         annotations:
           summary: oldest queued job is over 30m old
           description: "{{ $value | humanizeDuration }} and still queued — the queue may be wedged."
+
+      - alert: CheckTargetDownAtHome
+        # A check probes each target at the home-LAN address it is only
+        # reachable at when home, so a down-and-away target is a laptop out of
+        # the house — normal. A target down while classified into a home
+        # netgroup is the signal: something that should be on the LAN is not.
+        expr: exocomp_check_target_up{netgroup="home"} == 0
+        for: 15m
+        labels: {severity: warning}
+        annotations:
+          summary: "check target {{ $labels.target }} down while home"
+          description: "{{ $labels.check }} target {{ $labels.target }} has been down for 15m in netgroup {{ $labels.netgroup }}."
+
+      - alert: CheckSnoozed
+        # A snooze is a deliberate, temporary act. Left on, it silently stops
+        # the check emitting transitions — the same failure mode as a forgotten
+        # global pause, scoped to one check.
+        expr: exocomp_check_snoozed == 1
+        for: 2h
+        labels: {severity: warning}
+        annotations:
+          summary: "check {{ $labels.check }} snoozed for over 2h"
+          description: "A check-level snooze is suppressing transitions. Lift it with `exocomp check unsnooze {{ $labels.check }}`."

@@ -138,6 +138,67 @@ func TestPausedAndMutedGaugesAreIndependent(t *testing.T) {
 	}
 }
 
+// A check's observed targets surface as gauges carrying the store's stored
+// netgroup and duration, and a target with no state row emits nothing at all —
+// not a false zero. Snooze is its own per-check gauge.
+func TestCheckGauges(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	now := time.Date(2026, 8, 22, 14, 3, 0, 0, time.UTC)
+
+	c, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "laptop", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "192.168.1.60", Port: 22},
+			{Name: "unseen", Address: "192.168.1.70", Port: 22},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	for _, state := range []store.CheckState{
+		{CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp, Netgroup: "home", LastDurationMS: 21},
+		{CheckID: c.ID, TargetName: "nas", Status: store.CheckDown, Netgroup: "away", LastDurationMS: 2500},
+	} {
+		if err := st.SetCheckState(ctx, state); err != nil {
+			t.Fatalf("set state %s: %v", state.TargetName, err)
+		}
+	}
+	if err := st.SetCheckSnooze(ctx, "at-home", now.Add(time.Hour)); err != nil {
+		t.Fatalf("snooze: %v", err)
+	}
+	if _, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "web", Kind: store.CheckHTTP, IntervalS: 60,
+		Targets: []store.CheckTarget{{Name: "web", URL: "https://web.lan/health"}},
+	}); err != nil {
+		t.Fatalf("create second check: %v", err)
+	}
+
+	r := New(st, "")
+	atClock(r, now)
+	out, err := r.Render(ctx)
+	if err != nil {
+		t.Fatalf("render: %v", err)
+	}
+	for _, want := range []string{
+		`exocomp_check_target_up{check="at-home",netgroup="away",target="nas"} 0`,
+		`exocomp_check_target_up{check="at-home",netgroup="home",target="laptop"} 1`,
+		`exocomp_check_probe_duration_seconds{check="at-home",target="laptop"} 0.021`,
+		`exocomp_check_probe_duration_seconds{check="at-home",target="nas"} 2.5`,
+		`exocomp_check_snoozed{check="at-home"} 1`,
+		`exocomp_check_snoozed{check="web"} 0`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("scrape missing %q\n---\n%s", want, out)
+		}
+	}
+	// The unseen target has no state row: emitting a 0 would read as down.
+	if strings.Contains(out, `target="unseen"`) {
+		t.Errorf("unobserved target emitted a gauge\n---\n%s", out)
+	}
+}
+
 func TestHandlerServesText(t *testing.T) {
 	st := testStore(t)
 	r := New(st, "")
