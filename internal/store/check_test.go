@@ -123,11 +123,54 @@ func TestCheckCRUDAndState(t *testing.T) {
 	}
 }
 
-func TestCheckValidationRefusals(t *testing.T) {
+// TestCheckStateNetgroupRoundTrip: the stored netgroup survives the state
+// upsert both ways — a classified value (home/away) is overwritten on the next
+// observation, so the read paths always see the latest classification.
+func TestCheckStateNetgroupRoundTrip(t *testing.T) {
 	t.Parallel()
 	st := openReactive(t)
 	ctx := context.Background()
 
+	created, err := st.CreateCheck(ctx, checkFixture())
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 1, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		Netgroup: "home",
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+	got, err := st.GetCheckState(ctx, created.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if got.Netgroup != "home" {
+		t.Fatalf("netgroup = %q, want home", got.Netgroup)
+	}
+
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: created.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 2, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		Netgroup: "away",
+	}); err != nil {
+		t.Fatalf("set state again: %v", err)
+	}
+	got, err = st.GetCheckState(ctx, created.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state after update: %v", err)
+	}
+	if got.Netgroup != "away" {
+		t.Fatalf("netgroup after update = %q, want away", got.Netgroup)
+	}
+}
+
+func TestCheckValidationRefusals(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
 	cases := []struct {
 		name    string
 		mutate  func(*store.NewCheck)

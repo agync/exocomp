@@ -901,3 +901,66 @@ func TestMigration0036UpgradesFrom35(t *testing.T) {
 		t.Fatalf("artifact plan_serial = %d, want 42", got.PlanSerial)
 	}
 }
+
+// TestMigration0037UpgradesFrom036 pins a database at user_version 36 (no
+// check_state.netgroup), then opens it with the current binary: the column
+// arrives in place and the store round-trips a stored classification.
+func TestMigration0037UpgradesFrom036(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 36)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('check_state') WHERE name = 'netgroup'`).Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatal("check_state.netgroup exists at user_version 36; the pin is not honest")
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0036 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 37 {
+		t.Fatalf("schema version = %d after open, want >= 37 (0037 applied)", version)
+	}
+
+	c, err := s.CreateCheck(ctx, NewCheck{
+		Name: "at-home", Kind: CheckTCP, IntervalS: 300,
+		Targets: []CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check on upgraded db: %v", err)
+	}
+	now := time.Now()
+	if err := s.SetCheckState(ctx, CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: CheckUp,
+		Consecutive: 1, Emitted: CheckUp, FirstSeen: now, LastChange: now,
+		Netgroup: "home",
+	}); err != nil {
+		t.Fatalf("set state on upgraded db: %v", err)
+	}
+	st, err := s.GetCheckState(ctx, c.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get state on upgraded db: %v", err)
+	}
+	if st.Netgroup != "home" {
+		t.Fatalf("netgroup = %q, want home", st.Netgroup)
+	}
+}
