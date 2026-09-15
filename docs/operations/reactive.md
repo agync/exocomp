@@ -195,7 +195,14 @@ A check is a probe set the daemon sweeps on the same tick as drift. Kinds:
 `tcp` dials `ip:port` (the address is the location — probe the home-LAN
 address a host is only reachable at when it is home), `ping` runs a `ping`
 subprocess (refused at add on a host that cannot actually send ICMP), `http`
-reads the status line and never the body.
+reads the status line and never the body, `dns` resolves a name (optionally
+requiring one expected address), `tls` handshakes `host:port` and asserts the
+leaf certificate is at least `--min-days` from expiry, and `metric` reads a
+numeric body and asserts it satisfies an operator against a value. Checks and
+the verify gates in a workflow run the same probe implementation
+(`internal/probe`); a check refuses the loopback, link-local, unspecified, and
+multicast dial classes a gate allows, and a check's default http acceptance is
+2xx/3xx where a gate's is 2xx only.
 
 An event fires only on a declared transition (down→up fires, up→down
 resolves) after 3 consecutive observations. The 3 is fixed — not
@@ -249,9 +256,9 @@ disables it.
 The http probe refuses the addresses a check must not reach: it dials through
 a guard that refuses loopback, link-local unicast (covering the cloud
 metadata address), unspecified, and multicast at the connected IP, so a check
-against a refused address observes down. An http target's URL resolves
-off-LAN, so it carries no netgroup label; its liveness is not a location
-verdict.
+against a refused address observes down. Only an address literal is a location:
+`http`, `dns`, `tls`, and `metric` targets carry no netgroup label, because a
+URL, a hostname, or a `host:port` is not a location verdict.
 
 > **Before you rely on this.** The address-is-location trick holds only while
 > two preconditions do, and both fail open:

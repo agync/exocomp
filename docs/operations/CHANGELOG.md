@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — one probe runner, and checks gain dns/tls/metric kinds
+
+- **A shared `internal/probe` runner backs checks and verify gates.** Both
+  build one union `Spec` and call one `Run`; `verify` keeps its argv encoding,
+  job routing, and public API, and now also runs tcp/ping specs its encoder
+  does not emit. A check refuses the loopback, link-local, unspecified, and
+  multicast dial classes a gate allows, and the two keep their differing http
+  defaults: a check's `ExpectStatus == 0` accepts 2xx/3xx, a gate's accepts
+  2xx only.
+- **`check_row.kind` widens to `dns`, `tls`, and `metric`.** Migration 0040
+  rebuilds `check_row` and `check_state` together — the child first, because
+  of its incoming foreign key — and carries a pinned upgrade test that proves
+  seeded rows survive the rebuild and the widened CHECK admits a tls row.
+- **Check targets carry the new kinds' config as additive `targets_json`
+  fields** (`dns_name`, `expect_addr`, `min_days`, `op`, `value`), so a
+  previously stored target still decodes. `check list --output json` and
+  `/api/v1/checks` project the new fields. Only an address literal classifies
+  into a netgroup, so `dns`/`tls`/`metric` (like `http`) carry none, and no
+  read path parses a hostname or URL as an address.
+
 ## 2026-09-16 — checks show, snooze, and edit their observation state
 
 - **`check snooze <name> --for <duration>` and `check unsnooze <name>`** lift
