@@ -41,20 +41,27 @@ func newCheckCmd() *cobra.Command {
 
 func newCheckAddCmd() *cobra.Command {
 	var (
-		kind     string
-		interval time.Duration
-		targets  []string
-		expect   int
+		kind       string
+		interval   time.Duration
+		targets    []string
+		expect     int
+		minDays    int
+		expectAddr string
+		op         string
+		value      float64
 	)
 
 	cmd := &cobra.Command{
-		Use:     "add <name> --kind <tcp|ping|http> --interval <duration> --target <name=spec>",
+		Use:     "add <name> --kind <tcp|ping|http|dns|tls|metric> --interval <duration> --target <name=spec>",
 		Short:   "Register a probe check",
 		Example: "exocomp check add at-home --kind tcp --interval 5m --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22",
 		Long: "Kind tcp targets are name=ip:port — the address is the location, so " +
 			"probe the home-LAN address a host is only reachable at when it is home. " +
 			"Kind ping targets are name=ip (no port). Kind http targets are name=url, " +
-			"with an optional --expect status; the body is never read.\n\n" +
+			"with an optional --expect status; the body is never read. Kind dns " +
+			"targets are name=hostname, with an optional --expect-addr. Kind tls " +
+			"targets are name=host:port, with an optional --min-days expiry floor. " +
+			"Kind metric targets are name=url, with the required --op and --value.\n\n" +
 			"Kind ping is refused on a host that cannot actually send ICMP: a " +
 			"loopback probe must answer, or the add fails.",
 		Args: cobra.ExactArgs(1),
@@ -70,13 +77,8 @@ func newCheckAddCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("check add: %w", err)
 			}
-			if expect != 0 && kind != store.CheckHTTP {
-				return errors.New("check add: --expect applies to kind http")
-			}
-			if expect != 0 {
-				for i := range parsed {
-					parsed[i].Expect = expect
-				}
+			if err := applyKindFlags(cmd, kind, parsed, expect, minDays, expectAddr, op, value); err != nil {
+				return fmt.Errorf("check add: %w", err)
 			}
 
 			st, err := openStore()
@@ -102,13 +104,54 @@ func newCheckAddCmd() *cobra.Command {
 			return err
 		},
 	}
-	cmd.Flags().StringVar(&kind, "kind", "", "tcp|ping|http")
+	cmd.Flags().StringVar(&kind, "kind", "", "tcp|ping|http|dns|tls|metric")
 	cmd.Flags().DurationVar(&interval, "interval", 0, "probe interval as a Go duration (e.g. 5m, 30s)")
-	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=ip:port (tcp), name=ip (ping), or name=url (http); repeatable")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=ip:port (tcp/tls), name=ip (ping), name=hostname (dns), or name=url (http/metric); repeatable")
 	cmd.Flags().IntVar(&expect, "expect", 0, "http: required status (default: any 2xx/3xx)")
+	cmd.Flags().IntVar(&minDays, "min-days", 0, "tls: require the leaf cert to be at least this many days from expiry")
+	cmd.Flags().StringVar(&expectAddr, "expect-addr", "", "dns: require the name to resolve to this address")
+	cmd.Flags().StringVar(&op, "op", "", "metric: comparison operator (< <= > >= == !=)")
+	cmd.Flags().Float64Var(&value, "value", 0, "metric: value the operator compares the body against")
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("interval")
 	return cmd
+}
+
+// applyKindFlags applies the kind-specific target fields after parsing, the one
+// place `check add`, `check update`, and `check test` share. A flag that does
+// not belong to the check's kind is refused rather than silently dropped — the
+// contract --expect has always had — and a metric probe, which cannot decide
+// without one, requires an explicit --op and --value.
+func applyKindFlags(cmd *cobra.Command, kind string, targets []store.CheckTarget, expect, minDays int, expectAddr, op string, value float64) error {
+	if expect != 0 && kind != store.CheckHTTP {
+		return errors.New("--expect applies to kind http")
+	}
+	if cmd.Flags().Changed("min-days") && kind != store.CheckTLS {
+		return errors.New("--min-days applies to kind tls")
+	}
+	if cmd.Flags().Changed("expect-addr") && kind != store.CheckDNS {
+		return errors.New("--expect-addr applies to kind dns")
+	}
+	if cmd.Flags().Changed("op") && kind != store.CheckMetric {
+		return errors.New("--op applies to kind metric")
+	}
+	if cmd.Flags().Changed("value") && kind != store.CheckMetric {
+		return errors.New("--value applies to kind metric")
+	}
+	if kind == store.CheckMetric && !cmd.Flags().Changed("op") {
+		return errors.New("--op is required for kind metric")
+	}
+	if kind == store.CheckMetric && !cmd.Flags().Changed("value") {
+		return errors.New("--value is required for kind metric")
+	}
+	for i := range targets {
+		targets[i].Expect = expect
+		targets[i].MinDays = minDays
+		targets[i].ExpectAddr = expectAddr
+		targets[i].Op = op
+		targets[i].Value = value
+	}
+	return nil
 }
 
 // newCheckUpdateCmd re-points a stored check in place: targets replace the
@@ -118,9 +161,13 @@ func newCheckAddCmd() *cobra.Command {
 // emit a real transition, which is what rm+add (state cascaded away) never can.
 func newCheckUpdateCmd() *cobra.Command {
 	var (
-		interval time.Duration
-		targets  []string
-		kind     string
+		interval   time.Duration
+		targets    []string
+		kind       string
+		minDays    int
+		expectAddr string
+		op         string
+		value      float64
 	)
 
 	cmd := &cobra.Command{
@@ -159,6 +206,9 @@ func newCheckUpdateCmd() *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("check update: %w", err)
 			}
+			if err := applyKindFlags(cmd, cur.Kind, parsed, 0, minDays, expectAddr, op, value); err != nil {
+				return fmt.Errorf("check update: %w", err)
+			}
 			// A non-positive --interval means the flag was omitted; keep the
 			// stored cadence, the same sentinel convention as the timeout
 			// flags (a 0s probe interval is meaningless anyway).
@@ -181,7 +231,11 @@ func newCheckUpdateCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&kind, "kind", "", "not updatable; the stored kind is kept")
 	cmd.Flags().DurationVar(&interval, "interval", 0, "probe interval as a Go duration (e.g. 5m, 30s)")
-	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=ip:port (tcp), name=ip (ping), or name=url (http); repeatable")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=ip:port (tcp/tls), name=ip (ping), name=hostname (dns), or name=url (http/metric); repeatable")
+	cmd.Flags().IntVar(&minDays, "min-days", 0, "tls: require the leaf cert to be at least this many days from expiry")
+	cmd.Flags().StringVar(&expectAddr, "expect-addr", "", "dns: require the name to resolve to this address")
+	cmd.Flags().StringVar(&op, "op", "", "metric: comparison operator (< <= > >= == !=)")
+	cmd.Flags().Float64Var(&value, "value", 0, "metric: value the operator compares the body against")
 	return cmd
 }
 

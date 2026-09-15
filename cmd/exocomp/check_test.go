@@ -315,6 +315,99 @@ func TestCheckAddRejectsBadInput(t *testing.T) {
 	}
 }
 
+// TestCheckAddKindFlagsRoundTrip drives the dns/tls/metric flag surfaces:
+// each kind's config lands on the stored target, and a flag that does not
+// belong to the kind (or a metric missing its threshold) is refused without
+// writing a row.
+func TestCheckAddKindFlagsRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "cert",
+		"--kind", "tls", "--interval", "1h",
+		"--target", "web=web.lan:443", "--min-days", "21"); err != nil {
+		t.Fatalf("tls add: %v", err)
+	}
+	if _, err := runCheckCmd(t, "check", "add", "resolve",
+		"--kind", "dns", "--interval", "1h",
+		"--target", "api=api.lan", "--expect-addr", "192.168.1.10"); err != nil {
+		t.Fatalf("dns add: %v", err)
+	}
+	if _, err := runCheckCmd(t, "check", "add", "queue",
+		"--kind", "metric", "--interval", "1h",
+		"--target", "depth=http://nas:9090/queue", "--op", ">", "--value", "100"); err != nil {
+		t.Fatalf("metric add: %v", err)
+	}
+
+	rows := checksByName(checks(t))
+	cert, ok := rows["cert"]
+	if !ok || cert.Kind != store.CheckTLS || len(cert.Targets) != 1 ||
+		cert.Targets[0].Address != "web.lan" || cert.Targets[0].Port != 443 || cert.Targets[0].MinDays != 21 {
+		t.Fatalf("cert = %+v, want a tls target web.lan:443 with min_days 21", cert)
+	}
+	resolve, ok := rows["resolve"]
+	if !ok || resolve.Kind != store.CheckDNS || resolve.Targets[0].DNSName != "api.lan" ||
+		resolve.Targets[0].ExpectAddr != "192.168.1.10" {
+		t.Fatalf("resolve = %+v, want a dns target api.lan expecting 192.168.1.10", resolve)
+	}
+	queue, ok := rows["queue"]
+	if !ok || queue.Kind != store.CheckMetric || queue.Targets[0].URL != "http://nas:9090/queue" ||
+		queue.Targets[0].Op != ">" || queue.Targets[0].Value != 100 {
+		t.Fatalf("queue = %+v, want a metric target with op > and value 100", queue)
+	}
+
+	for _, args := range [][]string{
+		{"check", "add", "x", "--kind", "tcp", "--interval", "1h", "--target", "a=192.168.1.5:22", "--min-days", "21"},
+		{"check", "add", "x", "--kind", "tls", "--interval", "1h", "--target", "a=web.lan:443", "--expect-addr", "192.168.1.5"},
+		{"check", "add", "x", "--kind", "http", "--interval", "1h", "--target", "a=http://web.lan/x", "--op", ">"},
+		{"check", "add", "x", "--kind", "http", "--interval", "1h", "--target", "a=http://web.lan/x", "--value", "1"},
+		{"check", "add", "x", "--kind", "metric", "--interval", "1h", "--target", "a=http://web.lan/x", "--value", "1"},
+		{"check", "add", "x", "--kind", "metric", "--interval", "1h", "--target", "a=http://web.lan/x", "--op", ">"},
+		{"check", "add", "x", "--kind", "metric", "--interval", "1h", "--target", "a=http://web.lan/x", "--op", "~", "--value", "1"},
+	} {
+		out, err := runCheckCmd(t, args...)
+		if err == nil {
+			t.Fatalf("check %v accepted, want a refusal:\n%s", args, out)
+		}
+	}
+	if _, ok := checksByName(checks(t))["x"]; ok {
+		t.Fatal("a refused add wrote a row")
+	}
+}
+
+// TestCheckUpdateKindFlags: `check update` re-points a tls or metric check and
+// replaces its kind-specific config from the same flags, refusing a flag that
+// does not belong to the stored kind.
+func TestCheckUpdateKindFlags(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "cert",
+		"--kind", "tls", "--interval", "1h",
+		"--target", "web=web.lan:443", "--min-days", "7"); err != nil {
+		t.Fatalf("tls add: %v", err)
+	}
+	if _, err := runCheckCmd(t, "check", "update", "cert",
+		"--target", "web=web.lan:8443", "--min-days", "21"); err != nil {
+		t.Fatalf("tls update: %v", err)
+	}
+	cert := checksByName(checks(t))["cert"]
+	if cert.Targets[0].Port != 8443 || cert.Targets[0].MinDays != 21 {
+		t.Fatalf("cert after update = %+v, want port 8443 and min_days 21", cert.Targets[0])
+	}
+
+	if out, err := runCheckCmd(t, "check", "update", "cert", "--target", "web=web.lan:443", "--expect-addr", "192.168.1.5"); err == nil {
+		t.Fatalf("update of a tls check accepted --expect-addr:\n%s", out)
+	}
+}
+
+// checksByName indexes checks by name for the kind-flag assertions.
+func checksByName(rows []store.Check) map[string]store.Check {
+	out := make(map[string]store.Check, len(rows))
+	for _, c := range rows {
+		out[c.Name] = c
+	}
+	return out
+}
+
 // TestCheckAddPingRefusedWhenBinaryMissing: a ping check on a host without the
 // binary on PATH is refused, because a check that is silently all-down is the
 // observability failure the capability probe exists to prevent.
