@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +32,12 @@ const obsRingLen = 5
 // probeTimeout bounds one probe: a dial, an http GET, or a ping subprocess, so
 // a wedged target reports down instead of hanging the sweep.
 const probeTimeout = 5 * time.Second
+
+// probeConcurrency bounds how many of one check's targets are probed at once.
+// The store has one connection and state application stays single-threaded; the
+// bound just keeps a many-target check's wall time from summing its probes'
+// timeouts.
+const probeConcurrency = 4
 
 // checkDedupKey names one target of one check. It is the condition the
 // pipeline dedups on and a check-source rule's per-target cooldown keys off,
@@ -151,23 +158,73 @@ func (e *Engine) markCheckDue(id int64, next time.Time) {
 	e.dueChecks[id] = next
 }
 
+// probeResult is one target's probe outcome, kept in target order so state
+// application and emission stay deterministic regardless of completion order.
+type probeResult struct {
+	target store.CheckTarget
+	up     bool
+	dur    time.Duration
+	err    error
+}
+
+// probeAll probes every target of one check with a bounded worker pool.
+// Results are written per index, so the caller applies them in the check's
+// target order. A cancelled context marks the probes that never ran as erred,
+// never as down.
+func (e *Engine) probeAll(ctx context.Context, c store.Check) []probeResult {
+	results := make([]probeResult, len(c.Targets))
+	if len(c.Targets) == 0 {
+		return results
+	}
+	workers := min(len(c.Targets), probeConcurrency)
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				t := c.Targets[i]
+				up, dur, err := e.probe(ctx, c, t)
+				results[i] = probeResult{target: t, up: up, dur: dur, err: err}
+			}
+		}()
+	}
+send:
+	for i := range c.Targets {
+		select {
+		case <-ctx.Done():
+			for j := i; j < len(c.Targets); j++ {
+				results[j] = probeResult{target: c.Targets[j], err: ctx.Err()}
+			}
+			break send
+		case jobs <- i:
+		}
+	}
+	close(jobs)
+	wg.Wait()
+	return results
+}
+
 // sweepCheck probes every target of one check and updates check_state against
 // each observation: a missing row is seeded without emitting, a steady state
 // only advances the hysteresis counter, and a declared transition becomes one
 // event. A broken target is logged and skipped, so one bad target cannot starve
 // the check's other targets; only a cancelled context aborts the sweep.
 func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (int, error) {
+	results := e.probeAll(ctx, c)
 	raised := 0
-	for _, t := range c.Targets {
+	for _, r := range results {
 		if err := ctx.Err(); err != nil {
 			return raised, err
 		}
-		up, dur, err := e.probe(ctx, c, t)
-		if err != nil {
-			e.log.Error("reactive: sweep checks: probe", "check", c.Name, "target", t.Name, "err", err)
+		t := r.target
+		if r.err != nil {
+			e.log.Error("reactive: sweep checks: probe", "check", c.Name, "target", t.Name, "err", r.err)
 			continue
 		}
-		status := checkStatus(up)
+		status := checkStatus(r.up)
+		dur := r.dur
 
 		// The classification is observation output, like the status: resolve it
 		// once per probe and persist it on the state row, so every read path

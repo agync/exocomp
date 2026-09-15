@@ -2,6 +2,7 @@ package reactive
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -276,5 +277,120 @@ func TestSweepPersistsNetgroupAndDuration(t *testing.T) {
 	}
 	if httpState.LastDurationMS < 10 {
 		t.Fatalf("http target duration = %dms, want the ~30ms handler recorded", httpState.LastDurationMS)
+	}
+}
+
+// closedLoopbackPort binds a loopback listener, closes it, and returns its
+// address and port once a dial is refused, so a target reads down.
+func closedLoopbackPort(t *testing.T) (string, int) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		_ = ln.Close()
+		t.Fatalf("split listener addr: %v", err)
+	}
+	p, err := strconv.Atoi(portStr)
+	if err != nil {
+		_ = ln.Close()
+		t.Fatalf("listener port: %v", err)
+	}
+	_ = ln.Close()
+
+	addr := net.JoinHostPort(host, strconv.Itoa(p))
+	deadline := time.Now().Add(2 * time.Second)
+	d := net.Dialer{Timeout: 50 * time.Millisecond}
+	for time.Now().Before(deadline) {
+		conn, derr := d.Dial("tcp", addr)
+		if derr != nil {
+			return host, p
+		}
+		_ = conn.Close()
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("port %s still accepts after the listener closed", addr)
+	return "", 0
+}
+
+// TestSweepParallelProbingPreservesTransitions: probing a check's targets
+// concurrently must not lose or duplicate a per-target transition. Six targets
+// (three up, three down) are each one observation short of a declared
+// transition; one sweep declares exactly six, one event per target, and each
+// state row advances exactly once.
+func TestSweepParallelProbingPreservesTransitions(t *testing.T) {
+	e := labelsEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	var targets []store.CheckTarget
+	wantStatus := map[string]string{}
+	for i := range 3 {
+		host, port := listenLoopback(t)
+		name := fmt.Sprintf("up-%d", i)
+		targets = append(targets, store.CheckTarget{Name: name, Address: host, Port: port})
+		wantStatus[name] = store.CheckUp
+	}
+	for i := range 3 {
+		host, port := closedLoopbackPort(t)
+		name := fmt.Sprintf("down-%d", i)
+		targets = append(targets, store.CheckTarget{Name: name, Address: host, Port: port})
+		wantStatus[name] = store.CheckDown
+	}
+
+	c, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "multi", Kind: store.CheckTCP, IntervalS: 30, Targets: targets,
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	for _, tgt := range targets {
+		status := wantStatus[tgt.Name]
+		// Seed the streak one short with the opposite emitted flag, so the
+		// sweep's one observation declares the transition.
+		emitted := store.CheckDown
+		if status == store.CheckDown {
+			emitted = store.CheckUp
+		}
+		if err := e.store.SetCheckState(ctx, store.CheckState{
+			CheckID: c.ID, TargetName: tgt.Name, Status: status,
+			Consecutive: DefaultHysteresis - 1, Emitted: emitted,
+			FirstSeen: now, LastChange: now,
+		}); err != nil {
+			t.Fatalf("seed state %s: %v", tgt.Name, err)
+		}
+	}
+
+	raised, err := e.sweepCheck(ctx, c, now)
+	if err != nil {
+		t.Fatalf("sweepCheck: %v", err)
+	}
+	if raised != len(targets) {
+		t.Fatalf("raised %d transitions, want %d (one per target)", raised, len(targets))
+	}
+
+	events, err := e.store.ListEvents(ctx, store.EventFilter{Source: SourceCheck})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	seen := map[string]int{}
+	for _, ev := range events {
+		seen[ev.DedupKey]++
+	}
+	for _, tgt := range targets {
+		key := checkDedupKey("multi", tgt.Name)
+		if seen[key] != 1 {
+			t.Fatalf("target %s produced %d events, want exactly 1 (key %s)", tgt.Name, seen[key], key)
+		}
+		st, err := e.store.GetCheckState(ctx, c.ID, tgt.Name)
+		if err != nil {
+			t.Fatalf("get state %s: %v", tgt.Name, err)
+		}
+		if st.Emitted != wantStatus[tgt.Name] || st.Consecutive != DefaultHysteresis {
+			t.Fatalf("state %s = emitted %q consecutive %d, want emitted %q consecutive %d",
+				tgt.Name, st.Emitted, st.Consecutive, wantStatus[tgt.Name], DefaultHysteresis)
+		}
 	}
 }
