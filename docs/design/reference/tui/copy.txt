@@ -9,6 +9,8 @@ paused:
 muted:
   ▌ MUTED until {HH:MM} ({remaining}) · notifications held · jobs still run
                                                               right: [m] unmute
+silenced (a scoped silence holds some alerts; the silence is the scope):
+  ▌ SILENCED — scoped alerts held · {n} swallowed              right: [e] events
 paused + muted:
   ▌ PAUSED + MUTED until {HH:MM} · {n} swallowed    right: [p] resume  [m] unmute
 no-color form (replaces ▌ + color):
@@ -74,4 +76,4 @@ step 4 · HAND OVER — not yet designed. already committed by earlier steps:
 [6] events      no events yet — point your alert source at exocomp ingest
 
 ── FOOTER SIGNAL LINE (always last-but-one row) ──
-pattern:  dead-man {age} · ntfy {age} · disk {pct}% · {version}↗[ update available]
+pattern:  dead-man {age} · notify {loud|muted} · {version} ({commit}) built {date}

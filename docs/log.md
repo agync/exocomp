@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-15 — TUI copy deck reconciled to shipped output
+
+- **`design/reference/tui/copy.txt` recorded two strings the shipped TUI never
+  renders.** It now matches the binary and its own frames (the frames are the
+  implementation contract — "text IS the implementation"): the footer signal line
+  is `dead-man {age} · notify {loud|muted} · {version} ({commit}) built {date}`
+  (the deck's `ntfy {age} · disk {pct}% · {version}↗` predates the shipped
+  signal), and the SILENCED banner variant (`banner.go`, present in
+  `frames/banners-80.txt`) is declared beside paused/muted.
+
 ## 2026-09-12 — base-path round: correction of fact
 
 - **The plan-review's claim that `http.StripPrefix` leaves `RequestURI`
