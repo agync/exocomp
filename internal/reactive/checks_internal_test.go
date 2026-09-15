@@ -19,40 +19,11 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// TestCheckHTTPProbeDialControl pins the dial-time guard on the address classes
-// a check must not reach — loopback, link-local (the cloud metadata address),
-// unspecified, and multicast — while keeping the RFC1918/ULA LAN targets the
-// feature exists for.
-func TestCheckHTTPProbeDialControl(t *testing.T) {
-	t.Parallel()
-	for _, tc := range []struct {
-		addr string
-		want bool // want error (refused)
-	}{
-		{"127.0.0.1:80", true},
-		{"[::1]:80", true},
-		{"169.254.169.254:80", true},
-		{"169.254.1.1:80", true},
-		{"0.0.0.0:80", true},
-		{"224.0.0.1:80", true},
-		// LAN and public stays reachable.
-		{"192.168.1.50:80", false},
-		{"10.0.0.5:80", false},
-		{"172.16.0.9:80", false},
-		{"[fd00::1]:80", false},
-		{"8.8.8.8:80", false},
-	} {
-		err := probeHTTPDialControl("", tc.addr, nil)
-		if (err != nil) != tc.want {
-			t.Errorf("probeHTTPDialControl(%q) = %v, want refused=%v", tc.addr, err, tc.want)
-		}
-	}
-}
-
-// TestCheckHTTPProbeReachesValidTarget exercises the successful-GET half of
-// probeHTTP (the loopback-refusal sweep test covers the guarded path): with the
-// client swapped for an unguarded one, a 200 target is up and a mismatched
-// status is down.
+// TestCheckHTTPProbeReachesValidTarget exercises the successful-GET half of the
+// check's http probe (the loopback-refusal sweep test covers the guarded path):
+// with the client seam swapped for an unguarded one, a 200 target is up and a
+// mismatched status is down. The dial guard itself is pinned in the probe
+// package.
 func TestCheckHTTPProbeReachesValidTarget(t *testing.T) {
 	orig := probeHTTPClient
 	defer func() { probeHTTPClient = orig }()
@@ -67,12 +38,15 @@ func TestCheckHTTPProbeReachesValidTarget(t *testing.T) {
 	}))
 	defer srv.Close()
 
+	e := labelsEngine(t)
 	ctx := context.Background()
-	up, err := probeHTTP(ctx, store.CheckTarget{Name: "w", URL: srv.URL + "/ok", Expect: 200})
+	check := store.Check{Name: "web", Kind: store.CheckHTTP}
+
+	up, _, err := e.probe(ctx, check, store.CheckTarget{Name: "w", URL: srv.URL + "/ok", Expect: 200})
 	if err != nil || !up {
 		t.Fatalf("200 target = %v, %v; want up", up, err)
 	}
-	up, err = probeHTTP(ctx, store.CheckTarget{Name: "w", URL: srv.URL + "/down", Expect: 200})
+	up, _, err = e.probe(ctx, check, store.CheckTarget{Name: "w", URL: srv.URL + "/down", Expect: 200})
 	if err != nil || up {
 		t.Fatalf("503 target = %v, %v; want down", up, err)
 	}
@@ -128,7 +102,7 @@ func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
 		t.Fatalf("create netgroup: %v", err)
 	}
 
-	httpLabels, err := e.checkLabels(ctx, store.Check{Name: "web"},
+	httpLabels, err := e.checkLabels(ctx, store.Check{Name: "web", Kind: store.CheckHTTP},
 		store.CheckTarget{Name: "w", URL: "http://web.lan/health"})
 	if err != nil {
 		t.Fatalf("http labels: %v", err)
@@ -137,7 +111,7 @@ func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
 		t.Fatalf("http event carries a netgroup label: %+v", httpLabels)
 	}
 
-	homeLabels, err := e.checkLabels(ctx, store.Check{Name: "at-home"},
+	homeLabels, err := e.checkLabels(ctx, store.Check{Name: "at-home", Kind: store.CheckTCP},
 		store.CheckTarget{Name: "laptop", Address: "192.168.1.50"})
 	if err != nil {
 		t.Fatalf("home labels: %v", err)
@@ -146,13 +120,48 @@ func TestCheckHTTPEventCarriesNoNetgroupLabel(t *testing.T) {
 		t.Fatalf("home target netgroup = %q, want home", homeLabels["netgroup"])
 	}
 
-	awayLabels, err := e.checkLabels(ctx, store.Check{Name: "roam"},
+	awayLabels, err := e.checkLabels(ctx, store.Check{Name: "roam", Kind: store.CheckTCP},
 		store.CheckTarget{Name: "laptop", Address: "10.9.9.9"})
 	if err != nil {
 		t.Fatalf("away labels: %v", err)
 	}
 	if awayLabels["netgroup"] != "away" {
 		t.Fatalf("unmatched target netgroup = %q, want away", awayLabels["netgroup"])
+	}
+}
+
+// TestCheckNewKindsCarryNoNetgroupLabel pins the plan's non-IP rule: a dns
+// name, a tls host:port, and a metric URL classify to no netgroup even when a
+// netgroup covers the address literals they might embed. The shared spec's
+// Location is what decides, so no read path parses a hostname or URL as an
+// address.
+func TestCheckNewKindsCarryNoNetgroupLabel(t *testing.T) {
+	ctx := context.Background()
+	e := labelsEngine(t)
+
+	if _, err := e.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.0.0/16"), netip.MustParsePrefix("127.0.0.0/8")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	cases := []struct {
+		check store.Check
+		tgt   store.CheckTarget
+	}{
+		{store.Check{Name: "d", Kind: store.CheckDNS}, store.CheckTarget{Name: "web", DNSName: "192.168.1.50"}},
+		{store.Check{Name: "t", Kind: store.CheckTLS}, store.CheckTarget{Name: "web", Address: "192.168.1.50", Port: 443, MinDays: 1}},
+		{store.Check{Name: "m", Kind: store.CheckMetric}, store.CheckTarget{Name: "lag", URL: "http://192.168.1.50/metric", Op: "<", Value: 1}},
+	}
+	for _, tc := range cases {
+		labels, err := e.checkLabels(ctx, tc.check, tc.tgt)
+		if err != nil {
+			t.Fatalf("%s labels: %v", tc.check.Kind, err)
+		}
+		if _, ok := labels["netgroup"]; ok {
+			t.Fatalf("%s target carries a netgroup label: %+v", tc.check.Kind, labels)
+		}
 	}
 }
 

@@ -8,12 +8,10 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"os/exec"
-	"strconv"
 	"sync"
-	"syscall"
 	"time"
 
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -411,19 +409,22 @@ func (e *Engine) netgroupFor(ctx context.Context, addr netip.Addr) (string, erro
 	return group, nil
 }
 
-// checkLabels builds the label set a check transition event carries. An http
-// target (a URL, no Address) gets no netgroup label: its liveness is not a
-// location verdict (the URL resolves off-LAN). An address target is classified
-// against the netgroups, "away" when none matches.
+// checkLabels builds the label set a check transition event carries. Only an
+// address literal is a location verdict: tcp/ping (and, defensively, a tls
+// address that is a bare IP) classify against the netgroups, "away" when none
+// matches. An http URL target and the dns/tls/metric kinds carry no netgroup
+// label — their liveness is not a location verdict — and the shared probe
+// spec's Location is what decides, so a hostname or URL is never parsed as an
+// address.
 func (e *Engine) checkLabels(ctx context.Context, c store.Check, t store.CheckTarget) (map[string]string, error) {
 	labels := map[string]string{"target": t.Name}
-	if t.Address == "" {
-		return labels, nil
-	}
-	addr, err := netip.ParseAddr(t.Address)
+	spec, err := store.SpecForTarget(c.Kind, t)
 	if err != nil {
-		return nil, fmt.Errorf("sweep checks %s: target %q address %q does not parse: %w",
-			c.Name, t.Name, t.Address, err)
+		return nil, fmt.Errorf("sweep checks %s: target %q: %w", c.Name, t.Name, err)
+	}
+	addr, ok := spec.Location()
+	if !ok {
+		return labels, nil
 	}
 	group, err := e.netgroupFor(ctx, addr)
 	if err != nil {
@@ -435,104 +436,31 @@ func (e *Engine) checkLabels(ctx context.Context, c store.Check, t store.CheckTa
 
 // probe asks one target once and returns whether it answered and how long the
 // probe took. Results are dial/exit truth only, never parsed output (AGENTS.md
-// 3). A probe that cannot even start — an unparseable address or URL — is an
-// error, not a down, so a misconfigured check surfaces in the sweep warning
-// rather than reporting silently all-down.
+// 3). A probe that cannot even start — a target whose spec does not validate —
+// is an error, not a down, so a misconfigured check surfaces in the sweep
+// warning rather than reporting silently all-down. The shared probe package
+// decides it; a check refuses the loopback classes a gate allows.
 func (e *Engine) probe(ctx context.Context, c store.Check, t store.CheckTarget) (up bool, dur time.Duration, err error) {
-	start := time.Now()
-	switch c.Kind {
-	case store.CheckTCP:
-		up, err = probeTCP(ctx, t)
-	case store.CheckPing:
-		up, err = probePing(ctx, t)
-	case store.CheckHTTP:
-		up, err = probeHTTP(ctx, t)
-	default:
-		err = fmt.Errorf("sweep checks %s: unknown kind %q", c.Name, c.Kind)
+	spec, err := store.SpecForTarget(c.Kind, t)
+	if err != nil {
+		return false, 0, fmt.Errorf("sweep checks %s: %w", c.Name, err)
 	}
-	return up, time.Since(start), err
+	if err := spec.Validate(); err != nil {
+		return false, 0, fmt.Errorf("sweep checks %s: %w", c.Name, err)
+	}
+	opts := probe.Options{Timeout: probeTimeout, AllowLoopback: false}
+	if client := probeHTTPClient(); client != nil {
+		opts.HTTPClient = client
+	}
+	res := probe.Run(ctx, spec, opts)
+	return res.Up, res.Duration, nil
 }
 
-// probeTCP dials the target. Any dial failure — refused, timeout, unroutable —
-// is a down; the address is the location, and an unreachable location answers
-// nothing.
-func probeTCP(ctx context.Context, t store.CheckTarget) (bool, error) {
-	d := net.Dialer{Timeout: probeTimeout}
-	conn, err := d.DialContext(ctx, "tcp", net.JoinHostPort(t.Address, strconv.Itoa(t.Port)))
-	if err != nil {
-		return false, nil
-	}
-	_ = conn.Close()
-	return true, nil
-}
-
-// probeHTTPClient builds the HTTP client the probe GETs through. It is a func
-// so a test can substitute a transport that reaches a loopback test server
-// without weakening the shipped dial-time guard (the same testability idiom as
-// notify's lookupIP).
-var probeHTTPClient = func() *http.Client {
-	return &http.Client{
-		Timeout: probeTimeout,
-		Transport: &http.Transport{
-			DialContext: (&net.Dialer{Timeout: probeTimeout, Control: probeHTTPDialControl}).DialContext,
-		},
-	}
-}
-
-// probeHTTPDialControl is the net.Dialer.Control hook the http probe's client
-// dials through, mirroring the push transport's dial-time SSRF check
-// (notify/ssrf.go dialControl). It refuses the addresses a check must not
-// reach — the daemon's own loopback, the cloud metadata service (link-local),
-// and unspecified or multicast — at the concrete post-DNS IP, so a re-pointed
-// name is blocked too. Unlike the push guard it keeps RFC1918 and ULA LAN
-// targets allowed: probing the LAN is the point of a check. The metadata
-// address 169.254.169.254 is link-local, so IsLinkLocalUnicast refuses it
-// without naming it.
-func probeHTTPDialControl(_, address string, _ syscall.RawConn) error {
-	host, _, err := net.SplitHostPort(address)
-	if err != nil {
-		return fmt.Errorf("checks: http: refusing malformed dial address %q", address)
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return fmt.Errorf("checks: http: dial address %q is not a resolved IP", host)
-	}
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast() {
-		return fmt.Errorf("checks: http: refusing %s: not a reachable LAN address", ip)
-	}
-	return nil
-}
-
-// probeHTTP GETs the URL and reads the status line only. The body is closed
-// without being read: a health endpoint's response is not evidence this code
-// should persist (AGENTS.md 4). Expect 0 means any 2xx/3xx answers up;
-// otherwise the status must match exactly.
-func probeHTTP(ctx context.Context, t store.CheckTarget) (bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, t.URL, nil)
-	if err != nil {
-		return false, err
-	}
-	resp, err := probeHTTPClient().Do(req)
-	if err != nil {
-		return false, nil
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if t.Expect == 0 {
-		return resp.StatusCode >= 200 && resp.StatusCode < 400, nil
-	}
-	return resp.StatusCode == t.Expect, nil
-}
-
-// probePing runs one ICMP probe and reads the exit code only. -W 2 bounds one
-// probe the way probeTimeout bounds a dial, so a wedged ICMP path reports down
-// instead of hanging the sweep.
-func probePing(ctx context.Context, t store.CheckTarget) (bool, error) {
-	err := exec.CommandContext(ctx, "ping", "-c", "1", "-W", "2", t.Address).Run()
-	if err != nil {
-		return false, nil
-	}
-	return true, nil
-}
+// probeHTTPClient is the test seam for the http probe's client. Nil uses the
+// probe package's guarded default (a check refuses loopback, link-local,
+// unspecified, and multicast); a test substitutes an unguarded client to reach
+// a loopback test server without weakening the shipped guard.
+var probeHTTPClient = func() *http.Client { return nil }
 
 func checkStatus(up bool) string {
 	if up {
