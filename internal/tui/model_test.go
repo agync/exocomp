@@ -47,6 +47,10 @@ func update(t *testing.T, m Model, msg tea.Msg) Model {
 func TestScreenSwitching(t *testing.T) {
 	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadJobsCmd(m.store)())
+	m = update(t, m, loadBackupsCmd(m.store)())
+	m = update(t, m, loadWorkspacesCmd(m.store)())
+	m = update(t, m, loadSchedulesCmd(m.store)())
 
 	// [0] Home is the new root; [1] selects Jobs.
 	if m.active != screenHome {

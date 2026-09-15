@@ -73,6 +73,18 @@ type Model struct {
 	active        screen
 	width, height int
 
+	// loaded* record that a screen's first load has completed. Init returns the
+	// load commands as a batch and Bubble Tea calls View before any *LoadedMsg
+	// lands, so a false flag renders the dim loading placeholder instead of a
+	// false empty state. An error is a completed load: the *LoadedMsg cases set
+	// the flag before checking err, so an error screen replaces the placeholder.
+	// Home, Approvals and Events share loadedGlance (all three read the glance).
+	loadedGlance     bool
+	loadedJobs       bool
+	loadedBackups    bool
+	loadedWorkspaces bool
+	loadedSchedules  bool
+
 	jobs      []store.Job
 	jobsTable jobsTable
 	jobsErr   error
@@ -259,6 +271,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.refreshCmd()
 
 	case jobsLoadedMsg:
+		m.loadedJobs = true
 		m.jobsErr = msg.err
 		if msg.err == nil {
 			m.jobs = msg.jobs
@@ -267,6 +280,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case backupsLoadedMsg:
+		m.loadedBackups = true
 		m.backupsErr = msg.err
 		if msg.err == nil {
 			m.targets = msg.targets
@@ -276,6 +290,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case workspacesLoadedMsg:
+		m.loadedWorkspaces = true
 		m.workspacesErr = msg.err
 		if msg.err == nil {
 			m.workspaces = msg.workspaces
@@ -285,6 +300,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case schedulesLoadedMsg:
+		m.loadedSchedules = true
 		m.schedulesErr = msg.err
 		if msg.err == nil {
 			m.schedules = msg.schedules
@@ -334,6 +350,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case glanceLoadedMsg:
+		m.loadedGlance = true
 		m.glanceErr = msg.err
 		if msg.err == nil {
 			m.approvals = msg.approvals

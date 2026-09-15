@@ -24,16 +24,9 @@ func (m Model) View() tea.View {
 		case screenHome:
 			base = liveFrame(m.withBanner(m.renderHomeScreen()))
 		case screenApprovals:
-			am := m.approvalsModel()
-			if am.stale.workspace != "" {
-				// A stale plan is a refusal: no approve key, the re-plan or
-				// reject path only.
-				base = liveFrame(m.withBanner(renderStalePlan(am.stale)))
-			} else {
-				base = liveFrame(m.withBanner(renderApprovalDetail(am)))
-			}
+			base = liveFrame(m.withBanner(m.renderApprovalsScreen()))
 		case screenEvents:
-			base = liveFrame(m.withBanner(renderEventsScreen(m.eventsModel())))
+			base = liveFrame(m.withBanner(m.renderEventsScreen()))
 		case screenSources:
 			base = liveFrame(m.withBanner(m.renderSourcesScreen()))
 		case screenPolicies:
@@ -81,12 +74,48 @@ func (m Model) View() tea.View {
 	return tea.NewView(base)
 }
 
-// renderHomeScreen picks the width-appropriate Home layout.
+// loadingLine is the not-yet-loaded placeholder for a whole screen or body: the
+// ASCII "--" the codebase already uses for an unset value (emptyCell,
+// format.go:8; deadMan, screens_model.go:77), dimmed. The design's literal glyph
+// is an en dash, which its own unicode inventory does not list, so this keeps one
+// dash form. No spinner outruns the 2s tick; the first load replaces it in place.
+func loadingLine() string { return styleDim.Render("--") }
+
+// renderHomeScreen picks the width-appropriate Home layout, or the loading
+// placeholder until the glance that fills it has loaded.
 func (m Model) renderHomeScreen() string {
+	if !m.loadedGlance {
+		return loadingLine()
+	}
 	if m.width >= 120 {
 		return renderHome120(m.homeModel())
 	}
 	return renderHome80(m.homeModel())
+}
+
+// renderApprovalsScreen renders the pending approval detail, its stale-plan
+// refusal, or the loading placeholder until the glance that carries the pending
+// approvals has loaded.
+func (m Model) renderApprovalsScreen() string {
+	if !m.loadedGlance && len(m.approvals) == 0 {
+		return loadingLine()
+	}
+	am := m.approvalsModel()
+	if am.stale.workspace != "" {
+		// A stale plan is a refusal: no approve key, the re-plan or reject path
+		// only.
+		return renderStalePlan(am.stale)
+	}
+	return renderApprovalDetail(am)
+}
+
+// renderEventsScreen renders the events surface, or the loading placeholder
+// until the glance that carries the recent events has loaded.
+func (m Model) renderEventsScreen() string {
+	if !m.loadedGlance && len(m.reactiveEvents) == 0 {
+		return loadingLine()
+	}
+	return renderEventsScreen(m.eventsModel())
 }
 
 // renderSourcesScreen renders the sources surface, or its error/empty state.
@@ -186,6 +215,9 @@ func (m Model) renderJobs() string {
 	if m.jobsErr != nil {
 		return styleErr.Render("failed to load jobs: " + m.jobsErr.Error())
 	}
+	if !m.loadedJobs {
+		return loadingLine()
+	}
 	if len(m.jobs) == 0 {
 		return styleDim.Render("no jobs yet — they appear when a schedule or alert fires")
 	}
@@ -195,6 +227,9 @@ func (m Model) renderJobs() string {
 func (m Model) renderBackups() string {
 	if m.backupsErr != nil {
 		return styleErr.Render("failed to load backup targets: " + m.backupsErr.Error())
+	}
+	if !m.loadedBackups {
+		return loadingLine()
 	}
 	if len(m.targets) == 0 {
 		return styleDim.Render("no backups yet — exocomp backup add")
@@ -206,6 +241,9 @@ func (m Model) renderWorkspaces() string {
 	if m.workspacesErr != nil {
 		return styleErr.Render("failed to load workspaces: " + m.workspacesErr.Error())
 	}
+	if !m.loadedWorkspaces {
+		return loadingLine()
+	}
 	if len(m.workspaces) == 0 {
 		return styleDim.Render("no workspaces yet — exocomp workspace add ./infra")
 	}
@@ -215,6 +253,9 @@ func (m Model) renderWorkspaces() string {
 func (m Model) renderSchedules() string {
 	if m.schedulesErr != nil {
 		return styleErr.Render("failed to load schedules: " + m.schedulesErr.Error())
+	}
+	if !m.loadedSchedules {
+		return loadingLine()
 	}
 	if len(m.schedules) == 0 {
 		return styleDim.Render("no schedules yet — exocomp schedule add")

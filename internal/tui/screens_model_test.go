@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -406,6 +407,7 @@ func TestApprovalsAndEventsRenderLive(t *testing.T) {
 func TestHomeEmptyStateRendersFirstDayBlock(t *testing.T) {
 	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadGlanceCmd(m.store)())
 
 	view := m.View().Content
 	for _, want := range []string{
@@ -441,6 +443,7 @@ func TestHomeNotEmptyWithRunningJobAndArmedSchedule(t *testing.T) {
 
 	m := New(st, nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadGlanceCmd(st)())
 	m = update(t, m, loadJobsCmd(st)())
 	m = update(t, m, loadSchedulesCmd(st)())
 
@@ -458,6 +461,7 @@ func TestHomeNotEmptyWithRunningJobAndArmedSchedule(t *testing.T) {
 func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {
 	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, loadGlanceCmd(m.store)())
 	m = update(t, m, key('5'))
 
 	if v := m.View().Content; !strings.Contains(v, "nothing waiting on you") {
@@ -470,9 +474,99 @@ func TestApprovalsEmptyStateRendersNothingWaiting(t *testing.T) {
 func TestEventsEmptyStateRendersIngestHint(t *testing.T) {
 	m := New(openTestStore(t), nil)
 	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m = update(t, m, loadGlanceCmd(m.store)())
 	m = update(t, m, key('6'))
 
 	if v := m.View().Content; !strings.Contains(v, "no events yet — point your alert source at exocomp ingest") {
 		t.Fatalf("empty events missing the ingest hint, view:\n%s", v)
+	}
+}
+
+// TestScreensShowLoadingBeforeFirstLoad proves a freshly built Model renders the
+// dim "--" loading placeholder, never a false empty state, until its first load
+// lands. Home, Approvals and Events share the glance load; the rest each have
+// their own load message.
+func TestScreensShowLoadingBeforeFirstLoad(t *testing.T) {
+	m := New(openTestStore(t), nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+
+	placeholder := styleDim.Render("--")
+	for _, tc := range []struct {
+		name   string
+		screen screen
+		empty  string
+	}{
+		{"home", screenHome, "nothing configured yet"},
+		{"jobs", screenJobs, "no jobs yet"},
+		{"backups", screenBackups, "no backups yet"},
+		{"workspaces", screenWorkspaces, "no workspaces yet"},
+		{"schedules", screenSchedules, "no schedules yet"},
+		{"approvals", screenApprovals, "nothing waiting on you"},
+		{"events", screenEvents, "no events yet"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m.active = tc.screen
+			view := m.View().Content
+			if !strings.Contains(view, placeholder) {
+				t.Errorf("before first load missing the loading placeholder %q:\n%s", placeholder, view)
+			}
+			if strings.Contains(view, tc.empty) {
+				t.Errorf("before first load rendered the empty state %q:\n%s", tc.empty, view)
+			}
+		})
+	}
+}
+
+// TestScreensShowEmptyAfterEmptyLoad proves that once a screen's empty load
+// lands, the empty-state sentence renders and the loading placeholder is gone.
+func TestScreensShowEmptyAfterEmptyLoad(t *testing.T) {
+	placeholder := styleDim.Render("--")
+	for _, tc := range []struct {
+		name   string
+		screen screen
+		load   func(*store.Store) tea.Cmd
+		body   func(Model) string
+		empty  string
+	}{
+		{"home", screenHome, loadGlanceCmd, func(m Model) string { return m.renderHomeScreen() }, "nothing configured yet"},
+		{"jobs", screenJobs, loadJobsCmd, func(m Model) string { return m.renderJobs() }, "no jobs yet"},
+		{"backups", screenBackups, loadBackupsCmd, func(m Model) string { return m.renderBackups() }, "no backups yet"},
+		{"workspaces", screenWorkspaces, loadWorkspacesCmd, func(m Model) string { return m.renderWorkspaces() }, "no workspaces yet"},
+		{"schedules", screenSchedules, loadSchedulesCmd, func(m Model) string { return m.renderSchedules() }, "no schedules yet"},
+		{"approvals", screenApprovals, loadGlanceCmd, func(m Model) string { return renderApprovalDetail(m.approvalsModel()) }, "nothing waiting on you"},
+		{"events", screenEvents, loadGlanceCmd, func(m Model) string { return renderEventsScreen(m.eventsModel()) }, "no events yet"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := openTestStore(t)
+			m := New(st, nil)
+			m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+			m.active = tc.screen
+			m = update(t, m, tc.load(st)())
+
+			if got := tc.body(m); got == placeholder {
+				t.Errorf("after the empty load the placeholder still renders:\n%s", got)
+			}
+			if view := m.View().Content; !strings.Contains(view, tc.empty) {
+				t.Errorf("after the empty load missing the empty state %q:\n%s", tc.empty, view)
+			}
+		})
+	}
+}
+
+// TestScreenShowsErrorAfterFailedLoad guards the "an error is a completed load"
+// rule: a *LoadedMsg carrying an error sets the screen's flag, so it renders the
+// error rather than a permanent loading placeholder.
+func TestScreenShowsErrorAfterFailedLoad(t *testing.T) {
+	m := New(openTestStore(t), nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, key('1'))
+
+	m = update(t, m, jobsLoadedMsg{err: errors.New("boom")})
+	view := m.View().Content
+	if !strings.Contains(view, "failed to load jobs: boom") {
+		t.Fatalf("failed load did not render the error:\n%s", view)
+	}
+	if strings.Contains(view, styleDim.Render("--")) {
+		t.Fatalf("failed load left the loading placeholder:\n%s", view)
 	}
 }
