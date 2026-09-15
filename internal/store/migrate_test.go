@@ -601,6 +601,106 @@ VALUES ('wf', 1, 'play', 'succeeded', 'ik', 1, 1, 1, 0);
 	}
 }
 
+// TestMigration0040UpgradesFrom039 pins a database at user_version 39, seeds a
+// check_row and its check_state row, then opens it with the current binary. The
+// 0040 rebuild drops and recreates BOTH tables (check_state's incoming FK is
+// why the child goes first), so its own failure mode is row loss on copy: the
+// seeded check and its state must read back intact. The widened CHECK is then
+// proven usable by inserting a kind='tls' row, and the rebuilt FK is proven by
+// cascading that row's state away on delete.
+func TestMigration0040UpgradesFrom039(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 39)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	seed := `
+INSERT INTO check_row (id, name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until)
+VALUES (1, 'at-home', 'tcp', 300,
+        '[{"name":"laptop","address":"192.168.1.50","port":22}]', 1, 111, 222, 0);
+INSERT INTO check_state (check_id, target_name, status, consecutive, emitted, first_seen, last_change, recent_observations, netgroup, last_duration_ms)
+VALUES (1, 'laptop', 'up', 3, 'up', 111, 222,
+        '[{"observed_at":"2026-01-01T00:00:00Z","status":"up","consecutive":3}]', 'home', 42);
+`
+	if _, err := raw.ExecContext(ctx, seed); err != nil {
+		t.Fatalf("seed 0039 rows: %v", err)
+	}
+	// The pin is honest: at 0039 the kind CHECK still refuses 'tls'.
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO check_row (id, name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until)
+		VALUES (2, 'cert', 'tls', 3600, '[]', 1, 1, 1, 0)`); err == nil {
+		t.Fatal("kind='tls' accepted at 0039; the pin is not honest")
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0039 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 40 {
+		t.Fatalf("schema version = %d after open, want >= 40 (0040 applied)", version)
+	}
+
+	// Row survival across the two-table rebuild.
+	got, err := s.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("check row lost by 0040: %v", err)
+	}
+	if got.Kind != CheckTCP || got.IntervalS != 300 || len(got.Targets) != 1 ||
+		got.Targets[0].Address != "192.168.1.50" || got.Targets[0].Port != 22 {
+		t.Fatalf("check row changed by 0040: %+v", got)
+	}
+	st, err := s.GetCheckState(ctx, got.ID, "laptop")
+	if err != nil {
+		t.Fatalf("check_state row lost by 0040: %v", err)
+	}
+	if st.Status != CheckUp || st.Consecutive != 3 || st.Emitted != CheckUp ||
+		st.Netgroup != "home" || st.LastDurationMS != 42 {
+		t.Fatalf("check_state row changed by 0040: %+v", st)
+	}
+
+	// The widened CHECK admits a tls row, and the rebuilt FK still cascades.
+	// Inserted raw: the store's own tls acceptance is proven in check_test.go.
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO check_row (name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until)
+		VALUES ('cert', 'tls', 3600, '[{"name":"web","address":"web.lan","port":443,"min_days":14}]', 1, 1, 1, 0)`)
+	if err != nil {
+		t.Fatalf("kind='tls' insert after 0040: %v", err)
+	}
+	tlsID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("tls check id: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `
+		INSERT INTO check_state (check_id, target_name, status, consecutive, emitted, first_seen, last_change)
+		VALUES (?, 'web', 'up', 1, 'up', 1, 1)`, tlsID); err != nil {
+		t.Fatalf("insert tls state row: %v", err)
+	}
+	if _, err := s.db.ExecContext(ctx, `DELETE FROM check_row WHERE id = ?`, tlsID); err != nil {
+		t.Fatalf("delete tls check: %v", err)
+	}
+	var orphans int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM check_state WHERE check_id = ?`, tlsID).Scan(&orphans); err != nil {
+		t.Fatalf("count tls state rows: %v", err)
+	}
+	if orphans != 0 {
+		t.Fatalf("0040 left %d orphaned state rows; the rebuilt FK must cascade", orphans)
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.
