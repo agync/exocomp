@@ -23,6 +23,17 @@ templ addButton(target string, text string) {
 	</button>
 }
 
+// appbarAdd is the app bar's per-tab add region, keyed by the stable id
+// "appbar-add". A client-side tab swap replaces only its own surface fragment,
+// so a tab whose primary differs (Checks: Add check vs Add netgroup) must carry
+// this region in the fragment response too; the swap JS replaces #appbar-add in
+// place. Renders nothing when the surface exposes no add verb.
+templ appbarAdd(a *pageAdd) {
+	if a != nil {
+		<span class="appbar-action" id="appbar-add">@addButton(a.Target, a.ButtonText())</span>
+	}
+}
+
 // toggle is the run-option switch shared by the source launcher and the job
 // rerun modal, replacing the plain checklines so every boolean run-option reads
 // as one consistent control. The real <input type="checkbox" role="switch"> is

@@ -162,10 +162,11 @@ func (c checkRow) DownSummary() string {
 
 // handleChecks renders the /checks surface for the session: every probe check
 // with each target's posture and location. A request carrying the tab strip's
-// fragment header (checksTabJS) gets the surface region only — checksSurface
-// without the layout chrome — so the swap JS can move it in place without a
-// full load. The full render and the fragment come from the same checksVMFor
-// and the same checksSurface templ, so the two cannot drift.
+// fragment header (checksTabJS) gets the swap region only — the surface plus the
+// app bar's add action, without the layout chrome — so the swap JS can move both
+// in place without a full load. The full render and the fragment come from the
+// same checksVMFor and the same checksSurface/appbarAdd templs, so the two
+// cannot drift.
 func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 	vm, err := s.checksVMFor(r, nil, nil, nil)
 	if err != nil {
@@ -173,7 +174,7 @@ func (s *Server) handleChecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Header.Get(fragmentHeader) == fragmentMode {
-		s.render(w, r, http.StatusOK, checksSurface(vm))
+		s.render(w, r, http.StatusOK, checksFragment(vm))
 		return
 	}
 	s.render(w, r, http.StatusOK, checksList(vm))

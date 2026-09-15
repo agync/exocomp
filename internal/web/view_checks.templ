@@ -22,6 +22,16 @@ templ checksList(vm checksVM) {
 	}
 }
 
+// checksFragment is the tab-swap response: the swappable surface plus the app
+// bar's add region. The surface fragment alone leaves the bar's primary stale
+// across a swap (Checks: Add check on Probes, Add netgroup on Netgroups), so the
+// response carries #appbar-add too and checksTabJS replaces it in place. The
+// full page renders the same region via the layout, so the two cannot drift.
+templ checksFragment(vm checksVM) {
+	@checksSurface(vm)
+	@appbarAdd(vm.Page.Add)
+}
+
 // checksSurface is the /checks surface region the tab strip's client-side swap
 // moves (m79): the tab strip and the active panel, rendered without the layout
 // chrome. The full page embeds it (checksList) and the fragment handler renders
@@ -192,6 +202,19 @@ templ checksTabJS() {
 					if (!next || !region) return false;
 					region.outerHTML = next.outerHTML;
 					region = document.getElementById("checks-surface");
+					// The bar's add region is outside the swapped surface, so replace
+					// it too or a tab switch leaves the primary stale (Add check vs
+					// Add netgroup).
+					var nextAdd = doc.getElementById("appbar-add");
+					var curAdd = document.getElementById("appbar-add");
+					if (nextAdd && curAdd) {
+						curAdd.outerHTML = nextAdd.outerHTML;
+					} else if (nextAdd && !curAdd) {
+						var host = document.querySelector(".appbar-actions");
+						if (host) host.appendChild(nextAdd);
+					} else if (!nextAdd && curAdd) {
+						curAdd.remove();
+					}
 					if (window.exoWireCheckForm) window.exoWireCheckForm();
 					if (window.exoWireNetgroupForm) window.exoWireNetgroupForm();
 					if (window.exoEnhanceSelects) window.exoEnhanceSelects(region);
