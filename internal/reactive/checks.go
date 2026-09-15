@@ -206,6 +206,32 @@ send:
 	return results
 }
 
+// anyObservedDown reports whether at least one target genuinely read down. A
+// probe that errored is not a down observation, so it never consults the
+// canary.
+func anyObservedDown(results []probeResult) bool {
+	for _, r := range results {
+		if r.err == nil && !r.up {
+			return true
+		}
+	}
+	return false
+}
+
+// probeCanary dials the configured uplink canary and reports whether it
+// answered. It is a bare TCP dial: the canary is a location on the path out
+// (a gateway or a LAN service), not a service whose content matters, so exit
+// truth is the whole verdict.
+func probeCanary(ctx context.Context, canary string) bool {
+	d := net.Dialer{Timeout: probeTimeout}
+	conn, err := d.DialContext(ctx, "tcp", canary)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
 // sweepCheck probes every target of one check and updates check_state against
 // each observation: a missing row is seeded without emitting, a steady state
 // only advances the hysteresis counter, and a declared transition becomes one
@@ -213,6 +239,17 @@ send:
 // the check's other targets; only a cancelled context aborts the sweep.
 func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (int, error) {
 	results := e.probeAll(ctx, c)
+
+	// A vantage that lost its own uplink sees every target down. The canary is
+	// the check that the vantage itself is reachable: when a target reads down
+	// and the canary is also unreachable, this whole check's sweep is a missed
+	// observation — no state advances, nothing emits — not a mass-down.
+	if e.canary != "" && anyObservedDown(results) && !probeCanary(ctx, e.canary) {
+		e.log.Warn("reactive: sweep checks: canary down; treating the sweep as a missed observation",
+			"check", c.Name, "canary", e.canary)
+		return 0, ctx.Err()
+	}
+
 	raised := 0
 	for _, r := range results {
 		if err := ctx.Err(); err != nil {

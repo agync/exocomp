@@ -80,8 +80,9 @@ func TestCheckHTTPProbeReachesValidTarget(t *testing.T) {
 
 // labelsEngine opens a store and an engine for the label-builder tests. It is
 // not the reactive_test harness: the label helpers are pure engine+store reads,
-// so the heavier harness buys nothing here.
-func labelsEngine(t *testing.T) *Engine {
+// so the heavier harness buys nothing here. opts mutate the engine's Options
+// before it is built (the canary tests set Canary).
+func labelsEngine(t *testing.T, opts ...func(*Options)) *Engine {
 	t.Helper()
 	st, err := store.Open(filepath.Join(t.TempDir(), "exocomp.db"))
 	if err != nil {
@@ -94,14 +95,18 @@ func labelsEngine(t *testing.T) *Engine {
 		PollInterval: time.Hour,
 		Logger:       slog.New(slog.DiscardHandler),
 	})
-	e, err := New(Options{
+	o := Options{
 		Store:    st,
 		Queue:    q,
 		Deriver:  stubDeriver{},
 		Notifier: notify.New(slog.New(slog.DiscardHandler), discardTransport{}),
 		Clock:    func() time.Time { return time.Now().UTC() },
 		Logger:   slog.New(slog.DiscardHandler),
-	})
+	}
+	for _, fn := range opts {
+		fn(&o)
+	}
+	e, err := New(o)
 	if err != nil {
 		t.Fatalf("new engine: %v", err)
 	}
@@ -392,5 +397,92 @@ func TestSweepParallelProbingPreservesTransitions(t *testing.T) {
 			t.Fatalf("state %s = emitted %q consecutive %d, want emitted %q consecutive %d",
 				tgt.Name, st.Emitted, st.Consecutive, wantStatus[tgt.Name], DefaultHysteresis)
 		}
+	}
+}
+
+// seedDownTransition creates a one-target tcp check whose only target is
+// unreachable and seeds its state one observation short of a declared down
+// transition, so a sweep that applies state would emit exactly one resolve.
+func seedDownTransition(t *testing.T, e *Engine) store.Check {
+	t.Helper()
+	ctx := context.Background()
+	host, port := closedLoopbackPort(t)
+	c, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "edge", Kind: store.CheckTCP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "edge", Address: host, Port: port}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := e.store.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "edge", Status: store.CheckDown,
+		Consecutive: DefaultHysteresis - 1, Emitted: store.CheckUp,
+		FirstSeen: now, LastChange: now,
+	}); err != nil {
+		t.Fatalf("seed state: %v", err)
+	}
+	return c
+}
+
+// TestCheckSweepCanaryUpBehavesNormally: with the canary reachable, a target
+// that reads down still declares its transition.
+func TestCheckSweepCanaryUpBehavesNormally(t *testing.T) {
+	canaryHost, canaryPort := listenLoopback(t)
+	canary := net.JoinHostPort(canaryHost, strconv.Itoa(canaryPort))
+	e := labelsEngine(t, func(o *Options) { o.Canary = canary })
+
+	ctx := context.Background()
+	c := seedDownTransition(t, e)
+	raised, err := e.sweepCheck(ctx, c, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("sweepCheck: %v", err)
+	}
+	if raised != 1 {
+		t.Fatalf("raised %d transitions, want 1 with the canary up", raised)
+	}
+	st, err := e.store.GetCheckState(ctx, c.ID, "edge")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if st.Emitted != store.CheckDown {
+		t.Fatalf("emitted = %q, want down", st.Emitted)
+	}
+}
+
+// TestCheckSweepCanarySkipsWhenVantageDown: with the canary unreachable, the
+// same would-be down transition emits nothing and the state does not advance —
+// the daemon's own uplink loss is a missed observation, never a mass-down.
+//
+// Mutation check: drop the canary condition and this sweep emits the resolve
+// and advances the streak, failing the assertions below.
+func TestCheckSweepCanarySkipsWhenVantageDown(t *testing.T) {
+	canaryHost, canaryPort := closedLoopbackPort(t)
+	canary := net.JoinHostPort(canaryHost, strconv.Itoa(canaryPort))
+	e := labelsEngine(t, func(o *Options) { o.Canary = canary })
+
+	ctx := context.Background()
+	c := seedDownTransition(t, e)
+	raised, err := e.sweepCheck(ctx, c, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("sweepCheck: %v", err)
+	}
+	if raised != 0 {
+		t.Fatalf("raised %d transitions, want 0 while the canary is down", raised)
+	}
+
+	st, err := e.store.GetCheckState(ctx, c.ID, "edge")
+	if err != nil {
+		t.Fatalf("get state: %v", err)
+	}
+	if st.Status != store.CheckDown || st.Consecutive != DefaultHysteresis-1 || st.Emitted != store.CheckUp {
+		t.Fatalf("state advanced despite the canary: %+v", st)
+	}
+	events, err := e.store.ListEvents(ctx, store.EventFilter{Source: SourceCheck})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("emitted %d event(s) while the canary is down", len(events))
 	}
 }

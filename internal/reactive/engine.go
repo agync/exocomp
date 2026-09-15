@@ -66,6 +66,12 @@ type Options struct {
 	Redactor func() Redactor
 	// Clock overrides time.Now, for tests.
 	Clock func() time.Time
+	// Canary is an ip:port the sweep dials before treating a check's targets as
+	// genuinely down. When it is reachable while a target reads down, the
+	// sweep proceeds normally. Empty (or unreachable while a target is down)
+	// means the whole check's sweep is a missed observation, never a mass-down:
+	// the daemon's own uplink loss is the failure this exists to absorb.
+	Canary string
 	// Logger receives failures that are nobody's job. Default slog.Default().
 	Logger *slog.Logger
 }
@@ -81,6 +87,7 @@ type Engine struct {
 	approvalTTL time.Duration
 	redactor    func() Redactor
 	clock       func() time.Time
+	canary      string
 	log         *slog.Logger
 
 	// republished remembers which approvals have had their 50%-TTL reminder.
@@ -132,6 +139,7 @@ func New(opts Options) (*Engine, error) {
 		approvalTTL: opts.ApprovalTTL,
 		redactor:    opts.Redactor,
 		clock:       opts.Clock,
+		canary:      opts.Canary,
 		log:         opts.Logger,
 		republished: map[int64]bool{},
 		capPaged:    map[int64]time.Time{},

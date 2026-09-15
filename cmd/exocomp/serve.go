@@ -107,6 +107,7 @@ type serveOptions struct {
 	webAddr        string
 	webInsecure    bool
 	secretStaging  string
+	checkCanary    string
 }
 
 func defaultServeOptions() serveOptions {
@@ -169,6 +170,8 @@ func newServeCmd() *cobra.Command {
 		"take over an active lease still held by another daemon; use only when that holder is truly gone")
 	cmd.Flags().StringVar(&opts.secretStaging, "secret-staging", opts.secretStaging,
 		"where a run-secret staged as a file lands: auto, tmpfs, or disk (auto falls back to disk, loudly, when tmpfs is unusable)")
+	cmd.Flags().StringVar(&opts.checkCanary, "check-canary", "",
+		"ip:port dialed before a check sweep declares targets down (empty: disabled) — a lost uplink would otherwise read as mass-down")
 	return cmd
 }
 
@@ -620,6 +623,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		Playbooks:   service.New(st, dir, nil),
 		DedupWindow: opts.dedupWindow,
 		ApprovalTTL: opts.approvalTTL,
+		Canary:      opts.checkCanary,
 		Redactor: func() reactive.Redactor {
 			return secrets.NewRedactor(knownSecrets(ctx, st, env, warn))
 		},
