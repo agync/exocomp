@@ -803,15 +803,20 @@ func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
 // has never seen it). The address is the target's location, so it travels in
 // full.
 type CheckTargetView struct {
-	Name       string `json:"name"`
-	Address    string `json:"address,omitempty"`
-	URL        string `json:"url,omitempty"`
-	Port       int    `json:"port,omitempty"`
-	Expect     int    `json:"expect,omitempty"`
-	Status     string `json:"status,omitempty"`
-	Netgroup   string `json:"netgroup,omitempty"`
-	DurationMS int64  `json:"duration_ms,omitempty"`
-	LastChange string `json:"last_change,omitempty"`
+	Name       string  `json:"name"`
+	Address    string  `json:"address,omitempty"`
+	URL        string  `json:"url,omitempty"`
+	Port       int     `json:"port,omitempty"`
+	Expect     int     `json:"expect,omitempty"`
+	DNSName    string  `json:"dns_name,omitempty"`
+	ExpectAddr string  `json:"expect_addr,omitempty"`
+	MinDays    int     `json:"min_days,omitempty"`
+	Op         string  `json:"op,omitempty"`
+	Value      float64 `json:"value,omitempty"`
+	Status     string  `json:"status,omitempty"`
+	Netgroup   string  `json:"netgroup,omitempty"`
+	DurationMS int64   `json:"duration_ms,omitempty"`
+	LastChange string  `json:"last_change,omitempty"`
 }
 
 // CheckView projects a check and its per-target last statuses.
@@ -842,6 +847,8 @@ func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []Che
 			v := CheckTargetView{
 				Name: t.Name, Address: t.Address, URL: t.URL,
 				Port: t.Port, Expect: t.Expect,
+				DNSName: t.DNSName, ExpectAddr: t.ExpectAddr,
+				MinDays: t.MinDays, Op: t.Op, Value: t.Value,
 			}
 			if st, ok := byName[t.Name]; ok {
 				v.Status = st.Status
