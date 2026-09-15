@@ -3,10 +3,12 @@ package reactive
 import (
 	"context"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -167,5 +169,112 @@ func TestNetgroupForAwayOnMiss(t *testing.T) {
 	}
 	if group, err := e.netgroupFor(ctx, netip.MustParseAddr("10.9.9.9")); err != nil || group != "away" {
 		t.Fatalf("netgroupFor(miss) = (%q, %v), want (away, nil)", group, err)
+	}
+}
+
+// listenLoopback binds a real listener on loopback and returns its address and
+// port, so a tcp target answers up for the life of the test.
+func listenLoopback(t *testing.T) (string, int) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		t.Fatalf("split listener addr: %v", err)
+	}
+	p, err := strconv.Atoi(portStr)
+	if err != nil {
+		t.Fatalf("listener port: %v", err)
+	}
+	return host, p
+}
+
+// TestSweepPersistsNetgroupAndDuration: a sweep writes each target's classified
+// netgroup and its probe duration onto the state row, so the read paths never
+// recompute. An http target's URL is not a location, so it stores "" — and its
+// duration is recorded too, proven against a deliberately slow handler.
+func TestSweepPersistsNetgroupAndDuration(t *testing.T) {
+	orig := probeHTTPClient
+	defer func() { probeHTTPClient = orig }()
+	// The shipped dial guard refuses loopback; an unguarded client lets the
+	// test server answer (the guard is pinned separately).
+	probeHTTPClient = func() *http.Client { return &http.Client{Timeout: probeTimeout} }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(30 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	e := labelsEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if _, err := e.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	// An address target: a live loopback listener covered by "home".
+	host, port := listenLoopback(t)
+	tcpCheck, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: host, Port: port}},
+	})
+	if err != nil {
+		t.Fatalf("create tcp check: %v", err)
+	}
+	// Pre-seed stale values so the sweep's write is observable: away -> home,
+	// a sentinel duration -> the measured one.
+	if err := e.store.SetCheckState(ctx, store.CheckState{
+		CheckID: tcpCheck.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 3, Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		Netgroup: "away", LastDurationMS: 999999,
+	}); err != nil {
+		t.Fatalf("seed tcp state: %v", err)
+	}
+	if raised, err := e.sweepCheck(ctx, tcpCheck, now); err != nil {
+		t.Fatalf("sweep tcp check: %v", err)
+	} else if raised != 0 {
+		t.Fatalf("steady tcp sweep raised %d events, want 0", raised)
+	}
+	tcpState, err := e.store.GetCheckState(ctx, tcpCheck.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get tcp state: %v", err)
+	}
+	if tcpState.Netgroup != "home" {
+		t.Fatalf("address target netgroup = %q, want home", tcpState.Netgroup)
+	}
+	if tcpState.LastDurationMS == 999999 {
+		t.Fatalf("address target duration was not overwritten by the sweep: %d", tcpState.LastDurationMS)
+	}
+
+	// An http target: a URL, no address, so it stores no netgroup; the slow
+	// handler makes its recorded duration unambiguously non-zero.
+	httpCheck, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "web-health", Kind: store.CheckHTTP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "web", URL: srv.URL, Expect: 200}},
+	})
+	if err != nil {
+		t.Fatalf("create http check: %v", err)
+	}
+	if raised, err := e.sweepCheck(ctx, httpCheck, now); err != nil {
+		t.Fatalf("sweep http check: %v", err)
+	} else if raised != 0 {
+		t.Fatalf("http seed sweep raised %d events, want 0", raised)
+	}
+	httpState, err := e.store.GetCheckState(ctx, httpCheck.ID, "web")
+	if err != nil {
+		t.Fatalf("get http state: %v", err)
+	}
+	if httpState.Netgroup != "" {
+		t.Fatalf("http target netgroup = %q, want the empty string", httpState.Netgroup)
+	}
+	if httpState.LastDurationMS < 10 {
+		t.Fatalf("http target duration = %dms, want the ~30ms handler recorded", httpState.LastDurationMS)
 	}
 }

@@ -162,12 +162,22 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 		if err := ctx.Err(); err != nil {
 			return raised, err
 		}
-		up, err := e.probe(ctx, c, t)
+		up, dur, err := e.probe(ctx, c, t)
 		if err != nil {
 			e.log.Error("reactive: sweep checks: probe", "check", c.Name, "target", t.Name, "err", err)
 			continue
 		}
 		status := checkStatus(up)
+
+		// The classification is observation output, like the status: resolve it
+		// once per probe and persist it on the state row, so every read path
+		// reads the stored value instead of classifying again.
+		labels, err := e.checkLabels(ctx, c, t)
+		if err != nil {
+			e.log.Error("reactive: sweep checks: classify", "check", c.Name, "target", t.Name, "err", err)
+			continue
+		}
+		netgroup := labels["netgroup"]
 
 		st, err := e.store.GetCheckState(ctx, c.ID, t.Name)
 		if errors.Is(err, store.ErrNotFound) {
@@ -186,6 +196,8 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 				FirstSeen:          now,
 				LastChange:         now,
 				RecentObservations: appendObservation("", status, 1, now),
+				Netgroup:           netgroup,
+				LastDurationMS:     dur.Milliseconds(),
 			}); err != nil {
 				e.log.Error("reactive: sweep checks: seed state", "check", c.Name, "target", t.Name, "err", err)
 				continue
@@ -207,9 +219,11 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 			st.Consecutive = 1
 		}
 		st.RecentObservations = appendObservation(st.RecentObservations, status, st.Consecutive, now)
+		st.Netgroup = netgroup
+		st.LastDurationMS = dur.Milliseconds()
 
 		if st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
-			if err := e.emitCheckTransition(ctx, c, t, st, now); err != nil {
+			if err := e.emitCheckTransition(ctx, c, t, st, labels, now); err != nil {
 				// The emitted flag is not advanced, so the next sweep
 				// re-observes the same status and re-emits the transition.
 				// Dedup-window-bounded and eventually consistent, not a
@@ -233,18 +247,14 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 // emitCheckTransition builds and ingests the one event a declared transition
 // produces. The status here is the check_state vocabulary (up/down); the event
 // maps it onto firing/resolved so a resolve finds and withdraws what its
-// firing raised.
-func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store.CheckTarget, st store.CheckState, now time.Time) error {
+// firing raised. labels are the target's already-resolved event labels, so the
+// transition's netgroup is the same value the state row now carries.
+func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store.CheckTarget, st store.CheckState, labels map[string]string, now time.Time) error {
 	key := checkDedupKey(c.Name, t.Name)
 
 	eventStatus := StatusFiring
 	if st.Status == store.CheckDown {
 		eventStatus = StatusResolved
-	}
-
-	labels, err := e.checkLabels(ctx, c, t)
-	if err != nil {
-		return err
 	}
 
 	// The hysteresis ledger the "WHY THIS COUNTED" card renders: the target's
@@ -325,22 +335,24 @@ func (e *Engine) checkLabels(ctx context.Context, c store.Check, t store.CheckTa
 	return labels, nil
 }
 
-// probe asks one target once and returns whether it answered. Results are
-// dial/exit truth only, never parsed output (AGENTS.md 3). A probe that cannot
-// even start — an unparseable address or URL — is an error, not a down, so a
-// misconfigured check surfaces in the sweep warning rather than reporting
-// silently all-down.
-func (e *Engine) probe(ctx context.Context, c store.Check, t store.CheckTarget) (bool, error) {
+// probe asks one target once and returns whether it answered and how long the
+// probe took. Results are dial/exit truth only, never parsed output (AGENTS.md
+// 3). A probe that cannot even start — an unparseable address or URL — is an
+// error, not a down, so a misconfigured check surfaces in the sweep warning
+// rather than reporting silently all-down.
+func (e *Engine) probe(ctx context.Context, c store.Check, t store.CheckTarget) (up bool, dur time.Duration, err error) {
+	start := time.Now()
 	switch c.Kind {
 	case store.CheckTCP:
-		return probeTCP(ctx, t)
+		up, err = probeTCP(ctx, t)
 	case store.CheckPing:
-		return probePing(ctx, t)
+		up, err = probePing(ctx, t)
 	case store.CheckHTTP:
-		return probeHTTP(ctx, t)
+		up, err = probeHTTP(ctx, t)
 	default:
-		return false, fmt.Errorf("sweep checks %s: unknown kind %q", c.Name, c.Kind)
+		err = fmt.Errorf("sweep checks %s: unknown kind %q", c.Name, c.Kind)
 	}
+	return up, time.Since(start), err
 }
 
 // probeTCP dials the target. Any dial failure — refused, timeout, unroutable —
