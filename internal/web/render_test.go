@@ -457,7 +457,7 @@ func TestAppbarAndNavGroups(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<h1 class="appbar-title">Sources</h1>`,
-		`<span class="appbar-action">`,
+		`<span class="appbar-action" id="appbar-add">`,
 		`>Add source</button>`,
 	} {
 		if !strings.Contains(src, want) {
