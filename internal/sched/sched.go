@@ -407,10 +407,23 @@ func (s *Scheduler) nextFireTime(scheduleID int64) *time.Time {
 	return &next
 }
 
-// buildSpecs turns one schedule into the queue.Spec(s) its kind produces. A
-// backup schedule with an empty target fans out to every enabled target,
-// each getting its own job and its own "backup:<target>" concurrency key.
+// buildSpecs is the scheduler-bound wrapper over Specs: a fire has no separate
+// trigger from the schedule itself, so it passes Trigger.
 func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.Spec, error) {
+	return Specs(ctx, s.store, s.log, sc, Trigger)
+}
+
+// Specs builds the queue specs one schedule's kind produces, independent of
+// the cron loop, so a caller (a manual run-now) can enqueue the same work a
+// fire would. trigger records who asked; a fire passes Trigger, a manual run
+// passes its own. It does NOT stamp last_run or attach an occurrence
+// idempotency key — that is dispatch's job for a real fire. A backup schedule
+// with an empty target fans out to every enabled target, each getting its own
+// job and its own "backup:<target>" concurrency key.
+func Specs(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string) ([]queue.Spec, error) {
+	if log == nil {
+		log = slog.Default()
+	}
 	switch sc.Kind {
 	case store.ScheduleShell:
 		if len(sc.Args.Argv) == 0 {
@@ -419,7 +432,7 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 		return []queue.Spec{{
 			Runbook:        sc.Name,
 			Kind:           KindShell,
-			Trigger:        Trigger,
+			Trigger:        trigger,
 			Argv:           sc.Args.Argv,
 			ConcurrencyKey: sc.ConcurrencyKey,
 		}}, nil
@@ -430,24 +443,24 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 			return nil, fmt.Errorf("schedule %q: kind %s needs a workspace",
 				sc.Name, store.ScheduleTofuPlan)
 		}
-		ws, err := s.store.WorkspaceByName(ctx, name)
+		ws, err := st.WorkspaceByName(ctx, name)
 		if err != nil {
 			return nil, fmt.Errorf("schedule %q: workspace %q: %w", sc.Name, name, err)
 		}
 		// Drift detection: the plan runs with -detailed-exitcode, and the
 		// reactive engine turns "changes present" into an event in the same
 		// pipeline a webhook enters, so drift can gate an apply.
-		return []queue.Spec{reactive.PlanSpec(ws, Trigger)}, nil
+		return []queue.Spec{reactive.PlanSpec(ws, trigger)}, nil
 
 	case KindPlay:
-		spec, err := s.playSpec(ctx, sc)
+		spec, err := playSpec(ctx, st, log, sc, trigger)
 		if err != nil {
 			return nil, err
 		}
 		return []queue.Spec{spec}, nil
 
 	case store.ScheduleBackup:
-		names, err := s.backupTargetNames(ctx, sc.Args.Target)
+		names, err := backupTargetNames(ctx, st, sc.Args.Target)
 		if err != nil {
 			return nil, err
 		}
@@ -456,7 +469,7 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 			specs = append(specs, queue.Spec{
 				Runbook:        sc.Name,
 				Kind:           KindBackup,
-				Trigger:        Trigger,
+				Trigger:        trigger,
 				Argv:           backup.Argv(name),
 				ConcurrencyKey: backup.ConcurrencyKey(name),
 			})
@@ -464,7 +477,7 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 		return specs, nil
 
 	case store.ScheduleDrill:
-		names, err := s.backupTargetNames(ctx, sc.Args.Target)
+		names, err := backupTargetNames(ctx, st, sc.Args.Target)
 		if err != nil {
 			return nil, err
 		}
@@ -473,7 +486,7 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 			specs = append(specs, queue.Spec{
 				Runbook:        sc.Name,
 				Kind:           backup.DrillJobKind,
-				Trigger:        Trigger,
+				Trigger:        trigger,
 				Argv:           backup.DrillArgv(name),
 				ConcurrencyKey: backup.DrillConcurrencyKey(name),
 			})
@@ -487,11 +500,11 @@ func (s *Scheduler) buildSpecs(ctx context.Context, sc store.Schedule) ([]queue.
 
 // backupTargetNames resolves one target's name, or every enabled target's
 // name when target is empty.
-func (s *Scheduler) backupTargetNames(ctx context.Context, target string) ([]string, error) {
+func backupTargetNames(ctx context.Context, st *store.Store, target string) ([]string, error) {
 	if target != "" {
 		return []string{target}, nil
 	}
-	targets, err := s.store.ListBackupTargets(ctx, false)
+	targets, err := st.ListBackupTargets(ctx, false)
 	if err != nil {
 		return nil, err
 	}

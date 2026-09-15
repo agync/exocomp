@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
@@ -31,7 +32,7 @@ const KindPlay = "play"
 // materialized file, gone from disk, or names no hosts enqueues NOTHING and
 // reports why: a recurring converge that quietly runs against an empty
 // inventory looks green forever while converging nobody.
-func (s *Scheduler) playSpec(ctx context.Context, sc store.Schedule) (queue.Spec, error) {
+func playSpec(ctx context.Context, st *store.Store, log *slog.Logger, sc store.Schedule, trigger string) (queue.Spec, error) {
 	inventory := sc.Args.Target
 	if inventory == "" {
 		return queue.Spec{}, fmt.Errorf("schedule %q: kind %s needs an inventory", sc.Name, KindPlay)
@@ -39,17 +40,17 @@ func (s *Scheduler) playSpec(ctx context.Context, sc store.Schedule) (queue.Spec
 	if len(sc.Args.Argv) == 0 {
 		return queue.Spec{}, fmt.Errorf("schedule %q: kind %s needs a playbook", sc.Name, KindPlay)
 	}
-	hosts, err := s.inventoryHosts(ctx, inventory)
+	hosts, err := inventoryHosts(ctx, st, inventory)
 	if err != nil {
 		return queue.Spec{}, fmt.Errorf("schedule %q: %w", sc.Name, err)
 	}
 
-	s.log.Info("sched: play on standing inventory",
+	log.Info("sched: play on standing inventory",
 		"schedule", sc.Name, "inventory", inventory, "hosts", hosts)
 	return queue.Spec{
 		Runbook:             sc.Name,
 		Kind:                executor.KindAnsible,
-		Trigger:             Trigger,
+		Trigger:             trigger,
 		Argv:                executor.AnsibleArtifactArgv(sc.Args.Argv[0], sc.Args.Argv[1:]...),
 		Inventory:           inventory,
 		ConcurrencyKey:      sc.ConcurrencyKey,
@@ -60,8 +61,8 @@ func (s *Scheduler) playSpec(ctx context.Context, sc store.Schedule) (queue.Spec
 // inventoryHosts returns how many hosts a standing inventory currently names,
 // erroring when it names none. The count is read from the same bytes the run
 // will consume, so what gates the fire is what the play would have targeted.
-func (s *Scheduler) inventoryHosts(ctx context.Context, name string) (int, error) {
-	standing, err := s.store.StandingInventory(ctx, name)
+func inventoryHosts(ctx context.Context, st *store.Store, name string) (int, error) {
+	standing, err := st.StandingInventory(ctx, name)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return 0, fmt.Errorf("inventory %q is not registered", name)

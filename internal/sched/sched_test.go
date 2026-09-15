@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -242,6 +243,55 @@ func TestBuildSpecsBackupAllTargetsFansOutSkippingDisabled(t *testing.T) {
 	}
 	if keys[backup.ConcurrencyKey("retired")] {
 		t.Fatal("disabled target got a spec")
+	}
+}
+
+// TestSpecsMatchesFireBuild proves the exported package-level builder is the
+// exact one a fire's method wrapper uses: a manual run-now enqueues the same
+// work a cron fire would, with its own trigger threaded through every spec.
+func TestSpecsMatchesFireBuild(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	for _, name := range []string{"nas", "offsite"} {
+		if _, err := st.CreateBackupTarget(t.Context(), store.BackupTarget{
+			Name: name, Kind: "restic_local", URI: t.TempDir(), Enabled: true,
+		}); err != nil {
+			t.Fatalf("create target %s: %v", name, err)
+		}
+	}
+	s := New(st, &fakeEnqueuer{store: st}, testLogger())
+
+	for _, sc := range []store.Schedule{
+		{Name: "shell", Kind: store.ScheduleShell, Args: store.ScheduleArgs{Argv: []string{"/bin/true"}}, ConcurrencyKey: "k"},
+		{Name: "backups", Kind: store.ScheduleBackup},
+	} {
+		fire, err := s.buildSpecs(t.Context(), sc)
+		if err != nil {
+			t.Fatalf("buildSpecs(%s): %v", sc.Name, err)
+		}
+		direct, err := Specs(t.Context(), st, testLogger(), sc, Trigger)
+		if err != nil {
+			t.Fatalf("Specs(%s): %v", sc.Name, err)
+		}
+		if !reflect.DeepEqual(fire, direct) {
+			t.Fatalf("Specs(%s) = %+v, fire build = %+v", sc.Name, direct, fire)
+		}
+
+		// The caller's trigger must replace the fire's on every kind, shell
+		// included: a manual run-now is not a cron fire.
+		manual, err := Specs(t.Context(), st, testLogger(), sc, "run-now")
+		if err != nil {
+			t.Fatalf("Specs(%s, run-now): %v", sc.Name, err)
+		}
+		if len(manual) != len(direct) {
+			t.Fatalf("Specs(%s, run-now) = %d specs, want %d", sc.Name, len(manual), len(direct))
+		}
+		for i := range manual {
+			if manual[i].Trigger != "run-now" {
+				t.Errorf("Specs(%s, run-now) spec %d trigger = %q, want run-now",
+					sc.Name, i, manual[i].Trigger)
+			}
+		}
 	}
 }
 
