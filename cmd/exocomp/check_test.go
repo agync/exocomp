@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"net"
 	"net/netip"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -396,6 +398,159 @@ func TestCheckUpdateKindFlags(t *testing.T) {
 
 	if out, err := runCheckCmd(t, "check", "update", "cert", "--target", "web=web.lan:443", "--expect-addr", "192.168.1.5"); err == nil {
 		t.Fatalf("update of a tls check accepted --expect-addr:\n%s", out)
+	}
+}
+
+// closedLoopback binds a loopback listener, closes it, and returns its address
+// and port only once a dial is refused — the deterministic down target for the
+// on-demand probe tests, mirroring internal/probe's own helper.
+func closedLoopback(t *testing.T) (string, int) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, portStr, err := net.SplitHostPort(ln.Addr().String())
+	if err != nil {
+		_ = ln.Close()
+		t.Fatal(err)
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		_ = ln.Close()
+		t.Fatal(err)
+	}
+	_ = ln.Close()
+
+	addr := net.JoinHostPort(host, portStr)
+	d := net.Dialer{Timeout: 50 * time.Millisecond}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		conn, derr := d.Dial("tcp", addr)
+		if derr != nil {
+			return host, port
+		}
+		_ = conn.Close()
+		time.Sleep(2 * time.Millisecond)
+	}
+	t.Fatalf("port %s still accepts after the listener closed", addr)
+	return "", 0
+}
+
+// checkStateCount counts a named check's state rows, the read a probe must not
+// change.
+func checkStateCount(t *testing.T, name string) int {
+	t.Helper()
+	ctx := context.Background()
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	c, err := st.GetCheck(ctx, name)
+	if err != nil {
+		t.Fatalf("get check %s: %v", name, err)
+	}
+	states, err := st.ListCheckStates(ctx, c.ID)
+	if err != nil {
+		t.Fatalf("list states %s: %v", name, err)
+	}
+	return len(states)
+}
+
+// TestCheckProbeWritesNothing: `check probe` runs each target immediately —
+// the reachable one up, the closed one down — and leaves the store exactly as
+// it found it: no state row, no event, no write.
+func TestCheckProbeWritesNothing(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	_, upPort, _ := net.SplitHostPort(ln.Addr().String())
+	downHost, downPort := closedLoopback(t)
+
+	if _, err := runCheckCmd(t, "check", "add", "mixed",
+		"--kind", "tcp", "--interval", "5m",
+		"--target", "up=127.0.0.1:"+upPort,
+		"--target", "down="+net.JoinHostPort(downHost, strconv.Itoa(downPort))); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+	before := checks(t)
+
+	out, err := runCheckCmd(t, "check", "probe", "mixed")
+	if err != nil {
+		t.Fatalf("check probe: %v", err)
+	}
+	if !strings.Contains(out, "TARGET") || !strings.Contains(out, "up") || !strings.Contains(out, "UP") {
+		t.Errorf("probe output missing the reachable target result:\n%s", out)
+	}
+	if !strings.Contains(out, "down") || !strings.Contains(out, "DOWN") {
+		t.Errorf("probe output missing the unreachable target result:\n%s", out)
+	}
+	if !strings.Contains(out, "away") {
+		t.Errorf("probe output missing the live location:\n%s", out)
+	}
+
+	after := checks(t)
+	if len(before) != len(after) || before[0].UpdatedAt != after[0].UpdatedAt {
+		t.Fatalf("check probe changed the check row: before=%+v after=%+v", before, after)
+	}
+	if n := checkStateCount(t, "mixed"); n != 0 {
+		t.Fatalf("check probe wrote %d state row(s)", n)
+	}
+}
+
+// TestCheckProbeTargetFilter: --target narrows the run to one target and a
+// missing name is refused without probing anything.
+func TestCheckProbeTargetFilter(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	host, port := closedLoopback(t)
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m",
+		"--target", "laptop="+net.JoinHostPort(host, strconv.Itoa(port))); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+	out, err := runCheckCmd(t, "check", "probe", "at-home", "--target", "laptop")
+	if err != nil {
+		t.Fatalf("check probe --target: %v", err)
+	}
+	if !strings.Contains(out, "laptop") {
+		t.Errorf("filtered probe missing the target:\n%s", out)
+	}
+	if out, err := runCheckCmd(t, "check", "probe", "at-home", "--target", "nope"); err == nil {
+		t.Fatalf("probe of a missing target succeeded:\n%s", out)
+	}
+}
+
+// TestCheckTestWritesNothing: `check test` validates and runs a one-off probe
+// set without a store at all — the dry run before `check add` — and a bad
+// metric threshold is refused without a row.
+func TestCheckTestWritesNothing(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	host, port := closedLoopback(t)
+	out, err := runCheckCmd(t, "check", "test",
+		"--kind", "tcp", "--target", "probe="+net.JoinHostPort(host, strconv.Itoa(port)))
+	if err != nil {
+		t.Fatalf("check test: %v", err)
+	}
+	if !strings.Contains(out, "probe") || !strings.Contains(out, "DOWN") {
+		t.Errorf("check test output missing the down result:\n%s", out)
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Fatalf("check test stored a row: %+v", rows)
+	}
+
+	if out, err := runCheckCmd(t, "check", "test",
+		"--kind", "metric", "--target", "depth=http://nas:9090/queue", "--op", ">"); err == nil {
+		t.Fatalf("check test accepted a metric without --value:\n%s", out)
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Fatalf("a refused check test stored a row: %+v", rows)
 	}
 }
 

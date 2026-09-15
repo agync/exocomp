@@ -3,12 +3,14 @@ package main
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -29,6 +31,8 @@ func newCheckCmd() *cobra.Command {
 	cmd.AddCommand(
 		newCheckAddCmd(),
 		newCheckUpdateCmd(),
+		newCheckProbeCmd(),
+		newCheckTestCmd(),
 		newCheckListCmd(),
 		newCheckEnableCmd(),
 		newCheckDisableCmd(),
@@ -36,6 +40,179 @@ func newCheckCmd() *cobra.Command {
 		newCheckUnsnoozeCmd(),
 		newCheckRmCmd(),
 	)
+	return cmd
+}
+
+// checkProbeTimeout matches the sweep's bound (reactive.checks probeTimeout):
+// an on-demand probe answers with the same deadline the sweep uses, so what the
+// operator sees here is what the next sweep will record.
+const checkProbeTimeout = 5 * time.Second
+
+// newCheckProbeCmd runs a stored check's probes immediately, without the
+// daemon, and writes nothing. It is how a check is debugged without waiting an
+// interval: the result, the duration, and the location read exactly as the
+// sweep will read them.
+func newCheckProbeCmd() *cobra.Command {
+	var target string
+
+	cmd := &cobra.Command{
+		Use:     "probe <name> [--target <target>]",
+		Short:   "Run a check's probes now, writing nothing",
+		Example: "exocomp check probe at-home",
+		Long: "Runs each target's probe immediately with the same options the sweep " +
+			"uses and prints the result, duration, and location. It writes no state " +
+			"and emits no event, so it is safe to run against a live check; it needs " +
+			"no running daemon. --target narrows to one target by name.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runCheckProbe(cmd, args[0], target)
+		},
+	}
+	cmd.Flags().StringVar(&target, "target", "", "probe only this target by name")
+	return cmd
+}
+
+func runCheckProbe(cmd *cobra.Command, name, only string) error {
+	ctx := cmd.Context()
+	st, err := openStore()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = st.Close() }()
+
+	c, err := st.GetCheck(ctx, name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return fmt.Errorf("check probe: %q not found", name)
+		}
+		return err
+	}
+	states, err := st.ListCheckStates(ctx, c.ID)
+	if err != nil {
+		return err
+	}
+	stored := make(map[string]string, len(states))
+	for _, s := range states {
+		stored[s.TargetName] = s.Netgroup
+	}
+	groups, err := st.ListNetgroups(ctx)
+	if err != nil {
+		return err
+	}
+
+	targets := c.Targets
+	if only != "" {
+		targets = nil
+		for _, t := range c.Targets {
+			if t.Name == only {
+				targets = append(targets, t)
+			}
+		}
+		if len(targets) == 0 {
+			return fmt.Errorf("check probe: %s has no target named %q", name, only)
+		}
+	}
+
+	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+	_, _ = fmt.Fprintln(w, "TARGET\tSTATUS\tDURATION\tLOCATION\tDETAIL")
+	for _, t := range targets {
+		spec, err := store.SpecForTarget(c.Kind, t)
+		if err != nil {
+			return fmt.Errorf("check probe %s: target %q: %w", name, t.Name, err)
+		}
+		if err := spec.Validate(); err != nil {
+			return fmt.Errorf("check probe %s: target %q: %w", name, t.Name, err)
+		}
+		res := probe.Run(ctx, spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+		status, detail := "UP", ""
+		if !res.Up {
+			status, detail = "DOWN", res.Detail
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", t.Name, status,
+			res.Duration.Round(time.Millisecond), probeLocationLabel(spec, stored[t.Name], groups), detail)
+	}
+	return w.Flush()
+}
+
+// probeLocationLabel names where a target was probed: the sweep's stored
+// classification when it has observed the target, else a live classification of
+// the address the spec carries. A kind with no address literal (dns, metric, and
+// a tls hostname) has no location and reads "-".
+func probeLocationLabel(spec probe.Spec, stored string, groups []store.Netgroup) string {
+	if stored != "" {
+		return stored
+	}
+	addr, ok := spec.Location()
+	if !ok {
+		return "-"
+	}
+	if ng, ok := store.ClassifyNetgroups([]netip.Addr{addr}, groups)[addr.Unmap().String()]; ok {
+		return ng
+	}
+	return "-"
+}
+
+// newCheckTestCmd validates and runs a one-off probe set without storing a
+// check: the anti-footgun before `check add`. It reaches the runner directly,
+// so no row and no state exist to write.
+func newCheckTestCmd() *cobra.Command {
+	var (
+		kind       string
+		targets    []string
+		minDays    int
+		expectAddr string
+		op         string
+		value      float64
+	)
+
+	cmd := &cobra.Command{
+		Use:     "test --kind <kind> --target <name=spec>",
+		Short:   "Validate and run a one-off probe set without storing it",
+		Example: "exocomp check test --kind tls --target web=web.lan:443 --min-days 21",
+		Long: "Runs each target once with the same validation and options `check add` " +
+			"would apply, and prints the result. Nothing is stored: it is the dry run " +
+			"that catches a wrong target or a bad threshold before the check exists.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if len(targets) == 0 {
+				return errors.New("check test: need at least one --target")
+			}
+			parsed, err := store.ParseCheckTargets(kind, targets, false)
+			if err != nil {
+				return fmt.Errorf("check test: %w", err)
+			}
+			if err := applyKindFlags(cmd, kind, parsed, 0, minDays, expectAddr, op, value); err != nil {
+				return fmt.Errorf("check test: %w", err)
+			}
+
+			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
+			_, _ = fmt.Fprintln(w, "TARGET\tSTATUS\tDURATION\tDETAIL")
+			for _, t := range parsed {
+				spec, err := store.SpecForTarget(kind, t)
+				if err != nil {
+					return fmt.Errorf("check test: target %q: %w", t.Name, err)
+				}
+				if err := spec.Validate(); err != nil {
+					return fmt.Errorf("check test: target %q: %w", t.Name, err)
+				}
+				res := probe.Run(cmd.Context(), spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+				status := "UP"
+				if !res.Up {
+					status = "DOWN"
+				}
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Name, status,
+					res.Duration.Round(time.Millisecond), res.Detail)
+			}
+			return w.Flush()
+		},
+	}
+	cmd.Flags().StringVar(&kind, "kind", "", "tcp|ping|http|dns|tls|metric")
+	cmd.Flags().StringArrayVar(&targets, "target", nil, "name=spec; repeatable")
+	cmd.Flags().IntVar(&minDays, "min-days", 0, "tls: require the leaf cert to be at least this many days from expiry")
+	cmd.Flags().StringVar(&expectAddr, "expect-addr", "", "dns: require the name to resolve to this address")
+	cmd.Flags().StringVar(&op, "op", "", "metric: comparison operator (< <= > >= == !=)")
+	cmd.Flags().Float64Var(&value, "value", 0, "metric: value the operator compares the body against")
+	_ = cmd.MarkFlagRequired("kind")
 	return cmd
 }
 
