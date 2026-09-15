@@ -9,10 +9,20 @@ import (
 // schedulesTable wraps the bubbles table component with the Schedules
 // screen's fixed column layout.
 type schedulesTable struct {
-	model table.Model
+	model    table.Model
+	fullRows []table.Row
 }
 
-func schedulesColumns() []table.Column {
+func schedulesColumns(width int) []table.Column {
+	if width < degradedWidth {
+		return []table.Column{
+			{Title: "NAME", Width: 16},
+			{Title: "KIND", Width: 10}, // fits the post-v1 kinds: tofu-plan, play, backup
+			{Title: "CRON", Width: 14},
+			{Title: "ENABLED", Width: 8},
+			{Title: "NEXT", Width: 10},
+		}
+	}
 	return []table.Column{
 		{Title: "NAME", Width: 16},
 		{Title: "KIND", Width: 10}, // fits the post-v1 kinds: tofu-plan, play, backup
@@ -24,10 +34,14 @@ func schedulesColumns() []table.Column {
 	}
 }
 
+// schedulesKeep is the full-column indices that survive at degraded width:
+// NAME, KIND, CRON, ENABLED, NEXT.
+var schedulesKeep = []int{0, 1, 2, 3, 4}
+
 func newSchedulesTable() schedulesTable {
 	return schedulesTable{
 		model: table.New(
-			table.WithColumns(schedulesColumns()),
+			table.WithColumns(schedulesColumns(defaultWidth)),
 			table.WithFocused(true),
 			table.WithHeight(10),
 		),
@@ -36,9 +50,13 @@ func newSchedulesTable() schedulesTable {
 
 func (t *schedulesTable) Focus() { t.model.Focus() }
 
-func (t *schedulesTable) SetRows(rows []table.Row) { t.model.SetRows(rows) }
+func (t *schedulesTable) SetRows(rows []table.Row) {
+	t.fullRows = rows
+	t.model.SetRows(projectRows(t.model.Width(), rows, schedulesKeep))
+}
 
 func (t *schedulesTable) SetSize(width, height int) {
+	setColumnsAndRows(&t.model, schedulesColumns(width), projectRows(width, t.fullRows, schedulesKeep))
 	t.model.SetWidth(width)
 	t.model.SetHeight(height)
 }

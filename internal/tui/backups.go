@@ -9,10 +9,19 @@ import (
 // backupsTable wraps the bubbles table component with the Backups screen's
 // fixed column layout.
 type backupsTable struct {
-	model table.Model
+	model    table.Model
+	fullRows []table.Row
 }
 
-func backupsColumns() []table.Column {
+func backupsColumns(width int) []table.Column {
+	if width < degradedWidth {
+		return []table.Column{
+			{Title: "TARGET", Width: 16},
+			{Title: "STATE", Width: 12},
+			{Title: "SNAPSHOT", Width: 14},
+			{Title: "ERROR", Width: 24},
+		}
+	}
 	return []table.Column{
 		{Title: "TARGET", Width: 16},
 		{Title: "KIND", Width: 12},
@@ -23,10 +32,14 @@ func backupsColumns() []table.Column {
 	}
 }
 
+// backupsKeep is the full-column indices that survive at degraded width:
+// TARGET, STATE, SNAPSHOT, ERROR.
+var backupsKeep = []int{0, 2, 3, 5}
+
 func newBackupsTable() backupsTable {
 	return backupsTable{
 		model: table.New(
-			table.WithColumns(backupsColumns()),
+			table.WithColumns(backupsColumns(defaultWidth)),
 			table.WithFocused(true),
 			table.WithHeight(10),
 		),
@@ -35,9 +48,13 @@ func newBackupsTable() backupsTable {
 
 func (t *backupsTable) Focus() { t.model.Focus() }
 
-func (t *backupsTable) SetRows(rows []table.Row) { t.model.SetRows(rows) }
+func (t *backupsTable) SetRows(rows []table.Row) {
+	t.fullRows = rows
+	t.model.SetRows(projectRows(t.model.Width(), rows, backupsKeep))
+}
 
 func (t *backupsTable) SetSize(width, height int) {
+	setColumnsAndRows(&t.model, backupsColumns(width), projectRows(width, t.fullRows, backupsKeep))
 	t.model.SetWidth(width)
 	t.model.SetHeight(height)
 }

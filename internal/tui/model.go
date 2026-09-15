@@ -35,6 +35,16 @@ const (
 	helpLines   = 2 // blank + help line
 )
 
+// defaultWidth is the terminal width New assumes before the first
+// WindowSizeMsg; it is below degradedWidth, so a freshly seeded table starts in
+// the degraded form layout() would pick anyway.
+const defaultWidth = 80
+
+// degradedWidth is the design's breakpoint for the narrow form: at width < 120
+// the tables drop their metadata columns right-to-left, and Home switches to
+// its 80-column layout (view.go).
+const degradedWidth = 120
+
 // Write is the TUI's operator-authority write surface: the envelope opener the
 // approve/reject path derives its capability token from, and the data dir the
 // enqueue-only queue shares with the daemon. nil disables the write keys.
@@ -220,7 +230,7 @@ func New(st *store.Store, w *Write) Model {
 		store:           st,
 		write:           w,
 		active:          screenHome,
-		width:           80,
+		width:           defaultWidth,
 		height:          24,
 		jobsTable:       newJobsTable(),
 		backupsTable:    newBackupsTable(),

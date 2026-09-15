@@ -844,7 +844,7 @@ func TestFilterNarrowsTheActiveTable(t *testing.T) {
 	seedJob(t, st, "restic", store.StateQueued, nil)
 
 	m := New(st, nil)
-	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 24})
 	m = update(t, m, key('1'))
 	m = update(t, m, loadJobsCmd(st)())
 

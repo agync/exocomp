@@ -175,7 +175,7 @@ func TestSelectionMovementAndTailToggling(t *testing.T) {
 	}
 
 	m := New(st, nil)
-	m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 24})
 	m = update(t, m, key('1')) // Home is the root; move to Jobs to drive its table
 
 	msg := loadJobsCmd(st)()
@@ -253,7 +253,7 @@ func TestStoreBackedViewRendersBothScreens(t *testing.T) {
 	}
 
 	m := New(st, nil)
-	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = update(t, m, key('1')) // leave Home for the Jobs table
 	m = update(t, m, loadJobsCmd(st)())
 	m = update(t, m, loadBackupsCmd(st)())
@@ -387,7 +387,7 @@ func TestWorkspacesScreenRendersStatusAndDrift(t *testing.T) {
 	}
 
 	m := New(st, nil)
-	m = update(t, m, tea.WindowSizeMsg{Width: 100, Height: 30})
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
 	m = update(t, m, loadWorkspacesCmd(st)())
 	m = update(t, m, key('3'))
 
@@ -509,5 +509,130 @@ func TestTimeFormatting(t *testing.T) {
 	}
 	if got := formatTimePtr(nil); got != emptyCell {
 		t.Fatalf("formatTimePtr(nil) = %q, want %q", got, emptyCell)
+	}
+}
+
+// TestTableColumnsDropAtDegradedWidth proves the four core tables switch from
+// the full column set to the degraded one at width < 120, dropping metadata
+// only: the surviving identity/state/verdict columns from each set stay.
+func TestTableColumnsDropAtDegradedWidth(t *testing.T) {
+	st := openTestStore(t)
+	seedJob(t, st, "ansible", store.StateSucceeded, nil)
+	ctx := context.Background()
+	if _, err := st.CreateBackupTarget(ctx, store.BackupTarget{
+		Name: "restic-local", Kind: "restic_local", URI: "/var/lib/exocomp/restic", Enabled: true,
+	}); err != nil {
+		t.Fatalf("create backup target: %v", err)
+	}
+	if _, err := st.CreateWorkspace(ctx, store.Workspace{Name: "edge", TofuDir: "/srv/tofu/edge"}); err != nil {
+		t.Fatalf("create workspace: %v", err)
+	}
+	if _, err := st.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly-backup", CronExpr: "@daily", Kind: store.ScheduleBackup,
+	}); err != nil {
+		t.Fatalf("create schedule: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name     string
+		key      rune
+		load     func(*store.Store) tea.Cmd
+		full     []string
+		degraded []string
+	}{
+		{
+			name: "jobs", key: '1', load: loadJobsCmd,
+			full:     []string{"ID", "SOURCE", "KIND", "STATE", "QUEUED", "FINISHED", "EXIT"},
+			degraded: []string{"ID", "SOURCE", "STATE", "EXIT"},
+		},
+		{
+			name: "backups", key: '2', load: loadBackupsCmd,
+			full:     []string{"TARGET", "KIND", "STATE", "SNAPSHOT", "BYTES", "ERROR"},
+			degraded: []string{"TARGET", "STATE", "SNAPSHOT", "ERROR"},
+		},
+		{
+			name: "workspaces", key: '3', load: loadWorkspacesCmd,
+			full:     []string{"NAME", "SERIAL", "LAST PLAN", "LAST APPLY", "DRIFT"},
+			degraded: []string{"NAME", "SERIAL", "DRIFT"},
+		},
+		{
+			name: "schedules", key: '4', load: loadSchedulesCmd,
+			full:     []string{"NAME", "KIND", "CRON", "ENABLED", "NEXT", "FIRED", "LAST STATE"},
+			degraded: []string{"NAME", "KIND", "CRON", "ENABLED", "NEXT"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dropped := map[string]bool{}
+			for _, title := range tc.full {
+				if !contains(tc.degraded, title) {
+					dropped[title] = true
+				}
+			}
+
+			m := New(st, nil)
+			m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 30})
+			m = update(t, m, tc.load(st)())
+			m = update(t, m, key(tc.key))
+			view120 := stripANSI(m.View().Content)
+			for _, title := range tc.full {
+				if !strings.Contains(view120, title) {
+					t.Errorf("width 120 missing full title %q:\n%s", title, view120)
+				}
+			}
+
+			m = update(t, m, tea.WindowSizeMsg{Width: 80, Height: 30})
+			view80 := stripANSI(m.View().Content)
+			for _, title := range tc.degraded {
+				if !strings.Contains(view80, title) {
+					t.Errorf("width 80 missing degraded title %q:\n%s", title, view80)
+				}
+			}
+			for title := range dropped {
+				if strings.Contains(view80, title) {
+					t.Errorf("width 80 still renders dropped title %q:\n%s", title, view80)
+				}
+			}
+		})
+	}
+}
+
+func contains(haystack []string, needle string) bool {
+	for _, s := range haystack {
+		if s == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// TestEventsReasonTruncatesAtDegradedWidth proves the events renderer truncates
+// the REASON cell at width < 120 while the OUTCOME column is untouched: the
+// outcome enum is the screen's verdict and never what's dropped.
+func TestEventsReasonTruncatesAtDegradedWidth(t *testing.T) {
+	longReason := "silence 'maintenance' until 15:00 · by dana"
+	m := EventsModel{
+		summary: "events · 1 recent · 0 ignored · 0 matched · 1 suppressed · 0 gated · 0 fired",
+		clock:   "14:03 UTC+11",
+		rows: []eventRow{
+			{time: "14:02", event: "disk-pressure", source: "aurora", outcome: "SUPPRESSED", reason: longReason},
+		},
+	}
+
+	m.width = 120
+	full := stripANSI(renderEventsScreen(m))
+	if !strings.Contains(full, longReason) {
+		t.Fatalf("width 120 did not render the full reason:\n%s", full)
+	}
+
+	m.width = 80
+	deg := stripANSI(renderEventsScreen(m))
+	if strings.Contains(deg, longReason) {
+		t.Errorf("width 80 rendered the full reason untruncated:\n%s", deg)
+	}
+	if !strings.Contains(deg, "…") {
+		t.Errorf("width 80 did not truncate the reason with …:\n%s", deg)
+	}
+	if !strings.Contains(deg, "OUTCOME") || !strings.Contains(deg, "SUPPRESSED") {
+		t.Errorf("width 80 dropped OUTCOME:\n%s", deg)
 	}
 }

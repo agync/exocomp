@@ -24,10 +24,18 @@ type workspaceStatus struct {
 // workspacesTable wraps the bubbles table component with the Workspaces
 // screen's fixed column layout.
 type workspacesTable struct {
-	model table.Model
+	model    table.Model
+	fullRows []table.Row
 }
 
-func workspacesColumns() []table.Column {
+func workspacesColumns(width int) []table.Column {
+	if width < degradedWidth {
+		return []table.Column{
+			{Title: "NAME", Width: 16},
+			{Title: "SERIAL", Width: 8},
+			{Title: "DRIFT", Width: 8},
+		}
+	}
 	return []table.Column{
 		{Title: "NAME", Width: 16},
 		{Title: "SERIAL", Width: 8},
@@ -37,10 +45,14 @@ func workspacesColumns() []table.Column {
 	}
 }
 
+// workspacesKeep is the full-column indices that survive at degraded width:
+// NAME, SERIAL, DRIFT.
+var workspacesKeep = []int{0, 1, 4}
+
 func newWorkspacesTable() workspacesTable {
 	return workspacesTable{
 		model: table.New(
-			table.WithColumns(workspacesColumns()),
+			table.WithColumns(workspacesColumns(defaultWidth)),
 			table.WithFocused(true),
 			table.WithHeight(10),
 		),
@@ -49,9 +61,13 @@ func newWorkspacesTable() workspacesTable {
 
 func (t *workspacesTable) Focus() { t.model.Focus() }
 
-func (t *workspacesTable) SetRows(rows []table.Row) { t.model.SetRows(rows) }
+func (t *workspacesTable) SetRows(rows []table.Row) {
+	t.fullRows = rows
+	t.model.SetRows(projectRows(t.model.Width(), rows, workspacesKeep))
+}
 
 func (t *workspacesTable) SetSize(width, height int) {
+	setColumnsAndRows(&t.model, workspacesColumns(width), projectRows(width, t.fullRows, workspacesKeep))
 	t.model.SetWidth(width)
 	t.model.SetHeight(height)
 }

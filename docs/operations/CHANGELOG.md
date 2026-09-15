@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the TUI core tables degrade below 120 columns
+
+- **The four core tables drop metadata columns at width < 120 instead of
+  overflowing.** Each `*Columns()` now takes the terminal width: Jobs keeps
+  `ID SOURCE STATE EXIT`, Backups `TARGET STATE SNAPSHOT ERROR`, Workspaces
+  `NAME SERIAL DRIFT`, and Schedules `NAME KIND CRON ENABLED NEXT`, each the
+  full set at width >= 120. The surviving columns are unchanged in order; only
+  the dropped ones go, so state words and key glyphs never move. A table's
+  `SetSize` swaps columns and the matching row cells together (the bubbles
+  renderer indexes row cells against columns), which is what makes a resize
+  safe. On the events screen the REASON cell is clipped with `…` below 120 so
+  the line fits; OUTCOME keeps its fixed column and is never truncated. The
+  fixtures are byte-identical: the 120-wide `events-120` and home frames did not
+  move.
+
 ## 2026-09-15 — the TUI screens say "loading", not a false empty
 
 - **The seven v0.2 screens hold a dim `--` until their first load lands.**

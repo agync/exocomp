@@ -12,20 +12,33 @@ type eventRow struct {
 	selected bool
 }
 
-// EventsModel is the events screen at 120 columns.
+// EventsModel is the events screen. width is the terminal width the renderer
+// degrades against; zero means the fixed 120-column form the golden pins.
 type EventsModel struct {
 	summary string // "events · 17 in last 24h · 11 ignored · 2 matched · 3 suppressed · 1 gated · 0 fired"
 	clock   string
 	rows    []eventRow
+	width   int
 }
 
 const eventsKeys = "[e] trace  [o] outcome  [/] search  [j/k] move"
 
-// renderEvents draws the events table. The outcome column is fixed-width so the
-// enum reads as a column; source and outcome sit one space apart so a long
-// source ("core-infra") still leaves the outcome legible.
+// renderEventsScreen draws the events table at the model's width, defaulting to
+// the fixed 120-column form the golden pins when the width is unset.
 func renderEventsScreen(m EventsModel) string {
-	const w = 120
+	w := m.width
+	if w == 0 {
+		w = 120
+	}
+	return renderEventsScreenWidth(m, w)
+}
+
+// renderEventsScreenWidth draws the events table at a given width. The outcome
+// column is fixed-width so the enum reads as a column; source and outcome sit
+// one space apart so a long source ("core-infra") still leaves the outcome
+// legible. At width < 120 the REASON cell is clipped with … so the line fits;
+// OUTCOME sits before it at a fixed column and is never truncated.
+func renderEventsScreenWidth(m EventsModel, w int) string {
 	lines := []string{
 		lr(m.summary, m.clock, w),
 		hrule(w),
@@ -39,9 +52,15 @@ func renderEventsScreen(m EventsModel) string {
 		if r.selected {
 			marker = "▸"
 		}
+		text := r.reason
+		if w < degradedWidth {
+			// The reason starts at column 49; a width too small even for that
+			// still must not index the string backwards.
+			text = truncate(text, max(0, w-49))
+		}
 		line := row(
 			cell{0, marker}, cell{1, r.time}, cell{8, r.event},
-			cell{26, r.source}, cell{37, r.outcome}, cell{49, r.reason},
+			cell{26, r.source}, cell{37, r.outcome}, cell{49, text},
 		)
 		if r.selected {
 			// The ▸ prefix is the no-color selection contract; the reverse

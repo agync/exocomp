@@ -264,7 +264,7 @@ func (m Model) eventsModel() EventsModel {
 		len(events),
 		counts[store.OutcomeIgnored], counts[store.OutcomeMatched], counts[store.OutcomeSuppressed],
 		counts[store.OutcomeGated], counts[store.OutcomeFired])
-	em := EventsModel{summary: summary, clock: now.Local().Format("15:04 MST")}
+	em := EventsModel{summary: summary, clock: now.Local().Format("15:04 MST"), width: m.width}
 	for i, e := range events {
 		name := e.MatchedRule
 		if name == "" {
