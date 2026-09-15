@@ -662,6 +662,43 @@ func TestChecksTabFragmentReturnsRegion(t *testing.T) {
 	}
 }
 
+// TestChecksTabFragmentCarriesTheBarAdd: a tab swap replaces only the surface
+// fragment, so the app bar's add verb sits outside it and would stay stale
+// (Add check on Probes, Add netgroup on Netgroups). The fragment response must
+// carry #appbar-add with the requested tab's own verb, so checksTabJS can
+// replace it in place. Dropping @appbarAdd from checksFragment reds this.
+func TestChecksTabFragmentCarriesTheBarAdd(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	for _, tc := range []struct {
+		url, wantLabel, wantTarget string
+	}{
+		{ts.URL + "/checks", "Add check", "checks-add"},
+		{ts.URL + "/checks?tab=netgroups", "Add netgroup", "netgroups-add"},
+	} {
+		code, _, body := fragmentGet(t, op, tc.url)
+		if code != http.StatusOK {
+			t.Fatalf("fragment %s = %d, want 200", tc.url, code)
+		}
+		if !strings.Contains(body, `id="appbar-add"`) {
+			t.Errorf("fragment %s missing the appbar-add region", tc.url)
+		}
+		if !strings.Contains(body, tc.wantLabel) {
+			t.Errorf("fragment %s missing the label %q", tc.url, tc.wantLabel)
+		}
+		if !strings.Contains(body, `data-modal-open="`+tc.wantTarget+`"`) {
+			t.Errorf("fragment %s missing the target %q", tc.url, tc.wantTarget)
+		}
+		if strings.Contains(body, `class="appbar"`) {
+			t.Errorf("fragment %s leaks the appbar chrome", tc.url)
+		}
+	}
+}
+
 // TestChecksTabJSOffStillFullLoads: the data-tab links are plain full-load
 // anchors (the JS-off path — no <noscript> needed), and the page ships the
 // swap script that intercepts them with the fragment fetch, the header, the
