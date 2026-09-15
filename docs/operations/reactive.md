@@ -41,7 +41,9 @@ Flags: `--hook-allow 10.0.0.0/8,192.168.0.0/16` restricts senders; `--public-url
 https://exocomp.lan` sets what decision links point at when the daemon sits
 behind a reverse proxy; `--dedup-window` and `--approval-ttl` set the two
 windows; `--sweep-interval` (default 30s) sets how often TTLs are enforced,
-drift is collected, and check probes are due.
+drift is collected, and check probes are due; `--check-canary <ip:port>` names a
+reachability witness the check sweep dials before declaring targets down (empty
+disables; see [Checks as an event](#checks-as-an-event)).
 
 ## Push
 
@@ -207,12 +209,27 @@ price is fail-safe — a host already home at daemon start is missed once,
 never read as a fresh down→up transition after a reboot.
 
 Per-target transition state lives in a persisted `check_state` row — the
-current `status`, the `consecutive` counter, the last `emitted` status, and
-`last_change`. It survives a restart, which is exactly why a reboot cannot
+current `status`, the `consecutive` counter, the last `emitted` status,
+`last_change`, the classified `netgroup`, and the last probe's
+`last_duration_ms`. It survives a restart, which is exactly why a reboot cannot
 read `up` as a fresh transition; the `/checks` page's "changed N ago" line
 reads `last_change` off that row. `check list` renders the same state — the
 text table's STATUS column, `--output json`, and the `/checks` page all carry
 it.
+
+The sweep classifies each probed address once, at observation time, and stores
+the result beside the probe's duration in milliseconds. The wire projections —
+`check list --output json` and `/api/v1/checks` — read those stored values, so
+an http URL target (no address) carries no `netgroup` and a target that is up
+but slow is visible without a second probe.
+
+A check-level snooze (`check_row.snoozed_until`, set through the check store)
+keeps probing and advancing state but emits no transition until it expires; the
+expiry is mandatory and the snooze lapses on its own. `--check-canary <ip:port>`
+gates the other way: when a target reads down and the canary is also
+unreachable, that check's whole sweep is a missed observation — no state
+advances, nothing emits — so the daemon's own uplink loss cannot page for every
+target at once. The canary is a bare dial; empty disables it.
 
 The http probe refuses the addresses a check must not reach: it dials through
 a guard that refuses loopback, link-local unicast (covering the cloud

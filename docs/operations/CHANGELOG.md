@@ -6,6 +6,23 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — checks record where, how long, and when muted
+
+- **A check's observation state now carries its location, probe duration, and
+  snooze.** `check_state` gains `netgroup` and `last_duration_ms`; `check_row`
+  gains `snoozed_until`. The sweep classifies each address target once at
+  observation time and measures each probe, so `check list --output json` and
+  `/api/v1/checks` project the stored values instead of recomputing a netgroup
+  map. An http target stores no netgroup.
+- **`serve --check-canary <ip:port>` gates a sweep on the daemon's own
+  reachability.** When a target reads down and the canary is also unreachable,
+  the check's sweep is a missed observation — no state advances, nothing emits —
+  so a lost uplink no longer reads as mass-down. Empty disables it.
+- **A snoozed check keeps probing but emits nothing** until its expiry passes,
+  so hysteresis stays current. Probing a check's targets now uses a small
+  worker pool, with state application and emission still sequential: per-target
+  transitions are neither lost nor duplicated.
+
 ## 2026-09-15 — the workspaces empty state shows the design block
 
 - **The live `[3] Workspaces` empty state renders the three-line block the
