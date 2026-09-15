@@ -23,6 +23,7 @@ func init() { registerWrite((*Server).registerCheckWrite) }
 
 func (s *Server) registerCheckWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /checks/add", s.requireAuth(s.handleCheckAdd))
+	mux.HandleFunc("POST /checks/{name}/update", s.requireAuth(s.handleCheckUpdate))
 	mux.HandleFunc("POST /checks/{name}/enable", s.requireAuth(s.handleCheckEnable))
 	mux.HandleFunc("POST /checks/{name}/disable", s.requireAuth(s.handleCheckDisable))
 	mux.HandleFunc("POST /checks/{name}/rm", s.requireAuth(s.handleCheckRm))
@@ -286,5 +287,214 @@ func (s *Server) checkRowRefusal(w http.ResponseWriter, r *http.Request, name, m
 		s.fail(w, r, err)
 		return
 	}
+	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
+}
+
+// checkUpdateSubmitRefusal is the edit form's form-level sentence when the
+// store refuses a value the field checks let through.
+const checkUpdateSubmitRefusal = "Couldn't save the check — nothing changed."
+
+// checkEditFormVM is one card's edit dialog state: the interval and target rows
+// prefilled from the stored check at rest, or the typed values plus every
+// field's refusal on a 422 re-render. Kind is display-only — the stored kind is
+// never updatable. Control ids are namespaced by the check name, so each card's
+// dialog has unique controls.
+type checkEditFormVM struct {
+	Name          string
+	Kind          string
+	Interval      string
+	Targets       []string
+	Expect        string
+	ErrInterval   string
+	ErrTargetItem string
+	ErrTarget     string
+	ErrExpect     string
+	ErrForm       string
+	FirstInvalid  string
+	Submitting    bool
+}
+
+func (f checkEditFormVM) effective() checkEditFormVM { return f }
+
+func (f checkEditFormVM) Pending() bool { return f.Submitting }
+
+func (f checkEditFormVM) ErrFormText() string { return f.ErrForm }
+
+func (f checkEditFormVM) intervalField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-interval", Label: "Interval (a duration)",
+		Name: "interval", Value: f.Interval, Placeholder: "5m",
+		Help:   "A Go duration — 5m, 90s, 1h.",
+		ErrMsg: f.ErrInterval, FirstInvalid: f.FirstInvalid == "interval",
+	}
+}
+
+func (f checkEditFormVM) expectField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-expect", Label: "HTTP expected status (optional, http kind only)",
+		Name: "expect", Value: f.Expect, Placeholder: "200",
+		Help:   "A whole status code, like 200 or 404.",
+		ErrMsg: f.ErrExpect, FirstInvalid: f.FirstInvalid == "expect",
+	}
+}
+
+// targetInputs is the edit dialog's repeated target rows: the stored targets
+// (or the typed values on a 422 re-render) padded to the same four baseline
+// rows the add dialog uses, capped at the same ten.
+func (f checkEditFormVM) targetInputs() []string {
+	out := f.Targets
+	for i := len(out); i < 4; i++ {
+		out = append(out, "")
+	}
+	if len(out) > 10 {
+		out = out[:10]
+	}
+	return out
+}
+
+// editForm resolves one card's edit-dialog state: the refused form when this
+// check was the one refused, else an at-rest form prefilled from the stored
+// row.
+func (vm checksVM) editForm(name string) checkEditFormVM {
+	if vm.EditForm != nil && vm.EditForm.Name == name {
+		return *vm.EditForm
+	}
+	for _, ck := range vm.Checks {
+		if ck.Name == name {
+			return checkEditFormVM{
+				Name: name, Kind: ck.Kind, Interval: ck.Interval,
+				Targets: ck.editTargetInputs(), Expect: ck.editExpect(),
+			}
+		}
+	}
+	return checkEditFormVM{Name: name}
+}
+
+func (c checkRow) editTargetInputs() []string {
+	out := make([]string, len(c.Targets))
+	for i, t := range c.Targets {
+		out[i] = t.SpecInput()
+	}
+	return out
+}
+
+func (c checkRow) editExpect() string {
+	for _, t := range c.Targets {
+		if t.Expect != 0 {
+			return itoa(int64(t.Expect))
+		}
+	}
+	return ""
+}
+
+// handleCheckUpdate re-points a stored check in place: targets replace the set
+// and interval replaces the cadence, while kind stays whatever the row held.
+// The store preserves the state row of a kept target NAME, so the next sweep
+// can flip it and emit a real transition. Refusals re-render the dialog at 422
+// with every field's message at once (forms/SPEC.md).
+func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	cur, err := s.store.GetCheck(r.Context(), name)
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "No check named "+name+" exists to update.", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	form := checkEditFormVM{
+		Name:     name,
+		Kind:     cur.Kind,
+		Interval: r.PostFormValue("interval"),
+		Targets:  r.PostForm["target"],
+		Expect:   r.PostFormValue("expect"),
+	}
+
+	var causes []string
+	var intervalS int64
+	d, derr := time.ParseDuration(form.Interval)
+	if derr != nil {
+		form.ErrInterval = checkIntervalRefusal(form.Interval)
+		causes = append(causes, derr.Error())
+	} else if d <= 0 {
+		form.ErrInterval = checkIntervalNonPos
+		causes = append(causes, "interval "+form.Interval)
+	} else {
+		intervalS = int64(d.Seconds())
+	}
+	var targets []store.CheckTarget
+	parsed, terr := store.ParseCheckTargets(cur.Kind, form.Targets, true)
+	if terr != nil {
+		form.ErrTargetItem, form.ErrTarget = checkTargetRefusal(terr)
+		causes = append(causes, terr.Error())
+	} else if len(parsed) == 0 {
+		form.ErrTarget = checkTargetEmpty
+		causes = append(causes, "no targets")
+	} else {
+		targets = parsed
+	}
+	expect, eerr := formExpect(r)
+	if eerr != nil {
+		form.ErrExpect = checkExpectRefusal
+		causes = append(causes, eerr.Error())
+	} else if expect != 0 && cur.Kind != store.CheckHTTP {
+		form.ErrExpect = checkExpectKindRefusal
+		causes = append(causes, "expect on non-http")
+	}
+
+	if form.ErrInterval != "" || form.ErrTarget != "" || form.ErrExpect != "" {
+		switch {
+		case form.ErrInterval != "":
+			form.FirstInvalid = "interval"
+		case form.ErrTarget != "":
+			form.FirstInvalid = "target"
+		case form.ErrExpect != "":
+			form.FirstInvalid = "expect"
+		}
+		s.log.Info("web: check update refused", "check", name, "err", strings.Join(causes, "; "), "by", ident.token.Name)
+		s.checkEditRefusal(w, r, form)
+		return
+	}
+	if expect != 0 {
+		for i := range targets {
+			targets[i].Expect = expect
+		}
+	}
+
+	updated, err := s.store.UpdateCheck(r.Context(), name, targets, intervalS)
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "No check named "+name+" exists to update.", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, store.ErrValidation) {
+		s.log.Info("web: check update refused", "check", name, "err", err.Error(), "by", ident.token.Name)
+		form.ErrForm = checkUpdateSubmitRefusal
+		s.checkEditRefusal(w, r, form)
+		return
+	}
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	s.log.Info("web: check update", "check", updated.Name, "by", ident.token.Name)
+	s.redirectFlash(w, r, "/checks", "updated "+updated.Name)
+}
+
+// checkEditRefusal re-renders the checks surface at 422 with the edit dialog
+// carrying its refusals; the dialog's own open script reopens it (the JS-off
+// path, and the full-page re-render a native submit lands on).
+func (s *Server) checkEditRefusal(w http.ResponseWriter, r *http.Request, form checkEditFormVM) {
+	vm, err := s.checksVMFor(r, nil, nil, nil)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.EditForm = &form
 	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
 }

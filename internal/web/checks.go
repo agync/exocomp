@@ -30,6 +30,20 @@ type checksVM struct {
 	// Form is the check-add dialog's render state (the same shape): nil at
 	// rest, the filled form with field refusals on a 422 re-render.
 	Form *checkFormVM
+	// EditForm is the check edit dialog's 422 re-render state: nil at rest,
+	// else the one refused check's form, keyed by name (checks_write.go).
+	EditForm *checkEditFormVM
+}
+
+// checkRowActionsWithEdit is checkRowActions plus the check edit verb, which
+// lands with the edit dialog. The base row verbs stay in
+// row_actions_resources.go; Remove stays last (destructive).
+func checkRowActionsWithEdit(ck checkRow) []rowAction {
+	acts := checkRowActions(ck)
+	edit := rowAction{Name: "Edit", Path: glyphPencil, Menu: true, Modal: "check-edit-" + ck.Name}
+	last := acts[len(acts)-1]
+	acts[len(acts)-1] = edit
+	return append(acts, last)
 }
 
 // checkRow is one probe check on the checks surface, with each target's last

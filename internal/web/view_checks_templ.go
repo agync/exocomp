@@ -910,7 +910,7 @@ func checksSurface(vm checksVM) templ.Component {
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
-						templ_7745c5c3_Err = rowActions(checkRowActions(ck), vm.Page.Base).Render(ctx, templ_7745c5c3_Buffer)
+						templ_7745c5c3_Err = rowActions(checkRowActionsWithEdit(ck), vm.Page.Base).Render(ctx, templ_7745c5c3_Buffer)
 						if templ_7745c5c3_Err != nil {
 							return templ_7745c5c3_Err
 						}
@@ -928,9 +928,297 @@ func checksSurface(vm checksVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+				if vm.Operator {
+					for _, ck := range vm.Checks {
+						templ_7745c5c3_Err = checkEditDialog(vm, ck).Render(ctx, templ_7745c5c3_Buffer)
+						if templ_7745c5c3_Err != nil {
+							return templ_7745c5c3_Err
+						}
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, " ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.EditForm != nil {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<script>\n\t\t\t\t\tvar ckeBad = document.querySelector('#checks-surface [data-check-edit-form] [aria-invalid=\"true\"]');\n\t\t\t\t\tif (ckeBad) {\n\t\t\t\t\t\tvar ckeDlg = ckeBad.closest('dialog');\n\t\t\t\t\t\tif (ckeDlg && ckeDlg.showModal && !ckeDlg.open) ckeDlg.showModal();\n\t\t\t\t\t\tckeBad.focus();\n\t\t\t\t\t}\n\t\t\t\t\t</script>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 93, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "</div>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+// checkEditDialog is one card's edit dialog: re-point the stored check in
+// place. Kind is not editable. A kept target NAME keeps its observed state
+// row; targets replace the set otherwise. A 422 re-render reopens the dialog
+// with every field's refusal at once (checks_write.go).
+func checkEditDialog(vm checksVM, ck checkRow) templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var42 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var42 == nil {
+			templ_7745c5c3_Var42 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Var43 := templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+			templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+			templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+			if !templ_7745c5c3_IsBuffer {
+				defer func() {
+					templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+					if templ_7745c5c3_Err == nil {
+						templ_7745c5c3_Err = templ_7745c5c3_BufErr
+					}
+				}()
+			}
+			ctx = templ.InitializeContext(ctx)
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 96, "<p class=\"meta\">Re-point <code>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var44 string
+			templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(ck.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 206, Col: 42}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 97, "</code> in place. Kind is <code>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var45 string
+			templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(ck.Kind)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 206, Col: 85}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 98, "</code> and is not editable. A target whose name is kept keeps its observed state.</p><form method=\"post\" action=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var46 templ.SafeURL
+			templ_7745c5c3_Var46, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(vm.Page.Base, "/checks/"+ck.Name+"/update"))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 207, Col: 86}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var46))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 99, "\" class=\"writeform\" id=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var47 string
+			templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs("check-edit-form-" + ck.Name)
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 207, Col: 140}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 100, "\" novalidate data-check-edit-form>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = fieldInput(vm.editForm(ck.Name).intervalField()).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 101, "<label class=\"field\"><span class=\"label\">Targets</span> ")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			for i, t := range vm.editForm(ck.Name).targetInputs() {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 102, "<input class=\"control\" name=\"target\" type=\"text\" spellcheck=\"false\" autocomplete=\"off\" placeholder=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var48 string
+				templ_7745c5c3_Var48, templ_7745c5c3_Err = templ.JoinStringErrs(targetPlaceholder(i))
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 212, Col: 126}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var48))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 103, "\" value=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var49 string
+				templ_7745c5c3_Var49, templ_7745c5c3_Err = templ.JoinStringErrs(t)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 212, Col: 138}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var49))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.editForm(ck.Name).ErrTarget != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, " aria-invalid")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, " aria-describedby=\"")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				var templ_7745c5c3_Var50 string
+				templ_7745c5c3_Var50, templ_7745c5c3_Err = templ.JoinStringErrs("cke-" + ck.Name + "-target-meta")
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 212, Col: 248}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var50))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "\"> ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			var templ_7745c5c3_Var51 = []any{"meta", templ.KV("is-error", vm.editForm(ck.Name).ErrTarget != "")}
+			templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var51...)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "<span id=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var52 string
+			templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs("cke-" + ck.Name + "-target-meta")
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 214, Col: 48}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "\" class=\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var53 string
+			templ_7745c5c3_Var53, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var51).String())
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 1, Col: 0}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var53))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "\">")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if vm.editForm(ck.Name).ErrTarget != "" {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<span class=\"msg\">")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if vm.editForm(ck.Name).ErrTargetItem != "" {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<span class=\"item\">")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var54 string
+					templ_7745c5c3_Var54, templ_7745c5c3_Err = templ.JoinStringErrs(vm.editForm(ck.Name).ErrTargetItem)
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 218, Col: 63}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var54))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "</span> ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				var templ_7745c5c3_Var55 string
+				templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinStringErrs(vm.editForm(ck.Name).ErrTarget)
+				if templ_7745c5c3_Err != nil {
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_checks.templ`, Line: 220, Col: 39}
+				}
+				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "</span>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "</span></label>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = fieldInput(vm.editForm(ck.Name).expectField()).Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = formStatus(vm.editForm(ck.Name).Pending(), vm.editForm(ck.Name).ErrFormText(), "Saving check").Render(ctx, templ_7745c5c3_Buffer)
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "<div class=\"actions\"><button type=\"submit\" class=\"btn primary\"")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			if vm.editForm(ck.Name).Pending() {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, " disabled")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, ">Save check</button></div></form>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			return nil
+		})
+		templ_7745c5c3_Err = modal("check-edit-"+ck.Name, "Edit check — "+ck.Name).Render(templ.WithChildren(ctx, templ_7745c5c3_Var43), templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -967,12 +1255,12 @@ func checksTabJS() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var42 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var42 == nil {
-			templ_7745c5c3_Var42 = templ.NopComponent
+		templ_7745c5c3_Var56 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var56 == nil {
+			templ_7745c5c3_Var56 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 94, "<script>\n\t(function () {\n\t\tfunction swapTab(href) {\n\t\t\treturn fetch(href, {\n\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\theaders: { \"Accept\": \"text/html\", \"X-Requested-With\": \"fragment\" }\n\t\t\t}).then(function (resp) {\n\t\t\t\tif (!resp.ok) return false;\n\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\tvar next = doc.getElementById(\"checks-surface\");\n\t\t\t\t\tvar region = document.getElementById(\"checks-surface\");\n\t\t\t\t\tif (!next || !region) return false;\n\t\t\t\t\tregion.outerHTML = next.outerHTML;\n\t\t\t\t\tregion = document.getElementById(\"checks-surface\");\n\t\t\t\t\t// The bar's add region is outside the swapped surface, so replace\n\t\t\t\t\t// it too or a tab switch leaves the primary stale (Add check vs\n\t\t\t\t\t// Add netgroup).\n\t\t\t\t\tvar nextAdd = doc.getElementById(\"appbar-add\");\n\t\t\t\t\tvar curAdd = document.getElementById(\"appbar-add\");\n\t\t\t\t\tif (nextAdd && curAdd) {\n\t\t\t\t\t\tcurAdd.outerHTML = nextAdd.outerHTML;\n\t\t\t\t\t} else if (nextAdd && !curAdd) {\n\t\t\t\t\t\tvar host = document.querySelector(\".appbar-actions\");\n\t\t\t\t\t\tif (host) host.appendChild(nextAdd);\n\t\t\t\t\t} else if (!nextAdd && curAdd) {\n\t\t\t\t\t\tcurAdd.remove();\n\t\t\t\t\t}\n\t\t\t\t\tif (window.exoWireCheckForm) window.exoWireCheckForm();\n\t\t\t\t\tif (window.exoWireNetgroupForm) window.exoWireNetgroupForm();\n\t\t\t\t\tif (window.exoEnhanceSelects) window.exoEnhanceSelects(region);\n\t\t\t\t\treturn true;\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\tvar busy = false;\n\t\tdocument.addEventListener(\"click\", function (e) {\n\t\t\tvar tab = e.target.closest(\"a[data-tab]\");\n\t\t\tif (!tab || busy) return;\n\t\t\tif (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;\n\t\t\tif (tab.getAttribute(\"aria-selected\") === \"true\") return;\n\t\t\te.preventDefault();\n\t\t\tbusy = true;\n\t\t\tvar href = tab.getAttribute(\"href\");\n\t\t\tswapTab(href).then(function (ok) {\n\t\t\t\tif (ok) { history.pushState(null, \"\", href); busy = false; }\n\t\t\t\telse { busy = false; window.location = href; }\n\t\t\t}).catch(function () {\n\t\t\t\tbusy = false;\n\t\t\t\twindow.location = href;\n\t\t\t});\n\t\t});\n\t\twindow.addEventListener(\"popstate\", function () {\n\t\t\tvar href = location.pathname + location.search;\n\t\t\tswapTab(href).then(function (ok) {\n\t\t\t\tif (!ok) location.reload();\n\t\t\t}).catch(function () { location.reload(); });\n\t\t});\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 120, "<script>\n\t(function () {\n\t\tfunction swapTab(href) {\n\t\t\treturn fetch(href, {\n\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\theaders: { \"Accept\": \"text/html\", \"X-Requested-With\": \"fragment\" }\n\t\t\t}).then(function (resp) {\n\t\t\t\tif (!resp.ok) return false;\n\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\tvar next = doc.getElementById(\"checks-surface\");\n\t\t\t\t\tvar region = document.getElementById(\"checks-surface\");\n\t\t\t\t\tif (!next || !region) return false;\n\t\t\t\t\tregion.outerHTML = next.outerHTML;\n\t\t\t\t\tregion = document.getElementById(\"checks-surface\");\n\t\t\t\t\t// The bar's add region is outside the swapped surface, so replace\n\t\t\t\t\t// it too or a tab switch leaves the primary stale (Add check vs\n\t\t\t\t\t// Add netgroup).\n\t\t\t\t\tvar nextAdd = doc.getElementById(\"appbar-add\");\n\t\t\t\t\tvar curAdd = document.getElementById(\"appbar-add\");\n\t\t\t\t\tif (nextAdd && curAdd) {\n\t\t\t\t\t\tcurAdd.outerHTML = nextAdd.outerHTML;\n\t\t\t\t\t} else if (nextAdd && !curAdd) {\n\t\t\t\t\t\tvar host = document.querySelector(\".appbar-actions\");\n\t\t\t\t\t\tif (host) host.appendChild(nextAdd);\n\t\t\t\t\t} else if (!nextAdd && curAdd) {\n\t\t\t\t\t\tcurAdd.remove();\n\t\t\t\t\t}\n\t\t\t\t\tif (window.exoWireCheckForm) window.exoWireCheckForm();\n\t\t\t\t\tif (window.exoWireNetgroupForm) window.exoWireNetgroupForm();\n\t\t\t\t\tif (window.exoEnhanceSelects) window.exoEnhanceSelects(region);\n\t\t\t\t\treturn true;\n\t\t\t\t});\n\t\t\t});\n\t\t}\n\t\tvar busy = false;\n\t\tdocument.addEventListener(\"click\", function (e) {\n\t\t\tvar tab = e.target.closest(\"a[data-tab]\");\n\t\t\tif (!tab || busy) return;\n\t\t\tif (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;\n\t\t\tif (tab.getAttribute(\"aria-selected\") === \"true\") return;\n\t\t\te.preventDefault();\n\t\t\tbusy = true;\n\t\t\tvar href = tab.getAttribute(\"href\");\n\t\t\tswapTab(href).then(function (ok) {\n\t\t\t\tif (ok) { history.pushState(null, \"\", href); busy = false; }\n\t\t\t\telse { busy = false; window.location = href; }\n\t\t\t}).catch(function () {\n\t\t\t\tbusy = false;\n\t\t\t\twindow.location = href;\n\t\t\t});\n\t\t});\n\t\twindow.addEventListener(\"popstate\", function () {\n\t\t\tvar href = location.pathname + location.search;\n\t\t\tswapTab(href).then(function (ok) {\n\t\t\t\tif (!ok) location.reload();\n\t\t\t}).catch(function () { location.reload(); });\n\t\t});\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1006,12 +1294,12 @@ func checkFormJS() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var43 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var43 == nil {
-			templ_7745c5c3_Var43 = templ.NopComponent
+		templ_7745c5c3_Var57 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var57 == nil {
+			templ_7745c5c3_Var57 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 95, "<script>\n\t(function () {\n\t\tfunction checkFormWire() {\n\t\t\tvar form = document.getElementById(\"check-add-form\");\n\t\t\tif (!form || form.dataset.checkWired) return;\n\t\t\tform.dataset.checkWired = \"1\";\n\n\t\t\tfunction restoreMeta(input) {\n\t\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (!meta) return;\n\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\tswitch (input.name) {\n\t\t\t\tcase \"name\":\n\t\t\t\t\tmeta.textContent = \"Letters, digits, dots, hyphens, underscores.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"interval\":\n\t\t\t\t\tmeta.textContent = \"A Go duration — 5m, 90s, 1h.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"expect\":\n\t\t\t\t\tmeta.textContent = \"A whole status code, like 200 or 404.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"target\":\n\t\t\t\t\tmeta.textContent = \"Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).\";\n\t\t\t\t\tbreak;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// showError paints a refusal on a field without changing its geometry\n\t\t\t// (the meta line always exists), mirroring the server's human copy.\n\t\t\tfunction showError(input, msg) {\n\t\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// validateField runs the same client rules the server holds to — a\n\t\t\t// name shape or interval-unit refusal — on blur so a mistake\n\t\t\t// surfaces before submit. Empty is left alone (that's a\n\t\t\t// submit-time required check); the daemon stays authoritative on\n\t\t\t// uniqueness, target shape, and the ping capability, so submit\n\t\t\t// still asks the server.\n\t\t\tfunction validateField(input) {\n\t\t\t\tif (input.value.trim() === \"\") return;\n\t\t\t\tvar v = input.value.trim();\n\t\t\t\tif (input.name === \"name\") {\n\t\t\t\t\tif (!/^[A-Za-z0-9_.-]+$/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"Names can't have spaces or special characters.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"interval\") {\n\t\t\t\t\tif (!/^[0-9.]/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"The interval needs a unit — like 5m, 90s or 1h.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"expect\") {\n\t\t\t\t\tif (!/^\\d+$/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"The expected status is a whole number, like 200.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"target\") {\n\t\t\t\t\tif (!/=/.test(v) || v.indexOf(\"=\") === 0) {\n\t\t\t\t\t\tshowError(input, \"Targets are name=spec — like laptop=192.168.1.50:22.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\trestoreMeta(input);\n\t\t\t}\n\n\t\t\t// The four baseline target rows stay the JS-off baseline; Add target\n\t\t\t// grows the form past them, capped so the DOM cannot grow unbounded.\n\t\t\tvar addBtn = document.getElementById(\"ck-add-target\");\n\t\t\tif (addBtn) {\n\t\t\t\taddBtn.addEventListener(\"click\", function () {\n\t\t\t\t\tvar inputs = form.querySelectorAll('input[name=\"target\"]');\n\t\t\t\t\tif (inputs.length >= 10) return;\n\t\t\t\t\tvar last = inputs[inputs.length - 1];\n\t\t\t\t\tvar clone = last.cloneNode(false);\n\t\t\t\t\tclone.value = \"\";\n\t\t\t\t\tlast.after(clone);\n\t\t\t\t\tclone.focus();\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Adding check';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"check-add-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"check-add-form\");\n\t\t\t\t\t\t\tform.dataset.checkRefused = \"1\";\n\t\t\t\t\t\t\tcheckFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// Validate on blur always (not just after a refusal) so a mistake\n\t\t\t// surfaces as soon as the operator leaves the field.\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"], input[name=\"interval\"], input[name=\"expect\"], input[name=\"target\"]');\n\t\t\t\tif (!input) return;\n\t\t\t\tvalidateField(input);\n\t\t\t}, true);\n\t\t}\n\t\twindow.exoWireCheckForm = checkFormWire;\n\t\tcheckFormWire();\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 121, "<script>\n\t(function () {\n\t\tfunction checkFormWire() {\n\t\t\tvar form = document.getElementById(\"check-add-form\");\n\t\t\tif (!form || form.dataset.checkWired) return;\n\t\t\tform.dataset.checkWired = \"1\";\n\n\t\t\tfunction restoreMeta(input) {\n\t\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (!meta) return;\n\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\tswitch (input.name) {\n\t\t\t\tcase \"name\":\n\t\t\t\t\tmeta.textContent = \"Letters, digits, dots, hyphens, underscores.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"interval\":\n\t\t\t\t\tmeta.textContent = \"A Go duration — 5m, 90s, 1h.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"expect\":\n\t\t\t\t\tmeta.textContent = \"A whole status code, like 200 or 404.\";\n\t\t\t\t\tbreak;\n\t\t\t\tcase \"target\":\n\t\t\t\t\tmeta.textContent = \"Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).\";\n\t\t\t\t\tbreak;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// showError paints a refusal on a field without changing its geometry\n\t\t\t// (the meta line always exists), mirroring the server's human copy.\n\t\t\tfunction showError(input, msg) {\n\t\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// validateField runs the same client rules the server holds to — a\n\t\t\t// name shape or interval-unit refusal — on blur so a mistake\n\t\t\t// surfaces before submit. Empty is left alone (that's a\n\t\t\t// submit-time required check); the daemon stays authoritative on\n\t\t\t// uniqueness, target shape, and the ping capability, so submit\n\t\t\t// still asks the server.\n\t\t\tfunction validateField(input) {\n\t\t\t\tif (input.value.trim() === \"\") return;\n\t\t\t\tvar v = input.value.trim();\n\t\t\t\tif (input.name === \"name\") {\n\t\t\t\t\tif (!/^[A-Za-z0-9_.-]+$/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"Names can't have spaces or special characters.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"interval\") {\n\t\t\t\t\tif (!/^[0-9.]/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"The interval needs a unit — like 5m, 90s or 1h.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"expect\") {\n\t\t\t\t\tif (!/^\\d+$/.test(v)) {\n\t\t\t\t\t\tshowError(input, \"The expected status is a whole number, like 200.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t} else if (input.name === \"target\") {\n\t\t\t\t\tif (!/=/.test(v) || v.indexOf(\"=\") === 0) {\n\t\t\t\t\t\tshowError(input, \"Targets are name=spec — like laptop=192.168.1.50:22.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\trestoreMeta(input);\n\t\t\t}\n\n\t\t\t// The four baseline target rows stay the JS-off baseline; Add target\n\t\t\t// grows the form past them, capped so the DOM cannot grow unbounded.\n\t\t\tvar addBtn = document.getElementById(\"ck-add-target\");\n\t\t\tif (addBtn) {\n\t\t\t\taddBtn.addEventListener(\"click\", function () {\n\t\t\t\t\tvar inputs = form.querySelectorAll('input[name=\"target\"]');\n\t\t\t\t\tif (inputs.length >= 10) return;\n\t\t\t\t\tvar last = inputs[inputs.length - 1];\n\t\t\t\t\tvar clone = last.cloneNode(false);\n\t\t\t\t\tclone.value = \"\";\n\t\t\t\t\tlast.after(clone);\n\t\t\t\t\tclone.focus();\n\t\t\t\t});\n\t\t\t}\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Adding check';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"check-add-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"check-add-form\");\n\t\t\t\t\t\t\tform.dataset.checkRefused = \"1\";\n\t\t\t\t\t\t\tcheckFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// Validate on blur always (not just after a refusal) so a mistake\n\t\t\t// surfaces as soon as the operator leaves the field.\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"], input[name=\"interval\"], input[name=\"expect\"], input[name=\"target\"]');\n\t\t\t\tif (!input) return;\n\t\t\t\tvalidateField(input);\n\t\t\t}, true);\n\t\t}\n\t\twindow.exoWireCheckForm = checkFormWire;\n\t\tcheckFormWire();\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

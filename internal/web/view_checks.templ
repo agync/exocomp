@@ -171,15 +171,64 @@ templ checksSurface(vm checksVM) {
 							</ul>
 							if vm.Operator {
 								<div class="checkactions">
-									@rowActions(checkRowActions(ck), vm.Page.Base)
+									@rowActions(checkRowActionsWithEdit(ck), vm.Page.Base)
 								</div>
 							}
 						</li>
 					}
 				</ul>
+				if vm.Operator {
+					for _, ck := range vm.Checks {
+						@checkEditDialog(vm, ck)
+					}
+				}
+				if vm.EditForm != nil {
+					<script>
+					var ckeBad = document.querySelector('#checks-surface [data-check-edit-form] [aria-invalid="true"]');
+					if (ckeBad) {
+						var ckeDlg = ckeBad.closest('dialog');
+						if (ckeDlg && ckeDlg.showModal && !ckeDlg.open) ckeDlg.showModal();
+						ckeBad.focus();
+					}
+					</script>
+				}
 			}
 		}
 	</div>
+}
+
+// checkEditDialog is one card's edit dialog: re-point the stored check in
+// place. Kind is not editable. A kept target NAME keeps its observed state
+// row; targets replace the set otherwise. A 422 re-render reopens the dialog
+// with every field's refusal at once (checks_write.go).
+templ checkEditDialog(vm checksVM, ck checkRow) {
+	@modal("check-edit-"+ck.Name, "Edit check — "+ck.Name) {
+		<p class="meta">Re-point <code>{ ck.Name }</code> in place. Kind is <code>{ ck.Kind }</code> and is not editable. A target whose name is kept keeps its observed state.</p>
+		<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/"+ck.Name+"/update") } class="writeform" id={ "check-edit-form-" + ck.Name } novalidate data-check-edit-form>
+			@fieldInput(vm.editForm(ck.Name).intervalField())
+			<label class="field">
+				<span class="label">Targets</span>
+				for i, t := range vm.editForm(ck.Name).targetInputs() {
+					<input class="control" name="target" type="text" spellcheck="false" autocomplete="off" placeholder={ targetPlaceholder(i) } value={ t } aria-invalid?={ vm.editForm(ck.Name).ErrTarget != "" } aria-describedby={ "cke-" + ck.Name + "-target-meta" }/>
+				}
+				<span id={ "cke-" + ck.Name + "-target-meta" } class={ "meta", templ.KV("is-error", vm.editForm(ck.Name).ErrTarget != "") }>
+					if vm.editForm(ck.Name).ErrTarget != "" {
+						<span class="msg">
+							if vm.editForm(ck.Name).ErrTargetItem != "" {
+								<span class="item">{ vm.editForm(ck.Name).ErrTargetItem }</span>
+							}
+							{ vm.editForm(ck.Name).ErrTarget }
+						</span>
+					} else {
+						Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
+					}
+				</span>
+			</label>
+			@fieldInput(vm.editForm(ck.Name).expectField())
+			@formStatus(vm.editForm(ck.Name).Pending(), vm.editForm(ck.Name).ErrFormText(), "Saving check")
+			<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.editForm(ck.Name).Pending() }>Save check</button></div>
+		</form>
+	}
 }
 
 // checksTabJS is the checks tab strip's progressive enhancement (m79): the

@@ -104,7 +104,7 @@ func TestChecksSurfaceGated(t *testing.T) {
 	if !strings.Contains(page, "Read-only: managing checks needs an operator token.") {
 		t.Error("/checks (readonly) missing the read-only note")
 	}
-	for _, banned := range []string{`action="/checks/add"`, `/checks/at-home/disable`, `/checks/at-home/rm`} {
+	for _, banned := range []string{`action="/checks/add"`, `/checks/at-home/update`, `/checks/at-home/disable`, `/checks/at-home/rm`} {
 		if strings.Contains(page, banned) {
 			t.Errorf("/checks (readonly) leaked write control %q", banned)
 		}
@@ -598,6 +598,160 @@ func TestCheckRmGoneRefuses(t *testing.T) {
 		if c.Name == flashCookie && c.Value != "" {
 			t.Error("rm gone refusal flashed")
 		}
+	}
+}
+
+// TestCheckEditAtRest: each card carries an edit dialog pre-filled from the
+// stored check — interval and name=spec target rows — plus the menu verb that
+// opens it. Kind is named but not editable.
+func TestCheckEditAtRest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`id="check-edit-at-home"`,
+		`action="/checks/at-home/update"`,
+		`id="check-edit-form-at-home" novalidate`,
+		`data-modal-open="check-edit-at-home"`,
+		`value="5m0s"`,
+		`value="laptop=192.168.1.50:22"`,
+		`value="nas=192.168.1.60:22"`,
+		"Kind is <code>tcp</code> and is not editable.",
+		">Save check</button>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/checks edit dialog missing %q", want)
+		}
+	}
+}
+
+// TestCheckEditRepointsAndKeepsState: the update handler re-points the check in
+// place — targets replace the set, interval replaces the cadence, kind is kept
+// — and a kept target NAME preserves its check_state row.
+func TestCheckEditRepointsAndKeepsState(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+	c := seedTCPCheck(t, h)
+
+	resp := postForm(t, op, ts.URL+"/checks/at-home/update",
+		url.Values{
+			"interval": {"30s"},
+			"target":   {"laptop=127.0.0.1:2222", "nas=192.168.1.60:22", "spare=192.168.1.70:22"},
+		}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("check update = %d, want 303", resp.StatusCode)
+	}
+
+	got, err := h.store.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("GetCheck: %v", err)
+	}
+	if got.Kind != store.CheckTCP {
+		t.Fatalf("kind = %q, want tcp (kind is not updatable)", got.Kind)
+	}
+	if got.IntervalS != 30 || len(got.Targets) != 3 {
+		t.Fatalf("updated check = %+v, want 30s and 3 targets", got)
+	}
+	if got.Targets[0].Name != "laptop" || got.Targets[0].Address != "127.0.0.1" || got.Targets[0].Port != 2222 {
+		t.Fatalf("laptop target = %+v, want re-pointed to 127.0.0.1:2222", got.Targets[0])
+	}
+
+	st, err := h.store.GetCheckState(ctx, c.ID, "laptop")
+	if err != nil {
+		t.Fatalf("kept target lost its state row: %v", err)
+	}
+	if st.Status != store.CheckUp {
+		t.Fatalf("kept target state = %q, want its observed up", st.Status)
+	}
+}
+
+// TestCheckEditRefusalRenders: a bad interval and a malformed target refuse
+// together at 422, the edit dialog reopens with every field's sentence and the
+// typed values, and the stored row is untouched.
+func TestCheckEditRefusalRenders(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+	seedTCPCheck(t, h)
+
+	resp := postForm(t, op, ts.URL+"/checks/at-home/update",
+		url.Values{"interval": {"abc"}, "target": {"laptop"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("edit refusal status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{
+		`aria-invalid="true"`,
+		"The interval needs a unit — like 5m, 90s or 1h.",
+		"must be name=spec",
+		`value="abc"`,
+		`value="laptop"`,
+		// The re-render ships the reopen script the edit dialog needs.
+		`#checks-surface [data-check-edit-form] [aria-invalid="true"]`,
+		`ckeDlg.showModal`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("edit 422 re-render missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("edit refusal carried a flash message")
+		}
+	}
+	got, err := h.store.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("GetCheck: %v", err)
+	}
+	if got.IntervalS != 300 || len(got.Targets) != 2 {
+		t.Fatalf("a refused update changed the row: %+v", got)
+	}
+}
+
+func TestCheckEditReadonlyForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	seedTCPCheck(t, h)
+	ro := login(t, ts.URL, h.mint(t, "ro", "readonly"))
+
+	resp := postForm(t, ro, ts.URL+"/checks/at-home/update",
+		url.Values{"interval": {"30s"}, "target": {"laptop=192.168.1.50:22"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly check update = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestCheckEditGoneRefuses(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/nope/update",
+		url.Values{"interval": {"30s"}, "target": {"a=127.0.0.1:22"}}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("edit gone status = %d, want 404", resp.StatusCode)
+	}
+	if !strings.Contains(body, "No check named nope exists to update.") {
+		t.Errorf("edit gone refusal missing the on-surface sentence")
 	}
 }
 
