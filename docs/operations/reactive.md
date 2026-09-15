@@ -182,8 +182,10 @@ hook away, the fail-safe direction for a "refuse from outside" rule.
 ```sh
 exocomp check add at-home --kind tcp --interval 5m \
   --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22
-exocomp check list                 # per-target status in the STATUS column
+exocomp check list                 # per-target status, netgroup and duration
 exocomp check list --output json   # the same per-target state, machine-readable
+exocomp check snooze at-home --for 4h   # suppress transitions until the deadline
+exocomp check unsnooze at-home
 exocomp check disable at-home
 exocomp check enable at-home
 exocomp check rm at-home
@@ -214,22 +216,35 @@ current `status`, the `consecutive` counter, the last `emitted` status,
 `last_duration_ms`. It survives a restart, which is exactly why a reboot cannot
 read `up` as a fresh transition; the `/checks` page's "changed N ago" line
 reads `last_change` off that row. `check list` renders the same state — the
-text table's STATUS column, `--output json`, and the `/checks` page all carry
-it.
+text table's STATUS, NETGROUP, and DURATION columns, `--output json`, and the
+`/checks` page all carry it.
 
 The sweep classifies each probed address once, at observation time, and stores
 the result beside the probe's duration in milliseconds. The wire projections —
 `check list --output json` and `/api/v1/checks` — read those stored values, so
 an http URL target (no address) carries no `netgroup` and a target that is up
-but slow is visible without a second probe.
+but slow is visible without a second probe. The `/checks` page reads the same
+stored values for an observed target (a never-probed cold-start tile falls back
+to a live classification, so it still names where it will be probed), renders
+the last probe duration as dim meta, and badges a snoozed check with the time
+left.
 
-A check-level snooze (`check_row.snoozed_until`, set through the check store)
-keeps probing and advancing state but emits no transition until it expires; the
-expiry is mandatory and the snooze lapses on its own. `--check-canary <ip:port>`
-gates the other way: when a target reads down and the canary is also
-unreachable, that check's whole sweep is a missed observation — no state
-advances, nothing emits — so the daemon's own uplink loss cannot page for every
-target at once. The canary is a bare dial; empty disables it.
+A target that is DOWN while classified into a registered (non-away) netgroup is
+the signal the location trick exists to give: it should be on the LAN and is
+not. The `/checks` page marks it distinctly from an ordinary roaming down — the
+card counts "at home" and the tile reads "down while home — expected reachable"
+— while a down-and-away laptop stays quiet.
+
+A check-level snooze (`check_row.snoozed_until`) keeps probing and advancing
+state but emits no transition until it expires; the expiry is mandatory and the
+snooze lapses on its own. Set it with `exocomp check snooze <name> --for`, lift
+it early with `exocomp check unsnooze <name>`; `check list` and the `/checks`
+page show an active snooze and its remaining time.
+`--check-canary <ip:port>` gates the other way: when a target reads down and
+the canary is also unreachable, that check's whole sweep is a missed
+observation — no state advances, nothing emits — so the daemon's own uplink
+loss cannot page for every target at once. The canary is a bare dial; empty
+disables it.
 
 The http probe refuses the addresses a check must not reach: it dials through
 a guard that refuses loopback, link-local unicast (covering the cloud
@@ -276,8 +291,10 @@ page (the standalone `/netgroups` page now 302s to `/checks?tab=netgroups`),
 and the API reads them at `/api/v1/netgroups` and `/api/v1/checks`; the web
 has a read-only **Rules** page — rule mutation stays CLI. The checks page
 renders each target's location as prose (`address is on home` / `not on any
-netgroup (away)`) and how long ago its status last changed (`3h ago`, from
-`check_state.last_change`, or a cold-start UNOBSERVED); the dashboard's
+netgroup (away)`), the last probe duration, and how long ago its status last
+changed (`3h ago`, from `check_state.last_change`, or a cold-start
+UNOBSERVED), and its edit dialog re-points a check in place — the kind fixed,
+a kept target name keeping its state; the dashboard's
 Checks card shows the registered total and how many targets the sweep
 observes up; a job detail line "fired by rule <name>" links to `/rules`
 and, when on record, the event that raised the run; and the events page

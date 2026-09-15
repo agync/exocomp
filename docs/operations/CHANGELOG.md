@@ -6,6 +6,29 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — checks show, snooze, and edit their observation state
+
+- **`check snooze <name> --for <duration>` and `check unsnooze <name>`** lift
+  and set a check-level snooze from the CLI. `--for` is mandatory, like a
+  silence: a snooze the operator forgets is how a check stops noticing.
+- **The check surfaces render the stored location, probe duration, and
+  snooze.** `check list` gains NETGROUP and DURATION columns and names an
+  active snooze in place of ENABLED; the `/checks` page uses the stored
+  netgroup and `last_duration_ms` for observed targets (live classification
+  still backs the never-probed cold-start tile) and badges a snoozed check with
+  the time left.
+- **A down target that is classified into a home netgroup is flagged
+  distinctly** from an ordinary roaming down: the card counts "at home" and the
+  tile reads "down while home — expected reachable".
+- **The `/checks` page can re-point a check in place.** The edit dialog calls
+  `UpdateCheck` over `POST /checks/{name}/update`: targets replace the set,
+  interval replaces the cadence, the kind is fixed, and a kept target name
+  keeps its state row. Refusals mirror `check add` (422 with every field's
+  message).
+- **`/metrics` adds `exocomp_check_target_up`, `exocomp_check_probe_duration_seconds`,
+  and `exocomp_check_snoozed`,** with `CheckTargetDownAtHome` and `CheckSnoozed`
+  alert rules seeded beside them.
+
 ## 2026-09-15 — checks record where, how long, and when muted
 
 - **A check's observation state now carries its location, probe duration, and
