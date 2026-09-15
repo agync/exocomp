@@ -546,6 +546,43 @@ func TestCheckUpdatePreservesState(t *testing.T) {
 	}
 }
 
+// TestCheckUpdatePrunesDroppedTargetState: a re-point that drops a target must
+// delete its check_state row. A kept NAME keeps its row (the point of update
+// over rm+add), but a dropped one is a target the check no longer probes — its
+// stale state would otherwise be read by every state-row consumer, including
+// the /metrics check gauges.
+func TestCheckUpdatePrunesDroppedTargetState(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	created, err := st.CreateCheck(ctx, checkFixture())
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	for _, name := range []string{"laptop", "nas"} {
+		if err := st.SetCheckState(ctx, store.CheckState{
+			CheckID: created.ID, TargetName: name, Status: store.CheckUp,
+			Consecutive: 3, Emitted: store.CheckUp,
+			FirstSeen: time.Now(), LastChange: time.Now(),
+		}); err != nil {
+			t.Fatalf("set state %s: %v", name, err)
+		}
+	}
+
+	if _, err := st.UpdateCheck(ctx, "at-home",
+		[]store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}}, 300); err != nil {
+		t.Fatalf("update check: %v", err)
+	}
+
+	if _, err := st.GetCheckState(ctx, created.ID, "laptop"); err != nil {
+		t.Fatalf("kept target's state was pruned: %v", err)
+	}
+	if _, err := st.GetCheckState(ctx, created.ID, "nas"); !errors.Is(err, store.ErrNotFound) {
+		t.Fatalf("dropped target's state err = %v, want ErrNotFound", err)
+	}
+}
+
 // TestCheckUpdateValidationRefusals mirrors CreateCheck's shape rules but
 // against the STORED check's kind: a kind is read from the row and never
 // replaced, so an http-shaped target on a stored tcp check (the only way to

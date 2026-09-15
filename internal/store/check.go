@@ -188,6 +188,28 @@ func (s *Store) UpdateCheck(ctx context.Context, name string, targets []CheckTar
 		string(targetsJSON), intervalS, now.UnixMilli(), cur.ID); err != nil {
 		return Check{}, wrap("update check", err)
 	}
+	// A re-point drops targets the new set no longer names; their state rows
+	// must go with them, or the metrics and any state-row reader keep reporting
+	// a target the check no longer probes. A kept NAME keeps its row, which is
+	// what lets the sweep flip it and emit a real transition.
+	keep := make(map[string]bool, len(targets))
+	for _, t := range targets {
+		keep[t.Name] = true
+	}
+	states, err := s.ListCheckStates(ctx, cur.ID)
+	if err != nil {
+		return Check{}, err
+	}
+	for _, st := range states {
+		if keep[st.TargetName] {
+			continue
+		}
+		if _, err := s.db.ExecContext(ctx,
+			`DELETE FROM check_state WHERE check_id = ? AND target_name = ?`,
+			cur.ID, st.TargetName); err != nil {
+			return Check{}, wrap("update check: prune state", err)
+		}
+	}
 	return s.getCheck(ctx, cur.ID)
 }
 
