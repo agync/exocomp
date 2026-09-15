@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the run-now spec seams are importable
+
+- **The TUI's deferred run-now keys now have seams to call.** The `b` backup,
+  `l` plan, and `x` schedule keys could not enqueue because the spec assembly
+  lived in `package main` or was unexported. `backup.Spec(name, trigger)` is the
+  one spec shape the CLI and the TUI both enqueue; `service.TriggerTUI` and a
+  widened daemon seal gate let a TUI plan enqueue without sealing itself; and
+  `sched.Specs(ctx, st, log, sc, trigger)` exports the schedule-kind to specs
+  builder while `(*Scheduler).buildSpecs` stays as the fire-triggered wrapper.
+  No CLI or daemon behaviour changes.
+
 ## 2026-09-15 — the TUI plan diff reads the show-json companion
 
 - **The approval plan diff and the destroy typed-confirm now parse the sealed
