@@ -459,6 +459,99 @@ func TestParseCheckTargets(t *testing.T) {
 	}
 }
 
+// TestParseCheckTargetsNewKinds pins the parser's three added shapes: tls is
+// host:port split into Address+Port, dns is a bare hostname, metric is a URL
+// whose Op/Value a surface must still set (they are not parsed from the spec).
+func TestParseCheckTargetsNewKinds(t *testing.T) {
+	tls, err := store.ParseCheckTargets(store.CheckTLS, []string{"web=web.lan:443"}, false)
+	if err != nil {
+		t.Fatalf("parse tls: %v", err)
+	}
+	if len(tls) != 1 || tls[0].Address != "web.lan" || tls[0].Port != 443 {
+		t.Fatalf("tls targets = %+v", tls)
+	}
+
+	dns, err := store.ParseCheckTargets(store.CheckDNS, []string{"web=web.lan"}, false)
+	if err != nil {
+		t.Fatalf("parse dns: %v", err)
+	}
+	if len(dns) != 1 || dns[0].DNSName != "web.lan" || dns[0].Address != "" {
+		t.Fatalf("dns targets = %+v", dns)
+	}
+
+	metric, err := store.ParseCheckTargets(store.CheckMetric, []string{"lag=http://web.lan/metric"}, false)
+	if err != nil {
+		t.Fatalf("parse metric: %v", err)
+	}
+	if len(metric) != 1 || metric[0].URL != "http://web.lan/metric" || metric[0].Op != "" {
+		t.Fatalf("metric targets = %+v", metric)
+	}
+
+	if _, err := store.ParseCheckTargets(store.CheckTLS, []string{"web=web.lan"}, false); err == nil {
+		t.Fatal("tls target without a port was accepted")
+	}
+}
+
+// TestCheckNewKindsValidation drives the per-kind validation the new kinds
+// delegate to the shared probe spec: a well-formed dns/tls/metric target is
+// accepted, and each kind's incoherent shape is refused with ErrValidation.
+func TestCheckNewKindsValidation(t *testing.T) {
+	t.Parallel()
+	st := openReactive(t)
+	ctx := context.Background()
+
+	valid := []store.NewCheck{
+		{Name: "dns-ok", Kind: store.CheckDNS, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "web", DNSName: "web.lan", ExpectAddr: "10.0.0.5"}}},
+		{Name: "tls-ok", Kind: store.CheckTLS, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "web", Address: "web.lan", Port: 443, MinDays: 14}}},
+		{Name: "metric-ok", Kind: store.CheckMetric, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "lag", URL: "http://web.lan/m", Op: "<", Value: 1}}},
+	}
+	for _, n := range valid {
+		created, err := st.CreateCheck(ctx, n)
+		if err != nil {
+			t.Fatalf("create %s: %v", n.Name, err)
+		}
+		if created.Kind != n.Kind || len(created.Targets) != 1 {
+			t.Fatalf("created %s = %+v", n.Name, created)
+		}
+	}
+
+	refused := []struct {
+		name    string
+		check   store.NewCheck
+		wantErr string
+	}{
+		{"dns without a name", store.NewCheck{Name: "d", Kind: store.CheckDNS, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "web"}}}, "dns needs a name"},
+		{"tls without a port", store.NewCheck{Name: "t", Kind: store.CheckTLS, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "web", Address: "web.lan"}}}, "out of range"},
+		{"tls negative days", store.NewCheck{Name: "t", Kind: store.CheckTLS, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "web", Address: "web.lan", Port: 443, MinDays: -1}}}, "min_days"},
+		{"metric without an op", store.NewCheck{Name: "m", Kind: store.CheckMetric, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "lag", URL: "http://web.lan/m"}}}, "metric op"},
+		{"metric with a bad op", store.NewCheck{Name: "m", Kind: store.CheckMetric, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "lag", URL: "http://web.lan/m", Op: "~"}}}, "metric op"},
+		{"metric without a url", store.NewCheck{Name: "m", Kind: store.CheckMetric, IntervalS: 300,
+			Targets: []store.CheckTarget{{Name: "lag", Op: "<", Value: 1}}}, "url"},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := st.CreateCheck(ctx, tc.check)
+			if err == nil {
+				t.Fatalf("CreateCheck succeeded, want refusal %q", tc.wantErr)
+			}
+			if !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("err = %v, want it to contain %q", err, tc.wantErr)
+			}
+			if !errors.Is(err, store.ErrValidation) {
+				t.Fatalf("err = %v, want it to carry ErrValidation", err)
+			}
+		})
+	}
+}
+
 func TestCheckPingRefusedWhenBinaryMissing(t *testing.T) {
 	// Serial on purpose: t.Setenv must not race the package's parallel tests.
 	st := openReactive(t)

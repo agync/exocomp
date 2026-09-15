@@ -12,13 +12,18 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"exocomp.dev/exocomp/internal/probe"
 )
 
 // Check kinds.
 const (
-	CheckTCP  = "tcp"
-	CheckPing = "ping"
-	CheckHTTP = "http"
+	CheckTCP    = "tcp"
+	CheckPing   = "ping"
+	CheckHTTP   = "http"
+	CheckDNS    = "dns"
+	CheckTLS    = "tls"
+	CheckMetric = "metric"
 )
 
 // The statuses a check_state row carries. They are probe results, not event
@@ -39,13 +44,21 @@ func ValidName(s string) bool { return namePattern.MatchString(s) }
 
 // CheckTarget is one probe of a check. Which fields are set depends on kind:
 // tcp uses Address+Port, ping uses Address only, http uses URL (with an
-// optional Expect status).
+// optional Expect status), dns uses DNSName (with an optional ExpectAddr),
+// tls uses Address+Port (with an optional MinDays floor), and metric uses URL
+// (with Op and Value). The new kinds' fields are additive, so a targets_json
+// written before them still decodes.
 type CheckTarget struct {
-	Name    string `json:"name"`
-	Address string `json:"address,omitempty"`
-	Port    int    `json:"port,omitempty"`
-	URL     string `json:"url,omitempty"`
-	Expect  int    `json:"expect,omitempty"`
+	Name       string  `json:"name"`
+	Address    string  `json:"address,omitempty"`
+	Port       int     `json:"port,omitempty"`
+	URL        string  `json:"url,omitempty"`
+	Expect     int     `json:"expect,omitempty"`
+	DNSName    string  `json:"dns_name,omitempty"`
+	ExpectAddr string  `json:"expect_addr,omitempty"`
+	MinDays    int     `json:"min_days,omitempty"`
+	Op         string  `json:"op,omitempty"`
+	Value      float64 `json:"value,omitempty"`
 }
 
 // ParseCheckTargets splits each name=spec target by kind — the shape both
@@ -84,8 +97,27 @@ func ParseCheckTargets(kind string, specs []string, skipBlank bool) ([]CheckTarg
 			t.Address = value
 		case CheckHTTP:
 			t.URL = value
+		case CheckDNS:
+			t.DNSName = value
+		case CheckTLS:
+			host, port, err := net.SplitHostPort(value)
+			if err != nil {
+				return nil, fmt.Errorf("target %q: a tls target must be host:port", spec)
+			}
+			p, err := strconv.Atoi(port)
+			if err != nil {
+				return nil, fmt.Errorf("target %q: port %q is not a number", spec, port)
+			}
+			t.Address = host
+			t.Port = p
+		case CheckMetric:
+			// Op and Value are unset here: a surface that adds a metric target
+			// supplies them, and validation refuses a metric target until it
+			// does, so a half-declared threshold can never be stored.
+			t.URL = value
 		default:
-			return nil, fmt.Errorf("--kind must be %s, %s or %s", CheckTCP, CheckPing, CheckHTTP)
+			return nil, fmt.Errorf("--kind must be one of %s, %s, %s, %s, %s, %s",
+				CheckTCP, CheckPing, CheckHTTP, CheckDNS, CheckTLS, CheckMetric)
 		}
 		out = append(out, t)
 	}
@@ -127,10 +159,10 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 		return Check{}, fmt.Errorf("%w: store: check name %q must match [A-Za-z0-9_.-]+", ErrValidation, n.Name)
 	}
 	switch n.Kind {
-	case CheckTCP, CheckPing, CheckHTTP:
+	case CheckTCP, CheckPing, CheckHTTP, CheckDNS, CheckTLS, CheckMetric:
 	default:
-		return Check{}, fmt.Errorf("%w: store: check kind %q must be %s, %s or %s",
-			ErrValidation, n.Kind, CheckTCP, CheckPing, CheckHTTP)
+		return Check{}, fmt.Errorf("%w: store: check kind %q must be one of %s, %s, %s, %s, %s, %s",
+			ErrValidation, n.Kind, CheckTCP, CheckPing, CheckHTTP, CheckDNS, CheckTLS, CheckMetric)
 	}
 	if n.IntervalS <= 0 {
 		return Check{}, fmt.Errorf("%w: store: check %q interval_s must be positive, got %d", ErrValidation, n.Name, n.IntervalS)
@@ -274,9 +306,43 @@ func validateCheckTargets(name, kind string, targets []CheckTarget) error {
 				return fmt.Errorf("%w: store: check %q target %q expect %d out of range 100..599",
 					ErrValidation, name, t.Name, t.Expect)
 			}
+		case CheckDNS, CheckTLS, CheckMetric:
+			// The new kinds share the probe package's per-kind rules, so a
+			// check's write validation and the runner cannot drift.
+			spec, err := SpecForTarget(kind, t)
+			if err != nil {
+				return fmt.Errorf("%w: store: check %q target %q: %v", ErrValidation, name, t.Name, err)
+			}
+			if err := spec.Validate(); err != nil {
+				return fmt.Errorf("%w: store: check %q target %q: %v", ErrValidation, name, t.Name, err)
+			}
 		}
 	}
 	return nil
+}
+
+// SpecForTarget maps a stored check kind and target to the shared probe.Spec
+// its runner builds. It is the one place the per-kind field mapping lives, so
+// validation and execution cannot disagree — a tls target's host:port join, a
+// check http's 2xx/3xx default, and the new kinds' optional fields are decided
+// here once.
+func SpecForTarget(kind string, t CheckTarget) (probe.Spec, error) {
+	switch kind {
+	case CheckTCP:
+		return probe.Spec{Kind: probe.KindTCP, Address: t.Address, Port: t.Port}, nil
+	case CheckPing:
+		return probe.Spec{Kind: probe.KindPing, Address: t.Address}, nil
+	case CheckHTTP:
+		return probe.Spec{Kind: probe.KindHTTP, URL: t.URL, ExpectStatus: t.Expect, HTTPAllow3xx: true}, nil
+	case CheckDNS:
+		return probe.Spec{Kind: probe.KindDNS, DNSName: t.DNSName, ExpectAddr: t.ExpectAddr}, nil
+	case CheckTLS:
+		return probe.Spec{Kind: probe.KindTLS, Address: net.JoinHostPort(t.Address, strconv.Itoa(t.Port)), MinDays: t.MinDays}, nil
+	case CheckMetric:
+		return probe.Spec{Kind: probe.KindMetric, URL: t.URL, Op: t.Op, Value: t.Value}, nil
+	default:
+		return probe.Spec{}, fmt.Errorf("unknown check kind %q", kind)
+	}
 }
 
 // getCheck returns the check with the given id.
