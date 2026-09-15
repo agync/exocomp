@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the launch drawer reserves its footer on the form
+
+- **The phone launch drawer's sticky footer now pins to the scrollport bottom.**
+  The 719px block reserved the footer's 96px on `.modal.drawer .modal-body`, but
+  the footer's containing block is the inner `form.writeform`, so the form's box
+  ended 96px above the scrollport bottom and the footer pinned there, leaving a
+  band through which the privileged description showed. The reservation moves to
+  the form and the body's bottom padding zeroes, so the footer meets the panel
+  bottom and the last control still clears it.
+
 ## 2026-09-15 — the checks tab swap moves the app-bar add verb
 
 - **Switching the Checks tab now switches the app bar's add button.** The tab

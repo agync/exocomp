@@ -2152,10 +2152,14 @@ body { overflow-x: clip; }
    * safe-area inset keeps the sticky footer off a notched screen's home
    * indicator. */
   .modal.drawer { inset: 0 0 36px auto; height: auto; }
-  /* R10: the scroll body reserves the sticky footer's height (button + foot +
-   * padding) plus the safe-area inset, so the last control never hides under
-   * the footer. */
-  .modal.drawer .modal-body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+  /* R10: the sticky footer is constrained to its containing block (the
+   * form.writeform), so the reservation must sit on the form — a body-level
+   * reservation falls outside that box, and the footer pins 96px above the
+   * scrollport bottom, exposing the privileged description. The form reserves
+   * the footer's height (button + foot + padding) plus the safe-area inset so
+   * the last control never hides under the footer. */
+  .modal.drawer .modal-body { padding-bottom: 0; }
+  .modal.drawer .modal-body .writeform { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
   /* The Queue run primary is the drawer's sticky footer: pinned to the panel
    * bottom so the long form scrolls under it and the verb never scrolls below
    * the panel (or under the 36px powerline foot). The safe-area inset pads it
