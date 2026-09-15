@@ -32,6 +32,8 @@ func newCheckCmd() *cobra.Command {
 		newCheckListCmd(),
 		newCheckEnableCmd(),
 		newCheckDisableCmd(),
+		newCheckSnoozeCmd(),
+		newCheckUnsnoozeCmd(),
 		newCheckRmCmd(),
 	)
 	return cmd
@@ -222,13 +224,15 @@ func newCheckListCmd() *cobra.Command {
 				return emitJSON(cmd, wire.KindCheckList, wire.NewCheckList(rows, states))
 			}
 
+			now := time.Now().UTC()
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tSTATUS\tENABLED")
+			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tSTATUS\tNETGROUP\tDURATION\tENABLED")
 			for _, c := range rows {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					c.Name, c.Kind, store.CheckIntervalLabel(c.IntervalS),
 					checkTargetsLabel(c.Targets), checkStatusesLabel(states[c.ID], c.Targets),
-					enabledLabel(c.Enabled))
+					checkNetgroupsLabel(states[c.ID], c.Targets), checkDurationsLabel(states[c.ID], c.Targets),
+					checkEnabledLabel(c, now))
 			}
 			return w.Flush()
 		},
@@ -300,12 +304,128 @@ func setCheckEnabled(cmd *cobra.Command, name string, enabled bool) error {
 	return err
 }
 
+// newCheckSnoozeCmd mutes a check's transitions until a deadline. Like a
+// silence, --for is mandatory: a snooze the operator forgets is how a check
+// stops noticing it is broken. Probing and state application continue, so the
+// hysteresis is current when the snooze lapses.
+func newCheckSnoozeCmd() *cobra.Command {
+	var duration time.Duration
+
+	cmd := &cobra.Command{
+		Use:     "snooze <name> --for <duration>",
+		Short:   "Stop a check emitting transitions until a deadline",
+		Example: "exocomp check snooze at-home --for 4h",
+		Long: "A snooze keeps probing and advancing the check's state but suppresses " +
+			"transition emission until it expires. There is no never-expires form: " +
+			"--for is mandatory.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if duration <= 0 {
+				return errors.New("check snooze: --for is mandatory and must be positive")
+			}
+
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			until := time.Now().UTC().Add(duration)
+			if err := st.SetCheckSnooze(cmd.Context(), name, until); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("check snooze: %q not found", name)
+				}
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s snoozed until %s\n",
+				name, until.Format("2006-01-02 15:04:05Z"))
+			return err
+		},
+	}
+	cmd.Flags().DurationVar(&duration, "for", 0, "how long the snooze lasts (required)")
+	_ = cmd.MarkFlagRequired("for")
+	return cmd
+}
+
+func newCheckUnsnoozeCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "unsnooze <name>",
+		Short: "Lift a check snooze before it expires",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			if err := st.SetCheckSnooze(cmd.Context(), args[0], time.Time{}); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					return fmt.Errorf("check unsnooze: %q not found", args[0])
+				}
+				return err
+			}
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s unsnoozed\n", args[0])
+			return err
+		},
+	}
+}
+
 func checkTargetsLabel(targets []store.CheckTarget) string {
 	parts := make([]string, len(targets))
 	for i, t := range targets {
 		parts[i] = t.Name
 	}
 	return strings.Join(parts, ",")
+}
+
+// checkNetgroupsLabel joins each target's stored netgroup classification in the
+// same order as the TARGETS column. An unobserved target and an http target
+// (which has no address) read "-".
+func checkNetgroupsLabel(states []store.CheckState, targets []store.CheckTarget) string {
+	byName := make(map[string]string, len(states))
+	for _, s := range states {
+		byName[s.TargetName] = s.Netgroup
+	}
+	parts := make([]string, len(targets))
+	for i, t := range targets {
+		if ng, ok := byName[t.Name]; ok && ng != "" {
+			parts[i] = ng
+		} else {
+			parts[i] = "-"
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
+// checkDurationsLabel joins each target's last probe duration in the same order
+// as the TARGETS column. A target the sweep has never seen reads "-".
+func checkDurationsLabel(states []store.CheckState, targets []store.CheckTarget) string {
+	byName := make(map[string]int64, len(states))
+	for _, s := range states {
+		byName[s.TargetName] = s.LastDurationMS
+	}
+	parts := make([]string, len(targets))
+	for i, t := range targets {
+		ms, ok := byName[t.Name]
+		if !ok {
+			parts[i] = "-"
+			continue
+		}
+		parts[i] = (time.Duration(ms) * time.Millisecond).String()
+	}
+	return strings.Join(parts, ",")
+}
+
+// checkEnabledLabel renders the ENABLED column, naming an active snooze and its
+// remaining time in place of a bare "enabled" so a held check never reads as
+// running normally.
+func checkEnabledLabel(c store.Check, now time.Time) string {
+	if c.Enabled && !c.SnoozedUntil.IsZero() && c.SnoozedUntil.After(now) {
+		return "snoozed " + c.SnoozedUntil.Sub(now).Round(time.Second).String() + " left"
+	}
+	return enabledLabel(c.Enabled)
 }
 
 // checkStatusesLabel joins each target's last observed status in the same order

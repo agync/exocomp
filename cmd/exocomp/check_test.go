@@ -160,6 +160,119 @@ func TestCheckListJSONNetgroupAndRecency(t *testing.T) {
 	}
 }
 
+// TestCheckSnoozeRoundTrip drives the check-level snooze: `snooze --for` sets a
+// future expiry and `list` shows it in place of ENABLED, `unsnooze` clears it,
+// and a zero/negative --for is refused without touching the row.
+func TestCheckSnoozeRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m", "--target", "laptop=192.168.1.50:22"); err != nil {
+		t.Fatalf("check add: %v", err)
+	}
+
+	out, err := runCheckCmd(t, "check", "snooze", "at-home", "--for", "4h")
+	if err != nil {
+		t.Fatalf("check snooze: %v", err)
+	}
+	if !strings.Contains(out, "snoozed until") {
+		t.Errorf("snooze output missing the deadline:\n%s", out)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	c, err := st.GetCheck(ctx, "at-home")
+	_ = st.Close()
+	if err != nil {
+		t.Fatalf("get check: %v", err)
+	}
+	if c.SnoozedUntil.IsZero() || !c.SnoozedUntil.After(time.Now().UTC()) {
+		t.Fatalf("snoozed_until = %v, want a future expiry", c.SnoozedUntil)
+	}
+
+	out, err = runCheckCmd(t, "check", "list")
+	if err != nil {
+		t.Fatalf("check list: %v", err)
+	}
+	if !strings.Contains(out, "snoozed") || !strings.Contains(out, "left") {
+		t.Errorf("list does not show the snooze:\n%s", out)
+	}
+
+	// A zero or negative --for is refused and the snooze is untouched.
+	for _, bad := range []string{"0s", "-5m"} {
+		if out, err := runCheckCmd(t, "check", "snooze", "at-home", "--for", bad); err == nil {
+			t.Fatalf("check snooze --for %s accepted:\n%s", bad, out)
+		}
+	}
+	if rows := checks(t); len(rows) != 1 || rows[0].SnoozedUntil.IsZero() {
+		t.Fatalf("a refused snooze changed the row: %+v", rows)
+	}
+
+	if _, err := runCheckCmd(t, "check", "unsnooze", "at-home"); err != nil {
+		t.Fatalf("check unsnooze: %v", err)
+	}
+	if rows := checks(t); len(rows) != 1 || !rows[0].SnoozedUntil.IsZero() {
+		t.Fatalf("unsnooze left the snooze set: %+v", rows)
+	}
+	out, err = runCheckCmd(t, "check", "list")
+	if err != nil {
+		t.Fatalf("check list after unsnooze: %v", err)
+	}
+	if strings.Contains(out, "snoozed") {
+		t.Errorf("list still shows a snooze after unsnooze:\n%s", out)
+	}
+	if !strings.Contains(out, "enabled") {
+		t.Errorf("list does not show enabled after unsnooze:\n%s", out)
+	}
+}
+
+// TestCheckListShowsNetgroupAndDuration: the text table carries the stored
+// netgroup and the last probe duration beside the status, aligned per target,
+// so `check list` reads location and latency without --output json.
+func TestCheckListShowsNetgroupAndDuration(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+
+	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+	c, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
+		Netgroup: "home", LastDurationMS: 21,
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+
+	out, err := runCheckCmd(t, "check", "list")
+	if err != nil {
+		t.Fatalf("check list: %v", err)
+	}
+	for _, want := range []string{"NETGROUP", "DURATION", "home", "21ms", "up"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list text missing %q:\n%s", want, out)
+		}
+	}
+}
+
 // TestCheckAddRejectsBadInput keeps a row that can never probe out of the
 // database: a bad kind, a non-positive interval, malformed targets, and
 // --expect on a non-http kind are all refused.
