@@ -245,7 +245,7 @@ func (m Model) renderWorkspaces() string {
 		return loadingLine()
 	}
 	if len(m.workspaces) == 0 {
-		return styleDim.Render("no workspaces yet — exocomp workspace add ./infra")
+		return strings.Join(emptyWorkspacesBlock(), "\n")
 	}
 	return m.workspacesTable.View()
 }

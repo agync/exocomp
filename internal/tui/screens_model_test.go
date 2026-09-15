@@ -553,6 +553,29 @@ func TestScreensShowEmptyAfterEmptyLoad(t *testing.T) {
 	}
 }
 
+// TestWorkspacesEmptyShowsTheDesignBlock pins the design's richer [3] empty
+// state on the live path: the one-liner gives way to the block the frame
+// frames/empty-workspaces-80x24.txt and copy.txt specify — the explanatory
+// sentence and the `add the first:` command line. The MUTATION — restoring the
+// one-liner — reds the explanatory-line assertion.
+func TestWorkspacesEmptyShowsTheDesignBlock(t *testing.T) {
+	m := New(openTestStore(t), nil)
+	m = update(t, m, tea.WindowSizeMsg{Width: 120, Height: 36})
+	m.active = screenWorkspaces
+	m = update(t, m, loadWorkspacesCmd(m.store)())
+
+	body := m.renderWorkspaces()
+	for _, want := range []string{
+		"no workspaces yet",
+		"terraform dirs exocomp watches for drift and plans on your behalf",
+		"add the first:  exocomp workspace add ./infra",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("workspaces empty block missing %q:\n%s", want, body)
+		}
+	}
+}
+
 // TestScreenShowsErrorAfterFailedLoad guards the "an error is a completed load"
 // rule: a *LoadedMsg carrying an error sets the screen's flag, so it renders the
 // error rather than a permanent loading placeholder.

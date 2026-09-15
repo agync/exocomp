@@ -18,17 +18,25 @@ func renderEmpty(title, clock string, block []string, keysLeft string) string {
 	return frame(24, head, body, footer)
 }
 
-// renderEmptyWorkspaces is the [3] Workspaces empty state, kept as the golden
-// fixture the design reference pins (golden_test.go). The live screen renders
-// its own compact empty line, so this full frame no longer runs on the binary.
-func renderEmptyWorkspaces() string {
-	block := []string{
+// emptyWorkspacesBlock is the [3] Workspaces first-day block: the message and
+// the command that changes the state, verbatim from
+// docs/design/reference/tui/copy.txt (empty states) and the pinned frame
+// frames/empty-workspaces-80x24.txt. The live screen renders this block inside
+// its own chrome; renderEmptyWorkspaces wraps it in the reference frame.
+func emptyWorkspacesBlock() []string {
+	return []string{
 		indent(31, "no workspaces yet"),
 		indent(7, "terraform dirs exocomp watches for drift and plans on your behalf"),
 		"",
 		indent(17, "add the first:  exocomp workspace add ./infra"),
 	}
-	return renderEmpty("workspaces · 0", "14:03 UTC+11", block, "[0-9] [s] [u] screens")
+}
+
+// renderEmptyWorkspaces is the [3] Workspaces empty state as the golden frame
+// golden_test.go pins, clock and all. The live screen shares emptyWorkspacesBlock
+// through renderWorkspaces (view.go).
+func renderEmptyWorkspaces() string {
+	return renderEmpty("workspaces · 0", "14:03 UTC+11", emptyWorkspacesBlock(), "[0-9] [s] [u] screens")
 }
 
 func indent(n int, s string) string { return fmt.Sprintf("%*s%s", n, "", s) }

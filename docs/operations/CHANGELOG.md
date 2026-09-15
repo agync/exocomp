@@ -6,6 +6,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-15 — the workspaces empty state shows the design block
+
+- **The live `[3] Workspaces` empty state renders the three-line block the
+  design specifies**, not a compact one-liner: `no workspaces yet`, the
+  `terraform dirs exocomp watches for drift and plans on your behalf`
+  explanation, and the `add the first:  exocomp workspace add ./infra` command.
+  The block is shared with the golden renderer, so the pinned frame and the
+  binary can no longer drift.
+
 ## 2026-09-15 — the TUI core tables degrade below 120 columns
 
 - **The four core tables drop metadata columns at width < 120 instead of
