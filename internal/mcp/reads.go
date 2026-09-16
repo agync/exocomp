@@ -157,13 +157,21 @@ func (s *Server) readCheck(ctx context.Context, name string) (string, any, error
 }
 
 // checkStates loads each check's per-target state rows, the join NewCheckList
-// takes.
+// takes. The reserved aggregate row is a rollup, not a target, so it is dropped
+// here: no check view can present "*" as a probed host.
 func (s *Server) checkStates(ctx context.Context, rows []store.Check) (map[int64][]store.CheckState, error) {
 	states := make(map[int64][]store.CheckState, len(rows))
 	for _, c := range rows {
-		st, err := s.store.ListCheckStates(ctx, c.ID)
+		all, err := s.store.ListCheckStates(ctx, c.ID)
 		if err != nil {
 			return nil, err
+		}
+		st := make([]store.CheckState, 0, len(all))
+		for _, v := range all {
+			if v.TargetName == store.AggregateTargetName {
+				continue
+			}
+			st = append(st, v)
 		}
 		states[c.ID] = st
 	}
@@ -205,6 +213,9 @@ func (s *Server) probeCheck(ctx context.Context, name, only string) (string, any
 	}
 	stored := make(map[string]string, len(states))
 	for _, st := range states {
+		if st.TargetName == store.AggregateTargetName {
+			continue
+		}
 		stored[st.TargetName] = st.Netgroup
 	}
 	groups, err := s.store.ListNetgroups(ctx)

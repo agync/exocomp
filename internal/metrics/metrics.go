@@ -240,6 +240,12 @@ func (r *Registry) checkGauges(ctx context.Context, now time.Time) ([]gauge, err
 			return nil, err
 		}
 		for _, st := range states {
+			// The reserved aggregate row is a check-level rollup, not a
+			// probe target: emitting it would invent an impossible target
+			// named "*" and double-count the check.
+			if st.TargetName == store.AggregateTargetName {
+				continue
+			}
 			up := 0.0
 			if st.Status == store.CheckUp {
 				up = 1
