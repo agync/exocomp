@@ -344,6 +344,10 @@ type checkFormVM struct {
 	Interval      string
 	Targets       []string
 	Expect        string
+	MinDays       string
+	ExpectAddr    string
+	Op            string
+	Value         string
 	ErrName       string
 	FixName       string
 	ErrKind       string
@@ -351,6 +355,10 @@ type checkFormVM struct {
 	ErrTargetItem string
 	ErrTarget     string
 	ErrExpect     string
+	ErrMinDays    string
+	ErrExpectAddr string
+	ErrOp         string
+	ErrValue      string
 	ErrForm       string
 	FirstInvalid  string
 	Submitting    bool
@@ -401,6 +409,46 @@ func (f *checkFormVM) expectField() fieldMeta {
 		Name: "expect", Value: v.Expect, Placeholder: "200",
 		Help:   "A whole status code, like 200 or 404.",
 		ErrMsg: v.ErrExpect, FirstInvalid: v.FirstInvalid == "expect",
+	}
+}
+
+func (f *checkFormVM) minDaysField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-min-days", Label: "TLS minimum days (optional, tls kind only)",
+		Name: "min-days", Value: v.MinDays, Placeholder: "21",
+		Help:   "Whole days until the leaf cert expires, like 21.",
+		ErrMsg: v.ErrMinDays, FirstInvalid: v.FirstInvalid == "min-days",
+	}
+}
+
+func (f *checkFormVM) expectAddrField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-expect-addr", Label: "DNS expected address (optional, dns kind only)",
+		Name: "expect-addr", Value: v.ExpectAddr, Placeholder: "192.168.1.10",
+		Help:   "Require the name to resolve to this address.",
+		ErrMsg: v.ErrExpectAddr, FirstInvalid: v.FirstInvalid == "expect-addr",
+	}
+}
+
+func (f *checkFormVM) opField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-op", Label: "Metric operator (metric kind only)",
+		Name: "op", Value: v.Op, Placeholder: ">=",
+		Help:   "One of <, <=, >, >=, ==, !=.",
+		ErrMsg: v.ErrOp, FirstInvalid: v.FirstInvalid == "op",
+	}
+}
+
+func (f *checkFormVM) valueField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-value", Label: "Metric value (metric kind only)",
+		Name: "value", Value: v.Value, Placeholder: "100",
+		Help:   "The number the metric body is compared against.",
+		ErrMsg: v.ErrValue, FirstInvalid: v.FirstInvalid == "value",
 	}
 }
 

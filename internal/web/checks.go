@@ -73,14 +73,23 @@ type checkRow struct {
 // ("" for an http URL target), and how long ago that status last changed (the
 // humanized age, "" when the sweep has never seen the target).
 type checkTargetRow struct {
-	Name     string
-	Address  string
-	Port     int
-	URL      string
-	Expect   int
-	Status   string
-	Netgroup string
-	Changed  string
+	Name       string
+	Address    string
+	Port       int
+	URL        string
+	Expect     int
+	DNSName    string
+	ExpectAddr string
+	MinDays    int
+	Op         string
+	Value      float64
+	Status     string
+	Netgroup   string
+	Changed    string
+	// HasLocation reports whether the target carries an address literal the
+	// netgroup net can cover (tcp/ping, and a tls address that is an IP). A
+	// hostname or URL kind does not, so it renders no location.
+	HasLocation bool
 	// DurationMS is the last probe's measured duration; 0 when the sweep has
 	// never observed the target.
 	DurationMS int64
@@ -102,12 +111,15 @@ func (t checkTargetRow) DurationLabel() string {
 // it, the inverse of store.ParseCheckTargets.
 func (t checkTargetRow) SpecInput() string { return t.Name + "=" + t.Spec() }
 
-// Spec renders the probe location the way the CLI's table reads it: a tcp
-// target as address:port, an http target as its URL, a ping target as the
-// bare address.
+// Spec renders the probe location the way the CLI's table reads it: a tcp/tls
+// target as address:port, an http/metric target as its URL, a ping target as
+// the bare address, a dns target as its name.
 func (t checkTargetRow) Spec() string {
 	if t.URL != "" {
 		return t.URL
+	}
+	if t.DNSName != "" {
+		return t.DNSName
 	}
 	if t.Port != 0 {
 		return net.JoinHostPort(t.Address, strconv.Itoa(t.Port))
@@ -320,15 +332,13 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 	var addrs []netip.Addr
 	for _, c := range list {
 		for _, t := range c.Targets {
-			if t.Address == "" {
-				continue
-			}
-			addr, err := netip.ParseAddr(t.Address)
+			spec, err := store.SpecForTarget(c.Kind, t)
 			if err != nil {
-				return nil, fmt.Errorf("check %s target %q address %q does not parse: %w",
-					c.Name, t.Name, t.Address, err)
+				return nil, fmt.Errorf("check %s target %q: %w", c.Name, t.Name, err)
 			}
-			addrs = append(addrs, addr)
+			if addr, ok := spec.Location(); ok {
+				addrs = append(addrs, addr)
+			}
 		}
 	}
 	netgroups := store.ClassifyNetgroups(addrs, groups)
@@ -351,8 +361,16 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 		for _, t := range c.Targets {
 			tr := checkTargetRow{
 				Name: t.Name, Address: t.Address, Port: t.Port,
-				URL: t.URL, Expect: t.Expect,
+				URL: t.URL, Expect: t.Expect, DNSName: t.DNSName,
+				ExpectAddr: t.ExpectAddr, MinDays: t.MinDays,
+				Op: t.Op, Value: t.Value,
 			}
+			spec, err := store.SpecForTarget(c.Kind, t)
+			if err != nil {
+				return nil, fmt.Errorf("check %s target %q: %w", c.Name, t.Name, err)
+			}
+			addr, hasLocation := spec.Location()
+			tr.HasLocation = hasLocation
 			if st, ok := state[t.Name]; ok {
 				// The sweep's stored values are authoritative: it classified
 				// the address at observation time and measured the probe.
@@ -360,10 +378,10 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 				tr.Changed = humanAge(s.now().Sub(st.LastChange))
 				tr.Netgroup = st.Netgroup
 				tr.DurationMS = st.LastDurationMS
-			} else if t.Address != "" {
+			} else if hasLocation {
 				// No state row yet: classify live so the cold-start tile still
 				// names where the target will be probed, never blank.
-				tr.Netgroup = netgroups[netip.MustParseAddr(t.Address).Unmap().String()]
+				tr.Netgroup = netgroups[addr.Unmap().String()]
 			}
 			row.Targets = append(row.Targets, tr)
 		}

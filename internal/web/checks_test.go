@@ -199,6 +199,147 @@ func TestCheckAddHTTPExpect(t *testing.T) {
 	}
 }
 
+// TestCheckAddKinds drives the new kinds through the add form: a tls target
+// stores host:port and its min-days floor, a dns target stores its expected
+// address, and a metric target stores its operator and value.
+func TestCheckAddKinds(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	for _, tc := range []struct {
+		name   string
+		values url.Values
+		check  func(t *testing.T, c store.Check)
+	}{
+		{
+			name: "cert",
+			values: url.Values{
+				"name": {"cert"}, "kind": {store.CheckTLS}, "interval": {"1h"},
+				"target": {"web=web.lan:443"}, "min-days": {"21"},
+			},
+			check: func(t *testing.T, c store.Check) {
+				if c.Targets[0].Address != "web.lan" || c.Targets[0].Port != 443 || c.Targets[0].MinDays != 21 {
+					t.Fatalf("tls target = %+v, want web.lan:443 min_days 21", c.Targets[0])
+				}
+			},
+		},
+		{
+			name: "resolve",
+			values: url.Values{
+				"name": {"resolve"}, "kind": {store.CheckDNS}, "interval": {"1h"},
+				"target": {"api=api.lan"}, "expect-addr": {"192.168.1.10"},
+			},
+			check: func(t *testing.T, c store.Check) {
+				if c.Targets[0].DNSName != "api.lan" || c.Targets[0].ExpectAddr != "192.168.1.10" {
+					t.Fatalf("dns target = %+v, want api.lan -> 192.168.1.10", c.Targets[0])
+				}
+			},
+		},
+		{
+			name: "depth",
+			values: url.Values{
+				"name": {"depth"}, "kind": {store.CheckMetric}, "interval": {"1h"},
+				"target": {"depth=http://nas:9090/queue"}, "op": {">="}, "value": {"100"},
+			},
+			check: func(t *testing.T, c store.Check) {
+				if c.Targets[0].URL != "http://nas:9090/queue" || c.Targets[0].Op != ">=" || c.Targets[0].Value != 100 {
+					t.Fatalf("metric target = %+v, want op >= value 100", c.Targets[0])
+				}
+			},
+		},
+	} {
+		resp := postForm(t, op, ts.URL+"/checks/add", tc.values, nil)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("%s add = %d, want 303", tc.name, resp.StatusCode)
+		}
+		c, err := h.store.GetCheck(ctx, tc.name)
+		if err != nil {
+			t.Fatalf("%s GetCheck: %v", tc.name, err)
+		}
+		tc.check(t, c)
+	}
+}
+
+// TestCheckAddKindRefusals: a kind-specific field set on the wrong kind, and a
+// metric missing its operator, refuse on the field's own meta line at 422 and
+// store nothing.
+func TestCheckAddKindRefusals(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/checks/add",
+		url.Values{
+			"name": {"depth"}, "kind": {store.CheckMetric}, "interval": {"1h"},
+			"target": {"depth=http://nas:9090/queue"}, "op": {"~"}, "value": {"100"},
+		}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("bad metric op status = %d, want 422", resp.StatusCode)
+	}
+	for _, want := range []string{`aria-invalid="true"`, "The operator is one of", `value="~"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("metric op refusal missing %q", want)
+		}
+	}
+	if _, err := h.store.GetCheck(context.Background(), "depth"); err == nil {
+		t.Fatal("a bad metric op still stored a check")
+	}
+
+	// min-days on a tcp check pins a tls target only.
+	resp = postForm(t, op, ts.URL+"/checks/add",
+		url.Values{
+			"name": {"wrong"}, "kind": {store.CheckTCP}, "interval": {"1h"},
+			"target": {"a=192.168.1.50:22"}, "min-days": {"21"},
+		}, nil)
+	body = readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("min-days on tcp status = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "Min-days pins a tls target only.") {
+		t.Errorf("min-days kind refusal missing its sentence")
+	}
+	if _, err := h.store.GetCheck(context.Background(), "wrong"); err == nil {
+		t.Fatal("a mismatched kind field still stored a check")
+	}
+}
+
+// TestCheckEditRendersStoredKindFields: a stored tls check's edit dialog
+// prefills the stored min-days and does not render the http expect field.
+func TestCheckEditRendersStoredKindFields(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "cert", Kind: store.CheckTLS, IntervalS: 3600,
+		Targets: []store.CheckTarget{{Name: "web", Address: "web.lan", Port: 443, MinDays: 21}},
+	}); err != nil {
+		t.Fatalf("CreateCheck: %v", err)
+	}
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks")
+	if code != http.StatusOK {
+		t.Fatalf("/checks = %d, want 200", code)
+	}
+	for _, want := range []string{`id="cke-cert-min-days"`, `value="21"`} {
+		if !strings.Contains(page, want) {
+			t.Errorf("tls edit dialog missing %q", want)
+		}
+	}
+	if strings.Contains(page, `id="cke-cert-expect"`) {
+		t.Error("tls edit dialog rendered the http expect field")
+	}
+}
+
 // flashMessage extracts the flash a rejected form redirect carries, asserting
 // the redirect went back to wantPath. Flash now travels in a server-set
 // HttpOnly cookie (never a URL parameter), so the message is read off the
@@ -250,21 +391,40 @@ func TestCheckFormAtRest(t *testing.T) {
 		`aria-describedby="ck-interval-meta"`,
 		`aria-describedby="ck-target-meta"`,
 		`aria-describedby="ck-expect-meta"`,
+		`aria-describedby="ck-min-days-meta"`,
+		`aria-describedby="ck-expect-addr-meta"`,
+		`aria-describedby="ck-op-meta"`,
+		`aria-describedby="ck-value-meta"`,
 		`id="ck-name-meta"`,
 		`id="ck-kind-meta"`,
 		`id="ck-interval-meta"`,
 		`id="ck-target-meta"`,
 		`id="ck-expect-meta"`,
+		`id="ck-min-days-meta"`,
+		`id="ck-expect-addr-meta"`,
+		`id="ck-op-meta"`,
+		`id="ck-value-meta"`,
 		"Letters, digits, dots, hyphens, underscores.",
-		"Kind is tcp, ping or http.",
+		"Kind is tcp, ping, http, dns, tls or metric.",
 		"A Go duration — 5m, 90s, 1h.",
 		"Targets are name=spec",
 		"A whole status code, like 200 or 404.",
+		"Whole days until the leaf cert expires, like 21.",
+		"Require the name to resolve to this address.",
+		"One of &lt;, &lt;=, &gt;, &gt;=, ==, !=.",
+		"The number the metric body is compared against.",
 		`role="status" aria-live="polite"`,
 		"Add check",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("check form missing %q", want)
+		}
+	}
+	// The kind select offers all six kinds.
+	for _, k := range []string{"tcp", "ping", "http", "dns", "tls", "metric"} {
+		want := `<option value="` + k + `"`
+		if !strings.Contains(page, want) {
+			t.Errorf("kind select missing %q", want)
 		}
 	}
 	// The four baseline target rows are the JS-off baseline.
@@ -344,7 +504,7 @@ func TestCheckFormKindRefusal(t *testing.T) {
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("kind refusal status = %d, want 422", resp.StatusCode)
 	}
-	if !strings.Contains(body, "Kind is tcp, ping or http.") {
+	if !strings.Contains(body, "Kind is tcp, ping, http, dns, tls or metric.") {
 		t.Errorf("kind refusal missing the kind-select sentence")
 	}
 	if _, err := h.store.GetCheck(context.Background(), "bad"); err == nil {

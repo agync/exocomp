@@ -32,15 +32,24 @@ func (s *Server) registerCheckWrite(mux *http.ServeMux) {
 // The add dialog's human refusal copy (forms/copy.txt): one sentence in the
 // field's terms, never the validator's regex or a status code.
 const (
-	checkNameCharset       = "Names use letters, digits, dots, hyphens and underscores."
-	checkIntervalRequired  = "Give the interval as a duration — like 5m or 90s."
-	checkIntervalBad       = "The interval needs a unit — like 5m, 90s or 1h."
-	checkIntervalNonPos    = "The interval must be more than zero — like 5m."
-	checkKindRefusal       = "Kind is tcp, ping or http."
-	checkTargetEmpty       = "Add at least one target, like laptop=192.168.1.50:22."
-	checkExpectRefusal     = "The expected status is a whole number, like 200."
-	checkExpectKindRefusal = "An expected status pins an http target only."
-	checkSubmitRefusal     = "Couldn't add the check — nothing was saved."
+	checkNameCharset          = "Names use letters, digits, dots, hyphens and underscores."
+	checkIntervalRequired     = "Give the interval as a duration — like 5m or 90s."
+	checkIntervalBad          = "The interval needs a unit — like 5m, 90s or 1h."
+	checkIntervalNonPos       = "The interval must be more than zero — like 5m."
+	checkKindRefusal          = "Kind is tcp, ping, http, dns, tls or metric."
+	checkTargetEmpty          = "Add at least one target, like laptop=192.168.1.50:22."
+	checkExpectRefusal        = "The expected status is a whole number, like 200."
+	checkExpectKindRefusal    = "An expected status pins an http target only."
+	checkMinDaysRefusal       = "Min-days is a whole number of days, like 21."
+	checkMinDaysKindRefusal   = "Min-days pins a tls target only."
+	checkExpectAddrKindRefuse = "An expected address pins a dns target only."
+	checkOpRefusal            = "The operator is one of <, <=, >, >=, == or !=."
+	checkOpKindRefusal        = "An operator pins a metric target only."
+	checkOpRequired           = "A metric target needs an operator, like >=."
+	checkValueRefusal         = "The value is a number, like 0.5."
+	checkValueKindRefusal     = "A value pins a metric target only."
+	checkValueRequired        = "A metric target needs a value, like 0."
+	checkSubmitRefusal        = "Couldn't add the check — nothing was saved."
 	// checkRemoveConfirmRefusal is the rm verb's confirm-gate refusal
 	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
 	// safety, and a confirmed-less remove is refused on the row.
@@ -102,7 +111,11 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 	form := checkFormVM{
 		Name: r.PostFormValue("name"), Kind: r.PostFormValue("kind"),
 		Interval: r.PostFormValue("interval"), Targets: r.PostForm["target"],
-		Expect: r.PostFormValue("expect"),
+		Expect:     r.PostFormValue("expect"),
+		MinDays:    r.PostFormValue("min-days"),
+		ExpectAddr: r.PostFormValue("expect-addr"),
+		Op:         r.PostFormValue("op"),
+		Value:      r.PostFormValue("value"),
 	}
 
 	// Validate every field up front so all refusals render at once (forms/
@@ -121,7 +134,9 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		form.ErrInterval = checkIntervalNonPos
 		causes = append(causes, "interval "+form.Interval)
 	}
-	validKind := form.Kind == store.CheckTCP || form.Kind == store.CheckPing || form.Kind == store.CheckHTTP
+	validKind := form.Kind == store.CheckTCP || form.Kind == store.CheckPing ||
+		form.Kind == store.CheckHTTP || form.Kind == store.CheckDNS ||
+		form.Kind == store.CheckTLS || form.Kind == store.CheckMetric
 	if !validKind {
 		form.ErrKind = checkKindRefusal
 		causes = append(causes, "kind "+form.Kind)
@@ -147,9 +162,14 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		form.ErrExpect = checkExpectKindRefusal
 		causes = append(causes, "expect on non-http")
 	}
+	kv, kerrs, kcauses := checkKindFields(form.Kind, r)
+	form.ErrMinDays, form.ErrExpectAddr, form.ErrOp, form.ErrValue =
+		kerrs.minDays, kerrs.expectAddr, kerrs.op, kerrs.value
+	causes = append(causes, kcauses...)
 
 	if form.ErrName != "" || form.ErrKind != "" || form.ErrInterval != "" ||
-		form.ErrTarget != "" || form.ErrExpect != "" {
+		form.ErrTarget != "" || form.ErrExpect != "" || form.ErrMinDays != "" ||
+		form.ErrExpectAddr != "" || form.ErrOp != "" || form.ErrValue != "" {
 		switch {
 		case form.ErrName != "":
 			form.FirstInvalid = "name"
@@ -161,15 +181,25 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 			form.FirstInvalid = "target"
 		case form.ErrExpect != "":
 			form.FirstInvalid = "expect"
+		case form.ErrMinDays != "":
+			form.FirstInvalid = "min-days"
+		case form.ErrExpectAddr != "":
+			form.FirstInvalid = "expect-addr"
+		case form.ErrOp != "":
+			form.FirstInvalid = "op"
+		case form.ErrValue != "":
+			form.FirstInvalid = "value"
 		}
 		s.log.Info("web: check add refused", "err", strings.Join(causes, "; "), "by", ident.token.Name)
 		s.checkRefusal(w, r, form)
 		return
 	}
-	if expect != 0 {
-		for i := range targets {
-			targets[i].Expect = expect
-		}
+	for i := range targets {
+		targets[i].Expect = expect
+		targets[i].MinDays = kv.minDays
+		targets[i].ExpectAddr = kv.expectAddr
+		targets[i].Op = kv.op
+		targets[i].Value = kv.value
 	}
 
 	created, err := s.store.CreateCheck(r.Context(), store.NewCheck{
@@ -219,6 +249,91 @@ func formExpect(r *http.Request) (int, error) {
 		return 0, errors.New("expected status must be a whole number")
 	}
 	return n, nil
+}
+
+// checkMetricOps is the operator vocabulary a metric target may declare, the
+// same set internal/probe validates so the form and the runner cannot drift.
+var checkMetricOps = map[string]bool{"<": true, "<=": true, ">": true, ">=": true, "==": true, "!=": true}
+
+// checkKindValues is the parsed kind-specific config from one form submit.
+type checkKindValues struct {
+	minDays    int
+	expectAddr string
+	op         string
+	value      float64
+}
+
+// checkKindErrs holds the per-field refusals the kind-specific fields earned,
+// so the add and edit dialogs render every message at once (forms/SPEC.md).
+type checkKindErrs struct {
+	minDays    string
+	expectAddr string
+	op         string
+	value      string
+}
+
+// checkKindFields parses the kind-specific fields (min-days, expect-addr, op,
+// value) and refuses, per field, one that does not belong to the check's kind
+// and a metric missing its operator or value. Both dialogs call it, so their
+// contract cannot drift from the CLI's applyKindFlags.
+func checkKindFields(kind string, r *http.Request) (checkKindValues, checkKindErrs, []string) {
+	var v checkKindValues
+	var e checkKindErrs
+	var causes []string
+
+	minDaysStr := strings.TrimSpace(r.PostFormValue("min-days"))
+	if minDaysStr != "" {
+		n, err := strconv.Atoi(minDaysStr)
+		if err != nil || n < 0 {
+			e.minDays = checkMinDaysRefusal
+			causes = append(causes, "min-days "+minDaysStr)
+		} else {
+			v.minDays = n
+		}
+	}
+	if v.minDays != 0 && kind != store.CheckTLS {
+		e.minDays = checkMinDaysKindRefusal
+		causes = append(causes, "min-days on non-tls")
+	}
+
+	v.expectAddr = strings.TrimSpace(r.PostFormValue("expect-addr"))
+	if v.expectAddr != "" && kind != store.CheckDNS {
+		e.expectAddr = checkExpectAddrKindRefuse
+		causes = append(causes, "expect-addr on non-dns")
+	}
+
+	v.op = strings.TrimSpace(r.PostFormValue("op"))
+	switch {
+	case v.op != "" && !checkMetricOps[v.op]:
+		e.op = checkOpRefusal
+		causes = append(causes, "op "+v.op)
+	case v.op != "" && kind != store.CheckMetric:
+		e.op = checkOpKindRefusal
+		causes = append(causes, "op on non-metric")
+	case v.op == "" && kind == store.CheckMetric:
+		e.op = checkOpRequired
+		causes = append(causes, "metric without op")
+	}
+
+	valueStr := strings.TrimSpace(r.PostFormValue("value"))
+	if valueStr != "" {
+		f, err := strconv.ParseFloat(valueStr, 64)
+		if err != nil {
+			e.value = checkValueRefusal
+			causes = append(causes, "value "+valueStr)
+		} else {
+			v.value = f
+		}
+	}
+	if valueStr != "" && kind != store.CheckMetric {
+		e.value = checkValueKindRefusal
+		causes = append(causes, "value on non-metric")
+	}
+	if valueStr == "" && kind == store.CheckMetric {
+		e.value = checkValueRequired
+		causes = append(causes, "metric without value")
+	}
+	return v, e, causes
 }
 
 func (s *Server) handleCheckEnable(w http.ResponseWriter, r *http.Request) {
@@ -305,10 +420,18 @@ type checkEditFormVM struct {
 	Interval      string
 	Targets       []string
 	Expect        string
+	MinDays       string
+	ExpectAddr    string
+	Op            string
+	Value         string
 	ErrInterval   string
 	ErrTargetItem string
 	ErrTarget     string
 	ErrExpect     string
+	ErrMinDays    string
+	ErrExpectAddr string
+	ErrOp         string
+	ErrValue      string
 	ErrForm       string
 	FirstInvalid  string
 	Submitting    bool
@@ -338,6 +461,42 @@ func (f checkEditFormVM) expectField() fieldMeta {
 	}
 }
 
+func (f checkEditFormVM) minDaysField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-min-days", Label: "TLS minimum days (optional)",
+		Name: "min-days", Value: f.MinDays, Placeholder: "21",
+		Help:   "Whole days until the leaf cert expires, like 21.",
+		ErrMsg: f.ErrMinDays, FirstInvalid: f.FirstInvalid == "min-days",
+	}
+}
+
+func (f checkEditFormVM) expectAddrField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-expect-addr", Label: "DNS expected address (optional)",
+		Name: "expect-addr", Value: f.ExpectAddr, Placeholder: "192.168.1.10",
+		Help:   "Require the name to resolve to this address.",
+		ErrMsg: f.ErrExpectAddr, FirstInvalid: f.FirstInvalid == "expect-addr",
+	}
+}
+
+func (f checkEditFormVM) opField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-op", Label: "Metric operator",
+		Name: "op", Value: f.Op, Placeholder: ">=",
+		Help:   "One of <, <=, >, >=, ==, !=.",
+		ErrMsg: f.ErrOp, FirstInvalid: f.FirstInvalid == "op",
+	}
+}
+
+func (f checkEditFormVM) valueField() fieldMeta {
+	return fieldMeta{
+		ID: "cke-" + f.Name + "-value", Label: "Metric value",
+		Name: "value", Value: f.Value, Placeholder: "100",
+		Help:   "The number the metric body is compared against.",
+		ErrMsg: f.ErrValue, FirstInvalid: f.FirstInvalid == "value",
+	}
+}
+
 // targetInputs is the edit dialog's repeated target rows: the stored targets
 // (or the typed values on a 422 re-render) padded to the same four baseline
 // rows the add dialog uses, capped at the same ten.
@@ -364,6 +523,8 @@ func (vm checksVM) editForm(name string) checkEditFormVM {
 			return checkEditFormVM{
 				Name: name, Kind: ck.Kind, Interval: ck.Interval,
 				Targets: ck.editTargetInputs(), Expect: ck.editExpect(),
+				MinDays: ck.editMinDays(), ExpectAddr: ck.editExpectAddr(),
+				Op: ck.editOp(), Value: ck.editValue(),
 			}
 		}
 	}
@@ -385,6 +546,40 @@ func (c checkRow) editExpect() string {
 		}
 	}
 	return ""
+}
+
+func (c checkRow) editMinDays() string {
+	for _, t := range c.Targets {
+		if t.MinDays != 0 {
+			return itoa(int64(t.MinDays))
+		}
+	}
+	return ""
+}
+
+func (c checkRow) editExpectAddr() string {
+	for _, t := range c.Targets {
+		if t.ExpectAddr != "" {
+			return t.ExpectAddr
+		}
+	}
+	return ""
+}
+
+func (c checkRow) editOp() string {
+	for _, t := range c.Targets {
+		if t.Op != "" {
+			return t.Op
+		}
+	}
+	return ""
+}
+
+func (c checkRow) editValue() string {
+	if len(c.Targets) == 0 {
+		return ""
+	}
+	return strconv.FormatFloat(c.Targets[0].Value, 'g', -1, 64)
 }
 
 // handleCheckUpdate re-points a stored check in place: targets replace the set
@@ -414,6 +609,11 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		Interval: r.PostFormValue("interval"),
 		Targets:  r.PostForm["target"],
 		Expect:   r.PostFormValue("expect"),
+		MinDays:  r.PostFormValue("min-days"),
+		// ExpectAddr/Op/Value carry the typed value so a 422 re-render keeps it.
+		ExpectAddr: r.PostFormValue("expect-addr"),
+		Op:         r.PostFormValue("op"),
+		Value:      r.PostFormValue("value"),
 	}
 
 	var causes []string
@@ -447,8 +647,13 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		form.ErrExpect = checkExpectKindRefusal
 		causes = append(causes, "expect on non-http")
 	}
+	kv, kerrs, kcauses := checkKindFields(cur.Kind, r)
+	form.ErrMinDays, form.ErrExpectAddr, form.ErrOp, form.ErrValue =
+		kerrs.minDays, kerrs.expectAddr, kerrs.op, kerrs.value
+	causes = append(causes, kcauses...)
 
-	if form.ErrInterval != "" || form.ErrTarget != "" || form.ErrExpect != "" {
+	if form.ErrInterval != "" || form.ErrTarget != "" || form.ErrExpect != "" ||
+		form.ErrMinDays != "" || form.ErrExpectAddr != "" || form.ErrOp != "" || form.ErrValue != "" {
 		switch {
 		case form.ErrInterval != "":
 			form.FirstInvalid = "interval"
@@ -456,15 +661,25 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 			form.FirstInvalid = "target"
 		case form.ErrExpect != "":
 			form.FirstInvalid = "expect"
+		case form.ErrMinDays != "":
+			form.FirstInvalid = "min-days"
+		case form.ErrExpectAddr != "":
+			form.FirstInvalid = "expect-addr"
+		case form.ErrOp != "":
+			form.FirstInvalid = "op"
+		case form.ErrValue != "":
+			form.FirstInvalid = "value"
 		}
 		s.log.Info("web: check update refused", "check", name, "err", strings.Join(causes, "; "), "by", ident.token.Name)
 		s.checkEditRefusal(w, r, form)
 		return
 	}
-	if expect != 0 {
-		for i := range targets {
-			targets[i].Expect = expect
-		}
+	for i := range targets {
+		targets[i].Expect = expect
+		targets[i].MinDays = kv.minDays
+		targets[i].ExpectAddr = kv.expectAddr
+		targets[i].Op = kv.op
+		targets[i].Value = kv.value
 	}
 
 	updated, err := s.store.UpdateCheck(r.Context(), name, targets, intervalS)

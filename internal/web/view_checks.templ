@@ -51,7 +51,7 @@ templ checksSurface(vm checksVM) {
 		} else {
 			if vm.Operator {
 				@modal("checks-add", "Add a check") {
-					<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp), <code>name=ip</code> (ping), or <code>name=url</code> (http, optional expected status). Kind ping needs a host that can actually send ICMP.</p>
+					<p class="meta">Mirrors <code>exocomp check add</code>: targets are <code>name=ip:port</code> (tcp/tls), <code>name=ip</code> (ping), <code>name=hostname</code> (dns), or <code>name=url</code> (http/metric). Kind ping needs a host that can actually send ICMP; a metric target needs an operator and a value.</p>
 					<form method="post" action={ urlWithBase(vm.Page.Base, "/checks/add") } class="writeform" id="check-add-form" novalidate data-check-form>
 						@fieldInput(vm.Form.nameField())
 						<label class="field">
@@ -60,12 +60,15 @@ templ checksSurface(vm checksVM) {
 								<option value="tcp" selected?={ vm.Form.kindSelected("tcp") }>tcp</option>
 								<option value="ping" selected?={ vm.Form.kindSelected("ping") }>ping</option>
 								<option value="http" selected?={ vm.Form.kindSelected("http") }>http</option>
+								<option value="dns" selected?={ vm.Form.kindSelected("dns") }>dns</option>
+								<option value="tls" selected?={ vm.Form.kindSelected("tls") }>tls</option>
+								<option value="metric" selected?={ vm.Form.kindSelected("metric") }>metric</option>
 							</select>
 							<span id="ck-kind-meta" class={ "meta", templ.KV("is-error", vm.Form.effective().ErrKind != "") }>
 								if vm.Form.effective().ErrKind != "" {
 									<span class="msg">{ vm.Form.effective().ErrKind }</span>
 								} else {
-									Kind is tcp, ping or http.
+									Kind is tcp, ping, http, dns, tls or metric.
 								}
 							</span>
 						</label>
@@ -84,12 +87,16 @@ templ checksSurface(vm checksVM) {
 										{ vm.Form.effective().ErrTarget }
 									</span>
 								} else {
-									Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
+									Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping), name=hostname (dns) or name=url (http).
 								}
 							</span>
 						</label>
 						<button type="button" class="btn" id="ck-add-target">Add target</button>
 						@fieldInput(vm.Form.expectField())
+						@fieldInput(vm.Form.minDaysField())
+						@fieldInput(vm.Form.expectAddrField())
+						@fieldInput(vm.Form.opField())
+						@fieldInput(vm.Form.valueField())
 						@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding check")
 						<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add check</button></div>
 					</form>
@@ -138,7 +145,7 @@ templ checksSurface(vm checksVM) {
 												if t.HasDuration() {
 													<span class="meta mono">took { t.DurationLabel() }</span>
 												}
-												if t.URL == "" {
+												if t.HasLocation {
 													<div class="where">
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
 														if t.Netgroup == "" || t.Netgroup == "away" {
@@ -156,7 +163,7 @@ templ checksSurface(vm checksVM) {
 												}
 											} else {
 												<span class="chip dim"><span class="dot"></span>UNOBSERVED</span>
-												if t.URL == "" {
+												if t.HasLocation {
 													<div class="where">
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
 														<span class="away">{ "on " + t.WhereLocation() + " · away — not probed from here" }</span>
@@ -220,11 +227,23 @@ templ checkEditDialog(vm checksVM, ck checkRow) {
 							{ vm.editForm(ck.Name).ErrTarget }
 						</span>
 					} else {
-						Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping) or name=url (http).
+						Targets are name=spec — like laptop=192.168.1.50:22, name=ip (ping), name=hostname (dns) or name=url (http).
 					}
 				</span>
 			</label>
-			@fieldInput(vm.editForm(ck.Name).expectField())
+			if vm.editForm(ck.Name).Kind == "http" {
+				@fieldInput(vm.editForm(ck.Name).expectField())
+			}
+			if vm.editForm(ck.Name).Kind == "tls" {
+				@fieldInput(vm.editForm(ck.Name).minDaysField())
+			}
+			if vm.editForm(ck.Name).Kind == "dns" {
+				@fieldInput(vm.editForm(ck.Name).expectAddrField())
+			}
+			if vm.editForm(ck.Name).Kind == "metric" {
+				@fieldInput(vm.editForm(ck.Name).opField())
+				@fieldInput(vm.editForm(ck.Name).valueField())
+			}
 			@formStatus(vm.editForm(ck.Name).Pending(), vm.editForm(ck.Name).ErrFormText(), "Saving check")
 			<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.editForm(ck.Name).Pending() }>Save check</button></div>
 		</form>
