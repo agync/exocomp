@@ -7,12 +7,15 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
@@ -120,6 +123,26 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("create mutes", "operator"), s.apiMuteCreate))
 	mux.HandleFunc("DELETE /api/v1/mutes/{id}",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("lift mutes", "operator"), s.apiMuteDelete))
+	mux.HandleFunc("POST /api/v1/checks",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage checks", "operator"), s.apiCheckCreate))
+	mux.HandleFunc("PUT /api/v1/checks/{name}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage checks", "operator"), s.apiCheckUpdate))
+	mux.HandleFunc("POST /api/v1/checks/{name}/enable",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage checks", "operator"), s.apiCheckEnable))
+	mux.HandleFunc("POST /api/v1/checks/{name}/disable",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage checks", "operator"), s.apiCheckDisable))
+	mux.HandleFunc("DELETE /api/v1/checks/{name}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage checks", "operator"), s.apiCheckDelete))
+	// probe runs the network but writes nothing (D3), so it takes the read
+	// floor: any valid token may ask what a check sees right now.
+	mux.HandleFunc("POST /api/v1/checks/{name}/probe",
+		s.apiGuard(bearerOnly(canRead), writeDeny("probe checks", "readonly"), s.apiCheckProbe))
+	mux.HandleFunc("POST /api/v1/netgroups",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage netgroups", "operator"), s.apiNetgroupCreate))
+	mux.HandleFunc("PUT /api/v1/netgroups/{name}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage netgroups", "operator"), s.apiNetgroupUpdate))
+	mux.HandleFunc("DELETE /api/v1/netgroups/{name}",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("manage netgroups", "operator"), s.apiNetgroupDelete))
 }
 
 // bearerOnly narrows a scope predicate to callers presenting an explicit bearer
@@ -1000,6 +1023,447 @@ func (s *Server) apiMuteDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.store.DeleteNotifyMute(r.Context(), id); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- checks (create / update / enable / disable / rm / probe) ---------------
+
+// checkProbeTimeout matches the sweep's bound (reactive probeTimeout) and the
+// CLI's checkProbeTimeout: an on-demand probe answers with the same deadline the
+// sweep uses.
+const checkProbeTimeout = 5 * time.Second
+
+// checkWriteRequest is the JSON body of a check create or update. The optional
+// kind fields are POINTERS so an omitted field is distinguishable from a zero
+// value: the CLI refuses a kind-inapplicable flag through cobra's Changed, and
+// this is the JSON equivalent.
+type checkWriteRequest struct {
+	Name       string   `json:"name"`
+	Kind       string   `json:"kind"`
+	Interval   string   `json:"interval"`
+	Targets    []string `json:"targets"`
+	Expect     *int     `json:"expect"`
+	MinDays    *int     `json:"min_days"`
+	ExpectAddr *string  `json:"expect_addr"`
+	Op         *string  `json:"op"`
+	Value      *float64 `json:"value"`
+}
+
+// checkStates loads each check's per-target state rows, the join NewCheckList
+// takes.
+func (s *Server) checkStates(ctx context.Context, rows []store.Check) (map[int64][]store.CheckState, error) {
+	states := make(map[int64][]store.CheckState, len(rows))
+	for _, c := range rows {
+		st, err := s.store.ListCheckStates(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		states[c.ID] = st
+	}
+	return states, nil
+}
+
+// checkView projects one check with its target state, mirroring the read route.
+func (s *Server) checkView(ctx context.Context, c store.Check) (wire.CheckView, error) {
+	states, err := s.checkStates(ctx, []store.Check{c})
+	if err != nil {
+		return wire.CheckView{}, err
+	}
+	return wire.NewCheckList([]store.Check{c}, states)[0], nil
+}
+
+// decodeJSONBody reads an optional JSON body into v; an absent body is left at
+// its zero value, a malformed one is a 400 and reports ok=false.
+func (s *Server) decodeJSONBody(w http.ResponseWriter, r *http.Request, v any) bool {
+	body, _ := io.ReadAll(io.LimitReader(r.Body, 1<<16))
+	if len(bytes.TrimSpace(body)) == 0 {
+		return true
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		s.badRequest(w, "request body is not valid JSON")
+		return false
+	}
+	return true
+}
+
+// checkWriteFail maps a store write refusal: an operator-input validation is a
+// 400 with the doubled internal namespace stripped (mirroring the CLI's
+// validationError), everything else keeps its sentinel (duplicate 409,
+// not_found 404).
+func (s *Server) checkWriteFail(w http.ResponseWriter, err error) {
+	if errors.Is(err, store.ErrValidation) {
+		msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
+		msg = strings.TrimPrefix(msg, "store: validation: ")
+		s.badRequest(w, msg)
+		return
+	}
+	s.apiFail(w, err)
+}
+
+// checkTargetsFromRequest parses the name=spec targets and applies the kind's
+// optional fields, refusing a field that does not belong to the kind and a
+// metric missing its operator or value — the same contract the CLI's
+// applyKindFlags and the add form enforce.
+func checkTargetsFromRequest(kind string, specs []string, req checkWriteRequest) ([]store.CheckTarget, error) {
+	parsed, err := store.ParseCheckTargets(kind, specs, false)
+	if err != nil {
+		return nil, err
+	}
+	if len(parsed) == 0 {
+		return nil, errors.New("targets must name at least one target")
+	}
+	switch {
+	case req.Expect != nil && kind != store.CheckHTTP:
+		return nil, errors.New("expect applies to kind http")
+	case req.MinDays != nil && kind != store.CheckTLS:
+		return nil, errors.New("min_days applies to kind tls")
+	case req.ExpectAddr != nil && kind != store.CheckDNS:
+		return nil, errors.New("expect_addr applies to kind dns")
+	case req.Op != nil && kind != store.CheckMetric:
+		return nil, errors.New("op applies to kind metric")
+	case req.Value != nil && kind != store.CheckMetric:
+		return nil, errors.New("value applies to kind metric")
+	case kind == store.CheckMetric && req.Op == nil:
+		return nil, errors.New("op is required for kind metric")
+	case kind == store.CheckMetric && req.Value == nil:
+		return nil, errors.New("value is required for kind metric")
+	}
+	var (
+		expect     int
+		minDays    int
+		expectAddr string
+		op         string
+		value      float64
+	)
+	if req.Expect != nil {
+		expect = *req.Expect
+	}
+	if req.MinDays != nil {
+		minDays = *req.MinDays
+	}
+	if req.ExpectAddr != nil {
+		expectAddr = *req.ExpectAddr
+	}
+	if req.Op != nil {
+		op = *req.Op
+	}
+	if req.Value != nil {
+		value = *req.Value
+	}
+	for i := range parsed {
+		parsed[i].Expect = expect
+		parsed[i].MinDays = minDays
+		parsed[i].ExpectAddr = expectAddr
+		parsed[i].Op = op
+		parsed[i].Value = value
+	}
+	return parsed, nil
+}
+
+// checkIntervalSeconds parses a create's required interval, or an update's
+// optional one (falling back to the stored cadence when the field is absent).
+func (s *Server) checkIntervalSeconds(w http.ResponseWriter, v string, fallbackS int64) (int64, bool) {
+	if v == "" {
+		if fallbackS <= 0 {
+			s.badRequest(w, "interval is required (a Go duration, e.g. 5m)")
+			return 0, false
+		}
+		return fallbackS, true
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		s.badRequest(w, "interval must be a positive Go duration (e.g. 5m)")
+		return 0, false
+	}
+	return int64(d.Seconds()), true
+}
+
+// apiCheckCreate registers a check through the SAME store.CreateCheck the CLI
+// and the checks page write. The name is in the body; the per-kind target rules
+// are the shared ones, so a check created here is a check the sweep can run.
+func (s *Server) apiCheckCreate(w http.ResponseWriter, r *http.Request) {
+	var req checkWriteRequest
+	if !s.decodeJSONBody(w, r, &req) {
+		return
+	}
+	if req.Name == "" {
+		s.badRequest(w, "name is required")
+		return
+	}
+	if req.Kind == "" {
+		s.badRequest(w, "kind is required")
+		return
+	}
+	intervalS, ok := s.checkIntervalSeconds(w, req.Interval, 0)
+	if !ok {
+		return
+	}
+	targets, err := checkTargetsFromRequest(req.Kind, req.Targets, req)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+	created, err := s.store.CreateCheck(r.Context(), store.NewCheck{
+		Name: req.Name, Kind: req.Kind, IntervalS: intervalS, Targets: targets,
+	})
+	if err != nil {
+		s.checkWriteFail(w, err)
+		return
+	}
+	view, err := s.checkView(r.Context(), created)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindCheck, view)
+}
+
+// apiCheckUpdate re-points a stored check in place. The kind is fixed; a target
+// whose NAME is kept keeps its state row, so the next sweep can flip it and emit
+// a real transition.
+func (s *Server) apiCheckUpdate(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	cur, err := s.store.GetCheck(r.Context(), name)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	var req checkWriteRequest
+	if !s.decodeJSONBody(w, r, &req) {
+		return
+	}
+	intervalS, ok := s.checkIntervalSeconds(w, req.Interval, cur.IntervalS)
+	if !ok {
+		return
+	}
+	targets, err := checkTargetsFromRequest(cur.Kind, req.Targets, req)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+	updated, err := s.store.UpdateCheck(r.Context(), name, targets, intervalS)
+	if err != nil {
+		s.checkWriteFail(w, err)
+		return
+	}
+	view, err := s.checkView(r.Context(), updated)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindCheck, view)
+}
+
+func (s *Server) apiCheckEnable(w http.ResponseWriter, r *http.Request) {
+	s.apiCheckSetEnabled(w, r, true)
+}
+
+func (s *Server) apiCheckDisable(w http.ResponseWriter, r *http.Request) {
+	s.apiCheckSetEnabled(w, r, false)
+}
+
+// apiCheckSetEnabled flips the stored flag through the SAME
+// store.SetCheckEnabled the CLI's enable/disable and the checks page call, and
+// returns the check's new projection.
+func (s *Server) apiCheckSetEnabled(w http.ResponseWriter, r *http.Request, enabled bool) {
+	name := r.PathValue("name")
+	if err := s.store.SetCheckEnabled(r.Context(), name, enabled); err != nil {
+		s.checkWriteFail(w, err)
+		return
+	}
+	c, err := s.store.GetCheck(r.Context(), name)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	view, err := s.checkView(r.Context(), c)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindCheck, view)
+}
+
+// apiCheckDelete removes a check; the FK cascades its state rows. An unknown
+// name is a 404, never a silent success.
+func (s *Server) apiCheckDelete(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteCheck(r.Context(), r.PathValue("name")); err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// apiCheckProbe runs a stored check's probes now and returns the per-target
+// result. It writes nothing (D3), so it takes the read floor; an unknown check
+// is a 404 and an unknown target a 400.
+func (s *Server) apiCheckProbe(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	c, err := s.store.GetCheck(r.Context(), name)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	only := r.URL.Query().Get("target")
+	if only != "" && !checkHasTarget(c, only) {
+		s.badRequest(w, "check "+name+" has no target named "+strconv.Quote(only))
+		return
+	}
+	view, err := s.probeCheck(r.Context(), c, only)
+	if err != nil {
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindCheckProbe, view)
+}
+
+func checkHasTarget(c store.Check, name string) bool {
+	for _, t := range c.Targets {
+		if t.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// probeCheck runs a check's targets with the sweep's options and writes
+// nothing. The netgroup is the sweep's stored value when the target has been
+// observed, else a live classification of the spec's address.
+func (s *Server) probeCheck(ctx context.Context, c store.Check, only string) (wire.CheckProbeView, error) {
+	targets := c.Targets
+	if only != "" {
+		targets = nil
+		for _, t := range c.Targets {
+			if t.Name == only {
+				targets = append(targets, t)
+			}
+		}
+	}
+	states, err := s.store.ListCheckStates(ctx, c.ID)
+	if err != nil {
+		return wire.CheckProbeView{}, err
+	}
+	stored := make(map[string]string, len(states))
+	for _, st := range states {
+		stored[st.TargetName] = st.Netgroup
+	}
+	groups, err := s.store.ListNetgroups(ctx)
+	if err != nil {
+		return wire.CheckProbeView{}, err
+	}
+
+	views := make([]wire.CheckProbeTargetView, 0, len(targets))
+	for _, t := range targets {
+		spec, err := store.SpecForTarget(c.Kind, t)
+		if err != nil {
+			return wire.CheckProbeView{}, err
+		}
+		if err := spec.Validate(); err != nil {
+			return wire.CheckProbeView{}, err
+		}
+		res := probe.Run(ctx, spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+		views = append(views, wire.CheckProbeTargetView{
+			Target:     t.Name,
+			Up:         res.Up,
+			DurationMS: res.Duration.Milliseconds(),
+			Netgroup:   probeNetgroup(spec, stored[t.Name], groups),
+			Detail:     res.Detail,
+		})
+	}
+	return wire.NewCheckProbeView(c.Name, views), nil
+}
+
+// probeNetgroup names where a target was probed: the sweep's stored
+// classification when it has observed the target, else a live classification of
+// the address the spec carries. A kind with no address literal (dns, metric, and
+// a tls hostname) carries none.
+func probeNetgroup(spec probe.Spec, stored string, groups []store.Netgroup) string {
+	if stored != "" {
+		return stored
+	}
+	addr, ok := spec.Location()
+	if !ok {
+		return ""
+	}
+	if ng, ok := store.ClassifyNetgroups([]netip.Addr{addr}, groups)[addr.Unmap().String()]; ok {
+		return ng
+	}
+	return ""
+}
+
+// --- netgroups (create / update / rm) ---------------------------------------
+
+// netgroupWriteRequest is the JSON body of a netgroup create or update.
+// prefixes is the CLI's comma-separated CIDR list (a `!`-prefixed member is an
+// exclusion), parsed by the one store.ParsePrefixList the CLI and the form use.
+type netgroupWriteRequest struct {
+	Name     string `json:"name"`
+	Prefixes string `json:"prefixes"`
+}
+
+func netgroupPrefixes(spec string) (store.PrefixList, error) {
+	list, err := store.ParsePrefixList(spec)
+	if err != nil {
+		return store.PrefixList{}, err
+	}
+	if len(list.Includes) == 0 {
+		return store.PrefixList{}, errors.New("prefixes needs at least one include CIDR")
+	}
+	return list, nil
+}
+
+// apiNetgroupCreate registers a named CIDR set through the SAME
+// store.CreateNetgroup the CLI and the netgroups page write.
+func (s *Server) apiNetgroupCreate(w http.ResponseWriter, r *http.Request) {
+	var req netgroupWriteRequest
+	if !s.decodeJSONBody(w, r, &req) {
+		return
+	}
+	if req.Name == "" {
+		s.badRequest(w, "name is required")
+		return
+	}
+	list, err := netgroupPrefixes(req.Prefixes)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+	g, err := s.store.CreateNetgroup(r.Context(), store.NewNetgroup{
+		Name: req.Name, Prefixes: list.Includes, Excludes: list.Excludes,
+	})
+	if err != nil {
+		s.checkWriteFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindNetgroup, wire.NewNetgroupList([]store.Netgroup{g})[0])
+}
+
+// apiNetgroupUpdate replaces a group's set in place, leaving stored check state
+// untouched.
+func (s *Server) apiNetgroupUpdate(w http.ResponseWriter, r *http.Request) {
+	var req netgroupWriteRequest
+	if !s.decodeJSONBody(w, r, &req) {
+		return
+	}
+	list, err := netgroupPrefixes(req.Prefixes)
+	if err != nil {
+		s.badRequest(w, err.Error())
+		return
+	}
+	g, err := s.store.UpdateNetgroup(r.Context(), r.PathValue("name"), list.Includes, list.Excludes)
+	if err != nil {
+		s.checkWriteFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindNetgroup, wire.NewNetgroupList([]store.Netgroup{g})[0])
+}
+
+// apiNetgroupDelete removes a named CIDR set. An unknown name is a 404.
+func (s *Server) apiNetgroupDelete(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteNetgroup(r.Context(), r.PathValue("name")); err != nil {
 		s.apiFail(w, err)
 		return
 	}

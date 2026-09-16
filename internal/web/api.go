@@ -634,14 +634,10 @@ func (s *Server) apiChecks(w http.ResponseWriter, r *http.Request) {
 		s.apiFail(w, err)
 		return
 	}
-	states := make(map[int64][]store.CheckState, len(rows))
-	for _, c := range rows {
-		st, err := s.store.ListCheckStates(r.Context(), c.ID)
-		if err != nil {
-			s.apiFail(w, err)
-			return
-		}
-		states[c.ID] = st
+	states, err := s.checkStates(r.Context(), rows)
+	if err != nil {
+		s.apiFail(w, err)
+		return
 	}
 	s.apiSuccess(w, wire.KindCheckList, wire.NewCheckList(rows, states))
 }
