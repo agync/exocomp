@@ -1013,6 +1013,12 @@ func applyChecks(cmd *cobra.Command, st *store.Store, rows []configCheck, prune 
 		if err != nil {
 			return fmt.Errorf("check apply: %s: %w", row.Name, err)
 		}
+		// Preflight the full per-kind shape too (IP literal, port range, url,
+		// ping capability), so a file whose LAST row is invalid does not leave
+		// its earlier rows half applied.
+		if err := store.ValidateCheckTargets(row.Name, row.Kind, targets); err != nil {
+			return fmt.Errorf("check apply: %s: %w", row.Name, validationError(err))
+		}
 		enabled := true
 		if row.Enabled != nil {
 			enabled = *row.Enabled

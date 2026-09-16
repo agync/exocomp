@@ -265,6 +265,14 @@ func (s *Store) UpdateCheck(ctx context.Context, name string, targets []CheckTar
 	return s.getCheck(ctx, cur.ID)
 }
 
+// ValidateCheckTargets runs the per-kind shape checks CreateCheck and
+// UpdateCheck enforce, without writing anything. A caller that must apply
+// several checks at once (config apply) preflights every row through it so an
+// invalid later row cannot leave earlier rows applied.
+func ValidateCheckTargets(name, kind string, targets []CheckTarget) error {
+	return validateCheckTargets(name, kind, targets)
+}
+
 // validateCheckTargets enforces the per-kind target shape CreateCheck and
 // UpdateCheck share, so an update's refusal rules can never drift from a
 // create's. The ping kind's capability probe (binary on PATH AND a live

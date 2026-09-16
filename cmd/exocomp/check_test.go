@@ -937,6 +937,47 @@ checks:
 	}
 }
 
+// TestCheckApplyPreflightsEveryRow: every row is fully validated before any
+// write, so a file whose last row is invalid leaves the earlier rows untouched
+// rather than half applied.
+func TestCheckApplyPreflightsEveryRow(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	file := writeConfig(t, "checks.yaml", `
+checks:
+  - name: good
+    kind: tcp
+    interval: 5m
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: laptop
+        address: 192.168.1.50
+        port: 22
+  - name: bad
+    kind: tcp
+    interval: 5m
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: nas
+        address: 192.168.1.60
+        port: 0
+`)
+	out, err := runCheckCmd(t, "check", "apply", "-f", file)
+	if err == nil {
+		t.Fatalf("apply accepted a file with an invalid row:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "bad") {
+		t.Errorf("refusal = %v, want it to name the invalid check", err)
+	}
+	if rows := checks(t); len(rows) != 0 {
+		t.Fatalf("a refused apply left %d row(s): %+v", len(rows), rows)
+	}
+}
+
 // TestCheckApplyPruneNeedsConfirmation: --prune without --yes-really is refused
 // by the same confirmation idiom as a global silence, and the estate is
 // untouched; with the confirmation the absent row is deleted and the named one
