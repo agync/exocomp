@@ -377,3 +377,38 @@ observes up; a job detail line "fired by rule <name>" links to `/rules`
 and, when on record, the event that raised the run; and the events page
 filters by `?source=`, one entry per pipeline (alertmanager, healthchecks,
 generic, drift, check).
+
+## Probe config as code
+
+```sh
+exocomp check export > checks.yaml          # YAML by default; --output json
+exocomp netgroup export > netgroups.yaml
+exocomp check apply -f checks.yaml          # create/update, idempotent by name
+exocomp netgroup apply -f netgroups.yaml
+exocomp check apply -f checks.yaml --prune --yes-really
+git -C /srv/ops add checks.yaml && git commit -m 'checks: pin the estate'
+```
+
+`check export` and `netgroup export` are the same document `apply` reads, so a
+live estate round-trips through git and a fresh box converges from one file:
+`export | apply -f -` is a no-op. Both lists may live in one document
+(`checks:` and `netgroups:`); each export emits only its own and each apply
+reads only its own. Output is ordered by name, so a re-export diffs cleanly.
+
+A check row carries `name`, `kind`, `interval` (a Go duration), `enabled`,
+`aggregate`, `min_up`, and its `targets` with each kind's own fields — tcp/ping
+`address`+`port`, http `url`+`expect`, tls `address`+`port`+`min_days`, dns
+`dns_name`+`expect_addr`, metric `url`+`op`+`value`. A netgroup row carries
+`name`, `includes`, and `excludes`. An omitted `enabled` starts the check
+enabled. Validation is the store's own `ParseCheckTargets`/`ParsePrefixList`
+and create/update rules, so a file that would not survive `check add` is
+refused the same way.
+
+`apply` reconciles by name: a missing row is created, a present one is updated
+in place, an identical one is reported unchanged. A check's **kind is not
+updatable** — a file that changes a stored check's kind is refused by name,
+naming the check, rather than silently recreated (which would discard its
+`check_state`); remove and re-add it deliberately. `--prune` deletes every row
+absent from the file and needs confirmation: pass `--yes-really` (or the
+global `--assume-yes`). Without it the prune is refused non-interactively, the
+same gate the global silence uses.

@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — probe estates as code: export and apply
+
+- **`check export` / `netgroup export`.** Emit every check (kind, interval as a
+  Go duration, enabled, aggregate, min_up, and each target's kind fields) and
+  every netgroup (includes, excludes) as one applyable YAML document (default)
+  or JSON (`--output json`), ordered by name so a re-export diffs cleanly.
+- **`check apply -f` / `netgroup apply -f`.** Reconcile the store to the file,
+  idempotent by name: create, update in place, or report unchanged, with a
+  per-row and total summary. Validation is the store's own verbs
+  (`ParseCheckTargets`/`ParsePrefixList`, create/update rules). A check's kind
+  is not updatable — a changed kind is refused by name rather than recreated.
+  `-f -` reads stdin, so `export | apply -f -` is a no-op.
+- **`--prune` needs `--yes-really`.** Deleting every row absent from the file is
+  confirmed with the same idiom as a global silence (or the global
+  `--assume-yes`); an unconfirmed prune is refused non-interactively.
+
 ## 2026-09-16 — aggregate check surfaces and governed `--limit-hosts`
 
 - **Set the aggregate everywhere.** `check add/update --aggregate --min-up N`
