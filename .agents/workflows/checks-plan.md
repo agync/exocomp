@@ -18,7 +18,27 @@ from it (lane-brief-authoring), in the `mNN` style but as a post-v1 program.
   `CheckSnoozed` alerts; `check snooze/unsnooze`; NETGROUP/DURATION columns;
   web stored-location + duration + down-at-home; web check edit). A follow-up
   fix made `UpdateCheck` prune dropped targets' state rows.
-- C1 onward: not started.
+- **C2 — landed** (migration 0040 dual-table rebuild widening the kind CHECK;
+  `internal/probe` shared runner; checks gain dns/tls/metric; verify folded
+  onto the runner; non-IP targets classify to no netgroup via `probe.Location`).
+- **C1 + C2 surfaces — landed** (CLI kind flags; `check probe`/`check test`,
+  provably side-effect free; web kind form + edit).
+- **C3 — landed** (netgroup exclusions, `update`/`show`/`usage`, reserved
+  `away`, unified `labels["netgroup"]` for webhooks and checks).
+- **C4 — landed** (MCP read/probe/write tools + `/api/v1` write routes).
+- **C5 — landed, opt-in** (migration 0041 aggregate config; aggregate event with
+  `Hosts`; governed `--limit-hosts` expansion validated against the named
+  check's target set; reserved `*` state row filtered).
+- **C6 — landed** (`check/netgroup export` + `apply -f`, idempotent, `--prune`
+  confirmed; apply preflights every row before writing).
+
+**Not yet exercised (needs the operator's homelab):** S2's real expiry ladder on
+the operator's own cert, and S9's "one run over the present subset" dogfood.
+The C5 feature is default-off until S9 is shown useful; C2's cert kind is
+shippable but unproven against a real cert.
+
+Gate note: each lane ran `make check-race` for its touched packages at
+integration; the combined `main` carries the full `make check-race` result.
 
 
 ---
@@ -74,18 +94,22 @@ Each phase below names the scenarios it must demonstrate.
   per-kind validate/run, consumed by `reactive` (events) and `verify` (gates).
   `verify` keeps its argv encoding and job routing; its kind implementations
   move. This is the load-bearing decision; get an ADR.
-- **D2 — breaking target shape (revised after plan review).** Targets become a
-  tagged `probe` union (`[{name, probe:{kind,...}}]`) so a new kind is a pure Go
-  addition. **One kind per check is kept** (no mixed-kind targets in this
-  program): `check_row.kind` is retained and must equal every target's probe
-  kind. The row-kind `CHECK (kind IN (...))` in `0030_check.sql:12` cannot be
-  widened in place — C2 carries a **table rebuild** (`migration-authoring`
-  skill, `references/rebuild-table.md`), not a JSON transform. Non-IP targets
-  (`dns`/`tls`/`metric`) must be handled by every netgroup path through a
-  `probe.Location() (netip.Addr, bool)` accessor instead of assuming
-  `t.Address` is an IP literal — the four unguarded sites are
-  `internal/wire/schema.go:849` (`MustParseAddr`), `internal/web/checks.go:264`,
+- **D2 — shared probe runner (revised twice: plan review + FK reality).** The
+  one probe vocabulary is realized as a new `internal/probe` package (a union
+  `Spec` + `Run`), consumed by both `reactive` checks and `verify` gates. Store
+  targets stay flat and gain additive optional fields (`DNSName`/`ExpectAddr`/
+  `MinDays`/`Op`/`Value`); `targets_json` is NOT restructured, so no golden-test
+  rewrite. **One kind per check** stays: `check_row.kind` is retained and must
+  equal the target kind. Widening its `CHECK` needs a rebuild, and because
+  `check_state` has an incoming FK `REFERENCES check_row(id) ON DELETE CASCADE`,
+  the migration rebuilds BOTH tables (child dropped before parent, parent's new
+  name renamed back; see `migration-authoring/references/rebuild-table.md`) and
+  carries a row-survival upgrade test. Non-IP kinds (`dns`/`tls`/`metric`)
+  classify to no netgroup through a `probe.Location() (netip.Addr, bool)`
+  accessor instead of assuming `t.Address` is an IP literal — the four unguarded
+  sites are `internal/wire/schema.go:849`, `internal/web/checks.go:264`,
   `internal/web/api.go:656`, `cmd/exocomp/check.go:349`.
+
 - **D3 — probe execution stays in the daemon.** `check probe` writes no state
   and emits no event; it is a read-scope operation on every face.
 - **D4 — netgroup persistence.** `check_state` gains the classified group;
@@ -166,19 +190,24 @@ persistence; `make check-race`.
 
 ### C2 — one probe vocabulary (medium, breaking, D1/D2)
 
-- `internal/probe`: tagged-union `Probe` + kinds `tcp`, `ping`, `http`, `dns`,
-  `tls`, `metric`. Move `verify`'s DNS/TLS/metric implementations in and ADD the
-  `tcp`/`ping` kinds `verify` lacks; keep `verify.Encode/Decode` and `JobKind`
-  unchanged for gate rows.
-- **Rebuild `check_row`** to widen the kind CHECK (`0030_check.sql:12`); the
-  migration carries its pinned upgrade test. One kind per check (D2).
+- `internal/probe`: union `Spec` + `Run` + per-kind `Validate`, kinds `tcp`,
+  `ping`, `http`, `dns`, `tls`, `metric`. Move `verify`'s DNS/TLS/metric
+  implementations in and ADD the `tcp`/`ping` kinds `verify` lacks; keep
+  `verify.Encode/Decode` and `JobKind` unchanged for gate rows. The http dial
+  guard is an option (`AllowLoopback`): checks refuse loopback, gates allow it.
+- **Rebuild `check_row` + `check_state`** together to widen the kind CHECK
+  (`0030_check.sql:12`); `check_state`'s incoming FK is why the child is dropped
+  before the parent. Migration carries a pinned upgrade test that seeds rows at
+  the prior version and proves they survive.
 - **`probe.Location() (netip.Addr, bool)`** becomes the single accessor the four
   netgroup read paths use (D2); `dns`/`tls`/`metric` classify to no netgroup
   (like `http` today), never `MustParseAddr`.
 - `check add` gains `--kind dns`, `tls` (with `--min-days`), `metric`
   (`--url --op --value`); generated `view_checks_templ.go` and the kind
   `<select>` widened (`internal/web/checks.templ:60`).
-- Unify the http SSRF guard so checks and gates use the same dial control.
+- Unify the http SSRF guard so checks and gates share one dial control.
+- **Ordering note:** this runs before C1 (build the runner, then expose it) to
+  avoid extracting a probe path twice.
 - **Golden/shape tests** that pin the old JSON (`internal/web/checks_test.go:1070`
   and the `store.CheckTarget` fixtures across store/reactive/web/cmd) are
   rewritten in the same lane — the review flagged these as an omission.
@@ -192,21 +221,32 @@ persistence; `make check-race`.
 - **Review:** plan review before branching (D1 is expensive); ADR for the probe
   type.
 
-### C3 — netgroup as a primitive (small–medium, breaking)
+### C3 — netgroup as a primitive (small–medium)
 
-- `netgroup update`, `netgroup show <addr>` (classify one address, print the
-  group and the winning prefix), exclusions (`home 192.168.0.0/16 !192.168.5.0/24`).
-- Refuse (or visibly mark) a group named `away`.
-- `check add --target-group <netgroup> --port 22` expands at sweep time, so
-  membership is dynamic.
-- First-class `event.netgroup` for every source (peer or target, whichever
-  applies) so rules stop needing source-specific labels.
+- `netgroup update <name> <cidr[,...]>` (replace a group's set), `netgroup show
+  <addr>` (classify one address, print the group and the winning prefix, or
+  `away`), and exclusions (`home 192.168.0.0/16,!192.168.5.0/24`).
+- Refuse a group named `away` at write time (it is byte-identical to the miss
+  label today — a documented wart).
+- `netgroup usage [<name>]` — which check targets and which observed webhook
+  peers currently land in a group; makes the classification inspectable rather
+  than inferred.
+- First-class `event.netgroup` for every source: ingress stamps
+  `labels["netgroup"]` from the peer (keeping `peer_netgroup` as the explicit
+  network-path name), so a webhook rule and a check rule read the same key.
+- **Dropped from the original plan:** `check add --target-group` expansion. A
+  netgroup is a CIDR set, not an enumerable host list, so "expand the group into
+  targets" is not well-defined (a /16 is not a target set). Revisit only if
+  netgroups ever carry explicit host entries.
 - **Scenarios:** S8.
 - **Usefulness check:** S8 expressed in one netgroup; the operator should not
   need a rule per VLAN. Kill criterion: still writing exclusion logic in CEL.
-- **Gate:** a check over a `--target-group` that gains/loses a member between
-  sweeps changes its target set without editing the check; exclusion test.
-- **Migration:** 0039 (prefixes encoding for exclusions).
+- **Gate:** exclusion test (a guest-VLAN address reads `away` while the rest of
+  the same /16 reads the group); `netgroup show` classification matches the
+  sweep's stored value; `netgroup update` replaces the set without disturbing
+  check_state; a webhook event carries `labels["netgroup"]`.
+- **Migration:** none — the `prefixes` TEXT column keeps its encoding, with a
+  leading `!` marking an exclusion.
 
 ### C4 — agent and API parity (medium, non-breaking)
 
