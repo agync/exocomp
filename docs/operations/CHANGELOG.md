@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — check-level aggregate events (core)
+
+- **Opt-in aggregate.** A check row can carry `aggregate`/`min_up`; when set,
+  the sweep also derives one check-level transition from the present target set
+  (the targets currently up) and emits a single `check:<check>:aggregate` event
+  carrying `hosts` — the sorted present names — plus `labels.up`/`labels.total`.
+  Default off: a check without the flag behaves exactly as before.
+- **`hosts` on the event.** `Event.Hosts` is readable from CEL as
+  `event.hosts`, and the event wire view exposes it (omitempty). Only a
+  daemon-produced sweep event carries it; a webhook normalizer leaves it empty,
+  so no rule can be made to run against an attacker-supplied host set
+  (trusted-source line, design §3.3).
+- **Migration 0041** adds `check_row.aggregate`/`min_up`, both defaulting off,
+  with a pinned in-place upgrade test. The reserved `*` rollup state row is not
+  a target, so it is excluded from the dashboard up/down count and preserved by
+  a check re-point.
+- The `check add`/`check update` flag, the web control, and the
+  `--limit-hosts` expansion follow in a later change.
+
 ## 2026-09-16 — checks and netgroups reach agents and the API
 
 - **MCP read tools.** `list_checks`, `get_check`, and `list_netgroups` project

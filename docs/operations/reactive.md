@@ -282,6 +282,20 @@ observation — no state advances, nothing emits — so the daemon's own uplink
 loss cannot page for every target at once. The canary is a bare dial; empty
 disables it.
 
+A check can opt into a check-level aggregate (`check_row.aggregate`, with
+`min_up` the threshold and `0` meaning every target). When set, each sweep also
+derives one transition from the present set — the target names that read up —
+reading up once that count reaches the threshold, under the same 3-consecutive
+hysteresis and cold-start seeding as a target. The rollup's state is one
+`check_state` row under the reserved target name `*`; on a declared transition
+it emits one event keyed `check:<check>:aggregate` with `host=""`,
+`labels.aggregate="true"`, `labels.up`, `labels.total`, and `hosts` = the sorted
+present target names. A snooze suppresses the aggregate event exactly as it does
+a per-target one. `hosts` is the trusted-source line (design §3.3): only a
+daemon-produced sweep event carries it — a webhook body never sets it, so no
+rule can be made to run over an attacker-supplied host set. This is the core
+semantics; the `check add`/`check update` flag and web control land separately.
+
 The http probe refuses the addresses a check must not reach: it dials through
 a guard that refuses loopback, link-local unicast (covering the cloud
 metadata address), unspecified, and multicast at the connected IP, so a check
