@@ -775,11 +775,13 @@ func NewPolicyList(rows []store.PlanPolicy) []PolicyView {
 }
 
 // NetgroupView projects a netgroup: its name and the CIDRs it names. A prefix
-// is config, not a value, so it travels in full.
+// is config, not a value, so it travels in full. Excludes are the `!`-marked
+// members, a deliberate hole in the set.
 type NetgroupView struct {
 	ID       int64    `json:"id"`
 	Name     string   `json:"name"`
 	Prefixes []string `json:"prefixes"`
+	Excludes []string `json:"excludes,omitempty"`
 }
 
 // NewNetgroupList projects netgroups in store order (by name).
@@ -790,7 +792,11 @@ func NewNetgroupList(rows []store.Netgroup) []NetgroupView {
 		for i, p := range g.Prefixes {
 			prefixes[i] = p.String()
 		}
-		out = append(out, NetgroupView{ID: g.ID, Name: g.Name, Prefixes: prefixes})
+		var excludes []string
+		for _, p := range g.Excludes {
+			excludes = append(excludes, p.String())
+		}
+		out = append(out, NetgroupView{ID: g.ID, Name: g.Name, Prefixes: prefixes, Excludes: excludes})
 	}
 	return out
 }

@@ -5,6 +5,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -120,5 +121,143 @@ func TestNetgroupAddRejectsBadInput(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "already exists") {
 		t.Errorf("duplicate error = %v, want one naming the collision", err)
+	}
+}
+
+// TestNetgroupExclusionsRoundTripThroughVerbs: a `!` list round-trips through
+// add and list (text and JSON), show classifies both sides of the exclusion,
+// and update replaces the set in place.
+func TestNetgroupExclusionsRoundTripThroughVerbs(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	out, err := runNetgroupCmd(t, "netgroup", "add", "home", "192.168.0.0/16,!192.168.5.0/24")
+	if err != nil {
+		t.Fatalf("netgroup add: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "192.168.0.0/16,!192.168.5.0/24") {
+		t.Errorf("add output = %q, want the exclusion echoed", out)
+	}
+	rows := netgroups(t)
+	if len(rows) != 1 || len(rows[0].Prefixes) != 1 || len(rows[0].Excludes) != 1 {
+		t.Fatalf("netgroups = %+v, want one include and one exclude", rows)
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "list")
+	if err != nil {
+		t.Fatalf("netgroup list: %v", err)
+	}
+	if !strings.Contains(out, "192.168.0.0/16,!192.168.5.0/24") {
+		t.Errorf("list text = %q, want the exclusion rendered", out)
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("netgroup list json: %v", err)
+	}
+	for _, want := range []string{`"prefixes":["192.168.0.0/16"]`, `"excludes":["192.168.5.0/24"]`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("list json missing %q:\n%s", want, out)
+		}
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "show", "192.168.5.10")
+	if err != nil {
+		t.Fatalf("netgroup show excluded: %v", err)
+	}
+	if !strings.Contains(out, "away") {
+		t.Errorf("show excluded = %q, want away", out)
+	}
+	out, err = runNetgroupCmd(t, "netgroup", "show", "192.168.1.10")
+	if err != nil {
+		t.Fatalf("netgroup show included: %v", err)
+	}
+	for _, want := range []string{"home", "192.168.0.0/16"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("show included missing %q: %s", want, out)
+		}
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "update", "home", "10.0.0.0/8")
+	if err != nil {
+		t.Fatalf("netgroup update: %v\n%s", err, out)
+	}
+	rows = netgroups(t)
+	if len(rows) != 1 || len(rows[0].Prefixes) != 1 || rows[0].Prefixes[0].String() != "10.0.0.0/8" || len(rows[0].Excludes) != 0 {
+		t.Fatalf("after update = %+v, want only 10.0.0.0/8", rows)
+	}
+}
+
+// TestNetgroupAddAwayRefused: a group named away is byte-identical to the miss
+// label and is refused at write time.
+func TestNetgroupAddAwayRefused(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	out, err := runNetgroupCmd(t, "netgroup", "add", "away", "10.0.0.0/8")
+	if err == nil {
+		t.Fatalf("netgroup add away accepted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "reserved") {
+		t.Errorf("away refusal = %v, want a reserved-name message", err)
+	}
+	if rows := netgroups(t); len(rows) != 0 {
+		t.Errorf("away netgroup written anyway: %+v", rows)
+	}
+}
+
+// TestNetgroupUsageReportsObserved: usage reads check_state.netgroup and the
+// events' peer_netgroup and renders both per group, filtered on request.
+func TestNetgroupUsageReportsObserved(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runNetgroupCmd(t, "netgroup", "add", "home", "192.168.0.0/16"); err != nil {
+		t.Fatalf("netgroup add: %v", err)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() { _ = st.Close() }()
+	ctx := context.Background()
+
+	c, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp, Consecutive: 1,
+		Emitted: store.CheckUp, FirstSeen: now, LastChange: now,
+		RecentObservations: "[]", Netgroup: "home",
+	}); err != nil {
+		t.Fatalf("set check state: %v", err)
+	}
+	if _, err := st.CreateEvent(ctx, store.Event{
+		Source:     "generic",
+		Outcome:    store.OutcomeIgnored,
+		Normalized: `{"labels":{"peer_ip":"192.168.1.9","peer_netgroup":"home"}}`,
+	}); err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	out, err := runNetgroupCmd(t, "netgroup", "usage")
+	if err != nil {
+		t.Fatalf("netgroup usage: %v\n%s", err, out)
+	}
+	for _, want := range []string{"NETGROUP", "home", "at-home:laptop", "192.168.1.9"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("usage missing %q:\n%s", want, out)
+		}
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "usage", "home")
+	if err != nil {
+		t.Fatalf("netgroup usage home: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "at-home:laptop") || strings.Contains(out, "away") {
+		t.Errorf("filtered usage = %q, want only home", out)
 	}
 }

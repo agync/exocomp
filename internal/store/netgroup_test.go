@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func mustPrefixes(t *testing.T, cidrs ...string) []netip.Prefix {
@@ -216,22 +217,197 @@ func TestClassifyNetgroups(t *testing.T) {
 	}
 }
 
-// TestParsePrefixList pins the shared comma-split parser: it trims, refuses an
-// empty member (a double comma), and rejects a non-CIDR member.
+// TestParsePrefixList pins the shared comma-split parser: it trims, splits a
+// `!`-prefixed member into the excludes, refuses an empty member (a double
+// comma), and rejects a non-CIDR member.
 func TestParsePrefixList(t *testing.T) {
 	got, err := ParsePrefixList("192.168.0.0/16, 10.0.0.0/8")
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if len(got) != 2 || got[0].String() != "192.168.0.0/16" || got[1].String() != "10.0.0.0/8" {
-		t.Fatalf("prefixes = %v, want [192.168.0.0/16 10.0.0.0/8]", got)
+	if len(got.Includes) != 2 || got.Includes[0].String() != "192.168.0.0/16" || got.Includes[1].String() != "10.0.0.0/8" {
+		t.Fatalf("includes = %v, want [192.168.0.0/16 10.0.0.0/8]", got.Includes)
+	}
+	if len(got.Excludes) != 0 {
+		t.Fatalf("excludes = %v, want none", got.Excludes)
+	}
+
+	got, err = ParsePrefixList("192.168.0.0/16, !192.168.5.0/24")
+	if err != nil {
+		t.Fatalf("parse with exclude: %v", err)
+	}
+	if len(got.Includes) != 1 || got.Includes[0].String() != "192.168.0.0/16" {
+		t.Fatalf("includes = %v, want [192.168.0.0/16]", got.Includes)
+	}
+	if len(got.Excludes) != 1 || got.Excludes[0].String() != "192.168.5.0/24" {
+		t.Fatalf("excludes = %v, want [192.168.5.0/24]", got.Excludes)
 	}
 
 	if _, err := ParsePrefixList("192.168.0.0/16,,10.0.0.0/8"); err == nil {
 		t.Fatal("a double comma was accepted")
 	}
+	if _, err := ParsePrefixList("!192.168.0.0/16,"); err == nil {
+		t.Fatal("a trailing comma after an exclude was accepted")
+	}
 	if _, err := ParsePrefixList("not-a-cidr"); err == nil {
 		t.Fatal("a non-CIDR member was accepted")
+	}
+}
+
+// TestNetgroupExclusions: an address inside a group's exclude classifies to
+// the miss even when the group's include also covers it, while the rest of the
+// include still names the group. The prefixes column round-trips both.
+func TestNetgroupExclusions(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	created, err := s.CreateNetgroup(ctx, NewNetgroup{
+		Name:     "home",
+		Prefixes: mustPrefixes(t, "192.168.0.0/16"),
+		Excludes: mustPrefixes(t, "192.168.5.0/24"),
+	})
+	if err != nil {
+		t.Fatalf("create netgroup with exclude: %v", err)
+	}
+	if len(created.Prefixes) != 1 || len(created.Excludes) != 1 {
+		t.Fatalf("created = %+v, want one include and one exclude", created)
+	}
+
+	got, err := s.GetNetgroup(ctx, "home")
+	if err != nil {
+		t.Fatalf("get netgroup: %v", err)
+	}
+	if len(got.Excludes) != 1 || got.Excludes[0].String() != "192.168.5.0/24" {
+		t.Fatalf("decoded excludes = %v, want [192.168.5.0/24]", got.Excludes)
+	}
+
+	if _, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("192.168.5.10")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("excluded address error = %v, want ErrNotFound", err)
+	}
+	if name, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("192.168.9.10")); err != nil || name != "home" {
+		t.Errorf("non-excluded address = (%q, %v), want (home, nil)", name, err)
+	}
+
+	names := ClassifyNetgroups([]netip.Addr{
+		netip.MustParseAddr("192.168.5.10"),
+		netip.MustParseAddr("192.168.9.10"),
+	}, []Netgroup{got})
+	if names["192.168.5.10"] != "away" {
+		t.Errorf("excluded classification = %q, want away", names["192.168.5.10"])
+	}
+	if names["192.168.9.10"] != "home" {
+		t.Errorf("included classification = %q, want home", names["192.168.9.10"])
+	}
+}
+
+// TestNetgroupExcludeBeatsNarrowerInclude: a broad exclude knocks an address
+// out even when a narrower include of the same group would otherwise win, so
+// the hole is absolute rather than longest-prefix-overridable.
+func TestNetgroupExcludeBeatsNarrowerInclude(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	if _, err := s.CreateNetgroup(ctx, NewNetgroup{
+		Name:     "home",
+		Prefixes: mustPrefixes(t, "192.168.0.0/16", "192.168.5.0/24"),
+		Excludes: mustPrefixes(t, "192.168.5.0/25"),
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	if _, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("192.168.5.1")); !errors.Is(err, ErrNotFound) {
+		t.Errorf("excluded address under a narrower include error = %v, want ErrNotFound", err)
+	}
+	if name, err := s.NetgroupForAddr(ctx, netip.MustParseAddr("192.168.5.200")); err != nil || name != "home" {
+		t.Errorf("address outside the exclude = (%q, %v), want (home, nil)", name, err)
+	}
+}
+
+// TestCreateNetgroupRefusesAwayName: "away" is the miss label, so a group may
+// not take it — on create or on update.
+func TestCreateNetgroupRefusesAwayName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	_, err := s.CreateNetgroup(ctx, NewNetgroup{
+		Name: "away", Prefixes: mustPrefixes(t, "10.0.0.0/8"),
+	})
+	if !errors.Is(err, ErrValidation) {
+		t.Fatalf("create away error = %v, want ErrValidation", err)
+	}
+
+	if _, err := s.CreateNetgroup(ctx, NewNetgroup{
+		Name: "home", Prefixes: mustPrefixes(t, "10.0.0.0/8"),
+	}); err != nil {
+		t.Fatalf("create home: %v", err)
+	}
+	if _, err := s.UpdateNetgroup(ctx, "home", mustPrefixes(t, "10.0.0.0/8"), nil); err != nil {
+		t.Fatalf("update home: %v", err)
+	}
+	if _, err := s.UpdateNetgroup(ctx, "away", mustPrefixes(t, "10.0.0.0/8"), nil); !errors.Is(err, ErrValidation) {
+		t.Fatalf("update away error = %v, want ErrValidation", err)
+	}
+}
+
+// TestUpdateNetgroupReplacesSet: update swaps a group's includes and excludes
+// in place, keeps its id, and leaves check_state's stored classification
+// untouched — the observation is the sweep's to refresh.
+func TestUpdateNetgroupReplacesSet(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	s := openTestStore(t)
+
+	created, err := s.CreateNetgroup(ctx, NewNetgroup{
+		Name: "home", Prefixes: mustPrefixes(t, "192.168.0.0/16"),
+	})
+	if err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	c, err := s.CreateCheck(ctx, NewCheck{
+		Name: "at-home", Kind: CheckTCP, IntervalS: 300,
+		Targets: []CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	now := time.Now().UTC()
+	if err := s.SetCheckState(ctx, CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: CheckUp, Consecutive: 1,
+		Emitted: CheckUp, FirstSeen: now, LastChange: now,
+		RecentObservations: "[]", Netgroup: "home", LastDurationMS: 7,
+	}); err != nil {
+		t.Fatalf("set check state: %v", err)
+	}
+
+	updated, err := s.UpdateNetgroup(ctx, "home",
+		mustPrefixes(t, "10.0.0.0/8"), mustPrefixes(t, "10.1.0.0/16"))
+	if err != nil {
+		t.Fatalf("update netgroup: %v", err)
+	}
+	if updated.ID != created.ID {
+		t.Errorf("update changed the id: %d -> %d", created.ID, updated.ID)
+	}
+	if len(updated.Prefixes) != 1 || updated.Prefixes[0].String() != "10.0.0.0/8" {
+		t.Errorf("prefixes = %v, want [10.0.0.0/8]", updated.Prefixes)
+	}
+	if len(updated.Excludes) != 1 || updated.Excludes[0].String() != "10.1.0.0/16" {
+		t.Errorf("excludes = %v, want [10.1.0.0/16]", updated.Excludes)
+	}
+
+	st, err := s.GetCheckState(ctx, c.ID, "laptop")
+	if err != nil {
+		t.Fatalf("get check state: %v", err)
+	}
+	if st.Netgroup != "home" || st.Status != CheckUp {
+		t.Errorf("check_state disturbed by update: %+v", st)
+	}
+
+	if _, err := s.UpdateNetgroup(ctx, "nope", mustPrefixes(t, "10.0.0.0/8"), nil); !errors.Is(err, ErrNotFound) {
+		t.Errorf("update unknown name error = %v, want ErrNotFound", err)
 	}
 }
 

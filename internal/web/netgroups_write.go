@@ -32,9 +32,11 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 
 	// Validate both fields up front so every refusal renders at once (the
 	// daemon stays authoritative: these client rules only shape the response).
-	prefixes, parseErr := store.ParsePrefixList(cidrs)
+	list, parseErr := store.ParsePrefixList(cidrs)
 	if !store.ValidName(name) {
 		form.ErrName, form.FixName = netgroupNameRefusal(name)
+	} else if name == store.NetgroupAway {
+		form.ErrName = `"away" is reserved — it is the miss label.`
 	}
 	if parseErr != nil {
 		s.log.Info("web: netgroup add refused", "err", parseErr.Error(), "by", ident.token.Name)
@@ -50,7 +52,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	created, err := s.store.CreateNetgroup(r.Context(), store.NewNetgroup{
-		Name: name, Prefixes: prefixes,
+		Name: name, Prefixes: list.Includes, Excludes: list.Excludes,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		s.log.Info("web: netgroup add refused", "err", err.Error(), "by", ident.token.Name)
@@ -66,7 +68,7 @@ func (s *Server) handleNetgroupAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("web: netgroup add", "netgroup", created.Name, "by", ident.token.Name)
-	s.redirectFlash(w, r, "/checks?tab=netgroups", netgroupAddedFlash(created.Name, len(created.Prefixes)))
+	s.redirectFlash(w, r, "/checks?tab=netgroups", netgroupAddedFlash(created.Name, len(created.Prefixes)+len(created.Excludes)))
 }
 
 // netgroupRefusal re-renders the checks surface at 422 with the add form
