@@ -71,8 +71,8 @@ GET /api/v1/approvals/{id}                       # + structured stale + provenan
 GET /api/v1/approvals/{id}/plan                 # structured redacted diff (operator/approve, not readonly)
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
-GET /api/v1/netgroups                         # [{id, name, prefixes}]
-GET /api/v1/checks                            # per target: status + netgroup + last_change
+GET /api/v1/netgroups                         # [{id, name, prefixes, excludes}]
+GET /api/v1/checks                            # per target: status + netgroup + duration + last_change
 GET /api/v1/rules                             # playbook action carries source/playbook/limit/tags/check/diff/timeout
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
@@ -158,6 +158,15 @@ DELETE /api/v1/mutes/{id}                       # lift a mute before it expires
 POST   /api/v1/jobs/{id}/notify                 # page once when the job goes terminal
 POST   /api/v1/notify/endpoints                 # register a UnifiedPush endpoint for this token
 DELETE /api/v1/notify/endpoints/{id}            # unregister one of this token's endpoints
+POST   /api/v1/checks                           # register a probe check -> check.get
+PUT    /api/v1/checks/{name}                    # re-point targets/interval -> check.get
+POST   /api/v1/checks/{name}/enable             # let it run again -> check.get
+POST   /api/v1/checks/{name}/disable            # stop probing, keep state -> check.get
+DELETE /api/v1/checks/{name}                    # remove the check and its state -> 204
+POST   /api/v1/checks/{name}/probe              # probe now, write nothing -> check.probe (readonly+)
+POST   /api/v1/netgroups                        # register a named CIDR set -> netgroup.get
+PUT    /api/v1/netgroups/{name}                 # replace the set in place -> netgroup.get
+DELETE /api/v1/netgroups/{name}                 # remove the set -> 204
 ```
 
 `POST /jobs/{id}/notify` arms a one-shot, attributed page: the daemon notifies once when the
@@ -189,6 +198,31 @@ one; both are scoped to the registering token, so a device sees and drops only w
 (an id owned by another token reads as `404`, never a cross-device probe or drop). An unknown id is a
 `404`, and a token at its endpoint cap gets a `409`. Registration and deletion are `operator`-scoped
 (a bearer, not a browser session), matching the other writes.
+
+The `checks` and `netgroups` routes write the same rows the CLI's `check`/`netgroup`
+commands and the `/checks` page do, over the same `store` verbs — a create is
+`store.CreateCheck`, a re-point is `store.UpdateCheck`, and the target rules are
+the shared per-kind parser, so there is no second validation path. The create body
+is `{name, kind, interval, targets}` plus the kind's optional fields: `expect`
+(http), `min_days` (tls), `expect_addr` (dns), `op` and `value` (metric; both
+required). `targets` is an array of `name=spec` (`tcp`/`tls` `name=ip:port`,
+`ping` `name=ip`, `http`/`metric` `name=url`, `dns` `name=hostname`); a field that
+belongs to another kind is a `400`. The update body carries `targets` (required)
+and an optional `interval`; the kind is fixed, and a target whose name is kept
+keeps its state row. Creates and updates return `check.get`, deletes return `204`,
+and an unknown name is a `404`. A duplicate check or netgroup name is a `409`
+`duplicate`; a bad name, target, or interval is a `400`.
+
+The netgroup body is `{name, prefixes}`, where `prefixes` is the CLI's
+comma-separated CIDR list (`home` = `192.168.0.0/16,!192.168.5.0/24`; a
+`!`-prefixed member is an exclusion); creates and updates return `netgroup.get`
+and a delete returns `204`.
+
+`POST /checks/{name}/probe` runs the check's probes immediately and returns
+`check.probe` — `{check, targets: [{target, up, duration_ms, netgroup, detail}]}`.
+It writes no state and emits no event (D3), so it takes the `readonly` floor, not
+the `operator` write floor; an optional `?target=<name>` narrows the run. An
+unknown check is a `404`, an unknown target a `400`.
 
 The endpoint URL is **client-supplied and the daemon POSTs to it**, so it is guarded against SSRF in
 two layers. At registration the URL must be `https`, must not carry credentials, and its host must

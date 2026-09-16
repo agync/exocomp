@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — checks and netgroups reach agents and the API
+
+- **MCP read tools.** `list_checks`, `get_check`, and `list_netgroups` project
+  the same `check.list`/`check.get`/`netgroup.list` wire bytes as
+  `--output json` and `/api/v1`: each check target's stored config plus its last
+  status, stored netgroup, and probe duration.
+- **`probe_check` runs a check's probes now and writes nothing** — no state row,
+  no event (D3) — so it needs only the read floor. It returns per target
+  `{target, up, duration_ms, netgroup, detail}` and takes an optional `target`.
+- **MCP write tools** `check_add`, `check_update`, `check_enable`,
+  `check_disable`, `check_rm`, `check_snooze`, `check_unsnooze`, `netgroup_add`,
+  `netgroup_update`, and `netgroup_rm` sit under the operator floor and call the
+  same store verbs the CLI and the web form use; a kind-inapplicable field is an
+  `invalid_argument`.
+- **`/api/v1` gets the matching write routes** — `POST`/`PUT`/`DELETE` for
+  checks and netgroups, plus `POST /checks/{name}/probe` at the `readonly` floor.
+  Creates and updates return `check.get`/`netgroup.get`, deletes `204`, a
+  duplicate name `409`, and bad input `400`.
+
 ## 2026-09-16 — netgroups become a primitive: exclusions, update, inspection
 
 - **Netgroups carry exclusions.** A CIDR prefixed with `!` in the add/update

@@ -64,8 +64,8 @@ call to a tool outside the caller's scope is refused rather than executed.
 
 | Scope | `tools/list` advertises | Notably absent |
 |---|---|---|
-| `readonly` | `list_jobs`, `get_job`, `get_job_events`, `list_workspaces`, `get_workspace`, `get_drift`, `list_approvals`, `list_sources`, `list_schedules`, `list_rules`, `list_events`, `explain_event`, `list_secrets` (metadata), `list_backups`, `health` | every write, every decision |
-| `operator` | the read tools, plus `workspace_plan` and `workspace_apply` | every decision |
+| `readonly` | `list_jobs`, `get_job`, `get_job_events`, `list_workspaces`, `get_workspace`, `get_drift`, `list_approvals`, `list_sources`, `list_schedules`, `list_rules`, `list_events`, `explain_event`, `list_secrets` (metadata), `list_backups`, `health`, `list_checks`, `get_check`, `list_netgroups`, `probe_check` | every write, every decision |
+| `operator` | the read tools, plus `workspace_plan`, `workspace_apply`, `check_add`, `check_update`, `check_enable`, `check_disable`, `check_rm`, `check_snooze`, `check_unsnooze`, `netgroup_add`, `netgroup_update`, `netgroup_rm` | every decision |
 | `approve` | the read tools, plus `approve_job` and `reject_job` | every write |
 
 **`operator` and `approve` are disjoint on purpose.** A token that can raise the approval
@@ -82,6 +82,28 @@ Resources — `exocomp://workspaces`, `exocomp://jobs/{id}`, `exocomp://jobs/{id
 `run_playbook` is deliberately not exposed on the MCP surface yet: the inventory and
 `--source` path resolvers it needs are still CLI-resident. Use
 [`POST /api/v1/playbooks/run`](api.md) for that.
+
+### Checks and netgroups
+
+`list_checks` and `get_check` project the same `check.list`/`check.get` bytes
+`check list --output json` and `/api/v1/checks` emit: each target's stored config
+plus its last status, stored netgroup, and probe duration. `list_netgroups`
+projects the CIDR set with its `!`-prefixed excludes.
+
+`probe_check` runs a stored check's probes now and returns per target
+`{target, up, duration_ms, netgroup, detail}`. It writes nothing — no state row
+moves and no event is emitted (D3) — so it needs only the read floor. An optional
+`target` narrows the run to one target by name.
+
+The check and netgroup write tools call the same store verbs the CLI and the web
+form use (`CreateCheck`/`UpdateCheck`/`SetCheckEnabled`/`DeleteCheck`/
+`SetCheckSnooze`, `CreateNetgroup`/`UpdateNetgroup`/`DeleteNetgroup`), so an
+agent's write lands on the same rows an operator's would. They are configuration
+writes, not queue enqueues: there is no `idempotency_key` — a repeat `check_add`
+is a duplicate-name refusal, not a second row. `check_add` and `check_update`
+carry the kind's optional fields (`expect` for http, `min_days` for tls,
+`expect_addr` for dns, `op`+`value` for metric; both required), and a field that
+belongs to another kind is refused with `invalid_argument`.
 
 ### Bridging a stdio client
 
