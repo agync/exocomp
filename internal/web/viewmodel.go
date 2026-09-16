@@ -348,6 +348,8 @@ type checkFormVM struct {
 	ExpectAddr    string
 	Op            string
 	Value         string
+	Aggregate     bool
+	MinUp         string
 	ErrName       string
 	FixName       string
 	ErrKind       string
@@ -359,6 +361,7 @@ type checkFormVM struct {
 	ErrExpectAddr string
 	ErrOp         string
 	ErrValue      string
+	ErrMinUp      string
 	ErrForm       string
 	FirstInvalid  string
 	Submitting    bool
@@ -450,6 +453,22 @@ func (f *checkFormVM) valueField() fieldMeta {
 		Help:   "The number the metric body is compared against.",
 		ErrMsg: v.ErrValue, FirstInvalid: v.FirstInvalid == "value",
 	}
+}
+
+func (f *checkFormVM) minUpField() fieldMeta {
+	v := f.effective()
+	return fieldMeta{
+		ID: "ck-min-up", Label: "Aggregate minimum up (optional)",
+		Name: "min-up", Value: v.MinUp, Placeholder: "1",
+		Help:   "How many targets must be up for the aggregate to read up (blank = all).",
+		ErrMsg: v.ErrMinUp, FirstInvalid: v.FirstInvalid == "min-up",
+	}
+}
+
+// aggregateChecked reports whether the add dialog's aggregate box is ticked: on
+// a 422 re-render the typed value, at rest unchecked.
+func (f *checkFormVM) aggregateChecked() bool {
+	return f != nil && f.Aggregate
 }
 
 // kindSelected reports whether the add form's kind select should show k: the

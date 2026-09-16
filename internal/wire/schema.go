@@ -838,11 +838,16 @@ type CheckTargetView struct {
 
 // CheckView projects a check and its per-target last statuses.
 type CheckView struct {
-	ID        int64             `json:"id"`
-	Name      string            `json:"name"`
-	Kind      string            `json:"kind"`
-	IntervalS int64             `json:"interval_s"`
-	Enabled   bool              `json:"enabled"`
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	IntervalS int64  `json:"interval_s"`
+	Enabled   bool   `json:"enabled"`
+	// Aggregate is the check-level rollup opt-in; MinUp is its threshold (the
+	// up targets needed, 0 meaning every target). A surface reads both to show
+	// why a check also emits one check:<name>:aggregate event.
+	Aggregate bool              `json:"aggregate,omitempty"`
+	MinUp     int               `json:"min_up,omitempty"`
 	Targets   []CheckTargetView `json:"targets"`
 }
 
@@ -877,7 +882,8 @@ func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []Che
 		}
 		out = append(out, CheckView{
 			ID: c.ID, Name: c.Name, Kind: c.Kind,
-			IntervalS: c.IntervalS, Enabled: c.Enabled, Targets: targets,
+			IntervalS: c.IntervalS, Enabled: c.Enabled,
+			Aggregate: c.Aggregate, MinUp: c.MinUp, Targets: targets,
 		})
 	}
 	return out

@@ -662,3 +662,59 @@ func TestCheckUpdateRejectsBadInput(t *testing.T) {
 		t.Errorf("missing error = %v, want it to name the miss", err)
 	}
 }
+
+// TestCheckAggregateRoundTrip: `check add --aggregate --min-up` stores the
+// rollup config, list renders it (text and JSON), `check update` changes it,
+// and a min-up with no aggregate, or beyond the target count, is refused.
+func TestCheckAggregateRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	if _, err := runCheckCmd(t, "check", "add", "at-home",
+		"--kind", "tcp", "--interval", "5m",
+		"--target", "laptop=192.168.1.50:22", "--target", "nas=192.168.1.60:22",
+		"--aggregate", "--min-up", "1"); err != nil {
+		t.Fatalf("check add --aggregate: %v", err)
+	}
+	rows := checks(t)
+	if len(rows) != 1 || !rows[0].Aggregate || rows[0].MinUp != 1 {
+		t.Fatalf("checks = %+v, want one aggregate check with min_up 1", rows)
+	}
+
+	out, err := runCheckCmd(t, "check", "list")
+	if err != nil {
+		t.Fatalf("check list: %v", err)
+	}
+	if !strings.Contains(out, "AGGREGATE") || !strings.Contains(out, "min 1") {
+		t.Errorf("list text missing the aggregate column:\n%s", out)
+	}
+
+	jout, err := runCheckCmd(t, "check", "list", "--output", "json")
+	if err != nil {
+		t.Fatalf("check list json: %v", err)
+	}
+	for _, want := range []string{`"aggregate":true`, `"min_up":1`} {
+		if !strings.Contains(jout, want) {
+			t.Errorf("list json missing %q:\n%s", want, jout)
+		}
+	}
+
+	if _, err := runCheckCmd(t, "check", "update", "at-home",
+		"--target", "laptop=192.168.1.50:22", "--target", "nas=192.168.1.60:22",
+		"--aggregate", "--min-up", "0"); err != nil {
+		t.Fatalf("check update --aggregate: %v", err)
+	}
+	if rows := checks(t); !rows[0].Aggregate || rows[0].MinUp != 0 {
+		t.Fatalf("after update: %+v, want aggregate with min_up 0", rows)
+	}
+
+	for _, args := range [][]string{
+		{"check", "add", "x", "--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:22", "--min-up", "1"},
+		{"check", "add", "y", "--kind", "tcp", "--interval", "5m", "--target", "a=127.0.0.1:22", "--aggregate", "--min-up", "5"},
+		{"check", "update", "at-home", "--target", "laptop=192.168.1.50:22", "--aggregate", "--min-up", "9"},
+	} {
+		out, err := runCheckCmd(t, args...)
+		if err == nil {
+			t.Fatalf("check %v accepted, want a refusal:\n%s", args, out)
+		}
+	}
+}

@@ -66,6 +66,10 @@ type checkRow struct {
 	// it so a held check never reads as running normally.
 	Snoozed    bool
 	SnoozeLeft string
+	// Aggregate/MinUp are the check-level rollup opt-in: the card shows that
+	// the check also emits one aggregate event, and at what threshold.
+	Aggregate bool
+	MinUp     int
 }
 
 // checkTargetRow is one probe of a check: what it dials or requests, the
@@ -208,6 +212,19 @@ func (t checkTargetRow) WhereLocation() string {
 	return t.Netgroup
 }
 
+// AggregateLabel renders the card's aggregate badge, empty when the check does
+// not emit a check-level rollup event: "all up" for the every-target threshold,
+// else "min N up".
+func (c checkRow) AggregateLabel() string {
+	if !c.Aggregate {
+		return ""
+	}
+	if c.MinUp == 0 {
+		return "aggregate · all up"
+	}
+	return "aggregate · min " + itoa(int64(c.MinUp)) + " up"
+}
+
 // DownSummary is the at-a-glance fail counter the card header carries when any
 // target is down: "N of M down" (the tile ring and DOWN chips carry the
 // per-target detail). Empty when nothing is down or the check is disabled.
@@ -347,8 +364,9 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 	for _, c := range list {
 		row := checkRow{
 			Name: c.Name, Kind: c.Kind, Enabled: c.Enabled,
-			Interval: store.CheckIntervalLabel(c.IntervalS),
-			Base:     s.basePath(),
+			Interval:  store.CheckIntervalLabel(c.IntervalS),
+			Base:      s.basePath(),
+			Aggregate: c.Aggregate, MinUp: c.MinUp,
 		}
 		states, err := s.store.ListCheckStates(r.Context(), c.ID)
 		if err != nil {
@@ -356,6 +374,9 @@ func (s *Server) checks(r *http.Request) ([]checkRow, error) {
 		}
 		state := make(map[string]store.CheckState, len(states))
 		for _, st := range states {
+			if st.TargetName == store.AggregateTargetName {
+				continue
+			}
 			state[st.TargetName] = st
 		}
 		for _, t := range c.Targets {

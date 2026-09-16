@@ -277,6 +277,11 @@ type checkWriteArgs struct {
 	ExpectAddr *string  `json:"expect_addr"`
 	Op         *string  `json:"op"`
 	Value      *float64 `json:"value"`
+	// Aggregate opts the check into the check-level rollup event; MinUp is its
+	// threshold (0 = every target). Pointers so an omitted field leaves the
+	// stored value alone on update.
+	Aggregate *bool `json:"aggregate"`
+	MinUp     *int  `json:"min_up"`
 }
 
 // storeWriteErr maps a store refusal the wire taxonomy cannot name on its own —
@@ -380,8 +385,17 @@ func (s *Server) runCheckAdd(ctx context.Context, _ Caller, args json.RawMessage
 	if err != nil {
 		return "", nil, err
 	}
+	agg := false
+	if a.Aggregate != nil {
+		agg = *a.Aggregate
+	}
+	minUp := 0
+	if a.MinUp != nil {
+		minUp = *a.MinUp
+	}
 	created, err := s.store.CreateCheck(ctx, store.NewCheck{
 		Name: a.Name, Kind: a.Kind, IntervalS: intervalS, Targets: targets,
+		Aggregate: agg, MinUp: minUp,
 	})
 	if err != nil {
 		return "", nil, storeWriteErr(err)
@@ -415,8 +429,24 @@ func (s *Server) runCheckUpdate(ctx context.Context, _ Caller, args json.RawMess
 	if err != nil {
 		return "", nil, err
 	}
+	agg := cur.Aggregate
+	if a.Aggregate != nil {
+		agg = *a.Aggregate
+	}
+	minUp := cur.MinUp
+	if a.MinUp != nil {
+		minUp = *a.MinUp
+	}
+	if !agg {
+		minUp = 0
+	}
 	if _, err := s.store.UpdateCheck(ctx, a.Name, targets, intervalS); err != nil {
 		return "", nil, storeWriteErr(err)
+	}
+	if agg != cur.Aggregate || minUp != cur.MinUp {
+		if err := s.store.SetCheckAggregate(ctx, a.Name, agg, minUp); err != nil {
+			return "", nil, storeWriteErr(err)
+		}
 	}
 	return s.readCheck(ctx, a.Name)
 }
