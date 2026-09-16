@@ -701,6 +701,76 @@ VALUES (1, 'laptop', 'up', 3, 'up', 111, 222,
 	}
 }
 
+// TestMigration0041UpgradesFrom040 pins a database at user_version 40 (no
+// check_row.aggregate/min_up), seeds a check row, then opens it with the
+// current binary: the columns arrive in place, the pre-existing row defaults
+// the aggregate off, and the store round-trips an opt-in aggregate check.
+func TestMigration0041UpgradesFrom040(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "exocomp.db")
+	pinAtMigrations(t, path, 40)
+
+	raw, err := sql.Open("sqlite", dsn(path))
+	if err != nil {
+		t.Fatalf("open raw db: %v", err)
+	}
+	var colCount int
+	if err := raw.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('check_row') WHERE name IN ('aggregate', 'min_up')`).
+		Scan(&colCount); err != nil {
+		t.Fatalf("probe pre-migration schema: %v", err)
+	}
+	if colCount != 0 {
+		t.Fatal("check_row.aggregate/min_up exist at user_version 40; the pin is not honest")
+	}
+	if _, err := raw.ExecContext(ctx, `
+		INSERT INTO check_row (name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until)
+		VALUES ('at-home', 'tcp', 300,
+		        '[{"name":"laptop","address":"192.168.1.50","port":22}]', 1, 1, 1, 0)`); err != nil {
+		t.Fatalf("seed check row: %v", err)
+	}
+	if err := raw.Close(); err != nil {
+		t.Fatalf("close raw db: %v", err)
+	}
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatalf("open at 0040 for upgrade: %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
+	version, err := s.SchemaVersion(ctx)
+	if err != nil {
+		t.Fatalf("schema version: %v", err)
+	}
+	if version < 41 {
+		t.Fatalf("schema version = %d after open, want >= 41 (0041 applied)", version)
+	}
+
+	// The pre-existing row defaults the aggregate off.
+	got, err := s.GetCheck(ctx, "at-home")
+	if err != nil {
+		t.Fatalf("read seeded check: %v", err)
+	}
+	if got.Aggregate || got.MinUp != 0 {
+		t.Fatalf("seeded check aggregate = %v min_up = %d, want off", got.Aggregate, got.MinUp)
+	}
+
+	// The store round-trips an opt-in aggregate on the upgraded schema.
+	agg, err := s.CreateCheck(ctx, NewCheck{
+		Name: "present", Kind: CheckTCP, IntervalS: 30,
+		Targets:   []CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+		Aggregate: true, MinUp: 1,
+	})
+	if err != nil {
+		t.Fatalf("create aggregate check on upgraded db: %v", err)
+	}
+	if !agg.Aggregate || agg.MinUp != 1 {
+		t.Fatalf("aggregate check = %v min_up = %d, want true/1", agg.Aggregate, agg.MinUp)
+	}
+}
+
 // pinBeforeMigration writes a database holding every embedded migration below
 // version, leaving that version and everything after it for a later Open to
 // apply.
