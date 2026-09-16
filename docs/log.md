@@ -6,6 +6,24 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-17 — ADR 0016 and the container page
+
+- **New [ADR 0016](adr/0016-artifact-carrier-image.md):** the base image is a
+  distributable artifact carrier; uv is bootstrapped when absent, the Python pin
+  is resolved from ansible and frozen, and ansible-core is a PATH-delegated
+  command rather than a forced per-venv dependency. Amends ADRs 0006 and 0011.
+- **New [operations/containers.md](operations/containers.md):** the base image and
+  what it carries, running it as shipped, inheriting to add system packages or
+  Python dependencies, offline and multi-arch builds, and capturing an operator's
+  image for recovery. Copying artifacts into a foreign base is deferred.
+- **Correction of fact:** `index.md` labelled its six-row ADR table "Six accepted
+  ADRs"; the bundle now carries sixteen, so the table is retitled a foundational
+  subset and points at the full list at [adr/index.md](adr/index.md).
+- `platform-contract.md` gains an operator-built-image tier row;
+  `bill-of-materials.md` lists `uvx` and the base image as a digest-pinned
+  distribution artifact; `design/byo-runner.md` cross-references ADR 0016 so the
+  deferred in-daemon tier is not confused with the supported image story.
+
 ## 2026-09-15 — TUI copy deck reconciled to shipped output
 
 - **`design/reference/tui/copy.txt` recorded two strings the shipped TUI never

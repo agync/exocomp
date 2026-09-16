@@ -11,6 +11,12 @@ One slice of the tier's value ships without the tier: per-job memory/CPU caps, e
 cgroup v2 direct writes with an opt-in root-in-container privilege model (§6). The rest of the
 tier — BYO images, the podman socket, the build/cache machinery — remains deferred.
 
+**Not this tier:** an operator who wants arbitrary system packages or a different toolchain
+can build an image that inherits from exocomp and run it. The daemon neither builds nor pulls
+any image and mounts no podman socket, so no registry enters the job or recovery path
+([ADR 0016](../adr/0016-artifact-carrier-image.md)). That is the supported image story; the
+in-daemon per-job image runner this document specifies stays deferred.
+
 ---
 
 ## 1. Vision and honest status

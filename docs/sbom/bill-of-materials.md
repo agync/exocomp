@@ -43,7 +43,7 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 
 | Tool | Pin | License | Role | Interface contract |
 |---|---|---|---|---|
-| uv | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: `exocompd` invokes uv to resolve project-declared Python deps (root `requirements.txt`/`pyproject.toml`) into hash-gated caches ([ADR 0011](../adr/0011-project-dependency-resolution.md)); the ansible-core toolchain switch stays an operator-only, doctor-gated escape hatch ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + runtime (project-dep vendoring) + operator shell |
+| uv (+ `uvx`) | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: `exocompd` invokes uv to resolve project-declared Python deps (root `requirements.txt`/`pyproject.toml`) into hash-gated caches ([ADR 0011](../adr/0011-project-dependency-resolution.md)); exocomp installs a pinned uv itself when none is present, and manages the fallback ansible toolchain with `uv tool install` ([ADR 0016](../adr/0016-artifact-carrier-image.md)). The ansible-core toolchain switch remains an operator-only, doctor-gated escape hatch ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + runtime (project-dep vendoring, fallback toolchain, self-bootstrap) + operator shell |
 | ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
 | ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** The driver is a direct `ansible-playbook` subprocess — exit-code correctness, line-scanned output — rather than ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
@@ -57,6 +57,11 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 
 Image target ≤ 800 MB measured in CI, with a working target of ~500 MB. The base is a slim
 glibc image — the Python requirement rules out distroless-static.
+
+The image is also a distribution artifact ([ADR 0016](../adr/0016-artifact-carrier-image.md)):
+`ghcr.io/abn/exocomp`, multi-arch, published as a manifest list and pinned by digest. uv and
+`uvx` are lifted in with the documented `COPY --from=<uv image> /uv /uvx /bin/`, with the uv
+image pinned by digest like every other build input.
 
 ## Layer 3 — deployment substrate (host-provided)
 

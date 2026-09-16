@@ -20,7 +20,7 @@ whole thing is bought for.
 
 ## Decisions
 
-Six accepted ADRs — [adr/index.md](adr/index.md)
+Foundational decisions — [adr/index.md](adr/index.md) holds the full table
 
 | ADR | Decision |
 |---|---|
@@ -61,6 +61,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 | Page | Covers |
 |---|---|
 | [Bootstrap](operations/bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, adoption runbooks |
+| [Containers](operations/containers.md) | The base image and what it carries, running it as shipped, inheriting to add system packages or Python dependencies, offline and multi-arch builds, and capturing an operator's image for recovery |
 | [Running the daemon](operations/serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and the daemon-aware CLI |
 | [Draining for a planned reboot](operations/drain-mode.md) | `exocomp drain` — cordon a running daemon, let in-flight work finish, poll "safe to reboot?", and list interrupted jobs afterwards |
 | [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |

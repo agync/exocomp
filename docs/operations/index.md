@@ -5,6 +5,7 @@ Getting an install standing up, and getting it back after it falls over.
 | Page | Covers |
 |---|---|
 | [Bootstrap](bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, and the adoption runbooks for an existing homelab |
+| [Containers](containers.md) | The base image and what it carries, running it as shipped, inheriting to add system packages or Python dependencies, offline and multi-arch builds, and capturing an operator's image for recovery |
 | [Running the daemon](serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and what the CLI does while a daemon is up |
 | [Draining for a planned reboot](drain-mode.md) | `exocomp drain` — cordon a running daemon so it fires no schedules and claims no new jobs while in-flight work finishes, poll "safe to reboot?", and list the jobs a reboot left interrupted |
 | [Upgrade and rollback](upgrade.md) | `exocomp upgrade`/`rollback` as a ledger choreography — snapshot, stage, verify, swap, health-check — rolling back to the snapshot and prior binary on any failed step; no sudo |
