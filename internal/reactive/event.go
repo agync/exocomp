@@ -51,6 +51,11 @@ type Event struct {
 	Annotations map[string]string `json:"annotations"`
 	ReceivedAt  time.Time         `json:"received_at"`
 	DedupKey    string            `json:"dedup_key"`
+	// Hosts is the present target set a daemon-produced sweep event carries —
+	// an aggregate check's up targets, sorted. Only the sweep populates it: a
+	// webhook normalizer leaves it empty, so attacker-influenced text can never
+	// shape a run's --limit through event.hosts (design §3.3, §7.4).
+	Hosts []string `json:"hosts,omitempty"`
 	// CheckObservations is a check transition's hysteresis ledger (JSON) that
 	// record() persists onto store.Event.CheckObservations. It is excluded from
 	// the normalized body (json:"-") — the ledger is projected from the event
@@ -77,6 +82,7 @@ func (e Event) Activation() map[string]any {
 		"summary":     e.Summary,
 		"labels":      stringMap(e.Labels),
 		"annotations": stringMap(e.Annotations),
+		"hosts":       stringSlice(e.Hosts),
 	}
 }
 
@@ -87,6 +93,14 @@ func stringMap(m map[string]string) map[string]string {
 	for k, v := range m {
 		out[k] = v
 	}
+	return out
+}
+
+// stringSlice returns a non-nil copy, so `event.hosts` is an empty list rather
+// than a null value for an event that carries no host set.
+func stringSlice(s []string) []string {
+	out := make([]string, len(s))
+	copy(out, s)
 	return out
 }
 
