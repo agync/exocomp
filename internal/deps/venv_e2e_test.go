@@ -14,11 +14,12 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 )
 
-// TestVenvRunImportsDeclaredDep is the ADR 0011 gate exercised end to end with
-// the real uv and real ansible-playbook: a project that declares a Python
-// dependency runs inside its per-source venv and the dependency is importable
-// under ansible_python_interpreter; a second run of the unchanged manifest
-// invokes no uv; a changed manifest lands a new hash directory.
+// TestVenvRunImportsDeclaredDep is the ADR 0016 gate exercised end to end with
+// the real uv and the PATH-resolved ansible-playbook: a project's per-source
+// venv carries only its declared libraries, and the run's fallback ansible
+// imports them through the site-packages PYTHONPATH bridge; a second run of the
+// unchanged manifest invokes no uv; a changed manifest lands a new hash
+// directory.
 //
 // It is gated behind EXOCOMP_DEPS_E2E because it invokes uv (which may reach the
 // network on a cold cache) and runs ansible; make check stays hermetic.
@@ -73,15 +74,18 @@ func TestVenvRunImportsDeclaredDep(t *testing.T) {
 		t.Fatalf("import under venv python: %v: %s", err, out)
 	}
 	t.Logf("venv python import jmespath -> %s", strings.TrimSpace(string(out)))
+	if venv.SitePackages == "" {
+		t.Fatal("venv resolved no site-packages to bridge")
+	}
 
-	// The full run: ansible drives a task that imports the dep, with the venv
-	// forced as the interpreter.
+	// The full run: the PATH-resolved fallback ansible drives a task that
+	// imports the dep, which reaches it only through the site-packages bridge.
 	events := runPlay(t, venv, filepath.Join(project, "site.yml"))
 	joined := strings.Join(events, "\n")
 	if !strings.Contains(joined, "JMESPATH_OK") {
 		t.Fatalf("play did not import the dep at run time:\n%s", joined)
 	}
-	t.Logf("ansible run proved the dep importable under %s", venv.Python)
+	t.Logf("ansible run proved the dep importable through %s", venv.SitePackages)
 
 	// Second ensure of the unchanged manifest must not re-provision.
 	again, err := deps.EnsureVenv(context.Background(), spec)
@@ -129,10 +133,12 @@ const importPlay = `- hosts: localhost
 
 func runPlay(t *testing.T, venv deps.Venv, playbook string) []string {
 	t.Helper()
+	// No Binary: the project declared no ansible-core, so PATH resolves the
+	// image fallback toolchain and the venv only supplies the bridge.
 	drv := executor.NewAnsible(executor.AnsibleOptions{
-		Binary:      venv.Ansible,
 		Interpreter: venv.Python,
 		VenvBin:     venv.Bin,
+		PythonPath:  venv.SitePackages,
 	})
 	sink := &collectSink{}
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)

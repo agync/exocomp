@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 )
@@ -19,18 +18,8 @@ import (
 // UVBinary is the resolver the control plane invokes for project dependencies.
 const UVBinary = "uv"
 
-// defaultAnsibleCore is the fallback ansible-core pin when the image manifest
-// cannot be read. It mirrors the Containerfile's ANSIBLE_CORE_VERSION (ADR
-// 0006); the venv default tracks the image toolchain so a source that pins
-// nothing gets the same core it would have run on the bare image.
-const defaultAnsibleCore = "2.21.3"
-
-// defaultAnsibleRunner mirrors the image's ansible-runner pin. ansible-runner
-// rides in every venv because the execution model runs plays through it.
-const defaultAnsibleRunner = "2.4.3"
-
 // manifestEnv lets an operator or the container point the resolver at the image
-// toolchain manifest so the venv default pin tracks a switched image without a
+// toolchain manifest so the venv interpreter tracks a switched image without a
 // rebuild of this binary.
 const manifestEnv = "EXOCOMP_TOOLCHAIN_MANIFEST"
 
@@ -50,8 +39,6 @@ type VenvSpec struct {
 	Source string
 	// Manifest is the resolved Python manifest; EnsureVenv requires HasDeps.
 	Manifest PythonManifest
-	// AnsibleCore overrides the ansible-core pin. Empty uses the image default.
-	AnsibleCore string
 	// UVBinary overrides the uv executable. Empty resolves uv on PATH.
 	UVBinary string
 	// Offline passes uv's --offline, so resolution is served from the uv cache
@@ -87,9 +74,16 @@ type Venv struct {
 	Dir string
 	// Bin is Dir/bin, the directory prepended to PATH for the run.
 	Bin string
-	// Python is the interpreter ansible_python_interpreter points at.
+	// Python is the interpreter ansible_python_interpreter points at for the
+	// localhost-over-local run.
 	Python string
-	// Ansible is the venv's ansible-playbook, the binary the run executes.
+	// SitePackages is Dir/lib/pythonX.Y/site-packages, the project's installed
+	// libraries (ADR 0016). It is bridged to the PATH-resolved fallback ansible
+	// through PYTHONPATH.
+	SitePackages string
+	// Ansible is the venv's ansible-playbook. It exists only when the project
+	// declared ansible-core; an absent one leaves the run on the PATH-resolved
+	// fallback toolchain (ADR 0016).
 	Ansible string
 	// Created is true when uv was invoked on this call; false on a cache hit.
 	Created bool
@@ -124,7 +118,8 @@ func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 		return v, nil
 	}
 
-	if err := provision(ctx, spec, dir, v); err != nil {
+	v, err := provision(ctx, spec, dir, v)
+	if err != nil {
 		// A partial venv would be reused as if complete on the next run; remove
 		// it so the failure is not sticky.
 		_ = os.RemoveAll(dir)
@@ -135,19 +130,23 @@ func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 	return v, nil
 }
 
-// provision creates the venv and installs the toolchain and declared deps into
-// it, writing the ready marker only after the install exits clean.
-func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
+// provision creates the venv and installs the declared deps into it, writing
+// the ready marker only after the install exits clean. The interpreter is the
+// one the image froze (ADR 0016) and no ansible-core is forced: ansible is a
+// command on PATH, and a project that declares its own core shadows it. The
+// venv's site-packages is resolved here, after uv has laid the directory down,
+// and returned so the caller can bridge it through PYTHONPATH.
+func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) (Venv, error) {
 	uv := spec.UVBinary
 	if uv == "" {
 		resolved, err := exec.LookPath(UVBinary)
 		if err != nil {
-			return fmt.Errorf("deps: %w", err)
+			return Venv{}, fmt.Errorf("deps: %w", err)
 		}
 		uv = resolved
 	}
 	if err := os.MkdirAll(filepath.Dir(dir), 0o700); err != nil {
-		return fmt.Errorf("deps: cache dir: %w", err)
+		return Venv{}, fmt.Errorf("deps: cache dir: %w", err)
 	}
 	// uv creates its download cache subtree itself, but under the sandbox tier a
 	// Landlock write grant attaches only to a path that already exists, and uv's
@@ -155,34 +154,42 @@ func provision(ctx context.Context, spec VenvSpec, dir string, v Venv) error {
 	// Create the granted cache dir here in the daemon so uv fills its subtree.
 	if spec.UVCacheDir != "" {
 		if err := os.MkdirAll(spec.UVCacheDir, 0o700); err != nil {
-			return fmt.Errorf("deps: uv cache dir: %w", err)
+			return Venv{}, fmt.Errorf("deps: uv cache dir: %w", err)
 		}
 	}
 	// A leftover partial from an earlier failed attempt must not confuse uv.
 	if err := os.RemoveAll(dir); err != nil {
-		return fmt.Errorf("deps: clear stale venv: %w", err)
+		return Venv{}, fmt.Errorf("deps: clear stale venv: %w", err)
 	}
 
 	// The resolver runs with its working directory inside the granted cache
 	// tree: under the sandbox an ungranted cwd is refused outright, and the
 	// per-source cache dir is a write grant the profile already carries.
 	work := filepath.Dir(dir)
-	if err := runUV(ctx, uv, spec, work, "venv", dir); err != nil {
-		return err
+	venvArgs := []string{"venv"}
+	if pin := imagePython(); pin != "" {
+		venvArgs = append(venvArgs, "--python", pin)
 	}
+	venvArgs = append(venvArgs, dir)
+	if err := runUV(ctx, uv, spec, work, venvArgs...); err != nil {
+		return Venv{}, err
+	}
+	sp, err := sitePackagesDir(dir)
+	if err != nil {
+		return Venv{}, err
+	}
+	v.SitePackages = sp
 
-	core := ansibleCorePin(spec)
 	install := []string{"pip", "install", "--python", v.Python}
-	install = append(install, toolchainPins(core)...)
 	install = append(install, installArgs(spec.Manifest)...)
 	if err := runUV(ctx, uv, spec, work, install...); err != nil {
-		return wrapAnsibleCoreConflict(err, core)
+		return Venv{}, err
 	}
 
 	if err := os.WriteFile(v.marker(), []byte(spec.Manifest.Hash+"\n"), 0o600); err != nil {
-		return fmt.Errorf("deps: write ready marker: %w", err)
+		return Venv{}, fmt.Errorf("deps: write ready marker: %w", err)
 	}
-	return nil
+	return v, nil
 }
 
 // runUV invokes uv with the resolver environment. Correctness is the exit code
@@ -218,62 +225,6 @@ func runUV(ctx context.Context, uv string, spec VenvSpec, workDir string, args .
 	return nil
 }
 
-// ansibleCorePin resolves the ansible-core version this venv installs: the
-// spec override if the project pinned one, else the image default (ADR 0006).
-func ansibleCorePin(spec VenvSpec) string {
-	if spec.AnsibleCore != "" {
-		return spec.AnsibleCore
-	}
-	return imageAnsibleCore()
-}
-
-// toolchainPins is the ansible-core + ansible-runner the venv always carries.
-// The core default tracks the image (ADR 0006); the moment a project declares
-// its own ansible-core in the manifest, uv's resolver takes that pin because
-// the declared spec is installed alongside and wins.
-func toolchainPins(core string) []string {
-	return []string{"ansible-core==" + core, "ansible-runner==" + defaultAnsibleRunner}
-}
-
-// ansibleCoreConflictPattern matches uv's unsatisfiable-resolution narrative
-// for the one conflict this venv's toolchain pin (ADR 0006) can cause on its
-// own: a requirements/pyproject entry for the `ansible` meta-package, which
-// bundles its own ansible-core range. uv's error only ever talks about PyPI
-// distribution names and version ranges — it has no notion of ADR 0006, so it
-// cannot say that "ansible" and "ansible-core" are different packages or that
-// the fix is to drop the meta-package. The wrapped constants tolerate uv's
-// line-wrapped, indented rendering of the narrative (see venv_test.go for a
-// captured example).
-var ansibleCoreConflictPattern = regexp.MustCompile(
-	`(?s)ansible==(\S+)\s+depends on\s+ansible-core(\S+)\s+and\s+you require\s+ansible-core==(\S+)`,
-)
-
-// wrapAnsibleCoreConflict recognizes uv's unsatisfiable error for the
-// ansible-meta-package-vs-pinned-ansible-core conflict and replaces the raw
-// resolver narrative with a message naming the meta-package, the pin, and the
-// fix — wrapping rather than discarding, so the original uv narrative is
-// still reachable via errors.Unwrap / %w for anyone who needs it. Any other
-// uv failure (a genuinely unresolvable third-party dependency, a network
-// error, a bad specifier) does not match this pattern and passes through
-// unchanged: this must never mask or alter a legitimate resolution failure.
-func wrapAnsibleCoreConflict(err error, pinnedCore string) error {
-	if err == nil {
-		return nil
-	}
-	m := ansibleCoreConflictPattern.FindStringSubmatch(err.Error())
-	if m == nil {
-		return err
-	}
-	metaVersion := strings.TrimRight(m[1], ",.;")
-	coreRange := strings.TrimRight(m[2], ",.;")
-	return fmt.Errorf(
-		"deps: the project's Python dependencies declare the 'ansible' meta-package "+
-			"(ansible==%s), which pins ansible-core%s; exocomp already pins "+
-			"ansible-core==%s (ADR 0006) — declare only the extra libraries the playbook "+
-			"needs, not 'ansible' itself (ansible-core is already provided): %w",
-		metaVersion, coreRange, pinnedCore, err)
-}
-
 // installArgs is the uv-pip tail that installs the declared dependencies:
 // -r for a requirements file, the extracted specifiers for a pyproject. uv
 // understands the manifest formats natively, so nothing here re-implements
@@ -296,37 +247,61 @@ func installArgs(m PythonManifest) []string {
 	}
 }
 
-// imageAnsibleCore resolves the default ansible-core pin from the image
-// toolchain manifest when one is reachable, falling back to the compiled
-// default. Reading it means a switched image (ADR 0006) moves the venv default
-// with it, no rebuild of this binary required.
-func imageAnsibleCore() string {
+// imagePython resolves the interpreter the image froze into its toolchain
+// manifest (ADR 0016), or "" when none is reachable. The fallback ansible
+// toolchain and every per-source venv must share one interpreter so the
+// site-packages PYTHONPATH bridge is ABI-compatible; an empty pin omits uv's
+// --python and leaves the default. A switched image moves the pin with it, no
+// rebuild of this binary required.
+func imagePython() string {
 	path := os.Getenv(manifestEnv)
 	if path == "" {
-		return defaultAnsibleCore
+		return ""
 	}
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return defaultAnsibleCore
+		return ""
 	}
 	var m struct {
-		AnsibleCore string `json:"ansible_core"`
+		Python string `json:"python"`
 	}
-	if err := json.Unmarshal(body, &m); err != nil || m.AnsibleCore == "" {
-		return defaultAnsibleCore
+	if err := json.Unmarshal(body, &m); err != nil {
+		return ""
 	}
-	return m.AnsibleCore
+	return m.Python
+}
+
+// sitePackagesDir locates the venv's installed-libraries directory. A venv
+// carries exactly one lib/pythonX.Y/site-packages; none (uv failed to lay it
+// down) or several (an interpreter-level mismatch) is an error rather than a
+// guess, so a run never bridges a path that is not the project's own.
+func sitePackagesDir(dir string) (string, error) {
+	matches, err := filepath.Glob(filepath.Join(dir, "lib", "python*", "site-packages"))
+	if err != nil {
+		return "", fmt.Errorf("deps: glob site-packages under %s: %w", dir, err)
+	}
+	if len(matches) != 1 {
+		return "", fmt.Errorf("deps: venv %s has %d site-packages dirs, want exactly 1", dir, len(matches))
+	}
+	return matches[0], nil
 }
 
 // venvPaths derives the standard interpreter and tool paths under a venv root.
+// SitePackages is filled best-effort for a cache hit: provision validates the
+// directory before it writes the ready marker, so a marked venv normally
+// carries exactly one, and a miss leaves it empty rather than failing a reuse.
 func venvPaths(dir string) Venv {
 	bin := filepath.Join(dir, "bin")
-	return Venv{
+	v := Venv{
 		Dir:     dir,
 		Bin:     bin,
 		Python:  filepath.Join(bin, "python"),
 		Ansible: filepath.Join(bin, "ansible-playbook"),
 	}
+	if sp, err := sitePackagesDir(dir); err == nil {
+		v.SitePackages = sp
+	}
+	return v
 }
 
 func (v Venv) marker() string { return filepath.Join(v.Dir, readyMarker) }

@@ -2,7 +2,6 @@ package deps
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +24,7 @@ case "$args" in
   *" venv "*|*"venv "*)
     for a in "$@"; do target="$a"; done
     mkdir -p "$target/bin" || exit 1
+    mkdir -p "$target/lib/python3.14/site-packages" || exit 1
     : > "$target/bin/python"; chmod +x "$target/bin/python"
     : > "$target/bin/ansible-playbook"; chmod +x "$target/bin/ansible-playbook"
     ;;
@@ -170,128 +170,98 @@ func TestEnsureVenvRejectsUnsafeSource(t *testing.T) {
 	}
 }
 
-// uvAnsibleCoreConflictNarrative is uv's unsatisfiable-resolution message
-// captured verbatim from `uv pip install ansible-core==2.21.3 ansible-runner==2.4.3
-// -r requirements.txt` run against a requirements.txt containing only
-// `ansible==11.3.0` — the real shape this fix has to recognize, line-wrapped
-// and indented exactly as uv prints it.
-const uvAnsibleCoreConflictNarrative = `  × No solution found when resolving dependencies:
-  ╰─▶ Because ansible==11.3.0 depends on ansible-core>=2.18.3,<2.19.dev0 and
-      you require ansible-core==2.21.3, we can conclude that your requirements
-      and ansible==11.3.0 are incompatible.
-      And because you require ansible==11.3.0, we can conclude that your
-      requirements are unsatisfiable.`
-
-// uvUnrelatedResolutionNarrative is an ordinary uv unsatisfiable error with no
-// ansible-core involvement at all — captured verbatim from `uv pip install -r
-// requirements.txt` against `jmespath==999.999.999`. It must never trigger
-// the ansible-core wrap.
-const uvUnrelatedResolutionNarrative = `  × No solution found when resolving dependencies:
-  ╰─▶ Because there is no version of jmespath==999.999.999 and you require
-      jmespath==999.999.999, we can conclude that your requirements are
-      unsatisfiable.`
-
-// TestWrapAnsibleCoreConflictNamesFixAndKeepsOriginal is the unit-level gate:
-// fed uv's real narrative for the ansible-meta-package-vs-pinned-ansible-core
-// conflict, the wrapped message must name the meta-package, the version it
-// declared, the pinned ansible-core version, and the fix — while the original
-// uv narrative stays reachable (wrap, don't discard).
-func TestWrapAnsibleCoreConflictNamesFixAndKeepsOriginal(t *testing.T) {
-	original := errors.New("deps: uv pip: exit status 1: " + uvAnsibleCoreConflictNarrative)
-
-	wrapped := wrapAnsibleCoreConflict(original, "2.21.3")
-	if wrapped == original {
-		t.Fatal("conflict narrative was not wrapped")
-	}
-	got := wrapped.Error()
-	for _, want := range []string{
-		"'ansible' meta-package",
-		"ansible==11.3.0",
-		"ansible-core==2.21.3",
-		"ADR 0006",
-		"declare only the extra libraries",
-	} {
-		if !strings.Contains(got, want) {
-			t.Errorf("wrapped message missing %q:\n%s", want, got)
-		}
-	}
-	if !errors.Is(wrapped, original) {
-		t.Error("wrapped error no longer wraps the original uv error")
-	}
-}
-
-// TestWrapAnsibleCoreConflictPassesThroughOtherErrors: a uv resolution
-// failure unrelated to the ansible meta-package must reach the operator
-// unchanged — the wrap must never mask or reword a genuine resolution
-// failure.
-func TestWrapAnsibleCoreConflictPassesThroughOtherErrors(t *testing.T) {
-	original := errors.New("deps: uv pip: exit status 1: " + uvUnrelatedResolutionNarrative)
-
-	got := wrapAnsibleCoreConflict(original, "2.21.3")
-	if got != original {
-		t.Errorf("unrelated uv resolution error was rewritten: %v", got)
-	}
-}
-
-// fakeUVAnsibleConflict writes a uv stand-in that completes the venv-creation
-// step normally (so provision reaches the install step) and then fails `pip
-// install` with uv's real unsatisfiable-ansible-core narrative, so the gate
-// exercises EnsureVenv's actual error path end to end rather than only the
-// helper in isolation.
-func fakeUVAnsibleConflict(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, "uv")
-	script := "#!/bin/sh\n" +
-		"case \"$*\" in\n" +
-		"  *\" venv \"*|*\"venv \"*)\n" +
-		"    for a in \"$@\"; do target=\"$a\"; done\n" +
-		"    mkdir -p \"$target/bin\" || exit 1\n" +
-		"    : > \"$target/bin/python\"; chmod +x \"$target/bin/python\"\n" +
-		"    : > \"$target/bin/ansible-playbook\"; chmod +x \"$target/bin/ansible-playbook\"\n" +
-		"    exit 0\n" +
-		"    ;;\n" +
-		"esac\n" +
-		"case \"$*\" in\n" +
-		"  *\"pip install\"*)\n" +
-		"    cat >&2 <<'EOF'\n" +
-		uvAnsibleCoreConflictNarrative + "\n" +
-		"EOF\n" +
-		"    exit 1\n" +
-		"    ;;\n" +
-		"esac\n" +
-		"exit 0\n"
-	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
-		t.Fatalf("write fake uv: %v", err)
-	}
-	return path
-}
-
-// TestEnsureVenvWrapsAnsibleMetaPackageConflict is the end-to-end gate: a
-// requirements.txt declaring the ansible meta-package, resolved against a uv
-// stand-in that reproduces uv's real unsatisfiable-ansible-core narrative,
-// must surface a wrapped error naming the meta-package and the pinned
-// ansible-core version rather than the raw resolver narrative alone — and
-// must leave no half-built venv behind (fail-closed, ADR 0011).
-func TestEnsureVenvWrapsAnsibleMetaPackageConflict(t *testing.T) {
+// TestEnsureVenvInstallsOnlyDeclaredDeps is the ADR 0016 gate: a per-source venv
+// carries only the project's declared libraries. ansible-core is a command, not
+// a project dependency, so the captured `uv pip install` argv must name the
+// manifest and must not force ansible-core or ansible-runner into the venv.
+func TestEnsureVenvInstallsOnlyDeclaredDeps(t *testing.T) {
 	cache := t.TempDir()
 	project := t.TempDir()
-	uv := fakeUVAnsibleConflict(t)
+	counter := filepath.Join(t.TempDir(), "uv-invocations")
+	uv := fakeUV(t, counter)
 
-	m := manifestFor(t, project, "ansible==11.3.0\n")
-	spec := VenvSpec{CacheRoot: cache, Source: "demo", Manifest: m, UVBinary: uv, AnsibleCore: "2.21.3"}
-
-	_, err := EnsureVenv(context.Background(), spec)
-	if err == nil {
-		t.Fatal("EnsureVenv succeeded against an ansible/ansible-core conflict")
+	m := manifestFor(t, project, "jmespath==1.1.0\n")
+	if _, err := EnsureVenv(context.Background(), VenvSpec{
+		CacheRoot: cache, Source: "demo", Manifest: m, UVBinary: uv,
+	}); err != nil {
+		t.Fatalf("ensure: %v", err)
 	}
-	got := err.Error()
-	for _, want := range []string{"'ansible' meta-package", "ansible-core==2.21.3", "ADR 0006"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("EnsureVenv error missing %q:\n%s", want, got)
+
+	install := uvLineContaining(t, counter, "pip install")
+	if !strings.Contains(install, m.Path) {
+		t.Errorf("install argv %q does not name the manifest %q", install, m.Path)
+	}
+	for _, forced := range []string{"ansible-core==", "ansible-runner=="} {
+		if strings.Contains(install, forced) {
+			t.Errorf("install argv still forces %s into the project venv: %q", forced, install)
 		}
 	}
-	if _, statErr := os.Stat(filepath.Join(cache, "demo", m.Hash)); !os.IsNotExist(statErr) {
-		t.Errorf("half-built venv left behind after the wrapped failure (stat err = %v)", statErr)
+}
+
+// TestEnsureVenvPinsInterpreterFromManifest: the venv is built with the
+// interpreter the image froze into its manifest (ADR 0016), so its
+// site-packages are ABI-compatible with the fallback ansible toolchain. No
+// reachable manifest omits --python and leaves uv's own default.
+func TestEnsureVenvPinsInterpreterFromManifest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "MANIFEST.json")
+	if err := os.WriteFile(path, []byte(`{"python":"3.14.0"}`+"\n"), 0o600); err != nil {
+		t.Fatalf("write manifest: %v", err)
 	}
+	t.Setenv(manifestEnv, path)
+
+	cache := t.TempDir()
+	project := t.TempDir()
+	counter := filepath.Join(t.TempDir(), "uv-invocations")
+	uv := fakeUV(t, counter)
+	m := manifestFor(t, project, "jmespath==1.1.0\n")
+	if _, err := EnsureVenv(context.Background(), VenvSpec{
+		CacheRoot: cache, Source: "demo", Manifest: m, UVBinary: uv,
+	}); err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+
+	if venv := uvLineContaining(t, counter, "venv"); !strings.Contains(venv, "--python 3.14.0") {
+		t.Errorf("venv argv %q does not pin the manifest interpreter", venv)
+	}
+}
+
+// TestEnsureVenvSitePackages: the venv's site-packages is the PYTHONPATH bridge
+// target (ADR 0016), so it must sit under the venv root — the path the run
+// sandbox already grants read for the venv.
+func TestEnsureVenvSitePackages(t *testing.T) {
+	cache := t.TempDir()
+	project := t.TempDir()
+	uv := fakeUV(t, filepath.Join(t.TempDir(), "uv-invocations"))
+	m := manifestFor(t, project, "jmespath==1.1.0\n")
+
+	v, err := EnsureVenv(context.Background(), VenvSpec{
+		CacheRoot: cache, Source: "demo", Manifest: m, UVBinary: uv,
+	})
+	if err != nil {
+		t.Fatalf("ensure: %v", err)
+	}
+	want := filepath.Join(v.Dir, "lib", "python3.14", "site-packages")
+	if v.SitePackages != want {
+		t.Errorf("SitePackages = %q, want %q", v.SitePackages, want)
+	}
+	if !strings.HasPrefix(v.SitePackages, v.Dir+string(os.PathSeparator)) {
+		t.Errorf("SitePackages %q is not under the venv root %q", v.SitePackages, v.Dir)
+	}
+}
+
+// uvLineContaining returns the recorded uv invocation containing marker, or
+// fails when no invocation did. Each recorded line is one full argv.
+func uvLineContaining(t *testing.T, counter, marker string) string {
+	t.Helper()
+	body, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatalf("read uv invocations: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+		if strings.Contains(line, marker) {
+			return line
+		}
+	}
+	t.Fatalf("no uv invocation containing %q: %q", marker, body)
+	return ""
 }

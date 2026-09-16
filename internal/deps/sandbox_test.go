@@ -97,6 +97,7 @@ for a in "$@"; do
 done
 if [ "$mode" = venv ]; then
   mkdir -p "$last/bin" || exit 1
+  mkdir -p "$last/lib/python3.14/site-packages" || exit 1
   : > "$last/bin/python"; chmod +x "$last/bin/python"
   : > "$last/bin/ansible-playbook"; chmod +x "$last/bin/ansible-playbook"
   exit 0

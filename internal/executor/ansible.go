@@ -31,7 +31,9 @@ const DefaultVaultID = "exocomp"
 
 // ansibleEnvAllow is the environment an ansible run may inherit, alongside
 // every ANSIBLE_-prefixed name. Everything else is dropped: a run must not
-// pick up whatever the operator happened to export.
+// pick up whatever the operator happened to export. PYTHONPATH is deliberately
+// absent: the venv site-packages bridge is set by the driver after this filter
+// (ADR 0016), so an inherited value is dropped rather than merged.
 var ansibleEnvAllow = []string{"HOME", "LANG", "LC_ALL", "PATH", "TZ"}
 
 const ansibleEnvPrefix = "ANSIBLE_"
@@ -148,6 +150,13 @@ type AnsibleOptions struct {
 	// as the allowlist built it. It pairs with Binary pointing at the venv's
 	// ansible-playbook: the whole run executes inside the source's venv.
 	VenvBin string
+	// PythonPath, when set, is set as PYTHONPATH so the project venv's
+	// site-packages is importable by the PATH-resolved fallback ansible — the
+	// ADR 0016 bridge that lets a project's libraries reach the controller's
+	// interpreter. Empty leaves PYTHONPATH unset. It is a controller-side
+	// bridge: ansible_python_interpreter is target-side only and does not
+	// substitute for it.
+	PythonPath string
 	// TolerateUnreachable opts this run into the degraded outcome: when the only
 	// non-success in the PLAY RECAP is unreachable hosts (failed=0 on every host
 	// the run reached), the run settles as a tolerated degradation rather than a
@@ -241,6 +250,9 @@ func (a *Ansible) Run(ctx context.Context, spec Spec, sink EventSink) (Result, e
 	spec.Env = ansibleEnv(os.Environ(), explicit, a.opts.CollectionsPath)
 	if a.opts.VenvBin != "" {
 		spec.Env = prependPath(spec.Env, a.opts.VenvBin)
+	}
+	if a.opts.PythonPath != "" {
+		spec.Env = prependEnvList(spec.Env, pythonPathEnv, a.opts.PythonPath)
 	}
 
 	// Any run is observed for a host-key mismatch: a connection whose recorded
@@ -345,18 +357,30 @@ func (a *Ansible) classifyDegraded(res *Result, lines []string, sink EventSink) 
 	emitPartialOutcome(class.Unreachable, sink)
 }
 
+// pythonPathEnv is the environment variable the venv site-packages bridge is
+// carried on (ADR 0016).
+const pythonPathEnv = "PYTHONPATH"
+
 // prependPath puts dir at the front of the PATH entry in env so the venv's own
 // executables resolve before the image's. A run that inherited no PATH gets one
 // naming only dir.
 func prependPath(env []string, dir string) []string {
-	const prefix = "PATH="
+	return prependEnvList(env, "PATH", dir)
+}
+
+// prependEnvList puts value at the front of the named colon-joined entry in
+// env, preserving whatever the entry already carried. A run with no such entry
+// gets one naming only value. It is the shared shape behind PATH (the venv's
+// bin) and PYTHONPATH (the venv's site-packages bridge, ADR 0016).
+func prependEnvList(env []string, name, value string) []string {
+	prefix := name + "="
 	for i, kv := range env {
 		if existing, ok := strings.CutPrefix(kv, prefix); ok {
-			env[i] = prefix + dir + string(os.PathListSeparator) + existing
+			env[i] = prefix + value + string(os.PathListSeparator) + existing
 			return env
 		}
 	}
-	return append(env, prefix+dir)
+	return append(env, prefix+value)
 }
 
 // explicitEnv is the caller's own env entries plus the credential-plane

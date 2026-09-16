@@ -154,6 +154,44 @@ env | sed 's/^/env:/'
 	}
 }
 
+// TestAnsiblePythonPathBridge is the ADR 0016 gate on the run environment: the
+// venv's site-packages is set on PYTHONPATH so the PATH-resolved fallback
+// ansible imports the project's libraries. PYTHONPATH is not on the inherited
+// allowlist, so an operator's own value is dropped rather than merged; without
+// a bridge the run carries no PYTHONPATH at all.
+func TestAnsiblePythonPathBridge(t *testing.T) {
+	const bridge = "/data/cache/python/demo/abc123/lib/python3.14/site-packages"
+	bin := fakeAnsible(t, `env | sed 's/^/env:/'`)
+
+	t.Run("bridge set, inherited PYTHONPATH dropped", func(t *testing.T) {
+		t.Setenv("PYTHONPATH", "/operator/lib")
+		_, sink := runAnsible(t, executor.AnsibleOptions{
+			Binary:         bin,
+			PythonPath:     bridge,
+			PrivateDirRoot: t.TempDir(),
+		}, executor.AnsibleArgv("/p/site.yml", ""))
+
+		want := "env:PYTHONPATH=" + bridge
+		if lines := sink.msgs(executor.LevelInfo); !slices.Contains(lines, want) {
+			t.Errorf("child environment missing %q: %q", want, lines)
+		}
+	})
+
+	t.Run("no bridge means no PYTHONPATH", func(t *testing.T) {
+		t.Setenv("PYTHONPATH", "/operator/lib")
+		_, sink := runAnsible(t, executor.AnsibleOptions{
+			Binary:         bin,
+			PrivateDirRoot: t.TempDir(),
+		}, executor.AnsibleArgv("/p/site.yml", ""))
+
+		for _, l := range sink.msgs(executor.LevelInfo) {
+			if strings.HasPrefix(l, "env:PYTHONPATH=") {
+				t.Errorf("run with no bridge carried %q", l)
+			}
+		}
+	})
+}
+
 // dumpExtraVars writes a fake ansible-playbook that prints the JSON body of the
 // --extra-vars @file the driver hands it, so a test can assert exactly which
 // variables a run forces on every host.

@@ -189,15 +189,21 @@ func ansiblePlaybookPath(argv []string) string {
 	return last
 }
 
-// applyVenv points ansible options at a resolved venv: the run executes the
-// venv's own ansible-playbook, its interpreter drives the modules, and its bin
-// leads PATH. A zero Venv (no declared deps) leaves the options on the image
-// toolchain.
+// applyVenv points ansible options at a resolved venv (ADR 0016): its
+// site-packages is bridged to the run through PYTHONPATH, its interpreter
+// drives the localhost-over-local modules, and its bin leads PATH. Binary is
+// set only when the venv's own ansible-playbook exists — a project that
+// declared ansible-core shadows the fallback; otherwise Binary stays empty and
+// PATH resolves the image fallback toolchain. A zero Venv (no declared deps)
+// leaves the options on the image toolchain.
 func applyVenv(opts *executor.AnsibleOptions, venv deps.Venv) {
 	if venv.Dir == "" {
 		return
 	}
-	opts.Binary = venv.Ansible
+	if executable(venv.Ansible) {
+		opts.Binary = venv.Ansible
+	}
 	opts.Interpreter = venv.Python
 	opts.VenvBin = venv.Bin
+	opts.PythonPath = venv.SitePackages
 }
