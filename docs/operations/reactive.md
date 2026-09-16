@@ -184,6 +184,8 @@ exocomp check add at-home --kind tcp --interval 5m \
   --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22
 exocomp check list                 # per-target status, netgroup and duration
 exocomp check list --output json   # the same per-target state, machine-readable
+exocomp check probe at-home        # run the probes now, writing nothing
+exocomp check test --kind tls --target web=web.lan:443 --min-days 21   # dry run
 exocomp check snooze at-home --for 4h   # suppress transitions until the deadline
 exocomp check unsnooze at-home
 exocomp check disable at-home
@@ -203,6 +205,17 @@ the verify gates in a workflow run the same probe implementation
 (`internal/probe`); a check refuses the loopback, link-local, unspecified, and
 multicast dial classes a gate allows, and a check's default http acceptance is
 2xx/3xx where a gate's is 2xx only.
+
+`check add` and `check update` carry the per-kind config as flags: `--min-days`
+(tls), `--expect-addr` (dns), and `--op`/`--value` (metric, both required). A
+flag that does not belong to the check's kind is refused rather than dropped,
+and the stored kind is never updatable. `check probe <name> [--target <t>]` runs
+a stored check's targets immediately with the sweep's options and prints each
+target's status, duration, location, and failure detail: it writes no state and
+emits no event, so a check is debugged without waiting an interval. `check test
+--kind <kind> --target <name=spec>` validates and runs a one-off target set
+without storing a check, the dry run that catches a wrong target or threshold
+before `check add`.
 
 An event fires only on a declared transition (down→up fires, up→down
 resolves) after 3 consecutive observations. The 3 is fixed — not

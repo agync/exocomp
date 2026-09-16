@@ -6,6 +6,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — the new check kinds get surfaces and an on-demand probe
+
+- **`check add` and `check update` carry the new kinds' flags.** `--min-days`
+  (tls), `--expect-addr` (dns), and `--op`/`--value` (metric) apply to the
+  parsed targets; a flag that does not belong to the kind is refused, and a
+  metric target requires both `--op` and `--value`.
+- **`check probe <name> [--target <t>]` runs a stored check's probes now,
+  writing nothing:** status, duration, location, and failure detail per target,
+  with the sweep's options and no daemon needed. **`check test`** is the dry
+  run: it validates and runs a one-off target set without storing a check.
+- **The `/checks` add dialog widens to all six kinds** and renders the per-kind
+  fields; the edit dialog renders the stored kind's fields with the kind fixed.
+  Refusals mirror the CLI at 422 with every field's message at once, and target
+  classification now uses `probe.Location`, so a hostname or URL target no
+  longer parses as an address.
+
 ## 2026-09-16 — one probe runner, and checks gain dns/tls/metric kinds
 
 - **A shared `internal/probe` runner backs checks and verify gates.** Both
