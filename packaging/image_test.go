@@ -102,6 +102,34 @@ func TestContainerfileBakesTheToolchain(t *testing.T) {
 	}
 }
 
+// TestContainerfileCopiesUVAndUVX: uv and uvx are lifted out of the pinned uv
+// image as static binaries, the pattern uv's own Docker guide documents. A
+// missing uvx silently drops `uv tool run`.
+func TestContainerfileCopiesUVAndUVX(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+	if !strings.Contains(body, "COPY --from=uv /uv /uvx /bin/") {
+		t.Error("Containerfile does not copy both /uv and /uvx from the pinned uv image")
+	}
+}
+
+// TestContainerfileUsesDNF: fedora-minimal ships dnf5; the older microdnf
+// command is only a shim, so a build installing packages with it pins a
+// convenience alias rather than the supported tool.
+func TestContainerfileUsesDNF(t *testing.T) {
+	body := readPackagingFile(t, "Containerfile")
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "#") {
+			continue
+		}
+		if strings.Contains(line, "microdnf") {
+			t.Errorf("Containerfile installs with microdnf, not dnf: %q", line)
+		}
+	}
+	if !strings.Contains(body, "dnf -y install") {
+		t.Error("Containerfile does not install with dnf")
+	}
+}
+
 // containerfileArg returns the value of a `ARG NAME=value` line in the
 // Containerfile, so a test can assert the committed manifest tracks the build's
 // own pins.
@@ -141,10 +169,10 @@ func TestManifestPinsMatchTheContainerfile(t *testing.T) {
 		}
 	}
 
-	// uv comes from a pinned base-image tag, not an ARG.
-	uv := regexp.MustCompile(`ghcr\.io/astral-sh/uv:(\S+) AS uv`).FindStringSubmatch(dockerfile)
-	if len(uv) < 2 {
-		t.Fatal("Containerfile has no pinned uv base image")
+	// uv comes from a base image pinned by index digest, declared as ARG.
+	uv := regexp.MustCompile(`(?m)^ARG UV_IMAGE=ghcr\.io/astral-sh/uv:(\d+\.\d+\.\d+)@sha256:([0-9a-f]{64})$`).FindStringSubmatch(dockerfile)
+	if len(uv) < 3 {
+		t.Fatal("Containerfile has no digest-pinned uv base image")
 	}
 	if pins["uv"] != uv[1] {
 		t.Errorf("MANIFEST.json uv = %q, Containerfile uv image = %q", pins["uv"], uv[1])
