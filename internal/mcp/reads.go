@@ -2,11 +2,20 @@ package mcp
 
 import (
 	"context"
+	"net/netip"
+	"strconv"
+	"time"
 
 	"exocomp.dev/exocomp/internal/health"
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
+
+// checkProbeTimeout matches the sweep's bound (reactive probeTimeout) and the
+// CLI's checkProbeTimeout: an on-demand probe answers with the same deadline the
+// sweep uses, so what an agent sees is what the next sweep will record.
+const checkProbeTimeout = 5 * time.Second
 
 // These are the one set of read functions both a tool and a resource call, so a
 // resource's bytes and its tool's bytes come from the same store read and the
@@ -116,6 +125,130 @@ func (s *Server) readEvents(ctx context.Context, filter store.EventFilter) (stri
 		return "", nil, err
 	}
 	return wire.KindEventList, wire.NewEventList(rows), nil
+}
+
+// readChecks projects every check with its targets' last observed status,
+// stored netgroup, probe duration, and recency — the same wire bytes
+// `check list --output json` and GET /api/v1/checks emit.
+func (s *Server) readChecks(ctx context.Context) (string, any, error) {
+	rows, err := s.store.ListChecks(ctx, false)
+	if err != nil {
+		return "", nil, err
+	}
+	states, err := s.checkStates(ctx, rows)
+	if err != nil {
+		return "", nil, err
+	}
+	return wire.KindCheckList, wire.NewCheckList(rows, states), nil
+}
+
+// readCheck projects one check by name. It reuses NewCheckList so a single get
+// and a one-element list project a row identically.
+func (s *Server) readCheck(ctx context.Context, name string) (string, any, error) {
+	c, err := s.store.GetCheck(ctx, name)
+	if err != nil {
+		return "", nil, err
+	}
+	states, err := s.checkStates(ctx, []store.Check{c})
+	if err != nil {
+		return "", nil, err
+	}
+	return wire.KindCheck, wire.NewCheckList([]store.Check{c}, states)[0], nil
+}
+
+// checkStates loads each check's per-target state rows, the join NewCheckList
+// takes.
+func (s *Server) checkStates(ctx context.Context, rows []store.Check) (map[int64][]store.CheckState, error) {
+	states := make(map[int64][]store.CheckState, len(rows))
+	for _, c := range rows {
+		st, err := s.store.ListCheckStates(ctx, c.ID)
+		if err != nil {
+			return nil, err
+		}
+		states[c.ID] = st
+	}
+	return states, nil
+}
+
+func (s *Server) readNetgroups(ctx context.Context) (string, any, error) {
+	rows, err := s.store.ListNetgroups(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	return wire.KindNetgroupList, wire.NewNetgroupList(rows), nil
+}
+
+// probeCheck runs a stored check's probes immediately, with the sweep's options,
+// and writes nothing: no check_state row moves and no event is emitted (D3). It
+// is how a check is debugged without waiting an interval. only narrows to one
+// target by name.
+func (s *Server) probeCheck(ctx context.Context, name, only string) (string, any, error) {
+	c, err := s.store.GetCheck(ctx, name)
+	if err != nil {
+		return "", nil, err
+	}
+	targets := c.Targets
+	if only != "" {
+		targets = nil
+		for _, t := range c.Targets {
+			if t.Name == only {
+				targets = append(targets, t)
+			}
+		}
+		if len(targets) == 0 {
+			return "", nil, invalidArg("check " + name + " has no target named " + strconv.Quote(only))
+		}
+	}
+	states, err := s.store.ListCheckStates(ctx, c.ID)
+	if err != nil {
+		return "", nil, err
+	}
+	stored := make(map[string]string, len(states))
+	for _, st := range states {
+		stored[st.TargetName] = st.Netgroup
+	}
+	groups, err := s.store.ListNetgroups(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+
+	views := make([]wire.CheckProbeTargetView, 0, len(targets))
+	for _, t := range targets {
+		spec, err := store.SpecForTarget(c.Kind, t)
+		if err != nil {
+			return "", nil, invalidArg(err.Error())
+		}
+		if err := spec.Validate(); err != nil {
+			return "", nil, invalidArg(err.Error())
+		}
+		res := probe.Run(ctx, spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+		views = append(views, wire.CheckProbeTargetView{
+			Target:     t.Name,
+			Up:         res.Up,
+			DurationMS: res.Duration.Milliseconds(),
+			Netgroup:   probeNetgroup(spec, stored[t.Name], groups),
+			Detail:     res.Detail,
+		})
+	}
+	return wire.KindCheckProbe, wire.NewCheckProbeView(name, views), nil
+}
+
+// probeNetgroup names where a target was probed: the sweep's stored
+// classification when it has observed the target, else a live classification of
+// the address the spec carries. A kind with no address literal (dns, metric, and
+// a tls hostname) carries none.
+func probeNetgroup(spec probe.Spec, stored string, groups []store.Netgroup) string {
+	if stored != "" {
+		return stored
+	}
+	addr, ok := spec.Location()
+	if !ok {
+		return ""
+	}
+	if ng, ok := store.ClassifyNetgroups([]netip.Addr{addr}, groups)[addr.Unmap().String()]; ok {
+		return ng
+	}
+	return ""
 }
 
 // readSecrets returns secret METADATA only. It reuses wire.SecretView, whose

@@ -145,6 +145,17 @@ func (s *Server) readTools() []tool {
 		{"list_sources", "List configured sources.", object(nil), s.runListSources},
 		{"list_schedules", "List schedules.", object(nil), s.runListSchedules},
 		{"list_rules", "List reactive rules.", object(nil), s.runListRules},
+		{"list_checks", "List probe checks; each target carries its last status (up|down|unobserved), stored netgroup, and duration_ms.",
+			object(nil), s.runListChecks},
+		{"get_check", "Show one probe check by name, with each target's last status, netgroup, and duration_ms.",
+			object(map[string]any{"name": strProp("the check name")}, "name"), s.runGetCheck},
+		{"list_netgroups", "List named CIDR sets: name, include prefixes, and `!`-prefixed excludes.",
+			object(nil), s.runListNetgroups},
+		{"probe_check", "Probe a check's targets NOW and return per target {target, up, duration_ms, netgroup, detail}. Writes nothing (read scope). Optional target narrows to one by name.",
+			object(map[string]any{
+				"name":   strProp("the check name"),
+				"target": strProp("probe only this target by name"),
+			}, "name"), s.runProbeCheck},
 		{"list_events", "List received events; filter by source, outcome (ignored|matched|suppressed|gated|fired|error), limit (default 25).",
 			object(map[string]any{
 				"source": strProp("only events from this source"),
@@ -192,6 +203,54 @@ func (s *Server) writeTools() []tool {
 				"timeout":         strProp("Go duration, e.g. 30m"),
 				"idempotency_key": strProp("dedup key so a retry does not double-enqueue"),
 			}, "name"), s.runWorkspaceApply},
+		{"check_add", "Register a probe check and return it as check.get. args: name; kind (tcp|ping|http|dns|tls|metric); interval (Go duration, e.g. 5m); targets (array of name=spec — tcp/tls name=ip:port, ping name=ip, http/metric name=url, dns name=hostname); optional expect (http status), min_days (tls), expect_addr (dns), op and value (metric; both required). A field for the wrong kind is refused.",
+			object(map[string]any{
+				"name":        strProp("the check name"),
+				"kind":        map[string]any{"type": "string", "enum": []any{"tcp", "ping", "http", "dns", "tls", "metric"}, "description": "the probe kind; fixed for the check's life"},
+				"interval":    strProp("probe interval as a Go duration, e.g. 5m"),
+				"targets":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "name=spec; repeatable (tcp/tls name=ip:port, ping name=ip, http/metric name=url, dns name=hostname)"},
+				"expect":      intProp("http only: required status code (default any 2xx/3xx)"),
+				"min_days":    intProp("tls only: minimum days until the leaf certificate expires"),
+				"expect_addr": strProp("dns only: require the name to resolve to this address"),
+				"op":          strProp("metric only: comparison operator (< <= > >= == !=); required with value"),
+				"value":       map[string]any{"type": "number", "description": "metric only: value the body is compared against; required with op"},
+			}, "name", "kind", "interval", "targets"), s.runCheckAdd},
+		{"check_update", "Replace a check's targets in place and return it as check.get; a target whose NAME is kept keeps its state. args: name; targets (required); optional interval (omit to keep the stored cadence). The kind is fixed and cannot be changed.",
+			object(map[string]any{
+				"name":        strProp("the check name"),
+				"targets":     map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "the new target set: name=spec, repeatable"},
+				"interval":    strProp("new probe interval as a Go duration; omit to keep the stored one"),
+				"expect":      intProp("http only: required status code"),
+				"min_days":    intProp("tls only: minimum days until the leaf certificate expires"),
+				"expect_addr": strProp("dns only: require the name to resolve to this address"),
+				"op":          strProp("metric only: comparison operator; required with value"),
+				"value":       map[string]any{"type": "number", "description": "metric only: value the body is compared against; required with op"},
+			}, "name", "targets"), s.runCheckUpdate},
+		{"check_enable", "Let a disabled check run again on the next sweep; returns it as check.get.",
+			object(map[string]any{"name": strProp("the check name")}, "name"), s.runCheckEnable},
+		{"check_disable", "Stop a check probing, keeping its definition and stored state; returns it as check.get.",
+			object(map[string]any{"name": strProp("the check name")}, "name"), s.runCheckDisable},
+		{"check_rm", "Remove a check and its stored target state; returns check.deleted.",
+			object(map[string]any{"name": strProp("the check name")}, "name"), s.runCheckRm},
+		{"check_snooze", "Suppress a check's transition emissions until a deadline; probing and state advance continue. Returns it as check.get.",
+			object(map[string]any{
+				"name": strProp("the check name"),
+				"for":  strProp("how long the snooze lasts, a positive Go duration, e.g. 4h"),
+			}, "name", "for"), s.runCheckSnooze},
+		{"check_unsnooze", "Lift a check's snooze before its deadline; returns it as check.get.",
+			object(map[string]any{"name": strProp("the check name")}, "name"), s.runCheckUnsnooze},
+		{"netgroup_add", "Register a named CIDR set and return it as netgroup.get. args: name; prefixes (comma-separated CIDRs; a `!`-prefixed member is an exclusion, e.g. \"192.168.0.0/16,!192.168.5.0/24\").",
+			object(map[string]any{
+				"name":     strProp("the netgroup name (not 'away', the miss label)"),
+				"prefixes": strProp("comma-separated CIDRs; `!` prefixes an exclusion; at least one include is required"),
+			}, "name", "prefixes"), s.runNetgroupAdd},
+		{"netgroup_update", "Replace a netgroup's CIDR set in place, keeping its id and leaving stored check state untouched; returns it as netgroup.get.",
+			object(map[string]any{
+				"name":     strProp("the netgroup name"),
+				"prefixes": strProp("the new comma-separated CIDR set; `!` prefixes an exclusion"),
+			}, "name", "prefixes"), s.runNetgroupUpdate},
+		{"netgroup_rm", "Remove a named CIDR set; returns netgroup.deleted.",
+			object(map[string]any{"name": strProp("the netgroup name")}, "name"), s.runNetgroupRm},
 	}
 }
 
@@ -380,6 +439,41 @@ func (s *Server) runListSchedules(ctx context.Context, _ Caller, _ json.RawMessa
 
 func (s *Server) runListRules(ctx context.Context, _ Caller, _ json.RawMessage) (string, any, error) {
 	return s.readRules(ctx)
+}
+
+func (s *Server) runListChecks(ctx context.Context, _ Caller, _ json.RawMessage) (string, any, error) {
+	return s.readChecks(ctx)
+}
+
+func (s *Server) runGetCheck(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a struct {
+		Name string `json:"name"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	return s.readCheck(ctx, a.Name)
+}
+
+func (s *Server) runListNetgroups(ctx context.Context, _ Caller, _ json.RawMessage) (string, any, error) {
+	return s.readNetgroups(ctx)
+}
+
+func (s *Server) runProbeCheck(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a struct {
+		Name   string `json:"name"`
+		Target string `json:"target"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	return s.probeCheck(ctx, a.Name, a.Target)
 }
 
 func (s *Server) runListEvents(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {

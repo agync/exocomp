@@ -2,16 +2,19 @@ package mcp
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // Every write tool routes through the SAME internal/service verb the CLI and the
@@ -23,11 +26,20 @@ import (
 const (
 	kindJobEnqueued     = "job.enqueued"
 	kindApprovalPending = "approval.pending"
+	// kindCheckDeleted and kindNetgroupDeleted are the values-free
+	// acknowledgments a remove returns: the name that was removed, nothing else.
+	kindCheckDeleted    = "check.deleted"
+	kindNetgroupDeleted = "netgroup.deleted"
 )
 
 type jobEnqueuedView struct {
 	JobID int64  `json:"job_id"`
 	State string `json:"state,omitempty"`
+}
+
+// namedView is the body of a remove acknowledgment.
+type namedView struct {
+	Name string `json:"name"`
 }
 
 // approvalPendingView is a gated apply: the job sits in awaiting_approval and
@@ -241,3 +253,325 @@ func (s *Server) approvalDeriver(saved *store.Artifact, gate service.PlanGate) (
 // does not also hold the release for the gate that apply raises. An approval
 // is decided from the browser/phone surface, the CLI, or the scope-checked
 // /api/v1 decision route.
+
+// --- checks (write) ---------------------------------------------------------
+//
+// Each tool calls the SAME store verb the CLI and the HTTP write API call
+// (CreateCheck/UpdateCheck/SetCheckEnabled/DeleteCheck/SetCheckSnooze). A check
+// is configuration, not a secret and not a queued job, so there is no
+// idempotency key to namespace: a repeat add is a duplicate-name refusal, not a
+// second row.
+
+// checkWriteArgs is the shared add/update argument shape. The optional kind
+// fields are POINTERS so an omitted field is distinguishable from a zero value:
+// the CLI refuses a kind-inapplicable flag through cobra's Changed, and this is
+// the JSON argument's equivalent. A non-pointer int would make expect:0
+// indistinguishable from an omitted expect.
+type checkWriteArgs struct {
+	Name       string   `json:"name"`
+	Kind       string   `json:"kind"`
+	Interval   string   `json:"interval"`
+	Targets    []string `json:"targets"`
+	Expect     *int     `json:"expect"`
+	MinDays    *int     `json:"min_days"`
+	ExpectAddr *string  `json:"expect_addr"`
+	Op         *string  `json:"op"`
+	Value      *float64 `json:"value"`
+}
+
+// storeWriteErr maps a store refusal the wire taxonomy cannot name on its own —
+// operator-input validation — onto invalid_argument, stripping the doubled
+// internal namespace the store wraps it in (mirroring the CLI's
+// validationError). A duplicate or not_found keeps its sentinel so
+// wire.ErrorFor names it.
+func storeWriteErr(err error) error {
+	if errors.Is(err, store.ErrValidation) {
+		msg := strings.TrimPrefix(err.Error(), "store: validation: store: ")
+		msg = strings.TrimPrefix(msg, "store: validation: ")
+		return invalidArg(msg)
+	}
+	return err
+}
+
+// checkTargetsFromArgs parses the name=spec targets and applies the kind's
+// optional fields, refusing a field that does not belong to the kind and a
+// metric missing its operator or value — the same contract the CLI's
+// applyKindFlags enforces.
+func checkTargetsFromArgs(kind string, specs []string, a *checkWriteArgs) ([]store.CheckTarget, error) {
+	parsed, err := store.ParseCheckTargets(kind, specs, false)
+	if err != nil {
+		return nil, invalidArg(err.Error())
+	}
+	if len(parsed) == 0 {
+		return nil, invalidArg("check needs at least one target")
+	}
+	switch {
+	case a.Expect != nil && kind != store.CheckHTTP:
+		return nil, invalidArg("expect applies to kind http")
+	case a.MinDays != nil && kind != store.CheckTLS:
+		return nil, invalidArg("min_days applies to kind tls")
+	case a.ExpectAddr != nil && kind != store.CheckDNS:
+		return nil, invalidArg("expect_addr applies to kind dns")
+	case a.Op != nil && kind != store.CheckMetric:
+		return nil, invalidArg("op applies to kind metric")
+	case a.Value != nil && kind != store.CheckMetric:
+		return nil, invalidArg("value applies to kind metric")
+	case kind == store.CheckMetric && a.Op == nil:
+		return nil, invalidArg("op is required for kind metric")
+	case kind == store.CheckMetric && a.Value == nil:
+		return nil, invalidArg("value is required for kind metric")
+	}
+	var (
+		expect     int
+		minDays    int
+		expectAddr string
+		op         string
+		value      float64
+	)
+	if a.Expect != nil {
+		expect = *a.Expect
+	}
+	if a.MinDays != nil {
+		minDays = *a.MinDays
+	}
+	if a.ExpectAddr != nil {
+		expectAddr = *a.ExpectAddr
+	}
+	if a.Op != nil {
+		op = *a.Op
+	}
+	if a.Value != nil {
+		value = *a.Value
+	}
+	for i := range parsed {
+		parsed[i].Expect = expect
+		parsed[i].MinDays = minDays
+		parsed[i].ExpectAddr = expectAddr
+		parsed[i].Op = op
+		parsed[i].Value = value
+	}
+	return parsed, nil
+}
+
+func checkIntervalSeconds(v string) (int64, error) {
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		return 0, invalidArg("interval must be a positive Go duration (e.g. 5m)")
+	}
+	return int64(d.Seconds()), nil
+}
+
+func (s *Server) runCheckAdd(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a checkWriteArgs
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	if a.Kind == "" {
+		return "", nil, invalidArg("kind is required")
+	}
+	intervalS, err := checkIntervalSeconds(a.Interval)
+	if err != nil {
+		return "", nil, err
+	}
+	targets, err := checkTargetsFromArgs(a.Kind, a.Targets, &a)
+	if err != nil {
+		return "", nil, err
+	}
+	created, err := s.store.CreateCheck(ctx, store.NewCheck{
+		Name: a.Name, Kind: a.Kind, IntervalS: intervalS, Targets: targets,
+	})
+	if err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, created.Name)
+}
+
+func (s *Server) runCheckUpdate(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a checkWriteArgs
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	cur, err := s.store.GetCheck(ctx, a.Name)
+	if err != nil {
+		return "", nil, err
+	}
+	if a.Kind != "" && a.Kind != cur.Kind {
+		return "", nil, invalidArg("kind is not updatable; the stored kind is kept")
+	}
+	intervalS := cur.IntervalS
+	if a.Interval != "" {
+		intervalS, err = checkIntervalSeconds(a.Interval)
+		if err != nil {
+			return "", nil, err
+		}
+	}
+	targets, err := checkTargetsFromArgs(cur.Kind, a.Targets, &a)
+	if err != nil {
+		return "", nil, err
+	}
+	if _, err := s.store.UpdateCheck(ctx, a.Name, targets, intervalS); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, a.Name)
+}
+
+// checkNameArg decodes the bare {name} shape the enable/disable/rm/unsnooze
+// tools share.
+func decodeCheckName(args json.RawMessage) (string, error) {
+	var a struct {
+		Name string `json:"name"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return "", err
+	}
+	if a.Name == "" {
+		return "", invalidArg("name is required")
+	}
+	return a.Name, nil
+}
+
+func (s *Server) runCheckEnable(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	name, err := decodeCheckName(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := s.store.SetCheckEnabled(ctx, name, true); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, name)
+}
+
+func (s *Server) runCheckDisable(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	name, err := decodeCheckName(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := s.store.SetCheckEnabled(ctx, name, false); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, name)
+}
+
+func (s *Server) runCheckRm(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	name, err := decodeCheckName(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := s.store.DeleteCheck(ctx, name); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return kindCheckDeleted, namedView{Name: name}, nil
+}
+
+// runCheckSnooze suppresses a check's transitions until a deadline. Like the
+// CLI, for is mandatory and positive: a snooze the operator forgets is how a
+// check stops noticing it is broken. Probing and state advance continue.
+func (s *Server) runCheckSnooze(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a struct {
+		Name string `json:"name"`
+		For  string `json:"for"`
+	}
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	d, err := time.ParseDuration(a.For)
+	if err != nil || d <= 0 {
+		return "", nil, invalidArg("for must be a positive Go duration (e.g. 4h)")
+	}
+	if err := s.store.SetCheckSnooze(ctx, a.Name, s.now().Add(d)); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, a.Name)
+}
+
+func (s *Server) runCheckUnsnooze(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	name, err := decodeCheckName(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := s.store.SetCheckSnooze(ctx, name, time.Time{}); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return s.readCheck(ctx, name)
+}
+
+// --- netgroups (write) ------------------------------------------------------
+
+// netgroupWriteArgs is the shared add/update shape. prefixes is the CLI's
+// comma-separated CIDR list (a `!`-prefixed member is an exclusion), parsed by
+// the one store.ParsePrefixList the CLI and the web form also use.
+type netgroupWriteArgs struct {
+	Name     string `json:"name"`
+	Prefixes string `json:"prefixes"`
+}
+
+func netgroupPrefixes(spec string) (store.PrefixList, error) {
+	list, err := store.ParsePrefixList(spec)
+	if err != nil {
+		return store.PrefixList{}, invalidArg(err.Error())
+	}
+	if len(list.Includes) == 0 {
+		return store.PrefixList{}, invalidArg("need at least one include CIDR")
+	}
+	return list, nil
+}
+
+func (s *Server) runNetgroupAdd(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a netgroupWriteArgs
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	list, err := netgroupPrefixes(a.Prefixes)
+	if err != nil {
+		return "", nil, err
+	}
+	g, err := s.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name: a.Name, Prefixes: list.Includes, Excludes: list.Excludes,
+	})
+	if err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return wire.KindNetgroup, wire.NewNetgroupList([]store.Netgroup{g})[0], nil
+}
+
+func (s *Server) runNetgroupUpdate(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	var a netgroupWriteArgs
+	if err := decodeArgs(args, &a); err != nil {
+		return "", nil, err
+	}
+	if a.Name == "" {
+		return "", nil, invalidArg("name is required")
+	}
+	list, err := netgroupPrefixes(a.Prefixes)
+	if err != nil {
+		return "", nil, err
+	}
+	g, err := s.store.UpdateNetgroup(ctx, a.Name, list.Includes, list.Excludes)
+	if err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return wire.KindNetgroup, wire.NewNetgroupList([]store.Netgroup{g})[0], nil
+}
+
+func (s *Server) runNetgroupRm(ctx context.Context, _ Caller, args json.RawMessage) (string, any, error) {
+	name, err := decodeCheckName(args)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := s.store.DeleteNetgroup(ctx, name); err != nil {
+		return "", nil, storeWriteErr(err)
+	}
+	return kindNetgroupDeleted, namedView{Name: name}, nil
+}

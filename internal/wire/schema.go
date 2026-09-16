@@ -22,7 +22,10 @@ const (
 	KindApprovalList  = "approval.list"
 	KindScheduleList  = "schedule.list"
 	KindNetgroupList  = "netgroup.list"
+	KindNetgroup      = "netgroup.get"
 	KindCheckList     = "check.list"
+	KindCheck         = "check.get"
+	KindCheckProbe    = "check.probe"
 	KindRuleList      = "rule.list"
 	KindSilenceList   = "silence.list"
 	KindEvent         = "event.get"
@@ -870,4 +873,36 @@ func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []Che
 		})
 	}
 	return out
+}
+
+// CheckProbeTargetView is one target's on-demand probe result: the verdict, how
+// long it took, where it classified, and the probe's own detail sentence. It is
+// deliberately not a CheckTargetView — an on-demand probe writes no state, so
+// there is no status/last_change to project, and status/the stored netgroup stay
+// whatever the last sweep recorded. Netgroup is the sweep's stored value when it
+// has observed the target, else a live classification of the address; absent for
+// a kind with no address literal (http, dns, metric, a tls hostname).
+type CheckProbeTargetView struct {
+	Target     string `json:"target"`
+	Up         bool   `json:"up"`
+	DurationMS int64  `json:"duration_ms"`
+	Netgroup   string `json:"netgroup,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+}
+
+// CheckProbeView is one check's on-demand probe of every target (or the one
+// named by a narrowing request).
+type CheckProbeView struct {
+	Check   string                 `json:"check"`
+	Targets []CheckProbeTargetView `json:"targets"`
+}
+
+// NewCheckProbeView projects a probe run. A nil targets slice renders "[]", so a
+// check with no probes still reads as a decided result rather than a missing
+// field.
+func NewCheckProbeView(name string, targets []CheckProbeTargetView) CheckProbeView {
+	if targets == nil {
+		targets = []CheckProbeTargetView{}
+	}
+	return CheckProbeView{Check: name, Targets: targets}
 }
