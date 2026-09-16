@@ -164,18 +164,34 @@ over the same event-table checkpoint the drift sweep uses.
 
 ```sh
 exocomp netgroup add home 192.168.0.0/16,10.0.0.0/8
+exocomp netgroup add home-except-guest 192.168.0.0/16,!192.168.5.0/24
+exocomp netgroup update home-except-guest 10.0.0.0/8
+exocomp netgroup show 192.168.5.10     # what classifies this address
+exocomp netgroup usage                 # which checks and peers land where
 exocomp netgroup list
-exocomp netgroup rm home
+exocomp netgroup rm home-except-guest
 ```
 
 A netgroup names a set of CIDRs with the operator's own vocabulary. It
 classifies two things: every webhook's peer and every check target's address.
 Both are stamped before the pipeline evaluates the event, so a rule reads
 `event.labels["netgroup"] == "home"` instead of a prefix literal. The webhook
-stamp is `peer_ip`/`peer_netgroup` on every normalized event — a
+stamp also carries `peer_ip` and `peer_netgroup` (the explicit network-path
+name); `netgroup` and `peer_netgroup` are always equal for one peer — a
 network-path signal, not a location verdict: over tailnet the peer is the
 CGNAT address, so a home netgroup of LAN prefixes marks an overlay-delivered
 hook away, the fail-safe direction for a "refuse from outside" rule.
+
+A CIDR prefixed with `!` is an exclusion: an address inside any group's exclude
+classifies to the miss (`away`) even when an include also covers it, so
+`192.168.0.0/16,!192.168.5.0/24` expresses "the LAN except the guest VLAN" as
+one group. `netgroup show <addr>` prints the group and the specific prefix that
+classifies one address, or `away`; `netgroup usage [<name>]` is the read-only
+report of which check targets (`check_state.netgroup`) and which observed
+webhook peers (`peer_netgroup`) currently land in each group. `netgroup update
+<name> <cidr[,...]>` replaces a group's set in place without disturbing stored
+`check_state`. A group may not be named `away`: it is byte-identical to the
+miss label.
 
 ## Checks as an event
 

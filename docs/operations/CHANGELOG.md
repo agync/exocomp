@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — netgroups become a primitive: exclusions, update, inspection
+
+- **Netgroups carry exclusions.** A CIDR prefixed with `!` in the add/update
+  list (`home 192.168.0.0/16,!192.168.5.0/24`) is a hole in the set: an address
+  inside any group's exclude classifies to `away` even when an include also
+  covers it. Stored in the existing `prefixes` column — no migration.
+- **`netgroup update <name> <cidr[,...]>`** replaces a group's includes and
+  excludes in place without disturbing stored `check_state`; **`netgroup show
+  <addr>`** prints the group and winning prefix (or `away`) for one address;
+  **`netgroup usage [<name>]`** is the read-only report of which check targets
+  and observed webhook peers classify into each group.
+- **Every source stamps one `netgroup` label.** Webhook ingress now writes
+  `labels["netgroup"]` alongside `peer_netgroup` and `peer_ip`, so a webhook
+  rule and a check rule read the same key; the two are always equal for one
+  peer. A group may no longer be named `away`, which is byte-identical to the
+  miss label.
+- The netgroups tab renders exclusions on their own line, `netgroup list
+  --output json` and `/api/v1/netgroups` carry `excludes`, and the add form
+  accepts `!` members through the shared parser.
+
 ## 2026-09-16 — the new check kinds get surfaces and an on-demand probe
 
 - **`check add` and `check update` carry the new kinds' flags.** `--min-days`
