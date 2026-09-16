@@ -293,8 +293,16 @@ it emits one event keyed `check:<check>:aggregate` with `host=""`,
 present target names. A snooze suppresses the aggregate event exactly as it does
 a per-target one. `hosts` is the trusted-source line (design §3.3): only a
 daemon-produced sweep event carries it — a webhook body never sets it, so no
-rule can be made to run over an attacker-supplied host set. This is the core
-semantics; the `check add`/`check update` flag and web control land separately.
+rule can be made to run over an attacker-supplied host set. The reserved `*`
+rollup state row is never a probe target: the metrics gauges and every check
+view (CLI, web, API, MCP) skip it, so it cannot appear as a target or be
+counted twice.
+
+Turn the aggregate on with `exocomp check add <name> ... --aggregate --min-up N`
+(or edit it on the `/checks` page; `N` is bounded to `0..len(targets)`, `0`
+meaning every target). `check list` carries an AGGREGATE column, `rule list`
+shows the action, and `check_add`/`check_update` take `aggregate`/`min_up`. A
+rule can then run over exactly the present subset — see `--limit-hosts` below.
 
 The http probe refuses the addresses a check must not reach: it dials through
 a guard that refuses loopback, link-local unicast (covering the cloud
@@ -335,6 +343,25 @@ The `playbook` action needs `--repo-source` and `--limit` (default-deny: an
 un-limited rule would run against every host the inventory names). A check
 rule's cooldown keys off `check:<check>:<target>`, so each target of a
 multi-target check gets its own slot while webhook rules stay per-rule.
+
+A rule may instead derive the limit from the event's host set:
+
+```sh
+exocomp rule add present-update \
+  --source check \
+  --expr 'event.name == "at-home" && event.labels["aggregate"] == "true"' \
+  --action playbook --repo-source ops --playbook playbooks/update.yml \
+  --limit-hosts --cooldown 1h
+```
+
+`--limit-hosts` expands `--limit` to exactly the event's `hosts`, escaping the
+"run over the present subset" from a fixed pattern. It is refused unless the
+rule's event filter is `--source check` and the action is `playbook`, a rule
+without a host set is refused rather than run un-limited, and the builder checks
+every host against the named check's own target set before argv exists — so
+only a daemon-produced sweep event, whose names come from real probes, can shape
+the run. A fixed `--limit` and `--limit-hosts` are mutually exclusive.
+`rule list` shows `(limit: event hosts)` for such a rule.
 
 The web surfaces it across the UI. **Netgroups** is a tab on the **Checks**
 page (the standalone `/netgroups` page now 302s to `/checks?tab=netgroups`),

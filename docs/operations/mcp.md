@@ -103,7 +103,10 @@ writes, not queue enqueues: there is no `idempotency_key` — a repeat `check_ad
 is a duplicate-name refusal, not a second row. `check_add` and `check_update`
 carry the kind's optional fields (`expect` for http, `min_days` for tls,
 `expect_addr` for dns, `op`+`value` for metric; both required), and a field that
-belongs to another kind is refused with `invalid_argument`.
+belongs to another kind is refused with `invalid_argument`. They also take
+`aggregate` (opt into the check-level rollup event) and `min_up` (the up-target
+threshold, `0` = every target); `check_update` leaves either as stored when
+omitted. The reserved `*` rollup state row is never projected as a target.
 
 ### Bridging a stdio client
 

@@ -6,6 +6,24 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-16 — aggregate check surfaces and governed `--limit-hosts`
+
+- **Set the aggregate everywhere.** `check add/update --aggregate --min-up N`
+  (bounded `0..len(targets)`), the `/checks` add and edit dialogs, and MCP
+  `check_add`/`check_update` (`aggregate`, `min_up`) all write the opt-in
+  rollup. `check list` gains an AGGREGATE column and the check card badges
+  "aggregate · min N up"; `check.view` exposes `aggregate`/`min_up`.
+- **`rule add --limit-hosts`.** A check-sourced `playbook` rule derives its
+  ansible `--limit` from the sweep event's present host set instead of a fixed
+  pattern. Add refuses it off `--source check` or off the `playbook` action,
+  and the builder refuses an empty set and any host that is not a declared
+  target of the named check, so only a daemon-produced sweep event can shape
+  the run (trusted-source line, design §3.3). `rule list` shows
+  `(limit: event hosts)`.
+- **The reserved `*` rollup row is never a target.** The metrics gauges and the
+  CLI, web, API, and MCP check views skip it, so it cannot surface as a probed
+  host or be counted twice.
+
 ## 2026-09-16 — check-level aggregate events (core)
 
 - **Opt-in aggregate.** A check row can carry `aggregate`/`min_up`; when set,
