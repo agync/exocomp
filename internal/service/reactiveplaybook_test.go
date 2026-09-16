@@ -186,3 +186,74 @@ func TestBuildPlaybookSpecRequiresLimit(t *testing.T) {
 		}
 	}
 }
+
+// playbookSourceStore registers a path source with a real checkout and a
+// playbook, returning the service under test.
+func playbookSourceStore(t *testing.T) (*service.Service, *store.Store) {
+	t.Helper()
+	ctx := context.Background()
+	st := openStore(t)
+	checkout := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(checkout, "plays"), 0o700); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(checkout, "plays", "site.yml"), []byte("- hosts: all\n"), 0o600); err != nil {
+		t.Fatalf("write playbook: %v", err)
+	}
+	if _, err := st.CreateSource(ctx, store.Source{Name: "ops", Kind: store.SourcePath, URI: checkout, Enabled: true}); err != nil {
+		t.Fatalf("CreateSource: %v", err)
+	}
+	return service.New(st, t.TempDir(), nil), st
+}
+
+// limitHostsCheck seeds the check a --limit-hosts rule derives its limit from.
+func limitHostsCheck(t *testing.T, st *store.Store) {
+	t.Helper()
+	if _, err := st.CreateCheck(context.Background(), store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "laptop", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "192.168.1.60", Port: 22},
+		},
+	}); err != nil {
+		t.Fatalf("CreateCheck: %v", err)
+	}
+}
+
+// TestBuildPlaybookSpecLimitHosts is the trusted-source gate: only a
+// check-sourced sweep event carries hosts, the derived --limit is exactly that
+// set, and a forged, empty, or undeclared set is refused before argv exists.
+func TestBuildPlaybookSpecLimitHosts(t *testing.T) {
+	ctx := context.Background()
+	svc, st := playbookSourceStore(t)
+	limitHostsCheck(t, st)
+
+	rule := store.Rule{
+		Name: "present-update", ActionKind: store.ActionPlaybook,
+		Action: store.RuleAction{
+			Source: "ops", Playbook: "plays/site.yml", LimitHosts: true,
+		},
+	}
+	spec, err := svc.BuildPlaybookSpec(ctx, reactive.Event{
+		Source: reactive.SourceCheck, Name: "at-home", Hosts: []string{"laptop", "nas"},
+	}, rule)
+	if err != nil {
+		t.Fatalf("BuildPlaybookSpec: %v", err)
+	}
+	if want := "laptop,nas"; !strings.Contains(strings.Join(spec.Argv, " "), "--limit "+want) {
+		t.Fatalf("argv = %v, want --limit %s", spec.Argv, want)
+	}
+
+	refusals := map[string]reactive.Event{
+		"empty hosts":       {Source: reactive.SourceCheck, Name: "at-home"},
+		"webhook source":    {Source: reactive.SourceGeneric, Name: "at-home", Hosts: []string{"laptop"}},
+		"undeclared host":   {Source: reactive.SourceCheck, Name: "at-home", Hosts: []string{"laptop", "ghost"}},
+		"unknown check":     {Source: reactive.SourceCheck, Name: "ghost", Hosts: []string{"laptop"}},
+		"invalid host name": {Source: reactive.SourceCheck, Name: "at-home", Hosts: []string{"bad name"}},
+	}
+	for name, ev := range refusals {
+		if _, err := svc.BuildPlaybookSpec(ctx, ev, rule); err == nil {
+			t.Errorf("%s: built a spec, want a refusal", name)
+		}
+	}
+}

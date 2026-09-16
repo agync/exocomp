@@ -47,6 +47,7 @@ func newRuleAddCmd() *cobra.Command {
 		repoSource      string
 		playbook        string
 		limit           string
+		limitHosts      bool
 		tags            string
 		check           bool
 		diff            bool
@@ -75,6 +76,19 @@ func newRuleAddCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name, argv := args[0], args[1:]
 
+			if limitHosts {
+				if action != store.ActionPlaybook {
+					return errors.New("rule add: --limit-hosts applies to action playbook only")
+				}
+				if source != reactive.SourceCheck {
+					return fmt.Errorf("rule add: --limit-hosts needs --source %s (only a sweep event carries hosts)",
+						reactive.SourceCheck)
+				}
+				if limit != "" {
+					return errors.New("rule add: --limit and --limit-hosts are mutually exclusive")
+				}
+			}
+
 			var ruleAction store.RuleAction
 			switch action {
 			case store.ActionShell:
@@ -97,7 +111,7 @@ func newRuleAddCmd() *cobra.Command {
 				if playbook == "" {
 					return errors.New("rule add: action playbook needs --playbook")
 				}
-				if limit == "" {
+				if limit == "" && !limitHosts {
 					return errors.New("rule add: action playbook needs --limit (default-deny)")
 				}
 				if len(argv) != 0 {
@@ -106,6 +120,7 @@ func newRuleAddCmd() *cobra.Command {
 				ruleAction.Source = repoSource
 				ruleAction.Playbook = playbook
 				ruleAction.Limit = limit
+				ruleAction.LimitHosts = limitHosts
 				// A declared egress set is validated at the parse (1..65535); a
 				// junk port refuses the rule rather than silently dropping it.
 				ports, perr := parseEgressPorts(egress)
@@ -156,7 +171,7 @@ func newRuleAddCmd() *cobra.Command {
 			defer func() { _ = st.Close() }()
 
 			if action == store.ActionPlaybook {
-				if err := validatePlaybookRule(cmd.Context(), st, repoSource, playbook, limit, tags, check, diff); err != nil {
+				if err := validatePlaybookRule(cmd.Context(), st, repoSource, playbook, limit, tags, source, limitHosts, check, diff); err != nil {
 					return err
 				}
 			}
@@ -200,6 +215,8 @@ func newRuleAddCmd() *cobra.Command {
 		"playbook action: path to the playbook, relative to the --repo-source checkout")
 	cmd.Flags().StringVar(&limit, "limit", "",
 		"playbook action: ansible --limit host pattern (required: default-deny)")
+	cmd.Flags().BoolVar(&limitHosts, "limit-hosts", false,
+		"playbook action: derive --limit from the check event's present hosts (needs --source check)")
 	cmd.Flags().StringVar(&tags, "tags", "",
 		"playbook action: ansible --tags, comma-separated")
 	cmd.Flags().StringSliceVar(&egress, "egress", nil,
@@ -231,7 +248,12 @@ func actionKinds() []string {
 // .exocomp/hooks.yml and the data-dir override), and the limit/tags must be
 // shape-valid for ansible. All of it re-validated by the builder when the rule
 // fires; refusing here keeps a rule that can never fire out of `rule list`.
-func validatePlaybookRule(ctx context.Context, st *store.Store, repoSource, playbook, limit, tags string, check, diff bool) error {
+// --limit-hosts is refused unless the rule's event filter is the check source:
+// only a daemon-produced sweep event carries a host set (design §3.3).
+func validatePlaybookRule(ctx context.Context, st *store.Store, repoSource, playbook, limit, tags, source string, limitHosts, check, diff bool) error {
+	if limitHosts && source != reactive.SourceCheck {
+		return fmt.Errorf("rule add: --limit-hosts needs --source %s", reactive.SourceCheck)
+	}
 	dir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("rule add: resolve data dir: %w", err)
