@@ -556,6 +556,11 @@ type EventView struct {
 	// observed {status, consecutive} tail that produced it (timestamps in
 	// RFC3339). Absent for alert and non-check events.
 	CheckObservations []CheckObservationView `json:"check_observations,omitempty"`
+	// Hosts is a daemon-produced sweep event's present target set — an
+	// aggregate check's up targets, sorted. Only a check sweep event carries
+	// it; a webhook body can never set it (the trusted-source line, design
+	// §3.3/§7.4).
+	Hosts []string `json:"hosts,omitempty"`
 }
 
 // CheckObservationView is one probe of a check transition's hysteresis ledger:
@@ -571,11 +576,11 @@ type CheckObservationView struct {
 // list; the additive name/status/netgroup/check-observations fields are the
 // values-free projection of the stored row described on EventView.
 func NewEventView(e store.Event) EventView {
-	name, status, netgroup := eventViewExtras(e)
+	name, status, netgroup, hosts := eventViewExtras(e)
 	view := EventView{
 		ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
 		MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
-		Name: name, Status: status, Netgroup: netgroup,
+		Name: name, Status: status, Netgroup: netgroup, Hosts: hosts,
 	}
 	// The observation ledger rides the event row, not the normalized body; a
 	// corrupt ledger degrades to absent, never an error.
@@ -608,6 +613,7 @@ type eventBody struct {
 	Target string            `json:"target"`
 	Status string            `json:"status"`
 	Labels map[string]string `json:"labels"`
+	Hosts  []string          `json:"hosts"`
 }
 
 func parseEventBody(e store.Event) (eventBody, bool) {
@@ -618,19 +624,21 @@ func parseEventBody(e store.Event) (eventBody, bool) {
 	return b, true
 }
 
-// eventViewExtras projects the values-free name/status/netgroup of one event's
-// normalized body, sharing EventName with the web so the two surfaces render
-// the same row facts.
-func eventViewExtras(e store.Event) (name, status, netgroup string) {
+// eventViewExtras projects the values-free name/status/netgroup/hosts of one
+// event's normalized body, sharing EventName with the web so the two surfaces
+// render the same row facts. hosts is the trusted-source field: it is read
+// only for a check event, so a webhook whose body happens to carry a top-level
+// "hosts" key can never project one.
+func eventViewExtras(e store.Event) (name, status, netgroup string, hosts []string) {
 	name = EventName(e)
 	if e.Source != reactive.SourceCheck {
-		return name, "", ""
+		return name, "", "", nil
 	}
 	b, ok := parseEventBody(e)
 	if !ok {
-		return name, "", ""
+		return name, "", "", nil
 	}
-	return name, b.Status, b.Labels["netgroup"]
+	return name, b.Status, b.Labels["netgroup"], b.Hosts
 }
 
 // EventName pulls a human-facing alert name out of a normalized event body,

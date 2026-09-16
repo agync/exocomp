@@ -100,3 +100,40 @@ func TestEventViewUnparseableBody(t *testing.T) {
 		t.Fatalf("unparseable body view = %+v, want source-only", v)
 	}
 }
+
+// TestEventViewHosts pins the trusted-source projection: a check sweep event's
+// hosts project into the view, and a webhook event whose body carries a forged
+// top-level hosts key projects none — the source gate is what enforces "only a
+// sweep event carries hosts".
+//
+// Mutation check: drop the source gate in eventViewExtras and the forged
+// webhook hosts project, failing the assertion below.
+func TestEventViewHosts(t *testing.T) {
+	check := NewEventView(store.Event{
+		Source: reactive.SourceCheck,
+		Normalized: `{"source":"check","kind":"check","name":"home","status":"firing",` +
+			`"host":"","labels":{"aggregate":"true","up":"1","total":"2"},"hosts":["laptop"]}`,
+	})
+	if len(check.Hosts) != 1 || check.Hosts[0] != "laptop" {
+		t.Fatalf("check view hosts = %v, want [laptop]", check.Hosts)
+	}
+
+	forged := NewEventView(store.Event{
+		Source:     reactive.SourceGeneric,
+		Normalized: `{"source":"generic","kind":"generic","name":"x","hosts":["evil"]}`,
+	})
+	if len(forged.Hosts) != 0 {
+		t.Fatalf("webhook view projected hosts %v; only a sweep event may carry a host set", forged.Hosts)
+	}
+
+	blob, err := json.Marshal(NewEventView(store.Event{
+		Source:     reactive.SourceCheck,
+		Normalized: `{"source":"check","kind":"check","name":"home","status":"firing"}`,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(blob), "hosts") {
+		t.Fatalf("check view %s must omit hosts when the event carries none", blob)
+	}
+}
