@@ -1,14 +1,23 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/netip"
+	"os"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 
 	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
@@ -39,6 +48,8 @@ func newCheckCmd() *cobra.Command {
 		newCheckSnoozeCmd(),
 		newCheckUnsnoozeCmd(),
 		newCheckRmCmd(),
+		newCheckExportCmd(),
+		newCheckApplyCmd(),
 	)
 	return cmd
 }
@@ -741,4 +752,383 @@ func checkStatusesLabel(states []store.CheckState, targets []store.CheckTarget) 
 		}
 	}
 	return strings.Join(parts, ",")
+}
+
+// probeConfig is the file schema `check export`/`netgroup export` emit and
+// `check apply`/`netgroup apply` read: the two lists live in one document so an
+// operator can keep the whole probe estate in one file. Each apply reads only
+// its own list, and each export emits only its own, so the round trip is exact.
+type probeConfig struct {
+	Checks    []configCheck    `yaml:"checks,omitempty" json:"checks,omitempty"`
+	Netgroups []configNetgroup `yaml:"netgroups,omitempty" json:"netgroups,omitempty"`
+}
+
+// configCheck is one check's declarative form. Enabled is a pointer so a
+// hand-written file that omits it starts the check enabled (the store's own
+// default), while an export always writes it explicitly to stay round-trip
+// exact. Interval is a Go duration string, the same shape the flags take.
+type configCheck struct {
+	Name      string         `yaml:"name" json:"name"`
+	Kind      string         `yaml:"kind" json:"kind"`
+	Interval  string         `yaml:"interval" json:"interval"`
+	Enabled   *bool          `yaml:"enabled" json:"enabled"`
+	Aggregate bool           `yaml:"aggregate" json:"aggregate"`
+	MinUp     int            `yaml:"min_up" json:"min_up"`
+	Targets   []configTarget `yaml:"targets" json:"targets"`
+}
+
+// configTarget is one probe target. Only the fields the check's kind uses are
+// emitted, so a tcp target carries address+port and a dns target dns_name,
+// exactly as the target's probe spec defines.
+type configTarget struct {
+	Name       string  `yaml:"name" json:"name"`
+	Address    string  `yaml:"address,omitempty" json:"address,omitempty"`
+	Port       int     `yaml:"port,omitempty" json:"port,omitempty"`
+	URL        string  `yaml:"url,omitempty" json:"url,omitempty"`
+	Expect     int     `yaml:"expect,omitempty" json:"expect,omitempty"`
+	DNSName    string  `yaml:"dns_name,omitempty" json:"dns_name,omitempty"`
+	ExpectAddr string  `yaml:"expect_addr,omitempty" json:"expect_addr,omitempty"`
+	MinDays    int     `yaml:"min_days,omitempty" json:"min_days,omitempty"`
+	Op         string  `yaml:"op,omitempty" json:"op,omitempty"`
+	Value      float64 `yaml:"value,omitempty" json:"value,omitempty"`
+}
+
+// configNetgroup is one netgroup's declarative form: its includes plain and its
+// excludes as the bare CIDRs the `!` in a prefix list marks.
+type configNetgroup struct {
+	Name     string   `yaml:"name" json:"name"`
+	Includes []string `yaml:"includes" json:"includes"`
+	Excludes []string `yaml:"excludes,omitempty" json:"excludes,omitempty"`
+}
+
+// probeExportMode resolves the export format. Export's natural serialization is
+// YAML, so the default and "text" both mean yaml; "json" selects the machine
+// shape. It is separate from outputMode because the list verbs' text table is
+// not a file an apply can read back.
+func probeExportMode(cmd *cobra.Command) (string, error) {
+	mode := "yaml"
+	if f := cmd.Flags().Lookup(outputFlag); f != nil && f.Changed {
+		mode = f.Value.String()
+	} else if env := strings.TrimSpace(os.Getenv(outputEnv)); env != "" {
+		mode = env
+	}
+	switch mode {
+	case "yaml", outputText:
+		return "yaml", nil
+	case outputJSON:
+		return outputJSON, nil
+	default:
+		return "", fmt.Errorf("--output must be yaml or json, not %q", mode)
+	}
+}
+
+// writeProbeConfig renders the document in the requested format. Struct field
+// order is the file's field order, so an export is byte-stable across runs.
+func writeProbeConfig(cmd *cobra.Command, mode string, doc probeConfig) error {
+	out := cmd.OutOrStdout()
+	if mode == outputJSON {
+		data, err := json.MarshalIndent(doc, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(out, string(data))
+		return err
+	}
+	data, err := yaml.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	_, err = out.Write(data)
+	return err
+}
+
+// readConfigFile reads the apply input, treating "-" as stdin so
+// `export | apply -f -` works in a pipeline.
+func readConfigFile(cmd *cobra.Command, path string) ([]byte, error) {
+	if path == "-" {
+		return io.ReadAll(cmd.InOrStdin())
+	}
+	return os.ReadFile(path)
+}
+
+// parseProbeConfig decodes a config document strictly: a typo'd key is an
+// operator mistake worth failing on, not a constraint silently dropped from the
+// estate. JSON input is valid YAML, so one decoder serves both formats.
+func parseProbeConfig(data []byte) (probeConfig, error) {
+	dec := yaml.NewDecoder(bytes.NewReader(data))
+	dec.KnownFields(true)
+	var doc probeConfig
+	if err := dec.Decode(&doc); err != nil {
+		return probeConfig{}, err
+	}
+	return doc, nil
+}
+
+// checksToConfig projects the stored checks into the file schema in store order
+// (by name), which is what makes the file diff cleanly.
+func checksToConfig(rows []store.Check) []configCheck {
+	out := make([]configCheck, 0, len(rows))
+	for _, c := range rows {
+		enabled := c.Enabled
+		targets := make([]configTarget, 0, len(c.Targets))
+		for _, t := range c.Targets {
+			targets = append(targets, configTarget{
+				Name: t.Name, Address: t.Address, Port: t.Port, URL: t.URL,
+				Expect: t.Expect, DNSName: t.DNSName, ExpectAddr: t.ExpectAddr,
+				MinDays: t.MinDays, Op: t.Op, Value: t.Value,
+			})
+		}
+		out = append(out, configCheck{
+			Name: c.Name, Kind: c.Kind,
+			Interval:  (time.Duration(c.IntervalS) * time.Second).String(),
+			Enabled:   &enabled,
+			Aggregate: c.Aggregate, MinUp: c.MinUp,
+			Targets: targets,
+		})
+	}
+	return out
+}
+
+func newCheckExportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "export",
+		Short:   "Print every check as an applyable config file",
+		Example: "exocomp check export > checks.yaml",
+		Args:    cobra.NoArgs,
+		Long: "Prints the declarative form of every check, ordered by name, as YAML " +
+			"(default) or JSON. The output is exactly what `check apply -f` reads, so a " +
+			"live estate can be committed to git and a fresh box converged from the file.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := probeExportMode(cmd)
+			if err != nil {
+				return err
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			rows, err := st.ListChecks(cmd.Context(), false)
+			if err != nil {
+				return err
+			}
+			return writeProbeConfig(cmd, mode, probeConfig{Checks: checksToConfig(rows)})
+		},
+	}
+}
+
+func newCheckApplyCmd() *cobra.Command {
+	var (
+		file      string
+		prune     bool
+		yesReally bool
+	)
+
+	cmd := &cobra.Command{
+		Use:     "apply -f <file>",
+		Short:   "Create or update checks from a config file",
+		Example: "exocomp check apply -f checks.yaml",
+		Long: "Reconciles the stored checks to the file, idempotent by name: a name " +
+			"absent from the store is created, a present one is updated in place, and an " +
+			"identical one is left untouched and reported unchanged. A check's kind is not " +
+			"updatable, so a file that changes a stored check's kind is refused by name " +
+			"rather than silently recreated; remove and re-add it deliberately. `-f -` " +
+			"reads stdin.\n\n--prune deletes every check absent from the file and needs " +
+			"--yes-really (or the global --assume-yes): a whole-estate delete is not " +
+			"something to discover from an empty grep.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if prune {
+				if err := confirmDestructive(cmd, yesReally,
+					"check apply --prune (deletes every check absent from the file)",
+					"--yes-really"); err != nil {
+					return err
+				}
+			}
+			data, err := readConfigFile(cmd, file)
+			if err != nil {
+				return fmt.Errorf("check apply: %w", err)
+			}
+			doc, err := parseProbeConfig(data)
+			if err != nil {
+				return fmt.Errorf("check apply: %w", err)
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			return applyChecks(cmd, st, doc.Checks, prune)
+		},
+	}
+	cmd.Flags().StringVarP(&file, "file", "f", "", "config file to apply (- for stdin)")
+	cmd.Flags().BoolVar(&prune, "prune", false, "delete every check absent from the file")
+	cmd.Flags().BoolVar(&yesReally, "yes-really", false, "confirm --prune")
+	_ = cmd.MarkFlagRequired("file")
+	return cmd
+}
+
+// plannedCheck is one file row after parsing, before any store write.
+type plannedCheck struct {
+	row       configCheck
+	targets   []store.CheckTarget
+	intervalS int64
+	enabled   bool
+}
+
+// applyChecks reconciles the file's checks against the store. Every row is
+// parsed and its kind compared to the stored one before the first write, so a
+// file that would refuse halfway leaves nothing half-applied. Target shape
+// validation is left to the store verbs (CreateCheck/UpdateCheck), which is the
+// same gate `check add` passes through.
+func applyChecks(cmd *cobra.Command, st *store.Store, rows []configCheck, prune bool) error {
+	ctx := cmd.Context()
+	existing, err := st.ListChecks(ctx, false)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]store.Check, len(existing))
+	for _, c := range existing {
+		byName[c.Name] = c
+	}
+
+	plans := make([]plannedCheck, 0, len(rows))
+	seen := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if seen[row.Name] {
+			return fmt.Errorf("check apply: %q appears twice in the file", row.Name)
+		}
+		seen[row.Name] = true
+		if cur, ok := byName[row.Name]; ok && cur.Kind != row.Kind {
+			return fmt.Errorf("check apply: %q is kind %s; the file says %s, and a kind is not updatable — remove it and add it again",
+				row.Name, cur.Kind, row.Kind)
+		}
+		d, err := time.ParseDuration(row.Interval)
+		if err != nil || d <= 0 {
+			return fmt.Errorf("check apply: %s: interval %q must be a positive Go duration (e.g. 5m)", row.Name, row.Interval)
+		}
+		targets, err := configTargets(row.Kind, row.Targets)
+		if err != nil {
+			return fmt.Errorf("check apply: %s: %w", row.Name, err)
+		}
+		enabled := true
+		if row.Enabled != nil {
+			enabled = *row.Enabled
+		}
+		plans = append(plans, plannedCheck{row: row, targets: targets, intervalS: int64(d.Seconds()), enabled: enabled})
+	}
+
+	var created, updated, unchanged, deleted int
+	for _, p := range plans {
+		cur, ok := byName[p.row.Name]
+		if !ok {
+			if _, err := st.CreateCheck(ctx, store.NewCheck{
+				Name: p.row.Name, Kind: p.row.Kind, IntervalS: p.intervalS,
+				Targets: p.targets, Aggregate: p.row.Aggregate, MinUp: p.row.MinUp,
+			}); err != nil {
+				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
+			}
+			if !p.enabled {
+				if err := st.SetCheckEnabled(ctx, p.row.Name, false); err != nil {
+					return fmt.Errorf("check apply: %s: %w", p.row.Name, err)
+				}
+			}
+			created++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s: created\n", p.row.Name)
+			continue
+		}
+
+		changed := false
+		if !reflect.DeepEqual(cur.Targets, p.targets) || cur.IntervalS != p.intervalS {
+			if _, err := st.UpdateCheck(ctx, p.row.Name, p.targets, p.intervalS); err != nil {
+				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
+			}
+			changed = true
+		}
+		if cur.Aggregate != p.row.Aggregate || cur.MinUp != p.row.MinUp {
+			if err := st.SetCheckAggregate(ctx, p.row.Name, p.row.Aggregate, p.row.MinUp); err != nil {
+				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
+			}
+			changed = true
+		}
+		if cur.Enabled != p.enabled {
+			if err := st.SetCheckEnabled(ctx, p.row.Name, p.enabled); err != nil {
+				return fmt.Errorf("check apply: %s: %w", p.row.Name, err)
+			}
+			changed = true
+		}
+		if changed {
+			updated++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s: updated\n", p.row.Name)
+		} else {
+			unchanged++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s: unchanged\n", p.row.Name)
+		}
+	}
+
+	if prune {
+		names := make([]string, 0, len(byName))
+		for name := range byName {
+			if !seen[name] {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if err := st.DeleteCheck(ctx, name); err != nil {
+				return fmt.Errorf("check apply: %s: %w", name, err)
+			}
+			deleted++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "check %s: deleted\n", name)
+		}
+	}
+
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "check apply: %d created, %d updated, %d unchanged, %d deleted\n",
+		created, updated, unchanged, deleted)
+	return err
+}
+
+// configTargets rebuilds probe targets from the file through
+// store.ParseCheckTargets, the same parse `check add` uses, then applies the
+// kind-specific fields the parsed target does not carry. Reconstructing the
+// name=spec form keeps the store as the one validator rather than a second
+// shape check that could drift.
+func configTargets(kind string, rows []configTarget) ([]store.CheckTarget, error) {
+	if len(rows) == 0 {
+		return nil, errors.New("needs at least one target")
+	}
+	specs := make([]string, 0, len(rows))
+	for _, t := range rows {
+		specs = append(specs, t.Name+"="+configTargetValue(kind, t))
+	}
+	targets, err := store.ParseCheckTargets(kind, specs, false)
+	if err != nil {
+		return nil, err
+	}
+	for i := range targets {
+		targets[i].Expect = rows[i].Expect
+		targets[i].MinDays = rows[i].MinDays
+		targets[i].ExpectAddr = rows[i].ExpectAddr
+		targets[i].Op = rows[i].Op
+		targets[i].Value = rows[i].Value
+	}
+	return targets, nil
+}
+
+// configTargetValue renders a file target back to the value half of its
+// name=spec. An unknown kind falls through to Address so ParseCheckTargets —
+// not this helper — reports the unknown kind.
+func configTargetValue(kind string, t configTarget) string {
+	switch kind {
+	case store.CheckTCP, store.CheckTLS:
+		return net.JoinHostPort(t.Address, strconv.Itoa(t.Port))
+	case store.CheckDNS:
+		return t.DNSName
+	case store.CheckHTTP, store.CheckMetric:
+		return t.URL
+	default:
+		return t.Address
+	}
 }

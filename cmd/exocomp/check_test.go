@@ -5,6 +5,8 @@ import (
 	"context"
 	"net"
 	"net/netip"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,6 +29,31 @@ func runCheckCmd(t *testing.T, args ...string) (string, error) {
 
 	err := root.Execute()
 	return out.String(), err
+}
+
+// runCheckCmdStdin is runCheckCmd with a stdin body, the `-f -` path.
+func runCheckCmdStdin(t *testing.T, in string, args ...string) (string, error) {
+	t.Helper()
+
+	var out bytes.Buffer
+	root := newRootCmd()
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetIn(strings.NewReader(in))
+	root.SetArgs(args)
+
+	err := root.Execute()
+	return out.String(), err
+}
+
+// writeConfig writes a config file for the apply tests.
+func writeConfig(t *testing.T, name, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	return path
 }
 
 func checks(t *testing.T) []store.Check {
@@ -716,5 +743,258 @@ func TestCheckAggregateRoundTrip(t *testing.T) {
 		if err == nil {
 			t.Fatalf("check %v accepted, want a refusal:\n%s", args, out)
 		}
+	}
+}
+
+// TestCheckExportApplyRoundTrip: export renders every check's declarative form
+// (kind config included) deterministically, and feeding that file straight back
+// into apply is a no-op — every row unchanged, the second export byte-identical.
+func TestCheckExportApplyRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "laptop", Address: "192.168.1.50", Port: 22},
+			{Name: "nas", Address: "192.168.1.60", Port: 22},
+		},
+		Aggregate: true, MinUp: 1,
+	}); err != nil {
+		t.Fatalf("create tcp check: %v", err)
+	}
+	if _, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "cert", Kind: store.CheckTLS, IntervalS: 3600,
+		Targets: []store.CheckTarget{{Name: "web", Address: "web.lan", Port: 443, MinDays: 21}},
+	}); err != nil {
+		t.Fatalf("create tls check: %v", err)
+	}
+	_ = st.Close()
+
+	out, err := runCheckCmd(t, "check", "export")
+	if err != nil {
+		t.Fatalf("check export: %v", err)
+	}
+	for _, want := range []string{
+		"checks:", "name: at-home", "kind: tcp", "interval: 5m0s", "enabled: true",
+		"aggregate: true", "min_up: 1", "name: laptop", "address: 192.168.1.50", "port: 22",
+		"name: cert", "kind: tls", "interval: 1h0m0s", "min_days: 21",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("export missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "netgroups:") {
+		t.Errorf("check export emitted an empty netgroups list:\n%s", out)
+	}
+
+	file := writeConfig(t, "checks.yaml", out)
+	applyOut, err := runCheckCmd(t, "check", "apply", "-f", file)
+	if err != nil {
+		t.Fatalf("check apply: %v\n%s", err, applyOut)
+	}
+	for _, want := range []string{"check at-home: unchanged", "check cert: unchanged", "2 unchanged"} {
+		if !strings.Contains(applyOut, want) {
+			t.Errorf("apply missing %q:\n%s", want, applyOut)
+		}
+	}
+	if strings.Contains(applyOut, ": updated") || strings.Contains(applyOut, ": created") ||
+		strings.Contains(applyOut, ": deleted") {
+		t.Errorf("round-trip apply changed a row:\n%s", applyOut)
+	}
+
+	again, err := runCheckCmd(t, "check", "export")
+	if err != nil {
+		t.Fatalf("second export: %v", err)
+	}
+	if again != out {
+		t.Errorf("export not stable across a round trip:\n--- first ---\n%s\n--- second ---\n%s", out, again)
+	}
+
+	jsonOut, err := runCheckCmd(t, "check", "export", "--output", "json")
+	if err != nil {
+		t.Fatalf("check export json: %v", err)
+	}
+	for _, want := range []string{`"checks":`, `"name": "at-home"`, `"interval": "5m0s"`, `"enabled": true`} {
+		if !strings.Contains(jsonOut, want) {
+			t.Errorf("json export missing %q:\n%s", want, jsonOut)
+		}
+	}
+	jsonFile := writeConfig(t, "checks.json", jsonOut)
+	applyJSON, err := runCheckCmd(t, "check", "apply", "-f", jsonFile)
+	if err != nil {
+		t.Fatalf("apply json: %v\n%s", err, applyJSON)
+	}
+	if !strings.Contains(applyJSON, "2 unchanged") {
+		t.Errorf("json round-trip apply = %q, want all unchanged", applyJSON)
+	}
+	if _, err := runCheckCmd(t, "check", "export", "--output", "yaml"); err != nil {
+		t.Errorf("--output yaml refused: %v", err)
+	}
+	if out, err := runCheckCmd(t, "check", "export", "--output", "xml"); err == nil {
+		t.Errorf("--output xml accepted:\n%s", out)
+	}
+}
+
+// TestCheckApplyStdin: `-f -` reads the document from stdin, so an export can
+// be piped straight into an apply.
+func TestCheckApplyStdin(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	doc := `
+checks:
+  - name: at-home
+    kind: tcp
+    interval: 5m
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: laptop
+        address: 192.168.1.50
+        port: 22
+`
+	out, err := runCheckCmdStdin(t, doc, "check", "apply", "-f", "-")
+	if err != nil {
+		t.Fatalf("check apply -f -: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "check at-home: created") || !strings.Contains(out, "1 created") {
+		t.Errorf("stdin apply output = %q, want a created row", out)
+	}
+	if rows := checks(t); len(rows) != 1 || rows[0].Name != "at-home" {
+		t.Fatalf("checks = %+v, want one at-home check", rows)
+	}
+}
+
+// TestCheckApplyCreateUpdateRefusesKindChange: a new name is created, a changed
+// interval updates in place, and a changed kind is refused by name — never
+// silently recreated, because that would discard the check's state.
+func TestCheckApplyCreateUpdateRefusesKindChange(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	base := `
+checks:
+  - name: at-home
+    kind: tcp
+    interval: %s
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: laptop
+        address: 192.168.1.50
+        port: 22
+`
+	file := writeConfig(t, "checks.yaml", strings.Replace(base, "%s", "5m", 1))
+	out, err := runCheckCmd(t, "check", "apply", "-f", file)
+	if err != nil {
+		t.Fatalf("apply create: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "check at-home: created") {
+		t.Errorf("apply create output = %q", out)
+	}
+
+	if err := os.WriteFile(file, []byte(strings.Replace(base, "%s", "30s", 1)), 0o600); err != nil {
+		t.Fatalf("rewrite config: %v", err)
+	}
+	out, err = runCheckCmd(t, "check", "apply", "-f", file)
+	if err != nil {
+		t.Fatalf("apply update: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "check at-home: updated") {
+		t.Errorf("apply update output = %q, want updated", out)
+	}
+	if rows := checks(t); rows[0].IntervalS != 30 {
+		t.Fatalf("interval = %d, want 30 after the update", rows[0].IntervalS)
+	}
+
+	kindFile := writeConfig(t, "kind.yaml", `
+checks:
+  - name: at-home
+    kind: http
+    interval: 30s
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: laptop
+        url: http://192.168.1.50/
+`)
+	out, err = runCheckCmd(t, "check", "apply", "-f", kindFile)
+	if err == nil {
+		t.Fatalf("kind change accepted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "at-home") || !strings.Contains(err.Error(), "not updatable") {
+		t.Errorf("kind refusal = %v, want it to name the check and the rule", err)
+	}
+	rows := checks(t)
+	if len(rows) != 1 || rows[0].Kind != store.CheckTCP || rows[0].Targets[0].Port != 22 {
+		t.Fatalf("a refused kind change disturbed the row: %+v", rows)
+	}
+}
+
+// TestCheckApplyPruneNeedsConfirmation: --prune without --yes-really is refused
+// by the same confirmation idiom as a global silence, and the estate is
+// untouched; with the confirmation the absent row is deleted and the named one
+// stays.
+func TestCheckApplyPruneNeedsConfirmation(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	file := writeConfig(t, "checks.yaml", `
+checks:
+  - name: keep
+    kind: tcp
+    interval: 5m
+    enabled: true
+    aggregate: false
+    min_up: 0
+    targets:
+      - name: laptop
+        address: 192.168.1.50
+        port: 22
+`)
+	if out, err := runCheckCmd(t, "check", "apply", "-f", file); err != nil {
+		t.Fatalf("apply seed: %v\n%s", err, out)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.CreateCheck(context.Background(), store.NewCheck{
+		Name: "drop", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "nas", Address: "192.168.1.60", Port: 22}},
+	}); err != nil {
+		t.Fatalf("create drop check: %v", err)
+	}
+	_ = st.Close()
+
+	out, err := runCheckCmd(t, "check", "apply", "-f", file, "--prune")
+	if err == nil {
+		t.Fatalf("unconfirmed prune accepted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "yes-really") {
+		t.Errorf("prune refusal = %v, want it to name the confirmation flag", err)
+	}
+	if rows := checks(t); len(rows) != 2 {
+		t.Fatalf("unconfirmed prune changed the estate: %+v", rows)
+	}
+
+	out, err = runCheckCmd(t, "check", "apply", "-f", file, "--prune", "--yes-really")
+	if err != nil {
+		t.Fatalf("confirmed prune: %v\n%s", err, out)
+	}
+	for _, want := range []string{"check drop: deleted", "check keep: unchanged", "1 deleted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prune output missing %q:\n%s", want, out)
+		}
+	}
+	rows := checks(t)
+	if len(rows) != 1 || rows[0].Name != "keep" {
+		t.Fatalf("prune left %+v, want only keep", rows)
 	}
 }
