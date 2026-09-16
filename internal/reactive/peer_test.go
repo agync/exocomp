@@ -54,6 +54,40 @@ func TestWebhookPeerStampedWithHomeGroup(t *testing.T) {
 	}
 }
 
+// TestWebhookPeerStampsUnifiedNetgroup: every source carries the same
+// classification under both `peer_netgroup` (the explicit network-path name)
+// and the shared `netgroup` key, so a webhook rule and a check rule read one
+// label.
+func TestWebhookPeerStampsUnifiedNetgroup(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "localhost",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	srv := h.serve(t, "")
+	body := []byte(`{"event": "deploy", "status": "firing"}`)
+	url := srv.URL + reactive.HookPrefix + reactive.HookToken(h.deriver, reactive.SourceGeneric)
+	code, response := post(t, srv.Client(), url, body, nil)
+	if code != 202 {
+		t.Fatalf("hook answered %d: %s", code, response)
+	}
+
+	norm := normalizedEvent(t, lastEvent(t, h.store))
+	if norm.Labels["peer_netgroup"] != "localhost" {
+		t.Errorf("peer_netgroup = %q, want localhost (labels %v)", norm.Labels["peer_netgroup"], norm.Labels)
+	}
+	if norm.Labels["netgroup"] != norm.Labels["peer_netgroup"] {
+		t.Errorf("netgroup = %q, peer_netgroup = %q, want equal",
+			norm.Labels["netgroup"], norm.Labels["peer_netgroup"])
+	}
+}
+
 // TestWebhookPeerAwayWhenNoGroupCovers: a netgroup that does not contain the
 // peer (10.0.0.0/8 never contains 127.0.0.1) must stamp "away", not the
 // registered group name. peer_ip is still present: the path is always known,
@@ -88,5 +122,41 @@ func TestWebhookPeerAwayWhenNoGroupCovers(t *testing.T) {
 	}
 	if strings.Contains(norm.Labels["peer_netgroup"], "corp") {
 		t.Errorf("a non-covering group leaked into the stamp: %q", norm.Labels["peer_netgroup"])
+	}
+}
+
+// TestWebhookPeerExcludedAwayOnBothKeys: an address a group's exclude knocks
+// out stamps the miss on BOTH keys — an exclusion must not leak the group name
+// through the shared label.
+func TestWebhookPeerExcludedAwayOnBothKeys(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	h := newHarness(t, harnessOptions{})
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "loopback",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+		Excludes: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+
+	srv := h.serve(t, "")
+	body := []byte(`{"event": "deploy", "status": "firing"}`)
+	url := srv.URL + reactive.HookPrefix + reactive.HookToken(h.deriver, reactive.SourceGeneric)
+	code, response := post(t, srv.Client(), url, body, nil)
+	if code != 202 {
+		t.Fatalf("hook answered %d: %s", code, response)
+	}
+
+	norm := normalizedEvent(t, lastEvent(t, h.store))
+	if norm.Labels["peer_netgroup"] != "away" {
+		t.Errorf("peer_netgroup = %q, want away (labels %v)", norm.Labels["peer_netgroup"], norm.Labels)
+	}
+	if norm.Labels["netgroup"] != "away" {
+		t.Errorf("netgroup = %q, want away", norm.Labels["netgroup"])
+	}
+	if strings.Contains(norm.Labels["netgroup"], "loopback") {
+		t.Errorf("an excluded group leaked into the shared label: %q", norm.Labels["netgroup"])
 	}
 }

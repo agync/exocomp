@@ -17,6 +17,10 @@ import (
 // comes from where the connection physically arrived, so the sender cannot
 // forge it.
 //
+// The classification is stamped under both `peer_netgroup` (the explicit
+// network-path name) and the shared `netgroup` key, so a webhook rule and a
+// check rule read the same label. They are always equal for one peer.
+//
 // A failed lookup is logged and swallowed, never returned: a webhook must not
 // be refused because the netgroup table was unreadable, and an unstamped event
 // is one no netgroup rule matches — the same safe no-match as "away".
@@ -30,14 +34,14 @@ func (e *Engine) stampPeer(ctx context.Context, ev *Event, addr netip.Addr) {
 	addr = addr.Unmap()
 	ev.Labels["peer_ip"] = addr.String()
 
-	group, err := e.store.NetgroupForAddr(ctx, addr)
-	switch {
+	group := store.NetgroupAway
+	switch g, err := e.store.NetgroupForAddr(ctx, addr); {
 	case errors.Is(err, store.ErrNotFound):
-		ev.Labels["peer_netgroup"] = "away"
 	case err != nil:
 		e.log.Error("reactive: netgroup lookup for peer", "peer_ip", addr.String(), "err", err)
-		ev.Labels["peer_netgroup"] = "away"
 	default:
-		ev.Labels["peer_netgroup"] = group
+		group = g
 	}
+	ev.Labels["peer_netgroup"] = group
+	ev.Labels["netgroup"] = group
 }
