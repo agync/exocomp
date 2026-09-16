@@ -48,7 +48,7 @@ func netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM, bas
 					}()
 				}
 				ctx = templ.InitializeContext(ctx)
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<p class=\"meta\">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list.</p><form method=\"post\" action=\"")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 1, "<p class=\"meta\">Mirrors <code>exocomp netgroup add</code>: a name and a comma-separated CIDR list. Prefix a CIDR with <code>!</code> to exclude it from the set.</p><form method=\"post\" action=\"")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -176,18 +176,41 @@ func netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM, bas
 				var templ_7745c5c3_Var6 string
 				templ_7745c5c3_Var6, templ_7745c5c3_Err = templ.JoinStringErrs(ng.Display())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 56, Col: 63}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 57, Col: 23}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var6))
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, "</td>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 17, " ")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
+				if len(ng.Excludes) > 0 {
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<div class=\"meta\">excluding ")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					var templ_7745c5c3_Var7 string
+					templ_7745c5c3_Var7, templ_7745c5c3_Err = templ.JoinStringErrs(ng.ExcludesDisplay())
+					if templ_7745c5c3_Err != nil {
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_netgroups.templ`, Line: 59, Col: 60}
+					}
+					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var7))
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</div>")
+					if templ_7745c5c3_Err != nil {
+						return templ_7745c5c3_Err
+					}
+				}
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</td>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 				if operator {
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 18, "<td data-label=\"Actions\">")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<td data-label=\"Actions\">")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
@@ -195,22 +218,22 @@ func netgroupsPanel(rows []netgroupRow, operator bool, form *netgroupFormVM, bas
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
-					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "</td>")
+					templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</td>")
 					if templ_7745c5c3_Err != nil {
 						return templ_7745c5c3_Err
 					}
 				}
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "</tr>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</tr>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "</tbody></table></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "</tbody></table></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -241,12 +264,12 @@ func netgroupFormJS() templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var7 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var7 == nil {
-			templ_7745c5c3_Var7 = templ.NopComponent
+		templ_7745c5c3_Var8 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var8 == nil {
+			templ_7745c5c3_Var8 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<script>\n\t(function () {\n\t\tfunction netgroupFormWire() {\n\t\t\tvar form = document.getElementById(\"netgroup-add-form\");\n\t\t\tif (!form || form.dataset.netgroupWired) return;\n\t\t\tform.dataset.netgroupWired = \"1\";\n\n\t\t\tfunction restoreMeta(input) {\n\t\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\t\tmeta.textContent = input.name === \"name\"\n\t\t\t\t\t\t? \"Letters, digits, dots, hyphens, underscores.\"\n\t\t\t\t\t\t: \"Comma-separated. IPv4 or IPv6.\";\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// showError paints a refusal on a field without changing its geometry\n\t\t\t// (the meta line always exists), mirroring the server's human copy.\n\t\t\tfunction showError(input, msg) {\n\t\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// validateField runs the same client rules the server holds to — a\n\t\t\t// name/CIDR shape refusal — on blur so a mistake surfaces before\n\t\t\t// submit. Empty is left alone (that's a submit-time required check);\n\t\t\t// the moment a filled value is wrong the field says so, and clearing\n\t\t\t// it right clears the error. The daemon stays authoritative on\n\t\t\t// uniqueness etc., so submit still asks the server.\n\t\t\tfunction validateField(input) {\n\t\t\t\tif (input.value.trim() === \"\") return;\n\t\t\t\tif (input.name === \"name\") {\n\t\t\t\t\tif (!/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) {\n\t\t\t\t\t\tshowError(input, \"Names can't have spaces.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\trestoreMeta(input);\n\t\t\t\t} else {\n\t\t\t\t\tvar parts = input.value.split(\",\");\n\t\t\t\t\tvar bad = null;\n\t\t\t\t\tfor (var i = 0; i < parts.length; i++) {\n\t\t\t\t\t\tvar p = parts[i].trim();\n\t\t\t\t\t\tif (p === \"\") { bad = \"Add at least one range, like 192.168.0.0/16.\"; break; }\n\t\t\t\t\t\tif (!/^\\d{1,3}(\\.\\d{1,3}){3}\\/\\d{1,2}$/.test(p) && !/^[0-9a-fA-F:]+::\\/\\d{1,3}$/.test(p)) {\n\t\t\t\t\t\t\tbad = p + \" needs four octets — like 192.168.0.0/16.\";\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\tif (bad) { showError(input, bad); return; }\n\t\t\t\t\trestoreMeta(input);\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar fill = e.target.closest(\"[data-fill]\");\n\t\t\t\tif (fill) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tvar input = form.querySelector('input[name=\"' + fill.getAttribute(\"data-fill\") + '\"]');\n\t\t\t\t\tif (input) {\n\t\t\t\t\t\tinput.value = fill.getAttribute(\"data-value\");\n\t\t\t\t\t\trestoreMeta(input);\n\t\t\t\t\t\tinput.focus();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar retry = e.target.closest(\"[data-retry]\");\n\t\t\t\tif (retry) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.requestSubmit();\n\t\t\t\t}\n\t\t\t});\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Adding';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tform.dataset.netgroupRefused = \"1\";\n\t\t\t\t\t\t\tnetgroupFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// Validate on blur always (not just after a refusal) so a mistake\n\t\t\t// surfaces as soon as the operator leaves the field.\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"], input[name=\"cidrs\"]');\n\t\t\t\tif (!input) return;\n\t\t\t\tvalidateField(input);\n\t\t\t}, true);\n\n\t\t\t// The dialog is rendered once and its inputs survive close/reopen,\n\t\t\t// so a close (×, Esc, backdrop) must reset the typed value and any\n\t\t\t// painted refusal — the next open starts clean.\n\t\t\tvar dialog = form.closest(\"dialog\");\n\t\t\tif (dialog) {\n\t\t\t\tdialog.addEventListener(\"close\", function () {\n\t\t\t\t\tvar inputs = form.querySelectorAll('input[name=\"name\"], input[name=\"cidrs\"]');\n\t\t\t\t\tfor (var i = 0; i < inputs.length; i++) {\n\t\t\t\t\t\tinputs[i].value = \"\";\n\t\t\t\t\t\trestoreMeta(inputs[i]);\n\t\t\t\t\t}\n\t\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\t\tif (primary) primary.disabled = false;\n\t\t\t\t});\n\t\t\t}\n\t\t}\n\t\t// Exposed so the checks tab strip's swap (checksTabJS) can re-wire a\n\t\t// freshly swapped-in form the way a 422 swap re-runs this wire.\n\t\twindow.exoWireNetgroupForm = netgroupFormWire;\n\t\tnetgroupFormWire();\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<script>\n\t(function () {\n\t\tfunction netgroupFormWire() {\n\t\t\tvar form = document.getElementById(\"netgroup-add-form\");\n\t\t\tif (!form || form.dataset.netgroupWired) return;\n\t\t\tform.dataset.netgroupWired = \"1\";\n\n\t\t\tfunction restoreMeta(input) {\n\t\t\t\tinput.removeAttribute(\"aria-invalid\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.remove(\"is-error\");\n\t\t\t\t\tmeta.textContent = input.name === \"name\"\n\t\t\t\t\t\t? \"Letters, digits, dots, hyphens, underscores.\"\n\t\t\t\t\t\t: \"Comma-separated. IPv4 or IPv6.\";\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// showError paints a refusal on a field without changing its geometry\n\t\t\t// (the meta line always exists), mirroring the server's human copy.\n\t\t\tfunction showError(input, msg) {\n\t\t\t\tinput.setAttribute(\"aria-invalid\", \"true\");\n\t\t\t\tvar meta = document.getElementById(input.getAttribute(\"aria-describedby\"));\n\t\t\t\tif (meta) {\n\t\t\t\t\tmeta.classList.add(\"is-error\");\n\t\t\t\t\tmeta.textContent = \"▲ \" + msg;\n\t\t\t\t}\n\t\t\t}\n\n\t\t\t// validateField runs the same client rules the server holds to — a\n\t\t\t// name/CIDR shape refusal — on blur so a mistake surfaces before\n\t\t\t// submit. Empty is left alone (that's a submit-time required check);\n\t\t\t// the moment a filled value is wrong the field says so, and clearing\n\t\t\t// it right clears the error. The daemon stays authoritative on\n\t\t\t// uniqueness etc., so submit still asks the server.\n\t\t\tfunction validateField(input) {\n\t\t\t\tif (input.value.trim() === \"\") return;\n\t\t\t\tif (input.name === \"name\") {\n\t\t\t\t\tif (!/^[A-Za-z0-9_.-]+$/.test(input.value.trim())) {\n\t\t\t\t\t\tshowError(input, \"Names can't have spaces.\");\n\t\t\t\t\t\treturn;\n\t\t\t\t\t}\n\t\t\t\t\trestoreMeta(input);\n\t\t\t\t} else {\n\t\t\t\t\tvar parts = input.value.split(\",\");\n\t\t\t\t\tvar bad = null;\n\t\t\t\t\tfor (var i = 0; i < parts.length; i++) {\n\t\t\t\t\t\tvar p = parts[i].trim();\n\t\t\t\t\t\tif (p === \"\") { bad = \"Add at least one range, like 192.168.0.0/16.\"; break; }\n\t\t\t\t\t\tif (p.charAt(0) === \"!\") p = p.slice(1).trim();\n\t\t\t\t\t\tif (!/^\\d{1,3}(\\.\\d{1,3}){3}\\/\\d{1,2}$/.test(p) && !/^[0-9a-fA-F:]+::\\/\\d{1,3}$/.test(p)) {\n\t\t\t\t\t\t\tbad = p + \" needs four octets — like 192.168.0.0/16.\";\n\t\t\t\t\t\t\tbreak;\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\tif (bad) { showError(input, bad); return; }\n\t\t\t\t\trestoreMeta(input);\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tform.addEventListener(\"click\", function (e) {\n\t\t\t\tvar fill = e.target.closest(\"[data-fill]\");\n\t\t\t\tif (fill) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tvar input = form.querySelector('input[name=\"' + fill.getAttribute(\"data-fill\") + '\"]');\n\t\t\t\t\tif (input) {\n\t\t\t\t\t\tinput.value = fill.getAttribute(\"data-value\");\n\t\t\t\t\t\trestoreMeta(input);\n\t\t\t\t\t\tinput.focus();\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t\tvar retry = e.target.closest(\"[data-retry]\");\n\t\t\t\tif (retry) {\n\t\t\t\t\te.preventDefault();\n\t\t\t\t\tform.requestSubmit();\n\t\t\t\t}\n\t\t\t});\n\n\t\t\tform.addEventListener(\"submit\", function (e) {\n\t\t\t\te.preventDefault();\n\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\tprimary.disabled = true;\n\t\t\t\tstatus.innerHTML = '<span class=\"dot\"></span>Adding';\n\t\t\t\tfetch(form.getAttribute(\"action\"), {\n\t\t\t\t\tmethod: \"POST\",\n\t\t\t\t\tbody: new FormData(form),\n\t\t\t\t\tcredentials: \"same-origin\",\n\t\t\t\t\theaders: { \"Accept\": \"text/html\" }\n\t\t\t\t}).then(function (resp) {\n\t\t\t\t\tif (resp.status === 422) {\n\t\t\t\t\t\treturn resp.text().then(function (html) {\n\t\t\t\t\t\t\tvar doc = new DOMParser().parseFromString(html, \"text/html\");\n\t\t\t\t\t\t\tvar next = doc.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tif (!next) return;\n\t\t\t\t\t\t\tform.outerHTML = next.outerHTML;\n\t\t\t\t\t\t\tform = document.getElementById(\"netgroup-add-form\");\n\t\t\t\t\t\t\tform.dataset.netgroupRefused = \"1\";\n\t\t\t\t\t\t\tnetgroupFormWire();\n\t\t\t\t\t\t\tvar bad = form.querySelector('input[aria-invalid=\"true\"]');\n\t\t\t\t\t\t\tif (bad) bad.focus();\n\t\t\t\t\t\t});\n\t\t\t\t\t}\n\t\t\t\t\tvar loc = resp.headers.get(\"Location\");\n\t\t\t\t\tif (loc) { window.location = loc; return; }\n\t\t\t\t\twindow.location.reload();\n\t\t\t\t}).catch(function () {\n\t\t\t\t\tprimary.disabled = false;\n\t\t\t\t\tstatus.textContent = \"\";\n\t\t\t\t});\n\t\t\t});\n\n\t\t\t// Validate on blur always (not just after a refusal) so a mistake\n\t\t\t// surfaces as soon as the operator leaves the field.\n\t\t\tform.addEventListener(\"blur\", function (e) {\n\t\t\t\tvar input = e.target.closest('input[name=\"name\"], input[name=\"cidrs\"]');\n\t\t\t\tif (!input) return;\n\t\t\t\tvalidateField(input);\n\t\t\t}, true);\n\n\t\t\t// The dialog is rendered once and its inputs survive close/reopen,\n\t\t\t// so a close (×, Esc, backdrop) must reset the typed value and any\n\t\t\t// painted refusal — the next open starts clean.\n\t\t\tvar dialog = form.closest(\"dialog\");\n\t\t\tif (dialog) {\n\t\t\t\tdialog.addEventListener(\"close\", function () {\n\t\t\t\t\tvar inputs = form.querySelectorAll('input[name=\"name\"], input[name=\"cidrs\"]');\n\t\t\t\t\tfor (var i = 0; i < inputs.length; i++) {\n\t\t\t\t\t\tinputs[i].value = \"\";\n\t\t\t\t\t\trestoreMeta(inputs[i]);\n\t\t\t\t\t}\n\t\t\t\t\tvar status = form.querySelector(\".form-status\");\n\t\t\t\t\tif (status) status.textContent = \"\";\n\t\t\t\t\tvar primary = form.querySelector('button[type=\"submit\"]');\n\t\t\t\t\tif (primary) primary.disabled = false;\n\t\t\t\t});\n\t\t\t}\n\t\t}\n\t\t// Exposed so the checks tab strip's swap (checksTabJS) can re-wire a\n\t\t// freshly swapped-in form the way a 422 swap re-runs this wire.\n\t\twindow.exoWireNetgroupForm = netgroupFormWire;\n\t\tnetgroupFormWire();\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

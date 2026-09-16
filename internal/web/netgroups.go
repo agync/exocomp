@@ -17,23 +17,46 @@ type netgroupsVM struct {
 	Netgroups []netgroupRow
 }
 
-// netgroupRow is one named CIDR set on the netgroups surface. Prefixes are
-// config, not values, so they travel in full. Refusal is the rm verb's refusal
-// sentence, carried to the rowActions partial by netgroupRowActions
-// (forms/SPEC.md): non-empty only on a refused rm re-render.
+// netgroupRow is one named CIDR set on the netgroups surface. Prefixes and
+// Excludes are config, not values, so they travel in full. Refusal is the rm
+// verb's refusal sentence, carried to the rowActions partial by
+// netgroupRowActions (forms/SPEC.md): non-empty only on a refused rm re-render.
 type netgroupRow struct {
 	Name     string
 	Prefixes []string
+	Excludes []string
 	Refusal  string
 }
 
-// Join renders the prefixes as the comma list `netgroup list` shows, the same
-// shape the add form accepts back.
-func (r netgroupRow) Join() string { return strings.Join(r.Prefixes, ",") }
+// Join renders the set as the comma list `netgroup list` shows, the same shape
+// the add form accepts back: includes plain, exclusions `!`-prefixed.
+func (r netgroupRow) Join() string { return strings.Join(r.members(), ",") }
 
-// Display renders the prefixes for a table cell: the space-separated · form a
+// Display renders the includes for a table cell: the space-separated · form a
 // reader scans, distinct from the comma form the CLI/add form accepts (W16).
 func (r netgroupRow) Display() string { return strings.Join(r.Prefixes, " · ") }
+
+// ExcludesDisplay renders the set's exclusions each with their `!` marker, for
+// the distinct cell line the panel shows beneath the includes; empty when the
+// set excludes nothing.
+func (r netgroupRow) ExcludesDisplay() string {
+	parts := make([]string, 0, len(r.Excludes))
+	for _, e := range r.Excludes {
+		parts = append(parts, "!"+e)
+	}
+	return strings.Join(parts, " · ")
+}
+
+// members is the row's set in the comma list order: includes, then `!`-marked
+// exclusions.
+func (r netgroupRow) members() []string {
+	parts := make([]string, 0, len(r.Prefixes)+len(r.Excludes))
+	parts = append(parts, r.Prefixes...)
+	for _, e := range r.Excludes {
+		parts = append(parts, "!"+e)
+	}
+	return parts
+}
 
 // handleNetgroups is the merge redirect (F7): netgroups live as a tab on
 // /checks, so the standalone page points there. The write routes
@@ -53,6 +76,9 @@ func (s *Server) netgroups(r *http.Request) ([]netgroupRow, error) {
 		row := netgroupRow{Name: g.Name}
 		for _, p := range g.Prefixes {
 			row.Prefixes = append(row.Prefixes, p.String())
+		}
+		for _, p := range g.Excludes {
+			row.Excludes = append(row.Excludes, p.String())
 		}
 		out = append(out, row)
 	}

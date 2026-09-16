@@ -478,3 +478,96 @@ func mustPrefix(t *testing.T, s string) netip.Prefix {
 	}
 	return p
 }
+
+// TestNetgroupAddAcceptsExclusions: the form parses `!` members through the
+// shared parser and stores them as excludes.
+func TestNetgroupAddAcceptsExclusions(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	ctx := context.Background()
+
+	resp := postForm(t, op, ts.URL+"/netgroups/add",
+		url.Values{"name": {"home"}, "cidrs": {"192.168.0.0/16,!192.168.5.0/24"}}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("netgroup add = %d, want 303", resp.StatusCode)
+	}
+	var flash string
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie {
+			flash = c.Value
+		}
+	}
+	if flash != "home added (2 ranges)" {
+		t.Errorf("success flash = %q, want %q", flash, "home added (2 ranges)")
+	}
+
+	g, err := h.store.GetNetgroup(ctx, "home")
+	if err != nil {
+		t.Fatalf("GetNetgroup: %v", err)
+	}
+	if len(g.Prefixes) != 1 || len(g.Excludes) != 1 || g.Excludes[0].String() != "192.168.5.0/24" {
+		t.Fatalf("stored = %+v, want one include and the exclude", g)
+	}
+}
+
+// TestNetgroupsSurfaceShowsExclusions: the row renders the exclusion on its own
+// marked line, and the API projection carries it.
+func TestNetgroupsSurfaceShowsExclusions(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if _, err := h.store.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{mustPrefix(t, "192.168.0.0/16")},
+		Excludes: []netip.Prefix{mustPrefix(t, "192.168.5.0/24")},
+	}); err != nil {
+		t.Fatalf("seed netgroup: %v", err)
+	}
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/checks?tab=netgroups")
+	if code != http.StatusOK {
+		t.Fatalf("/checks?tab=netgroups = %d, want 200", code)
+	}
+	for _, want := range []string{"192.168.0.0/16", "excluding", "!192.168.5.0/24"} {
+		if !strings.Contains(page, want) {
+			t.Errorf("netgroups page missing %q", want)
+		}
+	}
+
+	readonly := h.mint(t, "agent", "readonly")
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/netgroups", readonly)
+	if code != http.StatusOK {
+		t.Fatalf("GET /api/v1/netgroups = %d, want 200", code)
+	}
+	if !strings.Contains(body, `"excludes":["192.168.5.0/24"]`) {
+		t.Fatalf("API netgroup missing the exclusion: %s", body)
+	}
+}
+
+// TestNetgroupAddAwayRefusedWeb: the reserved miss label is refused on the name
+// field at 422, and no row lands.
+func TestNetgroupAddAwayRefusedWeb(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/netgroups/add",
+		url.Values{"name": {"away"}, "cidrs": {"192.168.0.0/16"}}, nil)
+	body, _ := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("netgroup add away = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(string(body), "reserved") {
+		t.Errorf("422 body missing the reserved-name sentence")
+	}
+	if _, err := h.store.GetNetgroup(context.Background(), "away"); err == nil {
+		t.Fatal("an away netgroup was created")
+	}
+}
