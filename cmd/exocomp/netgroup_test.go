@@ -3,12 +3,23 @@ package main
 import (
 	"bytes"
 	"context"
+	"net/netip"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// netipPrefix parses a list of CIDR literals for the store's prefix slices.
+func netipPrefix(s ...string) []netip.Prefix {
+	out := make([]netip.Prefix, len(s))
+	for i, p := range s {
+		out[i] = netip.MustParsePrefix(p)
+	}
+	return out
+}
 
 // runNetgroupCmd executes one `netgroup` invocation against the whole root
 // command, so the persistent --output flag resolves exactly as it does for a
@@ -259,5 +270,163 @@ func TestNetgroupUsageReportsObserved(t *testing.T) {
 	}
 	if !strings.Contains(out, "at-home:laptop") || strings.Contains(out, "away") {
 		t.Errorf("filtered usage = %q, want only home", out)
+	}
+}
+
+// TestNetgroupExportApplyRoundTrip: export renders every group's includes and
+// excludes deterministically, and feeding that file straight back into apply is
+// a no-op — every group unchanged, the second export byte-identical.
+func TestNetgroupExportApplyRoundTrip(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: netipPrefix("192.168.0.0/16", "10.0.0.0/8"),
+	}); err != nil {
+		t.Fatalf("create home: %v", err)
+	}
+	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home-except-guest",
+		Prefixes: netipPrefix("192.168.0.0/16"),
+		Excludes: netipPrefix("192.168.5.0/24"),
+	}); err != nil {
+		t.Fatalf("create home-except-guest: %v", err)
+	}
+	_ = st.Close()
+
+	out, err := runNetgroupCmd(t, "netgroup", "export")
+	if err != nil {
+		t.Fatalf("netgroup export: %v", err)
+	}
+	for _, want := range []string{
+		"netgroups:", "name: home", "192.168.0.0/16", "10.0.0.0/8",
+		"name: home-except-guest", "excludes:", "192.168.5.0/24",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("export missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "checks:") {
+		t.Errorf("netgroup export emitted an empty checks list:\n%s", out)
+	}
+
+	file := writeConfig(t, "netgroups.yaml", out)
+	applyOut, err := runNetgroupCmd(t, "netgroup", "apply", "-f", file)
+	if err != nil {
+		t.Fatalf("netgroup apply: %v\n%s", err, applyOut)
+	}
+	for _, want := range []string{
+		"netgroup home: unchanged", "netgroup home-except-guest: unchanged", "2 unchanged",
+	} {
+		if !strings.Contains(applyOut, want) {
+			t.Errorf("apply missing %q:\n%s", want, applyOut)
+		}
+	}
+
+	again, err := runNetgroupCmd(t, "netgroup", "export")
+	if err != nil {
+		t.Fatalf("second export: %v", err)
+	}
+	if again != out {
+		t.Errorf("export not stable across a round trip:\n--- first ---\n%s\n--- second ---\n%s", out, again)
+	}
+
+	jsonOut, err := runNetgroupCmd(t, "netgroup", "export", "--output", "json")
+	if err != nil {
+		t.Fatalf("netgroup export json: %v", err)
+	}
+	for _, want := range []string{`"netgroups":`, `"name": "home"`, `"includes":`, `"excludes":`} {
+		if !strings.Contains(jsonOut, want) {
+			t.Errorf("json export missing %q:\n%s", want, jsonOut)
+		}
+	}
+	jsonFile := writeConfig(t, "netgroups.json", jsonOut)
+	applyJSON, err := runNetgroupCmd(t, "netgroup", "apply", "-f", jsonFile)
+	if err != nil {
+		t.Fatalf("apply json: %v\n%s", err, applyJSON)
+	}
+	if !strings.Contains(applyJSON, "2 unchanged") {
+		t.Errorf("json round-trip apply = %q, want all unchanged", applyJSON)
+	}
+}
+
+// TestNetgroupApplyReplacesSetAndPrunes: applying a changed file replaces a
+// group's set in place; --prune is refused without the confirmation and deletes
+// an absent group with it.
+func TestNetgroupApplyReplacesSetAndPrunes(t *testing.T) {
+	useDataDir(t, t.TempDir())
+
+	file := writeConfig(t, "netgroups.yaml", `
+netgroups:
+  - name: home
+    includes:
+      - 192.168.0.0/16
+`)
+	if out, err := runNetgroupCmd(t, "netgroup", "apply", "-f", file); err != nil {
+		t.Fatalf("apply create: %v\n%s", err, out)
+	}
+
+	if err := os.WriteFile(file, []byte(`
+netgroups:
+  - name: home
+    includes:
+      - 10.0.0.0/8
+    excludes:
+      - 10.9.0.0/16
+`), 0o600); err != nil {
+		t.Fatalf("rewrite config: %v", err)
+	}
+	out, err := runNetgroupCmd(t, "netgroup", "apply", "-f", file)
+	if err != nil {
+		t.Fatalf("apply update: %v\n%s", err, out)
+	}
+	if !strings.Contains(out, "netgroup home: updated") {
+		t.Errorf("apply update output = %q, want updated", out)
+	}
+	rows := netgroups(t)
+	if len(rows) != 1 || rows[0].Prefixes[0].String() != "10.0.0.0/8" ||
+		len(rows[0].Excludes) != 1 || rows[0].Excludes[0].String() != "10.9.0.0/16" {
+		t.Fatalf("after update = %+v, want the set replaced", rows)
+	}
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.CreateNetgroup(context.Background(), store.NewNetgroup{
+		Name:     "office",
+		Prefixes: netipPrefix("172.16.0.0/12"),
+	}); err != nil {
+		t.Fatalf("create office: %v", err)
+	}
+	_ = st.Close()
+
+	out, err = runNetgroupCmd(t, "netgroup", "apply", "-f", file, "--prune")
+	if err == nil {
+		t.Fatalf("unconfirmed prune accepted:\n%s", out)
+	}
+	if !strings.Contains(err.Error(), "yes-really") {
+		t.Errorf("prune refusal = %v, want it to name the confirmation flag", err)
+	}
+	if rows := netgroups(t); len(rows) != 2 {
+		t.Fatalf("unconfirmed prune changed the estate: %+v", rows)
+	}
+
+	out, err = runNetgroupCmd(t, "netgroup", "apply", "-f", file, "--prune", "--yes-really")
+	if err != nil {
+		t.Fatalf("confirmed prune: %v\n%s", err, out)
+	}
+	for _, want := range []string{"netgroup office: deleted", "netgroup home: unchanged", "1 deleted"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("prune output missing %q:\n%s", want, out)
+		}
+	}
+	if rows := netgroups(t); len(rows) != 1 || rows[0].Name != "home" {
+		t.Fatalf("prune left %+v, want only home", rows)
 	}
 }

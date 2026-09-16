@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -35,6 +36,7 @@ func newNetgroupCmd() *cobra.Command {
 	cmd.AddCommand(
 		newNetgroupAddCmd(), newNetgroupUpdateCmd(), newNetgroupListCmd(),
 		newNetgroupShowCmd(), newNetgroupUsageCmd(), newNetgroupRmCmd(),
+		newNetgroupExportCmd(), newNetgroupApplyCmd(),
 	)
 	return cmd
 }
@@ -368,4 +370,193 @@ func joinOrDash(items []string) string {
 		return "-"
 	}
 	return strings.Join(items, ", ")
+}
+
+// netgroupsToConfig projects the stored netgroups into the file schema in store
+// order (by name).
+func netgroupsToConfig(rows []store.Netgroup) []configNetgroup {
+	out := make([]configNetgroup, 0, len(rows))
+	for _, g := range rows {
+		includes := make([]string, len(g.Prefixes))
+		for i, p := range g.Prefixes {
+			includes[i] = p.String()
+		}
+		var excludes []string
+		for _, p := range g.Excludes {
+			excludes = append(excludes, p.String())
+		}
+		out = append(out, configNetgroup{Name: g.Name, Includes: includes, Excludes: excludes})
+	}
+	return out
+}
+
+func newNetgroupExportCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:     "export",
+		Short:   "Print every netgroup as an applyable config file",
+		Example: "exocomp netgroup export > netgroups.yaml",
+		Args:    cobra.NoArgs,
+		Long: "Prints the declarative form of every netgroup, ordered by name, as YAML " +
+			"(default) or JSON. The output is exactly what `netgroup apply -f` reads, so " +
+			"the classification vocabulary lives in git with the rest of the estate.",
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			mode, err := probeExportMode(cmd)
+			if err != nil {
+				return err
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			rows, err := st.ListNetgroups(cmd.Context())
+			if err != nil {
+				return err
+			}
+			return writeProbeConfig(cmd, mode, probeConfig{Netgroups: netgroupsToConfig(rows)})
+		},
+	}
+}
+
+func newNetgroupApplyCmd() *cobra.Command {
+	var (
+		file      string
+		prune     bool
+		yesReally bool
+	)
+
+	cmd := &cobra.Command{
+		Use:     "apply -f <file>",
+		Short:   "Create or update netgroups from a config file",
+		Example: "exocomp netgroup apply -f netgroups.yaml",
+		Long: "Reconciles the stored netgroups to the file, idempotent by name: a name " +
+			"absent from the store is created, a present one has its set replaced in " +
+			"place, and an identical one is reported unchanged. `-f -` reads stdin.\n\n" +
+			"--prune deletes every netgroup absent from the file and needs --yes-really " +
+			"(or the global --assume-yes).",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if prune {
+				if err := confirmDestructive(cmd, yesReally,
+					"netgroup apply --prune (deletes every netgroup absent from the file)",
+					"--yes-really"); err != nil {
+					return err
+				}
+			}
+			data, err := readConfigFile(cmd, file)
+			if err != nil {
+				return fmt.Errorf("netgroup apply: %w", err)
+			}
+			doc, err := parseProbeConfig(data)
+			if err != nil {
+				return fmt.Errorf("netgroup apply: %w", err)
+			}
+			st, err := openStore()
+			if err != nil {
+				return err
+			}
+			defer func() { _ = st.Close() }()
+
+			return applyNetgroups(cmd, st, doc.Netgroups, prune)
+		},
+	}
+	cmd.Flags().StringVarP(&file, "file", "f", "", "config file to apply (- for stdin)")
+	cmd.Flags().BoolVar(&prune, "prune", false, "delete every netgroup absent from the file")
+	cmd.Flags().BoolVar(&yesReally, "yes-really", false, "confirm --prune")
+	_ = cmd.MarkFlagRequired("file")
+	return cmd
+}
+
+// applyNetgroups reconciles the file's netgroups against the store over
+// store.ParsePrefixList, the same parse `netgroup add` uses, so the write-time
+// validation is never duplicated.
+func applyNetgroups(cmd *cobra.Command, st *store.Store, rows []configNetgroup, prune bool) error {
+	ctx := cmd.Context()
+	existing, err := st.ListNetgroups(ctx)
+	if err != nil {
+		return err
+	}
+	byName := make(map[string]store.Netgroup, len(existing))
+	for _, g := range existing {
+		byName[g.Name] = g
+	}
+
+	type plannedNetgroup struct {
+		row  configNetgroup
+		list store.PrefixList
+	}
+	plans := make([]plannedNetgroup, 0, len(rows))
+	seen := make(map[string]bool, len(rows))
+	for _, row := range rows {
+		if seen[row.Name] {
+			return fmt.Errorf("netgroup apply: %q appears twice in the file", row.Name)
+		}
+		seen[row.Name] = true
+		list, err := store.ParsePrefixList(netgroupSpec(row))
+		if err != nil {
+			return fmt.Errorf("netgroup apply: %s: %w", row.Name, err)
+		}
+		if len(list.Includes) == 0 {
+			return fmt.Errorf("netgroup apply: %s: needs at least one include CIDR", row.Name)
+		}
+		plans = append(plans, plannedNetgroup{row: row, list: list})
+	}
+
+	var created, updated, unchanged, deleted int
+	for _, p := range plans {
+		cur, ok := byName[p.row.Name]
+		if !ok {
+			if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+				Name: p.row.Name, Prefixes: p.list.Includes, Excludes: p.list.Excludes,
+			}); err != nil {
+				return fmt.Errorf("netgroup apply: %s: %w", p.row.Name, validationError(err))
+			}
+			created++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s: created\n", p.row.Name)
+			continue
+		}
+		if reflect.DeepEqual(cur.Prefixes, p.list.Includes) && reflect.DeepEqual(cur.Excludes, p.list.Excludes) {
+			unchanged++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s: unchanged\n", p.row.Name)
+			continue
+		}
+		if _, err := st.UpdateNetgroup(ctx, p.row.Name, p.list.Includes, p.list.Excludes); err != nil {
+			return fmt.Errorf("netgroup apply: %s: %w", p.row.Name, validationError(err))
+		}
+		updated++
+		_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s: updated\n", p.row.Name)
+	}
+
+	if prune {
+		names := make([]string, 0, len(byName))
+		for name := range byName {
+			if !seen[name] {
+				names = append(names, name)
+			}
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if err := st.DeleteNetgroup(ctx, name); err != nil {
+				return fmt.Errorf("netgroup apply: %s: %w", name, err)
+			}
+			deleted++
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "netgroup %s: deleted\n", name)
+		}
+	}
+
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "netgroup apply: %d created, %d updated, %d unchanged, %d deleted\n",
+		created, updated, unchanged, deleted)
+	return err
+}
+
+// netgroupSpec recombines a file group's includes and excludes into the single
+// comma-separated list store.ParsePrefixList reads, `!`-marking the excludes.
+func netgroupSpec(row configNetgroup) string {
+	parts := make([]string, 0, len(row.Includes)+len(row.Excludes))
+	parts = append(parts, row.Includes...)
+	for _, e := range row.Excludes {
+		parts = append(parts, "!"+e)
+	}
+	return strings.Join(parts, ",")
 }
