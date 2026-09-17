@@ -63,13 +63,55 @@ type OpenStore func() (Store, func() error, error)
 func Probe(ctx context.Context, dataDir string, open OpenStore) wire.HealthView {
 	report, fault := InspectDataDir(dataDir)
 	probes := ProbeOptionalTools()
-	return wire.HealthView{
+	return withImageRef(wire.HealthView{
 		dataDirEntry(report, fault),
 		secretsProtectionEntry(ProbeSecretsProtection(dataDir)),
 		optionalToolsEntry(probes, ProbeToolchain(probes)),
 		selfObservabilityEntry(ProbeSelfObservability(ctx, dataDir, open)),
 		litestreamEntry(ProbeLitestream(ctx, dataDir, open)),
+	}, ProbeImageRef(ctx, dataDir, open))
+}
+
+// ProbeImageRef reads the deployment's recorded image ref (ADR 0016),
+// best-effort: no database, an unopenable store, or no stored key is simply no
+// ref, never a doctor failure. It stats the database file before opening a
+// store so the probe never creates one as a side effect of reporting.
+func ProbeImageRef(ctx context.Context, dataDir string, open OpenStore) string {
+	if _, err := os.Stat(filepath.Join(dataDir, dbFileName)); err != nil {
+		return ""
 	}
+	st, closeFn, err := open()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = closeFn() }()
+	ref, err := st.GetSetting(ctx, store.SettingImageRef)
+	if err != nil {
+		return ""
+	}
+	return ref
+}
+
+// withImageRef folds the deployment's image ref into the fixed optional_tools
+// entry rather than adding a sixth subsystem: the HealthView list is a schema,
+// and every surface (local doctor, GET /api/v1/health, remote doctor) reads this
+// same probe, so the ref is present on all of them or none.
+func withImageRef(view wire.HealthView, ref string) wire.HealthView {
+	text := "image-ref: not recorded"
+	if ref != "" {
+		text = "image-ref: " + ref
+	}
+	for i := range view {
+		if view[i].Name != "optional_tools" {
+			continue
+		}
+		if view[i].Detail != "" {
+			view[i].Detail += "; " + text
+		} else {
+			view[i].Detail = text
+		}
+	}
+	return view
 }
 
 // healthSeverity ranks statuses from least to most concerning, so combining
