@@ -75,6 +75,10 @@ visible to `doctor` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)):
 uv tool install --python <interpreter> ansible-core==<version> --with <module-dep>
 ```
 
+`doctor` prints the active manifest path and marks each tool whose resolved version is off
+its `MANIFEST.json` pin as a `warn` (`restic 0.19.1 — pinned 0.19.0`): the switch is a
+supported state made visible, not a fault.
+
 Do not bake Python libraries into an image you only use for one project; the
 manifest path is the supported one. Baking is for a dependency every run needs.
 

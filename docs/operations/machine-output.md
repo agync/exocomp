@@ -119,6 +119,14 @@ fault carried per-entry rather than aborting the probe. `GET /api/v1/health` and
 --remote <host>` call the identical probe, so the three surfaces cannot diverge. See
 [Remote CLI](remote-access.md) for the remote form.
 
+The `optional_tools` entry also folds in the toolchain-manifest comparison: each resolved
+tool version is diffed against its pin in the manifest named by `EXOCOMP_TOOLCHAIN_MANIFEST`.
+A tool off its pin is `warn` — never `fail`, because the [ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)
+operator escape hatch is a supported state; a version the extraction rule cannot parse is
+named in the detail without moving the status; and no manifest env at all leaves the entry
+`unknown`, a state to read rather than a fault. The text report marks each divergent line
+against its pin (`restic 0.19.1 — pinned 0.19.0`) and prints the active manifest path once.
+
 ## MCP-over-HTTP: the third face
 
 exocomp maintains exactly one agent MCP surface: `POST /mcp` on the ADR-0009 listener, the

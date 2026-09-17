@@ -6,6 +6,17 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-17 — the doctor toolchain-manifest diff
+
+- **`doctor` now diffs each resolved tool version against its `MANIFEST.json` pin.** The
+  comparison folds into the existing `optional_tools` health entry, so the fixed subsystem
+  list is unchanged. A version off its pin is `warn`, never `fail` — the ADR 0006 operator
+  escape hatch is a supported state; a version the extraction rule cannot parse is named in
+  the detail without moving the status; and no manifest env at all leaves the entry
+  `unknown`. The text report marks each divergent line against its pin and prints the active
+  manifest path once.
+- `operations/machine-output.md` and `operations/containers.md` state the comparison.
+
 ## 2026-09-17 — ADR 0016 and the container page
 
 - **New [ADR 0016](adr/0016-artifact-carrier-image.md):** the base image is a
