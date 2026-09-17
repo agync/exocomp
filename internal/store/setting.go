@@ -54,6 +54,11 @@ const (
 	// a dead-man arm, a backup add-target, or a secret rotation (SPEC §7 A3).
 	// The /system reprint verb resets it to zero.
 	SettingKitChanges = "kit.changes"
+	// SettingImageRef is the image this deployment runs, read from the unit's
+	// EXOCOMP_IMAGE at startup. It is recorded so RECOVERY.md and `exocomp
+	// doctor` name what a recovered host must load: a local image tag lives in
+	// the store of the host that can fail (ADR 0016).
+	SettingImageRef = "deploy.image_ref"
 )
 
 // PutSetting upserts a non-secret configuration value.

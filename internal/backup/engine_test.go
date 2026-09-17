@@ -166,6 +166,13 @@ func TestResticLocalRoundTrip(t *testing.T) {
 	repo := filepath.Join(t.TempDir(), "nas")
 	target := f.target(t, "nas", KindResticLocal, repo)
 
+	// The deployment's image ref rides into RECOVERY.md, read best-effort from
+	// the store at write time (ADR 0016).
+	const imageRef = "ghcr.io/abn/exocomp:test"
+	if err := f.store.PutSetting(t.Context(), store.SettingImageRef, imageRef); err != nil {
+		t.Fatalf("put image ref: %v", err)
+	}
+
 	// Two runs: the second proves the repository is adopted, not re-initialized,
 	// and that retention runs against an existing snapshot.
 	for i := range 2 {
@@ -197,6 +204,9 @@ func TestResticLocalRoundTrip(t *testing.T) {
 	}
 	if got := targetNameFromRecovery(recovery); got != "nas" {
 		t.Errorf("target name from RECOVERY.md = %q, want nas", got)
+	}
+	if facts := factsBlock(t, string(recovery)); !strings.Contains(facts, "image-ref: "+imageRef+"\n") {
+		t.Errorf("RECOVERY.md at the target root does not carry the stored image ref:\n%s", facts)
 	}
 	if bytes.Contains(recovery, []byte(canaryValue)) {
 		t.Error("RECOVERY.md leaked the canary")

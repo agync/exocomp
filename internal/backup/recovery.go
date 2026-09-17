@@ -15,7 +15,7 @@ import (
 // get from the printed recovery key to a restored data dir using only age,
 // openssl and restic. The printed kit carries the key; this file carries
 // everything else, which is why it is safe to leave at the target root.
-func renderRecovery(t Target, recipients []secrets.Recipient, now time.Time) []byte {
+func renderRecovery(t Target, recipients []secrets.Recipient, now time.Time, imageRef string) []byte {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# exocomp recovery notes for target %q\n\n", t.Name)
 	b.WriteString("`keyring.age` sits beside this file, outside the backup repository, because\n" +
@@ -26,6 +26,12 @@ func renderRecovery(t Target, recipients []secrets.Recipient, now time.Time) []b
 	fmt.Fprintf(&b, "target-name: %s\n", t.Name)
 	fmt.Fprintf(&b, "target-kind: %s\n", t.Kind)
 	fmt.Fprintf(&b, "target-uri: %s\n", t.URI)
+	// A local image tag dies with the host, so the recovery chain names the
+	// image this deployment ran. An empty ref omits the line rather than
+	// printing an empty value that reads as "nothing to load".
+	if imageRef != "" {
+		fmt.Fprintf(&b, "image-ref: %s\n", imageRef)
+	}
 	fmt.Fprintf(&b, "hkdf-salt: %s\n", secrets.Salt)
 	if t.Kind != KindGit {
 		fmt.Fprintf(&b, "hkdf-info: restic-repo:%s\n", t.Name)

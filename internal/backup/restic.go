@@ -14,6 +14,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // defaultRetention is the policy the design names: a week of dailies and a
@@ -184,6 +185,18 @@ func redacted(red *secrets.Redactor, err error) error {
 	return errors.New(clean)
 }
 
+// storedImageRef reads the deployment's recorded image ref. It is best-effort:
+// an unset key, or a store that cannot be read, is simply no ref — never a
+// failed leg. The ref rides beside keyring.age so a host recovering from this
+// target knows what image to load (ADR 0016, invariant 7).
+func (e *Engine) storedImageRef(ctx context.Context) string {
+	ref, err := e.store.GetSetting(ctx, store.SettingImageRef)
+	if err != nil {
+		return ""
+	}
+	return ref
+}
+
 // writeRootFiles puts keyring.age and RECOVERY.md at the target root, next to
 // the repository rather than inside it.
 func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) error {
@@ -197,7 +210,7 @@ func (e *Engine) writeRootFiles(ctx context.Context, t Target, stage string) err
 	if err != nil {
 		return fmt.Errorf("backup: read staged keyring version: %w", err)
 	}
-	recovery := renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC())
+	recovery := renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC(), e.storedImageRef(ctx))
 
 	switch t.Kind {
 	case KindResticLocal:

@@ -106,7 +106,7 @@ func (e *Engine) gitLeg(ctx context.Context, t Target, stage string) (_ string, 
 	files := map[string][]byte{
 		KeyringName:        keyring,
 		KeyringVersionName: keyringVersion,
-		RecoveryName:       renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC()),
+		RecoveryName:       renderRecovery(t, e.env.Recipients(), e.opts.Now().UTC(), e.storedImageRef(ctx)),
 	}
 	maps.Copy(files, parts)
 	for name, body := range files {

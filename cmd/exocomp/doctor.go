@@ -14,6 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/litestream"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
 
@@ -106,6 +107,12 @@ func runDoctor(w io.Writer) error {
 		p("  %-18s %s\n", tp.Tool.Name, text)
 	}
 
+	if ref := storedImageRef(context.Background()); ref != "" {
+		p("  %-18s %s\n", "image ref", ref)
+	} else {
+		p("  %-18s %s\n", "image ref", "not recorded — set EXOCOMP_IMAGE on the unit")
+	}
+
 	reportSandbox(context.Background(), w)
 	reportCaps(w)
 	reportRunSecretFileStaging(w, dataDir)
@@ -130,7 +137,52 @@ func doctorHealth(ctx context.Context) wire.HealthView {
 			Name: "data_dir", Status: wire.HealthUnknown, Detail: "unknown (" + err.Error() + ")",
 		}}
 	}
-	return health.Probe(ctx, dir, healthOpenStore)
+	return withImageRef(health.Probe(ctx, dir, healthOpenStore), storedImageRef(ctx))
+}
+
+// storedImageRef reads the deployment's recorded image ref, best-effort: no
+// database, or no key, is simply no ref — never a doctor failure. A missing
+// database is checked before opening, because openStore would create one and
+// change what the other probes report.
+func storedImageRef(ctx context.Context) string {
+	dir, err := dataDir()
+	if err != nil {
+		return ""
+	}
+	if _, err := os.Stat(filepath.Join(dir, "exocomp.db")); err != nil {
+		return ""
+	}
+	st, err := openStore()
+	if err != nil {
+		return ""
+	}
+	defer func() { _ = st.Close() }()
+	ref, err := st.GetSetting(ctx, store.SettingImageRef)
+	if err != nil {
+		return ""
+	}
+	return ref
+}
+
+// withImageRef folds the recorded image ref into the fixed optional_tools
+// entry rather than adding a subsystem: the HealthView list is a schema and
+// stays five entries. An empty ref is said plainly, not left blank.
+func withImageRef(view wire.HealthView, ref string) wire.HealthView {
+	text := "image-ref: not recorded"
+	if ref != "" {
+		text = "image-ref: " + ref
+	}
+	for i := range view {
+		if view[i].Name != "optional_tools" {
+			continue
+		}
+		if view[i].Detail != "" {
+			view[i].Detail += "; " + text
+		} else {
+			view[i].Detail = text
+		}
+	}
+	return view
 }
 
 // healthOpenStore adapts cmd/exocomp's own store opener (backup.go) to

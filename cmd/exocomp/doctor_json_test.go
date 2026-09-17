@@ -12,6 +12,7 @@ import (
 	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // doctorEnvelope is the shape doctor --output json must produce.
@@ -163,6 +164,57 @@ func TestDoctorJSONNoScrapeTokenOrSecret(t *testing.T) {
 		if strings.Contains(out, banned) {
 			t.Fatalf("doctor json leaked %q: %s", banned, out)
 		}
+	}
+}
+
+// TestDoctorReportsTheImageRef: the deployment image ref the recovery chain
+// names is visible on both doctor faces, and an absent ref is stated plainly.
+func TestDoctorReportsTheImageRef(t *testing.T) {
+	root := t.TempDir()
+	useDataDir(t, root)
+	if _, err := run(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if err := st.PutSetting(t.Context(), store.SettingImageRef, "ghcr.io/abn/exocomp:test"); err != nil {
+		t.Fatalf("put image ref: %v", err)
+	}
+	_ = st.Close()
+
+	var out bytes.Buffer
+	if err := runDoctor(&out); err != nil {
+		t.Fatalf("runDoctor: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "image ref          ghcr.io/abn/exocomp:test") {
+		t.Errorf("text report does not name the image ref:\n%s", out.String())
+	}
+
+	js, err := run(t, "doctor", "--output", "json")
+	if err != nil {
+		t.Fatalf("doctor --output json: %v (%s)", err, js)
+	}
+	if !strings.Contains(js, "image-ref: ghcr.io/abn/exocomp:test") {
+		t.Errorf("optional_tools detail does not carry the image ref: %s", js)
+	}
+}
+
+// TestDoctorSaysWhenNoImageRefRecorded: an unset ref is said, not blanked.
+func TestDoctorSaysWhenNoImageRefRecorded(t *testing.T) {
+	root := t.TempDir()
+	useDataDir(t, root)
+	if _, err := run(t, "init"); err != nil {
+		t.Fatalf("init: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := runDoctor(&out); err != nil {
+		t.Fatalf("runDoctor: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "image ref          not recorded — set EXOCOMP_IMAGE on the unit") {
+		t.Errorf("text report does not say the ref is unrecorded:\n%s", out.String())
 	}
 }
 

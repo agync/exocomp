@@ -175,6 +175,17 @@ func newServeCmd() *cobra.Command {
 	return cmd
 }
 
+// recordImageRef persists the deployment image ref read from EXOCOMP_IMAGE at
+// startup. An empty value is not a change: the store keeps whatever a previous
+// start recorded, so a restart without the env does not erase what RECOVERY.md
+// names.
+func recordImageRef(ctx context.Context, st *store.Store, image string) error {
+	if image == "" {
+		return nil
+	}
+	return st.PutSetting(ctx, store.SettingImageRef, image)
+}
+
 func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -263,6 +274,14 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return fmt.Errorf("serve: persist --secret-staging: %w", err)
 	}
 	_, _ = fmt.Fprintf(out, "run-secret file staging: %s backend at %s\n", staging.Backend, staging.Root)
+
+	// The deployment's image ref, set by the unit's EXOCOMP_IMAGE, is recorded
+	// so RECOVERY.md and `exocomp doctor` name what a recovered host must load
+	// (ADR 0016). A restart with a changed image updates it; an unset env
+	// leaves the stored value alone.
+	if err := recordImageRef(ctx, st, os.Getenv("EXOCOMP_IMAGE")); err != nil {
+		return fmt.Errorf("serve: persist EXOCOMP_IMAGE: %w", err)
+	}
 
 	// The cross-host fence is taken BEFORE the boot sweep, not after. The sweep's
 	// liveness test is host-local pid probing, so a standby that swept a live
