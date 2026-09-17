@@ -1,6 +1,6 @@
 services:
   exocomp:
-    image: localhost/exocomp:latest
+    image: ghcr.io/abn/exocomp:latest
     build:
       context: ..
       dockerfile: packaging/Containerfile
@@ -16,6 +16,7 @@ services:
       - exocomp-state:/var/lib/exocomp
     environment:
       EXOCOMP_STATE_DIR: /var/lib/exocomp
+      EXOCOMP_IMAGE: ghcr.io/abn/exocomp:latest
 
 volumes:
   exocomp-state: {}

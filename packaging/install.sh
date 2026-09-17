@@ -26,6 +26,9 @@ Options:
                          the target root (any non-local target)
   --target-name NAME     With restore: the name the repository password was
                          derived from; read from RECOVERY.md when omitted
+  --image-load FILE      With install or rollback: load an OCI archive into the
+                         local store first (podman load -i / docker load -i)
+  --image-ref REF        With install or rollback: the image the unit should run
   --image-tag TAG        With rollback: pin this image tag
   --help                 Show this help and exit
 
@@ -63,6 +66,28 @@ require_tools() {
     done
 }
 
+# load_image loads an OCI archive into the local store with the detected tier's
+# loader, so a host with no registry still reaches the image captured off the
+# dead one with `podman save`. Run before install or rollback touches the unit.
+load_image() {
+    [ -n "$image_load" ] || return 0
+    [ -r "$image_load" ] || fail "image archive $image_load is not readable"
+    tier=$(detect_tier)
+    case "$tier" in
+        podman)
+            echo "install.sh: podman load -i $image_load"
+            podman load -i "$image_load"
+            ;;
+        docker)
+            echo "install.sh: docker load -i $image_load"
+            docker load -i "$image_load"
+            ;;
+        *)
+            fail "neither podman nor docker found on PATH"
+            ;;
+    esac
+}
+
 # ask prints a prompt and reads one line, but only when a human is there to
 # answer. A DR script that blocks forever on a closed stdin is a DR script that
 # fails at 3am.
@@ -76,6 +101,8 @@ ask() {
 
 mode=install
 image_tag=""
+image_load=""
+image_ref=""
 from=""
 dest=""
 identity=""
@@ -104,6 +131,16 @@ while [ $# -gt 0 ]; do
         --image-tag)
             [ $# -ge 2 ] || fail "--image-tag requires a value"
             image_tag="$2"
+            shift
+            ;;
+        --image-load)
+            [ $# -ge 2 ] || fail "--image-load requires a value"
+            image_load="$2"
+            shift
+            ;;
+        --image-ref)
+            [ $# -ge 2 ] || fail "--image-ref requires a value"
+            image_ref="$2"
             shift
             ;;
         --from)
@@ -142,6 +179,11 @@ done
 
 if [ -n "$image_tag" ] && [ "$mode" != rollback ]; then
     fail "--image-tag is only valid with rollback"
+fi
+
+if [ "$mode" = restore ] || [ "$mode" = harden-host-key ]; then
+    [ -z "$image_load" ] || fail "--image-load is only valid with install or rollback"
+    [ -z "$image_ref" ] || fail "--image-ref is only valid with install or rollback"
 fi
 
 if [ "$mode" != restore ]; then
@@ -318,7 +360,8 @@ case "$mode" in
         if [ "$tier" = none ]; then
             fail "neither podman nor docker found on PATH"
         fi
-        echo "install.sh $VERSION: tier=$tier mode=$mode"
+        echo "install.sh $VERSION: tier=$tier mode=$mode${image_ref:+ image_ref=$image_ref}"
+        load_image
         echo "would install exocomp via Quadlet ($tier rootless), pulling packaging/Containerfile image and enabling the systemd unit"
         echo "install.sh: after init, run \`install.sh harden-host-key\` to move host.key off the volume into a systemd credential"
         ;;
@@ -351,7 +394,8 @@ case "$mode" in
         if [ "$tier" = none ]; then
             fail "neither podman nor docker found on PATH"
         fi
-        echo "install.sh $VERSION: tier=$tier mode=$mode${image_tag:+ image_tag=$image_tag}"
+        echo "install.sh $VERSION: tier=$tier mode=$mode${image_tag:+ image_tag=$image_tag}${image_ref:+ image_ref=$image_ref}"
+        load_image
         echo "would roll back the running unit to the previous release image"
         ;;
 esac

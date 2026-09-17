@@ -132,6 +132,28 @@ storage credential to fetch anything at all — is closed by putting a **read-on
 credential per off-host leg on the printed kit itself
 ([ADR 0003](../adr/0003-secrets-envelope.md)).
 
+### The image the deployment ran
+
+`RECOVERY.md` at each target root carries `image-ref:` — the ref the daemon read from the
+unit's `EXOCOMP_IMAGE` and recorded. `keyring.age` restores state, but nothing in it
+restores the image: a local tag lives in the store of the host that can fail. Capture the
+image beside the backup, and load it on the new host:
+
+```sh
+podman save -o exocomp-image.tar <image-ref>        # on the host that still runs it
+
+# on the new host, before installing or rolling back:
+install.sh install --image-load exocomp-image.tar --image-ref <image-ref>
+```
+
+`--image-load` runs `podman load -i` (or `docker load -i` for the Docker tier) before
+install or rollback; `--image-ref` names the image the unit should run. Set the unit's
+`EXOCOMP_IMAGE` to that ref so the daemon records it and the next `RECOVERY.md` reflects
+reality ([containers](containers.md)). A custom image also records its source base digests
+in the recovery set ([ADR 0016](../adr/0016-artifact-carrier-image.md)): a registry tag may
+be used to install, but recovery must not need one (invariant 7). `exocomp doctor` prints
+the stored ref, or says it was never recorded.
+
 ## Runbook: the control host is gone
 
 You have a printed recovery kit and any one backup target.

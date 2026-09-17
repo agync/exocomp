@@ -126,6 +126,9 @@ operator escape hatch is a supported state; a version the extraction rule cannot
 named in the detail without moving the status; and no manifest env at all leaves the entry
 `unknown`, a state to read rather than a fault. The text report marks each divergent line
 against its pin (`restic 0.19.1 — pinned 0.19.0`) and prints the active manifest path once.
+The same entry carries the deployment's recorded image ref (`image-ref: <ref>`, or
+`image-ref: not recorded`) — the value `RECOVERY.md` names, so a recovered host knows what
+image to load.
 
 ## MCP-over-HTTP: the third face
 

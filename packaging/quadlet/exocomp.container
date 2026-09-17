@@ -3,7 +3,7 @@ Description=exocomp control plane
 After=exocomp.volume
 
 [Container]
-Image=localhost/exocomp:latest
+Image=ghcr.io/abn/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
 # A captured secret that must reach a tool as a file (bootstrap-first Phase 3,
@@ -32,6 +32,10 @@ UserNS=keep-id
 # doctor` reports whether this is in effect under "per-job caps".
 # The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
 Environment=XDG_DATA_HOME=/var/lib
+# The image this unit runs, recorded by the daemon as the recovery chain's
+# image-ref. Keep it equal to Image= above: a local tag dies with the host, and
+# RECOVERY.md is how the next host learns what to load (ADR 0016).
+Environment=EXOCOMP_IMAGE=ghcr.io/abn/exocomp:latest
 # host.key at rest: systemd decrypts the encrypted credential into
 # $CREDENTIALS_DIRECTORY/host.key at start, using a secret
 # (/var/lib/systemd/credential.secret, or the TPM) that never enters the data

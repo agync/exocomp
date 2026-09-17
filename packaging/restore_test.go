@@ -97,6 +97,62 @@ func runInstall(t *testing.T, home string, args ...string) (string, error) {
 	return string(out), err
 }
 
+// runInstallPath is runInstall with a caller-chosen PATH, so a test can put a
+// stand-in podman ahead of the real one and assert the command line the
+// installer builds.
+func runInstallPath(t *testing.T, path, home string, args ...string) (string, error) {
+	t.Helper()
+
+	cmd := exec.Command("sh", append([]string{"install.sh"}, args...)...)
+	cmd.Env = []string{"PATH=" + path, "HOME=" + home, "TMPDIR=" + t.TempDir()}
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
+// TestInstallShImageLoadAndRef: the two image flags reach the load command line
+// without a registry — a stand-in podman records what the installer ran — and
+// the run line names the ref the unit should use. Both flags belong to
+// install/rollback; a restore that silently swallowed them would load an image
+// the operator did not ask to run.
+func TestInstallShImageLoadAndRef(t *testing.T) {
+	if testing.Short() {
+		t.Skip("integration")
+	}
+	requireTools(t, "sh")
+
+	bin := t.TempDir()
+	fake := filepath.Join(bin, "podman")
+	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"podman $*\"\n"), 0o755); err != nil {
+		t.Fatalf("write stand-in podman: %v", err)
+	}
+	archive := filepath.Join(t.TempDir(), "exocomp-image.tar")
+	if err := os.WriteFile(archive, []byte("stand-in archive"), 0o600); err != nil {
+		t.Fatalf("write archive: %v", err)
+	}
+	path := bin + ":" + os.Getenv("PATH")
+	home := t.TempDir()
+
+	out, err := runInstallPath(t, path, home,
+		"install", "--image-load", archive, "--image-ref", "ghcr.io/abn/exocomp:latest")
+	if err != nil {
+		t.Fatalf("install.sh install with image flags: %v\n%s", err, out)
+	}
+	if want := "podman load -i " + archive; !strings.Contains(out, want) {
+		t.Errorf("install.sh did not load the archive (want %q):\n%s", want, out)
+	}
+	if !strings.Contains(out, "image_ref=ghcr.io/abn/exocomp:latest") {
+		t.Errorf("install.sh did not name the image ref:\n%s", out)
+	}
+
+	out, err = runInstallPath(t, path, home, "restore", "--image-load", archive)
+	if err == nil {
+		t.Fatalf("install.sh restore accepted --image-load:\n%s", out)
+	}
+	if !strings.Contains(out, "only valid with install or rollback") {
+		t.Errorf("install.sh did not explain the refusal:\n%s", out)
+	}
+}
+
 // TestInstallShRestoresWithoutTheBinary is the claim the installer makes: an
 // operator who has the recovery key and the target, and nothing else, gets
 // their data dir back. It used to print "would restore" and exit 0.

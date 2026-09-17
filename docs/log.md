@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-17 — the deployment image ref in the recovery chain
+
+- **`RECOVERY.md` now carries `image-ref:`** at each target root: the ref the daemon read
+  from the unit's `EXOCOMP_IMAGE` and stored as `deploy.image_ref`. An unset ref omits the
+  line rather than printing an empty value. This is the gap
+  [ADR 0016](adr/0016-artifact-carrier-image.md) names — a local tag dies with the host, so
+  the recovery chain must name the image to re-load.
+- `install.sh` gains `--image-load FILE` (`podman load -i`, or `docker load -i` on the
+  Docker tier, before install or rollback) and `--image-ref REF`. The Quadlet unit and the
+  compose file set `EXOCOMP_IMAGE` to the image the unit runs, so the stored ref reflects
+  reality. `exocomp doctor` prints the stored ref in the text report and folds it into the
+  existing `optional_tools` JSON detail (the fixed subsystem list is unchanged).
+- `operations/disaster-recovery.md` documents capture (`podman save`) and load;
+  `operations/containers.md` and `operations/machine-output.md` state the ref.
+
 ## 2026-09-17 — the doctor toolchain-manifest diff
 
 - **`doctor` now diffs each resolved tool version against its `MANIFEST.json` pin.** The
