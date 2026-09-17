@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"exocomp.dev/exocomp/internal/health"
 	"exocomp.dev/exocomp/internal/metrics"
 	"exocomp.dev/exocomp/internal/secrets"
 )
@@ -204,6 +205,7 @@ func TestDoctorTextRefactorPreservedBytes(t *testing.T) {
 		t.Fatalf("mkdir data dir: %v", err)
 	}
 	t.Setenv("PATH", "")
+	t.Setenv(health.ManifestEnv, "")
 
 	var out bytes.Buffer
 	if err := runDoctor(&out); err != nil {

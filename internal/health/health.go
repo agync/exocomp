@@ -12,6 +12,7 @@ package health
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -60,10 +62,11 @@ type OpenStore func() (Store, func() error, error)
 // tools, self-observability, and litestream).
 func Probe(ctx context.Context, dataDir string, open OpenStore) wire.HealthView {
 	report, fault := InspectDataDir(dataDir)
+	probes := ProbeOptionalTools()
 	return wire.HealthView{
 		dataDirEntry(report, fault),
 		secretsProtectionEntry(ProbeSecretsProtection(dataDir)),
-		optionalToolsEntry(),
+		optionalToolsEntry(probes, ProbeToolchain(probes)),
 		selfObservabilityEntry(ProbeSelfObservability(ctx, dataDir, open)),
 		litestreamEntry(ProbeLitestream(ctx, dataDir, open)),
 	}
@@ -449,43 +452,205 @@ var OptionalTools = []Tool{
 	{Name: "git", Args: []string{"--version"}},
 }
 
-// ProbeToolResult looks up and version-probes one optional tool, reporting
-// whether it was found alongside the same text a report prints.
-func ProbeToolResult(t Tool) (found bool, text string) {
+// ManifestEnv names the environment variable pointing at the image toolchain
+// manifest; the container sets it to /opt/exocomp/MANIFEST.json (ADR 0006).
+const ManifestEnv = "EXOCOMP_TOOLCHAIN_MANIFEST"
+
+// ToolProbe is one optional tool's resolved state: whether it is on PATH, the
+// bare version token the extraction rule pulled from its version probe, and
+// the human line the text report prints. Version is best-effort — empty means
+// no rule matched, never that the tool is absent.
+type ToolProbe struct {
+	Tool    Tool
+	Found   bool
+	Version string
+	Text    string
+}
+
+// toolVersionRule maps a probed binary to the manifest key that pins it and a
+// regexp that extracts its bare version token from the version probe's first
+// line. Only tools with both a probe and a stable token appear; ansible_runner
+// and python have no probe, and nono's pin belongs to the sandbox section.
+type toolVersionRule struct {
+	manifestKey string
+	pattern     *regexp.Regexp
+}
+
+var toolVersionRules = map[string]toolVersionRule{
+	"ansible-playbook": {"ansible_core", regexp.MustCompile(`\[core ([0-9][^\]]*)\]`)},
+	"tofu":             {"tofu", regexp.MustCompile(`OpenTofu v?([0-9][^\s]*)`)},
+	"restic":           {"restic", regexp.MustCompile(`restic ([0-9][^\s]*)`)},
+	"age":              {"age", regexp.MustCompile(`^v?([0-9][^\s]*)`)},
+	"sops":             {"sops", regexp.MustCompile(`sops ([0-9][^\s]*)`)},
+	"uv":               {"uv", regexp.MustCompile(`uv ([0-9][^\s]*)`)},
+	"git":              {"git", regexp.MustCompile(`git version ([0-9][^\s]*)`)},
+}
+
+// toolVersionToken applies tool's extraction rule to a version-probe line,
+// best-effort and deterministic. An unknown tool or a non-matching line
+// reports no token rather than guessing.
+func toolVersionToken(tool, line string) (string, bool) {
+	rule, ok := toolVersionRules[tool]
+	if !ok {
+		return "", false
+	}
+	m := rule.pattern.FindStringSubmatch(line)
+	if m == nil {
+		return "", false
+	}
+	return m[1], true
+}
+
+// ProbeTool resolves one optional tool: LookPath, then the version invocation
+// with its extraction rule applied to the first line.
+func ProbeTool(t Tool) ToolProbe {
+	p := ToolProbe{Tool: t}
 	path, err := exec.LookPath(t.Name)
 	if err != nil {
-		return false, "MISSING"
+		p.Text = "MISSING"
+		return p
 	}
+	p.Found = true
 
 	out, err := exec.Command(path, t.Args...).CombinedOutput()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return true, fmt.Sprintf("found at %s (version probe exited %d)", path, exitErr.ExitCode())
+			p.Text = fmt.Sprintf("found at %s (version probe exited %d)", path, exitErr.ExitCode())
+		} else {
+			p.Text = fmt.Sprintf("found at %s (version probe failed: %v)", path, err)
 		}
-		return true, fmt.Sprintf("found at %s (version probe failed: %v)", path, err)
+		return p
 	}
-
-	return true, fmt.Sprintf("found at %s (%s)", path, FirstLine(out))
+	line := FirstLine(out)
+	p.Text = fmt.Sprintf("found at %s (%s)", path, line)
+	if v, ok := toolVersionToken(t.Name, line); ok {
+		p.Version = v
+	}
+	return p
 }
 
-// optionalToolsEntry rolls every tool probe into one subsystem status: a
-// missing tool is a warn (every one of them is still optional), never a
-// fail.
-func optionalToolsEntry() wire.HealthEntry {
-	var missing []string
+// ProbeOptionalTools probes every tool in the fixed OptionalTools set once.
+func ProbeOptionalTools() []ToolProbe {
+	out := make([]ToolProbe, 0, len(OptionalTools))
 	for _, t := range OptionalTools {
-		if found, _ := ProbeToolResult(t); !found {
-			missing = append(missing, t.Name)
+		out = append(out, ProbeTool(t))
+	}
+	return out
+}
+
+// ToolDeviation is one tool whose resolved version differs from its pin.
+type ToolDeviation struct {
+	Tool string
+	Got  string
+	Pin  string
+}
+
+// ToolchainProbe is the manifest comparison: the active manifest path, the
+// tools that deviate from their pins, and the tools whose version would not
+// parse. Err is a manifest that could not be read; an unset manifest is the
+// zero value, a state rather than an error.
+type ToolchainProbe struct {
+	Path       string
+	Deviations []ToolDeviation
+	Unparsed   []string
+	Err        error
+}
+
+// Deviation returns the deviation recorded for tool, if any.
+func (tc ToolchainProbe) Deviation(tool string) (ToolDeviation, bool) {
+	for _, d := range tc.Deviations {
+		if d.Tool == tool {
+			return d, true
 		}
 	}
-	if len(missing) == 0 {
-		return wire.HealthEntry{Name: "optional_tools", Status: wire.HealthOK, Detail: "all present"}
+	return ToolDeviation{}, false
+}
+
+// ProbeToolchain reads the manifest at ManifestEnv and compares every probed
+// tool it can parse against its pin. It is best-effort and never fatal: no
+// manifest env is the empty probe, an unreadable manifest lands in Err, and a
+// version that will not parse lands in Unparsed — none of them change a job's
+// outcome, and a tool with no pin or no probe is simply skipped.
+func ProbeToolchain(probes []ToolProbe) ToolchainProbe {
+	path := os.Getenv(ManifestEnv)
+	if path == "" {
+		return ToolchainProbe{}
 	}
-	return wire.HealthEntry{
-		Name: "optional_tools", Status: wire.HealthWarn,
-		Detail: "missing: " + strings.Join(missing, ", "),
+	tc := ToolchainProbe{Path: path}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		tc.Err = err
+		return tc
 	}
+	var pins map[string]string
+	if err := json.Unmarshal(body, &pins); err != nil {
+		tc.Err = err
+		return tc
+	}
+	for _, p := range probes {
+		rule, ok := toolVersionRules[p.Tool.Name]
+		if !ok || !p.Found {
+			continue
+		}
+		pin := pins[rule.manifestKey]
+		if pin == "" {
+			continue
+		}
+		if p.Version == "" {
+			tc.Unparsed = append(tc.Unparsed, p.Tool.Name)
+			continue
+		}
+		if p.Version != pin {
+			tc.Deviations = append(tc.Deviations, ToolDeviation{Tool: p.Tool.Name, Got: p.Version, Pin: pin})
+		}
+	}
+	return tc
+}
+
+// optionalToolsEntry rolls every tool probe and the toolchain-manifest
+// comparison into one subsystem status: a missing tool is a warn (every one of
+// them is still optional) and a version off its pin is a warn too — the ADR
+// 0006 escape hatch is made visible, not refused. No manifest at all is
+// unknown, a state to read.
+func optionalToolsEntry(probes []ToolProbe, tc ToolchainProbe) wire.HealthEntry {
+	var missing []string
+	for _, p := range probes {
+		if !p.Found {
+			missing = append(missing, p.Tool.Name)
+		}
+	}
+
+	status := wire.HealthOK
+	var parts []string
+	if len(missing) > 0 {
+		status = worseHealth(status, wire.HealthWarn)
+		parts = append(parts, "missing: "+strings.Join(missing, ", "))
+	} else {
+		parts = append(parts, "all present")
+	}
+
+	switch {
+	case tc.Path == "":
+		status = worseHealth(status, wire.HealthUnknown)
+		parts = append(parts, "toolchain manifest not set")
+	case tc.Err != nil:
+		status = worseHealth(status, wire.HealthUnknown)
+		parts = append(parts, "toolchain manifest unreadable")
+	default:
+		if len(tc.Deviations) > 0 {
+			status = worseHealth(status, wire.HealthWarn)
+			var devs []string
+			for _, d := range tc.Deviations {
+				devs = append(devs, fmt.Sprintf("%s %s (pinned %s)", d.Tool, d.Got, d.Pin))
+			}
+			parts = append(parts, "deviates: "+strings.Join(devs, ", "))
+		}
+		if len(tc.Unparsed) > 0 {
+			parts = append(parts, "version unparsed: "+strings.Join(tc.Unparsed, ", "))
+		}
+	}
+	return wire.HealthEntry{Name: "optional_tools", Status: status, Detail: strings.Join(parts, "; ")}
 }
 
 // FirstLine returns the first line of b, trimmed. It is shared by the tool

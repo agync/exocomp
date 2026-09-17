@@ -93,9 +93,17 @@ func runDoctor(w io.Writer) error {
 	reportSecretsProtection(w, dataDir)
 
 	p("optional tools (probe subset):\n")
-	for _, t := range health.OptionalTools {
-		_, text := health.ProbeToolResult(t)
-		p("  %-18s %s\n", t.Name, text)
+	probes := health.ProbeOptionalTools()
+	tc := health.ProbeToolchain(probes)
+	if tc.Path != "" {
+		p("  %-18s %s\n", "manifest", tc.Path)
+	}
+	for _, tp := range probes {
+		text := tp.Text
+		if d, ok := tc.Deviation(tp.Tool.Name); ok {
+			text += " — pinned " + d.Pin
+		}
+		p("  %-18s %s\n", tp.Tool.Name, text)
 	}
 
 	reportSandbox(context.Background(), w)
