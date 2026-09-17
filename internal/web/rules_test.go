@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -50,15 +49,17 @@ func seedRules(t *testing.T, h *harness) {
 		t.Fatalf("seed notify rule: %v", err)
 	}
 
-	// The playbook rule's fire names a real, settled job (exit 0).
-	job, err := h.queue.Enqueue(ctx, queue.Spec{
+	// The playbook rule's fire names a real, settled job (exit 0). Created via
+	// CreateGatedJob so no harness worker claims it while it is driven to a
+	// terminal state.
+	job, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "playbook", Kind: "shell", Trigger: "manual",
-		Argv: []string{"/bin/true"},
+		Args: store.JobArgs{Argv: []string{"/bin/true"}},
 	})
 	if err != nil {
-		t.Fatalf("enqueue fire job: %v", err)
+		t.Fatalf("create fire job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatalf("start fire job: %v", err)
 	}
 	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {

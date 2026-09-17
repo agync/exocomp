@@ -894,20 +894,21 @@ func TestStateClassDegradedIsWait(t *testing.T) {
 	}
 }
 
-// seedStartedJob creates a job and synchronously moves it to running before the
-// harness queue's 20ms tick can claim it, so a test can append its own event
-// stream without the real driver racing it (the same window seedJobWithRecap
-// relies on).
+// seedStartedJob creates a job and moves it to running so a test can append its
+// own event stream without the real driver racing it. Created via
+// CreateGatedJob so it lands in awaiting_approval — a state no harness worker
+// claims — then transitioned directly, so the runner can never grab the queued
+// row first (the CreateJob->queued pattern raced it under parallel load).
 func seedStartedJob(t *testing.T, h *harness, runbook string, trigger string, args store.JobArgs) store.Job {
 	t.Helper()
 	ctx := context.Background()
-	job, err := h.store.CreateJob(ctx, store.NewJob{
+	job, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: runbook, Kind: executor.KindAnsible, Trigger: trigger, Args: args,
 	})
 	if err != nil {
 		t.Fatalf("seed job: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatalf("start seeded job: %v", err)
 	}
 	return job

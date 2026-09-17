@@ -13,15 +13,18 @@ import (
 )
 
 // seedTofuJob creates a tofu-kind job and appends one plan-outcome event
-// carrying rawJSON, the shape the tofu driver writes (internal/executor).
+// carrying rawJSON, the shape the tofu driver writes (internal/executor). It
+// lands the job in awaiting_approval via CreateGatedJob so no harness worker
+// runs it; a queued tofu job with empty argv would execute and append a driver
+// event between a test's API read and its later CLI projection.
 func seedTofuJob(t *testing.T, st *store.Store, rawJSON string) int64 {
 	t.Helper()
 	ctx := context.Background()
-	job, err := st.CreateJob(ctx, store.NewJob{
+	job, err := st.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "workspace:web", Kind: "tofu", Trigger: "manual",
 	})
 	if err != nil {
-		t.Fatalf("CreateJob: %v", err)
+		t.Fatalf("CreateGatedJob: %v", err)
 	}
 	if _, err := st.AppendJobEvent(ctx, store.JobEvent{
 		JobID: job.ID, Level: store.LevelSystem, Msg: "tofu plan outcome", RawJSON: rawJSON,

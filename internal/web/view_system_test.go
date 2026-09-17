@@ -30,7 +30,7 @@ func seedSystemShell(t *testing.T, h *harness) {
 // and Recovery kit render as read-only header glyphs until L-S5 lands their
 // verbs.
 func TestSystemShellIdentity(t *testing.T) {
-	h := newHarness(t)
+	h := newHarnessSerial(t)
 	seedSystemShell(t, h)
 	version.Version, version.Commit = "0.12.0", "e741e71"
 	defer func() { version.Version, version.Commit = "dev", "dev" }()
@@ -198,7 +198,9 @@ func TestSystemPhoneLegRowsCarryState(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
+	start := time.Now()
 	code, page := getBody(t, client, ts.URL+"/system")
+	end := time.Now()
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
@@ -213,7 +215,6 @@ func TestSystemPhoneLegRowsCarryState(t *testing.T) {
 		`class="leg-row" href="/system/litestream"`,
 		`class="leg-row" href="/system/backups"`,
 		// The litestream figure from the data — not the "—" stub.
-		wantLag(mtime),
 		`class="chip ok"><span class="dot"></span>REPLICATING`,
 		`class="chip wait"><span class="dot"></span>NONE`,
 		`class="chip dim"><span class="dot"></span>OFF`,
@@ -223,6 +224,7 @@ func TestSystemPhoneLegRowsCarryState(t *testing.T) {
 			t.Errorf("phone leg rows missing %q", want)
 		}
 	}
+	assertLagInWindow(t, phone, mtime, start, end)
 	if n := strings.Count(phone, `class="leg-chev"`); n != 4 {
 		t.Errorf("each of the four phone leg rows must carry the chevron, got %d", n)
 	}

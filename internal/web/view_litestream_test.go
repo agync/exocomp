@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -19,9 +20,9 @@ import (
 // seedReplicaFrame lays one WAL frame into a litestream file replica at the
 // layout internal/litestream/status_test.go pins — generations/{gen}/wal/
 // {frame}.wal.lz4 — aged `age` behind now, and returns the mtime it set so a
-// test can compute the lag figure at assertion time instead of hardcoding a
-// second a loaded host can drift past. The frame number rides the filename,
-// which the card's checkpoint fact reads back verbatim.
+// test can recompute the lag figure over the request's clock window rather
+// than hardcoding a second. The frame number rides the filename, which the
+// card's checkpoint fact reads back verbatim.
 func seedReplicaFrame(t *testing.T, dir, frame string, age time.Duration) time.Time {
 	t.Helper()
 	walDir := filepath.Join(dir, "generations", "abc123", "wal")
@@ -39,12 +40,51 @@ func seedReplicaFrame(t *testing.T, dir, frame string, age time.Duration) time.T
 	return mtime
 }
 
-// wantLag is the figure the card renders for a frame seeded at mtime, measured
-// at assertion time — the same lagLabel the card uses, so the test and the
-// render agree even when a slow host stretches the seconds between seed and
-// render.
-func wantLag(mtime time.Time) string {
-	return lagLabel(time.Since(mtime).Truncate(time.Second))
+// assertLagInWindow checks the page carries the frame's lag figure, given the
+// request's clock read falls in [start, end]. lagLabel truncates to the second,
+// so a request straddling a boundary — routine under parallel -race load — has
+// two equally correct labels; pinning one instant flakes on the boundary, not
+// on the code. The labels come from every whole second in [start, end] measured
+// from mtime, so a sub-second window that crosses a boundary covers both sides.
+func assertLagInWindow(t *testing.T, page string, mtime, start, end time.Time) {
+	t.Helper()
+	d0, d1 := start.Sub(mtime), end.Sub(mtime)
+	if d1 < d0 {
+		d0, d1 = d1, d0
+	}
+	lo, hi := int64(d0/time.Second), int64(d1/time.Second)
+	if hi-lo > 600 {
+		t.Fatalf("request window too wide to bound the lag: [%s, %s]", start, end)
+	}
+	seen := map[string]bool{}
+	var labels []string
+	for s := lo; s <= hi; s++ {
+		l := lagLabel(time.Duration(s) * time.Second)
+		if seen[l] {
+			continue
+		}
+		seen[l] = true
+		labels = append(labels, l)
+		if strings.Contains(page, l) {
+			return
+		}
+	}
+	t.Errorf("page carries no lag figure for a frame at %s across [%s, %s]; tried %v; figures in page: %v",
+		mtime.Format(time.RFC3339), start.Format(time.RFC3339), end.Format(time.RFC3339), labels, lagFigures(page))
+}
+
+var lagFigureRe = regexp.MustCompile(`(?:class="meta">|class="value[^"]*">)([^<]*)<`)
+
+// lagFigures lists the meta/value spans that carry a lag figure, for failure
+// diagnostics.
+func lagFigures(page string) []string {
+	var out []string
+	for _, m := range lagFigureRe.FindAllStringSubmatch(page, -1) {
+		if strings.ContainsAny(m[1], "dhms") {
+			out = append(out, m[1])
+		}
+	}
+	return out
 }
 
 // noSidecar and withSidecar stub the server's sidecar presence probe so a test
@@ -75,14 +115,24 @@ func setReplicaAck(t *testing.T, h *harness) {
 // returns its body, failing on any non-200.
 func getPage(t *testing.T, h *harness, path string) string {
 	t.Helper()
+	page, _, _ := getPageAt(t, h, path)
+	return page
+}
+
+// getPageAt is getPage with the request window: start is read before the GET
+// and end after it, so the render's clock read lies in [start, end].
+func getPageAt(t *testing.T, h *harness, path string) (page string, start, end time.Time) {
+	t.Helper()
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	start = time.Now()
 	code, page := getBody(t, client, ts.URL+path)
+	end = time.Now()
 	if code != http.StatusOK {
 		t.Fatalf("GET %s = %d, want 200", path, code)
 	}
-	return page
+	return page, start, end
 }
 
 // TestLitestreamCardNoReplica: with no replica target the leg renders the dim
@@ -145,11 +195,10 @@ func TestLitestreamCardReplicating(t *testing.T) {
 	replica := t.TempDir()
 	setReplicaTarget(t, h, replica)
 	mtime := seedReplicaFrame(t, replica, "00000000000048211", 2*time.Minute+10*time.Second)
-	page := getPage(t, h, "/system")
+	page, start, end := getPageAt(t, h, "/system")
 
 	for _, want := range []string{
 		">REPLICATING</span>",
-		wantLag(mtime),
 		"behind · RPO",
 		"frame 48211",
 		"litestream 0.3.13 present · runs beside the daemon",
@@ -160,6 +209,7 @@ func TestLitestreamCardReplicating(t *testing.T) {
 			t.Errorf("/system missing %q", want)
 		}
 	}
+	assertLagInWindow(t, page, mtime, start, end)
 }
 
 // TestLitestreamCardStale: a frame ≥10m old with the sidecar present renders
@@ -171,11 +221,10 @@ func TestLitestreamCardStale(t *testing.T) {
 	replica := t.TempDir()
 	setReplicaTarget(t, h, replica)
 	mtime := seedReplicaFrame(t, replica, "00000000000047902", 12*time.Minute)
-	page := getPage(t, h, "/system")
+	page, start, end := getPageAt(t, h, "/system")
 
 	for _, want := range []string{
 		">STALE</span>",
-		">" + wantLag(mtime) + "<",
 		"behind · ok &lt; 10m · wait &lt; 1h · fail",
 		"present · is it running? exocomp cannot tell",
 		"Check the sidecar on " + hostname() + ": systemctl status litestream",
@@ -184,6 +233,7 @@ func TestLitestreamCardStale(t *testing.T) {
 			t.Errorf("/system missing %q", want)
 		}
 	}
+	assertLagInWindow(t, page, mtime, start, end)
 }
 
 // TestLitestreamCardBehind: a frame ≥1h old is the fail BEHIND state, the
@@ -194,11 +244,10 @@ func TestLitestreamCardBehind(t *testing.T) {
 	replica := t.TempDir()
 	setReplicaTarget(t, h, replica)
 	mtime := seedReplicaFrame(t, replica, "00000000000041000", 2*time.Hour)
-	page := getPage(t, h, "/system")
+	page, start, end := getPageAt(t, h, "/system")
 
 	for _, want := range []string{
 		">BEHIND</span>",
-		">" + wantLag(mtime) + "<",
 		"behind · ok &lt; 10m · wait &lt; 1h · fail",
 		"systemctl status litestream",
 	} {
@@ -206,6 +255,7 @@ func TestLitestreamCardBehind(t *testing.T) {
 			t.Errorf("/system missing %q", want)
 		}
 	}
+	assertLagInWindow(t, page, mtime, start, end)
 }
 
 // TestLitestreamCardRemote: a remote replica's frame age only litestream can

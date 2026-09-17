@@ -2,7 +2,9 @@ package web
 
 import (
 	"context"
+	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +15,62 @@ import (
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/store"
 )
+
+// The forward-only migration series is the single largest cost of building a
+// harness, far more than the keyring or the queue. The schema is identical for
+// every test, so it is built once per test binary into a template file and
+// copied into each test's temp dir. Each harness still owns its file, store,
+// keyring, and data dir; only the pre-migrated schema bytes are shared.
+var (
+	templateOnce sync.Once
+	templateDir  string
+	templateData []byte
+	templateErr  error
+)
+
+func templateDB() ([]byte, error) {
+	templateOnce.Do(func() {
+		dir, err := os.MkdirTemp("", "exocomp-web-template-")
+		if err != nil {
+			templateErr = err
+			return
+		}
+		templateDir = dir
+		st, err := store.Open(filepath.Join(dir, "exocomp.db"))
+		if err != nil {
+			templateErr = err
+			return
+		}
+		if err := st.Close(); err != nil {
+			templateErr = err
+			return
+		}
+		templateData, templateErr = os.ReadFile(filepath.Join(dir, "exocomp.db"))
+	})
+	return templateData, templateErr
+}
+
+// TestMain removes the template dir the lazy initializer created; in -short
+// mode no harness runs, so no template is ever built.
+func TestMain(m *testing.M) {
+	code := m.Run()
+	if templateDir != "" {
+		_ = os.RemoveAll(templateDir)
+	}
+	os.Exit(code)
+}
+
+// parallelize marks t parallel the first time a harness is built for it.
+// testing.T panics on a repeated t.Parallel, and a few tests build two
+// harnesses on one *testing.T; the set lets those share one parallel slot.
+var parallelized sync.Map
+
+func parallelize(t *testing.T) {
+	t.Helper()
+	if _, loaded := parallelized.LoadOrStore(t, struct{}{}); !loaded {
+		t.Parallel()
+	}
+}
 
 // harness is a running web surface backed by a real store, envelope, queue, and
 // reactive engine — the same wiring `exocomp web` builds, so a test drives the
@@ -30,15 +88,34 @@ type harness struct {
 // job actually runs. The queue stops when the test's context is cancelled.
 func newHarness(t *testing.T) *harness { return newHarnessBase(t, "") }
 
+// newHarnessSerial builds the same surface without marking the test parallel.
+// A test that mutates a package global read by a live handler (version.Version,
+// version.Commit on /system) must not overlap another test's server, so it
+// takes the sequential slot by foregoing t.Parallel.
+func newHarnessSerial(t *testing.T) *harness { return buildHarness(t, "", false) }
+
 // newHarnessBase builds the same surface under a base path: "" is the origin
 // root, "/exocomp" the prefixed origin. It exists so the base-path tests drive
 // the identical wiring `exocomp web --base-path /exocomp` builds.
-func newHarnessBase(t *testing.T, base string) *harness {
+func newHarnessBase(t *testing.T, base string) *harness { return buildHarness(t, base, true) }
+
+func buildHarness(t *testing.T, base string, parallel bool) *harness {
 	t.Helper()
 	if testing.Short() {
 		t.Skip("web harness integration")
 	}
+	if parallel {
+		parallelize(t)
+	}
 	dir := t.TempDir()
+
+	db, err := templateDB()
+	if err != nil {
+		t.Fatalf("harness template: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "exocomp.db"), db, 0o600); err != nil {
+		t.Fatalf("seed harness store: %v", err)
+	}
 
 	env, _, err := secrets.Init(dir, nil)
 	if err != nil {
