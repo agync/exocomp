@@ -473,7 +473,9 @@ func newCheckUpdateCmd() *cobra.Command {
 }
 
 func newCheckListCmd() *cobra.Command {
-	return &cobra.Command{
+	var netgroup string
+
+	cmd := &cobra.Command{
 		Use:     "list",
 		Short:   "List probe checks",
 		Example: "exocomp check list --output json",
@@ -514,6 +516,9 @@ func newCheckListCmd() *cobra.Command {
 				}
 				states[c.ID] = kept
 			}
+			if netgroup != "" {
+				rows = filterChecksByStoredNetgroup(rows, states, netgroup)
+			}
 			if mode == outputJSON {
 				return emitJSON(cmd, wire.KindCheckList, wire.NewCheckList(rows, states))
 			}
@@ -531,6 +536,26 @@ func newCheckListCmd() *cobra.Command {
 			return w.Flush()
 		},
 	}
+	cmd.Flags().StringVar(&netgroup, "netgroup", "",
+		"only checks with at least one target whose stored netgroup is this name")
+	return cmd
+}
+
+// filterChecksByStoredNetgroup narrows the listed checks to those with at least
+// one target whose already-stored check_state netgroup equals name. It reads the
+// sweep's persisted classification rather than re-classifying an address, so the
+// filter agrees with the NETGROUP column the same listing prints.
+func filterChecksByStoredNetgroup(rows []store.Check, states map[int64][]store.CheckState, name string) []store.Check {
+	kept := make([]store.Check, 0, len(rows))
+	for _, c := range rows {
+		for _, st := range states[c.ID] {
+			if st.Netgroup == name {
+				kept = append(kept, c)
+				break
+			}
+		}
+	}
+	return kept
 }
 
 func newCheckRmCmd() *cobra.Command {

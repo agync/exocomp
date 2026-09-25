@@ -302,6 +302,66 @@ func TestCheckListShowsNetgroupAndDuration(t *testing.T) {
 	}
 }
 
+// TestCheckListNetgroupFilterUsesStoredValue: `check list --netgroup` narrows
+// the listing to checks with a target whose STORED netgroup matches. The stored
+// row deliberately contradicts a live classification of the target's address, so
+// a filter that re-classified would land in the wrong group.
+func TestCheckListNetgroupFilterUsesStoredValue(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	ctx := context.Background()
+
+	st, err := openStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	if _, err := st.CreateNetgroup(ctx, store.NewNetgroup{
+		Name:     "home",
+		Prefixes: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+	}); err != nil {
+		t.Fatalf("create netgroup: %v", err)
+	}
+	c, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	})
+	if err != nil {
+		t.Fatalf("create check: %v", err)
+	}
+	// The address classifies live as "home"; the sweep's stored verdict says
+	// "away", and the filter must honor the stored value.
+	if err := st.SetCheckState(ctx, store.CheckState{
+		CheckID: c.ID, TargetName: "laptop", Status: store.CheckUp,
+		Consecutive: 3, Emitted: store.CheckUp, Netgroup: "away",
+	}); err != nil {
+		t.Fatalf("set state: %v", err)
+	}
+	_ = st.Close()
+
+	out, err := runCheckCmd(t, "check", "list", "--netgroup", "away")
+	if err != nil {
+		t.Fatalf("check list --netgroup away: %v", err)
+	}
+	if !strings.Contains(out, "at-home") {
+		t.Errorf("stored netgroup away did not match the check:\n%s", out)
+	}
+
+	out, err = runCheckCmd(t, "check", "list", "--netgroup", "home")
+	if err != nil {
+		t.Fatalf("check list --netgroup home: %v", err)
+	}
+	if strings.Contains(out, "at-home") {
+		t.Errorf("live netgroup home matched despite the stored away verdict:\n%s", out)
+	}
+
+	out, err = runCheckCmd(t, "check", "list", "--netgroup", "nope")
+	if err != nil {
+		t.Fatalf("check list --netgroup nope: %v", err)
+	}
+	if strings.Contains(out, "at-home") {
+		t.Errorf("unknown netgroup matched the check:\n%s", out)
+	}
+}
+
 // TestCheckAddRejectsBadInput keeps a row that can never probe out of the
 // database: a bad kind, a non-positive interval, malformed targets, and
 // --expect on a non-http kind are all refused.
