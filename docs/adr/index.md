@@ -22,6 +22,8 @@ of fact land in [the evolution log](../log.md).
 | [0014](0014-agent-facing-surface.md) | Agent-facing surface: one core, three thin faces (CLI --output json, HTTP /api/v1, MCP) sharing ADR-0009 auth, the one queue, and the internal/wire envelope contract | Accepted |
 | [0015](0015-per-source-collections.md) | Ansible collections go per-source: content-hash-keyed cache dir, resolved at claim time, GC'd with the source lifecycle; ADR 0011's shared collections decision superseded | Accepted |
 | [0016](0016-artifact-carrier-image.md) | exocomp ships as a self-contained base image that is also an artifact carrier; uv is bootstrapped when absent, ansible is PATH-delegated with `PYTHONPATH`, and an operator's image is captured for recovery | Accepted |
+| [0017](0017-shared-probe-vocabulary.md) | One `internal/probe` vocabulary for checks and gates; checks gain dns/tls/metric; the SSRF guard is per-face and Location is opt-in per kind | Accepted |
+| [0018](0018-aggregate-check-events.md) | Opt-in aggregate check events carrying the present host set, with `--limit-hosts` expansion governed by the trusted-source line | Accepted |
 
 Some decisions are recorded elsewhere because they are shape rather than choice: the twelve
 design amendments are in [design/amendments.md](../design/amendments.md), and the platform
