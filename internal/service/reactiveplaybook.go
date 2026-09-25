@@ -135,6 +135,19 @@ func (s *Service) playbookLimit(ctx context.Context, ev reactive.Event, rule sto
 		if !store.ValidName(h) {
 			return "", fmt.Errorf("rule %q: --limit-hosts event carries an invalid host name %q", rule.Name, h)
 		}
+		// ansible --limit takes a PATTERN, not a name: `all` and `ungrouped`
+		// are magic inventory names, so a declared target literally named either
+		// would widen the run to the whole inventory. A leading '-' is refused
+		// so a flag-like value can never fill the --limit value slot.
+		switch strings.ToLower(h) {
+		case "all", "ungrouped":
+			return "", fmt.Errorf(
+				"rule %q: --limit-hosts host %q is a reserved ansible inventory name, not a host",
+				rule.Name, h)
+		}
+		if strings.HasPrefix(h, "-") {
+			return "", fmt.Errorf("rule %q: --limit-hosts host %q must not begin with '-'", rule.Name, h)
+		}
 		if !declared[h] {
 			return "", fmt.Errorf("rule %q: --limit-hosts host %q is not a target of check %q", rule.Name, h, ev.Name)
 		}

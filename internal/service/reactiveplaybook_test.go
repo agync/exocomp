@@ -257,3 +257,33 @@ func TestBuildPlaybookSpecLimitHosts(t *testing.T) {
 		}
 	}
 }
+
+// TestBuildPlaybookSpecLimitHostsRefusesAnsibleMagicNames is the widening
+// guard: --limit takes an ansible PATTERN, so a declared target literally named
+// `all` or `ungrouped`, or a leading-dash name, would escape a per-host run.
+// Each is a real declared target here, so only the reserved-name refusal can
+// reject it.
+func TestBuildPlaybookSpecLimitHostsRefusesAnsibleMagicNames(t *testing.T) {
+	ctx := context.Background()
+	svc, st := playbookSourceStore(t)
+	if _, err := st.CreateCheck(ctx, store.NewCheck{
+		Name: "magic", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{
+			{Name: "all", Address: "192.168.1.50", Port: 22},
+			{Name: "ungrouped", Address: "192.168.1.51", Port: 22},
+			{Name: "-x", Address: "192.168.1.52", Port: 22},
+		},
+	}); err != nil {
+		t.Fatalf("CreateCheck: %v", err)
+	}
+	rule := store.Rule{
+		Name: "present-update", ActionKind: store.ActionPlaybook,
+		Action: store.RuleAction{Source: "ops", Playbook: "plays/site.yml", LimitHosts: true},
+	}
+	for _, host := range []string{"all", "ungrouped", "-x"} {
+		ev := reactive.Event{Source: reactive.SourceCheck, Name: "magic", Hosts: []string{host}}
+		if _, err := svc.BuildPlaybookSpec(ctx, ev, rule); err == nil {
+			t.Errorf("declared target %q built a spec, want a refusal", host)
+		}
+	}
+}
