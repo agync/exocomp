@@ -54,6 +54,38 @@ func TestNewCheckListCarriesNewKindConfig(t *testing.T) {
 	}
 }
 
+// TestNewRuleListCarriesLimitHosts: a rule's governed --limit-hosts expansion
+// reaches `rule list --output json`, and an unset flag is omitted.
+func TestNewRuleListCarriesLimitHosts(t *testing.T) {
+	rows := []store.Rule{{
+		ID: 1, Name: "present-update", SourceFilter: "check",
+		CELExpr: `event.labels["aggregate"] == "true"`, ActionKind: store.ActionPlaybook,
+		Enabled: true,
+		Action:  store.RuleAction{Source: "ops", Playbook: "playbooks/update.yml", LimitHosts: true},
+	}}
+	views := wire.NewRuleList(rows)
+	if len(views) != 1 || !views[0].LimitHosts {
+		t.Fatalf("rule view = %+v, want limit_hosts true", views)
+	}
+	raw, err := json.Marshal(views)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"limit_hosts":true`) {
+		t.Fatalf("encoded rule list missing limit_hosts: %s", raw)
+	}
+
+	views = wire.NewRuleList([]store.Rule{{ID: 2, Name: "fixed", ActionKind: store.ActionPlaybook, Enabled: true,
+		Action: store.RuleAction{Source: "ops", Playbook: "p.yml", Limit: "web"}}})
+	raw, err = json.Marshal(views)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"limit_hosts"`) {
+		t.Fatalf("a fixed-limit rule emitted limit_hosts: %s", raw)
+	}
+}
+
 // TestNewCheckListOmitsUnsetNewFields pins the additive, backward-compatible
 // shape: a tcp target emits none of the new keys, so an existing reader sees
 // the same JSON it did before.
