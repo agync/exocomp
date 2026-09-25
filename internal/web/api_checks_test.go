@@ -108,6 +108,62 @@ func TestAPICheckWriteRoundTrip(t *testing.T) {
 	}
 }
 
+// TestAPICheckAggregateWriteRoundTrip: POST and PUT accept optional aggregate
+// and min_up body fields, apply them through the same store verbs the CLI uses,
+// and refuse a min_up the target set cannot satisfy.
+func TestAPICheckAggregateWriteRoundTrip(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "op", "operator")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/checks", token,
+		`{"name":"multi","kind":"tcp","interval":"5m","targets":["a=192.168.1.1:22","b=192.168.1.2:22"],"aggregate":true,"min_up":1}`, nil)
+	if code != http.StatusOK {
+		t.Fatalf("create status = %d, want 200 (%s)", code, body)
+	}
+	created, err := h.store.GetCheck(context.Background(), "multi")
+	if err != nil {
+		t.Fatalf("GetCheck: %v", err)
+	}
+	if !created.Aggregate || created.MinUp != 1 {
+		t.Fatalf("created aggregate = %v min_up = %d, want true/1", created.Aggregate, created.MinUp)
+	}
+
+	code, body = bearerPut(t, ts.URL, "/api/v1/checks/multi", token,
+		`{"targets":["a=192.168.1.1:22","b=192.168.1.2:22"],"aggregate":true,"min_up":2}`)
+	if code != http.StatusOK {
+		t.Fatalf("update status = %d, want 200 (%s)", code, body)
+	}
+	updated, err := h.store.GetCheck(context.Background(), "multi")
+	if err != nil {
+		t.Fatalf("GetCheck after update: %v", err)
+	}
+	if !updated.Aggregate || updated.MinUp != 2 {
+		t.Fatalf("updated aggregate = %v min_up = %d, want true/2", updated.Aggregate, updated.MinUp)
+	}
+	var view wire.CheckView
+	decodeData(t, body, &view)
+	if !view.Aggregate || view.MinUp != 2 {
+		t.Fatalf("update view aggregate = %v min_up = %d, want true/2", view.Aggregate, view.MinUp)
+	}
+
+	// A min_up past the target count is refused through the store validation.
+	code, _, body = bearerPost(t, ts.URL, "/api/v1/checks", token,
+		`{"name":"bad","kind":"tcp","interval":"5m","targets":["a=192.168.1.1:22"],"aggregate":true,"min_up":5}`, nil)
+	if code != http.StatusBadRequest {
+		t.Fatalf("out-of-range create status = %d, want 400 (%s)", code, body)
+	}
+	code, body = bearerPut(t, ts.URL, "/api/v1/checks/multi", token,
+		`{"targets":["a=192.168.1.1:22","b=192.168.1.2:22"],"min_up":9}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("out-of-range update status = %d, want 400 (%s)", code, body)
+	}
+	if got, _ := h.store.GetCheck(context.Background(), "multi"); got.MinUp != 2 {
+		t.Fatalf("a refused update changed min_up to %d, want 2", got.MinUp)
+	}
+}
+
 // TestAPICheckWriteScopeGate asserts the check write routes take the operator
 // bearer floor: readonly is forbidden before any store touch, no token is 401.
 func TestAPICheckWriteScopeGate(t *testing.T) {
