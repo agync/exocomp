@@ -6,6 +6,27 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-25 — checks: slow-target signal and stored-netgroup filter
+
+- **`labels["duration_ms"]` on check events.** A declared transition's event
+  carries the probe's measured duration — the value already persisted as
+  `check_state.last_duration_ms` — so a rule can fire on "up but slow" without
+  a second probe.
+- **`check list --netgroup <name>`.** Narrows the listing to checks with at
+  least one target whose stored `check_state.netgroup` is `<name>`, reusing the
+  sweep's classification rather than re-classifying.
+- **API aggregate parity.** `POST /api/v1/checks` and `PUT /api/v1/checks/{name}`
+  accept `aggregate`/`min_up` through the same store verbs as the CLI; an
+  out-of-range `min_up` is refused.
+- **`rule list --output json` carries `limit_hosts`.** The governed host-set
+  expansion flag is visible to machine consumers.
+- **`serve --check-canary` is validated at startup.** A non-empty value that is
+  not `ip:port` is refused, so a typo cannot silently turn every down target
+  into a missed observation.
+- **One probe runner.** `check probe`, MCP `probe_check`, and the API probe
+  route share `internal/checkprobe` with unchanged output, still writing
+  nothing.
+
 ## 2026-09-16 — probe estates as code: export and apply
 
 - **`check export` / `netgroup export`.** Emit every check (kind, interval as a

@@ -199,6 +199,7 @@ miss label.
 exocomp check add at-home --kind tcp --interval 5m \
   --target laptop=192.168.1.50:22 --target nas=192.168.1.60:22
 exocomp check list                 # per-target status, netgroup and duration
+exocomp check list --netgroup home # only checks with a target stored in "home"
 exocomp check list --output json   # the same per-target state, machine-readable
 exocomp check probe at-home        # run the probes now, writing nothing
 exocomp check test --kind tls --target web=web.lan:443 --min-days 21   # dry run
@@ -253,7 +254,12 @@ current `status`, the `consecutive` counter, the last `emitted` status,
 read `up` as a fresh transition; the `/checks` page's "changed N ago" line
 reads `last_change` off that row. `check list` renders the same state — the
 text table's STATUS, NETGROUP, and DURATION columns, `--output json`, and the
-`/checks` page all carry it.
+`/checks` page all carry it. `check list --netgroup <name>` narrows the listing
+to checks with at least one target whose stored netgroup is `<name>`, reading
+the persisted classification rather than re-classifying. A declared transition's
+event also carries the probe's measured duration as `labels["duration_ms"]`, so
+a rule can act on "up but slow" (for example
+`int(event.labels["duration_ms"]) > 2000`) without a second probe.
 
 The sweep classifies each probed address once, at observation time, and stores
 the result beside the probe's duration in milliseconds. The wire projections —
