@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-25 — probe guard on every dialing kind, and honest residuals
+
+- **Every dialing check kind refuses the loopback class.** `tcp`, `ping`, and
+  `tls` now apply the address-class refusal the `http`/`metric` client already
+  did whenever `AllowLoopback` is false (the sweep and `check probe`), so a
+  readonly token can no longer probe the daemon's loopback or the cloud
+  metadata address; a gate keeps probing unguarded. A check whose target is the
+  daemon's own loopback (for example `tcp 127.0.0.1`) now reads down on the
+  sweep — the guard doing its job. A `tls` target with no host (`:443`) is
+  refused at validation instead of dialing the local host.
+- **`--limit-hosts` refuses ansible magic names.** A declared target literally
+  named `all`/`ungrouped`, or beginning with `-`, is refused before it reaches
+  the `--limit` pattern, so it cannot widen a rule's run to the whole inventory.
+- **Threat-model residuals recorded.** The `--limit-hosts` guard cannot see an
+  inventory group whose name collides with a target name, and the
+  check_*/netgroup_* config writes leave no actor or ledger row; both are named
+  with their owning files.
+- **MCP check/netgroup descriptions clarified.** `probe_check` says it performs
+  live network I/O now; a check's status is the last sweep's stored observation,
+  not live; `check_update` states that omitting `aggregate`/`min_up` keeps the
+  stored rollup settings and that a dropped/renamed target loses its state;
+  `check_snooze` notes suppressed transitions are not replayed; `check_rm` is
+  irreversible; netgroup `away` is reserved and a rename is not supported.
+
 ## 2026-09-25 — checks: slow-target signal and stored-netgroup filter
 
 - **`labels["duration_ms"]` on check events.** A declared transition's event

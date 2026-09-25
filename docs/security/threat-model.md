@@ -174,7 +174,7 @@ numbered T30+ to avoid renumbering the existing catalog.
 | T33 | An overlay subnet route (tailscale advertising the home LAN) keeps a checked address reachable from anywhere while an overlay host answers at that address. | An overlay route still requires a live host at the probed address (real presence); the residual is address-uniqueness (T32). LAN-only routing is a documented trust boundary — the sweep has no routing-table authority from inside the container. |
 | T34 | A daemon restart reads every up target as a fresh down→up transition and fires every presence rule. | Cold-start seeding writes `check_state` with `emitted = result` and emits nothing on first observation; only a change from a previously-emitted status is a transition. A target home at restart is missed once — fail-safe. |
 | T35 | An http check persists a health endpoint's body (a secret, a stack trace, attacker text). | The http probe reads the status line only and closes the body without reading it (AGENTS.md 4); no body ever reaches the event or a ledger. |
-| T36 | An operator-created http check targets the daemon's own loopback listeners or the cloud metadata service, making the check's result depend on (or probe) a service the operator did not mean to reach. | The http probe's HTTP client dials through a `net.Dialer.Control` hook that refuses loopback, link-local unicast (covers `169.254.169.254`), unspecified, and multicast addresses at the connected IP — the same dial-time check T16 uses, scoped so RFC1918/ULA LAN targets (the feature's purpose) are still allowed. A check against a refused address observes down. |
+| T36 | An operator-created check targets the daemon's own loopback listeners or the cloud metadata service, making the check's result depend on (or probe) a service the operator did not mean to reach. | Every dialing kind applies the same address-class refusal whenever `AllowLoopback` is false (the check path; a gate sets it true): tcp dials through a `net.Dialer.Control` hook, tls handshakes through one too (its default dialer guards the connected IP, so a hostname is covered), http/metric keep the guarded client, and ping refuses a refused literal before the subprocess runs. The guard refuses loopback, link-local unicast (covers `169.254.169.254`), unspecified, and multicast at the connected IP — the same dial-time check T16 uses, scoped so RFC1918/ULA LAN targets (the feature's purpose) are still allowed. A check against a refused address observes down. A tls address must name a host: `:443` is refused at validation rather than dialing the local host. |
 
 **Accepted residuals.**
 
@@ -182,9 +182,17 @@ numbered T30+ to avoid renumbering the existing catalog.
   requirement (T33) cannot be asserted from inside the container at dial time; it is a
   stated deployment posture. A host configured to route the home LAN over an overlay
   silently weakens the location guarantee.
-- **DNS-rebinding on http checks —** the dial-time `Control` hook re-checks the connected IP,
-  so a re-pointed name is refused; the URL's literal hostname is otherwise trusted, and the
-  check carries no credential, so a hostile-but-public target yields a down/up boolean only.
+- **DNS-rebinding on name targets —** tcp/ping targets are IP literals by construction; an
+  http/metric URL or a tls hostname resolves at dial time through the guard's `Control` hook,
+  which re-checks the connected IP, so a re-pointed name is refused. The name is otherwise
+  trusted, and the check carries no credential, so a hostile-but-public target yields a
+  down/up boolean only.
+- **Inventory group names are invisible to the `--limit-hosts` guard —** the guard refuses the
+  reserved `all`/`ungrouped`, a leading `-`, an invalid name, and any host that is not a
+  declared target name (`internal/service/reactiveplaybook.go`). It cannot see the inventory
+  itself, so an inventory GROUP whose name collides with a declared target name still passes
+  and widens `--limit` to that group. Target names must therefore be inventory hostnames, not
+  group names; enforcing that needs the inventory, which the daemon does not hold.
 
 ## Daemon surface
 
@@ -311,6 +319,12 @@ the gate.
   the KDF runs regardless of whether the id is live or absent. The backoff is process state and
   keys on `RemoteAddr` (a proxy collapses sources); failures are logged, not recorded on the
   token row, so a guessing run shows in the log but not in `token list`.
+- **Config writes leave no actor —** the check_*/netgroup_* writes on the MCP and `/api/v1`
+  faces call the store verbs directly and record neither an actor nor a ledger row
+  (`internal/mcp/writes.go`, `internal/web/api_write.go`, `internal/store/check.go`), exactly
+  as the existing silences and mutes already write. An agent's config change is therefore not
+  attributable after the fact. Closing it needs a store-level writer/ledger seam; it is not
+  attempted here.
 
 ## Optional OpenBao Transit seal (ADR 0013)
 

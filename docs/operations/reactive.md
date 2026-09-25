@@ -310,12 +310,18 @@ meaning every target). `check list` carries an AGGREGATE column, `rule list`
 shows the action, and `check_add`/`check_update` take `aggregate`/`min_up`. A
 rule can then run over exactly the present subset — see `--limit-hosts` below.
 
-The http probe refuses the addresses a check must not reach: it dials through
-a guard that refuses loopback, link-local unicast (covering the cloud
-metadata address), unspecified, and multicast at the connected IP, so a check
-against a refused address observes down. Only an address literal is a location:
-`http`, `dns`, `tls`, and `metric` targets carry no netgroup label, because a
-URL, a hostname, or a `host:port` is not a location verdict.
+Every dialing check kind refuses the addresses a check must not reach. `tcp`,
+`ping`, and `tls` apply the same guard the `http` client already did: loopback,
+link-local unicast (covering the cloud metadata address), unspecified, and
+multicast are refused at the connected IP, so a check against a refused address
+observes down. A literal `tcp`/`ping` address is refused before the dial;
+a `tls` hostname is refused at the connected IP, and a `tls` address with no
+host (`:443`) is refused at validation rather than dialing the local host. The
+guard applies to the sweep and to `check probe` alike, so a loopback `tcp`
+target reads down on both. A gate's probes set `AllowLoopback`, so a workflow
+step beside the host it verifies is unaffected. Only an address literal is a
+location: `http`, `dns`, `tls`, and `metric` targets carry no netgroup label,
+because a URL, a hostname, or a `host:port` is not a location verdict.
 
 > **Before you rely on this.** The address-is-location trick holds only while
 > two preconditions do, and both fail open:
@@ -366,8 +372,18 @@ rule's event filter is `--source check` and the action is `playbook`, a rule
 without a host set is refused rather than run un-limited, and the builder checks
 every host against the named check's own target set before argv exists — so
 only a daemon-produced sweep event, whose names come from real probes, can shape
-the run. A fixed `--limit` and `--limit-hosts` are mutually exclusive.
+the run. Because `--limit` is an ansible *pattern*, not a name, the builder also
+refuses the reserved magic names `all` and `ungrouped` (case-insensitively) and
+any host beginning with `-`, so a declared target literally named one of those
+can never widen the run to the whole inventory or fill the value slot with a
+flag. A fixed `--limit` and `--limit-hosts` are mutually exclusive.
 `rule list` shows `(limit: event hosts)` for such a rule.
+
+The guard cannot see the inventory itself, so it cannot detect an inventory
+**group** whose name collides with a declared target name: that still passes and
+widens `--limit` to the group. Target names must therefore be inventory
+hostnames, not group names. This residual is recorded in
+[security/threat-model.md](../security/threat-model.md).
 
 The web surfaces it across the UI. **Netgroups** is a tab on the **Checks**
 page (the standalone `/netgroups` page now 302s to `/checks?tab=netgroups`),
