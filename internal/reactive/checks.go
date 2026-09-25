@@ -506,6 +506,14 @@ func (e *Engine) emitCheckTransition(ctx context.Context, c store.Check, t store
 		}
 	}
 
+	// The probe's measured duration rides the event as a label so a rule can
+	// act on "up but slow" (S3) without a second probe. It is the value already
+	// persisted on the state row, not a new stored field.
+	if labels == nil {
+		labels = map[string]string{}
+	}
+	labels["duration_ms"] = strconv.FormatInt(st.LastDurationMS, 10)
+
 	ev := Event{
 		Source:            SourceCheck,
 		Kind:              "check",

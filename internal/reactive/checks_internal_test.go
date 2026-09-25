@@ -668,6 +668,98 @@ func TestSweepAggregateEmitsOneEventForPresentSet(t *testing.T) {
 	}
 }
 
+// durationLabelMS reads the duration_ms label off the check event keyed by
+// dedupKey, decoding the stored normalized event the pipeline wrote.
+func durationLabelMS(t *testing.T, e *Engine, dedupKey string) int64 {
+	t.Helper()
+	events, err := e.store.ListEvents(context.Background(), store.EventFilter{Source: SourceCheck})
+	if err != nil {
+		t.Fatalf("list events: %v", err)
+	}
+	for _, ev := range events {
+		if ev.DedupKey != dedupKey {
+			continue
+		}
+		var norm Event
+		if err := json.Unmarshal([]byte(ev.Normalized), &norm); err != nil {
+			t.Fatalf("decode normalized event: %v", err)
+		}
+		ms, err := strconv.ParseInt(norm.Labels["duration_ms"], 10, 64)
+		if err != nil {
+			t.Fatalf("event %s duration_ms label = %q, want a number", dedupKey, norm.Labels["duration_ms"])
+		}
+		return ms
+	}
+	t.Fatalf("no check event keyed %s", dedupKey)
+	return 0
+}
+
+// TestCheckTransitionCarriesDurationLabel: a declared transition's event carries
+// the probe's measured duration under labels["duration_ms"], so a rule can watch
+// "up but slow" (S3) without a second probe. A slow http handler's event reads
+// high and a loopback tcp dial reads low.
+//
+// Mutation check: drop the label from emitCheckTransition and durationLabelMS
+// finds an empty value, failing every assertion below.
+func TestCheckTransitionCarriesDurationLabel(t *testing.T) {
+	orig := probeHTTPClient
+	defer func() { probeHTTPClient = orig }()
+	probeHTTPClient = func() *http.Client { return &http.Client{Timeout: probeTimeout} }
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		time.Sleep(40 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	e := labelsEngine(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	host, port := listenLoopback(t)
+	fast, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "fast", Kind: store.CheckTCP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "t", Address: host, Port: port}},
+	})
+	if err != nil {
+		t.Fatalf("create fast check: %v", err)
+	}
+	slow, err := e.store.CreateCheck(ctx, store.NewCheck{
+		Name: "slow", Kind: store.CheckHTTP, IntervalS: 30,
+		Targets: []store.CheckTarget{{Name: "w", URL: srv.URL, Expect: 200}},
+	})
+	if err != nil {
+		t.Fatalf("create slow check: %v", err)
+	}
+	seed := func(id int64, target string) {
+		t.Helper()
+		if err := e.store.SetCheckState(ctx, store.CheckState{
+			CheckID: id, TargetName: target, Status: store.CheckUp,
+			Consecutive: DefaultHysteresis - 1, Emitted: store.CheckDown,
+			FirstSeen: now, LastChange: now,
+		}); err != nil {
+			t.Fatalf("seed %s state: %v", target, err)
+		}
+	}
+	seed(fast.ID, "t")
+	seed(slow.ID, "w")
+
+	for _, c := range []store.Check{fast, slow} {
+		if raised, err := e.sweepCheck(ctx, c, now); err != nil || raised != 1 {
+			t.Fatalf("sweep %s = (%d, %v), want one declared transition", c.Name, raised, err)
+		}
+	}
+
+	fastMS := durationLabelMS(t, e, checkDedupKey("fast", "t"))
+	slowMS := durationLabelMS(t, e, checkDedupKey("slow", "w"))
+	if slowMS < 30 {
+		t.Fatalf("slow transition duration_ms = %d, want the ~40ms probe recorded", slowMS)
+	}
+	if fastMS >= slowMS {
+		t.Fatalf("fast duration_ms = %d, slow = %d; want the loopback dial the lower", fastMS, slowMS)
+	}
+}
+
 // TestSweepAggregateSnoozeSuppressesEmission: a snooze advances the aggregate's
 // state but withholds its event, exactly as for a target; the transition
 // declares once the snooze lapses.
