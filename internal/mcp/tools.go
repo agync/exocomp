@@ -151,7 +151,7 @@ func (s *Server) readTools() []tool {
 			object(map[string]any{"name": strProp("the check name")}, "name"), s.runGetCheck},
 		{"list_netgroups", "List named CIDR sets: name, include prefixes, and `!`-prefixed excludes.",
 			object(nil), s.runListNetgroups},
-		{"probe_check", "Run live network probes against a check's targets now (real I/O, can be slow) and return per target {target, up, duration_ms, netgroup, detail}; it writes no state. Optional target narrows to one by name.",
+		{"probe_check", "Run live network probes against a check's targets now (real I/O, can be slow) and return per target {target, up, duration_ms, netgroup, detail}; it writes no state. Optional target narrows to one by name; an unknown target is a not_found error.",
 			object(map[string]any{
 				"name":   strProp("the check name"),
 				"target": strProp("probe only this target by name"),
