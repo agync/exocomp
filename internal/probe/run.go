@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -36,9 +37,9 @@ func Run(ctx context.Context, s Spec, o Options) Result {
 func run(ctx context.Context, s Spec, o Options) Result {
 	switch s.Kind {
 	case KindTCP:
-		return runTCP(ctx, s)
+		return runTCP(ctx, s, o)
 	case KindPing:
-		return runPing(ctx, s)
+		return runPing(ctx, s, o)
 	case KindHTTP:
 		return runHTTP(ctx, s, o)
 	case KindDNS:
@@ -55,9 +56,12 @@ func run(ctx context.Context, s Spec, o Options) Result {
 // runTCP dials the address:port. Any dial failure — refused, timeout,
 // unroutable — is down; the address is the location, and an unreachable
 // location answers nothing.
-func runTCP(ctx context.Context, s Spec) Result {
+func runTCP(ctx context.Context, s Spec, o Options) Result {
 	addr := net.JoinHostPort(s.Address, strconv.Itoa(s.Port))
 	d := net.Dialer{}
+	if addrGuarded(o) {
+		d.Control = dialControl
+	}
 	conn, err := d.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fail("dial %s: %v", addr, err)
@@ -68,8 +72,14 @@ func runTCP(ctx context.Context, s Spec) Result {
 
 // runPing runs one ICMP probe and reads the exit code only. -W 2 bounds one
 // probe the way Options.Timeout bounds a dial, so a wedged ICMP path reports
-// down instead of hanging.
-func runPing(ctx context.Context, s Spec) Result {
+// down instead of hanging. The address is a bare literal, so the guard is
+// applied directly rather than through a dialer's Control hook.
+func runPing(ctx context.Context, s Spec, o Options) Result {
+	if addrGuarded(o) {
+		if err := refuseAddrLiteral(s.Address); err != nil {
+			return fail("ping %s: %v", s.Address, err)
+		}
+	}
 	if err := exec.CommandContext(ctx, "ping", "-c", "1", "-W", "2", s.Address).Run(); err != nil {
 		return fail("ping %s: %v", s.Address, err)
 	}
@@ -142,9 +152,17 @@ func runDNS(ctx context.Context, s Spec, o Options) Result {
 // deliberately not required, because an internal or self-signed endpoint is a
 // legitimate target and the expiry floor is the property under test.
 func runTLS(ctx context.Context, s Spec, o Options) Result {
+	guarded := addrGuarded(o)
+	if guarded {
+		if err := guardTLSAddress(s.Address); err != nil {
+			return fail("handshake %s: %v", s.Address, err)
+		}
+	}
 	dial := o.TLSDialer
 	if dial == nil {
-		dial = defaultTLSDial
+		dial = func(ctx context.Context, address string) (tls.ConnectionState, error) {
+			return defaultTLSDial(ctx, guarded, address)
+		}
 	}
 	state, err := dial(ctx, s.Address)
 	if err != nil {
@@ -166,8 +184,14 @@ func runTLS(ctx context.Context, s Spec, o Options) Result {
 // defaultTLSDial performs a real handshake and returns the connection state.
 // Verification is disabled on purpose: the not-after floor is what the tls
 // probe asserts, and an internal or self-signed endpoint is a valid target.
-func defaultTLSDial(ctx context.Context, address string) (tls.ConnectionState, error) {
+// When guarded, the handshake dials through the same Control hook the http
+// client uses, so a hostname re-pointed at a refused class is caught at the
+// connected IP.
+func defaultTLSDial(ctx context.Context, guarded bool, address string) (tls.ConnectionState, error) {
 	d := &tls.Dialer{Config: &tls.Config{InsecureSkipVerify: true}} //nolint:gosec // not-after floor is the check, not chain validity
+	if guarded {
+		d.NetDialer = &net.Dialer{Control: dialControl}
+	}
 	conn, err := d.DialContext(ctx, "tcp", address)
 	if err != nil {
 		return tls.ConnectionState{}, err
@@ -239,15 +263,11 @@ func (o Options) httpClient() *http.Client {
 	return c
 }
 
-// dialControl is the net.Dialer.Control hook the guarded http client dials
-// through, mirroring the push transport's dial-time SSRF check
-// (notify/ssrf.go). It refuses the addresses a check must not reach — the
-// daemon's own loopback, the cloud metadata service (link-local), and
-// unspecified or multicast — at the concrete post-DNS IP, so a re-pointed name
-// is blocked too. Unlike the push guard it keeps RFC1918 and ULA LAN targets
-// allowed: probing the LAN is the point of a check. The metadata address
-// 169.254.169.254 is link-local, so IsLinkLocalUnicast refuses it without
-// naming it.
+// dialControl is the net.Dialer.Control hook every guarded dial goes through,
+// mirroring the push transport's dial-time SSRF check (notify/ssrf.go). It
+// refuses the addresses a check must not reach at the concrete post-DNS IP, so
+// a re-pointed name is blocked too. Unlike the push guard it keeps RFC1918 and
+// ULA LAN targets allowed: probing the LAN is the point of a check.
 func dialControl(_, address string, _ syscall.RawConn) error {
 	host, _, err := net.SplitHostPort(address)
 	if err != nil {
@@ -257,11 +277,60 @@ func dialControl(_, address string, _ syscall.RawConn) error {
 	if ip == nil {
 		return fmt.Errorf("probe: dial address %q is not a resolved IP", host)
 	}
+	return refuseAddrClass(ip)
+}
+
+// refuseAddrClass is the one address-class deny-list the guard applies: the
+// daemon's own loopback, the cloud metadata service (link-local unicast), and
+// unspecified or multicast. The metadata address 169.254.169.254 is
+// link-local, so IsLinkLocalUnicast refuses it without naming it. RFC1918 and
+// ULA are deliberately allowed.
+func refuseAddrClass(ip net.IP) error {
 	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast() {
 		return fmt.Errorf("probe: refusing %s: not a reachable LAN address", ip)
 	}
 	return nil
 }
+
+// refuseAddrLiteral applies refuseAddrClass to a bare address literal. A
+// non-literal (a hostname) is left nil: it resolves at connect time, where the
+// Control hook guards the connected IP.
+func refuseAddrLiteral(address string) error {
+	ip := net.ParseIP(strings.TrimSpace(address))
+	if ip == nil {
+		return nil
+	}
+	return refuseAddrClass(ip)
+}
+
+// guardTLSAddress refuses a tls address whose literal host is in a refused
+// class. A hostname passes here and is guarded at connect time by
+// defaultTLSDial's Control hook.
+func guardTLSAddress(address string) error {
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return fmt.Errorf("probe: refusing malformed tls address %q", address)
+	}
+	return refuseAddrLiteral(host)
+}
+
+// addrGuardOff counts test calls that disabled the address-literal guard. The
+// shipped sweep refuses the classes for tcp, ping, and tls; the sweep's tests
+// have no live target but a loopback listener, so they hold this open for the
+// life of the test. It is zero in production, and the guard itself is pinned by
+// this package's own tests.
+var addrGuardOff atomic.Int64
+
+// DisableAddrGuardForTest disables the address-class guard for tcp, ping, and
+// tls until the returned func runs. http and metric keep their client seam.
+func DisableAddrGuardForTest() (restore func()) {
+	addrGuardOff.Add(1)
+	return func() { addrGuardOff.Add(-1) }
+}
+
+// addrGuarded reports whether this run's address-class guard applies: the
+// caller left AllowLoopback false (a check) and no test holds it open.
+func addrGuarded(o Options) bool { return !o.AllowLoopback && addrGuardOff.Load() == 0 }
 
 func pass(format string, a ...any) Result {
 	return Result{Up: true, Detail: fmt.Sprintf(format, a...)}

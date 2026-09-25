@@ -73,10 +73,10 @@ type Result struct {
 type Options struct {
 	// Timeout bounds one probe. Zero uses DefaultTimeout.
 	Timeout time.Duration
-	// AllowLoopback disables the http dial guard. The check path leaves it
-	// false (a check must not reach the daemon's own loopback, link-local, or
-	// unspecified/multicast addresses); a gate sets it true (a gate may probe
-	// the host it runs beside).
+	// AllowLoopback disables the address-class guard for every kind. The check
+	// path leaves it false (a check must not reach the daemon's own loopback,
+	// link-local, or unspecified/multicast addresses); a gate sets it true (a
+	// gate may probe the host it runs beside).
 	AllowLoopback bool
 	// HTTPClient is used for http and metric probes. Nil builds a client whose
 	// timeout is Timeout (and, when AllowLoopback is false, whose dial is
@@ -176,17 +176,23 @@ func (s Spec) validateDNS() error {
 }
 
 func (s Spec) validateTLS() error {
-	if strings.TrimSpace(s.Address) == "" {
+	addr := strings.TrimSpace(s.Address)
+	if addr == "" {
 		return fmt.Errorf("probe: tls needs an address (host:port)")
 	}
-	if !strings.Contains(s.Address, ":") {
-		return fmt.Errorf("probe: tls address %q needs a port (host:port)", s.Address)
+	// Parse rather than merely require a colon: `:443` has a port and no host,
+	// and dialing it reaches the local host — the one target a check must not
+	// reach.
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return fmt.Errorf("probe: tls address %q needs a host:port", s.Address)
 	}
-	if _, port, err := net.SplitHostPort(s.Address); err == nil {
-		p, perr := strconv.Atoi(port)
-		if perr != nil || p < 1 || p > 65535 {
-			return fmt.Errorf("probe: tls address %q port %q out of range 1..65535", s.Address, port)
-		}
+	if strings.TrimSpace(host) == "" {
+		return fmt.Errorf("probe: tls address %q needs a host", s.Address)
+	}
+	p, perr := strconv.Atoi(port)
+	if perr != nil || p < 1 || p > 65535 {
+		return fmt.Errorf("probe: tls address %q port %q out of range 1..65535", s.Address, port)
 	}
 	if s.MinDays < 0 {
 		return fmt.Errorf("probe: tls min_days cannot be negative")

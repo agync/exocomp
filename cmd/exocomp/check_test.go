@@ -546,8 +546,9 @@ func checkStateCount(t *testing.T, name string) int {
 }
 
 // TestCheckProbeWritesNothing: `check probe` runs each target immediately —
-// the reachable one up, the closed one down — and leaves the store exactly as
-// it found it: no state row, no event, no write.
+// both loopback targets read down (the live listener refused by the
+// address-class guard, the closed port by the dial) — and leaves the store
+// exactly as it found it: no state row, no event, no write.
 func TestCheckProbeWritesNothing(t *testing.T) {
 	useDataDir(t, t.TempDir())
 
@@ -556,13 +557,13 @@ func TestCheckProbeWritesNothing(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { _ = ln.Close() }()
-	_, upPort, _ := net.SplitHostPort(ln.Addr().String())
-	downHost, downPort := closedLoopback(t)
+	_, livePort, _ := net.SplitHostPort(ln.Addr().String())
+	closedHost, closedPort := closedLoopback(t)
 
 	if _, err := runCheckCmd(t, "check", "add", "mixed",
 		"--kind", "tcp", "--interval", "5m",
-		"--target", "up=127.0.0.1:"+upPort,
-		"--target", "down="+net.JoinHostPort(downHost, strconv.Itoa(downPort))); err != nil {
+		"--target", "live=127.0.0.1:"+livePort,
+		"--target", "closed="+net.JoinHostPort(closedHost, strconv.Itoa(closedPort))); err != nil {
 		t.Fatalf("check add: %v", err)
 	}
 	before := checks(t)
@@ -571,11 +572,14 @@ func TestCheckProbeWritesNothing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("check probe: %v", err)
 	}
-	if !strings.Contains(out, "TARGET") || !strings.Contains(out, "up") || !strings.Contains(out, "UP") {
-		t.Errorf("probe output missing the reachable target result:\n%s", out)
+	if !strings.Contains(out, "TARGET") || !strings.Contains(out, "live") || !strings.Contains(out, "DOWN") {
+		t.Errorf("probe output missing the refused target result:\n%s", out)
 	}
-	if !strings.Contains(out, "down") || !strings.Contains(out, "DOWN") {
-		t.Errorf("probe output missing the unreachable target result:\n%s", out)
+	if !strings.Contains(out, "closed") || !strings.Contains(out, "DOWN") {
+		t.Errorf("probe output missing the closed target result:\n%s", out)
+	}
+	if !strings.Contains(out, "refusing") {
+		t.Errorf("probe output missing the guard refusal:\n%s", out)
 	}
 	if !strings.Contains(out, "away") {
 		t.Errorf("probe output missing the live location:\n%s", out)

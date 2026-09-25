@@ -16,6 +16,7 @@ import (
 
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/notify"
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -189,9 +190,13 @@ func TestNetgroupForAwayOnMiss(t *testing.T) {
 }
 
 // listenLoopback binds a real listener on loopback and returns its address and
-// port, so a tcp target answers up for the life of the test.
+// port, so a tcp target answers up for the life of the test. The shipped sweep
+// refuses the loopback class; a hermetic test has no other live target, so the
+// helper holds the address-class guard open for the test (the guard's own
+// behavior is pinned in internal/probe).
 func listenLoopback(t *testing.T) (string, int) {
 	t.Helper()
+	t.Cleanup(probe.DisableAddrGuardForTest())
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)

@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os/exec"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -37,6 +38,8 @@ func TestValidate(t *testing.T) {
 		{"dns empty", Spec{Kind: KindDNS, DNSName: " "}, false},
 		{"tls ok", Spec{Kind: KindTLS, Address: "web.lan:443", MinDays: 14}, true},
 		{"tls no port", Spec{Kind: KindTLS, Address: "web.lan"}, false},
+		{"tls no host", Spec{Kind: KindTLS, Address: ":443"}, false},
+		{"tls blank host", Spec{Kind: KindTLS, Address: " :443"}, false},
 		{"tls bad port", Spec{Kind: KindTLS, Address: "web.lan:0"}, false},
 		{"tls negative days", Spec{Kind: KindTLS, Address: "web.lan:443", MinDays: -1}, false},
 		{"metric ok", Spec{Kind: KindMetric, URL: "http://web.lan/m", Op: "<", Value: 1}, true},
@@ -95,7 +98,8 @@ func TestRunTCP(t *testing.T) {
 	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
 	port, _ := strconv.Atoi(portStr)
 
-	up := Run(context.Background(), Spec{Kind: KindTCP, Address: host, Port: port}, Options{Timeout: 2 * time.Second})
+	up := Run(context.Background(), Spec{Kind: KindTCP, Address: host, Port: port},
+		Options{Timeout: 2 * time.Second, AllowLoopback: true})
 	if !up.Up {
 		t.Fatalf("live listener = %+v, want up", up)
 	}
@@ -108,6 +112,49 @@ func TestRunTCP(t *testing.T) {
 	}
 	if down.Duration <= 0 {
 		t.Fatalf("down.Duration = %v, want positive", down.Duration)
+	}
+}
+
+// TestRunTCPGuardBothWays pins the tcp half of the address-class guard: a live
+// loopback listener is refused (down) when AllowLoopback is false (the check
+// path) and answers up when it is true (a gate). Both runs use the
+// package-built dialer, not an injected one.
+func TestRunTCPGuardBothWays(t *testing.T) {
+	t.Parallel()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = ln.Close() }()
+	host, portStr, _ := net.SplitHostPort(ln.Addr().String())
+	port, _ := strconv.Atoi(portStr)
+
+	spec := Spec{Kind: KindTCP, Address: host, Port: port}
+	ctx := context.Background()
+
+	guarded := Run(ctx, spec, Options{Timeout: 2 * time.Second, AllowLoopback: false})
+	if guarded.Up {
+		t.Fatalf("loopback tcp with AllowLoopback=false = %+v, want down (refused)", guarded)
+	}
+	unguarded := Run(ctx, spec, Options{Timeout: 2 * time.Second, AllowLoopback: true})
+	if !unguarded.Up {
+		t.Fatalf("loopback tcp with AllowLoopback=true = %+v, want up", unguarded)
+	}
+}
+
+// TestRunTCPGuardRefusesMetadata pins the metadata address (link-local unicast)
+// as refused by the tcp guard: the run reads down and names the refusal, so a
+// readonly token cannot make the daemon probe the cloud metadata service.
+func TestRunTCPGuardRefusesMetadata(t *testing.T) {
+	t.Parallel()
+	res := Run(context.Background(),
+		Spec{Kind: KindTCP, Address: "169.254.169.254", Port: 80},
+		Options{Timeout: time.Second})
+	if res.Up {
+		t.Fatalf("metadata tcp = %+v, want down", res)
+	}
+	if !strings.Contains(res.Detail, "refusing") {
+		t.Fatalf("metadata tcp detail = %q, want a refusal", res.Detail)
 	}
 }
 
@@ -153,9 +200,34 @@ func TestRunPing(t *testing.T) {
 	if _, err := exec.LookPath("ping"); err != nil {
 		t.Skip("no ping binary on this host")
 	}
-	res := Run(context.Background(), Spec{Kind: KindPing, Address: "127.0.0.1"}, Options{Timeout: 3 * time.Second})
+	res := Run(context.Background(), Spec{Kind: KindPing, Address: "127.0.0.1"},
+		Options{Timeout: 3 * time.Second, AllowLoopback: true})
 	if !res.Up {
 		t.Fatalf("loopback ping = %+v, want up", res)
+	}
+}
+
+// TestRunPingGuardBothWays pins the ping half of the address-class guard: the
+// loopback is refused before the subprocess runs when AllowLoopback is false,
+// and answers when it is true.
+func TestRunPingGuardBothWays(t *testing.T) {
+	t.Parallel()
+	if _, err := exec.LookPath("ping"); err != nil {
+		t.Skip("no ping binary on this host")
+	}
+	spec := Spec{Kind: KindPing, Address: "127.0.0.1"}
+	ctx := context.Background()
+
+	guarded := Run(ctx, spec, Options{Timeout: 3 * time.Second, AllowLoopback: false})
+	if guarded.Up {
+		t.Fatalf("loopback ping with AllowLoopback=false = %+v, want down (refused)", guarded)
+	}
+	if !strings.Contains(guarded.Detail, "refusing") {
+		t.Fatalf("guarded ping detail = %q, want a refusal", guarded.Detail)
+	}
+	unguarded := Run(ctx, spec, Options{Timeout: 3 * time.Second, AllowLoopback: true})
+	if !unguarded.Up {
+		t.Fatalf("loopback ping with AllowLoopback=true = %+v, want up", unguarded)
 	}
 }
 
@@ -269,6 +341,35 @@ func TestRunTLS(t *testing.T) {
 	}}
 	if res := Run(context.Background(), Spec{Kind: KindTLS, Address: "web.lan:443"}, failing); res.Up {
 		t.Fatalf("failed handshake = %+v, want down", res)
+	}
+}
+
+// TestRunTLSGuardBothWays pins the tls half of the address-class guard: a
+// literal loopback address is refused before the dialer runs when AllowLoopback
+// is false, and handshakes normally when it is true. A hostname target is
+// guarded at connect time by the default dialer's Control hook.
+func TestRunTLSGuardBothWays(t *testing.T) {
+	t.Parallel()
+	now := time.Now()
+	called := false
+	dial := func(_ context.Context, _ string) (tls.ConnectionState, error) {
+		called = true
+		return tls.ConnectionState{PeerCertificates: []*x509.Certificate{
+			{NotAfter: now.Add(48 * time.Hour)},
+		}}, nil
+	}
+	spec := Spec{Kind: KindTLS, Address: "127.0.0.1:443", MinDays: 1}
+	ctx := context.Background()
+
+	called = false
+	guarded := Run(ctx, spec, Options{TLSDialer: dial, AllowLoopback: false})
+	if guarded.Up || called {
+		t.Fatalf("literal loopback tls with AllowLoopback=false = %+v called=%v, want refused before the dialer", guarded, called)
+	}
+	called = false
+	unguarded := Run(ctx, spec, Options{TLSDialer: dial, AllowLoopback: true})
+	if !unguarded.Up || !called {
+		t.Fatalf("literal loopback tls with AllowLoopback=true = %+v called=%v, want up through the dialer", unguarded, called)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/netip"
+	"strings"
 	"testing"
 	"time"
 
@@ -144,9 +145,11 @@ func TestNetgroupReadTool(t *testing.T) {
 }
 
 // TestProbeCheckWritesNothing is D3's guard: probe_check answers with a real
-// up/down per target and provably writes nothing — no check_state row moves, no
+// per-target verdict and provably writes nothing — no check_state row moves, no
 // event is recorded, and the check row is untouched. A readonly token may call
-// it: it is a read-scope operation.
+// it: it is a read-scope operation. The runner uses the sweep's options
+// (AllowLoopback=false), so both loopback targets read down — the live one with
+// the guard's refusal, the closed one from the dial.
 func TestProbeCheckWritesNothing(t *testing.T) {
 	srv, st := newTestServer(t)
 	ctx := context.Background()
@@ -158,11 +161,11 @@ func TestProbeCheckWritesNothing(t *testing.T) {
 	defer func() { _ = ln.Close() }()
 	port := ln.Addr().(*net.TCPAddr).Port
 
-	// One target that answers (the listener) and one that is refused
-	// (127.0.0.1:1, nothing listening).
+	// One live loopback listener (refused by the address-class guard) and one
+	// closed loopback port (refused by the dial).
 	c := tcpCheck(t, st, "at-home",
-		ipTarget("up", "127.0.0.1", port),
-		ipTarget("down", "127.0.0.1", 1),
+		ipTarget("live", "127.0.0.1", port),
+		ipTarget("closed", "127.0.0.1", 1),
 	)
 	before, err := st.GetCheck(ctx, c.Name)
 	if err != nil {
@@ -193,14 +196,17 @@ func TestProbeCheckWritesNothing(t *testing.T) {
 	for _, tgt := range view.Targets {
 		byName[tgt.Target] = tgt
 	}
-	if !byName["up"].Up {
-		t.Errorf("up target reads down: %+v", byName["up"])
+	if byName["live"].Up {
+		t.Errorf("live loopback target reads up: %+v", byName["live"])
 	}
-	if byName["down"].Up {
-		t.Errorf("down target reads up: %+v", byName["down"])
+	if !strings.Contains(byName["live"].Detail, "refusing") {
+		t.Errorf("live loopback target detail = %q, want the refusal", byName["live"].Detail)
 	}
-	if byName["down"].Detail == "" {
-		t.Errorf("down target has no detail sentence: %+v", byName["down"])
+	if byName["closed"].Up {
+		t.Errorf("closed target reads up: %+v", byName["closed"])
+	}
+	if byName["closed"].Detail == "" {
+		t.Errorf("closed target has no detail sentence: %+v", byName["closed"])
 	}
 
 	states, err := st.ListCheckStates(ctx, c.ID)
@@ -432,6 +438,7 @@ func TestCheckWriteBadArgs(t *testing.T) {
 		"missing kind":     `{"name":"x","interval":"5m","targets":["a=192.168.1.1:22"]}`,
 		"bad interval":     `{"name":"x","kind":"tcp","interval":"soon","targets":["a=192.168.1.1:22"]}`,
 		"bad target spec":  `{"name":"x","kind":"tcp","interval":"5m","targets":["a"]}`,
+		"tls no host":      `{"name":"x","kind":"tls","interval":"5m","targets":["x=:443"]}`,
 		"no targets":       `{"name":"x","kind":"tcp","interval":"5m","targets":[]}`,
 		"wrong-kind field": `{"name":"x","kind":"tcp","interval":"5m","targets":["a=192.168.1.1:22"],"min_days":21}`,
 		"metric no op":     `{"name":"x","kind":"metric","interval":"5m","targets":["a=http://example.test"]}`,

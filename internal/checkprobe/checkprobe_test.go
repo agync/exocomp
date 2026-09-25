@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/netip"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/store"
@@ -21,10 +22,12 @@ func openStore(t *testing.T) *store.Store {
 	return st
 }
 
-// TestRunProbesAndWritesNothing: Run answers a live listener up and a refused
-// port down, honors the target narrowing, and leaves the store exactly as it
-// found it — no check_state row, no event, no check-row touch. It is the D3
-// guard for the shared runner.
+// TestRunProbesAndWritesNothing: Run refuses the loopback class at the sweep's
+// options (AllowLoopback=false), so a live loopback listener reads down with a
+// refusal while a closed loopback port reads down from the dial; it honors the
+// target narrowing and leaves the store exactly as it found it — no
+// check_state row, no event, no check-row touch. It is the D3 guard for the
+// shared runner.
 func TestRunProbesAndWritesNothing(t *testing.T) {
 	st := openStore(t)
 	ctx := context.Background()
@@ -39,8 +42,8 @@ func TestRunProbesAndWritesNothing(t *testing.T) {
 	c, err := st.CreateCheck(ctx, store.NewCheck{
 		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
 		Targets: []store.CheckTarget{
-			{Name: "up", Address: "127.0.0.1", Port: port},
-			{Name: "down", Address: "127.0.0.1", Port: 1},
+			{Name: "live", Address: "127.0.0.1", Port: port},
+			{Name: "closed", Address: "127.0.0.1", Port: 1},
 		},
 	})
 	if err != nil {
@@ -58,22 +61,25 @@ func TestRunProbesAndWritesNothing(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("Run returned %d targets, want 2", len(results))
 	}
-	if results[0].Name != "up" || !results[0].Up {
-		t.Errorf("target up = %+v, want up", results[0])
+	if results[0].Name != "live" || results[0].Up {
+		t.Errorf("live loopback target = %+v, want down (guard refused)", results[0])
 	}
-	if results[1].Name != "down" || results[1].Up {
-		t.Errorf("target down = %+v, want down", results[1])
+	if !strings.Contains(results[0].Detail, "refusing") {
+		t.Errorf("live loopback target detail = %q, want the refusal", results[0].Detail)
+	}
+	if results[1].Name != "closed" || results[1].Up {
+		t.Errorf("closed target = %+v, want down", results[1])
 	}
 	if results[1].Detail == "" {
-		t.Errorf("down target carries no detail sentence: %+v", results[1])
+		t.Errorf("closed target carries no detail sentence: %+v", results[1])
 	}
 
-	narrowed, err := Run(ctx, st, c, "down")
+	narrowed, err := Run(ctx, st, c, "closed")
 	if err != nil {
 		t.Fatalf("Run narrow: %v", err)
 	}
-	if len(narrowed) != 1 || narrowed[0].Name != "down" {
-		t.Fatalf("narrowed = %+v, want just down", narrowed)
+	if len(narrowed) != 1 || narrowed[0].Name != "closed" {
+		t.Fatalf("narrowed = %+v, want just closed", narrowed)
 	}
 
 	if _, err := Run(ctx, st, c, "ghost"); !errors.Is(err, ErrNoTarget) {

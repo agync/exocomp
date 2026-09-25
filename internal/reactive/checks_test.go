@@ -13,15 +13,20 @@ import (
 	"testing"
 	"time"
 
+	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/store"
 )
 
 // tcpTarget opens a real loopback listener and returns its address and port,
 // so a sweep's tcp probe answers real dial truth. shut closes the listener,
-// which is what "the host left the LAN" means to the probe.
+// which is what "the host left the LAN" means to the probe. The shipped sweep
+// refuses the loopback class; a hermetic test has no other live target, so the
+// helper holds the address-class guard open for the test (the guard's own
+// behavior is pinned in internal/probe).
 func tcpTarget(t *testing.T) (addr string, port int, shut func()) {
 	t.Helper()
+	t.Cleanup(probe.DisableAddrGuardForTest())
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -535,6 +540,7 @@ func TestCheckPingProbe(t *testing.T) {
 	if _, err := exec.LookPath("ping"); err != nil {
 		t.Skip("no ping binary on this host")
 	}
+	t.Cleanup(probe.DisableAddrGuardForTest())
 	ctx := context.Background()
 
 	h := newHarness(t, harnessOptions{})

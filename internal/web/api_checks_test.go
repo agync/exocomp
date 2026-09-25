@@ -212,8 +212,8 @@ func TestAPICheckProbeReadScope(t *testing.T) {
 	c, err := h.store.CreateCheck(ctx, store.NewCheck{
 		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
 		Targets: []store.CheckTarget{
-			{Name: "up", Address: "127.0.0.1", Port: port},
-			{Name: "down", Address: "127.0.0.1", Port: 1},
+			{Name: "live", Address: "127.0.0.1", Port: port},
+			{Name: "closed", Address: "127.0.0.1", Port: 1},
 		},
 	})
 	if err != nil {
@@ -238,8 +238,13 @@ func TestAPICheckProbeReadScope(t *testing.T) {
 	for _, tgt := range view.Targets {
 		byName[tgt.Target] = tgt
 	}
-	if !byName["up"].Up || byName["down"].Up {
-		t.Fatalf("probe verdicts = %+v", byName)
+	// The route runs the sweep's options (AllowLoopback=false): both loopback
+	// targets read down, the live one with the address-class refusal.
+	if byName["live"].Up || byName["closed"].Up {
+		t.Fatalf("probe verdicts = %+v, want both down (loopback refused)", byName)
+	}
+	if !strings.Contains(byName["live"].Detail, "refusing") {
+		t.Fatalf("live loopback detail = %q, want the refusal", byName["live"].Detail)
 	}
 
 	if states, err := h.store.ListCheckStates(ctx, c.ID); err != nil || len(states) != 0 {
