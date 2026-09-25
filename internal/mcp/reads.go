@@ -2,20 +2,14 @@ package mcp
 
 import (
 	"context"
-	"net/netip"
+	"errors"
 	"strconv"
-	"time"
 
+	"exocomp.dev/exocomp/internal/checkprobe"
 	"exocomp.dev/exocomp/internal/health"
-	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
-
-// checkProbeTimeout matches the sweep's bound (reactive probeTimeout) and the
-// CLI's checkProbeTimeout: an on-demand probe answers with the same deadline the
-// sweep uses, so what an agent sees is what the next sweep will record.
-const checkProbeTimeout = 5 * time.Second
 
 // These are the one set of read functions both a tool and a resource call, so a
 // resource's bytes and its tool's bytes come from the same store read and the
@@ -195,71 +189,24 @@ func (s *Server) probeCheck(ctx context.Context, name, only string) (string, any
 	if err != nil {
 		return "", nil, err
 	}
-	targets := c.Targets
-	if only != "" {
-		targets = nil
-		for _, t := range c.Targets {
-			if t.Name == only {
-				targets = append(targets, t)
-			}
-		}
-		if len(targets) == 0 {
+	results, err := checkprobe.Run(ctx, s.store, c, only)
+	if err != nil {
+		if errors.Is(err, checkprobe.ErrNoTarget) {
 			return "", nil, invalidArg("check " + name + " has no target named " + strconv.Quote(only))
 		}
+		return "", nil, invalidArg(err.Error())
 	}
-	states, err := s.store.ListCheckStates(ctx, c.ID)
-	if err != nil {
-		return "", nil, err
-	}
-	stored := make(map[string]string, len(states))
-	for _, st := range states {
-		if st.TargetName == store.AggregateTargetName {
-			continue
-		}
-		stored[st.TargetName] = st.Netgroup
-	}
-	groups, err := s.store.ListNetgroups(ctx)
-	if err != nil {
-		return "", nil, err
-	}
-
-	views := make([]wire.CheckProbeTargetView, 0, len(targets))
-	for _, t := range targets {
-		spec, err := store.SpecForTarget(c.Kind, t)
-		if err != nil {
-			return "", nil, invalidArg(err.Error())
-		}
-		if err := spec.Validate(); err != nil {
-			return "", nil, invalidArg(err.Error())
-		}
-		res := probe.Run(ctx, spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+	views := make([]wire.CheckProbeTargetView, 0, len(results))
+	for _, r := range results {
 		views = append(views, wire.CheckProbeTargetView{
-			Target:     t.Name,
-			Up:         res.Up,
-			DurationMS: res.Duration.Milliseconds(),
-			Netgroup:   probeNetgroup(spec, stored[t.Name], groups),
-			Detail:     res.Detail,
+			Target:     r.Name,
+			Up:         r.Up,
+			DurationMS: r.DurationMS,
+			Netgroup:   r.Netgroup,
+			Detail:     r.Detail,
 		})
 	}
 	return wire.KindCheckProbe, wire.NewCheckProbeView(name, views), nil
-}
-
-// probeNetgroup names where a target was probed: the sweep's stored
-// classification when it has observed the target, else a live classification of
-// the address the spec carries. A kind with no address literal (dns, metric, and
-// a tls hostname) carries none.
-func probeNetgroup(spec probe.Spec, stored string, groups []store.Netgroup) string {
-	if stored != "" {
-		return stored
-	}
-	addr, ok := spec.Location()
-	if !ok {
-		return ""
-	}
-	if ng, ok := store.ClassifyNetgroups([]netip.Addr{addr}, groups)[addr.Unmap().String()]; ok {
-		return ng
-	}
-	return ""
 }
 
 // readSecrets returns secret METADATA only. It reuses wire.SecretView, whose

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/netip"
 	"os"
 	"reflect"
 	"sort"
@@ -19,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"go.yaml.in/yaml/v3"
 
+	"exocomp.dev/exocomp/internal/checkprobe"
 	"exocomp.dev/exocomp/internal/probe"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -98,72 +98,30 @@ func runCheckProbe(cmd *cobra.Command, name, only string) error {
 		}
 		return err
 	}
-	states, err := st.ListCheckStates(ctx, c.ID)
-	if err != nil {
-		return err
-	}
-	stored := make(map[string]string, len(states))
-	for _, s := range states {
-		if s.TargetName == store.AggregateTargetName {
-			continue
-		}
-		stored[s.TargetName] = s.Netgroup
-	}
-	groups, err := st.ListNetgroups(ctx)
-	if err != nil {
-		return err
-	}
 
-	targets := c.Targets
-	if only != "" {
-		targets = nil
-		for _, t := range c.Targets {
-			if t.Name == only {
-				targets = append(targets, t)
-			}
-		}
-		if len(targets) == 0 {
+	results, err := checkprobe.Run(ctx, st, c, only)
+	if err != nil {
+		if errors.Is(err, checkprobe.ErrNoTarget) {
 			return fmt.Errorf("check probe: %s has no target named %q", name, only)
 		}
+		return fmt.Errorf("check probe: %w", err)
 	}
 
 	w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintln(w, "TARGET\tSTATUS\tDURATION\tLOCATION\tDETAIL")
-	for _, t := range targets {
-		spec, err := store.SpecForTarget(c.Kind, t)
-		if err != nil {
-			return fmt.Errorf("check probe %s: target %q: %w", name, t.Name, err)
-		}
-		if err := spec.Validate(); err != nil {
-			return fmt.Errorf("check probe %s: target %q: %w", name, t.Name, err)
-		}
-		res := probe.Run(ctx, spec, probe.Options{Timeout: checkProbeTimeout, AllowLoopback: false})
+	for _, r := range results {
 		status, detail := "UP", ""
-		if !res.Up {
-			status, detail = "DOWN", res.Detail
+		if !r.Up {
+			status, detail = "DOWN", r.Detail
 		}
-		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", t.Name, status,
-			res.Duration.Round(time.Millisecond), probeLocationLabel(spec, stored[t.Name], groups), detail)
+		location := r.Netgroup
+		if location == "" {
+			location = "-"
+		}
+		_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", r.Name, status,
+			(time.Duration(r.DurationMS) * time.Millisecond).String(), location, detail)
 	}
 	return w.Flush()
-}
-
-// probeLocationLabel names where a target was probed: the sweep's stored
-// classification when it has observed the target, else a live classification of
-// the address the spec carries. A kind with no address literal (dns, metric, and
-// a tls hostname) has no location and reads "-".
-func probeLocationLabel(spec probe.Spec, stored string, groups []store.Netgroup) string {
-	if stored != "" {
-		return stored
-	}
-	addr, ok := spec.Location()
-	if !ok {
-		return "-"
-	}
-	if ng, ok := store.ClassifyNetgroups([]netip.Addr{addr}, groups)[addr.Unmap().String()]; ok {
-		return ng
-	}
-	return "-"
 }
 
 // newCheckTestCmd validates and runs a one-off probe set without storing a
