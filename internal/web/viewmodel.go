@@ -326,7 +326,7 @@ func (f *netgroupFormVM) cidrField() fieldMeta {
 	v := f.effective()
 	return fieldMeta{
 		ID: "ng-cidr", Label: "CIDRs", Name: "cidrs", Value: v.CIDRs,
-		Placeholder: "192.168.0.0/16, 10.0.0.0/8", Help: "Comma-separated. IPv4 or IPv6.",
+		Placeholder: "192.168.0.0/16, 10.0.0.0/8", Help: "Comma-separated. IPv4 or IPv6. Prefix a CIDR with ! to exclude it.",
 		ErrItem: v.ErrCIDRItem, ErrMsg: v.ErrCIDRs,
 		FirstInvalid: v.FirstInvalid == "cidrs",
 	}

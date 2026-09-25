@@ -22,7 +22,7 @@ const (
 // through outputMode.
 func addOutputFlag(root *cobra.Command) {
 	root.PersistentFlags().String(outputFlag, outputText,
-		"output format: text|json (or EXOCOMP_OUTPUT)")
+		"output format: text|json (or EXOCOMP_OUTPUT); export also accepts yaml")
 }
 
 // outputMode resolves the effective format: an explicit --output flag wins, then
