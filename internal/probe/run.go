@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"syscall"
+	"testing"
 	"time"
 )
 
@@ -322,8 +323,13 @@ func guardTLSAddress(address string) error {
 var addrGuardOff atomic.Int64
 
 // DisableAddrGuardForTest disables the address-class guard for tcp, ping, and
-// tls until the returned func runs. http and metric keep their client seam.
+// tls until the returned func runs. http and metric keep their client seam. It
+// is inert outside a test binary, so a production build can never lift the
+// guard by calling it.
 func DisableAddrGuardForTest() (restore func()) {
+	if !testing.Testing() {
+		return func() {}
+	}
 	addrGuardOff.Add(1)
 	return func() { addrGuardOff.Add(-1) }
 }
