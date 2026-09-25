@@ -37,6 +37,25 @@ the operator's own cert, and S9's "one run over the present subset" dogfood.
 The C5 feature is default-off until S9 is shown useful; C2's cert kind is
 shippable but unproven against a real cert.
 
+### Post-program closure
+
+- **ADRs 0017/0018** record the shared probe vocabulary and the opt-in aggregate
+  event with governed `--limit-hosts`.
+- **Functional gaps closed:** `duration_ms` on check transition events (the
+  "up but slow" rule signal), `check list --netgroup`, API write parity for
+  `aggregate`/`min_up`, `wire.RuleView.limit_hosts`, `--check-canary` `ip:port`
+  validation, and one `internal/checkprobe` runner replacing the CLI/MCP/API
+  duplication.
+- **MCP comprehension audit** (naive readers, then re-test): the dangerous
+  misreads — `probe_check` as inert, `check_rm` vs `check_disable`, snooze
+  replay, `away`/rename semantics — are resolved; descriptions rewritten.
+- **Security red/blue:** three findings fixed and mutation-checked — (F1)
+  `--limit-hosts` refuses `all`/`ungrouped`/leading-dash, with the inventory
+  group-name residual recorded; (F2) the address-class guard now covers
+  tcp/tls/ping, and a hostless tls address is refused; (F3) the config-write
+  actor gap is recorded as a residual. Threat model T36 broadened.
+- Full `make check-race` green on the combined `main`.
+
 Gate note: each lane ran `make check-race` for its touched packages at
 integration; the combined `main` carries the full `make check-race` result.
 
