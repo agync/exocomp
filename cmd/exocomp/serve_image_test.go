@@ -41,3 +41,22 @@ func TestRecordImageRefPersists(t *testing.T) {
 		t.Errorf("a changed image did not update the ref: %q", got)
 	}
 }
+
+// TestValidateCheckCanary: a malformed canary is refused at startup with a
+// message naming it, so a typo cannot silently degrade every sweep to a missed
+// observation; empty (disabled) and a real ip:port pass.
+//
+// Mutation check: drop the netip.ParseAddrPort refusal and "nope"/"192.168.1.1"
+// are accepted, failing the bad-value loop below.
+func TestValidateCheckCanary(t *testing.T) {
+	for _, ok := range []string{"", "192.168.1.1:443", "[2001:db8::1]:53"} {
+		if err := validateCheckCanary(ok); err != nil {
+			t.Errorf("validateCheckCanary(%q) = %v, want nil", ok, err)
+		}
+	}
+	for _, bad := range []string{"nope", "192.168.1.1", "192.168.1.1:0", "192.168.1.1:70000", ":443"} {
+		if err := validateCheckCanary(bad); err == nil {
+			t.Errorf("validateCheckCanary(%q) = nil, want a refusal", bad)
+		}
+	}
+}

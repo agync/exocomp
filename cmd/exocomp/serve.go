@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -186,6 +187,25 @@ func recordImageRef(ctx context.Context, st *store.Store, image string) error {
 	return st.PutSetting(ctx, store.SettingImageRef, image)
 }
 
+// validateCheckCanary refuses a non-empty --check-canary that is not an ip:port
+// at startup. A malformed value is a canary that can never dial, so every sweep
+// with a down target reads as a missed observation and no transition ever
+// emits — exactly the silent mass-down suppression the flag exists to prevent,
+// inverted. Empty (disabled) is valid.
+func validateCheckCanary(canary string) error {
+	if canary == "" {
+		return nil
+	}
+	ap, err := netip.ParseAddrPort(canary)
+	if err != nil {
+		return fmt.Errorf("--check-canary %q must be ip:port (e.g. 192.168.1.1:443): %w", canary, err)
+	}
+	if ap.Port() == 0 {
+		return fmt.Errorf("--check-canary %q: port must be 1..65535", canary)
+	}
+	return nil
+}
+
 func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -200,6 +220,10 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	dir, err := dataDir()
 	if err != nil {
 		return fmt.Errorf("serve: resolve data dir: %w", err)
+	}
+
+	if err := validateCheckCanary(opts.checkCanary); err != nil {
+		return fmt.Errorf("serve: %w", err)
 	}
 
 	if err := requestSandboxTier(opts.sandbox, warn); err != nil {
