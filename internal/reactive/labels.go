@@ -26,9 +26,6 @@ func ActionLabel(r store.Rule) string {
 	case store.ActionTofuPlan, store.ActionTofuApply:
 		return r.ActionKind + " " + r.Action.Workspace
 	case store.ActionPlaybook:
-		if r.Action.LimitHosts {
-			return fmt.Sprintf("%s %s %s (limit: event hosts)", r.ActionKind, r.Action.Source, r.Action.Playbook)
-		}
 		return fmt.Sprintf("%s %s %s (limit %s)", r.ActionKind, r.Action.Source, r.Action.Playbook, r.Action.Limit)
 	default:
 		return r.ActionKind

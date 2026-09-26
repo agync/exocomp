@@ -32,19 +32,13 @@ type RuleAction struct {
 	// Playbook is the playbook path, relative to the source checkout.
 	Playbook string `json:"playbook,omitempty"`
 	// Limit is the fixed ansible --limit host pattern a playbook action runs.
-	// It is required at add time unless LimitHosts derives the limit from the
-	// event: default-deny against running every host the checkout's inventory
-	// names.
-	Limit string `json:"limit,omitempty"`
-	// LimitHosts expands the action's --limit from the sweep event's present
-	// host set instead of a fixed pattern. Only a check-sourced rule may set
-	// it, and the builder validates every host against the named check's own
-	// target set (reactive.Event.Hosts is populated only by the sweep).
-	LimitHosts bool     `json:"limit_hosts,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	Check      bool     `json:"check,omitempty"`
-	Diff       bool     `json:"diff,omitempty"`
-	Timeout    Duration `json:"timeout,omitempty"`
+	// It is required at add time: default-deny against running every host the
+	// checkout's inventory names.
+	Limit   string   `json:"limit,omitempty"`
+	Tags    []string `json:"tags,omitempty"`
+	Check   bool     `json:"check,omitempty"`
+	Diff    bool     `json:"diff,omitempty"`
+	Timeout Duration `json:"timeout,omitempty"`
 	// Egress are extra outbound TCP ports this playbook action's runs may open
 	// on top of the kind's built-in SSH port, for an inventory host on a
 	// nonstandard port. Empty is the default posture: a rule without the field

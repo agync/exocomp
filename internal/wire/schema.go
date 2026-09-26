@@ -473,15 +473,12 @@ type RuleView struct {
 	Enabled         bool   `json:"enabled"`
 	// Source names the playbook action's registered source (json "source" to
 	// match RuleAction; a rule's event-source filter is "source_filter" above).
-	Source   string `json:"source,omitempty"`
-	Playbook string `json:"playbook,omitempty"`
-	Limit    string `json:"limit,omitempty"`
-	// LimitHosts is the governed expansion flag: the action's ansible --limit is
-	// derived from the sweep event's present host set rather than Limit.
-	LimitHosts bool     `json:"limit_hosts,omitempty"`
-	Tags       []string `json:"tags,omitempty"`
-	Check      bool     `json:"check,omitempty"`
-	Diff       bool     `json:"diff,omitempty"`
+	Source   string   `json:"source,omitempty"`
+	Playbook string   `json:"playbook,omitempty"`
+	Limit    string   `json:"limit,omitempty"`
+	Tags     []string `json:"tags,omitempty"`
+	Check    bool     `json:"check,omitempty"`
+	Diff     bool     `json:"diff,omitempty"`
 	// Timeout is the action's job kill-switch, as the Go duration string the
 	// CLI accepts, so a consumer can audit which rules carry a bound.
 	Timeout string `json:"timeout,omitempty"`
@@ -496,8 +493,7 @@ func NewRuleList(rows []store.Rule) []RuleView {
 			ActionKind: r.ActionKind, CooldownS: r.CooldownS, DailyCap: r.DailyCap,
 			RequireApproval: r.RequireApproval, Enabled: r.Enabled,
 			Source: r.Action.Source, Playbook: r.Action.Playbook, Limit: r.Action.Limit,
-			LimitHosts: r.Action.LimitHosts,
-			Tags:       r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
+			Tags: r.Action.Tags, Check: r.Action.Check, Diff: r.Action.Diff,
 		}
 		if r.Action.Timeout != 0 {
 			v.Timeout = time.Duration(r.Action.Timeout).String()
@@ -560,11 +556,6 @@ type EventView struct {
 	// observed {status, consecutive} tail that produced it (timestamps in
 	// RFC3339). Absent for alert and non-check events.
 	CheckObservations []CheckObservationView `json:"check_observations,omitempty"`
-	// Hosts is a daemon-produced sweep event's present target set — an
-	// aggregate check's up targets, sorted. Only a check sweep event carries
-	// it; a webhook body can never set it (the trusted-source line, design
-	// §3.3/§7.4).
-	Hosts []string `json:"hosts,omitempty"`
 }
 
 // CheckObservationView is one probe of a check transition's hysteresis ledger:
@@ -580,11 +571,11 @@ type CheckObservationView struct {
 // list; the additive name/status/netgroup/check-observations fields are the
 // values-free projection of the stored row described on EventView.
 func NewEventView(e store.Event) EventView {
-	name, status, netgroup, hosts := eventViewExtras(e)
+	name, status, netgroup := eventViewExtras(e)
 	view := EventView{
 		ID: e.ID, Source: e.Source, ReceivedAt: rfc3339(e.ReceivedAt), DedupKey: e.DedupKey,
 		MatchedRule: e.MatchedRule, Outcome: string(e.Outcome), Reason: e.Reason, JobID: e.JobID,
-		Name: name, Status: status, Netgroup: netgroup, Hosts: hosts,
+		Name: name, Status: status, Netgroup: netgroup,
 	}
 	// The observation ledger rides the event row, not the normalized body; a
 	// corrupt ledger degrades to absent, never an error.
@@ -617,7 +608,6 @@ type eventBody struct {
 	Target string            `json:"target"`
 	Status string            `json:"status"`
 	Labels map[string]string `json:"labels"`
-	Hosts  []string          `json:"hosts"`
 }
 
 func parseEventBody(e store.Event) (eventBody, bool) {
@@ -628,21 +618,19 @@ func parseEventBody(e store.Event) (eventBody, bool) {
 	return b, true
 }
 
-// eventViewExtras projects the values-free name/status/netgroup/hosts of one
-// event's normalized body, sharing EventName with the web so the two surfaces
-// render the same row facts. hosts is the trusted-source field: it is read
-// only for a check event, so a webhook whose body happens to carry a top-level
-// "hosts" key can never project one.
-func eventViewExtras(e store.Event) (name, status, netgroup string, hosts []string) {
+// eventViewExtras projects the values-free name/status/netgroup of one event's
+// normalized body, sharing EventName with the web so the two surfaces render
+// the same row facts.
+func eventViewExtras(e store.Event) (name, status, netgroup string) {
 	name = EventName(e)
 	if e.Source != reactive.SourceCheck {
-		return name, "", "", nil
+		return name, "", ""
 	}
 	b, ok := parseEventBody(e)
 	if !ok {
-		return name, "", "", nil
+		return name, "", ""
 	}
-	return name, b.Status, b.Labels["netgroup"], b.Hosts
+	return name, b.Status, b.Labels["netgroup"]
 }
 
 // EventName pulls a human-facing alert name out of a normalized event body,
@@ -842,16 +830,11 @@ type CheckTargetView struct {
 
 // CheckView projects a check and its per-target last statuses.
 type CheckView struct {
-	ID        int64  `json:"id"`
-	Name      string `json:"name"`
-	Kind      string `json:"kind"`
-	IntervalS int64  `json:"interval_s"`
-	Enabled   bool   `json:"enabled"`
-	// Aggregate is the check-level rollup opt-in; MinUp is its threshold (the
-	// up targets needed, 0 meaning every target). A surface reads both to show
-	// why a check also emits one check:<name>:aggregate event.
-	Aggregate bool              `json:"aggregate,omitempty"`
-	MinUp     int               `json:"min_up,omitempty"`
+	ID        int64             `json:"id"`
+	Name      string            `json:"name"`
+	Kind      string            `json:"kind"`
+	IntervalS int64             `json:"interval_s"`
+	Enabled   bool              `json:"enabled"`
 	Targets   []CheckTargetView `json:"targets"`
 }
 
@@ -886,8 +869,7 @@ func NewCheckList(rows []store.Check, states map[int64][]store.CheckState) []Che
 		}
 		out = append(out, CheckView{
 			ID: c.ID, Name: c.Name, Kind: c.Kind,
-			IntervalS: c.IntervalS, Enabled: c.Enabled,
-			Aggregate: c.Aggregate, MinUp: c.MinUp, Targets: targets,
+			IntervalS: c.IntervalS, Enabled: c.Enabled, Targets: targets,
 		})
 	}
 	return out

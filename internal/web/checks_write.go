@@ -49,9 +49,6 @@ const (
 	checkValueRefusal         = "The value is a number, like 0.5."
 	checkValueKindRefusal     = "A value pins a metric target only."
 	checkValueRequired        = "A metric target needs a value, like 0."
-	checkMinUpRefusal         = "Min-up is a whole number of targets, like 1."
-	checkMinUpBound           = "Min-up can't be more than the number of targets."
-	checkMinUpNeedsAggregate  = "Min-up needs the aggregate box ticked."
 	checkSubmitRefusal        = "Couldn't add the check — nothing was saved."
 	// checkRemoveConfirmRefusal is the rm verb's confirm-gate refusal
 	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
@@ -119,8 +116,6 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		ExpectAddr: r.PostFormValue("expect-addr"),
 		Op:         r.PostFormValue("op"),
 		Value:      r.PostFormValue("value"),
-		Aggregate:  r.PostFormValue("aggregate") != "",
-		MinUp:      r.PostFormValue("min-up"),
 	}
 
 	// Validate every field up front so all refusals render at once (forms/
@@ -172,18 +167,9 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 		kerrs.minDays, kerrs.expectAddr, kerrs.op, kerrs.value
 	causes = append(causes, kcauses...)
 
-	minUp := 0
-	if mu, msg := checkMinUp(form.Aggregate, form.MinUp, len(targets)); msg != "" {
-		form.ErrMinUp = msg
-		causes = append(causes, msg)
-	} else {
-		minUp = mu
-	}
-
 	if form.ErrName != "" || form.ErrKind != "" || form.ErrInterval != "" ||
 		form.ErrTarget != "" || form.ErrExpect != "" || form.ErrMinDays != "" ||
-		form.ErrExpectAddr != "" || form.ErrOp != "" || form.ErrValue != "" ||
-		form.ErrMinUp != "" {
+		form.ErrExpectAddr != "" || form.ErrOp != "" || form.ErrValue != "" {
 		switch {
 		case form.ErrName != "":
 			form.FirstInvalid = "name"
@@ -203,8 +189,6 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 			form.FirstInvalid = "op"
 		case form.ErrValue != "":
 			form.FirstInvalid = "value"
-		case form.ErrMinUp != "":
-			form.FirstInvalid = "min-up"
 		}
 		s.log.Info("web: check add refused", "err", strings.Join(causes, "; "), "by", ident.token.Name)
 		s.checkRefusal(w, r, form)
@@ -220,7 +204,6 @@ func (s *Server) handleCheckAdd(w http.ResponseWriter, r *http.Request) {
 
 	created, err := s.store.CreateCheck(r.Context(), store.NewCheck{
 		Name: form.Name, Kind: form.Kind, IntervalS: int64(d.Seconds()), Targets: targets,
-		Aggregate: form.Aggregate, MinUp: minUp,
 	})
 	if errors.Is(err, store.ErrDuplicate) {
 		s.log.Info("web: check add refused", "err", err.Error(), "by", ident.token.Name)
@@ -253,29 +236,6 @@ func (s *Server) checkRefusal(w http.ResponseWriter, r *http.Request, form check
 		return
 	}
 	s.render(w, r, http.StatusUnprocessableEntity, checksList(vm))
-}
-
-// checkMinUp parses the optional aggregate threshold: blank reads as 0 (every
-// target must be up), the value is a whole number, and it cannot exceed the
-// check's target count. A min-up without the aggregate box ticked is a mistake,
-// not a dormant value. It returns the human refusal sentence, empty when the
-// value is acceptable.
-func checkMinUp(aggregate bool, raw string, targets int) (int, string) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return 0, ""
-	}
-	if !aggregate {
-		return 0, checkMinUpNeedsAggregate
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || n < 0 {
-		return 0, checkMinUpRefusal
-	}
-	if n > targets {
-		return 0, checkMinUpBound
-	}
-	return n, ""
 }
 
 // formExpect parses the optional expected-status field; blank means no pin.
@@ -464,8 +424,6 @@ type checkEditFormVM struct {
 	ExpectAddr    string
 	Op            string
 	Value         string
-	Aggregate     bool
-	MinUp         string
 	ErrInterval   string
 	ErrTargetItem string
 	ErrTarget     string
@@ -474,7 +432,6 @@ type checkEditFormVM struct {
 	ErrExpectAddr string
 	ErrOp         string
 	ErrValue      string
-	ErrMinUp      string
 	ErrForm       string
 	FirstInvalid  string
 	Submitting    bool
@@ -540,19 +497,6 @@ func (f checkEditFormVM) valueField() fieldMeta {
 	}
 }
 
-func (f checkEditFormVM) minUpField() fieldMeta {
-	return fieldMeta{
-		ID: "cke-" + f.Name + "-min-up", Label: "Aggregate minimum up (optional)",
-		Name: "min-up", Value: f.MinUp, Placeholder: "1",
-		Help:   "How many targets must be up for the aggregate to read up (blank = all).",
-		ErrMsg: f.ErrMinUp, FirstInvalid: f.FirstInvalid == "min-up",
-	}
-}
-
-// aggregateChecked reports whether the edit dialog's aggregate box is ticked: on
-// a 422 re-render the typed value, else the stored row's flag.
-func (f checkEditFormVM) aggregateChecked() bool { return f.Aggregate }
-
 // targetInputs is the edit dialog's repeated target rows: the stored targets
 // (or the typed values on a 422 re-render) padded to the same four baseline
 // rows the add dialog uses, capped at the same ten.
@@ -581,7 +525,6 @@ func (vm checksVM) editForm(name string) checkEditFormVM {
 				Targets: ck.editTargetInputs(), Expect: ck.editExpect(),
 				MinDays: ck.editMinDays(), ExpectAddr: ck.editExpectAddr(),
 				Op: ck.editOp(), Value: ck.editValue(),
-				Aggregate: ck.Aggregate, MinUp: ck.editMinUp(),
 			}
 		}
 	}
@@ -614,15 +557,8 @@ func (c checkRow) editMinDays() string {
 	return ""
 }
 
-// editMinUp prefills the edit dialog's aggregate threshold, blank for the
-// every-target default so an untouched form never shows a stray 0.
-func (c checkRow) editMinUp() string {
-	if !c.Aggregate || c.MinUp == 0 {
-		return ""
-	}
-	return itoa(int64(c.MinUp))
-}
-
+// editExpectAddr prefills the edit dialog's dns expected address, blank when
+// the check has none.
 func (c checkRow) editExpectAddr() string {
 	for _, t := range c.Targets {
 		if t.ExpectAddr != "" {
@@ -680,8 +616,6 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		ExpectAddr: r.PostFormValue("expect-addr"),
 		Op:         r.PostFormValue("op"),
 		Value:      r.PostFormValue("value"),
-		Aggregate:  r.PostFormValue("aggregate") != "",
-		MinUp:      r.PostFormValue("min-up"),
 	}
 
 	var causes []string
@@ -720,17 +654,9 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		kerrs.minDays, kerrs.expectAddr, kerrs.op, kerrs.value
 	causes = append(causes, kcauses...)
 
-	minUp := 0
-	if mu, msg := checkMinUp(form.Aggregate, form.MinUp, len(targets)); msg != "" {
-		form.ErrMinUp = msg
-		causes = append(causes, msg)
-	} else {
-		minUp = mu
-	}
-
 	if form.ErrInterval != "" || form.ErrTarget != "" || form.ErrExpect != "" ||
 		form.ErrMinDays != "" || form.ErrExpectAddr != "" || form.ErrOp != "" ||
-		form.ErrValue != "" || form.ErrMinUp != "" {
+		form.ErrValue != "" {
 		switch {
 		case form.ErrInterval != "":
 			form.FirstInvalid = "interval"
@@ -746,8 +672,6 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 			form.FirstInvalid = "op"
 		case form.ErrValue != "":
 			form.FirstInvalid = "value"
-		case form.ErrMinUp != "":
-			form.FirstInvalid = "min-up"
 		}
 		s.log.Info("web: check update refused", "check", name, "err", strings.Join(causes, "; "), "by", ident.token.Name)
 		s.checkEditRefusal(w, r, form)
@@ -773,17 +697,6 @@ func (s *Server) handleCheckUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.fail(w, r, err)
-		return
-	}
-	if err := s.store.SetCheckAggregate(r.Context(), name, form.Aggregate, minUp); err != nil {
-		if errors.Is(err, store.ErrValidation) {
-			s.log.Info("web: check update refused", "check", name, "err", err.Error(), "by", ident.token.Name)
-			form.ErrMinUp = checkMinUpBound
-			form.FirstInvalid = "min-up"
-			s.checkEditRefusal(w, r, form)
-			return
-		}
 		s.fail(w, r, err)
 		return
 	}

@@ -107,11 +107,7 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 func ruleActionPhrase(rl store.Rule) string {
 	switch rl.ActionKind {
 	case store.ActionPlaybook:
-		phrase := "playbook " + rl.Action.Source + "/" + rl.Action.Playbook
-		if rl.Action.LimitHosts {
-			phrase += " · limit from event hosts"
-		}
-		return phrase
+		return "playbook " + rl.Action.Source + "/" + rl.Action.Playbook
 	case store.ActionShell:
 		return "shell " + strings.Join(rl.Action.Argv, " ")
 	case store.ActionNotify:

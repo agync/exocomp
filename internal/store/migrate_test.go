@@ -703,8 +703,10 @@ VALUES (1, 'laptop', 'up', 3, 'up', 111, 222,
 
 // TestMigration0041UpgradesFrom040 pins a database at user_version 40 (no
 // check_row.aggregate/min_up), seeds a check row, then opens it with the
-// current binary: the columns arrive in place, the pre-existing row defaults
-// the aggregate off, and the store round-trips an opt-in aggregate check.
+// current binary: the columns arrive in place and the pre-existing row
+// survives the upgrade. The aggregate feature was removed, so 0041 is inert
+// schema; this proves a database already at 41 stays readable and that an
+// older one upgrades without losing rows.
 func TestMigration0041UpgradesFrom040(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
@@ -748,26 +750,23 @@ func TestMigration0041UpgradesFrom040(t *testing.T) {
 		t.Fatalf("schema version = %d after open, want >= 41 (0041 applied)", version)
 	}
 
-	// The pre-existing row defaults the aggregate off.
+	// The migration's columns are present and the seeded row survived with its
+	// target intact.
+	var cols int
+	if err := s.db.QueryRowContext(ctx,
+		`SELECT count(*) FROM pragma_table_info('check_row') WHERE name IN ('aggregate', 'min_up')`).
+		Scan(&cols); err != nil {
+		t.Fatalf("probe migrated schema: %v", err)
+	}
+	if cols != 2 {
+		t.Fatalf("check_row aggregate/min_up columns = %d after 0041, want 2", cols)
+	}
 	got, err := s.GetCheck(ctx, "at-home")
 	if err != nil {
 		t.Fatalf("read seeded check: %v", err)
 	}
-	if got.Aggregate || got.MinUp != 0 {
-		t.Fatalf("seeded check aggregate = %v min_up = %d, want off", got.Aggregate, got.MinUp)
-	}
-
-	// The store round-trips an opt-in aggregate on the upgraded schema.
-	agg, err := s.CreateCheck(ctx, NewCheck{
-		Name: "present", Kind: CheckTCP, IntervalS: 30,
-		Targets:   []CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
-		Aggregate: true, MinUp: 1,
-	})
-	if err != nil {
-		t.Fatalf("create aggregate check on upgraded db: %v", err)
-	}
-	if !agg.Aggregate || agg.MinUp != 1 {
-		t.Fatalf("aggregate check = %v min_up = %d, want true/1", agg.Aggregate, agg.MinUp)
+	if len(got.Targets) != 1 || got.Targets[0].Name != "laptop" {
+		t.Fatalf("seeded check targets = %+v, want laptop preserved", got.Targets)
 	}
 }
 

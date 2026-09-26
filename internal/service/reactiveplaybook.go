@@ -26,17 +26,14 @@ import (
 // rule never composes the lifecycle workflow `exocomp run` owns. The source
 // checkout must exist on disk (containedPath resolves symlinks on the deepest
 // existing ancestor), the same posture as `playbook run --source`.
-func (s *Service) BuildPlaybookSpec(ctx context.Context, ev reactive.Event, rule store.Rule) (queue.Spec, error) {
+func (s *Service) BuildPlaybookSpec(ctx context.Context, _ reactive.Event, rule store.Rule) (queue.Spec, error) {
 	if rule.Action.Source == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action names no source", rule.Name)
 	}
 	if rule.Action.Playbook == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action names no playbook", rule.Name)
 	}
-	limit, err := s.playbookLimit(ctx, ev, rule)
-	if err != nil {
-		return queue.Spec{}, err
-	}
+	limit := rule.Action.Limit
 	if limit == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action needs a --limit (default-deny)", rule.Name)
 	}
@@ -102,55 +99,4 @@ func (s *Service) BuildPlaybookSpec(ctx context.Context, ev reactive.Event, rule
 		EgressPorts:      rule.Action.Egress,
 		SSHIdentityFiles: rule.Action.SSHIdentityFiles,
 	}, nil
-}
-
-// playbookLimit resolves the ansible --limit a playbook action runs. Without
-// LimitHosts it is the rule's fixed pattern. With LimitHosts it is derived from
-// the event's present host set under the trusted-source line (design §3.3): a
-// webhook event carries no Hosts, and every host must both be a valid name and
-// be a declared target of the check the event names. A forged or empty set is
-// refused, never widened into argv.
-func (s *Service) playbookLimit(ctx context.Context, ev reactive.Event, rule store.Rule) (string, error) {
-	if !rule.Action.LimitHosts {
-		return rule.Action.Limit, nil
-	}
-	if ev.Source != reactive.SourceCheck {
-		return "", fmt.Errorf("rule %q: --limit-hosts only accepts a check source event", rule.Name)
-	}
-	if len(ev.Hosts) == 0 {
-		return "", fmt.Errorf("rule %q: --limit-hosts needs an event carrying hosts (only a sweep event has one)", rule.Name)
-	}
-	check, err := s.store.GetCheck(ctx, ev.Name)
-	if errors.Is(err, store.ErrNotFound) {
-		return "", fmt.Errorf("rule %q: --limit-hosts event names no check %q", rule.Name, ev.Name)
-	}
-	if err != nil {
-		return "", err
-	}
-	declared := make(map[string]bool, len(check.Targets))
-	for _, t := range check.Targets {
-		declared[t.Name] = true
-	}
-	for _, h := range ev.Hosts {
-		if !store.ValidName(h) {
-			return "", fmt.Errorf("rule %q: --limit-hosts event carries an invalid host name %q", rule.Name, h)
-		}
-		// ansible --limit takes a PATTERN, not a name: `all` and `ungrouped`
-		// are magic inventory names, so a declared target literally named either
-		// would widen the run to the whole inventory. A leading '-' is refused
-		// so a flag-like value can never fill the --limit value slot.
-		switch strings.ToLower(h) {
-		case "all", "ungrouped":
-			return "", fmt.Errorf(
-				"rule %q: --limit-hosts host %q is a reserved ansible inventory name, not a host",
-				rule.Name, h)
-		}
-		if strings.HasPrefix(h, "-") {
-			return "", fmt.Errorf("rule %q: --limit-hosts host %q must not begin with '-'", rule.Name, h)
-		}
-		if !declared[h] {
-			return "", fmt.Errorf("rule %q: --limit-hosts host %q is not a target of check %q", rule.Name, h, ev.Name)
-		}
-	}
-	return strings.Join(ev.Hosts, ","), nil
 }

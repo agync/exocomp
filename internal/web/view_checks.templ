@@ -97,8 +97,6 @@ templ checksSurface(vm checksVM) {
 						@fieldInput(vm.Form.expectAddrField())
 						@fieldInput(vm.Form.opField())
 						@fieldInput(vm.Form.valueField())
-						<label class="checkline"><input type="checkbox" name="aggregate" value="1" checked?={ vm.Form.aggregateChecked() }/> emit one check-level aggregate event</label>
-						@fieldInput(vm.Form.minUpField())
 						@formStatus(vm.Form.Pending(), vm.Form.ErrFormText(), "Adding check")
 						<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.Form.Pending() }>Add check</button></div>
 					</form>
@@ -132,9 +130,6 @@ templ checksSurface(vm checksVM) {
 								}
 								if summary := ck.DownSummary(); summary != "" {
 									<span class="meta mono fail-text">{ summary }</span>
-								}
-								if label := ck.AggregateLabel(); label != "" {
-									<span class="meta mono">{ label }</span>
 								}
 							</header>
 							<ul class="targetgrid">
@@ -249,8 +244,6 @@ templ checkEditDialog(vm checksVM, ck checkRow) {
 				@fieldInput(vm.editForm(ck.Name).opField())
 				@fieldInput(vm.editForm(ck.Name).valueField())
 			}
-			<label class="checkline"><input type="checkbox" name="aggregate" value="1" checked?={ vm.editForm(ck.Name).aggregateChecked() }/> emit one check-level aggregate event</label>
-			@fieldInput(vm.editForm(ck.Name).minUpField())
 			@formStatus(vm.editForm(ck.Name).Pending(), vm.editForm(ck.Name).ErrFormText(), "Saving check")
 			<div class="actions"><button type="submit" class="btn primary" disabled?={ vm.editForm(ck.Name).Pending() }>Save check</button></div>
 		</form>

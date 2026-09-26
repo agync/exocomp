@@ -35,7 +35,7 @@ func seedRules(t *testing.T, h *harness) {
 		CELExpr:      `event.labels.netgroup == "home"`,
 		ActionKind:   store.ActionPlaybook,
 		Action: store.RuleAction{
-			Source: "infra", Playbook: "site.yml", LimitHosts: true,
+			Source: "infra", Playbook: "site.yml",
 			Egress: []int{22, 443},
 		},
 		RequireApproval: true,
@@ -130,7 +130,7 @@ func TestRulesSurfaceGated(t *testing.T) {
 		"RULE", "WHEN · THEN", "LAST FIRED",
 		`class="th-actions"`,
 		"shell systemctl restart nginx",
-		"playbook infra/site.yml · limit from event hosts",
+		"playbook infra/site.yml",
 		"log only · no action, no guards",
 		"cooldown 30m",
 		"egress 22, 443",

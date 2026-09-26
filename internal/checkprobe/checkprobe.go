@@ -62,9 +62,6 @@ func Run(ctx context.Context, st *store.Store, c store.Check, only string) ([]Ta
 	}
 	stored := make(map[string]string, len(states))
 	for _, s := range states {
-		if s.TargetName == store.AggregateTargetName {
-			continue
-		}
 		stored[s.TargetName] = s.Netgroup
 	}
 	groups, err := st.ListNetgroups(ctx)

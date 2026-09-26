@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
-	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -44,13 +43,6 @@ const probeConcurrency = 4
 // so one target of one check is one slot.
 func checkDedupKey(checkName, targetName string) string {
 	return SourceCheck + ":" + checkName + ":" + targetName
-}
-
-// aggregateDedupKey names one check's aggregate condition. It is a single slot
-// per check, distinct from every per-target key, and the stable identity the
-// aggregate's resolve finds its firing by.
-func aggregateDedupKey(checkName string) string {
-	return SourceCheck + ":" + checkName + ":aggregate"
 }
 
 // CheckObservation is one probe of the hysteresis ledger: what was observed and
@@ -346,141 +338,7 @@ func (e *Engine) sweepCheck(ctx context.Context, c store.Check, now time.Time) (
 			continue
 		}
 	}
-	if c.Aggregate {
-		n, err := e.sweepAggregate(ctx, c, results, snoozed, now)
-		raised += n
-		if err != nil {
-			return raised, err
-		}
-	}
 	return raised, ctx.Err() // nil when healthy
-}
-
-// sweepAggregate derives one check-level transition from the present target
-// set, for an opt-in aggregate check only. The present set is the targets that
-// answered up on this probe; the aggregate reads up once its size reaches the
-// threshold (min_up, 0 meaning every target). Its transition state is the same
-// shape as a target's, persisted under the reserved
-// store.AggregateTargetName and advanced with the same hysteresis and
-// cold-start seeding rules — a transition declares after three consecutive
-// observations and a missing row is seeded without emitting. A snooze advances
-// the state but withholds the emission, exactly as for a target.
-func (e *Engine) sweepAggregate(ctx context.Context, c store.Check, results []probeResult, snoozed bool, now time.Time) (int, error) {
-	present := make([]string, 0, len(results))
-	for _, r := range results {
-		if r.err == nil && r.up {
-			present = append(present, r.target.Name)
-		}
-	}
-	slices.Sort(present)
-
-	threshold := c.MinUp
-	if threshold == 0 {
-		threshold = len(c.Targets)
-	}
-	status := store.CheckDown
-	if len(present) >= threshold {
-		status = store.CheckUp
-	}
-
-	st, err := e.store.GetCheckState(ctx, c.ID, store.AggregateTargetName)
-	if errors.Is(err, store.ErrNotFound) {
-		return 0, e.store.SetCheckState(ctx, store.CheckState{
-			CheckID:            c.ID,
-			TargetName:         store.AggregateTargetName,
-			Status:             status,
-			Consecutive:        1,
-			Emitted:            status,
-			FirstSeen:          now,
-			LastChange:         now,
-			RecentObservations: appendObservation("", status, 1, now),
-		})
-	}
-	if err != nil {
-		return 0, err
-	}
-
-	if status == st.Status {
-		st.Consecutive++
-		if st.Consecutive > DefaultHysteresis {
-			st.Consecutive = DefaultHysteresis
-		}
-	} else {
-		st.Status = status
-		st.Consecutive = 1
-	}
-	st.RecentObservations = appendObservation(st.RecentObservations, status, st.Consecutive, now)
-
-	raised := 0
-	if !snoozed && st.Consecutive >= DefaultHysteresis && st.Emitted != st.Status {
-		if err := e.emitAggregateTransition(ctx, c, st, present, now); err != nil {
-			// The emitted flag is not advanced, so the next sweep re-observes
-			// the same status and re-emits. Dedup-window-bounded, not a silent
-			// loss, mirroring the per-target path.
-			e.log.Error("reactive: sweep checks: emit aggregate transition", "check", c.Name, "err", err)
-			return 0, err
-		}
-		st.Emitted = st.Status
-		st.LastChange = now
-		raised = 1
-	}
-	if err := e.store.SetCheckState(ctx, st); err != nil {
-		return raised, err
-	}
-	return raised, nil
-}
-
-// emitAggregateTransition builds and ingests the one event an aggregate
-// transition produces. The status maps onto firing/resolved the same way a
-// target's does (up fires, down resolves), host is deliberately empty — the
-// aggregate is not one host — and hosts carries the sorted present set the
-// trusted-source line permits only a sweep to fill.
-func (e *Engine) emitAggregateTransition(ctx context.Context, c store.Check, st store.CheckState, present []string, now time.Time) error {
-	key := aggregateDedupKey(c.Name)
-
-	eventStatus := StatusFiring
-	if st.Status == store.CheckDown {
-		eventStatus = StatusResolved
-	}
-
-	var ledger []byte
-	if obs := transitionObservations(st.RecentObservations, st.Status); len(obs) > 0 {
-		if b, merr := json.Marshal(obs); merr == nil {
-			ledger = b
-		}
-	}
-
-	total := len(c.Targets)
-	ev := Event{
-		Source:      SourceCheck,
-		Kind:        "check",
-		Name:        c.Name,
-		Status:      eventStatus,
-		Severity:    "warning",
-		Host:        "",
-		Fingerprint: key,
-		Summary:     fmt.Sprintf("check %s aggregate is %s (%d of %d up)", c.Name, st.Status, len(present), total),
-		Labels: map[string]string{
-			"aggregate": "true",
-			"up":        strconv.Itoa(len(present)),
-			"total":     strconv.Itoa(total),
-		},
-		Annotations:       map[string]string{},
-		ReceivedAt:        now,
-		DedupKey:          key,
-		CheckObservations: string(ledger),
-		Hosts:             present,
-	}
-
-	raw, err := json.Marshal(map[string]any{
-		"check": c.Name, "aggregate": true, "status": st.Status,
-		"up": len(present), "total": total, "hosts": present,
-	})
-	if err != nil {
-		return err
-	}
-	_, err = e.Ingest(ctx, ev, raw)
-	return err
 }
 
 // emitCheckTransition builds and ingests the one event a declared transition

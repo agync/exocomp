@@ -33,11 +33,6 @@ const (
 	CheckDown = "down"
 )
 
-// AggregateTargetName is the reserved check_state target name an opt-in
-// aggregate check's rollup state lives under. It is not a probe target:
-// ValidName refuses '*', so no operator-chosen target name can collide with it.
-const AggregateTargetName = "*"
-
 // namePattern bounds a check's name, a netgroup's name, and each target's name
 // so they all stay usable host and label values: a rule writes
 // `event.host == <target>` and reads labels, so anything those could not hold
@@ -143,12 +138,6 @@ type Check struct {
 	// snoozed. The sweep keeps probing while snoozed so hysteresis stays
 	// current; it only suppresses transition emission.
 	SnoozedUntil time.Time
-	// Aggregate opts the check into a check-level rollup event in addition to
-	// the per-target events (default off).
-	Aggregate bool
-	// MinUp is the aggregate's threshold: the targets that must be up for the
-	// aggregate to read up. 0 means every target.
-	MinUp int
 }
 
 // NewCheck describes a check to create. It starts enabled.
@@ -157,11 +146,9 @@ type NewCheck struct {
 	Kind      string
 	IntervalS int64
 	Targets   []CheckTarget
-	Aggregate bool
-	MinUp     int
 }
 
-const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until, aggregate, min_up`
+const checkColumns = `id, name, kind, interval_s, targets_json, enabled, created_at, updated_at, snoozed_until`
 
 // CreateCheck inserts an enabled check. Names are unique. The per-kind target
 // shape is validated here so a row that reads is a row that probes: tcp and
@@ -183,10 +170,6 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 	if err := validateCheckTargets(n.Name, n.Kind, n.Targets); err != nil {
 		return Check{}, err
 	}
-	if n.MinUp < 0 || n.MinUp > len(n.Targets) {
-		return Check{}, fmt.Errorf("%w: store: check %q min_up must be between 0 and %d (0 = every target), got %d",
-			ErrValidation, n.Name, len(n.Targets), n.MinUp)
-	}
 
 	targets, err := json.Marshal(n.Targets)
 	if err != nil {
@@ -194,10 +177,9 @@ func (s *Store) CreateCheck(ctx context.Context, n NewCheck) (Check, error) {
 	}
 	now := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO check_row (name, kind, interval_s, targets_json, enabled, created_at, updated_at, aggregate, min_up)
-		VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
-		n.Name, n.Kind, n.IntervalS, string(targets), now.UnixMilli(), now.UnixMilli(),
-		n.Aggregate, n.MinUp)
+		INSERT INTO check_row (name, kind, interval_s, targets_json, enabled, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 1, ?, ?)`,
+		n.Name, n.Kind, n.IntervalS, string(targets), now.UnixMilli(), now.UnixMilli())
 	if err != nil {
 		return Check{}, wrap("create check", err)
 	}
@@ -241,9 +223,7 @@ func (s *Store) UpdateCheck(ctx context.Context, name string, targets []CheckTar
 	// A re-point drops targets the new set no longer names; their state rows
 	// must go with them, or the metrics and any state-row reader keep reporting
 	// a target the check no longer probes. A kept NAME keeps its row, which is
-	// what lets the sweep flip it and emit a real transition. The reserved
-	// aggregate row is not a target and is always kept, so a re-point does not
-	// silently reset the aggregate's hysteresis.
+	// what lets the sweep flip it and emit a real transition.
 	keep := make(map[string]bool, len(targets))
 	for _, t := range targets {
 		keep[t.Name] = true
@@ -253,7 +233,7 @@ func (s *Store) UpdateCheck(ctx context.Context, name string, targets []CheckTar
 		return Check{}, err
 	}
 	for _, st := range states {
-		if keep[st.TargetName] || st.TargetName == AggregateTargetName {
+		if keep[st.TargetName] {
 			continue
 		}
 		if _, err := s.db.ExecContext(ctx,
@@ -552,14 +532,13 @@ func (s *Store) ListCheckStates(ctx context.Context, checkID int64) ([]CheckStat
 // pull every state row into memory just to size a number. It joins check_row
 // on enabled=1, so only the targets the sweep currently probes count: a
 // disabled check's frozen state rows are not probed and would overstate the
-// card. The reserved aggregate row is not a target, so it is excluded too.
+// card.
 func (s *Store) CountCheckStatesByStatus(ctx context.Context, status string) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM check_state
 		 JOIN check_row ON check_row.id = check_state.check_id
-		 WHERE check_state.status = ? AND check_row.enabled = 1
-		   AND check_state.target_name <> ?`, status, AggregateTargetName).Scan(&n)
+		 WHERE check_state.status = ? AND check_row.enabled = 1`, status).Scan(&n)
 	if err != nil {
 		return 0, wrap("count check states", err)
 	}
@@ -608,11 +587,9 @@ func scanCheck(row rowScanner) (Check, error) {
 		createdAt    int64
 		updatedAt    int64
 		snoozedUntil int64
-		aggregate    int
-		minUp        int
 	)
 	if err := row.Scan(&c.ID, &c.Name, &c.Kind, &c.IntervalS, &targets,
-		&enabled, &createdAt, &updatedAt, &snoozedUntil, &aggregate, &minUp); err != nil {
+		&enabled, &createdAt, &updatedAt, &snoozedUntil); err != nil {
 		return Check{}, err
 	}
 	c.Enabled = enabled != 0
@@ -621,8 +598,6 @@ func scanCheck(row rowScanner) (Check, error) {
 	if snoozedUntil != 0 {
 		c.SnoozedUntil = time.UnixMilli(snoozedUntil).UTC()
 	}
-	c.Aggregate = aggregate != 0
-	c.MinUp = minUp
 	if targets != "" {
 		if err := json.Unmarshal([]byte(targets), &c.Targets); err != nil {
 			return Check{}, fmt.Errorf("decode targets of check %d: %w", c.ID, err)

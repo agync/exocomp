@@ -1044,11 +1044,6 @@ type checkWriteRequest struct {
 	ExpectAddr *string  `json:"expect_addr"`
 	Op         *string  `json:"op"`
 	Value      *float64 `json:"value"`
-	// Aggregate/MinUp opt the check into a check-level rollup and set its
-	// threshold, the JSON mirror of `check add/update --aggregate --min-up`.
-	// Pointers so an omitted field keeps the stored value on an update.
-	Aggregate *bool `json:"aggregate"`
-	MinUp     *int  `json:"min_up"`
 }
 
 // checkStates loads each check's per-target state rows, the join NewCheckList
@@ -1205,24 +1200,8 @@ func (s *Server) apiCheckCreate(w http.ResponseWriter, r *http.Request) {
 		s.badRequest(w, err.Error())
 		return
 	}
-	aggregate := false
-	if req.Aggregate != nil {
-		aggregate = *req.Aggregate
-	}
-	minUp := 0
-	if req.MinUp != nil {
-		minUp = *req.MinUp
-	}
-	// Parity with `check add`: a threshold with no rollup to bound is a
-	// misread request, and CreateCheck's own range check still refuses a
-	// min_up past the target count.
-	if !aggregate && minUp != 0 {
-		s.badRequest(w, "min_up needs aggregate")
-		return
-	}
 	created, err := s.store.CreateCheck(r.Context(), store.NewCheck{
 		Name: req.Name, Kind: req.Kind, IntervalS: intervalS, Targets: targets,
-		Aggregate: aggregate, MinUp: minUp,
 	})
 	if err != nil {
 		s.checkWriteFail(w, err)
@@ -1263,32 +1242,6 @@ func (s *Server) apiCheckUpdate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.checkWriteFail(w, err)
 		return
-	}
-	// Aggregate config is a separate store mutation with its own threshold
-	// bound; resolve the effective values against the stored row so a min_up
-	// the new target set cannot satisfy is refused before it is stored,
-	// mirroring `check update`.
-	agg := cur.Aggregate
-	if req.Aggregate != nil {
-		agg = *req.Aggregate
-	}
-	threshold := cur.MinUp
-	if req.MinUp != nil {
-		threshold = *req.MinUp
-	}
-	if !agg {
-		threshold = 0
-	}
-	if agg != cur.Aggregate || threshold != cur.MinUp {
-		if err := s.store.SetCheckAggregate(r.Context(), name, agg, threshold); err != nil {
-			s.checkWriteFail(w, err)
-			return
-		}
-		// Re-read so the view carries the aggregate the mutation just set.
-		if updated, err = s.store.GetCheck(r.Context(), name); err != nil {
-			s.apiFail(w, err)
-			return
-		}
 	}
 	view, err := s.checkView(r.Context(), updated)
 	if err != nil {

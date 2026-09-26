@@ -198,8 +198,6 @@ func newCheckAddCmd() *cobra.Command {
 		expectAddr string
 		op         string
 		value      float64
-		aggregate  bool
-		minUp      int
 	)
 
 	cmd := &cobra.Command{
@@ -231,12 +229,6 @@ func newCheckAddCmd() *cobra.Command {
 			if err := applyKindFlags(cmd, kind, parsed, expect, minDays, expectAddr, op, value); err != nil {
 				return fmt.Errorf("check add: %w", err)
 			}
-			if cmd.Flags().Changed("min-up") && !aggregate {
-				return errors.New("check add: --min-up needs --aggregate")
-			}
-			if minUp < 0 || minUp > len(parsed) {
-				return fmt.Errorf("check add: --min-up must be between 0 and %d (0 = every target)", len(parsed))
-			}
 
 			st, err := openStore()
 			if err != nil {
@@ -249,8 +241,6 @@ func newCheckAddCmd() *cobra.Command {
 				Kind:      kind,
 				IntervalS: int64(interval.Seconds()),
 				Targets:   parsed,
-				Aggregate: aggregate,
-				MinUp:     minUp,
 			})
 			if err != nil {
 				if errors.Is(err, store.ErrDuplicate) {
@@ -271,9 +261,6 @@ func newCheckAddCmd() *cobra.Command {
 	cmd.Flags().StringVar(&expectAddr, "expect-addr", "", "dns: require the name to resolve to this address")
 	cmd.Flags().StringVar(&op, "op", "", "metric: comparison operator (< <= > >= == !=)")
 	cmd.Flags().Float64Var(&value, "value", 0, "metric: value the operator compares the body against")
-	cmd.Flags().BoolVar(&aggregate, "aggregate", false, "emit one check-level event when enough targets are up")
-	cmd.Flags().IntVar(&minUp, "min-up", 0,
-		"aggregate: up targets needed for the aggregate to read up (0 = every target)")
 	_ = cmd.MarkFlagRequired("kind")
 	_ = cmd.MarkFlagRequired("interval")
 	return cmd
@@ -330,8 +317,6 @@ func newCheckUpdateCmd() *cobra.Command {
 		expectAddr string
 		op         string
 		value      float64
-		aggregate  bool
-		minUp      int
 	)
 
 	cmd := &cobra.Command{
@@ -381,36 +366,12 @@ func newCheckUpdateCmd() *cobra.Command {
 				intervalS = cur.IntervalS
 			}
 
-			// Aggregate config is a separate store mutation with its own
-			// threshold bound; resolve the effective values against the
-			// stored row so a min-up the new target set cannot satisfy is
-			// refused before anything is written.
-			agg := cur.Aggregate
-			if cmd.Flags().Changed("aggregate") {
-				agg = aggregate
-			}
-			threshold := cur.MinUp
-			if cmd.Flags().Changed("min-up") {
-				threshold = minUp
-			}
-			if !agg {
-				threshold = 0
-			}
-			if threshold < 0 || threshold > len(parsed) {
-				return fmt.Errorf("check update: --min-up must be between 0 and %d (0 = every target)", len(parsed))
-			}
-
 			updated, err := st.UpdateCheck(cmd.Context(), name, parsed, intervalS)
 			if err != nil {
 				if errors.Is(err, store.ErrNotFound) {
 					return fmt.Errorf("check update: %q not found", name)
 				}
 				return validationError(err)
-			}
-			if agg != cur.Aggregate || threshold != cur.MinUp {
-				if err := st.SetCheckAggregate(cmd.Context(), name, agg, threshold); err != nil {
-					return validationError(err)
-				}
 			}
 			_, err = fmt.Fprintf(cmd.OutOrStdout(), "check %s updated: %d target(s) every %s\n",
 				updated.Name, len(updated.Targets), store.CheckIntervalLabel(updated.IntervalS))
@@ -424,9 +385,6 @@ func newCheckUpdateCmd() *cobra.Command {
 	cmd.Flags().StringVar(&expectAddr, "expect-addr", "", "dns: require the name to resolve to this address")
 	cmd.Flags().StringVar(&op, "op", "", "metric: comparison operator (< <= > >= == !=)")
 	cmd.Flags().Float64Var(&value, "value", 0, "metric: value the operator compares the body against")
-	cmd.Flags().BoolVar(&aggregate, "aggregate", false, "emit one check-level event when enough targets are up")
-	cmd.Flags().IntVar(&minUp, "min-up", 0,
-		"aggregate: up targets needed for the aggregate to read up (0 = every target)")
 	return cmd
 }
 
@@ -465,14 +423,7 @@ func newCheckListCmd() *cobra.Command {
 					}
 					return err
 				}
-				kept := make([]store.CheckState, 0, len(s))
-				for _, one := range s {
-					if one.TargetName == store.AggregateTargetName {
-						continue
-					}
-					kept = append(kept, one)
-				}
-				states[c.ID] = kept
+				states[c.ID] = s
 			}
 			if netgroup != "" {
 				rows = filterChecksByStoredNetgroup(rows, states, netgroup)
@@ -483,13 +434,13 @@ func newCheckListCmd() *cobra.Command {
 
 			now := time.Now().UTC()
 			w := tabwriter.NewWriter(cmd.OutOrStdout(), 0, 0, 2, ' ', 0)
-			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tSTATUS\tNETGROUP\tDURATION\tAGGREGATE\tENABLED")
+			_, _ = fmt.Fprintln(w, "NAME\tKIND\tINTERVAL\tTARGETS\tSTATUS\tNETGROUP\tDURATION\tENABLED")
 			for _, c := range rows {
-				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 					c.Name, c.Kind, store.CheckIntervalLabel(c.IntervalS),
 					checkTargetsLabel(c.Targets), checkStatusesLabel(states[c.ID], c.Targets),
 					checkNetgroupsLabel(states[c.ID], c.Targets), checkDurationsLabel(states[c.ID], c.Targets),
-					checkAggregateLabel(c), checkEnabledLabel(c, now))
+					checkEnabledLabel(c, now))
 			}
 			return w.Flush()
 		},
@@ -695,19 +646,6 @@ func checkDurationsLabel(states []store.CheckState, targets []store.CheckTarget)
 	return strings.Join(parts, ",")
 }
 
-// checkAggregateLabel renders the AGGREGATE column: "-" when the check emits
-// only per-target events, "all" when the aggregate needs every target up, and
-// "min N" when N targets must be up.
-func checkAggregateLabel(c store.Check) string {
-	if !c.Aggregate {
-		return "-"
-	}
-	if c.MinUp == 0 {
-		return "all"
-	}
-	return "min " + fmt.Sprint(c.MinUp)
-}
-
 // checkEnabledLabel renders the ENABLED column, naming an active snooze and its
 // remaining time in place of a bare "enabled" so a held check never reads as
 // running normally.
@@ -751,13 +689,11 @@ type probeConfig struct {
 // default), while an export always writes it explicitly to stay round-trip
 // exact. Interval is a Go duration string, the same shape the flags take.
 type configCheck struct {
-	Name      string         `yaml:"name" json:"name"`
-	Kind      string         `yaml:"kind" json:"kind"`
-	Interval  string         `yaml:"interval" json:"interval"`
-	Enabled   *bool          `yaml:"enabled" json:"enabled"`
-	Aggregate bool           `yaml:"aggregate" json:"aggregate"`
-	MinUp     int            `yaml:"min_up" json:"min_up"`
-	Targets   []configTarget `yaml:"targets" json:"targets"`
+	Name     string         `yaml:"name" json:"name"`
+	Kind     string         `yaml:"kind" json:"kind"`
+	Interval string         `yaml:"interval" json:"interval"`
+	Enabled  *bool          `yaml:"enabled" json:"enabled"`
+	Targets  []configTarget `yaml:"targets" json:"targets"`
 }
 
 // configTarget is one probe target. Only the fields the check's kind uses are
@@ -863,10 +799,9 @@ func checksToConfig(rows []store.Check) []configCheck {
 		}
 		out = append(out, configCheck{
 			Name: c.Name, Kind: c.Kind,
-			Interval:  (time.Duration(c.IntervalS) * time.Second).String(),
-			Enabled:   &enabled,
-			Aggregate: c.Aggregate, MinUp: c.MinUp,
-			Targets: targets,
+			Interval: (time.Duration(c.IntervalS) * time.Second).String(),
+			Enabled:  &enabled,
+			Targets:  targets,
 		})
 	}
 	return out
@@ -1015,7 +950,7 @@ func applyChecks(cmd *cobra.Command, st *store.Store, rows []configCheck, prune 
 		if !ok {
 			if _, err := st.CreateCheck(ctx, store.NewCheck{
 				Name: p.row.Name, Kind: p.row.Kind, IntervalS: p.intervalS,
-				Targets: p.targets, Aggregate: p.row.Aggregate, MinUp: p.row.MinUp,
+				Targets: p.targets,
 			}); err != nil {
 				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
 			}
@@ -1032,12 +967,6 @@ func applyChecks(cmd *cobra.Command, st *store.Store, rows []configCheck, prune 
 		changed := false
 		if !reflect.DeepEqual(cur.Targets, p.targets) || cur.IntervalS != p.intervalS {
 			if _, err := st.UpdateCheck(ctx, p.row.Name, p.targets, p.intervalS); err != nil {
-				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
-			}
-			changed = true
-		}
-		if cur.Aggregate != p.row.Aggregate || cur.MinUp != p.row.MinUp {
-			if err := st.SetCheckAggregate(ctx, p.row.Name, p.row.Aggregate, p.row.MinUp); err != nil {
 				return fmt.Errorf("check apply: %s: %w", p.row.Name, validationError(err))
 			}
 			changed = true
