@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-26 — exocomp does not manage cert lifecycle
+
+- The v1.1 roadmap's R2 framed cert-expiry checks as including "exocomp's OWN web-UI
+  cert". That premise was wrong: the LAN listener certificate is self-signed with a
+  10-year validity and trust-on-first-use pinned by fingerprint
+  (`internal/web/tls.go`), and a Tailscale tailnet cert or an ACME reverse proxy
+  renews itself. R2 corrected in
+  [design/v1.1-roadmap.md](design/v1.1-roadmap.md); the `tls` check kind stays as a
+  general, unprioritized capability for certificates nothing else renews.
+
 ## 2026-09-17 — the deployment image ref in the recovery chain
 
 - **`RECOVERY.md` now carries `image-ref:`** at each target root: the ref the daemon read

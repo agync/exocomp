@@ -32,10 +32,15 @@ from it (lane-brief-authoring), in the `mNN` style but as a post-v1 program.
 - **C6 — landed** (`check/netgroup export` + `apply -f`, idempotent, `--prune`
   confirmed; apply preflights every row before writing).
 
-**Not yet exercised (needs the operator's homelab):** S2's real expiry ladder on
-the operator's own cert, and S9's "one run over the present subset" dogfood.
-The C5 feature is default-off until S9 is shown useful; C2's cert kind is
-shippable but unproven against a real cert.
+**Not yet exercised (needs the operator's homelab):** S9's "one run over the
+present subset" dogfood. C5 is default-off until S9 is shown useful.
+
+**S2 dropped by operator decision (2026-09-26):** exocomp does not manage cert
+lifecycle. Tailscale and the reverse proxy renew their own certs, and exocomp's
+own LAN listener cert is a 10-year self-signed, TOFU-pinned one
+(`internal/web/tls.go`). The `tls` check kind is retained as a general,
+unprioritized capability (internal CAs, appliance admin certs); no cert-expiry
+dogfood or days-to-expiry ladder is required.
 
 ### Post-program closure
 
@@ -103,7 +108,9 @@ A phase is **not done** because tests are green. It is done when:
 | S8 | "Home, except the guest VLAN" | netgroup exclusions |
 | S9 | "One run against every host currently present" | aggregate event + `--limit-hosts` |
 
-Each phase below names the scenarios it must demonstrate.
+Each phase below names the scenarios it must demonstrate. **S2 is retired by
+operator decision (2026-09-26): exocomp does not manage cert lifecycle**, so
+cert expiry is not a scenario; the `tls` kind stays as a general capability.
 
 ---
 
