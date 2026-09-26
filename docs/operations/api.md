@@ -72,7 +72,7 @@ GET /api/v1/approvals/{id}/plan                 # structured redacted diff (oper
 GET /api/v1/approvals/stream                    # SSE, snapshot-on-connect + on-change
 GET /api/v1/schedules
 GET /api/v1/netgroups                         # [{id, name, prefixes, excludes}]
-GET /api/v1/checks                            # per target: status + netgroup + duration + last_change; aggregate/min_up on the check
+GET /api/v1/checks                            # per target: status + netgroup + duration + last_change
 GET /api/v1/rules                             # playbook action carries source/playbook/limit/tags/check/diff/timeout
 GET /api/v1/silences?all=                       # active-only unless all=true
 GET /api/v1/mutes?all=                           # notify-layer mutes; active-only unless all=true
@@ -211,10 +211,7 @@ belongs to another kind is a `400`. The update body carries `targets` (required)
 and an optional `interval`; the kind is fixed, and a target whose name is kept
 keeps its state row. Creates and updates return `check.get`, deletes return `204`,
 and an unknown name is a `404`. A duplicate check or netgroup name is a `409`
-`duplicate`; a bad name, target, or interval is a `400`. The read projection
-carries the check's `aggregate`/`min_up` and never lists the reserved `*` rollup
-row as a target; the aggregate config is set from the CLI, MCP, or the `/checks`
-page.
+`duplicate`; a bad name, target, or interval is a `400`.
 
 The netgroup body is `{name, prefixes}`, where `prefixes` is the CLI's
 comma-separated CIDR list (`home` = `192.168.0.0/16,!192.168.5.0/24`; a

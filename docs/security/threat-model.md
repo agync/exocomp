@@ -187,12 +187,6 @@ numbered T30+ to avoid renumbering the existing catalog.
   which re-checks the connected IP, so a re-pointed name is refused. The name is otherwise
   trusted, and the check carries no credential, so a hostile-but-public target yields a
   down/up boolean only.
-- **Inventory group names are invisible to the `--limit-hosts` guard —** the guard refuses the
-  reserved `all`/`ungrouped`, a leading `-`, an invalid name, and any host that is not a
-  declared target name (`internal/service/reactiveplaybook.go`). It cannot see the inventory
-  itself, so an inventory GROUP whose name collides with a declared target name still passes
-  and widens `--limit` to that group. Target names must therefore be inventory hostnames, not
-  group names; enforcing that needs the inventory, which the daemon does not hold.
 
 ## Daemon surface
 

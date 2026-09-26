@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-09-26 — aggregate check events removed
+
+- **The opt-in aggregate check feature is removed.** A check no longer carries
+  `aggregate`/`min_up`, the sweep no longer derives a check-level rollup or its
+  reserved `*` `check_state` row, `reactive.Event` no longer carries `Hosts` /
+  `event.hosts`, and a `playbook` rule no longer accepts `--limit-hosts`.
+  Per-host events are simpler to reason about and debug, and the "one run over
+  the present host set" capability was not wanted
+  ([ADR 0019](../adr/0019-aggregate-check-events-removed.md)).
+- **Migration 0041 stays.** `check_row.aggregate`/`min_up` remain as inert
+  schema: the file is forward-only, and deleting it would make a database
+  already at `user_version` 41 unreadable by the binary. ADR 0018 is superseded
+  by ADR 0019.
+
 ## 2026-09-25 — probe guard on every dialing kind, and honest residuals
 
 - **Every dialing check kind refuses the loopback class.** `tcp`, `ping`, and

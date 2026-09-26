@@ -7,11 +7,12 @@ Implemented (the shipped subset): netgroups and webhook peer stamping (§4.1,
 transition-only emission, N-consecutive hysteresis, and cold-start seeding
 (§4.2, §5) — and the governed `playbook` rule action (§7). The web ships
 netgroup and check pages and a read-only rules page; rule mutation stays
-CLI. Deferred, not built: the
-set-event / `--limit-hosts` expansion (§7.4), the presence shim (§8.2), a web
-rule-builder, and run-secrets/vault on rules. Where the shipped code diverges
-from this proposal, code wins and the correction is recorded in
-`docs/log.md`.
+CLI. The set-event host-set expansion (§7.4) was later built and then removed
+by operator decision; see
+[ADR 0019](../adr/0019-aggregate-check-events-removed.md). Still not built: the
+presence shim (§8.2), a web rule-builder, and run-secrets/vault on rules. Where
+the shipped code diverges from this proposal, code wins and the correction is
+recorded in `docs/log.md`.
 
 ---
 
@@ -245,7 +246,6 @@ type RuleAction struct {
     Source   string   `json:"source,omitempty"`     // registered source name
     Playbook string   `json:"playbook,omitempty"`   // path under the source checkout
     Limit    string   `json:"limit,omitempty"`      // fixed host pattern (validated)
-    LimitHosts bool   `json:"limit_hosts,omitempty"` // expand to the event's hosts list (deferred, §7.4)
     Tags     []string `json:"tags,omitempty"`
     Check    bool     `json:"check,omitempty"`
     Diff     bool     `json:"diff,omitempty"`
@@ -258,14 +258,14 @@ limit/tags through the existing `AnsiblePassthrough` validation,
 `service/ansible.go:35`), so a rule that would never run is refused at write time
 — the same discipline `rule add` already applies to CEL compile.
 
-### 4.4 An optional `hosts` field on events — deferred
+### 4.4 An optional `hosts` field on events — removed
 
 A set-event (one event carrying every present target, so one run can cover the
-whole present subset) is **deferred to a later phase** (§7.4). Phase 2 ships
-per-target events only, so the normalized `Event` (`event.go:35`) gains no
-`hosts` field yet. When the set-event is built, `Hosts []string` (omitempty) is
-populated **only** by sweep sources, exposed to CEL as `event.hosts`, and a
-webhook source never sets it.
+whole present subset) was proposed here and later built, then removed by
+operator decision. Phase 2 ships per-target events only, and the normalized
+`Event` (`event.go:35`) carries no host-set field. For the removal and its
+rationale see
+[ADR 0019](../adr/0019-aggregate-check-events-removed.md).
 
 ---
 
@@ -421,8 +421,8 @@ the playbook against every host the checkout's inventory names, a blast radius
 the queue guardrails do not bound: default-deny, matching the repo's posture.
 In the shipped phase a per-target event means exactly one thing to run:
 `event.host`; the rule pins its own target(s) at add time. Nothing expands an
-event value into argv; the set-expansion (`--limit-hosts`, `event.hosts`) is
-deferred to §7.4.
+event value into argv; the set-event expansion was proposed for §7.4 and is now
+removed (ADR 0019).
 
 The CLI flag is `--repo-source` for the playbook's registered source, because
 `--source` is already taken by a rule's event-source filter (`cmd/exocomp/rule.go:133`);
@@ -436,17 +436,15 @@ carries the run's job id through the existing `gateAction` path
 (`engine.go:337`). The resolve → withdraw path (§5.2) covers a check that clears
 while an approval is pending.
 
-### 7.4 Deferred: the set-event and `--limit-hosts`
+### 7.4 Removed: the set-event host-set expansion
 
 The headline case is per-target — `event.host` is the laptop, the run covers the
-laptop. The set model (one event per transition carrying the full present set,
-expanded into `--limit <present,...>`) serves the narrower, unproven "run over
-exactly the present subset" need, and costs an `Event.Hosts` field plus an
-expansion and validation path in the load-bearing phase. Defer it. If it is
-built, the trusted-source line (§3.3) holds: only daemon-produced sweep events
-carry `hosts`, the expansion validates every name against the rule-bound check's
-own target set before argv is built, and a rule whose `--source` is a webhook
-source is refused at add time.
+laptop. A set model (one event per transition carrying the full present set,
+expanded into a fixed host pattern) served the narrower "run over exactly the
+present subset" need. It was designed here, later built, and then removed by
+operator decision: per-target rules cover the operator's cases, and the set
+model's extra field plus expansion and validation path were not wanted. See
+[ADR 0019](../adr/0019-aggregate-check-events-removed.md).
 
 ---
 
@@ -560,10 +558,10 @@ ship.
 - **Phase 3 — presence shim (optional).** The `presence` webhook source, the
   shipped shim under `packaging/presence/`, debounce, and the HMAC-signing
   discipline. Only for hosts a probe cannot reach.
-- **Phase 4 — set-event (deferred; build only if a real need appears).** One
-  event per transition carrying the full present set, `Event.Hosts`, and the
-  `--limit-hosts` expansion under the §3.3 trusted-source line. The headline
-  case does not need it (§7.4).
+- **Phase 4 — set-event (built then removed).** A set event carrying the full
+  present set and its host-pattern expansion was proposed here, later built, and
+  removed by operator decision (ADR 0019). The headline case does not need it
+  (§7.4).
 
 ---
 
@@ -582,6 +580,5 @@ ship.
 - **Cooldown keying** (§5.5): resolved. Migration `0031_rule_fire_dedup.sql`
   adds the `rule_fire.dedup_key` column; sweep-source rules key cooldown off
   the event's dedup key (`check:<check>:<target>`), webhooks stay per-rule.
-- **Set-event / `--limit-hosts`** (§7.4): deferred in favor of per-target
-  events. Build the set model only if "one run over the present subset" turns
-  out to be a real need.
+- **Set-event host-set expansion** (§7.4): designed, built, then removed by
+  operator decision in favor of per-target events (ADR 0019).

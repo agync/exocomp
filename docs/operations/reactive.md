@@ -288,28 +288,6 @@ observation — no state advances, nothing emits — so the daemon's own uplink
 loss cannot page for every target at once. The canary is a bare dial; empty
 disables it.
 
-A check can opt into a check-level aggregate (`check_row.aggregate`, with
-`min_up` the threshold and `0` meaning every target). When set, each sweep also
-derives one transition from the present set — the target names that read up —
-reading up once that count reaches the threshold, under the same 3-consecutive
-hysteresis and cold-start seeding as a target. The rollup's state is one
-`check_state` row under the reserved target name `*`; on a declared transition
-it emits one event keyed `check:<check>:aggregate` with `host=""`,
-`labels.aggregate="true"`, `labels.up`, `labels.total`, and `hosts` = the sorted
-present target names. A snooze suppresses the aggregate event exactly as it does
-a per-target one. `hosts` is the trusted-source line (design §3.3): only a
-daemon-produced sweep event carries it — a webhook body never sets it, so no
-rule can be made to run over an attacker-supplied host set. The reserved `*`
-rollup state row is never a probe target: the metrics gauges and every check
-view (CLI, web, API, MCP) skip it, so it cannot appear as a target or be
-counted twice.
-
-Turn the aggregate on with `exocomp check add <name> ... --aggregate --min-up N`
-(or edit it on the `/checks` page; `N` is bounded to `0..len(targets)`, `0`
-meaning every target). `check list` carries an AGGREGATE column, `rule list`
-shows the action, and `check_add`/`check_update` take `aggregate`/`min_up`. A
-rule can then run over exactly the present subset — see `--limit-hosts` below.
-
 Every dialing check kind refuses the addresses a check must not reach. `tcp`,
 `ping`, and `tls` apply the same guard the `http` client already did: loopback,
 link-local unicast (covering the cloud metadata address), unspecified, and
@@ -356,35 +334,6 @@ un-limited rule would run against every host the inventory names). A check
 rule's cooldown keys off `check:<check>:<target>`, so each target of a
 multi-target check gets its own slot while webhook rules stay per-rule.
 
-A rule may instead derive the limit from the event's host set:
-
-```sh
-exocomp rule add present-update \
-  --source check \
-  --expr 'event.name == "at-home" && event.labels["aggregate"] == "true"' \
-  --action playbook --repo-source ops --playbook playbooks/update.yml \
-  --limit-hosts --cooldown 1h
-```
-
-`--limit-hosts` expands `--limit` to exactly the event's `hosts`, escaping the
-"run over the present subset" from a fixed pattern. It is refused unless the
-rule's event filter is `--source check` and the action is `playbook`, a rule
-without a host set is refused rather than run un-limited, and the builder checks
-every host against the named check's own target set before argv exists — so
-only a daemon-produced sweep event, whose names come from real probes, can shape
-the run. Because `--limit` is an ansible *pattern*, not a name, the builder also
-refuses the reserved magic names `all` and `ungrouped` (case-insensitively) and
-any host beginning with `-`, so a declared target literally named one of those
-can never widen the run to the whole inventory or fill the value slot with a
-flag. A fixed `--limit` and `--limit-hosts` are mutually exclusive.
-`rule list` shows `(limit: event hosts)` for such a rule.
-
-The guard cannot see the inventory itself, so it cannot detect an inventory
-**group** whose name collides with a declared target name: that still passes and
-widens `--limit` to the group. Target names must therefore be inventory
-hostnames, not group names. This residual is recorded in
-[security/threat-model.md](../security/threat-model.md).
-
 The web surfaces it across the UI. **Netgroups** is a tab on the **Checks**
 page (the standalone `/netgroups` page now 302s to `/checks?tab=netgroups`),
 and the API reads them at `/api/v1/netgroups` and `/api/v1/checks`; the web
@@ -418,7 +367,7 @@ live estate round-trips through git and a fresh box converges from one file:
 reads only its own. Output is ordered by name, so a re-export diffs cleanly.
 
 A check row carries `name`, `kind`, `interval` (a Go duration), `enabled`,
-`aggregate`, `min_up`, and its `targets` with each kind's own fields — tcp/ping
+and its `targets` with each kind's own fields — tcp/ping
 `address`+`port`, http `url`+`expect`, tls `address`+`port`+`min_days`, dns
 `dns_name`+`expect_addr`, metric `url`+`op`+`value`. A netgroup row carries
 `name`, `includes`, and `excludes`. An omitted `enabled` starts the check

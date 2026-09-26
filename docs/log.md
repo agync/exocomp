@@ -6,6 +6,18 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-09-26 — aggregate check events removed
+
+- Removed the opt-in aggregate-check surfaces from
+  [operations/reactive.md](operations/reactive.md), [operations/mcp.md](operations/mcp.md),
+  and [operations/api.md](operations/api.md); the now-moot `--limit-hosts` residual is dropped
+  from [security/threat-model.md](security/threat-model.md).
+  [ADR 0018](adr/0018-aggregate-check-events.md) is superseded by
+  [ADR 0019](adr/0019-aggregate-check-events-removed.md).
+- `check_row.aggregate`/`min_up` and migration
+  [0041](../internal/store/migrations/0041_check_aggregate.sql) remain as inert
+  schema; no drop-column migration is added.
+
 ## 2026-09-26 — exocomp does not manage cert lifecycle
 
 - The v1.1 roadmap's R2 framed cert-expiry checks as including "exocomp's OWN web-UI

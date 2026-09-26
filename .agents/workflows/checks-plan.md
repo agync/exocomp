@@ -26,14 +26,18 @@ from it (lane-brief-authoring), in the `mNN` style but as a post-v1 program.
 - **C3 — landed** (netgroup exclusions, `update`/`show`/`usage`, reserved
   `away`, unified `labels["netgroup"]` for webhooks and checks).
 - **C4 — landed** (MCP read/probe/write tools + `/api/v1` write routes).
-- **C5 — landed, opt-in** (migration 0041 aggregate config; aggregate event with
-  `Hosts`; governed `--limit-hosts` expansion validated against the named
-  check's target set; reserved `*` state row filtered).
+- **C5 — removed (2026-09-26, operator decision)** (was: migration 0041
+  aggregate config; aggregate event with `Hosts`; governed `--limit-hosts`
+  expansion; reserved `*` state row). Per-host events are simpler to reason
+  about and debug, and the "one run over the present target set" capability is
+  not wanted; see [ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md).
+  Migration 0041 and its two columns stay as inert schema.
 - **C6 — landed** (`check/netgroup export` + `apply -f`, idempotent, `--prune`
   confirmed; apply preflights every row before writing).
 
-**Not yet exercised (needs the operator's homelab):** S9's "one run over the
-present subset" dogfood. C5 is default-off until S9 is shown useful.
+**S9 retired (2026-09-26):** the "one run over the present subset" dogfood was
+not wanted; C5 and its aggregate/`event.hosts`/`--limit-hosts` surfaces are
+removed.
 
 **S2 dropped by operator decision (2026-09-26):** exocomp does not manage cert
 lifecycle. Tailscale and the reverse proxy renew their own certs, and exocomp's
@@ -44,19 +48,18 @@ dogfood or days-to-expiry ladder is required.
 
 ### Post-program closure
 
-- **ADRs 0017/0018** record the shared probe vocabulary and the opt-in aggregate
-  event with governed `--limit-hosts`.
+- **ADRs 0017/0018/0019** record the shared probe vocabulary, the opt-in
+  aggregate event with governed `--limit-hosts` (0018), and its removal (0019).
 - **Functional gaps closed:** `duration_ms` on check transition events (the
-  "up but slow" rule signal), `check list --netgroup`, API write parity for
-  `aggregate`/`min_up`, `wire.RuleView.limit_hosts`, `--check-canary` `ip:port`
+  "up but slow" rule signal), `check list --netgroup`, `--check-canary` `ip:port`
   validation, and one `internal/checkprobe` runner replacing the CLI/MCP/API
   duplication.
 - **MCP comprehension audit** (naive readers, then re-test): the dangerous
   misreads — `probe_check` as inert, `check_rm` vs `check_disable`, snooze
   replay, `away`/rename semantics — are resolved; descriptions rewritten.
 - **Security red/blue:** three findings fixed and mutation-checked — (F1)
-  `--limit-hosts` refuses `all`/`ungrouped`/leading-dash, with the inventory
-  group-name residual recorded; (F2) the address-class guard now covers
+  `--limit-hosts` refuses `all`/`ungrouped`/leading-dash (the feature was later
+  removed, taking the residual with it); (F2) the address-class guard now covers
   tcp/tls/ping, and a hostless tls address is refused; (F3) the config-write
   actor gap is recorded as a residual. Threat model T36 broadened.
 - Full `make check-race` green on the combined `main`.
@@ -106,7 +109,7 @@ A phase is **not done** because tests are green. It is done when:
 | S6 | "Let the agent list/probe a check" | MCP + write API parity |
 | S7 | "Watch checks in Grafana, not a second dashboard" | `/metrics` gauges |
 | S8 | "Home, except the guest VLAN" | netgroup exclusions |
-| S9 | "One run against every host currently present" | aggregate event + `--limit-hosts` |
+| S9 | ~~"One run against every host currently present"~~ — retired, C5 removed | ~~aggregate event + `--limit-hosts`~~ |
 
 Each phase below names the scenarios it must demonstrate. **S2 is retired by
 operator decision (2026-09-26): exocomp does not manage cert lifecycle**, so
@@ -140,9 +143,10 @@ cert expiry is not a scenario; the `tls` kind stays as a general capability.
   and emits no event; it is a read-scope operation on every face.
 - **D4 — netgroup persistence.** `check_state` gains the classified group;
   classification at sweep time is authoritative.
-- **D5 — aggregate semantics** (C5 only): a check-level event keyed
-  `check:<check>:aggregate`; `Event.Hosts` populated only by sweep sources,
-  per the trusted-source line in the design (§3.3, §7.4).
+- **D5 — aggregate semantics (removed).** C5 defined a check-level event keyed
+  `check:<check>:aggregate` with `Event.Hosts` populated only by sweep sources.
+  Removed by operator decision (2026-09-26); see
+  [ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md).
 - **D6 — migration reservation.** Numbers 0037+ are reserved to this program;
   each lane claims one at brief time, never renumbers. Every introduction
   migration carries a pinned in-place-upgrade test (`migration-authoring`).
@@ -291,21 +295,15 @@ persistence; `make check-race`.
 - **Note:** `verify` already has no MCP surface; keep the two probe surfaces
   consistent or explicitly document why.
 
-### C5 — aggregate checks + set-event (large, breaking, D5)
+### C5 — aggregate checks + set-event (removed)
 
-- Check-level aggregate (`--min-up N` / all), one `check:<check>:aggregate`
-  event, and the deferred `Event.Hosts` + `--limit-hosts` expansion under the
-  trusted-source line.
-- New dedup/cooldown keying for the aggregate (the per-source split in the
-  design §5.5 does not cover it).
-- **Scenarios:** S9.
-- **Usefulness check:** the "one run over the present subset" need must be
-  demonstrated on real hosts before the lane branches — if per-target rules
-  already cover the operator's cases, **kill C5** (the research flagged it as
-  unproven).
-- **Gate:** a multi-target check raising exactly one aggregate event; a
-  `--limit-hosts` run covering exactly the present set; a forged resolve cannot
-  widen it.
+- **Removed 2026-09-26 by operator decision** ([ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md)):
+  the check-level aggregate (`--min-up`), the `check:<check>:aggregate` event,
+  `Event.Hosts`, and the governed `--limit-hosts` expansion are gone. Migration
+  0041 stays as inert schema.
+- Original intent: check-level aggregate (`--min-up N` / all), one
+  `check:<check>:aggregate` event, and the deferred `Event.Hosts` +
+  `--limit-hosts` expansion under the trusted-source line; S9 was its scenario.
 
 ### C6 — config as code (medium, non-breaking)
 
@@ -327,7 +325,7 @@ persistence; `make check-race`.
 | C2 | probe-core, kinds | `internal/probe/**`, `internal/verify/**`, migration, `internal/store/check.go` |
 | C3 | netgroup | `internal/store/netgroup.go`, `cmd/exocomp/netgroup.go`, `internal/reactive/checks.go` labels |
 | C4 | mcp, api | `internal/mcp/**`, `internal/web/api_write.go` |
-| C5 | aggregate | `internal/reactive/checks.go`, `internal/store/rule.go`, migration |
+| C5 | aggregate | removed 2026-09-26 (was: `internal/reactive/checks.go`, `internal/store/rule.go`, migration) |
 | C6 | apply | `cmd/exocomp/check.go`, `cmd/exocomp/netgroup.go`, `internal/probe/**` schema |
 
 C0 is a natural single-wave parallel set (disjoint files). C2/C3 touch
@@ -337,12 +335,12 @@ C0 is a natural single-wave parallel set (disjoint files). C2/C3 touch
 
 ```
 C0 (parallel) ─▶ C1 ─▶ C2 ─▶ C3 ─▶ C4 ─▶ C6
-                         └▶ C5 (only if S9 is proven useful first)
+                         └▶ C5 (removed 2026-09-26)
 ```
 
 C0 alone is a shippable improvement to the status quo and should land
-regardless. C2 is the gating architectural decision. C5 is explicitly optional
-pending S9.
+regardless. C2 is the gating architectural decision. C5 was optional pending
+S9 and is now removed.
 
 ## 8. Risks and kill criteria
 
@@ -352,8 +350,8 @@ pending S9.
   plan review finds the migration risk exceeds the S2 value.
 - **Probe kinds without demand.** S2 is the proof; if cert-expiry is already
   covered by healthchecks.io, drop `tls`.
-- **C5 is speculative.** The design deferred it for a reason. Prove S9 first
-  or skip.
+- **C5 was speculative, and was removed.** Contracted, then retired by operator
+  decision (2026-09-26): per-target rules cover the operator's cases.
 - **Scope creep into a full observability product.** Non-goal: retention,
   dashboards, alerting rules of our own. We emit gauges and events; Prometheus
   and the rules layer do the rest.
@@ -363,4 +361,5 @@ pending S9.
 1. Which phases are in scope for the first program — C0 alone, C0+C1+C3+C4, or
    the full set?
 2. D1/D2 (shared probe, breaking migration) now, or after C0 proves the demand?
-3. Is S9 (aggregate / `--limit-hosts`) real, or do we kill C5?
+3. ~~Is S9 (aggregate / `--limit-hosts`) real, or do we kill C5?~~ Resolved
+   2026-09-26: C5 is removed.
