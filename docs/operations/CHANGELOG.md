@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-05 — the dashboard queue card fits a narrow desktop
+
+- **The LAST N RUNS rows no longer overlap on a narrow laptop window.** The queue
+  row's desktop grid used fixed `200px 170px 130px 90px` columns around a bare
+  `1fr` PLAYBOOK track, so below ~1250px the playbook column collapsed to ~0, its
+  title wrapped, and the row's fixed `height: 56px` let the content spill over the
+  next row. The columns now give the playbook a 140px floor and let the rest
+  shrink, the row grows to its content (`height: auto; min-height: 56px`), and the
+  cell facts ellipsize instead of wrapping.
+
 ## 2026-09-26 — aggregate check events removed
 
 - **The opt-in aggregate check feature is removed.** A check no longer carries
