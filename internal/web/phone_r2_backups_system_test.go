@@ -128,16 +128,13 @@ func TestPhoneBackupsAddOneLink(t *testing.T) {
 	}
 }
 
-// TestPhoneDrawerBodyReservesFooter is the R10 gate for the launch drawer: the
-// sticky footer is constrained to its containing block (the `form.writeform`),
-// so the reservation must live on the form. A body-level reservation sits
-// outside that box, letting the footer pin 96px above the scrollport bottom and
-// exposing the privileged description. The last control (the `Run as allowed…`
-// toggle row) must never hide under the footer, and the footer must pin to the
-// panel bottom. Scoped to the 719 block so a base-sheet placement (a permanent
-// desktop gutter) cannot pass. The MUTATION — restoring the body reservation —
-// reds this.
-func TestPhoneDrawerBodyReservesFooter(t *testing.T) {
+// TestPhoneDrawerFooterIsAFlexSibling is the R10 gate for the launch drawer:
+// the Queue run footer is a DIALOG SIBLING below the scroll body, not a sticky
+// child of the form. The body is the flex scroll area, so its viewport ends
+// where the footer begins and the last control (the `Run as allowed…` toggle
+// row) can never hide under the footer at any scroll position. Scoped to the
+// 719 block. The MUTATION — a sticky form-child footer — reds this.
+func TestPhoneDrawerFooterIsAFlexSibling(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -150,16 +147,15 @@ func TestPhoneDrawerBodyReservesFooter(t *testing.T) {
 	}
 	block := app[i:]
 	for _, want := range []string{
-		".modal.drawer .modal-body { padding-bottom: 0; }",
-		".modal.drawer .modal-body .writeform { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }",
+		".modal.drawer .modal-body { padding-bottom: 12px; }",
+		".modal.drawer .drawer-actions { flex: none;",
 	} {
 		if !strings.Contains(block, want) {
-			t.Errorf("the 719 block must reserve the drawer footer on the form %q", want)
+			t.Errorf("the 719 block must make the drawer footer a flex sibling of the scroll body %q", want)
 		}
 	}
-	old := ".modal.drawer .modal-body { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }"
-	if strings.Contains(app, old) {
-		t.Errorf("the body-level footer reservation must be gone %q", old)
+	if strings.Contains(app, ".modal.drawer .drawer-actions { position: sticky;") {
+		t.Error("the sticky drawer footer must be gone (the footer is a flex sibling)")
 	}
 }
 
