@@ -114,7 +114,7 @@ templ sourceDetail(vm sourceDetailVM) {
 						>Command</button>
 					</div>
 					<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
-						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/playbook")) } class="writeform">
+						<form id="launch-pb-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/playbook")) } class="writeform">
 							<label for="rp-select">Playbook</label>
 							if len(vm.Playbooks) == 0 {
 								<select id="rp-select" name="playbook" disabled aria-invalid?={ vm.playbookRefused() } aria-describedby="rp-select-meta">
@@ -178,16 +178,10 @@ templ sourceDetail(vm sourceDetailVM) {
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
-							<div class="drawer-actions">
-								<div class="actions">
-									<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
-								</div>
-								<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
-							</div>
 						</form>
 					</div>
 					<div id="panel-command" class="tabpanel" role="tabpanel" aria-labelledby="tab-command" hidden?={ vm.Tab != "command" }>
-						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/command")) } class="writeform">
+						<form id="launch-cmd-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/run/command")) } class="writeform">
 							@fieldInput(vm.RunForm.hostField())
 							@fieldInput(vm.RunForm.commandField())
 							@toggle("shell", "run through the shell module (pipes/redirects)", vm.toggleState("shell"), false)
@@ -203,12 +197,6 @@ templ sourceDetail(vm sourceDetailVM) {
 								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
-							<div class="drawer-actions">
-								<div class="actions">
-									<button type="submit" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
-								</div>
-								<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
-							</div>
 						</form>
 					</div>
 					<script>
@@ -222,12 +210,27 @@ templ sourceDetail(vm sourceDetailVM) {
 								var panel = document.getElementById(t.getAttribute("aria-controls"));
 								if (panel) panel.hidden = !on;
 							});
+							Array.prototype.slice.call(document.querySelectorAll('#launch [data-foot]')).forEach(function (f) {
+								f.hidden = f.getAttribute("data-foot") !== key;
+							});
 						}
 						tabs.forEach(function (t) {
 							t.addEventListener("click", function () { select(t.getAttribute("data-tab")); });
 						});
 					})();
 					</script>
+				</div>
+				<div class="drawer-actions" data-foot="playbook" hidden?={ vm.Tab != "playbook" }>
+					<div class="actions">
+						<button type="submit" form="launch-pb-form" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+					</div>
+					<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
+				</div>
+				<div class="drawer-actions" data-foot="command" hidden?={ vm.Tab != "command" }>
+					<div class="actions">
+						<button type="submit" form="launch-cmd-form" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+					</div>
+					<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 				</div>
 			</dialog>
 		}

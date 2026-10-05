@@ -1204,7 +1204,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   border-radius: 0;
   border: 0; border-left: 1px solid var(--hairline);
 }
-.modal.drawer .modal-body { padding: 6px 20px 24px; }
+.modal.drawer .modal-body { flex: 1 1 auto; padding: 6px 20px 24px; }
 /* The drawer's Options fold holds the run-option toggles/timeout below the
  * primary fields; the privileged escalation sits in its own fail-tinted block
  * so it reads as the sharp edge it is, never a plain option. */
@@ -2151,20 +2151,13 @@ body { overflow-x: clip; }
    * so the queue contract stays visible while the long form scrolls. The
    * safe-area inset keeps the sticky footer off a notched screen's home
    * indicator. */
-  .modal.drawer { inset: 0 0 36px auto; height: auto; }
-  /* R10: the sticky footer is constrained to its containing block (the
-   * form.writeform), so the reservation must sit on the form — a body-level
-   * reservation falls outside that box, and the footer pins 96px above the
-   * scrollport bottom, exposing the privileged description. The form reserves
-   * the footer's height (button + foot + padding) plus the safe-area inset so
-   * the last control never hides under the footer. */
-  .modal.drawer .modal-body { padding-bottom: 0; }
-  .modal.drawer .modal-body .writeform { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
-  /* The Queue run primary is the drawer's sticky footer: pinned to the panel
-   * bottom so the long form scrolls under it and the verb never scrolls below
-   * the panel (or under the 36px powerline foot). The safe-area inset pads it
-   * off a notched home indicator. */
-  .modal.drawer .drawer-actions { position: sticky; bottom: 0; z-index: 1; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card); border-top: 1px solid var(--hairline-faint); }
+  .modal.drawer { inset: 0 0 36px auto; height: auto; max-height: none; }
+  /* R10: the drawer is a flex column — the body is the scroll area and the
+   * footer is its sibling BELOW it, not a sticky child of the form. The body's
+   * viewport ends where the footer begins, so the last field group (the
+   * privileged block) can never hide under the footer at any scroll position. */
+  .modal.drawer .modal-body { padding-bottom: 12px; }
+  .modal.drawer .drawer-actions { flex: none; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card); border-top: 1px solid var(--hairline-faint); }
   .modal.drawer .drawer-actions .actions { margin-top: 0; }
   .modal.drawer .drawer-foot { margin-top: 8px; }
   /* The drawer's bare inputs keep the standard control height whether empty or
