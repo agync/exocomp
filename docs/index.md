@@ -60,7 +60,7 @@ Standing it up and getting it back — [operations/index.md](operations/index.md
 
 | Page | Covers |
 |---|---|
-| [Bootstrap](operations/bootstrap.md) | `install.sh`, the six-screen idempotent wizard, node-zero self-management, adoption runbooks |
+| [Bootstrap](operations/bootstrap.md) | The image + Quadlet deploy, the six-screen idempotent wizard, node-zero self-management, the separately versioned `recovery.sh`, adoption runbooks |
 | [Containers](operations/containers.md) | The base image and what it carries, running it as shipped, inheriting to add system packages or Python dependencies, offline and multi-arch builds, and capturing an operator's image for recovery |
 | [Running the daemon](operations/serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and the daemon-aware CLI |
 | [Draining for a planned reboot](operations/drain-mode.md) | `exocomp drain` — cordon a running daemon, let in-flight work finish, poll "safe to reboot?", and list interrupted jobs afterwards |

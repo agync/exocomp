@@ -52,7 +52,7 @@ docs/            OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
 cmd/exocomp/     the single cobra binary (`exocompd` = alias for `exocomp serve`)
 internal/        service, api, queue, secrets, executor, tui, web
 api/             OpenAPI 3.1 spec + typed client package (the monorepo seam; created in M2)
-packaging/       Containerfile, quadlet, compose, install.sh (separately versioned)
+packaging/       Containerfile, quadlet, compose, recovery.sh (separately versioned)
 test/lima/       Fedora lima templates for dummy managed nodes + smoke tests
 ```
 

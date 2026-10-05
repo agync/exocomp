@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — the installer becomes recovery.sh
+
+- **`packaging/install.sh` is now `packaging/recovery.sh`.** Its `install` and
+  `rollback` modes were stubs (they only echoed "would …"; the real rollback is
+  the binary's `exocomp rollback`), and `harden-host-key` moved to
+  `docs/operations/bootstrap.md` as the documented one-off `systemd-creds` step.
+  What remains is the one thing that must stay out of the binary — the
+  invariant-7 bare-metal restore chain (delegating to `exocomp restore` when a
+  binary is present). The bootstrap docs now describe the real deploy (image +
+  Quadlet + `exocomp init`) instead of an installer that never installed.
+
 ## 2026-10-06 — drop the DCO file
 
 - **The root `DCO` file is gone.** The project certified contributions by the

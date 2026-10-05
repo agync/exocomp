@@ -69,7 +69,7 @@ For a real deployment, the installer drops rootless Podman Quadlet units (with a
 Docker Compose fallback) and runs the first-run wizard. It is versioned separately
 from `exocompd` so the recovery path never depends on the thing that broke. See
 [docs/operations/bootstrap.md](docs/operations/bootstrap.md) and
-[packaging/install.sh](packaging/install.sh).
+[packaging/recovery.sh](packaging/recovery.sh).
 
 ## Documentation
 

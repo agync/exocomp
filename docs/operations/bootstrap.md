@@ -4,23 +4,47 @@ Target: **under 10 minutes**, dominated by typing a git URL and printing the rec
 
 ## Install
 
-One command fetches the installer from `get.exocomp.dev`. Podman Quadlet is primary —
-rootless, systemd-native, journald, and a smaller blast radius for a box holding key
-material. A compose file ships as the fallback for Docker-only hosts (Synology, TrueNAS)
-and `install.sh` detects the engine and **states which tier it is on** rather than implying
-parity; see [the platform contract](../architecture/platform-contract.md).
+The deployment is the shipped image plus the Quadlet units. Podman Quadlet is
+primary — rootless, systemd-native, journald, and a smaller blast radius for a
+box holding key material. A compose file ships as the fallback for Docker-only
+hosts (Synology, TrueNAS); see
+[the platform contract](../architecture/platform-contract.md).
 
-The installer:
+On the host:
 
-1. drops the `exocomp.container` and `exocomp.volume` Quadlet units into the user's
-   systemd configuration and runs `loginctl enable-linger`,
-2. reloads and starts the unit,
-3. prints how to reach the interface — the local TUI, or SSH to the Wish listener.
+1. get the image — `podman pull ghcr.io/abn/exocomp:latest`, or on an air-gapped
+   box `podman load -i exocomp-image.tar` from the recovery set,
+2. drop `quadlet/exocomp.container` and `quadlet/exocomp.volume` into
+   `~/.config/containers/systemd/` and run `loginctl enable-linger`,
+3. `systemctl --user daemon-reload && systemctl --user start exocomp`,
+4. `exocomp init` (or the `setup` wizard) to create the identity and print the
+   recovery kit.
 
-`install.sh` is dependency-free POSIX shell needing only `curl` and `podman`, and it is
-**versioned separately from `exocompd`**. That separation is deliberate: the recovery path
-must not depend on the thing that broke. The same script carries `--restore` and
-`--rollback --image-tag <X>`.
+The recovery primitive is deliberately **not** "run the control plane": it is
+the separately versioned `recovery.sh` ([invariant 7](../../AGENTS.md)), which
+rebuilds a data dir from a backup with no exocomp code in the path — delegating
+to `exocomp restore` when a binary is present, and running the recovery card's
+hand chain (age → openssl HKDF → restic, sha256-verified) when it is not. Run
+`recovery.sh --help`. It is versioned separately on purpose: the recovery path
+must not depend on the thing that broke.
+
+### Host key at rest
+
+`exocomp init` writes `host.key` under the data volume. Move it into a systemd
+credential so a stolen volume holds only the opaque `host.key.cred` that is
+useless without the host secret (or the TPM):
+
+```sh
+# TPM 2 present (/dev/tpmrm0): seal to the TPM. Without one, --with-key=host
+# uses the systemd host secret. Either way the plaintext is removed.
+systemd-creds encrypt --name=host.key --with-key=host+tpm2 \
+  /var/lib/exocomp/host.key /var/lib/exocomp/host.key.cred
+rm -f /var/lib/exocomp/host.key
+```
+
+The quadlet's `LoadCredentialEncrypted=host.key:…` decrypts it back to
+`$CREDENTIALS_DIRECTORY/host.key` at start. If TPM sealing fails, retry with
+`--with-key=host`. This is a documented one-off, not a scripted mode.
 
 ## The wizard
 
@@ -49,7 +73,7 @@ logged, rollback-able job — and every upgrade takes a mandatory pre-upgrade sn
 ([amendment 3](../design/amendments.md#3-upgrade-and-rollback-of-the-control-plane-itself)).
 
 The *recovery* primitive is deliberately **not** "run the control plane". It is the
-separately versioned `install.sh`. Self-update is opt-in and never automatic: an unattended
+separately versioned `recovery.sh`. Self-update is opt-in and never automatic: an unattended
 bad update of the thing that manages everything else is a single point of failure for the
 whole homelab.
 

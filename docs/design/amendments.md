@@ -34,9 +34,7 @@ silently. This is within acceptable use for private repos at control-plane data 
 
 - Every upgrade takes a **mandatory automatic pre-upgrade snapshot** (full, all legs,
   tagged `pre-upgrade-<version>`); the upgrade job refuses to proceed if it fails.
-- `install.sh --rollback --image-tag <X>` restores that snapshot and pins the previous
-  image — tested in CI, and independent of `exocompd`, since the installer is separately
-  versioned.
+- `exocomp rollback` restores that snapshot and pins the previous image.
 - DB migrations stay forward-only, so **rollback = restore**, stated explicitly. The
   pre-upgrade snapshot is what makes that safe.
 - A scheduled **upgrade rehearsal** mirrors the restore drill: restore last night's

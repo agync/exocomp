@@ -113,9 +113,9 @@ podman save -o exocomp-image.tar <image-ref>
 
 and record the image ref and every source base digest in `RECOVERY.md`
 ([disaster recovery](disaster-recovery.md)). A registry tag may be used to
-install; recovery must not need it (invariant 7). `install.sh install
---image-load FILE --image-ref REF` loads the archive with the detected engine
-(`podman load -i`, or `docker load -i` on the Docker tier) before installing or
+install; recovery must not need it (invariant 7). `podman load -i FILE` (or
+`docker load -i FILE` on the Docker tier) loads the captured archive with the
+detected engine before the Quadlet units start.
 rolling back. The unit's `EXOCOMP_IMAGE` is what the daemon records, so the
 `image-ref:` line in `RECOVERY.md` and `exocomp doctor` name what actually runs.
 

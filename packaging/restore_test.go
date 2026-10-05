@@ -1,6 +1,7 @@
-// Package packaging holds the separately versioned installer. It carries no Go
-// code; this test drives install.sh, because the no-binary restore path is the
-// one piece of disaster recovery that cannot be checked by running exocomp.
+// Package packaging holds the separately versioned recovery script. It carries
+// no Go code; this test drives recovery.sh, because the no-binary restore path
+// is the one piece of disaster recovery that cannot be checked by running
+// exocomp.
 package packaging
 
 import (
@@ -81,12 +82,12 @@ func backupFixture(t *testing.T) (repo, identity string) {
 	return repo, identity
 }
 
-// runInstall runs install.sh with no exocomp binary reachable: neither
+// runRecovery runs recovery.sh with no exocomp binary reachable: neither
 // EXOCOMP_BIN nor anything named exocomp on PATH.
-func runInstall(t *testing.T, home string, args ...string) (string, error) {
+func runRecovery(t *testing.T, home string, args ...string) (string, error) {
 	t.Helper()
 
-	cmd := exec.Command("sh", append([]string{"install.sh"}, args...)...)
+	cmd := exec.Command("sh", append([]string{"recovery.sh"}, args...)...)
 	cmd.Env = []string{
 		"PATH=" + os.Getenv("PATH"),
 		"HOME=" + home,
@@ -97,66 +98,11 @@ func runInstall(t *testing.T, home string, args ...string) (string, error) {
 	return string(out), err
 }
 
-// runInstallPath is runInstall with a caller-chosen PATH, so a test can put a
-// stand-in podman ahead of the real one and assert the command line the
-// installer builds.
-func runInstallPath(t *testing.T, path, home string, args ...string) (string, error) {
-	t.Helper()
-
-	cmd := exec.Command("sh", append([]string{"install.sh"}, args...)...)
-	cmd.Env = []string{"PATH=" + path, "HOME=" + home, "TMPDIR=" + t.TempDir()}
-	out, err := cmd.CombinedOutput()
-	return string(out), err
-}
-
-// TestInstallShImageLoadAndRef: the two image flags reach the load command line
-// without a registry — a stand-in podman records what the installer ran — and
-// the run line names the ref the unit should use. Both flags belong to
-// install/rollback; a restore that silently swallowed them would load an image
-// the operator did not ask to run.
-func TestInstallShImageLoadAndRef(t *testing.T) {
-	if testing.Short() {
-		t.Skip("integration")
-	}
-	requireTools(t, "sh")
-
-	bin := t.TempDir()
-	fake := filepath.Join(bin, "podman")
-	if err := os.WriteFile(fake, []byte("#!/bin/sh\necho \"podman $*\"\n"), 0o755); err != nil {
-		t.Fatalf("write stand-in podman: %v", err)
-	}
-	archive := filepath.Join(t.TempDir(), "exocomp-image.tar")
-	if err := os.WriteFile(archive, []byte("stand-in archive"), 0o600); err != nil {
-		t.Fatalf("write archive: %v", err)
-	}
-	path := bin + ":" + os.Getenv("PATH")
-	home := t.TempDir()
-
-	out, err := runInstallPath(t, path, home,
-		"install", "--image-load", archive, "--image-ref", "ghcr.io/abn/exocomp:latest")
-	if err != nil {
-		t.Fatalf("install.sh install with image flags: %v\n%s", err, out)
-	}
-	if want := "podman load -i " + archive; !strings.Contains(out, want) {
-		t.Errorf("install.sh did not load the archive (want %q):\n%s", want, out)
-	}
-	if !strings.Contains(out, "image_ref=ghcr.io/abn/exocomp:latest") {
-		t.Errorf("install.sh did not name the image ref:\n%s", out)
-	}
-
-	out, err = runInstallPath(t, path, home, "restore", "--image-load", archive)
-	if err == nil {
-		t.Fatalf("install.sh restore accepted --image-load:\n%s", out)
-	}
-	if !strings.Contains(out, "only valid with install or rollback") {
-		t.Errorf("install.sh did not explain the refusal:\n%s", out)
-	}
-}
-
-// TestInstallShRestoresWithoutTheBinary is the claim the installer makes: an
-// operator who has the recovery key and the target, and nothing else, gets
-// their data dir back. It used to print "would restore" and exit 0.
-func TestInstallShRestoresWithoutTheBinary(t *testing.T) {
+// TestRecoveryShRestoresWithoutTheBinary is the claim the recovery script makes:
+// an operator who has the recovery key and the target, and nothing else, gets
+// their data dir back. It replaced an installer that printed "would restore" and
+// exited 0.
+func TestRecoveryShRestoresWithoutTheBinary(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
 	}
@@ -169,17 +115,17 @@ func TestInstallShRestoresWithoutTheBinary(t *testing.T) {
 	home := t.TempDir()
 	dest := filepath.Join(t.TempDir(), "restored")
 
-	out, err := runInstall(t, home, "restore", "--from", repo, "--dest", dest, "--identity", identity)
+	out, err := runRecovery(t, home, "--from", repo, "--dest", dest, "--identity", identity)
 	if err != nil {
-		t.Fatalf("install.sh restore: %v\n%s", err, out)
+		t.Fatalf("recovery.sh restore: %v\n%s", err, out)
 	}
 	if strings.Contains(out, "would restore") {
-		t.Fatalf("install.sh reported success without restoring:\n%s", out)
+		t.Fatalf("recovery.sh reported success without restoring:\n%s", out)
 	}
 
 	info, err := os.Stat(dest)
 	if err != nil {
-		t.Fatalf("install.sh exited 0 but created no data dir: %v\n%s", err, out)
+		t.Fatalf("recovery.sh exited 0 but created no data dir: %v\n%s", err, out)
 	}
 	if got := info.Mode().Perm(); got != 0o700 {
 		t.Errorf("restored data dir is %04o, want 0700", got)
@@ -206,11 +152,11 @@ func TestInstallShRestoresWithoutTheBinary(t *testing.T) {
 		t.Error("the restored secret row carries no ciphertext")
 	}
 	if strings.Contains(out, sealedValue) {
-		t.Error("install.sh printed the sealed plaintext")
+		t.Error("recovery.sh printed the sealed plaintext")
 	}
 }
 
-func TestInstallShRestoreFailsLoudly(t *testing.T) {
+func TestRecoveryShRestoreFailsLoudly(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
 	}
@@ -235,29 +181,29 @@ func TestInstallShRestoreFailsLoudly(t *testing.T) {
 	}{
 		{
 			name: "an identity that unwraps nothing",
-			args: []string{"restore", "--from", repo, "--dest", filepath.Join(home, "a"), "--identity", wrong},
+			args: []string{"--from", repo, "--dest", filepath.Join(home, "a"), "--identity", wrong},
 			want: "could not unwrap",
 		},
 		{
 			name: "no identity and no terminal to ask at",
-			args: []string{"restore", "--from", repo, "--dest", filepath.Join(home, "b")},
+			args: []string{"--from", repo, "--dest", filepath.Join(home, "b")},
 			want: "requires --identity",
 		},
 		{
 			name: "a target that is not a directory",
-			args: []string{"restore", "--from", "s3:https://nas.invalid/bucket",
+			args: []string{"--from", "s3:https://nas.invalid/bucket",
 				"--dest", filepath.Join(home, "c"), "--identity", identity},
 			want: "--keyring",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			out, err := runInstall(t, home, c.args...)
+			out, err := runRecovery(t, home, c.args...)
 			if err == nil {
-				t.Fatalf("install.sh exited 0:\n%s", out)
+				t.Fatalf("recovery.sh exited 0:\n%s", out)
 			}
 			if !strings.Contains(out, c.want) {
-				t.Errorf("install.sh did not say why it stopped (want %q):\n%s", c.want, out)
+				t.Errorf("recovery.sh did not say why it stopped (want %q):\n%s", c.want, out)
 			}
 			dest := c.args[len(c.args)-1]
 			if strings.HasPrefix(dest, home) {

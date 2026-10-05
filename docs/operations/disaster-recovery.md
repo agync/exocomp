@@ -142,8 +142,8 @@ image beside the backup, and load it on the new host:
 ```sh
 podman save -o exocomp-image.tar <image-ref>        # on the host that still runs it
 
-# on the new host, before installing or rolling back:
-install.sh install --image-load exocomp-image.tar --image-ref <image-ref>
+# on the new host: load the image, then the Quadlet units and `exocomp init`:
+podman load -i exocomp-image.tar   # or `podman pull <image-ref>` with a registry
 ```
 
 `--image-load` runs `podman load -i` (or `docker load -i` for the Docker tier) before
@@ -165,8 +165,8 @@ sequenceDiagram
     participant T as Any backup target
     participant C as exocompd
 
-    Op->>NH: install.sh --restore
-    Note over NH: installs podman + pulls the image<br/>NO exocompd running yet
+    Op->>NH: recovery.sh --from <target> --identity <key>
+    Note over NH: loads podman + the image<br/>NO exocompd running yet
     NH->>Op: prompt: backup target URI?
     Op->>NH: target URI from the kit
     NH->>T: fetch keyring.age (credential supplied by the operator; on the kit)

@@ -71,7 +71,7 @@ image pinned by digest like every other build input.
 | docker-compose file | — | fallback for Docker-only hosts, supported at a loudly degraded tier |
 | systemd-creds + TPM2 *(optional)* | LGPL/GPL (host) | TPM-sealed host age identity |
 | age-plugin-yubikey *(optional)* | MIT/Apache-2.0 | hardware recipient in the keyring |
-| `install.sh` | project | separately versioned bootstrap/restore/rollback — never depends on `exocompd` |
+| `recovery.sh` | project | separately versioned DR restore — never depends on `exocompd` |
 
 ## Layer 4 — operator-supplied services (composed, not shipped)
 
