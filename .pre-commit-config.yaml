@@ -1,8 +1,7 @@
-# Declarative gate layer (memory: standard pre-commit framework over custom
-# hook scripts). `make check` and `make check-race` stay the Go gates and run
+# The gate layer: `make check` and `make check-race` stay the Go gates and run
 # as repo-local system hooks; hygiene and commit-format come from standard
-# hooks. Install with `pip install pre-commit`; activation is
-# `git config core.hooksPath .agents/hooks`.
+# hooks. Activate once per clone with `pip install pre-commit && make hooks`
+# (which installs the pre-commit, pre-push, and commit-msg git hooks).
 # Run everything with `make check-hygiene` (pre-commit run --all-files).
 default_stages: [pre-commit]
 
@@ -42,7 +41,7 @@ repos:
         files: ^docs/
       - id: commit-msg-extras
         name: commit-msg extras (52 chars, no trailers, no emoji)
-        entry: .agents/hooks/commit-msg-extras.sh
+        entry: .agents/scripts/commit-msg-extras.sh
         language: system
         stages: [commit-msg]
       - id: make-check

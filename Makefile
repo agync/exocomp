@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build budgets check check-hygiene check-race clean fmt fmt-check help image lint test test-race tidy-check vet
+.PHONY: build budgets check check-hygiene check-race clean fmt fmt-check help hooks image lint test test-race tidy-check vet
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -23,6 +23,15 @@ check-race: fmt-check vet lint tidy-check test-race ## Run fmt-check, vet, lint,
 
 check-hygiene: ## Run all pre-commit framework hooks over every tracked file
 	pre-commit run --all-files
+
+# Install the git hooks the framework drives. Run once per clone after
+# `pip install pre-commit`. `core.hooksPath` (the old custom-dispatcher setup)
+# is cleared so git uses the installed hooks.
+hooks: ## Install the pre-commit git hooks (pre-commit, pre-push, commit-msg)
+	git config --unset core.hooksPath 2>/dev/null || true
+	pre-commit install
+	pre-commit install --hook-type pre-push
+	pre-commit install --hook-type commit-msg
 
 fmt: ## Format source files
 	gofmt -w -s .

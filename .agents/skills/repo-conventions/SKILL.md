@@ -32,13 +32,14 @@ file and `AGENTS.md` disagree, `AGENTS.md` wins.
 - Work only inside your assigned worktree; never touch the repo root, other
   worktrees, or push directly to `main`.
 
-## hooksPath activation
+## Hooks activation
 
 Commits are gated by the fast `make check` (fmt, vet, lint, tidy, `go test
--short`) and the commit-message rules above via hooks in `.agents/hooks/`; the
+-short`) and the commit-message rules above via the pre-commit hooks; the
 full `make check-race` (`-race ./...`) runs at pre-push and worktree merges.
-Activate them once per clone or worktree:
+Activate them once per clone:
 
 ```sh
-git config core.hooksPath .agents/hooks
+pip install pre-commit
+make hooks
 ```

@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — pre-commit's own hooks replace the custom dispatchers
+
+- **`.agents/hooks/` is gone.** The `pre-commit`/`pre-push`/`commit-msg` shims
+  were one-line `exec pre-commit run --hook-stage …` wrappers around the
+  framework; `pre-commit install` generates those itself. Activation is now
+  `pip install pre-commit && make hooks` (the new `make hooks` target, which
+  clears `core.hooksPath`) instead of `git config core.hooksPath .agents/hooks`.
+  The repo-specific `commit-msg-extras.sh` local hook moved to
+  `.agents/scripts/`.
+
 ## 2026-10-06 — the installer becomes recovery.sh
 
 - **`packaging/install.sh` is now `packaging/recovery.sh`.** Its `install` and
