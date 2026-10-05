@@ -7,9 +7,9 @@ How work lands in exocomp, and what gates it. The contract lives in
 
 - **AGENTS.md is the entrypoint.** The twelve invariants fail review, whatever
   the quality of the change otherwise. Read it before touching anything.
-- **Contributing certifies the [DCO](../../DCO).** Submitting work is the
-  certification; there is no `Signed-off-by` trailer — invariant 9 admits no
-  trailers at all.
+- **Contributing: no trailers.** Commits are logical units with conventional
+  titles; there is no `Signed-off-by` trailer — invariant 9 admits no trailers at
+  all.
 - **Docs move with the change** (invariant 8). `docs/` is an OKF v0.2 bundle;
   update it in the same commit series as the code it describes. If docs and
   code disagree, code wins and the correction lands in [log.md](../log.md).

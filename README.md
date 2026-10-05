@@ -86,10 +86,9 @@ The `docs/` tree is the reference for everything else:
 
 ## Contributing
 
-Contributions certify the [Developer Certificate of Origin](DCO); submitting work
-is the certification. Commits are logical units with conventional titles; `docs/`
-moves in the same commit series as the code it describes. See
-[AGENTS.md](AGENTS.md) for the full contract.
+Commits are logical units with conventional titles; `docs/` moves in the same
+commit series as the code it describes. See [AGENTS.md](AGENTS.md) for the full
+contract.
 
 ## License
 

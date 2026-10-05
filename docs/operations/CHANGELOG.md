@@ -6,6 +6,14 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — drop the DCO file
+
+- **The root `DCO` file is gone.** The project certified contributions by the
+  DCO's "submit = certify" reading, with no `Signed-off-by` trailer (invariant
+  9); with no outside contributions the file was dead weight. AGENTS.md,
+  README.md, and the contribution guide drop their references — invariant 9
+  still carries the no-trailer rule.
+
 ## 2026-10-06 — drop the .agents/bootstrap.sh setup shim
 
 - **`.agents/bootstrap.sh` is gone.** The one-command activation it wrapped —
