@@ -738,6 +738,35 @@ func TestDashboardQueuePhoneFormAppliesAfterBase(t *testing.T) {
 	}
 }
 
+// TestDashboardQueueRowFitsNarrowDesktop pins the queue card's desktop fit: the
+// fixed 200/170/130/90 columns plus a bare 1fr collapsed the PLAYBOOK track to
+// ~0 on a narrow laptop window (a 720-1099 full-width main), so the title
+// wrapped under the row's fixed 56px height and overlapped the next row. The
+// columns now give the playbook a 140px floor and let the rest shrink, the row
+// grows (height:auto), and the cells ellipsize. Layout is browser-verified; this
+// guard pins the rules.
+func TestDashboardQueueRowFitsNarrowDesktop(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	const cols = "grid-template-columns: minmax(0,200px) minmax(140px,1fr) minmax(0,170px) minmax(0,130px) minmax(0,90px);"
+	if got := strings.Count(app, cols); got != 2 {
+		t.Errorf("the queue rule and row must share the shrinkable columns with a playbook floor, found %d", got)
+	}
+	if strings.Contains(app, "grid-template-columns: 200px minmax(0,1fr) 170px 130px 90px;") {
+		t.Error("the queue grid still uses the fixed columns that collapse the playbook")
+	}
+	if !strings.Contains(app, ".queue-row .cell b, .queue-row .cell small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }") {
+		t.Error("the queue cells must ellipsize, not wrap")
+	}
+	if !strings.Contains(app, ".queue-row { display: grid;") || !strings.Contains(app, "min-height: 56px; height: auto;") {
+		t.Error("the queue row must grow to its content (min-height:56px; height:auto)")
+	}
+}
+
 // TestDashboardQueueRowsCapped pins the queue card's live-row glance ceiling:
 // the rows stop at the cap (queueRowsCap, six today), newest first, while the
 // section label still states the whole active set — the oldest queued age
