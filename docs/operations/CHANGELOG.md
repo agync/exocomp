@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-05 — the launch drawer footer sits below the scroll body
+
+- **The drawer's Queue run footer no longer overlays the form.** The sticky
+  footer was a child of each form inside the scrolling body, so at rest it sat on
+  top of the last field group (the privileged block). The footer is now a flex
+  sibling *below* the scroll body — the body's viewport ends where the footer
+  begins — so no field can hide under it at any scroll position, and the footer
+  stays pinned at the panel bottom. The submit button lives outside its form,
+  associated by id (`form="launch-…-form"`), and the tab switch toggles the
+  matching footer.
+
 ## 2026-10-05 — the dashboard queue card fits a narrow desktop
 
 - **The LAST N RUNS rows no longer overlap on a narrow laptop window.** The queue
