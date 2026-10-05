@@ -6,6 +6,16 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — drop the .agents/bootstrap.sh setup shim
+
+- **`.agents/bootstrap.sh` is gone.** The one-command activation it wrapped —
+  `git config core.hooksPath .agents/hooks` — is already the documented step
+  (AGENTS.md invariant 12, the contribution guide, the repo-conventions skill),
+  and no tooling invoked the script. Its other jobs (a local `CLAUDE.md` pointer
+  and `.claude/` agent/skill symlinks) are Claude-Code-local shims, not part of
+  the repo contract; the docs, the skill, and the pre-commit comment now name the
+  command directly.
+
 ## 2026-10-05 — the launch drawer footer sits below the scroll body
 
 - **The drawer's Queue run footer no longer overlays the form.** The sticky

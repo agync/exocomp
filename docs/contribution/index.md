@@ -25,8 +25,7 @@ How work lands in exocomp, and what gates it. The contract lives in
   -short`), and the commit-msg hook rejects a non-conventional or over-long
   title. The full race suite runs at pre-push and before merging a worktree
   (`make check-race`). Activate the hooks once per clone or worktree with
-  `git config core.hooksPath .agents/hooks` (`.agents/bootstrap.sh` does this
-  and more, idempotently).
+  `git config core.hooksPath .agents/hooks`.
 
 ## Worktree workflow
 

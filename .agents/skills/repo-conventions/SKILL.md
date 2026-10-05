@@ -42,6 +42,3 @@ Activate them once per clone or worktree:
 ```sh
 git config core.hooksPath .agents/hooks
 ```
-
-`.agents/bootstrap.sh` does this (and more) idempotently — run it instead of
-setting the config by hand.

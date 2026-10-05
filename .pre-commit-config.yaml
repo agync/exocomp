@@ -2,7 +2,7 @@
 # hook scripts). `make check` and `make check-race` stay the Go gates and run
 # as repo-local system hooks; hygiene and commit-format come from standard
 # hooks. Install with `pip install pre-commit`; activation is
-# `git config core.hooksPath .agents/hooks` (see .agents/bootstrap.sh).
+# `git config core.hooksPath .agents/hooks`.
 # Run everything with `make check-hygiene` (pre-commit run --all-files).
 default_stages: [pre-commit]
 
