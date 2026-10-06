@@ -740,15 +740,20 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
  * run/verdict cards are flex:none, the output card is flex:1 with its own
  * min-height:0, and the log box inside it is flex:1; overflow:auto. Result:
  * the log tail is always inside the viewport, ending above the powerline,
- * and the wheel scrolls the log, never the page. */
+ * and the wheel scrolls the log, never the page.
+ *
+ * The log only owns the scroll while the cards above it fit the viewport. A
+ * tall run card + verdict band (a host recap table, many config tiles) can
+ * exceed the fixed 100vh column; main then scrolls and the output card keeps
+ * its 240px floor, so the log is never clipped unreachable below the fold. */
 /* The job page fixes the content column to the viewport so main cannot grow
  * past it (T1): the log box then owns the scroll. Scoped by .app.page-job so
  * every other page keeps its natural min-height:100vh growth. */
 .app.page-job .content-col { height: 100vh; min-height: 0; }
 .app.page-job .content-col > header { flex: none; }
-.app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow: hidden; gap: var(--gap-card); }
+.app.page-job main { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; gap: var(--gap-card); }
 .app.page-job main > * { flex: none; }
-.app.page-job main > .card.output { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 6px; }
+.app.page-job main > .card.output { flex: 1; min-height: 240px; display: flex; flex-direction: column; padding: 6px; }
 .app.page-job main > .card.output > .output-head { flex: none; }
 .app.page-job main > .card.output > .logwrap2 { flex: 1; min-height: 0; }
 .app.page-job main > .card.output > .logwrap2 > #log { flex: 1; min-height: 0; max-height: none; overflow: auto; }
