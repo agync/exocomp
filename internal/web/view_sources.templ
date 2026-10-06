@@ -144,7 +144,7 @@ templ sourcesList(vm sourcesVM) {
 								<tr data-href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name)) } class={ templ.KV("attention", sc.NeverSynced()) }>
 									<td data-label="Source"><a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name)) }>{ sc.Name }</a></td>
 									<td class="mono" data-label="Kind">{ sc.Kind }</td>
-									<td class="mono wrap" data-label="URI">{ orDash(sc.URI) }</td>
+									<td class="mono wrap uri" data-label="URI">{ orDash(sc.URI) }</td>
 									<td class="mono wrap" data-label="Ref">{ orDash(sc.Ref) }</td>
 									<td data-label="Trust">@signedChip(sc)</td>
 									<td class="right mono" data-label="Last sync">

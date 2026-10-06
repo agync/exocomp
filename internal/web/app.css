@@ -666,6 +666,11 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
  * wraps inside a capped column instead of forcing the whole wide table to scroll
  * sideways at desktop width. Short mono cells sit under the cap and are unaffected. */
 td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
+/* `overflow-wrap: anywhere` also drops the cell's MIN-content width to 1ch, so
+ * under auto table layout the column is starved and the value stacks one
+ * character per line. The URI cell keeps a floor so the scheme and host read as
+ * one run; past the floor the cap still wraps and .tablewrap scrolls the row. */
+td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 
 /* ---- State chips ---- */
 .chip {
@@ -2010,7 +2015,7 @@ body { overflow-x: clip; }
   .tablewrap.stackable tr:hover { background: var(--surface-card); }
   .tablewrap.stackable td {
     display: flex; justify-content: space-between; align-items: baseline;
-    gap: 12px; max-width: none; padding: 6px 0; text-align: left;
+    gap: 12px; min-width: 0; max-width: none; padding: 6px 0; text-align: left;
     border-bottom: 1px solid var(--hairline-faint);
   }
   .tablewrap.stackable td.right { text-align: left; }

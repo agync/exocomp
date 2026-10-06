@@ -929,3 +929,44 @@ func TestSourceDeleteConfirmNamesCacheRemoval(t *testing.T) {
 		t.Errorf("source delete confirm must name the cache removal, got:\n%s", page)
 	}
 }
+
+// TestSourcesURIKeepsColumnFloor pins the sources list URI column's width floor.
+// `overflow-wrap: anywhere` alone drops the cell's min-content width to 1ch, so
+// auto table layout starves the column and the URI stacks one character per
+// line. The URI cell carries its own floor, and the card stays a scroll box so
+// an over-wide row scrolls instead of squeezing. The MUTATION — dropping
+// `uri`'s min-width — reds this.
+func TestSourcesURIKeepsColumnFloor(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	const longURI = "ssh://git@git.internal.example.net:2222/homelab/platform/provisioning-ansible.git"
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "long-uri", Kind: store.SourceGit, URI: longURI,
+		Ref: "refs/heads/main", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources = %d, want 200", code)
+	}
+	if !strings.Contains(page, `<td class="mono wrap uri" data-label="URI">`+longURI+`</td>`) {
+		t.Errorf("the URI cell must carry the uri floor class, got:\n%s", page)
+	}
+
+	app := cssOf(t, h, ts, client, "app.css")
+	for _, want := range []string{
+		"td.uri { min-width: 24ch;",
+		".tablewrap { overflow-x: auto; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the URI column floor %q", want)
+		}
+	}
+	if strings.Contains(app, "td.uri { min-width: 0;") {
+		t.Error("the URI cell's min-width floor must not be removed")
+	}
+}
