@@ -2167,6 +2167,13 @@ body { overflow-x: clip; }
    * viewport ends where the footer begins, so the last field group (the
    * privileged block) can never hide under the footer at any scroll position. */
   .modal.drawer .modal-body { padding-bottom: 12px; }
+  /* The body ends flush against the footer, so the privileged block's last line
+   * ended as a clipped sliver under it. Clearance below the block plus the
+   * body's own pad ends the scroll run clear of the footer's padding. */
+  .modal.drawer .modal-body .privileged { margin-bottom: 20px; }
+  /* The Playbook/Command switch is a two-target control on the phone launcher,
+   * so it carries the same 48px touch floor as every other phone verb. */
+  .tab { min-height: 48px; display: inline-flex; align-items: center; }
   .modal.drawer .drawer-actions { flex: none; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card); border-top: 1px solid var(--hairline-faint); }
   .modal.drawer .drawer-actions .actions { margin-top: 0; }
   .modal.drawer .drawer-foot { margin-top: 8px; }

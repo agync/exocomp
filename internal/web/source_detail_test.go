@@ -970,3 +970,31 @@ func TestSourcesURIKeepsColumnFloor(t *testing.T) {
 		t.Error("the URI cell's min-width floor must not be removed")
 	}
 }
+
+// TestPhoneDrawerTabTouchFloorAndBodyClearance pins the launch drawer's two phone
+// defects: the Playbook/Command switch is a 48px touch target (INVARIANTS a11y
+// gate), and the scroll body leaves clearance below the fail-tinted privileged
+// block so it never renders as a clipped sliver against the sticky footer.
+// Scoped to the 719 block. The MUTATION — a 30px tab or the removal of the
+// block's bottom clearance — reds this.
+func TestPhoneDrawerTabTouchFloorAndBodyClearance(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	i := strings.Index(app, "@media (max-width: 719px)")
+	if i < 0 {
+		t.Fatal("app.css missing the 719px phone block")
+	}
+	block := app[i:]
+	for _, want := range []string{
+		".tab { min-height: 48px;",
+		".modal.drawer .modal-body .privileged { margin-bottom: 20px; }",
+	} {
+		if !strings.Contains(block, want) {
+			t.Errorf("the 719 block missing the drawer touch/clearance fix %q", want)
+		}
+	}
+}
