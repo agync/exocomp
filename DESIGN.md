@@ -237,7 +237,7 @@ components:
     row-radius: "{rounded.row}"
     row-hover: "{colors.dark.surface-tray}"
     row-active: "{colors.dark.surface-row}"
-    header-color: "{colors.dark.ink-600}"
+    header-color: "{colors.dark.ink-500}"
     header-typography: "600 10.5px/1 'JetBrains Mono', monospace, +0.8px uppercase"
     attention-tint: "{colors.dark.wait-tint}"
     attention-edge: "{colors.dark.wait-border}"
@@ -259,7 +259,7 @@ components:
     borderLeftColor: "{colors.dark.hairline}"
     borderLeftWidth: 1px
   nav-group:                  # rail organised by verb
-    color: "{colors.dark.ink-600}"
+    color: "{colors.dark.ink-500}"
     typography: "600 10px/1 'JetBrains Mono', monospace, +1.8px uppercase"
   nav-item:
     height: 40px

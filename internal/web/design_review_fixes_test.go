@@ -1348,3 +1348,63 @@ func TestAppbarBottomHairline(t *testing.T) {
 		t.Error("the appbar bottom border must not be the faint hairline")
 	}
 }
+
+// ---- ink-600 is never text ----
+
+// TestInk600NeverText pins the ink-600 hard rule: every rule that renders TEXT
+// — quiet notes, diff labels and bodies, placeholders, the jobshead / host-table
+// / queue-rule column heads, the public-URL placeholder — sits on ink-500, the
+// last AA text step. ink-600 stays only where it draws: the rachev chevron
+// stroke, the diff/crumb/rule separators, and the dim dot and funnel fill.
+func TestInk600NeverText(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	for _, want := range []string{
+		".plans .cv .quiet { color: var(--ink-500); }",
+		".diff .diff-row .action.dim  { color: var(--ink-500); }",
+		".diff .attr .k .idx { color: var(--ink-500); }",
+		".diff .obj-meta { font: 400 11px var(--font-mono); color: var(--ink-500); }",
+		".diff .unchanged { color: var(--ink-500); }",
+		".field > .control::placeholder { color: var(--ink-500); }",
+		"letter-spacing: 1.4px; color: var(--ink-500); border-bottom: 1px solid var(--hairline-faint); }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css text role must read ink-500: %q", want)
+		}
+	}
+	for _, want := range []string{
+		"background: var(--surface-card); font: inherit; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-500); }",
+		"gap: 0 16px; color: var(--ink-500); }",
+		"border-top: 1px solid var(--hairline-faint); color: var(--ink-500); font-size: 12px; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css text role must read ink-500: %q", want)
+		}
+	}
+	// The deliberately-kept ink-600 sites: a glyph stroke, a separator, a dot
+	// fill, a bar fill. A blanket sweep reds here.
+	for _, want := range []string{
+		".diff .arrow { color: var(--ink-600); }",
+		".crumb-sep { color: var(--ink-600); }",
+		".rule-row .sep { color: var(--ink-600); }",
+		".pl-seg.dim .dot { background: var(--ink-600); }",
+		".funnel-seg.matched { background: var(--ink-600); }",
+		"background: transparent; color: var(--ink-600);",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css non-text glyph/rule site must stay ink-600: %q", want)
+		}
+	}
+
+	lift := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(lift, `.pubform input[type="url"]::placeholder { color:var(--ink-500); }`) {
+		t.Error("the public-URL placeholder is text and must read ink-500")
+	}
+	if !strings.Contains(lift, ".lr-sep { color:var(--ink-600); }") {
+		t.Error("the last-run join dot is a separator and must stay ink-600")
+	}
+}

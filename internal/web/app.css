@@ -813,7 +813,7 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .plans .cv .verdict.muted { color: var(--ink-500); }
 .plans .cv .verdict.wait { color: var(--signal-wait); }
 .plans .cv .verdict.fail { color: var(--signal-fail); }
-.plans .cv .quiet { color: var(--ink-600); }
+.plans .cv .quiet { color: var(--ink-500); }
 /* Actions + lifecycle cells (SPEC §4): the ACTIONS cluster hugs the cell's
  * right edge so the constant diff verb keeps the same x on every row; the
  * stale note rides the LIFECYCLE cell beside the SAVED chip and never
@@ -855,14 +855,14 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .diff .diff-row .action.ok   { color: var(--signal-ok); }
 .diff .diff-row .action.wait { color: var(--signal-wait); }
 .diff .diff-row .action.fail { color: var(--signal-fail); }
-.diff .diff-row .action.dim  { color: var(--ink-600); }
+.diff .diff-row .action.dim  { color: var(--ink-500); }
 .diff .diff-row .addr { color: var(--ink-100); font: 500 12.5px var(--font-mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .diff .diff-row .count { color: var(--ink-500); font: 400 11px var(--font-mono); white-space: nowrap; }
 .diff .count-chg { color: var(--signal-wait); }
 .diff .attrs { display: flex; flex-direction: column; gap: 2px; min-width: 0; font: var(--type-log); padding: 8px 10px 8px 122px; }
 .diff .attr { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 0 16px; align-items: start; padding: 3px 0; }
 .diff .attr .k { color: var(--ink-400); }
-.diff .attr .k .idx { color: var(--ink-600); }
+.diff .attr .k .idx { color: var(--ink-500); }
 .diff .attr .v { min-width: 0; overflow-wrap: anywhere; }
 .diff .old { color: var(--signal-fail); background: var(--fail-tint); border-radius: 4px; padding: 1px 5px; }
 .diff .arrow { color: var(--ink-600); }
@@ -872,20 +872,20 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .diff .block .ln.del { background: var(--fail-tint); color: var(--signal-fail); }
 .diff .block .ln.add { background: var(--ok-tint);   color: var(--signal-ok); }
 .diff .block .ln > :first-child { font-weight: 600; }
-.diff .obj { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--surface-card); font: inherit; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-600); }
+.diff .obj { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--surface-card); font: inherit; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-500); }
 .diff .obj .del, .diff .obj .add { display: block; margin: 0 -10px; padding: 0 10px; }
 .diff .obj .del { background: var(--fail-tint); color: var(--signal-fail); }
 .diff .obj .add { background: var(--ok-tint);   color: var(--signal-ok); }
 .diff .obj .server-set, .diff .obj .secret { color: var(--ink-500); }
 .diff .redacted { color: var(--ink-500); }
-.diff .obj-meta { font: 400 11px var(--font-mono); color: var(--ink-600); }
+.diff .obj-meta { font: 400 11px var(--font-mono); color: var(--ink-500); }
 .diff .obj-meta a, .diff .obj-meta button { color: var(--accent-text); cursor: pointer; }
-.diff .same-row { display: none; grid-template-columns: 150px minmax(0,1fr); gap: 0 16px; color: var(--ink-600); }
+.diff .same-row { display: none; grid-template-columns: 150px minmax(0,1fr); gap: 0 16px; color: var(--ink-500); }
 .diff .attrs.show-same .same-row { display: grid; }
-.diff .foot { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 0 16px; padding: 6px 0 0; margin-top: 4px; border-top: 1px solid var(--hairline-faint); color: var(--ink-600); font-size: 12px; }
+.diff .foot { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 0 16px; padding: 6px 0 0; margin-top: 4px; border-top: 1px solid var(--hairline-faint); color: var(--ink-500); font-size: 12px; }
 .diff .foot button { border: 0; background: transparent; padding: 0; font: inherit; color: var(--accent-text); cursor: pointer; }
 .diff .foot button:hover { text-decoration: underline; }
-.diff .unchanged { color: var(--ink-600); }
+.diff .unchanged { color: var(--ink-500); }
 .diff .block-head { padding: 10px 10px 6px; }
 .diff .block-head .keyword { color: var(--signal-fail); }
 .diff .destroy-block { border: 1px solid var(--fail-border); background: var(--fail-tint); border-radius: 9px; margin-bottom: 4px; }
@@ -1036,7 +1036,7 @@ td .cellact:hover { text-decoration: underline; }
   background: var(--surface-tray); box-shadow: inset 0 0 0 1px var(--hairline);
   font: 400 13px var(--font-mono); color: var(--ink-100); width: 100%;
 }
-.field > .control::placeholder { color: var(--ink-600); }
+.field > .control::placeholder { color: var(--ink-500); }
 .field > .control[aria-invalid="true"] { box-shadow: inset 0 0 0 1px var(--signal-fail); }
 .field > .meta {
   min-height: 18px; font: 400 12px/18px var(--font-ui); color: var(--ink-500);
@@ -1487,7 +1487,7 @@ body { overflow-x: clip; }
   grid-template-columns: 44px minmax(0, 1fr) 290px 160px 110px;
   gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px;
   font: 600 10.5px var(--font-mono); letter-spacing: .8px;
-  color: var(--ink-600);
+  color: var(--ink-500);
   border-bottom: 1px solid var(--hairline-faint);
 }
 .jobs-row {
@@ -1599,7 +1599,7 @@ body { overflow-x: clip; }
 .host-table .head {
   display: grid; grid-template-columns: 150px 120px minmax(0, 1fr); gap: var(--gap-cell);
   align-items: center; height: 30px; padding: 0 12px;
-  font: 600 10.5px var(--font-mono); letter-spacing: .8px; color: var(--ink-600);
+  font: 600 10.5px var(--font-mono); letter-spacing: .8px; color: var(--ink-500);
 }
 .host-table .row {
   display: grid; grid-template-columns: 150px 120px minmax(0, 1fr); gap: var(--gap-cell);
@@ -2208,7 +2208,7 @@ body { overflow-x: clip; }
  * shrink, so the card fits a narrow laptop window (a 720–1099 full-width main)
  * without the title wrapping under the row's fixed height and overlapping the
  * next row. Above the floor the fixed maxima restore the wide layout. */
-.queue-rule { display: grid; grid-template-columns: minmax(0,200px) minmax(140px,1fr) minmax(0,170px) minmax(0,130px) minmax(0,90px); gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px; font: 600 10.5px var(--font-mono); letter-spacing: 1.4px; color: var(--ink-600); border-bottom: 1px solid var(--hairline-faint); }
+.queue-rule { display: grid; grid-template-columns: minmax(0,200px) minmax(140px,1fr) minmax(0,170px) minmax(0,130px) minmax(0,90px); gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px; font: 600 10.5px var(--font-mono); letter-spacing: 1.4px; color: var(--ink-500); border-bottom: 1px solid var(--hairline-faint); }
 .queue-rule .failed { color: var(--signal-fail); letter-spacing: 0.4px; margin-left: 8px; font-style: normal; }
 .queue-row { display: grid; grid-template-columns: minmax(0,200px) minmax(140px,1fr) minmax(0,170px) minmax(0,130px) minmax(0,90px); gap: var(--gap-cell); align-items: center; min-height: 56px; height: auto; padding: 0 14px; margin-top: 2px; border-radius: var(--radius-row); color: inherit; text-decoration: none; }
 .queue-row:hover { background: var(--surface-tray); }
