@@ -17,6 +17,7 @@
    * an inset state ring (box-shadow: inset 0 0 0 1px <state-border>). */
   --hairline:        rgba(255,255,255,.09);
   --hairline-faint:  rgba(255,255,255,.06);
+  --scrim:           rgba(0,0,0,.5); /* modal + drawer backdrop (theme-invariant) */
 
   /* ---- Ink (on surface-tray #171C1E) ---- */
   --ink-100: #ECEFF0; /* 14.6:1 · headings, values */

@@ -17,6 +17,7 @@ colors:
     surface-control: "#22282A"      # button, input, chip
     hairline:        "rgba(255,255,255,.09)"
     hairline-faint:  "rgba(255,255,255,.06)"
+    scrim:           "rgba(0,0,0,.5)"   # modal + drawer backdrop (theme-invariant)
     ink-100: "#ECEFF0"              # 14.6:1 · headings, values
     ink-200: "#D6DBDD"              # 11.7:1 · body
     ink-400: "#A6AFB2"              #  7.5:1 · secondary, labels
@@ -133,6 +134,23 @@ typography:
     fontWeight: 600
     lineHeight: 1
     letterSpacing: 2.4px      # UPPERCASE eyebrow, accent-text
+  run-title:
+    fontFamily: "'JetBrains Mono', monospace"
+    fontSize: 17px
+    fontWeight: 600
+    lineHeight: 1.3
+    letterSpacing: "-0.4px"   # phone job-detail run title
+  verdict:
+    fontFamily: "'JetBrains Mono', monospace"
+    fontSize: 28px
+    fontWeight: 600
+    lineHeight: 1.1
+    letterSpacing: "-0.8px"   # phone job-detail exit figure
+  glyph-lg:
+    fontFamily: "'JetBrains Mono', monospace"
+    fontSize: 16px
+    fontWeight: 400
+    lineHeight: 1              # enlarged row glyph (leg chevron)
 
 rounded:
   2xs: 4px         # inline diff marks, funnel bars

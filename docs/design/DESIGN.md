@@ -20,6 +20,7 @@ colors:
       control: "#22282A"   # button, input, chip base
       hairline:       "rgba(255,255,255,.09)"   # visible rule
       hairline-faint: "rgba(255,255,255,.06)"   # inner cell divider
+      scrim:          "rgba(0,0,0,.5)"          # modal + drawer backdrop (theme-invariant)
     ink:
       "100": "#ECEFF0"   # 14.6:1 · headings, values
       "200": "#D6DBDD"   # 11.7:1 · body
@@ -95,6 +96,9 @@ typography:
     log:     { font: "400 12.5px/1.65 {typography.families.mono}", tracking: "0",   use: "log tail, code, inputs, .mono cells" }
     keyword: { font: "600 11px/1 {typography.families.mono}",   tracking: "0.4px",  transform: "uppercase", use: "state keyword chips, th" }
     kicker:  { font: "600 11px/1 {typography.families.mono}",   tracking: "2.4px",  transform: "uppercase", color: "{colors.dark.accent.text}", use: "card eyebrow" }
+    run-title: { font: "600 17px/1.3 {typography.families.mono}", tracking: "-0.4px", use: "phone job-detail run title" }
+    verdict:   { font: "600 28px/1.1 {typography.families.mono}", tracking: "-0.8px", use: "phone job-detail exit figure" }
+    glyph-lg:  { font: "400 16px/1 {typography.families.mono}",   tracking: "0",      use: "enlarged row glyph (leg chevron)" }
 
 rounded:
   "2xs":   "4px"    # inline diff marks, funnel bars

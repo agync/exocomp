@@ -124,8 +124,9 @@ stylesheet; phone is not a second design.
 
 - **One breakpoint.** `@media (max-width: 719px)` is phone, and phone only.
   720–1099 keeps desktop layouts with the rail collapsed and `.config` at two
-  columns. A third width breakpoint is a bug until a SPEC says otherwise. Touch
-  hints are `(pointer: coarse)`, never a width test.
+  columns; `max-width: 1440px` is the one wide-desktop tweak (the system-backups
+  footer stacks below it). Any other width breakpoint is a bug until a SPEC says
+  otherwise. Touch hints are `(pointer: coarse)`, never a width test.
 - **Rows, not tables, on phone.** Every list row (jobs, queue, events) stacks
   into two lines — a primary line over a mono meta line — the whole row is one
   link, 44px minimum. The wide table's header row is `display: none` on phone

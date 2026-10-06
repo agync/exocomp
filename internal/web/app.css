@@ -278,7 +278,7 @@ a:visited { color: var(--accent-text); }
   .railtoggle { display: none; }
   .scrim {
     display: block; position: fixed; inset: 0; z-index: 30;
-    background: rgba(0,0,0,.5); opacity: 0; pointer-events: none; transition: opacity .18s ease;
+    background: var(--scrim); opacity: 0; pointer-events: none; transition: opacity .18s ease;
   }
   :root[data-drawer="open"] .scrim { opacity: 1; pointer-events: auto; }
   .mobilebar {
@@ -1122,6 +1122,7 @@ td .cellact:hover { text-decoration: underline; }
  * easier scan. White backing (fixed, not themed) keeps scanner contrast. */
 .pairqr {
   display: block; line-height: 0; margin: 4px auto 12px; width: fit-content;
+  /* impeccable-disable-next-line design-system-color: fixed black-on-white, not themed, so a scanner reads it */
   background: #ffffff; color: #0b0b0c;
   padding: 12px; border-radius: var(--radius-chip);
   border: 1px solid var(--hairline-faint); cursor: pointer;
@@ -1133,6 +1134,7 @@ td .cellact:hover { text-decoration: underline; }
   display: flex; justify-content: center; margin: 4px 0;
   background: #ffffff; padding: 20px; border-radius: var(--radius-chip);
 }
+/* impeccable-disable-next-line design-system-color: fixed black-on-white, not themed, so a scanner reads it */
 .qr-big svg { display: block; width: min(340px, 72vw); height: auto; color: #0b0b0c; }
 
 /* ---- Breadcrumb ----
@@ -1200,7 +1202,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   overflow: hidden;
 }
 .modal:not([open]) { display: none; }
-.modal::backdrop { background: rgba(0,0,0,.5); }
+.modal::backdrop { background: var(--scrim); }
 /* Launch drawer (F4): the source-detail launcher lives in a right-anchored
  * 460px drawer instead of an always-open wall-of-form, so the detail page leads
  * with identity and facts and the mutation surface is opened by intent. Same
