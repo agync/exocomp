@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-06 — resolver reads local collection artifacts
+
+- [ADR 0015](adr/0015-per-source-collections.md) gains an addendum: the
+  collections resolver's sandbox grants read on the local `type: dir`/`type: file`
+  artifact paths a requirements file names, so `ansible-galaxy` can read a
+  sibling checkout's `galaxy.yml` under the enforcing tier. The
+  [threat model](security/threat-model.md) records the read-only widening as an
+  accepted residual.
+
 ## 2026-09-26 — aggregate check events removed
 
 - Removed the opt-in aggregate-check surfaces from

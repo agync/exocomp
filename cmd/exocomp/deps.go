@@ -132,7 +132,12 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	// was resolved, the image's otherwise (ADR 0015).
 	if sandboxed(ctx) {
 		galaxyCache := filepath.Join(dataDir, galaxyCacheDir)
-		read := []string{manifest.Root}
+		// The requirements file may name a local collection artifact
+		// (type: dir/file) — typically a sibling checkout outside the project
+		// root — that ansible-galaxy must read while resolving. Grant exactly
+		// those paths read-only on top of the project root; the profile guard
+		// still refuses any that would reach the data dir.
+		read := append([]string{manifest.Root}, manifest.LocalSources...)
 		if spec.GalaxyBinary != "" {
 			read = append(read, executor.ToolGrants(spec.GalaxyBinary)...)
 		} else {

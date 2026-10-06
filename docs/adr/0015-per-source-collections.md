@@ -148,3 +148,27 @@ provides them.
   with another registered source keeps the caches).
 - ADR 0011's collections section is superseded; its venv, tofu-provider,
   tofu-modules, and system-package decisions are untouched.
+
+## Addendum — 2026-10-06: local-directory artifacts are read-granted
+
+A requirements file may name a collection on the local disk with `type: dir`
+(or `type: file`), pointing at a path outside the project root — typically a
+sibling checkout (`… - name: …/ansible-unifi-network` /
+`type: dir`). The resolver sandbox granted only the project root, so
+`ansible-galaxy` opening the artifact's `galaxy.yml` was refused with `EACCES`
+and the deps step failed closed:
+
+```
+PermissionError: [Errno 13] Permission denied: b'/…/ansible-unifi-network/galaxy.yml'
+```
+
+`deps.DiscoverGalaxy` now reports the existing local artifact paths the
+requirements file names, and the sandboxed resolve adds exactly those to the
+profile's read grants on top of the project root. A galaxy-server, git, or url
+entry is dialed rather than read and adds no grant; a path that does not exist
+adds none, because a Landlock grant attaches only to a real path. The profile
+guard is unchanged and still refuses any grant that would reach the data dir or
+its keys. This is a read-only widening drawn from source content — the same
+shape as the run sandbox granting the inventory and extra-vars paths an argv
+names — and is recorded as a residual in
+[the threat model](../security/threat-model.md).

@@ -347,6 +347,51 @@ func TestResolveSourceCollectionsSandboxGrantsVenvGalaxy(t *testing.T) {
 	}
 }
 
+// TestResolveSourceCollectionsSandboxGrantsLocalCollection is the live-bug
+// regression: a requirements file naming a collection on the local disk
+// (type: dir) outside the project root made ansible-galaxy fail with EACCES
+// reading its galaxy.yml, because the resolver sandbox granted only the project
+// root. The local artifact path must ride in the profile's read grants.
+func TestResolveSourceCollectionsSandboxGrantsLocalCollection(t *testing.T) {
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.once.Do(func() {})
+
+	nonoLog := filepath.Join(t.TempDir(), "nono-argv")
+	binDir := t.TempDir()
+	fakeNono(t, binDir, nonoLog)
+	fakeGalaxyBinary(t, binDir, filepath.Join(t.TempDir(), "galaxy-invocations"))
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	dataDir := t.TempDir()
+	project := t.TempDir()
+	local := filepath.Join(t.TempDir(), "unifi_network")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatalf("mkdir local collection: %v", err)
+	}
+	writeFile(t, filepath.Join(local, "galaxy.yml"), "namespace: abn\nname: unifi_network\n")
+	writeFile(t, filepath.Join(project, "requirements.yml"),
+		"collections:\n  - name: "+local+"\n    type: dir\n")
+	play := filepath.Join(project, "site.yml")
+
+	c, err := resolveSourceCollections(context.Background(), dataDir, play)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if !c.Created {
+		t.Fatal("expected a fresh collections provision through the resolver sandbox")
+	}
+
+	launcher := strings.TrimSpace(readFile(t, nonoLog))
+	if !strings.Contains(launcher, "collection install") {
+		t.Fatalf("the launcher argv is not the galaxy install:\n%s", launcher)
+	}
+	if !strings.Contains(launcher, "--read "+local) {
+		t.Errorf("resolver profile does not read-grant the local collection (%s):\n%s", local, launcher)
+	}
+}
+
 // TestResolveSourceCollectionsSandboxProvisionsWithoutOverlappingNonoState is
 // the live-bug regression: the collections resolver granted its galaxy cache
 // dir write and redirected the resolver's HOME onto it, and nono refused to
@@ -400,5 +445,61 @@ func TestResolveSourceCollectionsSandboxProvisionsWithoutOverlappingNonoState(t 
 		if fi, statErr := os.Stat(d); statErr != nil || !fi.IsDir() {
 			t.Errorf("galaxy cache dir %s not pre-created: %v", d, statErr)
 		}
+	}
+}
+
+// TestResolveSourceCollectionsSandboxReadsLocalCollection is the kernel-level
+// proof behind TestResolveSourceCollectionsSandboxGrantsLocalCollection: under
+// a real nono, the confined ansible-galaxy can open the galaxy.yml of a
+// type: dir collection named outside the project root. Without the read grant
+// the open is refused with EACCES and the provision fails — the exact live bug
+// this fix closes. A fake launcher cannot reproduce a refusal only the kernel
+// makes, so a real nono is required.
+func TestResolveSourceCollectionsSandboxReadsLocalCollection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real nono sandbox")
+	}
+	if _, err := exec.LookPath(executor.NonoBinary); err != nil {
+		t.Skipf("%s not on PATH", executor.NonoBinary)
+	}
+	resetSandboxDecision(t)
+	sandbox.requested = executor.TierEnforcing
+	sandbox.result = executor.ProbeResult{Requested: executor.TierEnforcing, Effective: executor.TierEnforcing}
+	sandbox.once.Do(func() {})
+
+	project := t.TempDir()
+	local := filepath.Join(t.TempDir(), "unifi_network")
+	if err := os.MkdirAll(local, 0o700); err != nil {
+		t.Fatalf("mkdir local collection: %v", err)
+	}
+	writeFile(t, filepath.Join(local, "galaxy.yml"), "namespace: abn\nname: unifi_network\n")
+
+	binDir := t.TempDir()
+	galaxy := filepath.Join(binDir, "ansible-galaxy")
+	script := `#!/bin/sh
+cat '` + filepath.Join(local, "galaxy.yml") + `' > /dev/null || exit 1
+for a in "$@"; do target="$a"; done
+mkdir -p "$target/ansible_collections/abn/unifi_network" || exit 1
+exit 0
+`
+	if err := os.WriteFile(galaxy, []byte(script), 0o700); err != nil {
+		t.Fatalf("write fake ansible-galaxy: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	writeFile(t, filepath.Join(project, "requirements.yml"),
+		"collections:\n  - name: "+local+"\n    type: dir\n")
+	play := filepath.Join(project, "site.yml")
+	dataDir := t.TempDir()
+
+	c, err := resolveSourceCollections(context.Background(), dataDir, play)
+	if err != nil {
+		t.Fatalf("resolve under the enforcing tier failed: %v", err)
+	}
+	if !c.Created {
+		t.Fatal("expected a fresh collections provision through the resolver sandbox")
+	}
+	if _, statErr := os.Stat(filepath.Join(c.Dir, "ansible_collections", "abn", "unifi_network")); statErr != nil {
+		t.Fatalf("local collection was not installed: %v", statErr)
 	}
 }

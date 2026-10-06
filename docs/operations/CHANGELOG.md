@@ -6,6 +6,19 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — a local-directory collection resolves under the sandbox
+
+- **A requirements file naming a collection on the local disk no longer fails
+  the deps step under the enforcing tier.** `ansible-galaxy` read a `type: dir`
+  or `type: file` entry — a collection checkout outside the source tree, e.g.
+  `…/ansible-unifi-network` — which the resolver sandbox did not grant, so the
+  install died with `[Errno 13] Permission denied: …/galaxy.yml`.
+  `deps.DiscoverGalaxy` now reports the existing local artifact paths a
+  requirements file names, and the sandboxed collections resolve grants exactly
+  those read-only on top of the project root; the profile guard still refuses
+  any that would reach the data dir. Galaxy-server, git, and url entries are
+  dialed, not read, and get no grant.
+
 ## 2026-10-06 — pre-commit's own hooks replace the custom dispatchers
 
 - **`.agents/hooks/` is gone.** The `pre-commit`/`pre-push`/`commit-msg` shims

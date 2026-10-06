@@ -102,6 +102,13 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
 - **Resolver sandbox validation —** the resolver profile's grant set is validated against the
   sandbox by unit test with a stand-in `uv`; a live `uv` resolve under the sandbox on a real
   host — fetching a real index, seeding a real interpreter — still needs on-host validation.
+- **Resolver reads source-named local artifacts —** an ansible requirements file may name a
+  local collection path (`type: dir`/`type: file`) outside the project root, and the resolver
+  sandbox grants exactly those read-only so the confined `ansible-galaxy` can read their
+  `galaxy.yml`. A poisoned requirements file can therefore point the resolver at any existing
+  host path that does not reach the data dir. Accepted because the source is operator-added,
+  the grant is read-only, and the profile guard still denies the data dir and keys; scoping
+  local artifacts to the source tree is future hardening.
 - **Unsigned path sources —** unsigned is the default; path sources have no signature gate.
   Accepted for now with the trust posture documented; a signed-source opt-in for local trees is
   future hardening.

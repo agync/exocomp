@@ -3,6 +3,7 @@ package deps
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -66,6 +67,58 @@ func TestDiscoverGalaxyOverrideWins(t *testing.T) {
 	}
 	if g.Root != root {
 		t.Errorf("Root = %q, want %q", g.Root, root)
+	}
+}
+
+// TestDiscoverGalaxyLocalSources pins the local-artifact extraction the
+// resolver sandbox grants read on: a type: dir/file entry or a bare existing
+// path is reported absolute, while a galaxy-server, git, or url entry — which
+// galaxy dials rather than reads from disk — is not.
+func TestDiscoverGalaxyLocalSources(t *testing.T) {
+	root := t.TempDir()
+	local := filepath.Join(t.TempDir(), "unifi_network")
+	write(t, filepath.Join(local, "galaxy.yml"), "namespace: abn\nname: unifi_network\n")
+	archive := filepath.Join(t.TempDir(), "abn-unifi_network-0.1.0.tar.gz")
+	write(t, archive, "not a real tarball\n")
+	relative := filepath.Join(root, "vendor", "local_coll")
+	write(t, filepath.Join(relative, "galaxy.yml"), "namespace: abn\nname: local_coll\n")
+
+	body := "collections:\n" +
+		"  - community.general\n" +
+		"  - name: ansible.posix\n" +
+		"    source: https://galaxy.ansible.com/api/\n" +
+		"  - name: " + local + "\n" +
+		"    type: dir\n" +
+		"  - name: " + archive + "\n" +
+		"    type: file\n" +
+		"  - vendor/local_coll\n" +
+		"  - https://example.invalid/api/\n" +
+		"  - name: git@github.com:abn/thing.git\n" +
+		"    type: git\n"
+	write(t, filepath.Join(root, "requirements.yml"), body)
+
+	g, err := DiscoverGalaxy(root)
+	if err != nil {
+		t.Fatalf("discover galaxy: %v", err)
+	}
+	want := []string{local, archive, relative}
+	if !slices.Equal(g.LocalSources, want) {
+		t.Errorf("LocalSources = %v, want %v", g.LocalSources, want)
+	}
+}
+
+// TestDiscoverGalaxyLocalSourcesMalformedIsEmpty: a requirements file that does
+// not parse yields no local sources rather than failing discovery, so galaxy
+// still runs and reports the parse failure with its own clearer message.
+func TestDiscoverGalaxyLocalSourcesMalformedIsEmpty(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, "requirements.yml"), "collections: [unterminated\n")
+	g, err := DiscoverGalaxy(root)
+	if err != nil {
+		t.Fatalf("discover galaxy: %v", err)
+	}
+	if len(g.LocalSources) != 0 {
+		t.Errorf("malformed requirements yielded local sources %v, want none", g.LocalSources)
 	}
 }
 
