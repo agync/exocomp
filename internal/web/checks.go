@@ -305,6 +305,8 @@ func (s *Server) checksVMFor(r *http.Request, ngForm *netgroupFormVM, ckForm *ch
 		Operator: canWrite(ident), Netgroups: ng, Tab: tab,
 		NetgroupForm: ngForm, Form: ckForm,
 	}
+	// The app bar's page-own fact: the registered check count (W7).
+	vm.Page.Meta = checksMeta(len(rows))
 	if vm.Operator {
 		if tab == "netgroups" {
 			vm.Page.Add = &pageAdd{Target: "netgroups-add", Label: "netgroup"}

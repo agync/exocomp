@@ -77,7 +77,7 @@ templ dashboard(vm dashboardVM) {
 				}
 				if len(vm.Jobs.Recent) > 0 {
 					<div class="queue-rule">
-						<span>LAST { itoa(int64(len(vm.Jobs.Recent))) } RUNS
+						<span>{ vm.Jobs.RecentLabel() }
 							if vm.Jobs.RecentFailed() > 0 {
 								<em class="failed">{ itoa(int64(vm.Jobs.RecentFailed())) } FAILED</em>
 							}

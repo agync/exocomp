@@ -214,6 +214,24 @@ func (j jobSummary) Headline() string {
 	return itoa(int64(j.Running)) + " running · " + itoa(int64(j.Queued)) + " queued"
 }
 
+// RecentLabel is the queue card's LAST N RUNS rule-row label with the
+// singular fixed: one settled run reads "LAST 1 RUN", never "LAST 1 RUNS".
+func (j jobSummary) RecentLabel() string {
+	if len(j.Recent) == 1 {
+		return "LAST 1 RUN"
+	}
+	return "LAST " + itoa(int64(len(j.Recent))) + " RUNS"
+}
+
+// checksMeta is the /checks app-bar fact: the registered check count with
+// the singular fixed.
+func checksMeta(n int) string {
+	if n == 1 {
+		return "1 check"
+	}
+	return itoa(int64(n)) + " checks"
+}
+
 // workspaceSummary is the dashboard's workspace card: the managed total and
 // how many carry an open drift approval.
 type workspaceSummary struct {

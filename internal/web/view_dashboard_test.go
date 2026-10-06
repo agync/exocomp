@@ -131,7 +131,7 @@ func TestDashboardSummaryCards(t *testing.T) {
 		`<a class="jobs-row queue-row" href="/jobs/` + itoa64(gated.ID) + `">`,
 		`<span class="chip wait"><span class="dot"></span>awaiting_approval</span>`,
 		`LAST `,
-		`RUNS`,
+		`RUN`,
 		"settled-history-job", // the newest settled job is the LAST RUNS group
 	} {
 		if !strings.Contains(page, want) {
@@ -840,6 +840,78 @@ func TestDashboardCountCardHidesZeroVerbWhenNonzero(t *testing.T) {
 	}
 	if strings.Contains(page, "exocomp ws add") {
 		t.Error("nonzero workspaces count still renders the zero-state verb")
+	}
+}
+
+// TestDashboardQueueRecentSingular pins the queue card's singular: one settled
+// run reads "LAST 1 RUN", never "LAST 1 RUNS".
+func TestDashboardQueueRecentSingular(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	one, err := h.queue.Enqueue(ctx, queue.Spec{
+		Runbook: "only-run", Kind: "shell", Trigger: "manual",
+		Argv: []string{"/bin/sh", "-c", "exit 0"},
+	})
+	if err != nil {
+		t.Fatalf("enqueue only run: %v", err)
+	}
+	h.waitJobState(t, one.ID, store.StateSucceeded, 3*time.Second)
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/")
+	if code != 200 {
+		t.Fatalf("dashboard status = %d", code)
+	}
+	if !strings.Contains(page, "LAST 1 RUN") {
+		t.Errorf("queue rule missing the singular label:\n%s", page)
+	}
+	if strings.Contains(page, "LAST 1 RUNS") {
+		t.Error("queue rule reads the plural for a single run")
+	}
+}
+
+// TestChecksAppbarMetaIsCheckCount is the W7 gate for /checks: the app bar's
+// meta slot carries the page's own fact — the registered check count — with
+// the singular fixed ("1 check", never "1 checks").
+func TestChecksAppbarMetaIsCheckCount(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/checks")
+	if code != 200 {
+		t.Fatalf("/checks status = %d", code)
+	}
+	if !strings.Contains(page, `<span class="appbar-meta">0 checks</span>`) {
+		t.Errorf("checks app bar missing the zero count meta:\n%s", page)
+	}
+
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "at-home", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "laptop", Address: "192.168.1.50", Port: 22}},
+	}); err != nil {
+		t.Fatalf("seed check: %v", err)
+	}
+	_, page = getBody(t, client, ts.URL+"/checks")
+	if !strings.Contains(page, `<span class="appbar-meta">1 check</span>`) {
+		t.Errorf("checks app bar missing the singular count meta:\n%s", page)
+	}
+
+	if _, err := h.store.CreateCheck(ctx, store.NewCheck{
+		Name: "web-health", Kind: store.CheckTCP, IntervalS: 300,
+		Targets: []store.CheckTarget{{Name: "nas", Address: "192.168.1.60", Port: 22}},
+	}); err != nil {
+		t.Fatalf("seed second check: %v", err)
+	}
+	_, page = getBody(t, client, ts.URL+"/checks")
+	if !strings.Contains(page, `<span class="appbar-meta">2 checks</span>`) {
+		t.Errorf("checks app bar missing the plural count meta:\n%s", page)
 	}
 }
 
