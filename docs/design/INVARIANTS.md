@@ -31,8 +31,10 @@ disagree, the code wins and the correction lands in `docs/log.md`.
 7. **Fail closed, refuse loudly.** Approvals auto-reject at TTL; a stale plan is a
    refusal, not a disabled button; destructive actions go through the confirm
    dialog (label carries "…": "Remove…").
-8. **The queue is the only executor.** Every run button says what it does: "Queue
-   run — deploy/site.yml @ main". Nothing in the UI executes directly.
+8. **The queue is the only executor.** Every run states what it will do — the
+   launch drawer's footer names the exact ask ("same as exocomp run home-lab
+   deploy/site.yml"), and the submit button is the bare verb so a long
+   collection path can never wrap it. Nothing in the UI executes directly.
 9. **Read first, act second.** Detail pages lead with identity and facts;
    launch/mutation UIs are focused surfaces (dialog/drawer) opened by intent.
 10. **Code is truth for concepts and routes; pixels retune freely.** Concepts and

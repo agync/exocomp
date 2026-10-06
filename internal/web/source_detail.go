@@ -246,10 +246,11 @@ func (vm sourceDetailVM) FreePrefill() string {
 	return ""
 }
 
-// RunLabel names the thing the launch drawer's submit button queues: the
-// prefilled known playbook, or the path placeholder when discovery found none.
-// The button states the contract ("Queue run — <thing> @ <ref>", F4) so the
-// operator sees exactly what the one queue will run.
+// RunLabel names the thing a launch queues: the prefilled known playbook, or
+// the path placeholder when discovery found none. The drawer footer states the
+// contract with it ("same as exocomp run <source> <thing>", F4) so the operator
+// sees exactly what the one queue will run; the submit button itself is the
+// bare verb, so a long collection path can never wrap it.
 func (vm sourceDetailVM) RunLabel() string {
 	if vm.PlaybookKnown() {
 		return vm.Playbook
@@ -258,16 +259,6 @@ func (vm sourceDetailVM) RunLabel() string {
 		return "a path"
 	}
 	return "a playbook"
-}
-
-// QueueLabel is the launch drawer's submit-button contract: the thing being
-// queued and the ref it resolves against, so the operator sees exactly what the
-// one queue will run (F4). The `@ ref` is omitted when the source has no ref.
-func (vm sourceDetailVM) QueueLabel() string {
-	if vm.Source.Ref == "" {
-		return "Queue run — " + vm.RunLabel()
-	}
-	return "Queue run — " + vm.RunLabel() + " @ " + vm.Source.Ref
 }
 
 // PlaybooksNote is the PLAYBOOKS card's line when discovery found nothing: it

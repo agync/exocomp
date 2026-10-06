@@ -528,8 +528,10 @@ inset fail ring; an unobserved tile shows the dim chip with its cold-start
 reason.
 
 **Launch drawer.** The mutation surface, a right-anchored 460px `<dialog>`
-opened by intent. The submit button states the contract ("Queue run — …"); the
-privileged escalation sits in its own fail-tinted block.
+opened by intent. The submit button is the bare `Queue run` verb; the footer
+states the contract (`same as exocomp run … · Esc closes`), so a long
+collection path never wraps the primary. The privileged escalation sits in its
+own fail-tinted block.
 
 **Nav.** Grouped rail by verb with mono labels; 40px pills, the active one on
 `accent-tint` with `accent-text`. Badges are mono state counts in fail/wait.

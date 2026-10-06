@@ -68,11 +68,17 @@ func TestSourcePlaybookLauncherPreselectsFirst(t *testing.T) {
 	for _, want := range []string{
 		`<option value="site.yml" selected>site.yml</option>`,
 		"1 playbooks found at main",
-		`>Queue run — site.yml @ main<`,
+		`>Queue run</button>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("playbook launcher missing %q", want)
 		}
+	}
+	// The button is the bare verb: the run's ask lives in the footer line, so a
+	// long collection path can never wrap the primary. A reintroduced
+	// "Queue run — <path>" label is the mutation this gate must catch.
+	if strings.Contains(page, "Queue run —") {
+		t.Error("Queue run button must not restate the playbook path")
 	}
 	if strings.Contains(page, "— choose a discovered playbook —") {
 		t.Error("playbook select still renders a placeholder option")
@@ -182,7 +188,7 @@ func TestSourceLaunchDrawer(t *testing.T) {
 		`<select id="rp-select" name="playbook" disabled aria-describedby="rp-select-meta">`,
 		`<option value="">path — none discovered yet</option>`,
 		`this source has never synced. Sync brings the checkout down and reads its layout.`,
-		`Queue run — a path @ refs/heads/main`,
+		`asks nothing else · same as exocomp run git-src a path · Esc closes`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("launch drawer missing %q", want)

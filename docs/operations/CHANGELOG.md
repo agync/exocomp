@@ -6,6 +6,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-06 — the Queue run button stops repeating the playbook path
+
+- **The launch drawer's submit button is the bare `Queue run` verb.** It
+  restated the playbook path (`Queue run — <path> @ <ref>`) directly above the
+  footer line that already states the whole ask (`asks nothing else · same as
+  exocomp run <source> <path> [--egress …]`), so a long collection path wrapped
+  the primary across two lines. The footer is now the one place the contract is
+  stated and the button stays one line at any path length. The Command tab,
+  which had been mislabelled with the playbook name, is fixed by the same
+  change.
+
 ## 2026-10-06 — a local-directory collection resolves under the sandbox
 
 - **A requirements file naming a collection on the local disk no longer fails

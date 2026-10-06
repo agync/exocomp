@@ -443,8 +443,10 @@ tile header.
 
 **Launch drawer (F4).** The source detail leads with identity and facts; the
 launcher is a right-anchored 460px `<dialog>` opened by intent, JS-off via
-`?launch=1` (the `open` attribute). The submit button states the contract
-(`Queue run — <thing> @ <ref>`); the privileged toggle sits in its own
+`?launch=1` (the `open` attribute). The submit button is the bare verb
+(`Queue run`); the footer states the contract (`asks nothing else · same as
+exocomp run <source> <thing> [--egress …]`), so a long collection path wraps
+the prose line and never the primary. The privileged toggle sits in its own
 fail-tinted block. The Options fold holds the run-option toggles and timeout.
 
 **Quiet/danger row actions (F8).** Row actions are 30px: `.btn.quiet`

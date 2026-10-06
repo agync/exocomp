@@ -222,13 +222,13 @@ templ sourceDetail(vm sourceDetailVM) {
 				</div>
 				<div class="drawer-actions" data-foot="playbook" hidden?={ vm.Tab != "playbook" }>
 					<div class="actions">
-						<button type="submit" form="launch-pb-form" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+						<button type="submit" form="launch-pb-form" class="btn primary" disabled?={ vm.runPending() }>Queue run</button>
 					</div>
 					<p class="meta drawer-foot">{ vm.CliEcho() } · Esc closes</p>
 				</div>
 				<div class="drawer-actions" data-foot="command" hidden?={ vm.Tab != "command" }>
 					<div class="actions">
-						<button type="submit" form="launch-cmd-form" class="btn primary" disabled?={ vm.runPending() }>{ vm.QueueLabel() }</button>
+						<button type="submit" form="launch-cmd-form" class="btn primary" disabled?={ vm.runPending() }>Queue run</button>
 					</div>
 					<p class="meta drawer-foot">enqueued, never executed directly · Esc closes</p>
 				</div>
