@@ -726,6 +726,10 @@ func (s *Server) handleWorkspaceUnlock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
+	if !r.Form.Has("confirmed") {
+		s.unlockRefusal(w, r, "force-unlock requires confirmation")
+		return
+	}
 	ws, err := s.store.WorkspaceByName(r.Context(), name)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {

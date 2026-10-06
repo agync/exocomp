@@ -1036,8 +1036,23 @@ func TestWorkspacesListLockedShowsForceUnlock(t *testing.T) {
 		}
 	}
 
+	// A confirmed-less POST is refused on the surface and leaves the lock held
+	// (fail closed): the JS confirm injects confirmed=1, a JS-off submit cannot.
+	refused := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	refusedBody := readBody(t, refused)
+	_ = refused.Body.Close()
+	if refused.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("confirmed-less unlock = %d, want 422", refused.StatusCode)
+	}
+	if !strings.Contains(refusedBody, "force-unlock requires confirmation") {
+		t.Errorf("confirmed-less unlock refusal missing its sentence: %s", refusedBody)
+	}
+	if _, err := h.store.GetTFLock(ctx, ws.ID); err != nil {
+		t.Fatal("confirmed-less unlock released the lock")
+	}
+
 	// The POST force-releases and audits on the workspace's newest job.
-	post := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	post := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{"confirmed": {"1"}}, nil)
 	_ = post.Body.Close()
 	if post.StatusCode != http.StatusSeeOther {
 		t.Fatalf("workspace unlock = %d, want 303", post.StatusCode)
@@ -1601,7 +1616,7 @@ func TestWorkspaceUnlockNotLockedRefusal(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{"confirmed": {"1"}}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnprocessableEntity {
@@ -1647,7 +1662,7 @@ func TestWorkspaceUnlockLiveJobRefusal(t *testing.T) {
 	op := h.mint(t, "laptop", "operator")
 	client := login(t, ts.URL, op)
 
-	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/workspaces/web/unlock", url.Values{"confirmed": {"1"}}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusUnprocessableEntity {

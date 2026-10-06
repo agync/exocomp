@@ -621,7 +621,7 @@ func TestNtfyMuteClear(t *testing.T) {
 		t.Fatalf("precondition: MUTES section missing the host mute")
 	}
 
-	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[2])+"/clear", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[2])+"/clear", url.Values{"confirmed": {"1"}}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {

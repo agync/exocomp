@@ -17,7 +17,6 @@ func secretRowActions(sc secretRow, sealAvailable bool) []rowAction {
 	acts = append(acts, rowAction{
 		Name: "Remove", Path: glyphRemove,
 		Form:    "/secrets/" + sc.Name + "/rm",
-		Hidden:  map[string]string{"confirmed": "1"},
 		Confirm: "Delete secret " + sc.Name + "?",
 		// Refusal is the rm verb's refusal (forms/SPEC.md): rendered as the ▲
 		// status line by rowActions, never a flash. The Rotate modal carries

@@ -151,6 +151,10 @@ func (s *Server) handleDeadmanDisarm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	from := fromPage(r.PostFormValue("from"))
+	if !r.Form.Has("confirmed") {
+		s.redirectFlash(w, r, from, "disarm requires confirmation")
+		return
+	}
 	if err := s.store.DeleteSetting(r.Context(), store.SettingDeadmanThreshold); err != nil {
 		s.fail(w, r, err)
 		return

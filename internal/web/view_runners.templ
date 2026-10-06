@@ -119,7 +119,6 @@ templ runnersList(vm runnersVM) {
 									if vm.Operator {
 										<td data-label="Actions">
 											<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/runners/" + rn.Name + "/rm")) } class="inline-form" data-confirm={ "Remove runner " + rn.Name + "?" }>
-												<input type="hidden" name="confirmed" value="1"/>
 												<button type="submit" class="btn danger">Remove</button>
 											</form>
 										</td>

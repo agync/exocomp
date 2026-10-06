@@ -42,7 +42,6 @@ func scheduleRowActions(sc scheduleRow) []rowAction {
 		rowAction{
 			Name: "Remove", Path: glyphRemove, Menu: true,
 			Form:    "/schedules/" + sc.Name + "/rm",
-			Hidden:  map[string]string{"confirmed": "1"},
 			Confirm: "Remove schedule " + sc.Name + "?",
 			Danger:  true,
 		},
@@ -78,7 +77,6 @@ func checkRowActions(ck checkRow) []rowAction {
 		rowAction{
 			Name: "Remove", Path: glyphRemove, Menu: true,
 			Form:    "/checks/" + ck.Name + "/rm",
-			Hidden:  map[string]string{"confirmed": "1"},
 			Confirm: "Remove check " + ck.Name + "?",
 			Danger:  true,
 		},
@@ -93,7 +91,6 @@ func netgroupRowActions(ng netgroupRow) []rowAction {
 		{
 			Name: "Remove", Path: glyphRemove,
 			Form:    "/netgroups/" + ng.Name + "/rm",
-			Hidden:  map[string]string{"confirmed": "1"},
 			Confirm: "Remove netgroup " + ng.Name + "?",
 			// Refusal is the row's one refused verb (forms/SPEC.md): rendered
 			// as the ▲ status line by rowActions, never a flash.

@@ -595,9 +595,9 @@ templ layoutReady() {
 		}
 	});
 	// Destructive-action guard: any form[data-confirm] submits through the
-	// shared confirm dialog instead of firing on the first click. Confirm
-	// re-submits the waiting form via requestSubmit; the hidden confirmed=1
-	// field stays the server-side signal.
+	// shared confirm dialog instead of firing on the first click. The form ships
+	// NO confirmed field, so a JS-off submit reaches the handler unconfirmed and
+	// is refused; Confirm injects the field the handler requires, then re-submits.
 	var confirmForm = null;
 	document.addEventListener('submit', function (e) {
 		var form = e.target.closest('form[data-confirm]');
@@ -615,6 +615,14 @@ templ layoutReady() {
 			var f = confirmForm;
 			confirmForm = null;
 			exoModalClose('confirm-dialog');
+			var c = f.querySelector('input[name="confirmed"]');
+			if (!c) {
+				c = document.createElement('input');
+				c.type = 'hidden';
+				c.name = 'confirmed';
+				f.appendChild(c);
+			}
+			c.value = '1';
 			f.dataset.confirmed = '1';
 			f.requestSubmit();
 		});

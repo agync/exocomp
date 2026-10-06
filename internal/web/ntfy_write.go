@@ -239,6 +239,10 @@ func (s *Server) handleMuteClear(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, fmt.Errorf("web: clear mute: bad id"))
 		return
 	}
+	if !r.Form.Has("confirmed") {
+		s.redirectFlash(w, r, "/system/ntfy#mutes", "clear requires confirmation")
+		return
+	}
 	if err := s.store.DeleteNotifyMute(r.Context(), id); err != nil {
 		s.fail(w, r, err)
 		return

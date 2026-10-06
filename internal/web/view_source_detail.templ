@@ -48,7 +48,6 @@ templ sourceDetail(vm sourceDetailVM) {
 						</form>
 					}
 					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/rm")) } class="inline-form" data-confirm={ "Delete source " + vm.Source.Name + "? Its cached Python venv and ansible collections are removed with it." }>
-						<input type="hidden" name="confirmed" value="1"/>
 						<button type="submit" class="btn danger">Delete</button>
 					</form>
 				</div>

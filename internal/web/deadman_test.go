@@ -311,7 +311,7 @@ func TestDeadmanDisarm(t *testing.T) {
 		t.Fatal("fixture must start armed")
 	}
 	resp := postForm(t, client, ts.URL+"/system/deadman/disarm",
-		url.Values{"from": {"/system"}}, nil)
+		url.Values{"from": {"/system"}, "confirmed": {"1"}}, nil)
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("disarm = %d, want 303", resp.StatusCode)

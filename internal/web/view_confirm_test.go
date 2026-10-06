@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -176,9 +177,10 @@ func TestSourcesRowsNavigateAndActionsOnDetail(t *testing.T) {
 
 // TestDestructiveFormsCarryDataConfirm is the gate for the destructive-action
 // guard: every Remove/Delete/Revoke form carries data-confirm="<action>?" (the
-// message the shared confirm dialog shows) alongside the hidden confirmed=1
-// field the write handlers already require. Operator session only — the forms
-// render for an operator alone.
+// message the shared confirm dialog shows) and ships NO confirmed field, so a
+// JS-off submit reaches the handler unconfirmed and is refused (fail closed).
+// The confirm dialog injects confirmed=1 on Confirm. Operator session only —
+// the forms render for an operator alone.
 func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 	h := newHarness(t)
 	seedDestructiveObjects(t, h)
@@ -207,10 +209,10 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 		if !strings.Contains(page, c.want) {
 			t.Errorf("%s missing %q", c.path, c.want)
 		}
-		// The hidden confirmed=1 field stays alongside the UI guard — the
-		// confirm dialog is the UI layer, confirmed=1 the server-side signal.
-		if !strings.Contains(page, `name="confirmed" value="1"`) {
-			t.Errorf("%s lost the hidden confirmed=1 field", c.path)
+		// No confirmed field ships: the dialog injects it on Confirm, so a
+		// JS-off submit is refused rather than auto-confirmed.
+		if strings.Contains(page, `name="confirmed" value="1"`) {
+			t.Errorf("%s ships a confirmed field a JS-off submit would auto-send", c.path)
 		}
 	}
 
@@ -224,6 +226,25 @@ func TestDestructiveFormsCarryDataConfirm(t *testing.T) {
 		if strings.Contains(page, "data-confirm=") {
 			t.Errorf("%s (readonly) leaked a confirm-marked destructive form", c.path)
 		}
+	}
+}
+
+// TestDestructiveFormsRefuseWithoutConfirmed is the fail-closed gate: the
+// rendered forms ship no confirmed field, so a JS-off submit arrives
+// unconfirmed and the handler must refuse it and mutate nothing.
+func TestDestructiveFormsRefuseWithoutConfirmed(t *testing.T) {
+	h := newHarness(t)
+	seedDestructiveObjects(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, op, ts.URL+"/sources/infra/rm", url.Values{}, nil)
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("confirmed-less source delete = %d, want 400", resp.StatusCode)
+	}
+	if _, err := h.store.SourceByName(context.Background(), "infra"); err != nil {
+		t.Fatalf("confirmed-less delete removed the source: %v", err)
 	}
 }
 

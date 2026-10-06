@@ -61,7 +61,6 @@ func backupRowActions(row backupTargetRow) []rowAction {
 		rowAction{
 			Name: "Remove", Path: glyphRemove, Menu: true,
 			Form:    "/system/backups/" + row.Name + "/remove",
-			Hidden:  map[string]string{"confirmed": "1"},
 			Confirm: "Remove backup target " + row.Name + "? This deletes its run history.",
 			Danger:  true,
 		},
@@ -81,7 +80,7 @@ func backupHistoryRowActions(snap historySnapRow, name string) []rowAction {
 			Name: "Forget snapshot #" + snap.ID,
 			Path: glyphRemove, Menu: true,
 			Form:    "/system/backups/" + name + "/forget",
-			Hidden:  map[string]string{"snapshot": snap.FullID, "confirmed": "1"},
+			Hidden:  map[string]string{"snapshot": snap.FullID},
 			Confirm: "Forget snapshot #" + snap.ID + " of " + name + "? restic forget removes it from the repository.",
 			Danger:  true,
 		})
