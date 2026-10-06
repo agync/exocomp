@@ -135,11 +135,15 @@ typography:
     letterSpacing: 2.4px      # UPPERCASE eyebrow, accent-text
 
 rounded:
+  2xs: 4px         # inline diff marks, funnel bars
+  xs: 6px          # inline code / diff object blocks
   chip: 8px        # chips, focus-ring radius, log/plan/input corners
+  sm: 9px          # row-inner controls: menus, verb glyphs, playbook rows
   row: 10px        # tray-table rows, target tiles
   control: 11px    # buttons, text inputs
   card: 14px       # cards, banners, approve blocks, modals
   shell: 16px      # declared; reserved for the largest containers
+  pill: 999px      # toggle track
 
 spacing:
   row-h: 44px        # min hit target: job row, table row, control, button
@@ -491,12 +495,15 @@ all animation and transition to none.
 
 ## Shapes
 
-A radius ramp scaled to element size: `chip` (8px) for chips, focus rings, and
-log/plan boxes; `row` (10px) for tray-table rows and target tiles; `control`
-(11px) for buttons and text inputs; `card` (14px) for cards, banners, and
-approval blocks; `shell` (16px) reserved for the largest containers. Corners
-are consistent within a size class so the UI reads as one system. Dots are
-perfect circles at 6px (powerline), 8px (chip), and 10px (step rail).
+A radius ramp scaled to element size: `2xs` (4px) for inline diff marks and
+funnel bars; `xs` (6px) for inline code and diff object blocks; `chip` (8px)
+for chips, focus rings, and log/plan boxes; `sm` (9px) for row-inner controls
+(menus, verb glyphs, playbook rows); `row` (10px) for tray-table rows and
+target tiles; `control` (11px) for buttons and text inputs; `card` (14px) for
+cards, banners, and approval blocks; `shell` (16px) reserved for the largest
+containers; `pill` (999px) for the toggle track. Corners are consistent within
+a size class so the UI reads as one system. Dots are perfect circles at 6px
+(powerline), 8px (chip), and 10px (step rail).
 
 ## Components
 

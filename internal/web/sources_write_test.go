@@ -413,3 +413,30 @@ func TestSourceAddRoutesOnLocation(t *testing.T) {
 		t.Fatalf("git-looking location routed to unexpected row: %+v", gitSrc)
 	}
 }
+
+// TestSourcesAppbarMetaIsSourceCount: the app bar's meta slot carries the
+// page's own fact — the registered source count — with the singular fixed.
+func TestSourcesAppbarMetaIsSourceCount(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources status = %d", code)
+	}
+	if !strings.Contains(page, `<span class="appbar-meta">0 sources</span>`) {
+		t.Errorf("sources app bar missing the zero count meta:\n%s", page)
+	}
+
+	if _, err := h.store.CreateSource(context.Background(), store.Source{
+		Name: "one", Kind: store.SourcePath, URI: "/srv/one", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+	_, page = getBody(t, client, ts.URL+"/sources")
+	if !strings.Contains(page, `<span class="appbar-meta">1 source</span>`) {
+		t.Errorf("sources app bar missing the singular count meta:\n%s", page)
+	}
+}

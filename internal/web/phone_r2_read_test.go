@@ -89,7 +89,7 @@ func TestPhoneEventsOutcomeChips(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	app := cssOf(t, h, ts, client, "app.css")
-	if !strings.Contains(app, ".filters .chips .chip { height: 32px; padding: 0 12px; border-radius: 9px; font: 400 12px var(--font-mono); }") {
+	if !strings.Contains(app, ".filters .chips .chip { height: 32px; padding: 0 12px; border-radius: var(--radius-chip); font: 400 12px var(--font-mono); }") {
 		t.Error("app.css missing the R8 outcome-chip phone rule (32px / 12px mono)")
 	}
 }

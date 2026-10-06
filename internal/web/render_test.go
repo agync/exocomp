@@ -98,7 +98,7 @@ func TestFocusRingAndThemes(t *testing.T) {
 	}
 	// The toggle is a compact icon button (32px, clears the WCAG AA 24px target
 	// floor) shared with the collapse control, not a labelled pill.
-	for _, want := range []string{"width: 32px; height: 32px", "border-radius: 9px"} {
+	for _, want := range []string{"width: 32px; height: 32px", "border-radius: var(--radius-sm)"} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css: theme toggle missing %q", want)
 		}

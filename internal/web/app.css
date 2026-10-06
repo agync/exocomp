@@ -188,13 +188,13 @@ a:visited { color: var(--accent-text); }
   width: 32px; height: 32px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-400);
-  border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--hairline-faint); border-radius: var(--radius-sm); cursor: pointer;
 }
 .railtoggle:hover { color: var(--ink-100); background: var(--surface-tray); }
 .raillabel {
   display: none;
   position: absolute; left: calc(100% + 10px); top: 50%; transform: translateY(-50%);
-  white-space: nowrap; padding: 4px 10px; border-radius: 8px;
+  white-space: nowrap; padding: 4px 10px; border-radius: var(--radius-chip);
   background: var(--surface-tray); color: var(--ink-100);
   border: 1px solid var(--hairline); font: var(--type-button);
   pointer-events: none; z-index: 60;
@@ -291,14 +291,14 @@ a:visited { color: var(--accent-text); }
     width: 40px; height: 40px; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
     background: transparent; color: var(--ink-200);
-    border: 1px solid var(--hairline); border-radius: 10px; cursor: pointer;
+    border: 1px solid var(--hairline); border-radius: var(--radius-row); cursor: pointer;
   }
 }
 
 .themetoggle {
   width: 32px; height: 32px; padding: 0;
   background: transparent; color: var(--ink-400);
-  border: 1px solid var(--hairline-faint); border-radius: 9px;
+  border: 1px solid var(--hairline-faint); border-radius: var(--radius-sm);
   cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center;
 }
@@ -438,7 +438,7 @@ td.right, th.right { text-align: right; }
  * tokens.css allows them (the wide-table header rule, inset state rings) —
  * none are drawn here. Scoped to desktop (>=561px) so the stackable phone
  * transform and its data-label cards are untouched. */
-@media (min-width: 561px) {
+@media (min-width: 720px) {
   .card.tray { padding: 8px; }
   .card.tray h3 { padding: 4px 16px 8px; }
   /* One left edge (R5): the kicker and the hint/body lines align with the
@@ -506,7 +506,7 @@ td.right, th.right { text-align: right; }
 }
 .ws-unlock:hover { color: var(--ink-100); }
 .ws-unlock:focus-visible { outline: var(--focus-ring); outline-offset: var(--focus-offset); border-radius: var(--radius-chip); }
-@media (min-width: 561px) {
+@media (min-width: 720px) {
   .card.tray tbody td.ws-cell { height: 64px; }
 }
 
@@ -538,7 +538,7 @@ td.right, th.right { text-align: right; }
  * here because `.btn.quiet` is scoped to `td` (row-action cells) and would
  * otherwise be inert on the card header (H4/MED). */
 .checkcard > header .btn {
-  min-height: 30px; height: 30px; padding: 0 12px; border-radius: 9px;
+  min-height: 30px; height: 30px; padding: 0 12px; border-radius: var(--radius-sm);
 }
 .checkcard > header .btn.quiet {
   background: var(--surface-control); color: var(--ink-400);
@@ -557,7 +557,7 @@ td.right, th.right { text-align: right; }
   display: flex; align-items: center; justify-content: flex-end; gap: 8px;
 }
 .checkactions .btn {
-  min-height: 30px; height: 30px; padding: 0 12px; border-radius: 9px;
+  min-height: 30px; height: 30px; padding: 0 12px; border-radius: var(--radius-sm);
 }
 .checkactions .btn.quiet {
   background: var(--surface-control); color: var(--ink-400);
@@ -580,7 +580,7 @@ td.right, th.right { text-align: right; }
   width: 34px; height: 34px; padding: 0; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-500);
-  border: 0; border-radius: 9px; cursor: pointer;
+  border: 0; border-radius: var(--radius-sm); cursor: pointer;
 }
 tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 .raglyph:hover { background: var(--surface-control); color: var(--ink-100); }
@@ -593,7 +593,7 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   height: 34px; padding: 0 10px; flex: none; text-decoration: none;
   display: inline-flex; align-items: center;
   background: transparent; color: var(--ink-500); border: 0;
-  font: 400 12.5px var(--font-mono); border-radius: 9px; cursor: pointer;
+  font: 400 12.5px var(--font-mono); border-radius: var(--radius-sm); cursor: pointer;
 }
 .raglyph-label:hover { background: var(--surface-control); color: var(--ink-100); }
 
@@ -604,7 +604,7 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   width: 26px; height: 34px; padding: 0; margin: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-600);
-  border: 0; border-radius: 9px; cursor: pointer; list-style: none;
+  border: 0; border-radius: var(--radius-sm); cursor: pointer; list-style: none;
 }
 .rachev:hover { color: var(--ink-400); }
 /* The chevron's word is phone-only (the 719 block shows it); the desktop row
@@ -616,12 +616,12 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   position: absolute; top: calc(100% + 4px); right: 0; z-index: 70;
   min-width: 220px; margin: 0; padding: 6px; list-style: none;
   background: var(--surface-control); color: var(--ink-200);
-  border: 1px solid var(--hairline); border-radius: 11px;
+  border: 1px solid var(--hairline); border-radius: var(--radius-control);
   box-shadow: none; /* depth is the surface ramp, never a shadow */
 }
 .ramenu-item {
   display: flex; align-items: center; gap: 10px;
-  min-height: 36px; padding: 0 10px; border-radius: 8px;
+  min-height: 36px; padding: 0 10px; border-radius: var(--radius-chip);
   font: var(--type-button); color: var(--ink-200);
 }
 .ramenu-item > svg { flex: none; color: var(--ink-400); }
@@ -716,6 +716,7 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
   border-radius: var(--radius-control); border: 1px solid var(--hairline);
   background: var(--surface-control); color: var(--ink-100);
   font: var(--type-button); cursor: pointer; text-decoration: none;
+  white-space: nowrap;
 }
 .btn.primary { background: var(--accent-fill); color: var(--accent-on); border-color: transparent; }
 .btn.danger  { background: var(--fail-tint); color: var(--signal-fail); border-color: var(--fail-border); }
@@ -797,7 +798,7 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .tray-table .row {
   display: grid; align-items: center; gap: 8px;
   min-height: var(--row-h); padding: 0 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-row);
 }
 .tray-table .row:hover { background: var(--surface-control); }
 .tray-table .row.applicable { background: var(--surface-row); }
@@ -847,8 +848,8 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .counters { display: flex; gap: 14px; font: 600 26px/1 var(--font-mono); letter-spacing: -.8px; font-variant-numeric: tabular-nums; }
 /* diff — v0.11 (SPEC §4.1): one grid per attr row (B4), no strike (B6). */
 .diff { background: var(--surface-void); border-radius: var(--radius-control); padding: var(--tray-inset); margin-top: 12px; }
-.diff .diff-row { border-radius: 9px; }
-.diff .diff-row[open] summary { background: var(--surface-control); border-radius: 9px; }
+.diff .diff-row { border-radius: var(--radius-sm); }
+.diff .diff-row[open] summary { background: var(--surface-control); border-radius: var(--radius-sm); }
 .diff .diff-row summary { display: grid; grid-template-columns: 100px minmax(0,1fr) 140px; align-items: center; gap: 12px; padding: 8px 10px; cursor: pointer; }
 .diff .diff-row .action { display: inline-flex; align-items: center; gap: 6px; font: var(--type-keyword); letter-spacing: .4px; }
 .diff .diff-row .action .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -864,15 +865,15 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .diff .attr .k { color: var(--ink-400); }
 .diff .attr .k .idx { color: var(--ink-500); }
 .diff .attr .v { min-width: 0; overflow-wrap: anywhere; }
-.diff .old { color: var(--signal-fail); background: var(--fail-tint); border-radius: 4px; padding: 1px 5px; }
+.diff .old { color: var(--signal-fail); background: var(--fail-tint); border-radius: var(--radius-2xs); padding: 1px 5px; }
 .diff .arrow { color: var(--ink-600); }
-.diff .new { color: var(--signal-ok); background: var(--ok-tint); border-radius: 4px; padding: 1px 5px; }
+.diff .new { color: var(--signal-ok); background: var(--ok-tint); border-radius: var(--radius-2xs); padding: 1px 5px; }
 .diff .block { display: flex; flex-direction: column; gap: 2px; }
-.diff .block .ln { display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 8px; padding: 2px 8px; border-radius: 6px; overflow-wrap: anywhere; }
+.diff .block .ln { display: grid; grid-template-columns: 14px minmax(0,1fr); gap: 8px; padding: 2px 8px; border-radius: var(--radius-xs); overflow-wrap: anywhere; }
 .diff .block .ln.del { background: var(--fail-tint); color: var(--signal-fail); }
 .diff .block .ln.add { background: var(--ok-tint);   color: var(--signal-ok); }
 .diff .block .ln > :first-child { font-weight: 600; }
-.diff .obj { margin: 0; padding: 8px 10px; border-radius: 6px; background: var(--surface-card); font: inherit; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-500); }
+.diff .obj { margin: 0; padding: 8px 10px; border-radius: var(--radius-xs); background: var(--surface-card); font: inherit; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-500); }
 .diff .obj .del, .diff .obj .add { display: block; margin: 0 -10px; padding: 0 10px; }
 .diff .obj .del { background: var(--fail-tint); color: var(--signal-fail); }
 .diff .obj .add { background: var(--ok-tint);   color: var(--signal-ok); }
@@ -888,7 +889,7 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .diff .unchanged { color: var(--ink-500); }
 .diff .block-head { padding: 10px 10px 6px; }
 .diff .block-head .keyword { color: var(--signal-fail); }
-.diff .destroy-block { border: 1px solid var(--fail-border); background: var(--fail-tint); border-radius: 9px; margin-bottom: 4px; }
+.diff .destroy-block { border: 1px solid var(--fail-border); background: var(--fail-tint); border-radius: var(--radius-sm); margin-bottom: 4px; }
 .plan-foot { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 14px; }
 .plan-foot .meta { margin: 0; }
 /* The confirm dialog reuses the diff; the fact grid reads the four rows. */
@@ -921,7 +922,7 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
  * WCAG target-size floor (30px tall, wider than 24px). */
 td .btn {
   min-height: 30px; height: 30px; padding: 0 12px;
-  border-radius: 9px;
+  border-radius: var(--radius-sm);
 }
 /* Quiet row action (Disable, Enable): the control fill with label ink, at row
  * scale. Danger is a ring, not a fill, until the confirm (F8) — a transparent
@@ -998,7 +999,6 @@ td .cellact:hover { text-decoration: underline; }
   max-height: 15rem; overflow-y: auto;
   background: var(--surface-card); color: var(--ink-200);
   border: 1px solid var(--hairline); border-radius: var(--radius-control);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
 }
 .xselect-option {
   padding: 8px 10px; border-radius: var(--radius-chip);
@@ -1076,7 +1076,7 @@ td .cellact:hover { text-decoration: underline; }
   width: 40px; height: 24px; margin: 0; opacity: 0; cursor: pointer;
 }
 .toggle-track {
-  flex: none; position: relative; width: 40px; height: 24px; border-radius: 999px;
+  flex: none; position: relative; width: 40px; height: 24px; border-radius: var(--radius-pill);
   background: var(--surface-control); border: 1px solid var(--hairline);
   transition: background .15s ease, border-color .15s ease;
 }
@@ -1107,7 +1107,7 @@ td .cellact:hover { text-decoration: underline; }
   position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; flex: none;
   display: inline-flex; align-items: center; justify-content: center;
   background: var(--surface-tray); color: var(--ink-400);
-  border: 1px solid var(--hairline-faint); border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--hairline-faint); border-radius: var(--radius-xs); cursor: pointer;
 }
 .copybtn:hover { color: var(--ink-100); }
 .copybtn .copy-ok { display: none; }
@@ -1227,13 +1227,13 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .opts-help { font: 400 12px var(--font-mono); color: var(--ink-500); margin: 4px 0 2px; }
 /* The drawer footer's queue note sits on its own line below the full-width
  * button (F4), so it never rides beside it. */
-.drawer-foot { margin-top: 10px; }
+.drawer-foot { margin-top: 10px; overflow-wrap: anywhere; }
 /* The discovered-playbooks card: one mono line per playbook, no bullets. On
  * phone the rows are 44px tappable with a chevron and a press surface (P13),
  * prefilling the launcher; the same layout renders at every width. */
 .playbooklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .playbooklist li { font: var(--type-log); color: var(--ink-200); }
-.playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: 9px; color: inherit; text-decoration: none; }
+.playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-sm); color: inherit; text-decoration: none; }
 .playbooklist .playbook-row:hover { background: var(--surface-tray); color: var(--ink-100); }
 .playbooklist .playbook-row .chev { color: var(--ink-400); }
 /* The CLI sync note beside the Launch verb: a little room from the button. */
@@ -1248,7 +1248,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
   flex: none; width: 32px; height: 32px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
   background: transparent; color: var(--ink-400);
-  border: 1px solid var(--hairline-faint); border-radius: 9px; cursor: pointer;
+  border: 1px solid var(--hairline-faint); border-radius: var(--radius-sm); cursor: pointer;
 }
 .modal-close:hover { color: var(--ink-100); background: var(--surface-tray); }
 /* overflow-y:auto forces overflow-x to auto too (CSS spec), which would clip a
@@ -1311,7 +1311,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .pin {
   display: inline-flex; align-items: center; gap: 7px;
   height: 32px; min-width: 208px; box-sizing: border-box; padding: 0 12px;
-  border-radius: 9px; font: var(--type-keyword); letter-spacing: .4px;
+  border-radius: var(--radius-sm); font: var(--type-keyword); letter-spacing: .4px;
   white-space: nowrap; font-variant-numeric: tabular-nums;
 }
 .pin .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
@@ -1328,7 +1328,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * JS reveals it only while the operator is scrolled up (paused), so the log
  * box never wears a floating button. [hidden] is explicit because the author
  * display rule would otherwise beat the UA's hidden handling. */
-.verb-tail { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; color: var(--ink-400); font: 400 11px var(--font-mono); cursor: pointer; background: none; border: 0; }
+.verb-tail { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: var(--radius-sm); color: var(--ink-400); font: 400 11px var(--font-mono); cursor: pointer; background: none; border: 0; }
 .verb-tail[hidden] { display: none; }
 .verb-tail:hover { background: var(--surface-control); color: var(--ink-100); }
 .verb-tail svg { width: 15px; height: 15px; }
@@ -1635,7 +1635,7 @@ body { overflow-x: clip; }
 }
 /* Raw ↗ verb (SPEC §3): a labelled 32px verb at the bar's right end — glyph
  * 15px + Raw + ↗; phone keeps the glyph only. */
-.verb-raw { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: 9px; color: var(--ink-400); font: 400 11px var(--font-mono); text-decoration: none; }
+.verb-raw { height: 32px; padding: 0 12px 0 10px; display: inline-flex; align-items: center; gap: 7px; border-radius: var(--radius-sm); color: var(--ink-400); font: 400 11px var(--font-mono); text-decoration: none; }
 .verb-raw:hover { background: var(--surface-control); color: var(--ink-100); text-decoration: none; }
 .verb-raw svg { width: 15px; height: 15px; }
 .verb-raw .ext { color: var(--ink-500); }
@@ -1711,9 +1711,9 @@ body { overflow-x: clip; }
 .funnel-ct.fired { color: var(--ink-500); }
 .funnel-ct.fired.on { color: var(--accent-text); }
 .funnel-bar {
-  display: flex; gap: 3px; height: 8px; border-radius: 4px; overflow: hidden;
+  display: flex; gap: 3px; height: 8px; border-radius: var(--radius-2xs); overflow: hidden;
 }
-.funnel-seg { flex-basis: 0; border-radius: 4px; }
+.funnel-seg { flex-basis: 0; border-radius: var(--radius-2xs); }
 .funnel-seg.ignored { background: var(--surface-control); }
 .funnel-seg.matched { background: var(--ink-600); }
 .funnel-seg.suppressed { background: var(--signal-wait); opacity: .75; }
@@ -1736,7 +1736,7 @@ body { overflow-x: clip; }
 }
 .filters .switch a {
   display: inline-flex; align-items: center; gap: 7px; height: 28px; padding: 0 11px;
-  border-radius: 8px; color: var(--ink-400); font: 400 13px var(--font-mono); text-decoration: none;
+  border-radius: var(--radius-chip); color: var(--ink-400); font: 400 13px var(--font-mono); text-decoration: none;
 }
 .filters .switch a:hover { background: var(--surface-control); color: var(--ink-100); }
 .filters .switch a[aria-pressed="true"] { background: var(--surface-control); color: var(--ink-100); font-weight: 500; }
@@ -1768,7 +1768,7 @@ body { overflow-x: clip; }
 }
 .keys kbd {
   font: inherit; color: var(--ink-400); background: var(--surface-control);
-  border-radius: 4px; padding: 1px 5px;
+  border-radius: var(--radius-2xs); padding: 1px 5px;
 }
 
 /* ---- Events: tray table ----
@@ -1884,7 +1884,7 @@ body { overflow-x: clip; }
 .rule-row .sep { color: var(--ink-600); }
 .rule-row .guard {
   display: inline-flex; align-items: center; height: 20px; padding: 0 7px;
-  border-radius: 6px; background: var(--surface-control); color: var(--ink-400);
+  border-radius: var(--radius-xs); background: var(--surface-control); color: var(--ink-400);
   font-variant-numeric: tabular-nums;
 }
 .rule-row .guard--gate { background: var(--wait-tint); color: var(--signal-wait); }
@@ -1898,7 +1898,7 @@ body { overflow-x: clip; }
 .rule-explain summary {
   height: 30px; padding: 0 7px; margin-left: auto; list-style: none;
   display: inline-flex; align-items: center; gap: 6px; justify-content: center;
-  border-radius: 9px; cursor: pointer; color: var(--ink-500);
+  border-radius: var(--radius-sm); cursor: pointer; color: var(--ink-500);
 }
 .rule-explain summary::-webkit-details-marker { display: none; }
 .rule-explain summary:hover { background: var(--surface-control); color: var(--ink-100); }
@@ -1907,7 +1907,7 @@ body { overflow-x: clip; }
   position: absolute; right: 0; top: calc(100% + 4px); z-index: 40;
   min-width: 320px; max-width: min(560px, 80vw); margin: 0; padding: 12px 14px;
   background: var(--surface-control); color: var(--ink-200);
-  border: 1px solid var(--hairline); border-radius: 11px;
+  border: 1px solid var(--hairline); border-radius: var(--radius-control);
   font: var(--type-log); white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
@@ -2092,7 +2092,7 @@ body { overflow-x: clip; }
   /* Dashboard counts 2x2 tiles (SPEC §2.1) and the full-width jobs filter
    * (SPEC §2.3): pre-shipped for the Wave-2 lanes, inert until their markup. */
   .counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-  .counts .tile { min-height: 88px; padding: 12px 14px; border-radius: 12px; }
+  .counts .tile { min-height: 88px; padding: 12px 14px; border-radius: var(--radius-card); }
   .counts .tile b { font: 600 26px var(--font-mono); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
   .filter { width: 100%; height: var(--row-h); border-radius: var(--radius-control); font-size: 13px; }
 
@@ -2145,10 +2145,10 @@ body { overflow-x: clip; }
   .funnel .counts small { font: 400 12px var(--font-mono); }
   .funnel .bar { display: none; }
   .funnel .keys, .filters .divider { display: none; }
-  .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 44px; padding: 4px; border-radius: 12px; width: 100%; }
-  .filters .switch a { height: auto; justify-content: center; border-radius: 9px; }
+  .filters .switch { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); height: 44px; padding: 4px; border-radius: var(--radius-card); width: 100%; }
+  .filters .switch a { height: auto; justify-content: center; border-radius: var(--radius-sm); }
   .filters .group--outcome { width: 100%; }
-  .filters .chips .chip { height: 32px; padding: 0 12px; border-radius: 9px; font: 400 12px var(--font-mono); }
+  .filters .chips .chip { height: 32px; padding: 0 12px; border-radius: var(--radius-chip); font: 400 12px var(--font-mono); }
   .filters .count { min-width: 0; }
   .filters .count .full { display: none; }
   .chips { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 2px; }

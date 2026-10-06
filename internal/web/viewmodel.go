@@ -232,6 +232,15 @@ func checksMeta(n int) string {
 	return itoa(int64(n)) + " checks"
 }
 
+// sourcesMeta is the /sources app-bar fact: the registered source count with
+// the singular fixed.
+func sourcesMeta(n int) string {
+	if n == 1 {
+		return "1 source"
+	}
+	return itoa(int64(n)) + " sources"
+}
+
 // workspaceSummary is the dashboard's workspace card: the managed total and
 // how many carry an open drift approval.
 type workspaceSummary struct {

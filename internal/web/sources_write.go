@@ -124,6 +124,8 @@ func (s *Server) sourcesVMFor(r *http.Request, form *sourceFormVM) (sourcesVM, e
 		Operator: canWrite(ident), SealAvailable: s.sealer != nil,
 		Form: form,
 	}
+	// The app bar's page-own fact: the registered source count.
+	vm.Page.Meta = sourcesMeta(len(rows))
 	if vm.Operator {
 		vm.Page.Add = &pageAdd{Target: "sources-add", Label: "source"}
 	}

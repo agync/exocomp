@@ -97,11 +97,15 @@ typography:
     kicker:  { font: "600 11px/1 {typography.families.mono}",   tracking: "2.4px",  transform: "uppercase", color: "{colors.dark.accent.text}", use: "card eyebrow" }
 
 rounded:
+  "2xs":   "4px"    # inline diff marks, funnel bars
+  xs:      "6px"    # inline code / diff object blocks
   chip:    "8px"    # chips, focus-ring radius, log/plan/input corners
-  row:     "10px"   # declared; unused in web (no floating-row model shipped)
+  sm:      "9px"    # row-inner controls: menus, verb glyphs, playbook rows
+  row:     "10px"   # tray-table rows, target tiles
   control: "11px"   # buttons, text inputs
   card:    "14px"   # cards, banners, approve blocks
   shell:   "16px"   # declared; unused in web
+  pill:    "999px"  # toggle track
 
 spacing:
   row-h:     "44px"       # min hit target: row, control, button height
@@ -328,10 +332,13 @@ consistent with the "no gradients-as-decoration" anti-goal.
 
 ## Shapes
 
-A radius ramp scales with element size: `chip` (8px) for chips, inputs, and the
-log/plan boxes; `control` (11px) for buttons and text inputs; `card` (14px) for
-cards, banners, and approval blocks. Corners are consistent within a size class so
-the UI reads as one system.
+A radius ramp scales with element size: `2xs` (4px) for inline diff marks and
+funnel bars; `xs` (6px) for inline code and diff object blocks; `chip` (8px) for
+chips, inputs, and the log/plan boxes; `sm` (9px) for row-inner controls (menus,
+verb glyphs, playbook rows); `row` (10px) for tray rows and target tiles;
+`control` (11px) for buttons and text inputs; `card` (14px) for cards, banners,
+and approval blocks. Corners are consistent within a size class so the UI reads
+as one system.
 
 Motion is minimal and meaningful. The only animation is `breathe` — a 1.6s opacity
 pulse (1 -> .35) on the RUNNING dot and pin. Nothing spins; there is no progress

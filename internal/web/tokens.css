@@ -62,11 +62,15 @@
   --row-h: 44px;        /* job row, table row, control & button height (min hit target) */
   --header-h: 60px;     /* app bar */
   --tray-inset: 6px;    /* rows float in a padded tray… */
-  --radius-row: 10px;   /* …with 10px row radius; selected row is a fill, not a rule */
+  --radius-2xs: 4px;    /* inline diff marks, funnel bars */
+  --radius-xs: 6px;     /* inline code / diff object blocks */
   --radius-chip: 8px;
+  --radius-sm: 9px;     /* row-inner controls: menus, verb glyphs, playbook rows */
+  --radius-row: 10px;   /* …with 10px row radius; selected row is a fill, not a rule */
   --radius-control: 11px;
   --radius-card: 14px;
   --radius-shell: 16px;
+  --radius-pill: 999px; /* toggle track */
   --gap-inline: 8px;    /* chip/badge clusters */
   --gap-cell: 16px;     /* row grid columns */
   --gap-card: 12px;     /* between cards */
