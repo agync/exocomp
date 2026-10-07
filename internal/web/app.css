@@ -608,8 +608,9 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 }
 .rachev:hover { color: var(--ink-400); }
 /* The chevron's word is phone-only (the 719 block shows it); the desktop row
- * chevron stays the compact icon. */
-.rachev-word { display: none; }
+ * chevron stays the compact icon. The glyph keeps ink-600 (a mark, not text);
+ * the word reads ink-500, the last AA text step. */
+.rachev-word { display: none; color: var(--ink-500); }
 .ramenu[open] .rachev { background: var(--surface-control); color: var(--ink-100); }
 .ramenu[open] .rachev svg { transform: rotate(180deg); }
 .ramenu-panel {
@@ -1214,6 +1215,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .modal.drawer {
   inset: 0 0 0 auto; margin: 0;
   width: min(460px, 100vw);
+  /* 100vw overrides the UA dialog max-width (100% - 2em - 6px), which otherwise
+   * leaves a strip of the page on phone; 460 < 100vw keeps desktop unchanged. */
+  max-width: 100vw;
   max-height: 100vh; height: 100vh;
   border-radius: 0;
   border: 0; border-left: 1px solid var(--hairline);
@@ -1237,9 +1241,9 @@ main > .pageheader + dialog + .card { margin-top: 0; }
  * prefilling the launcher; the same layout renders at every width. */
 .playbooklist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .playbooklist li { font: var(--type-log); color: var(--ink-200); }
-.playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-sm); color: inherit; text-decoration: none; }
+.playbooklist .playbook-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 0 12px; border-radius: var(--radius-sm); color: inherit; text-decoration: none; overflow-wrap: anywhere; }
 .playbooklist .playbook-row:hover { background: var(--surface-tray); color: var(--ink-100); }
-.playbooklist .playbook-row .chev { color: var(--ink-400); }
+.playbooklist .playbook-row .chev { flex: none; color: var(--ink-400); }
 /* The CLI sync note beside the Launch verb: a little room from the button. */
 .privileged {
   margin-top: 12px; padding: 12px 14px;
@@ -2160,6 +2164,7 @@ body { overflow-x: clip; }
   .filters .chips .chip { height: 32px; padding: 0 12px; border-radius: var(--radius-chip); font: 400 12px var(--font-mono); }
   .filters .count { min-width: 0; }
   .filters .count .full { display: none; }
+  .filters .count .k { display: inline; }
   .chips { flex-wrap: nowrap; overflow-x: auto; gap: 8px; padding-bottom: 2px; }
   .chips .chip { height: 36px; flex: none; font-size: 12.5px; }
   .events-row .expanded { border-radius: var(--radius-row); padding: 12px 14px; gap: 10px; }

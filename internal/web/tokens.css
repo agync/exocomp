@@ -5,6 +5,7 @@
  * Intended for internal/web/tokens.css verbatim. */
 
 :root {
+  color-scheme: dark;
   /* ---- Surfaces · dark (native theme) ---- */
   --surface-void:    #0A0C0D; /* page backplate */
   --surface-rail:    #0E1112; /* left nav */
@@ -91,6 +92,7 @@
 
 @media (prefers-color-scheme: light) {
   :root {
+    color-scheme: light;
     /* Warm, low-chroma remap — lab notebook, not an inverted console. */
     --surface-void:    #F5F2EC; /* page */
     --surface-rail:    #EFEBE3; /* left nav, app bar */
@@ -133,6 +135,7 @@
  * one-file edit. [data-theme] wins over the media default by specificity, in
  * both directions. */
 :root[data-theme="light"] {
+  color-scheme: light;
   --surface-void: #F5F2EC; --surface-rail: #EFEBE3; --surface-card: #FFFDF9;
   --surface-tray: #FFFDF9; --surface-row: #F1EDE5; --surface-control: #EFEBE3;
   --hairline: rgba(60,50,38,.16); --hairline-faint: rgba(60,50,38,.12);
@@ -149,6 +152,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --surface-void: #0A0C0D; --surface-rail: #0E1112; --surface-card: #121618;
   --surface-tray: #171C1E; --surface-row: #191F21; --surface-control: #22282A;
   --hairline: rgba(255,255,255,.09); --hairline-faint: rgba(255,255,255,.06);
