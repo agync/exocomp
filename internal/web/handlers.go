@@ -1497,8 +1497,16 @@ func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store
 }
 
 // verdictSentence is the verdict band's one line: it names what happened to
-// the reachable and unreachable hosts, in plain words.
+// the reachable and unreachable hosts, in plain words. Only an Ansible run has
+// hosts to describe; every other kind names the process outcome instead, so a
+// failed shell, tofu or cli run never reads as a reachability failure that
+// could not have happened.
 func verdictSentence(job store.Job, facts jobOutcomeFacts) string {
+	// An empty kind is a hand-built view model, never a queue row (the queue
+	// always stamps one); it keeps the historical Ansible reading.
+	if job.Kind != "" && job.Kind != executor.KindAnsible {
+		return "The command failed — its output is in the log."
+	}
 	var reach []string
 	for _, h := range facts.Hosts {
 		if h.Unreachable == 0 && h.Failed == 0 {

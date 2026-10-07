@@ -148,7 +148,9 @@ templ checksSurface(vm checksVM) {
 												if t.HasLocation {
 													<div class="where">
 														<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphRoute }></path></svg>
-														if t.Netgroup == "" || t.Netgroup == "away" {
+														if t.Netgroup == "" {
+															<span class="meta">no netgroup</span>
+														} else if t.Netgroup == "away" {
 															<span class="mono">on away</span>
 														} else {
 															<a class="mono" href={ urlWithBase(vm.Page.Base, "/netgroups") }>on { t.Netgroup }</a>
