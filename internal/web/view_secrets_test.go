@@ -99,14 +99,18 @@ func TestSecretsSurfaceGated(t *testing.T) {
 		t.Fatalf("/secrets with session = %d, want 200", code)
 	}
 
-	// Fields, columns, sources, timestamps.
+	// Fields, columns, sources, timestamps. The inline row is the scan set
+	// only — Name · Kind · Source · Expiry · Last used (+ Actions); Created,
+	// Last rotated and Used by live in the row's details dialog.
 	for _, want := range []string{
 		`scope="col"`, "Sealed values",
 		"api-token", "session-key", "ntfy-url",
 		"token", "hmac", "url", // kinds
 		store.SecretSourceUser, store.SecretSourceGenerated,
-		`<th scope="col">Created</th>`,
-		`<th scope="col">Last rotated</th>`,
+		`<th scope="col">Name</th>`,
+		`<th scope="col">Kind</th>`,
+		`<th scope="col">Source</th>`,
+		`<th scope="col">Expiry</th>`,
 		`<th scope="col">Last used</th>`,
 		"never", // never-rotated / never-used cells
 	} {
@@ -558,5 +562,119 @@ func TestSecretsKeyDeepLinkFocus(t *testing.T) {
 	}
 	if strings.Contains(page, `class="row-focus"`) {
 		t.Error("/secrets?key=nope focused a row")
+	}
+}
+
+// TestSecretsInlineColumnsAndDetail is the GATE for the secrets list redesign:
+// the inline row is the scan set only (Name · Kind · Source · Expiry · Last
+// used, + Actions), the row opens a native details dialog (data-modal-row),
+// the name cell carries the keyboard-reachable opener, and the dialog carries
+// the facts that left the row (Created, Last rotated, Used by) plus the row's
+// actions. The sealed value never renders in either surface.
+func TestSecretsInlineColumnsAndDetail(t *testing.T) {
+	h := newHarness(t)
+	seedSecrets(t, h)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d, want 200", code)
+	}
+
+	// The inline header is exactly the scan set; the moved facts are no longer
+	// columns.
+	for _, want := range []string{
+		`<th scope="col">Name</th>`,
+		`<th scope="col">Kind</th>`,
+		`<th scope="col">Source</th>`,
+		`<th scope="col">Expiry</th>`,
+		`<th scope="col">Last used</th>`,
+		`<th scope="col" class="right">Actions</th>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets inline table missing column %q", want)
+		}
+	}
+	for _, gone := range []string{
+		`<th scope="col">Created</th>`,
+		`<th scope="col">Last rotated</th>`,
+		`<th scope="col">Used by</th>`,
+	} {
+		if strings.Contains(page, gone) {
+			t.Errorf("/secrets still renders the removed column %q", gone)
+		}
+	}
+
+	// The row-open hook: a pointer row (data-modal-row) plus a keyboard opener
+	// in the name cell that opens the same dialog. The actions cell carries the
+	// sec-actions scope the chevron-order rule hangs off.
+	for _, want := range []string{
+		`data-modal-row="secret-detail-api-token"`,
+		`<button type="button" class="cellact sec-name" data-modal-open="secret-detail-api-token">api-token</button>`,
+		`<td class="sec-actions" data-label="Actions">`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets missing the row-open hook %q", want)
+		}
+	}
+
+	// The details dialog carries the full record, the moved facts, and the
+	// row's actions.
+	for _, want := range []string{
+		`id="secret-detail-api-token"`,
+		`aria-labelledby="secret-detail-api-token-title"`,
+		"<dt>Kind</dt>", "<dt>Source</dt>", "<dt>Created</dt>",
+		"<dt>Last rotated</dt>", "<dt>Last used</dt>", "<dt>Expiry</dt>",
+		"<dt>Used by</dt>",
+		`used by <span class="mono">deploy-app</span> as <span class="mono">$API_TOKEN</span>`,
+		`aria-label="Rotate"`, `aria-label="Remove"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets detail dialog missing %q", want)
+		}
+	}
+
+	// Invariant 4: neither the row nor the detail dialog renders the value.
+	for _, forbidden := range []string{"CIPHER-SENTINEL", "NONCE-SENTINEL"} {
+		if strings.Contains(page, forbidden) {
+			t.Errorf("/secrets leaked sealed material %q", forbidden)
+		}
+	}
+}
+
+// TestSecretsRowLayoutCSS pins the R2 layout fixes: the desktop secret name is
+// left-aligned (only the ≤719px stacked card right-aligns it against its label),
+// the conditional Bindings chevron is prepended to the LEFT of the constant
+// Rotate/Remove glyphs so their x never changes between rows, and the Actions
+// header right-aligns over the glyph cluster.
+func TestSecretsRowLayoutCSS(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		// The desktop name rule carries no text-align, so a wrapped name reads
+		// left like every other cell.
+		".sec-name { overflow-wrap: anywhere; white-space: normal; }",
+		// The conditional chevron holds the left slot; the constant verbs stay
+		// pinned to the right edge.
+		".sec-actions .rowacts .ramenu { order: -1; }",
+		// Column proportions keep the six scan columns even.
+		".sec-table th:nth-child(5) { width: 20%; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing secrets layout rule %q", want)
+		}
+	}
+	// The right-align of the name is scoped to the phone block: the rule must
+	// appear after the one 719px breakpoint, never in the desktop cascade.
+	phone := strings.Index(app, "@media (max-width: 719px)")
+	phoneName := strings.Index(app, ".tablewrap.stackable td .sec-name { min-width: 0; text-align: right; }")
+	if phone < 0 || phoneName < 0 || phoneName < phone {
+		t.Errorf("the .sec-name right-align must live inside the ≤719px block (phone=%d rule=%d)", phone, phoneName)
 	}
 }

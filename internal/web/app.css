@@ -950,6 +950,31 @@ td .cellact {
   text-align: left;
 }
 td .cellact:hover { text-decoration: underline; }
+/* The secrets list's name cell opens the row's details dialog through a real
+ * button (keyboard reachable). A long secret name wraps inside the cell rather
+ * than forcing the table or the phone card to scroll. Desktop keeps the name
+ * left-aligned like every other cell; only the ≤719px stacked card right-aligns
+ * the value against its data-label (scoped in the phone block below). */
+.sec-name { overflow-wrap: anywhere; white-space: normal; }
+/* The Bindings chevron is conditional (only a bound secret has a menu), so it
+ * is prepended to the LEFT of the constant Rotate/Remove glyphs: those two then
+ * hold fixed slots from the right edge and their x never changes between rows
+ * (INVARIANTS v0.12). Scoped to the secrets surface so no other resource's
+ * cluster moves. */
+.sec-actions .rowacts .ramenu { order: -1; }
+/* Column proportions (R2): the six scan columns share the tray deliberately
+ * instead of auto-layout pooling width into Name and leaving the middle three
+ * as islands. A long secret name wraps in its cell; the Actions slot keeps the
+ * glyph cluster's width. Desktop only — the phone card transform ignores
+ * width hints and re-flows every cell. */
+@media (min-width: 720px) {
+  .sec-table th:nth-child(1) { width: 23%; }
+  .sec-table th:nth-child(2) { width: 11%; }
+  .sec-table th:nth-child(3) { width: 12%; }
+  .sec-table th:nth-child(4) { width: 16%; }
+  .sec-table th:nth-child(5) { width: 20%; }
+  .sec-table th:nth-child(6) { width: 18%; }
+}
 
 /* ---- Write surface: flash, forms, one-time secret ---- */
 .flash {
@@ -2038,6 +2063,10 @@ body { overflow-x: clip; }
   }
   .tablewrap.stackable td[data-label=""] { justify-content: flex-end; }
   .tablewrap.stackable td[data-label=""]::before { content: none; }
+  /* A long secret name right-aligns against its card label on phone; the
+   * button is a flex item, so min-width:0 lets it shrink below its content and
+   * wrap (never ellipsized). Desktop stays left-aligned (the rule above). */
+  .tablewrap.stackable td .sec-name { min-width: 0; text-align: right; }
 
   /* The 48px touch floor for phone verbs and primary actions (a11y invariant,
    * F3). Compact secondary actions (the Raw log app-bar button) opt out through
