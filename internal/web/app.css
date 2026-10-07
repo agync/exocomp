@@ -2176,6 +2176,9 @@ body { overflow-x: clip; }
   /* The Playbook/Command switch is a two-target control on the phone launcher,
    * so it carries the same 48px touch floor as every other phone verb. */
   .tab { min-height: 48px; display: inline-flex; align-items: center; }
+  /* The drawer/modal close verb is a 32px desktop icon; on phone it must clear
+   * the same 48px floor. The icon keeps its own size — only the target grows. */
+  .modal-close { min-width: 48px; min-height: 48px; }
   .modal.drawer .drawer-actions { flex: none; padding: 8px 0 calc(8px + env(safe-area-inset-bottom)); background: var(--surface-card); border-top: 1px solid var(--hairline-faint); }
   .modal.drawer .drawer-actions .actions { margin-top: 0; }
   .modal.drawer .drawer-foot { margin-top: 8px; }
