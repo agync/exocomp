@@ -6,6 +6,30 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-07 — web UI review fixes
+
+- **The launch drawer is full-width on phone.** `.modal.drawer` set no
+  `max-width`, so the UA dialog cap left a strip of the page showing behind the
+  drawer; `max-width: 100vw` closes it and the desktop 460px drawer is
+  unchanged.
+- **`/events` keeps its counts on phone.** The compact count form was hidden
+  globally and the full form hidden at ≤719px, so both vanished; the phone block
+  now re-enables the compact form.
+- **Source playbook rows wrap instead of clipping on phone.** A long nested path
+  overflowed the row and pushed the chevron out of view; the row now wraps
+  (`overflow-wrap: anywhere`) and the chevron holds its place (`flex: none`).
+- **The phone row-action "More" label meets AA.** It inherited the chevron's
+  ink-600 (3.6:1); the label is now ink-500 while the glyph keeps ink-600.
+- **Scrollbars follow the theme.** `color-scheme` is set on all four theme
+  roots, so the dark surface no longer paints light scrollbars.
+- **A non-ansible failure no longer claims Ansible.** `verdictSentence` had no
+  kind guard, so a failed shell job read "Ansible could not reach the target.";
+  non-ansible kinds now say the command failed and point at the log.
+- **`/checks` no longer prints a false location.** A target with no netgroup
+  rendered the literal "on away"; it now reads "no netgroup", while a real
+  netgroup still renders "on {netgroup}" and the store's `away` miss label is
+  kept.
+
 ## 2026-10-06 — the Queue run button stops repeating the playbook path
 
 - **The launch drawer's submit button is the bare `Queue run` verb.** It
