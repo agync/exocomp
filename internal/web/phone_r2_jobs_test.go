@@ -197,8 +197,13 @@ func TestPhoneRunCardDropsKindChip(t *testing.T) {
 	if strings.Contains(backupBody, `class="chip dim"><span class="dot"></span>backup</span>`) {
 		t.Error("the backup kind chip repeats the title and must be dropped")
 	}
-	if !strings.Contains(backupBody, `class="title mono">backup</span>`) {
-		t.Error("the backup run card must still show the title")
+	// The card no longer restates the title: the app bar's sub carries it, and
+	// the card's own title span is gone.
+	if strings.Contains(backupBody, `class="title mono">`) {
+		t.Error("the run card must not restate the title the app bar already shows")
+	}
+	if !strings.Contains(backupBody, `class="appbar-sub">backup</span>`) {
+		t.Error("the app bar must carry the backup title the run card no longer repeats")
 	}
 
 	// The playbook job: the tool (ansible) is not the title, so the chip stays.

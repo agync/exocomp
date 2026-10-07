@@ -3022,8 +3022,9 @@ type configTile struct {
 }
 
 // jobRunCardVM is the run card at the top of the job detail page: the chip
-// row, the "Queued by ..." sentence, the verdict number, and the RUN
-// CONFIGURATION tile grid.
+// row with the inline verdict, the one "Queued by ..." meta sentence, and the
+// RUN CONFIGURATION tile grid. Title stays the kind chip's comparison and the
+// rerun dialog's fact; the card itself does not restate the app bar's title.
 type jobRunCardVM struct {
 	State     store.JobState
 	Tool      string
@@ -3031,15 +3032,15 @@ type jobRunCardVM struct {
 	// RerunOf is the parent job's id when this run is a rerun; 0 otherwise.
 	RerunOf  int64
 	Title    string
-	JobID    int64
 	Sentence string
 	// Verdict is "exit {code}" with " tolerated" appended on a degraded run;
 	// empty on a job that never exited. Tolerated flags the smaller "tolerated"
 	// tail.
 	Verdict   string
 	Tolerated bool
-	// RanLine is "ran 00:00:41 · 16:26:38 → 16:27:19 · budget 600s"; empty on a
-	// job that never finished.
+	// RanLine is "took 00:00:41 · budget 600s"; empty on a job that never
+	// finished. The start→end clocks are absent: the sentence's queued-at stamp
+	// is the "when" and the log/Output bar carry the exact window.
 	RanLine string
 	// DegradedChip is the "2 hosts unreachable · hypnotoad, lrrr" wait-tint
 	// chip, empty on every state but degraded.
@@ -3270,16 +3271,17 @@ func finishedRel(t, now time.Time) string {
 	return t.UTC().Format("Jan 2 · 15:04")
 }
 
-// ranLine renders the verdict's "ran 00:00:41 · 16:26:38 → 16:27:19 · budget
-// 600s" line; empty on a job that never started and finished.
+// ranLine renders the run card's tail fact: the wall time ("took 00:00:41")
+// and the run budget when one was set. Empty on a job that never started and
+// finished. The start→end clocks are deliberately absent: the sentence's
+// queued-at stamp is the "when", and the log/Output bar carry the exact window.
 func ranLine(j store.Job) string {
 	if j.StartedAt == nil || j.FinishedAt == nil {
 		return ""
 	}
 	d := j.FinishedAt.Sub(*j.StartedAt)
-	line := fmt.Sprintf("ran %02d:%02d:%02d · %s → %s",
-		int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60,
-		j.StartedAt.UTC().Format("15:04:05"), j.FinishedAt.UTC().Format("15:04:05"))
+	line := fmt.Sprintf("took %02d:%02d:%02d",
+		int(d.Hours()), int(d.Minutes())%60, int(d.Seconds())%60)
 	if t := time.Duration(j.Args.Timeout); t > 0 {
 		line += fmt.Sprintf(" · budget %ds", int(t.Seconds()))
 	}

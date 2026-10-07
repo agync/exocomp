@@ -1538,38 +1538,38 @@ body { overflow-x: clip; }
 .run-card[data-state="failed"] { box-shadow: inset 0 0 0 1px var(--fail-border); }
 .run-card[data-state="degraded"] { box-shadow: inset 0 0 0 1px var(--wait-border); }
 .run-card[data-state="running"] { box-shadow: inset 0 0 0 1px var(--accent-border); }
-.run-card .chips { display: flex; flex-wrap: wrap; gap: var(--gap-inline); margin-bottom: 14px; }
+.run-card .chips { display: flex; flex-wrap: wrap; gap: var(--gap-inline); }
 .chip--degraded {
   color: var(--signal-wait); background: var(--wait-tint);
   border-color: var(--wait-border);
 }
 .chip--degraded .dot { background: var(--signal-wait); }
 .chip--dashed { color: var(--ink-400); border-style: dashed; }
-/* The run card's stacked head (R5): title · job # and the verdict sit side by
- * side on the first line, the "Queued by …" sentence spans the full width
- * below. The phone block stacks the head into a column. */
-.run-card .head { display: flex; align-items: flex-start; gap: var(--gap-cell); flex-wrap: wrap; }
-.run-card .head .sentence { flex: 1 0 100%; }
-.run-card .runtitle { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.run-card .runtitle .title { font: 600 19px var(--font-mono); color: var(--ink-100); }
-.run-card .runtitle .jobid { font: var(--type-log); color: var(--ink-500); }
-.run-card .sentence { font: var(--type-body); color: var(--ink-400); }
-.run-card .verdict-wrap { text-align: right; }
-.run-card .verdict { font: var(--type-display); font-family: var(--font-mono); letter-spacing: -1px; }
+/* The run card's compact head (2.1): the chip row and the verdict number share
+ * one line — the exit figure pinned right, in the state colour — and the one
+ * "Queued by …" meta line sits below. The title and job # are the app bar's own
+ * fact, so the card never restates them. */
+.run-card .run-head { display: flex; align-items: center; gap: var(--gap-cell); }
+.run-card .run-head .chips { flex: 1; min-width: 0; }
+.run-card .verdict { flex: none; font: var(--type-display); font-family: var(--font-mono); letter-spacing: -1px; }
 .run-card[data-state="failed"] .verdict { color: var(--signal-fail); }
 .run-card[data-state="degraded"] .verdict { color: var(--signal-wait); }
 .run-card[data-state="succeeded"] .verdict { color: var(--signal-ok); }
 .run-card .verdict .tolerated { font: 500 15px var(--font-ui); color: var(--ink-500); }
-.run-card .ranline { font: var(--type-log); color: var(--ink-500); }
+.run-card .sentence {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px;
+  font: var(--type-body); color: var(--ink-400); margin-top: 10px;
+}
+.run-card .sentence .ranline { font: var(--type-log); color: var(--ink-500); white-space: nowrap; }
 .run-card .kicker {
   font: var(--type-kicker); letter-spacing: 2.4px; text-transform: uppercase;
-  color: var(--ink-500); margin-top: 16px;
+  color: var(--ink-500); margin-top: 12px;
 }
-.config { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.config { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
 .config .tile {
   background: var(--surface-tray); border-radius: var(--radius-control);
-  padding: 12px 14px;
-  display: flex; flex-direction: column; gap: 6px; min-width: 0;
+  padding: 9px 12px;
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
 }
 .config .tile span { font: var(--type-body); color: var(--ink-500); }
 .config .tile b {
@@ -2100,16 +2100,21 @@ body { overflow-x: clip; }
   .counts .tile b { font: 600 26px var(--font-mono); letter-spacing: -0.8px; font-variant-numeric: tabular-nums; }
   .filter { width: 100%; height: var(--row-h); border-radius: var(--radius-control); font-size: 13px; }
 
-  .run-card { padding: 16px; gap: 14px; }
-  .run-card .head { flex-direction: column; align-items: stretch; gap: 14px; }
-  .run-card .title { font-size: 17px; letter-spacing: -0.4px; overflow-wrap: anywhere; }
-  /* P4: the verdict area hangs LEFT on phone — chips · title · exit figure ·
-   * ran line — where the desktop .verdict-wrap text-align:right leaves a void
-   * beside the figure at 390px. */
-  .run-card .verdict-wrap { text-align: left; }
+  .run-card { padding: 14px; }
+  /* P4: the head stacks on phone so the chip row keeps the full width (the
+   * three chips fit one line at 390px) and the exit figure sits on its own
+   * line below, left-aligned like the old phone verdict area (a right-aligned
+   * figure under the chips leaves a void at 390px). */
+  .run-card .run-head { flex-direction: column; align-items: stretch; gap: 8px; }
+  .run-card .run-head .chips { flex: none; }
+  /* The degraded chip's host list can exceed the phone width; the run-card
+   * chips wrap it (a value is never truncated on phone) instead of scrolling
+   * the row behind a clipped edge. */
+  .run-card .chips { overflow-x: visible; }
+  .run-card .chips .chip { height: auto; min-height: 36px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
   .run-card .verdict { font-size: 28px; letter-spacing: -0.8px; }
   .config { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .config .tile { padding: 10px 12px; min-width: 0; }
+  .config .tile { padding: 9px 11px; min-width: 0; }
   .config .tile b, .config .tile a { overflow-wrap: anywhere; white-space: normal; text-overflow: clip; }
 
   .verdict-band { padding: 16px; gap: 12px; }

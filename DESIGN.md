@@ -139,7 +139,7 @@ typography:
     fontSize: 17px
     fontWeight: 600
     lineHeight: 1.3
-    letterSpacing: "-0.4px"   # phone job-detail run title
+    letterSpacing: "-0.4px"   # declared; unused in web (run card drops the title)
   verdict:
     fontFamily: "'JetBrains Mono', monospace"
     fontSize: 28px

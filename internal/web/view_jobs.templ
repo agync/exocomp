@@ -195,47 +195,44 @@ templ findingsCard(vm jobDetailVM) {
 	</div>
 }
 
-// runCard is the job detail's lead block (2.1): the chip row, then the stacked
-// head — title + job #, the verdict number with its ran line, then the "Queued
-// by ..." sentence — and the RUN CONFIGURATION tile grid. The card wears the
-// terminal state's inset ring through data-state.
+// runCard is the job detail's lead block (2.1): the chip row with the verdict
+// number pinned inline on its right, the one meta line (who · when · where ·
+// how long), and the RUN CONFIGURATION tile grid. The title and job # are the
+// app bar's own fact (Job #N · playbook), so the card does not restate them.
+// The card wears the terminal state's inset ring through data-state.
 templ runCard(vm jobDetailVM) {
 	<article class="run-card" data-state={ string(vm.RunCard.State) }>
-		<div class="chips">
-			@chip(vm.Job.StateClass(), string(vm.Job.State))
-			if vm.RunCard.DegradedChip != "" {
-				<span class="chip chip--degraded"><span class="dot"></span>{ vm.RunCard.DegradedChip }</span>
-			}
-			if vm.RunCard.Tool != "" && !strings.EqualFold(vm.RunCard.Tool, vm.RunCard.Title) {
-				<span class="chip dim"><span class="dot"></span>{ vm.RunCard.Tool }</span>
-			}
-			if vm.RunCard.CheckMode {
-				<span class="chip dim"><span class="dot"></span>check mode</span>
-			}
-			if vm.RunCard.RerunOf > 0 {
-				<a class="chip chip--dashed" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.RunCard.RerunOf))) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
-			}
-		</div>
-		<div class="head">
-			<div class="runtitle">
-				<span class="title mono">{ vm.RunCard.Title }</span>
-				<span class="jobid">job #{ itoa64(vm.RunCard.JobID) }</span>
-			</div>
-			<div class="verdict-wrap">
-				if vm.RunCard.Verdict != "" {
-					<div class="verdict">
-						{ vm.RunCard.Verdict }
-						if vm.RunCard.Tolerated {
-							<span class="tolerated">tolerated</span>
-						}
-					</div>
+		<div class="run-head">
+			<div class="chips">
+				@chip(vm.Job.StateClass(), string(vm.Job.State))
+				if vm.RunCard.DegradedChip != "" {
+					<span class="chip chip--degraded"><span class="dot"></span>{ vm.RunCard.DegradedChip }</span>
 				}
-				if vm.RunCard.RanLine != "" {
-					<p class="ranline">{ vm.RunCard.RanLine }</p>
+				if vm.RunCard.Tool != "" && !strings.EqualFold(vm.RunCard.Tool, vm.RunCard.Title) {
+					<span class="chip dim"><span class="dot"></span>{ vm.RunCard.Tool }</span>
+				}
+				if vm.RunCard.CheckMode {
+					<span class="chip dim"><span class="dot"></span>check mode</span>
+				}
+				if vm.RunCard.RerunOf > 0 {
+					<a class="chip chip--dashed" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.RunCard.RerunOf))) }>rerun of #{ itoa64(vm.RunCard.RerunOf) }</a>
 				}
 			</div>
-			<p class="sentence">{ vm.RunCard.Sentence }</p>
+			if vm.RunCard.Verdict != "" {
+				<div class="verdict">
+					{ vm.RunCard.Verdict }
+					if vm.RunCard.Tolerated {
+						<span class="tolerated">tolerated</span>
+					}
+				</div>
+			}
 		</div>
+		<p class="sentence">
+			<span>{ vm.RunCard.Sentence }</span>
+			if vm.RunCard.RanLine != "" {
+				<span class="ranline">· { vm.RunCard.RanLine }</span>
+			}
+		</p>
 		if len(vm.RunCard.Tiles) == 1 {
 			<p class="config-line">{ vm.RunCard.Tiles[0].Label } · { vm.RunCard.Tiles[0].Value }</p>
 		} else {

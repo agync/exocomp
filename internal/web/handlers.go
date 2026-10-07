@@ -1319,7 +1319,7 @@ func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, sr
 	facts jobOutcomeFacts, actorName, face, runner string, rerunOfID int64) jobRunCardVM {
 	rc := jobRunCardVM{
 		State: job.State, Tool: job.Kind, CheckMode: hasFlag(job.Args.Argv, "--check"),
-		RerunOf: rerunOfID, Title: jobTitle(job), JobID: job.ID,
+		RerunOf: rerunOfID, Title: jobTitle(job),
 		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src),
 	}
 	rc.Sentence = "Queued by " + actorName + " from the " + face + " · " +

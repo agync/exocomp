@@ -1069,9 +1069,10 @@ func TestJobsListHeaderOrderMatchesRows(t *testing.T) {
 	}
 }
 
-// TestJobDetailRunCardOrder is R5's card stack: chips, then the title + job #,
-// then the verdict number, then the sentence — in byte order, never the old
-// title-and-sentence column beside the verdict.
+// TestJobDetailRunCardOrder: the compact run card stacks chips (with the
+// verdict inline) < sentence < tiles in byte order, and never restates the app
+// bar's own title / job #. The one meta line carries the queued-by fact and the
+// run duration.
 func TestJobDetailRunCardOrder(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -1085,16 +1086,24 @@ func TestJobDetailRunCardOrder(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	chips := strings.Index(body, `<div class="chips">`)
-	title := strings.Index(body, `class="title mono">`)
 	verdict := strings.Index(body, `<div class="verdict">`)
 	sentence := strings.Index(body, `<p class="sentence">`)
-	ordered := chips >= 0 && chips < title && title < verdict && verdict < sentence
+	ordered := chips >= 0 && chips < verdict && verdict < sentence
 	if !ordered {
-		t.Errorf("run card must stack chips < title < verdict < sentence (indexes %d %d %d %d)", chips, title, verdict, sentence)
+		t.Errorf("run card must stack chips < verdict < sentence (indexes %d %d %d)", chips, verdict, sentence)
 	}
-	// The title and the job # sit together on the title line.
-	if !strings.Contains(body, `class="jobid">job #`+itoa64(job.ID)) {
-		t.Errorf("run card title must pair with job #%d:\n%s", job.ID, body)
+	// The app bar carries the title and job #; the card must not restate them.
+	for _, gone := range []string{`class="runtitle"`, `class="jobid"`, `class="title mono">`} {
+		if strings.Contains(body, gone) {
+			t.Errorf("the compact run card must not restate the app bar's title/job # (%q)", gone)
+		}
+	}
+	// The one meta line carries the queued-by fact and the run duration.
+	if !strings.Contains(body, `Queued by operator from the cli · `) {
+		t.Error("run card meta line missing the queued-by fact")
+	}
+	if !strings.Contains(body, `<span class="ranline">· took `) {
+		t.Errorf("run card meta line missing the inline duration:\n%s", body)
 	}
 }
 
@@ -1440,11 +1449,12 @@ func TestJobDetailSelfCheckPhone(t *testing.T) {
 	}
 }
 
-// TestJobDetailVerdictPhone is review P4: the run card's verdict area — chips ·
-// title · exit figure · ran line — hangs LEFT on phone (the desktop
-// .verdict-wrap is text-align:right with a 200px void beside the figure), and
-// the exit figure reads at 28px. The harness cannot switch viewports, so the
-// guard pins the phone block's .run-card rules in app.css.
+// TestJobDetailVerdictPhone is review P4: the run card's head is the chip row
+// with the verdict figure, and on phone the head stacks — the chips keep the
+// full width and the exit figure sits on its own line below (the old
+// .verdict-wrap right-align left a 200px void beside the figure). The harness
+// cannot switch viewports, so the guard pins the phone block's .run-card rules
+// in app.css.
 func TestJobDetailVerdictPhone(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -1458,23 +1468,55 @@ func TestJobDetailVerdictPhone(t *testing.T) {
 
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
+		`<div class="run-head">`,
 		`<div class="chips">`,
-		`class="runtitle">`,
-		`<div class="verdict-wrap">`,
 		`<div class="verdict">exit 4 `,
-		`<p class="ranline">`,
+		`<p class="sentence">`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("run card verdict area missing %q", want)
 		}
 	}
+	if strings.Contains(body, `class="verdict-wrap"`) || strings.Contains(body, `class="runtitle"`) {
+		t.Error("the run card must not keep the retired verdict-wrap / runtitle nodes")
+	}
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	for _, want := range []string{
-		`.run-card .verdict-wrap { text-align: left; }`,
+		`.run-card .run-head { flex-direction: column; align-items: stretch; gap: 8px; }`,
 		`.run-card .verdict { font-size: 28px;`,
 	} {
 		if !strings.Contains(app, want) {
 			t.Errorf("app.css missing the phone verdict left-stack rule %q (P4)", want)
+		}
+	}
+}
+
+// TestJobDetailRunCardChipsWrapPhone: on phone the run-card chip row wraps a
+// long chip (the degraded host list) instead of scrolling it behind a clipped
+// edge — a value is never truncated on phone. The harness cannot switch
+// viewports, so the guard pins the markup and the phone block's rules.
+func TestJobDetailRunCardChipsWrapPhone(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedDegradedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=1 changed=0 unreachable=0 failed=0 skipped=0",
+	})
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `class="chip chip--degraded"><span class="dot"></span>2 hosts unreachable · hypnotoad, lrrr</span>`) {
+		t.Errorf("degraded run card missing the host-count chip:\n%s", body)
+	}
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		`.run-card .chips { overflow-x: visible; }`,
+		`.run-card .chips .chip { height: auto; min-height: 36px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }`,
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the phone run-card chip-wrap rule %q", want)
 		}
 	}
 }

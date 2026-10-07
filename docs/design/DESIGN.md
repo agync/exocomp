@@ -96,7 +96,7 @@ typography:
     log:     { font: "400 12.5px/1.65 {typography.families.mono}", tracking: "0",   use: "log tail, code, inputs, .mono cells" }
     keyword: { font: "600 11px/1 {typography.families.mono}",   tracking: "0.4px",  transform: "uppercase", use: "state keyword chips, th" }
     kicker:  { font: "600 11px/1 {typography.families.mono}",   tracking: "2.4px",  transform: "uppercase", color: "{colors.dark.accent.text}", use: "card eyebrow" }
-    run-title: { font: "600 17px/1.3 {typography.families.mono}", tracking: "-0.4px", use: "phone job-detail run title" }
+    run-title: { font: "600 17px/1.3 {typography.families.mono}", tracking: "-0.4px", use: "declared; unused in web" }
     verdict:   { font: "600 28px/1.1 {typography.families.mono}", tracking: "-0.8px", use: "phone job-detail exit figure" }
     glyph-lg:  { font: "400 16px/1 {typography.families.mono}",   tracking: "0",      use: "enlarged row glyph (leg chevron)" }
 
