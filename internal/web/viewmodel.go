@@ -3135,7 +3135,8 @@ func parseJobOutcome(events []store.JobEvent) jobOutcomeFacts {
 }
 
 // rawCountsFor returns the `ok=… changed=… skipped=…` text of one recap host
-// row as ansible printed it, for the OK hosts' RECAP cell.
+// row as ansible printed it, for the OK hosts' RECAP cell, with the zero counts
+// dropped (dropZeroCounts): the RESULT word already states them.
 func rawCountsFor(lines []string, host string) string {
 	inRecap := false
 	for _, line := range lines {
@@ -3152,10 +3153,32 @@ func rawCountsFor(lines []string, host string) string {
 		}
 		rest = strings.TrimSpace(rest)
 		if strings.HasPrefix(rest, "ok=") {
-			return rest
+			return dropZeroCounts(rest)
 		}
 	}
 	return ""
+}
+
+// dropZeroCounts removes the `key=0` tokens from an ansible recap count run:
+// a zero is noise the row's RESULT word already states (an OK host has
+// failed=0 and unreachable=0 by definition). A run that is all zeros is
+// returned unchanged so the cell is never blank.
+func dropZeroCounts(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	fields := strings.Fields(raw)
+	kept := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if strings.HasSuffix(f, "=0") {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	if len(kept) == 0 {
+		return raw
+	}
+	return strings.Join(kept, " ")
 }
 
 // syntaxErrorSeen reports whether the last LevelError event carries ansible's

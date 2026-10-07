@@ -282,10 +282,12 @@ templ verdictBand(vm jobDetailVM) {
 		}
 		if vm.Verdict.Verb != "" {
 			<div class="bandverbs">
-				<a href={ templ.SafeURL(vm.Verdict.VerbHref) }>{ vm.Verdict.Verb }</a>
-				if vm.Verdict.VerbMeta != "" {
-					<p class="meta mono">{ vm.Verdict.VerbMeta }</p>
-				}
+				<div class="verb-line">
+					<a href={ templ.SafeURL(vm.Verdict.VerbHref) }>{ vm.Verdict.Verb }</a>
+					if vm.Verdict.VerbMeta != "" {
+						<span class="meta mono">{ vm.Verdict.VerbMeta }</span>
+					}
+				</div>
 				if vm.Verdict.VerbSecond != "" {
 					<a href={ templ.SafeURL(vm.Verdict.VerbSecondHref) }>{ vm.Verdict.VerbSecond }</a>
 				}

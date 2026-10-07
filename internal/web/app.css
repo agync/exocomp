@@ -1611,7 +1611,7 @@ body { overflow-x: clip; }
 }
 .host-table .row {
   display: grid; grid-template-columns: 150px 120px minmax(0, 1fr); gap: var(--gap-cell);
-  align-items: center; height: 40px; padding: 0 12px; font: var(--type-log);
+  align-items: center; height: 32px; padding: 0 12px; font: var(--type-log);
 }
 /* The row's first line (name + result) re-flows into the first two grid
  * columns; the recap is the third. On phone the 719 block stacks them. */
@@ -1625,6 +1625,10 @@ body { overflow-x: clip; }
 .host-table .row .recap { color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .verdict-band .bandverbs { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
 .verdict-band .bandverbs a { font: 500 13px var(--font-ui); }
+/* The FAILED band's verb carries its settle note on the same line: the promise
+ * ("settles DEGRADED …") reads beside the action, not on a second row. It wraps
+ * under the verb when the note and the link no longer fit (phone). */
+.verdict-band .bandverbs .verb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; width: 100%; }
 
 /* ---- Output bar (SPEC §2/§3): the retuned log tail ----
  * Bar = title · pin chip · meta, then the controls right. The chip is a fixed

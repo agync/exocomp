@@ -1417,10 +1417,6 @@ func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store
 		return nil
 	}
 	v := jobVerdictVM{Class: "fail", BandClass: "failed"}
-	code := "-"
-	if job.ExitCode != nil {
-		code = strconv.Itoa(*job.ExitCode)
-	}
 	if job.State == store.StateDegraded {
 		v.Class = "wait"
 		v.BandClass = "degraded"
@@ -1430,11 +1426,13 @@ func (s *Server) jobVerdict(job store.Job, facts jobOutcomeFacts, events []store
 		} else {
 			v.Keyword = "DEGRADED — SUCCEEDED WITH WARNINGS"
 		}
-	} else if facts.RecapFound {
-		v.Keyword = fmt.Sprintf("FAILED · EXIT %s — %d OF %d HOSTS UNREACHABLE",
-			code, len(facts.Unreachable), len(facts.Hosts))
+	} else if facts.RecapFound && len(facts.Unreachable) > 0 {
+		// The run card above already carries the exit figure, so the band names
+		// only the state and its cause (the unreachable count).
+		v.Keyword = fmt.Sprintf("FAILED — %d OF %d HOSTS UNREACHABLE",
+			len(facts.Unreachable), len(facts.Hosts))
 	} else {
-		v.Keyword = "FAILED · EXIT " + code
+		v.Keyword = "FAILED"
 	}
 	v.Sentence = verdictSentence(job, facts)
 

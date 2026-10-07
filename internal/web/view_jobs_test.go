@@ -433,12 +433,12 @@ func TestJobDetailFailedRendersVerdictBand(t *testing.T) {
 	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
 	for _, want := range []string{
 		`class="verdict-band mt14 verdict-band--failed"`,
-		`FAILED · EXIT 4 — 2 OF 3 HOSTS UNREACHABLE`,
+		`FAILED — 2 OF 3 HOSTS UNREACHABLE`,
 		`Ansible could not reach hypnotoad and lrrr; every play on nibbler completed.`,
 		`<span class="result fail"><span class="dot"></span>UNREACHABLE</span>`,
 		`<span class="result ok"><span class="dot"></span>OK</span>`,
 		`ssh: connect to host 10.0.20.11 port 22: No route to host`,
-		`ok=313 changed=4 unreachable=0 failed=0 skipped=130`,
+		`ok=313 changed=4 skipped=130`,
 		`Rerun tolerating unreachable hosts →`,
 		`settles DEGRADED when the reachable hosts succeed · same as exocomp job rerun ` + itoa64(job.ID) + ` --tolerate-unreachable`,
 		`<div class="verdict">exit 4 </div>`,
@@ -454,6 +454,89 @@ func TestJobDetailFailedRendersVerdictBand(t *testing.T) {
 	// the rendered line count: 2 fatals + 4 recap + 1 band = 7 events.
 	if !strings.Contains(body, `▸ failed — exit 4 · 7 lines · log complete`) {
 		t.Error("failed detail missing the copy-formatted completion band")
+	}
+}
+
+// TestJobDetailVerdictCompaction: the verdict band stops restating what the run
+// card and the host RESULT word already say. The keyword drops the exit figure
+// (the run card's .verdict owns it), the RECAP cell drops the zero counts (the
+// RESULT word states them), and the settle note rides the verb's own line.
+func TestJobDetailVerdictCompaction(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	job := seedFailedWithRecap(t, h, 4, []string{
+		"PLAY RECAP",
+		"hypnotoad : ok=0 changed=0 unreachable=1 failed=0",
+		"lrrr : ok=0 changed=0 unreachable=1 failed=0",
+		"nibbler : ok=313 changed=4 unreachable=0 failed=0 skipped=130",
+	})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+
+	// The run card's verdict figure carries the exit code; the band must not
+	// restate it in the keyword.
+	if !strings.Contains(body, `<div class="verdict">exit 4 </div>`) {
+		t.Error("the run card must carry the exit figure the band dropped")
+	}
+	const kwOpen = `<span class="keyword">`
+	ki := strings.Index(body, kwOpen)
+	if ki < 0 {
+		t.Fatal("the verdict band keyword is missing")
+	}
+	kend := strings.Index(body[ki:], "</span>")
+	keyword := body[ki+len(kwOpen) : ki+kend]
+	if strings.Contains(keyword, "EXIT") {
+		t.Errorf("the band keyword %q must not restate the exit code the run card shows", keyword)
+	}
+	// Zero counts are dropped from the cell; non-zero counts stay.
+	if !strings.Contains(body, `<span class="recap">ok=313 changed=4 skipped=130`) {
+		t.Error("the RECAP cell must keep the non-zero counts and drop the zeros")
+	}
+	if strings.Contains(body, `<span class="recap">ok=313 changed=4 unreachable=0`) {
+		t.Error("the RECAP cell must drop the zero counts the RESULT word states")
+	}
+	// The settle note is a sibling of the verb link inside one .verb-line.
+	const lineOpen = `<div class="verb-line">`
+	li := strings.Index(body, lineOpen)
+	if li < 0 {
+		t.Fatal("the band's .verb-line is missing")
+	}
+	lend := strings.Index(body[li:], "</div>")
+	line := body[li : li+lend]
+	if !strings.Contains(line, `Rerun tolerating unreachable hosts →`) {
+		t.Errorf("the verb must sit in the .verb-line:\n%s", line)
+	}
+	if !strings.Contains(line, `<span class="meta mono">settles DEGRADED`) {
+		t.Errorf("the settle note must ride the verb's line, not a second row:\n%s", line)
+	}
+
+	// The denser desktop row and the verb-line layout are pinned in app.css.
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	for _, want := range []string{
+		"height: 32px; padding: 0 12px; font: var(--type-log);",
+		".verdict-band .bandverbs .verb-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; width: 100%; }",
+	} {
+		if !strings.Contains(app, want) {
+			t.Errorf("app.css missing the verdict compaction rule %q", want)
+		}
+	}
+}
+
+// TestDropZeroCounts: the recap filter keeps non-zero counts, drops every
+// `key=0`, and returns an all-zero run unchanged so the cell is never blank.
+func TestDropZeroCounts(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"ok=313 changed=4 unreachable=0 failed=0 skipped=130", "ok=313 changed=4 skipped=130"},
+		{"ok=1 changed=0 unreachable=0 failed=0 skipped=0", "ok=1"},
+		{"ok=10 changed=100 unreachable=0 failed=0", "ok=10 changed=100"},
+		{"ok=0 changed=0 unreachable=0 failed=0 skipped=0", "ok=0 changed=0 unreachable=0 failed=0 skipped=0"},
+		{"", ""},
+	} {
+		if got := dropZeroCounts(tc.in); got != tc.want {
+			t.Errorf("dropZeroCounts(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 
@@ -490,7 +573,7 @@ func TestJobDetailDegradedRendersVerdictBand(t *testing.T) {
 			t.Errorf("degraded detail missing %q", want)
 		}
 	}
-	if strings.Contains(body, `FAILED · EXIT`) {
+	if strings.Contains(body, `FAILED —`) {
 		t.Error("a DEGRADED run must not render the FAILED keyword")
 	}
 	// The degraded band re-renders from copy (2.3) and repeats completion with the
