@@ -428,8 +428,9 @@ templ rerunDialog(vm jobDetailVM) {
 					</p>
 				</div>
 				<div class="actions">
-					<button type="submit" class="btn primary">{ vm.RerunQueueLabel() }</button>
+					<button type="submit" class="btn primary">Queue run</button>
 				</div>
+				<p class="meta">{ vm.RerunMeta() }</p>
 				<p class="meta mono rerun-summary">{ vm.Rerun.Summary() }</p>
 				<button type="button" class="btn quiet" data-modal-dismiss>Cancel</button>
 			</form>

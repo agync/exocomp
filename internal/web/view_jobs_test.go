@@ -1581,3 +1581,27 @@ func TestJobDetailHostRecapWraps(t *testing.T) {
 		t.Error("the 719 recap rule must reset nowrap so the full-width line wraps")
 	}
 }
+
+// TestJobRerunDialogBareVerbWithMetaContract: the rerun dialog's submit is the
+// bare verb — the thing being queued (title, and @ ref when present) lives on
+// the dialog's meta line, the same split the launch drawer holds to, so a long
+// path can never wrap the primary.
+func TestJobRerunDialogBareVerbWithMetaContract(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	name := seedSourceCheckout(t, h)
+	job := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/true"}, Source: name})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if !strings.Contains(body, `>Queue run</button>`) {
+		t.Error("rerun dialog submit must be the bare verb Queue run")
+	}
+	if strings.Contains(body, "Queue run —") {
+		t.Error("rerun dialog submit must not restate the queued run")
+	}
+	if !strings.Contains(body, "re-queues /bin/true @ main") {
+		t.Error("rerun dialog meta must name the queued title and ref")
+	}
+}

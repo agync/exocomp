@@ -2996,15 +2996,16 @@ func (f *jobScheduleForm) cronField() fieldMeta {
 	}
 }
 
-// RerunQueueLabel is the rerun dialog's submit-button contract: the thing
-// being queued and the ref it resolves against (F4). The `@ ref` is omitted
-// when the source has no ref.
-func (vm jobDetailVM) RerunQueueLabel() string {
-	label := "Queue run — " + vm.RunCard.Title
+// RerunMeta is the rerun dialog's footer contract: the thing being queued and
+// the ref it resolves against. The submit button itself is the bare verb, so a
+// long path can never wrap it (the launch drawer split). The `@ ref` is
+// omitted when the source has no ref.
+func (vm jobDetailVM) RerunMeta() string {
+	line := "re-queues " + vm.RunCard.Title
 	if vm.Ref != "" {
-		label += " @ " + vm.Ref
+		line += " @ " + vm.Ref
 	}
-	return label
+	return line
 }
 
 // configTile is one RUN CONFIGURATION tile: a label and a value, with the
