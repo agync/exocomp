@@ -669,7 +669,9 @@ td.wrap { max-width: 32ch; overflow-wrap: anywhere; }
 /* `overflow-wrap: anywhere` also drops the cell's MIN-content width to 1ch, so
  * under auto table layout the column is starved and the value stacks one
  * character per line. The URI cell keeps a floor so the scheme and host read as
- * one run; past the floor the cap still wraps and .tablewrap scrolls the row. */
+ * one run. (Under `table-layout: auto` the cell's max-width is not enforced —
+ * the floor is what prevents the collapse; `.tablewrap` scrolls if the row
+ * outgrows the card.) */
 td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 
 /* ---- State chips ---- */
