@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-07 — the job detail run card and verdict band compact
+
+- **The run card leads with a compact head.** The chip row and the verdict
+  figure share one line; the title and job # are dropped (the app bar already
+  names them) and the two meta lines collapse into one
+  (`Queued by … · ran on … · took …`). The card is ~37% shorter on desktop and
+  ~25% on phone, so the verdict band and the log sit above the fold.
+- **The verdict band is denser.** The keyword no longer repeats the exit figure
+  the run card carries (`FAILED — 2 OF 3 HOSTS UNREACHABLE`, or just `FAILED`
+  when no host was unreachable); host rows are 32px on desktop while phone keeps
+  the 44px floor; the recap prints only non-zero counts
+  (`ok=313 changed=4 skipped=130`); and the rerun verb shares a line with its
+  settle note. A degraded run's host-list chip now wraps instead of clipping on
+  phone.
+
 ## 2026-10-07 — web UI review fixes
 
 - **The launch drawer is full-width on phone.** `.modal.drawer` set no
