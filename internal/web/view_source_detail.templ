@@ -6,10 +6,11 @@ package web
 // drawer carries the Playbook | Command tab pair, both POSTing to a
 // source-scoped run route (/sources/{name}/run/*), so every browser run reads
 // from a registered source's own tree. The tabs are switched by a few lines of
-// vanilla JS (hidden toggling + aria-selected); the server picks the first tab
-// and prefills the playbook from the query string, so the page is deep-linkable
-// (?tab=playbook&playbook=site.yml). JS-off: ?launch=1 renders the drawer's
-// open attribute, so the launcher still opens without script.
+// vanilla JS (hidden toggling + aria-selected + the roving tabindex), with
+// Arrow/Home/End driving the tablist for a keyboard operator; the server picks
+// the first tab, prefills the playbook from the query string, and so the page
+// is deep-linkable (?tab=playbook&playbook=site.yml). JS-off: ?launch=1 renders
+// the drawer's open attribute, so the launcher still opens without script.
 templ sourceDetail(vm sourceDetailVM) {
 	@layout(vm.Page) {
 		@breadcrumb(breadcrumbCrumb{Label: "Sources", Href: urlWithBase(vm.Page.Base, "/sources")}, breadcrumbCrumb{Label: vm.Source.Name})
@@ -104,6 +105,11 @@ templ sourceDetail(vm sourceDetailVM) {
 							data-tab="playbook"
 							aria-controls="panel-playbook"
 							aria-selected={ boolAttr(vm.Tab == "playbook") }
+							if vm.Tab == "playbook" {
+								tabindex="0"
+							} else {
+								tabindex="-1"
+							}
 						>Playbook</button>
 						<button
 							type="button"
@@ -113,6 +119,11 @@ templ sourceDetail(vm sourceDetailVM) {
 							data-tab="command"
 							aria-controls="panel-command"
 							aria-selected={ boolAttr(vm.Tab == "command") }
+							if vm.Tab == "command" {
+								tabindex="0"
+							} else {
+								tabindex="-1"
+							}
 						>Command</button>
 					</div>
 					<div id="panel-playbook" class="tabpanel" role="tabpanel" aria-labelledby="tab-playbook" hidden?={ vm.Tab != "playbook" }>
@@ -209,6 +220,8 @@ templ sourceDetail(vm sourceDetailVM) {
 							tabs.forEach(function (t) {
 								var on = t.getAttribute("data-tab") === key;
 								t.setAttribute("aria-selected", on ? "true" : "false");
+								// Roving tabindex: the one tab stop follows the selection.
+								t.setAttribute("tabindex", on ? "0" : "-1");
 								var panel = document.getElementById(t.getAttribute("aria-controls"));
 								if (panel) panel.hidden = !on;
 							});
@@ -216,8 +229,23 @@ templ sourceDetail(vm sourceDetailVM) {
 								f.hidden = f.getAttribute("data-foot") !== key;
 							});
 						}
-						tabs.forEach(function (t) {
+						tabs.forEach(function (t, i) {
 							t.addEventListener("click", function () { select(t.getAttribute("data-tab")); });
+							// Arrow keys step the tablist and wrap; Home/End jump to its ends.
+							// The move selects AND focuses: both panels are already in the
+							// DOM, so following focus with selection costs nothing.
+							t.addEventListener("keydown", function (e) {
+								var next = -1;
+								if (e.key === "ArrowRight") next = (i + 1) % tabs.length;
+								else if (e.key === "ArrowLeft") next = (i - 1 + tabs.length) % tabs.length;
+								else if (e.key === "Home") next = 0;
+								else if (e.key === "End") next = tabs.length - 1;
+								else return;
+								e.preventDefault();
+								var target = tabs[next];
+								select(target.getAttribute("data-tab"));
+								target.focus();
+							});
 						});
 					})();
 					</script>
