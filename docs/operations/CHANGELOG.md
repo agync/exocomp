@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-07 — the secrets list scans, with a details view
+
+- **The secrets table drops to the columns you scan** — Name · Kind · Source ·
+  Expiry · Last used · Actions. Created, Last rotated, and Used by move off the
+  row, so the nine-column table no longer squeezes values or scrolls at laptop
+  width (the tray fits at 1280, rows 44px).
+- **Any row opens a details view** (a native dialog) with the full record —
+  Kind, Source, Created, Last rotated, Last used, Expiry, and the run-secret
+  bindings — plus the row's actions. The value is never rendered; reveal stays
+  the separate logged, token-gated action.
+- **The action cluster holds its slots.** The constant Rotate/Remove verbs keep
+  a fixed x from the right edge and the conditional Bindings chevron is
+  prepended left, so the cluster no longer shifts row to row.
+
 ## 2026-10-07 — the job detail run card and verdict band compact
 
 - **The run card leads with a compact head.** The chip row and the verdict
