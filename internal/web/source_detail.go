@@ -81,6 +81,11 @@ type sourceDetailVM struct {
 	// secret, and there is no confirm_token on this surface — so the operator's
 	// input survives a refusal.
 	RunForm *sourceRunForm
+	// RmRefusal is the delete verb's confirm-gate refusal: the shared confirm
+	// dialog's hidden confirmed=1 is the safety, and a confirmed-less remove
+	// re-renders the detail page at 422 with this on the form-status line.
+	// Empty at rest.
+	RmRefusal string
 }
 
 // sourceRunForm is one launcher tab's refusal state: the typed values an
@@ -222,6 +227,10 @@ const (
 	sourceHostRefusal      = "Give a host pattern — like web or fedora:!nas."
 	sourceCommandRefusal   = "Give the command to run."
 	sourceRunSubmitRefusal = "That run can't be enqueued — fix the host pattern or command."
+	// sourceRemoveConfirmRefusal is the rm verb's confirm-gate refusal: the
+	// shared confirm dialog's hidden confirmed=1 is the safety, and a
+	// confirmed-less remove is refused on the detail page.
+	sourceRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 )
 
 // PlaybookKnown reports whether the prefilled playbook is one of the discovered

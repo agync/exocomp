@@ -276,11 +276,12 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	name := r.PathValue("name")
 	if !r.Form.Has("confirmed") {
-		http.Error(w, "delete requires confirmation", http.StatusBadRequest)
+		s.log.Info("web: source rm refused", "source", name, "by", ident.token.Name)
+		s.sourceRmRefusal(w, r, name, sourceRemoveConfirmRefusal)
 		return
 	}
-	name := r.PathValue("name")
 	// The rm needs the row to resolve the caches the source may own, and it is
 	// gone after DeleteSource — pre-fetch.
 	src, err := s.store.SourceByName(r.Context(), name)
@@ -303,6 +304,19 @@ func (s *Server) handleSourceRm(w http.ResponseWriter, r *http.Request) {
 	s.purgeSourceCaches(r.Context(), src)
 	s.log.Info("web: source rm", "source", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/sources", "removed "+name)
+}
+
+// sourceRmRefusal re-renders the source detail page at 422 with the delete
+// verb's refusal on its form-status line — the button-verb shape: a refusal
+// renders on the surface that holds the verb, never a flash (flash is
+// success-only, write.go).
+func (s *Server) sourceRmRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.sourceDetailVMFor(w, r, name)
+	if err != nil {
+		return
+	}
+	vm.RmRefusal = msg
+	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
 }
 
 // purgeSourceCaches removes a deleted source's dependency caches

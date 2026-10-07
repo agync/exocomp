@@ -240,8 +240,18 @@ func TestDestructiveFormsRefuseWithoutConfirmed(t *testing.T) {
 	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	resp := postForm(t, op, ts.URL+"/sources/infra/rm", url.Values{}, nil)
-	if resp.StatusCode != http.StatusBadRequest {
-		t.Fatalf("confirmed-less source delete = %d, want 400", resp.StatusCode)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("confirmed-less source delete = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — confirm the removal in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("confirmed-less source delete missing %q", want)
+		}
 	}
 	if _, err := h.store.SourceByName(context.Background(), "infra"); err != nil {
 		t.Fatalf("confirmed-less delete removed the source: %v", err)

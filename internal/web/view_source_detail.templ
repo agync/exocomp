@@ -51,6 +51,9 @@ templ sourceDetail(vm sourceDetailVM) {
 						<button type="submit" class="btn danger">Delete</button>
 					</form>
 				</div>
+				if vm.RmRefusal != "" {
+					@formStatus(false, vm.RmRefusal)
+				}
 			}
 		</div>
 		if vm.Source.NeverSynced() {

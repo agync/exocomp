@@ -440,3 +440,42 @@ func TestSourcesAppbarMetaIsSourceCount(t *testing.T) {
 		t.Errorf("sources app bar missing the singular count meta:\n%s", page)
 	}
 }
+
+// TestSourceRmRequiresConfirmation: a confirmed-less remove re-renders the
+// source detail page at 422 with the form-status refusal — never a bare error
+// page — and nothing is removed.
+func TestSourceRmRequiresConfirmation(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/sources/tree/rm", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("rm refusal status = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`form-status is-error`,
+		"Nothing was removed — confirm the removal in the dialog.",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("rm refusal missing %q", want)
+		}
+	}
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && c.Value != "" {
+			t.Error("rm refusal flashed")
+		}
+	}
+	if _, err := h.store.SourceByName(ctx, "tree"); err != nil {
+		t.Fatal("refused rm removed the source")
+	}
+}
