@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -416,7 +417,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// The reactive surfaces are mounted on the one listener before it binds:
 	// routes are fixed at start, and a second listener would be a second
 	// authentication story.
-	engine, dm, err := reactiveEngine(ctx, st, q, env, warn, dir, opts)
+	engine, dm, notifier, sealed, err := reactiveEngine(ctx, st, q, env, warn, dir, opts)
 	if err != nil {
 		return err
 	}
@@ -500,6 +501,27 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		return fmt.Errorf("serve: %w", err)
 	}
 	cordon.setScheduler(s)
+	// The notify transports are the other read-once set a reload can refresh:
+	// an operator who seals, rotates, or clears ntfy/goalert (or flips the ntfy
+	// Detail setting) reaches the running daemon through the same reload seam
+	// SIGHUP and `exocomp reload` drive, with no restart. The silent-phone
+	// warning is emitted only when a reload *clears* the sealed set: the boot
+	// warning already covered "never configured", and a reload-interval tick
+	// must not repeat it every minute.
+	var lastSealed atomic.Int32
+	lastSealed.Store(int32(sealed))
+	cordon.setReloadExtra(func(ctx context.Context) error {
+		transports, nowSealed, err := loadNotifyTransports(ctx, st, sealedLookup(st, env))
+		if err != nil {
+			return err
+		}
+		notifier.SetTransports(transports...)
+		if nowSealed == 0 && lastSealed.Load() != 0 {
+			warnNoPushTransport(warn, nowSealed)
+		}
+		lastSealed.Store(int32(nowSealed))
+		return nil
+	})
 	_, _ = fmt.Fprintln(out, "scheduler started")
 
 	// The lease keeps this daemon's claim to be the active one alive. Losing it
@@ -546,7 +568,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if surface != nil {
 		webErr = surface.serveErr
 	}
-	restarting, webFailure := serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval, webErr, cordon.restartReady)
+	restarting, webFailure := serveUntilSignal(sigCtx, jobCtx, out, warn, hup, cordon.reloadAll, opts.reloadInterval, webErr, cordon.restartReady)
 	if webFailure != nil {
 		_, _ = fmt.Fprintf(warn, "WARNING: web surface failed: %v\n", webFailure)
 	}
@@ -657,14 +679,11 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 	}
 }
 
-// reactiveEngine builds the rule engine, with push configured from sealed
-// secrets. An operator who has not sealed an ntfy endpoint gets a working
-// daemon and a silent phone, not a daemon that refuses to start. It also builds
-// the dead-man trip monitor over the same notifier, so the daemon-side push
-// path shares the one fan-out every other event uses.
-func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
-	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, *deadman.Monitor, error) {
-	look := func(ctx context.Context, name string) ([]byte, error) {
+// sealedLookup reads a sealed secret's plaintext by name. Both the reactive
+// transports and the dead-man heartbeat read through it, and a daemon reload
+// rebuilds them through the same one.
+func sealedLookup(st *store.Store, env *secrets.Envelope) notify.SecretLookup {
+	return func(ctx context.Context, name string) ([]byte, error) {
 		row, err := st.GetSecret(ctx, name)
 		if err != nil {
 			return nil, err
@@ -673,17 +692,21 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
 		})
 	}
+}
 
-	// Both transports are loaded and every non-nil one is used. A refused
-	// configuration is the operator's to fix and hard-fails here — running blind
-	// past it would mean approvals and failures nobody is told about — but an
-	// unconfigured transport is a nil, not an error: an operator who sealed only
-	// one, or neither, still gets a working daemon.
+// loadNotifyTransports builds the daemon's push fan-out from the sealed
+// transports. It returns the transports and how many are sealed; UnifiedPush is
+// store-backed and always wired, so it is never counted as sealed. A refused
+// sealed configuration is an error — running blind past it would mean approvals
+// and failures nobody is told about — but an unconfigured transport is a nil,
+// not an error: an operator who sealed only one, or neither, still gets a
+// working daemon.
+func loadNotifyTransports(ctx context.Context, st *store.Store, look notify.SecretLookup) ([]notify.Transport, int, error) {
 	var transports []notify.Transport
 
 	ntfyT, err := notify.LoadNtfy(ctx, look)
 	if err != nil {
-		return nil, nil, fmt.Errorf("serve: %w", err)
+		return nil, 0, fmt.Errorf("serve: %w", err)
 	}
 	if ntfyT != nil {
 		// An unset or unrecognized value stays the documented default
@@ -697,29 +720,49 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 
 	goalertT, err := notify.LoadGoAlert(ctx, look)
 	if err != nil {
-		return nil, nil, fmt.Errorf("serve: %w", err)
+		return nil, 0, fmt.Errorf("serve: %w", err)
 	}
 	if goalertT != nil {
 		transports = append(transports, goalertT)
 	}
 
-	// The silent-phone warning is about the SEALED transports: UnifiedPush needs
-	// no secret and registers its targets at runtime, so its presence must not
-	// mask an operator who sealed neither ntfy nor goalert.
 	sealed := len(transports)
-
-	// UnifiedPush is always wired: its endpoints are rows a device registers over
-	// the API, so it is store-backed rather than sealed. With zero endpoints its
-	// Publish is a clean no-op, so wiring it costs nothing until a device registers.
 	transports = append(transports, notify.NewUnifiedPush(st, slog.Default()))
+	return transports, sealed, nil
+}
 
-	notifier := notify.New(nil, transports...)
-	if sealed == 0 {
-		_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed "+
-			"(ntfy: %s, %s; goalert: %s, %s); approvals and job failures will alert silently\n",
-			notify.SecretNtfyURL, notify.SecretNtfyTopic,
-			notify.SecretGoAlertURL, notify.SecretGoAlertKey)
+// warnNoPushTransport warns when no sealed transport is configured. The
+// silent-phone warning is about the SEALED transports: UnifiedPush needs no
+// secret and registers its targets at runtime, so its presence must not mask an
+// operator who sealed neither ntfy nor goalert. It is emitted at boot, and
+// again when a reload clears a set that had been sealed.
+func warnNoPushTransport(warn io.Writer, sealed int) {
+	if sealed != 0 {
+		return
 	}
+	_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed "+
+		"(ntfy: %s, %s; goalert: %s, %s); approvals and job failures will alert silently\n",
+		notify.SecretNtfyURL, notify.SecretNtfyTopic,
+		notify.SecretGoAlertURL, notify.SecretGoAlertKey)
+}
+
+// reactiveEngine builds the rule engine, with push configured from sealed
+// secrets. An operator who has not sealed an ntfy endpoint gets a working
+// daemon and a silent phone, not a daemon that refuses to start. It also builds
+// the dead-man trip monitor over the same notifier, so the daemon-side push
+// path shares the one fan-out every other event uses. The notifier and the
+// sealed-transport count are returned so a reload can replace its transports in
+// place (see loadNotifyTransports).
+func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
+	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, *deadman.Monitor, *notify.Notifier, int, error) {
+	look := sealedLookup(st, env)
+
+	transports, sealed, err := loadNotifyTransports(ctx, st, look)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+	notifier := notify.New(nil, transports...)
+	warnNoPushTransport(warn, sealed)
 
 	engine, err := reactive.New(reactive.Options{
 		Store:       st,
@@ -735,7 +778,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 		},
 	})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 
 	// The dead-man monitor reads the heartbeat URL plaintext only to ping it;
@@ -745,7 +788,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 	monitor := deadman.NewMonitor(deadman.Options{
 		Store: st, Look: look, Notifier: notifier, Host: host, Logger: slog.Default(),
 	})
-	return engine, monitor, nil
+	return engine, monitor, notifier, sealed, nil
 }
 
 // printHooks tells the operator where each source posts. The tokens are
@@ -869,20 +912,25 @@ func flagStaleLocks(ctx context.Context, st *store.Store, warn io.Writer) error 
 	return nil
 }
 
-// serveUntilSignal blocks until SIGINT or SIGTERM, rebuilding the schedules on
-// SIGHUP and on the reload interval meanwhile. A schedule added, enabled, or
-// disabled through the CLI reaches a running daemon exactly here. webErr is
+// serveUntilSignal blocks until SIGINT or SIGTERM, rebuilding the daemon's
+// reloadable sets on SIGHUP and on the reload interval meanwhile. A schedule —
+// or a sealed push transport — added, enabled, or changed through the CLI
+// reaches a running daemon exactly here. webErr is
 // the web surface's serve-error channel (nil when no web surface was
 // started): a post-bind failure there — a bad TLS config, a lost listener —
 // is fatal, not something to keep running past, so it ends the wait and
 // returns the error instead of the normal nil.
+//
+// reload is the one reload seam, shared with the operator API's `reload`
+// (cordonController.reloadAll): it rebuilds the scheduler registrations and the
+// notify transports together, so a signal and a `reload` verb never drift.
 //
 // restart is the drain controller's restart-ready channel (nil when no restart
 // was requested): when it fires the daemon has drained and the caller must shut
 // down cleanly and then re-exec. restarting reports that outcome so runServe can
 // tell an ordinary stop from a restart.
 func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
-	hup <-chan os.Signal, s *sched.Scheduler, interval time.Duration, webErr <-chan error,
+	hup <-chan os.Signal, reload func(context.Context) error, interval time.Duration, webErr <-chan error,
 	restart <-chan struct{}) (restarting bool, err error) {
 	var tick <-chan time.Time
 	if interval > 0 {
@@ -903,14 +951,14 @@ func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
 			}
 			return false, err
 		case <-hup:
-			if err := s.Reload(jobCtx); err != nil {
-				_, _ = fmt.Fprintf(warn, "WARNING: reload schedules: %v\n", err)
+			if err := reload(jobCtx); err != nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: reload: %v\n", err)
 				continue
 			}
 			_, _ = fmt.Fprintln(out, "schedules reloaded")
 		case <-tick:
-			if err := s.Reload(jobCtx); err != nil {
-				_, _ = fmt.Fprintf(warn, "WARNING: reload schedules: %v\n", err)
+			if err := reload(jobCtx); err != nil {
+				_, _ = fmt.Fprintf(warn, "WARNING: reload: %v\n", err)
 			}
 		}
 	}
@@ -933,6 +981,10 @@ type cordonController struct {
 	mu    sync.Mutex
 	on    bool
 	sched *sched.Scheduler
+	// reloadExtra refreshes a read-once set a reload owns beyond the scheduler
+	// registrations — the notify transports. It is set once, after the daemon
+	// builds that set, and read under mu.
+	reloadExtra func(context.Context) error
 
 	// Restart bookkeeping, guarded by mu.
 	restartPending  bool
@@ -983,6 +1035,16 @@ func (c *cordonController) setScheduler(s *sched.Scheduler) {
 	c.mu.Unlock()
 }
 
+// setReloadExtra registers the refresh of a read-once set a reload owns beyond
+// the scheduler registrations. It is called once the daemon has built that set
+// (the notify transports), under mu, so a reload racing startup sees either no
+// extra refresh or a complete one.
+func (c *cordonController) setReloadExtra(fn func(context.Context) error) {
+	c.mu.Lock()
+	c.reloadExtra = fn
+	c.mu.Unlock()
+}
+
 // Cordon stops new schedule fires and new job claims. It is idempotent.
 func (c *cordonController) Cordon(ctx context.Context) (web.MaintenanceState, error) {
 	c.mu.Lock()
@@ -1012,24 +1074,18 @@ func (c *cordonController) State(ctx context.Context) (web.MaintenanceState, err
 	return c.state(ctx)
 }
 
-// Reload rebuilds the scheduler's registrations from the database through the
-// existing Scheduler.Reload — the same path SIGHUP and the reload interval
-// drive, mutex-guarded inside the scheduler so it is safe from the web
-// goroutine — and reports how many enabled schedules the store holds. That
-// count is an upper bound on the live set: a row the cron parser rejects is
-// logged and left out of the registrations, so the store can hold more enabled
-// rows than the daemon actually registered. A reload that cannot read the
-// database leaves the running set alone (the scheduler builds the new set whole
-// before swapping). A nil scheduler (the web surface starts before runServe
-// wires the handle) is refused, which the handler renders as a 503.
+// Reload rebuilds the daemon's reloadable read-once sets from the database
+// through reloadAll — the same path SIGHUP and the reload interval drive — and
+// reports how many enabled schedules the store holds. That count is an upper
+// bound on the live set: a row the cron parser rejects is logged and left out
+// of the registrations, so the store can hold more enabled rows than the daemon
+// actually registered. A reload that cannot read the database leaves the
+// running sets alone (the scheduler builds the new set whole before swapping,
+// and the extra refresh swaps only on success). A nil scheduler (the web
+// surface starts before runServe wires the handle) is refused, which the
+// handler renders as a 503.
 func (c *cordonController) Reload(ctx context.Context) (web.ReloadState, error) {
-	c.mu.Lock()
-	s := c.sched
-	c.mu.Unlock()
-	if s == nil {
-		return web.ReloadState{}, web.ErrNoScheduler
-	}
-	if err := s.Reload(ctx); err != nil {
+	if err := c.reloadAll(ctx); err != nil {
 		return web.ReloadState{}, err
 	}
 	rows, err := c.store.ListSchedules(ctx, true)
@@ -1037,6 +1093,31 @@ func (c *cordonController) Reload(ctx context.Context) (web.ReloadState, error) 
 		return web.ReloadState{}, err
 	}
 	return web.ReloadState{Schedules: len(rows)}, nil
+}
+
+// reloadAll refreshes every reloadable read-once set through the one seam both
+// SIGHUP/--reload-interval and the operator `reload` verb use: the scheduler
+// registrations and the registered extra refresh (the notify transports). A
+// failure leaves the running sets alone — the scheduler builds the new set whole
+// before swapping, and the extra refresh swaps only after its rebuild succeeds
+// — so a reload that cannot read the database never tears down what is running.
+func (c *cordonController) reloadAll(ctx context.Context) error {
+	c.mu.Lock()
+	s := c.sched
+	extra := c.reloadExtra
+	c.mu.Unlock()
+	if s == nil {
+		return web.ErrNoScheduler
+	}
+	if err := s.Reload(ctx); err != nil {
+		return err
+	}
+	if extra != nil {
+		if err := extra(ctx); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // Restart cordons the daemon and returns at once — the request is a one-way

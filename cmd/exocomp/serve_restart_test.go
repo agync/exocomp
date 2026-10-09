@@ -325,7 +325,7 @@ func TestServeUntilSignalReturnsRestart(t *testing.T) {
 	done := make(chan bool, 1)
 	go func() {
 		restarting, _ := serveUntilSignal(sigCtx, context.Background(), io.Discard, io.Discard,
-			nil, s, 0, nil, restart)
+			nil, s.Reload, 0, nil, restart)
 		done <- restarting
 	}()
 

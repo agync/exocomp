@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"sync"
 	"time"
 )
 
@@ -75,6 +76,10 @@ type Transport interface {
 
 // Notifier fans a notification out to every configured transport.
 type Notifier struct {
+	// mu guards the transport set, which a daemon reload replaces while a
+	// publish may be in flight. A publish copies the slice under the read lock
+	// and then uses its own copy, so a swap never races it.
+	mu         sync.RWMutex
 	transports []Transport
 	mutes      MuteChecker
 	log        *slog.Logger
@@ -87,13 +92,32 @@ func New(log *slog.Logger, transports ...Transport) *Notifier {
 	if log == nil {
 		log = slog.Default()
 	}
+	return &Notifier{transports: liveTransports(transports), log: log}
+}
+
+// liveTransports drops the nil transports a caller may pass — an unconfigured
+// transport is a nil, and a nil transport is not a publish target.
+func liveTransports(transports []Transport) []Transport {
 	live := make([]Transport, 0, len(transports))
 	for _, t := range transports {
 		if t != nil {
 			live = append(live, t)
 		}
 	}
-	return &Notifier{transports: live, log: log}
+	return live
+}
+
+// SetTransports replaces the fan-out's transports, so a daemon reload can pick
+// up a sealed ntfy/goalert endpoint, a rotated credential, or a cleared
+// configuration without a restart. It returns how many transports are now
+// live. A publish already in flight keeps the slice it read, so the swap never
+// races one.
+func (n *Notifier) SetTransports(transports ...Transport) int {
+	live := liveTransports(transports)
+	n.mu.Lock()
+	n.transports = live
+	n.mu.Unlock()
+	return len(live)
 }
 
 // WithMutes attaches a mute checker. A held notification is not published,
@@ -102,23 +126,39 @@ func New(log *slog.Logger, transports ...Transport) *Notifier {
 // or escalates it.
 func (n *Notifier) WithMutes(m MuteChecker) *Notifier {
 	if n != nil {
+		n.mu.Lock()
 		n.mutes = m
+		n.mu.Unlock()
 	}
 	return n
 }
 
 // Transports reports how many transports are configured.
-func (n *Notifier) Transports() int { return len(n.transports) }
+func (n *Notifier) Transports() int {
+	if n == nil {
+		return 0
+	}
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return len(n.transports)
+}
 
 // Notify publishes to every transport, returning the failures joined. Every
 // transport is tried even when an earlier one fails: they exist so that one
 // being down is survivable.
 func (n *Notifier) Notify(ctx context.Context, note Notification) error {
-	if n == nil || len(n.transports) == 0 {
+	if n == nil {
 		return nil
 	}
-	if n.mutes != nil {
-		if mute, held := n.mutes.Held(ctx, note.Source, note.Host); held {
+	n.mu.RLock()
+	transports := n.transports
+	mutes := n.mutes
+	n.mu.RUnlock()
+	if len(transports) == 0 {
+		return nil
+	}
+	if mutes != nil {
+		if mute, held := mutes.Held(ctx, note.Source, note.Host); held {
 			n.log.Info("notify: held by mute",
 				"scope", mute.Scope, "value", mute.Value,
 				"reason", mute.Reason, "until", mute.ExpiresAt.Format(time.RFC3339))
@@ -126,7 +166,7 @@ func (n *Notifier) Notify(ctx context.Context, note Notification) error {
 		}
 	}
 	var errs []error
-	for _, t := range n.transports {
+	for _, t := range transports {
 		if err := t.Publish(ctx, note); err != nil {
 			n.log.Error("notify: publish failed", "transport", t.Name(), "err", err)
 			errs = append(errs, err)
