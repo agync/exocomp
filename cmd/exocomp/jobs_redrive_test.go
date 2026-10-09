@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -436,5 +437,100 @@ func TestRedriveSpecReplaysTheRow(t *testing.T) {
 	spec.Argv[0] = "/bin/false"
 	if job.Args.Argv[0] != "/bin/true" {
 		t.Error("the rebuilt argv aliases the row's argv")
+	}
+}
+
+// seedCutOffKeyed is seedCutOff with an explicit idempotency key, so a test can
+// seed a row that a workflow's sequencer owns.
+func seedCutOffKeyed(t *testing.T, st *store.Store, to store.JobState, key, runbook string, argv ...string) store.Job {
+	t.Helper()
+	if len(argv) == 0 {
+		argv = []string{"/bin/true"}
+	}
+	job, err := st.CreateJob(context.Background(), store.NewJob{
+		Runbook: runbook, Kind: "shell", Trigger: "manual",
+		IdempotencyKey: key,
+		Args:           store.JobArgs{Argv: argv},
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := st.TransitionJob(context.Background(), job.ID, store.StateQueued, to); err != nil {
+		t.Fatalf("move job to %s: %v", to, err)
+	}
+	got, err := st.GetJob(context.Background(), job.ID)
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	return got
+}
+
+// TestJobsRedriveSkipsWorkflowSteps: an interrupted workflow-step row is the
+// sequencer's to re-arm (ADR 0008), so redrive leaves it alone and reports why
+// rather than duplicating the step's effect.
+func TestJobsRedriveSkipsWorkflowSteps(t *testing.T) {
+	st := openSeededStore(t)
+	ordinary := seedCutOff(t, st, store.StateInterrupted, "nightly", "/bin/true", "one")
+	step := seedCutOffKeyed(t, st, store.StateInterrupted,
+		"wf:handoff:web:1:step:2", "step", "/bin/true", "two")
+
+	if !queue.IsWorkflowStepKey("wf:handoff:web:1:step:2") {
+		t.Fatal("the seed key is not recognized as a workflow step key")
+	}
+
+	out, _, err := runRoot(t, []string{"jobs", "redrive", "--yes"})
+	if err != nil {
+		t.Fatalf("jobs redrive --yes: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "redrove 1 job(s)") {
+		t.Errorf("output %q, want exactly the ordinary job re-driven", out)
+	}
+	if !strings.Contains(out, "skipped #"+strconv.FormatInt(step.ID, 10)) ||
+		!strings.Contains(out, "workflow step") {
+		t.Errorf("output %q, want the step skipped with its reason", out)
+	}
+	if strings.Contains(out, "#"+strconv.FormatInt(step.ID, 10)+" -> #") {
+		t.Errorf("output %q re-drove the workflow step", out)
+	}
+	if got := stateOf(t, st, step.ID); got != store.StateInterrupted {
+		t.Errorf("step job %d is %s, want it left interrupted", step.ID, got)
+	}
+	if got := stateOf(t, st, ordinary.ID); got != store.StateInterrupted {
+		t.Errorf("ordinary job %d is %s, want it left interrupted", ordinary.ID, got)
+	}
+	if got := countAllJobs(t, st); got != 3 {
+		t.Fatalf("store holds %d jobs, want 2 seeded + 1 re-driven", got)
+	}
+}
+
+// TestJobsRedriveIsIdempotent: a redrive lands under a deterministic key, so a
+// second run reports the original as already re-driven and enqueues nothing.
+func TestJobsRedriveIsIdempotent(t *testing.T) {
+	st := openSeededStore(t)
+	seedCutOff(t, st, store.StateInterrupted, "nightly")
+
+	first, _, err := runRoot(t, []string{"jobs", "redrive", "--yes"})
+	if err != nil {
+		t.Fatalf("first redrive: %v (%s)", err, first)
+	}
+	if !strings.Contains(first, "redrove 1 job(s)") {
+		t.Fatalf("first redrive output %q, want one re-driven", first)
+	}
+	if got := countAllJobs(t, st); got != 2 {
+		t.Fatalf("after first redrive: %d jobs, want 2", got)
+	}
+
+	second, _, err := runRoot(t, []string{"jobs", "redrive", "--yes"})
+	if err != nil {
+		t.Fatalf("second redrive: %v (%s)", err, second)
+	}
+	if !strings.Contains(second, "already re-driven") {
+		t.Errorf("second redrive output %q, want the already-re-driven skip", second)
+	}
+	if strings.Contains(second, "-> #") {
+		t.Errorf("second redrive output %q re-drove the original again", second)
+	}
+	if got := countAllJobs(t, st); got != 2 {
+		t.Fatalf("after second redrive: %d jobs, want no new row", got)
 	}
 }

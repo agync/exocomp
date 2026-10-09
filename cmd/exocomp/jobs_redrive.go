@@ -21,6 +21,13 @@ import (
 // a bulk recovery of cut-off work, not a one-off resubmit from a detail page.
 const redriveTrigger = "redrive"
 
+// redriveKey is the deterministic idempotency key a redrive job lands under,
+// derived from the cut-off row's own id. It keeps the fresh row from collapsing
+// onto the original (whose key differs) while making a repeated redrive honest:
+// the second run finds the first run's job and reports it as already re-driven
+// instead of enqueuing the work again.
+func redriveKey(oldID int64) string { return fmt.Sprintf("redrive:%d", oldID) }
+
 // redriveKind is the JSON envelope kind for a redrive report. It is defined
 // here, next to the verb that emits it, rather than in internal/wire: moving
 // it into the wire kind registry is follow-up work if a second face ever needs
@@ -41,11 +48,17 @@ func newJobsRedriveCmd() *cobra.Command {
 			"interrupted and cancelled rows nothing auto-retries — as fresh queued " +
 			"rows carrying the same spec, for the running daemon to claim. " +
 			"Each new job is labelled with the redrive trigger.\n\n" +
+			"Workflow steps are skipped: the sequencer re-arms an interrupted step " +
+			"from its ledger, so re-driving one would run the step twice and drop any " +
+			"approval gate it carried. The skip is reported with the reason.\n\n" +
 			"A real run is a bulk re-run of possibly destructive work, so it " +
 			"needs confirmation: pass --yes (or the global --assume-yes), or " +
 			"answer the prompt on an interactive terminal. --dry-run prints " +
 			"what would be re-driven and enqueues nothing, and needs no " +
 			"confirmation. JSON mode never prompts: pass --yes.\n\n" +
+			"A redrive lands under a deterministic key, so a repeated redrive of the " +
+			"same original is a no-op: the row is reported as already re-driven rather " +
+			"than run again.\n\n" +
 			"Redrive always acts on this box's store; it takes no --remote.",
 		Example: "exocomp jobs redrive --dry-run\nexocomp jobs redrive --yes\nexocomp jobs redrive --state cancelled --yes",
 		Args:    cobra.NoArgs,
@@ -148,12 +161,43 @@ func runJobsRedrive(cmd *cobra.Command, opt redriveOptions) error {
 		skipped    []redriveSkip
 	)
 	for _, job := range rows {
-		if len(job.Args.Argv) == 0 {
+		switch {
+		case len(job.Args.Argv) == 0:
 			skipped = append(skipped, redriveSkip{ID: job.ID, Reason: "no command to re-drive"})
-			continue
+		case queue.IsWorkflowStepKey(job.IdempotencyKey):
+			// The sequencer owns a workflow step: an interrupted step job is
+			// auto-re-armed from the ledger (ADR 0008), so re-driving it here
+			// would run the step twice and drop any approval gate it carried.
+			skipped = append(skipped, redriveSkip{
+				ID: job.ID, Reason: "workflow step; the sequencer re-arms it",
+			})
+		default:
+			candidates = append(candidates, job)
 		}
-		candidates = append(candidates, job)
 	}
+
+	// A redrive lands under a deterministic key derived from the cut-off row, so
+	// a second run finds the first run's job and skips it instead of re-running
+	// the work. The pre-check also runs on a dry run, so the report is honest
+	// about what is left to do.
+	ready := make([]store.Job, 0, len(candidates))
+	for _, job := range candidates {
+		existing, err := st.JobByIdempotencyKey(cmd.Context(), redriveKey(job.ID))
+		switch {
+		case err == nil:
+			skipped = append(skipped, redriveSkip{
+				ID: job.ID, Reason: fmt.Sprintf("already re-driven as #%d", existing.ID),
+			})
+		case errors.Is(err, store.ErrNotFound):
+			ready = append(ready, job)
+		default:
+			if mode == outputJSON {
+				return failJSON(cmd, err)
+			}
+			return fmt.Errorf("jobs redrive: look up redrive of job %d: %w", job.ID, err)
+		}
+	}
+	candidates = ready
 
 	if len(candidates) == 0 && len(skipped) == 0 {
 		return renderRedriveEmpty(cmd, mode)
@@ -181,7 +225,9 @@ func runJobsRedrive(cmd *cobra.Command, opt redriveOptions) error {
 	svc := service.New(st, dir, nil)
 	pairs := make([]redrivePair, 0, len(candidates))
 	for _, job := range candidates {
-		res, err := svc.Reenqueue(cmd.Context(), q, redriveSpec(job), service.Actor{})
+		spec := redriveSpec(job)
+		spec.IdempotencyKey = redriveKey(job.ID)
+		res, err := svc.Reenqueue(cmd.Context(), q, spec, service.Actor{})
 		if err != nil {
 			if mode == outputJSON {
 				return failJSON(cmd, err)

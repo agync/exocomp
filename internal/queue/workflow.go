@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"sync"
 	"time"
 
@@ -450,6 +451,21 @@ func (s *Sequencer) waitTerminal(ctx context.Context, jobID int64) (store.Job, e
 	}
 }
 
+// workflowStepKeyPrefix marks a job that is a workflow step: the Sequencer sets
+// every step job's idempotency key from stepKey, so this prefix is the one
+// durable mark a reader can use to tell a step row from an ordinary run. The
+// ledger's own job_id is not enough — a re-arm clears it (RetargetStep) before
+// the fresh job is recorded, leaving the cut-off row with no ledger reference.
+const workflowStepKeyPrefix = "wf:"
+
+// IsWorkflowStepKey reports whether a job's idempotency key marks it as a
+// workflow step. A bulk redrive must leave such a row alone: the sequencer
+// re-arms it (ADR 0008), so re-driving it would duplicate the step's effect and
+// drop any approval gate the step carried.
+func IsWorkflowStepKey(key string) bool {
+	return strings.HasPrefix(key, workflowStepKeyPrefix)
+}
+
 func stepKey(workflowID string, stepNo int) string {
-	return fmt.Sprintf("wf:%s:step:%d", workflowID, stepNo)
+	return fmt.Sprintf("%s%s:step:%d", workflowStepKeyPrefix, workflowID, stepNo)
 }
