@@ -989,11 +989,13 @@ func (c *cordonController) State(ctx context.Context) (web.MaintenanceState, err
 // Reload rebuilds the scheduler's registrations from the database through the
 // existing Scheduler.Reload — the same path SIGHUP and the reload interval
 // drive, mutex-guarded inside the scheduler so it is safe from the web
-// goroutine — and reports how many enabled schedules the daemon now holds. A
-// reload that cannot read the database leaves the running set alone (the
-// scheduler builds the new set whole before swapping). A nil scheduler (the web
-// surface starts before runServe wires the handle) is refused, which the
-// handler renders as a 503.
+// goroutine — and reports how many enabled schedules the store holds. That
+// count is an upper bound on the live set: a row the cron parser rejects is
+// logged and left out of the registrations, so the store can hold more enabled
+// rows than the daemon actually registered. A reload that cannot read the
+// database leaves the running set alone (the scheduler builds the new set whole
+// before swapping). A nil scheduler (the web surface starts before runServe
+// wires the handle) is refused, which the handler renders as a 503.
 func (c *cordonController) Reload(ctx context.Context) (web.ReloadState, error) {
 	c.mu.Lock()
 	s := c.sched

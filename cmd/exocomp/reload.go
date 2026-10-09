@@ -33,10 +33,11 @@ func newReloadCmd() *cobra.Command {
 }
 
 // runReload asks the selected remote daemon to rebuild its schedules and
-// reports how many enabled schedules it now holds. Schedule control is live
-// daemon state, so it always goes over the API — there is no local in-process
-// daemon a separate CLI could poke, and a signal could not return the count
-// the answer carries.
+// reports how many enabled schedules the store holds (an upper bound on the
+// live set: a row the cron parser rejects is left out of the registrations).
+// Schedule control is live daemon state, so it always goes over the API —
+// there is no local in-process daemon a separate CLI could poke, and a signal
+// could not return the count the answer carries.
 func runReload(cmd *cobra.Command) error {
 	mode, err := outputMode(cmd)
 	if err != nil {
@@ -59,6 +60,6 @@ func runReload(cmd *cobra.Command) error {
 	if mode == outputJSON {
 		return emitJSON(cmd, wire.KindMaintenanceReload, view)
 	}
-	_, err = fmt.Fprintf(cmd.OutOrStdout(), "schedules reloaded (%d)\n", view.Schedules)
+	_, err = fmt.Fprintf(cmd.OutOrStdout(), "schedules reloaded (%d enabled in the store)\n", view.Schedules)
 	return err
 }

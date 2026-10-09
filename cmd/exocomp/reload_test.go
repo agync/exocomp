@@ -19,7 +19,7 @@ func reloadStub(schedules int) http.Handler {
 }
 
 // TestReloadReportsCount: a bare `reload` asks the daemon to rebuild its
-// schedules and reports how many it now holds.
+// schedules and reports how many enabled schedules the store holds.
 func TestReloadReportsCount(t *testing.T) {
 	pinnedRemote(t, reloadStub(2))
 
@@ -27,8 +27,8 @@ func TestReloadReportsCount(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reload: %v", err)
 	}
-	if !strings.Contains(out, "schedules reloaded (2)") {
-		t.Fatalf("output = %q, want the reloaded count", out)
+	if !strings.Contains(out, "schedules reloaded (2 enabled in the store)") {
+		t.Fatalf("output = %q, want the honest reloaded count", out)
 	}
 }
 
