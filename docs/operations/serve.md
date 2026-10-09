@@ -278,9 +278,59 @@ ExecReload=~/.local/bin/exocomp --remote self reload
 |---|---|
 | Secrets/redaction, mutes, approvals — read from the database per use | live, no action needed |
 | Schedules — read once into memory | `exocomp reload` (or `SIGHUP`); auditing the full read-once set is follow-up work |
-| Binary or `serve` flag change | restart, after draining first |
+| Binary change | `exocomp restart` (drains, then re-execs in place) |
+| `serve` flag change | restart the unit — a re-exec keeps the same argv, so it cannot apply a new flag |
 
 See [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
+
+## Restarting the daemon
+
+`exocomp restart` is the restart a changed binary needs. It cordons the daemon
+(the same cordon `drain` sets: no new schedule fires, no new job claims), lets
+the jobs already running finish, shuts down in the one clean order `SIGTERM`
+uses, and then re-execs the on-disk binary in place — same pid, no systemd
+restart:
+
+```
+exocomp --remote self restart
+restart requested: draining 2 job(s)  deadline 2026-10-09T14:20:00Z
+```
+
+The request is a one-way signal: it returns as soon as the daemon is cordoned,
+and the drain runs in the daemon's background. `--wait` polls until the daemon
+goes down and prints `daemon restarting` — the dropped connection is the success
+signal, so the command never holds the daemon open. `--output json` re-emits the
+`maintenance.restart` envelope.
+
+The safety rules:
+
+- **The request never blocks.** A job that runs `exocomp restart` returns
+  immediately and finishes normally; because the requesting job is still running,
+  the restart waits for it. The daemon is never asked to restart around a job
+  that is waiting on the restart.
+- **A drain that does not finish in time aborts.** At the daemon's bound (10m)
+  the restart is abandoned, the cordon is lifted, and the daemon keeps taking
+  work. Work is never cancelled implicitly. `--force` cancels the remaining jobs
+  and restarts at once instead.
+- **A no-op is refused.** If the on-disk binary is byte-for-byte the image the
+  daemon is running (best-effort: `/proc/self/exe` against the resolved path),
+  the restart is refused as a conflict — a re-exec would change nothing.
+- **The replacement is prechecked.** Before anything is torn down, the on-disk
+  binary runs its `version`; a failure keeps the running process and lifts the
+  cordon.
+- **The exec only follows a clean shutdown.** A shutdown that errors leaves the
+  daemon in an unknown state, so the exec is abandoned rather than replacing a
+  process that did not stop cleanly.
+- **The restart is idempotent.** A second request while one is pending is a
+  no-op.
+- **It is operator-gated.** `POST /api/v1/maintenance/restart` is bearer-only,
+  operator scope, like `cordon`; the restart is logged, and `--force` is the
+  explicit cancel-and-restart path.
+
+The new process re-acquires the `serve.lock` flock (the descriptor is
+close-on-exec, so the re-exec releases it) and takes over the same-host active
+lease; the lease TTL covers the gap. See
+[ADR 0020](../adr/0020-reload-restart-and-recovery.md).
 
 ## Schedules
 

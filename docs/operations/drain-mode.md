@@ -54,6 +54,11 @@ cordoned: yes  in-flight: 0  safe to reboot: yes
 a reboot script does not proceed on a daemon still finishing work. `--status` reports
 readiness without cordoning. Lift the cordon (a reboot postponed, say) with `--resume`:
 
+If the goal is to restart the daemon itself rather than reboot the host,
+[`exocomp restart`](serve.md#restarting-the-daemon) does the same drain and then
+re-execs the on-disk binary in place, so no reboot and no systemd restart is
+involved.
+
 ```
 exocomp --remote self drain --resume
 cordon lifted; the daemon is taking work again

@@ -34,7 +34,8 @@ func TestServeUntilSignalReturnsFatalWebSurfaceError(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- serveUntilSignal(sigCtx, context.Background(), io.Discard, io.Discard, nil, s, 0, webErr)
+		_, err := serveUntilSignal(sigCtx, context.Background(), io.Discard, io.Discard, nil, s, 0, webErr, nil)
+		done <- err
 	}()
 
 	select {

@@ -6,6 +6,25 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-09 — `exocomp restart` restarts after draining, in place
+
+- **`exocomp restart` is the first-class restart for a changed binary.** It
+  cordons a running daemon (the same cordon `drain` sets), lets the jobs already
+  running finish, shuts down cleanly, and re-execs the on-disk binary in place —
+  same pid, no systemd restart — over the operator API
+  (`POST /api/v1/maintenance/restart`, operator scope like `cordon`). The request
+  is a one-way signal and returns at once; `--wait` polls until the daemon goes
+  down and prints `daemon restarting` (`--output json` re-emits the
+  `maintenance.restart` envelope).
+- **A job can restart the daemon without deadlocking against it.** The requesting
+  job counts as in flight until it is terminal, so the drain waits for the job
+  that asked rather than the daemon being restarted around it.
+- **The restart is fail-safe.** A drain that does not finish within the bound
+  aborts and lifts the cordon (work is never cancelled implicitly); `--force`
+  cancels the remaining jobs and restarts at once. An unchanged on-disk binary is
+  refused as a conflict; the replacement is prechecked with `version`; the exec
+  only follows a clean shutdown; and a second request is a no-op.
+
 ## 2026-10-09 — `exocomp reload` rebuilds schedules without a restart
 
 - **`exocomp reload` is the first-class schedule reload.** It drives the same

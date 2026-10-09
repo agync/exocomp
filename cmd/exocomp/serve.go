@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strings"
@@ -66,6 +68,28 @@ const defaultDrainGrace = 30 * time.Second
 // defaultReloadInterval is how often the daemon rebuilds its schedules from
 // the database, so `schedule enable` reaches it without a signal.
 const defaultReloadInterval = time.Minute
+
+// restartDrainTimeout bounds how long a restart waits for in-flight jobs to
+// reach zero. Past it the restart aborts and lifts the cordon (fail-safe: it
+// never cancels work implicitly); --force cancels the remaining jobs and
+// restarts instead. It matches the CLI's default --timeout.
+const restartDrainTimeout = 10 * time.Minute
+
+// restartPollInterval is how often the restart goroutine re-reads the in-flight
+// count while draining.
+const restartPollInterval = 250 * time.Millisecond
+
+// restartExec replaces this process with the on-disk binary, so a restart runs
+// the new image in place — same pid, no systemd restart, no supervisor in the
+// loop. It is a variable so the serve loop's restart path is unit-testable with
+// the exec stubbed; on success syscall.Exec never returns.
+var restartExec = func() error {
+	self, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	return syscall.Exec(self, os.Args, os.Environ())
+}
 
 // defaultSweepInterval is how often the daemon fails expired approvals
 // closed, re-publishes the ones halfway through their window, and turns a
@@ -369,8 +393,10 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	// The drain controller is built before the queue so the queue's claim gate
 	// can consult it; its scheduler handle is filled in once the scheduler
-	// exists (below). Until then it is uncordoned, so the gate is open.
-	cordon := &cordonController{store: st}
+	// exists (below). Until then it is uncordoned, so the gate is open. It also
+	// owns the restart drain: cancelJobs is the --force lever that cancels the
+	// jobs a drain is still waiting on.
+	cordon := newCordonController(st, cancelJobs)
 	q := queue.New(st, drv, queue.Options{Workers: serveWorkers, PollInterval: servePoll},
 		queue.WithRedactorProvider(func() *secrets.Redactor {
 			return secrets.NewRedactor(knownSecrets(jobCtx, st, env, warn))
@@ -511,7 +537,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if surface != nil {
 		webErr = surface.serveErr
 	}
-	webFailure := serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval, webErr)
+	restarting, webFailure := serveUntilSignal(sigCtx, jobCtx, out, warn, hup, s, opts.reloadInterval, webErr, cordon.restartReady)
 	if webFailure != nil {
 		_, _ = fmt.Fprintf(warn, "WARNING: web surface failed: %v\n", webFailure)
 	}
@@ -533,7 +559,28 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	if err == nil {
 		err = webFailure
 	}
-	return err
+	if !restarting {
+		return err
+	}
+	return finishRestart(out, err)
+}
+
+// finishRestart runs the restart's last step: re-exec the on-disk binary once
+// the shutdown completed cleanly. A shutdown that errored leaves the daemon in
+// an unknown state, so it aborts rather than exec'ing into an unclean process
+// (the caller's err is returned and the process exits on it). The exec itself is
+// injectable (restartExec) so this decision is unit-testable without a real
+// exec.
+func finishRestart(out io.Writer, shutdownErr error) error {
+	if shutdownErr != nil {
+		_, _ = fmt.Fprintf(out, "restart aborted: shutdown did not complete cleanly: %v\n", shutdownErr)
+		return shutdownErr
+	}
+	_, _ = fmt.Fprintln(out, "restarting: re-exec'ing the on-disk binary")
+	if err := restartExec(); err != nil {
+		return fmt.Errorf("serve: restart: re-exec on-disk binary: %w", err)
+	}
+	return nil
 }
 
 // bootSweepJobs reconciles every non-terminal job a crash stranded — rows a dead
@@ -813,8 +860,14 @@ func flagStaleLocks(ctx context.Context, st *store.Store, warn io.Writer) error 
 // started): a post-bind failure there — a bad TLS config, a lost listener —
 // is fatal, not something to keep running past, so it ends the wait and
 // returns the error instead of the normal nil.
+//
+// restart is the drain controller's restart-ready channel (nil when no restart
+// was requested): when it fires the daemon has drained and the caller must shut
+// down cleanly and then re-exec. restarting reports that outcome so runServe can
+// tell an ordinary stop from a restart.
 func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
-	hup <-chan os.Signal, s *sched.Scheduler, interval time.Duration, webErr <-chan error) error {
+	hup <-chan os.Signal, s *sched.Scheduler, interval time.Duration, webErr <-chan error,
+	restart <-chan struct{}) (restarting bool, err error) {
 	var tick <-chan time.Time
 	if interval > 0 {
 		ticker := time.NewTicker(interval)
@@ -825,12 +878,14 @@ func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
 	for {
 		select {
 		case <-sigCtx.Done():
-			return nil
+			return false, nil
+		case <-restart:
+			return true, nil
 		case err := <-webErr:
 			if err == nil || errors.Is(err, http.ErrServerClosed) {
 				continue
 			}
-			return err
+			return false, err
 		case <-hup:
 			if err := s.Reload(jobCtx); err != nil {
 				_, _ = fmt.Fprintf(warn, "WARNING: reload schedules: %v\n", err)
@@ -850,12 +905,49 @@ func serveUntilSignal(sigCtx, jobCtx context.Context, out, warn io.Writer,
 // taking new work while jobs already running finish; State answers the
 // readiness the `drain` CLI polls. It is deliberately NOT a queue job: a cordon
 // is control-plane state, not a run, so it has no Spec and no ledger entry.
+//
+// It also owns restart-after-drain: Restart cordons and returns at once, and a
+// goroutine waits for the in-flight count to reach zero (the requesting job
+// included, which is what keeps a job that asks for a restart from deadlocking
+// against the daemon), then closes restartReady. runServe selects on that
+// channel, shuts down, and re-execs.
 type cordonController struct {
 	store *store.Store
 
 	mu    sync.Mutex
 	on    bool
 	sched *sched.Scheduler
+
+	// Restart bookkeeping, guarded by mu.
+	restartPending  bool
+	restartFired    bool
+	restartDeadline time.Time
+	restartErr      error
+	// restartReady is closed once the drain is complete and the restart should
+	// fire. It is created once per process (a daemon restarts at most once), so
+	// serveUntilSignal can select on it from the start.
+	restartReady chan struct{}
+
+	// Restart seams. newCordonController sets the production values; tests
+	// override them to drive the drain without a real binary or scheduler.
+	restartTimeout time.Duration
+	restartPoll    time.Duration
+	restartGate    func() error
+	restartCancel  context.CancelFunc
+}
+
+// newCordonController builds the daemon's drain seam. cancel is the job
+// context's cancel, the --force lever that cancels the jobs a drain is still
+// waiting on.
+func newCordonController(st *store.Store, cancel context.CancelFunc) *cordonController {
+	return &cordonController{
+		store:          st,
+		restartReady:   make(chan struct{}),
+		restartTimeout: restartDrainTimeout,
+		restartPoll:    restartPollInterval,
+		restartGate:    defaultRestartGate,
+		restartCancel:  cancel,
+	}
 }
 
 // claimAllowed is the queue's claim gate: closed (returns false) while cordoned.
@@ -917,6 +1009,243 @@ func (c *cordonController) Reload(ctx context.Context) (web.ReloadState, error) 
 		return web.ReloadState{}, err
 	}
 	return web.ReloadState{Schedules: len(rows)}, nil
+}
+
+// Restart cordons the daemon and returns at once — the request is a one-way
+// signal, never a wait. A goroutine then waits for the in-flight count to reach
+// zero, bounded by restartTimeout; when it does, restartReady closes and the
+// serve loop shuts down and re-execs. The requesting job counts as in flight
+// until it is terminal, so a job that asks for its own restart drains before the
+// daemon goes down instead of deadlocking against it.
+//
+// A restart is refused as ErrNothingToRestart when the on-disk binary is the
+// running image, and a precheck that the on-disk binary runs is refused before
+// anything is cordoned-for-keeps. On either refusal, or on a timeout, the cordon
+// is lifted so the daemon keeps taking work. A second request while one is
+// pending is a no-op.
+func (c *cordonController) Restart(ctx context.Context, force bool) (web.RestartState, error) {
+	c.mu.Lock()
+	if c.restartPending {
+		c.mu.Unlock()
+		return c.RestartStatus(ctx)
+	}
+	c.mu.Unlock()
+
+	// Cordon first, reusing the one drain mechanism, so a gate failure below can
+	// lift exactly the cordon this call set.
+	if _, err := c.Cordon(ctx); err != nil {
+		return web.RestartState{}, err
+	}
+
+	if gate := c.restartGate; gate != nil {
+		if err := gate(); err != nil {
+			_, _ = c.Uncordon(ctx)
+			return web.RestartState{}, err
+		}
+	}
+
+	c.mu.Lock()
+	if c.restartTimeout <= 0 {
+		c.restartTimeout = restartDrainTimeout
+	}
+	if c.restartPoll <= 0 {
+		c.restartPoll = restartPollInterval
+	}
+	c.restartPending = true
+	c.restartDeadline = time.Now().Add(c.restartTimeout)
+	c.mu.Unlock()
+
+	go c.awaitRestart(force)
+	return c.RestartStatus(ctx)
+}
+
+// RestartStatus reports a pending restart's drain progress.
+func (c *cordonController) RestartStatus(ctx context.Context) (web.RestartState, error) {
+	n, err := runningJobsOwnedByThisProcess(ctx, c.store)
+	if err != nil {
+		return web.RestartState{}, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	st := web.RestartState{Pending: c.restartPending, InFlight: n}
+	if c.restartPending {
+		st.Deadline = c.restartDeadline
+	}
+	return st, nil
+}
+
+// awaitRestart is the background half of a restart. It waits for the in-flight
+// count to reach zero and fires, or aborts on the deadline. With force it
+// cancels the remaining jobs and fires at once, so an operator who does not want
+// to wait still gets a restart rather than a silent abort. A count error aborts
+// rather than firing on an unknown state.
+func (c *cordonController) awaitRestart(force bool) {
+	ctx := context.Background()
+	deadline := c.deadline()
+
+	if force {
+		c.cancelInFlight()
+		c.fireRestart()
+		return
+	}
+
+	for {
+		n, err := runningJobsOwnedByThisProcess(ctx, c.store)
+		if err != nil {
+			c.abortRestart(fmt.Errorf("restart: count in-flight jobs: %w", err))
+			return
+		}
+		if n == 0 {
+			c.fireRestart()
+			return
+		}
+		if !time.Now().Before(deadline) {
+			c.abortRestart(errRestartTimedOut)
+			return
+		}
+		time.Sleep(c.restartPoll)
+	}
+}
+
+// deadline returns the drain deadline under the lock, defaulting to the
+// configured timeout from now when an unset timeout slipped through.
+func (c *cordonController) deadline() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.restartDeadline.IsZero() {
+		return c.restartDeadline
+	}
+	return time.Now().Add(c.restartTimeout)
+}
+
+// cancelInFlight calls the daemon's job cancel (the --force lever). It is
+// idempotent and safe with a nil seam (a controller with no queue).
+func (c *cordonController) cancelInFlight() {
+	c.mu.Lock()
+	cancel := c.restartCancel
+	c.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
+// fireRestart closes restartReady exactly once, waking the serve loop.
+func (c *cordonController) fireRestart() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.restartPending || c.restartFired {
+		return
+	}
+	c.restartFired = true
+	close(c.restartReady)
+}
+
+// abortRestart clears the pending flag, records the reason, and lifts the
+// cordon — the fail-safe ending for a drain that could not complete.
+func (c *cordonController) abortRestart(err error) {
+	c.mu.Lock()
+	if !c.restartPending || c.restartFired {
+		c.mu.Unlock()
+		return
+	}
+	c.restartPending = false
+	c.restartErr = err
+	c.mu.Unlock()
+	_, _ = c.Uncordon(context.Background())
+}
+
+// errRestartTimedOut is the abort reason a `restart --wait` reads as a still-
+// running daemon: the drain hit its deadline with jobs left, so the cordon was
+// lifted rather than cancelling them.
+var errRestartTimedOut = errors.New("restart: timed out waiting for in-flight jobs; cordon lifted")
+
+// restartGate refuses a restart that would do nothing and prechecks the binary
+// that would replace this process. The no-op test compares the running image
+// (the /proc/self/exe inode, which survives an in-place upgrade) to the file at
+// the on-disk path; the precheck runs the on-disk binary's `version` so a
+// broken replacement is refused while the running process stays up.
+//
+// The comparison is best-effort: when either image cannot be read (no
+// /proc/self/exe, an unreadable path) it proceeds rather than refusing, because
+// a real restart must not be blocked by a hashing failure. The precheck is the
+// hard gate.
+func defaultRestartGate() error {
+	disk, err := onDiskBinaryPath()
+	if err != nil {
+		return nil
+	}
+	running, rerr := runningImageHash()
+	ondisk, derr := fileHash(disk)
+	if rerr == nil && derr == nil && running == ondisk {
+		return web.ErrNothingToRestart
+	}
+	return precheckBinary(disk)
+}
+
+// onDiskBinaryPath is the file a restart would exec: the running binary's own
+// path, symlinks resolved, which is what an in-place upgrade replaces.
+func onDiskBinaryPath() (string, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	if resolved, err := filepath.EvalSymlinks(self); err == nil {
+		self = resolved
+	}
+	return self, nil
+}
+
+// runningImageHash hashes the image this process is executing. /proc/self/exe
+// is preferred because it keeps pointing at the running inode even after the
+// on-disk path was replaced; os.Executable is the fallback on a host without
+// procfs.
+func runningImageHash() (string, error) {
+	f, err := os.Open("/proc/self/exe")
+	if err != nil {
+		self, eerr := os.Executable()
+		if eerr != nil {
+			return "", err
+		}
+		f, err = os.Open(self)
+		if err != nil {
+			return "", err
+		}
+	}
+	defer func() { _ = f.Close() }()
+	return hashReader(f)
+}
+
+func fileHash(path string) (string, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = f.Close() }()
+	return hashReader(f)
+}
+
+func hashReader(r io.Reader) (string, error) {
+	h := sha256.New()
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// precheckBinary runs the on-disk binary's `version` before trusting it to
+// replace this process. A non-zero exit or empty output is a refusal.
+func precheckBinary(path string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, path, "version").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("on-disk binary failed its precheck (`version`): %w: %s",
+			err, strings.TrimSpace(string(out)))
+	}
+	if strings.TrimSpace(string(out)) == "" {
+		return errors.New("on-disk binary failed its precheck: `version` printed nothing")
+	}
+	return nil
 }
 
 func (c *cordonController) state(ctx context.Context) (web.MaintenanceState, error) {

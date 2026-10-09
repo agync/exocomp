@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -43,6 +44,38 @@ func (c *Client) Reload(ctx context.Context) (wire.ReloadView, error) {
 		return wire.ReloadView{}, fmt.Errorf("client: decode %s payload: %w", kind, err)
 	}
 	return out, nil
+}
+
+// Restart asks the remote daemon to restart after draining. The request is a
+// one-way signal — the daemon cordons and answers at once, then drains and
+// re-execs in the background — so the returned view is the pending state, not
+// the outcome. force skips the wait and cancels the remaining jobs.
+func (c *Client) Restart(ctx context.Context, force bool) (wire.RestartView, error) {
+	q := url.Values{}
+	if force {
+		q.Set("force", "1")
+	}
+	kind, data, err := c.do(ctx, http.MethodPost, "/api/v1/maintenance/restart", q, nil, "")
+	if err != nil {
+		return wire.RestartView{}, err
+	}
+	if kind != wire.KindMaintenanceRestart {
+		return wire.RestartView{}, fmt.Errorf("client: maintenance restart answered with unexpected kind %q", kind)
+	}
+	var out wire.RestartView
+	if err := json.Unmarshal(data, &out); err != nil {
+		return wire.RestartView{}, fmt.Errorf("client: decode %s payload: %w", kind, err)
+	}
+	return out, nil
+}
+
+// RestartStatus reports a pending restart's drain progress. A `restart --wait`
+// polls it until the daemon goes down (the restart fired) or the pending flag
+// clears (the drain timed out and the cordon was lifted).
+func (c *Client) RestartStatus(ctx context.Context) (wire.RestartView, error) {
+	var out wire.RestartView
+	err := c.get(ctx, "/api/v1/maintenance/restart", nil, &out)
+	return out, err
 }
 
 func (c *Client) maintenanceWrite(ctx context.Context, path string) (wire.MaintenanceView, error) {

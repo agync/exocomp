@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"sync"
 	"testing"
+	"time"
 
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -20,6 +21,11 @@ type fakeMaint struct {
 	inFlight  int
 	schedules int
 	reloaded  int
+
+	restarted    int
+	restartForce bool
+	restartErr   error
+	restartView  RestartState
 }
 
 func (f *fakeMaint) Cordon(context.Context) (MaintenanceState, error) {
@@ -47,6 +53,28 @@ func (f *fakeMaint) Reload(context.Context) (ReloadState, error) {
 	defer f.mu.Unlock()
 	f.reloaded++
 	return ReloadState{Schedules: f.schedules}, nil
+}
+
+func (f *fakeMaint) Restart(_ context.Context, force bool) (RestartState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.restarted++
+	f.restartForce = force
+	if f.restartErr != nil {
+		return RestartState{}, f.restartErr
+	}
+	f.restartView = RestartState{
+		Pending:  true,
+		InFlight: f.inFlight,
+		Deadline: time.Now().Add(time.Minute),
+	}
+	return f.restartView, nil
+}
+
+func (f *fakeMaint) RestartStatus(context.Context) (RestartState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.restartView, nil
 }
 
 func (f *fakeMaint) setInFlight(n int) {
@@ -239,6 +267,117 @@ func TestReloadWithoutSchedulerIsUnavailable(t *testing.T) {
 	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/reload", operator, "", nil)
 	if code != http.StatusServiceUnavailable {
 		t.Fatalf("reload without a scheduler status = %d, want 503 (%s)", code, body)
+	}
+}
+
+// readRestartView decodes a maintenance.restart success envelope.
+func readRestartView(t *testing.T, body string) wire.RestartView {
+	t.Helper()
+	kind, code, data := decodeEnvelope(t, body)
+	if code != "" {
+		t.Fatalf("wanted a success envelope, got error code %q (%s)", code, body)
+	}
+	if kind != wire.KindMaintenanceRestart {
+		t.Fatalf("restart kind = %q, want %q", kind, wire.KindMaintenanceRestart)
+	}
+	var v wire.RestartView
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("decode restart view: %v (%s)", err, body)
+	}
+	return v
+}
+
+// TestRestartIsOperatorScopedAndCallsSeam is the gate: a readonly token cannot
+// restart, an operator token can, the answer carries the pending state, and the
+// force query reaches the seam.
+func TestRestartIsOperatorScopedAndCallsSeam(t *testing.T) {
+	h := newHarness(t)
+	maint := &fakeMaint{}
+	srv := serverWithMaint(t, h, maint)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	readonly := h.mint(t, "ro", "readonly")
+	operator := h.mint(t, "op", "operator")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/restart", readonly, "", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly restart status = %d, want 403 (%s)", code, body)
+	}
+	if _, ecode, _ := decodeEnvelope(t, body); ecode != wire.CodeForbidden {
+		t.Fatalf("readonly restart error code = %q, want forbidden", ecode)
+	}
+	if maint.restarted != 0 {
+		t.Fatal("a refused restart still reached the daemon seam")
+	}
+
+	code, _, body = bearerPost(t, ts.URL, "/api/v1/maintenance/restart?force=1", operator, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("operator restart status = %d, want 200 (%s)", code, body)
+	}
+	v := readRestartView(t, body)
+	if !v.Pending {
+		t.Fatalf("restart answer = %+v, want pending", v)
+	}
+	if maint.restarted != 1 {
+		t.Fatalf("restart reached the seam %d times, want 1", maint.restarted)
+	}
+	if !maint.restartForce {
+		t.Fatal("the force query did not reach the seam")
+	}
+}
+
+// TestRestartNoOpIsConflict: an unchanged binary is refused as a conflict, so a
+// script branches on it rather than reading a restart that never happens.
+func TestRestartNoOpIsConflict(t *testing.T) {
+	h := newHarness(t)
+	maint := &fakeMaint{restartErr: ErrNothingToRestart}
+	srv := serverWithMaint(t, h, maint)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	operator := h.mint(t, "op", "operator")
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/restart", operator, "", nil)
+	if code != http.StatusConflict {
+		t.Fatalf("no-op restart status = %d, want 409 (%s)", code, body)
+	}
+	if _, ecode, _ := decodeEnvelope(t, body); ecode != wire.CodeConflict {
+		t.Fatalf("no-op restart error code = %q, want conflict", ecode)
+	}
+}
+
+// TestRestartStatusIsReadable: the status a `restart --wait` polls is a read, so
+// a readonly token may watch it, and it reports the pending view.
+func TestRestartStatusIsReadable(t *testing.T) {
+	h := newHarness(t)
+	maint := &fakeMaint{restartView: RestartState{Pending: true, InFlight: 2, Deadline: time.Now().Add(time.Minute)}}
+	srv := serverWithMaint(t, h, maint)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	readonly := h.mint(t, "ro", "readonly")
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/maintenance/restart", readonly)
+	if code != http.StatusOK {
+		t.Fatalf("restart status = %d, want 200 (%s)", code, body)
+	}
+	v := readRestartView(t, body)
+	if !v.Pending || v.InFlight != 2 || v.Deadline == "" {
+		t.Fatalf("restart status = %+v, want pending with 2 in flight and a deadline", v)
+	}
+}
+
+// TestRestartUnavailableWithoutSeam: a surface with no maintenance seam answers
+// 503 rather than pretending to restart a daemon it does not own.
+func TestRestartUnavailableWithoutSeam(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithMaint(t, h, nil)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	operator := h.mint(t, "op", "operator")
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/restart", operator, "", nil)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("restart without a seam status = %d, want 503 (%s)", code, body)
 	}
 }
 
