@@ -761,7 +761,10 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}
-	notifier := notify.New(nil, transports...)
+	// A notify_mute row holds the push (jobs still run, the outcome is
+	// recorded); the checker reads the store per notify, so a mute set while
+	// the daemon runs takes effect at once. Without it a mute was inert.
+	notifier := notify.New(nil, transports...).WithMutes(notify.NewStoreMutes(st))
 	warnNoPushTransport(warn, sealed)
 
 	engine, err := reactive.New(reactive.Options{
