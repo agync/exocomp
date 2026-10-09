@@ -89,7 +89,9 @@ ID  STATE        RUNBOOK   KIND    TRIGGER   EXIT  QUEUED
 
 `drain interrupted` reads them newest-first. It works locally too (reading the store
 directly), for the common case of an operator on the freshly-rebooted box. Re-drive the ones
-that still matter by their normal verb; nothing re-runs on its own.
+that still matter with `exocomp jobs redrive` (dry-run first, then `--yes`);
+nothing re-runs on its own. See [Recovering jobs a restart cut
+off](serve.md#recovering-jobs-a-restart-cut-off).
 
 ## The mechanism, and why not a signal
 

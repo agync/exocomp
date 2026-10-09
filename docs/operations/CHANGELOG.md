@@ -6,6 +6,20 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-09 — `exocomp jobs redrive` re-drives jobs a restart cut off
+
+- **A forced restart or a crash leaves `cancelled`/`interrupted` rows; `jobs
+  redrive` re-drives them.** It selects the cut-off rows (default `--state
+  interrupted`, repeatable with `cancelled`), re-enqueues each as a fresh
+  queued job carrying the same spec through the one re-enqueue path, and
+  reports each old-to-new id pair (text and `--output json`). A clean
+  restart-after-drain interrupts nothing, so there is nothing to recover.
+- **Bulk re-runs need confirmation.** `--dry-run` prints what would go and
+  enqueues nothing; a real run needs `--yes` (or an answered prompt) and
+  refuses on `--no-input` without it. Auto-redrive is deliberately off: a
+  cut-off destructive run is the operator's call, never auto-rerun. See
+  [Recovering jobs a restart cut off](serve.md#recovering-jobs-a-restart-cut-off).
+
 ## 2026-10-09 — `exocomp restart` restarts after draining, in place
 
 - **`exocomp restart` is the first-class restart for a changed binary.** It

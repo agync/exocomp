@@ -332,6 +332,30 @@ close-on-exec, so the re-exec releases it) and takes over the same-host active
 lease; the lease TTL covers the gap. See
 [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
 
+## Recovering jobs a restart cut off
+
+A clean restart-after-drain interrupts nothing: the drain waits for in-flight
+jobs, so there is nothing to recover. The failure path does cut work off: a
+`--force` restart (or a crash) SIGKILLs running jobs, which settle `cancelled`,
+and retires queued rows to `interrupted`. `interrupted` is terminal and never
+auto-retried — a cut-off destructive run is the operator's call to re-run,
+never the daemon's.
+
+The recovery flow:
+
+```
+exocomp jobs list --state interrupted --state cancelled
+exocomp jobs redrive --dry-run
+exocomp jobs redrive --yes
+```
+
+`jobs redrive` re-enqueues the selected rows as fresh queued jobs carrying the
+same spec (labelled with the `redrive` trigger) for the running daemon to
+claim, and reports each old-to-new id pair. It defaults to `--state
+interrupted`; `--state` repeats, `--limit` caps the blast radius, `--dry-run`
+enqueues nothing, and a real run needs `--yes` (or an answered prompt).
+Auto-redrive is deliberately off: nothing re-runs on its own.
+
 ## Schedules
 
 `schedule add` validates `--cron` with the same parser the daemon registers with (six

@@ -37,8 +37,19 @@ Prefer reload over restart, and restart only after drain, in three phases:
    clean shutdown, and a second request while one is pending is a no-op. The
    unit's reload stays `ExecReload=~/.local/bin/exocomp --remote self reload`;
    the unit file itself is not edited in this repo.
-3. **Job recovery (follow-up).** The interrupted listing becomes something an
-   operator re-drives from, rather than a read-only post-reboot view.
+3. **Job recovery (landed).** The interrupted listing became something an
+   operator re-drives from: `exocomp jobs redrive` selects the cut-off rows
+   (default `--state interrupted`, repeatable with `cancelled`) and
+   re-enqueues each as a fresh queued job carrying the same spec — rebuilt
+   from the row's stored args, labelled with the `redrive` trigger — through
+   the one `service.Reenqueue` path the web "Run again" uses. The
+   idempotency and dedup keys are dropped, so the enqueue lands a new row
+   rather than collapsing onto the original. A real run needs confirmation
+   (`--yes`, or an answered prompt; `--dry-run` enqueues nothing); a clean
+   restart-after-drain interrupts nothing, so there is nothing to recover;
+   and auto-redrive is deliberately off — a cut-off destructive run is the
+   operator's call, never auto-rerun. No new reactive event: a restart is
+   control-plane state, not a reactive trigger.
 
 What needs which action:
 
@@ -61,5 +72,5 @@ schedules are the only reloadable set named here.
   stays Ansible-managed and out of this repo.
 - A restart re-execs in place rather than through the unit, so it carries the
   same argv: a `serve` flag change is still the unit's own restart.
-- Phase 3 (re-driving interrupted jobs) is the remaining follow-up; interrupted
-  jobs keep today's listing until it lands.
+- Phase 3 (re-driving interrupted jobs) is landed as `exocomp jobs redrive`;
+  interrupted jobs keep today's listing alongside it.
