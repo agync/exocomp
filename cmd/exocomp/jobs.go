@@ -29,7 +29,7 @@ func newJobsCmd() *cobra.Command {
 			"An agent branches on state and exit_code; the JSON is values-free. `follow` " +
 			"is the one verb here that waits, and it exits with the job's own code.",
 	}
-	cmd.AddCommand(newJobsListCmd(), newJobsGetCmd(), newJobsEventsCmd(), newJobsFollowCmd())
+	cmd.AddCommand(newJobsListCmd(), newJobsGetCmd(), newJobsEventsCmd(), newJobsFollowCmd(), newJobsRedriveCmd())
 	return cmd
 }
 
