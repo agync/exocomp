@@ -41,7 +41,7 @@ func newRestartCmd() *cobra.Command {
 			"daemon's background. --wait then polls until the daemon goes down (the restart " +
 			"fired) and reports it. A drain that cannot finish within the daemon's bound is " +
 			"aborted and the cordon lifted; --force cancels the remaining jobs and restarts " +
-			"instead.\n\n" +
+			"instead — those jobs land cancelled and are re-drivable with `exocomp jobs redrive`.\n\n" +
 			"restart controls a RUNNING daemon over the operator API, so it needs a selected " +
 			"remote (--remote or EXOCOMP_REMOTE) — the control node targets its own daemon.",
 		Example: "exocomp --remote self restart --wait",
@@ -85,14 +85,33 @@ func runRestart(cmd *cobra.Command, opt restartOptions) error {
 		return remoteFail(cmd, mode, err)
 	}
 	if !opt.wait {
-		return renderRestart(cmd, mode, view)
+		if err := renderRestart(cmd, mode, view); err != nil {
+			return err
+		}
+		return maybeRedriveHint(cmd, mode, opt.force, view.InFlight)
 	}
 
 	out := cmd.OutOrStdout()
 	if mode != outputJSON {
 		_, _ = fmt.Fprintf(out, "restart requested: draining %d job(s)\n", view.InFlight)
 	}
+	if err := maybeRedriveHint(cmd, mode, opt.force, view.InFlight); err != nil {
+		return err
+	}
 	return waitForRestart(cmd, rc, mode, view, opt.timeout)
+}
+
+// maybeRedriveHint points a forced restart at the recovery verb: --force cancels
+// the jobs still in flight, which land cancelled/interrupted, so the operator
+// knows what to re-drive rather than discovering it later. Text only — JSON
+// stdout must stay parseable.
+func maybeRedriveHint(cmd *cobra.Command, mode string, force bool, inFlight int) error {
+	if mode == outputJSON || !force || inFlight == 0 {
+		return nil
+	}
+	_, err := fmt.Fprintf(cmd.OutOrStdout(),
+		"forced: %d in-flight job(s) were cancelled; re-drive survivors with `exocomp jobs redrive`\n", inFlight)
+	return err
 }
 
 // waitForRestart polls the daemon's restart status until it goes down (the

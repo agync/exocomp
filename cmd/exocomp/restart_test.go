@@ -1,11 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"net/http"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -152,5 +155,37 @@ func TestRestartNeedsARemote(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--remote") {
 		t.Fatalf("error = %v, want one naming --remote", err)
+	}
+}
+
+// TestRestartForceHintsRedrive: a forced restart cancels the jobs still in
+// flight, so the text output points at the recovery verb; JSON stays parseable.
+func TestRestartForceHintsRedrive(t *testing.T) {
+	var buf bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&buf)
+	cmd.SetErr(&buf)
+
+	if err := maybeRedriveHint(cmd, outputText, true, 3); err != nil {
+		t.Fatalf("maybeRedriveHint: %v", err)
+	}
+	if !strings.Contains(buf.String(), "exocomp jobs redrive") {
+		t.Errorf("force hint missing the redrive pointer: %q", buf.String())
+	}
+
+	buf.Reset()
+	if err := maybeRedriveHint(cmd, outputText, false, 3); err != nil {
+		t.Fatalf("maybeRedriveHint: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("a non-force restart printed a hint: %q", buf.String())
+	}
+
+	buf.Reset()
+	if err := maybeRedriveHint(cmd, outputJSON, true, 3); err != nil {
+		t.Fatalf("maybeRedriveHint: %v", err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("JSON mode printed a hint (stdout must stay parseable): %q", buf.String())
 	}
 }
