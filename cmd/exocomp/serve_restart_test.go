@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -337,4 +338,139 @@ func TestServeUntilSignalReturnsRestart(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("serveUntilSignal did not return after the restart fired")
 	}
+}
+
+// TestRestartConcurrentSecondRequestIsNoOp: the pending check and set are
+// atomic across the gate, so a second request that arrives while the first is
+// still prechecking sees the reservation and returns the current status instead
+// of running the gate again.
+func TestRestartConcurrentSecondRequestIsNoOp(t *testing.T) {
+	st := restartTestStore(t)
+	runningJobOwnedByThisProcess(t, st)
+	c := newCordonController(st, nil)
+
+	var gateCalls atomic.Int32
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	c.restartGate = func() error {
+		if gateCalls.Add(1) == 1 {
+			close(entered)
+		}
+		<-release
+		return nil
+	}
+	c.restartPoll = 5 * time.Millisecond
+	c.restartTimeout = time.Minute
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := c.Restart(context.Background(), false)
+		firstDone <- err
+	}()
+
+	<-entered
+	second, err := c.Restart(context.Background(), false)
+	if err != nil {
+		t.Fatalf("second Restart: %v", err)
+	}
+	if !second.Pending {
+		t.Fatalf("second Restart = %+v, want it to report the pending restart", second)
+	}
+	if got := gateCalls.Load(); got != 1 {
+		t.Fatalf("gate ran %d times, want 1 (the concurrent second request is a no-op)", got)
+	}
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("first Restart: %v", err)
+	}
+}
+
+// TestRestartGateFailureClearsPending: a refused restart releases the pending
+// reservation, so a later request starts clean rather than being told a restart
+// is already pending.
+func TestRestartGateFailureClearsPending(t *testing.T) {
+	st := restartTestStore(t)
+	c := newCordonController(st, nil)
+	c.restartGate = func() error { return errors.New("precheck refused") }
+
+	if _, err := c.Restart(context.Background(), false); err == nil {
+		t.Fatal("a refused gate did not fail the restart")
+	}
+	c.mu.Lock()
+	pending := c.restartPending
+	c.mu.Unlock()
+	if pending {
+		t.Fatal("a refused restart left restartPending set")
+	}
+}
+
+// TestFinishRestartClosesStagingBeforeExec: the run-secret staging session dir
+// is removed before the re-exec (the exec skips runServe's deferred close), and
+// a shutdown error skips both the cleanup and the exec.
+func TestFinishRestartClosesStagingBeforeExec(t *testing.T) {
+	origExec, origClean := restartExec, restartStagingCleanup
+	t.Cleanup(func() { restartExec, restartStagingCleanup = origExec, origClean })
+
+	var order []string
+	restartStagingCleanup = func() error { order = append(order, "cleanup"); return nil }
+	restartExec = func() error { order = append(order, "exec"); return nil }
+
+	if err := finishRestart(io.Discard, nil); err != nil {
+		t.Fatalf("finishRestart: %v", err)
+	}
+	if len(order) != 2 || order[0] != "cleanup" || order[1] != "exec" {
+		t.Fatalf("order = %v, want cleanup before exec", order)
+	}
+
+	order = nil
+	if err := finishRestart(io.Discard, errors.New("shutdown did not complete")); err == nil {
+		t.Fatal("finishRestart accepted a failed shutdown")
+	}
+	if len(order) != 0 {
+		t.Fatalf("cleanup/exec ran after a failed shutdown: %v", order)
+	}
+}
+
+// TestDefaultRestartGateRefusesUnresolvablePath: a path that cannot be resolved
+// is a refusal, not a skip — a restart must not proceed on an unverified binary.
+func TestDefaultRestartGateRefusesUnresolvablePath(t *testing.T) {
+	orig := onDiskBinaryPathFn
+	t.Cleanup(func() { onDiskBinaryPathFn = orig })
+	onDiskBinaryPathFn = func() (string, error) { return "", errors.New("no /proc/self/exe") }
+
+	if err := defaultRestartGate(); err == nil {
+		t.Fatal("defaultRestartGate proceeded without a resolvable on-disk binary")
+	}
+}
+
+// TestCordonSetSchedulerRace hammers the scheduler-handle write against the
+// Cordon/Uncordon/Reload reads. It asserts nothing beyond not tripping the race
+// detector, which is the whole point: the write must be under the same lock as
+// the reads.
+func TestCordonSetSchedulerRace(t *testing.T) {
+	st := restartTestStore(t)
+	c := newCordonController(st, nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				c.setScheduler(nil)
+			}
+		}()
+	}
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				_, _ = c.Cordon(context.Background())
+				_, _ = c.Uncordon(context.Background())
+				_, _ = c.Reload(context.Background())
+			}
+		}()
+	}
+	wg.Wait()
 }

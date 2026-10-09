@@ -91,6 +91,15 @@ var restartExec = func() error {
 	return syscall.Exec(self, os.Args, os.Environ())
 }
 
+// restartStagingCleanup removes the run-secret staging session directory before
+// a restart re-execs. It is a variable so the decision is unit-testable. The
+// normal cleanup is runServe's defer, but syscall.Exec never returns, so that
+// defer does not run on the exec path — and because exec keeps the same pid,
+// the next start's liveness sweep would see the directory's owning pid still
+// alive and skip it. Closing it explicitly before the exec is what leaves no
+// secret-bearing directory behind.
+var restartStagingCleanup = executor.CloseRunSecretStaging
+
 // defaultSweepInterval is how often the daemon fails expired approvals
 // closed, re-publishes the ones halfway through their window, and turns a
 // plan that found changes into a drift event.
@@ -490,7 +499,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 		<-qDone
 		return fmt.Errorf("serve: %w", err)
 	}
-	cordon.sched = s
+	cordon.setScheduler(s)
 	_, _ = fmt.Fprintln(out, "scheduler started")
 
 	// The lease keeps this daemon's claim to be the active one alive. Losing it
@@ -575,6 +584,13 @@ func finishRestart(out io.Writer, shutdownErr error) error {
 	if shutdownErr != nil {
 		_, _ = fmt.Fprintf(out, "restart aborted: shutdown did not complete cleanly: %v\n", shutdownErr)
 		return shutdownErr
+	}
+	// The run-secret staging session directory must be gone before the exec:
+	// syscall.Exec skips runServe's deferred CloseRunSecretStaging, and the
+	// next start's sweep would leave the directory because the pid is unchanged
+	// by an in-place exec.
+	if err := restartStagingCleanup(); err != nil {
+		_, _ = fmt.Fprintf(out, "WARNING: run-secret staging cleanup before restart: %v\n", err)
 	}
 	_, _ = fmt.Fprintln(out, "restarting: re-exec'ing the on-disk binary")
 	if err := restartExec(); err != nil {
@@ -957,6 +973,16 @@ func (c *cordonController) claimAllowed() bool {
 	return !c.on
 }
 
+// setScheduler wires the scheduler handle once it exists, under mu: the web
+// surface is already serving when runServe reaches this point, so an unlocked
+// write would race Cordon/Uncordon/Reload reading c.sched and let a request in
+// that window read nil and skip the scheduler pause while reporting cordoned.
+func (c *cordonController) setScheduler(s *sched.Scheduler) {
+	c.mu.Lock()
+	c.sched = s
+	c.mu.Unlock()
+}
+
 // Cordon stops new schedule fires and new job claims. It is idempotent.
 func (c *cordonController) Cordon(ctx context.Context) (web.MaintenanceState, error) {
 	c.mu.Lock()
@@ -1031,22 +1057,10 @@ func (c *cordonController) Restart(ctx context.Context, force bool) (web.Restart
 		c.mu.Unlock()
 		return c.RestartStatus(ctx)
 	}
-	c.mu.Unlock()
-
-	// Cordon first, reusing the one drain mechanism, so a gate failure below can
-	// lift exactly the cordon this call set.
-	if _, err := c.Cordon(ctx); err != nil {
-		return web.RestartState{}, err
-	}
-
-	if gate := c.restartGate; gate != nil {
-		if err := gate(); err != nil {
-			_, _ = c.Uncordon(ctx)
-			return web.RestartState{}, err
-		}
-	}
-
-	c.mu.Lock()
+	// Reserve the restart while still holding mu, so a concurrent second request
+	// sees it pending and returns the current status instead of running the
+	// gate a second time. The gate runs outside the lock (it execs the on-disk
+	// binary), but the pending flag is already set when we drop it.
 	if c.restartTimeout <= 0 {
 		c.restartTimeout = restartDrainTimeout
 	}
@@ -1057,8 +1071,33 @@ func (c *cordonController) Restart(ctx context.Context, force bool) (web.Restart
 	c.restartDeadline = time.Now().Add(c.restartTimeout)
 	c.mu.Unlock()
 
+	// Cordon first, reusing the one drain mechanism, so a gate failure below can
+	// lift exactly the cordon this call set.
+	if _, err := c.Cordon(ctx); err != nil {
+		c.clearRestart()
+		return web.RestartState{}, err
+	}
+
+	if gate := c.restartGate; gate != nil {
+		if err := gate(); err != nil {
+			_, _ = c.Uncordon(ctx)
+			c.clearRestart()
+			return web.RestartState{}, err
+		}
+	}
+
 	go c.awaitRestart(force)
 	return c.RestartStatus(ctx)
+}
+
+// clearRestart releases the pending reservation a refused restart took, so a
+// later request starts clean rather than being told a restart is already
+// pending.
+func (c *cordonController) clearRestart() {
+	c.mu.Lock()
+	c.restartPending = false
+	c.restartDeadline = time.Time{}
+	c.mu.Unlock()
 }
 
 // RestartStatus reports a pending restart's drain progress.
@@ -1170,11 +1209,12 @@ var errRestartTimedOut = errors.New("restart: timed out waiting for in-flight jo
 // The comparison is best-effort: when either image cannot be read (no
 // /proc/self/exe, an unreadable path) it proceeds rather than refusing, because
 // a real restart must not be blocked by a hashing failure. The precheck is the
-// hard gate.
+// hard gate, so a path that cannot even be resolved is a refusal — there is
+// nothing to precheck and a restart must not proceed on an unverified binary.
 func defaultRestartGate() error {
-	disk, err := onDiskBinaryPath()
+	disk, err := onDiskBinaryPathFn()
 	if err != nil {
-		return nil
+		return fmt.Errorf("restart: resolve on-disk binary: %w", err)
 	}
 	running, rerr := runningImageHash()
 	ondisk, derr := fileHash(disk)
@@ -1183,6 +1223,11 @@ func defaultRestartGate() error {
 	}
 	return precheckBinary(disk)
 }
+
+// onDiskBinaryPathFn is onDiskBinaryPath behind a variable so a test can force
+// the resolve to fail and prove the gate refuses rather than skipping the
+// precheck.
+var onDiskBinaryPathFn = onDiskBinaryPath
 
 // onDiskBinaryPath is the file a restart would exec: the running binary's own
 // path, symlinks resolved, which is what an in-place upgrade replaces.
