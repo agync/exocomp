@@ -27,6 +27,24 @@ func (c *Client) Uncordon(ctx context.Context) (wire.MaintenanceView, error) {
 	return c.maintenanceWrite(ctx, "/api/v1/maintenance/uncordon")
 }
 
+// Reload rebuilds the remote daemon's schedule registrations from the database
+// — the same path SIGHUP and the reload interval drive — and returns how many
+// enabled schedules the daemon now holds.
+func (c *Client) Reload(ctx context.Context) (wire.ReloadView, error) {
+	kind, data, err := c.do(ctx, http.MethodPost, "/api/v1/maintenance/reload", nil, nil, "")
+	if err != nil {
+		return wire.ReloadView{}, err
+	}
+	if kind != wire.KindMaintenanceReload {
+		return wire.ReloadView{}, fmt.Errorf("client: maintenance reload answered with unexpected kind %q", kind)
+	}
+	var out wire.ReloadView
+	if err := json.Unmarshal(data, &out); err != nil {
+		return wire.ReloadView{}, fmt.Errorf("client: decode %s payload: %w", kind, err)
+	}
+	return out, nil
+}
+
 func (c *Client) maintenanceWrite(ctx context.Context, path string) (wire.MaintenanceView, error) {
 	kind, data, err := c.do(ctx, http.MethodPost, path, nil, nil, "")
 	if err != nil {

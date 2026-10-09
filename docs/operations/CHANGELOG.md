@@ -6,6 +6,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-09 — `exocomp reload` rebuilds schedules without a restart
+
+- **`exocomp reload` is the first-class schedule reload.** It drives the same
+  path `SIGHUP` and `--reload-interval` already did — rebuilding the daemon's
+  schedule registrations from the database — over the operator API
+  (`POST /api/v1/maintenance/reload`, operator scope like `cordon`), and
+  reports the schedule count (`schedules reloaded (N)`; `--output json`
+  re-emits the `maintenance.reload` envelope). A reload that cannot read the
+  database leaves the running set alone.
+- **The reload/restart line is documented.** [Running the
+  daemon](serve.md) names what is live (secrets/redaction, mutes, approvals),
+  what reloads (schedules), and what still needs a restart (a binary or
+  `serve` flag change), with the `ExecReload` step for the Ansible-managed
+  unit ([ADR 0020](../adr/0020-reload-restart-and-recovery.md)).
+
 ## 2026-10-07 — the secrets list scans, with a details view
 
 - **The secrets table drops to the columns you scan** — Name · Kind · Source ·

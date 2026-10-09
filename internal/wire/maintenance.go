@@ -3,6 +3,9 @@ package wire
 // KindMaintenance is the kind of a drain-readiness answer.
 const KindMaintenance = "maintenance.readiness"
 
+// KindMaintenanceReload is the kind of a schedule-reload answer.
+const KindMaintenanceReload = "maintenance.reload"
+
 // MaintenanceView is the "safe to reboot?" answer a draining operator polls: is
 // the daemon cordoned, how many of its jobs are still in flight, and — the one
 // field a script branches on — whether both conditions for a clean reboot hold.
@@ -22,4 +25,15 @@ func NewMaintenanceView(cordoned bool, inFlight int) MaintenanceView {
 		InFlight:     inFlight,
 		SafeToReboot: cordoned && inFlight == 0,
 	}
+}
+
+// ReloadView is what a schedule reload reports: how many enabled schedules the
+// daemon now holds. It carries counts only (invariant 4).
+type ReloadView struct {
+	Schedules int `json:"schedules"`
+}
+
+// NewReloadView builds the reload answer.
+func NewReloadView(schedules int) ReloadView {
+	return ReloadView{Schedules: schedules}
 }

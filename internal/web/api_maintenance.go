@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"exocomp.dev/exocomp/internal/wire"
@@ -24,11 +25,13 @@ import (
 // implementation lives in the daemon process (it pauses the scheduler and closes
 // the queue's claim gate); the web surface only drives it. State also reports how
 // many of the daemon's jobs are still in flight, which is what makes the
-// readiness answer meaningful.
+// readiness answer meaningful. Reload rebuilds the scheduler's registrations
+// from the database through the same path SIGHUP and the reload interval use.
 type Maintenance interface {
 	Cordon(ctx context.Context) (MaintenanceState, error)
 	Uncordon(ctx context.Context) (MaintenanceState, error)
 	State(ctx context.Context) (MaintenanceState, error)
+	Reload(ctx context.Context) (ReloadState, error)
 }
 
 // MaintenanceState is a point-in-time drain reading: whether the daemon is
@@ -38,6 +41,16 @@ type MaintenanceState struct {
 	InFlight int
 }
 
+// ReloadState is what a schedule reload refreshed: how many enabled schedules
+// the daemon now holds.
+type ReloadState struct {
+	Schedules int
+}
+
+// ErrNoScheduler is the reload refusal when the web surface started before the
+// daemon wired its scheduler handle: there is nothing to reload yet.
+var ErrNoScheduler = errors.New("daemon scheduler is not running yet; retry once serve finishes starting")
+
 // registerMaintenanceAPI mounts the /api/v1/maintenance routes. Cordon/uncordon
 // carry the operator write floor; the reads carry the readonly floor.
 func (s *Server) registerMaintenanceAPI(mux *http.ServeMux) {
@@ -45,6 +58,8 @@ func (s *Server) registerMaintenanceAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("cordon the daemon", "operator"), s.apiCordon))
 	mux.HandleFunc("POST /api/v1/maintenance/uncordon",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("uncordon the daemon", "operator"), s.apiUncordon))
+	mux.HandleFunc("POST /api/v1/maintenance/reload",
+		s.apiGuard(bearerOnly(canWrite), writeDeny("reload the daemon", "operator"), s.apiReload))
 	mux.HandleFunc("GET /api/v1/maintenance/readiness", s.apiAuth(s.apiReadiness))
 	mux.HandleFunc("GET /api/v1/maintenance/interrupted", s.apiAuth(s.apiInterrupted))
 }
@@ -85,6 +100,26 @@ func (s *Server) apiUncordon(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.apiSuccess(w, wire.KindMaintenance, wire.NewMaintenanceView(st.Cordoned, st.InFlight))
+}
+
+// apiReload rebuilds the daemon's schedule registrations from the database
+// through the seam — the same path SIGHUP and the reload interval drive — and
+// answers how many enabled schedules the daemon now holds.
+func (s *Server) apiReload(w http.ResponseWriter, r *http.Request) {
+	m, ok := s.maintOrUnavailable(w)
+	if !ok {
+		return
+	}
+	st, err := m.Reload(r.Context())
+	if err != nil {
+		if errors.Is(err, ErrNoScheduler) {
+			s.apiError(w, http.StatusServiceUnavailable, wire.NewError(wire.CodeInternal, err.Error()))
+			return
+		}
+		s.apiFail(w, err)
+		return
+	}
+	s.apiSuccess(w, wire.KindMaintenanceReload, wire.NewReloadView(st.Schedules))
 }
 
 func (s *Server) apiReadiness(w http.ResponseWriter, r *http.Request) {

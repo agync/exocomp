@@ -253,6 +253,35 @@ For a *planned* reboot, do not lean on this grace window to cancel work: cordon 
 first with `exocomp drain`, let in-flight jobs finish on their own, and reboot once it
 reports safe. See [Draining for a planned reboot](drain-mode.md).
 
+## Reloading without a restart
+
+`exocomp reload` rebuilds a running daemon's schedule registrations from the database —
+the same path `SIGHUP` and `--reload-interval` drive — without stopping anything:
+
+```
+exocomp --remote self reload
+schedules reloaded (3)
+```
+
+It controls a **running** daemon over the operator API, so it needs a selected remote
+like `drain` does. `--output json` re-emits the `maintenance.reload` envelope carrying
+the schedule count. A reload that cannot read the database leaves the running set
+alone. The (Ansible-managed) unit reloads the same way, without a restart:
+
+```
+ExecReload=~/.local/bin/exocomp --remote self reload
+```
+
+### Reload or restart
+
+| Change | Action |
+|---|---|
+| Secrets/redaction, mutes, approvals — read from the database per use | live, no action needed |
+| Schedules — read once into memory | `exocomp reload` (or `SIGHUP`); auditing the full read-once set is follow-up work |
+| Binary or `serve` flag change | restart, after draining first |
+
+See [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
+
 ## Schedules
 
 `schedule add` validates `--cron` with the same parser the daemon registers with (six

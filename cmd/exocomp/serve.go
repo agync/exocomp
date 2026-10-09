@@ -894,6 +894,31 @@ func (c *cordonController) State(ctx context.Context) (web.MaintenanceState, err
 	return c.state(ctx)
 }
 
+// Reload rebuilds the scheduler's registrations from the database through the
+// existing Scheduler.Reload — the same path SIGHUP and the reload interval
+// drive, mutex-guarded inside the scheduler so it is safe from the web
+// goroutine — and reports how many enabled schedules the daemon now holds. A
+// reload that cannot read the database leaves the running set alone (the
+// scheduler builds the new set whole before swapping). A nil scheduler (the web
+// surface starts before runServe wires the handle) is refused, which the
+// handler renders as a 503.
+func (c *cordonController) Reload(ctx context.Context) (web.ReloadState, error) {
+	c.mu.Lock()
+	s := c.sched
+	c.mu.Unlock()
+	if s == nil {
+		return web.ReloadState{}, web.ErrNoScheduler
+	}
+	if err := s.Reload(ctx); err != nil {
+		return web.ReloadState{}, err
+	}
+	rows, err := c.store.ListSchedules(ctx, true)
+	if err != nil {
+		return web.ReloadState{}, err
+	}
+	return web.ReloadState{Schedules: len(rows)}, nil
+}
+
 func (c *cordonController) state(ctx context.Context) (web.MaintenanceState, error) {
 	c.mu.Lock()
 	on := c.on

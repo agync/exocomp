@@ -15,9 +15,11 @@ import (
 // fakeMaint is an in-memory stand-in for the daemon's drain controller: cordon
 // flips a flag, and InFlight is set by the test to model running jobs.
 type fakeMaint struct {
-	mu       sync.Mutex
-	cordoned bool
-	inFlight int
+	mu        sync.Mutex
+	cordoned  bool
+	inFlight  int
+	schedules int
+	reloaded  int
 }
 
 func (f *fakeMaint) Cordon(context.Context) (MaintenanceState, error) {
@@ -38,6 +40,13 @@ func (f *fakeMaint) State(context.Context) (MaintenanceState, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return MaintenanceState{Cordoned: f.cordoned, InFlight: f.inFlight}, nil
+}
+
+func (f *fakeMaint) Reload(context.Context) (ReloadState, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reloaded++
+	return ReloadState{Schedules: f.schedules}, nil
 }
 
 func (f *fakeMaint) setInFlight(n int) {
@@ -143,6 +152,93 @@ func TestMaintenanceUnavailableWithoutSeam(t *testing.T) {
 	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/cordon", operator, "", nil)
 	if code != http.StatusServiceUnavailable {
 		t.Fatalf("cordon without a seam status = %d, want 503 (%s)", code, body)
+	}
+}
+
+// TestReloadIsOperatorScopedAndCallsSeam is the gate: a readonly token cannot
+// reload, an operator token can, and the answer carries the schedule count the
+// seam reported.
+func TestReloadIsOperatorScopedAndCallsSeam(t *testing.T) {
+	h := newHarness(t)
+	maint := &fakeMaint{schedules: 3}
+	srv := serverWithMaint(t, h, maint)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	readonly := h.mint(t, "ro", "readonly")
+	operator := h.mint(t, "op", "operator")
+
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/reload", readonly, "", nil)
+	if code != http.StatusForbidden {
+		t.Fatalf("readonly reload status = %d, want 403 (%s)", code, body)
+	}
+	if _, ecode, _ := decodeEnvelope(t, body); ecode != wire.CodeForbidden {
+		t.Fatalf("readonly reload error code = %q, want forbidden", ecode)
+	}
+	if maint.reloaded != 0 {
+		t.Fatal("a refused reload still reached the daemon seam")
+	}
+
+	code, _, body = bearerPost(t, ts.URL, "/api/v1/maintenance/reload", operator, "", nil)
+	if code != http.StatusOK {
+		t.Fatalf("operator reload status = %d, want 200 (%s)", code, body)
+	}
+	kind, ecode, data := decodeEnvelope(t, body)
+	if ecode != "" {
+		t.Fatalf("reload returned error %q (%s)", ecode, body)
+	}
+	if kind != wire.KindMaintenanceReload {
+		t.Fatalf("reload kind = %q, want %q", kind, wire.KindMaintenanceReload)
+	}
+	var v wire.ReloadView
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatalf("decode reload view: %v (%s)", err, body)
+	}
+	if v.Schedules != 3 {
+		t.Fatalf("reload schedules = %d, want 3", v.Schedules)
+	}
+	if maint.reloaded != 1 {
+		t.Fatalf("reload reached the seam %d times, want 1", maint.reloaded)
+	}
+}
+
+// TestReloadUnavailableWithoutSeam: a surface with no maintenance seam answers
+// 503 rather than pretending to reload a daemon it does not own.
+func TestReloadUnavailableWithoutSeam(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithMaint(t, h, nil)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	operator := h.mint(t, "op", "operator")
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/reload", operator, "", nil)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("reload without a seam status = %d, want 503 (%s)", code, body)
+	}
+}
+
+// noSchedMaint models a daemon whose web surface started before the scheduler
+// handle was wired: the seam refuses, and the handler answers 503.
+type noSchedMaint struct {
+	fakeMaint
+}
+
+func (m *noSchedMaint) Reload(context.Context) (ReloadState, error) {
+	return ReloadState{}, ErrNoScheduler
+}
+
+// TestReloadWithoutSchedulerIsUnavailable: the nil-scheduler refusal surfaces
+// as a 503, like the missing seam.
+func TestReloadWithoutSchedulerIsUnavailable(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithMaint(t, h, &noSchedMaint{})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	operator := h.mint(t, "op", "operator")
+	code, _, body := bearerPost(t, ts.URL, "/api/v1/maintenance/reload", operator, "", nil)
+	if code != http.StatusServiceUnavailable {
+		t.Fatalf("reload without a scheduler status = %d, want 503 (%s)", code, body)
 	}
 }
 
