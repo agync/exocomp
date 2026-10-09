@@ -260,13 +260,16 @@ the same path `SIGHUP` and `--reload-interval` drive — without stopping anythi
 
 ```
 exocomp --remote self reload
-schedules reloaded (3)
+schedules reloaded (3 enabled in the store)
 ```
 
 It controls a **running** daemon over the operator API, so it needs a selected remote
 like `drain` does. `--output json` re-emits the `maintenance.reload` envelope carrying
-the schedule count. A reload that cannot read the database leaves the running set
-alone. The (Ansible-managed) unit reloads the same way, without a restart:
+the schedule count. The count is the enabled rows in the store, an upper bound on the
+live set: a row the cron parser rejects is logged and left out of the registrations, so
+the store can hold more enabled rows than the daemon actually registered. A reload that
+cannot read the database leaves the running set alone. The (Ansible-managed) unit reloads
+the same way, without a restart:
 
 ```
 ExecReload=~/.local/bin/exocomp --remote self reload
@@ -302,12 +305,18 @@ goes down and prints `daemon restarting` — the dropped connection is the succe
 signal, so the command never holds the daemon open. `--output json` re-emits the
 `maintenance.restart` envelope.
 
+**`--wait` is refused inside a job.** The requesting job counts as in flight, so
+the daemon drains until that job is terminal; a job that waited on the restart
+would wait on itself, poll for the whole bound, and abort. A job must use the
+bare (fire-and-forget) form, which returns at once and lets the job finish.
+
 The safety rules:
 
 - **The request never blocks.** A job that runs `exocomp restart` returns
   immediately and finishes normally; because the requesting job is still running,
   the restart waits for it. The daemon is never asked to restart around a job
-  that is waiting on the restart.
+  that is waiting on the restart. `restart --wait` is the operator's form, and
+  the CLI refuses it inside a job for exactly this reason.
 - **A drain that does not finish in time aborts.** At the daemon's bound (10m)
   the restart is abandoned, the cordon is lifted, and the daemon keeps taking
   work. Work is never cancelled implicitly. `--force` cancels the remaining jobs
@@ -355,6 +364,15 @@ claim, and reports each old-to-new id pair. It defaults to `--state
 interrupted`; `--state` repeats, `--limit` caps the blast radius, `--dry-run`
 enqueues nothing, and a real run needs `--yes` (or an answered prompt).
 Auto-redrive is deliberately off: nothing re-runs on its own.
+
+Two rows are not re-driven. A **workflow step** is skipped and reported: an
+interrupted step job is auto-re-armed from its ledger by the sequencer
+([ADR 0008](../adr/0008-step-ledger-over-dbos.md)), so re-driving it would run
+the step twice and drop any approval gate it carried. A row **already
+re-driven** is skipped too: each redrive lands under a deterministic key
+derived from the cut-off row's id, so a repeated `jobs redrive` finds the first
+run's job and reports it as already re-driven rather than running the work
+again.
 
 ## Schedules
 

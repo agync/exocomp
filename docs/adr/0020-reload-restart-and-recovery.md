@@ -30,26 +30,36 @@ Prefer reload over restart, and restart only after drain, in three phases:
    the on-disk binary in place — same pid, no systemd restart, no unit edit.
    The requesting job counts as in flight, so a job that asks for its own
    restart finishes before the daemon goes down instead of deadlocking against
-   it. A drain that does not finish within its bound aborts and lifts the
-   cordon (never cancelling work implicitly); `--force` cancels the remaining
-   jobs and restarts at once. An unchanged on-disk binary is refused as a
-   no-op, the replacement is prechecked with `version`, the exec follows only a
-   clean shutdown, and a second request while one is pending is a no-op. The
-   unit's reload stays `ExecReload=~/.local/bin/exocomp --remote self reload`;
-   the unit file itself is not edited in this repo.
+   it; `--wait` is the operator's form and the CLI refuses it inside a job for
+   exactly that reason. A drain that does not finish within its bound aborts
+   and lifts the cordon (never cancelling work implicitly); `--force` cancels
+   the remaining jobs and restarts at once. An unchanged on-disk binary is
+   refused as a no-op, the replacement is prechecked with `version`, the exec
+   follows only a clean shutdown, the run-secret staging session directory is
+   closed before the exec (an in-place exec keeps the pid, so the next start's
+   liveness sweep would otherwise leave it), and a second request while one is
+   pending is a no-op — the pending reservation is taken atomically, so two
+   simultaneous requests cannot both run the precheck. The unit's reload stays
+   `ExecReload=~/.local/bin/exocomp --remote self reload`; the unit file itself
+   is not edited in this repo.
 3. **Job recovery (landed).** The interrupted listing became something an
    operator re-drives from: `exocomp jobs redrive` selects the cut-off rows
    (default `--state interrupted`, repeatable with `cancelled`) and
    re-enqueues each as a fresh queued job carrying the same spec — rebuilt
    from the row's stored args, labelled with the `redrive` trigger — through
-   the one `service.Reenqueue` path the web "Run again" uses. The
-   idempotency and dedup keys are dropped, so the enqueue lands a new row
-   rather than collapsing onto the original. A real run needs confirmation
-   (`--yes`, or an answered prompt; `--dry-run` enqueues nothing); a clean
-   restart-after-drain interrupts nothing, so there is nothing to recover;
-   and auto-redrive is deliberately off — a cut-off destructive run is the
-   operator's call, never auto-rerun. No new reactive event: a restart is
-   control-plane state, not a reactive trigger.
+   the one `service.Reenqueue` path the web "Run again" uses. The idempotency
+   and dedup keys are dropped, so the enqueue lands a new row rather than
+   collapsing onto the original; each redrive instead lands under a
+   deterministic key derived from the cut-off row's id, so a repeated redrive
+   is a no-op that reports the original as already re-driven. A workflow-step
+   row is excluded: the sequencer re-arms it from the ledger (ADR 0008), so
+   re-driving it would run the step twice and drop any approval gate it
+   carried. A real run needs confirmation (`--yes`, or an answered prompt;
+   `--dry-run` enqueues nothing); a clean restart-after-drain interrupts
+   nothing, so there is nothing to recover; and auto-redrive is deliberately
+   off — a cut-off destructive run is the operator's call, never auto-rerun.
+   No new reactive event: a restart is control-plane state, not a reactive
+   trigger.
 
 What needs which action:
 

@@ -6,6 +6,31 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-09 — restart, reload, and redrive verification fixes
+
+- **`restart --wait` is refused inside a job.** A job that waited on the
+  restart would wait on the daemon that is waiting for it to exit, so the CLI
+  refuses `--wait` when `EXOCOMP_JOB_ID` marks it as a job (the executor sets
+  the marker on every job subprocess) and points at the bare fire-and-forget
+  form. The bare form still works from a job.
+- **A concurrent second restart is a no-op.** The pending reservation is taken
+  atomically before the precheck, so two simultaneous requests cannot both run
+  the gate; a refused gate clears the reservation. The run-secret staging
+  session directory is closed before the re-exec, so an in-place exec leaves no
+  secret-bearing directory for the pid-unchanged startup sweep to skip.
+- **`restart` no longer proceeds on an unresolvable on-disk binary.** A path
+  that cannot be resolved is a refusal, not a skipped precheck.
+- **`jobs redrive` skips workflow steps and is idempotent.** A workflow-step row
+  is the sequencer's to re-arm, so it is reported as skipped instead of run
+  twice; each redrive lands under a deterministic key, so a repeated redrive
+  reports the original as already re-driven and enqueues nothing.
+- **`reload` reports the store count honestly.** The CLI prints
+  `schedules reloaded (N enabled in the store)`; N is an upper bound on the live
+  set, because a row the cron parser rejects is left out of the registrations.
+- **The scheduler handle is wired under the cordon lock**, so a request that
+  lands while `serve` is still starting cannot read a nil scheduler and report
+  cordoned while skipping the pause.
+
 ## 2026-10-09 — `exocomp jobs redrive` re-drives jobs a restart cut off
 
 - **A forced restart or a crash leaves `cancelled`/`interrupted` rows; `jobs
