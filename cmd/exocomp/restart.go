@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -24,6 +25,14 @@ const restartWaitPoll = time.Second
 // does not wedge the command forever. It matches the daemon's own drain bound.
 const defaultRestartWaitTimeout = 10 * time.Minute
 
+// jobContextEnv is the marker the executor sets on every job subprocess
+// (internal/executor's Shell.Run, from queue.Spec.JobID). A non-empty value
+// means this process is itself a queued job, not an operator's shell.
+const jobContextEnv = "EXOCOMP_JOB_ID"
+
+// inJobContext reports whether this process runs as a queued job.
+func inJobContext() bool { return os.Getenv(jobContextEnv) != "" }
+
 func newRestartCmd() *cobra.Command {
 	var (
 		wait    bool
@@ -42,6 +51,9 @@ func newRestartCmd() *cobra.Command {
 			"fired) and reports it. A drain that cannot finish within the daemon's bound is " +
 			"aborted and the cordon lifted; --force cancels the remaining jobs and restarts " +
 			"instead — those jobs land cancelled and are re-drivable with `exocomp jobs redrive`.\n\n" +
+			"Inside a job, --wait is refused: the requesting job keeps the daemon draining " +
+			"until the job exits, so waiting on the restart would deadlock. A job must use " +
+			"the bare (fire-and-forget) form.\n\n" +
 			"restart controls a RUNNING daemon over the operator API, so it needs a selected " +
 			"remote (--remote or EXOCOMP_REMOTE) — the control node targets its own daemon.",
 		Example: "exocomp --remote self restart --wait",
@@ -50,7 +62,7 @@ func newRestartCmd() *cobra.Command {
 			return runRestart(cmd, restartOptions{wait: wait, force: force, timeout: timeout})
 		},
 	}
-	cmd.Flags().BoolVar(&wait, "wait", false, "block until the daemon goes down, then report it is restarting")
+	cmd.Flags().BoolVar(&wait, "wait", false, "block until the daemon goes down, then report it is restarting (refused inside a job)")
 	cmd.Flags().BoolVar(&force, "force", false, "cancel the remaining jobs instead of aborting when the drain does not finish")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultRestartWaitTimeout, "bound for --wait")
 	return cmd
@@ -70,6 +82,16 @@ func runRestart(cmd *cobra.Command, opt restartOptions) error {
 	mode, err := outputMode(cmd)
 	if err != nil {
 		return err
+	}
+
+	// A job that asks for a restart must not wait on it: the daemon's drain
+	// counts the requesting job as in flight until it is terminal, so `--wait`
+	// would poll for the whole bound and then abort — a self-deadlock. The bare
+	// form returns at once and is the correct call from inside a job.
+	if opt.wait && inJobContext() {
+		return errors.New("restart --wait cannot run inside a job: the requesting job " +
+			"keeps the daemon draining until it exits, so waiting would deadlock; " +
+			"run the bare `restart` (fire-and-forget) instead")
 	}
 
 	rc, remote, err := remoteClient(cmd)

@@ -189,3 +189,35 @@ func TestRestartForceHintsRedrive(t *testing.T) {
 		t.Errorf("JSON mode printed a hint (stdout must stay parseable): %q", buf.String())
 	}
 }
+
+// TestRestartWaitRefusedInsideJob is the self-deadlock gate: a job that runs
+// `restart --wait` would wait on the daemon that is itself waiting for the job
+// to exit, so the CLI refuses before contacting any daemon.
+func TestRestartWaitRefusedInsideJob(t *testing.T) {
+	withConfigHome(t)
+	t.Setenv(jobContextEnv, "42")
+
+	_, _, err := runRoot(t, []string{"restart", "--wait"})
+	if err == nil || !strings.Contains(err.Error(), "inside a job") {
+		t.Fatalf("restart --wait in a job = %v, want the inside-a-job refusal", err)
+	}
+	if !strings.Contains(err.Error(), "bare `restart`") {
+		t.Fatalf("refusal = %v, want it to point at the bare form", err)
+	}
+}
+
+// TestRestartBareAllowedInsideJob: the bare fire-and-forget form is the correct
+// call from inside a job; the guard must not refuse it.
+func TestRestartBareAllowedInsideJob(t *testing.T) {
+	stub := &restartStub{deadline: time.Now().Add(time.Minute)}
+	pinnedRemote(t, stub.handler(t))
+	t.Setenv(jobContextEnv, "42")
+
+	out, _, err := runRoot(t, []string{"--remote", "box", "restart"})
+	if err != nil {
+		t.Fatalf("bare restart in a job: %v", err)
+	}
+	if !strings.Contains(out, "restart requested") {
+		t.Fatalf("output = %q, want the pending drain", out)
+	}
+}

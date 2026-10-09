@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,12 +34,39 @@ const pipeDrainGrace = 2 * time.Second
 // rather than surfacing a spurious start failure.
 const textBusyRetries = 12
 
+// JobIDEnv is the environment marker every job subprocess carries, so a
+// command a job runs (an exocomp CLI in particular) can tell it is executing
+// inside a job rather than an operator's shell. Set from Spec.JobID, which the
+// queue fills for every real job; a direct executor caller (a probe, a vendor
+// step) leaves JobID zero and gets no marker.
+const JobIDEnv = "EXOCOMP_JOB_ID"
+
 // Shell is the local driver: one subprocess per job, output scanned line
 // by line into events, exit code returned as-is.
 type Shell struct{}
 
 // NewShell returns the local subprocess driver.
 func NewShell() *Shell { return &Shell{} }
+
+// withJobContext returns env with the job marker set to jobID. A nil env means
+// "inherit this process's environment" (exec.Cmd's zero-value meaning), so it
+// is materialized from os.Environ first; any inherited marker is replaced so
+// the value always names this job, never a parent job's.
+func withJobContext(env []string, jobID int64) []string {
+	base := env
+	if base == nil {
+		base = os.Environ()
+	}
+	prefix := JobIDEnv + "="
+	out := make([]string, 0, len(base)+1)
+	for _, kv := range base {
+		if strings.HasPrefix(kv, prefix) {
+			continue
+		}
+		out = append(out, kv)
+	}
+	return append(out, prefix+strconv.FormatInt(jobID, 10))
+}
 
 // Run executes spec.Argv and streams its output to sink.
 func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error) {
@@ -74,6 +103,9 @@ func (*Shell) Run(ctx context.Context, spec Spec, sink EventSink) (Result, error
 		cmd = exec.CommandContext(ctx, spec.Argv[0], spec.Argv[1:]...)
 		cmd.Dir = spec.Dir
 		cmd.Env = spec.Env
+		if spec.JobID > 0 {
+			cmd.Env = withJobContext(cmd.Env, spec.JobID)
+		}
 		// The job is the whole tree, not one pid: a cancelled run has to reach the
 		// helpers its process started, and a shell that exec'd something else is
 		// only reachable by group.
