@@ -13,6 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // redriveTrigger labels a job the operator re-drove after a restart or a crash
@@ -26,13 +27,14 @@ const redriveTrigger = "redrive"
 // onto the original (whose key differs) while making a repeated redrive honest:
 // the second run finds the first run's job and reports it as already re-driven
 // instead of enqueuing the work again.
+//
+// The key IS the durable marker: job rows are never pruned. Nothing in the
+// store or the scheduler deletes a job row (no DELETE FROM job; the store has
+// no job retention), so the idempotency key survives on the re-driven row for
+// as long as the original does, and a later redrive reads it back through
+// JobByIdempotencyKey. A schema column for "was re-driven" would be redundant
+// with it.
 func redriveKey(oldID int64) string { return fmt.Sprintf("redrive:%d", oldID) }
-
-// redriveKind is the JSON envelope kind for a redrive report. It is defined
-// here, next to the verb that emits it, rather than in internal/wire: moving
-// it into the wire kind registry is follow-up work if a second face ever needs
-// the same shape.
-const redriveKind = "job.redrive"
 
 func newJobsRedriveCmd() *cobra.Command {
 	var (
@@ -306,7 +308,7 @@ func promptRedrive(cmd *cobra.Command, n int) error {
 // renderRedriveEmpty reports a selection that matched nothing.
 func renderRedriveEmpty(cmd *cobra.Command, mode string) error {
 	if mode == outputJSON {
-		return emitJSON(cmd, redriveKind, redriveReport{DryRun: false, Redriven: []redriveItem{}})
+		return emitJSON(cmd, wire.KindJobRedrive, redriveReport{DryRun: false, Redriven: []redriveItem{}})
 	}
 	_, err := fmt.Fprintln(cmd.OutOrStdout(), "no jobs to redrive")
 	return err
@@ -316,7 +318,7 @@ func renderRedriveEmpty(cmd *cobra.Command, mode string) error {
 // the rows a dry run would re-drive; pairs holds a real run's old-to-new rows.
 func renderRedrive(cmd *cobra.Command, mode string, pairs []redrivePair, would []store.Job, skipped []redriveSkip, dryRun bool) error {
 	if mode == outputJSON {
-		return emitJSON(cmd, redriveKind, redriveJSON(pairs, would, skipped, dryRun))
+		return emitJSON(cmd, wire.KindJobRedrive, redriveJSON(pairs, would, skipped, dryRun))
 	}
 	return renderRedriveText(cmd, pairs, would, skipped, dryRun)
 }

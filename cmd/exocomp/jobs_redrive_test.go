@@ -263,9 +263,9 @@ func TestJobsRedriveJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("redrive output is not JSON: %v (%q)", err, out)
 	}
-	if env.SchemaVersion != wire.SchemaVersion || env.Kind != redriveKind {
+	if env.SchemaVersion != wire.SchemaVersion || env.Kind != wire.KindJobRedrive {
 		t.Fatalf("envelope = version %d kind %q, want %d %q",
-			env.SchemaVersion, env.Kind, wire.SchemaVersion, redriveKind)
+			env.SchemaVersion, env.Kind, wire.SchemaVersion, wire.KindJobRedrive)
 	}
 	if env.Data.DryRun || len(env.Data.Redriven) != 1 {
 		t.Fatalf("payload = %+v, want one real re-driven job", env.Data)
@@ -302,7 +302,7 @@ func TestJobsRedriveJSONDryRun(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &env); err != nil {
 		t.Fatalf("redrive output is not JSON: %v (%q)", err, out)
 	}
-	if env.Kind != redriveKind || !env.Data.DryRun || len(env.Data.Redriven) != 1 {
+	if env.Kind != wire.KindJobRedrive || !env.Data.DryRun || len(env.Data.Redriven) != 1 {
 		t.Fatalf("payload kind %q = %+v, want one dry-run item", env.Kind, env.Data)
 	}
 	if env.Data.Redriven[0].To != 0 {

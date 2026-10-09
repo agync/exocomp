@@ -16,6 +16,7 @@ const (
 	KindJobList       = "job.list"
 	KindJob           = "job.get"
 	KindJobEvents     = "job.events"
+	KindJobRedrive    = "job.redrive"
 	KindWorkspaceList = "workspace.list"
 	KindSourceList    = "source.list"
 	KindApproval      = "approval.get"
