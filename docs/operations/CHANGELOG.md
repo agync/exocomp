@@ -6,6 +6,26 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-09 — read-once reload audit, redrive durability, re-exec test
+
+- **A reload now refreshes the push transports too.** `exocomp reload` and
+  `SIGHUP` rebuild the notify fan-out (ntfy and GoAlert from their sealed
+  secrets, plus the ntfy Detail setting) through the same seam they already
+  drive the schedule registrations, so sealing, rotating, or clearing a
+  transport no longer needs a restart. A refused configuration leaves the
+  running transports alone. The read-once audit and the full matrix are in
+  [serve.md](serve.md#reload-or-restart).
+- **The redrive key is the durable marker.** Job rows are never pruned (the
+  store has no job retention), so the deterministic `redrive:<oldID>`
+  idempotency key on the re-driven row is what makes a repeat a no-op; no
+  schema column is needed.
+- **`job.redrive` is registry-owned.** The kind moved from the command into
+  `internal/wire` alongside the other `Kind*` constants.
+- **The re-exec boundary is covered end-to-end.** A new in-process test drives
+  the drain controller → serve loop → clean shutdown → re-exec chain with only
+  `syscall.Exec` stubbed; a real subprocess restart is not exercised because the
+  no-op gate refuses an unchanged on-disk binary.
+
 ## 2026-10-09 — restart, reload, and redrive verification fixes
 
 - **`restart --wait` is refused inside a job.** A job that waited on the

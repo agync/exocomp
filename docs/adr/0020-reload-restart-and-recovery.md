@@ -19,8 +19,10 @@ Prefer reload over restart, and restart only after drain, in three phases:
 
 1. **Reload first (landed).** A first-class `reload`: `POST
    /api/v1/maintenance/reload` (operator scope, bearer-only, like `cordon`),
-   served by the drain seam calling the existing `Scheduler.Reload`, and an
-   `exocomp reload` CLI over `--remote` reporting the schedule count. It adds
+   served by the drain seam calling the existing `Scheduler.Reload` and
+   rebuilding the daemon's other reloadable read-once set, the push transports,
+   from their sealed secrets; and an `exocomp reload` CLI over `--remote`
+   reporting the schedule count. It adds
    no second reload mechanism: a reload that cannot read the database leaves
    the running set alone, exactly as `SIGHUP` does today.
 2. **Restart after drain (this change).** `exocomp restart` and
@@ -51,7 +53,10 @@ Prefer reload over restart, and restart only after drain, in three phases:
    and dedup keys are dropped, so the enqueue lands a new row rather than
    collapsing onto the original; each redrive instead lands under a
    deterministic key derived from the cut-off row's id, so a repeated redrive
-   is a no-op that reports the original as already re-driven. A workflow-step
+   is a no-op that reports the original as already re-driven. That key is the
+   durable marker: job rows are never pruned (the store has no job retention,
+   and nothing deletes a job row), so no schema column has to remember a
+   redrive. A workflow-step
    row is excluded: the sequencer re-arms it from the ledger (ADR 0008), so
    re-driving it would run the step twice and drop any approval gate it
    carried. A real run needs confirmation (`--yes`, or an answered prompt;
@@ -61,21 +66,27 @@ Prefer reload over restart, and restart only after drain, in three phases:
    No new reactive event: a restart is control-plane state, not a reactive
    trigger.
 
-What needs which action:
+The read-once audit (landed): every piece of state the daemon reads once at
+boot was classified, and the sets that rebuild safely and cheaply moved behind
+the one reload seam. What needs which action:
 
 | Change | Action |
 |---|---|
-| Secrets/redaction, mutes, approvals — read from the DB per use | live, no action |
-| Schedules — read once into memory | `exocomp reload` (or `SIGHUP`) |
+| Schedules, push transports (sealed ntfy/GoAlert + the ntfy Detail setting) — read once into memory | `exocomp reload` (or `SIGHUP`) |
+| Secrets/redaction, approvals, reactive rules, policies, runners, check config, dead-man threshold and heartbeat, backup retention, workflow ledger — read from the DB per use | live, no action |
+| Backup quiesce file (`.exocomp/backup-quiesce.yml`) — read once at boot | restart-only: a local config file, not store state; a live refresh would add a swap seam through the driver router |
 | Binary change | `exocomp restart` (drains, then re-execs in place) |
-| `serve` flag change | the unit's own restart (a re-exec keeps the same argv) |
+| `serve` flag change, and the sandbox tier, secret-staging, lease, and envelope seal decided at boot | the unit's own restart (a re-exec keeps the same argv) |
 
-The audit of which rows are read-once versus read-per-use stays a follow-up:
-schedules are the only reloadable set named here.
+Mutes are read per use by the store-backed checker, so they need no reload; the
+daemon's notifier does not yet attach that checker, a separate gap from this
+audit. The operational matrix lives in
+[docs/operations/serve.md](../operations/serve.md).
 
 ## Consequences
 
-- Schedule edits reach a running daemon without cancelling or retiring work.
+- Schedule edits and sealed push-transport changes reach a running daemon
+  without cancelling or retiring work.
 - A restart stays available for what only a restart can change, and when it
   happens it happens on a drained daemon.
 - `ExecReload` gives the unit a reload that is not a restart; the unit file

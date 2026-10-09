@@ -241,7 +241,7 @@ is built. And like egress it only means anything under the sandbox: a fleet degr
 
 | Signal | Behaviour |
 |---|---|
-| `SIGHUP` | Rebuild every schedule registration from the database. A schedule added, edited, enabled, or disabled through the CLI takes effect here; the new set is built whole before it replaces the running one, so a row the parser rejects is logged and skipped without disturbing the rest. |
+| `SIGHUP` | Rebuild every reloadable read-once set: the schedule registrations and the push transports, from the database and the sealed secrets. A schedule added, edited, enabled, or disabled through the CLI, or a sealed ntfy/GoAlert change, takes effect here; each new set is built whole before it replaces the running one, so a row the parser rejects is logged and skipped without disturbing the rest. |
 | `SIGTERM`, `SIGINT` | Shut down in the one order that leaves the database consistent: the scheduler first, so nothing new fires; then the jobs already running, which get `--drain-grace` to write their own terminal rows before anything cancels them; then whatever is still queued and owned by this process, retired to `interrupted`; then any other non-terminal row left by a process the kernel confirms is dead, retired the same way; the state backend last, because a tofu leg is still pushing state to it. |
 
 A daemon that exits leaves no `queued` or `running` row behind, so there is nothing for
@@ -255,7 +255,7 @@ reports safe. See [Draining for a planned reboot](drain-mode.md).
 
 ## Reloading without a restart
 
-`exocomp reload` rebuilds a running daemon's schedule registrations from the database —
+`exocomp reload` rebuilds a running daemon's read-once state from the database —
 the same path `SIGHUP` and `--reload-interval` drive — without stopping anything:
 
 ```
@@ -263,26 +263,46 @@ exocomp --remote self reload
 schedules reloaded (3 enabled in the store)
 ```
 
-It controls a **running** daemon over the operator API, so it needs a selected remote
-like `drain` does. `--output json` re-emits the `maintenance.reload` envelope carrying
-the schedule count. The count is the enabled rows in the store, an upper bound on the
-live set: a row the cron parser rejects is logged and left out of the registrations, so
-the store can hold more enabled rows than the daemon actually registered. A reload that
-cannot read the database leaves the running set alone. The (Ansible-managed) unit reloads
-the same way, without a restart:
+A reload refreshes every set the daemon reads once at boot and can rebuild
+safely: the **schedule registrations** and the **push transports** (ntfy and
+GoAlert, rebuilt from their sealed secrets, plus the ntfy Detail setting). A
+reload that cannot read the database — or a sealed transport configuration the
+daemon refuses — leaves the running sets alone: the scheduler builds the new
+registrations whole before swapping, and the transports swap only after the
+rebuild succeeds. The (Ansible-managed) unit reloads the same way, without a
+restart:
 
 ```
 ExecReload=~/.local/bin/exocomp --remote self reload
 ```
 
+It controls a **running** daemon over the operator API, so it needs a selected
+remote like `drain` does. `--output json` re-emits the `maintenance.reload`
+envelope carrying the schedule count. The count is the enabled rows in the
+store, an upper bound on the live set: a row the cron parser rejects is logged
+and left out of the registrations, so the store can hold more enabled rows than
+the daemon actually registered.
+
 ### Reload or restart
 
-| Change | Action |
-|---|---|
-| Secrets/redaction, mutes, approvals — read from the database per use | live, no action needed |
-| Schedules — read once into memory | `exocomp reload` (or `SIGHUP`); auditing the full read-once set is follow-up work |
-| Binary change | `exocomp restart` (drains, then re-execs in place) |
-| `serve` flag change | restart the unit — a re-exec keeps the same argv, so it cannot apply a new flag |
+The full read-once audit ([ADR 0020](../adr/0020-reload-restart-and-recovery.md)).
+Anything not named here is read from the store per use — a change to it reaches
+a running daemon with no action.
+
+| State | How it is read | Action |
+|---|---|---|
+| Schedules | once into memory | `exocomp reload` (or `SIGHUP`) |
+| Push transports: sealed ntfy/GoAlert endpoints, ntfy Detail setting | once into the notifier | `exocomp reload` (or `SIGHUP`) |
+| Backup quiesce file (`.exocomp/backup-quiesce.yml`) | once into the backup engine at boot | restart-only: it is a local config file, not store state, and refreshing it live would add a swap seam through the driver router for a file an operator edits rarely |
+| `serve` flags: port, drain-grace, sweep/reload interval, dedup/approval windows, hook-allow, public-url, base-path, sandbox tier, secret-staging, check-canary, lease | argv / env / probe at boot | restart the unit — a re-exec keeps the same argv, so it cannot apply a new flag |
+| Sandbox tier, serve lock, active lease, envelope seal config | decided at boot | restart-only |
+| Secrets/redaction, approvals, reactive rules, policies, runners, check config, dead-man threshold and heartbeat, backup retention, workflow ledger | from the store per use | live, no action |
+| Binary change | — | `exocomp restart` (drains, then re-execs in place) |
+
+Mutes are read per use by the store-backed checker, so they need no reload —
+but note the daemon's notifier does not currently attach that checker, so a mute
+holds nothing on the daemon's push path. That is a separate gap, not a reload
+one.
 
 See [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
 
@@ -341,6 +361,13 @@ close-on-exec, so the re-exec releases it) and takes over the same-host active
 lease; the lease TTL covers the gap. See
 [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
 
+The re-exec boundary — controller drain → serve loop → clean shutdown → re-exec
+— is covered end-to-end in-process (`TestServeRestartOrchestrationEndToEnd`),
+with only `syscall.Exec` stubbed. A real subprocess restart is not exercised: the
+no-op gate refuses an unchanged on-disk binary, and replacing the running path in
+a way the gate accepts (a rename) leaves `os.Executable` pointing at a deleted
+file.
+
 ## Recovering jobs a restart cut off
 
 A clean restart-after-drain interrupts nothing: the drain waits for in-flight
@@ -372,7 +399,9 @@ the step twice and drop any approval gate it carried. A row **already
 re-driven** is skipped too: each redrive lands under a deterministic key
 derived from the cut-off row's id, so a repeated `jobs redrive` finds the first
 run's job and reports it as already re-driven rather than running the work
-again.
+again. Job rows are never pruned — the store has no job retention and nothing
+deletes a job row — so that key is the durable marker; no extra column is
+needed to remember a redrive.
 
 ## Schedules
 
