@@ -11,9 +11,9 @@ repos:
     hooks:
       - id: trailing-whitespace
         # Migrations are final at merge (migration-authoring skill); the TUI
-        # golden frames and their design-reference twins are byte-pinned —
-        # trailing spaces are the frame width, semantically significant.
-        exclude: ^(internal/store/migrations/|internal/tui/testdata/frames/|docs/design/reference/tui/)
+        # golden frames are byte-pinned, because trailing spaces are the frame
+        # width and are semantically significant.
+        exclude: ^(internal/store/migrations/|internal/tui/testdata/frames/)
       - id: end-of-file-fixer
         exclude: ^(internal/store/migrations/|internal/tui/testdata/frames/|docs/design/reference/tui/)
       - id: check-yaml

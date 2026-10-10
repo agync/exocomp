@@ -6,6 +6,25 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-10
+
+- **Update**: Dropped the design handoff captures under
+  [design/reference/](design/reference/): the two canvas PDFs, the `canvas/` and
+  `realign/` artboard PNGs, and the standalone web and phone dashboard PNGs. The
+  `realign/` captures were already stale against the shipped surface, so nothing
+  the code or the web UI depends on is lost.
+- **Update**: Dropped the seventeen `reference/tui/` frame files that were
+  byte-identical to the golden fixtures under
+  [../internal/tui/testdata/frames/](../internal/tui/testdata/frames/), which is
+  the copy the tests read.
+- Five design notes that are not fixtures stay: `keymap.txt`, `colors.txt`,
+  `copy.txt`, `states.txt`, and `README.txt`. `internal/tui/render.go`,
+  `internal/tui/empty.go` and `internal/tui/write.go` cite them as the source of
+  the color rule, the empty-state copy, and the keymap contract.
+- [design/index.md](design/index.md) and
+  [design/ui-brief.md](design/ui-brief.md) no longer point at the dropped paths,
+  and `.pre-commit-config.yaml` no longer excludes the emptied directory.
+
 ## 2026-10-06 — resolver reads local collection artifacts
 
 - [ADR 0015](adr/0015-per-source-collections.md) gains an addendum: the

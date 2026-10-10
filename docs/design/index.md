@@ -17,8 +17,8 @@ What the project is for, the users it targets, and the order in which it gets bu
 | [UI brief](ui-brief.md) | Design brief for the web UI and phone approval surface |
 | [TUI brief](tui-brief.md) | Design brief for the terminal surface: constraints, screens, deliverables |
 | [Design invariants](INVARIANTS.md) | The design philosophy, hard rules, and component vocabulary that survive any redesign |
-| [Design reference](reference/) | Web handoff: canvas PDF, artboard captures; tokens live at `internal/web/tokens.css` |
-| [TUI reference](reference/tui/) | TUI handoff: text frames (golden fixtures), keymap, colors, copy, states |
+| [Web design tokens](../internal/web/tokens.css) | The tokens every web surface renders from |
+| [TUI design notes](reference/tui/) | Keymap, colors, empty-state copy, and states; the golden frames live at `internal/tui/testdata/frames/` |
 | [First-run walkthrough](first-run-walkthrough.html) | Static HTML mockup of the init → onboard → first run flow on the design tokens |
 
 The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)); the

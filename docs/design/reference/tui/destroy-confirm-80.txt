@@ -1,9 +1,0 @@
-       ┌────────────────────────────────────────────────────────────────┐
-       │ approve plan #482 — carries 1 DESTROY                          │
-       │ destroys aws_db_instance.legacy_reports · 210 GB · no snapshot │
-       │                                                                │
-       │ type the workspace name to approve:                            │
-       │ > core-inf▍                                                    │
-       │                                                                │
-       │ [enter] approve · [esc] cancel                   expires 06:12 │
-       └────────────────────────────────────────────────────────────────┘
