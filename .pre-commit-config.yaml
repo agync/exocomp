@@ -20,6 +20,9 @@ repos:
       - id: check-json
       - id: check-merge-conflict
       - id: check-added-large-files
+        # The shipped-UI renders under docs/design/assets/ are a few hundred KB
+        # each; a 1 MB ceiling keeps genuine accidents out while allowing them.
+        args: [--maxkb=1024]
 
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
