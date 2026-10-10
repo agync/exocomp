@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0019 — Aggregate check events removed"
+description: "Aggregate check events, the event host set and the limit-hosts flag are removed, leaving migration 0041 as inert schema."
+status: stable
+tags: [decision, checks]
+---
+
 # ADR 0019 — Aggregate check events removed
 
 Status: accepted · 2026-09-26 · supersedes [ADR 0018](0018-aggregate-check-events.md)

@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0002 — Project name: exocomp"
+description: "Project name exocomp, after the Control D collision ruled out the working name."
+status: stable
+tags: [decision, naming]
+---
+
 # ADR 0002 — Project name: exocomp
 
 ## Status

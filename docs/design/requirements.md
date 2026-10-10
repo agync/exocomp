@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Requirements"
+description: "The two hard constraints, the six goals, the anti-scope contract, and what is deferred with a named seam."
+status: stable
+tags: [design, scope]
+---
+
 # Requirements
 
 Scale is fixed first, because it decides everything else: **one operator, a handful of

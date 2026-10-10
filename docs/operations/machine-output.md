@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "Machine-readable output"
+description: "The json output envelope, the error taxonomy, the exit-code table and what of it reaches the process today, and MCP over HTTP as the third face."
+status: stable
+tags: [operations, cli, json]
+---
+
 # Machine-readable output: `--output json`, the envelope, and exit codes
 
 A structured-output contract (`internal/wire`) that the CLI, the HTTP API, and the MCP

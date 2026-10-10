@@ -1,3 +1,11 @@
+---
+type: Runbook
+title: "Upgrading and rolling back the binary"
+description: "Upgrade and rollback as a ledger choreography of snapshot, stage, verify, swap and health-check, rolling back to the snapshot and prior binary on any failed step, with no sudo."
+status: stable
+tags: [operations, serve, rollback]
+---
+
 # Upgrading and rolling back the binary
 
 `exocomp upgrade` swaps in a new `exocomp` binary as a step-ledger choreography

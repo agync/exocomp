@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Bootstrap"
+description: "The image and Quadlet deploy, the six-screen idempotent wizard, node-zero self-management, the separately versioned recovery script, and the adoption runbooks for an existing homelab."
+status: stable
+tags: [operations, bootstrap]
+---
+
 # Bootstrap
 
 Target: **under 10 minutes**, dominated by typing a git URL and printing the recovery kit.

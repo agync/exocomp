@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0015 — Per-source ansible collection isolation"
+description: "Ansible collections go per-source in a content-hash-keyed cache resolved at claim time and garbage-collected with the source lifecycle."
+status: stable
+tags: [decision, ansible, offline]
+---
+
 # ADR 0015 — Per-source ansible collection isolation
 
 ## Status

@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0004 — OpenTofu state: HTTP backend implemented in SQLite"
+description: "OpenTofu HTTP state backend implemented in SQLite, sidestepping the S3 conditional-write gap."
+status: stable
+tags: [decision, state, terraform]
+---
+
 # ADR 0004 — OpenTofu state: HTTP backend implemented in SQLite
 
 ## Status

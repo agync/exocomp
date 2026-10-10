@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0020 — Reload first, restart after drain, recover interrupted jobs"
+description: "Reload first, restart after drain, and recover interrupted jobs, with schedules reloading without a restart."
+status: stable
+tags: [decision, serve, recovery]
+---
+
 # ADR 0020 — Reload first, restart after drain, recover interrupted jobs
 
 Status: accepted · 2026-10-09

@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Driving a remote daemon"
+description: "Login and the remote flag: certificate pinning, precedence, pinned reads, writes that enqueue on the other box, following a job live, and the inputs that do not cross the wire."
+status: stable
+tags: [operations, remote, cli]
+---
+
 # Driving a remote daemon
 
 `exocomp login` pins a remote daemon's certificate and a bearer token so the same CLI can

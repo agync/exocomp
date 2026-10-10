@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0012 — Litestream as an optional fast-RPO sidecar"
+description: "Litestream as an optional fast-RPO sidecar replicating the database WAL, with restic staying authoritative and an unencrypted remote refused without an acknowledgement."
+status: stable
+tags: [decision, backup, replication]
+---
+
 # ADR 0012 — Litestream as an optional fast-RPO sidecar
 
 ## Status

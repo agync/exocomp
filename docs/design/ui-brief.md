@@ -1,3 +1,11 @@
+---
+type: Design
+title: "UI design brief"
+description: "The design brief for the web UI and the phone approval surface."
+status: stable
+tags: [design, web]
+---
+
 # exocomp — UI design brief
 
 For a designer with no prior context. A visual design exploration against this

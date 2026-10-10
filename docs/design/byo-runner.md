@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Bring-your-own container runtime runner"
+description: "Why the container and bring-your-own-runner tier stays deferred, its shape if built, and the per-job resource caps that are built."
+status: stable
+tags: [design, containers, deferred]
+---
+
 # Design — Bring-your-own container runtime runner
 
 ## Status

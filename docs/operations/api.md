@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "The /api/v1 operator surface"
+description: "The read and write routes on the LAN listener, the wire envelope, idempotency, and the error-code-to-HTTP-status table."
+status: stable
+tags: [operations, api]
+---
+
 # The `/api/v1` operator surface
 
 A JSON API mounted on the same [ADR-0009](../adr/0009-lan-access-tokens.md) token-gated

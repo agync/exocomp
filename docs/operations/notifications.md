@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Setup, notifications and metrics"
+description: "The first-run wizard, the ntfy push transport, the muted versus paused holds, and the metrics staleness gauges."
+status: stable
+tags: [operations, notifications, metrics]
+---
+
 # Setup, notifications, and metrics
 
 First-run identity, the two ways to hold notifications, and what the daemon exposes about

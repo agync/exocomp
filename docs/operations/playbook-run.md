@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Playbook run flags and config-drift"
+description: "The playbook run flags, where extra-var values live, and config drift as a check or schedule outcome."
+status: stable
+tags: [operations, ansible, playbook]
+---
+
 # Playbook run flags and config-drift
 
 `exocomp playbook run <playbook>` enqueues one ansible job and streams its

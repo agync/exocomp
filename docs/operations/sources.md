@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Sources, inventories and the credential plane"
+description: "Registering git, host and volume sources, inventories and the run-secret credential binding, plus the fleet key and host onboarding."
+status: stable
+tags: [operations, sources, credentials]
+---
+
 # Sources, inventories, and the credential plane
 
 How a run's tree arrives, what inventory it targets, and how it authenticates to the

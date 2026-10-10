@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Amendments"
+description: "The twelve normative changes that override the three candidate designs wherever they differ."
+status: stable
+tags: [design, decisions]
+---
+
 # Amendments
 
 Twelve **normative** design decisions that override the three candidate designs wherever

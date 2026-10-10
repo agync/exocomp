@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Checks, network groups and check-triggered runs"
+description: "Named probe-sets, named CIDR sets, and the governed playbook rule action that let a run trigger on a reachability or health transition."
+status: stable
+tags: [design, checks, reactive]
+---
+
 # Design — Checks, network groups, and check-triggered runs
 
 ## Status

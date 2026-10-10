@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Delivery plan"
+description: "Milestones v0.1, v0.5 and v1.0 with effort, and the risks carried into each."
+status: stable
+tags: [design, milestones]
+---
+
 # Delivery plan
 
 The ordering rule is not "easiest first" or "most visible first": **the recovery chain is
@@ -7,7 +15,7 @@ right on day one and is never invalidated afterwards.** Everything later is addi
 |---|---|---|
 | **v0.1 — provable core** | Skeleton; secrets envelope including the fuzzed redaction filter; job queue and executor; Ansible executor (direct `ansible-playbook` driver plus vault/sops wiring, [amendment 6](amendments.md#6-ansible-vault-is-designed-not-asserted)); backup engine, all three legs including the orphan-commit GitHub leg; restore, `recovery.sh`, and the CI-executed recovery card; a two-screen TUI | ~7.5 |
 | **v0.5 — both halves** | OpenTofu executor, HTTP state backend, drift, plan-gated applies; scheduler; offline provider and collection caches; Wish/SSH serving | ~7 |
-| **v1.0** | Event ingress, CEL rules, guardrails; approvals and ntfy transport; the scoped notification and escalation surface; the full TUI (8 screens plus wizard, see [design/reference](reference/)); web UI; `/metrics` plus seeded alerts; host onboarding; upgrade and rollback; packaging with budgets enforced in CI; docs including threat model and adoption runbooks | ~8.5 |
+| **v1.0** | Event ingress, CEL rules, guardrails; approvals and ntfy transport; the scoped notification and escalation surface; the full TUI (8 screens plus wizard, see [design/tui-brief.md](tui-brief.md)); web UI; `/metrics` plus seeded alerts; host onboarding; upgrade and rollback; packaging with budgets enforced in CI; docs including threat model and adoption runbooks | ~8.5 |
 | Deferred | Wails desktop, OpenBao resolver, Litestream embedding, GoAlert-class escalation | — |
 
 **Total ≈ 23 FTE-weeks** (~5 months solo, ~3 with focus). Every milestone is independently

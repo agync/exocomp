@@ -1,3 +1,11 @@
+---
+type: Design
+title: Architecture overview
+description: "The component map, the one-queue convergence property, the state layout, and the standing commitments."
+status: stable
+tags: [architecture]
+---
+
 # Architecture overview
 
 `exocompd` is one Go binary in one rootless container. It owns **state, sequencing, keys,

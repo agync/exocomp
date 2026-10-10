@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Personas"
+description: "The four target users: their estate, their goals, and the constraint that decides adoption."
+status: stable
+tags: [design, users]
+---
+
 # Personas
 
 exocomp targets one operator running a handful of hosts, but that operator arrives from

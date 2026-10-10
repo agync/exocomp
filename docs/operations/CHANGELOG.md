@@ -1,3 +1,11 @@
+---
+type: Log
+title: "Operations changelog"
+description: "The software release narrative of features, fixes and behaviour changes, newest first, kept separate from the knowledge-base evolution log."
+status: stable
+tags: [operations, changelog]
+---
+
 # Changelog
 
 Software releases, features, and fixes. This is the project's release narrative,

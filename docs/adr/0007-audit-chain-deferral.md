@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0007 — Audit hash chain: deferred, with a revival condition"
+description: "The audit hash chain is deferred, and reviving it requires an off-host-anchored head."
+status: stable
+tags: [decision, security, deferred]
+---
+
 # ADR 0007 — Audit hash chain: deferred, with a revival condition
 
 Status: accepted · 2026-08-21

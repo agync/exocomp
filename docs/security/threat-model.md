@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Threat model"
+description: "What an attacker who reaches the daemon can do, the guarding mechanisms, and the residuals that are accepted rather than closed."
+status: stable
+tags: [security, threat-model]
+---
+
 # Threat model
 
 exocomp's security posture of record: the assets it protects, the trust boundaries it

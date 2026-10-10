@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Pre/post-run hooks and the health gate"
+description: "A source hooks file of ordered pre and post run steps and a declared-probe health gate, composed into one ledger workflow."
+status: stable
+tags: [operations, ansible, hooks]
+---
+
 # Pre/post-run hooks and the health gate
 
 A source can wrap its run in lifecycle steps: ordered `pre_run` and `post_run`

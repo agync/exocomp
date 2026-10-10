@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Provision, onboard and converge"
+description: "One resumable four-step ledger chain of apply, bounded SSH wait, seeded onboarding and configure play, plus the standing inventory a schedule targets by name."
+status: stable
+tags: [operations, provisioning]
+---
+
 # Provision → onboard → converge
 
 `exocomp provision run` turns "I made a VM" into "it is onboarded, configured,

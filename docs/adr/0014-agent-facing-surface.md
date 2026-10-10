@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0014 — Agent-facing surface: one core, three thin programmatic faces"
+description: "One core with three thin programmatic faces, the machine CLI, the HTTP API and MCP, sharing the one auth model, the one queue and the wire envelope."
+status: stable
+tags: [decision, api, mcp, cli]
+---
+
 # ADR 0014 — Agent-facing surface: one core, three thin programmatic faces
 
 Status: Accepted · 2026-08-23

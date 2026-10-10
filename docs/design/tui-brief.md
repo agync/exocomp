@@ -1,3 +1,11 @@
+---
+type: Design
+title: "TUI design brief"
+description: "The design brief for the terminal surface: constraints, screens and deliverables."
+status: stable
+tags: [design, tui]
+---
+
 # exocomp — TUI design brief
 
 The TUI is surface number one; the web UI is its calmer sibling. It exists (Jobs,

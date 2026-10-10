@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Containers"
+description: "The base image and what it carries, running it as shipped, inheriting to add system packages or Python dependencies, offline and multi-arch builds, and capturing an operator image for recovery."
+status: stable
+tags: [operations, containers, packaging]
+---
+
 # Containers
 
 exocomp ships as one container. This page covers running it, extending it by

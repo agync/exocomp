@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0013 — OpenBao Transit as an optional external seal for the DEK"
+description: "OpenBao Transit as an optional additive seal for the DEK, keeping the age keyring recovery path and treating unreachable as an explicit error."
+status: stable
+tags: [decision, secrets, backup]
+---
+
 # ADR 0013 — OpenBao Transit as an optional external seal for the DEK
 
 ## Status

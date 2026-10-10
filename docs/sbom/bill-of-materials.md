@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "Bill of materials"
+description: "The pinned tool and dependency set the image and the runtime depend on, with versions and provenance."
+status: stable
+tags: [sbom, dependencies, packaging]
+---
+
 # Bill of materials
 
 Indicative pins as of 2026-08. **The frozen pins are committed at

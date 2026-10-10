@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Sealed tofu outputs as run-secrets"
+description: "A sensitive output sealed into the envelope and bound to an env name, so the play receives it without anything copied by hand."
+status: stable
+tags: [operations, terraform, secrets]
+---
+
 # Sealed tofu outputs as run-secrets
 
 A `sensitive = true` output never reaches the materialized inventory or an

@@ -1,3 +1,11 @@
+---
+type: Design
+title: "v1.0 acceptance bar"
+description: "The five end-to-end stories that gate v1.0."
+status: stable
+tags: [design, acceptance]
+---
+
 # v1.0 acceptance bar — core functionality must be reliable first
 
 v1.0 is not "the milestones shipped"; it is "the acceptance scenarios below work

@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0016 — exocomp ships as an artifact-carrier image"
+description: "exocomp ships as a self-contained base image that is also an artifact carrier, bootstrapping uv when absent and delegating ansible on PATH."
+status: stable
+tags: [decision, packaging, containers]
+---
+
 # ADR 0016 — exocomp ships as an artifact-carrier image
 
 ## Status

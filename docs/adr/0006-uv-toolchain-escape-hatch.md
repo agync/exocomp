@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0006 — uv build-time toolchain with an operator escape hatch"
+description: "A uv build-time Python toolchain plus a doctor-gated operator escape hatch in the data volume."
+status: stable
+tags: [decision, toolchain, offline]
+---
+
 # ADR 0006 — uv build-time toolchain with an operator escape hatch
 
 ## Status

@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Reacting to alerts"
+description: "Pointing a monitor at the hooks, sealing the push transport, writing rules, silencing, answering approvals, and asking why a rule did not fire."
+status: stable
+tags: [operations, reactive, webhooks]
+---
+
 # Reacting to alerts
 
 How to point a monitor at exocomp, write a rule, and answer the phone. The

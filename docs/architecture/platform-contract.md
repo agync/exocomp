@@ -1,3 +1,11 @@
+---
+type: Reference
+title: Platform integration contract
+description: "The support tiers for systemd and Quadlet, rootless podman, docker-compose and SELinux enforcing, plus the specified remote-access path."
+status: stable
+tags: [architecture, platform, containers]
+---
+
 # Platform integration contract
 
 "Works with" is a tested contract, not an adjective. Each platform below has a tier; the

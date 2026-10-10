@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0008 — Durable multi-step execution: step ledger, DBOS deferred"
+description: "Multi-step choreography runs on a step ledger over the job store, with DBOS deferred."
+status: stable
+tags: [decision, queue, execution]
+---
+
 # ADR 0008 — Durable multi-step execution: step ledger, DBOS deferred
 
 Status: accepted · 2026-08-22

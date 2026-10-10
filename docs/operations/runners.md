@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "Runner definitions"
+description: "The database-backed registry for the deferred container tier: definitions only, with nothing executing them yet."
+status: stable
+tags: [operations, containers, deferred]
+---
+
 # Runner definitions
 
 `exocomp runner` registers execution-environment **recipes** in the database. Registering

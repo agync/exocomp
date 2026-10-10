@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Running the daemon"
+description: "The serve flags, the signal contract, the single-instance lock, and what the CLI does while a daemon is up."
+status: stable
+tags: [operations, serve]
+---
+
 # Running the daemon
 
 `exocomp serve` (installed as `exocompd`) is the long-running half of the control plane:

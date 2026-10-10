@@ -1,4 +1,9 @@
 ---
+type: Design
+title: "Web UI design system"
+description: "Machine-readable token spec for the server-rendered web surface, transcribed from internal/web/tokens.css and internal/web/app.css."
+status: stable
+tags: [design, web, tokens]
 # exocomp web UI — design system
 # Machine-readable token spec for the server-rendered web surface. Source of
 # truth: internal/web/tokens.css (palette) and internal/web/app.css (layout).

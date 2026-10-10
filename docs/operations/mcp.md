@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "The MCP surface"
+description: "The single agent MCP surface: connecting an agent, what each scope is advertised, why there is no session id, and what never travels."
+status: stable
+tags: [operations, mcp]
+---
+
 # The MCP surface
 
 One MCP server, one transport. `POST /mcp` speaks it over HTTP on the same

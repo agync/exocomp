@@ -1,3 +1,11 @@
+---
+type: Design
+title: The reactive layer
+description: "Webhook ingress, the one event shape, CEL rules, the guardrails in ledger order, approvals, and drift as an event."
+status: stable
+tags: [architecture, reactive, webhooks]
+---
+
 # The reactive layer
 
 A webhook is the fourth headless client of the one queue. Nothing in this layer

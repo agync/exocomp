@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Draining for a planned reboot"
+description: "Cordoning a running daemon so it fires no schedules and claims no new jobs while in-flight work finishes, then polling whether it is safe to reboot."
+status: stable
+tags: [operations, serve, reboot]
+---
+
 # Draining for a planned reboot
 
 A kernel update or hardware maintenance means rebooting the control node. `exocomp serve`

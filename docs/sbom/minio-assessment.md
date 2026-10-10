@@ -1,3 +1,11 @@
+---
+type: Assessment
+title: "MinIO assessment"
+description: "Why MinIO and Garage were assessed and not adopted for OpenTofu state storage, and what exocomp implements instead."
+status: stable
+tags: [sbom, assessment, state]
+---
+
 # MinIO assessment
 
 The S3 leg is restic's generic `s3:` backend plus plain SigV4 requests; shipped code

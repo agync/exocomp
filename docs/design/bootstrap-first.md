@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Bootstrap-first chain"
+description: "The ansible-first-then-tofu handoff for the Kubernetes case, and its credential capture."
+status: stable
+tags: [design, bootstrap, kubernetes]
+---
+
 # Design — Bootstrap-first: the ansible→tofu mirror
 
 ## Scope

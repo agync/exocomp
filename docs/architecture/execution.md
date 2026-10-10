@@ -1,3 +1,11 @@
+---
+type: Design
+title: Execution and isolation
+description: "The executor driver tiers of disabled, enforcing and container, offline-restorable job dependencies, and boot-time reconciliation."
+status: stable
+tags: [architecture, sandbox, execution]
+---
+
 # Execution and isolation
 
 The queue executes every job through one `ExecutorDriver` interface, present from v0.1. The

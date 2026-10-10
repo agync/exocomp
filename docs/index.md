@@ -1,7 +1,5 @@
 ---
 okf_version: "0.2"
-title: exocomp knowledge base
-description: Architecture, decisions, design, operations, and provenance for exocomp — a single-container homelab control plane.
 ---
 
 # exocomp knowledge base

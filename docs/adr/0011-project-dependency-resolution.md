@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0011 — Project dependency resolution: uv at runtime for declared manifests"
+description: "Project dependencies resolve from root requirements.txt or pyproject.toml into hash-gated caches, with uv shipped at runtime."
+status: stable
+tags: [decision, dependencies, offline]
+---
+
 # ADR 0011 — Project dependency resolution: uv at runtime for declared manifests
 
 Superseded by [0015](0015-per-source-collections.md) for the collections decision; the venv, tofu-provider, tofu-modules, and system-package decisions stand.

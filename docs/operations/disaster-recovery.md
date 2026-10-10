@@ -1,3 +1,11 @@
+---
+type: Runbook
+title: "Disaster recovery"
+description: "What is backed up, the three legs, the recovery chain, the runbook for a dead host, the recovery card, failure modes, RPO and RTO, and verification."
+status: stable
+tags: [operations, recovery, backup]
+---
+
 # Disaster recovery
 
 The design's headline property: **a printed kit plus any one backup target recovers

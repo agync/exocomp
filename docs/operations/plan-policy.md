@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Gating tofu plans with policy"
+description: "Writing CEL policies over a plan, denying a dangerous plan at seal so its apply refuses, and routing an apply through the approval gate."
+status: stable
+tags: [operations, policy, terraform]
+---
+
 # Gating tofu plans with policy
 
 A plan policy is a CEL rule over a workspace's `tofu show -json` plan output. It

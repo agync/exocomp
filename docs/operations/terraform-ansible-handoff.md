@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Terraform to Ansible inventory handoff"
+description: "Chaining a tofu apply to an ansible play as one ledger workflow, with the workspace declared non-sensitive outputs becoming the play inventory."
+status: stable
+tags: [operations, terraform, ansible, handoff]
+---
+
 # Terraform → Ansible inventory handoff
 
 The handoff runs `tofu apply`, captures the workspace's declared outputs, and

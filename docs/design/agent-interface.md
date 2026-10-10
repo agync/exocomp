@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Agent interface"
+description: "The three programmatic faces of remote CLI, HTTP API and MCP, the wire envelope, and the error and exit-code taxonomy."
+status: stable
+tags: [design, api, mcp]
+---
+
 # Agent interface — one core, three programmatic faces
 
 Status: accepted — the decision is recorded in ADR-0014 (agent-facing surface)

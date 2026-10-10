@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Offline dependency caches"
+description: "Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable."
+status: stable
+tags: [operations, offline, ansible, terraform]
+---
+
 # Offline dependency caches
 
 Disaster recovery must not depend on Ansible Galaxy or `registry.opentofu.org` being

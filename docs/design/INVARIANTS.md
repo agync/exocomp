@@ -1,3 +1,11 @@
+---
+type: Design
+title: "Design invariants"
+description: "The design philosophy, hard rules and component vocabulary that survive any redesign."
+status: stable
+tags: [design, invariants]
+---
+
 # exocomp — design invariants & philosophy
 
 The rules that survive any redesign. A change that violates one of these is wrong —

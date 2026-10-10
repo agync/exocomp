@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Ansible-first bootstrap"
+description: "The handoff mirrored: the ansible play first and then the tofu apply, as one ledger workflow with a manual credential handoff between them."
+status: stable
+tags: [operations, ansible, terraform, handoff]
+---
+
 # Ansible-first bootstrap (`bootstrap run`)
 
 `exocomp bootstrap run <playbook> <workspace>` composes the mirror of the

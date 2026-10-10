@@ -1,3 +1,11 @@
+---
+type: Runbook
+title: "Cold-standby failover"
+description: "Taking over a replicated store on a standby host, with an optional Litestream fast-forward and a cross-host active lease that keeps a resurrected primary from double-activating."
+status: stable
+tags: [operations, recovery, replication]
+---
+
 # Cold-standby failover
 
 The primary is down and you want a second host serving. This is the drilled procedure. The

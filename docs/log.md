@@ -6,7 +6,7 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
-## 2026-10-10 — design ideation moved to the lab wiki
+## 2026-10-10
 
 - **Moved**: `history/` left this bundle. The three candidate designs, the completeness
   critique, the accepted technical design for v1, and the nine research notes are now in
@@ -20,9 +20,6 @@ Newest first.
   conclusions inline instead of linking across to another wiki.
 - [AGENTS.md](../AGENTS.md) and the docs-curator role card no longer list `history/` in the
   bundle layout.
-
-## 2026-10-10
-
 - **Update**: Dropped the design handoff captures under
   [design/reference/](design/reference/): the two canvas PDFs, the `canvas/` and
   `realign/` artboard PNGs, and the standalone web and phone dashboard PNGs. The
@@ -40,7 +37,9 @@ Newest first.
   [design/ui-brief.md](design/ui-brief.md) no longer point at the dropped paths,
   and `.pre-commit-config.yaml` no longer excludes the emptied directory.
 
-## 2026-10-06 — resolver reads local collection artifacts
+## 2026-10-06
+
+- resolver reads local collection artifacts.
 
 - [ADR 0015](adr/0015-per-source-collections.md) gains an addendum: the
   collections resolver's sandbox grants read on the local `type: dir`/`type: file`
@@ -49,7 +48,9 @@ Newest first.
   [threat model](security/threat-model.md) records the read-only widening as an
   accepted residual.
 
-## 2026-09-26 — aggregate check events removed
+## 2026-09-26
+
+- aggregate check events removed.
 
 - Removed the opt-in aggregate-check surfaces from
   [operations/reactive.md](operations/reactive.md), [operations/mcp.md](operations/mcp.md),
@@ -61,7 +62,9 @@ Newest first.
   [0041](../internal/store/migrations/0041_check_aggregate.sql) remain as inert
   schema; no drop-column migration is added.
 
-## 2026-09-26 — exocomp does not manage cert lifecycle
+## 2026-09-26
+
+- exocomp does not manage cert lifecycle.
 
 - The v1.1 roadmap's R2 framed cert-expiry checks as including "exocomp's OWN web-UI
   cert". That premise was wrong: the LAN listener certificate is self-signed with a
@@ -71,7 +74,9 @@ Newest first.
   [design/v1.1-roadmap.md](design/v1.1-roadmap.md); the `tls` check kind stays as a
   general, unprioritized capability for certificates nothing else renews.
 
-## 2026-09-17 — the deployment image ref in the recovery chain
+## 2026-09-17
+
+- the deployment image ref in the recovery chain.
 
 - **`RECOVERY.md` now carries `image-ref:`** at each target root: the ref the daemon read
   from the unit's `EXOCOMP_IMAGE` and stored as `deploy.image_ref`. An unset ref omits the
@@ -86,7 +91,9 @@ Newest first.
 - `operations/disaster-recovery.md` documents capture (`podman save`) and load;
   `operations/containers.md` and `operations/machine-output.md` state the ref.
 
-## 2026-09-17 — the doctor toolchain-manifest diff
+## 2026-09-17
+
+- the doctor toolchain-manifest diff.
 
 - **`doctor` now diffs each resolved tool version against its `MANIFEST.json` pin.** The
   comparison folds into the existing `optional_tools` health entry, so the fixed subsystem
@@ -97,7 +104,9 @@ Newest first.
   manifest path once.
 - `operations/machine-output.md` and `operations/containers.md` state the comparison.
 
-## 2026-09-17 — ADR 0016 and the container page
+## 2026-09-17
+
+- ADR 0016 and the container page.
 
 - **New [ADR 0016](adr/0016-artifact-carrier-image.md):** the base image is a
   distributable artifact carrier; uv is bootstrapped when absent, the Python pin
@@ -115,7 +124,9 @@ Newest first.
   distribution artifact; `design/byo-runner.md` cross-references ADR 0016 so the
   deferred in-daemon tier is not confused with the supported image story.
 
-## 2026-09-15 — TUI copy deck reconciled to shipped output
+## 2026-09-15
+
+- TUI copy deck reconciled to shipped output.
 
 - **`design/reference/tui/copy.txt` recorded two strings the shipped TUI never
   renders.** It now matches the binary and its own frames (the frames are the
@@ -125,7 +136,9 @@ Newest first.
   signal), and the SILENCED banner variant (`banner.go`, present in
   `frames/banners-80.txt`) is declared beside paused/muted.
 
-## 2026-09-12 — base-path round: correction of fact
+## 2026-09-12
+
+- base-path round: correction of fact.
 
 - **The plan-review's claim that `http.StripPrefix` leaves `RequestURI`
   unrewritten is wrong for this toolchain.** A probe against go1.26.8 shows
@@ -137,7 +150,9 @@ Newest first.
   survives the strip. `docs/log.md` records the fact; code is the source of
   truth.
 
-## 2026-09-07 — responsive round (v0.9)
+## 2026-09-07
+
+- responsive round (v0.9).
 
 - **The design pages codify the responsive principles.** The web surfaces
   gained a single 719px phone breakpoint and the rules landed as a new
@@ -149,7 +164,9 @@ Newest first.
   the breakpoint tokens collapsed to the one phone breakpoint. Structural: the
   invariants page is extended.
 
-## 2026-09-06 — degraded job state + job detail v2
+## 2026-09-06
+
+- degraded job state + job detail v2.
 
 - **Software change, no structural edit needed here**: the job state machine
   gained the terminal `degraded` state (tolerated unreachable hosts, migration
@@ -158,14 +175,18 @@ Newest first.
   bundle-fact coherence: "job state" now includes `degraded`; the web and TUI
   render it in wait (amber) and it is not a failure to CLI callers.
 
-## 2026-09-06 — ADR 0015 page added
+## 2026-09-06
+
+- ADR 0015 page added.
 
 - **A new `adr/0015-per-source-collections.md` page records the per-source
   ansible collections isolation decision**, superseding ADR 0011's collections
   decision; the venv, tofu-provider, tofu-modules, and system-package decisions
   stand. Structural: a page added.
 
-## 2026-09-02 — agent brain made local-only
+## 2026-09-02
+
+- agent brain made local-only.
 
 - **Correction of earlier framing.** The 2026-08-31 entry "`brain/` lands in
   `.agents/`" claimed `.agents/brain/` is tracked like the rest of `.agents/`
@@ -175,7 +196,9 @@ Newest first.
   CHANGELOG now say plainly the path is local-only; the spec store is gone from
   the repo.
 
-## 2026-09-02 — design invariants page added
+## 2026-09-02
+
+- design invariants page added.
 
 - **A new `design/INVARIANTS.md` page codifies the design philosophy, hard
   rules, and component vocabulary** into the bundle (previously held only in
@@ -183,14 +206,18 @@ Newest first.
   `design/DESIGN.md` cross-reference it; `AGENTS.md` and both design indexes
   list it. Structural: a page added.
 
-## 2026-09-01 — Netgroups page merged into /checks as a tab
+## 2026-09-01
+
+- Netgroups page merged into /checks as a tab.
 
 - **The standalone Netgroups page was removed; netgroups are now a tab on
   /checks** (`?tab=netgroups`). The `/netgroups` route 302s to the tab; the
   write redirects follow. This is the one route change of the design-handoff
   realignment (F7).
 
-## 2026-09-01 — software changelog split from the bundle log
+## 2026-09-01
+
+- software changelog split from the bundle log.
 
 - **The release narrative moved out of this log.** This page now records only
   bundle-structural history and corrections of fact; software releases,
@@ -199,7 +226,9 @@ Newest first.
   index, and this page's header says so. The split itself is structural, so it
   is recorded here; the CHANGELOG is the newest-first release narrative.
 
-## 2026-09-01 — memfd run-secret staging rejected, recorded
+## 2026-09-01
+
+- memfd run-secret staging rejected, recorded.
 
 - **A `memfd_create(2)` staging experiment was revisited and rejected.** A
   long-dormant branch staged each run-secret into an anonymous memfd (no path in
@@ -216,15 +245,21 @@ Newest first.
   stands.
 
 
-## 2026-09-01 — list-surface refinements
+## 2026-09-01
+
+- list-surface refinements.
 
 - **Docs' UI-stack references corrected.** The vendored htmx include is gone; the docs now name the vanilla JS the app actually uses.
 
-## 2026-09-01 — approval surface refinements
+## 2026-09-01
+
+- approval surface refinements.
 
 - **Log self-correction.** Three back-dated entries (list-surface refinements, write-form errors, check-event traceability) now carry their true 09-01 dates; newest-first order restored.
 
-## 2026-08-31 — sweep error policy recorded
+## 2026-08-31
+
+- sweep error policy recorded.
 
 - **[architecture/reactive.md](architecture/reactive.md) states the shared
   sweep error policy** — the checks, drift, and job-failures sweeps now say
@@ -234,7 +269,9 @@ Newest first.
   (the sweep's list query) or shutdown stops it.
 
 
-## 2026-08-31 — docs-review pass on checks, rules, and the web
+## 2026-08-31
+
+- docs-review pass on checks, rules, and the web.
 
 - **Corrected a false claim about `doctor`.** [security/threat-model.md](security/threat-model.md)
   T33 and [design/check-triggered-runs.md](design/check-triggered-runs.md)
@@ -265,11 +302,15 @@ Newest first.
   set-event / `--limit-hosts` stays open.
 
 
-## 2026-08-31 — CLI/web check, rule, netgroup surfaces consolidated
+## 2026-08-31
+
+- CLI/web check, rule, netgroup surfaces consolidated.
 
 - **Correction of earlier framing.** The "store remains the shared validator" claim is corrected: the CLI and web parsers now unify in store.Parse* / internal/reactive.
 
-## 2026-08-31 — threat model: checks and peer stamping rows
+## 2026-08-31
+
+- threat model: checks and peer stamping rows.
 
 - [security/threat-model.md](security/threat-model.md) gains a **Checks, netgroups, and peer
   stamping** subsection under the reactive section — T30–T35 record the shipped mitigations
@@ -281,7 +322,9 @@ Newest first.
   check probes, netgroups, and peer stamping.
 
 
-## 2026-08-31 — contribution guide and specs store
+## 2026-08-31
+
+- contribution guide and specs store.
 
 - **New page** [contribution/index.md](contribution/index.md): the working
   procedure behind [AGENTS.md](../AGENTS.md) — the DCO, commit conventions,
@@ -294,11 +337,15 @@ Newest first.
   scripts. AGENTS.md's layout block names the new directory.
 
 
-## 2026-08-31 — web surface for netgroups and checks
+## 2026-08-31
+
+- web surface for netgroups and checks.
 
 - **Design reconciled.** check-triggered-runs.md §9 drops the in-browser rule-builder promise and records the shipped-subset Status; architecture/reactive.md and operations/reactive.md gained checks/netgroup sections.
 
-## 2026-08-30 — check-triggered runs design
+## 2026-08-30
+
+- check-triggered runs design.
 
 - **New page** [design/check-triggered-runs.md](design/check-triggered-runs.md):
   proposal (no code) for running governed jobs on a reachability or health
@@ -323,11 +370,13 @@ Newest first.
   bypass the throttle) and is per-target for sweep sources.
 
 
-## 2026-08-25 — QR pairing, schedule detail, sidebar logo
+## 2026-08-25
+
+- QR pairing, schedule detail, sidebar logo.
 
 - **New page** [operations/pairing.md](operations/pairing.md) documents the QR device-pairing payload contract.
 
-## 2026-08-25 — threat model: local-exec CLI residual
+## 2026-08-25
 
 [security/threat-model.md](security/threat-model.md) corrects the token-mint boundary: a
 job can reach the `exocomp` CLI via an ansible `command`/`local_action` or a tofu
@@ -338,7 +387,9 @@ mint route exists, gated by cookie-session + same-origin + reauth; `/api/v1` and
 expose no mint.
 
 
-## 2026-08-25 — sandbox tiers renamed, secure-by-default
+## 2026-08-25
+
+- sandbox tiers renamed, secure-by-default.
 
 - **Tiers renamed and the default flipped.** The job-sandbox tiers are now `opportunistic` /
   `enforcing` / `disabled` (was `auto` / `local-sandboxed` / `local`), and the default — an
@@ -353,15 +404,19 @@ expose no mint.
   cli-run, provision-converge, and SBOM pages.
 
 
-## 2026-08-25 — access-token and inventory hardening
+## 2026-08-25
+
+- access-token and inventory hardening.
 
 - **Threat model renumbered.** The E/S/R/D/B/U/AI finding-id families were replaced by a sequential T1–T29 catalog in reading order.
 
-## 2026-08-25 — source kinds collapsed; runs move to the source page
+## 2026-08-25
+
+- source kinds collapsed; runs move to the source page.
 
 - **ADR 0010 addendum** and operations/sources.md updated for the git/path (+writable) model; serve.md reflects the source-page launchers.
 
-## 2026-08-25 — browser management surface documented
+## 2026-08-25
 
 [operations/serve.md](operations/serve.md) gains a "The browser surface" section: the web UI
 is no longer view-only — an operator runs playbooks/commands, plans/applies workspaces, and
@@ -370,7 +425,9 @@ writes re-confirm with the operator's access token; these session form posts sta
 from the bearer-only `/api/v1`.
 
 
-## 2026-08-24 — design system page and top-level README
+## 2026-08-24
+
+- design system page and top-level README.
 
 - **New page** [design/DESIGN.md](design/DESIGN.md): the web UI design system — color,
   typography, spacing, and component tokens — sourced from `internal/web`. The architecture
@@ -383,7 +440,7 @@ from the bearer-only `/api/v1`.
   harness-neutral.
 
 
-## 2026-08-24 — Personas consolidated
+## 2026-08-24
 
 The four target-user personas now live as one crisp definitions page,
 [design/personas.md](design/personas.md). The internal persona-review, persona-scenario,
@@ -392,7 +449,9 @@ and practitioner-gap-review planning pages are removed; their surviving conclusi
 [design/v1-acceptance.md](design/v1-acceptance.md).
 
 
-## 2026-08-24 — failover page and cross-host lease
+## 2026-08-24
+
+- failover page and cross-host lease.
 
 - **New page** [operations/failover.md](operations/failover.md): the cold-standby
   procedure (restic restore, optional Litestream fast-forward, deliberate `serve`, re-drive
@@ -406,7 +465,7 @@ and practitioner-gap-review planning pages are removed; their surviving conclusi
   data dir".
 
 
-## 2026-08-24 — runner caps documented
+## 2026-08-24
 
 [design/byo-runner.md](design/byo-runner.md) and
 [operations/runners.md](operations/runners.md): per-job memory/CPU caps are enforced by
@@ -416,7 +475,7 @@ than running it uncapped. A job selects a runner's caps with `--runner`. The
 container-image tier stays deferred.
 
 
-## 2026-08-24 — run-secret staging documented
+## 2026-08-24
 
 [design/bootstrap-first.md](design/bootstrap-first.md) and the operations pages describe
 run-secret file staging on `/dev/shm`: per-instance session directories, a
@@ -424,7 +483,7 @@ run-secret file staging on `/dev/shm`: per-instance session directories, a
 and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual posture.
 
 
-## 2026-08-24 — threat-model corrections
+## 2026-08-24
 
 [security/threat-model.md](security/threat-model.md):
 
@@ -435,7 +494,9 @@ and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual p
   guard. The accepted residual timing gap is recorded, owned by `internal/web/auth.go`.
 
 
-## 2026-08-24 — durable approval and scheduler corrections
+## 2026-08-24
+
+- durable approval and scheduler corrections.
 
 - [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md) and the
   bootstrap/handoff/provision pages: a composed-chain `--require-approval` step is held
@@ -447,7 +508,9 @@ and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual p
   `--public-url`/`EXOCOMP_PUBLIC_URL`; it cannot read the running daemon's value back.
 
 
-## 2026-08-23 — agent-facing surface pages
+## 2026-08-23
+
+- agent-facing surface pages.
 
 - **New pages**: [operations/remote-access.md](operations/remote-access.md) (remote CLI,
   certificate pinning, `--remote`/`--token`), [operations/api.md](operations/api.md) (the
@@ -463,7 +526,7 @@ and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual p
   or injection.
 
 
-## 2026-08-23 — the single MCP-over-HTTP surface
+## 2026-08-23
 
 The stdio MCP server documentation is removed. [operations/mcp.md](operations/mcp.md) now
 describes one programmatic surface — MCP over HTTP on the `serve` listener, bearer-scoped
@@ -474,7 +537,9 @@ stdio-only clients and the agent-aware CLI as the local path.
 (threat model, architecture overview, operations index) were caught up to the removal.
 
 
-## 2026-08-23 — bootstrap and handoff pages
+## 2026-08-23
+
+- bootstrap and handoff pages.
 
 - **New page** [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md):
   the `exocomp bootstrap run <playbook> <workspace>` ansible-first chain, with the
@@ -493,7 +558,9 @@ stdio-only clients and the agent-aware CLI as the local path.
   updated as its phases shipped (code wins over the design page).
 
 
-## 2026-08-22 — reactive, policy, and run pages
+## 2026-08-22
+
+- reactive, policy, and run pages.
 
 - **New pages**: [architecture/reactive.md](architecture/reactive.md) (webhook ingress,
   normalized event shape, sandboxed CEL, guardrails, the approval token),
@@ -509,7 +576,9 @@ stdio-only clients and the agent-aware CLI as the local path.
   [upgrade.md](operations/upgrade.md).
 
 
-## 2026-08-22 — design handoffs imported
+## 2026-08-22
+
+- design handoffs imported.
 
 - Web design handoff under [design/reference/](design/reference/) (canvas PDF v0.1, artboard
   captures); design tokens live at `internal/web/tokens.css`.
@@ -524,7 +593,9 @@ stdio-only clients and the agent-aware CLI as the local path.
   ([ADR 0002](adr/0002-project-name-exocomp.md)).
 
 
-## 2026-08-22 — ADRs 0008 and 0009 recorded
+## 2026-08-22
+
+- ADRs 0008 and 0009 recorded.
 
 - [ADR 0008](adr/0008-step-ledger-over-dbos.md): durable execution is a step-ledger extension of the
   job store; DBOS is assessed and deferred (young SQLite path, single maintainer, second
@@ -533,7 +604,9 @@ stdio-only clients and the agent-aware CLI as the local path.
   tokens with default self-signed TLS and fingerprint pinning.
 
 
-## 2026-08-22 — keyring-generation and v0.5 reconciliation
+## 2026-08-22
+
+- keyring-generation and v0.5 reconciliation.
 
 - **Correction.** The keyring generation counter lives beside the keyring in
   `keyring.version`, not inside the armored `keyring.age` (age rejects added framing).
@@ -546,7 +619,7 @@ stdio-only clients and the agent-aware CLI as the local path.
   actually shipped, stale-lock recovery, and drifted module rows corrected.
 
 
-## 2026-08-21 — Bundle created
+## 2026-08-21
 
 The `docs/` bundle was created as an OKF v0.2 knowledge base, curated from the
 pre-repository design archive. The curated pages summarize; the archive's source documents
@@ -565,7 +638,9 @@ for absolute paths and home directories (none present).
   the twelve [amendments](design/amendments.md) override the accepted candidate design.
 
 
-## 2026-08-21 — early corrections against code and source
+## 2026-08-21
+
+- early corrections against code and source.
 
 - The design critique enumerates **30 gaps across sections A–H**, not 22; the wrong count
   was corrected on seven pages.

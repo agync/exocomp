@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0009 — LAN access: bearer tokens minted by local auth"
+description: "LAN listeners require locally-minted bearer tokens, with TLS on by default."
+status: stable
+tags: [decision, security, auth]
+---
+
 # ADR 0009 — LAN access: bearer tokens minted by local auth
 
 Status: accepted · 2026-08-22

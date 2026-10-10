@@ -1,3 +1,11 @@
+---
+type: Reference
+title: "Governed CLI runs"
+description: "The run type for work that is neither ansible nor tofu: an allow-listed binary under the same queue, sandbox, run-secret and approval governance."
+status: stable
+tags: [operations, cli, governance]
+---
+
 # Governed CLI runs
 
 Some operations are neither ansible nor tofu: a `kubectl rollout`, a scoped token refresh,

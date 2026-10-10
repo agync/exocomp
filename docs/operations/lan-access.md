@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "LAN access: tokens and the web surface"
+description: "Minting bearer tokens and serving the TLS web and phone approval surface, separate from the loopback state backend."
+status: stable
+tags: [operations, security, auth, web]
+---
+
 # LAN access: tokens and the web surface
 
 The browser dashboard and phone approval surface reach the LAN over a bearer-token-gated

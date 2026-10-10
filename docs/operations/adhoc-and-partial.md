@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Ad-hoc runs and the unreachable-tolerant outcome"
+description: "The ad-hoc command and ansible verbs under the same governance as a play, and tolerating an unreachable roaming host instead of paging."
+status: stable
+tags: [operations, ansible, adhoc]
+---
+
 # Ad-hoc runs and the unreachable-tolerant outcome
 
 `playbook run` is the batch verb. The two verbs here are the everyday ones an

@@ -1,3 +1,11 @@
+---
+type: Guide
+title: "Device pairing by QR code"
+description: "The phone companion pairing payload a QR code carries, rendered on the token result page and by the token command, plus setting the public URL."
+status: stable
+tags: [operations, mobile, pairing]
+---
+
 # Device pairing (QR)
 
 Pairing hands a phone companion everything it needs to reach and authenticate

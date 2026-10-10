@@ -1,3 +1,11 @@
+---
+type: Decision
+title: "ADR 0017 — One probe vocabulary for checks and gates"
+description: "One shared probe vocabulary for checks and gates, with the SSRF guard applied per face and Location opt-in per kind."
+status: stable
+tags: [decision, checks, probes]
+---
+
 # ADR 0017 — One probe vocabulary for checks and gates
 
 Status: accepted · 2026-09-15
