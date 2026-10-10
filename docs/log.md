@@ -6,6 +6,21 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-10 — design ideation moved to the lab wiki
+
+- **Moved**: `history/` left this bundle. The three candidate designs, the completeness
+  critique, the accepted technical design for v1, and the nine research notes are now in
+  the `exocomp` section of the lab wiki, which is where work kept for the record and not
+  currently true belongs. This bundle now describes the shipped state only, with no
+  rejected alternatives and no design-phase provenance.
+- [index.md](index.md) loses its History section, and [design/index.md](design/index.md),
+  [design/amendments.md](design/amendments.md),
+  [adr/0001-thin-core-architecture.md](adr/0001-thin-core-architecture.md) and
+  [adr/0002-project-name-exocomp.md](adr/0002-project-name-exocomp.md) state their
+  conclusions inline instead of linking across to another wiki.
+- [AGENTS.md](../AGENTS.md) and the docs-curator role card no longer list `history/` in the
+  bundle layout.
+
 ## 2026-10-10
 
 - **Update**: Dropped the design handoff captures under

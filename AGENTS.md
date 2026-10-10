@@ -48,7 +48,7 @@ AGENTS.md        this contract
                  brain/specs holds specs for in-flight work; scripts/ holds the
                  local-hook helpers (see .pre-commit-config.yaml)
 docs/            OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
-                 design/, operations/, sbom/, history/, contribution/
+                 design/, operations/, sbom/, contribution/
 cmd/exocomp/     the single cobra binary (`exocompd` = alias for `exocomp serve`)
 internal/        service, api, queue, secrets, executor, tui, web
 api/             OpenAPI 3.1 spec + typed client package (the monorepo seam; created in M2)

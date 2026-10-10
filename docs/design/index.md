@@ -21,6 +21,6 @@ What the project is for, the users it targets, and the order in which it gets bu
 | [TUI design notes](reference/tui/) | Keymap, colors, empty-state copy, and states; the golden frames live at `internal/tui/testdata/frames/` |
 | [First-run walkthrough](first-run-walkthrough.html) | Static HTML mockup of the init → onboard → first run flow on the design tokens |
 
-The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)); the
-three candidates it was chosen from and the critique that reshaped it are preserved verbatim
-in [history](../history/index.md).
+The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)). The
+three candidates it was chosen from, the critique that reshaped them, and the research notes
+behind them are archived in the exocomp design phase of the lab wiki.

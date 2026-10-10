@@ -11,7 +11,8 @@ must survive two hard constraints — trivial bootstrap and trivial disaster rec
 [requirements](../design/requirements.md).
 
 Three architectures were designed independently and then reviewed adversarially; the
-review found 30 enumerated gaps (sections A–H) ([critique](../history/design/critique.md)):
+review found 30 enumerated gaps (sections A–H). The critique that produced them is
+archived in the exocomp design phase of the lab wiki, outside this bundle.
 
 - **compose-first** — Semaphore UI as the execution engine, a `ctl` companion binary for
   glue.

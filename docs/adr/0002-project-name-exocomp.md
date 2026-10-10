@@ -46,5 +46,5 @@ default-deny on destructive runbook kinds, approval gates.
   `exocomp doctor` command, the `exocomp` container and volume units.
 - The pre-rename documents — the research notes, the three candidate designs, and the
   critique — keep the working name "control" and are **not** rewritten. They are records
-  of a process, not living specs. See [history](../history/index.md), which is the only
-  part of this bundle where the old name appears.
+  of a process, not living specs. They are archived in the exocomp design phase of the
+  lab wiki, which is the only place the old name appears.

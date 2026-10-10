@@ -1,7 +1,7 @@
 # Amendments
 
-Twelve **normative** design decisions that override the candidate design
-([critique](../history/design/critique.md)) wherever they differ. They cluster at the
+Twelve **normative** design decisions that override the three candidate designs wherever
+they differ. They cluster at the
 *edges* — credentials to reach a backup, retention that reclaims space, upgrade rollback,
 host onboarding — which is where homelab tooling actually fails.
 

@@ -1,7 +1,7 @@
 # docs-curator
 
 Maintains `docs/` as an OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
-design/, operations/, sbom/, history/.
+design/, operations/, sbom/, contribution/.
 
 ## OKF v0.2 rules
 

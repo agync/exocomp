@@ -81,14 +81,6 @@ What ships and under what license — [sbom/index.md](sbom/index.md)
 
 How work lands here and what gates it — [contribution/index.md](contribution/index.md)
 
-## History
-
-Provenance records, imported byte-identical — [history/index.md](history/index.md)
-
-Three candidate designs, the 30-gap critique, eight research notes, and a post-decision
-addendum. All but the addendum predate the rename and use the working name "control"; two
-of them describe architectures that were not built. Nothing there is normative.
-
 ## Conventions
 
 - Every cross-reference in this bundle is a relative link. No absolute paths, no local file
