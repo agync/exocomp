@@ -67,6 +67,10 @@ nono grant is needed and `exocomp doctor` reports the addition; and this is the
 one seam ADR 0011 leaves out of runtime scope, which is why it is an image
 change and not a manifest change.
 
+When running a custom derived image under systemd, update both `Image=` and
+`Environment=EXOCOMP_IMAGE=` in `~/.config/containers/systemd/exocomp.container`
+so the unit executes your image tag and records it for disaster recovery (ADR 0016).
+
 ## Add Python dependencies
 
 Prefer the declared-manifest path. A project's root `requirements.txt` or

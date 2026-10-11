@@ -3,6 +3,9 @@ Description=exocomp control plane
 After=exocomp.volume
 
 [Container]
+# Default base container image. When running a custom derived image (e.g.
+# FROM ghcr.io/abn/exocomp:latest with added packages or dependencies),
+# update both Image= here and Environment=EXOCOMP_IMAGE below to match.
 Image=ghcr.io/abn/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
