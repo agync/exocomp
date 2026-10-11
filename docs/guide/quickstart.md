@@ -26,21 +26,19 @@ systemctl --user start exocomp
 
 The container starts rootless, mounts its dedicated volume to `/var/lib/exocomp`, and listens on loopback `127.0.0.1:8642`.
 
-## 2. Complete the initialization wizard
+## 2. Complete the setup wizard
 
 Run the interactive setup wizard via CLI or open the browser at `http://127.0.0.1:8642`:
 
 ```bash
-exocomp init
+exocomp setup
 ```
 
-The wizard guides through six idempotent steps:
-1. **Host identity**: Generates the age fleet identity key and wraps it with `systemd-creds`.
-2. **Secrets envelope**: Generates the root Data Encryption Key (DEK) and derives HKDF subkeys.
-3. **Backup legs**: Configures the three independent disaster recovery targets (local NAS, S3, Git).
-4. **Push notifications**: Configures the ntfy push topic for alert routing and approvals.
-5. **Git source**: Connects your homelab configuration Git repository.
-6. **Recovery kit verification**: Verifies that off-host credentials allow opening test snapshots.
+The wizard guides through four atomic steps before committing anything to disk:
+1. **Operator & identity**: Captures operator display name, detects host machine name, and generates an `exo-{machine}-{id}` ntfy topic.
+2. **Recovery kit phrase**: Displays the age recovery phrase and blocks until typed confirmation matches exactly.
+3. **First backup & restore drill**: Runs an immediate test backup and restores to a scratch path to prove recovery works before first operational use.
+4. **Hand over & commit**: Atomically mints identity, generates root secrets envelope, seals the ntfy configuration, attempts a test push, and prints the permanent recovery kit. Nothing is written to disk until this step is confirmed.
 
 ## 3. Print the recovery card
 

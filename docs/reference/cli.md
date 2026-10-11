@@ -39,6 +39,7 @@ These flags apply to all verbs:
 - `exocomp host list/key/add/rm`: Inspect SSH fleet keys and trusted host fingerprints.
 
 ### Cluster & Maintenance
+- `exocomp setup`: First-run interactive wizard (identity, recovery kit, backup drill, hand over).
 - `exocomp serve`: Run the control plane daemon.
 - `exocomp doctor`: Run environment, permissions, and toolchain checks.
 - `exocomp drain`: Cordon the daemon and await completion of in-flight work before host reboots.
@@ -50,12 +51,12 @@ These flags apply to all verbs:
 
 ## Machine-readable JSON output
 
-Passing `--output json` emits a structured envelope with deterministic error codes:
+Passing `--output json` emits a structured RFC 9457-compatible envelope with schema version:
 
 ```json
 {
+  "schema_version": 1,
   "kind": "job",
-  "status": "success",
   "data": {
     "id": "job_01j7abc...",
     "kind": "ansible.playbook",
