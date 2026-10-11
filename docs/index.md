@@ -11,81 +11,108 @@ okf_version: "0.2"
 Scale is one operator and a handful of hosts. Two constraints rule every decision here:
 **trivial bootstrap** and **trivial disaster recovery**.
 
-Start with [design/requirements.md](design/requirements.md) for what the project is for,
-[architecture/overview.md](architecture/overview.md) for how it is put together, or
-[operations/disaster-recovery.md](operations/disaster-recovery.md) for the property the
-whole thing is bought for.
+---
 
-## Decisions
+## 1. User guide (front and center)
 
-Foundational decisions — [adr/index.md](adr/index.md) holds the full table
+Task-oriented workflows and step-by-step guides for everyday homelab management — [guide/index.md](guide/index.md).
 
-| ADR | Decision |
+| Guide | Covers |
 |---|---|
-| [0001](adr/0001-thin-core-architecture.md) | Thin-core architecture over compose-first and hybrid: guardrails, redaction, and the recovery chain are only enforceable if one queue is the only execution path |
-| [0002](adr/0002-project-name-exocomp.md) | The name **exocomp** on `exocomp.dev`, after Control D's `ctrld` ruled out the working name |
-| [0003](adr/0003-secrets-envelope.md) | age recipients → DEK → HKDF subkeys, so one printed secret recovers everything — with the read-only storage credential on the kit |
-| [0004](adr/0004-opentofu-http-state-backend.md) | OpenTofu's HTTP state backend implemented in SQLite, sidestepping the MinIO/Garage conditional-write gap and giving state version history for free |
-| [0005](adr/0005-job-sandboxing-nono.md) | nono's `enforcing` tier as the Linux default; every job is denied the database, the keys, and every powerful local socket |
-| [0006](adr/0006-uv-toolchain-escape-hatch.md) | uv builds the Python layer, and `UV_TOOL_DIR` in the data volume turns that into a doctor-gated operator escape hatch |
+| [Quickstart](guide/quickstart.md) | 15-minute quickstart: Quadlet deployment, first-run wizard, and printing the recovery card |
+| [Sources and inventory](guide/sources.md) | Registering Git repositories, local directories, SSH fleet keys, and auto-onboarding hosts |
+| [Ansible automation](guide/ansible.md) | Running playbooks, ad-hoc execution, `--privileged` API egress, and `--check` config drift |
+| [OpenTofu infrastructure](guide/opentofu.md) | Workspaces, native SQLite HTTP state backend, plan diffs, CEL policies, and sealed outputs |
+| [Provision-to-converge handoffs](guide/handoffs.md) | Chaining OpenTofu apply to Ansible playbook execution in a single atomic ledger workflow |
+| [Secrets and fleet keys](guide/secrets.md) | Age envelope encryption, SOPS integration, run-secret bindings, and zero secret leakage |
+| [Health checks and probes](guide/checks.md) | Reachability matrix, CIDR network groups, probe targets, and check-triggered runs |
+| [Reactive automation](guide/reactive.md) | Webhooks, CEL event rule routing, push alerts, silence windows, and phone approvals |
+| [Mobile companion](guide/mobile.md) | Pairing phone via QR code, ntfy push notifications, and one-thumb approval decisions |
+| [AI agent integration](guide/agent-mcp.md) | Model Context Protocol (`POST /mcp`) setup with scoped bearer tokens for Claude Code / Cursor |
 
-## Architecture
+---
 
-How it is assembled, and which support claims are contractual —
-[architecture/index.md](architecture/index.md)
+## 2. Design and visual showcase (front and center)
+
+Interface design as a functional contract — [design/index.md](design/index.md).
 
 | Page | Covers |
 |---|---|
-| [Overview](architecture/overview.md) | Component map, the one-queue convergence property, state layout, standing commitments |
-| [Platform contract](architecture/platform-contract.md) | Tiers for systemd/Quadlet, rootless podman, docker-compose, and SELinux enforcing; the specified remote-access path |
-| [Execution](architecture/execution.md) | `ExecutorDriver` tiers `disabled` / `enforcing` / `container`, offline-restorable job dependencies, boot-time reconciliation |
-| [Reactive layer](architecture/reactive.md) | Webhook ingress, one event shape, CEL rules, the guardrails in ledger order, approvals, drift as an event, check probes with netgroup-classified peers |
+| [Visual showcase & gallery](design/gallery.md) | **Interface tour**: High-resolution screenshots of Web Dashboard (dark & light), OpenTofu plan diffs, live log tails, checks matrix, and TUI |
+| [Design invariants](design/INVARIANTS.md) | The five immutable design principles, color-plus-word rules, and UI vocabulary |
+| [Web design system](design/web-system.md) | CSS tokens, typography scale, tabular number invariants, and WCAG AA contrast rules |
+| [Terminal UI (TUI)](design/tui-system.md) | Bubble Tea/Lip Gloss terminal surface, 80x24 layout, keymaps, and Row 24 powerline strip |
+| [Machine token specification](design/DESIGN.md) | Full token catalog transcribed from `internal/web/tokens.css` for automated agents |
 
-## Design
+---
 
-Purpose, revision under review, and build order — [design/index.md](design/index.md)
+## 3. Contributor guide (front and center)
 
-| Page | Covers |
+How work lands here and what gates it — [contribution/index.md](contribution/index.md).
+
+| Guide | Covers |
 |---|---|
-| [Requirements](design/requirements.md) | Two hard constraints, six goals, the anti-scope contract, and what is deferred behind a named seam |
-| [Amendments](design/amendments.md) | The twelve normative changes from the 30-gap adversarial review |
-| [Delivery](design/delivery.md) | v0.1 / v0.5 / v1.0 with effort, and the risks carried into each |
-| [Design invariants](design/INVARIANTS.md) | The design philosophy, hard rules, and component vocabulary that survive any redesign |
+| [Developer setup](contribution/dev-setup.md) | Toolchain prerequisites (Go 1.23+, rootless Podman, `nono` sandbox) and git hooks activation |
+| [Developer workflow](contribution/dev-workflow.md) | Running `exocompd` in development mode, `templ` template generation, and local CLI testing |
+| [Testing and verification gates](contribution/testing.md) | `make check` fast loop, `make check-race`, mutation testing of safety guards, and Lima VM testbeds |
+| [Codebase architecture map](contribution/architecture.md) | Package relationships, unidirectional store boundaries, the step ledger, and the nono execution driver |
+| [Worktree lanes & branch hygiene](contribution/worktrees.md) | Parallel work in `.worktrees/`, linear commit history on `main`, and commit message conventions |
+| [Schema migrations](contribution/migrations.md) | Authoring forward-only SQLite migrations, `PRAGMA user_version`, and collision resolution |
 
-## Operations
+---
 
-Standing it up and getting it back — [operations/index.md](operations/index.md)
+## 4. Operations and cluster lifecycle
 
-| Page | Covers |
+Day-2 production operations, node-zero deployment, disaster recovery drills, and cluster maintenance — [operations/index.md](operations/index.md).
+
+| Runbook | Covers |
 |---|---|
-| [Bootstrap](operations/bootstrap.md) | The image + Quadlet deploy, the six-screen idempotent wizard, node-zero self-management, the separately versioned `recovery.sh`, adoption runbooks |
-| [Containers](operations/containers.md) | The base image and what it carries, running it as shipped, inheriting to add system packages or Python dependencies, offline and multi-arch builds, and capturing an operator's image for recovery |
-| [Running the daemon](operations/serve.md) | `exocomp serve` flags, the signal contract, the single-instance lock, and the daemon-aware CLI |
-| [Draining for a planned reboot](operations/drain-mode.md) | `exocomp drain` — cordon a running daemon, let in-flight work finish, poll "safe to reboot?", and list interrupted jobs afterwards |
-| [Disaster recovery](operations/disaster-recovery.md) | The three backup legs, the recovery chain, the dead-host runbook, the recovery card, failure modes, RPO/RTO, verification |
-| [Offline caches](operations/offline-caches.md) | Vendoring ansible collections and OpenTofu providers so a run does not depend on Galaxy or the tofu registry being reachable |
-| [Reacting to alerts](operations/reactive.md) | Wiring a monitor to the hooks, sealing push, writing rules, silencing, answering approvals, asking why a rule did not fire, running check probes and netgroups |
-| [Changelog](operations/CHANGELOG.md) | Software releases, features, and fixes — the newest-first release narrative |
+| [Bootstrap and deployment](operations/bootstrap.md) | Container Quadlet deploy, node-zero self-management, and adoption runbooks |
+| [Running the daemon](operations/serve.md) | `exocomp serve` flags, process lifecycle, signal handling, and single-instance locks |
+| [Planned reboot & drain mode](operations/drain-mode.md) | `exocomp drain` — cordoning the daemon, draining in-flight jobs, and reboot safety |
+| [Upgrade and rollback](operations/upgrade.md) | Zero-sudo upgrade choreography: mandatory pre-upgrade snapshots, binary swap, rollback |
+| [Containers and derived images](operations/containers.md) | Shipped OCI image, offline builds, and derived `FROM exocomp` custom containers |
+| [Disaster recovery](operations/disaster-recovery.md) | The 3 backup legs (NAS/S3/Git), recovery kit, and restoring onto a dead host |
+| [Cold-standby failover](operations/failover.md) | Replicated store takeover, Litestream fast-forward, and split-brain active lease guards |
+| [Offline caches and vendoring](operations/offline-caches.md) | Vendoring Ansible collections and OpenTofu providers for airgapped operations |
 
-## Bill of materials
+---
 
-What ships and under what license — [sbom/index.md](sbom/index.md)
+## 5. Technical reference
 
-| Page | Covers |
+Precise specifications and wire protocols — [reference/index.md](reference/index.md).
+
+| Reference | Covers |
 |---|---|
-| [Bill of materials](sbom/bill-of-materials.md) | Five layers with pins and licenses, the enforced budget rollup, and the GPL subprocess-boundary rule |
+| [Command line interface (CLI)](reference/cli.md) | Syntax, commands, global flags, and JSON envelope output (`--output json`) |
+| [Configuration files](reference/configuration.md) | Formats and schemas for `.exocomp/hooks.yml`, Quadlet unit definitions, and policies |
+| [Exit codes and error taxonomy](reference/exit-codes.md) | Exit code mappings, error domains, and failure classifications |
+| [REST API (`/api/v1`)](operations/api.md) | Wire endpoints, authentication, idempotency headers, and HTTP status mappings |
+| [MCP tool catalog](operations/mcp.md) | Model Context Protocol tools, input schemas, and scope definitions |
 
-## Contributing
+---
 
-How work lands here and what gates it — [contribution/index.md](contribution/index.md)
+## 6. Architecture & ADRs
+
+Foundational architectural design and immutable decisions — [architecture/index.md](architecture/index.md) & [adr/index.md](adr/index.md).
+
+- [Architecture overview](architecture/overview.md): Component map, the one-queue convergence property, state layout.
+- [Execution driver](architecture/execution.md): Sandbox tiers (`disabled`, `enforcing` with `nono`, `container`).
+- [Platform contract](architecture/platform-contract.md): Support tiers for systemd, Podman, and SELinux enforcing.
+- [Reactive layer](architecture/reactive.md): CEL evaluation, guardrails, and ledger ordering.
+- [ADRs 0001–0020](adr/index.md): Foundational architecture decision records.
+
+---
+
+## 7. Security & SBOM
+
+- [Threat model](security/threat-model.md): Assets, threat actors, attack surfaces, and accepted residuals.
+- [Bill of materials](sbom/bill-of-materials.md): Component pins, licenses, and memory/binary size budgets.
+
+---
 
 ## Conventions
 
-- Every cross-reference in this bundle is a relative link. No absolute paths, no local file
-  URLs.
+- Every cross-reference in this bundle is a relative link.
 - ADRs are appended and superseded, never rewritten to change meaning.
-- Docs move with the change: this bundle is updated in the same commit series as the code
-  it describes. If docs and code disagree, the code wins and the correction lands in
-  [log.md](log.md).
-- Structural changes to this bundle — pages added, deprecated, or moved — are recorded in
-  [log.md](log.md). It is a knowledge-base evolution log, not a software changelog.
+- Docs move with code: structural changes are recorded in [log.md](log.md).

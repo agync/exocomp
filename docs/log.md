@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-11
+
+- **Restructure**: Reorganized `docs/` into a user-guide-led, design-rich, and contributor-forward OKF v0.2 bundle:
+  - Created `docs/guide/`: [index.md](guide/index.md), [quickstart.md](guide/quickstart.md), [sources.md](guide/sources.md), [ansible.md](guide/ansible.md), [opentofu.md](guide/opentofu.md), [handoffs.md](guide/handoffs.md), [secrets.md](guide/secrets.md), [checks.md](guide/checks.md), [reactive.md](guide/reactive.md), [mobile.md](guide/mobile.md), [agent-mcp.md](guide/agent-mcp.md).
+  - Promoted UI design & screenshots front and center in `docs/design/`: added [gallery.md](design/gallery.md) (full multi-theme and mobile showcase), [web-system.md](design/web-system.md), [tui-system.md](design/tui-system.md), and curated visual assets under `docs/design/assets/`.
+  - Expanded contributor manual in `docs/contribution/`: added [dev-setup.md](contribution/dev-setup.md), [dev-workflow.md](contribution/dev-workflow.md), [testing.md](contribution/testing.md), [architecture.md](contribution/architecture.md), [worktrees.md](contribution/worktrees.md), and [migrations.md](contribution/migrations.md).
+  - Established `docs/reference/`: [index.md](reference/index.md), [cli.md](reference/cli.md), [configuration.md](reference/configuration.md), and [exit-codes.md](reference/exit-codes.md).
+  - Re-scoped `docs/operations/` to focus strictly on Day-2 cluster lifecycle, maintenance, disaster recovery, and failover runbooks.
+  - Copied release changelog to repository root `CHANGELOG.md`.
+
 ## 2026-10-10
 
 - **Moved**: `history/` left this bundle. The three candidate designs, the completeness

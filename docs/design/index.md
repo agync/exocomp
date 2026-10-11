@@ -1,27 +1,27 @@
-# Design
+---
+type: Reference
+title: "Design system and surfaces"
+description: "The exocomp design philosophy, visual showcase, design tokens, and surface architectures across Web, Mobile, and TUI."
+status: stable
+tags: [design, ui, tui, tokens, philosophy]
+---
 
-What the project is for, the users it targets, and the order in which it gets built.
+# Design system and surfaces
+
+exocomp treats user interface design as a functional contract: status before detail, failure louder than success, and zero decoration that does not inform the operator.
+
+Dark is the native theme; Light is a warm, low-chroma remap inspired by physical laboratory notebooks.
+
+## Visual showcase and guides
 
 | Page | Covers |
 |---|---|
-| [Requirements](requirements.md) | The two hard constraints, the six goals, the anti-scope contract, and what is deferred with a named seam |
-| [Personas](personas.md) | The four target users: estate, goals, and the constraint that decides adoption |
-| [Amendments](amendments.md) | The twelve normative changes that override the candidate design wherever they differ |
-| [Delivery](delivery.md) | Milestones v0.1 / v0.5 / v1.0 with effort, and the risks carried into each |
-| [v1 acceptance bar](v1-acceptance.md) | The five end-to-end stories that gate v1.0 |
-| [v1.1+ roadmap](v1.1-roadmap.md) | The ranked backlog after v1.0 (generic CLI, drift/deadline signals, rotation, rolling strategy, self-DR) |
-| [Agent interface](agent-interface.md) | The three programmatic faces (remote CLI, HTTP `/api/v1`, MCP), the wire envelope, and the error/exit-code taxonomy |
-| [Bootstrap-first chain](bootstrap-first.md) | The ansible-first-then-tofu handoff for the Kubernetes case, and its credential capture |
-| [BYO runner](byo-runner.md) | Why the container/bring-your-own-runner tier stays deferred, its shape if built, and the per-job resource caps that are built |
-| [Check-triggered runs](check-triggered-runs.md) | Checks (named probe-sets), network groups (named CIDR sets), and the governed `playbook` rule action that let a run trigger on a reachability or health transition |
-| [UI brief](ui-brief.md) | Design brief for the web UI and phone approval surface |
-| [TUI brief](tui-brief.md) | Design brief for the terminal surface: constraints, screens, deliverables |
-| [Design invariants](INVARIANTS.md) | The design philosophy, hard rules, and component vocabulary that survive any redesign |
-| [Web UI renders](web-ui-renders.md) | Screen renders of the shipped web surface: the v0.3 realignment set and the dashboard in both themes, with where they are already stale |
-| [Web design tokens](../internal/web/tokens.css) | The tokens every web surface renders from |
-| [TUI design notes](reference/tui/) | Keymap, colors, empty-state copy, and states; the golden frames live at `internal/tui/testdata/frames/` |
-| [First-run walkthrough](first-run-walkthrough.html) | Static HTML mockup of the init → onboard → first run flow on the design tokens |
+| [Visual showcase & gallery](gallery.md) | **[FRONT & CENTER]** High-resolution screenshots of the Web Dashboard (dark & light), OpenTofu plan diffs, live log tails, checks matrix, and TUI |
+| [Design invariants](INVARIANTS.md) | The five immutable design principles, color-plus-word rules, and UI vocabulary |
+| [Web design system](web-system.md) | CSS design tokens, typography scale, tabular number invariants, and WCAG AA contrast rules |
+| [Terminal UI (TUI)](tui-system.md) | Bubble Tea/Lip Gloss terminal surface, 80x24 layout, keymaps, and Row 24 powerline strip |
+| [Machine token specification](DESIGN.md) | Full token catalog transcribed from `internal/web/tokens.css` for automated agents |
 
-The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)). The
-three candidates it was chosen from, the critique that reshaped them, and the research notes
-behind them are archived in the exocomp design phase of the lab wiki.
+## Foundational design decisions
+
+The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)). Historical design phase research notes and candidate critiques are archived in the exocomp section of the lab wiki.
