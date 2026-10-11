@@ -37,6 +37,14 @@ func newRestoreCmd() *cobra.Command {
 			"its manifest. It refuses a destination that already holds a keyring.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if dest == "" {
+				resolved, err := dataDir()
+				if err != nil {
+					return fmt.Errorf("restore: --dest required: %w", err)
+				}
+				dest = resolved
+			}
+
 			// The replica leg restores the database only and returns before
 			// the restic source is parsed, so a --snapshot selector handed
 			// alongside it would be silently dropped — refuse it instead
@@ -80,7 +88,7 @@ func newRestoreCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(), "WARNING: "+msg)
 			}
 
-			manifest, err := backup.RestoreLatest(cmd.Context(), src, dest)
+			manifest, err := backup.Restore(cmd.Context(), src, dest)
 			if err != nil {
 				return err
 			}
@@ -107,7 +115,7 @@ func newRestoreCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&from, "from", "", "target uri, or kind:uri (restic_local|restic_s3|git)")
-	cmd.Flags().StringVar(&dest, "dest", "", "data dir to rebuild; must not already hold a keyring")
+	cmd.Flags().StringVar(&dest, "dest", "", "data dir to rebuild; defaults to configured data dir, must not already hold a keyring")
 	cmd.Flags().StringVar(&identity, "identity", "", "age identity file holding the recovery key")
 	cmd.Flags().StringVar(&name, "target-name", "",
 		"target name the repository password was derived from; read from RECOVERY.md when empty")
@@ -129,8 +137,8 @@ func newRestoreCmd() *cobra.Command {
 		"acknowledge a plaintext public-remote replica — Litestream does not encrypt, so this "+
 			"asserts the store itself is encrypted; a LAN-local or file replica needs no ack")
 	// --from is required for the restic restore but meaningless for the
-	// litestream path, so it is validated in RunE, not marked globally required.
-	_ = cmd.MarkFlagRequired("dest")
+	// litestream path; --dest defaults to dataDir() if empty. Both are validated
+	// in RunE, not marked globally required.
 	return cmd
 }
 

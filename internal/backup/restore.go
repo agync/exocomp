@@ -108,10 +108,11 @@ func inferKind(uri string) string {
 	return KindResticLocal
 }
 
-// RestoreLatest rebuilds a data dir at dest from the newest snapshot on one
-// target. It verifies every sha256 in the manifest before writing anything
-// into dest, and refuses a dest that already holds a keyring.
-func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, error) {
+// Restore rebuilds a data dir at dest from the newest snapshot on one target,
+// or from the specific snapshot src.Snapshot selects. It verifies every sha256
+// in the manifest before writing anything into dest, and refuses a dest that
+// already holds a keyring.
+func Restore(ctx context.Context, src Source, dest string) (Manifest, error) {
 	if src.Driver == nil {
 		src.Driver = executor.NewShell()
 	}
@@ -164,6 +165,11 @@ func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, erro
 		return Manifest{}, err
 	}
 	return manifest, nil
+}
+
+// RestoreLatest is an alias for Restore, kept for backward compatibility.
+func RestoreLatest(ctx context.Context, src Source, dest string) (Manifest, error) {
+	return Restore(ctx, src, dest)
 }
 
 func checkDest(dest string) error {
