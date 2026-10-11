@@ -1,26 +1,19 @@
-# Base images are declared once and pinned. The toolchain pins live in
-# packaging/MANIFEST.json (ADR 0006); the downloaded artifacts are pinned by
-# sha256 in packaging/tool-digests.txt. uv is pinned by digest because it is
-# lifted out of its image whole, the pattern uv's own Docker guide documents.
 ARG GO_IMAGE=docker.io/library/golang:1.26
 ARG FEDORA_IMAGE=registry.fedoraproject.org/fedora-minimal:44
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b065908a4cd6bfb66b531a9c424c8e25e142
 
+# --- Build exocompd binary ---
 FROM ${GO_IMAGE} AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -o /out/exocompd ./cmd/exocomp
+RUN CGO_ENABLED=0 go build -trimpath -o /out/exocompd ./cmd/exocomp
 
-# uv ships as static binaries; /uv and /uvx are copied out of it below.
+# --- Static uv binaries ---
 FROM ${UV_IMAGE} AS uv
 
-# The pinned subprocess tools. Each is fetched over TLS and checked against the
-# sha256 recorded in tool-digests.txt, so the build fails on a substituted
-# artifact rather than shipping it. git is the one exception: upstream publishes
-# no binary release to pin, so it comes from Fedora's signed repository in the
-# runtime stage and its resolved version is recorded in MANIFEST.json instead.
+# --- Pinned subprocess tools ---
 FROM ${FEDORA_IMAGE} AS tools
 ARG TARGETARCH=amd64
 ARG TOFU_VERSION=1.11.5
@@ -28,21 +21,22 @@ ARG RESTIC_VERSION=0.19.1
 ARG AGE_VERSION=1.3.1
 ARG SOPS_VERSION=3.13.3
 ARG NONO_VERSION=0.74.0
+
 RUN dnf -y install --setopt=install_weak_deps=0 ca-certificates curl tar gzip bzip2 unzip \
     && dnf clean all
+
 WORKDIR /tools
 COPY packaging/tool-digests.txt .
-# One shell so a failed checksum stops the build: sha256sum -c exits non-zero
-# and `set -e` turns that into a failed layer.
+
 RUN set -eu; \
-    fetch() { \
-      name="$1"; url="$2"; \
-      digest="$(grep "^${name} ${TARGETARCH} " tool-digests.txt | cut -d' ' -f3)"; \
-      [ -n "$digest" ] || { echo "no digest pinned for $name/$TARGETARCH" >&2; exit 1; }; \
-      curl -fsSL --retry 3 -o "/tmp/$name.dl" "$url"; \
-      echo "$digest  /tmp/$name.dl" | sha256sum -c -; \
-    }; \
     mkdir -p /out/bin; \
+    fetch() { \
+        name="$1"; url="$2"; \
+        digest="$(grep "^${name} ${TARGETARCH} " tool-digests.txt | cut -d' ' -f3)"; \
+        [ -n "$digest" ] || { echo "no digest pinned for $name/$TARGETARCH" >&2; exit 1; }; \
+        curl -fsSL --retry 3 -o "/tmp/$name.dl" "$url"; \
+        echo "$digest  /tmp/$name.dl" | sha256sum -c -; \
+    }; \
     fetch tofu "https://github.com/opentofu/opentofu/releases/download/v${TOFU_VERSION}/tofu_${TOFU_VERSION}_linux_${TARGETARCH}.zip"; \
     unzip -j -o /tmp/tofu.dl tofu -d /out/bin; \
     fetch restic "https://github.com/restic/restic/releases/download/v${RESTIC_VERSION}/restic_${RESTIC_VERSION}_linux_${TARGETARCH}.bz2"; \
@@ -55,23 +49,23 @@ RUN set -eu; \
     case "$TARGETARCH" in amd64) nono_arch=x86_64 ;; arm64) nono_arch=aarch64 ;; *) exit 1 ;; esac; \
     fetch nono "https://github.com/nolabs-ai/nono/releases/download/v${NONO_VERSION}/nono-v${NONO_VERSION}-${nono_arch}-unknown-linux-gnu.tar.gz"; \
     tar -xzf /tmp/nono.dl -C /tmp; \
-    find /tmp -maxdepth 3 -type f -name nono -exec cp {} /out/bin/nono \; ; \
+    cp /tmp/nono-*/nono /out/bin/nono; \
     chmod 0755 /out/bin/*; \
-    rm -rf /tmp/*.dl /tmp/age
+    rm -rf /tmp/*.dl /tmp/age /tmp/nono*
 
-# The Python layer, built with uv (ADR 0006): a standalone CPython plus one
-# keyed tool install, pinned by the committed constraints file so the resolved
-# set is the same on every build.
+# --- Python toolchain (ansible-core & runner) ---
 FROM ${FEDORA_IMAGE} AS toolchain
 ARG PYTHON_VERSION=3.14.0
 ARG ANSIBLE_CORE_VERSION=2.21.3
 ARG ANSIBLE_RUNNER_VERSION=2.4.3
+
 COPY --from=uv /uv /uvx /bin/
 ENV UV_PYTHON_INSTALL_DIR=/opt/exocomp/python \
     UV_TOOL_DIR=/opt/exocomp/toolchain \
     UV_TOOL_BIN_DIR=/opt/exocomp/bin \
     UV_CACHE_DIR=/tmp/uv-cache \
     UV_NO_PROGRESS=1
+
 COPY packaging/toolchain-constraints.txt /tmp/constraints.txt
 RUN set -eu; \
     uv python install "${PYTHON_VERSION}"; \
@@ -83,53 +77,32 @@ RUN set -eu; \
     rm -rf "${UV_CACHE_DIR}"; \
     /opt/exocomp/bin/ansible-playbook --version
 
+# --- Runtime image ---
 FROM ${FEDORA_IMAGE} AS runtime
-# git is a subprocess, never linked (the GPL boundary in the bill of
-# materials), and openssh-clients is what ansible connects to hosts with.
+
 RUN dnf -y install --setopt=install_weak_deps=0 ca-certificates git-core openssh-clients \
     && dnf clean all
+
 COPY --from=uv /uv /uvx /bin/
 COPY --from=tools /out/bin/ /usr/local/bin/
 COPY --from=toolchain /opt/exocomp /opt/exocomp
 COPY --from=build /out/exocompd /usr/local/bin/exocompd
-# The baked toolchain is what the image resolves, and what DR-path runbooks
-# always execute (ADR 0006). The operator escape hatch is opt-in: setting
-# UV_TOOL_DIR=/var/lib/exocomp/toolchain and UV_CACHE_DIR=/var/lib/exocomp/uv
-# on the container moves `uv tool install` into the data volume, so a switched
-# ansible-core survives restarts and rides inside every backup. It is not the
-# default here, because a fresh restore has the image before it has the volume.
-# MANIFEST.json is the frozen toolchain pins (ADR 0006); the build fills the one
-# field it cannot know at authoring time — git, which comes from Fedora's signed
-# repo and whose resolved version is not a pin here.
+
+# Record resolved runtime git version in the toolchain manifest
 COPY packaging/MANIFEST.json /opt/exocomp/MANIFEST.json
-RUN set -eu; \
-    gitver="$(git --version | awk '{print $3}')"; \
-    awk -v g="$gitver" '/"git":/{sub(/"git":.*/, "\"git\": \"" g "\"")}1' \
-      /opt/exocomp/MANIFEST.json > /opt/exocomp/MANIFEST.json.tmp \
-    && mv /opt/exocomp/MANIFEST.json.tmp /opt/exocomp/MANIFEST.json
-# EXOCOMP_TOOLCHAIN_MANIFEST points the daemon at the manifest so a per-source
-# venv's default ansible-core is READ from the shipped pin, not the binary's
-# compiled fallback — the fallback stays for a run outside this image.
+RUN gitver="$(git --version | awk '{print $3}')" \
+    && sed -i "s/\"git\": \"\"/\"git\": \"$gitver\"/" /opt/exocomp/MANIFEST.json
+
 ENV PATH=/opt/exocomp/bin:/usr/local/bin:/usr/bin:/bin \
     EXOCOMP_TOOLCHAIN_MANIFEST=/opt/exocomp/MANIFEST.json
-# 0700 is the only mode the data dir may have: it holds host.key and the
-# keyring, and `exocomp doctor` refuses to run against anything wider.
-#
-# uid 1000 also needs a home. Without one ansible-core resolves ~/.ansible to
-# /.ansible and refuses to start, and the sandbox launcher cannot write the
-# session state it keeps under $HOME. It is deliberately not the data volume:
-# tool scratch has no business inside what every backup copies.
+
 RUN mkdir -p /var/lib/exocomp /home/exocomp \
     && chown 1000:1000 /var/lib/exocomp /home/exocomp \
     && chmod 0700 /var/lib/exocomp /home/exocomp
+
 VOLUME ["/var/lib/exocomp"]
-# The data dir is <XDG_DATA_HOME>/exocomp, and uid 1000 has no home here:
-# without this the daemon resolves it under /, cannot create it, and exits.
 ENV XDG_DATA_HOME=/var/lib \
     HOME=/home/exocomp
 USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/exocompd"]
-# exocompd is the CLI; the daemon is one of its subcommands. Without this the
-# container starts, prints the help, and exits — a control plane that never
-# ran. `podman run <image> <subcommand>` still overrides it.
 CMD ["serve"]
