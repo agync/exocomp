@@ -195,11 +195,19 @@ func closedLoopback(t *testing.T) (string, int) {
 	return "", 0
 }
 
-func TestRunPing(t *testing.T) {
-	t.Parallel()
+func skipWithoutICMP(t *testing.T) {
+	t.Helper()
 	if _, err := exec.LookPath("ping"); err != nil {
 		t.Skip("no ping binary on this host")
 	}
+	if err := exec.Command("ping", "-c", "1", "-W", "1", "127.0.0.1").Run(); err != nil {
+		t.Skipf("host cannot send ICMP (missing cap_net_raw or unprivileged container): %v", err)
+	}
+}
+
+func TestRunPing(t *testing.T) {
+	t.Parallel()
+	skipWithoutICMP(t)
 	res := Run(context.Background(), Spec{Kind: KindPing, Address: "127.0.0.1"},
 		Options{Timeout: 3 * time.Second, AllowLoopback: true})
 	if !res.Up {
@@ -212,9 +220,7 @@ func TestRunPing(t *testing.T) {
 // and answers when it is true.
 func TestRunPingGuardBothWays(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("ping"); err != nil {
-		t.Skip("no ping binary on this host")
-	}
+	skipWithoutICMP(t)
 	spec := Spec{Kind: KindPing, Address: "127.0.0.1"}
 	ctx := context.Background()
 

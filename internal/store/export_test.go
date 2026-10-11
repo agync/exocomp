@@ -30,3 +30,9 @@ func (s *Store) UpdateJobEventForTest(jobID, seq int64, msg string) error {
 		`UPDATE job_event SET msg = ? WHERE job_id = ? AND seq = ?`, msg, jobID, seq)
 	return err
 }
+
+// PingCapableForTest exposes pingCapable so external test packages can check
+// whether the host environment can actually send ICMP.
+func PingCapableForTest() error {
+	return pingCapable()
+}

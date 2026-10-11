@@ -3,7 +3,6 @@ package store_test
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -574,8 +573,8 @@ func TestCheckPingRefusedWhenBinaryMissing(t *testing.T) {
 
 func TestCheckPingAddsWhenHostCanICMP(t *testing.T) {
 	t.Parallel()
-	if _, err := exec.LookPath("ping"); err != nil {
-		t.Skip("no ping binary on this host; the capability probe cannot pass")
+	if err := store.PingCapableForTest(); err != nil {
+		t.Skipf("host cannot ICMP (the capability probe cannot pass): %v", err)
 	}
 	st := openReactive(t)
 	ctx := context.Background()
