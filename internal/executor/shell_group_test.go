@@ -49,6 +49,9 @@ func alive(pid int) bool {
 // leave the helpers it spawned running, and their inherited pipes would keep
 // the job from ever reaching a terminal state.
 func TestShellRunCancelSignalsTheProcessGroup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow process-group shell test in short mode")
+	}
 	t.Parallel()
 
 	pidfile := filepath.Join(t.TempDir(), "grandchild.pid")
@@ -98,6 +101,9 @@ func TestShellRunCancelSignalsTheProcessGroup(t *testing.T) {
 // outcome is the exit code it already has — waiting for that helper's EOF made
 // the run last as long as the helper did.
 func TestShellRunDoesNotWaitOnAnInheritedPipe(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping slow process-group shell test in short mode")
+	}
 	t.Parallel()
 
 	pidfile := filepath.Join(t.TempDir(), "grandchild.pid")
