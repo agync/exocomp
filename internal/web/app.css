@@ -1505,7 +1505,7 @@ body { overflow-x: clip; }
  * load-bearing; every other list keeps the 44px tray row. Each cell is a
  * primary line over a meta line on shared baselines, and the whole row is the
  * link to the job's detail page. */
-.jobslist { padding-bottom: 8px; }
+.jobslist { padding-bottom: 8px; overflow-x: auto; min-width: 0; }
 /* The jobs filter (R4, SPEC §2.3): the list's one search sits alone above the
  * header row, right-aligned on desktop (the old .listmeta flex row is gone —
  * the count moved to the app bar). Full-width on phone via the 719 block. */
@@ -1517,7 +1517,7 @@ body { overflow-x: clip; }
 }
 .jobshead {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 290px 160px 110px;
+  grid-template-columns: 44px minmax(100px, 1.5fr) minmax(110px, 1.2fr) minmax(80px, 1fr) minmax(70px, 0.8fr);
   gap: var(--gap-cell); align-items: center; height: 30px; padding: 0 14px;
   font: 600 10.5px var(--font-mono); letter-spacing: .8px;
   color: var(--ink-500);
@@ -1525,7 +1525,7 @@ body { overflow-x: clip; }
 }
 .jobs-row {
   display: grid;
-  grid-template-columns: 44px minmax(0, 1fr) 290px 160px 110px;
+  grid-template-columns: 44px minmax(100px, 1.5fr) minmax(110px, 1.2fr) minmax(80px, 1fr) minmax(70px, 0.8fr);
   gap: var(--gap-cell); align-items: center; height: 64px;
   padding: 0 14px; border-radius: var(--radius-row);
   color: inherit; text-decoration: none;
@@ -1547,7 +1547,7 @@ body { overflow-x: clip; }
   font: var(--type-log); color: var(--ink-500);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.jobs-row .reason { font: 400 12px var(--font-mono); color: var(--ink-500); white-space: nowrap; }
+.jobs-row .reason { font: 400 12px var(--font-mono); color: var(--ink-500); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .jobs-row .reason--degraded { color: var(--signal-wait); }
 
 /* Dashboard queue rows: the /jobs two-line row reduced to the glance's
@@ -1839,6 +1839,8 @@ body { overflow-x: clip; }
 }
 .events-row .evt-received { color: var(--ink-500); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .events-row .evt-alert { color: var(--ink-100); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events-row .evt-alert a { color: inherit; text-decoration: underline; text-decoration-color: var(--hairline); }
+.events-row .evt-alert a:hover { color: var(--accent-text); text-decoration-color: currentColor; }
 .events-row .evt-source { color: var(--ink-500); white-space: nowrap; }
 .events-row .evt-rule { color: var(--ink-400); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .events-row .evt-outcome {

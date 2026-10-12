@@ -125,3 +125,27 @@ func TestColorSchemeThemes(t *testing.T) {
 		t.Error("the explicit dark override must declare color-scheme: dark")
 	}
 }
+
+// TestJobsTableResponsiveHalfScreen ensures .jobslist does not overflow on
+// half-screen desktops: .jobslist has overflow-x: auto, the grid columns have
+// flexible proportions that fit narrow viewports without collapsing the
+// Playbook name, and .reason ellipsizes if long.
+func TestJobsTableResponsiveHalfScreen(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	if !strings.Contains(app, ".jobslist { padding-bottom: 8px; overflow-x: auto; min-width: 0; }") {
+		t.Error(".jobslist missing overflow-x: auto; min-width: 0")
+	}
+	headRule := ruleDecl(app, ".jobshead {")
+	if !strings.Contains(headRule, "grid-template-columns: 44px minmax(100px, 1.5fr) minmax(110px, 1.2fr) minmax(80px, 1fr) minmax(70px, 0.8fr);") {
+		t.Errorf(".jobshead grid-template-columns must use flexible columns, got: %q", headRule)
+	}
+	rowRule := ruleDecl(app, ".jobs-row {")
+	if !strings.Contains(rowRule, "grid-template-columns: 44px minmax(100px, 1.5fr) minmax(110px, 1.2fr) minmax(80px, 1fr) minmax(70px, 0.8fr);") {
+		t.Errorf(".jobs-row grid-template-columns must use flexible columns, got: %q", rowRule)
+	}
+}
