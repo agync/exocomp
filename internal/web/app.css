@@ -2128,6 +2128,36 @@ body { overflow-x: clip; }
   .events-row .evt-pane { order: 7; width: 100%; }
   .events-row.evt-rule-dedup .evt-rule { display: none; }
   .events-row.evt-rule-unset .evt-rule { display: none; }
+
+  /* Rules tray phone: stack the four grid cells into a clean card per rule.
+   * Col header hides; line 1 is rule name + status chip with the explain toggle
+   * right-aligned; line 2 is the WHEN · THEN expression and guards; line 3 is
+   * the last fired time. */
+  .rule-row.tt-col { display: none; }
+  .rules-list { display: flex; flex-direction: column; gap: 8px; }
+  .rule-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-areas:
+      "id actions"
+      "whenthen whenthen"
+      "fired fired";
+    gap: 8px;
+    align-items: center;
+    padding: 12px 14px;
+    border: 1px solid var(--hairline-faint);
+    border-radius: var(--radius-card);
+    background: var(--surface-card);
+  }
+  .rule-row .rule-id { grid-area: id; min-width: 0; }
+  .rule-row .rule-explain { grid-area: actions; justify-self: end; }
+  .rule-row .when-then { grid-area: whenthen; min-width: 0; }
+  .rule-row .fired { grid-area: fired; min-width: 0; font-size: 12px; }
+  .rule-explain .expr-full {
+    min-width: 0;
+    max-width: calc(100vw - 48px);
+  }
+
   .queue-idle { height: auto; min-height: var(--row-h); padding: 8px 12px; gap: 10px; }
   .queue-idle .idle-full { display: none; }
   .queue-idle code, .queue-row .verb { display: none; }
