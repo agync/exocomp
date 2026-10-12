@@ -80,9 +80,10 @@ func ntfyRing(n ntfyCardVM) string {
 }
 
 // ntfyCardVerbs is the card's header verbs: ON carries the Test glyph (a POST
-// that sends one push and lands on the drawer with its status) and the ▾ into
-// the drawer; REFUSED's primary is Seal token → Secrets with the key prefilled
-// (the focus itself is A2's); OFF's quiet verb is Set up → Secrets.
+// that sends one push and lands on the drawer with its status), an Edit verb
+// opening the contextual setup/edit modal, and the ▾ into the drawer;
+// REFUSED's primary is Edit opening the modal; OFF renders Edit if configured,
+// otherwise Set up.
 templ ntfyCardVerbs(n ntfyCardVM, base string, operator bool) {
 	if n.State == NtfyStateOn {
 		<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/ntfy/test")) } class="inline-form">
@@ -90,16 +91,55 @@ templ ntfyCardVerbs(n ntfyCardVM, base string, operator bool) {
 				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphSend }></path></svg>
 			</button>
 		</form>
+		if operator {
+			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
+		}
 		<a class="raglyph" href={ templ.SafeURL(urlWithBase(base, "/system/ntfy")) } aria-label="Push channel" title="Push channel">
 			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg>
 		</a>
 	} else if n.State == NtfyStateRefused {
 		if operator {
-			<a class="btn primary small" href={ templ.SafeURL(urlWithBase(base, "/secrets?key=ntfy/token")) }>Seal token</a>
+			<button type="button" class="btn primary small" data-modal-open="ntfy-modal">Edit</button>
 		}
 	} else {
-		<a class="btn quiet small" href={ templ.SafeURL(urlWithBase(base, "/secrets")) }>Set up</a>
+		if operator {
+			if n.IsConfigured() {
+				<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
+			} else {
+				<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Set up</button>
+			}
+		}
 	}
+}
+
+// ntfyModal is the contextual modal for setting up or editing ntfy configuration.
+templ ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string) {
+	@modal("ntfy-modal", ntfyModalTitle(leg)) {
+		<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/ntfy/configure")) } class="writeform" id="ntfy-configure-form" novalidate>
+			@fieldInput(ntfyURLField(leg, form))
+			@fieldInput(ntfyTopicField(leg, form))
+			@fieldInput(ntfyTokenField(leg, form))
+			@formStatus(false, ntfyModalErrForm(form), "Saving ntfy")
+			<div class="actions">
+				<button type="button" class="btn" data-modal-dismiss>Cancel</button>
+				<button type="submit" class="btn primary">Save</button>
+			</div>
+		</form>
+		if form != nil && form.HasError() {
+			<script>
+			exoModalOpen("ntfy-modal");
+			var ntfyBad = document.querySelector('#ntfy-modal input[aria-invalid="true"]');
+			if (ntfyBad) ntfyBad.focus();
+			</script>
+		}
+	}
+}
+
+func ntfyModalTitle(n ntfyCardVM) string {
+	if n.IsConfigured() {
+		return "Configure ntfy"
+	}
+	return "Set up ntfy"
 }
 
 // ntfyDetailTerse names the terse position for the card's detail fact.

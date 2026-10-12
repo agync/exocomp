@@ -43,7 +43,7 @@ func (f *fakeNtfy) TestPush(context.Context, string) error {
 func serverWithNtfy(t *testing.T, h *harness, f NtfyDriver) *Server {
 	t.Helper()
 	srv, err := New(Options{
-		Store: h.store, Deriver: h.env, Plans: h.env, Ntfy: f,
+		Store: h.store, Deriver: h.env, Plans: h.env, Sealer: h.env, Ntfy: f,
 		Version: "test", DataDir: h.dir,
 	})
 	if err != nil {
@@ -165,8 +165,8 @@ func TestNtfyCardRefused(t *testing.T) {
 		"token <span class=\"nope\">missing</span>",
 		"a public topic without a token would publish approval links to anyone who guesses the name",
 		"approvals and failures are silent",
-		">Seal token</a>",
-		`href="/secrets?key=ntfy/token"`,
+		">Edit</button>",
+		`data-modal-open="ntfy-modal"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("REFUSED card missing %q", want)
@@ -201,7 +201,8 @@ func TestNtfyCardOff(t *testing.T) {
 		">OFF</span>",
 		`<span class="value dim">—</span>`,
 		"no channel · nothing sealed",
-		">Set up</a>",
+		">Set up</button>",
+		`data-modal-open="ntfy-modal"`,
 		"exocomp setup notify",
 	} {
 		if !strings.Contains(page, want) {
@@ -697,5 +698,98 @@ func TestPowerlineNtfyRefused(t *testing.T) {
 	}
 	if !strings.Contains(page, `class="pl-seg fail"`) {
 		t.Errorf("refused segment not fail-coloured: %s", page)
+	}
+}
+
+// TestNtfyModalAndConfigure tests the contextual setup/edit modal and write path:
+// URL/topic non-secrets, token auto-creation in secrets, and setup-to-edit transition.
+func TestNtfyModalAndConfigure(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithNtfy(t, h, &fakeNtfy{})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	// 1. Initial state: OFF, modal present, button is "Set up"
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	if !strings.Contains(page, `data-modal-open="ntfy-modal">Set up</button>`) {
+		t.Errorf("expected Set up button opening ntfy-modal, got: %s", page)
+	}
+	if !strings.Contains(page, `<dialog class="modal" id="ntfy-modal"`) {
+		t.Errorf("expected ntfy-modal dialog, got: %s", page)
+	}
+	if !strings.Contains(page, `id="ntfy-url"`) || !strings.Contains(page, `id="ntfy-topic"`) || !strings.Contains(page, `id="ntfy-token"`) {
+		t.Errorf("ntfy-modal missing url, topic, or token field: %s", page)
+	}
+
+	// 2. Refusal: public ntfy URL without token
+	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url":   {"https://ntfy.sh"},
+		"topic": {"my-alerts"},
+		"token": {""},
+	}, nil)
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("public ntfy without token = %d, want 422", resp.StatusCode)
+	}
+	refusalBody := readBody(t, resp)
+	if !strings.Contains(refusalBody, "ntfy.sh requires an access token") {
+		t.Errorf("expected public ntfy token refusal, got: %s", refusalBody)
+	}
+
+	// 3. Success: self-hosted URL without token
+	resp = postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url":   {"https://push.internal.lan"},
+		"topic": {"homelab-alerts"},
+	}, nil)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("self-hosted configure = %d, want 303", resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "/system" {
+		t.Errorf("redirect location = %q, want /system", loc)
+	}
+
+	// Verify settings and secrets
+	u, err := h.store.GetSetting(context.Background(), store.SettingNtfyURL)
+	if err != nil || u != "https://push.internal.lan" {
+		t.Errorf("SettingNtfyURL = %q, err = %v", u, err)
+	}
+	top, err := h.store.GetSetting(context.Background(), store.SettingNtfyTopic)
+	if err != nil || top != "homelab-alerts" {
+		t.Errorf("SettingNtfyTopic = %q, err = %v", top, err)
+	}
+	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyURL); err != nil {
+		t.Errorf("SecretNtfyURL not sealed: %v", err)
+	}
+	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyTopic); err != nil {
+		t.Errorf("SecretNtfyTopic not sealed: %v", err)
+	}
+
+	// 4. Now configured: button becomes "Edit"
+	code, page = getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system after configure = %d, want 200", code)
+	}
+	if !strings.Contains(page, `data-modal-open="ntfy-modal">Edit</button>`) {
+		t.Errorf("expected Edit button opening ntfy-modal after configuration, got: %s", page)
+	}
+	// Modal pre-fills configured values
+	if !strings.Contains(page, `value="https://push.internal.lan"`) || !strings.Contains(page, `value="homelab-alerts"`) {
+		t.Errorf("expected modal to pre-fill configured url and topic, got: %s", page)
+	}
+
+	// 5. Success with secret: public ntfy with token auto-creates ntfy/token in secrets
+	resp = postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url":   {"https://ntfy.sh"},
+		"topic": {"secure-topic-777"},
+		"token": {"tk_secret12345"},
+	}, nil)
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("public configure with token = %d, want 303", resp.StatusCode)
+	}
+	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyToken); err != nil {
+		t.Errorf("SecretNtfyToken not auto-created in secrets: %v", err)
 	}
 }

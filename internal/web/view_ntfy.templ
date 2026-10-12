@@ -48,7 +48,13 @@ templ viewNtfy(vm ntfyVM) {
 					<span class={ "word", templ.KV("missing", !vm.Leg.TokenSealed) }>{ presenceWord(vm.Leg.TokenSealed) }</span>
 				</div>
 			</div>
-			<p class="meta">values never render · <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets")) }>rotate in Secrets</a></p>
+			<p class="meta">
+				values never render ·
+				if vm.Operator {
+					<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit configuration</button> ·
+				}
+				<a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets")) }>rotate in Secrets</a>
+			</p>
 
 			<form id="ntfy-save-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/save")) } class="writeform" novalidate>
 				<label class="field">
@@ -145,6 +151,7 @@ templ viewNtfy(vm ntfyVM) {
 				<button type="submit" class="btn primary" form="ntfy-save-form" name="detail" value={ vm.Leg.Detail }>Save</button>
 			</div>
 		</div>
+		@ntfyModal(vm.Leg, vm.Modal, vm.Page.Base)
 		@ntfyDrawerJS(vm.Leg.Detail)
 	}
 }

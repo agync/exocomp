@@ -685,12 +685,22 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 func sealedLookup(st *store.Store, env *secrets.Envelope) notify.SecretLookup {
 	return func(ctx context.Context, name string) ([]byte, error) {
 		row, err := st.GetSecret(ctx, name)
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return env.OpenSecret(secrets.SealedSecret{
+				Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+			})
 		}
-		return env.OpenSecret(secrets.SealedSecret{
-			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
-		})
+		if name == notify.SecretNtfyURL {
+			if val, serr := st.GetSetting(ctx, store.SettingNtfyURL); serr == nil && val != "" {
+				return []byte(val), nil
+			}
+		}
+		if name == notify.SecretNtfyTopic {
+			if val, serr := st.GetSetting(ctx, store.SettingNtfyTopic); serr == nil && val != "" {
+				return []byte(val), nil
+			}
+		}
+		return nil, err
 	}
 }
 

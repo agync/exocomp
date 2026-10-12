@@ -15,6 +15,7 @@ type fieldMeta struct {
 	ID           string
 	Label        string
 	Name         string
+	Type         string
 	Value        string
 	Placeholder  string
 	Help         string
@@ -22,6 +23,14 @@ type fieldMeta struct {
 	ErrMsg       string
 	FixValue     string
 	FirstInvalid bool
+}
+
+// fieldType resolves the input type attribute, defaulting to "text".
+func fieldType(t string) string {
+	if t != "" {
+		return t
+	}
+	return "text"
 }
 
 // fieldInput is one labelled control in the forms pattern: label · control ·
@@ -34,7 +43,7 @@ type fieldMeta struct {
 templ fieldInput(f fieldMeta) {
 	<label class="field">
 		<span class="label">{ f.Label }</span>
-		<input class="control" id={ f.ID } name={ f.Name } value={ f.Value } spellcheck="false"
+		<input class="control" type={ fieldType(f.Type) } id={ f.ID } name={ f.Name } value={ f.Value } spellcheck="false"
 			placeholder={ f.Placeholder }
 			aria-invalid?={ f.ErrMsg != "" }
 			aria-describedby={ f.ID + "-meta" }

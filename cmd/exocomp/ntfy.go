@@ -35,12 +35,22 @@ func newNtfySeam(st *store.Store, env *secrets.Envelope) *ntfySeam {
 // look opens one sealed secret, exactly as the daemon's transport load does.
 func (n *ntfySeam) look(ctx context.Context, name string) ([]byte, error) {
 	row, err := n.store.GetSecret(ctx, name)
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return n.env.OpenSecret(secrets.SealedSecret{
+			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+		})
 	}
-	return n.env.OpenSecret(secrets.SealedSecret{
-		Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
-	})
+	if name == notify.SecretNtfyURL {
+		if val, serr := n.store.GetSetting(ctx, store.SettingNtfyURL); serr == nil && val != "" {
+			return []byte(val), nil
+		}
+	}
+	if name == notify.SecretNtfyTopic {
+		if val, serr := n.store.GetSetting(ctx, store.SettingNtfyTopic); serr == nil && val != "" {
+			return []byte(val), nil
+		}
+	}
+	return nil, err
 }
 
 // secret opens one sealed secret and reports whether it exists at all.

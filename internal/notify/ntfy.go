@@ -26,14 +26,18 @@ const (
 // channels: anyone who guesses the topic can read it and publish to it.
 const publicNtfyBase = "ntfy.sh"
 
-// isPublicNtfyHost reports whether host is ntfy.sh or any host under it. It
+// IsPublicNtfyHost reports whether host is ntfy.sh or any host under it. It
 // normalizes first: url.Hostname does not case-fold ("NTFY.SH") or strip the
 // trailing dot of a fully-qualified name ("ntfy.sh."), and either spelling
 // reaches the public server while a raw comparison would miss it and wave the
 // tokenless configuration through.
-func isPublicNtfyHost(host string) bool {
+func IsPublicNtfyHost(host string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	return host == publicNtfyBase || strings.HasSuffix(host, "."+publicNtfyBase)
+}
+
+func isPublicNtfyHost(host string) bool {
+	return IsPublicNtfyHost(host)
 }
 
 // ntfyTimeout bounds one publish. A phone that is not reachable must not hold

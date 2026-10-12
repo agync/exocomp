@@ -1,11 +1,14 @@
 package web
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/store"
 )
 
 // This file is the shared scaffolding for the browser write surface. Every
@@ -20,6 +23,29 @@ import (
 // available on this surface", the same fail-closed shape as a nil Decider.
 type Sealer interface {
 	Seal(name, kind string, pt []byte) (secrets.SealedSecret, error)
+}
+
+// sealSecret seals value under name and upserts it into the secret table.
+func (s *Server) sealSecret(ctx context.Context, name, kind, value string) error {
+	if s.sealer == nil {
+		return errors.New("sealing is not available on this surface")
+	}
+	sealed, err := s.sealer.Seal(name, kind, []byte(value))
+	if err != nil {
+		return err
+	}
+	row := store.SecretRow{
+		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce,
+		Ciphertext: sealed.Ciphertext, AAD: sealed.Name + "|" + sealed.Kind,
+		Source: store.SecretSourceUser,
+	}
+	if _, err := s.store.CreateSecret(ctx, row); err != nil {
+		if errors.Is(err, store.ErrDuplicate) {
+			return s.store.RotateSecret(ctx, name, sealed.Nonce, sealed.Ciphertext)
+		}
+		return err
+	}
+	return nil
 }
 
 // writeGuard is the preamble every mutating form handler shares: the caller must

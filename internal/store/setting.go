@@ -14,6 +14,8 @@ const (
 	// SettingOperator is the operator's display name, shown on the surfaces and
 	// recorded by the setup wizard.
 	SettingOperator = "operator.display_name"
+	// SettingNtfyURL is the server URL for ntfy (e.g. https://ntfy.sh or self-hosted).
+	SettingNtfyURL = "notify.ntfy_url"
 	// SettingNtfyTopic is the generated ntfy topic label, kept so the surfaces
 	// and a re-run can show the same channel the wizard minted.
 	SettingNtfyTopic = "notify.ntfy_topic"

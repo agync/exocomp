@@ -101,6 +101,7 @@ templ systemPage(vm systemVM) {
 		</div>
 
 		@kitModal(vm)
+		@ntfyModal(vm.Ntfy, vm.NtfyModal, vm.Page.Base)
 
 		<div class="sys-phone">
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")) }>

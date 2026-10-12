@@ -577,6 +577,8 @@ type systemVM struct {
 	// re-render. Value echoes the typed value so a refusal keeps it; ErrMsg is
 	// the field meta's ▲ sentence, ErrForm the form-status line's.
 	PubForm *pubFormVM
+	// NtfyModal is the ntfy setup/edit modal refusal state (nil at rest).
+	NtfyModal *ntfyModalVM
 }
 
 // legRowFigure reports whether a phone leg row's figure line carries a value.
@@ -910,13 +912,19 @@ type viewDeadmanVM struct {
 // Detail setting, and the sealed keys' presence. Values never render — a
 // sealed key is SEALED or MISSING, nothing else.
 type ntfyCardVM struct {
-	State       NtfyState
-	TopicLabel  string
-	ServerClass string
-	Detail      string
-	URLSealed   bool
-	TopicSealed bool
-	TokenSealed bool
+	State         NtfyState
+	TopicLabel    string
+	ConfiguredURL string
+	ServerClass   string
+	Detail        string
+	URLSealed     bool
+	TopicSealed   bool
+	TokenSealed   bool
+}
+
+// IsConfigured reports whether ntfy is configured (ON, REFUSED, or has URL/topic).
+func (n ntfyCardVM) IsConfigured() bool {
+	return n.State != NtfyStateOff || n.ConfiguredURL != "" || n.TopicLabel != "" || n.URLSealed
 }
 
 // ChipClass colours the ntfy leg's state chip: ok for ON, fail for REFUSED,
@@ -955,6 +963,101 @@ func (n ntfyCardVM) Figure() string {
 	return "—"
 }
 
+// ntfyModalVM is the ntfy setup/edit modal's form and refusal state.
+type ntfyModalVM struct {
+	URL      string
+	Topic    string
+	ErrURL   string
+	ErrTopic string
+	ErrToken string
+	ErrForm  string
+}
+
+func (m *ntfyModalVM) HasError() bool {
+	return m != nil && (m.ErrURL != "" || m.ErrTopic != "" || m.ErrToken != "" || m.ErrForm != "")
+}
+
+func ntfyURLField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
+	val := leg.ConfiguredURL
+	errMsg := ""
+	firstInvalid := false
+	if form != nil {
+		if form.URL != "" || form.HasError() {
+			val = form.URL
+		}
+		errMsg = form.ErrURL
+		firstInvalid = form.ErrURL != ""
+	}
+	return fieldMeta{
+		ID:           "ntfy-url",
+		Label:        "Server URL",
+		Name:         "url",
+		Type:         "url",
+		Value:        val,
+		Placeholder:  "https://ntfy.sh or https://push.example.com",
+		Help:         "Server endpoint for push notifications (e.g. https://ntfy.sh or self-hosted)",
+		ErrMsg:       errMsg,
+		FirstInvalid: firstInvalid,
+	}
+}
+
+func ntfyTopicField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
+	val := leg.TopicLabel
+	errMsg := ""
+	firstInvalid := false
+	if form != nil {
+		if form.Topic != "" || form.HasError() {
+			val = form.Topic
+		}
+		errMsg = form.ErrTopic
+		firstInvalid = form.ErrURL == "" && form.ErrTopic != ""
+	}
+	return fieldMeta{
+		ID:           "ntfy-topic",
+		Label:        "Topic",
+		Name:         "topic",
+		Type:         "text",
+		Value:        val,
+		Placeholder:  "e.g. exo-alerts",
+		Help:         "Channel topic name. Non-secret.",
+		ErrMsg:       errMsg,
+		FirstInvalid: firstInvalid,
+	}
+}
+
+func ntfyTokenField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
+	errMsg := ""
+	firstInvalid := false
+	if form != nil {
+		errMsg = form.ErrToken
+		firstInvalid = form.ErrURL == "" && form.ErrTopic == "" && form.ErrToken != ""
+	}
+	help := "Required for public ntfy.sh topics; auto-created in sealed secrets"
+	placeholder := "tk_..."
+	if leg.TokenSealed {
+		help = "Token currently sealed in secrets (leave blank to keep existing token)"
+		placeholder = "•••••••••••••••• (leave blank to keep)"
+	}
+	return fieldMeta{
+		ID:           "ntfy-token",
+		Label:        "Access Token / Secret (optional for self-hosted, required for ntfy.sh)",
+		Name:         "token",
+		Type:         "password",
+		Value:        "",
+		Placeholder:  placeholder,
+		Help:         help,
+		ErrMsg:       errMsg,
+		FirstInvalid: firstInvalid,
+	}
+}
+
+func ntfyModalErrForm(form *ntfyModalVM) string {
+	if form != nil {
+		return form.ErrForm
+	}
+	return ""
+}
+
 // ntfyTestStatus is the drawer's Test-verb status line: Class "ok" or "fail",
 // and the message copy. Msg carries the whole ok line ("test delivered ·
 // 12:24:51 · exocomp-7f3a") or the failure sentence ("the server refused the
@@ -973,6 +1076,7 @@ type ntfyVM struct {
 	Leg      ntfyCardVM
 	Status   ntfyTestStatus
 	Mutes    []muteRow
+	Modal    *ntfyModalVM
 }
 
 func (vm ntfyVM) HasStatus() bool { return vm.Status.Class != "" }

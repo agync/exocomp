@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -25,6 +26,8 @@ func init() { registerWrite((*Server).registerNtfyWrite) }
 func (s *Server) registerNtfyWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /system/ntfy/test", s.requireAuth(s.handleNtfyTest))
 	mux.HandleFunc("POST /system/ntfy/save", s.requireAuth(s.handleNtfySave))
+	mux.HandleFunc("POST /system/ntfy/configure", s.requireAuth(s.handleNtfyConfigure))
+	mux.HandleFunc("POST /system/ntfy/setup", s.requireAuth(s.handleNtfyConfigure))
 	mux.HandleFunc("POST /system/ntfy/mutes/{id}/clear", s.requireAuth(s.handleMuteClear))
 }
 
@@ -43,6 +46,23 @@ func (s *Server) ntfyLegState(ctx context.Context) (NtfyState, NtfySeamState) {
 		}
 	} else if _, err := s.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
 		st.URLSealed = true
+	}
+	if !st.URLSealed {
+		if u, err := s.store.GetSetting(ctx, store.SettingNtfyURL); err == nil && u != "" {
+			st.URLSealed = true
+		}
+	}
+	if !st.TopicSealed {
+		if _, err := s.store.GetSecret(ctx, notify.SecretNtfyTopic); err == nil {
+			st.TopicSealed = true
+		} else if t, err := s.store.GetSetting(ctx, store.SettingNtfyTopic); err == nil && t != "" {
+			st.TopicSealed = true
+		}
+	}
+	if !st.TokenSealed {
+		if _, err := s.store.GetSecret(ctx, notify.SecretNtfyToken); err == nil {
+			st.TokenSealed = true
+		}
 	}
 	if !st.URLSealed {
 		return NtfyStateOff, st
@@ -88,12 +108,16 @@ func (s *Server) ntfyCardVM(ctx context.Context) ntfyCardVM {
 	if l, err := s.store.GetSetting(ctx, store.SettingNtfyTopic); err == nil {
 		label = l
 	}
+	cfgURL := ""
+	if u, err := s.store.GetSetting(ctx, store.SettingNtfyURL); err == nil {
+		cfgURL = u
+	}
 	detail := ""
 	if d, err := s.store.GetSetting(ctx, store.SettingNtfyDetail); err == nil {
 		detail = ntfyDetail(string(d))
 	}
 	return ntfyCardVM{
-		State: state, TopicLabel: label, ServerClass: st.ServerClass,
+		State: state, TopicLabel: label, ConfiguredURL: cfgURL, ServerClass: st.ServerClass,
 		Detail: detail, URLSealed: st.URLSealed,
 		TopicSealed: st.TopicSealed, TokenSealed: st.TokenSealed,
 	}
@@ -249,4 +273,102 @@ func (s *Server) handleMuteClear(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("web: mute cleared", "id", strconv.FormatInt(id, 10), "by", ident.token.Name)
 	s.redirectFlash(w, r, "/system/ntfy#mutes", "mute cleared")
+}
+
+// handleNtfyConfigure saves the contextual modal's configuration: Server URL
+// and Topic are non-secrets saved into settings (and sealed in secrets if sealer
+// is available). If an access token/secret is provided, it is auto-created in
+// sealed secrets as ntfy/token.
+func (s *Server) handleNtfyConfigure(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	rawURL := strings.TrimSpace(r.PostFormValue("url"))
+	topic := strings.TrimSpace(r.PostFormValue("topic"))
+	token := strings.TrimSpace(r.PostFormValue("token"))
+	from := r.PostFormValue("from")
+	if from != "/system/ntfy" {
+		from = "/system"
+	}
+
+	form := ntfyModalVM{
+		URL:   rawURL,
+		Topic: topic,
+	}
+
+	u, err := url.Parse(rawURL)
+	if rawURL == "" {
+		form.ErrURL = "Give the ntfy server URL."
+	} else if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		form.ErrURL = "Enter a valid HTTP or HTTPS URL — like https://ntfy.sh"
+	}
+
+	if topic == "" {
+		form.ErrTopic = "Give the topic name."
+	}
+
+	if form.ErrURL == "" && u != nil {
+		if notify.IsPublicNtfyHost(u.Hostname()) {
+			_, tokenErr := s.store.GetSecret(r.Context(), notify.SecretNtfyToken)
+			hasToken := tokenErr == nil
+			if token == "" && !hasToken {
+				form.ErrToken = "ntfy.sh requires an access token to protect approval links — self-host ntfy, or provide an access token"
+			}
+		}
+	}
+
+	if form.HasError() {
+		s.log.Info("web: ntfy configure refused", "errURL", form.ErrURL, "errTopic", form.ErrTopic, "errToken", form.ErrToken, "by", ident.token.Name)
+		s.ntfyModalRefusal(w, r, from, &form)
+		return
+	}
+
+	if token != "" && s.sealer == nil {
+		form.ErrForm = "Sealing is not available on this surface."
+		s.ntfyModalRefusal(w, r, from, &form)
+		return
+	}
+
+	if err := s.store.PutSetting(r.Context(), store.SettingNtfyURL, rawURL); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	if err := s.store.PutSetting(r.Context(), store.SettingNtfyTopic, topic); err != nil {
+		s.fail(w, r, err)
+		return
+	}
+
+	if s.sealer != nil {
+		if err := s.sealSecret(r.Context(), notify.SecretNtfyURL, "url", rawURL); err != nil {
+			s.log.Error("web: seal ntfy url", "err", err)
+		}
+		if err := s.sealSecret(r.Context(), notify.SecretNtfyTopic, "topic", topic); err != nil {
+			s.log.Error("web: seal ntfy topic", "err", err)
+		}
+		if token != "" {
+			if err := s.sealSecret(r.Context(), notify.SecretNtfyToken, "token", token); err != nil {
+				s.log.Error("web: seal ntfy token", "err", err)
+			}
+		}
+	}
+
+	s.log.Info("web: ntfy configured", "by", ident.token.Name, "url", rawURL, "topic", topic)
+	s.redirectFlash(w, r, from, "ntfy configured")
+}
+
+func (s *Server) ntfyModalRefusal(w http.ResponseWriter, r *http.Request, from string, form *ntfyModalVM) {
+	if from == "/system/ntfy" {
+		vm := s.ntfyVMFor(r, ntfyTestStatus{})
+		vm.Modal = form
+		s.render(w, r, http.StatusUnprocessableEntity, viewNtfy(vm))
+		return
+	}
+	vm, err := s.systemVMFor(r)
+	if err != nil {
+		s.fail(w, r, err)
+		return
+	}
+	vm.NtfyModal = form
+	s.render(w, r, http.StatusUnprocessableEntity, systemPage(vm))
 }
