@@ -98,7 +98,13 @@ for _, sc := range vm.Schedules {
 										}
 									</td>
 									<td class="mono" data-label="Cron">{ sc.Cron }</td>
-									<td class="mono" data-label="Next fire">{ sc.Next }</td>
+									<td class="mono" data-label="Next fire">
+										if sc.NextAt != nil {
+											<time datetime={ sc.NextAtISO() } data-time-format="clock-short">{ sc.Next }</time>
+										} else {
+											{ sc.Next }
+										}
+									</td>
 									<td data-label="Last outcome">
 										if sc.HasLast {
 											<a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(sc.LastJobID))) }>
@@ -137,8 +143,26 @@ for _, sc := range vm.Schedules {
 						<div><dt>Tolerate unreachable</dt><dd>{ yesNo(sc.TolerateUnreachable) }</dd></div>
 					}
 					<div><dt>Enabled</dt><dd>@enabledChip(sc.Enabled, false)</dd></div>
-					<div><dt>Next fire</dt><dd class="mono">{ sc.Next }</dd></div>
-					<div><dt>Last fired</dt><dd class="mono">{ sc.LastRun }</dd></div>
+					<div>
+						<dt>Next fire</dt>
+						<dd class="mono">
+							if sc.NextAt != nil {
+								<time datetime={ sc.NextAtISO() } data-time-format="datetime">{ sc.Next }</time>
+							} else {
+								{ sc.Next }
+							}
+						</dd>
+					</div>
+					<div>
+						<dt>Last fired</dt>
+						<dd class="mono">
+							if sc.LastRunAt != nil {
+								<time datetime={ sc.LastRunAtISO() } data-time-format="datetime">{ sc.LastRun }</time>
+							} else {
+								{ sc.LastRun }
+							}
+						</dd>
+					</div>
 					<div>
 						<dt>Last outcome</dt>
 						<dd>

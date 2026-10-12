@@ -100,6 +100,7 @@ templ systemPage(vm systemVM) {
 			@backupsCard(vm)
 		</div>
 
+		@systemPreferences()
 		@kitModal(vm)
 		@ntfyModal(vm.Ntfy, vm.NtfyModal, vm.Page.Base)
 
@@ -232,3 +233,17 @@ templ kitModal(vm systemVM) {
 // The four leg cards live in leg_deadman.templ / leg_ntfy.templ /
 // leg_litestream.templ / leg_backups.templ — each carries the §0.1 anatomy
 // (word · figure · facts · one verb). The leg lanes L-S1..L-S4 own those files.
+
+// systemPreferences is the operator display preferences card: time display mode (Local vs UTC).
+templ systemPreferences() {
+	<section class="sys-pref" id="sys-prefs" aria-label="Preferences">
+		<div class="pref-lead">
+			<span class="pref-title">Time display</span>
+			<span class="meta" id="tz-current-desc">Viewer local timezone (<span class="tz-detected">local</span>)</span>
+		</div>
+		<div class="pref-switch switch" role="group" aria-label="Time display mode">
+			<button type="button" class="switch-opt" id="tz-btn-local" onclick="exoSetTimezone('local')">Local</button>
+			<button type="button" class="switch-opt" id="tz-btn-utc" onclick="exoSetTimezone('utc')">UTC</button>
+		</div>
+	</section>
+}

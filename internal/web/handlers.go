@@ -1119,7 +1119,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 			Rel:  humanAge(now.Sub(e.ReceivedAt)),
 			Name: wire.EventName(e), Rule: e.MatchedRule, Outcome: e.Outcome,
 			Reason: e.Reason, JobID: e.JobID, Normalized: prettyJSON(e.Normalized),
-			Trace: decodeSteps(e.Trace),
+			Trace: decodeSteps(e.Trace), ReceivedAt: e.ReceivedAt,
 		}
 		row = s.enrichEventRow(ctx, row, e)
 		vm.Rows = append(vm.Rows, row)
@@ -1191,7 +1191,7 @@ func (s *Server) handleEventTrace(w http.ResponseWriter, r *http.Request) {
 		Event: eventRow{
 			ID: ex.Event.ID, Source: ex.Event.Source, Received: clock(ex.Event.ReceivedAt),
 			Name: wire.EventName(ex.Event), Outcome: ex.Event.Outcome, Reason: ex.Event.Reason,
-			JobID: ex.Event.JobID,
+			JobID: ex.Event.JobID, ReceivedAt: ex.Event.ReceivedAt,
 		},
 	}
 	for _, c := range ex.Trace {
@@ -1229,6 +1229,7 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 		Title: jobTitle(j), CheckMode: hasFlag(j.Args.Argv, "--check"),
 		Duration: jobDuration(j, now), FinishedRel: jobFinishedRel(j, now),
 		FinishedClock: jobFinishedClock(j),
+		FinishedAt:    j.FinishedAt, QueuedAt: j.QueuedAt,
 	}
 	if j.Args.Source != "" {
 		row.Source = j.Args.Source

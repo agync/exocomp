@@ -61,8 +61,20 @@ templ tokensPage(vm tokensVM) {
 										<td data-label="Name">{ t.Name }</td>
 										<td data-label="Scope">{ t.Scope }</td>
 										<td data-label="Prefix" class="mono">{ t.Prefix }…</td>
-										<td data-label="Expires">{ t.Expires }</td>
-										<td data-label="Last used">{ t.LastUsed }</td>
+										<td data-label="Expires">
+											if t.ExpiresAt != nil {
+												<time datetime={ t.ExpiresAtISO() } data-time-format="datetime-short">{ t.Expires }</time>
+											} else {
+												{ t.Expires }
+											}
+										</td>
+										<td data-label="Last used">
+											if t.LastUsedAt != nil {
+												<time datetime={ t.LastUsedAtISO() } data-time-format="datetime-short">{ t.LastUsed }</time>
+											} else {
+												{ t.LastUsed }
+											}
+										</td>
 										<td data-label="State">@chip(tokenStateClass(t.State), t.State)</td>
 										<td data-label="Actions">
 											if !t.Self {

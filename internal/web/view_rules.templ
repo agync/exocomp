@@ -51,7 +51,11 @@ templ rulesList(vm rulesVM) {
 								</div>
 							</div>
 							<div class="fired">
-								<span class="mono">{ rl.LastFire }</span>
+								if rl.LastFireAt != nil {
+									<span class="mono"><time datetime={ rl.LastFireAtISO() } data-time-format="clock">{ rl.LastFire }</time></span>
+								} else {
+									<span class="mono">{ rl.LastFire }</span>
+								}
 								if rl.FireFact != "" {
 									<span class="mono">{ rl.FireFact }</span>
 								}

@@ -145,7 +145,23 @@ func (vm tokensVM) rotateExpiresField(name string) fieldMeta {
 
 type tokenRow struct {
 	Name, Scope, Prefix, Expires, LastUsed, State string
+	ExpiresAt                                     *time.Time
+	LastUsedAt                                    *time.Time
 	Self                                          bool
+}
+
+func (t tokenRow) ExpiresAtISO() string {
+	if t.ExpiresAt != nil {
+		return t.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
+}
+
+func (t tokenRow) LastUsedAtISO() string {
+	if t.LastUsedAt != nil {
+		return t.LastUsedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
 }
 
 // tokenResultVM shows a freshly minted or rotated secret once. Secret is the
@@ -214,6 +230,7 @@ func (s *Server) tokensVMFor(r *http.Request, form *tokenNewFormVM, rotate *toke
 			vm.Tokens = append(vm.Tokens, tokenRow{
 				Name: t.Name, Scope: t.Scope, Prefix: t.Prefix,
 				Expires: stampOrDashWeb(t.ExpiresAt), LastUsed: stampOrDashWeb(t.LastUsedAt),
+				ExpiresAt: t.ExpiresAt, LastUsedAt: t.LastUsedAt,
 				State: tokenStateWeb(t, now), Self: t.Name == ident.token.Name,
 			})
 		}

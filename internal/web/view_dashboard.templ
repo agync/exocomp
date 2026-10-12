@@ -169,13 +169,21 @@ templ queueRecentRow(j jobRow, base string) {
 			</a>
 			<a class="cell" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
 				<b class="mono">{ j.Duration }</b>
-				<small class="mono">{ j.FinishedRel }</small>
+				if j.FinishedAt != nil && j.FinishedRel != "" {
+					<small class="mono"><time datetime={ j.FinishedAtISO() } data-time-format="rel">{ j.FinishedRel }</time></small>
+				} else {
+					<small class="mono">{ j.FinishedRel }</small>
+				}
 			</a>
 			<a class="cell cell--qmeta" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-				<span class="qmeta">{ j.PhoneMeta() }</span>
+				<span class="qmeta" data-finished-at={ j.FinishedAtISO() } data-finished-rel={ j.FinishedRel }>{ j.PhoneMeta() }</span>
 			</a>
 			<a class="cell cell--qtime" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-				<span class="qtime">{ j.FinishedClock }</span>
+				if j.FinishedAt != nil && j.FinishedClock != "" {
+					<span class="qtime"><time datetime={ j.FinishedAtISO() } data-time-format="clock-short">{ j.FinishedClock }</time></span>
+				} else {
+					<span class="qtime">{ j.FinishedClock }</span>
+				}
 			</a>
 			if needsOperator(j.State) {
 				<a class="verb" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID) + "?rerun=1")) }>Rerun →</a>

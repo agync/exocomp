@@ -104,6 +104,10 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
+		templ_7745c5c3_Err = timeInit().Render(ctx, templ_7745c5c3_Buffer)
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
 		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 6, "</head><body>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
@@ -133,7 +137,7 @@ func layout(p page) templ.Component {
 		var templ_7745c5c3_Var8 templ.SafeURL
 		templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 35, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 36, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 		if templ_7745c5c3_Err != nil {
@@ -242,7 +246,7 @@ func layout(p page) templ.Component {
 		var templ_7745c5c3_Var9 templ.SafeURL
 		templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 75, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 76, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 		if templ_7745c5c3_Err != nil {
@@ -269,7 +273,7 @@ func layout(p page) templ.Component {
 				var templ_7745c5c3_Var10 templ.SafeURL
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(p.BackHref))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 83, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 84, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -282,7 +286,7 @@ func layout(p page) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs("Back to " + p.BackLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 83, Col: 119}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 84, Col: 119}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
@@ -295,7 +299,7 @@ func layout(p page) templ.Component {
 				var templ_7745c5c3_Var12 string
 				templ_7745c5c3_Var12, templ_7745c5c3_Err = templ.JoinStringErrs(p.BackLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 83, Col: 145}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 84, Col: 145}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var12))
 				if templ_7745c5c3_Err != nil {
@@ -313,7 +317,7 @@ func layout(p page) templ.Component {
 				var templ_7745c5c3_Var13 templ.SafeURL
 				templ_7745c5c3_Var13, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(p.BackHref))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 85, Col: 55}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 86, Col: 55}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var13))
 				if templ_7745c5c3_Err != nil {
@@ -337,7 +341,7 @@ func layout(p page) templ.Component {
 		var templ_7745c5c3_Var14 templ.SafeURL
 		templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 94, Col: 58}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 95, Col: 58}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 		if templ_7745c5c3_Err != nil {
@@ -358,7 +362,7 @@ func layout(p page) templ.Component {
 		var templ_7745c5c3_Var15 string
 		templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(p.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 99, Col: 41}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 100, Col: 41}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 		if templ_7745c5c3_Err != nil {
@@ -376,7 +380,7 @@ func layout(p page) templ.Component {
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(p.TitleSub)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 101, Col: 45}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 102, Col: 45}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
@@ -399,7 +403,7 @@ func layout(p page) templ.Component {
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(p.Meta)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 105, Col: 41}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 106, Col: 41}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
@@ -442,7 +446,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var20 templ.SafeURL
 					templ_7745c5c3_Var20, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(a.Href))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 111, Col: 99}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 112, Col: 99}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var20))
 					if templ_7745c5c3_Err != nil {
@@ -455,7 +459,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var21 string
 					templ_7745c5c3_Var21, templ_7745c5c3_Err = templ.JoinStringErrs(a.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 111, Col: 122}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 112, Col: 122}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var21))
 					if templ_7745c5c3_Err != nil {
@@ -468,7 +472,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var22 string
 					templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(a.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 111, Col: 140}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 112, Col: 140}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 					if templ_7745c5c3_Err != nil {
@@ -481,7 +485,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var23 string
 					templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(a.Glyph)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 112, Col: 195}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 113, Col: 195}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 					if templ_7745c5c3_Err != nil {
@@ -499,7 +503,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var24 templ.SafeURL
 					templ_7745c5c3_Var24, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(a.Href))
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 115, Col: 65}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 116, Col: 65}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var24))
 					if templ_7745c5c3_Err != nil {
@@ -512,7 +516,7 @@ func layout(p page) templ.Component {
 					var templ_7745c5c3_Var25 string
 					templ_7745c5c3_Var25, templ_7745c5c3_Err = templ.JoinStringErrs(a.Label)
 					if templ_7745c5c3_Err != nil {
-						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 115, Col: 77}
+						return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 116, Col: 77}
 					}
 					_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var25))
 					if templ_7745c5c3_Err != nil {
@@ -547,7 +551,7 @@ func layout(p page) templ.Component {
 			var templ_7745c5c3_Var26 string
 			templ_7745c5c3_Var26, templ_7745c5c3_Err = templ.JoinStringErrs(p.Flash)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 126, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 127, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var26))
 			if templ_7745c5c3_Err != nil {
@@ -641,7 +645,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var28 templ.SafeURL
 				templ_7745c5c3_Var28, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(c.Href))
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 157, Col: 35}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 158, Col: 35}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var28))
 				if templ_7745c5c3_Err != nil {
@@ -654,7 +658,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var29 string
 				templ_7745c5c3_Var29, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 157, Col: 47}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 158, Col: 47}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var29))
 				if templ_7745c5c3_Err != nil {
@@ -672,7 +676,7 @@ func breadcrumb(crumbs ...breadcrumbCrumb) templ.Component {
 				var templ_7745c5c3_Var30 string
 				templ_7745c5c3_Var30, templ_7745c5c3_Err = templ.JoinStringErrs(c.Label)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 159, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 160, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var30))
 				if templ_7745c5c3_Err != nil {
@@ -759,7 +763,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 			var templ_7745c5c3_Var33 templ.SafeURL
 			templ_7745c5c3_Var33, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 183, Col: 54}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 184, Col: 54}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var33))
 			if templ_7745c5c3_Err != nil {
@@ -780,7 +784,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 			var templ_7745c5c3_Var34 string
 			templ_7745c5c3_Var34, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 185, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 186, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var34))
 			if templ_7745c5c3_Err != nil {
@@ -816,7 +820,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var37 string
 				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(badge + " need attention")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 187, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
@@ -829,7 +833,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(badge)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 187, Col: 89}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -852,7 +856,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 			var templ_7745c5c3_Var39 templ.SafeURL
 			templ_7745c5c3_Var39, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(href))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 191, Col: 47}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 192, Col: 47}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var39))
 			if templ_7745c5c3_Err != nil {
@@ -865,7 +869,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 			var templ_7745c5c3_Var40 string
 			templ_7745c5c3_Var40, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 191, Col: 68}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 192, Col: 68}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var40))
 			if templ_7745c5c3_Err != nil {
@@ -886,7 +890,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 			var templ_7745c5c3_Var41 string
 			templ_7745c5c3_Var41, templ_7745c5c3_Err = templ.JoinStringErrs(label)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 193, Col: 16}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 194, Col: 16}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var41))
 			if templ_7745c5c3_Err != nil {
@@ -922,7 +926,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var44 string
 				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(badge + " need attention")
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 195, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 79}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
@@ -935,7 +939,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(badge)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 195, Col: 89}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 89}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {
@@ -983,7 +987,7 @@ func navicon(d string) templ.Component {
 		var templ_7745c5c3_Var47 string
 		templ_7745c5c3_Var47, templ_7745c5c3_Err = templ.JoinStringErrs(d)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 203, Col: 13}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 204, Col: 13}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var47))
 		if templ_7745c5c3_Err != nil {
@@ -1073,7 +1077,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var51 templ.SafeURL
 		templ_7745c5c3_Var51, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/system"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 235, Col: 168}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 236, Col: 168}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var51))
 		if templ_7745c5c3_Err != nil {
@@ -1086,7 +1090,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var52 string
 		templ_7745c5c3_Var52, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.DeadMan)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 236, Col: 74}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 237, Col: 74}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var52))
 		if templ_7745c5c3_Err != nil {
@@ -1121,7 +1125,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var55 templ.SafeURL
 		templ_7745c5c3_Var55, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/system"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 238, Col: 199}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 239, Col: 199}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var55))
 		if templ_7745c5c3_Err != nil {
@@ -1134,7 +1138,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var56 string
 		templ_7745c5c3_Var56, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.Ntfy)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 239, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 240, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var56))
 		if templ_7745c5c3_Err != nil {
@@ -1169,7 +1173,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var59 templ.SafeURL
 		templ_7745c5c3_Var59, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(p.Base, "/system"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 241, Col: 153}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 242, Col: 153}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var59))
 		if templ_7745c5c3_Err != nil {
@@ -1182,7 +1186,7 @@ func powerline(p page) templ.Component {
 		var templ_7745c5c3_Var60 string
 		templ_7745c5c3_Var60, templ_7745c5c3_Err = templ.JoinStringErrs(p.Signal.Disk)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 242, Col: 67}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 243, Col: 67}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var60))
 		if templ_7745c5c3_Err != nil {
@@ -1200,7 +1204,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var61 string
 			templ_7745c5c3_Var61, templ_7745c5c3_Err = templ.JoinStringErrs(p.Who)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 245, Col: 49}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 246, Col: 49}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var61))
 			if templ_7745c5c3_Err != nil {
@@ -1213,7 +1217,7 @@ func powerline(p page) templ.Component {
 			var templ_7745c5c3_Var62 string
 			templ_7745c5c3_Var62, templ_7745c5c3_Err = templ.JoinStringErrs(p.Scope)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 245, Col: 64}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 246, Col: 64}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var62))
 			if templ_7745c5c3_Err != nil {
@@ -1406,7 +1410,9 @@ func selectInit() templ.Component {
 	})
 }
 
-func layoutReady() templ.Component {
+// timeInit provides viewer local timezone detection, formatting, and preference handling.
+// Stored in localStorage as "exocomp-tz": "local" (default) or "utc".
+func timeInit() templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -1427,7 +1433,36 @@ func layoutReady() templ.Component {
 			templ_7745c5c3_Var68 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\t// Autosubmit filters (R7): a form marked data-autosubmit applies on change\n\t// (its select's change already bubbles through the enhanced listbox). The\n\t// Filter button stays for the JS-off baseline — this is additive, not a\n\t// replacement.\n\tdocument.querySelectorAll('form[data-autosubmit] select').forEach(function (sel) {\n\t\tsel.addEventListener('change', function () { sel.form.submit(); });\n\t});\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button,summary')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Same affordance, but opens a modal instead of navigating — the Schedules\n\t// row's spec detail, with the same exclusion for nested links/buttons\n\t// (Enable/Disable/Remove, the Last outcome link).\n\tdocument.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button,summary')) return;\n\t\t\texoModalOpen(tr.getAttribute('data-modal-row'));\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t// Destructive-action guard: any form[data-confirm] submits through the\n\t// shared confirm dialog instead of firing on the first click. The form ships\n\t// NO confirmed field, so a JS-off submit reaches the handler unconfirmed and\n\t// is refused; Confirm injects the field the handler requires, then re-submits.\n\tvar confirmForm = null;\n\tdocument.addEventListener('submit', function (e) {\n\t\tvar form = e.target.closest('form[data-confirm]');\n\t\tif (!form || form.dataset.confirmed === '1') return;\n\t\te.preventDefault();\n\t\tconfirmForm = form;\n\t\tvar msg = document.getElementById('confirm-msg');\n\t\tif (msg) msg.textContent = form.getAttribute('data-confirm');\n\t\texoModalOpen('confirm-dialog');\n\t}, true);\n\tvar confirmOk = document.getElementById('confirm-ok');\n\tif (confirmOk) {\n\t\tconfirmOk.addEventListener('click', function () {\n\t\t\tif (!confirmForm) return;\n\t\t\tvar f = confirmForm;\n\t\t\tconfirmForm = null;\n\t\t\texoModalClose('confirm-dialog');\n\t\t\tvar c = f.querySelector('input[name=\"confirmed\"]');\n\t\t\tif (!c) {\n\t\t\t\tc = document.createElement('input');\n\t\t\t\tc.type = 'hidden';\n\t\t\t\tc.name = 'confirmed';\n\t\t\t\tf.appendChild(c);\n\t\t\t}\n\t\t\tc.value = '1';\n\t\t\tf.dataset.confirmed = '1';\n\t\t\tf.requestSubmit();\n\t\t});\n\t}\n\t// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar b = e.target.closest('.copybtn');\n\t\tif (!b || !navigator.clipboard) return;\n\t\tvar pre = b.parentNode.querySelector('pre');\n\t\tif (!pre) return;\n\t\tnavigator.clipboard.writeText(pre.textContent).then(function () {\n\t\t\tb.classList.add('copied');\n\t\t\tsetTimeout(function () { b.classList.remove('copied'); }, 1200);\n\t\t});\n\t});\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 104, "<script>\n\t(function () {\n\t\twindow.exoGetTimezonePref = function () {\n\t\t\ttry {\n\t\t\t\tvar tz = localStorage.getItem(\"exocomp-tz\");\n\t\t\t\tif (tz === \"utc\") return \"utc\";\n\t\t\t} catch (e) {}\n\t\t\treturn \"local\";\n\t\t};\n\n\t\twindow.exoSetTimezone = function (mode) {\n\t\t\ttry {\n\t\t\t\tlocalStorage.setItem(\"exocomp-tz\", mode);\n\t\t\t} catch (e) {}\n\t\t\twindow.exoSyncTimeControls();\n\t\t\twindow.exoSyncTimes();\n\t\t};\n\n\t\twindow.exoSyncTimeControls = function () {\n\t\t\tvar mode = window.exoGetTimezonePref();\n\t\t\tvar btnLocal = document.getElementById(\"tz-btn-local\");\n\t\t\tvar btnUTC = document.getElementById(\"tz-btn-utc\");\n\t\t\tvar desc = document.getElementById(\"tz-current-desc\");\n\t\t\tvar localZone = \"\";\n\t\t\ttry {\n\t\t\t\tlocalZone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n\t\t\t} catch (e) {}\n\t\t\tif (!localZone) localZone = \"local\";\n\n\t\t\tif (btnLocal) btnLocal.setAttribute(\"aria-pressed\", mode === \"local\" ? \"true\" : \"false\");\n\t\t\tif (btnUTC) btnUTC.setAttribute(\"aria-pressed\", mode === \"utc\" ? \"true\" : \"false\");\n\n\t\t\tif (desc) {\n\t\t\t\tif (mode === \"local\") {\n\t\t\t\t\tdesc.innerHTML = 'Viewer local timezone (<span class=\"tz-detected\">' + localZone + '</span>)';\n\t\t\t\t} else {\n\t\t\t\t\tdesc.innerHTML = 'Coordinated Universal Time (<span class=\"tz-detected\">UTC</span>)';\n\t\t\t\t}\n\t\t\t}\n\t\t};\n\n\t\tfunction exoPad2(n) {\n\t\t\treturn n < 10 ? \"0\" + n : String(n);\n\t\t}\n\n\t\twindow.exoFormatLocal = function (d, fmt, now) {\n\t\t\tvar hours = exoPad2(d.getHours());\n\t\t\tvar mins = exoPad2(d.getMinutes());\n\t\t\tvar secs = exoPad2(d.getSeconds());\n\t\t\tvar isToday = d.toDateString() === now.toDateString();\n\n\t\t\tif (fmt === \"rel\") {\n\t\t\t\tif (isToday) {\n\t\t\t\t\treturn hours + \":\" + mins + \" today\";\n\t\t\t\t}\n\t\t\t\tvar months = [\"Jan\",\"Feb\",\"Mar\",\"Apr\",\"May\",\"Jun\",\"Jul\",\"Aug\",\"Sep\",\"Oct\",\"Nov\",\"Dec\"];\n\t\t\t\treturn months[d.getMonth()] + \" \" + d.getDate() + \" · \" + hours + \":\" + mins;\n\t\t\t}\n\t\t\tif (fmt === \"clock\") {\n\t\t\t\tif (isToday) {\n\t\t\t\t\treturn hours + \":\" + mins + \":\" + secs;\n\t\t\t\t}\n\t\t\t\tvar days = [\"Sun\",\"Mon\",\"Tue\",\"Wed\",\"Thu\",\"Fri\",\"Sat\"];\n\t\t\t\treturn days[d.getDay()] + \" \" + hours + \":\" + mins;\n\t\t\t}\n\t\t\tif (fmt === \"clock-short\") {\n\t\t\t\treturn hours + \":\" + mins;\n\t\t\t}\n\t\t\tif (fmt === \"datetime\") {\n\t\t\t\tvar y = d.getFullYear();\n\t\t\t\tvar m = exoPad2(d.getMonth() + 1);\n\t\t\t\tvar day = exoPad2(d.getDate());\n\t\t\t\treturn y + \"-\" + m + \"-\" + day + \" \" + hours + \":\" + mins + \":\" + secs;\n\t\t\t}\n\t\t\tif (fmt === \"datetime-short\") {\n\t\t\t\tvar y = d.getFullYear();\n\t\t\t\tvar m = exoPad2(d.getMonth() + 1);\n\t\t\t\tvar day = exoPad2(d.getDate());\n\t\t\t\treturn y + \"-\" + m + \"-\" + day + \" \" + hours + \":\" + mins;\n\t\t\t}\n\t\t\treturn hours + \":\" + mins;\n\t\t};\n\n\t\twindow.exoSyncTimes = function (root) {\n\t\t\tvar mode = window.exoGetTimezonePref();\n\t\t\tvar times = (root || document).querySelectorAll(\"time[datetime]\");\n\t\t\tvar now = new Date();\n\t\t\tvar localZone = \"\";\n\t\t\ttry {\n\t\t\t\tlocalZone = Intl.DateTimeFormat().resolvedOptions().timeZone;\n\t\t\t} catch (e) {}\n\t\t\tif (!localZone) localZone = \"local\";\n\n\t\t\tfor (var i = 0; i < times.length; i++) {\n\t\t\t\tvar el = times[i];\n\t\t\t\tvar dt = el.getAttribute(\"datetime\");\n\t\t\t\tif (!dt) continue;\n\t\t\t\tvar d = new Date(dt);\n\t\t\t\tif (isNaN(d.getTime())) continue;\n\n\t\t\t\tif (!el.dataset.utcText) {\n\t\t\t\t\tel.dataset.utcText = el.textContent;\n\t\t\t\t}\n\n\t\t\t\tif (mode === \"utc\") {\n\t\t\t\t\tel.textContent = el.dataset.utcText;\n\t\t\t\t\tel.title = dt.replace(\"T\", \" \").replace(\"Z\", \" UTC\");\n\t\t\t\t} else {\n\t\t\t\t\tvar fmt = el.getAttribute(\"data-time-format\") || \"rel\";\n\t\t\t\t\tel.textContent = window.exoFormatLocal(d, fmt, now);\n\t\t\t\t\tel.title = d.toLocaleString() + \" (\" + localZone + \")\";\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tvar qmetas = (root || document).querySelectorAll(\".qmeta[data-finished-at]\");\n\t\t\tfor (var j = 0; j < qmetas.length; j++) {\n\t\t\t\tvar qm = qmetas[j];\n\t\t\t\tvar qdt = qm.getAttribute(\"data-finished-at\");\n\t\t\t\tvar qrel = qm.getAttribute(\"data-finished-rel\");\n\t\t\t\tif (!qdt || !qrel) continue;\n\t\t\t\tif (!qm.dataset.utcText) qm.dataset.utcText = qm.textContent;\n\t\t\t\tif (mode === \"utc\") {\n\t\t\t\t\tqm.textContent = qm.dataset.utcText;\n\t\t\t\t} else {\n\t\t\t\t\tvar qd = new Date(qdt);\n\t\t\t\t\tif (!isNaN(qd.getTime())) {\n\t\t\t\t\t\tvar lrel = window.exoFormatLocal(qd, \"rel\", now);\n\t\t\t\t\t\tqm.textContent = qm.dataset.utcText.replace(qrel, lrel);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tvar sentences = (root || document).querySelectorAll(\".sentence[data-queued-at]\");\n\t\t\tfor (var s = 0; s < sentences.length; s++) {\n\t\t\t\tvar sen = sentences[s];\n\t\t\t\tvar qat = sen.getAttribute(\"data-queued-at\");\n\t\t\t\tif (!qat) continue;\n\t\t\t\tif (!sen.dataset.utcText) sen.dataset.utcText = sen.innerHTML;\n\t\t\t\tif (mode === \"utc\") {\n\t\t\t\t\tsen.innerHTML = sen.dataset.utcText;\n\t\t\t\t} else {\n\t\t\t\t\tvar sqd = new Date(qat);\n\t\t\t\t\tif (!isNaN(sqd.getTime())) {\n\t\t\t\t\t\tvar ldt = window.exoFormatLocal(sqd, \"datetime\", now);\n\t\t\t\t\t\tsen.innerHTML = sen.dataset.utcText.replace(/\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2} UTC/, ldt);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\n\t\t\tvar endedMetas = (root || document).querySelectorAll(\".meta.mono[data-ended-at]\");\n\t\t\tfor (var k = 0; k < endedMetas.length; k++) {\n\t\t\t\tvar em = endedMetas[k];\n\t\t\t\tvar edt = em.getAttribute(\"data-ended-at\");\n\t\t\t\tif (!edt) continue;\n\t\t\t\tif (!em.dataset.utcText) em.dataset.utcText = em.textContent;\n\t\t\t\tif (mode === \"utc\") {\n\t\t\t\t\tem.textContent = em.dataset.utcText;\n\t\t\t\t} else {\n\t\t\t\t\tvar ed = new Date(edt);\n\t\t\t\t\tif (!isNaN(ed.getTime())) {\n\t\t\t\t\t\tvar lclock = exoPad2(ed.getHours()) + \":\" + exoPad2(ed.getMinutes()) + \":\" + exoPad2(ed.getSeconds());\n\t\t\t\t\t\tem.textContent = em.dataset.utcText.replace(/\\d{2}:\\d{2}:\\d{2}/, lclock);\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t};\n\t})();\n\t</script>")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		return nil
+	})
+}
+
+func layoutReady() templ.Component {
+	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
+		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
+		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
+			return templ_7745c5c3_CtxErr
+		}
+		templ_7745c5c3_Buffer, templ_7745c5c3_IsBuffer := templruntime.GetBuffer(templ_7745c5c3_W)
+		if !templ_7745c5c3_IsBuffer {
+			defer func() {
+				templ_7745c5c3_BufErr := templruntime.ReleaseBuffer(templ_7745c5c3_Buffer)
+				if templ_7745c5c3_Err == nil {
+					templ_7745c5c3_Err = templ_7745c5c3_BufErr
+				}
+			}()
+		}
+		ctx = templ.InitializeContext(ctx)
+		templ_7745c5c3_Var69 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var69 == nil {
+			templ_7745c5c3_Var69 = templ.NopComponent
+		}
+		ctx = templ.ClearChildren(ctx)
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<script>\n\texoSyncThemeControl();\n\texoSyncRail();\n\texoEnhanceSelects(document);\n\texoSyncTimeControls();\n\texoSyncTimes();\n\t// Autosubmit filters (R7): a form marked data-autosubmit applies on change\n\t// (its select's change already bubbles through the enhanced listbox). The\n\t// Filter button stays for the JS-off baseline — this is additive, not a\n\t// replacement.\n\tdocument.querySelectorAll('form[data-autosubmit] select').forEach(function (sel) {\n\t\tsel.addEventListener('change', function () { sel.form.submit(); });\n\t});\n\tdocument.querySelectorAll('.side-nav .navitem').forEach(function (a) {\n\t\ta.addEventListener('click', exoCloseNav);\n\t});\n\tdocument.querySelector('.side-nav [aria-current=\"page\"]')\n\t\t?.scrollIntoView({ block: \"center\" });\n\t// Clickable list rows: a mouse enhancement over the row's own #id link, so\n\t// the whole row is an obvious click target. Clicks on a real link or button\n\t// inside the row (the Review CTA, a nested job link, etc.) keep their own\n\t// behaviour instead of triggering the row navigation.\n\tdocument.querySelectorAll('tr[data-href]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button,summary')) return;\n\t\t\twindow.location.href = tr.getAttribute('data-href');\n\t\t});\n\t});\n\t// Same affordance, but opens a modal instead of navigating — the Schedules\n\t// row's spec detail, with the same exclusion for nested links/buttons\n\t// (Enable/Disable/Remove, the Last outcome link).\n\tdocument.querySelectorAll('tr[data-modal-row]').forEach(function (tr) {\n\t\ttr.addEventListener('click', function (e) {\n\t\t\tif (e.target.closest('a,button,summary')) return;\n\t\t\texoModalOpen(tr.getAttribute('data-modal-row'));\n\t\t});\n\t});\n\t// Modal open/dismiss is one delegated listener for the whole page: any\n\t// [data-modal-open] opens its target dialog; [data-modal-dismiss] (the ×\n\t// button) closes its enclosing dialog; and a click landing on the dialog\n\t// element itself is the backdrop region (real form content reports its own\n\t// target), which closes the modal. Esc is the element's own behaviour.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar opener = e.target.closest('[data-modal-open]');\n\t\tif (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }\n\t\tvar dismiss = e.target.closest('[data-modal-dismiss]');\n\t\tif (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }\n\t\tif (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {\n\t\t\te.target.close();\n\t\t}\n\t});\n\t// Destructive-action guard: any form[data-confirm] submits through the\n\t// shared confirm dialog instead of firing on the first click. The form ships\n\t// NO confirmed field, so a JS-off submit reaches the handler unconfirmed and\n\t// is refused; Confirm injects the field the handler requires, then re-submits.\n\tvar confirmForm = null;\n\tdocument.addEventListener('submit', function (e) {\n\t\tvar form = e.target.closest('form[data-confirm]');\n\t\tif (!form || form.dataset.confirmed === '1') return;\n\t\te.preventDefault();\n\t\tconfirmForm = form;\n\t\tvar msg = document.getElementById('confirm-msg');\n\t\tif (msg) msg.textContent = form.getAttribute('data-confirm');\n\t\texoModalOpen('confirm-dialog');\n\t}, true);\n\tvar confirmOk = document.getElementById('confirm-ok');\n\tif (confirmOk) {\n\t\tconfirmOk.addEventListener('click', function () {\n\t\t\tif (!confirmForm) return;\n\t\t\tvar f = confirmForm;\n\t\t\tconfirmForm = null;\n\t\t\texoModalClose('confirm-dialog');\n\t\t\tvar c = f.querySelector('input[name=\"confirmed\"]');\n\t\t\tif (!c) {\n\t\t\t\tc = document.createElement('input');\n\t\t\t\tc.type = 'hidden';\n\t\t\t\tc.name = 'confirmed';\n\t\t\t\tf.appendChild(c);\n\t\t\t}\n\t\t\tc.value = '1';\n\t\t\tf.dataset.confirmed = '1';\n\t\t\tf.requestSubmit();\n\t\t});\n\t}\n\t// Copy-to-clipboard: a .copybtn copies its sibling <pre> and shows a check.\n\tdocument.addEventListener('click', function (e) {\n\t\tvar b = e.target.closest('.copybtn');\n\t\tif (!b || !navigator.clipboard) return;\n\t\tvar pre = b.parentNode.querySelector('pre');\n\t\tif (!pre) return;\n\t\tnavigator.clipboard.writeText(pre.textContent).then(function () {\n\t\t\tb.classList.add('copied');\n\t\t\tsetTimeout(function () { b.classList.remove('copied'); }, 1200);\n\t\t});\n\t});\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1456,38 +1491,38 @@ func loginPage(errMsg, next, fingerprint string, insecure bool, base string) tem
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var69 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var69 == nil {
-			templ_7745c5c3_Var69 = templ.NopComponent
+		templ_7745c5c3_Var70 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var70 == nil {
+			templ_7745c5c3_Var70 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 105, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign in · exocomp</title><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap\"><style>\n\t\t\t\thtml{background:#0A0C0D}\n\t\t\t\t@media (prefers-color-scheme: light){html:not([data-theme=\"dark\"]){background:#F5F2EC}}\n\t\t\t\thtml[data-theme=\"light\"]{background:#F5F2EC}\n\t\t\t\thtml[data-theme=\"dark\"]{background:#0A0C0D}\n\t\t\t</style><link rel=\"stylesheet\" href=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var70 string
-		templ_7745c5c3_Var70, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(base, AssetURL("/assets/tokens.css")))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 663, Col: 82}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var70))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "\"><link rel=\"stylesheet\" href=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 106, "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><title>Sign in · exocomp</title><link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap\"><style>\n\t\t\t\thtml{background:#0A0C0D}\n\t\t\t\t@media (prefers-color-scheme: light){html:not([data-theme=\"dark\"]){background:#F5F2EC}}\n\t\t\t\thtml[data-theme=\"light\"]{background:#F5F2EC}\n\t\t\t\thtml[data-theme=\"dark\"]{background:#0A0C0D}\n\t\t\t</style><link rel=\"stylesheet\" href=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var71 string
-		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(base, AssetURL("/assets/app.css")))
+		templ_7745c5c3_Var71, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(base, AssetURL("/assets/tokens.css")))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 664, Col: 79}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 839, Col: 82}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var71))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 107, "\"><link rel=\"stylesheet\" href=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var72 string
+		templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(base, AssetURL("/assets/app.css")))
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 840, Col: 79}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1495,7 +1530,7 @@ func loginPage(errMsg, next, fingerprint string, insecure bool, base string) tem
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 108, "</head><body><div class=\"login\"><div class=\"card\"><div class=\"loginbrand\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "</head><body><div class=\"login\"><div class=\"card\"><div class=\"loginbrand\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1503,85 +1538,85 @@ func loginPage(errMsg, next, fingerprint string, insecure bool, base string) tem
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 109, "<span class=\"wordmark\">exocomp</span></div><h2>Sign in</h2><p class=\"meta\">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "<span class=\"wordmark\">exocomp</span></div><h2>Sign in</h2><p class=\"meta\">Paste a token minted with <code>exocomp token new</code>. It is exchanged for a session bound to that token — revoke the token and this session dies.</p>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if errMsg != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 110, "<p class=\"error\" role=\"alert\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "<p class=\"error\" role=\"alert\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var72 string
-			templ_7745c5c3_Var72, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
+			var templ_7745c5c3_Var73 string
+			templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinStringErrs(errMsg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 677, Col: 44}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 853, Col: 44}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var72))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 111, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if insecure {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 112, "<p class=\"error\" role=\"alert\">This sign-in is not secure. Anyone on this network could read it.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<p class=\"error\" role=\"alert\">This sign-in is not secure. Anyone on this network could read it.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 113, "<form method=\"post\" action=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "<form method=\"post\" action=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var73 templ.SafeURL
-		templ_7745c5c3_Var73, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(base, "/login"))
+		var templ_7745c5c3_Var74 templ.SafeURL
+		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinURLErrs(urlWithBase(base, "/login"))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 682, Col: 61}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var73))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 114, "\"><input type=\"hidden\" name=\"next\" value=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var74 string
-		templ_7745c5c3_Var74, templ_7745c5c3_Err = templ.JoinStringErrs(next)
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 683, Col: 51}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 858, Col: 61}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var74))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "\"> <label for=\"token\">Access token</label> <input id=\"token\" name=\"token\" type=\"password\" autocomplete=\"off\" autofocus required aria-describedby=\"fp\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Sign in</button></div></form>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 115, "\"><input type=\"hidden\" name=\"next\" value=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var75 string
+		templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(next)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 859, Col: 51}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "\"> <label for=\"token\">Access token</label> <input id=\"token\" name=\"token\" type=\"password\" autocomplete=\"off\" autofocus required aria-describedby=\"fp\"><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Sign in</button></div></form>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if fingerprint != "" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 116, "<p id=\"fp\" class=\"fingerprint mt18\">certificate SHA-256<br>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "<p id=\"fp\" class=\"fingerprint mt18\">certificate SHA-256<br>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			var templ_7745c5c3_Var75 string
-			templ_7745c5c3_Var75, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
+			var templ_7745c5c3_Var76 string
+			templ_7745c5c3_Var76, templ_7745c5c3_Err = templ.JoinStringErrs(fingerprint)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 691, Col: 79}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 867, Col: 79}
 			}
-			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var75))
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var76))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 117, "</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 118, "</div></div></body></html>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 119, "</div></div></body></html>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

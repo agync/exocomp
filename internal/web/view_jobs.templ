@@ -1,6 +1,16 @@
 package web
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
+
+func finishedAtOrEmpty(t *time.Time) string {
+	if t != nil {
+		return t.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
+}
 
 // phoneJobMeta is the jobs row's phone second-line (review P2): the flat mono
 // TriggerMeta · Source · Age · Duration, empty pieces skipped. The operator is
@@ -95,10 +105,14 @@ templ jobsRow(j jobRow, base string) {
 			</span>
 			<span class="cell">
 				<b class="mono">{ j.Duration }</b>
-				<small class="mono">{ j.FinishedRel }</small>
+				if j.FinishedAt != nil && j.FinishedRel != "" {
+					<small class="mono"><time datetime={ j.FinishedAtISO() } data-time-format="rel">{ j.FinishedRel }</time></small>
+				} else {
+					<small class="mono">{ j.FinishedRel }</small>
+				}
 			</span>
 			<span class="cell cell--meta">
-				<span class="qmeta">{ phoneJobMeta(j) }</span>
+				<span class="qmeta" data-finished-at={ j.FinishedAtISO() } data-finished-rel={ j.FinishedRel }>{ phoneJobMeta(j) }</span>
 			</span>
 		</span>
 	</a>
@@ -227,7 +241,7 @@ templ runCard(vm jobDetailVM) {
 				</div>
 			}
 		</div>
-		<p class="sentence">
+		<p class="sentence" data-queued-at={ vm.Job.QueuedAt.UTC().Format("2006-01-02T15:04:05Z07:00") }>
 			<span>{ vm.RunCard.Sentence }</span>
 			if vm.RunCard.RanLine != "" {
 				<span class="ranline">· { vm.RunCard.RanLine }</span>
@@ -328,7 +342,7 @@ templ outputCard(vm jobDetailVM) {
 					</svg>
 					<span class="pinword">{ pinWord(vm.PinState) }</span><span class="n">{ pinCount(vm.PinState, len(vm.Events)) }</span>
 				</span>
-				<span class="meta mono">{ outputMeta(len(vm.Events), vm.Job.State.Terminal(), vm.EndedClock) }</span>
+				<span class="meta mono" data-ended-at={ finishedAtOrEmpty(vm.Job.FinishedAt) }>{ outputMeta(len(vm.Events), vm.Job.State.Terminal(), vm.EndedClock) }</span>
 			</span>
 			<span class="controls">
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>

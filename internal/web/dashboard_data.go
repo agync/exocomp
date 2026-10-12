@@ -528,9 +528,11 @@ func (s *Server) schedules(r *http.Request) ([]scheduleRow, error) {
 		}
 		if sc.NextAt != nil {
 			row.Next = clock(*sc.NextAt)
+			row.NextAt = sc.NextAt
 		}
 		if sc.LastRun != nil {
 			row.LastRun = clock(*sc.LastRun)
+			row.LastRunAt = sc.LastRun
 		}
 		if sc.LastJobID != nil {
 			if job, err := s.store.GetJob(r.Context(), *sc.LastJobID); err != nil {

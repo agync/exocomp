@@ -149,7 +149,14 @@ templ eventsTray(vm eventsVM) {
 // j/k/↵/e and a click agree on what expanded.
 templ eventTrayPair(i int, e eventRow) {
 	<div class={ "events-row", templ.KV("evt-rule-dedup", e.Source == e.Rule), templ.KV("evt-rule-unset", e.Rule == "") } role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
-		<span class="evt-received" aria-hidden="true">{ e.Received } · { e.Rel } ago</span>
+		<span class="evt-received" aria-hidden="true">
+			if e.ReceivedAtISO() != "" {
+				<time datetime={ e.ReceivedAtISO() } data-time-format="clock">{ e.Received }</time>
+			} else {
+				{ e.Received }
+			}
+			 · { e.Rel } ago
+		</span>
 		<span class="evt-alert">
 			if e.JobLink != "" {
 				<a href={ templ.SafeURL(e.JobLink) }>{ e.Name }</a>

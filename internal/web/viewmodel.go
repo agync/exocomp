@@ -1172,10 +1172,26 @@ type scheduleRow struct {
 	JitterS             int
 	TolerateUnreachable bool
 	LastRun             string
+	NextAt              *time.Time
+	LastRunAt           *time.Time
 	// Refusal is the row verb's refusal sentence, carried to the rowActions
 	// partial by scheduleRowActions (forms/SPEC.md): non-empty only on a
 	// refused row-verb re-render.
 	Refusal string
+}
+
+func (r scheduleRow) NextAtISO() string {
+	if r.NextAt != nil {
+		return r.NextAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
+}
+
+func (r scheduleRow) LastRunAtISO() string {
+	if r.LastRunAt != nil {
+		return r.LastRunAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
 }
 
 func (r scheduleRow) LastClass() string { return stateClass(r.LastState) }
@@ -2095,8 +2111,24 @@ type jobRow struct {
 	Duration      string
 	FinishedRel   string
 	FinishedClock string
+	FinishedAt    *time.Time
+	QueuedAt      time.Time
 	// CheckMode reports the run's --check flag for the meta line.
 	CheckMode bool
+}
+
+func (j jobRow) FinishedAtISO() string {
+	if j.FinishedAt != nil {
+		return j.FinishedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
+}
+
+func (j jobRow) QueuedAtISO() string {
+	if !j.QueuedAt.IsZero() {
+		return j.QueuedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
 }
 
 func (j jobRow) StateClass() string { return stateClass(j.State) }
@@ -3726,6 +3758,14 @@ type eventRow struct {
 	JobID      *int64
 	Normalized string
 	Trace      []traceStep
+	ReceivedAt time.Time
+}
+
+func (e eventRow) ReceivedAtISO() string {
+	if !e.ReceivedAt.IsZero() {
+		return e.ReceivedAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
 }
 
 func (e eventRow) OutcomeClass() string { return outcomeClass(e.Outcome) }

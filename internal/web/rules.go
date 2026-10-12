@@ -42,8 +42,16 @@ type ruleRow struct {
 	// LastFire/FireFact are the ledger's newest fire: the clock and the outcome
 	// ("job #N · exit {code}" / "matched · no job"). LastFire "—" and an empty
 	// FireFact when the rule has never fired.
-	LastFire string
-	FireFact string
+	LastFire   string
+	FireFact   string
+	LastFireAt *time.Time
+}
+
+func (r ruleRow) LastFireAtISO() string {
+	if r.LastFireAt != nil {
+		return r.LastFireAt.UTC().Format("2006-01-02T15:04:05Z07:00")
+	}
+	return ""
 }
 
 // HasGuards reports whether line two carries any guard word, so the template
@@ -90,6 +98,7 @@ func (s *Server) rules(r *http.Request) ([]ruleRow, error) {
 		}
 		if fire, ferr := s.store.LastRuleFire(r.Context(), rl.ID); ferr == nil {
 			row.LastFire = fire.Ts.Local().Format("15:04:05")
+			row.LastFireAt = &fire.Ts
 			if fire.JobID != nil {
 				row.FireFact = s.fireFact(r.Context(), *fire.JobID)
 			} else {

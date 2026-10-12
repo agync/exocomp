@@ -26,6 +26,7 @@ templ layout(p page) {
 			@navInit()
 			@modalInit()
 			@selectInit()
+			@timeInit()
 		</head>
 		<body>
 			<div class={ "app", templ.KV(p.PageClass, p.PageClass != "") }>
@@ -544,11 +545,186 @@ templ selectInit() {
 	</script>
 }
 
+// timeInit provides viewer local timezone detection, formatting, and preference handling.
+// Stored in localStorage as "exocomp-tz": "local" (default) or "utc".
+templ timeInit() {
+	<script>
+	(function () {
+		window.exoGetTimezonePref = function () {
+			try {
+				var tz = localStorage.getItem("exocomp-tz");
+				if (tz === "utc") return "utc";
+			} catch (e) {}
+			return "local";
+		};
+
+		window.exoSetTimezone = function (mode) {
+			try {
+				localStorage.setItem("exocomp-tz", mode);
+			} catch (e) {}
+			window.exoSyncTimeControls();
+			window.exoSyncTimes();
+		};
+
+		window.exoSyncTimeControls = function () {
+			var mode = window.exoGetTimezonePref();
+			var btnLocal = document.getElementById("tz-btn-local");
+			var btnUTC = document.getElementById("tz-btn-utc");
+			var desc = document.getElementById("tz-current-desc");
+			var localZone = "";
+			try {
+				localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+			} catch (e) {}
+			if (!localZone) localZone = "local";
+
+			if (btnLocal) btnLocal.setAttribute("aria-pressed", mode === "local" ? "true" : "false");
+			if (btnUTC) btnUTC.setAttribute("aria-pressed", mode === "utc" ? "true" : "false");
+
+			if (desc) {
+				if (mode === "local") {
+					desc.innerHTML = 'Viewer local timezone (<span class="tz-detected">' + localZone + '</span>)';
+				} else {
+					desc.innerHTML = 'Coordinated Universal Time (<span class="tz-detected">UTC</span>)';
+				}
+			}
+		};
+
+		function exoPad2(n) {
+			return n < 10 ? "0" + n : String(n);
+		}
+
+		window.exoFormatLocal = function (d, fmt, now) {
+			var hours = exoPad2(d.getHours());
+			var mins = exoPad2(d.getMinutes());
+			var secs = exoPad2(d.getSeconds());
+			var isToday = d.toDateString() === now.toDateString();
+
+			if (fmt === "rel") {
+				if (isToday) {
+					return hours + ":" + mins + " today";
+				}
+				var months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+				return months[d.getMonth()] + " " + d.getDate() + " · " + hours + ":" + mins;
+			}
+			if (fmt === "clock") {
+				if (isToday) {
+					return hours + ":" + mins + ":" + secs;
+				}
+				var days = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+				return days[d.getDay()] + " " + hours + ":" + mins;
+			}
+			if (fmt === "clock-short") {
+				return hours + ":" + mins;
+			}
+			if (fmt === "datetime") {
+				var y = d.getFullYear();
+				var m = exoPad2(d.getMonth() + 1);
+				var day = exoPad2(d.getDate());
+				return y + "-" + m + "-" + day + " " + hours + ":" + mins + ":" + secs;
+			}
+			if (fmt === "datetime-short") {
+				var y = d.getFullYear();
+				var m = exoPad2(d.getMonth() + 1);
+				var day = exoPad2(d.getDate());
+				return y + "-" + m + "-" + day + " " + hours + ":" + mins;
+			}
+			return hours + ":" + mins;
+		};
+
+		window.exoSyncTimes = function (root) {
+			var mode = window.exoGetTimezonePref();
+			var times = (root || document).querySelectorAll("time[datetime]");
+			var now = new Date();
+			var localZone = "";
+			try {
+				localZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+			} catch (e) {}
+			if (!localZone) localZone = "local";
+
+			for (var i = 0; i < times.length; i++) {
+				var el = times[i];
+				var dt = el.getAttribute("datetime");
+				if (!dt) continue;
+				var d = new Date(dt);
+				if (isNaN(d.getTime())) continue;
+
+				if (!el.dataset.utcText) {
+					el.dataset.utcText = el.textContent;
+				}
+
+				if (mode === "utc") {
+					el.textContent = el.dataset.utcText;
+					el.title = dt.replace("T", " ").replace("Z", " UTC");
+				} else {
+					var fmt = el.getAttribute("data-time-format") || "rel";
+					el.textContent = window.exoFormatLocal(d, fmt, now);
+					el.title = d.toLocaleString() + " (" + localZone + ")";
+				}
+			}
+
+			var qmetas = (root || document).querySelectorAll(".qmeta[data-finished-at]");
+			for (var j = 0; j < qmetas.length; j++) {
+				var qm = qmetas[j];
+				var qdt = qm.getAttribute("data-finished-at");
+				var qrel = qm.getAttribute("data-finished-rel");
+				if (!qdt || !qrel) continue;
+				if (!qm.dataset.utcText) qm.dataset.utcText = qm.textContent;
+				if (mode === "utc") {
+					qm.textContent = qm.dataset.utcText;
+				} else {
+					var qd = new Date(qdt);
+					if (!isNaN(qd.getTime())) {
+						var lrel = window.exoFormatLocal(qd, "rel", now);
+						qm.textContent = qm.dataset.utcText.replace(qrel, lrel);
+					}
+				}
+			}
+
+			var sentences = (root || document).querySelectorAll(".sentence[data-queued-at]");
+			for (var s = 0; s < sentences.length; s++) {
+				var sen = sentences[s];
+				var qat = sen.getAttribute("data-queued-at");
+				if (!qat) continue;
+				if (!sen.dataset.utcText) sen.dataset.utcText = sen.innerHTML;
+				if (mode === "utc") {
+					sen.innerHTML = sen.dataset.utcText;
+				} else {
+					var sqd = new Date(qat);
+					if (!isNaN(sqd.getTime())) {
+						var ldt = window.exoFormatLocal(sqd, "datetime", now);
+						sen.innerHTML = sen.dataset.utcText.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/, ldt);
+					}
+				}
+			}
+
+			var endedMetas = (root || document).querySelectorAll(".meta.mono[data-ended-at]");
+			for (var k = 0; k < endedMetas.length; k++) {
+				var em = endedMetas[k];
+				var edt = em.getAttribute("data-ended-at");
+				if (!edt) continue;
+				if (!em.dataset.utcText) em.dataset.utcText = em.textContent;
+				if (mode === "utc") {
+					em.textContent = em.dataset.utcText;
+				} else {
+					var ed = new Date(edt);
+					if (!isNaN(ed.getTime())) {
+						var lclock = exoPad2(ed.getHours()) + ":" + exoPad2(ed.getMinutes()) + ":" + exoPad2(ed.getSeconds());
+						em.textContent = em.dataset.utcText.replace(/\d{2}:\d{2}:\d{2}/, lclock);
+					}
+				}
+			}
+		};
+	})();
+	</script>
+}
+
 templ layoutReady() {
 	<script>
 	exoSyncThemeControl();
 	exoSyncRail();
 	exoEnhanceSelects(document);
+	exoSyncTimeControls();
+	exoSyncTimes();
 	// Autosubmit filters (R7): a form marked data-autosubmit applies on change
 	// (its select's change already bubbles through the enhanced listbox). The
 	// Filter button stays for the JS-off baseline — this is additive, not a
