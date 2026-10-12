@@ -82,11 +82,16 @@ func selectedRemote(cmd *cobra.Command) (string, bool) {
 	return "", false
 }
 
+func cleanEndpoint(s string) string {
+	return strings.TrimRight(strings.TrimSpace(s), "/")
+}
+
 // entryByEndpoint finds a pinned entry whose stored endpoint equals selector, so
 // a raw endpoint on --remote resolves to the pin login recorded for it.
 func entryByEndpoint(cfg hostsConfig, endpoint string) (hostEntry, bool) {
+	norm := cleanEndpoint(endpoint)
 	for _, e := range cfg.Hosts {
-		if e.Endpoint == endpoint {
+		if cleanEndpoint(e.Endpoint) == norm {
 			return e, true
 		}
 	}

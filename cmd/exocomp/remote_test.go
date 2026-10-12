@@ -241,3 +241,16 @@ func TestRemoteJobsListShowsRawRunbook(t *testing.T) {
 		t.Fatalf("remote job get missing the raw runbook line: %q", out.String())
 	}
 }
+
+// TestRemoteEndpointMatchesWithTrailingSlash verifies that passing an endpoint with a trailing
+// slash on --remote matches the pinned entry without the trailing slash.
+func TestRemoteEndpointMatchesWithTrailingSlash(t *testing.T) {
+	srv := pinnedRemote(t, jobsAPIStub(t))
+	out, _, err := runRoot(t, []string{"--remote", srv.URL + "/", "jobs", "list", "--output", "json"})
+	if err != nil {
+		t.Fatalf("remote with trailing slash: %v", err)
+	}
+	if !strings.Contains(out, `"kind":"job.list"`) {
+		t.Fatalf("unexpected output: %s", out)
+	}
+}

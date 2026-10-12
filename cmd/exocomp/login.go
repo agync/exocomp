@@ -58,6 +58,7 @@ func newLoginCmd() *cobra.Command {
 
 func runLogin(cmd *cobra.Command, endpoint, name string, makeDefault, replacePin bool) error {
 	out := cmd.OutOrStdout()
+	endpoint = cleanEndpoint(endpoint)
 
 	alias := name
 	if alias == "" {
