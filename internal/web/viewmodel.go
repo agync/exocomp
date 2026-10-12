@@ -3618,6 +3618,7 @@ type eventRow struct {
 	Outcome    store.EventOutcome
 	Reason     string
 	ReasonLink string
+	JobLink    string
 	JobID      *int64
 	Normalized string
 	Trace      []traceStep

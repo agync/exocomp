@@ -150,7 +150,13 @@ templ eventsTray(vm eventsVM) {
 templ eventTrayPair(i int, e eventRow) {
 	<div class={ "events-row", templ.KV("evt-rule-dedup", e.Source == e.Rule), templ.KV("evt-rule-unset", e.Rule == "") } role="button" tabindex="0" data-index={ itoa(int64(i)) } aria-expanded="false" aria-controls={ "evt-pane-" + itoa64(e.ID) }>
 		<span class="evt-received" aria-hidden="true">{ e.Received } · { e.Rel } ago</span>
-		<span class="evt-alert">{ e.Name }</span>
+		<span class="evt-alert">
+			if e.JobLink != "" {
+				<a href={ templ.SafeURL(e.JobLink) }>{ e.Name }</a>
+			} else {
+				{ e.Name }
+			}
+		</span>
 		<span class="evt-source">{ e.Source }</span>
 		<span class="evt-rule">{ orDash(e.Rule) }</span>
 		<span class={ "evt-outcome", e.TokenClass() }>
@@ -167,6 +173,9 @@ templ eventTrayPair(i int, e eventRow) {
 		<span class="evt-chev" aria-hidden="true">▸</span>
 		<div class="evt-pane expanded" id={ "evt-pane-" + itoa64(e.ID) } hidden>
 			@eventReason(e)
+			if e.JobLink != "" && e.JobID != nil {
+				<p class="mt8"><a class="btn primary btn-compact" href={ templ.SafeURL(e.JobLink) }>Open job #{ itoa64(*e.JobID) } →</a></p>
+			}
 			<div class="pane-kicker kicker-accent pane-trace">EXPLAIN · RULE EVALUATION TRACE</div>
 			if len(e.Trace) == 0 {
 				<p class="meta">No trace recorded.</p>

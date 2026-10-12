@@ -1060,3 +1060,40 @@ func TestKeysHintCoarseCSS(t *testing.T) {
 		t.Error("the coarse-pointer guard does not hide .keys-hint")
 	}
 }
+
+// TestEventJobOutcomeOpensJob verifies that a job-outcome event links to the job
+// both in the alert name, the reason text, and in the expanded pane.
+func TestEventJobOutcomeOpensJob(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	job := seedTerminalJob(t, h, store.JobArgs{Argv: []string{"/bin/false"}})
+	if _, err := h.store.CreateEvent(ctx, store.Event{
+		Source:     "job-outcome",
+		Outcome:    store.OutcomeMatched,
+		Reason:     fmt.Sprintf("job %d ended failed; operator paged", job.ID),
+		JobID:      &job.ID,
+		Normalized: `{"name":"job-outcome"}`,
+	}); err != nil {
+		t.Fatalf("CreateEvent: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/events")
+
+	wantLink := `/jobs/` + itoa64(job.ID)
+	wantAlert := `<span class="evt-alert"><a href="` + wantLink + `">job-outcome</a></span>`
+	if !strings.Contains(body, wantAlert) {
+		t.Errorf("job-outcome event must link to the job in evt-alert:\nwant: %s", wantAlert)
+	}
+	wantReason := `<span class="evt-reason"><a href="` + wantLink + `">job ` + itoa64(job.ID) + ` ended failed; operator paged</a></span>`
+	if !strings.Contains(body, wantReason) {
+		t.Errorf("job-outcome event must link to the job in evt-reason:\nwant: %s", wantReason)
+	}
+	wantBtn := `Open job #` + itoa64(job.ID) + ` →`
+	if !strings.Contains(body, wantBtn) {
+		t.Errorf("expanded pane must include Open job button:\nwant: %s", wantBtn)
+	}
+}

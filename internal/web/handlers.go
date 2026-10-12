@@ -1138,12 +1138,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // names its rule ("rule {name} · not yet run"). Anything without a mapping
 // keeps the stored reason.
 func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event) eventRow {
+	if e.JobID != nil {
+		row.JobLink = s.url("/jobs/" + itoa64(*e.JobID))
+	}
 	switch e.Outcome {
 	case store.OutcomeFired:
 		if e.JobID != nil {
 			if job, err := s.store.GetJob(ctx, *e.JobID); err == nil {
 				row.Reason = fmt.Sprintf("job #%d · %s · exit %s", job.ID, job.State, exitOf(job))
-				row.ReasonLink = s.url("/jobs/" + itoa64(job.ID))
+				row.ReasonLink = row.JobLink
 			}
 		}
 	case store.OutcomeGated:
@@ -1161,6 +1164,9 @@ func (s *Server) enrichEventRow(ctx context.Context, row eventRow, e store.Event
 		if e.MatchedRule != "" {
 			row.Reason = "rule " + e.MatchedRule + " · not yet run"
 		}
+	}
+	if e.JobID != nil && row.ReasonLink == "" {
+		row.ReasonLink = row.JobLink
 	}
 	return row
 }
