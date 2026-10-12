@@ -63,7 +63,7 @@ templ planDetailPage(vm planDetailVM) {
 			}
 			if vm.CanPlan && vm.HasPlan {
 				<div class="plan-foot">
-					<a class="btn primary" href={ templ.SafeURL("?launch=1") }>{ "Apply plan #" + itoa(vm.ID) + " →" }</a>
+					<a class="btn primary" href={ templ.SafeURL("?launch=1") } data-modal-open="plan-confirm">{ "Apply plan #" + itoa(vm.ID) + " →" }</a>
 					<span class="meta mono">{ "asks first · same as exocomp ws apply " + vm.Workspace + " --plan " + itoa(vm.ID) }</span>
 				</div>
 			}

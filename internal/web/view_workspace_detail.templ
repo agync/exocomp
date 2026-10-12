@@ -41,7 +41,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/workspaces/" + vm.Row.Name + "/plan")) } class="inline-form">
 						<button type="submit" class="btn">Plan</button>
 					</form>
-					<a class="btn danger" href={ templ.SafeURL("?destroy=1") }>Destroy</a>
+					<a class="btn danger" href={ templ.SafeURL("?destroy=1") } data-modal-open="ws-destroy-confirm">Destroy</a>
 					@formStatus(false, vm.PlanErr)
 				</div>
 			}

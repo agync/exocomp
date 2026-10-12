@@ -761,9 +761,37 @@ templ layoutReady() {
 	// button) closes its enclosing dialog; and a click landing on the dialog
 	// element itself is the backdrop region (real form content reports its own
 	// target), which closes the modal. Esc is the element's own behaviour.
+	// [data-fill] applies suggested field corrections, and [data-retry] re-submits.
 	document.addEventListener('click', function (e) {
+		var fill = e.target.closest('[data-fill]');
+		if (fill) {
+			e.preventDefault();
+			var form = fill.closest('form');
+			if (form) {
+				var input = form.querySelector('input[name="' + fill.getAttribute('data-fill') + '"]');
+				if (input) {
+					input.value = fill.getAttribute('data-value') || '';
+					input.removeAttribute('aria-invalid');
+					var meta = document.getElementById(input.getAttribute('aria-describedby'));
+					if (meta) meta.classList.remove('is-error');
+					input.focus();
+				}
+			}
+			return;
+		}
+		var retry = e.target.closest('[data-retry]');
+		if (retry) {
+			e.preventDefault();
+			var form = retry.closest('form');
+			if (form) form.requestSubmit();
+			return;
+		}
 		var opener = e.target.closest('[data-modal-open]');
-		if (opener) { exoModalOpen(opener.getAttribute('data-modal-open')); return; }
+		if (opener) {
+			e.preventDefault();
+			exoModalOpen(opener.getAttribute('data-modal-open'));
+			return;
+		}
 		var dismiss = e.target.closest('[data-modal-dismiss]');
 		if (dismiss) { var d = dismiss.closest('dialog'); if (d) d.close(); return; }
 		if (e.target.tagName === 'DIALOG' && e.target.classList.contains('modal')) {
