@@ -316,7 +316,7 @@ func (s *Store) JobByIdempotencyKey(ctx context.Context, key string) (Job, error
 	return job, nil
 }
 
-// JobFilter narrows ListJobs. A zero filter lists every job, newest first.
+// JobFilter narrows ListJobs. A zero filter lists every job, oldest first.
 type JobFilter struct {
 	States         []JobState
 	ConcurrencyKey string
@@ -327,9 +327,12 @@ type JobFilter struct {
 	// paging past blocked rows rather than being capped by Limit alone).
 	// Ignored when Limit is zero.
 	Offset int
+	// NewestFirst orders rows newest queued first (queued_at DESC, id DESC).
+	// When false (the default), rows are ordered oldest queued first.
+	NewestFirst bool
 }
 
-// ListJobs returns jobs matching the filter, oldest queued first.
+// ListJobs returns jobs matching the filter, oldest queued first (or newest when f.NewestFirst).
 func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 	query := `SELECT ` + jobColumns + ` FROM job`
 	var where []string
@@ -354,7 +357,11 @@ func (s *Store) ListJobs(ctx context.Context, f JobFilter) ([]Job, error) {
 	if len(where) > 0 {
 		query += " WHERE " + strings.Join(where, " AND ")
 	}
-	query += " ORDER BY queued_at, id"
+	if f.NewestFirst {
+		query += " ORDER BY queued_at DESC, id DESC"
+	} else {
+		query += " ORDER BY queued_at, id"
+	}
 	if f.Limit > 0 {
 		query += " LIMIT ? OFFSET ?"
 		args = append(args, f.Limit, f.Offset)

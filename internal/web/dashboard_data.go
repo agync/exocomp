@@ -188,21 +188,13 @@ func (s *Server) jobSummary(r *http.Request) (jobSummary, error) {
 	return card, nil
 }
 
-// recentFilesJobs reads the newest terminal jobs, newest first, capped at
-// limit. ListJobs returns terminal rows oldest first, so the newest are the
-// last elements, reversed.
+// recentFilesJobs reads the newest terminal jobs, newest first, capped at limit.
 func (s *Server) recentFilesJobs(ctx context.Context, limit int) ([]store.Job, error) {
-	jobs, err := s.store.ListJobs(ctx, store.JobFilter{States: jobLastStates})
-	if err != nil {
-		return nil, err
-	}
-	if len(jobs) > limit {
-		jobs = jobs[len(jobs)-limit:]
-	}
-	for i, j := 0, len(jobs)-1; i < j; i, j = i+1, j-1 {
-		jobs[i], jobs[j] = jobs[j], jobs[i]
-	}
-	return jobs, nil
+	return s.store.ListJobs(ctx, store.JobFilter{
+		States:      jobLastStates,
+		Limit:       limit,
+		NewestFirst: true,
+	})
 }
 
 // SectionSummary is the queue section label's tail (SPEC §3): empty when the

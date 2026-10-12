@@ -723,3 +723,49 @@ func TestBackupCRUD(t *testing.T) {
 		t.Fatalf("runs survived target deletion: %+v", remaining)
 	}
 }
+
+func TestListJobsNewestFirst(t *testing.T) {
+	ctx := context.Background()
+	s, err := store.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer func() { _ = s.Close() }()
+
+	j1, err := s.CreateJob(ctx, store.NewJob{Runbook: "rb1", Kind: "playbook"})
+	if err != nil {
+		t.Fatalf("create j1: %v", err)
+	}
+	j2, err := s.CreateJob(ctx, store.NewJob{Runbook: "rb2", Kind: "playbook"})
+	if err != nil {
+		t.Fatalf("create j2: %v", err)
+	}
+	j3, err := s.CreateJob(ctx, store.NewJob{Runbook: "rb3", Kind: "playbook"})
+	if err != nil {
+		t.Fatalf("create j3: %v", err)
+	}
+
+	oldest, err := s.ListJobs(ctx, store.JobFilter{})
+	if err != nil {
+		t.Fatalf("list oldest: %v", err)
+	}
+	if len(oldest) != 3 || oldest[0].ID != j1.ID || oldest[2].ID != j3.ID {
+		t.Fatalf("want j1, j2, j3; got %+v", oldest)
+	}
+
+	newest, err := s.ListJobs(ctx, store.JobFilter{NewestFirst: true})
+	if err != nil {
+		t.Fatalf("list newest: %v", err)
+	}
+	if len(newest) != 3 || newest[0].ID != j3.ID || newest[2].ID != j1.ID {
+		t.Fatalf("want j3, j2, j1; got %+v", newest)
+	}
+
+	limited, err := s.ListJobs(ctx, store.JobFilter{NewestFirst: true, Limit: 2})
+	if err != nil {
+		t.Fatalf("list limited: %v", err)
+	}
+	if len(limited) != 2 || limited[0].ID != j3.ID || limited[1].ID != j2.ID {
+		t.Fatalf("want j3, j2; got %+v", limited)
+	}
+}

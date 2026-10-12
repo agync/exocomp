@@ -1730,3 +1730,26 @@ func TestJobRerunDialogBareVerbWithMetaContract(t *testing.T) {
 		t.Error("rerun dialog meta must name the queued title and ref")
 	}
 }
+
+func TestJobsListShowsNewestFirst(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	j1 := seedStartedJob(t, h, "playbook1", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	j2 := seedStartedJob(t, h, "playbook2", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+	j3 := seedStartedJob(t, h, "playbook3", "manual", store.JobArgs{Argv: []string{"/bin/true"}})
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	_, body := getBody(t, client, ts.URL+"/jobs")
+
+	idx3 := strings.Index(body, `/jobs/`+itoa64(j3.ID))
+	idx2 := strings.Index(body, `/jobs/`+itoa64(j2.ID))
+	idx1 := strings.Index(body, `/jobs/`+itoa64(j1.ID))
+
+	if idx3 < 0 || idx2 < 0 || idx1 < 0 {
+		t.Fatalf("all jobs must be listed: idx3=%d, idx2=%d, idx1=%d", idx3, idx2, idx1)
+	}
+	if idx3 >= idx2 || idx2 >= idx1 {
+		t.Fatalf("jobs must appear in newest-first order (idx3=%d, idx2=%d, idx1=%d)", idx3, idx2, idx1)
+	}
+}

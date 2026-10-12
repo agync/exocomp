@@ -549,16 +549,18 @@ func (s *Server) handleSecrets(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
-	jobs, err := s.store.ListJobs(r.Context(), store.JobFilter{Limit: queueGlance})
+	jobs, err := s.store.ListJobs(r.Context(), store.JobFilter{
+		Limit:       queueGlance,
+		NewestFirst: true,
+	})
 	if err != nil {
 		s.fail(w, r, err)
 		return
 	}
 	vm := dashboardVM{Page: s.pageFor(r, "Jobs", "jobs")}
 	now := s.now()
-	// Newest first reads better as a history than the store's oldest-first.
-	for i := len(jobs) - 1; i >= 0; i-- {
-		vm.Queue = append(vm.Queue, s.jobRowForList(r.Context(), jobs[i], now))
+	for _, j := range jobs {
+		vm.Queue = append(vm.Queue, s.jobRowForList(r.Context(), j, now))
 	}
 	// The count moves to the app bar (SPEC §2.3): the list's own count span is
 	// dropped from the markup, and the app bar meta names the ordering.
