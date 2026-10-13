@@ -149,3 +149,51 @@ func TestJobsTableResponsiveHalfScreen(t *testing.T) {
 		t.Errorf(".jobs-row grid-template-columns must use flexible columns, got: %q", rowRule)
 	}
 }
+
+// TestJobsRowsSitInTheRowFamily is the density gate: the jobs list ran a 64px
+// row, ~20px above the 44px tray row every other list uses. The two-line cell
+// needs ~46px, so .jobs-row tops out the 44–52px family and adjacent rows stack
+// at .tray-table's 2px pitch. The MUTATION — restoring 64px or dropping the
+// adjacent-row margin — reds this test.
+func TestJobsRowsSitInTheRowFamily(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	rowRule := ruleDecl(app, ".jobs-row {")
+	if !strings.Contains(rowRule, "height: 52px;") {
+		t.Errorf(".jobs-row must sit in the 44–52px row family, got: %q", rowRule)
+	}
+	if !strings.Contains(app, ".jobs-row + .jobs-row { margin-top: 2px; }") {
+		t.Error(".jobs-row rows must stack at .tray-table's 2px pitch")
+	}
+}
+
+// TestRulesRowTracksFitNarrowDesktop is the clipping gate for the rules tray at
+// a 1600px window: the fixed 170/110px RULE and LAST FIRED tracks truncated a
+// 20-char rule name to "lrrr-upda…" and the fire fact to a bare "job #". The
+// measured needs are 234px (name + ENABLED chip) and 194px (clock + "job #621
+// · exit 0"), so both tracks take a 240/200px ceiling while keeping their
+// floors; the 1fr WHEN · THEN column keeps the slack. The MUTATION — restoring
+// the fixed widths — reds this test.
+func TestRulesRowTracksFitNarrowDesktop(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+	rule := ruleDecl(app, ".rule-row {")
+	for _, want := range []string{
+		"minmax(170px,240px)",
+		"minmax(0,1fr)",
+		"minmax(110px,200px)",
+		"80px",
+	} {
+		if !strings.Contains(rule, want) {
+			t.Errorf(".rule-row must keep the %s track so the RULE name and LAST FIRED fact do not clip, got: %q", want, rule)
+		}
+	}
+}
