@@ -504,7 +504,7 @@ func TestBackupsRowMenuHasHistory(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	_, page := getBody(t, client, ts.URL+"/system/backups")
-	if !strings.Contains(page, `href="/system/backups/nas01/history">History</a>`) {
+	if !strings.Contains(page, `class="ramenu-btn" href="/system/backups/nas01/history">`) {
 		t.Error("the row ▾ must carry the history view")
 	}
 }

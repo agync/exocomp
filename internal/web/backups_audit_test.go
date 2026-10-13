@@ -155,9 +155,10 @@ func TestBackupHistoryPageRows(t *testing.T) {
 		}
 	}
 	// Forget under ▾ on the two forgettable rows, with the asks-first confirm.
+	// The menu item is glyph + word, so the label no longer abuts the button tag.
 	for _, want := range []string{
-		`ramenu-btn">Forget snapshot #8e1d07cccccc</button>`,
-		`ramenu-btn">Forget snapshot #c04b91dddddd</button>`,
+		`Forget snapshot #8e1d07cccccc`,
+		`Forget snapshot #c04b91dddddd`,
 		`data-confirm="Forget snapshot #8e1d07cccccc of nas01? restic forget removes it from the repository."`,
 		`name="snapshot" value="8e1d07cccccc111111111111"`,
 	} {
@@ -167,7 +168,7 @@ func TestBackupHistoryPageRows(t *testing.T) {
 	}
 	// ABSENT on the newest snapshot (which is also the drilled one).
 	for _, banned := range []string{
-		`ramenu-btn">Forget snapshot #a3f9c2abcdef</button>`,
+		`Forget snapshot #a3f9c2abcdef`,
 		`name="snapshot" value="a3f9c2abcdef1234567890ab"`,
 	} {
 		if strings.Contains(page, banned) {
