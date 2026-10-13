@@ -151,7 +151,7 @@ templ sourcesList(vm sourcesVM) {
 										if sc.NeverSynced() {
 											<span class="chip wait"><span class="dot"></span>NEVER</span>
 										} else {
-											{ sc.Short() }
+											{ sc.LastSyncLabel() }
 										}
 										if vm.Operator && sc.Kind == "git" {
 											<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name + "/sync")) } class="inline-form">

@@ -313,3 +313,40 @@ func TestSystemBackupsNeverIsWait(t *testing.T) {
 		t.Error("the dead-man segment must not carry the '— set one' suffix (m96)")
 	}
 }
+
+// TestSourcesListLastSyncHonest: every Last-sync cell says something honest.
+// A path source reads "n/a (path source)"; a never-synced git source keeps its
+// wait-coloured NEVER chip; no blank cell under the "Last sync" header.
+func TestSourcesListLastSyncHonest(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "pathsrc", Kind: store.SourcePath, URI: "/srv/pathsrc", Ref: "main",
+		Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed path source: %v", err)
+	}
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "gitsrc", Kind: store.SourceGit, URI: "git@host:gitsrc.git",
+		Ref: "refs/heads/main", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed git source: %v", err)
+	}
+
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+	code, page := getBody(t, client, ts.URL+"/sources")
+	if code != http.StatusOK {
+		t.Fatalf("/sources status = %d", code)
+	}
+	for _, want := range []string{
+		"n/a (path source)",
+		`<span class="chip wait"><span class="dot"></span>NEVER</span>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/sources missing %q", want)
+		}
+	}
+}
