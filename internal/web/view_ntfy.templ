@@ -56,18 +56,19 @@ templ viewNtfy(vm ntfyVM) {
 				<a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets")) }>rotate in Secrets</a>
 			</p>
 
-			<form id="ntfy-save-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/save")) } class="writeform" novalidate>
-				<label class="field">
-					<span class="label">Detail</span>
-					<span class="field-switch" data-ntfy-detail>
-						<button type="submit" name="detail" value="descriptive" aria-pressed={ boolAttr(vm.Leg.Detail != "terse") }>descriptive</button>
-						<button type="submit" name="detail" value="terse" aria-pressed={ boolAttr(vm.Leg.Detail == "terse") }>terse</button>
-					</span>
-					<span class="meta" id="ntfy-detail-meta">notify.ntfy_detail · terse names nothing — for a phone you do not control</span>
-				</label>
-			</form>
+			<div class="detail-box">
+				<form id="ntfy-save-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/save")) } class="writeform" novalidate>
+					<label class="field">
+						<span class="label">Detail</span>
+						<span class="field-switch" data-ntfy-detail role="tablist">
+							<button type="submit" name="detail" value="descriptive" aria-pressed={ boolAttr(vm.Leg.Detail != "terse") } role="tab">descriptive</button>
+							<button type="submit" name="detail" value="terse" aria-pressed={ boolAttr(vm.Leg.Detail == "terse") } role="tab">terse</button>
+						</span>
+						<span class="meta" id="ntfy-detail-meta">notify.ntfy_detail · terse names nothing — for a phone you do not control</span>
+					</label>
+				</form>
 
-			<div class="sample-card" aria-label="What a push says">
+				<div class="sample-card" aria-label="What a push says">
 				<div class="kicker">WHAT A PUSH SAYS</div>
 				<div class="sample descriptive" id="ntfy-sample-desc" hidden?={ vm.Leg.Detail == "terse" }>
 					<div class="push-sample">
@@ -86,6 +87,7 @@ templ viewNtfy(vm ntfyVM) {
 						<p class="note">no action buttons in terse</p>
 					</div>
 				</div>
+			</div>
 			</div>
 
 			<div class="fanout-table" aria-label="What pages">
@@ -142,12 +144,13 @@ templ viewNtfy(vm ntfyVM) {
 				<p class="meta">a mute holds the push, never the job · set one with exocomp mute add or the API</p>
 			</div>
 
-			@ntfyStatus(vm.Status)
-
-			<div class="actions">
-				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")) } class="inline-form">
-					<button type="submit" class="btn quiet">Test</button>
-				</form>
+			<div class="ntfy-actions">
+				<div class="ntfy-test-row">
+					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")) } class="inline-form">
+						<button type="submit" class="btn quiet" title="posts one push using the sealed, saved configuration">Test saved</button>
+					</form>
+					@ntfyStatus(vm.Status)
+				</div>
 				<button type="submit" class="btn primary" form="ntfy-save-form" name="detail" value={ vm.Leg.Detail }>Save</button>
 			</div>
 		</div>

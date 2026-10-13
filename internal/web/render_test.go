@@ -685,7 +685,6 @@ func TestRowActionsCSSGuards(t *testing.T) {
 	for _, want := range []string{
 		".raglyph {",
 		".ramenu-panel {",
-		".ramenu-item.danger::after { content: \" — asks first\";",
 		".ramenu-sep {",
 		".raglyph { width: 44px; height: 44px; }",
 	} {

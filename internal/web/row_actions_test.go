@@ -77,7 +77,7 @@ func TestRowActionsDangerSeparator(t *testing.T) {
 	if div < 0 {
 		t.Error("the menu must draw a visual divider before the danger item")
 	}
-	if open := strings.Index(out, ">Open</button>"); open < 0 || div < open {
+	if open := strings.Index(out, "> Open </button>"); open < 0 || div < open {
 		t.Error("the divider must sit between the items and the danger item, never before the first")
 	}
 	// A lone danger item renders no leading divider.

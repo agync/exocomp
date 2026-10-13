@@ -62,28 +62,48 @@ templ rowActions(acts []rowAction, base string) {
 							<li class="ramenu-sep" role="separator"></li>
 						}
 						<li class={ "ramenu-item", templ.KV("danger", a.Danger) } role="menuitem">
-							<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
 							if a.Form != "" && a.Confirm != "" {
 								<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form" data-confirm={ a.Confirm }>
 									for k, v := range a.Hidden {
 										<input type="hidden" name={ k } value={ v }/>
 									}
-									<button type="submit" class="ramenu-btn">{ a.Name }</button>
+									<button type="submit" class="ramenu-btn">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+										{ a.Name }
+										if a.Count != "" {
+											<span class="ramenu-count">{ a.Count }</span>
+										}
+									</button>
 								</form>
 							} else if a.Form != "" {
 								<form method="post" action={ templ.SafeURL(urlWithBase(base, a.Form)) } class="inline-form">
 									for k, v := range a.Hidden {
 										<input type="hidden" name={ k } value={ v }/>
 									}
-									<button type="submit" class="ramenu-btn">{ a.Name }</button>
+									<button type="submit" class="ramenu-btn">
+										<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+										{ a.Name }
+										if a.Count != "" {
+											<span class="ramenu-count">{ a.Count }</span>
+										}
+									</button>
 								</form>
 							} else if a.Modal != "" {
-								<button type="button" class="ramenu-btn" data-modal-open={ a.Modal }>{ a.Name }</button>
+								<button type="button" class="ramenu-btn" data-modal-open={ a.Modal }>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+									{ a.Name }
+									if a.Count != "" {
+										<span class="ramenu-count">{ a.Count }</span>
+									}
+								</button>
 							} else {
-								<a class="ramenu-btn" href={ templ.SafeURL(a.Href) }>{ a.Name }</a>
-							}
-							if a.Count != "" {
-								<span class="ramenu-count">{ a.Count }</span>
+								<a class="ramenu-btn" href={ templ.SafeURL(a.Href) }>
+									<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ a.Path }></path></svg>
+									{ a.Name }
+									if a.Count != "" {
+										<span class="ramenu-count">{ a.Count }</span>
+									}
+								</a>
 							}
 						</li>
 					}

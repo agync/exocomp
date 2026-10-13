@@ -621,15 +621,18 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   box-shadow: none; /* depth is the surface ramp, never a shadow */
 }
 .ramenu-item {
-  display: flex; align-items: center; gap: 10px;
-  min-height: 36px; padding: 0 10px; border-radius: var(--radius-chip);
-  font: var(--type-button); color: var(--ink-200);
+  padding: 0;
+  border-radius: var(--radius-chip);
+  font: var(--type-button);
 }
-.ramenu-item > svg { flex: none; color: var(--ink-400); }
-.ramenu-item:hover { background: var(--surface-row); }
+.ramenu-item:hover { background: var(--surface-row); border-radius: var(--radius-chip); }
 .ramenu-item.danger { color: var(--signal-fail); }
-.ramenu-item.danger > svg { color: var(--signal-fail); }
-.ramenu-item.danger::after { content: " — asks first"; color: var(--ink-500); font: var(--type-body); }
+.ramenu-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  min-height: 36px; padding: 0 10px; border: 0; border-radius: var(--radius-chip);
+  background: transparent; color: inherit; font: inherit; cursor: pointer; text-align: left;
+}
+.ramenu-btn > svg { flex: none; color: inherit; }
 /* A destructive item's rule (08-4): the divider before the danger item is a
  * real role=separator row — a 1px hairline rule across the panel padding,
  * never a stray "—" menu item. The asks-first note sits inline beside the

@@ -333,6 +333,10 @@
 .presence-list { display:flex; flex-direction:column; gap:4px; background:var(--surface-card);
   border-radius:var(--radius-card); padding:14px 16px; }
 .sample-card { background:var(--surface-card); border-radius:var(--radius-card); padding:14px 16px; }
+.detail-box { background:var(--surface-card); border:1px solid var(--hairline); border-radius:var(--radius-card); padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
+.ntfy-test-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.ntfy-actions { display:flex; flex-direction:column; gap:12px; align-items:flex-start; margin-top:18px; }
+.ntfy-actions .ntfy-test-row + .btn { align-self:flex-start; }
 .sample-card .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
 .push-sample { background:var(--surface-rail); border-radius:var(--radius-row); padding:12px;
   display:flex; flex-direction:column; gap:8px; font:400 12px/1.5 var(--font-ui); }
