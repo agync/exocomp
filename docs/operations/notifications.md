@@ -18,22 +18,24 @@ hand over. Nothing is written to disk until the final step, so quitting earlier 
 trace. The recovery-kit step blocks until you confirm you have stored the key.
 
 Step four is the single write. It mints the identity and keyring, then persists the
-operator display name and the generated ntfy topic to the store, seals the topic as the
-notify config, and attempts a test push. When only a topic has been minted and no push
+operator display name and the generated ntfy topic to the store, and attempts a test push.
+The topic is ordinary configuration — never a sealed secret — and the ntfy server URL and
+access token are configured elsewhere. When only a topic has been minted and no push
 transport is configured yet, the hand-over screen says so plainly rather than claiming a
-push went out — seal an ntfy server URL to enable it (below).
+push went out — configure a server URL and token to enable it (below).
 
 ## The push transport
 
-Approvals and alerts reach a phone over ntfy. The transport is configured from sealed
-secrets, so an operator who has not set one up gets a working daemon and a silent phone,
-not a daemon that refuses to start:
+Approvals and alerts reach a phone over ntfy. The server URL and topic are ordinary
+configuration edited from the system page's push channel modal; only the optional access
+token is a sealed secret. An operator who has not set one up gets a working daemon and
+a silent phone, not a daemon that refuses to start:
 
 ```
-exocomp secrets add ntfy/url        # e.g. https://push.lan
-exocomp secrets add ntfy/topic      # the wizard seals this one for you
 exocomp secrets add ntfy/token      # mandatory on a public server
 ```
+
+configure the URL and topic per channel on the system page's ntfy row.
 
 A bare `ntfy.sh` topic is unauthenticated — readable and publishable by anyone who guesses
 it — so the transport refuses a public topic without an access token, because approval

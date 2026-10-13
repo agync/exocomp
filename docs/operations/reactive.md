@@ -55,19 +55,19 @@ disables; see [Checks as an event](#checks-as-an-event)).
 
 ## Push
 
-Approvals reach a phone through ntfy, configured from sealed secrets:
+Approvals reach a phone through ntfy. The server URL and topic are ordinary
+configuration; only the access token is sealed:
 
 ```sh
-printf 'https://push.lan'  | exocomp secrets add ntfy/url   --kind url
-printf 'exocomp-approvals' | exocomp secrets add ntfy/topic --kind topic
 printf 'tk_...'            | exocomp secrets add ntfy/token --kind token
 ```
 
-A bare topic on the public `ntfy.sh` is **refused**, by name, at startup: an
-approval URL is a bearer capability to run playbooks against the fleet, and a
-public topic is readable and publishable by anyone who guesses it. Self-host, or
-seal an access token. Without any of these the daemon warns once and runs with a
-silent phone.
+Configure the URL and topic on the system page's ntfy row. A bare topic on the
+public `ntfy.sh` is **refused**, by name, at startup or test: an approval URL
+is a bearer capability to run playbooks against the fleet, and a public topic is
+readable and publishable by anyone who guesses it. Self-host, or seal an access
+token. Without a configured URL and topic (plus a token on a public server) the
+daemon runs with a silent phone.
 
 A GoAlert Generic API integration is a second transport, sealed as `goalert/url`
 and `goalert/key`; both fan out together. See
