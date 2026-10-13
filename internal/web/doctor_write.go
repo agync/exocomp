@@ -15,6 +15,16 @@ import (
 // page renders the findings as rows; the identity strip reads the same job's
 // age and finding count. `exocomp doctor` stays the scriptable twin.
 
+// findingsWord is the finding-count singular/plural. The /system identity
+// strip and the doctor job page card both render it, so the word lives in
+// one place — the two surfaces cannot drift apart.
+func findingsWord(n int) string {
+	if n == 1 {
+		return "finding"
+	}
+	return "findings"
+}
+
 func init() { registerWrite((*Server).registerDoctorWrite) }
 
 func (s *Server) registerDoctorWrite(mux *http.ServeMux) {

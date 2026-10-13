@@ -196,7 +196,7 @@ templ jobDetail(vm jobDetailVM) {
 // the identity strip's meta reads from the same events.
 templ findingsCard(vm jobDetailVM) {
 	<div class="card mt14 doctor-findings">
-		<div class="kicker">Self-check · { itoa(int64(len(vm.Findings))) } findings</div>
+		<div class="kicker">Self-check · { itoa(int64(len(vm.Findings))) } { findingsWord(len(vm.Findings)) }</div>
 		<div class="finding-rows">
 			for _, f := range vm.Findings {
 				<div class="row">

@@ -52,7 +52,7 @@ templ systemPage(vm systemVM) {
 					</form>
 					if vm.Doctor.HasRun {
 						<a class={ "hglyphmeta", templ.KV("wait", vm.Doctor.Stale) } href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/" + itoa64(vm.Doctor.JobID))) }>
-							doctor { vm.Doctor.Age } ago · { itoa(int64(vm.Doctor.Count)) } findings
+							doctor { vm.Doctor.Age } ago · { itoa(int64(vm.Doctor.Count)) } { findingsWord(vm.Doctor.Count) }
 						</a>
 					}
 				</span>

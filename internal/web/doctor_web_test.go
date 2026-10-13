@@ -115,6 +115,29 @@ func TestDoctorJobPageRendersFindingsRows(t *testing.T) {
 	}
 }
 
+// TestDoctorJobPageSingularFinding is the mutation guard for the count header:
+// a single finding reads "1 finding", never "1 findings".
+func TestDoctorJobPageSingularFinding(t *testing.T) {
+	h := newHarness(t)
+	job := seedDoctorJob(t, h,
+		findingSeed{name: "data_dir", status: "ok", detail: "mode 700 — writable"})
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/jobs/"+itoa64(job.ID))
+	if code != http.StatusOK {
+		t.Fatalf("doctor job page = %d, want 200", code)
+	}
+	if !strings.Contains(page, "Self-check · 1 finding<") {
+		t.Error("doctor job page missing the singular count header")
+	}
+	if strings.Contains(page, "Self-check · 1 findings<") {
+		t.Error("doctor job page renders the plural for one finding")
+	}
+}
+
 // TestSystemIdentityStripDoctorMeta is the GATE for A1's identity-strip meta:
 // /system reads `doctor {age} ago · {n} findings` from the newest self-check
 // job, linking to the job page, and the Doctor glyph posts the self-check.
@@ -134,12 +157,15 @@ func TestSystemIdentityStripDoctorMeta(t *testing.T) {
 	}
 	for _, want := range []string{
 		`action="/system/doctor"`,
-		" ago · 1 findings",
+		" ago · 1 finding",
 		`href="/jobs/` + itoa64(job.ID) + `"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("identity strip missing doctor meta %q", want)
 		}
+	}
+	if strings.Contains(page, " ago · 1 findings") {
+		t.Error("identity strip uses the plural for a single finding")
 	}
 }
 
