@@ -85,7 +85,7 @@ templ runnersList(vm runnersVM) {
 			}
 			<p class="meta">Full detail (bootstrap script body, import) stays on <code>exocomp runner show|import</code>. Container tier deferred — definitions only.</p>
 			if len(vm.Runners) == 0 {
-				<p class="meta">No runners registered — add one.</p>
+				<p class="meta">No runners registered — they are runner definitions only; add one with <code>exocomp runner add</code>.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>

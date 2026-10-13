@@ -138,7 +138,7 @@ func workflowsList(vm workflowsVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.Workflows) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<p class=\"meta\">No workflows recorded.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 8, "<p class=\"meta\">No workflows recorded — they appear when you run <code>exocomp run &lt;source&gt; &lt;playbook&gt;</code>.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

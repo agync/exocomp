@@ -1404,9 +1404,10 @@ func TestListEmptyStatesNameNextAction(t *testing.T) {
 		{"/checks", "No checks registered — add one."},
 		{"/netgroups", "No netgroups registered — add one."},
 		{"/rules", "No rules registered — rules are written on the CLI."},
-		{"/runners", "No runners registered — add one."},
-		{"/schedules", "No schedules registered — add one."},
+		{"/runners", "No runners registered — they are runner definitions only; add one with <code>exocomp runner add</code>."},
+		{"/schedules", "No schedules yet. They fire on the cron you give them — add one with <code>exocomp schedule add</code>."},
 		{"/sources", "No sources registered — add one."},
+		{"/workflows", "No workflows recorded — they appear when you run <code>exocomp run &lt;source&gt; &lt;playbook&gt;</code>."},
 		{"/workspaces", "No workspace registered — exocomp ws add on the host defines one."},
 	} {
 		code, page := getBody(t, op, ts.URL+tc.path)

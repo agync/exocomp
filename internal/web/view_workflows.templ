@@ -22,7 +22,7 @@ templ workflowsList(vm workflowsVM) {
 		<div class="card span2 mt18">
 			<h3>All workflows</h3>
 			if len(vm.Workflows) == 0 {
-				<p class="meta">No workflows recorded.</p>
+				<p class="meta">No workflows recorded — they appear when you run <code>exocomp run &lt;source&gt; &lt;playbook&gt;</code>.</p>
 			} else {
 				<div class="tablewrap">
 					<table>

@@ -63,7 +63,7 @@ templ schedulesList(vm schedulesVM) {
 				<p class="meta">Read-only: managing schedules needs an operator token.</p>
 			}
 			if len(vm.Schedules) == 0 {
-				<p class="meta">No schedules registered — add one.</p>
+				<p class="meta">No schedules yet. They fire on the cron you give them — add one with <code>exocomp schedule add</code>.</p>
 			} else {
 				<div class="tablewrap stackable">
 					<table>

@@ -301,7 +301,7 @@ func schedulesList(vm schedulesVM) templ.Component {
 				}
 			}
 			if len(vm.Schedules) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<p class=\"meta\">No schedules registered — add one.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "<p class=\"meta\">No schedules yet. They fire on the cron you give them — add one with <code>exocomp schedule add</code>.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}

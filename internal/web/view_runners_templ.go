@@ -386,7 +386,7 @@ func runnersList(vm runnersVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 			if len(vm.Runners) == 0 {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"meta\">No runners registered — add one.</p>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "<p class=\"meta\">No runners registered — they are runner definitions only; add one with <code>exocomp runner add</code>.</p>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
