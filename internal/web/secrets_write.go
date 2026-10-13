@@ -25,6 +25,7 @@ func (s *Server) registerSecretWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /secrets/add", s.requireAuth(s.handleSecretAdd))
 	mux.HandleFunc("POST /secrets/{name}/rotate", s.requireAuth(s.handleSecretRotate))
 	mux.HandleFunc("POST /secrets/{name}/rm", s.requireAuth(s.handleSecretRm))
+	mux.HandleFunc("POST /secrets/{rest...}", s.requireAuth(s.handleSecretPathAction))
 }
 
 // secretNamePattern bounds a secret's name — the shape the form's pattern
@@ -377,4 +378,34 @@ func formExpiresAt(r *http.Request) *time.Time {
 	}
 	at := time.Now().UTC().Add(d)
 	return &at
+}
+
+// handleSecretPathAction dispatches /secrets/<name>/<verb> for secret names that
+// contain slashes, which the single-segment ServeMux patterns above cannot
+// capture. Names such as ntfy/url and goalert/url are normal.
+func (s *Server) handleSecretPathAction(w http.ResponseWriter, r *http.Request) {
+	rest := strings.TrimPrefix(r.PathValue("rest"), "/")
+	if rest == "" || rest == "add" {
+		http.NotFound(w, r)
+		return
+	}
+	for _, verb := range []string{"/rotate", "/rm"} {
+		if strings.HasSuffix(rest, verb) {
+			name := strings.TrimSuffix(rest, verb)
+			name = strings.TrimSuffix(name, "/")
+			if name == "" || !validSecretName(name) {
+				http.NotFound(w, r)
+				return
+			}
+			// Restore the two-path shape handlers already expect via PathValue.
+			r.SetPathValue("name", name)
+			if verb == "/rotate" {
+				s.handleSecretRotate(w, r)
+			} else {
+				s.handleSecretRm(w, r)
+			}
+			return
+		}
+	}
+	http.NotFound(w, r)
 }
