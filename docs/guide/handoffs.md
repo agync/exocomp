@@ -34,16 +34,16 @@ The provision workflow executes four sequenced steps under one job ID:
 Run the chained workflow from the CLI:
 
 ```bash
-exocomp provision run prod \
-  --source homelab \
-  --playbook playbooks/node.yml
+exocomp provision run prod playbooks/node.yml
 ```
 
-If any step fails (e.g. SSH handshake timeout or syntax error in a task), the workflow pauses cleanly in the SQLite step ledger. You can inspect the failure reason and resume execution without re-applying existing infrastructure:
+Inspect the step ledger and current workflow state with:
 
 ```bash
-exocomp jobs resume <job-id>
+exocomp provision status prod
 ```
+
+If a daemon restart or crash interrupts execution mid-chain, the sequencer automatically resumes the in-flight workflow from the SQLite step ledger upon reboot without re-applying completed infrastructure steps (ADR 0008). Interrupted standalone jobs can be inspected and re-queued via `exocomp jobs redrive`.
 
 ## The dynamic `tf:<workspace>` inventory
 
@@ -69,9 +69,7 @@ Ansible playbooks run against `--limit tf:prod` or reference `hosts: tf:prod` di
 For environments where bare-metal nodes or hypervisors must be prepared before OpenTofu can communicate with them (such as bootstrapping a Talos or K3s cluster):
 
 ```bash
-exocomp bootstrap run \
-  --playbook playbooks/cluster-init.yml \
-  --workspace cluster-config
+exocomp bootstrap run playbooks/cluster-init.yml cluster-config
 ```
 
 Phase 1 runs the Ansible play to stand up the control plane. Sensitive tokens (such as `kubeconfig`) are captured directly into `/dev/shm` in RAM, encrypted into the secrets envelope, and passed to the subsequent OpenTofu workspace without touching persistent disk.

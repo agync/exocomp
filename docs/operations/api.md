@@ -93,6 +93,7 @@ GET /api/v1/backups
 GET /api/v1/health                              # the same probe `doctor --output json` runs
 GET /api/v1/maintenance/readiness               # safe to reboot? (drain)
 GET /api/v1/maintenance/interrupted             # jobs a reboot left interrupted, newest first
+GET /api/v1/maintenance/restart                 # restart status / drain progress
 ```
 
 `GET /whoami` reflects the calling token — `{id, name, scope, via, expires_at}` — and adds
@@ -161,6 +162,7 @@ POST /api/v1/workspaces/{name}/apply
 POST /api/v1/playbooks/run
 POST /api/v1/maintenance/cordon                 # drain: stop new fires + claims
 POST /api/v1/maintenance/uncordon               # lift the cordon
+POST /api/v1/maintenance/restart                # drain and re-exec binary in place
 POST   /api/v1/mutes                            # hold notifications for a scope
 DELETE /api/v1/mutes/{id}                       # lift a mute before it expires
 POST   /api/v1/jobs/{id}/notify                 # page once when the job goes terminal

@@ -18,23 +18,26 @@ exocomp implements OpenTofu's HTTP state backend directly inside `exocompd` back
 - **Automatic version history**: Every state update is recorded with full rollback history.
 - **State locking**: Prevents concurrent modifications across jobs.
 
-Configure the backend in your OpenTofu configuration:
+Configure the backend in your OpenTofu configuration (or run `exocomp workspace add <name> --state-only` to generate the exact ready-to-paste block and bearer token):
 
 ```hcl
 terraform {
   backend "http" {
-    address        = "http://127.0.0.1:8642/api/v1/tofu/state/prod"
-    lock_address   = "http://127.0.0.1:8642/api/v1/tofu/state/prod/lock"
-    unlock_address = "http://127.0.0.1:8642/api/v1/tofu/state/prod/unlock"
+    address        = "http://127.0.0.1:8543/api/v1/tf/state/prod"
+    lock_address   = "http://127.0.0.1:8543/api/v1/tf/state/prod"
+    unlock_address = "http://127.0.0.1:8543/api/v1/tf/state/prod"
+    lock_method    = "LOCK"
+    unlock_method  = "UNLOCK"
   }
 }
 ```
 
 ## Running plans and applies
 
-1. **Trigger a plan**:
+1. **Register the workspace and trigger a plan**:
    ```bash
-   exocomp workspace plan prod --source homelab --dir terraform/dns
+   exocomp workspace add prod --dir terraform/dns
+   exocomp workspace plan prod
    ```
    The plan is executed inside the sandbox, parsed, classified, and sealed into SQLite as an immutable plan artifact.
 

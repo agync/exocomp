@@ -33,29 +33,28 @@ curl -X POST http://127.0.0.1:8642/api/v1/events \
 
 ## Writing CEL event rules
 
-Define event rules in `.exocomp/rules/` inside your Git source:
+Define event rules using `exocomp rule add`:
 
-```yaml
-# .exocomp/rules/disk-cleanup.yml
-name: auto-disk-cleanup
-on: alertmanager
-when: "event.payload.alertname == 'DiskPressure' && event.payload.severity == 'warning'"
-action: playbook
-playbook: playbooks/clean-cache.yml
-source: homelab
-limit: "{{ event.payload.instance }}"
-require_approval: true
+```bash
+exocomp rule add auto-disk-cleanup \
+  --source alertmanager \
+  --expr "event.payload.alertname == 'DiskPressure' && event.payload.severity == 'warning'" \
+  --action playbook \
+  --repo-source homelab \
+  --playbook playbooks/clean-cache.yml \
+  --limit nas.lan \
+  --require-approval
 ```
 
-The `when` expression is compiled and evaluated using Google CEL:
+The `--expr` expression is compiled and evaluated using Google CEL:
 - Safe execution: CEL expressions cannot invoke system calls, allocate unbounded memory, or hang indefinitely.
-- Idempotent: Rules evaluate strictly against the event payload and system status.
+- Idempotent: Rules evaluate strictly against the normalized event payload and system status.
 
 ## Approval gates and notifications
 
-If a rule sets `require_approval: true`, the triggered job does not run immediately. Instead:
+If a rule sets `--require-approval`, the triggered job does not run immediately. Instead:
 1. An approval request is recorded in the SQLite step ledger.
-2. A push notification is dispatched to your configured `ntfy` topic:
+2. A push notification is dispatched to your configured `ntfy` topic (configurable in the Web UI via the contextual setup modal on `/system`):
 
    ![Push notifications drawer](../design/assets/system/1c-ntfy-states.png)
 
@@ -66,9 +65,19 @@ If a rule sets `require_approval: true`, the triggered job does not run immediat
 To suppress automated remediations during planned maintenance:
 
 ```bash
-exocomp silence add "Planned storage upgrade" \
-  --match "event.payload.instance == 'nas.lan'" \
-  --duration 2h
+exocomp silence add \
+  --host nas.lan \
+  --reason "Planned storage upgrade" \
+  --for 2h
+```
+
+Or silence by alert name:
+
+```bash
+exocomp silence add \
+  --alert DiskPressure \
+  --reason "Investigating disk space" \
+  --for 1h
 ```
 
 Any matching events that arrive during the silence window are recorded in the event log but will not trigger associated actions.

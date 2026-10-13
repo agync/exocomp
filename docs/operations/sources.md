@@ -29,7 +29,8 @@ tree, needs only read, and the read-only default is the least-privilege posture 
 sandbox actually enforces (a read-only tree is granted read, never write).
 
 A git source prints an ed25519 deploy key to add to the forge as a read-only key;
-`source sync` clones and pins it. `--signed` requires a verified signature on the pinned
+`source sync` (or the Web UI's **Sync now** button on `/sources` and `/sources/{name}`)
+clones and pins it. `--signed` requires a verified signature on the pinned
 ref before a sync advances it, so a bad commit cannot reach the fleet. Signing trust is
 **exocomp's own, never the host git config**: `--signed` must be paired with
 `--allowed-signers <file>` or one or more `--signer '<principal> <type> <key>'` lines, and

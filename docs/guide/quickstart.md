@@ -40,12 +40,12 @@ The wizard guides through four atomic steps before committing anything to disk:
 3. **First backup & restore drill**: Runs an immediate test backup and restores to a scratch path to prove recovery works before first operational use.
 4. **Hand over & commit**: Atomically mints identity, generates root secrets envelope, seals the ntfy configuration, attempts a test push, and prints the permanent recovery kit. Nothing is written to disk until this step is confirmed.
 
-## 3. Print the recovery card
+## 3. Save the recovery card
 
-Disaster recovery never depends on the running system. Generate the physical recovery card:
+Disaster recovery never depends on the running system. Save the age recovery secret key printed during setup, and re-render the stored public recovery card recipe at any time with:
 
 ```bash
-exocomp kit print > recovery-card.txt
+exocomp recovery-kit > recovery-card.txt
 ```
 
 Print this card or save it onto physical media. The card contains:

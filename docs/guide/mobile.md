@@ -21,7 +21,7 @@ To pair your mobile device:
 
 1. Generate a pairing token and QR code on the host:
    ```bash
-   exocomp token new --name "phone-primary" --scope "read,approve" --qr
+   exocomp token new phone-primary --scope approve
    ```
 2. Or open the pairing page in the Web UI:
    Navigate to **System → Pairing** to display the dynamic QR code on screen.

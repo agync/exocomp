@@ -25,7 +25,7 @@ At initialization, exocomp creates a root Data Encryption Key (DEK) wrapped by a
 Inspect secrets in the CLI:
 
 ```bash
-exocomp secret list
+exocomp secrets list
 ```
 
 ```
@@ -41,19 +41,32 @@ In the Web UI, secrets are displayed as metadata-only cards with explicit rotati
 To add or update a secret:
 
 ```bash
-exocomp secret set cloudflare_token --prompt
+# Seal a secret value from stdin:
+echo -n "super-secret" | exocomp secrets add cloudflare_token
+
+# Or mint a random secret:
+exocomp secrets add nas_backup_pass --generate
+
+# Rotate an existing secret:
+exocomp secrets rotate cloudflare_token
 ```
 
-Entering secret values prompts via an interactive masked terminal input or stdin pipe.
+Entering secret values reads from stdin or mints via `--generate`.
 
 ## Binding run-secrets to jobs
 
-To pass a secret into an Ansible playbook or command safely, bind it as a **run-secret**:
+To pass a secret into an Ansible playbook or command safely, bind it into a **run-secret set**:
+
+```bash
+exocomp run-secret add cert-env CF_TOKEN=cloudflare_token
+```
+
+Then attach the binding to your run:
 
 ```bash
 exocomp playbook run playbooks/cert.yml \
   --source homelab \
-  --secret CF_TOKEN=cloudflare_token
+  --run-secrets cert-env
 ```
 
 During execution:

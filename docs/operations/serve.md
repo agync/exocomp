@@ -508,10 +508,16 @@ manages the daemon from the browser, not just the CLI.
 - **Run** a source's playbook or an ad-hoc command from that source's page (each source has
   a launcher with a discovered-playbook list); **plan** and **apply** a workspace —
   each enqueues through the same service verbs the CLI uses and follows the job.
-- **Sources**: add a path source, enable/disable, remove, or add a git source (which seals
-  its deploy key and shows the public key once).
+- **Sources**: add a path source, enable/disable, remove, add a git source (which seals
+  its deploy key and shows the public key once), or sync a git source on demand via
+  **Sync now** (`POST /sources/{name}/sync`).
 - **Secrets**: seal, rotate, delete. **Tokens**: mint, rotate, revoke.
-- **Schedules**, **policies**, and **runners**: add and remove; schedules also enable/disable.
+- **Schedules**, **policies**, and **runners**: add and remove; schedules also
+  enable/disable, and trigger on demand with **Run now** (`POST /schedules/{name}/run`,
+  redirecting directly to the created job).
+- **System**: configure ntfy push notifications via a contextual modal (URL, topic, optional
+  sealed token), toggle viewer-local timezone display across all views (persisted in browser storage),
+  and inspect QR pairing payloads.
 - **Approvals**: decide a pending job, as before.
 - **Netgroups**, **checks**, and **rules** (rules read-only): manage netgroup
   and check rows; each check target shows its netgroup chip and how long ago
@@ -519,8 +525,8 @@ manages the daemon from the browser, not just the CLI.
   Checks card shows the registered total and how many targets the sweep
   observes up; a job's "fired by rule <name>" line links to `/rules` and the
   event that raised the run; the events page filters by `?source=` and pages
-  by `?limit=` (floor 100, cap 500). The dashboard's Schedules card shows the
-  registered total and how many are disabled.
+  by `?limit=` (floor 100, cap 500). Job outcome events link directly to the job.
+  The dashboard's Schedules card shows the registered total and how many are disabled.
 - **Approvals live-update**: the pending-approvals list subscribes to a
   browser-session SSE stream (`GET /approvals/stream`, the same
   `tailApprovals` the phone API serves) and reloads when the pending set

@@ -17,13 +17,16 @@ This allows developer assistants (such as Claude Code, Cursor, Antigravity, and 
 Mint a scoped bearer token for your agent:
 
 ```bash
-exocomp token new --name "claude-code" --scope "read,jobs:write"
+exocomp token new agent-readonly --scope readonly
+
+# Or with operator write permissions:
+exocomp token new agent-operator --scope operator
 ```
 
-Tokens respect granular scopes:
-- `read`: Read-only access to sources, jobs, checks, and workspaces.
-- `jobs:write`: Permission to enqueue playbooks or command runs.
-- `approve`: Permission to resolve pending approval gates.
+Tokens respect three granular scopes (ADR 0009):
+- `readonly`: Read-only queries over jobs, workspaces, drift, checks, netgroups, approvals, sources, schedules, rules, and events.
+- `operator`: All read tools, plus `workspace_plan`, `workspace_apply`, and check/netgroup management.
+- `approve`: All read tools, plus `approve_job` and `reject_job`.
 
 ## Connecting an agent
 
@@ -35,9 +38,9 @@ Add exocomp to your MCP client configuration (e.g. `claude_desktop_config.json` 
 {
   "mcpServers": {
     "exocomp": {
-      "url": "http://127.0.0.1:8642/mcp",
+      "url": "https://<host>:<port>/mcp",
       "headers": {
-        "Authorization": "Bearer exo_tok_..."
+        "Authorization": "Bearer exo_..."
       }
     }
   }
@@ -46,16 +49,20 @@ Add exocomp to your MCP client configuration (e.g. `claude_desktop_config.json` 
 
 ## Available agent tools
 
-The MCP surface exposes structured tools designed for machine comprehension:
+The MCP surface exposes structured tools designed for machine comprehension (see [The MCP surface](../operations/mcp.md) for full catalog and schema):
 
 | Tool | Purpose |
 |---|---|
-| `list_jobs` | List recent jobs, execution status, and exit codes |
-| `get_job_output` | Read execution stdout/stderr log stream for a job |
-| `run_playbook` | Enqueue an Ansible playbook execution against a source |
-| `get_workspace_plan` | Inspect structured plan diffs for an OpenTofu workspace |
-| `apply_workspace` | Request execution of a sealed workspace plan |
-| `list_checks` | Inspect reachability probe statuses across netgroups |
+| `list_jobs`, `get_job` | List jobs and inspect job state and exit codes |
+| `get_job_events` | Read execution append-only, redacted event log stream |
+| `list_workspaces`, `get_workspace` | Inspect configured OpenTofu workspaces |
+| `get_drift` | Inspect cached workspace drift and pending plan changes |
+| `workspace_plan` | Enqueue an OpenTofu plan for a workspace |
+| `workspace_apply` | Apply a workspace or sealed plan artifact |
+| `list_checks`, `get_check`, `probe_check` | Inspect probe checks or run live network probes |
+| `list_approvals`, `approve_job`, `reject_job` | Inspect and settle pending human-in-the-loop approvals |
+
+*(Note: Ansible playbook runs are initiated via `POST /api/v1/playbooks/run` or the CLI rather than MCP, ensuring inventory and path resolvers remain strictly pinned).*
 
 ## Security guarantees for agents
 

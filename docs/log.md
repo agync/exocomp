@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-13
+
+- **Reconciliation against code and runtime**:
+  - Corrected CLI flags across `docs/guide/`: `source add` (`--url`/`--ref` and `--path`, not `--kind`/`--branch`), `schedule add` (play kind syntax `--kind play --target <inv> -- <playbook>`, 6-field cron), `check add` (`--kind`, target `name=spec`, dynamic netgroups), `token new` (`<name>` positional, scopes `operator`/`readonly`/`approve`), and `silence add` (`--for`, `--reason`, `--alert`/`--host`/`--global`).
+  - Grounded OpenTofu HTTP state backend URL in reality (`/api/v1/tf/state/<workspace>` with `LOCK`/`UNLOCK` methods, not `/api/v1/tofu/state/` with subpaths).
+  - Clarified MCP agent interface (`docs/guide/agent-mcp.md`): corrected token scopes and tool catalog matching `internal/mcp` and `docs/operations/mcp.md`.
+  - Replaced non-existent `EXOCOMP_LISTEN` with real environment variables in `docs/reference/configuration.md`.
+  - Reconciled `docs/operations/api.md` with maintenance restart routes (`GET/POST /api/v1/maintenance/restart`).
+  - Documented Web UI capabilities in `docs/operations/serve.md` and `docs/operations/sources.md`: Git source sync ("Sync now"), schedule on-demand execution ("Run now"), contextual ntfy setup modal, and viewer-local timezone formatting.
+
 ## 2026-10-11
 
 - **Restructure**: Reorganized `docs/` into a user-guide-led, design-rich, and contributor-forward OKF v0.2 bundle:

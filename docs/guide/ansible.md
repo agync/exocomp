@@ -61,12 +61,13 @@ exocomp playbook run playbooks/site.yml \
 - You can schedule periodic drift scans:
   ```bash
   exocomp schedule add daily-drift \
-    --cron "0 4 * * *" \
+    --cron "0 0 4 * * *" \
     --kind play \
     --check \
-    --source homelab \
-    --playbook playbooks/site.yml
+    --target tf:homelab \
+    -- playbooks/site.yml
   ```
+- In the Web UI, schedules can also be triggered on demand using the **Run now** action on `/schedules`.
 
 ## Ad-hoc commands and unreachable hosts
 

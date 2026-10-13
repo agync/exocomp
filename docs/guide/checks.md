@@ -23,11 +23,11 @@ exocomp includes a native reachability monitoring system that tracks the health 
    Register reachability checks against targets:
    ```bash
    exocomp check add dns-resolver \
-     --type tcp \
-     --target 192.168.1.1:53 \
-     --netgroup lan \
+     --kind tcp \
+     --target resolver=192.168.1.1:53 \
      --interval 30s
    ```
+   Targets are classified automatically into matching `netgroup` definitions based on their IP address.
 
 ## The checks matrix in the Web UI
 
@@ -39,15 +39,14 @@ The UI adheres strictly to the design invariant: **State is colour plus word**. 
 
 ## Check-triggered runs
 
-When a check target transitions between states (e.g. from `UP` to `DOWN`), exocomp emits an internal event. You can bind reactive rules to trigger an automated playbook run when a service fails:
+When a check target transitions between states (e.g. from `up` to `down`), exocomp emits an internal event. You can bind reactive rules to trigger an automated playbook run when a service fails:
 
-```yaml
-# .exocomp/rules/dns-remediation.yml
-name: restart-dns-on-failure
-on: check.status_change
-when: "event.check == 'dns-resolver' && event.status == 'DOWN'"
-action: playbook
-playbook: playbooks/restart-dns.yml
-source: homelab
-require_approval: false
+```bash
+exocomp rule add restart-dns-on-failure \
+  --source check \
+  --expr "event.check == 'dns-resolver' && event.status == 'down'" \
+  --action playbook \
+  --repo-source homelab \
+  --playbook playbooks/restart-dns.yml \
+  --limit dns-servers
 ```
