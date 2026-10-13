@@ -14,6 +14,34 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-13 — ntfy: one modal, no drawer
+
+- **The ntfy drawer is gone; the modal is the whole channel.** `/system/ntfy`
+  and its page are removed. The ntfy tile's Edit (or Set up) opens one modal
+  carrying the server URL, the topic, the access token, the push-detail switch,
+  the push preview and the test — so the channel is configured, previewed and
+  tested in one place.
+- **The tile is pruned.** The ntfy card drops its facts block and the fan-out
+  mini table; it keeps the state chip, the topic figure and the Edit verb.
+- **Mutes and What-pages leave the web UI.** The drawer's MUTES section (and its
+  clear verb) and the fan-out table are removed; mutes stay a CLI/API surface
+  (`exocomp mute add`/`rm`, `POST`/`DELETE /api/v1/mutes`) and the banner still
+  reports a held push.
+- **URL and topic read as configuration, not secrets.** The modal labels the
+  server URL and topic "plain configuration, not a secret"; only the access
+  token is sealed. The stale "values never render" and "rotate in Secrets" copy
+  is gone.
+- **Send test saves and pushes in one action**, and its result lands in a status
+  box in the modal (the ok line, the refusal copy, or a classified delivery
+  failure), so a bad endpoint is debuggable without leaving the dialog. Both
+  detail positions render the same three preview slots, so toggling never
+  changes the box height.
+- **A save clears a legacy sealed `ntfy/url`/`ntfy/topic`.** Those moved to
+  settings, and the readers are secret-first, so a stale sealed row from an
+  older install would silently win over the setting just saved; the save removes
+  them. A URL carrying credentials is refused — the token is where a credential
+  belongs.
+
 ## 2026-10-13 — ntfy drawer: verdict, presence, and copy pass
 
 - **The drawer leads with the verdict.** `/system/ntfy` now carries the same

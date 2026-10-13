@@ -514,7 +514,7 @@ func TestSecretsUsedByLegColumn(t *testing.T) {
 		t.Fatalf("/secrets = %d, want 200", code)
 	}
 	for _, want := range []string{
-		`href="/system/ntfy"`,
+		`href="/system"`,
 		`href="/system/deadman"`,
 		"ntfy/token",
 		"deadman/heartbeat_url",

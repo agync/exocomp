@@ -331,7 +331,6 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /system", s.requireAuth(s.handleSystem))
 	mux.HandleFunc("GET /system/kit", s.requireAuth(s.handleKit))
 	mux.HandleFunc("GET /system/deadman", s.requireAuth(s.handleDeadman))
-	mux.HandleFunc("GET /system/ntfy", s.requireAuth(s.handleNtfy))
 	mux.HandleFunc("GET /system/litestream", s.requireAuth(s.handleLitestream))
 	mux.HandleFunc("GET /system/backups", s.requireAuth(s.handleBackups))
 	mux.HandleFunc("GET /system/backups/{name}/history", s.requireAuth(s.handleBackupHistory))

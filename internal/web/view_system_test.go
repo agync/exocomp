@@ -172,7 +172,7 @@ func TestSystemShellPhoneRows(t *testing.T) {
 	}
 	for _, want := range []string{
 		`href="/system/deadman"`,
-		`href="/system/ntfy"`,
+		`data-modal-open="ntfy-modal"`,
 		`href="/system/litestream"`,
 		`href="/system/backups"`,
 		`class="leg-row"`,
@@ -211,7 +211,7 @@ func TestSystemPhoneLegRowsCarryState(t *testing.T) {
 	phone := page[idx:]
 	for _, want := range []string{
 		`class="leg-row" href="/system/deadman"`,
-		`class="leg-row" href="/system/ntfy"`,
+		`class="leg-row" data-modal-open="ntfy-modal"`,
 		`class="leg-row" href="/system/litestream"`,
 		`class="leg-row" href="/system/backups"`,
 		// The litestream figure from the data — not the "—" stub.

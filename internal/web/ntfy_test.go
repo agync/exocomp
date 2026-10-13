@@ -9,7 +9,6 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
 	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/store"
@@ -18,7 +17,7 @@ import (
 // fakeNtfy is an in-memory stand-in for the daemon's ntfy seam: the presence +
 // judgment the test sets, and a TestPush that records the call and returns the
 // configured error (nil = delivered). refused models the seam's refusal wrap
-// (ErrNtfyRefused), which the drawer renders with the refusal copy.
+// (ErrNtfyRefused), which the modal renders with the refusal copy.
 type fakeNtfy struct {
 	st      NtfySeamState
 	derr    error
@@ -69,22 +68,24 @@ func sealNtfy(t *testing.T, h *harness, name, value, sentinel string) {
 	}
 }
 
-// seedOnChannel seals the three keys and the topic label for the ON state.
+// seedOnChannel writes the ON state: the URL and topic as settings (the model
+// now), the token sealed, and the topic label + detail set.
 func seedOnChannel(t *testing.T, h *harness) {
 	t.Helper()
 	ctx := context.Background()
-	sealNtfy(t, h, notify.SecretNtfyURL, "https://push.lan", "CIPHER-SENTINEL-URL")
-	sealNtfy(t, h, notify.SecretNtfyTopic, "exocomp-7f3a", "CIPHER-SENTINEL-TOPIC")
-	sealNtfy(t, h, notify.SecretNtfyToken, "tk_abc", "CIPHER-SENTINEL-TOKEN")
+	if err := h.store.PutSetting(ctx, store.SettingNtfyURL, "https://push.lan"); err != nil {
+		t.Fatalf("set url setting: %v", err)
+	}
 	if err := h.store.PutSetting(ctx, store.SettingNtfyTopic, "exocomp-7f3a"); err != nil {
-		t.Fatalf("set topic label: %v", err)
+		t.Fatalf("set topic setting: %v", err)
 	}
 	if err := h.store.PutSetting(ctx, store.SettingNtfyDetail, "descriptive"); err != nil {
 		t.Fatalf("set detail: %v", err)
 	}
+	sealNtfy(t, h, notify.SecretNtfyToken, "tk_abc", "CIPHER-SENTINEL-TOKEN")
 }
 
-// onPresence is the seam's judgment for the fully-sealed self-hosted channel.
+// onPresence is the seam's judgment for the fully-configured self-hosted channel.
 func onPresence() NtfySeamState {
 	return NtfySeamState{
 		URLSealed: true, TopicSealed: true, TokenSealed: true,
@@ -92,9 +93,9 @@ func onPresence() NtfySeamState {
 	}
 }
 
-// TestNtfyCardOn is the ON card (SPEC §2.1): the topic label figures with the
-// server class, the sealed-key facts, and the 3-row fan-out mini table — a
-// table, not toggles.
+// TestNtfyCardOn is the ON tile: the topic label figures with the server class,
+// the Edit verb opens the modal, and the tile carries NO facts block or fan-out
+// table (those moved into the modal).
 func TestNtfyCardOn(t *testing.T) {
 	h := newHarness(t)
 	seedOnChannel(t, h)
@@ -109,43 +110,39 @@ func TestNtfyCardOn(t *testing.T) {
 	}
 	for _, want := range []string{
 		`<section class="leg" id="ntfy"`,
-		">ntfy</span>",
 		"chip ok",
 		">ON</span>",
 		"exocomp-7f3a",
 		"topic · self-hosted server",
-		"rotate in Secrets",
-		"descriptive · pushes name the job and host",
-		`class="leg-mini"`,
-		"approvals",
-		"job failures",
-		"dead-man tripped",
-		"max on re-notify",
-		"one page per job",
-		">once</span>",
+		`data-modal-open="ntfy-modal">Edit</button>`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("ON card missing %q", want)
+			t.Errorf("ON tile missing %q", want)
 		}
 	}
-	// The powerline reads on.
-	if !strings.Contains(page, ">ntfy on</a>") {
-		t.Errorf("powerline missing ntfy on: %s", page)
+	// The tile is pruned: no fan-out mini table, no "rotate in Secrets" fact.
+	for _, banned := range []string{"leg-mini", "rotate in Secrets", "max on re-notify"} {
+		if strings.Contains(page, banned) {
+			t.Errorf("pruned tile still renders %q", banned)
+		}
 	}
-	// Never a sealed value: neither the plaintext nor the ciphertext sentinels.
-	for _, leak := range []string{"https://push.lan", "tk_abc", "CIPHER-SENTINEL-"} {
+	// The token never renders: neither the plaintext nor the ciphertext sentinel.
+	for _, leak := range []string{"tk_abc", "CIPHER-SENTINEL-"} {
 		if strings.Contains(page, leak) {
-			t.Errorf("ON card leaked %q", leak)
+			t.Errorf("ON surface leaked %q", leak)
 		}
 	}
 }
 
-// TestNtfyCardRefused is the REFUSED card: a public topic without a token is a
-// fail state with the Seal token verb, never a quiet off.
+// TestNtfyCardRefused is the REFUSED tile: a public topic without a token is a
+// fail state, and the fix is the modal's token field (Edit, the primary).
 func TestNtfyCardRefused(t *testing.T) {
 	h := newHarness(t)
+	if err := h.store.PutSetting(context.Background(), store.SettingNtfyURL, "https://ntfy.sh"); err != nil {
+		t.Fatalf("set url: %v", err)
+	}
 	if err := h.store.PutSetting(context.Background(), store.SettingNtfyTopic, "exocomp-7f3a"); err != nil {
-		t.Fatalf("set topic label: %v", err)
+		t.Fatalf("set topic: %v", err)
 	}
 	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
 		URLSealed: true, TopicSealed: true, TokenSealed: false,
@@ -163,29 +160,23 @@ func TestNtfyCardRefused(t *testing.T) {
 		"chip fail",
 		">REFUSED</span>",
 		"topic · public server",
-		"token <span class=\"nope\">missing</span>",
-		"a public topic without a token would publish approval links to anyone who guesses the name",
-		"approvals and failures are silent",
-		">Edit</button>",
-		`data-modal-open="ntfy-modal"`,
+		`data-modal-open="ntfy-modal">Edit</button>`,
+		"add an access token, or self-host ntfy",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("REFUSED card missing %q", want)
+			t.Errorf("REFUSED tile missing %q", want)
 		}
 	}
 	if !strings.Contains(page, `data-state="fail"`) {
-		t.Errorf("REFUSED card missing the fail ring: %s", page)
+		t.Errorf("REFUSED tile missing the fail ring: %s", page)
 	}
-	// A refused channel must not render the fan-out as if it delivered.
 	if strings.Contains(page, "max on re-notify") {
-		t.Errorf("REFUSED card rendered the fan-out table")
+		t.Errorf("REFUSED tile rendered the fan-out")
 	}
 }
 
-// TestNtfyCardOff is the OFF card: nothing sealed, quiet Set up, and the
-// sentence that names the setup command. The figure is a dim `—` with the
-// `no channel · nothing sealed` note — never a loud `no channel` at figure
-// size (R13).
+// TestNtfyCardOff is the OFF tile: nothing set, the quiet Set up verb, and the
+// sentence naming the setup command. The figure is a dim `—`.
 func TestNtfyCardOff(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{})
@@ -201,24 +192,20 @@ func TestNtfyCardOff(t *testing.T) {
 		"chip dim",
 		">OFF</span>",
 		`<span class="value dim">—</span>`,
-		"no channel · nothing sealed",
-		">Set up</button>",
-		`data-modal-open="ntfy-modal"`,
+		"no channel · nothing set",
+		`data-modal-open="ntfy-modal">Set up</button>`,
 		"exocomp setup notify",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("OFF card missing %q", want)
+			t.Errorf("OFF tile missing %q", want)
 		}
-	}
-	if strings.Contains(page, ">no channel</span>") {
-		t.Error("the OFF figure must be a dim '—', never 'no channel' at figure size")
 	}
 }
 
-// TestNtfyDrawerPresence is the drawer's presence rows (SPEC §2.2): each
-// sealed key renders key · dot string (or the topic label) · SEALED, and the
-// sealed value never renders — the round's hard rule (b).
-func TestNtfyDrawerPresence(t *testing.T) {
+// TestNtfyModalIsTheSurface is the modal contract: the config fields, the detail
+// radios, the push preview with BOTH detail samples, the Send test verb that
+// posts to the test route, and the status box.
+func TestNtfyModalIsTheSurface(t *testing.T) {
 	h := newHarness(t)
 	seedOnChannel(t, h)
 	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
@@ -226,176 +213,151 @@ func TestNtfyDrawerPresence(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
+	code, page := getBody(t, client, ts.URL+"/system")
 	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
+		t.Fatalf("/system = %d, want 200", code)
 	}
 	for _, want := range []string{
-		"SYSTEM · NTFY",
-		"Push channel",
-		"chip ok",
-		">ON</span>",
-		`class="presence"`,
-		">ntfy/url</span>",
-		">ntfy/topic</span>",
-		">ntfy/token</span>",
-		"self-hosted",
-		"SEALED",
-		"values never render",
-		"rotate in Secrets",
-		`action="/system/ntfy/save"`,
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("drawer missing %q", want)
-		}
-	}
-	// Hard rule (b): the sealed values never reach the page.
-	for _, leak := range []string{"https://push.lan", "tk_abc", "CIPHER-SENTINEL-"} {
-		if strings.Contains(page, leak) {
-			t.Errorf("drawer leaked %q", leak)
-		}
-	}
-}
-
-// TestNtfyDrawerMissingToken is the REFUSED drawer: the missing token row
-// reads MISSING in fail, and the topic row shows its label.
-func TestNtfyDrawerMissingToken(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
-		URLSealed: true, TopicSealed: true, TokenSealed: false,
-		ServerClass: "public", Refused: true,
-	}})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	for _, want := range []string{
-		"ntfy/token",
-		`class="word missing"`,
-		">MISSING</span>",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("REFUSED drawer missing %q", want)
-		}
-	}
-}
-
-// TestNtfyDrawerTokenNone is the ON-but-no-token drawer: a self-hosted channel
-// needs no token, so the row reads a quiet NONE — never the red MISSING that a
-// refused (public-without-token) channel earns. The head still figures ON.
-func TestNtfyDrawerTokenNone(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
-		URLSealed: true, TopicSealed: true, TokenSealed: false,
-		ServerClass: "self-hosted", Refused: false,
-	}})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	for _, want := range []string{
-		"chip ok",
-		">ON</span>",
-		`class="word none"`,
-		">NONE</span>",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("ON-no-token drawer missing %q", want)
-		}
-	}
-	if strings.Contains(page, `class="word missing"`) {
-		t.Error("a legal missing token must not wear the red MISSING class")
-	}
-}
-
-// TestNtfyDrawerDetailAndSample is the Detail two-position switch and the live
-// WHAT A PUSH SAYS sample: the stored position is pressed and its sample shows.
-func TestNtfyDrawerDetailAndSample(t *testing.T) {
-	h := newHarness(t)
-	ctx := context.Background()
-	if err := h.store.PutSetting(ctx, store.SettingNtfyDetail, "terse"); err != nil {
-		t.Fatalf("set detail: %v", err)
-	}
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	for _, want := range []string{
-		"value=\"terse\" aria-pressed=\"true\"",
-		"value=\"descriptive\" aria-pressed=\"false\"",
-		"terse names nothing — for a phone you do not control",
+		`<dialog class="modal" id="ntfy-modal"`,
+		`id="ntfy-url"`, `id="ntfy-topic"`, `id="ntfy-token"`,
+		`name="detail" value="descriptive"`, `name="detail" value="terse"`,
 		"WHAT A PUSH SAYS",
-		"exocomp: action required",
-		"open exocomp to see what",
+		`id="ntfy-sample-desc"`, `id="ntfy-sample-terse"`,
 		"no action buttons in terse",
+		`formaction="/system/ntfy/test"`,
+		`class="test-box"`,
+		"Plain configuration, not a secret",
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("terse drawer missing %q", want)
+			t.Errorf("modal missing %q", want)
 		}
 	}
-	// The descriptive sample is hidden for a terse channel (its content stays
-	// in the markup — `hidden` is a visual, not a scrub).
-	if !strings.Contains(page, `id="ntfy-sample-desc" hidden`) {
-		t.Errorf("descriptive sample not hidden for terse")
+	// The old drawer's copy is gone: no "values never render", no "rotate".
+	for _, banned := range []string{"values never render", "rotate in Secrets", "notify.ntfy_detail"} {
+		if strings.Contains(page, banned) {
+			t.Errorf("modal still carries stale copy %q", banned)
+		}
 	}
 }
 
-// TestNtfyDrawerWhatPages pins the read-only fan-out table (a table, not
-// toggles — no routing knobs exist in code).
-func TestNtfyDrawerWhatPages(t *testing.T) {
+// TestNtfyConfigureSavesSettingsAndDetail is the Save path: url/topic/detail are
+// ordinary settings, the token stays sealed, and the redirect lands on /system.
+func TestNtfyConfigureSavesSettingsAndDetail(t *testing.T) {
 	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
+	srv := serverWithNtfy(t, h, &fakeNtfy{})
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
+	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url":    {"https://push.internal.lan"},
+		"topic":  {"homelab-alerts"},
+		"detail": {"terse"},
+		"token":  {"tk_secret12345"},
+	}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("configure = %d, want 303", resp.StatusCode)
 	}
-	for _, want := range []string{
-		"WHAT PAGES",
-		"<th scope=\"col\">EVENT</th>",
-		"<th scope=\"col\">PRIORITY</th>",
-		"<th scope=\"col\">RE-NOTIFY</th>",
-		"approval waiting",
-		"every 10m · max",
-		"job failed · degraded",
-		"once per job",
-		"dead-man tripped",
-		">once</td>",
-		"one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("what-pages table missing %q", want)
-		}
+	if loc := resp.Header.Get("Location"); loc != "/system" {
+		t.Errorf("configure Location = %q, want /system", loc)
 	}
-	// Priority is a config value, not a state gap: it reads as a plain word in
-	// the column, never the amber wait chip the drawer used to spend here.
-	if strings.Contains(page, `class="chip wait"`) {
-		t.Errorf("the fan-out spent the wait chip on a priority cell: %s", page)
+	ctx := context.Background()
+	if u, _ := h.store.GetSetting(ctx, store.SettingNtfyURL); u != "https://push.internal.lan" {
+		t.Errorf("SettingNtfyURL = %q", u)
 	}
-	// No routing knobs: the rows carry no toggle/checkbox controls.
-	if strings.Contains(page, `name="route"`) || strings.Contains(page, `type="checkbox"`) {
-		t.Errorf("what-pages table rendered routing knobs")
+	if top, _ := h.store.GetSetting(ctx, store.SettingNtfyTopic); top != "homelab-alerts" {
+		t.Errorf("SettingNtfyTopic = %q", top)
+	}
+	if d, _ := h.store.GetSetting(ctx, store.SettingNtfyDetail); d != "terse" {
+		t.Errorf("SettingNtfyDetail = %q, want terse", d)
+	}
+	if _, err := h.store.GetSecret(ctx, notify.SecretNtfyToken); err != nil {
+		t.Errorf("ntfy token not sealed: %v", err)
+	}
+	// URL and topic are settings, never sealed.
+	if _, err := h.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
+		t.Errorf("SecretNtfyURL was unexpectedly sealed")
+	}
+	if _, err := h.store.GetSecret(ctx, notify.SecretNtfyTopic); err == nil {
+		t.Errorf("SecretNtfyTopic was unexpectedly sealed")
 	}
 }
 
-// TestNtfyTestPostsPush is the Test verb's ok path: one push through the seam
-// and the delivered status line with the time and topic (copy.txt).
+// TestNtfyConfigureNormalizesDetail: an unrecognized detail falls back to the
+// documented descriptive default.
+func TestNtfyConfigureNormalizesDetail(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithNtfy(t, h, &fakeNtfy{})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url": {"https://push.lan"}, "topic": {"t"}, "detail": {"garbage"},
+	}, nil)
+	_ = resp.Body.Close()
+	if d, _ := h.store.GetSetting(context.Background(), store.SettingNtfyDetail); d != "descriptive" {
+		t.Fatalf("normalized detail = %q, want descriptive", d)
+	}
+}
+
+// TestNtfyConfigureClearsLegacySealedURLTopic is the upgrade gate: a legacy
+// sealed ntfy/url or ntfy/topic (from before those became settings) is cleared
+// on save, so a stale secret can never shadow the setting the operator just
+// wrote — the readers are secret-first.
+func TestNtfyConfigureClearsLegacySealedURLTopic(t *testing.T) {
+	h := newHarness(t)
+	sealNtfy(t, h, notify.SecretNtfyURL, "https://old.lan", "CIPHER-URL")
+	sealNtfy(t, h, notify.SecretNtfyTopic, "old-topic", "CIPHER-TOPIC")
+	srv := serverWithNtfy(t, h, &fakeNtfy{})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url": {"https://new.lan"}, "topic": {"new-topic"},
+	}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("configure = %d, want 303", resp.StatusCode)
+	}
+	ctx := context.Background()
+	if _, err := h.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
+		t.Error("legacy sealed ntfy/url was not cleared")
+	}
+	if _, err := h.store.GetSecret(ctx, notify.SecretNtfyTopic); err == nil {
+		t.Error("legacy sealed ntfy/topic was not cleared")
+	}
+	if u, _ := h.store.GetSetting(ctx, store.SettingNtfyURL); u != "https://new.lan" {
+		t.Errorf("SettingNtfyURL = %q, want the saved value", u)
+	}
+}
+
+// TestNtfyConfigureRejectsUserinfo: a URL carrying credentials is refused — the
+// token is where a credential belongs, and the URL is stored as plain settings.
+func TestNtfyConfigureRejectsUserinfo(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithNtfy(t, h, &fakeNtfy{})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
+		"url": {"https://user:pass@push.lan"}, "topic": {"t"},
+	}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("userinfo URL = %d, want 422", resp.StatusCode)
+	}
+	if !strings.Contains(body, "Put credentials in the access token") {
+		t.Errorf("userinfo refusal missing: %s", body)
+	}
+}
+
+// TestNtfyTestPostsPush is the Send test ok path: it saves the form, posts one
+// push through the seam, and re-renders the modal with the delivered status.
 func TestNtfyTestPostsPush(t *testing.T) {
 	h := newHarness(t)
 	seedOnChannel(t, h)
@@ -405,7 +367,9 @@ func TestNtfyTestPostsPush(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{
+		"url": {"https://push.lan"}, "topic": {"exocomp-7f3a"},
+	}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -417,6 +381,7 @@ func TestNtfyTestPostsPush(t *testing.T) {
 	for _, want := range []string{
 		"✓ test delivered · ",
 		" · exocomp-7f3a",
+		`class="test-box is-ok"`,
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("delivered status missing %q: %s", want, body)
@@ -424,8 +389,8 @@ func TestNtfyTestPostsPush(t *testing.T) {
 	}
 }
 
-// TestNtfyTestRefusalStatus is the Test verb's refusal path: a channel that
-// cannot load (the NewNtfy rule) writes the refusal copy on the status line.
+// TestNtfyTestRefusalStatus is the refusal path: a channel that cannot load (the
+// NewNtfy rule) writes the refusal copy in the status box.
 func TestNtfyTestRefusalStatus(t *testing.T) {
 	h := newHarness(t)
 	fake := &fakeNtfy{st: NtfySeamState{
@@ -437,16 +402,17 @@ func TestNtfyTestRefusalStatus(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{
+		"url": {"https://ntfy.sh"}, "topic": {"t"}, "token": {"tk_x"},
+	}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("test = %d, want 200; body=%s", resp.StatusCode, body)
 	}
 	for _, want := range []string{
-		"class=\"form-status is-error\"",
+		`class="test-box is-error"`,
 		">the server refused the token</span>",
-		">Retry</a>",
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("refusal status missing %q: %s", want, body)
@@ -455,29 +421,27 @@ func TestNtfyTestRefusalStatus(t *testing.T) {
 }
 
 // TestNtfyTestTimeoutReason is the delivery-failure copy: a transport timeout
-// reads as a plain reason the operator can act on, never the opaque generic
-// line — and never the error text itself (which can carry the server host).
+// reads as a plain reason, never the opaque generic line and never the error
+// text (which can carry the server host).
 func TestNtfyTestTimeoutReason(t *testing.T) {
 	h := newHarness(t)
+	seedOnChannel(t, h)
 	fake := &fakeNtfy{st: onPresence(), derr: &net.DNSError{Err: "i/o timeout", IsTimeout: true}}
 	srv := serverWithNtfy(t, h, fake)
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{}, nil)
+	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{
+		"url": {"https://push.lan"}, "topic": {"exocomp-7f3a"},
+	}, nil)
 	body := readBody(t, resp)
 	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("test = %d, want 200; body=%s", resp.StatusCode, body)
 	}
-	for _, want := range []string{
-		">the push timed out — the server did not answer</span>",
-		">Retry</a>",
-	} {
-		if !strings.Contains(body, want) {
-			t.Errorf("timeout status missing %q: %s", want, body)
-		}
+	if !strings.Contains(body, ">the push timed out — the server did not answer</span>") {
+		t.Errorf("timeout status missing: %s", body)
 	}
 }
 
@@ -500,8 +464,8 @@ func TestNtfyTestReadonlyForbidden(t *testing.T) {
 	}
 }
 
-// TestNtfyTestUnavailableWithoutSeam: a surface with no ntfy seam (a surface
-// built without one) answers 503 rather than pretending to push.
+// TestNtfyTestUnavailableWithoutSeam: a surface with no ntfy seam answers 503
+// rather than pretending to push.
 func TestNtfyTestUnavailableWithoutSeam(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, nil)
@@ -516,260 +480,9 @@ func TestNtfyTestUnavailableWithoutSeam(t *testing.T) {
 	}
 }
 
-// TestNtfySaveDetail persists the Detail switch and normalizes an unknown
-// value back to descriptive.
-func TestNtfySaveDetail(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	resp := postForm(t, client, ts.URL+"/system/ntfy/save", url.Values{"detail": {"terse"}}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("save = %d, want 303", resp.StatusCode)
-	}
-	got, err := h.store.GetSetting(context.Background(), store.SettingNtfyDetail)
-	if err != nil {
-		t.Fatalf("GetSetting: %v", err)
-	}
-	if got != "terse" {
-		t.Fatalf("saved detail = %q, want terse", got)
-	}
-
-	resp = postForm(t, client, ts.URL+"/system/ntfy/save", url.Values{"detail": {"garbage"}}, nil)
-	_ = resp.Body.Close()
-	got, _ = h.store.GetSetting(context.Background(), store.SettingNtfyDetail)
-	if got != "descriptive" {
-		t.Fatalf("normalized detail = %q, want descriptive", got)
-	}
-}
-
-// serverWithNtfyAt builds the same surface pinned to `at`: the injected clock
-// (Options.Clock) makes the MUTES section's "in …" column deterministic, so a
-// test can assert the exact left instead of a window around the read clock.
-func serverWithNtfyAt(t *testing.T, h *harness, f NtfyDriver, at time.Time) *Server {
-	t.Helper()
-	srv, err := New(Options{
-		Store: h.store, Deriver: h.env, Plans: h.env, Ntfy: f,
-		Version: "test", DataDir: h.dir,
-		Clock: func() time.Time { return at },
-	})
-	if err != nil {
-		t.Fatalf("web.New: %v", err)
-	}
-	return srv
-}
-
-// seedMutes writes one mute per scope kind, all expiring at distinct lefts
-// against `at` (global 2h, alert 1h, host 4h), and returns their ids in seed
-// order. `at` must be millisecond-aligned — the store persists UnixMilli, so a
-// sub-ms CreatedAt would read back one truncated millisecond short and shift
-// the rendered left.
-func seedMutes(t *testing.T, h *harness, at time.Time) []int64 {
-	t.Helper()
-	ctx := context.Background()
-	at = time.UnixMilli(at.UnixMilli()).UTC()
-	scopes := []store.NotifyMute{
-		{ScopeKind: store.ScopeGlobal},
-		{ScopeKind: store.ScopeAlert, ScopeValue: "disk-pressure"},
-		{ScopeKind: store.ScopeHost, ScopeValue: "aurora"},
-	}
-	left := []time.Duration{2 * time.Hour, time.Hour, 4 * time.Hour}
-	var ids []int64
-	for i, m := range scopes {
-		created, err := h.store.CreateNotifyMute(ctx, store.NotifyMute{
-			ScopeKind: m.ScopeKind, ScopeValue: m.ScopeValue,
-			Reason: "maintenance window", CreatedAt: at, ExpiresAt: at.Add(left[i]),
-			CreatedVia: "test",
-		})
-		if err != nil {
-			t.Fatalf("create %s mute: %v", m.ScopeKind, err)
-		}
-		ids = append(ids, created.ID)
-	}
-	return ids
-}
-
-// TestNtfyDrawerMutes is the MUTES section (SPEC §7 A8): one row per active
-// mute — the scope's source · host · until — each with the clear verb, and
-// the quiet-hours meta linking here. A global mute is the safety valve: its
-// clear asks first, a scoped mute's clear is one click.
-func TestNtfyDrawerMutes(t *testing.T) {
-	h := newHarness(t)
-	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
-	ids := seedMutes(t, h, at)
-	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	for _, want := range []string{
-		"MUTES",
-		`<th scope="col">SOURCE</th>`,
-		`<th scope="col">HOST</th>`,
-		`<th scope="col">UNTIL</th>`,
-		// global mute: the scope word, no host, its until, ask-first clear
-		">global</td>",
-		">—</td>",
-		">in 2h 00m</td>",
-		// host mute
-		">aurora</td>",
-		">in 4h 00m</td>",
-		// alert mute
-		">disk-pressure</td>",
-		">in 1h 00m</td>",
-		// the What-pages quiet-hours meta points here
-		`<a href="#mutes">quiet hours are a scoped mute</a>`,
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("MUTES section missing %q", want)
-		}
-	}
-	// Every mute renders a clear verb (a dropped verb goes red here).
-	for _, id := range ids {
-		if !strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(id)+`/clear"`) {
-			t.Errorf("mute %d has no clear verb", id)
-		}
-	}
-	// The global mute's clear asks first; a scoped mute's clear is one click.
-	if !strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(ids[0])+`/clear" class="inline-form" data-confirm=`) {
-		t.Errorf("global mute clear missing the ask-first guard")
-	}
-	for _, id := range []int64{ids[1], ids[2]} {
-		if strings.Contains(page, `action="/system/ntfy/mutes/`+itoa64(id)+`/clear" class="inline-form" data-confirm=`) {
-			t.Errorf("scoped mute %d clear carried the ask-first guard", id)
-		}
-	}
-}
-
-// TestNtfyDrawerMutesEmpty is the honest empty line: no active mutes renders
-// the empty sentence naming the verb and the trigger, never a bare table, and
-// the quiet-hours link still points at the section.
-func TestNtfyDrawerMutesEmpty(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	if !strings.Contains(page, "No mutes. Set one with <code>exocomp mute add</code>") {
-		t.Errorf("empty MUTES section missing the verb-and-trigger line: %s", page)
-	}
-	if !strings.Contains(page, `<a href="#mutes">quiet hours are a scoped mute</a>`) {
-		t.Errorf("quiet-hours link missing on an empty MUTES section")
-	}
-}
-
-// TestNtfyMuteClear is the clear verb: one POST lifts the mute through the
-// SAME store.DeleteNotifyMute the CLI's `mute rm` and the API's DELETE /mutes
-// call — a direct store call, not a queued job — redirects back to the
-// section, and the re-render no longer lists it (a cleared mute still listed
-// goes red here).
-func TestNtfyMuteClear(t *testing.T) {
-	h := newHarness(t)
-	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
-	ids := seedMutes(t, h, at)
-	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK || !strings.Contains(page, ">aurora</td>") {
-		t.Fatalf("precondition: MUTES section missing the host mute")
-	}
-
-	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[2])+"/clear", url.Values{"confirmed": {"1"}}, nil)
-	body := readBody(t, resp)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("clear = %d, want 303; body=%s", resp.StatusCode, body)
-	}
-	if loc := resp.Header.Get("Location"); loc != "/system/ntfy#mutes" {
-		t.Fatalf("clear Location = %q, want /system/ntfy#mutes", loc)
-	}
-
-	rows, err := h.store.ListNotifyMutes(context.Background(), true)
-	if err != nil {
-		t.Fatalf("ListNotifyMutes: %v", err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("store mutes after clear = %+v, want the one host mute gone", rows)
-	}
-	for _, r := range rows {
-		if r.ID == ids[2] {
-			t.Fatal("cleared mute still listed in the store")
-		}
-	}
-
-	code, page = getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy after clear = %d, want 200", code)
-	}
-	if strings.Contains(page, ">aurora</td>") {
-		t.Errorf("cleared mute still rendered on the drawer")
-	}
-}
-
-// TestNtfyMuteClearReadonlyForbidden: a readonly session may not clear a
-// mute — the writeGuard's 403, and the mute stays.
-func TestNtfyMuteClearReadonlyForbidden(t *testing.T) {
-	h := newHarness(t)
-	at := time.UnixMilli(h.server.now().UnixMilli()).UTC()
-	ids := seedMutes(t, h, at)
-	srv := serverWithNtfyAt(t, h, &fakeNtfy{st: onPresence()}, at)
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "ro", "readonly"))
-
-	resp := postForm(t, client, ts.URL+"/system/ntfy/mutes/"+itoa64(ids[0])+"/clear", url.Values{}, nil)
-	_ = resp.Body.Close()
-	if resp.StatusCode != http.StatusForbidden {
-		t.Fatalf("readonly clear = %d, want 403", resp.StatusCode)
-	}
-	rows, err := h.store.ListNotifyMutes(context.Background(), true)
-	if err != nil || len(rows) != 3 {
-		t.Fatalf("readonly clear touched the store: %+v (%v)", rows, err)
-	}
-}
-
-// TestPowerlineNtfyRefused is the A11 gate (SPEC §8 step 6): the token-missing
-// public-topic case reads `ntfy refused` in fail on the bottom powerline — not
-// off.
-func TestPowerlineNtfyRefused(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
-		URLSealed: true, TopicSealed: true, TokenSealed: false,
-		ServerClass: "public", Refused: true,
-	}})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system")
-	if code != http.StatusOK {
-		t.Fatalf("/system = %d, want 200", code)
-	}
-	if !strings.Contains(page, `>ntfy refused</a>`) {
-		t.Errorf("powerline missing ntfy refused: %s", page)
-	}
-	if !strings.Contains(page, `class="pl-seg fail"`) {
-		t.Errorf("refused segment not fail-coloured: %s", page)
-	}
-}
-
-// TestNtfyModalAndConfigure tests the contextual setup/edit modal and write path:
-// URL/topic non-secrets, token auto-creation in secrets, and setup-to-edit transition.
+// TestNtfyModalAndConfigure tests the setup-to-edit transition: OFF offers Set
+// up, a self-hosted configure flips the verb to Edit and pre-fills the fields,
+// and a public URL without a token is refused.
 func TestNtfyModalAndConfigure(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{})
@@ -777,7 +490,6 @@ func TestNtfyModalAndConfigure(t *testing.T) {
 	defer ts.Close()
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
-	// 1. Initial state: OFF, modal present, button is "Set up"
 	code, page := getBody(t, client, ts.URL+"/system")
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
@@ -788,15 +500,10 @@ func TestNtfyModalAndConfigure(t *testing.T) {
 	if !strings.Contains(page, `<dialog class="modal" id="ntfy-modal"`) {
 		t.Errorf("expected ntfy-modal dialog, got: %s", page)
 	}
-	if !strings.Contains(page, `id="ntfy-url"`) || !strings.Contains(page, `id="ntfy-topic"`) || !strings.Contains(page, `id="ntfy-token"`) {
-		t.Errorf("ntfy-modal missing url, topic, or token field: %s", page)
-	}
 
-	// 2. Refusal: public ntfy URL without token
+	// Public ntfy URL without a token is refused.
 	resp := postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
-		"url":   {"https://ntfy.sh"},
-		"topic": {"my-alerts"},
-		"token": {""},
+		"url": {"https://ntfy.sh"}, "topic": {"my-alerts"},
 	}, nil)
 	if resp.StatusCode != http.StatusUnprocessableEntity {
 		t.Fatalf("public ntfy without token = %d, want 422", resp.StatusCode)
@@ -806,36 +513,16 @@ func TestNtfyModalAndConfigure(t *testing.T) {
 		t.Errorf("expected public ntfy token refusal, got: %s", refusalBody)
 	}
 
-	// 3. Success: self-hosted URL without token
+	// Self-hosted without a token succeeds.
 	resp = postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
-		"url":   {"https://push.internal.lan"},
-		"topic": {"homelab-alerts"},
+		"url": {"https://push.internal.lan"}, "topic": {"homelab-alerts"},
 	}, nil)
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("self-hosted configure = %d, want 303", resp.StatusCode)
 	}
-	if loc := resp.Header.Get("Location"); loc != "/system" {
-		t.Errorf("redirect location = %q, want /system", loc)
-	}
 
-	// Verify settings and secrets
-	u, err := h.store.GetSetting(context.Background(), store.SettingNtfyURL)
-	if err != nil || u != "https://push.internal.lan" {
-		t.Errorf("SettingNtfyURL = %q, err = %v", u, err)
-	}
-	top, err := h.store.GetSetting(context.Background(), store.SettingNtfyTopic)
-	if err != nil || top != "homelab-alerts" {
-		t.Errorf("SettingNtfyTopic = %q, err = %v", top, err)
-	}
-	// URL and topic are ordinary settings now; only the token is sealed.
-	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyURL); err == nil {
-		t.Errorf("SecretNtfyURL was unexpectedly sealed")
-	}
-	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyTopic); err == nil {
-		t.Errorf("SecretNtfyTopic was unexpectedly sealed")
-	}
-
-	// 4. Now configured: button becomes "Edit"
+	// Now configured: the verb becomes Edit and the modal pre-fills the values.
 	code, page = getBody(t, client, ts.URL+"/system")
 	if code != http.StatusOK {
 		t.Fatalf("/system after configure = %d, want 200", code)
@@ -843,21 +530,7 @@ func TestNtfyModalAndConfigure(t *testing.T) {
 	if !strings.Contains(page, `data-modal-open="ntfy-modal">Edit</button>`) {
 		t.Errorf("expected Edit button opening ntfy-modal after configuration, got: %s", page)
 	}
-	// Modal pre-fills configured values
 	if !strings.Contains(page, `value="https://push.internal.lan"`) || !strings.Contains(page, `value="homelab-alerts"`) {
 		t.Errorf("expected modal to pre-fill configured url and topic, got: %s", page)
-	}
-
-	// 5. Success with secret: public ntfy with token auto-creates ntfy/token in secrets
-	resp = postForm(t, client, ts.URL+"/system/ntfy/configure", url.Values{
-		"url":   {"https://ntfy.sh"},
-		"topic": {"secure-topic-777"},
-		"token": {"tk_secret12345"},
-	}, nil)
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("public configure with token = %d, want 303", resp.StatusCode)
-	}
-	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyToken); err != nil {
-		t.Errorf("SecretNtfyToken not auto-created in secrets: %v", err)
 	}
 }

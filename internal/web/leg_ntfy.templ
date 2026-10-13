@@ -1,21 +1,23 @@
 package web
 
-// glyphSend is the test/send stroke glyph (SCREENS GLYPHS): the paper-plane
-// send arrow. The ntfy leg's Test verb renders it.
+// glyphSend is the send stroke glyph (SCREENS GLYPHS): the paper-plane arrow.
+// The modal's Send test verb renders it.
 const glyphSend = "M21 3L10 14M21 3l-7 18-4-7-7-4z"
 
-// ntfyCard is the ntfy leg of the /system self-care page (SPEC §2, artboard
-// 1c): the three-word judgment ON / REFUSED / OFF with the topic label as the
-// figure, the sealed-key facts, and — on ON — the 3-row fan-out mini table.
-// Sealed secrets render as presence only: the topic label is the one unsealed
-// display string (notify.ntfy_topic); url and token never render a value.
+// ntfyCard is the ntfy leg of the /system self-care page (SPEC §2): the
+// three-word judgment ON / REFUSED / OFF, the topic label as the figure, and the
+// one Edit/Set up verb that opens the ntfy modal. The tile is deliberately lean
+// — the configuration, the push-detail switch, the push preview and the test
+// all live in the modal, so the card carries no facts block and no fan-out
+// table. The URL and topic are ordinary settings, so the card never claims they
+// are sealed.
 templ ntfyCard(vm systemVM) {
 	<section class="leg" id="ntfy" aria-label="ntfy" data-state={ ntfyRing(vm.Ntfy) }>
 		<div class="leg-head">
 			<span class="name">@legGlyph(glyphNtfy)<span>ntfy</span></span>
 			<span class={ "chip", vm.Ntfy.ChipClass() }><span class="dot"></span>{ vm.Ntfy.Word() }</span>
 			<span class="verbs">
-				@ntfyCardVerbs(vm.Ntfy, vm.Page.Base, vm.Operator)
+				@ntfyCardVerbs(vm.Ntfy, vm.Operator)
 			</span>
 		</div>
 		<div class="leg-figure">
@@ -28,44 +30,14 @@ templ ntfyCard(vm systemVM) {
 				}
 			} else {
 				<span class="value dim">—</span>
-				<span class="note">no channel · nothing sealed</span>
+				<span class="note">no channel · nothing set</span>
 			}
 		</div>
-		<dl class="leg-facts">
-			<dt>secrets</dt>
-			<dd>
-				if vm.Ntfy.State == NtfyStateRefused {
-					url · topic <span class="nope">sealed</span> · token <span class="nope">missing</span>
-				} else {
-					url · topic · token <span class="nope">sealed</span> · <a href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/secrets")) }>rotate in Secrets</a>
-				}
-			</dd>
-			if vm.Ntfy.State == NtfyStateOn {
-				<dt>detail</dt>
-				<dd>
-					if vm.Ntfy.Detail == string(ntfyDetailTerse()) {
-						terse · pushes name nothing
-					} else {
-						descriptive · pushes name the job and host
-					}
-				</dd>
-			}
-			if vm.Ntfy.State == NtfyStateRefused {
-				<dt>why refused</dt>
-				<dd>a public topic without a token would publish approval links to anyone who guesses the name</dd>
-				<dt>pages</dt>
-				<dd class="nope">nothing · approvals and failures are silent</dd>
-			}
-		</dl>
-		if vm.Ntfy.State == NtfyStateOn {
-			<div class="leg-mini" aria-label="Fan-out">
-				<div class="on"><span>approvals</span><span class="wait">high</span><span>max on re-notify</span></div>
-				<div><span>job failures</span><span>default</span><span>one page per job</span></div>
-				<div><span>dead-man tripped</span><span class="wait">high</span><span>once</span></div>
-			</div>
+		if vm.Ntfy.State == NtfyStateRefused {
+			<p class="leg-sentence">A public topic without a token would publish approval links to anyone who guesses the name — add an access token, or self-host ntfy.</p>
 		}
 		if vm.Ntfy.State == NtfyStateOff {
-			<p class="leg-sentence">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic, seals it and sends the first push.</p>
+			<p class="leg-sentence">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic and sends the first push.</p>
 		}
 	</section>
 }
@@ -79,59 +51,72 @@ func ntfyRing(n ntfyCardVM) string {
 	return ""
 }
 
-// ntfyCardVerbs is the card's header verbs: ON carries the Test glyph (a POST
-// that sends one push and lands on the drawer with its status), an Edit verb
-// opening the contextual setup/edit modal, and the ▾ into the drawer;
-// REFUSED's primary is Edit opening the modal; OFF renders Edit if configured,
-// otherwise Set up.
-templ ntfyCardVerbs(n ntfyCardVM, base string, operator bool) {
-	if n.State == NtfyStateOn {
-		<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/ntfy/test")) } class="inline-form">
-			<button type="submit" class="raglyph" aria-label="Test — send one push to this channel" title="Test — send one push to this channel">
-				<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphSend }></path></svg>
-			</button>
-		</form>
-		if operator {
-			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
-		}
-		<a class="raglyph" href={ templ.SafeURL(urlWithBase(base, "/system/ntfy")) } aria-label="Push channel" title="Push channel">
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg>
-		</a>
-	} else if n.State == NtfyStateRefused {
-		if operator {
+// ntfyCardVerbs is the card's header verb: Edit (or Set up when nothing is
+// configured), opening the one ntfy modal where the whole channel is edited.
+// A refused channel's primary is Edit — the fix is a token in the modal.
+templ ntfyCardVerbs(n ntfyCardVM, operator bool) {
+	if operator {
+		if n.State == NtfyStateRefused {
 			<button type="button" class="btn primary small" data-modal-open="ntfy-modal">Edit</button>
-		}
-	} else {
-		if operator {
-			if n.IsConfigured() {
-				<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
-			} else {
-				<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Set up</button>
-			}
+		} else if n.IsConfigured() {
+			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
+		} else {
+			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Set up</button>
 		}
 	}
 }
 
-// ntfyModal is the contextual modal for setting up or editing ntfy configuration.
-templ ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string) {
+// ntfyModal is the one ntfy surface: the server URL and topic (ordinary
+// settings, prefilled), the optional access token (sealed, blank to keep), the
+// push-detail switch with its live preview, and the Send test / Save verbs with
+// the test-status box. Send test saves the form and posts one push through the
+// daemon seam; Save persists and returns to /system. The refusal form (a 422
+// re-render) and the test status both re-open the dialog.
+templ ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStatus) {
 	@modal("ntfy-modal", ntfyModalTitle(leg)) {
 		<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/ntfy/configure")) } class="writeform" id="ntfy-configure-form" novalidate>
 			@fieldInput(ntfyURLField(leg, form))
 			@fieldInput(ntfyTopicField(leg, form))
 			@fieldInput(ntfyTokenField(leg, form))
+			<div class="field">
+				<span class="label">Push detail</span>
+				<span class="field-seg" data-ntfy-detail>
+					<input type="radio" id="ntfy-detail-descriptive" name="detail" value="descriptive" checked?={ leg.Detail != "terse" }/>
+					<label for="ntfy-detail-descriptive">descriptive</label>
+					<input type="radio" id="ntfy-detail-terse" name="detail" value="terse" checked?={ leg.Detail == "terse" }/>
+					<label for="ntfy-detail-terse">terse</label>
+				</span>
+				<span class="meta">terse names nothing — for a phone you do not control</span>
+			</div>
+			<div class="push-preview" role="group" aria-label="What a push says">
+				<div class="kicker">WHAT A PUSH SAYS</div>
+				<div class="sample" id="ntfy-sample-desc" hidden?={ leg.Detail == "terse" }>
+					<div class="push-sample">
+						<p class="title">1 approval waiting · apply tofu/prod-net</p>
+						<p class="body">expires in 29m, then auto-rejects · { hostname() }</p>
+						<p class="push-actions" aria-hidden="true">
+							<span class="btn quiet small">Approve</span>
+							<span class="btn quiet small">Reject</span>
+						</p>
+					</div>
+				</div>
+				<div class="sample" id="ntfy-sample-terse" hidden?={ leg.Detail != "terse" }>
+					<div class="push-sample">
+						<p class="title">exocomp: action required</p>
+						<p class="body">open exocomp to see what</p>
+						<p class="push-actions" aria-hidden="true"><span class="note">no action buttons in terse</span></p>
+					</div>
+				</div>
+			</div>
 			@formStatus(false, ntfyModalErrForm(form), "Saving ntfy")
 			<div class="actions">
 				<button type="button" class="btn" data-modal-dismiss>Cancel</button>
+				<button type="submit" class="btn quiet ntfy-test-btn" formaction={ urlWithBase(base, "/system/ntfy/test") } title="saves the configuration, then sends one push">@legGlyph(glyphSend) Send test</button>
 				<button type="submit" class="btn primary">Save</button>
 			</div>
 		</form>
-		if form != nil && form.HasError() {
-			<script>
-			exoModalOpen("ntfy-modal");
-			var ntfyBad = document.querySelector('#ntfy-modal input[aria-invalid="true"]');
-			if (ntfyBad) ntfyBad.focus();
-			</script>
-		}
+		@ntfyStatus(test)
+		@ntfyModalJS()
 	}
 }
 
@@ -142,7 +127,42 @@ func ntfyModalTitle(n ntfyCardVM) string {
 	return "Set up ntfy"
 }
 
-// ntfyDetailTerse names the terse position for the card's detail fact.
-func ntfyDetailTerse() string {
-	return "terse"
+// ntfyStatus is the modal's test-status box: the ok line, the failure sentence,
+// or the resting hint that names what Send test does. It is one box for the
+// whole channel so a failed push is debuggable from the modal.
+templ ntfyStatus(st ntfyTestStatus) {
+	<div class={ "test-box", templ.KV("is-ok", st.Class == "ok"), templ.KV("is-error", st.Class == "fail") } role="status" aria-live="polite">
+		if st.Class == "ok" {
+			<span class="msg">✓ { st.Msg }</span>
+		} else if st.Class == "fail" {
+			<span class="msg">{ st.Msg }</span>
+		} else {
+			<span class="hint">no test yet · Send test saves the configuration, then sends one push</span>
+		}
+	</div>
+}
+
+// ntfyModalJS swaps the push preview to match the detail radio, and re-opens the
+// dialog when a refusal or a test status landed on the page.
+templ ntfyModalJS() {
+	<script>
+	(function () {
+		var seg = document.querySelector(".field-seg[data-ntfy-detail]");
+		var desc = document.getElementById("ntfy-sample-desc");
+		var terse = document.getElementById("ntfy-sample-terse");
+		if (seg && desc && terse) {
+			seg.addEventListener("change", function () {
+				var terseOn = seg.querySelector('input[value="terse"]');
+				var on = terseOn && terseOn.checked;
+				desc.hidden = on;
+				terse.hidden = !on;
+			});
+		}
+		if (document.querySelector("#ntfy-modal .is-error, #ntfy-modal .is-ok, #ntfy-modal input[aria-invalid=\"true\"]")) {
+			exoModalOpen("ntfy-modal");
+			var bad = document.querySelector('#ntfy-modal input[aria-invalid="true"]');
+			if (bad) bad.focus();
+		}
+	})();
+	</script>
 }

@@ -102,7 +102,7 @@ templ systemPage(vm systemVM) {
 
 		@systemPreferences()
 		@kitModal(vm)
-		@ntfyModal(vm.Ntfy, vm.NtfyModal, vm.Page.Base)
+		@ntfyModal(vm.Ntfy, vm.NtfyModal, vm.Page.Base, vm.NtfyTest)
 
 		<div class="sys-phone">
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/deadman")) }>
@@ -113,14 +113,14 @@ templ systemPage(vm systemVM) {
 				@chip(vm.Deadman.StateClass, vm.Deadman.StateWord)
 				<span class="leg-chev" aria-hidden="true">›</span>
 			</a>
-			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy")) }>
+			<button type="button" class="leg-row" data-modal-open="ntfy-modal">
 				<span class="name">ntfy</span>
 				if legRowFigure(vm.Ntfy.Figure()) {
 					<span class="meta">{ vm.Ntfy.Figure() }</span>
 				}
 				@chip(vm.Ntfy.ChipClass(), vm.Ntfy.Word())
 				<span class="leg-chev" aria-hidden="true">›</span>
-			</a>
+			</button>
 			<a class="leg-row" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream")) }>
 				<span class="name">Litestream</span>
 				if legRowFigure(vm.Litestream.Figure) {

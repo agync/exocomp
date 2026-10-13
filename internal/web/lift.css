@@ -137,16 +137,9 @@
   align-items:center; font:400 13px/1.4 var(--font-mono); }
 .doctor-findings .row .detail { color:var(--ink-500); min-width:0; }
 
-/* segmented switch inside a field (Threshold · Detail · From · Kind): a
- * nowrap flex row so a two-segment switch (Detail) never wraps its segments
- * (R9). The `.field-seg` radios hide natively; the pressed segment fills. */
-.field-switch { display:flex; flex-wrap:nowrap; height:40px; padding:3px; box-sizing:border-box;
-  border-radius:var(--radius-row); background:var(--surface-control); gap:2px;
-  font:400 13px/1 var(--font-mono); align-items:center; }
-.field-switch > button { border:0; border-radius:var(--radius-chip); background:transparent; color:var(--ink-400); font:inherit; cursor:pointer; }
-.field-switch > button:hover { color:var(--ink-100); }
-.field-switch > button[aria-pressed="true"] { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
-.field-switch > button:focus-visible { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
+/* segmented switch inside a field (Detail · Threshold · From · Kind): a nowrap
+ * flex row so a two-segment switch never wraps. The `.field-seg` radios hide
+ * natively; the pressed segment fills. */
 .field-seg { display:flex; flex-wrap:nowrap; align-items:center; height:40px; padding:3px;
   box-sizing:border-box; gap:2px; border-radius:var(--radius-row); background:var(--surface-control);
   font:400 13px/1 var(--font-mono); }
@@ -156,17 +149,6 @@
 .field-seg label:hover { color:var(--ink-100); }
 .field-seg input:checked + label { background:var(--surface-row); color:var(--ink-100); font-weight:500; }
 .field-seg input:focus-visible + label { outline:var(--focus-ring); outline-offset:var(--focus-offset); }
-
-/* presence rows (sealed keys) */
-.presence { display:grid; grid-template-columns:110px minmax(0,1fr) auto; gap:12px; height:36px; align-items:center;
-  padding:0 12px; border-radius:var(--radius-sm); font:400 13px/1 var(--font-mono); }
-.presence .key { color:var(--ink-500); }
-.presence .val { color:var(--ink-200); }
-.presence .word { font:600 11px/1 var(--font-mono); letter-spacing:.4px; color:var(--signal-ok); }
-.presence .word.missing { color:var(--signal-fail); }
-/* A legal absence (a private server needs no token; an unconfigured channel is
- * a gap) is quiet, not a fail. Only a refused channel earns the red MISSING. */
-.presence .word.none { color:var(--ink-500); }
 
 /* consequence block (AT ZERO · WHAT HAPPENS) */
 .consequence { background:var(--surface-card); border-radius:var(--radius-row); padding:12px 14px;
@@ -323,37 +305,35 @@
 .modal#kit .actions .btn { width:auto; }
 .modal#kit .actions .btn.primary { flex:1; }
 
-/* ntfy drawer (R9): the page is a drawer column. The head stacks the kicker
- * over the title, the ON/REFUSED/OFF verdict chip beside the title, and the ×
- * at the top right — never a three-item row that floats the title to center.
- * The leg's sections (presence, WHAT A PUSH SAYS, WHAT PAGES, MUTES) share one
- * card surface so the page reads as one language, not cards above bare tables. */
-.ntfy-drawer { display:flex; flex-direction:column; gap:var(--gap-card); max-width:720px; margin:0 auto; }
-.ntfy-drawer .drawer-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-.ntfy-drawer .head-lead { display:flex; flex-direction:column; gap:3px; min-width:0; }
-.ntfy-drawer .drawer-head .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
-.ntfy-drawer .head-title { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.ntfy-drawer .drawer-head h3 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
-.ntfy-drawer .drawer-close { display:inline-flex; align-items:center; justify-content:center;
-  width:34px; height:34px; border-radius:var(--radius-control); color:var(--ink-400); }
-.ntfy-drawer .drawer-close:hover { color:var(--ink-100); }
-.presence-list, .sample-card, .fanout-table, .mutes-table {
-  background:var(--surface-card); border-radius:var(--radius-card); padding:14px 16px; }
-.presence-list { display:flex; flex-direction:column; gap:4px; }
-.detail-box { background:var(--surface-card); border:1px solid var(--hairline); border-radius:var(--radius-card); padding:14px 16px; display:flex; flex-direction:column; gap:12px; }
-.ntfy-test-row { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-/* The Detail field: the switch and its own Save rest on one row, the meta below. */
-.field-row { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
-.sample-card .kicker, .fanout-table .kicker, .mutes-table .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
+/* ntfy modal: the one ntfy surface. It holds the config fields, the push-detail
+ * switch, the push preview and the Send test / Save verbs with the status box,
+ * so it needs more room than a one-field dialog. */
+.modal#ntfy-modal { width:min(46rem, calc(100vw - 32px)); }
+.ntfy-test-btn { gap:6px; }
+/* The preview: both detail states render the same three slots (title · body ·
+ * actions), so toggling descriptive/terse never changes the box height. */
+.push-preview { background:var(--surface-card); border-radius:var(--radius-card); padding:12px 14px;
+  display:flex; flex-direction:column; gap:8px; }
+.push-preview .kicker { font:var(--type-kicker); letter-spacing:2.4px; color:var(--ink-500); }
 .push-sample { background:var(--surface-rail); border-radius:var(--radius-row); padding:12px;
   display:flex; flex-direction:column; gap:8px; font:400 12px/1.5 var(--font-ui); }
 .push-sample .title { font:600 13px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }
 .push-sample .body { font:400 12px/1.5 var(--font-ui); color:var(--ink-400); margin:0; }
-.push-sample .push-actions { display:flex; gap:8px; margin:0; }
+.push-sample .push-actions { display:flex; align-items:center; gap:8px; margin:0; min-height:30px; }
 /* The sample's Approve/Reject are a preview, not controls: button-shaped spans,
  * aria-hidden, dimmed, non-interactive cursor. */
 .push-sample .push-actions .btn { height:30px; padding:0 12px; font:var(--type-button); opacity:.6; cursor:default; }
 .push-sample .note { font:400 11px/1.4 var(--font-mono); color:var(--ink-500); margin:0; }
+/* The test-status box: the last Send test result, or the resting hint. */
+.test-box { margin-top:12px; padding:10px 12px; border-radius:var(--radius-row);
+  background:var(--surface-rail); border:1px solid var(--hairline);
+  font:400 12px/1.5 var(--font-mono); color:var(--ink-400); overflow-wrap:anywhere; }
+.test-box .hint { color:var(--ink-500); }
+.test-box.is-ok .msg { color:var(--signal-ok); }
+.test-box.is-error { border-color:var(--fail-border); }
+.test-box.is-error .msg { color:var(--signal-fail); }
+/* The phone leg row is a button for ntfy (it opens the modal, not a page). */
+.sys-phone button.leg-row { width:100%; background:none; border:0; text-align:left; font:inherit; cursor:pointer; }
 
 /* L-S3 leg page: the full-width litestream card and the ▾ config view. The
  * config renders read-only in a mono block; secrets are named in the emitted

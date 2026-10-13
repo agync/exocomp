@@ -26,39 +26,7 @@ func cssOf(t *testing.T, _ *harness, ts *httptest.Server, client *http.Client, a
 	return css
 }
 
-// ---- R1 · ntfy card: the fan-out owns its grid; the ON figure is the topic ----
-
-// TestNtfyCardFanOutOwnGrid is the R1 gate for the collapsed 3-column mini
-// table: the fan-out rows render under their OWN three-column grid
-// (minmax(0,1fr) 72px 120px) — never the fact-grid's two-column rule — and no
-// fixed row height wraps a row's three cells. The mutation (falling back to
-// the fact-grid columns, or a fixed 28px row) reds this test.
-func TestNtfyCardFanOutOwnGrid(t *testing.T) {
-	h := newHarness(t)
-	seedOnChannel(t, h)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".leg-mini > div { display:grid; grid-template-columns:minmax(0,1fr) 72px 120px; gap:12px; align-items:center; height:24px;") {
-		t.Error("fan-out rows lack their own minmax(0,1fr) 72px 120px grid at 24px")
-	}
-	if strings.Contains(css, "height:28px") {
-		t.Error("fan-out rows still carry a fixed 28px height that wraps their cells")
-	}
-
-	code, page := getBody(t, client, ts.URL+"/system")
-	if code != http.StatusOK {
-		t.Fatalf("/system = %d, want 200", code)
-	}
-	for _, row := range []string{"approvals", "job failures", "dead-man tripped"} {
-		if !strings.Contains(page, ">"+row+"</span>") {
-			t.Errorf("fan-out missing the %q row", row)
-		}
-	}
-}
+// ---- R1 · ntfy card: the ON figure is the topic label ----
 
 // TestNtfyCardOnFigureIsTopicLabel is the R1 gate for the ON figure: the card
 // figures the TOPIC LABEL (the one unsealed display string) at mono 19/600 —
@@ -87,28 +55,6 @@ func TestNtfyCardOnFigureIsTopicLabel(t *testing.T) {
 	css := cssOf(t, h, ts, client, "lift.css")
 	if !strings.Contains(css, ".leg-figure .value.topic { font:600 19px/1.3 var(--font-mono);") {
 		t.Error("topic figure lacks the mono 19/600 sizing")
-	}
-}
-
-// TestNtfyDrawerSectionsShareSurface is the polish gate: WHAT PAGES and MUTES
-// rest on the same card surface as the presence list and the push sample, so
-// the page never mixes cards with bare tables floating on the void. It also
-// pins the quiet NONE colour for a legal absence (a private server needs no
-// token). Each mutation reds one assertion.
-func TestNtfyDrawerSectionsShareSurface(t *testing.T) {
-	h := newHarness(t)
-	seedOnChannel(t, h)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".presence-list, .sample-card, .fanout-table, .mutes-table {") {
-		t.Error("the drawer sections do not share one card surface")
-	}
-	if !strings.Contains(css, ".presence .word.none { color:var(--ink-500); }") {
-		t.Error("a legal absence lacks its quiet NONE colour")
 	}
 }
 
@@ -662,109 +608,6 @@ func TestBackupHistoryNoVerbRowDash(t *testing.T) {
 	// The newest (no-verb) row's ACTIONS cell renders a dash.
 	if !strings.Contains(page, `data-label="ACTIONS" class="actions-col"><span class="meta">—`) {
 		t.Error("the no-verb row's ACTIONS cell must render a '—', not stay empty")
-	}
-}
-
-// ---- R9 · ntfy drawer ----
-
-// TestNtfyDrawerDetailSwitchNowrap is the R9 gate: the Detail switch's segments
-// never wrap — the control is a nowrap flex row, the same fault family R1/R3
-// fix.
-func TestNtfyDrawerDetailSwitchNowrap(t *testing.T) {
-	h := newHarness(t)
-	ts := httptest.NewServer(h.server.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".field-switch { display:flex; flex-wrap:nowrap;") {
-		t.Error("the Detail switch must be a nowrap flex row")
-	}
-}
-
-// TestNtfyDrawerTopicRowShowsLabel is the R9 gate: the ntfy/topic presence row
-// shows its LABEL — the one unsealed display string — never a bare empty dot
-// run.
-func TestNtfyDrawerTopicRowShowsLabel(t *testing.T) {
-	h := newHarness(t)
-	seedOnChannel(t, h)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	if !strings.Contains(page, `>ntfy/topic</span>`) {
-		t.Error("the topic presence row is missing")
-	}
-	if !strings.Contains(page, `>exocomp-7f3a</span>`) {
-		t.Error("the topic row must show its label (the one unsealed display string)")
-	}
-}
-
-// TestNtfyDrawerPushCard is the R9 gate: WHAT A PUSH SAYS is a sample PUSH —
-// the phone-push card shape (surface-rail, 12px pad, title 13/600, body 12)
-// with `Approve` `Reject` as 30px quiet PREVIEW chips (aria-hidden spans, not
-// controls), not three bare lines.
-func TestNtfyDrawerPushCard(t *testing.T) {
-	h := newHarness(t)
-	seedOnChannel(t, h)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	if !strings.Contains(page, `class="push-sample"`) {
-		t.Error("WHAT A PUSH SAYS must render as the phone-push card")
-	}
-	if !strings.Contains(page, `<p class="push-actions" aria-hidden="true">`) {
-		t.Error("the sample's actions must be an aria-hidden preview, not live controls")
-	}
-	if !strings.Contains(page, `>Approve</span>`) || !strings.Contains(page, `>Reject</span>`) {
-		t.Error("the sample's actions must be Approve/Reject quiet preview chips")
-	}
-	if strings.Contains(page, `>Approve</button>`) {
-		t.Error("the sample's Approve must not be a live button")
-	}
-	if strings.Contains(page, "[ Approve ]") {
-		t.Error("the sample actions must not be literal bracket text")
-	}
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".push-sample { background:var(--surface-rail);") {
-		t.Error("the push card must ride the surface-rail")
-	}
-}
-
-// TestNtfyDrawerHeadClosePlacement is the R9 gate for the ×: the close sits in
-// the drawer head's top-right (a flex row with the lead at flex-start), never
-// wrapped under the title and never floated to center by a three-item row.
-func TestNtfyDrawerHeadClosePlacement(t *testing.T) {
-	h := newHarness(t)
-	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
-	ts := httptest.NewServer(srv.Handler())
-	defer ts.Close()
-	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
-
-	code, page := getBody(t, client, ts.URL+"/system/ntfy")
-	if code != http.StatusOK {
-		t.Fatalf("/system/ntfy = %d, want 200", code)
-	}
-	if !strings.Contains(page, `<div class="drawer-head">`) {
-		t.Error("the drawer head is missing")
-	}
-	if !strings.Contains(page, `<div class="head-lead">`) {
-		t.Error("the drawer head must group the kicker/title/verdict in one lead block")
-	}
-	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".ntfy-drawer .drawer-head { display:flex; align-items:flex-start; justify-content:space-between;") {
-		t.Error("the drawer head must row-lay the close at the top right")
 	}
 }
 

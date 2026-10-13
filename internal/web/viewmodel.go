@@ -577,8 +577,11 @@ type systemVM struct {
 	// re-render. Value echoes the typed value so a refusal keeps it; ErrMsg is
 	// the field meta's ▲ sentence, ErrForm the form-status line's.
 	PubForm *pubFormVM
-	// NtfyModal is the ntfy setup/edit modal refusal state (nil at rest).
+	// NtfyModal is the ntfy modal's refusal state (nil at rest), and NtfyTest
+	// its Send test status box (empty at rest). Either being set re-opens the
+	// dialog on render.
 	NtfyModal *ntfyModalVM
+	NtfyTest  ntfyTestStatus
 }
 
 // legRowFigure reports whether a phone leg row's figure line carries a value.
@@ -953,34 +956,6 @@ func (n ntfyCardVM) Word() string {
 	}
 }
 
-// PresenceWord is a sealed-key row's word (SPEC §2.2). SEALED when the key is
-// sealed; otherwise MISSING in fail only when the channel is refused — the
-// token a public host demands — and a neutral NONE when an unset key is legal:
-// a private server needs no token, and an unconfigured channel is a gap, not a
-// failure. A key that is fine renders as no alarm at all.
-func (n ntfyCardVM) PresenceWord(sealed bool) string {
-	if sealed {
-		return "SEALED"
-	}
-	if n.State == NtfyStateRefused {
-		return "MISSING"
-	}
-	return "NONE"
-}
-
-// PresenceClass is the presence word's row class: fail (missing) for the
-// refused gap, quiet (none) for a legal absence, and no extra class for a
-// sealed key.
-func (n ntfyCardVM) PresenceClass(sealed bool) string {
-	switch n.PresenceWord(sealed) {
-	case "MISSING":
-		return "word missing"
-	case "NONE":
-		return "word none"
-	}
-	return "word"
-}
-
 // Figure is the leg's one-line figure the phone row shows: the topic label
 // when a channel is configured (ON/REFUSED), the dash otherwise — the same
 // value the card's leg-figure renders.
@@ -1023,7 +998,7 @@ func ntfyURLField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
 		Type:         "url",
 		Value:        val,
 		Placeholder:  "https://ntfy.sh or https://push.example.com",
-		Help:         "Server endpoint for push notifications (e.g. https://ntfy.sh or self-hosted)",
+		Help:         "Server endpoint for push notifications. Plain configuration, not a secret.",
 		ErrMsg:       errMsg,
 		FirstInvalid: firstInvalid,
 	}
@@ -1047,7 +1022,7 @@ func ntfyTopicField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
 		Type:         "text",
 		Value:        val,
 		Placeholder:  "e.g. exo-alerts",
-		Help:         "Channel topic name. Non-secret.",
+		Help:         "Channel topic name. Plain configuration, not a secret.",
 		ErrMsg:       errMsg,
 		FirstInvalid: firstInvalid,
 	}
@@ -1060,10 +1035,10 @@ func ntfyTokenField(leg ntfyCardVM, form *ntfyModalVM) fieldMeta {
 		errMsg = form.ErrToken
 		firstInvalid = form.ErrURL == "" && form.ErrTopic == "" && form.ErrToken != ""
 	}
-	help := "Required for public ntfy.sh topics; auto-created in sealed secrets"
+	help := "Created in your ntfy server. Required on ntfy.sh; optional on your own."
 	placeholder := "tk_..."
 	if leg.TokenSealed {
-		help = "Token currently sealed in secrets (leave blank to keep existing token)"
+		help = "An access token is sealed here — leave blank to keep it."
 		placeholder = "•••••••••••••••• (leave blank to keep)"
 	}
 	return fieldMeta{
@@ -1086,42 +1061,13 @@ func ntfyModalErrForm(form *ntfyModalVM) string {
 	return ""
 }
 
-// ntfyTestStatus is the drawer's Test-verb status line: Class "ok" or "fail",
-// and the message copy. Msg carries the whole ok line ("test delivered ·
-// 12:24:51 · exocomp-7f3a") or the failure sentence ("the server refused the
-// token"); the template adds the ✓/▲ glyph.
+// ntfyTestStatus is the modal's test-status box: Class "ok" or "fail", and the
+// message copy. Msg carries the whole ok line ("test delivered · 12:24:51 ·
+// exocomp-7f3a") or the failure sentence ("the server refused the token"); the
+// template adds the ✓ glyph on the ok line.
 type ntfyTestStatus struct {
 	Class string
 	Msg   string
-}
-
-// ntfyVM is the /system/ntfy drawer (SPEC §2.2): the leg judgment, the sealed
-// presence rows, the Detail two-position switch, the fixed fan-out table, the
-// MUTES section (SPEC §7 A8), and the Test/Save verbs with their status line.
-type ntfyVM struct {
-	Page     page
-	Operator bool
-	Leg      ntfyCardVM
-	Status   ntfyTestStatus
-	Mutes    []muteRow
-	Modal    *ntfyModalVM
-}
-
-func (vm ntfyVM) HasStatus() bool { return vm.Status.Class != "" }
-
-// muteRow is one active mute in the drawer's MUTES section (SPEC §7 A8): the
-// source and host it covers, when it lifts, and the clear verb. Source is the
-// alert name an alert-scoped mute covers and the word "global" for a global
-// one; host is the host a host-scoped mute covers; both render "—" when the
-// scope has no such dimension. A global mute is the safety valve — clearing
-// it asks first, so ClearConfirm carries the confirm sentence, empty for a
-// one-click clear.
-type muteRow struct {
-	ID           int64
-	Source       string
-	Host         string
-	Until        string
-	ClearConfirm string
 }
 
 // sourceRow is one run-tree source (ADR 0010) on the sources surface: where a

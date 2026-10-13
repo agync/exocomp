@@ -131,7 +131,7 @@ func TestSystemShellBasePrefixed(t *testing.T) {
 	}
 	for _, want := range []string{
 		`href="/exocomp/system/deadman"`,
-		`href="/exocomp/system/ntfy"`,
+		`data-modal-open="ntfy-modal"`,
 		`href="/exocomp/system/litestream"`,
 		`href="/exocomp/system/backups"`,
 		`action="/exocomp/system/public-url"`,
