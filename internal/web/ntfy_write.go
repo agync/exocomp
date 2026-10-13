@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -84,14 +85,6 @@ func ntfyDetail(raw string) string {
 	return string(notify.DetailDescriptive)
 }
 
-// presenceWord is the sealed-key row's SEALED | MISSING word.
-func presenceWord(sealed bool) string {
-	if sealed {
-		return "SEALED"
-	}
-	return "MISSING"
-}
-
 // sealedDots is the dot string a sealed key renders in place of its value — a
 // fixed presence glyph, never the length of the secret it stands for (the row
 // would otherwise leak the token's size).
@@ -134,9 +127,25 @@ func (s *Server) ntfyVMFor(r *http.Request, status ntfyTestStatus) ntfyVM {
 		Status:   status,
 		Mutes:    s.muteRows(r.Context()),
 	}
-	vm.Page.Meta = "Push channel"
+	vm.Page.Meta = ntfyMeta(vm.Leg)
 	vm.Page.BackHref = "/system"
 	return vm
+}
+
+// ntfyMeta is the drawer's app-bar meta: the page's own fact, never a repeat of
+// the title. A configured channel names its topic and server class; a gap is
+// named as a gap.
+func ntfyMeta(leg ntfyCardVM) string {
+	if leg.State == NtfyStateOff {
+		return "no channel"
+	}
+	if leg.TopicLabel == "" {
+		return "no topic"
+	}
+	if leg.ServerClass == "" {
+		return leg.TopicLabel
+	}
+	return leg.TopicLabel + " · " + leg.ServerClass
 }
 
 // muteRows projects the drawer's MUTES section (SPEC §7 A8): the active
@@ -219,7 +228,7 @@ func (s *Server) handleNtfyTest(w http.ResponseWriter, r *http.Request) {
 		} else {
 			s.log.Error("web: ntfy test push", "err", err)
 			s.render(w, r, http.StatusOK, viewNtfy(s.ntfyVMFor(r,
-				ntfyTestStatus{Class: "fail", Msg: "the push was not delivered"})))
+				ntfyTestStatus{Class: "fail", Msg: ntfyFailReason(err)})))
 		}
 		return
 	}
@@ -227,6 +236,27 @@ func (s *Server) handleNtfyTest(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, viewNtfy(s.ntfyVMFor(r,
 		ntfyTestStatus{Class: "ok", Msg: "test delivered · " + now + " · " + s.ntfyCardVM(r.Context()).TopicLabel})))
 	s.log.Info("web: ntfy test push sent", "by", ident.token.Name)
+}
+
+// ntfyFailReason turns a delivery error into one plain sentence the operator
+// can act on. It never echoes the error itself — a dial error can carry the
+// server host, and a secret never reaches the page — so it classifies a few
+// common transport failures and falls back to the generic sentence.
+func ntfyFailReason(err error) string {
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return "the push timed out — the server did not answer"
+	}
+	msg := strings.ToLower(err.Error())
+	switch {
+	case strings.Contains(msg, "no such host"):
+		return "the server host was not found"
+	case strings.Contains(msg, "connection refused"):
+		return "the server refused the connection"
+	case strings.Contains(msg, "certificate"), strings.Contains(msg, "x509"):
+		return "the server's TLS certificate was not trusted"
+	}
+	return "the push was not delivered"
 }
 
 // handleNtfySave persists the Detail two-position switch. The value is

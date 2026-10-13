@@ -90,6 +90,28 @@ func TestNtfyCardOnFigureIsTopicLabel(t *testing.T) {
 	}
 }
 
+// TestNtfyDrawerSectionsShareSurface is the polish gate: WHAT PAGES and MUTES
+// rest on the same card surface as the presence list and the push sample, so
+// the page never mixes cards with bare tables floating on the void. It also
+// pins the quiet NONE colour for a legal absence (a private server needs no
+// token). Each mutation reds one assertion.
+func TestNtfyDrawerSectionsShareSurface(t *testing.T) {
+	h := newHarness(t)
+	seedOnChannel(t, h)
+	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".presence-list, .sample-card, .fanout-table, .mutes-table {") {
+		t.Error("the drawer sections do not share one card surface")
+	}
+	if !strings.Contains(css, ".presence .word.none { color:var(--ink-500); }") {
+		t.Error("a legal absence lacks its quiet NONE colour")
+	}
+}
+
 // ---- R2 · identity strip: the Change form rests closed ----
 
 // TestSystemIdentityStripRestsClosed is the R2 GATE: at rest the Change form
@@ -685,7 +707,8 @@ func TestNtfyDrawerTopicRowShowsLabel(t *testing.T) {
 
 // TestNtfyDrawerPushCard is the R9 gate: WHAT A PUSH SAYS is a sample PUSH —
 // the phone-push card shape (surface-rail, 12px pad, title 13/600, body 12)
-// with `[ Approve ] [ Reject ]` as 30px quiet buttons, not three bare lines.
+// with `Approve` `Reject` as 30px quiet PREVIEW chips (aria-hidden spans, not
+// controls), not three bare lines.
 func TestNtfyDrawerPushCard(t *testing.T) {
 	h := newHarness(t)
 	seedOnChannel(t, h)
@@ -701,8 +724,14 @@ func TestNtfyDrawerPushCard(t *testing.T) {
 	if !strings.Contains(page, `class="push-sample"`) {
 		t.Error("WHAT A PUSH SAYS must render as the phone-push card")
 	}
-	if !strings.Contains(page, `>Approve</button>`) || !strings.Contains(page, `>Reject</button>`) {
-		t.Error("the sample's actions must be Approve/Reject quiet buttons")
+	if !strings.Contains(page, `<p class="push-actions" aria-hidden="true">`) {
+		t.Error("the sample's actions must be an aria-hidden preview, not live controls")
+	}
+	if !strings.Contains(page, `>Approve</span>`) || !strings.Contains(page, `>Reject</span>`) {
+		t.Error("the sample's actions must be Approve/Reject quiet preview chips")
+	}
+	if strings.Contains(page, `>Approve</button>`) {
+		t.Error("the sample's Approve must not be a live button")
 	}
 	if strings.Contains(page, "[ Approve ]") {
 		t.Error("the sample actions must not be literal bracket text")
@@ -714,7 +743,8 @@ func TestNtfyDrawerPushCard(t *testing.T) {
 }
 
 // TestNtfyDrawerHeadClosePlacement is the R9 gate for the ×: the close sits in
-// the drawer head's top-right (a flex row), never wrapped under the title.
+// the drawer head's top-right (a flex row with the lead at flex-start), never
+// wrapped under the title and never floated to center by a three-item row.
 func TestNtfyDrawerHeadClosePlacement(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
@@ -729,8 +759,11 @@ func TestNtfyDrawerHeadClosePlacement(t *testing.T) {
 	if !strings.Contains(page, `<div class="drawer-head">`) {
 		t.Error("the drawer head is missing")
 	}
+	if !strings.Contains(page, `<div class="head-lead">`) {
+		t.Error("the drawer head must group the kicker/title/verdict in one lead block")
+	}
 	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".ntfy-drawer .drawer-head { display:flex; align-items:center; justify-content:space-between;") {
+	if !strings.Contains(css, ".ntfy-drawer .drawer-head { display:flex; align-items:flex-start; justify-content:space-between;") {
 		t.Error("the drawer head must row-lay the close at the top right")
 	}
 }

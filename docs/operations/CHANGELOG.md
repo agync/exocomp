@@ -14,6 +14,31 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-13 — ntfy drawer: verdict, presence, and copy pass
+
+- **The drawer leads with the verdict.** `/system/ntfy` now carries the same
+  ON/REFUSED/OFF chip as the `/system` card, so a deep link states the
+  channel's health instead of making the operator infer it.
+- **A legally absent key is no longer an alarm.** The presence rows read
+  `SEALED`, a quiet `NONE` when an unset key is legal (a private server needs
+  no token; an unconfigured channel is a gap), and the red `MISSING` only on a
+  refused channel — the token a public host demands.
+- **The app-bar meta is the page's own fact.** It names the topic and server
+  class (`exocomp-7f3a · self-hosted`), not the title again.
+- **Priority is a word, not a wait chip.** The fan-out's PRIORITY column reads
+  plain mono (`high`, `default`); the amber `--signal-wait` chip is no longer
+  spent on a config value.
+- **One surface language.** WHAT PAGES and MUTES rest on the same card as the
+  presence list and the push sample, not bare tables on the void.
+- **The Detail switch carries its own `Save detail`**, replacing the detached
+  bottom Save; the empty MUTES line names the verb (`exocomp mute add`), and
+  the duplicate mute sentence is gone.
+- **The sample's Approve/Reject are a preview** (aria-hidden button-shaped
+  spans), not disabled controls.
+- **A failed test names its reason** — timed out, host not found, connection
+  refused, or an untrusted certificate — never the raw error, which can carry
+  the server host.
+
 ## 2026-10-09 — read-once reload audit, redrive durability, re-exec test
 
 - **A reload now refreshes the push transports too.** `exocomp reload` and

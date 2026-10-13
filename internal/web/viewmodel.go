@@ -953,6 +953,34 @@ func (n ntfyCardVM) Word() string {
 	}
 }
 
+// PresenceWord is a sealed-key row's word (SPEC §2.2). SEALED when the key is
+// sealed; otherwise MISSING in fail only when the channel is refused — the
+// token a public host demands — and a neutral NONE when an unset key is legal:
+// a private server needs no token, and an unconfigured channel is a gap, not a
+// failure. A key that is fine renders as no alarm at all.
+func (n ntfyCardVM) PresenceWord(sealed bool) string {
+	if sealed {
+		return "SEALED"
+	}
+	if n.State == NtfyStateRefused {
+		return "MISSING"
+	}
+	return "NONE"
+}
+
+// PresenceClass is the presence word's row class: fail (missing) for the
+// refused gap, quiet (none) for a legal absence, and no extra class for a
+// sealed key.
+func (n ntfyCardVM) PresenceClass(sealed bool) string {
+	switch n.PresenceWord(sealed) {
+	case "MISSING":
+		return "word missing"
+	case "NONE":
+		return "word none"
+	}
+	return "word"
+}
+
 // Figure is the leg's one-line figure the phone row shows: the topic label
 // when a channel is configured (ON/REFUSED), the dash otherwise — the same
 // value the card's leg-figure renders.

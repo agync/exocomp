@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -232,6 +233,8 @@ func TestNtfyDrawerPresence(t *testing.T) {
 	for _, want := range []string{
 		"SYSTEM · NTFY",
 		"Push channel",
+		"chip ok",
+		">ON</span>",
 		`class="presence"`,
 		">ntfy/url</span>",
 		">ntfy/topic</span>",
@@ -281,6 +284,38 @@ func TestNtfyDrawerMissingToken(t *testing.T) {
 	}
 }
 
+// TestNtfyDrawerTokenNone is the ON-but-no-token drawer: a self-hosted channel
+// needs no token, so the row reads a quiet NONE — never the red MISSING that a
+// refused (public-without-token) channel earns. The head still figures ON.
+func TestNtfyDrawerTokenNone(t *testing.T) {
+	h := newHarness(t)
+	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
+		URLSealed: true, TopicSealed: true, TokenSealed: false,
+		ServerClass: "self-hosted", Refused: false,
+	}})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system/ntfy")
+	if code != http.StatusOK {
+		t.Fatalf("/system/ntfy = %d, want 200", code)
+	}
+	for _, want := range []string{
+		"chip ok",
+		">ON</span>",
+		`class="word none"`,
+		">NONE</span>",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("ON-no-token drawer missing %q", want)
+		}
+	}
+	if strings.Contains(page, `class="word missing"`) {
+		t.Error("a legal missing token must not wear the red MISSING class")
+	}
+}
+
 // TestNtfyDrawerDetailAndSample is the Detail two-position switch and the live
 // WHAT A PUSH SAYS sample: the stored position is pressed and its sample shows.
 func TestNtfyDrawerDetailAndSample(t *testing.T) {
@@ -301,7 +336,7 @@ func TestNtfyDrawerDetailAndSample(t *testing.T) {
 	for _, want := range []string{
 		"value=\"terse\" aria-pressed=\"true\"",
 		"value=\"descriptive\" aria-pressed=\"false\"",
-		"notify.ntfy_detail · terse names nothing — for a phone you do not control",
+		"terse names nothing — for a phone you do not control",
 		"WHAT A PUSH SAYS",
 		"exocomp: action required",
 		"open exocomp to see what",
@@ -342,11 +377,16 @@ func TestNtfyDrawerWhatPages(t *testing.T) {
 		"once per job",
 		"dead-man tripped",
 		">once</td>",
-		"one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>, not a setting here",
+		"one transport, fixed fan-out · <a href=\"#mutes\">quiet hours are a scoped mute</a>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("what-pages table missing %q", want)
 		}
+	}
+	// Priority is a config value, not a state gap: it reads as a plain word in
+	// the column, never the amber wait chip the drawer used to spend here.
+	if strings.Contains(page, `class="chip wait"`) {
+		t.Errorf("the fan-out spent the wait chip on a priority cell: %s", page)
 	}
 	// No routing knobs: the rows carry no toggle/checkbox controls.
 	if strings.Contains(page, `name="route"`) || strings.Contains(page, `type="checkbox"`) {
@@ -410,6 +450,33 @@ func TestNtfyTestRefusalStatus(t *testing.T) {
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("refusal status missing %q: %s", want, body)
+		}
+	}
+}
+
+// TestNtfyTestTimeoutReason is the delivery-failure copy: a transport timeout
+// reads as a plain reason the operator can act on, never the opaque generic
+// line — and never the error text itself (which can carry the server host).
+func TestNtfyTestTimeoutReason(t *testing.T) {
+	h := newHarness(t)
+	fake := &fakeNtfy{st: onPresence(), derr: &net.DNSError{Err: "i/o timeout", IsTimeout: true}}
+	srv := serverWithNtfy(t, h, fake)
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	resp := postForm(t, client, ts.URL+"/system/ntfy/test", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("test = %d, want 200; body=%s", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		">the push timed out — the server did not answer</span>",
+		">Retry</a>",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("timeout status missing %q: %s", want, body)
 		}
 	}
 }
@@ -582,8 +649,8 @@ func TestNtfyDrawerMutes(t *testing.T) {
 }
 
 // TestNtfyDrawerMutesEmpty is the honest empty line: no active mutes renders
-// the empty sentence, never a bare table, and the quiet-hours link still
-// points at the section.
+// the empty sentence naming the verb and the trigger, never a bare table, and
+// the quiet-hours link still points at the section.
 func TestNtfyDrawerMutesEmpty(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
@@ -595,8 +662,8 @@ func TestNtfyDrawerMutesEmpty(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system/ntfy = %d, want 200", code)
 	}
-	if !strings.Contains(page, "no active mutes") {
-		t.Errorf("empty MUTES section missing the honest empty line: %s", page)
+	if !strings.Contains(page, "No mutes. Set one with <code>exocomp mute add</code>") {
+		t.Errorf("empty MUTES section missing the verb-and-trigger line: %s", page)
 	}
 	if !strings.Contains(page, `<a href="#mutes">quiet hours are a scoped mute</a>`) {
 		t.Errorf("quiet-hours link missing on an empty MUTES section")

@@ -1,26 +1,31 @@
 package web
 
 // viewNtfy is the /system/ntfy drawer (SPEC §2.2, artboard 1c): the ntfy leg's
-// channel page. Sealed keys render as presence rows (key · dot string · SEALED
-// or MISSING — a value never renders), the Detail switch tweaks
-// notify.ntfy_detail, WHAT A PUSH SAYS shows the live sample, What pages is a
-// read-only table (no routing knobs exist in code — a table, not toggles),
-// and MUTES lists the active scoped mutes (SPEC §7 A8) with a clear verb per
-// row — the quiet-hours meta links here. Test posts one push and writes the
-// status line; Save persists the Detail position. The × returns to /system;
-// the phone app-bar back chevron points there too.
+// channel page. The head leads with the same ON/REFUSED/OFF verdict the /system
+// card carries, then the sealed-key presence rows (key · dot string · word — a
+// value never renders: SEALED, a neutral NONE when an unset key is legal, and
+// MISSING in fail only on a refused channel), the Detail switch with its own
+// Save, WHAT A PUSH SAYS, the read-only What-pages table (no routing knobs
+// exist in code — a table, not toggles), and MUTES. Test posts one push and
+// writes the status line; Save persists the Detail position. The × returns to
+// /system; the phone app-bar back chevron points there too.
 templ viewNtfy(vm ntfyVM) {
 	@layout(vm.Page) {
-		<div class="ntfy-drawer" aria-label="Push channel">
+		<div class="ntfy-drawer" role="region" aria-label="Push channel">
 			<div class="drawer-head">
-				<span class="kicker">SYSTEM · NTFY</span>
-				<h3>Push channel</h3>
+				<div class="head-lead">
+					<span class="kicker">SYSTEM · NTFY</span>
+					<div class="head-title">
+						<h3>Push channel</h3>
+						<span class={ "chip", vm.Leg.ChipClass() }><span class="dot"></span>{ vm.Leg.Word() }</span>
+					</div>
+				</div>
 				<a class="drawer-close" href={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system")) } aria-label="Close" title="Close">
 					<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13"></path></svg>
 				</a>
 			</div>
 
-			<div class="presence-list" aria-label="Sealed keys">
+			<div class="presence-list" role="group" aria-label="Sealed keys">
 				<div class="presence">
 					<span class="key">ntfy/url</span>
 					<span class="val">
@@ -31,12 +36,12 @@ templ viewNtfy(vm ntfyVM) {
 							}
 						}
 					</span>
-					<span class={ "word", templ.KV("missing", !vm.Leg.URLSealed) }>{ presenceWord(vm.Leg.URLSealed) }</span>
+					<span class={ vm.Leg.PresenceClass(vm.Leg.URLSealed) }>{ vm.Leg.PresenceWord(vm.Leg.URLSealed) }</span>
 				</div>
 				<div class="presence">
 					<span class="key">ntfy/topic</span>
 					<span class="val">{ vm.Leg.TopicLabel }</span>
-					<span class={ "word", templ.KV("missing", !vm.Leg.TopicSealed) }>{ presenceWord(vm.Leg.TopicSealed) }</span>
+					<span class={ vm.Leg.PresenceClass(vm.Leg.TopicSealed) }>{ vm.Leg.PresenceWord(vm.Leg.TopicSealed) }</span>
 				</div>
 				<div class="presence">
 					<span class="key">ntfy/token</span>
@@ -45,7 +50,7 @@ templ viewNtfy(vm ntfyVM) {
 							{ sealedDots(18) }
 						}
 					</span>
-					<span class={ "word", templ.KV("missing", !vm.Leg.TokenSealed) }>{ presenceWord(vm.Leg.TokenSealed) }</span>
+					<span class={ vm.Leg.PresenceClass(vm.Leg.TokenSealed) }>{ vm.Leg.PresenceWord(vm.Leg.TokenSealed) }</span>
 				</div>
 			</div>
 			<p class="meta">
@@ -57,25 +62,28 @@ templ viewNtfy(vm ntfyVM) {
 			</p>
 
 			<form id="ntfy-save-form" method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/save")) } class="writeform" novalidate>
-				<label class="field">
+				<div class="field">
 					<span class="label">Detail</span>
-					<span class="field-switch" data-ntfy-detail>
-						<button type="submit" name="detail" value="descriptive" aria-pressed={ boolAttr(vm.Leg.Detail != "terse") }>descriptive</button>
-						<button type="submit" name="detail" value="terse" aria-pressed={ boolAttr(vm.Leg.Detail == "terse") }>terse</button>
-					</span>
-					<span class="meta" id="ntfy-detail-meta">notify.ntfy_detail · terse names nothing — for a phone you do not control</span>
-				</label>
+					<div class="field-row">
+						<span class="field-switch" data-ntfy-detail>
+							<button type="submit" name="detail" value="descriptive" aria-pressed={ boolAttr(vm.Leg.Detail != "terse") }>descriptive</button>
+							<button type="submit" name="detail" value="terse" aria-pressed={ boolAttr(vm.Leg.Detail == "terse") }>terse</button>
+						</span>
+						<button type="submit" class="btn primary ntfy-detail-save" name="detail" value={ vm.Leg.Detail }>Save detail</button>
+					</div>
+					<span class="meta" id="ntfy-detail-meta">terse names nothing — for a phone you do not control</span>
+				</div>
 			</form>
 
-			<div class="sample-card" aria-label="What a push says">
+			<div class="sample-card" role="group" aria-label="What a push says">
 				<div class="kicker">WHAT A PUSH SAYS</div>
 				<div class="sample descriptive" id="ntfy-sample-desc" hidden?={ vm.Leg.Detail == "terse" }>
 					<div class="push-sample">
 						<p class="title">1 approval waiting · apply tofu/prod-net</p>
 						<p class="body">expires in 29m, then auto-rejects · { hostname() }</p>
-						<p class="push-actions">
-							<button type="button" class="btn quiet small" disabled>Approve</button>
-							<button type="button" class="btn quiet small" disabled>Reject</button>
+						<p class="push-actions" aria-hidden="true">
+							<span class="btn quiet small">Approve</span>
+							<span class="btn quiet small">Reject</span>
 						</p>
 					</div>
 				</div>
@@ -88,22 +96,22 @@ templ viewNtfy(vm ntfyVM) {
 				</div>
 			</div>
 
-			<div class="fanout-table" aria-label="What pages">
+			<div class="fanout-table" role="group" aria-label="What pages">
 				<div class="kicker">WHAT PAGES</div>
 				<table>
 					<thead>
 						<tr><th scope="col">EVENT</th><th scope="col">PRIORITY</th><th scope="col">RE-NOTIFY</th></tr>
 					</thead>
 					<tbody>
-						<tr><td>approval waiting</td><td><span class="chip wait"><span class="dot"></span>high</span></td><td>every 10m · max</td></tr>
+						<tr><td>approval waiting</td><td>high</td><td>every 10m · max</td></tr>
 						<tr><td>job failed · degraded</td><td>default</td><td>once per job</td></tr>
-						<tr><td>dead-man tripped</td><td><span class="chip wait"><span class="dot"></span>high</span></td><td>once</td></tr>
+						<tr><td>dead-man tripped</td><td>high</td><td>once</td></tr>
 					</tbody>
 				</table>
-				<p class="meta">one transport, fixed fan-out · <a href="#mutes">quiet hours are a scoped mute</a>, not a setting here</p>
+				<p class="meta">one transport, fixed fan-out · <a href="#mutes">quiet hours are a scoped mute</a></p>
 			</div>
 
-			<div class="mutes-table" id="mutes" aria-label="Mutes">
+			<div class="mutes-table" id="mutes" role="group" aria-label="Mutes">
 				<div class="kicker">MUTES</div>
 				<table>
 					<thead>
@@ -111,12 +119,12 @@ templ viewNtfy(vm ntfyVM) {
 							<th scope="col">SOURCE</th>
 							<th scope="col">HOST</th>
 							<th scope="col">UNTIL</th>
-							<th scope="col"></th>
+							<th scope="col"><span class="visually-hidden">Clear</span></th>
 						</tr>
 					</thead>
 					<tbody>
 						if len(vm.Mutes) == 0 {
-							<tr><td colspan="4">no active mutes · nothing is held</td></tr>
+							<tr><td colspan="4">No mutes. Set one with <code>exocomp mute add</code> — it holds the push, never the job.</td></tr>
 						} else {
 							for _, m := range vm.Mutes {
 								<tr>
@@ -139,17 +147,13 @@ templ viewNtfy(vm ntfyVM) {
 						}
 					</tbody>
 				</table>
-				<p class="meta">a mute holds the push, never the job · set one with exocomp mute add or the API</p>
 			</div>
 
-			<div class="ntfy-actions">
-				<div class="ntfy-test-row">
-					<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")) } class="inline-form">
-						<button type="submit" class="btn quiet" title="posts one push using the sealed, saved configuration">Test saved</button>
-					</form>
-					@ntfyStatus(vm.Status)
-				</div>
-				<button type="submit" class="btn primary" form="ntfy-save-form" name="detail" value={ vm.Leg.Detail }>Save</button>
+			<div class="ntfy-test-row">
+				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/system/ntfy/test")) } class="inline-form">
+					<button type="submit" class="btn quiet" title="posts one push using the sealed, saved configuration">Send test</button>
+				</form>
+				@ntfyStatus(vm.Status)
 			</div>
 		</div>
 		@ntfyModal(vm.Leg, vm.Modal, vm.Page.Base)
@@ -175,13 +179,14 @@ templ ntfyStatus(st ntfyTestStatus) {
 
 // ntfyDrawerJS makes the Detail switch live: a switch click flips the pressed
 // state, swaps WHAT A PUSH SAYS to the matching sample, and retargets the Save
-// primary — without submitting (JS-off, the switch buttons are plain submits
-// that persist their own value, and Save carries the server-rendered one).
+// detail verb — without submitting (JS-off, the switch buttons are plain
+// submits that persist their own value, and Save detail carries the
+// server-rendered one).
 templ ntfyDrawerJS(detail string) {
 	<script>
 	(function () {
 		var sw = document.querySelector(".field-switch[data-ntfy-detail]");
-		var save = document.querySelector('button[form="ntfy-save-form"]');
+		var save = document.querySelector(".ntfy-detail-save");
 		var desc = document.getElementById("ntfy-sample-desc");
 		var terse = document.getElementById("ntfy-sample-terse");
 		if (!sw || !save || !desc || !terse) return;
