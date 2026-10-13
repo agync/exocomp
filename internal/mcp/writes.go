@@ -55,18 +55,15 @@ type approvalPendingView struct {
 	PlanArtifactID int64  `json:"plan_artifact_id,omitempty"`
 }
 
-// errPlanDecryptUnsupported is the buildArgv refusal for a plain saved-plan
-// apply: decrypting the sealed plan to a run-private plaintext is CLI-resident,
-// so the verb is refused rather than enqueuing an apply whose argv the daemon
-// cannot read. It matches the HTTP write API's identical deferral.
-var errPlanDecryptUnsupported = errors.New(
-	"mcp: applying a saved plan without a policy verdict needs the plan-decrypt helper (not yet shared)")
+// (note: plain saved-plan applies are now enqueued against the sealed plan
+// path, matching the HTTP write API; see toolWorkspaceApply's buildArgv.)
 
 // planWriteArgs is the shared argument shape for plan and apply. All optional; a
 // bare {name} is the common case.
 type planWriteArgs struct {
 	Name           string `json:"name"`
 	RunSecrets     string `json:"run_secrets"`
+	Runner         string `json:"runner"`
 	Timeout        string `json:"timeout"`
 	IdempotencyKey string `json:"idempotency_key"`
 	// Plan names a saved plan artifact by id for apply; empty is a fresh apply.
@@ -133,9 +130,13 @@ func (s *Server) toolWorkspacePlan(ctx context.Context, c Caller, args planWrite
 		TofuDir:        ws.TofuDir,
 		ArtifactsDir:   artifacts,
 		RunSecrets:     args.RunSecrets,
+		RunnerName:     args.Runner,
 		IdempotencyKey: idempotencyKey(c, toolPlanKey, args.IdempotencyKey),
 		Timeout:        timeout,
-		Actor:          c.Actor,
+		// TriggerAPI tells the daemon to seal this plan's -out file into a
+		// consumable artifact post-run, matching the HTTP write API.
+		Trigger: service.TriggerAPI,
+		Actor:   c.Actor,
 	})
 	if err != nil {
 		return "", nil, err
@@ -202,6 +203,7 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, c Caller, args planWrit
 		WorkspaceSerial: ws.Serial,
 		TofuDir:         ws.TofuDir,
 		RunSecrets:      args.RunSecrets,
+		RunnerName:      args.Runner,
 		IdempotencyKey:  idempotencyKey(c, toolApplyKey, args.IdempotencyKey),
 		Timeout:         timeout,
 		SavedPlan:       saved,
@@ -211,7 +213,10 @@ func (s *Server) toolWorkspaceApply(ctx context.Context, c Caller, args planWrit
 		if saved == nil {
 			return executor.TofuArgv("apply", "-auto-approve"), nil, func() {}, nil
 		}
-		return nil, nil, func() {}, errPlanDecryptUnsupported
+		// Enqueue the apply against the SEALED plan path; the daemon that
+		// claims the row decrypts it into a run-private plaintext for the
+		// one run that consumes it, matching the HTTP write API's behaviour.
+		return executor.TofuArgv("apply", saved.Path), saved, func() {}, nil
 	})
 	if err != nil {
 		return "", nil, err

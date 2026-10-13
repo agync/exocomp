@@ -188,6 +188,7 @@ func (s *Server) writeTools() []tool {
 			object(map[string]any{
 				"name":            strProp("the workspace name"),
 				"run_secrets":     strProp("run-secret binding name"),
+				"runner":          strProp("registered runner name (limits memory/cpu of the run)"),
 				"timeout":         strProp("Go duration, e.g. 30m"),
 				"idempotency_key": strProp("dedup key so a retry does not double-enqueue"),
 			}, "name"), s.runWorkspacePlan},
@@ -200,6 +201,7 @@ func (s *Server) writeTools() []tool {
 				"name":            strProp("the workspace name"),
 				"plan":            strProp("saved plan artifact id — a string-encoded integer (e.g. \"42\"), not a file path or workspace name"),
 				"run_secrets":     strProp("run-secret binding name"),
+				"runner":          strProp("registered runner name (limits memory/cpu of the run)"),
 				"timeout":         strProp("Go duration, e.g. 30m"),
 				"idempotency_key": strProp("dedup key so a retry does not double-enqueue"),
 			}, "name"), s.runWorkspaceApply},

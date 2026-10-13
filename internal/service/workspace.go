@@ -153,6 +153,10 @@ func (e *PlanDeniedError) Error() string {
 		e.PlanArtifactID, e.Policy)
 }
 
+// Unwrap reports the denial as a state conflict so every face (HTTP, MCP) maps
+// it onto the shared conflict code instead of a generic internal error.
+func (e *PlanDeniedError) Unwrap() error { return store.ErrStateConflict }
+
 // FreshApplyPolicedError reports an apply with no saved plan on a workspace that
 // has enabled plan policies. There is nothing for a policy to read in a fresh
 // apply, so allowing one would be a documented bypass of the gate the operator
