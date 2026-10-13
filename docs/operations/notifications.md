@@ -41,6 +41,14 @@ A bare `ntfy.sh` topic is unauthenticated — readable and publishable by anyone
 it — so the transport refuses a public topic without an access token, because approval
 links are bearer capabilities.
 
+A push's tap target is the app page, not a bare scheme. The notification carries a deep
+link — `/approvals/42`, `/jobs/7`, `/workspaces/prod-net` — rooted at the public URL set on
+the system page (`exocomp serve --public-url`), so tapping it opens that page in the app;
+the link rides in the message body's `click` field and the `X-Click` header. With no public
+URL set the link stays the raw `exocomp://` deep link, which a browser cannot open. Set the
+public URL to the address a phone can reach, base path included if the surface is mounted
+under one.
+
 ### GoAlert
 
 A second transport pages an on-call rotation through a GoAlert Generic API integration

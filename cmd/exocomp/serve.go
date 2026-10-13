@@ -512,7 +512,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	var lastSealed atomic.Int32
 	lastSealed.Store(int32(sealed))
 	cordon.setReloadExtra(func(ctx context.Context) error {
-		transports, nowSealed, err := loadNotifyTransports(ctx, st, sealedLookup(st, env))
+		transports, nowSealed, err := loadNotifyTransports(ctx, st, sealedLookup(st, env), ntfyPublicURL(ctx, st, ""))
 		if err != nil {
 			return err
 		}
@@ -701,6 +701,21 @@ func sealedLookup(st *store.Store, env *secrets.Envelope) notify.SecretLookup {
 	}
 }
 
+// ntfyPublicURL is the base a notification's deep link is rooted at: the
+// operator's --public-url when this run passed one, else the address a previous
+// run persisted (store.SettingPublicURL). Empty when neither is set, which
+// leaves a notification's link as the raw deep link rather than a loopback
+// address no phone can reach.
+func ntfyPublicURL(ctx context.Context, st *store.Store, override string) string {
+	if v := strings.TrimSpace(override); v != "" {
+		return v
+	}
+	if v, err := st.GetSetting(ctx, store.SettingPublicURL); err == nil {
+		return strings.TrimSpace(v)
+	}
+	return ""
+}
+
 // ntfySetting resolves ntfy/url and ntfy/topic from the settings table: those
 // two are ordinary configuration, so a setting is authoritative and the sealed
 // row is only a fallback.
@@ -720,14 +735,15 @@ func ntfySetting(ctx context.Context, st *store.Store, name string) ([]byte, boo
 	return nil, false
 }
 
-// loadNotifyTransports builds the daemon's push fan-out from the sealed
-// transports. It returns the transports and how many are sealed; UnifiedPush is
-// store-backed and always wired, so it is never counted as sealed. A refused
-// sealed configuration is an error — running blind past it would mean approvals
-// and failures nobody is told about — but an unconfigured transport is a nil,
-// not an error: an operator who sealed only one, or neither, still gets a
-// working daemon.
-func loadNotifyTransports(ctx context.Context, st *store.Store, look notify.SecretLookup) ([]notify.Transport, int, error) {
+// loadNotifyTransports builds the daemon's push fan-out from the configured
+// transports. It returns the transports and how many are configured; UnifiedPush
+// is store-backed and always wired, so it is never counted. publicURL roots a
+// notification's deep link at the deployment's public address. A refused sealed
+// configuration is an error — running blind past it would mean approvals and
+// failures nobody is told about — but an unconfigured transport is a nil, not an
+// error: an operator who configured only one, or neither, still gets a working
+// daemon.
+func loadNotifyTransports(ctx context.Context, st *store.Store, look notify.SecretLookup, publicURL string) ([]notify.Transport, int, error) {
 	var transports []notify.Transport
 
 	ntfyT, err := notify.LoadNtfy(ctx, look)
@@ -741,6 +757,7 @@ func loadNotifyTransports(ctx context.Context, st *store.Store, look notify.Secr
 		if raw, err := st.GetSetting(ctx, store.SettingNtfyDetail); err == nil {
 			ntfyT.SetDetail(notify.Detail(raw))
 		}
+		ntfyT.SetPublicURL(publicURL)
 		transports = append(transports, ntfyT)
 	}
 
@@ -787,7 +804,7 @@ func reactiveEngine(ctx context.Context, st *store.Store, q *queue.Queue,
 	env *secrets.Envelope, warn io.Writer, dir string, opts serveOptions) (*reactive.Engine, *deadman.Monitor, *notify.Notifier, int, error) {
 	look := sealedLookup(st, env)
 
-	transports, sealed, err := loadNotifyTransports(ctx, st, look)
+	transports, sealed, err := loadNotifyTransports(ctx, st, look, ntfyPublicURL(ctx, st, opts.publicURL))
 	if err != nil {
 		return nil, nil, nil, 0, err
 	}

@@ -218,3 +218,27 @@ func TestNtfySeamTestPushNoChannel(t *testing.T) {
 		t.Fatal("no channel must refuse the test push")
 	}
 }
+
+// TestNtfyPublicURLPrefersOverride is the deep-link base the transport roots a
+// notification at: the --public-url this run passed, else the value a previous
+// run persisted, else empty (the link stays a raw deep link).
+func TestNtfyPublicURLPrefersOverride(t *testing.T) {
+	st, _ := ntfyTestStore(t)
+	ctx := context.Background()
+
+	if got := ntfyPublicURL(ctx, st, "https://flag.example"); got != "https://flag.example" {
+		t.Errorf("override = %q, want the flag value", got)
+	}
+	if got := ntfyPublicURL(ctx, st, ""); got != "" {
+		t.Errorf("unset = %q, want empty", got)
+	}
+	if err := st.PutSetting(ctx, store.SettingPublicURL, "https://stored.example"); err != nil {
+		t.Fatalf("PutSetting: %v", err)
+	}
+	if got := ntfyPublicURL(ctx, st, ""); got != "https://stored.example" {
+		t.Errorf("stored = %q, want the persisted value", got)
+	}
+	if got := ntfyPublicURL(ctx, st, "https://flag.example"); got != "https://flag.example" {
+		t.Errorf("override with a stored value = %q, want the flag", got)
+	}
+}

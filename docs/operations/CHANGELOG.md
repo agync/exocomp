@@ -14,6 +14,24 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — ntfy pushes deep-link into the app
+
+- **A push's tap target is now the app page.** The ntfy transport roots a
+  notification's deep link at the deployment's public URL
+  (`store.SettingPublicURL`, set on the system page or by `serve --public-url`),
+  so `exocomp://approvals/42` becomes
+  `https://exocomp.example/exocomp/approvals/42` and a tap opens the approval
+  instead of an unhandled scheme. The mapping is explicit per resource — a
+  workspace's drift link and a secret's link each open the page that shows them,
+  never a guessed prefix swap — and an unknown or already-absolute link is left
+  alone. With no public URL set the link stays the raw deep link.
+- **The click rides in the body too.** The resolved link is set in the message's
+  `click` field as well as the `X-Click` header, so a client that reads the body
+  gets it.
+- **The daemon refreshes it.** The transport takes the public URL at load and
+  again on `exocomp reload`, so changing the address on the system page retargets
+  the next push without a restart.
+
 ## 2026-10-13 — system tiles: uniform verbs, one chip slot
 
 - **The leg tiles share one button.** Arm, Edit/Set up, Manage and the

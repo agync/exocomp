@@ -50,7 +50,9 @@ type Notification struct {
 	// Click is the deep link a subscriber opens on tap of the notification
 	// itself, e.g. "exocomp://approvals/42" or "exocomp://jobs/7". Like Tags
 	// it names only a non-sensitive identifier — never the capability action
-	// URL an Action carries, which is a single-use bearer token.
+	// URL an Action carries, which is a single-use bearer token. The ntfy
+	// transport roots it at the deployment's public URL (SetPublicURL), so a
+	// tap opens the app page rather than an unhandled scheme.
 	Click   string
 	Actions []Action
 	// Source and Host attribute the notification so a scoped mute can hold it.

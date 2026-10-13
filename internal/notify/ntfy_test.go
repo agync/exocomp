@@ -466,6 +466,102 @@ func TestLoadNtfyFromSealedSecrets(t *testing.T) {
 	}
 }
 
+// TestNtfyClickRootedAtPublicURL is the deep-link deliverable: with the
+// deployment's public URL set, a notification's exocomp:// deep link becomes a
+// real address the phone can open — in the body's click field and the X-Click
+// header — so a tap opens the app page instead of an unhandled scheme.
+func TestNtfyClickRootedAtPublicURL(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(),
+		PublicURL: "https://exocomp.example/exocomp/",
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+	if err := transport.Publish(context.Background(), notify.Notification{
+		Title: "1 approval waiting", Body: "10m left",
+		Click: "exocomp://approvals/42",
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(*seen) != 1 {
+		t.Fatalf("server saw %d publishes, want 1", len(*seen))
+	}
+	const want = "https://exocomp.example/exocomp/approvals/42"
+	got := (*seen)[0]
+	if got.click != want {
+		t.Errorf("X-Click = %q, want %q", got.click, want)
+	}
+	if got.body["click"] != want {
+		t.Errorf("body click = %v, want %q", got.body["click"], want)
+	}
+}
+
+// TestNtfyClickWebPaths pins the deep-link to web-path mapping: each resource URI
+// opens the page that actually shows it (a workspace's drift and a secret's link
+// are not their own names), and an unknown or already-absolute link is left
+// alone rather than mangled.
+func TestNtfyClickWebPaths(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(),
+		PublicURL: "https://h",
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+	cases := map[string]string{
+		"exocomp://approvals/42":              "https://h/approvals/42",
+		"exocomp://jobs/7":                    "https://h/jobs/7",
+		"exocomp://jobs/7/log":                "https://h/jobs/7",
+		"exocomp://workspaces/prod-net":       "https://h/workspaces/prod-net",
+		"exocomp://workspaces/prod-net/drift": "https://h/workspaces/prod-net",
+		"exocomp://secrets/ntfy/token":        "https://h/secrets",
+		"exocomp://system/deadman":            "https://h/system/deadman",
+		"https://already.example/x":           "https://already.example/x",
+		"exocomp://unknown/thing":             "exocomp://unknown/thing",
+	}
+	for click, want := range cases {
+		if err := transport.Publish(context.Background(), notify.Notification{
+			Title: "t", Body: "b", Click: click,
+		}); err != nil {
+			t.Fatalf("publish %q: %v", click, err)
+		}
+		if got := (*seen)[len(*seen)-1].click; got != want {
+			t.Errorf("click %q → %q, want %q", click, got, want)
+		}
+	}
+}
+
+// TestNtfySetPublicURL: the daemon sets the public URL after construction (a
+// reload picks up a change made on the system page), so the setter must take
+// effect on the next publish.
+func TestNtfySetPublicURL(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(),
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+	transport.SetPublicURL("https://h")
+	if err := transport.Publish(context.Background(), notify.Notification{
+		Title: "t", Body: "b", Click: "exocomp://jobs/7",
+	}); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if got := (*seen)[0].click; got != "https://h/jobs/7" {
+		t.Errorf("X-Click = %q, want https://h/jobs/7", got)
+	}
+}
+
 var errNotSealed = errNotSealedType{}
 
 type errNotSealedType struct{}

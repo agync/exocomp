@@ -93,6 +93,11 @@ type Ntfy struct {
 	token  string
 	client *http.Client
 	detail Detail
+	// publicURL roots a notification's deep link at the deployment's public
+	// address, so a tap opens the app instead of an unhandled exocomp://
+	// scheme. Empty (the operator set no public URL) leaves the deep link as
+	// the builder wrote it.
+	publicURL string
 }
 
 // NtfyOptions configures the transport.
@@ -108,6 +113,10 @@ type NtfyOptions struct {
 	// Detail controls how much a push names. Empty behaves as
 	// DetailDescriptive.
 	Detail Detail
+	// PublicURL is the deployment's public address (store.SettingPublicURL),
+	// e.g. https://exocomp.example/exocomp. It roots a notification's deep
+	// link; empty leaves the link unresolved.
+	PublicURL string
 }
 
 // NewNtfy returns an ntfy transport, refusing a configuration whose approval
@@ -144,7 +153,7 @@ func NewNtfy(opts NtfyOptions) (*Ntfy, error) {
 	}
 	return &Ntfy{
 		base: base, topic: opts.Topic, token: opts.Token, client: client,
-		detail: normalizeDetail(opts.Detail),
+		detail: normalizeDetail(opts.Detail), publicURL: strings.TrimRight(strings.TrimSpace(opts.PublicURL), "/"),
 	}, nil
 }
 
@@ -152,6 +161,12 @@ func NewNtfy(opts NtfyOptions) (*Ntfy, error) {
 // builds the transport from sealed secrets alone, so a caller that also has
 // the operator's Detail setting (store.SettingNtfyDetail) applies it here.
 func (n *Ntfy) SetDetail(d Detail) { n.detail = normalizeDetail(d) }
+
+// SetPublicURL overrides the deployment's public address, after construction.
+// The daemon sets it from store.SettingPublicURL at load and again on reload,
+// so a notification's deep link follows the address the operator changed on
+// the system page.
+func (n *Ntfy) SetPublicURL(u string) { n.publicURL = strings.TrimRight(strings.TrimSpace(u), "/") }
 
 // LoadNtfy builds the transport from the configured ntfy values: the server URL
 // and topic (ordinary settings, with a sealed fallback), plus the optional
@@ -194,6 +209,7 @@ type ntfyMessage struct {
 	Message  string       `json:"message"`
 	Priority int          `json:"priority,omitempty"`
 	Tags     []string     `json:"tags,omitempty"`
+	Click    string       `json:"click,omitempty"`
 	Actions  []ntfyAction `json:"actions,omitempty"`
 }
 
@@ -207,12 +223,14 @@ type ntfyAction struct {
 // Publish implements Transport.
 func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 	title, body := n.render(note)
+	click := n.resolveClick(note.Click)
 	msg := ntfyMessage{
 		Topic:    n.topic,
 		Title:    title,
 		Message:  body,
 		Priority: int(note.Priority),
 		Tags:     note.Tags,
+		Click:    click,
 	}
 	for _, a := range note.Actions {
 		msg.Actions = append(msg.Actions, ntfyAction{
@@ -232,13 +250,12 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 	if n.token != "" {
 		req.Header.Set("Authorization", "Bearer "+n.token)
 	}
-	// X-Click and X-Tags are the structured, machine-readable signal: a
-	// subscriber renders the deep link and the id/ttl tags from these headers
-	// instead of parsing the capability action URL an Action carries. They
+	// X-Click and X-Tags duplicate the body's click/tags as the CLI-friendly
+	// header form; the click is already rooted at the public URL, and the tags
 	// carry only non-sensitive identifiers, so unlike Title/Body they are not
 	// gated by Detail — a terse operator still gets them.
-	if note.Click != "" {
-		req.Header.Set("X-Click", note.Click)
+	if click != "" {
+		req.Header.Set("X-Click", click)
 	}
 	if len(note.Tags) > 0 {
 		req.Header.Set("X-Tags", strings.Join(note.Tags, ","))
@@ -257,6 +274,66 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 		return fmt.Errorf("notify: ntfy answered %s", resp.Status)
 	}
 	return nil
+}
+
+// resolveClick roots a notification's deep link at the deployment's public
+// address. The builders emit an exocomp:// resource URI (the same namespace the
+// MCP resources use), which no browser and no stock notification client can
+// open — a tap would do nothing. With a public URL set the link becomes a real
+// address, {publicURL}/approvals/42, that opens the app on the approval page;
+// without one it is left as written. A link that is already absolute, or that
+// webPath does not recognise, is never mangled.
+func (n *Ntfy) resolveClick(click string) string {
+	if click == "" || n.publicURL == "" {
+		return click
+	}
+	path, ok := webPath(click)
+	if !ok {
+		return click
+	}
+	return n.publicURL + path
+}
+
+// webPath maps an exocomp deep link — the exocomp:// resource URI a notification
+// builder emits — to the web path that opens the same thing in the app. The
+// mapping is explicit because the two namespaces are not the same string: a
+// workspace's drift link and a secret's link each live on a page that is not
+// their own name, so a blind prefix swap would send a tap to a 404. It reports
+// false for anything it does not recognise, leaving an unknown link alone.
+func webPath(click string) (string, bool) {
+	rest, ok := strings.CutPrefix(click, "exocomp://")
+	if !ok {
+		return "", false
+	}
+	seg := strings.Split(strings.Trim(rest, "/"), "/")
+	switch seg[0] {
+	case "approvals":
+		if len(seg) == 2 {
+			return "/approvals/" + seg[1], true
+		}
+	case "jobs":
+		if len(seg) >= 2 { // jobs/{id} and jobs/{id}/log both open the job page
+			return "/jobs/" + seg[1], true
+		}
+	case "workspaces":
+		if len(seg) >= 2 { // workspaces/{name} and .../{name}/drift
+			return "/workspaces/" + seg[1], true
+		}
+		return "/workspaces", true
+	case "secrets":
+		return "/secrets", true // metadata only; there is no per-secret page
+	case "schedules":
+		return "/schedules", true
+	case "checks":
+		return "/checks", true
+	case "events":
+		return "/events", true
+	case "system":
+		if len(seg) == 2 {
+			return "/system/" + seg[1], true
+		}
+	}
+	return "", false
 }
 
 // render resolves the title and body a push carries. DetailTerse ignores the
