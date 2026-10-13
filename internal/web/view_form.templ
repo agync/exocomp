@@ -43,7 +43,11 @@ func fieldType(t string) string {
 templ fieldInput(f fieldMeta) {
 	<label class="field">
 		<span class="label">{ f.Label }</span>
-		<input class="control" type={ fieldType(f.Type) } id={ f.ID } name={ f.Name } value={ f.Value } spellcheck="false"
+		<input class="control"
+			if f.Type != "" {
+				type={ f.Type }
+			}
+			id={ f.ID } name={ f.Name } value={ f.Value } spellcheck="false"
 			placeholder={ f.Placeholder }
 			aria-invalid?={ f.ErrMsg != "" }
 			aria-describedby={ f.ID + "-meta" }

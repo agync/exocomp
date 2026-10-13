@@ -71,10 +71,10 @@
   .sys-identity .pub { display: flex; flex-wrap: nowrap; min-width: 0; max-width: 100%; width: 100%; gap: 8px; }
   /* R11: the key stays — `public URL · not set` says what is not set — and the
    * Change verb is a bar-size ghost, not the filled 30px control. */
-  .sys-identity .pub .label { display: inline-flex; flex: none; white-space: nowrap; }
-  .sys-identity .pub .label::after { content: "\00a0·"; }
-  .sys-identity .pub .val { display: inline-block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sys-identity .change { flex: none; height: 36px; background: transparent; border-color: transparent; padding: 0 8px; }
+  .sys-identity .pub .label { display:inline; }
+  .sys-identity .pub .label::after { content:" ·"; }
+  .sys-identity .pub .val { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sys-identity .change { height:36px; background:transparent; border-color:transparent; }
   .pubform input[type="url"] { max-width: 100%; }
 }
 

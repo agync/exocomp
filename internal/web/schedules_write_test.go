@@ -563,3 +563,115 @@ func TestSchedulesExplicitPrefill(t *testing.T) {
 		t.Error("kind select did not honor the explicit kind param")
 	}
 }
+
+func TestScheduleRunReadonlyForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	resp := postForm(t, client, ts.URL+"/schedules/nightly/run", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly schedule run = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestScheduleRunCrossOriginForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/schedules/nightly/run",
+		url.Values{},
+		map[string]string{"Sec-Fetch-Site": "cross-site"})
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-origin schedule run = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestScheduleRunNotFound(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/schedules/nonexistent/run", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("nonexistent schedule run = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestScheduleRunEnqueuesAndRedirects(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSchedule(ctx, store.NewSchedule{
+		Name: "nightly-shell", CronExpr: "0 0 * * *", Kind: store.ScheduleShell,
+		Args: store.ScheduleArgs{Argv: []string{"echo", "scheduled"}},
+	}); err != nil {
+		t.Fatalf("seed schedule: %v", err)
+	}
+
+	// Verify row action appears on /schedules
+	code, page := getBody(t, client, ts.URL+"/schedules")
+	if code != http.StatusOK {
+		t.Fatalf("get /schedules = %d, want 200", code)
+	}
+	if !strings.Contains(page, `action="/schedules/nightly-shell/run"`) {
+		t.Errorf("/schedules missing run action for nightly-shell: %s", page)
+	}
+
+	resp := postForm(t, client, ts.URL+"/schedules/nightly-shell/run", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("schedule run status = %d, want 303", resp.StatusCode)
+	}
+
+	loc := resp.Header.Get("Location")
+	if !strings.HasPrefix(loc, "/jobs/") {
+		t.Fatalf("Location = %q, want /jobs/{id}", loc)
+	}
+	jobIDStr := strings.TrimPrefix(loc, "/jobs/")
+
+	var foundFlash bool
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && strings.Contains(c.Value, "enqueued nightly-shell as job #"+jobIDStr) {
+			foundFlash = true
+		}
+	}
+	if !foundFlash {
+		t.Error("schedule run did not set flash cookie")
+	}
+
+	// Verify enqueued job in store
+	jobs, err := h.store.ListJobs(ctx, store.JobFilter{Limit: 10})
+	if err != nil {
+		t.Fatalf("list jobs: %v", err)
+	}
+	var matched bool
+	for _, j := range jobs {
+		if j.Runbook == "nightly-shell" {
+			matched = true
+			if j.Trigger != "operator" {
+				t.Errorf("job trigger = %q, want operator", j.Trigger)
+			}
+			if len(j.Args.Argv) != 2 || j.Args.Argv[0] != "echo" || j.Args.Argv[1] != "scheduled" {
+				t.Errorf("job argv = %v, want [echo scheduled]", j.Args.Argv)
+			}
+		}
+	}
+	if !matched {
+		t.Error("enqueued job not found in store")
+	}
+}

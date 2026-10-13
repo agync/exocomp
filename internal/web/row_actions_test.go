@@ -99,10 +99,10 @@ func TestRowActionsDangerSeparator(t *testing.T) {
 // the destructive Remove confirmed and last, and the per-resource verbs
 // present.
 func TestResourceRowActions(t *testing.T) {
-	// Schedules: Disable glyph + Open/Remove menu.
+	// Schedules: Run now + Disable glyphs + Open/Remove menu.
 	sched := scheduleRowActions(scheduleRow{Name: "nightly", Enabled: true})
-	if len(rowGlyphs(sched)) != 1 || rowGlyphs(sched)[0].Name != "Disable" {
-		t.Errorf("schedule glyphs = %+v, want [Disable]", rowGlyphs(sched))
+	if len(rowGlyphs(sched)) != 2 || rowGlyphs(sched)[0].Name != "Run now" || rowGlyphs(sched)[1].Name != "Disable" {
+		t.Errorf("schedule glyphs = %+v, want [Run now, Disable]", rowGlyphs(sched))
 	}
 	menu := rowMenu(sched)
 	if len(menu) != 2 || menu[0].Name != "Open" || menu[1].Name != "Remove" || !menu[1].Danger {

@@ -55,6 +55,7 @@ const (
 	glyphPlan     = "M12 5v14M5 12h14"
 	glyphApply    = "M5 12l4 4L19 6"
 	glyphEnable   = "M7 5v14l10-7z"
+	glyphRun      = glyphPlay
 	glyphDisable  = "M6 6l12 12M18 6L6 18"
 	glyphOpen     = "M14 4h6v6M10 14l10-10M19 13v7H4V5h7"
 	glyphRotate   = "M4 10a8 8 0 0 1 13.7-2.7M20 14a8 8 0 0 1-13.7 2.7M16 4h2v4h-4"

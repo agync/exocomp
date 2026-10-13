@@ -12,13 +12,17 @@ const glyphRoute = "M6 8.2v7.6M18 9.2c0 4.8-5.5 4.3-9.3 6.9"
 // the same stroke contract (24 viewBox, stroke 1.8, round caps).
 const glyphInfo = "M12 4a8 8 0 1 1 0 0zM12 9v6M12 5.5v2"
 
-// scheduleRowActions is the v0.6 row-action set for one schedule: Disable or
-// Enable as the verb glyph (the state toggles), with Open (the spec modal) and
-// Remove (confirmed, last) in the chevron menu. "Run now" is deferred — a
-// schedule-fire route + enqueue semantics does not exist yet (noted to the
-// designer).
+// scheduleRowActions is the row-action set for one schedule: "Run now",
+// Disable or Enable as the verb glyph (the state toggles), with Open (the spec
+// modal) and Remove (confirmed, last) in the chevron menu.
 func scheduleRowActions(sc scheduleRow) []rowAction {
-	acts := []rowAction{}
+	acts := []rowAction{
+		{
+			Name: "Run now", Path: glyphRun,
+			Form:    "/schedules/" + sc.Name + "/run",
+			Refusal: sc.Refusal,
+		},
+	}
 	if sc.Enabled {
 		acts = append(acts, rowAction{
 			Name: "Disable", Path: glyphDisable,

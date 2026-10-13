@@ -21,6 +21,7 @@ func init() { registerWrite((*Server).registerScheduleWrite) }
 
 func (s *Server) registerScheduleWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /schedules/add", s.requireAuth(s.handleScheduleAdd))
+	mux.HandleFunc("POST /schedules/{name}/run", s.requireAuth(s.handleScheduleRun))
 	mux.HandleFunc("POST /schedules/{name}/enable", s.requireAuth(s.handleScheduleEnable))
 	mux.HandleFunc("POST /schedules/{name}/disable", s.requireAuth(s.handleScheduleDisable))
 	mux.HandleFunc("POST /schedules/{name}/rm", s.requireAuth(s.handleScheduleRm))
@@ -228,6 +229,51 @@ func (s *Server) schedulesVMFor(r *http.Request, form *scheduleFormVM, refusal *
 		vm.Page.Add = &pageAdd{Target: "schedules-add", Label: "schedule"}
 	}
 	return vm, nil
+}
+
+func (s *Server) handleScheduleRun(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	sc, err := s.store.GetSchedule(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "No schedule named "+name+" exists to run.", http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+
+	specs, err := sched.Specs(r.Context(), s.store, s.log, sc, "operator")
+	if err != nil {
+		s.log.Error("web: schedule run specs failed", "schedule", name, "err", err.Error(), "by", ident.token.Name)
+		s.scheduleRowRefusal(w, r, name, "Could not run schedule: "+err.Error())
+		return
+	}
+	if len(specs) == 0 {
+		s.scheduleRowRefusal(w, r, name, "Schedule produced no jobs to run.")
+		return
+	}
+
+	enq := s.enqueuer()
+	var firstJobID int64
+	for i, spec := range specs {
+		job, err := enq.Enqueue(r.Context(), spec)
+		if err != nil {
+			s.log.Error("web: schedule run enqueue failed", "schedule", name, "err", err.Error(), "by", ident.token.Name)
+			s.scheduleRowRefusal(w, r, name, "Could not enqueue job: "+err.Error())
+			return
+		}
+		if i == 0 {
+			firstJobID = job.ID
+		}
+	}
+
+	s.log.Info("web: schedule run enqueued", "schedule", name, "first_job_id", firstJobID, "count", len(specs), "by", ident.token.Name)
+	s.redirectFlash(w, r, "/jobs/"+strconv.FormatInt(firstJobID, 10), "enqueued "+name+" as job #"+strconv.FormatInt(firstJobID, 10))
 }
 
 func (s *Server) handleScheduleEnable(w http.ResponseWriter, r *http.Request) {

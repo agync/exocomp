@@ -176,7 +176,7 @@ templ queueRecentRow(j jobRow, base string) {
 				}
 			</a>
 			<a class="cell cell--qmeta" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
-				<span class="qmeta" data-finished-at={ j.FinishedAtISO() } data-finished-rel={ j.FinishedRel }>{ j.PhoneMeta() }</span>
+				<span class="qmeta">{ j.PhoneMeta() }</span>
 			</a>
 			<a class="cell cell--qtime" href={ templ.SafeURL(urlWithBase(base, "/jobs/" + itoa64(j.ID))) }>
 				if j.FinishedAt != nil && j.FinishedClock != "" {

@@ -644,21 +644,21 @@ templ timeInit() {
 			for (var i = 0; i < times.length; i++) {
 				var el = times[i];
 				var dt = el.getAttribute("datetime");
-				if (!dt) continue;
-				var d = new Date(dt);
-				if (isNaN(d.getTime())) continue;
-
-				if (!el.dataset.utcText) {
-					el.dataset.utcText = el.textContent;
-				}
-
-				if (mode === "utc") {
-					el.textContent = el.dataset.utcText;
-					el.title = dt.replace("T", " ").replace("Z", " UTC");
-				} else {
-					var fmt = el.getAttribute("data-time-format") || "rel";
-					el.textContent = window.exoFormatLocal(d, fmt, now);
-					el.title = d.toLocaleString() + " (" + localZone + ")";
+				if (dt) {
+					var d = new Date(dt);
+					if (!isNaN(d.getTime())) {
+						if (!el.dataset.utcText) {
+							el.dataset.utcText = el.textContent;
+						}
+						if (mode === "utc") {
+							el.textContent = el.dataset.utcText;
+							el.title = dt.replace("T", " ").replace("Z", " UTC");
+						} else {
+							var fmt = el.getAttribute("data-time-format") || "rel";
+							el.textContent = window.exoFormatLocal(d, fmt, now);
+							el.title = d.toLocaleString() + " (" + localZone + ")";
+						}
+					}
 				}
 			}
 
@@ -667,15 +667,16 @@ templ timeInit() {
 				var qm = qmetas[j];
 				var qdt = qm.getAttribute("data-finished-at");
 				var qrel = qm.getAttribute("data-finished-rel");
-				if (!qdt || !qrel) continue;
-				if (!qm.dataset.utcText) qm.dataset.utcText = qm.textContent;
-				if (mode === "utc") {
-					qm.textContent = qm.dataset.utcText;
-				} else {
-					var qd = new Date(qdt);
-					if (!isNaN(qd.getTime())) {
-						var lrel = window.exoFormatLocal(qd, "rel", now);
-						qm.textContent = qm.dataset.utcText.replace(qrel, lrel);
+				if (qdt && qrel) {
+					if (!qm.dataset.utcText) qm.dataset.utcText = qm.textContent;
+					if (mode === "utc") {
+						qm.textContent = qm.dataset.utcText;
+					} else {
+						var qd = new Date(qdt);
+						if (!isNaN(qd.getTime())) {
+							var lrel = window.exoFormatLocal(qd, "rel", now);
+							qm.textContent = qm.dataset.utcText.replace(qrel, lrel);
+						}
 					}
 				}
 			}
@@ -684,32 +685,38 @@ templ timeInit() {
 			for (var s = 0; s < sentences.length; s++) {
 				var sen = sentences[s];
 				var qat = sen.getAttribute("data-queued-at");
-				if (!qat) continue;
-				if (!sen.dataset.utcText) sen.dataset.utcText = sen.innerHTML;
-				if (mode === "utc") {
-					sen.innerHTML = sen.dataset.utcText;
-				} else {
-					var sqd = new Date(qat);
-					if (!isNaN(sqd.getTime())) {
-						var ldt = window.exoFormatLocal(sqd, "datetime", now);
-						sen.innerHTML = sen.dataset.utcText.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/, ldt);
+				if (qat) {
+					if (!sen.dataset.utcText) sen.dataset.utcText = sen.innerHTML;
+					if (mode === "utc") {
+						sen.innerHTML = sen.dataset.utcText;
+					} else {
+						var sqd = new Date(qat);
+						if (!isNaN(sqd.getTime())) {
+							var ldt = window.exoFormatLocal(sqd, "datetime", now);
+							sen.innerHTML = sen.dataset.utcText.replace(/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC/, ldt);
+						}
 					}
 				}
 			}
 
-			var endedMetas = (root || document).querySelectorAll(".meta.mono[data-ended-at]");
+			var endedMetas = (root || document).querySelectorAll(".meta.mono");
 			for (var k = 0; k < endedMetas.length; k++) {
 				var em = endedMetas[k];
-				var edt = em.getAttribute("data-ended-at");
-				if (!edt) continue;
-				if (!em.dataset.utcText) em.dataset.utcText = em.textContent;
-				if (mode === "utc") {
-					em.textContent = em.dataset.utcText;
-				} else {
-					var ed = new Date(edt);
-					if (!isNaN(ed.getTime())) {
-						var lclock = exoPad2(ed.getHours()) + ":" + exoPad2(ed.getMinutes()) + ":" + exoPad2(ed.getSeconds());
-						em.textContent = em.dataset.utcText.replace(/\d{2}:\d{2}:\d{2}/, lclock);
+				var prefix = "stdout + stderr " + "· ended ";
+				if (em.textContent && em.textContent.indexOf(prefix) === 0) {
+					if (!em.dataset.utcText) em.dataset.utcText = em.textContent;
+					if (mode === "utc") {
+						em.textContent = em.dataset.utcText;
+					} else {
+						var timeNode = (root || document).querySelector("time[datetime]");
+						var edt = timeNode ? timeNode.getAttribute("datetime") : "";
+						if (edt) {
+							var ed = new Date(edt);
+							if (!isNaN(ed.getTime())) {
+								var lclock = exoPad2(ed.getHours()) + ":" + exoPad2(ed.getMinutes()) + ":" + exoPad2(ed.getSeconds());
+								em.textContent = em.dataset.utcText.replace(/\d{2}:\d{2}:\d{2}/, lclock);
+							}
+						}
 					}
 				}
 			}
