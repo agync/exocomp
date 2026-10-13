@@ -249,7 +249,7 @@ is built. And like egress it only means anything under the sandbox: a fleet degr
 
 | Signal | Behaviour |
 |---|---|
-| `SIGHUP` | Rebuild every reloadable read-once set: the schedule registrations and the push transports, from the database and the sealed secrets. A schedule added, edited, enabled, or disabled through the CLI, or a sealed ntfy/GoAlert change, takes effect here; each new set is built whole before it replaces the running one, so a row the parser rejects is logged and skipped without disturbing the rest. |
+| `SIGHUP` | Rebuild every reloadable read-once set: the schedule registrations and the push transports, from the database and the sealed secrets. A schedule added, edited, enabled, or disabled through the CLI, or a changed ntfy configuration or sealed GoAlert key, takes effect here; each new set is built whole before it replaces the running one, so a row the parser rejects is logged and skipped without disturbing the rest. |
 | `SIGTERM`, `SIGINT` | Shut down in the one order that leaves the database consistent: the scheduler first, so nothing new fires; then the jobs already running, which get `--drain-grace` to write their own terminal rows before anything cancels them; then whatever is still queued and owned by this process, retired to `interrupted`; then any other non-terminal row left by a process the kernel confirms is dead, retired the same way; the state backend last, because a tofu leg is still pushing state to it. |
 
 A daemon that exits leaves no `queued` or `running` row behind, so there is nothing for
@@ -300,7 +300,7 @@ a running daemon with no action.
 | State | How it is read | Action |
 |---|---|---|
 | Schedules | once into memory | `exocomp reload` (or `SIGHUP`) |
-| Push transports: sealed ntfy/GoAlert endpoints, ntfy Detail setting | once into the notifier | `exocomp reload` (or `SIGHUP`) |
+| Push transports: the ntfy URL/topic settings + sealed token, the ntfy Detail setting, sealed GoAlert keys | once into the notifier | `exocomp reload` (or `SIGHUP`) |
 | Backup quiesce file (`.exocomp/backup-quiesce.yml`) | once into the backup engine at boot | restart-only: it is a local config file, not store state, and refreshing it live would add a swap seam through the driver router for a file an operator edits rarely |
 | `serve` flags: port, drain-grace, sweep/reload interval, dedup/approval windows, hook-allow, public-url, base-path, sandbox tier, secret-staging, check-canary, lease | argv / env / probe at boot | restart the unit — a re-exec keeps the same argv, so it cannot apply a new flag |
 | Sandbox tier, serve lock, active lease, envelope seal config | decided at boot | restart-only |

@@ -75,6 +75,77 @@ func TestNtfySeamStateSelfHosted(t *testing.T) {
 	}
 }
 
+// TestNtfySeamFromSettings is the settings path: the URL and topic are ordinary
+// settings (no sealed rows), the token is sealed, and the seam reads the same
+// values the transport does — present, self-hosted, and a test push that lands.
+func TestNtfySeamFromSettings(t *testing.T) {
+	st, env := ntfyTestStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.Copy(io.Discard, io.LimitReader(r.Body, 4<<10))
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(srv.Close)
+	ctx := context.Background()
+	if err := st.PutSetting(ctx, store.SettingNtfyURL, srv.URL); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutSetting(ctx, store.SettingNtfyTopic, "exocomp-settings"); err != nil {
+		t.Fatal(err)
+	}
+	sealNtfy(t, st, env, notify.SecretNtfyToken, "tk_secret")
+
+	seam := newNtfySeam(st, env)
+	got, err := seam.State(ctx)
+	if err != nil {
+		t.Fatalf("state: %v", err)
+	}
+	if !got.URLSealed || !got.TopicSealed || !got.TokenSealed || got.Refused || got.ServerClass != "self-hosted" {
+		t.Fatalf("settings state = %+v, want present, self-hosted, not refused", got)
+	}
+	if err := seam.TestPush(ctx, "nibbler"); err != nil {
+		t.Fatalf("test push from settings: %v", err)
+	}
+}
+
+// TestNtfySeamSettingWinsOverLegacySealed is the precedence gate: a legacy
+// sealed ntfy/url or ntfy/topic (from before those became settings) must not
+// shadow the setting — the value the UI shows is the value the transport uses.
+func TestNtfySeamSettingWinsOverLegacySealed(t *testing.T) {
+	st, env := ntfyTestStore(t)
+	ctx := context.Background()
+	sealNtfy(t, st, env, notify.SecretNtfyURL, "https://old.lan")
+	sealNtfy(t, st, env, notify.SecretNtfyTopic, "old-topic")
+	if err := st.PutSetting(ctx, store.SettingNtfyURL, "https://new.lan"); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.PutSetting(ctx, store.SettingNtfyTopic, "new-topic"); err != nil {
+		t.Fatal(err)
+	}
+	seam := newNtfySeam(st, env)
+	url, err := seam.look(ctx, notify.SecretNtfyURL)
+	if err != nil || string(url) != "https://new.lan" {
+		t.Fatalf("resolved url = %q (%v), want the setting", url, err)
+	}
+	topic, err := seam.look(ctx, notify.SecretNtfyTopic)
+	if err != nil || string(topic) != "new-topic" {
+		t.Fatalf("resolved topic = %q (%v), want the setting", topic, err)
+	}
+}
+
+// TestNtfySeamLegacySealedFallback: with no setting, a legacy sealed URL/topic
+// still resolves, so an install from before the settings move keeps working.
+func TestNtfySeamLegacySealedFallback(t *testing.T) {
+	st, env := ntfyTestStore(t)
+	ctx := context.Background()
+	sealNtfy(t, st, env, notify.SecretNtfyURL, "https://old.lan")
+	sealNtfy(t, st, env, notify.SecretNtfyTopic, "old-topic")
+	seam := newNtfySeam(st, env)
+	url, err := seam.look(ctx, notify.SecretNtfyURL)
+	if err != nil || string(url) != "https://old.lan" {
+		t.Fatalf("legacy url = %q (%v), want the sealed fallback", url, err)
+	}
+}
+
 // TestNtfySeamStateRefusesPublicWithoutToken is the NewNtfy judgment
 // re-derived from the sealed secrets: a public topic without a token is
 // refused, and sealing the token clears the refusal.

@@ -148,10 +148,11 @@ func (p *dataDirProvisioner) Commit(ctx context.Context, in setupInput) (string,
 }
 
 // persistOperatorConfig writes the operator display name and the ntfy topic
-// (plain, in the setting table for readback, and sealed as the notify config the
-// transport reads), then attempts a test push. It returns the notify status line
-// the hand-over screen shows: a real push when a transport is configured, or a
-// clear no-transport message when only a topic has been minted so far.
+// (ordinary settings), then attempts a test push through the SAME lookup the
+// daemon uses — so a URL already configured on the surface makes the push work.
+// It returns the notify status line the hand-over screen shows: a real push
+// when a transport is configured, or a clear no-transport message when only a
+// topic has been minted so far.
 func persistOperatorConfig(ctx context.Context, st *store.Store, env *secrets.Envelope,
 	in setupInput) (string, error) {
 	if err := st.PutSetting(ctx, store.SettingOperator, in.operator); err != nil {
@@ -161,15 +162,13 @@ func persistOperatorConfig(ctx context.Context, st *store.Store, env *secrets.En
 		return "", err
 	}
 
-	transport, err := notify.LoadNtfy(ctx, func(ctx context.Context, name string) ([]byte, error) {
-		return openSealed(ctx, st, env.DataDir(), name)
-	})
+	transport, err := notify.LoadNtfy(ctx, sealedLookup(st, env))
 	if err != nil {
 		return "", err
 	}
 	if transport == nil {
-		return "topic " + in.topic + " saved · no push transport yet (seal " +
-			notify.SecretNtfyURL + " to enable)", nil
+		return "topic " + in.topic + " saved · no push transport yet " +
+			"(set the ntfy server URL to enable)", nil
 	}
 	if perr := transport.Publish(ctx, notify.Notification{
 		Title:    "exocomp is set up",
@@ -179,27 +178,6 @@ func persistOperatorConfig(ctx context.Context, st *store.Store, env *secrets.En
 		return "topic " + in.topic + " saved · test push failed: " + perr.Error(), nil
 	}
 	return "topic " + in.topic + " · test push sent", nil
-}
-
-// sealConfigSecret seals value under name and upserts it into the secret table,
-// so a re-seal (a second setup or a topic change) replaces rather than
-// duplicates.
-func sealConfigSecret(ctx context.Context, st *store.Store, env *secrets.Envelope, name, value string) error {
-	sealed, err := env.Seal(name, "generic", []byte(value))
-	if err != nil {
-		return err
-	}
-	row := store.SecretRow{
-		Name: sealed.Name, Kind: sealed.Kind, Nonce: sealed.Nonce,
-		Ciphertext: sealed.Ciphertext, AAD: sealed.Name + "|" + sealed.Kind,
-	}
-	if _, err := st.CreateSecret(ctx, row); err != nil {
-		if errors.Is(err, store.ErrDuplicate) {
-			return st.RotateSecret(ctx, name, sealed.Nonce, sealed.Ciphertext)
-		}
-		return err
-	}
-	return nil
 }
 
 // setupModel is the wizard state machine. step runs 1..4; committed guards the

@@ -42,18 +42,19 @@ func (s *Server) ntfyLegState(ctx context.Context) (NtfyState, NtfySeamState) {
 		}
 	}
 	if !st.URLSealed {
-		// The URL is an ordinary setting now; a legacy sealed ntfy/url still
-		// counts, so an install from before the settings move reads ON.
-		if _, err := s.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
+		// The URL is an ordinary setting now, so a setting wins and a legacy
+		// sealed ntfy/url is the fallback (the same precedence the transport's
+		// lookup uses).
+		if u, err := s.store.GetSetting(ctx, store.SettingNtfyURL); err == nil && u != "" {
 			st.URLSealed = true
-		} else if u, err := s.store.GetSetting(ctx, store.SettingNtfyURL); err == nil && u != "" {
+		} else if _, err := s.store.GetSecret(ctx, notify.SecretNtfyURL); err == nil {
 			st.URLSealed = true
 		}
 	}
 	if !st.TopicSealed {
-		if _, err := s.store.GetSecret(ctx, notify.SecretNtfyTopic); err == nil {
+		if t, err := s.store.GetSetting(ctx, store.SettingNtfyTopic); err == nil && t != "" {
 			st.TopicSealed = true
-		} else if t, err := s.store.GetSetting(ctx, store.SettingNtfyTopic); err == nil && t != "" {
+		} else if _, err := s.store.GetSecret(ctx, notify.SecretNtfyTopic); err == nil {
 			st.TopicSealed = true
 		}
 	}

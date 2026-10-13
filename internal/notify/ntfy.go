@@ -153,9 +153,11 @@ func NewNtfy(opts NtfyOptions) (*Ntfy, error) {
 // the operator's Detail setting (store.SettingNtfyDetail) applies it here.
 func (n *Ntfy) SetDetail(d Detail) { n.detail = normalizeDetail(d) }
 
-// LoadNtfy builds the transport from sealed secrets. An absent URL or topic
-// means the operator has not configured push at all, which is not an error:
-// the caller gets a nil transport and a daemon that runs without one.
+// LoadNtfy builds the transport from the configured ntfy values: the server URL
+// and topic (ordinary settings, with a sealed fallback), plus the optional
+// sealed access token. An absent URL or topic means the operator has not
+// configured push at all, which is not an error: the caller gets a nil transport
+// and a daemon that runs without one.
 func LoadNtfy(ctx context.Context, look SecretLookup) (*Ntfy, error) {
 	if look == nil {
 		return nil, nil
@@ -166,7 +168,7 @@ func LoadNtfy(ctx context.Context, look SecretLookup) (*Ntfy, error) {
 	}
 	topic, err := look(ctx, SecretNtfyTopic)
 	if err != nil {
-		return nil, fmt.Errorf("notify: %s is sealed but %s is not", SecretNtfyURL, SecretNtfyTopic)
+		return nil, fmt.Errorf("notify: %s is set but %s is not", SecretNtfyURL, SecretNtfyTopic)
 	}
 	// A missing token is a configuration NewNtfy judges: mandatory on a public
 	// server, optional on the operator's own.

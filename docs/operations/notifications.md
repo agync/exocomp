@@ -35,7 +35,7 @@ a silent phone, not a daemon that refuses to start:
 exocomp secrets add ntfy/token      # mandatory on a public server
 ```
 
-configure the URL and topic per channel on the system page's ntfy row.
+configure the URL and topic on the system page's ntfy tile, which opens the push channel modal.
 
 A bare `ntfy.sh` topic is unauthenticated — readable and publishable by anyone who guesses
 it — so the transport refuses a public topic without an access token, because approval

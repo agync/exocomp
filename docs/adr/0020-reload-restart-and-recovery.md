@@ -80,7 +80,7 @@ the one reload seam. What needs which action:
 
 | Change | Action |
 |---|---|
-| Schedules, push transports (sealed ntfy/GoAlert + the ntfy Detail setting) — read once into memory | `exocomp reload` (or `SIGHUP`) |
+| Schedules, push transports (the ntfy URL/topic settings + sealed token, the ntfy Detail setting, sealed GoAlert keys) — read once into memory | `exocomp reload` (or `SIGHUP`) |
 | Secrets/redaction, approvals, reactive rules, policies, runners, check config, dead-man threshold and heartbeat, backup retention, workflow ledger — read from the DB per use | live, no action |
 | Backup quiesce file (`.exocomp/backup-quiesce.yml`) — read once at boot | restart-only: a local config file, not store state; a live refresh would add a swap seam through the driver router |
 | Binary change | `exocomp restart` (drains, then re-execs in place) |

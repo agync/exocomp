@@ -15,42 +15,26 @@ import (
 )
 
 // ntfySeam is the web surface's ntfy leg (web.NtfyDriver): the daemon's
-// judgment of the sealed ntfy secrets and a test push through the same
-// LoadNtfy transport the daemon builds. The web surface holds no open
-// envelope, so both the judgment and the push live behind this seam, the same
-// shape as the cordon controller. It re-derives the NewNtfy refusal rule
-// (public host + no token, internal/notify/ntfy.go) from the sealed secrets
-// this process holds — presence, never values.
+// judgment of the ntfy configuration and a test push through the same LoadNtfy
+// transport the daemon builds. The web surface holds no open envelope, so both
+// the judgment and the push live behind this seam, the same shape as the cordon
+// controller. It reads through the SAME sealedLookup the daemon uses — the URL
+// and topic are settings, the token is sealed — and re-derives the NewNtfy
+// refusal rule (public host + no token) from presence, never values.
 type ntfySeam struct {
-	store *store.Store
-	env   *secrets.Envelope
+	store  *store.Store
+	lookup notify.SecretLookup
 }
 
 // newNtfySeam wires the seam over the store and envelope both the daemon and
 // the standalone web process hold.
 func newNtfySeam(st *store.Store, env *secrets.Envelope) *ntfySeam {
-	return &ntfySeam{store: st, env: env}
+	return &ntfySeam{store: st, lookup: sealedLookup(st, env)}
 }
 
-// look opens one sealed secret, exactly as the daemon's transport load does.
+// look opens one configured value, exactly as the daemon's transport load does.
 func (n *ntfySeam) look(ctx context.Context, name string) ([]byte, error) {
-	row, err := n.store.GetSecret(ctx, name)
-	if err == nil {
-		return n.env.OpenSecret(secrets.SealedSecret{
-			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
-		})
-	}
-	if name == notify.SecretNtfyURL {
-		if val, serr := n.store.GetSetting(ctx, store.SettingNtfyURL); serr == nil && val != "" {
-			return []byte(val), nil
-		}
-	}
-	if name == notify.SecretNtfyTopic {
-		if val, serr := n.store.GetSetting(ctx, store.SettingNtfyTopic); serr == nil && val != "" {
-			return []byte(val), nil
-		}
-	}
-	return nil, err
+	return n.lookup(ctx, name)
 }
 
 // secret opens one sealed secret and reports whether it exists at all.
@@ -62,10 +46,10 @@ func (n *ntfySeam) secret(ctx context.Context, name string) ([]byte, bool) {
 	return pt, true
 }
 
-// State reports the ntfy leg's judgment: the sealed keys' presence and the
-// server class — a fact about the URL, never the URL. Refused re-derives the
-// NewNtfy rule: a public server (ntfy.sh or a host under it) without an
-// access token.
+// State reports the ntfy leg's judgment: the URL/topic settings' (and the
+// sealed token's) presence and the server class — a fact about the URL, never
+// the URL. Refused re-derives the NewNtfy rule: a public server (ntfy.sh or a
+// host under it) without an access token.
 func (n *ntfySeam) State(ctx context.Context) (web.NtfySeamState, error) {
 	var st web.NtfySeamState
 	rawURL, urlOK := n.secret(ctx, notify.SecretNtfyURL)

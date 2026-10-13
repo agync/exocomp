@@ -108,10 +108,10 @@ func liveTransports(transports []Transport) []Transport {
 }
 
 // SetTransports replaces the fan-out's transports, so a daemon reload can pick
-// up a sealed ntfy/goalert endpoint, a rotated credential, or a cleared
-// configuration without a restart. It returns how many transports are now
-// live. A publish already in flight keeps the slice it read, so the swap never
-// races one.
+// up a changed ntfy configuration, a sealed goalert endpoint, a rotated
+// credential, or a cleared configuration without a restart. It returns how many
+// transports are now live. A publish already in flight keeps the slice it read,
+// so the swap never races one.
 func (n *Notifier) SetTransports(transports ...Transport) int {
 	live := liveTransports(transports)
 	n.mu.Lock()

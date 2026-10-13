@@ -14,6 +14,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-13 — ntfy config: the setting wins, and one reader
+
+- **A setting now wins over a legacy sealed `ntfy/url`/`ntfy/topic`.** The
+  readers were secret-first, so a sealed row from before the settings move
+  could silently shadow the value the UI showed. The lookup checks the setting
+  first and keeps the sealed row only as a fallback, so the value shown is the
+  value the transport uses; the modal's save already clears the stale rows.
+- **One reader, not four.** The daemon's transport lookup and the web seam now
+  share `sealedLookup`; `exocomp setup`'s test push reads through it too, so a
+  server URL set on the surface makes the setup push work.
+- **The operator copy matches the model.** The no-transport warning, the setup
+  hand-over line and `LoadNtfy`'s half-configured error no longer tell the
+  operator to seal `ntfy/url`/`ntfy/topic`, and the now-unused
+  `sealConfigSecret` helper is gone.
+
 ## 2026-10-13 — ntfy: one modal, no drawer
 
 - **The ntfy drawer is gone; the modal is the whole channel.** `/system/ntfy`

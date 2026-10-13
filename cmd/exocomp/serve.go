@@ -502,10 +502,11 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	}
 	cordon.setScheduler(s)
 	// The notify transports are the other read-once set a reload can refresh:
-	// an operator who seals, rotates, or clears ntfy/goalert (or flips the ntfy
-	// Detail setting) reaches the running daemon through the same reload seam
-	// SIGHUP and `exocomp reload` drive, with no restart. The silent-phone
-	// warning is emitted only when a reload *clears* the sealed set: the boot
+	// an operator who sets, changes, or clears the ntfy configuration (or seals
+	// a goalert key, or flips the ntfy Detail setting) reaches the running
+	// daemon through the same reload seam SIGHUP and `exocomp reload` drive,
+	// with no restart. The silent-phone warning is emitted only when a reload
+	// *clears* the configured set: the boot
 	// warning already covered "never configured", and a reload-interval tick
 	// must not repeat it every minute.
 	var lastSealed atomic.Int32
@@ -681,27 +682,42 @@ func driveWorkflows(ctx context.Context, seq *queue.Sequencer, out, warn io.Writ
 
 // sealedLookup reads a sealed secret's plaintext by name. Both the reactive
 // transports and the dead-man heartbeat read through it, and a daemon reload
-// rebuilds them through the same one.
+// rebuilds them through the same one. ntfy's server URL and topic are ordinary
+// settings now: a setting wins when present, so the value the UI shows is the
+// value the transport uses, and a sealed ntfy/url or ntfy/topic is only the
+// fallback for an install from before the settings move.
 func sealedLookup(st *store.Store, env *secrets.Envelope) notify.SecretLookup {
 	return func(ctx context.Context, name string) ([]byte, error) {
+		if v, ok := ntfySetting(ctx, st, name); ok {
+			return v, nil
+		}
 		row, err := st.GetSecret(ctx, name)
-		if err == nil {
-			return env.OpenSecret(secrets.SealedSecret{
-				Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
-			})
+		if err != nil {
+			return nil, err
 		}
-		if name == notify.SecretNtfyURL {
-			if val, serr := st.GetSetting(ctx, store.SettingNtfyURL); serr == nil && val != "" {
-				return []byte(val), nil
-			}
-		}
-		if name == notify.SecretNtfyTopic {
-			if val, serr := st.GetSetting(ctx, store.SettingNtfyTopic); serr == nil && val != "" {
-				return []byte(val), nil
-			}
-		}
-		return nil, err
+		return env.OpenSecret(secrets.SealedSecret{
+			Name: row.Name, Kind: row.Kind, Nonce: row.Nonce, Ciphertext: row.Ciphertext,
+		})
 	}
+}
+
+// ntfySetting resolves ntfy/url and ntfy/topic from the settings table: those
+// two are ordinary configuration, so a setting is authoritative and the sealed
+// row is only a fallback.
+func ntfySetting(ctx context.Context, st *store.Store, name string) ([]byte, bool) {
+	var key string
+	switch name {
+	case notify.SecretNtfyURL:
+		key = store.SettingNtfyURL
+	case notify.SecretNtfyTopic:
+		key = store.SettingNtfyTopic
+	default:
+		return nil, false
+	}
+	if v, err := st.GetSetting(ctx, key); err == nil && v != "" {
+		return []byte(v), true
+	}
+	return nil, false
 }
 
 // loadNotifyTransports builds the daemon's push fan-out from the sealed
@@ -741,24 +757,28 @@ func loadNotifyTransports(ctx context.Context, st *store.Store, look notify.Secr
 	return transports, sealed, nil
 }
 
-// warnNoPushTransport warns when no sealed transport is configured. The
-// silent-phone warning is about the SEALED transports: UnifiedPush needs no
-// secret and registers its targets at runtime, so its presence must not mask an
-// operator who sealed neither ntfy nor goalert. It is emitted at boot, and
-// again when a reload clears a set that had been sealed.
+// warnNoPushTransport warns when no push transport is configured. The
+// silent-phone warning is about the transports: UnifiedPush needs no secret and
+// registers its targets at runtime, so its presence must not mask an operator
+// who configured neither ntfy nor goalert. ntfy is configured by its URL and
+// topic settings (with an optional sealed token); goalert by its sealed keys.
+// It is emitted at boot, and again when a reload clears a set that had been
+// configured.
 func warnNoPushTransport(warn io.Writer, sealed int) {
 	if sealed != 0 {
 		return
 	}
-	_, _ = fmt.Fprintf(warn, "WARNING: no push transport sealed "+
-		"(ntfy: %s, %s; goalert: %s, %s); approvals and job failures will alert silently\n",
-		notify.SecretNtfyURL, notify.SecretNtfyTopic,
+	_, _ = fmt.Fprintf(warn, "WARNING: no push transport configured "+
+		"(ntfy: %s + %s settings, optional sealed %s; goalert: sealed %s + %s); "+
+		"approvals and job failures will alert silently\n",
+		store.SettingNtfyURL, store.SettingNtfyTopic, notify.SecretNtfyToken,
 		notify.SecretGoAlertURL, notify.SecretGoAlertKey)
 }
 
-// reactiveEngine builds the rule engine, with push configured from sealed
-// secrets. An operator who has not sealed an ntfy endpoint gets a working
-// daemon and a silent phone, not a daemon that refuses to start. It also builds
+// reactiveEngine builds the rule engine, with push configured from the ntfy
+// settings and the sealed keys. An operator who has not configured an ntfy
+// endpoint gets a working daemon and a silent phone, not a daemon that refuses
+// to start. It also builds
 // the dead-man trip monitor over the same notifier, so the daemon-side push
 // path shares the one fan-out every other event uses. The notifier and the
 // sealed-transport count are returned so a reload can replace its transports in

@@ -62,7 +62,7 @@ type Options struct {
 	// and no scheduler) makes the maintenance routes answer "not available here".
 	Maint Maintenance
 	// Ntfy drives the ntfy leg's judgment and test push (SPEC §2). It is the
-	// daemon's seam over the sealed ntfy secrets; a nil Ntfy (a surface built
+	// daemon's seam over the ntfy configuration; a nil Ntfy (a surface built
 	// without one) degrades the leg to presence-only and answers the Test verb
 	// with "not available here".
 	Ntfy NtfyDriver
