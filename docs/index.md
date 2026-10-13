@@ -4,9 +4,10 @@ okf_version: "0.2"
 
 # exocomp knowledge base
 
-**exocomp** is a homelab control plane: one rootless container holding one Go binary
-(`exocompd`) that owns state, sequencing, keys, and recovery, shelling out to pinned tools
-(`ansible-core`, `opentofu`, `restic`, `sops`, `age`, `git`) for everything else.
+**exocomp** is a homelab control plane: one Go binary (`exocompd`) — running as a systemd
+host service or rootless container — that owns state, sequencing, keys, and recovery,
+shelling out to pinned tools (`ansible-core`, `opentofu`, `restic`, `sops`, `age`, `git`) for
+everything else.
 
 Scale is one operator and a handful of hosts. Two constraints rule every decision here:
 **trivial bootstrap** and **trivial disaster recovery**.
@@ -27,7 +28,7 @@ Task-oriented workflows and step-by-step guides for everyday homelab management 
 | [Secrets and fleet keys](guide/secrets.md) | Age envelope encryption, SOPS integration, run-secret bindings, and zero secret leakage |
 | [Health checks and probes](guide/checks.md) | Reachability matrix, CIDR network groups, probe targets, and check-triggered runs |
 | [Reactive automation](guide/reactive.md) | Webhooks, CEL event rule routing, push alerts, silence windows, and phone approvals |
-| [Mobile companion](guide/mobile.md) | Pairing phone via QR code, ntfy push notifications, and one-thumb approval decisions |
+| [Mobile companion](guide/mobile.md) *(in development)* | Pairing phone via QR code, ntfy push notifications, and one-thumb approval decisions |
 | [AI agent integration](guide/agent-mcp.md) | Model Context Protocol (`POST /mcp`) setup with scoped bearer tokens for Claude Code / Cursor |
 
 ---

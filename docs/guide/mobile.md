@@ -2,11 +2,14 @@
 type: Guide
 title: "Mobile companion"
 description: "Pairing a smartphone via QR code, receiving ntfy push notifications, and one-thumb approval decisions."
-status: stable
-tags: [guide, mobile, pairing, qr, ntfy, approvals]
+status: draft
+tags: [guide, mobile, pairing, qr, ntfy, approvals, upcoming]
 ---
 
 # Mobile companion
+
+> [!NOTE]
+> The mobile companion is currently in active development and not yet generally available. This guide documents the target architecture, pairing protocol, and security model.
 
 exocomp includes a mobile-optimized triage and approval surface designed for quick, out-of-band operational decisions on a phone.
 

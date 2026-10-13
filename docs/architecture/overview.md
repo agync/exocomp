@@ -8,7 +8,7 @@ tags: [architecture]
 
 # Architecture overview
 
-`exocompd` is one Go binary in one rootless container. It owns **state, sequencing, keys,
+`exocompd` is one Go binary deployed as a systemd host service or rootless container. It owns **state, sequencing, keys,
 and recovery**; `ansible-core`, `opentofu`, `restic`, `sops`, `age` and `git` are pinned
 subprocesses that do the actual work. Rationale in
 [ADR 0001](../adr/0001-thin-core-architecture.md).

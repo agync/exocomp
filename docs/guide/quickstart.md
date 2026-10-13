@@ -8,11 +8,44 @@ tags: [guide, quickstart, setup, bootstrap]
 
 # Quickstart
 
-exocomp runs as a single rootless container (`exocompd`) holding one Go binary, a SQLite database, and the pinned execution toolchain (`ansible-core`, `opentofu`, `restic`, `sops`, `age`, `git`).
+exocomp runs as a single Go binary (`exocompd`) — deployed as a systemd host service or
+rootless container — holding state in SQLite, and shelling out to the pinned execution
+toolchain (`ansible-core`, `opentofu`, `restic`, `sops`, `age`, `git`).
 
 Two hard constraints govern setup: **trivial bootstrap** and **trivial disaster recovery**. A setup is only considered complete once the recovery card is printed and verified.
 
-## 1. Deploy the Quadlet container
+## 1. Deploy as host service or rootless container
+
+### Option A: User systemd host service
+
+Install the binary to `~/.local/bin/` and configure a user unit:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cat << 'EOF' > ~/.config/systemd/user/exocomp.service
+[Unit]
+Description=exocomp control plane
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=%h/.local/bin/exocomp serve --port 8643 --web-addr 127.0.0.1:8642
+Restart=on-failure
+RestartSec=3s
+
+[Install]
+WantedBy=default.target
+EOF
+systemctl --user daemon-reload
+systemctl --user enable --now exocomp
+```
+
+`serve` binds two loopback listeners: the state/API backend on `--port`, and — with
+`--web-addr` — the token-gated web surface over TLS. Add `--public-url https://your.host`
+once the surface has an address a phone can reach, so approval links and push deep links
+point at it.
+
+### Option B: Rootless Quadlet container
 
 Install the Quadlet definition into your user systemd directory:
 
@@ -24,11 +57,12 @@ systemctl --user daemon-reload
 systemctl --user start exocomp
 ```
 
-The container starts rootless, mounts its dedicated volume to `/var/lib/exocomp`, and listens on loopback `127.0.0.1:8642`.
+The daemon's listeners come from `serve`'s flags: `--port` for the loopback state backend
+and `--web-addr` for the token-gated TLS web surface — 8643 and 8642 in the unit above.
 
 ## 2. Complete the setup wizard
 
-Run the interactive setup wizard via CLI or open the browser at `http://127.0.0.1:8642`:
+Run the interactive setup wizard via CLI or open the browser at `https://127.0.0.1:8642`:
 
 ```bash
 exocomp setup
@@ -76,7 +110,7 @@ status:       HEALTHY
 
 ## 5. Explore the dashboard
 
-Open `http://127.0.0.1:8642` to view the attention-first dashboard:
+Open `https://127.0.0.1:8642` to view the attention-first dashboard:
 
 ![exocomp web dashboard](../design/assets/web/1a-shell-dashboard.png)
 
