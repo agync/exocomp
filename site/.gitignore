@@ -1,0 +1,7 @@
+# Build output. `./build.sh` regenerates it (it needs podman and the okf-wiki
+# image); deploy with `wrangler pages deploy dist`.
+/dist/
+
+# Layout scratch captures. The shipped screenshots live in assets/screenshots/
+# and are the only images index.html references.
+/*.png

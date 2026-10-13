@@ -1,0 +1,492 @@
+/* ============================================================================
+   paper: design tokens
+   ----------------------------------------------------------------------------
+   The default okf-wiki theme. A white ground, near-black ink, one green accent,
+   and a control set that is pill by default. Two decisions shape it:
+
+   1. The split is by function, not by size. Figtree carries anything meant to be
+      read as language; Inter carries anything meant to be operated. A reader
+      never meets a control face in a paragraph.
+   2. Comfort and legibility are kept on separate layers. The accent and the
+      softest surfaces carry the warmth; the reading surface stays neutral and
+      high-contrast. Softening the text along with the mood is the usual way a
+      friendly palette goes wrong, so the text here does not move.
+
+   Two documented accessibility failures in the design this is drawn from are
+   deliberately not reproduced, and the numbers are the reason:
+
+     - Its focus ring was #A3A3A3 on white, 2.52:1 against the 3:1 that SC 2.4.13
+       asks for. --focus-ring here is 10.86:1 on the page.
+     - Its success text was #218358 on its own #F4FBF6 tint, 4.49:1: missing
+       4.5 by 0.01, on the one status surface the design actually renders.
+       --accent-text is 5.32:1 on white and 5.06:1 on that same tint.
+
+   A third is a structural fix rather than a value swap. That design used one
+   #E5E5E5 hairline (1.26:1) for decorative card outlines and for control
+   boundaries, so a control's only boundary was nearly invisible. Here the
+   decorative rule and the control boundary are separate tokens, and only the
+   latter is held to 3:1.
+
+   Dark is a real second palette with a real elevation ladder, not this file
+   inverted. The design it comes from pins itself to light: surface.base,
+   surface.raised and surface.overlay are all #FFFFFF, so raising a surface never
+   moved its lightness and no dark ground could be built by flipping it. Here a
+   raised surface is lighter than its ground, which is what makes the dark side
+   work.
+
+   Every value below is paired to the surface it is read on, and the greys are
+   separated by role (decorative rule / control boundary / text / muted text)
+   rather than collected into one near-white scale.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* ---- ground and surfaces ------------------------------------------------
+     Deliberately few. Cards reuse the page colour and are separated by a
+     hairline, because a card that is one step off the page reads as a band and
+     a card that is five steps off the page reads as a mistake. The two sunken
+     steps are for real recesses: the breadcrumb bar, and code and quote
+     surfaces inside prose. */
+
+  /* ---- ink ----------------------------------------------------------------
+     Two greys, not three. text-muted and text-faint are 6.39:1 and 5.33:1, so
+     the faint step still clears 4.5:1 as text; the design it comes from uses
+     one value for secondary, muted and placeholder, which leaves no lever to
+     move any one of them. */
+
+  /* ---- rules --------------------------------------------------------------
+     The split that fixes the shared-hairline failure. --color-line is a
+     decorative rule and is allowed to be quiet. --color-line-control is a
+     control's boundary and is held to 3:1, because it is the only thing
+     describing that control's extent. */
+
+  /* ---- accent -------------------------------------------------------------
+     The action fill is near-black and stays near-black in both grounds: the
+     control set is recognisable from its silhouette before any colour loads,
+     and a high-contrast neutral fill is what keeps it that way. The green
+     carries identity on the things that are links, focus and current state. */
+  /* The current item in a list is a tinted fill plus a weight step plus colour,
+     never a neutral slab carrying coloured text. #217A4B on this is 4.76:1. */
+  --color-current-tint: #EAF5EE;
+
+  --focus-ring-width: 2px;
+
+  /* ---- status ------------------------------------------------------------
+     A status green kept as a small family rather than one token, so a callout,
+     a chip and a rule each get a value lit for its own job. Every label here
+     clears 4.5:1 on its own tint. */
+
+  /* ---- type ---------------------------------------------------------------
+     rem throughout, no authored px. Leading is paired with size and runs the
+     optical direction: 1.05 at display, 1.2 at h2, 1.5 at body. Tracking is
+     paired too, tightening as size grows, which is what stops a large heading
+     looking loose. */
+
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --text-xs: 0.75rem;      /* 12 / 16 */
+  --text-sm: 0.875rem;     /* 14 / 20 */
+  --text-body: 1rem;       /* 16 */
+  --text-lg: 1.125rem;     /* 18 / 28 */
+  --text-h3: 1.25rem;      /* 20 */
+  --text-h2: 1.5rem;       /* 24 / 29 */
+  --text-h1: clamp(2.25rem, 1.5rem + 2.4vw, 3rem); /* 36 → 48 */
+
+  --lh-tight: 1.12;
+  --lh-snug: 1.25;
+  --lh-normal: 1.5;
+  --lh-relaxed: 1.6;
+
+  --ls-display: -0.03em;   /* paired with the display size */
+  --ls-tight: -0.02em;
+  --ls-snug: -0.01em;
+
+  --measure: 68ch;
+
+  /* ---- space --------------------------------------------------------------
+     A 4px base unit and multiples of it. No arbitrary values: every step below
+     is the base times a small integer. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- radius -------------------------------------------------------------
+     Soft and generous by decision, but a small closed set: five steps and a
+     pill. The design this comes from observes ten distinct radii between 10 and
+     32px with several adjacent steps under 15% apart, which is drift around the
+     personality rather than the personality itself. */
+
+  /* ---- elevation ----------------------------------------------------------
+     Hairline first, shadow second. A raised surface does not change colour in
+     light mode, so the hairline is load-bearing; in dark mode it does, which is
+     what lets the dark ground keep a legible ladder. */
+  --shadow-sm: 0 1px 2px rgba(10, 10, 10, 0.05), 0 0 1px rgba(10, 10, 10, 0.27);
+  --shadow-md: 0 4px 8px -2px rgba(10, 10, 10, 0.08), 0 2px 4px -2px rgba(10, 10, 10, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(10, 10, 10, 0.1), 0 4px 6px -4px rgba(10, 10, 10, 0.1);
+
+  /* ---- motion -------------------------------------------------------------
+     One easing family with long tails, and every duration named. No linear, no
+     spring: a curve that arrives softly and never snaps is the whole point. */
+  --dur-fast: 120ms;
+  --dur: 180ms;
+  --dur-slow: 280ms;
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-strong: cubic-bezier(0.23, 1, 0.32, 1);
+
+  /* ---- scrim and layers --------------------------------------------------- */
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-header: 30;
+  --z-overlay: 40;
+  --z-skip-link: 50;
+  --z-lightbox: 60;
+
+  /* ---- code and selection -------------------------------------------------
+     The code surface is dark in both grounds, and that is a decision rather than
+     an omission. Syntax highlighting needs a known contrast regime, and
+     re-deriving an accessible palette for two grounds doubles the surface area
+     for a surface that is read as a picture of code, not as prose. */
+  --color-selection-bg: #C7E6D6;
+  --color-selection-fg: #0A0A0A;
+  --color-mark: #BFE8D2;
+  --color-mark-ink: #06301B;
+
+  /* ---- diagram palette ----------------------------------------------------
+     Read by diagrams.js, which is theme-agnostic. A theme that inherits the
+     default diagrams.js only has to redeclare these to recolour every diagram.
+     These are the light-ground values, paired to the page the way the colour
+     tokens above are: ink at 19.80:1, muted at 6.39:1, accent text at 5.32:1,
+     the greens and ambers at the status-text ratios. The dark grounds below
+     redeclare the whole set, since a single value cannot serve both. */
+  --diagram-font: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --diagram-ground: #FFFFFF;
+  --diagram-surface: #F7F7F8;
+  --diagram-surface-alt: #F1F1F3;
+  --diagram-ink: #0A0A0A;
+  --diagram-muted: #5F5F5F;
+  --diagram-line: #D4D4D4;
+  --diagram-accent: #217A4B;
+  --diagram-accent-soft: #EAF5EE;
+  --diagram-accent-ink: #166534;
+  --diagram-accent-2: #86EFAC;
+  --diagram-accent-3: #A7F3C4;
+  --diagram-yellow: #F3C83D;
+  --diagram-cyan: #67E8F9;
+  --diagram-red: #8A3A1A;
+  --diagram-amber: #7A4E00;
+  --diagram-green: #86EFAC;
+  --diagram-blue: #93C5FD;
+  --diagram-violet: #C4B5FD;
+  --diagram-pink: #F9A8D4;
+
+  /* ---- lightbox -----------------------------------------------------------
+     The diagram viewer stages a diagram on a dark field in both grounds. It is
+     a different surface from the page, so it carries its own tokens rather than
+     borrowing the page's neutrals. */
+  --lb-bg: #101012;
+  --lb-bar: #17171A;
+  --lb-line: #2A2A2E;
+  --lb-line-strong: #3A3A40;
+  --lb-text: #EDEDEF;
+  --lb-muted: #A1A1AA;
+  --lb-faint: #7C7C85;
+  --lb-accent: #5FD68C;
+  --lb-accent-line: #2E5C41;
+  --lb-hint: #7C7C85;
+}
+
+/* ---- dark -----------------------------------------------------------------
+   A second palette rather than an inversion. Every step is chosen for the dark
+   ground: ink at 16.72:1, muted at 7.63:1, faint at 5.71:1, and a raised
+   surface that is genuinely lighter than the ground so elevation reads without
+   a shadow. */
+@media screen and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+
+
+
+    --color-current-tint: #16281D;
+
+
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+
+    --color-selection-bg: #2E5C41;
+    --color-selection-fg: #FAFAFA;
+    --color-mark: #2E5C41;
+    --color-mark-ink: #D6F5E3;
+
+    /* ---- diagram palette, dark ground -------------------------------------
+       The light values in :root do not survive a dark page, so the whole set
+       is redeclared here. */
+    --diagram-ground: #0C0C0D;
+    --diagram-surface: #17171A;
+    --diagram-surface-alt: #101012;
+    --diagram-ink: #EDEDEF;
+    --diagram-muted: #8A8A93;
+    --diagram-line: #3A3A40;
+    --diagram-accent: #5FD68C;
+    --diagram-accent-soft: #1E3A2A;
+    --diagram-accent-ink: #6EE7A8;
+    --diagram-accent-2: #86EFAC;
+    --diagram-accent-3: #A7F3C4;
+    --diagram-yellow: #F3C83D;
+    --diagram-cyan: #67E8F9;
+    --diagram-red: #FCA5A5;
+    --diagram-amber: #FCD34D;
+    --diagram-green: #86EFAC;
+    --diagram-blue: #93C5FD;
+    --diagram-violet: #C4B5FD;
+    --diagram-pink: #F9A8D4;
+  }
+}
+
+/* The explicit toggle, for readers who pinned a ground rather than following
+   the OS. Mirrors the block above; a pinned dark must beat prefers-color-scheme
+   in both directions. Screen only, like the block above: a printed page is
+   always the light document, so a dark ground never reaches paper. */
+@media screen {
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+
+
+
+
+    --color-current-tint: #16281D;
+
+
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 8px -2px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.6), 0 4px 6px -4px rgba(0, 0, 0, 0.5);
+
+    --color-selection-bg: #2E5C41;
+    --color-selection-fg: #FAFAFA;
+    --color-mark: #2E5C41;
+    --color-mark-ink: #D6F5E3;
+
+    /* ---- diagram palette, dark ground ---------------------------------------
+       Mirrors the OS-following block above. */
+    --diagram-ground: #0C0C0D;
+    --diagram-surface: #17171A;
+    --diagram-surface-alt: #101012;
+    --diagram-ink: #EDEDEF;
+    --diagram-muted: #8A8A93;
+    --diagram-line: #3A3A40;
+    --diagram-accent: #5FD68C;
+    --diagram-accent-soft: #1E3A2A;
+    --diagram-accent-ink: #6EE7A8;
+    --diagram-accent-2: #86EFAC;
+    --diagram-accent-3: #A7F3C4;
+    --diagram-yellow: #F3C83D;
+    --diagram-cyan: #67E8F9;
+    --diagram-red: #FCA5A5;
+    --diagram-amber: #FCD34D;
+    --diagram-green: #86EFAC;
+    --diagram-blue: #93C5FD;
+    --diagram-violet: #C4B5FD;
+    --diagram-pink: #F9A8D4;
+  }
+}
+
+/* ===== exocomp theme overrides (colors, signals, fonts) ===== */
+/* ============================================================================
+   exocomp — okf-wiki theme tokens
+   ----------------------------------------------------------------------------
+   Custom theme for exocomp documentation, matching the exocomp design system.
+   Amethyst accent (#A435CE / #BE7BEB), graphite surface ramp (#0A0C0D -> #171C1E),
+   IBM Plex Sans UI, and JetBrains Mono code face.
+   ========================================================================== */
+
+/* 1. Base / Dark Native Theme (default) */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Surfaces (dark native) */
+  --color-bg:                  #0A0C0D; /* surface-void */
+  --color-surface:             #121618; /* surface-card */
+  --color-bg-elevated:         #171C1E; /* surface-tray */
+  --color-surface-sunken:      #0E1112; /* surface-rail */
+  --color-surface-sunken-deep: #0A0C0D;
+
+  /* Accent (Amethyst) */
+  --color-accent:              #A435CE; /* accent-fill */
+  --color-accent-text:         #BE7BEB; /* accent-text */
+  --color-accent-soft:         rgba(164, 53, 206, 0.14); /* accent-tint */
+  --color-accent-ring:         rgba(190, 123, 235, 0.34); /* accent-border */
+  --color-on-accent:           #FFFFFF;
+
+  /* Text & Ink */
+  --color-text:                #ECEFF0; /* ink-100 */
+  --color-text-muted:          #A6AFB2; /* ink-400 */
+  --color-text-faint:          #8A9296; /* ink-500 */
+  --color-heading:             #ECEFF0;
+
+  /* Lines & Dividers */
+  --color-line:                rgba(255, 255, 255, 0.09); /* hairline */
+  --color-line-control:        rgba(255, 255, 255, 0.14);
+  --color-line-strong:         rgba(255, 255, 255, 0.18);
+  --color-scrim:               rgba(0, 0, 0, 0.5);
+
+  /* Status Signals */
+  --status-success-text:       #4FB86B; /* signal-ok */
+  --status-success-tint:       rgba(79, 184, 107, 0.12); /* ok-tint */
+  --status-success-line:       rgba(79, 184, 107, 0.28); /* ok-border */
+  --status-warn-text:          #E3A008; /* signal-wait */
+  --status-warn-tint:          rgba(227, 160, 8, 0.12); /* wait-tint */
+  --status-warn-line:          rgba(227, 160, 8, 0.30); /* wait-border */
+  --status-danger-text:        #F0645A; /* signal-fail */
+  --status-danger-tint:        rgba(240, 100, 90, 0.12); /* fail-tint */
+  --status-danger-line:        rgba(240, 100, 90, 0.30); /* fail-border */
+  --status-info-text:          #BE7BEB;
+  --status-info-tint:          rgba(164, 53, 206, 0.14);
+  --status-info-line:          rgba(190, 123, 235, 0.34);
+  --status-neutral-text:       #8A9296;
+  --status-neutral-tint:       rgba(255, 255, 255, 0.05);
+  --status-neutral-line:       rgba(255, 255, 255, 0.10);
+
+  /* Code surfaces */
+  --color-code-bg:             #0E1112;
+  --color-code-fg:             #D6DBDD;
+  --color-code-line:           rgba(255, 255, 255, 0.08);
+  --color-inline-code-bg:      #171C1E;
+  --color-inline-code-fg:      #BE7BEB;
+
+  /* Typography */
+  --font-ui:                   'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-display:              'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-code:                 'JetBrains Mono', monospace;
+
+  /* Focus */
+  --focus-ring:                3px solid var(--color-accent-text);
+  --focus-ring-offset:         2px;
+
+  /* Geometry & Radii */
+  --radius-sm:                 6px;
+  --radius-md:                 10px;
+  --radius-lg:                 14px;
+  --radius-xl:                 16px;
+  --radius-pill:               999px;
+}
+
+/* 2. Light Theme: Explicit data-theme="light" */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  /* Surfaces (light warm lab notebook) */
+  --color-bg:                  #F5F2EC; /* surface-void */
+  --color-surface:             #FFFDF9; /* surface-card */
+  --color-bg-elevated:         #FFFDF9; /* surface-tray */
+  --color-surface-sunken:      #EFEBE3; /* surface-rail */
+  --color-surface-sunken-deep: #E5E0D5;
+
+  /* Accent */
+  --color-accent:              #7A2FA6; /* accent-fill */
+  --color-accent-text:         #7A2FA6; /* accent-text */
+  --color-accent-soft:         rgba(122, 47, 166, 0.10);
+  --color-accent-ring:         rgba(122, 47, 166, 0.34);
+  --color-on-accent:           #FFFFFF;
+
+  /* Text & Ink */
+  --color-text:                #1D1A16; /* ink-100 */
+  --color-text-muted:          #6B655B; /* ink-400 */
+  --color-text-faint:          #857E73; /* ink-500 */
+  --color-heading:             #1D1A16;
+
+  /* Lines & Dividers */
+  --color-line:                rgba(60, 50, 38, 0.16); /* hairline */
+  --color-line-control:        rgba(60, 50, 38, 0.22);
+  --color-line-strong:         rgba(60, 50, 38, 0.28);
+  --color-scrim:               rgba(0, 0, 0, 0.4);
+
+  /* Status Signals */
+  --status-success-text:       #16703C;
+  --status-success-tint:       rgba(22, 112, 60, 0.10);
+  --status-success-line:       rgba(22, 112, 60, 0.30);
+  --status-warn-text:          #7A5200;
+  --status-warn-tint:          rgba(122, 82, 0, 0.12);
+  --status-warn-line:          rgba(122, 82, 0, 0.42);
+  --status-danger-text:        #A82F22;
+  --status-danger-tint:        rgba(168, 47, 34, 0.12);
+  --status-danger-line:        rgba(168, 47, 34, 0.34);
+  --status-info-text:          #7A2FA6;
+  --status-info-tint:          rgba(122, 47, 166, 0.10);
+  --status-info-line:          rgba(122, 47, 166, 0.34);
+
+  /* Code surfaces */
+  --color-code-bg:             #EFEBE3;
+  --color-code-fg:             #1D1A16;
+  --color-code-line:           rgba(60, 50, 38, 0.14);
+  --color-inline-code-bg:      #EAE5DC;
+  --color-inline-code-fg:      #7A2FA6;
+}
+
+/* 3. System preference when not explicitly overridden */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    /* Surfaces (light warm lab notebook) */
+    --color-bg:                  #F5F2EC; /* surface-void */
+    --color-surface:             #FFFDF9; /* surface-card */
+    --color-bg-elevated:         #FFFDF9; /* surface-tray */
+    --color-surface-sunken:      #EFEBE3; /* surface-rail */
+    --color-surface-sunken-deep: #E5E0D5;
+
+    /* Accent */
+    --color-accent:              #7A2FA6; /* accent-fill */
+    --color-accent-text:         #7A2FA6; /* accent-text */
+    --color-accent-soft:         rgba(122, 47, 166, 0.10);
+    --color-accent-ring:         rgba(122, 47, 166, 0.34);
+    --color-on-accent:           #FFFFFF;
+
+    /* Text & Ink */
+    --color-text:                #1D1A16; /* ink-100 */
+    --color-text-muted:          #6B655B; /* ink-400 */
+    --color-text-faint:          #857E73; /* ink-500 */
+    --color-heading:             #1D1A16;
+
+    /* Lines & Dividers */
+    --color-line:                rgba(60, 50, 38, 0.16); /* hairline */
+    --color-line-control:        rgba(60, 50, 38, 0.22);
+    --color-line-strong:         rgba(60, 50, 38, 0.28);
+    --color-scrim:               rgba(0, 0, 0, 0.4);
+
+    /* Status Signals */
+    --status-success-text:       #16703C;
+    --status-success-tint:       rgba(22, 112, 60, 0.10);
+    --status-success-line:       rgba(22, 112, 60, 0.30);
+    --status-warn-text:          #7A5200;
+    --status-warn-tint:          rgba(122, 82, 0, 0.12);
+    --status-warn-line:          rgba(122, 82, 0, 0.42);
+    --status-danger-text:        #A82F22;
+    --status-danger-tint:        rgba(168, 47, 34, 0.12);
+    --status-danger-line:        rgba(168, 47, 34, 0.34);
+    --status-info-text:          #7A2FA6;
+    --status-info-tint:          rgba(122, 47, 166, 0.10);
+    --status-info-line:          rgba(122, 47, 166, 0.34);
+
+    /* Code surfaces */
+    --color-code-bg:             #EFEBE3;
+    --color-code-fg:             #1D1A16;
+    --color-code-line:           rgba(60, 50, 38, 0.14);
+    --color-inline-code-bg:      #EAE5DC;
+    --color-inline-code-fg:      #7A2FA6;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "name": "exocomp",
+  "version": "1.0.0",
+  "description": "exocomp design system theme (amethyst accent, graphite surface ramp, IBM Plex Sans, JetBrains Mono) layered over okf-wiki default layout.",
+  "assets": {
+    "tokens.css": { "mode": "replace" },
+    "brand-mark.svg": { "mode": "replace" },
+    "favicon.svg": { "mode": "replace" }
+  }
+}

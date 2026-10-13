@@ -1,0 +1,6 @@
+name = "exocomp"
+compatibility_date = "2026-10-01"
+pages_build_output_dir = "dist"
+
+# Production domain: exocomp.dev
+# Deployment: wrangler pages deploy dist --project-name exocomp
