@@ -40,6 +40,7 @@ func ParseAnsibleAdhocOutput(lines []string) map[string]HostCommandResult {
 	for _, line := range lines {
 		raw := strings.TrimSpace(line)
 		if strings.HasPrefix(raw, "[system] ") || strings.HasPrefix(raw, "[system]") ||
+			strings.HasPrefix(raw, "succeeded (exit ") || strings.HasPrefix(raw, "failed (exit ") ||
 			strings.HasPrefix(raw, "[WARNING]:") || strings.HasPrefix(raw, "[DEPRECATION WARNING]:") {
 			continue
 		}

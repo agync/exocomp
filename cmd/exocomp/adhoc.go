@@ -329,6 +329,9 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		if err == nil {
 			lines = make([]string, 0, len(events))
 			for _, e := range events {
+				if e.Level == store.LevelSystem {
+					continue
+				}
 				lines = append(lines, e.Msg)
 			}
 		}
