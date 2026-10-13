@@ -39,6 +39,11 @@ templ sourceDetail(vm sourceDetailVM) {
 			if vm.Operator {
 				<div class="rowactions">
 					<button type="button" class="btn primary" data-modal-open="launch">Launch a run</button>
+					if vm.Source.Kind == "git" {
+						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/sync")) } class="inline-form">
+							<button type="submit" class="btn">Sync now</button>
+						</form>
+					}
 					if vm.Source.Enabled {
 						<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/disable")) } class="inline-form">
 							<button type="submit" class="btn quiet">Disable</button>
@@ -55,10 +60,13 @@ templ sourceDetail(vm sourceDetailVM) {
 				if vm.RmRefusal != "" {
 					@formStatus(false, vm.RmRefusal)
 				}
+				if vm.SyncRefusal != "" {
+					@formStatus(false, vm.SyncRefusal)
+				}
 			}
 		</div>
 		if vm.Source.NeverSynced() {
-			<p class="meta mt8">Sync is a CLI verb — run <code>exocomp source sync { vm.Source.Name }</code> on the host to bring the checkout down and read its playbooks.</p>
+			<p class="meta mt8">Sync with "Sync now" or run <code>exocomp source sync { vm.Source.Name }</code> on the host to bring the checkout down and read its playbooks.</p>
 		}
 		<div class="card span2 mt18">
 			<div class="kicker">Playbooks</div>

@@ -86,6 +86,9 @@ type sourceDetailVM struct {
 	// re-renders the detail page at 422 with this on the form-status line.
 	// Empty at rest.
 	RmRefusal string
+	// SyncRefusal is the sync verb's refusal copy shown on the detail page
+	// when a sync fails or cannot run. Empty at rest.
+	SyncRefusal string
 }
 
 // sourceRunForm is one launcher tab's refusal state: the typed values an

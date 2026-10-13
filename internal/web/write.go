@@ -23,6 +23,7 @@ import (
 // available on this surface", the same fail-closed shape as a nil Decider.
 type Sealer interface {
 	Seal(name, kind string, pt []byte) (secrets.SealedSecret, error)
+	OpenSecret(secrets.SealedSecret) ([]byte, error)
 }
 
 // sealSecret seals value under name and upserts it into the secret table.

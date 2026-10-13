@@ -137,6 +137,9 @@ templ sourcesList(vm sourcesVM) {
 								if vm.ShowEnabledColumn() {
 									<th scope="col">Enabled</th>
 								}
+								if vm.Operator {
+									<th scope="col">Actions</th>
+								}
 							</tr>
 						</thead>
 						<tbody>
@@ -156,6 +159,15 @@ templ sourcesList(vm sourcesVM) {
 									</td>
 									if vm.ShowEnabledColumn() {
 										<td data-label="Enabled">@enabledChip(sc.Enabled, true)</td>
+									}
+									if vm.Operator {
+										<td data-label="Actions">
+											if sc.Kind == "git" {
+												<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + sc.Name + "/sync")) } class="inline-form">
+													<button type="submit" class="btn quiet">Sync now</button>
+												</form>
+											}
+										</td>
 									}
 								</tr>
 							}

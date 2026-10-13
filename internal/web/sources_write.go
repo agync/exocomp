@@ -3,12 +3,16 @@ package web
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"exocomp.dev/exocomp/internal/deps"
 	"exocomp.dev/exocomp/internal/naming"
+	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 )
@@ -37,6 +41,7 @@ func sourceDeployKeySecretName(name string) string { return "source/" + name + "
 
 func (s *Server) registerSourceWrite(mux *http.ServeMux) {
 	mux.HandleFunc("POST /sources/add", s.requireAuth(s.handleSourceAdd))
+	mux.HandleFunc("POST /sources/{name}/sync", s.requireAuth(s.handleSourceSync))
 	mux.HandleFunc("POST /sources/{name}/enable", s.requireAuth(s.handleSourceSetEnabled(true)))
 	mux.HandleFunc("POST /sources/{name}/disable", s.requireAuth(s.handleSourceSetEnabled(false)))
 	mux.HandleFunc("POST /sources/{name}/rm", s.requireAuth(s.handleSourceRm))
@@ -317,6 +322,186 @@ func (s *Server) sourceRmRefusal(w http.ResponseWriter, r *http.Request, name, m
 	}
 	vm.RmRefusal = msg
 	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
+}
+
+func (s *Server) sourceSyncRefusal(w http.ResponseWriter, r *http.Request, name, msg string) {
+	vm, err := s.sourceDetailVMFor(w, r, name)
+	if err != nil {
+		return
+	}
+	vm.SyncRefusal = msg
+	s.render(w, r, http.StatusUnprocessableEntity, sourceDetail(vm))
+}
+
+func (s *Server) openSealedSecret(ctx context.Context, name string) ([]byte, error) {
+	if s.sealer == nil {
+		if s.dataDir != "" {
+			env, err := secrets.Open(s.dataDir)
+			if err != nil {
+				return nil, err
+			}
+			defer func() { _ = env.Close() }()
+			row, err := s.store.GetSecret(ctx, name)
+			if err != nil {
+				return nil, err
+			}
+			return env.OpenSecret(secrets.SealedSecret{
+				Name:       row.Name,
+				Kind:       row.Kind,
+				Nonce:      row.Nonce,
+				Ciphertext: row.Ciphertext,
+			})
+		}
+		return nil, errors.New("envelope is not available on this surface")
+	}
+	row, err := s.store.GetSecret(ctx, name)
+	if err != nil {
+		return nil, err
+	}
+	return s.sealer.OpenSecret(secrets.SealedSecret{
+		Name:       row.Name,
+		Kind:       row.Kind,
+		Nonce:      row.Nonce,
+		Ciphertext: row.Ciphertext,
+	})
+}
+
+func forgeKnownHosts(ctx context.Context, st *store.Store, host string) (string, func(), error) {
+	noop := func() {}
+	rows, err := st.ListKnownHosts(ctx)
+	if err != nil {
+		return "", noop, err
+	}
+	var forge []store.KnownHost
+	for _, kh := range rows {
+		if kh.Host == host {
+			forge = append(forge, kh)
+		}
+	}
+	if len(forge) == 0 {
+		return "", noop, nil
+	}
+	f, err := os.CreateTemp("", "exocomp-knownhosts-*")
+	if err != nil {
+		return "", noop, err
+	}
+	cleanup := func() { _ = os.Remove(f.Name()) }
+	if _, err := f.WriteString(store.RenderKnownHosts(forge)); err != nil {
+		_ = f.Close()
+		cleanup()
+		return "", noop, err
+	}
+	if err := f.Close(); err != nil {
+		cleanup()
+		return "", noop, err
+	}
+	return f.Name(), cleanup, nil
+}
+
+func zeroBytes(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+}
+
+func (s *Server) syncSource(ctx context.Context, name string) (source.SyncResult, error) {
+	src, err := s.store.SourceByName(ctx, name)
+	if err != nil {
+		return source.SyncResult{}, err
+	}
+	if src.Kind != store.SourceGit {
+		return source.SyncResult{}, fmt.Errorf("%q is a %s source; only git sources sync", name, src.Kind)
+	}
+
+	loc, err := source.Resolve(s.dataDir, src.Kind, src.Name, src.URI, src.Writable)
+	if err != nil {
+		return source.SyncResult{}, fmt.Errorf("source sync: %w", err)
+	}
+
+	opts := source.SyncOptions{Root: loc.Root, URL: src.URI, Ref: src.Ref, Signed: src.Signed}
+	if src.DeployKeySecret != "" {
+		key, err := s.openSealedSecret(ctx, src.DeployKeySecret)
+		if err != nil {
+			return source.SyncResult{}, fmt.Errorf("source sync: deploy key: %w", err)
+		}
+		defer zeroBytes(key)
+		opts.DeployKeyPEM = key
+	}
+
+	if host := source.ForgeHost(src.URI); host != "" {
+		khFile, cleanup, err := forgeKnownHosts(ctx, s.store, host)
+		if err != nil {
+			return source.SyncResult{}, fmt.Errorf("source sync: known_hosts: %w", err)
+		}
+		defer cleanup()
+		opts.KnownHostsFile = khFile
+	}
+	if src.Signed && src.AllowedSigners != "" {
+		f, err := os.CreateTemp("", "exocomp-signers-*")
+		if err != nil {
+			return source.SyncResult{}, fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		defer func() { _ = os.Remove(f.Name()) }()
+		if _, err := f.WriteString(src.AllowedSigners); err != nil {
+			_ = f.Close()
+			return source.SyncResult{}, fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			return source.SyncResult{}, fmt.Errorf("source sync: allowed-signers: %w", err)
+		}
+		opts.AllowedSignersFile = f.Name()
+	}
+
+	res, err := source.Sync(ctx, opts)
+	if err != nil {
+		return source.SyncResult{}, fmt.Errorf("source sync: %w", err)
+	}
+	if err := s.store.RecordSourceSync(ctx, src.ID, res.Ref, res.SHA); err != nil {
+		return source.SyncResult{}, fmt.Errorf("source sync: record: %w", err)
+	}
+	return res, nil
+}
+
+func (s *Server) handleSourceSync(w http.ResponseWriter, r *http.Request) {
+	ident, ok := s.writeGuard(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	src, err := s.store.SourceByName(r.Context(), name)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "no source named "+name, http.StatusNotFound)
+			return
+		}
+		s.fail(w, r, err)
+		return
+	}
+	if src.Kind != store.SourceGit {
+		s.sourceSyncRefusal(w, r, name, fmt.Sprintf("%q is a %s source; only git sources sync", name, src.Kind))
+		return
+	}
+
+	res, err := s.syncSource(r.Context(), name)
+	if err != nil {
+		s.log.Error("web: source sync failed", "source", name, "err", err.Error(), "by", ident.token.Name)
+		s.sourceSyncRefusal(w, r, name, "Sync failed — check the daemon log.")
+		return
+	}
+
+	s.log.Info("web: source synced", "source", name, "ref", res.Ref, "sha", res.SHA, "by", ident.token.Name)
+	flashMsg := fmt.Sprintf("synced %s to %s (%s)", name, res.Ref, shortSHA(res.SHA))
+
+	redirectPath := "/sources/" + name
+	if ref := r.Header.Get("Referer"); ref != "" {
+		if u, err := url.Parse(ref); err == nil {
+			cleanPath := strings.TrimPrefix(u.Path, s.base)
+			if cleanPath == "/sources" || cleanPath == "/sources/" {
+				redirectPath = "/sources"
+			}
+		}
+	}
+	s.redirectFlash(w, r, redirectPath, flashMsg)
 }
 
 // purgeSourceCaches removes a deleted source's dependency caches

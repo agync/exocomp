@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -477,5 +478,151 @@ func TestSourceRmRequiresConfirmation(t *testing.T) {
 	}
 	if _, err := h.store.SourceByName(ctx, "tree"); err != nil {
 		t.Fatal("refused rm removed the source")
+	}
+}
+
+func TestSourceSyncReadonlyForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	ro := h.mint(t, "ro", "readonly")
+	client := login(t, ts.URL, ro)
+
+	resp := postForm(t, client, ts.URL+"/sources/tree/sync", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("readonly sync = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestSourceSyncCrossOriginForbidden(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/tree/sync",
+		url.Values{},
+		map[string]string{"Sec-Fetch-Site": "cross-site"})
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("cross-origin sync = %d, want 403", resp.StatusCode)
+	}
+}
+
+func TestSourceSyncNotFound(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+
+	resp := postForm(t, client, ts.URL+"/sources/nonexistent/sync", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("nonexistent source sync = %d, want 404", resp.StatusCode)
+	}
+}
+
+func TestSourceSyncPathRefused(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	if _, err := h.store.CreateSource(ctx, store.Source{Name: "tree", Kind: store.SourcePath, URI: "/srv/tree", Enabled: true}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/sources/tree/sync", url.Values{}, nil)
+	body := readBody(t, resp)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusUnprocessableEntity {
+		t.Fatalf("path sync refusal status = %d, want 422 (%s)", resp.StatusCode, body)
+	}
+	if !strings.Contains(body, "only git sources sync") {
+		t.Errorf("path sync refusal missing expected error: %s", body)
+	}
+}
+
+func testGitRepo(t *testing.T) (repoPath, headSHA string) {
+	t.Helper()
+	repoPath = t.TempDir()
+	home := t.TempDir()
+	cmd := exec.Command("git", "-C", repoPath, "init", "-b", "main")
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
+	}
+	if err := os.WriteFile(filepath.Join(repoPath, "site.yml"), []byte("- hosts: all\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"add", "site.yml"},
+		{"-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-m", "initial"},
+	} {
+		cmd = exec.Command("git", append([]string{"-C", repoPath}, args...)...)
+		cmd.Env = append(os.Environ(), "HOME="+home)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", strings.Join(args, " "), err, out)
+		}
+	}
+	cmd = exec.Command("git", "-C", repoPath, "rev-parse", "HEAD")
+	cmd.Env = append(os.Environ(), "HOME="+home)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git rev-parse: %v: %s", err, out)
+	}
+	return repoPath, strings.TrimSpace(string(out))
+}
+
+func TestSourceSyncGitSuccess(t *testing.T) {
+	if testing.Short() {
+		t.Skip("requires real git")
+	}
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := h.mint(t, "laptop", "operator")
+	client := login(t, ts.URL, op)
+	ctx := context.Background()
+
+	repoPath, wantSHA := testGitRepo(t)
+	if _, err := h.store.CreateSource(ctx, store.Source{
+		Name: "git-infra", Kind: store.SourceGit, URI: repoPath, Ref: "refs/heads/main", Enabled: true,
+	}); err != nil {
+		t.Fatalf("seed source: %v", err)
+	}
+
+	resp := postForm(t, client, ts.URL+"/sources/git-infra/sync", url.Values{}, nil)
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("git sync status = %d, want 303", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	if loc != "/sources/git-infra" {
+		t.Errorf("sync Location = %q, want /sources/git-infra", loc)
+	}
+
+	var foundFlash bool
+	for _, c := range resp.Cookies() {
+		if c.Name == flashCookie && strings.Contains(c.Value, "synced git-infra") {
+			foundFlash = true
+		}
+	}
+	if !foundFlash {
+		t.Error("sync did not set flash cookie")
+	}
+
+	// Verify store updated with SHA
+	src, err := h.store.SourceByName(ctx, "git-infra")
+	if err != nil {
+		t.Fatalf("get source: %v", err)
+	}
+	if src.LastSyncSHA != wantSHA {
+		t.Errorf("source LastSyncSHA = %q, want %q", src.LastSyncSHA, wantSHA)
 	}
 }
