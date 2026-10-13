@@ -14,6 +14,24 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — push detail is a three-rung ladder
+
+- **One control, three rungs** (modelled on Android's lock-screen setting):
+  `full` names the workspace apply (or the runbook a step gates) alongside the
+  count and TTL and keeps the Approve/Reject buttons; `summary` hides the detail
+  and the buttons, leaving a one-line "what kind of thing needs attention" and
+  the open link; `terse` names nothing at all. The old `descriptive` setting
+  normalizes to `full`, so nothing changes on upgrade.
+- **The buttons are now gated by the rung.** They carry a single-use capability
+  URL, so `summary` and `terse` drop them — no Approve/Reject on an unread relay
+  or a lock screen; the operator taps the notification (the public-URL deep link)
+  and decides in the app. Previously the buttons rode even in terse.
+- **The rich rung is richer.** An approval's body names what it is about (`apply
+  prod-net`, or the runbook a step gates) instead of "open to see what it wants to
+  do", and a job-failure page names the workspace it ran in. The event, the host,
+  the command, and the plan still stay behind the tap; the host/workspace
+  identifiers still attribute the push for scoped mutes.
+
 ## 2026-10-14 — ntfy pushes deep-link into the app
 
 - **A push's tap target is now the app page.** The ntfy transport roots a

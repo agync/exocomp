@@ -82,30 +82,39 @@ templ ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestSta
 			<div class="field">
 				<span class="label">Push detail</span>
 				<span class="field-seg" data-ntfy-detail>
-					<input type="radio" id="ntfy-detail-descriptive" name="detail" value="descriptive" checked?={ leg.Detail != "terse" }/>
-					<label for="ntfy-detail-descriptive">descriptive</label>
+					<input type="radio" id="ntfy-detail-full" name="detail" value="full" checked?={ leg.Detail != "summary" && leg.Detail != "terse" }/>
+					<label for="ntfy-detail-full">full</label>
+					<input type="radio" id="ntfy-detail-summary" name="detail" value="summary" checked?={ leg.Detail == "summary" }/>
+					<label for="ntfy-detail-summary">summary</label>
 					<input type="radio" id="ntfy-detail-terse" name="detail" value="terse" checked?={ leg.Detail == "terse" }/>
 					<label for="ntfy-detail-terse">terse</label>
 				</span>
-				<span class="meta">terse names nothing — for a phone you do not control</span>
+				<span class="meta">full names the workspace, host and error, with Approve/Reject · summary hides the detail and the buttons · terse names nothing</span>
 			</div>
 			<div class="push-preview" role="group" aria-label="What a push says">
 				<div class="kicker">WHAT A PUSH SAYS</div>
-				<div class="sample" id="ntfy-sample-desc" hidden?={ leg.Detail == "terse" }>
+				<div class="sample" data-detail="full" hidden?={ leg.Detail != "full" }>
 					<div class="push-sample">
-						<p class="title">1 approval waiting · apply tofu/prod-net</p>
-						<p class="body">expires in 29m, then auto-rejects · { hostname() }</p>
+						<p class="title">1 approval waiting</p>
+						<p class="body">apply prod-net · expires in 29m, then auto-rejects</p>
 						<p class="push-actions" aria-hidden="true">
 							<span class="btn quiet small">Approve</span>
 							<span class="btn quiet small">Reject</span>
 						</p>
 					</div>
 				</div>
-				<div class="sample" id="ntfy-sample-terse" hidden?={ leg.Detail != "terse" }>
+				<div class="sample" data-detail="summary" hidden?={ leg.Detail != "summary" }>
 					<div class="push-sample">
-						<p class="title">exocomp: action required</p>
-						<p class="body">open exocomp to see what</p>
-						<p class="push-actions" aria-hidden="true"><span class="note">no action buttons in terse</span></p>
+						<p class="title">exocomp</p>
+						<p class="body">an approval is waiting — open to decide</p>
+						<p class="push-actions" aria-hidden="true"><span class="note">no action buttons in summary or terse</span></p>
+					</div>
+				</div>
+				<div class="sample" data-detail="terse" hidden?={ leg.Detail != "terse" }>
+					<div class="push-sample">
+						<p class="title">exocomp</p>
+						<p class="body">exocomp: action required</p>
+						<p class="push-actions" aria-hidden="true"><span class="note">no action buttons in summary or terse</span></p>
 					</div>
 				</div>
 			</div>
@@ -149,14 +158,14 @@ templ ntfyModalJS() {
 	<script>
 	(function () {
 		var seg = document.querySelector(".field-seg[data-ntfy-detail]");
-		var desc = document.getElementById("ntfy-sample-desc");
-		var terse = document.getElementById("ntfy-sample-terse");
-		if (seg && desc && terse) {
+		if (seg) {
 			seg.addEventListener("change", function () {
-				var terseOn = seg.querySelector('input[value="terse"]');
-				var on = terseOn && terseOn.checked;
-				desc.hidden = on;
-				terse.hidden = !on;
+				var picked = seg.querySelector("input:checked");
+				if (!picked) return;
+				var samples = document.querySelectorAll("#ntfy-modal .push-preview .sample");
+				for (var i = 0; i < samples.length; i++) {
+					samples[i].hidden = samples[i].getAttribute("data-detail") !== picked.value;
+				}
 			});
 		}
 		if (document.querySelector("#ntfy-modal .is-error, #ntfy-modal .is-ok, #ntfy-modal input[aria-invalid=\"true\"]")) {

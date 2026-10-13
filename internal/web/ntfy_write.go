@@ -72,15 +72,19 @@ func (s *Server) ntfyLegState(ctx context.Context) (NtfyState, NtfySeamState) {
 	return NtfyStateOn, st
 }
 
-// ntfyDetail resolves an operator-supplied Detail to one of the two legal
-// positions, mirroring notify.normalizeDetail: an unset or unrecognized value
-// (a stale build, a typo in the setting table) falls back to the documented
-// descriptive default.
+// ntfyDetail resolves an operator-supplied Detail to one of the legal rungs,
+// mirroring notify.normalizeDetail: an unset or unrecognized value (a stale
+// build, a typo in the setting table, the retired "descriptive") falls back to
+// the documented full default.
 func ntfyDetail(raw string) string {
-	if raw == string(notify.DetailTerse) {
+	switch notify.Detail(raw) {
+	case notify.DetailTerse:
 		return string(notify.DetailTerse)
+	case notify.DetailSummary:
+		return string(notify.DetailSummary)
+	default:
+		return string(notify.DetailFull)
 	}
-	return string(notify.DetailDescriptive)
 }
 
 // ntfyCardVM builds the leg's render state for the /system card and the modal:

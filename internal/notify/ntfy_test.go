@@ -187,14 +187,14 @@ func TestNtfyClickAndTagsRideInTerseMode(t *testing.T) {
 	}
 }
 
-// TestNtfyDescriptiveDetailNamesTheConditionNotTheSecrets is the default
-// (Detail unset, i.e. DetailDescriptive): the push carries the notification's
+// TestNtfyFullDetailNamesTheConditionNotTheSecrets is the default
+// (Detail unset, i.e. DetailFull): the push carries the notification's
 // own non-sensitive identifier and its deep link, the way every builder in
 // internal/reactive already composes one — but the transport's own secrets,
 // the relay bearer token and the capability token folded into the deep link,
 // must appear only where they belong (the Authorization header, the action
 // URL) and never get duplicated into the human-readable title or body.
-func TestNtfyDescriptiveDetailNamesTheConditionNotTheSecrets(t *testing.T) {
+func TestNtfyFullDetailNamesTheConditionNotTheSecrets(t *testing.T) {
 	t.Parallel()
 	srv, seen := ntfyServer(t, http.StatusOK)
 
@@ -251,11 +251,11 @@ func TestNtfyDescriptiveDetailNamesTheConditionNotTheSecrets(t *testing.T) {
 	}
 }
 
-// TestNtfyTerseDetailDropsTheSummary pins DetailTerse: whatever the
-// notification names, the push is the fixed generic phrase and nothing else —
-// only the deep link survives, for an operator who does not trust their relay
-// with any identifying text.
-func TestNtfyTerseDetailDropsTheSummary(t *testing.T) {
+// TestNtfyTerseDetailDropsTheSummaryAndButtons pins DetailTerse: whatever the
+// notification names, the push is the fixed generic phrase and nothing else,
+// and the Approve/Reject buttons are dropped — no capability rides an unread
+// relay or a lock screen. The click keeps the deep link so a tap still opens.
+func TestNtfyTerseDetailDropsTheSummaryAndButtons(t *testing.T) {
 	t.Parallel()
 	srv, seen := ntfyServer(t, http.StatusOK)
 
@@ -266,13 +266,14 @@ func TestNtfyTerseDetailDropsTheSummary(t *testing.T) {
 		t.Fatalf("new ntfy: %v", err)
 	}
 
-	deepLink := "https://exocomp.lan/approval/7/approve?t=tok"
+	const capToken = "approval_capability_secret"
 	err = transport.Publish(context.Background(), notify.Notification{
 		Title:    "job failed: nightly-backup",
 		Body:     "Job 7 (tofu) ended failed. Last error: apply exited 1",
 		Priority: notify.PriorityHigh,
 		Tags:     []string{"rotating_light"},
-		Actions:  []notify.Action{{Label: "Open", URL: deepLink}},
+		Click:    "exocomp://jobs/7",
+		Actions:  []notify.Action{{Label: "Approve", URL: "https://exocomp.lan/approval/7/approve?t=" + capToken}},
 	})
 	if err != nil {
 		t.Fatalf("publish: %v", err)
@@ -291,20 +292,62 @@ func TestNtfyTerseDetailDropsTheSummary(t *testing.T) {
 	if got.body["priority"] != float64(notify.PriorityHigh) {
 		t.Fatalf("priority = %v, want it preserved so the phone still buzzes right", got.body["priority"])
 	}
-	actions, ok := got.body["actions"].([]any)
-	if !ok || len(actions) != 1 {
-		t.Fatalf("actions = %v, want the deep link preserved", got.body["actions"])
+	if _, ok := got.body["actions"]; ok {
+		t.Fatalf("actions = %v, want none at the terse rung", got.body["actions"])
 	}
-	first, _ := actions[0].(map[string]any)
-	if first["url"] != deepLink {
-		t.Fatalf("action url = %v, want the deep link preserved", first["url"])
+	if got.click != "exocomp://jobs/7" {
+		t.Fatalf("X-Click = %q, want the deep link kept so a tap still opens", got.click)
 	}
 
 	raw, _ := json.Marshal(got.body)
 	published := string(raw)
-	for _, leaked := range []string{"nightly-backup", "Job 7", "apply exited 1"} {
+	for _, leaked := range []string{"nightly-backup", "Job 7", "apply exited 1", capToken} {
 		if strings.Contains(published, leaked) {
 			t.Fatalf("terse push leaks %q: %s", leaked, published)
+		}
+	}
+}
+
+// TestNtfySummaryDetailHidesTheDetailAndButtons is the middle rung: the push
+// names no resource, host, or error, but says what KIND of thing needs attention
+// so the operator knows whether to look now; the Approve/Reject buttons are
+// dropped, and the deep link survives for a tap.
+func TestNtfySummaryDetailHidesTheDetailAndButtons(t *testing.T) {
+	t.Parallel()
+	srv, seen := ntfyServer(t, http.StatusOK)
+
+	transport, err := notify.NewNtfy(notify.NtfyOptions{
+		BaseURL: srv.URL, Topic: "exocomp", Client: srv.Client(), Detail: notify.DetailSummary,
+	})
+	if err != nil {
+		t.Fatalf("new ntfy: %v", err)
+	}
+	err = transport.Publish(context.Background(), notify.Notification{
+		Title:    "1 approval waiting",
+		Body:     "apply prod-net · 10m left, then it auto-rejects.",
+		Priority: notify.PriorityHigh,
+		Tags:     []string{"warning", "id:42", "kind:approval"},
+		Click:    "exocomp://approvals/42",
+		Actions:  []notify.Action{{Label: "Approve", URL: "https://exocomp.lan/approval/42/approve?t=tok"}},
+	})
+	if err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+
+	got := (*seen)[0]
+	if got.body["title"] != "exocomp" {
+		t.Fatalf("title = %v, want the fixed product title", got.body["title"])
+	}
+	if got.body["message"] != "an approval is waiting — open to decide" {
+		t.Fatalf("message = %v, want the kind line", got.body["message"])
+	}
+	if _, ok := got.body["actions"]; ok {
+		t.Fatalf("actions = %v, want none at the summary rung", got.body["actions"])
+	}
+	raw, _ := json.Marshal(got.body)
+	for _, leaked := range []string{"prod-net", "10m left"} {
+		if strings.Contains(string(raw), leaked) {
+			t.Fatalf("summary push leaks %q: %s", leaked, raw)
 		}
 	}
 }
@@ -338,7 +381,7 @@ func TestNtfySetDetailOverridesAfterConstruction(t *testing.T) {
 		t.Fatalf("publish: %v", err)
 	}
 	if (*seen)[1].body["title"] != "x" {
-		t.Fatalf("title = %v, want an unrecognized Detail to fall back to descriptive", (*seen)[1].body["title"])
+		t.Fatalf("title = %v, want an unrecognized Detail to fall back to full", (*seen)[1].body["title"])
 	}
 }
 

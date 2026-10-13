@@ -44,21 +44,26 @@ func isPublicNtfyHost(host string) bool {
 // a guardrail decision open.
 const ntfyTimeout = 10 * time.Second
 
-// Detail controls how much an ntfy push names. A push transits a relay —
-// third-party or self-hosted — that exocomp does not control, so the title
-// and body it carries are deliberately never the vehicle for a notification's
-// detail: the actual plan, diff, log line, or error stays behind the deep
-// link, fetched over the authenticated /api/v1 when the operator opens it.
+// Detail controls how much an ntfy push names and whether it carries the
+// Approve/Reject action buttons. A push transits a relay — third-party or
+// self-hosted — that exocomp does not control, so the ladder trades usefulness
+// against what an unread relay and a lock screen can see. It is modelled on
+// Android's lock-screen notification setting: show all, hide sensitive content,
+// show nothing.
 type Detail string
 
 const (
-	// DetailDescriptive is the default: the push names what needs attention —
-	// the notification's own title, e.g. "job failed: nightly-backup" or
-	// "1 approval waiting" — alongside the deep link.
-	DetailDescriptive Detail = "descriptive"
-	// DetailTerse drops even that summary: a fixed, generic title and body
-	// plus the deep link, for an operator who does not trust their relay with
-	// any identifying text at all.
+	// DetailFull is the richest and the default: the notification's own title
+	// and body — the workspace, host, and error the builders compose — plus the
+	// Approve/Reject action buttons.
+	DetailFull Detail = "full"
+	// DetailSummary hides the sensitive content: a fixed product title and a
+	// one-line "what kind of thing needs attention", with NO action buttons —
+	// the Approve/Reject capability stays out of an unread relay and off a lock
+	// screen, and the operator opens the app to act.
+	DetailSummary Detail = "summary"
+	// DetailTerse names nothing at all: a fixed product title and body, no
+	// buttons.
 	DetailTerse Detail = "terse"
 )
 
@@ -70,16 +75,20 @@ const (
 	terseBody  = "exocomp: action required"
 )
 
-// normalizeDetail resolves an operator-supplied Detail to a valid one. Unset
-// or unrecognized (a stale build, a typo in the setting table) falls back to
-// DetailDescriptive, the documented default — a free-text setting must not be
-// able to silently pick DetailTerse's stricter behavior, or silently escape
-// it, by accident.
+// normalizeDetail resolves an operator-supplied Detail to a valid one. Unset or
+// unrecognized — a stale build, a typo in the setting table, the retired
+// "descriptive" — falls back to DetailFull, the documented default: a free-text
+// setting must not be able to silently pick a stricter behavior, or silently
+// escape one, by accident.
 func normalizeDetail(d Detail) Detail {
-	if d == DetailTerse {
+	switch d {
+	case DetailTerse:
 		return DetailTerse
+	case DetailSummary:
+		return DetailSummary
+	default:
+		return DetailFull
 	}
-	return DetailDescriptive
 }
 
 // SecretLookup returns a sealed secret's plaintext by name, or an error when
@@ -110,8 +119,8 @@ type NtfyOptions struct {
 	Token string
 	// Client overrides the HTTP client, for tests.
 	Client *http.Client
-	// Detail controls how much a push names. Empty behaves as
-	// DetailDescriptive.
+	// Detail controls how much a push names and whether it carries the action
+	// buttons. Empty behaves as DetailFull.
 	Detail Detail
 	// PublicURL is the deployment's public address (store.SettingPublicURL),
 	// e.g. https://exocomp.example/exocomp. It roots a notification's deep
@@ -222,7 +231,7 @@ type ntfyAction struct {
 
 // Publish implements Transport.
 func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
-	title, body := n.render(note)
+	title, body, buttons := n.render(note)
 	click := n.resolveClick(note.Click)
 	msg := ntfyMessage{
 		Topic:    n.topic,
@@ -232,10 +241,15 @@ func (n *Ntfy) Publish(ctx context.Context, note Notification) error {
 		Tags:     note.Tags,
 		Click:    click,
 	}
-	for _, a := range note.Actions {
-		msg.Actions = append(msg.Actions, ntfyAction{
-			Action: "view", Label: a.Label, URL: a.URL, Clear: true,
-		})
+	// The action buttons carry a single-use capability URL, so they are gated
+	// by the detail rung: a private operator (summary or terse) gets a
+	// tap-to-open notification with no Approve/Reject on the lock screen.
+	if buttons {
+		for _, a := range note.Actions {
+			msg.Actions = append(msg.Actions, ntfyAction{
+				Action: "view", Label: a.Label, URL: a.URL, Clear: true,
+			})
+		}
 	}
 
 	encoded, err := json.Marshal(msg)
@@ -336,18 +350,46 @@ func webPath(click string) (string, bool) {
 	return "", false
 }
 
-// render resolves the title and body a push carries. DetailTerse ignores the
-// notification entirely: the fixed strings carry no condition, no
-// identifier, nothing an unread relay could learn from. DetailDescriptive
-// passes the notification's own title and body through — every builder in
-// this codebase already composes them as the non-sensitive summary the
-// platform contract requires (an approval names a count and a TTL, never a
-// host; a job or drift page names the workspace or runbook, never a diff or a
-// secret) — Ntfy is not the place to second-guess that, only to give an
-// operator who does not trust it a way to opt out of it.
-func (n *Ntfy) render(note Notification) (title, body string) {
-	if n.detail == DetailTerse {
-		return terseTitle, terseBody
+// render resolves the title, body, and whether the action buttons ride, for the
+// configured detail rung. DetailFull passes the notification's own title and
+// body through — every builder in this codebase composes them as the
+// non-sensitive summary the platform contract requires — and keeps the buttons.
+// DetailSummary replaces both with a fixed product title and a one-line kind,
+// and drops the buttons; DetailTerse replaces the body with the fixed generic
+// string.
+func (n *Ntfy) render(note Notification) (title, body string, buttons bool) {
+	switch n.detail {
+	case DetailTerse:
+		return terseTitle, terseBody, false
+	case DetailSummary:
+		return terseTitle, summaryLine(note.Tags), false
+	default:
+		return note.Title, note.Body, true
 	}
-	return note.Title, note.Body
+}
+
+// summaryLine is the non-identifying one-liner the summary rung carries: what
+// KIND of thing needs attention, read from the notification's own kind tag —
+// never a resource, a workspace, or a host. An unrecognized kind still says the
+// product needs attention, so the line is never empty.
+func summaryLine(tags []string) string {
+	for _, t := range tags {
+		kind, ok := strings.CutPrefix(t, "kind:")
+		if !ok {
+			continue
+		}
+		switch kind {
+		case "approval":
+			return "an approval is waiting — open to decide"
+		case "job":
+			return "a job needs attention — open to see why"
+		case "drift":
+			return "a workspace drifted — open to review"
+		case "deadman":
+			return "the dead-man tripped — open to check backups"
+		case "expiry":
+			return "a decision expired — open to see"
+		}
+	}
+	return "exocomp needs attention — open to see"
 }

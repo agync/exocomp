@@ -298,7 +298,7 @@ func (e *Engine) SweepApprovals(ctx context.Context) (expired, republished int, 
 			if err != nil {
 				return 0, err
 			}
-			e.notify(ctx, e.approvalNotification(a, token, 2))
+			e.notify(ctx, e.approvalNotification(ctx, a, token, 2))
 			// The mark stays inside the closure: a tolerated token or notify
 			// error must leave the approval unmarked, so the next sweep retries
 			// the reminder instead of suppressing it forever.
@@ -340,10 +340,12 @@ func (e *Engine) DecisionLinks(a store.Approval) (approve, reject string, err er
 		DecisionURL(base, a.ID, DecisionReject, token), nil
 }
 
-// approvalNotification is the terse lock-screen message: a count, a TTL, and
-// what to do about it. It names no host, workspace, playbook, or resource —
-// what the job wants to do is behind the tap (ui-brief, contract 1).
-func (e *Engine) approvalNotification(a store.Approval, token string, attempt int) notify.Notification {
+// approvalNotification is the lock-screen message: a count, a TTL, and what to
+// do about it. At the full detail rung it also names what it wants to do (the
+// workspace apply, or the runbook a step gates); the transport drops that line
+// at the summary and terse rungs. It never names a plan, a diff, or a resource
+// beyond the workspace — what the job will actually change stays behind the tap.
+func (e *Engine) approvalNotification(ctx context.Context, a store.Approval, token string, attempt int) notify.Notification {
 	title := "1 approval waiting"
 	priority := notify.PriorityHigh
 	if attempt > 1 {
@@ -357,9 +359,14 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 	}
 	base := e.base()
 
+	body := fmt.Sprintf("%s left, then it auto-rejects — open to see what it wants to do.", left)
+	if subject := e.approvalSubject(ctx, a); subject != "" {
+		body = fmt.Sprintf("%s · %s left, then it auto-rejects.", subject, left)
+	}
+
 	return notify.Notification{
 		Title:    title,
-		Body:     fmt.Sprintf("%s left, then it auto-rejects — open to see what it wants to do.", left),
+		Body:     body,
 		Priority: priority,
 		Tags:     []string{"warning", approvalIDTag(a), fmt.Sprintf("ttl:%d", ttl), "kind:approval"},
 		Click:    approvalClick(a),
@@ -370,6 +377,24 @@ func (e *Engine) approvalNotification(a store.Approval, token string, attempt in
 		Source: SourceApproval,
 		Host:   approvalHost(a),
 	}
+}
+
+// approvalSubject names what an approval is about, for the full detail rung: a
+// workspace apply (the plan-gated case, where the workspace is recorded), or the
+// runbook a step gates. It names the resource only, and returns "" when neither
+// is known — the notification then keeps its generic body.
+func (e *Engine) approvalSubject(ctx context.Context, a store.Approval) string {
+	if a.Workspace != "" {
+		return "apply " + a.Workspace
+	}
+	job, err := e.store.GetJob(ctx, a.JobID)
+	if err != nil || job.Runbook == "" {
+		return ""
+	}
+	if ws, ok := WorkspaceOf(job.Runbook); ok {
+		return "apply " + ws
+	}
+	return job.Runbook
 }
 
 // decidedNotification tells the operator an approval settled and, carrying the

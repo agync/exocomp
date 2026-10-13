@@ -79,7 +79,7 @@ func seedOnChannel(t *testing.T, h *harness) {
 	if err := h.store.PutSetting(ctx, store.SettingNtfyTopic, "exocomp-7f3a"); err != nil {
 		t.Fatalf("set topic setting: %v", err)
 	}
-	if err := h.store.PutSetting(ctx, store.SettingNtfyDetail, "descriptive"); err != nil {
+	if err := h.store.PutSetting(ctx, store.SettingNtfyDetail, "full"); err != nil {
 		t.Fatalf("set detail: %v", err)
 	}
 	sealNtfy(t, h, notify.SecretNtfyToken, "tk_abc", "CIPHER-SENTINEL-TOKEN")
@@ -220,10 +220,10 @@ func TestNtfyModalIsTheSurface(t *testing.T) {
 	for _, want := range []string{
 		`<dialog class="modal" id="ntfy-modal"`,
 		`id="ntfy-url"`, `id="ntfy-topic"`, `id="ntfy-token"`,
-		`name="detail" value="descriptive"`, `name="detail" value="terse"`,
+		`name="detail" value="full"`, `name="detail" value="summary"`, `name="detail" value="terse"`,
 		"WHAT A PUSH SAYS",
-		`id="ntfy-sample-desc"`, `id="ntfy-sample-terse"`,
-		"no action buttons in terse",
+		`data-detail="full"`, `data-detail="summary"`, `data-detail="terse"`,
+		"no action buttons in summary or terse",
 		`formaction="/system/ntfy/test"`,
 		`class="test-box"`,
 		"Plain configuration, not a secret",
@@ -285,7 +285,7 @@ func TestNtfyConfigureSavesSettingsAndDetail(t *testing.T) {
 }
 
 // TestNtfyConfigureNormalizesDetail: an unrecognized detail falls back to the
-// documented descriptive default.
+// documented full default.
 func TestNtfyConfigureNormalizesDetail(t *testing.T) {
 	h := newHarness(t)
 	srv := serverWithNtfy(t, h, &fakeNtfy{})
@@ -297,8 +297,8 @@ func TestNtfyConfigureNormalizesDetail(t *testing.T) {
 		"url": {"https://push.lan"}, "topic": {"t"}, "detail": {"garbage"},
 	}, nil)
 	_ = resp.Body.Close()
-	if d, _ := h.store.GetSetting(context.Background(), store.SettingNtfyDetail); d != "descriptive" {
-		t.Fatalf("normalized detail = %q, want descriptive", d)
+	if d, _ := h.store.GetSetting(context.Background(), store.SettingNtfyDetail); d != "full" {
+		t.Fatalf("normalized detail = %q, want full", d)
 	}
 }
 

@@ -75,7 +75,9 @@ func TestApprovalHappyPath(t *testing.T) {
 		t.Fatalf("gated reason = %q", event.Reason)
 	}
 
-	// The notification is terse: a count and a TTL, no host or resource.
+	// The full-detail body names what it is about (the runbook the step gates)
+	// so the operator knows before tapping; the event, the host, and the command
+	// still stay behind the tap.
 	if len(h.sent.sent) != 1 {
 		t.Fatalf("sent %d notifications, want 1", len(h.sent.sent))
 	}
@@ -83,7 +85,10 @@ func TestApprovalHappyPath(t *testing.T) {
 	if note.Title != "1 approval waiting" {
 		t.Fatalf("notification title = %q", note.Title)
 	}
-	for _, leak := range []string{"web-01", "DiskFull", "/bin/true", "restart"} {
+	if !strings.Contains(note.Body, "restart") {
+		t.Fatalf("full-detail body should name the gated runbook: %q", note.Body)
+	}
+	for _, leak := range []string{"web-01", "DiskFull", "/bin/true"} {
 		if strings.Contains(note.Title+note.Body, leak) {
 			t.Fatalf("notification names %q: %q / %q", leak, note.Title, note.Body)
 		}

@@ -49,6 +49,16 @@ URL set the link stays the raw `exocomp://` deep link, which a browser cannot op
 public URL to the address a phone can reach, base path included if the surface is mounted
 under one.
 
+### Push detail
+
+How much a push names is a three-rung setting on the same modal, modelled on Android's
+lock-screen notification setting. **full** names the workspace apply (or the runbook a step
+gates) alongside the count and TTL, and keeps the Approve/Reject buttons. **summary** hides
+the detail and the buttons, leaving a one-line "what kind of thing needs attention" and the
+open link. **terse** names nothing at all. The buttons carry a single-use capability URL, so
+only **full** includes them — on a shared lock screen, summary and terse leave a tap that
+opens the app to decide.
+
 ### GoAlert
 
 A second transport pages an on-call rotation through a GoAlert Generic API integration

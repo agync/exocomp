@@ -78,9 +78,9 @@ func (e *Engine) SweepJobOutcomes(ctx context.Context) (int, error) {
 				return 0, nil
 			}
 
-			host, _ := WorkspaceOf(job.Runbook)
+			workspace, _ := WorkspaceOf(job.Runbook)
 			lastErr := scrub(e.scrubber(), e.lastJobError(ctx, job.ID))
-			e.notify(ctx, jobFailedNotification(job, host, lastErr))
+			e.notify(ctx, jobFailedNotification(job, workspace, lastErr))
 
 			// The checkpoint row is written after the page, so a crash between the
 			// two re-pages once on the next sweep — louder than a lost alert, the
@@ -160,12 +160,12 @@ func (e *Engine) SweepJobNotifyRequests(ctx context.Context) (int, error) {
 				return 0, nil
 			}
 
-			host, _ := WorkspaceOf(job.Runbook)
+			workspace, _ := WorkspaceOf(job.Runbook)
 			unreachable := 0
 			if job.State == store.StateDegraded {
 				unreachable, _ = e.jobUnreachableHosts(ctx, jobID)
 			}
-			e.notify(ctx, jobDoneNotification(job, host, unreachable))
+			e.notify(ctx, jobDoneNotification(job, workspace, unreachable))
 
 			// The shared checkpoint is written after the page, so a crash between the
 			// two re-pages once on the next sweep — the same trade SweepJobOutcomes
@@ -226,13 +226,17 @@ func (e *Engine) jobUnreachableHosts(ctx context.Context, jobID int64) (int, boo
 
 // jobFailedNotification is the page a terminal failure raises: high priority,
 // attributed by runbook and workspace so a scoped mute can hold it, carrying the
-// outcome and the last error the run left.
-func jobFailedNotification(job store.Job, host, lastErr string) notify.Notification {
+// outcome, the workspace it ran in, and the last error the run left.
+func jobFailedNotification(job store.Job, workspace, lastErr string) notify.Notification {
 	name := job.Runbook
 	if name == "" {
 		name = fmt.Sprintf("job %d", job.ID)
 	}
-	body := fmt.Sprintf("Job %d (%s) ended %s.", job.ID, job.Kind, job.State)
+	body := fmt.Sprintf("Job %d (%s) ended %s", job.ID, job.Kind, job.State)
+	if workspace != "" {
+		body += " in workspace " + workspace
+	}
+	body += "."
 	if lastErr != "" {
 		body += " Last error: " + lastErr
 	}
@@ -243,7 +247,7 @@ func jobFailedNotification(job store.Job, host, lastErr string) notify.Notificat
 		Tags:     []string{"rotating_light", fmt.Sprintf("id:%d", job.ID), "kind:job"},
 		Click:    fmt.Sprintf("exocomp://jobs/%d", job.ID),
 		Source:   job.Runbook,
-		Host:     host,
+		Host:     workspace,
 	}
 }
 
@@ -255,7 +259,7 @@ func jobFailedNotification(job store.Job, host, lastErr string) notify.Notificat
 // hosts it could and skipped the rest, which is the fact that still needs the
 // operator. failedJobStates never pages degraded, so this is the one surface a
 // tolerated degradation's owner hears on.
-func jobDoneNotification(job store.Job, host string, unreachable int) notify.Notification {
+func jobDoneNotification(job store.Job, workspace string, unreachable int) notify.Notification {
 	name := job.Runbook
 	if name == "" {
 		name = fmt.Sprintf("job %d", job.ID)
@@ -264,13 +268,18 @@ func jobDoneNotification(job store.Job, host string, unreachable int) notify.Not
 	if job.State == store.StateDegraded {
 		title = fmt.Sprintf("degraded: %s — %d hosts unreachable", name, unreachable)
 	}
+	body := fmt.Sprintf("Job %d (%s) ended %s", job.ID, job.Kind, job.State)
+	if workspace != "" {
+		body += " in workspace " + workspace
+	}
+	body += " — you asked to be notified."
 	return notify.Notification{
 		Title:    title,
-		Body:     fmt.Sprintf("Job %d (%s) ended %s — you asked to be notified.", job.ID, job.Kind, job.State),
+		Body:     body,
 		Priority: notify.PriorityDefault,
 		Tags:     []string{fmt.Sprintf("id:%d", job.ID), "kind:job"},
 		Click:    fmt.Sprintf("exocomp://jobs/%d", job.ID),
 		Source:   job.Runbook,
-		Host:     host,
+		Host:     workspace,
 	}
 }

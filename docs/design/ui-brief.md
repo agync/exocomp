@@ -110,9 +110,13 @@ The TUI already establishes: one accent, dim-by-default, state-colored text.
 
 The phone approval flow's semantics:
 
-1. **Terse lock screen**: notifications name no host, workspace, playbook, or
-   resource — a count, a TTL, and "open to see what it wants to do." Notifications
-   rank by whether a human is the blocker.
+1. **Configurable lock screen**: the push detail is a three-rung ladder. **full**
+   names the workspace apply (or the runbook a step gates) alongside the count and
+   the TTL, and keeps the Approve/Reject buttons; **summary** hides the detail and
+   the buttons, leaving a one-line "what kind of thing needs attention" and the
+   open link; **terse** names nothing at all. No rung carries a plan, a diff, or a
+   secret — the risky detail stays behind the tap. Notifications rank by whether a
+   human is the blocker.
 2. **Risk-ordered approval view**: state + fail-closed countdown ("then auto-rejects
    and the plan is discarded; nothing applies on its own"), destroys in their own
    red block with NO UNDO, then the verbatim diff. Secret-backed values render as

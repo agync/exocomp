@@ -203,7 +203,7 @@ func (e *Engine) ArmStepApproval(ctx context.Context, jobID int64) error {
 	if err != nil {
 		return err
 	}
-	e.notify(ctx, e.approvalNotification(approval, token, 1))
+	e.notify(ctx, e.approvalNotification(ctx, approval, token, 1))
 	return nil
 }
 
@@ -391,7 +391,7 @@ func (e *Engine) gateAction(ctx context.Context, ev Event, raw []byte, rule stor
 
 	trace.add(StepApproval, rule.ActionKind, false, "%s; approval %d, expires %s",
 		why, approval.ID, clock(approval.ExpiresAt))
-	e.notify(ctx, e.approvalNotification(approval, token, 1))
+	e.notify(ctx, e.approvalNotification(ctx, approval, token, 1))
 
 	return e.record(ctx, ev, raw, store.OutcomeGated, rule.Name,
 		fmt.Sprintf("approval %d pending, expires %s", approval.ID, clock(approval.ExpiresAt)),
