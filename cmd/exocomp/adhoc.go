@@ -19,6 +19,7 @@ import (
 	"exocomp.dev/exocomp/internal/secrets"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 func init() {
@@ -64,6 +65,8 @@ type adhocSpec struct {
 	// idempotencyKey dedups a retried ad-hoc run to one job. Resolved from the
 	// global flag in runAdhocExit, empty on the unchanged path.
 	idempotencyKey string
+	// outputMode format (text|json).
+	outputMode string
 }
 
 func newAnsibleAdhocCmd() *cobra.Command {
@@ -212,12 +215,20 @@ func hasControl(s string) bool {
 // runAdhocExit runs the ad-hoc spec and translates its job outcome into the
 // process exit code, the same way `playbook run` does.
 func runAdhocExit(cmd *cobra.Command, spec adhocSpec) error {
+	mode, err := outputMode(cmd)
+	if err != nil {
+		return err
+	}
+	spec.outputMode = mode
 	spec.idempotencyKey = idempotencyKey(cmd)
 	if spec.privileged {
 		warnPrivileged(cmd.ErrOrStderr())
 	}
 	code, err := runAdhoc(cmd.Context(), cmd.OutOrStdout(), cmd.ErrOrStderr(), spec)
 	if err != nil {
+		if mode == outputJSON {
+			return failJSON(cmd, err)
+		}
 		return err
 	}
 	if code != 0 {
@@ -294,18 +305,45 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 	}
 
 	if spec.requireApproval {
-		return gateAdhoc(ctx, st, dir, queued, out)
+		return gateAdhoc(ctx, st, dir, queued, out, spec.outputMode)
+	}
+
+	streamOut := out
+	if spec.outputMode == outputJSON {
+		streamOut = io.Discard
 	}
 
 	var final store.Job
 	if daemonRunning(ctx, dir) {
-		final, err = enqueueForDaemon(ctx, st, dir, queued, out)
+		final, err = enqueueForDaemon(ctx, st, dir, queued, streamOut)
 	} else {
-		final, err = runPlaybookInline(ctx, st, dir, queued, out, warn)
+		final, err = runPlaybookInline(ctx, st, dir, queued, streamOut, warn)
 	}
 	if err != nil {
 		return 0, err
 	}
+
+	if spec.outputMode == outputJSON {
+		events, err := st.ListJobEvents(ctx, final.ID)
+		var lines []string
+		if err == nil {
+			lines = make([]string, 0, len(events))
+			for _, e := range events {
+				lines = append(lines, e.Msg)
+			}
+		}
+		hosts := executor.ParseAnsibleAdhocOutput(lines)
+		exitCode := 0
+		if final.ExitCode != nil {
+			exitCode = *final.ExitCode
+		}
+		view := wire.NewCommandResultView(final.ID, string(final.State), exitCode, hosts)
+		if err := wire.WriteSuccess(out, wire.KindCommandResult, view); err != nil {
+			return 0, err
+		}
+		return reportJobOutcome(io.Discard, final), nil
+	}
+
 	return reportJobOutcome(out, final), nil
 }
 
@@ -376,10 +414,13 @@ func printGatedJob(out io.Writer, job store.Job, approval store.Approval) {
 }
 
 // gateAdhoc gates an ad-hoc ansible job and points at its decision link.
-func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer) (int, error) {
+func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec, out io.Writer, mode string) (int, error) {
 	job, approval, err := gateJob(ctx, st, dir, spec)
 	if err != nil {
 		return 0, fmt.Errorf("command: %w", err)
+	}
+	if mode == outputJSON {
+		return 0, wire.WriteSuccess(out, wire.KindApproval, wire.NewApprovalView(approval))
 	}
 	printGatedJob(out, job, approval)
 	return 0, nil

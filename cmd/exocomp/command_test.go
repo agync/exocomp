@@ -3,12 +3,14 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // TestAdhocGuardsRefuseInjection is the item-1/2 injection gate: a host pattern,
@@ -241,5 +243,82 @@ func TestCommandDefaultWorkingDirHome(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), home) {
 		t.Fatalf("command output = %q, want home %q", out.String(), home)
+	}
+}
+
+func runCapture(t *testing.T, args ...string) (string, string, error) {
+	t.Helper()
+	root := newRootCmd()
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs(args)
+	err := root.Execute()
+	return outBuf.String(), errBuf.String(), err
+}
+
+// TestCommandOutputJSON proves `exocomp command --output json` produces structured JSON.
+func TestCommandOutputJSON(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	requireTools(t, "ansible")
+
+	out, _, err := runCapture(t, "command", "--host", "localhost", "--output", "json", "--", "echo", "hello-json")
+	if err != nil {
+		t.Fatalf("command --output json failed: %v\n%s", err, out)
+	}
+
+	var env struct {
+		SchemaVersion int                    `json:"schema_version"`
+		Kind          string                 `json:"kind"`
+		Data          wire.CommandResultView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v\noutput: %s", err, out)
+	}
+	if env.Kind != wire.KindCommandResult {
+		t.Errorf("kind = %q, want %q", env.Kind, wire.KindCommandResult)
+	}
+	if env.Data.State != "succeeded" || env.Data.ExitCode != 0 {
+		t.Errorf("data state/exit mismatch: %+v", env.Data)
+	}
+	h, ok := env.Data.Hosts["localhost"]
+	if !ok {
+		t.Fatalf("missing localhost in hosts: %+v", env.Data.Hosts)
+	}
+	if !strings.Contains(h.Stdout, "hello-json") {
+		t.Errorf("localhost stdout = %q, want 'hello-json'", h.Stdout)
+	}
+}
+
+// TestAnsibleAdhocOutputJSON proves `exocomp ansible --output json` also produces structured JSON.
+func TestAnsibleAdhocOutputJSON(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	requireTools(t, "ansible")
+
+	out, _, err := runCapture(t, "ansible", "--host", "localhost", "-m", "ansible.builtin.ping", "--output", "json")
+	if err != nil {
+		t.Fatalf("ansible --output json failed: %v\n%s", err, out)
+	}
+
+	var env struct {
+		SchemaVersion int                    `json:"schema_version"`
+		Kind          string                 `json:"kind"`
+		Data          wire.CommandResultView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("failed to unmarshal JSON output: %v\noutput: %s", err, out)
+	}
+	if env.Kind != wire.KindCommandResult {
+		t.Errorf("kind = %q, want %q", env.Kind, wire.KindCommandResult)
+	}
+	if env.Data.State != "succeeded" || env.Data.ExitCode != 0 {
+		t.Errorf("data state/exit mismatch: %+v", env.Data)
+	}
+	h, ok := env.Data.Hosts["localhost"]
+	if !ok {
+		t.Fatalf("missing localhost in hosts: %+v", env.Data.Hosts)
+	}
+	if !strings.Contains(h.Stdout, "pong") {
+		t.Errorf("localhost stdout = %q, want 'pong'", h.Stdout)
 	}
 }
