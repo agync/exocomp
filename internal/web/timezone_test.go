@@ -25,14 +25,14 @@ func TestTimezoneSupportAndPreferences(t *testing.T) {
 	h.server.clock = func() time.Time { return now }
 
 	// Seed a completed job
-	job, err := h.store.CreateJob(ctx, store.NewJob{
+	job, err := h.store.CreateGatedJob(ctx, store.NewJob{
 		Runbook: "deploy", Kind: "playbook", Trigger: "manual",
 		Args: store.JobArgs{Argv: []string{"ansible-playbook", "deploy.yml"}},
 	})
 	if err != nil {
-		t.Fatalf("CreateJob: %v", err)
+		t.Fatalf("CreateGatedJob: %v", err)
 	}
-	if err := h.store.TransitionJob(ctx, job.ID, store.StateQueued, store.StateRunning); err != nil {
+	if err := h.store.TransitionJob(ctx, job.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatal(err)
 	}
 	if err := h.store.TransitionJob(ctx, job.ID, store.StateRunning, store.StateSucceeded); err != nil {
