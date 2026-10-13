@@ -14,7 +14,7 @@ import (
 // annotate here.
 func usedByLeg(name string) usedByRow {
 	switch name {
-	case notify.SecretNtfyURL, notify.SecretNtfyTopic, notify.SecretNtfyToken:
+	case notify.SecretNtfyToken:
 		return usedByRow{Name: "ntfy", Href: "/system/ntfy"}
 	case deadman.SecretHeartbeatURL:
 		return usedByRow{Name: "Dead-man", Href: "/system/deadman"}

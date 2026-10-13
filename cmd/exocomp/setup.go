@@ -160,9 +160,6 @@ func persistOperatorConfig(ctx context.Context, st *store.Store, env *secrets.En
 	if err := st.PutSetting(ctx, store.SettingNtfyTopic, in.topic); err != nil {
 		return "", err
 	}
-	if err := sealConfigSecret(ctx, st, env, notify.SecretNtfyTopic, in.topic); err != nil {
-		return "", err
-	}
 
 	transport, err := notify.LoadNtfy(ctx, func(ctx context.Context, name string) ([]byte, error) {
 		return openSealed(ctx, st, env.DataDir(), name)

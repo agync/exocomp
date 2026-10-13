@@ -760,11 +760,12 @@ func TestNtfyModalAndConfigure(t *testing.T) {
 	if err != nil || top != "homelab-alerts" {
 		t.Errorf("SettingNtfyTopic = %q, err = %v", top, err)
 	}
-	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyURL); err != nil {
-		t.Errorf("SecretNtfyURL not sealed: %v", err)
+	// URL and topic are ordinary settings now; only the token is sealed.
+	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyURL); err == nil {
+		t.Errorf("SecretNtfyURL was unexpectedly sealed")
 	}
-	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyTopic); err != nil {
-		t.Errorf("SecretNtfyTopic not sealed: %v", err)
+	if _, err := h.store.GetSecret(context.Background(), notify.SecretNtfyTopic); err == nil {
+		t.Errorf("SecretNtfyTopic was unexpectedly sealed")
 	}
 
 	// 4. Now configured: button becomes "Edit"

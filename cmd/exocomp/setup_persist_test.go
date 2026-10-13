@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"exocomp.dev/exocomp/internal/notify"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -48,12 +47,9 @@ func TestSetupCommitPersistsOperatorAndTopic(t *testing.T) {
 		t.Errorf("ntfy topic setting = %q (%v), want the generated topic", got, err)
 	}
 
-	// The topic is sealed as the notify config the transport reads back.
-	pt, err := openSealed(ctx, st, dir, notify.SecretNtfyTopic)
-	if err != nil {
-		t.Fatalf("open sealed ntfy topic: %v", err)
-	}
-	if string(pt) != "exo-aurora-abcd1234" {
-		t.Errorf("sealed ntfy topic = %q, want the generated topic", pt)
+	// Only the (optional) access token is sealed; the topic stays in the
+	// settings table as ordinary configuration.
+	if got, err := st.GetSetting(ctx, store.SettingNtfyTopic); err != nil || got != "exo-aurora-abcd1234" {
+		t.Errorf("ntfy topic setting = %q (%v), want the generated topic", got, err)
 	}
 }

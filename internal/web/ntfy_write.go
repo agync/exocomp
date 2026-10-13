@@ -276,9 +276,9 @@ func (s *Server) handleMuteClear(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleNtfyConfigure saves the contextual modal's configuration: Server URL
-// and Topic are non-secrets saved into settings (and sealed in secrets if sealer
-// is available). If an access token/secret is provided, it is auto-created in
-// sealed secrets as ntfy/token.
+// and Topic are ordinary (unsealed) settings; only the optional access token,
+// when provided, is sealed as ntfy/token. A token requires a sealer; a sealer
+// is not otherwise needed to configure ntfy.
 func (s *Server) handleNtfyConfigure(w http.ResponseWriter, r *http.Request) {
 	ident, ok := s.writeGuard(w, r)
 	if !ok {
@@ -339,17 +339,9 @@ func (s *Server) handleNtfyConfigure(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.sealer != nil {
-		if err := s.sealSecret(r.Context(), notify.SecretNtfyURL, "url", rawURL); err != nil {
-			s.log.Error("web: seal ntfy url", "err", err)
-		}
-		if err := s.sealSecret(r.Context(), notify.SecretNtfyTopic, "topic", topic); err != nil {
-			s.log.Error("web: seal ntfy topic", "err", err)
-		}
-		if token != "" {
-			if err := s.sealSecret(r.Context(), notify.SecretNtfyToken, "token", token); err != nil {
-				s.log.Error("web: seal ntfy token", "err", err)
-			}
+	if token != "" {
+		if err := s.sealSecret(r.Context(), notify.SecretNtfyToken, "token", token); err != nil {
+			s.log.Error("web: seal ntfy token", "err", err)
 		}
 	}
 
