@@ -16,7 +16,7 @@ when a roaming machine is asleep.
 ## `exocomp command` — the everyday verb
 
 ```
-exocomp command --host <pattern> [--shell] [--become] -- <cmd...>
+exocomp command --host <pattern> [--shell] [--user-session] [--become] -- <cmd...>
 ```
 
 Runs a bare command on every host a pattern matches, through the ansible
@@ -39,8 +39,25 @@ which switches to the **shell** module:
 exocomp command --host web --shell -- 'journalctl -u nginx | tail -50'
 ```
 
+Commands targeting user-level services (`systemctl --user`, `dconf`, D-Bus desktop
+services) use `--user-session` to automatically resolve and inject the active user's
+`$XDG_RUNTIME_DIR` (`/run/user/<uid>`) and `$DBUS_SESSION_BUS_ADDRESS`:
+
+```
+exocomp command --host workstation --user-session -- systemctl --user status podman
+```
+
+For scripts and agents, `--output json` emits a structured, machine-parsable per-host
+dictionary (`command.result`) rather than raw streaming terminal output:
+
+```
+exocomp command --host 'web*' --output json -- hostname -f
+```
+
 The command module runs no shell, so a pipe is an explicit `--shell`, never an
-accident.
+accident. Local execution without an explicit `--source` resolves relative to the
+operator's home directory. Privilege escalation on localhost with `--become` requires
+`--privileged` (unsandboxed execution).
 
 ## `exocomp ansible` — any module
 

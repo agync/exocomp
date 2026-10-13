@@ -76,6 +76,7 @@ type JobView struct {
 	StartedAt      *string          `json:"started_at,omitempty"`
 	FinishedAt     *string          `json:"finished_at,omitempty"`
 	Plan           *PlanOutcomeView `json:"plan,omitempty"`
+	Progress       *JobProgressView `json:"progress,omitempty"`
 	// ExpiresAt is the pending approval's fail-closed deadline for an
 	// awaiting_approval job — the countdown tail a phone queue row renders.
 	// Absent for every other state. NewJobView cannot populate it (it has no

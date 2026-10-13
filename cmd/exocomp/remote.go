@@ -172,6 +172,19 @@ func renderRemoteJobGet(cmd *cobra.Command, mode string, j wire.JobView) error {
 	w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 	_, _ = fmt.Fprintf(w, "id\t%d\n", j.ID)
 	_, _ = fmt.Fprintf(w, "state\t%s\n", j.State)
+	if j.Progress != nil && (j.Progress.Play != "" || j.Progress.Task != "") {
+		var parts []string
+		if j.Progress.Play != "" {
+			parts = append(parts, fmt.Sprintf("PLAY [%s]", j.Progress.Play))
+		}
+		if j.Progress.Task != "" {
+			parts = append(parts, fmt.Sprintf("TASK [%s]", j.Progress.Task))
+		}
+		if j.Progress.ElapsedSeconds > 0 {
+			parts = append(parts, fmt.Sprintf("%.1fs elapsed", j.Progress.ElapsedSeconds))
+		}
+		_, _ = fmt.Fprintf(w, "progress\t%s\n", strings.Join(parts, " · "))
+	}
 	_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(web.RunbookLabel(j.Runbook)))
 	_, _ = fmt.Fprintf(w, "runbook (raw)\t%s\n", dashIfEmpty(j.Runbook))
 	_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(j.Source))

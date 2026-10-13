@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"testing"
 
 	"exocomp.dev/exocomp/internal/store"
+	"exocomp.dev/exocomp/internal/wire"
 )
 
 // seedStore points the CLI's data-dir resolution at a temp dir and returns an
@@ -245,5 +247,52 @@ func TestJobsListTextAndJSONSeeded(t *testing.T) {
 	}
 	if e.Data[0].Source != "my-fleet" {
 		t.Fatalf("job list json source = %q, want %q", e.Data[0].Source, "my-fleet")
+	}
+}
+
+// TestJobsGetProgressTextAndJSON proves `jobs get` surfaces progress in text and JSON.
+func TestJobsGetProgressTextAndJSON(t *testing.T) {
+	st := seedStore(t)
+	job, err := st.CreateJob(context.Background(), store.NewJob{
+		Runbook: "site", Kind: "ansible", Trigger: "manual", ConcurrencyKey: "site",
+	})
+	if err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	if err := st.ClaimJob(context.Background(), job.ID); err != nil {
+		t.Fatalf("claim job: %v", err)
+	}
+	// Add play and task events
+	_, _ = st.AppendJobEvent(context.Background(), store.JobEvent{
+		JobID: job.ID, Level: "info", Msg: "PLAY [Deploy Site] ******************************************",
+	})
+	_, _ = st.AppendJobEvent(context.Background(), store.JobEvent{
+		JobID: job.ID, Level: "info", Msg: "TASK [nginx : setup] ****************************************",
+	})
+
+	text, err := run(t, "jobs", "get", fmt.Sprintf("%d", job.ID))
+	if err != nil {
+		t.Fatalf("jobs get: %v", err)
+	}
+	if !strings.Contains(text, "progress") || !strings.Contains(text, "PLAY [Deploy Site]") || !strings.Contains(text, "TASK [nginx : setup]") {
+		t.Fatalf("jobs get text missing progress: %q", text)
+	}
+
+	jsonOut, err := run(t, "jobs", "get", fmt.Sprintf("%d", job.ID), "--output", "json")
+	if err != nil {
+		t.Fatalf("jobs get json: %v", err)
+	}
+	var env struct {
+		Kind string       `json:"kind"`
+		Data wire.JobView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(jsonOut), &env); err != nil {
+		t.Fatalf("unmarshal json: %v (%s)", err, jsonOut)
+	}
+	if env.Data.Progress == nil {
+		t.Fatalf("progress missing in json: %+v", env.Data)
+	}
+	if env.Data.Progress.Play != "Deploy Site" || env.Data.Progress.Task != "nginx : setup" {
+		t.Fatalf("unexpected progress data: %+v", env.Data.Progress)
 	}
 }

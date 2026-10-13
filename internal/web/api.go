@@ -350,6 +350,7 @@ func (s *Server) apiJobGet(w http.ResponseWriter, r *http.Request) {
 	}
 	view := wire.NewJobViewResolved(r.Context(), s.store, job)
 	view.Plan = wire.NewPlanOutcomeView(events)
+	view.Progress = wire.ExtractJobProgress(job, events)
 	s.apiSuccess(w, wire.KindJob, view)
 }
 

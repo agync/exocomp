@@ -46,9 +46,11 @@ reports a target's type but never its raw URI, which for `sftp://` can embed `us
 ```
 
 - **`schema_version`** is a pinned contract (currently `1`); a shape change bumps it.
-- **`kind`** names the payload (`job.list`, `job.get`, `workspace.list`, `doctor`, …) so a
+- **`kind`** names the payload (`job.list`, `job.get`, `command.result`, `workspace.list`, `doctor`, …) so a
   caller dispatches without guessing.
 - **`data`** has no `omitempty`: an empty list still prints `[]`, never vanishes.
+- **`job.get`** includes a `progress` snapshot (`play`, `task`, `elapsed_seconds`) for running and completed jobs.
+- **`command.result`** provides per-host execution results (`rc`, `changed`, `stdout`, `stderr`, `status`) when `exocomp command` or `exocomp ansible` runs with `--output json`.
 - Struct fields marshal in declaration order and HTML escaping is off, so unchanged state
   produces byte-identical bytes across repeated calls — what keeps a small local model's
   polling loop cache-stable.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -229,14 +230,30 @@ func newJobsGetCmd() *cobra.Command {
 				}
 				return err
 			}
+			events, _ := st.ListJobEvents(cmd.Context(), id)
+			view := wire.NewJobViewResolved(cmd.Context(), st, job)
+			view.Progress = wire.ExtractJobProgress(job, events)
 			if mode == outputJSON {
-				return emitJSON(cmd, wire.KindJob, wire.NewJobViewResolved(cmd.Context(), st, job))
+				return emitJSON(cmd, wire.KindJob, view)
 			}
 
 			out := cmd.OutOrStdout()
 			w := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			_, _ = fmt.Fprintf(w, "id\t%d\n", job.ID)
 			_, _ = fmt.Fprintf(w, "state\t%s\n", job.State)
+			if view.Progress != nil && (view.Progress.Play != "" || view.Progress.Task != "") {
+				var parts []string
+				if view.Progress.Play != "" {
+					parts = append(parts, fmt.Sprintf("PLAY [%s]", view.Progress.Play))
+				}
+				if view.Progress.Task != "" {
+					parts = append(parts, fmt.Sprintf("TASK [%s]", view.Progress.Task))
+				}
+				if view.Progress.ElapsedSeconds > 0 {
+					parts = append(parts, fmt.Sprintf("%.1fs elapsed", view.Progress.ElapsedSeconds))
+				}
+				_, _ = fmt.Fprintf(w, "progress\t%s\n", strings.Join(parts, " · "))
+			}
 			_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(web.RunbookLabel(job.Runbook)))
 			// The raw stored runbook is the machine key --runbook filters on
 			// (exactly, including a rule: prefix), so it is printed here for the
