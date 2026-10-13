@@ -33,17 +33,20 @@ func newCommandCmd() *cobra.Command {
 		tolerateUnreachable bool
 		privileged          bool
 		timeout             time.Duration
+		userSession         bool
 		empathyModule       string
 		empathyArgs         string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "command --host <pattern> [--shell] -- <cmd...>",
+		Use:   "command --host <pattern> [--shell] [--user-session] -- <cmd...>",
 		Short: "Run an ad-hoc command on a host pattern (ansible command/shell module)",
 		Long: "The everyday ad-hoc run. `exocomp command --host web -- systemctl status nginx` " +
 			"runs the command on every host the pattern matches via the ansible command module " +
 			"(no shell), from a source's checkout (--source) against its inventory or against " +
 			"localhost. --shell switches to the shell module so a pipe or redirect works. " +
+			"--user-session injects the active user session context ($XDG_RUNTIME_DIR, $DBUS_SESSION_BUS_ADDRESS) " +
+			"for desktop, dconf, and systemctl --user commands. " +
 			"Everything after `--` is the command; it is injection-guarded (a command starting " +
 			"with a dash or carrying a control character is refused) and joined into the module " +
 			"argument, never spread onto ansible's own flags. Same governance as `playbook run`: " +
@@ -77,7 +80,10 @@ func newCommandCmd() *cobra.Command {
 				return err
 			}
 			module := defaultAdhocModule
-			if shell {
+			if userSession {
+				module = shellAdhocModule
+				commandArgs = wrapUserSession(commandArgs)
+			} else if shell {
 				module = shellAdhocModule
 			}
 			return runAdhocExit(cmd, adhocSpec{
@@ -99,6 +105,7 @@ func newCommandCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&shell, "shell", false, "run through the shell module so a pipe or redirect works")
+	cmd.Flags().BoolVar(&userSession, "user-session", false, "inject active user session environment ($XDG_RUNTIME_DIR, $DBUS_SESSION_BUS_ADDRESS) on target hosts")
 	cmd.Flags().StringVarP(&empathyModule, "module", "m", "", "ansible module name (hint)")
 	cmd.Flags().StringVarP(&empathyArgs, "args", "a", "", "ansible module args (hint)")
 	_ = cmd.Flags().MarkHidden("module")
@@ -106,6 +113,12 @@ func newCommandCmd() *cobra.Command {
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
 		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
 	return cmd
+}
+
+const userSessionPrefix = `export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}" DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=/run/user/$(id -u)/bus}"; `
+
+func wrapUserSession(cmd string) string {
+	return userSessionPrefix + cmd
 }
 
 // guardCommand turns the tokens after `--` into the module's -a string, refusing

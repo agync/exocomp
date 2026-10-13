@@ -322,3 +322,34 @@ func TestAnsibleAdhocOutputJSON(t *testing.T) {
 		t.Errorf("localhost stdout = %q, want 'pong'", h.Stdout)
 	}
 }
+
+// TestCommandUserSession proves `exocomp command --user-session` injects XDG and DBUS environment.
+func TestCommandUserSession(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	requireTools(t, "ansible")
+
+	out, _, err := runCapture(t, "command", "--host", "localhost", "--user-session", "--output", "json", "--",
+		"echo", "XDG=$XDG_RUNTIME_DIR", "DBUS=$DBUS_SESSION_BUS_ADDRESS")
+	if err != nil {
+		t.Fatalf("command with --user-session failed: %v\n%s", err, out)
+	}
+
+	var env struct {
+		SchemaVersion int                    `json:"schema_version"`
+		Kind          string                 `json:"kind"`
+		Data          wire.CommandResultView `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("unmarshal: %v\n%s", err, out)
+	}
+	h, ok := env.Data.Hosts["localhost"]
+	if !ok {
+		t.Fatalf("missing localhost in hosts: %+v", env.Data.Hosts)
+	}
+	if !strings.Contains(h.Stdout, "/run/user/") {
+		t.Errorf("stdout missing /run/user/: %q", h.Stdout)
+	}
+	if !strings.Contains(h.Stdout, "unix:path=/run/user/") {
+		t.Errorf("stdout missing dbus unix:path: %q", h.Stdout)
+	}
+}
