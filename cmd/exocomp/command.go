@@ -33,6 +33,8 @@ func newCommandCmd() *cobra.Command {
 		tolerateUnreachable bool
 		privileged          bool
 		timeout             time.Duration
+		empathyModule       string
+		empathyArgs         string
 	)
 
 	cmd := &cobra.Command{
@@ -51,6 +53,11 @@ func newCommandCmd() *cobra.Command {
 		// The command lives after --, so no positional may precede it and at
 		// least one token must follow it.
 		Args: func(cmd *cobra.Command, args []string) error {
+			if cmd.Flags().Changed("module") || cmd.Flags().Changed("args") {
+				return errors.New("command: '-m' and '-a' are Ansible flags, not 'exocomp command' flags.\n" +
+					"  - To run a command: exocomp command --host <pattern> [--shell] -- <cmd...>\n" +
+					"  - To run an Ansible module: exocomp ansible --host <pattern> -m <module> [-a <args>]")
+			}
 			dash := cmd.ArgsLenAtDash()
 			if dash > 0 {
 				return fmt.Errorf("command: unexpected argument %q before --; the command goes after --", args[0])
@@ -92,6 +99,10 @@ func newCommandCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&shell, "shell", false, "run through the shell module so a pipe or redirect works")
+	cmd.Flags().StringVarP(&empathyModule, "module", "m", "", "ansible module name (hint)")
+	cmd.Flags().StringVarP(&empathyArgs, "args", "a", "", "ansible module args (hint)")
+	_ = cmd.Flags().MarkHidden("module")
+	_ = cmd.Flags().MarkHidden("args")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
 		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
 	return cmd

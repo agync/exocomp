@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -186,5 +187,59 @@ func TestAdhocTaskFailureStillHard(t *testing.T) {
 	}
 	if final := getJob(t, lastJobID(t, "command")); final.State != store.StateFailed || final.Partial {
 		t.Fatalf("state=%s partial=%v, want failed and not partial", final.State, final.Partial)
+	}
+}
+
+// TestCommandAnsibleFlagEmpathy proves passing -m or -a to `exocomp command` is
+// intercepted with an actionable hint pointing to `command` or `ansible`.
+func TestCommandAnsibleFlagEmpathy(t *testing.T) {
+	_, err := run(t, "command", "-m", "shell", "-a", "hostname")
+	if err == nil {
+		t.Fatal("expected error when passing -m to command, got nil")
+	}
+	if !strings.Contains(err.Error(), "'-m' and '-a' are Ansible flags") {
+		t.Fatalf("expected empathy error message, got: %v", err)
+	}
+}
+
+// TestCommandLocalBecomeRequiresPrivileged proves that requesting privilege
+// escalation (--become) on a local host without --privileged is refused early.
+func TestCommandLocalBecomeRequiresPrivileged(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	var out, warn bytes.Buffer
+	_, err := runAdhoc(context.Background(), &out, &warn, adhocSpec{
+		runbook: "command", pattern: "localhost", module: "command", args: "whoami",
+		become: true, privileged: false,
+	})
+	if err == nil {
+		t.Fatal("expected error for local become without --privileged, got nil")
+	}
+	if !strings.Contains(err.Error(), "local privilege escalation with --become requires --privileged") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// TestCommandDefaultWorkingDirHome proves that ad-hoc commands without an explicit
+// --source resolve their working directory to the user's home directory.
+func TestCommandDefaultWorkingDirHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("no user home dir available")
+	}
+	useDataDir(t, t.TempDir())
+	requireTools(t, "ansible")
+
+	var out, warn bytes.Buffer
+	code, err := runAdhoc(context.Background(), &out, &warn, adhocSpec{
+		runbook: "command", pattern: "localhost", module: "command", args: "pwd",
+	})
+	if err != nil {
+		t.Fatalf("runAdhoc: %v\n%s", err, out.String())
+	}
+	if code != 0 {
+		t.Fatalf("command exited %d:\n%s", code, out.String())
+	}
+	if !strings.Contains(out.String(), home) {
+		t.Fatalf("command output = %q, want home %q", out.String(), home)
 	}
 }
