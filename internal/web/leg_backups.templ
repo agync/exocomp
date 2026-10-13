@@ -8,10 +8,12 @@ package web
 templ backupsCard(vm systemVM) {
 	<section class="leg" id="backups" aria-label="Backups">
 		<div class="leg-head">
-			<span class="name">@legGlyph(glyphBackups)<span>Backups</span></span>
-			@chip(backupsCardChipClass(vm.Backups), backupsCardChipWord(vm.Backups))
+			<span class="leg-id">
+				<span class="name">@legGlyph(glyphBackups)<span>Backups</span></span>
+				@chip(backupsCardChipClass(vm.Backups), backupsCardChipWord(vm.Backups))
+			</span>
 			<span class="verbs">
-				<a class="verb" href={ urlWithBase(vm.Page.Base, "/system/backups") }>Manage</a>
+				<a class="btn quiet small" href={ urlWithBase(vm.Page.Base, "/system/backups") }>Manage</a>
 			</span>
 		</div>
 		<div class="leg-figure">

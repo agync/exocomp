@@ -14,8 +14,10 @@ const glyphSend = "M21 3L10 14M21 3l-7 18-4-7-7-4z"
 templ ntfyCard(vm systemVM) {
 	<section class="leg" id="ntfy" aria-label="ntfy" data-state={ ntfyRing(vm.Ntfy) }>
 		<div class="leg-head">
-			<span class="name">@legGlyph(glyphNtfy)<span>ntfy</span></span>
-			<span class={ "chip", vm.Ntfy.ChipClass() }><span class="dot"></span>{ vm.Ntfy.Word() }</span>
+			<span class="leg-id">
+				<span class="name">@legGlyph(glyphNtfy)<span>ntfy</span></span>
+				<span class={ "chip", vm.Ntfy.ChipClass() }><span class="dot"></span>{ vm.Ntfy.Word() }</span>
+			</span>
 			<span class="verbs">
 				@ntfyCardVerbs(vm.Ntfy, vm.Operator)
 			</span>
@@ -53,12 +55,11 @@ func ntfyRing(n ntfyCardVM) string {
 
 // ntfyCardVerbs is the card's header verb: Edit (or Set up when nothing is
 // configured), opening the one ntfy modal where the whole channel is edited.
-// A refused channel's primary is Edit — the fix is a token in the modal.
+// A refused channel's verb is the same quiet Edit — the chip and the ring carry
+// the refusal, not the button.
 templ ntfyCardVerbs(n ntfyCardVM, operator bool) {
 	if operator {
-		if n.State == NtfyStateRefused {
-			<button type="button" class="btn primary small" data-modal-open="ntfy-modal">Edit</button>
-		} else if n.IsConfigured() {
+		if n.IsConfigured() {
 			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Edit</button>
 		} else {
 			<button type="button" class="btn quiet small" data-modal-open="ntfy-modal">Set up</button>

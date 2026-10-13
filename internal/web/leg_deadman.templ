@@ -1,10 +1,9 @@
 package web
 
-// v0.13 dead-man card glyphs (SCREENS.txt GLYPHS): the Arm pencil (two small
-// strokes, 24 viewBox) and the eye/eye-slash the Show/Hide toggle draws.
+// v0.13 dead-man card glyphs (SCREENS.txt GLYPHS): the eye/eye-slash the
+// Show/Hide toggle draws.
 const (
-	glyphDeadmanArm = "M4 20l4-1 10-10-3-3L5 16zM13 7l3 3"
-	glyphDeadmanEye = "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"
+	glyphDeadmanEye    = "M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6Z"
 	glyphDeadmanEyeOff = "M5 5l14 14"
 )
 
@@ -52,18 +51,18 @@ templ deadmanCardInner(dm deadmanVM, base, from string) {
 	</style>
 
 	<div class="leg-head">
-		<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
-		<span class={ "chip", dm.StateClass }><span class="dot"></span>{ dm.StateWord }</span>
+		<span class="leg-id">
+			<span class="name">@legGlyph(glyphDeadman)<span>Dead-man</span></span>
+			<span class={ "chip", dm.StateClass }><span class="dot"></span>{ dm.StateWord }</span>
+		</span>
 		<span class="verbs">
 			if dm.State == "none" {
 				if dm.Operator {
-					<button type="button" class="btn primary" data-modal-open="deadman-arm">Arm</button>
+					<button type="button" class="btn quiet small" data-modal-open="deadman-arm">Arm</button>
 				}
 			} else if dm.State == "armed" {
 				if dm.Operator {
-					<button type="button" class="raglyph" data-modal-open="deadman-arm" aria-label="Arm — change the threshold or heartbeat" title="Arm — change the threshold or heartbeat">
-						<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphDeadmanArm }></path></svg>
-					</button>
+					<button type="button" class="btn quiet small" data-modal-open="deadman-arm" title="Arm — change the threshold or heartbeat">Arm</button>
 				}
 				@deadmanMenu(dm, base, from)
 			} else {
@@ -71,7 +70,7 @@ templ deadmanCardInner(dm deadmanVM, base, from string) {
 					<form method="post" action={ templ.SafeURL(urlWithBase(base, "/system/deadman/queue")) } class="inline-form">
 						<input type="hidden" name="target" value={ dm.QueueTarget }/>
 						<input type="hidden" name="from" value={ from }/>
-						<button type="submit" class="btn primary">Queue backup — { dm.QueueTarget }</button>
+						<button type="submit" class="btn quiet small">Queue backup — { dm.QueueTarget }</button>
 					</form>
 				}
 				@deadmanMenu(dm, base, from)

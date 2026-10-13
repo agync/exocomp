@@ -14,6 +14,17 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-13 — system tiles: uniform verbs, one chip slot
+
+- **The leg tiles share one button.** Arm, Edit/Set up, Manage and the
+  Litestream views all render as the same quiet 30px button in the tile head,
+  instead of a primary Arm, a quiet Edit, a text-link Manage and a ▾ menu.
+- **The state chip sits with the name.** The chip was the middle child of a
+  `space-between` head, so it floated to the centre and landed at a different x
+  on every tile; it now shares the identity cluster with the name.
+- **Litestream's ▾ is two buttons.** `Config` and `Restore` are header buttons
+  now (the same deep links), so no leg tile hides its views behind a menu.
+
 ## 2026-10-13 — ntfy config: the setting wins, and one reader
 
 - **A setting now wins over a legacy sealed `ntfy/url`/`ntfy/topic`.** The

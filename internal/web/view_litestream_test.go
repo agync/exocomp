@@ -323,7 +323,7 @@ func TestLitestreamPageConfigAndRestore(t *testing.T) {
 		"WARNING",
 		`href="/system/litestream#config"`,
 		`href="/system/backups?from=litestream#restore"`,
-		"restore from replica",
+		">Restore</a>",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/system/litestream missing %q", want)
@@ -340,22 +340,23 @@ func TestLitestreamPageConfigAndRestore(t *testing.T) {
 	}
 }
 
-// TestLitestreamCardChevronViews: the card's ▾ holds the two views the design
-// gives the leg — config and the DR-drawer deep-link (copy.txt "▾ items").
-func TestLitestreamCardChevronViews(t *testing.T) {
+// TestLitestreamCardViewButtons: the card's two read-only views are header
+// buttons — Config (the generated yml on the leg page) and Restore (the DR
+// drawer's replica deep link) — never a ▾ menu.
+func TestLitestreamCardViewButtons(t *testing.T) {
 	h := newHarness(t)
 	page := getPage(t, h, "/system")
 
 	for _, want := range []string{
-		`class="ramenu"`,
-		`href="/system/litestream#config"`,
-		`href="/system/backups?from=litestream#restore"`,
-		">config</a>",
-		">restore from replica</a>",
+		`href="/system/litestream#config">Config</a>`,
+		`href="/system/backups?from=litestream#restore">Restore</a>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/system missing %q", want)
 		}
+	}
+	if strings.Contains(page, `aria-label="Litestream views"`) {
+		t.Error("the litestream ▾ menu is retired; the views are header buttons now")
 	}
 }
 

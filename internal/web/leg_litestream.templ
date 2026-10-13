@@ -3,16 +3,22 @@ package web
 // litestreamCard is the litestream leg of the /system self-care page (SPEC
 // §3): the six word-states (REPLICATING · STALE · BEHIND · REMOTE · NO REPLICA
 // · NO SIDECAR, plus the wait UNPARSEABLE) with the §0.1 anatomy — chip ·
-// figure · facts · sentence — and the ▾ holding the two read-only views. The
-// leg is read-only by design (ADR 0012: the daemon generates config and
+// figure · facts · sentence — and the two read-only views as header buttons:
+// config (the generated yml on the leg page) and the DR-drawer restore link.
+// The leg is read-only by design (ADR 0012: the daemon generates config and
 // observes, it never runs litestream), so the verbs slot holds no verb that
 // mutates anything.
 templ litestreamCard(ls litestreamVM, base string) {
 	<section class="leg" id="litestream" aria-label="Litestream" data-state={ ls.StateClass }>
 		<div class="leg-head">
-			<span class="name">@legGlyph(glyphReplica)<span>Litestream</span></span>
-			@chip(ls.StateClass, ls.State)
-			<span class="verbs">@litestreamChevron(base)</span>
+			<span class="leg-id">
+				<span class="name">@legGlyph(glyphReplica)<span>Litestream</span></span>
+				@chip(ls.StateClass, ls.State)
+			</span>
+			<span class="verbs">
+				<a class="btn quiet small" href={ templ.SafeURL(urlWithBase(base, "/system/litestream#config")) }>Config</a>
+				<a class="btn quiet small" href={ templ.SafeURL(urlWithBase(base, "/system/backups?from=litestream#restore")) }>Restore</a>
+			</span>
 		</div>
 		<div class="leg-figure">
 			<span class={ "value", ls.StateClass }>{ ls.Figure }</span>
@@ -52,24 +58,4 @@ templ litestreamCard(ls litestreamVM, base string) {
 			<p class="leg-sentence">{ ls.Sentence }</p>
 		}
 	</section>
-}
-
-// litestreamChevron is the leg's ▾ (SPEC §3.2): the two read-only views the
-// surface offers — config (the generated yml on the leg page) and the deep
-// link into the DR drawer's replica mode (the drawer's template and typed
-// confirm are L-S4's; this lane only names the link). Copy.txt "▾ items".
-templ litestreamChevron(base string) {
-	<details class="ramenu">
-		<summary class="rachev" aria-label="Litestream views" title="Litestream views">
-			<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphChevron }></path></svg>
-		</summary>
-		<ul class="ramenu-panel" role="menu">
-			<li class="ramenu-item" role="menuitem">
-				<a class="ramenu-btn" href={ templ.SafeURL(urlWithBase(base, "/system/litestream#config")) }>config</a>
-			</li>
-			<li class="ramenu-item" role="menuitem">
-				<a class="ramenu-btn" href={ templ.SafeURL(urlWithBase(base, "/system/backups?from=litestream#restore")) }>restore from replica</a>
-			</li>
-		</ul>
-	</details>
 }
