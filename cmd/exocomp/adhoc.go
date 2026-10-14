@@ -161,7 +161,9 @@ func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *strin
 	cmd.Flags().StringVar(vaultProject, "vault-project", "", "derive the ansible-vault password for this project from the envelope")
 	cmd.Flags().StringVar(runSecrets, "run-secrets", "", "bind a run_secret set as named env for the run")
 	cmd.Flags().StringVar(runnerName, "runner", "", "enforce this registered runner's memory_max/cpu_quota "+
-		"as a per-job cgroup cap (local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
+		"as a per-job cgroup cap "+
+		"(caps only; no runner image is built or run — that tier is deferred) "+
+		"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().BoolVar(requireApproval, "require-approval", false, "gate the run behind the approval gate; it waits in awaiting_approval until a decision")
 	cmd.Flags().BoolVar(tolerateUnreachable, "tolerate-unreachable", false, "a run whose only non-success is unreachable hosts settles degraded, not failed")
 	cmd.Flags().BoolVar(privileged, "privileged", false,

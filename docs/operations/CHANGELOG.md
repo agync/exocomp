@@ -14,6 +14,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the ad-hoc verbs name the --runner tier plainly
+
+- **`command` and `ansible` carry the caps-only `--runner` wording.** The
+  `(caps only; no runner image is built or run — that tier is deferred)` phrase
+  commit ddd634c added to run-cli, playbook run, run, and workspace
+  plan/apply/destroy was never added to the shared ad-hoc flags, so those two
+  verbs' `--runner` help still read as an elevation path. It now reads the same
+  everywhere, so the surface matches the code.
+
 ## 2026-10-14 — the ad-hoc inline run records the privilege at enqueue
 
 - **`command` and `ansible` record a privileged run at enqueue time.** The

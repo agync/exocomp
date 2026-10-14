@@ -225,8 +225,9 @@ func runnerFlagUsage(cmd *cobra.Command) string {
 }
 
 // TestRunnerFlagHelpStaysCapsOnly pins the honest --runner wording commit
-// ddd634c introduced on every verb it touched, so the surface cannot silently
-// regress to implying a runner image is built or run.
+// ddd634c introduced on every verb that exposes --runner (including command and
+// ansible via addAdhocFlags), so the surface cannot silently regress to implying
+// a runner image is built or run.
 func TestRunnerFlagHelpStaysCapsOnly(t *testing.T) {
 	const want = "(caps only; no runner image is built or run — that tier is deferred)"
 	cases := []struct {
@@ -236,6 +237,8 @@ func TestRunnerFlagHelpStaysCapsOnly(t *testing.T) {
 		{"run-cli", newRunCLICmd()},
 		{"playbook run", newPlaybookCmd()},
 		{"run", newRunCmd()},
+		{"command", newCommandCmd()},
+		{"ansible", newAnsibleAdhocCmd()},
 		{"workspace plan", newWorkspacePlanCmd()},
 		{"workspace apply", newWorkspaceApplyCmd()},
 		{"workspace destroy", newWorkspaceDestroyCmd()},
