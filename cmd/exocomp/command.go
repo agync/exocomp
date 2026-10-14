@@ -36,6 +36,7 @@ func newCommandCmd() *cobra.Command {
 		userSession         bool
 		empathyModule       string
 		empathyArgs         string
+		sshIdentity         []string
 	)
 
 	cmd := &cobra.Command{
@@ -86,6 +87,10 @@ func newCommandCmd() *cobra.Command {
 			} else if shell {
 				module = shellAdhocModule
 			}
+			identityFiles, err := parseSSHIdentityFiles(sshIdentity)
+			if err != nil {
+				return err
+			}
 			return runAdhocExit(cmd, adhocSpec{
 				runbook:             "command",
 				sourceName:          sourceName,
@@ -101,6 +106,7 @@ func newCommandCmd() *cobra.Command {
 				tolerateUnreachable: tolerateUnreachable,
 				privileged:          privileged,
 				timeout:             timeout,
+				sshIdentityFiles:    identityFiles,
 			})
 		},
 	}
@@ -111,7 +117,7 @@ func newCommandCmd() *cobra.Command {
 	_ = cmd.Flags().MarkHidden("module")
 	_ = cmd.Flags().MarkHidden("args")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
-		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
+		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout, &sshIdentity)
 	return cmd
 }
 

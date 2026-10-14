@@ -62,6 +62,10 @@ type adhocSpec struct {
 	// privileged runs the job unsandboxed (the disabled tier), full host access.
 	privileged bool
 	timeout    time.Duration
+	// sshIdentityFiles are single ssh identity key files the run may read,
+	// validated and absolutized at the flag parse, so a one-off against a
+	// key-only host does not have to reach for --privileged.
+	sshIdentityFiles []string
 	// idempotencyKey dedups a retried ad-hoc run to one job. Resolved from the
 	// global flag in runAdhocExit, empty on the unchanged path.
 	idempotencyKey string
@@ -85,6 +89,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 		tolerateUnreachable bool
 		privileged          bool
 		timeout             time.Duration
+		sshIdentity         []string
 	)
 
 	cmd := &cobra.Command{
@@ -112,6 +117,10 @@ func newAnsibleAdhocCmd() *cobra.Command {
 			if err := guardModuleArgs(args); err != nil {
 				return err
 			}
+			identityFiles, err := parseSSHIdentityFiles(sshIdentity)
+			if err != nil {
+				return err
+			}
 			return runAdhocExit(cmd, adhocSpec{
 				runbook:             "ansible",
 				sourceName:          sourceName,
@@ -127,13 +136,14 @@ func newAnsibleAdhocCmd() *cobra.Command {
 				tolerateUnreachable: tolerateUnreachable,
 				privileged:          privileged,
 				timeout:             timeout,
+				sshIdentityFiles:    identityFiles,
 			})
 		},
 	}
 	cmd.Flags().StringVarP(&module, "module", "m", defaultAdhocModule, "ansible module to run")
 	cmd.Flags().StringVarP(&args, "args", "a", "", "module arguments (the -a string)")
 	addAdhocFlags(cmd, &sourceName, &host, &limit, &inventory, &become,
-		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout)
+		&vaultProject, &runSecrets, &runnerName, &requireApproval, &tolerateUnreachable, &privileged, &timeout, &sshIdentity)
 	return cmd
 }
 
@@ -141,7 +151,7 @@ func newAnsibleAdhocCmd() *cobra.Command {
 // the two verbs stay one skeleton with one set of names.
 func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *string,
 	become *bool, vaultProject, runSecrets, runnerName *string, requireApproval, tolerateUnreachable, privileged *bool,
-	timeout *time.Duration) {
+	timeout *time.Duration, sshIdentity *[]string) {
 	cmd.Flags().StringVarP(sourceName, "source", "s", "", "run from this registered source's checkout")
 	cmd.Flags().StringVar(host, "host", "", "ansible host pattern: a host, a group, or an expression like `fedora:!nas`")
 	cmd.Flags().StringVar(limit, "limit", "", "alias for --host")
@@ -156,6 +166,8 @@ func addAdhocFlags(cmd *cobra.Command, sourceName, host, limit, inventory *strin
 	cmd.Flags().BoolVar(privileged, "privileged", false,
 		"run this job UNSANDBOXED — full host access, no kernel sandbox; operator only (see docs/security/threat-model.md)")
 	cmd.Flags().DurationVar(timeout, "timeout", 0, "kill the run after this long (0: no limit)")
+	cmd.Flags().StringSliceVar(sshIdentity, "ssh-identity", nil,
+		"grant this run read access to an ssh identity key file (repeatable; each file is granted individually, never its directory)")
 }
 
 // resolveHostPattern reconciles --host and its --limit alias into the one
@@ -300,6 +312,7 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		TolerateUnreachable: spec.tolerateUnreachable,
 		RunnerName:          spec.runnerName,
 		Privileged:          spec.privileged,
+		SSHIdentityFiles:    spec.sshIdentityFiles,
 		IdempotencyKey:      spec.idempotencyKey,
 		Timeout:             spec.timeout,
 	}

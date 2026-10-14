@@ -167,3 +167,40 @@ func TestRuleAddPlaybookSSHIdentityThreadsToRule(t *testing.T) {
 		t.Fatalf("stored rule SSHIdentityFiles = %v, want [%s]", rule.Action.SSHIdentityFiles, identity)
 	}
 }
+
+// TestAdhocSSHIdentityReachesJobRow is the ad-hoc plumbing proof: both
+// `exocomp command` and `exocomp ansible` accept --ssh-identity and land the
+// declared files on the job row, the same seam `playbook run` uses, so a
+// one-off against a key-only host does not have to reach for --privileged.
+// Dropping the parse or the queued-spec assignment in either verb leaves the
+// row empty and fails here.
+func TestAdhocSSHIdentityReachesJobRow(t *testing.T) {
+	useDataDir(t, t.TempDir())
+	requireTools(t, "ansible")
+
+	for _, tc := range []struct {
+		name    string
+		runbook string
+		args    func(identity string) []string
+	}{
+		{"command", "command", func(id string) []string {
+			return []string{"command", "--host", "localhost", "--ssh-identity", id, "--", "/bin/true"}
+		}},
+		{"ansible", "ansible", func(id string) []string {
+			return []string{"ansible", "--host", "localhost", "-m", "ansible.builtin.ping", "--ssh-identity", id}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			identity := filepath.Join(t.TempDir(), "id_ed25519")
+			out, err := run(t, tc.args(identity)...)
+			if err != nil {
+				t.Fatalf("%s --ssh-identity: %v (%s)", tc.runbook, err, out)
+			}
+			job := getJob(t, lastJobID(t, tc.runbook))
+			if !slices.Equal(job.Args.SSHIdentityFiles, []string{identity}) {
+				t.Fatalf("job SSHIdentityFiles = %v, want [%s] (%s)",
+					job.Args.SSHIdentityFiles, identity, out)
+			}
+		})
+	}
+}
