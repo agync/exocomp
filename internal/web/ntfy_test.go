@@ -155,6 +155,44 @@ func TestNtfyCardOn(t *testing.T) {
 	}
 }
 
+// TestNtfyCardOnWithoutToken is the legally-absent-key guard for the token fact:
+// a self-hosted channel is ON with no token (a private server needs none), so
+// the row reads a quiet "none" rather than the fail-tinted "missing" that
+// belongs only on a REFUSED channel. The MUTATION — restoring the unconditional
+// missing branch — reds this test.
+func TestNtfyCardOnWithoutToken(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	if err := h.store.PutSetting(ctx, store.SettingNtfyURL, "https://push.lan"); err != nil {
+		t.Fatalf("set url setting: %v", err)
+	}
+	if err := h.store.PutSetting(ctx, store.SettingNtfyTopic, "exocomp-7f3a"); err != nil {
+		t.Fatalf("set topic setting: %v", err)
+	}
+	srv := serverWithNtfy(t, h, &fakeNtfy{st: NtfySeamState{
+		URLSealed: true, TopicSealed: true, TokenSealed: false,
+		ServerClass: "self-hosted",
+	}})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	card := ntfyCardHTML(t, page)
+	if !strings.Contains(card, ">ON</span>") {
+		t.Fatalf("expected the ON channel, card:\n%s", card)
+	}
+	if !strings.Contains(card, `<dt>token</dt><dd>none</dd>`) {
+		t.Errorf("ON without a token must render a quiet none; card:\n%s", card)
+	}
+	if strings.Contains(card, `class="fail"`) {
+		t.Errorf("ON without a token must render no fail class; card:\n%s", card)
+	}
+}
+
 // TestNtfyCardRefused is the REFUSED tile: a public topic without a token is a
 // fail state, and the fix is the modal's token field (Edit, the primary).
 func TestNtfyCardRefused(t *testing.T) {

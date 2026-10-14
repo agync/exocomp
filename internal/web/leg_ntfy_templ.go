@@ -190,56 +190,61 @@ func ntfyCard(vm systemVM) templ.Component {
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
-			} else {
+			} else if vm.Ntfy.State == NtfyStateRefused {
 				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 19, "<dd class=\"fail\">missing</dd>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
+			} else {
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<dd>none</dd>")
+				if templ_7745c5c3_Err != nil {
+					return templ_7745c5c3_Err
+				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 20, "<dt>detail</dt><dd>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, "<dt>detail</dt><dd>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(ntfyDetail(vm.Ntfy.Detail))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 52, Col: 36}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 54, Col: 36}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 21, " · ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, " · ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var10 string
 			templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(ntfyDetailMeaning(vm.Ntfy.Detail))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 52, Col: 77}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 54, Col: 77}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 22, "</dd></dl>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "</dd></dl>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if vm.Ntfy.State == NtfyStateRefused {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 23, "<p class=\"leg-sentence\">A public topic without a token would publish approval links to anyone who guesses the name — add an access token, or self-host ntfy.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p class=\"leg-sentence\">A public topic without a token would publish approval links to anyone who guesses the name — add an access token, or self-host ntfy.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
 		if vm.Ntfy.State == NtfyStateOff {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 24, "<p class=\"leg-sentence\">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic and sends the first push.</p>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "<p class=\"leg-sentence\">Approvals still expire and auto-reject on TTL; you will only learn about them from this UI. <code>exocomp setup notify</code> mints a topic and sends the first push.</p>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 25, "</section>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "</section>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -283,12 +288,12 @@ func ntfyCardVerbs(n ntfyCardVM, operator bool) templ.Component {
 		ctx = templ.ClearChildren(ctx)
 		if operator {
 			if n.IsConfigured() {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 26, "<button type=\"button\" class=\"btn quiet small\" data-modal-open=\"ntfy-modal\">Edit</button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<button type=\"button\" class=\"btn quiet small\" data-modal-open=\"ntfy-modal\">Edit</button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			} else {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 27, "<button type=\"button\" class=\"btn quiet small\" data-modal-open=\"ntfy-modal\">Set up</button>")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<button type=\"button\" class=\"btn quiet small\" data-modal-open=\"ntfy-modal\">Set up</button>")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
@@ -337,20 +342,20 @@ func ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStat
 				}()
 			}
 			ctx = templ.InitializeContext(ctx)
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 28, "<form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "<form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var14 templ.SafeURL
 			templ_7745c5c3_Var14, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(base, "/system/ntfy/configure")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 95, Col: 89}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 97, Col: 89}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var14))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 29, "\" class=\"writeform\" id=\"ntfy-configure-form\" novalidate>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "\" class=\"writeform\" id=\"ntfy-configure-form\" novalidate>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -366,106 +371,106 @@ func ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStat
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 30, "<div class=\"field\"><span class=\"label\">Push detail</span> <span class=\"field-seg\" data-ntfy-detail><input type=\"radio\" id=\"ntfy-detail-full\" name=\"detail\" value=\"full\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, "<div class=\"field\"><span class=\"label\">Push detail</span> <span class=\"field-seg\" data-ntfy-detail><input type=\"radio\" id=\"ntfy-detail-full\" name=\"detail\" value=\"full\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail != "summary" && leg.Detail != "terse" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 31, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 32, "> <label for=\"ntfy-detail-full\">full</label> <input type=\"radio\" id=\"ntfy-detail-summary\" name=\"detail\" value=\"summary\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, "> <label for=\"ntfy-detail-full\">full</label> <input type=\"radio\" id=\"ntfy-detail-summary\" name=\"detail\" value=\"summary\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail == "summary" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 33, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 34, "> <label for=\"ntfy-detail-summary\">summary</label> <input type=\"radio\" id=\"ntfy-detail-terse\" name=\"detail\" value=\"terse\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, "> <label for=\"ntfy-detail-summary\">summary</label> <input type=\"radio\" id=\"ntfy-detail-terse\" name=\"detail\" value=\"terse\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail == "terse" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 35, " checked")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, " checked")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 36, "> <label for=\"ntfy-detail-terse\">terse</label></span> <span class=\"meta\">full ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, "> <label for=\"ntfy-detail-terse\">terse</label></span> <span class=\"meta\">full ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var15 string
 			templ_7745c5c3_Var15, templ_7745c5c3_Err = templ.JoinStringErrs(ntfyDetailMeaning("full"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 109, Col: 55}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 111, Col: 55}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var15))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 37, " · summary ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " · summary ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var16 string
 			templ_7745c5c3_Var16, templ_7745c5c3_Err = templ.JoinStringErrs(ntfyDetailMeaning("summary"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 109, Col: 99}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 111, Col: 99}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var16))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 38, " · terse ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, " · terse ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var17 string
 			templ_7745c5c3_Var17, templ_7745c5c3_Err = templ.JoinStringErrs(ntfyDetailMeaning("terse"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 109, Col: 139}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 111, Col: 139}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var17))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 39, "</span></div><div class=\"push-preview\" role=\"group\" aria-label=\"What a push says\"><div class=\"kicker\">WHAT A PUSH SAYS</div><div class=\"sample\" data-detail=\"full\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, "</span></div><div class=\"push-preview\" role=\"group\" aria-label=\"What a push says\"><div class=\"kicker\">WHAT A PUSH SAYS</div><div class=\"sample\" data-detail=\"full\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail != "full" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 40, " hidden")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, " hidden")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 41, "><div class=\"push-sample\"><p class=\"title\">1 approval waiting</p><p class=\"body\">apply prod-net · expires in 29m, then auto-rejects</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"btn quiet small\">Approve</span> <span class=\"btn quiet small\">Reject</span></p></div></div><div class=\"sample\" data-detail=\"summary\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, "><div class=\"push-sample\"><p class=\"title\">1 approval waiting</p><p class=\"body\">apply prod-net · expires in 29m, then auto-rejects</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"btn quiet small\">Approve</span> <span class=\"btn quiet small\">Reject</span></p></div></div><div class=\"sample\" data-detail=\"summary\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail != "summary" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 42, " hidden")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, " hidden")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 43, "><div class=\"push-sample\"><p class=\"title\">exocomp</p><p class=\"body\">an approval is waiting — open to decide</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"note\">no action buttons in summary or terse</span></p></div></div><div class=\"sample\" data-detail=\"terse\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, "><div class=\"push-sample\"><p class=\"title\">exocomp</p><p class=\"body\">an approval is waiting — open to decide</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"note\">no action buttons in summary or terse</span></p></div></div><div class=\"sample\" data-detail=\"terse\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			if leg.Detail != "terse" {
-				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 44, " hidden")
+				templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, " hidden")
 				if templ_7745c5c3_Err != nil {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 45, "><div class=\"push-sample\"><p class=\"title\">exocomp</p><p class=\"body\">exocomp: action required</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"note\">no action buttons in summary or terse</span></p></div></div></div>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "><div class=\"push-sample\"><p class=\"title\">exocomp</p><p class=\"body\">exocomp: action required</p><p class=\"push-actions\" aria-hidden=\"true\"><span class=\"note\">no action buttons in summary or terse</span></p></div></div></div>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -473,20 +478,20 @@ func ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStat
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 46, "<div class=\"actions\"><button type=\"button\" class=\"btn\" data-modal-dismiss>Cancel</button> <button type=\"submit\" class=\"btn quiet ntfy-test-btn\" formaction=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "<div class=\"actions\"><button type=\"button\" class=\"btn\" data-modal-dismiss>Cancel</button> <button type=\"submit\" class=\"btn quiet ntfy-test-btn\" formaction=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var18 string
 			templ_7745c5c3_Var18, templ_7745c5c3_Err = templ.JoinStringErrs(urlWithBase(base, "/system/ntfy/test"))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 141, Col: 109}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 143, Col: 109}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var18))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 47, "\" title=\"saves the configuration, then sends one push\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "\" title=\"saves the configuration, then sends one push\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -494,7 +499,7 @@ func ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStat
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 48, "Send test</button> <button type=\"submit\" class=\"btn primary\">Save</button></div></form>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, "Send test</button> <button type=\"submit\" class=\"btn primary\">Save</button></div></form>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -502,7 +507,7 @@ func ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestStat
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 49, " ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, " ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
@@ -556,7 +561,7 @@ func ntfyStatus(st ntfyTestStatus) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 50, "<div class=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "<div class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -569,53 +574,53 @@ func ntfyStatus(st ntfyTestStatus) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 51, "\" role=\"status\" aria-live=\"polite\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "\" role=\"status\" aria-live=\"polite\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		if st.Class == "ok" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 52, "<span class=\"msg\">✓ ")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "<span class=\"msg\">✓ ")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var22 string
 			templ_7745c5c3_Var22, templ_7745c5c3_Err = templ.JoinStringErrs(st.Msg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 163, Col: 33}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 165, Col: 33}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var22))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else if st.Class == "fail" {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 54, "<span class=\"msg\">")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "<span class=\"msg\">")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var23 string
 			templ_7745c5c3_Var23, templ_7745c5c3_Err = templ.JoinStringErrs(st.Msg)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 165, Col: 29}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/leg_ntfy.templ`, Line: 167, Col: 29}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var23))
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 55, "</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		} else {
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 56, "<span class=\"hint\">no test yet · Send test saves the configuration, then sends one push</span>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "<span class=\"hint\">no test yet · Send test saves the configuration, then sends one push</span>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 57, "</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -646,7 +651,7 @@ func ntfyModalJS() templ.Component {
 			templ_7745c5c3_Var24 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 58, "<script>\n\t(function () {\n\t\tvar seg = document.querySelector(\".field-seg[data-ntfy-detail]\");\n\t\tif (seg) {\n\t\t\tseg.addEventListener(\"change\", function () {\n\t\t\t\tvar picked = seg.querySelector(\"input:checked\");\n\t\t\t\tif (!picked) return;\n\t\t\t\tvar samples = document.querySelectorAll(\"#ntfy-modal .push-preview .sample\");\n\t\t\t\tfor (var i = 0; i < samples.length; i++) {\n\t\t\t\t\tsamples[i].hidden = samples[i].getAttribute(\"data-detail\") !== picked.value;\n\t\t\t\t}\n\t\t\t});\n\t\t}\n\t\tif (document.querySelector(\"#ntfy-modal .is-error, #ntfy-modal .is-ok, #ntfy-modal input[aria-invalid=\\\"true\\\"]\")) {\n\t\t\texoModalOpen(\"ntfy-modal\");\n\t\t\tvar bad = document.querySelector('#ntfy-modal input[aria-invalid=\"true\"]');\n\t\t\tif (bad) bad.focus();\n\t\t}\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 59, "<script>\n\t(function () {\n\t\tvar seg = document.querySelector(\".field-seg[data-ntfy-detail]\");\n\t\tif (seg) {\n\t\t\tseg.addEventListener(\"change\", function () {\n\t\t\t\tvar picked = seg.querySelector(\"input:checked\");\n\t\t\t\tif (!picked) return;\n\t\t\t\tvar samples = document.querySelectorAll(\"#ntfy-modal .push-preview .sample\");\n\t\t\t\tfor (var i = 0; i < samples.length; i++) {\n\t\t\t\t\tsamples[i].hidden = samples[i].getAttribute(\"data-detail\") !== picked.value;\n\t\t\t\t}\n\t\t\t});\n\t\t}\n\t\tif (document.querySelector(\"#ntfy-modal .is-error, #ntfy-modal .is-ok, #ntfy-modal input[aria-invalid=\\\"true\\\"]\")) {\n\t\t\texoModalOpen(\"ntfy-modal\");\n\t\t\tvar bad = document.querySelector('#ntfy-modal input[aria-invalid=\"true\"]');\n\t\t\tif (bad) bad.focus();\n\t\t}\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

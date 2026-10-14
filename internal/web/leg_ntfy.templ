@@ -45,8 +45,10 @@ templ ntfyCard(vm systemVM) {
 				<dt>token</dt>
 				if vm.Ntfy.TokenSealed {
 					<dd>sealed</dd>
-				} else {
+				} else if vm.Ntfy.State == NtfyStateRefused {
 					<dd class="fail">missing</dd>
+				} else {
+					<dd>none</dd>
 				}
 				<dt>detail</dt>
 				<dd>{ ntfyDetail(vm.Ntfy.Detail) } · { ntfyDetailMeaning(vm.Ntfy.Detail) }</dd>
