@@ -1097,3 +1097,30 @@ func TestEventJobOutcomeOpensJob(t *testing.T) {
 		t.Errorf("expanded pane must include Open job button:\nwant: %s", wantBtn)
 	}
 }
+
+// TestEventsCountRowsNameTheirWindow is the gate for the two count rows: the
+// 24h funnel and the filter chips carry counts for different windows, so each
+// says which one on screen — the funnel's kicker and the chips' "in view".
+// Dropping either label puts the two rows back to contradicting each other at
+// a glance, which is the regression this round fixed.
+func TestEventsCountRowsNameTheirWindow(t *testing.T) {
+	h := newHarness(t)
+	seedEvents(t, h)
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/events")
+	if code != 200 {
+		t.Fatalf("/events = %d, want 200", code)
+	}
+	for _, want := range []string{
+		`class="kicker">last 24h<`,
+		`class="meta">in view<`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("events count rows must name their window, missing %q", want)
+		}
+	}
+}

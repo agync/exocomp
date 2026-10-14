@@ -29,6 +29,7 @@ templ eventsList(vm eventsVM) {
 // error sink, so the ratio never implies work of unknown length.
 templ eventsFunnel(total, ignored, matched, suppressed, gated, fired int) {
 	<div class="card funnel" role="region" aria-label="Alert funnel, last 24 hours">
+		<span class="kicker">last 24h</span>
 		<div class="counts funnel-counts">
 			<span class="funnel-ct funnel-in"><b>{ itoa(int64(total)) }</b><small>in</small></span>
 			<span class="funnel-ct"><b>{ itoa(int64(ignored)) }</b><small>ignored</small></span>
@@ -65,6 +66,7 @@ templ funnelSeg(kind string, n int) {
 // `o` key can cycle the outcome group (TUI parity).
 templ eventsFilters(vm eventsVM) {
 	<div class="filters" data-source={ vm.Source } data-outcome={ vm.Outcome }>
+		<span class="meta">in view</span>
 		<div class="group" role="group" aria-label="Event source">
 			<div class="switch" title="Source — where the event came from">
 				<a href={ templ.SafeURL(vm.SourceHref("")) } aria-pressed={ boolAttr(vm.Source == "") }><span>all</span>@countCell(vm.ChipCount("all"))</a>
