@@ -1,11 +1,3 @@
----
-type: Hub
-title: "Contributor guide"
-description: "How work lands in exocomp: developer setup, workflow, verification gates, worktree lanes, and conventions."
-status: stable
-tags: [contributing, dev, workflow, contract, invariants]
----
-
 # Contributor guide
 
 How work lands in exocomp and what gates it. The foundational contract lives in [AGENTS.md](../../AGENTS.md); this section provides the concrete developer manual and procedures.

@@ -1,11 +1,3 @@
----
-type: Reference
-title: "Design system and surfaces"
-description: "The exocomp design philosophy, visual showcase, design tokens, and surface architectures across Web, Mobile, and TUI."
-status: stable
-tags: [design, ui, tui, tokens, philosophy]
----
-
 # Design system and surfaces
 
 exocomp treats user interface design as a functional contract: status before detail, failure louder than success, and zero decoration that does not inform the operator.

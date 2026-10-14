@@ -1,11 +1,3 @@
----
-type: Hub
-title: "Technical reference"
-description: "Reference specifications for the CLI, configuration files, REST API, MCP endpoints, and error taxonomy."
-status: stable
-tags: [reference, cli, api, configuration, specs]
----
-
 # Technical reference
 
 Precise, contract-level specifications for exocomp command-line tools, configuration file formats, wire protocols, and machine-readable output envelopes.

@@ -1,11 +1,3 @@
----
-type: Hub
-title: "Operations and cluster lifecycle"
-description: "Standing up an exocomp cluster, maintenance, disaster recovery, failover, and day-2 operations."
-status: stable
-tags: [operations, runbooks, cluster, maintenance]
----
-
 # Operations and cluster lifecycle
 
 Day-2 production operations, node-zero deployment, disaster recovery drills, and cluster maintenance.

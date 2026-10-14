@@ -1,11 +1,3 @@
----
-type: Guide
-title: "Operator user guide"
-description: "Task-oriented workflows and step-by-step guides for everyday homelab management with exocomp."
-status: stable
-tags: [guide, workflows, operations]
----
-
 # Operator user guide
 
 This guide walks through everyday homelab management with exocomp: managing Git sources, running Ansible playbooks, provisioning OpenTofu workspaces, chaining handoffs, binding sealed secrets, configuring reachability checks, and reacting to alerts.
