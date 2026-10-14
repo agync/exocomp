@@ -1408,6 +1408,20 @@ func (s *Server) runCardTiles(ctx context.Context, source string, job store.Job,
 	if len(priv) > 0 {
 		tiles = append(tiles, configTile{Label: "Privileged", Value: strings.Join(priv, " · ")})
 	}
+	// The grant surface names what the sandbox permitted beyond its defaults —
+	// the declared --egress port set and the --ssh-identity files read. It is
+	// shown only on a sandboxed run: a privileged run forfeited the sandbox, so
+	// no grant applied (the Privileged tile already names that posture), and a
+	// run with no grants is the quiet default posture. A file is shown as a
+	// PATH, never as key material (invariant 4).
+	if !job.Args.Privileged {
+		if len(job.Args.EgressPorts) > 0 {
+			tiles = append(tiles, configTile{Label: "Egress ports", Value: joinPorts(job.Args.EgressPorts, ", ")})
+		}
+		if len(job.Args.SSHIdentityFiles) > 0 {
+			tiles = append(tiles, configTile{Label: "SSH identity", Value: strings.Join(job.Args.SSHIdentityFiles, ", ")})
+		}
+	}
 	if job.Args.RunSecretBinding != "" {
 		val := job.Args.RunSecretBinding
 		if pairs, err := s.store.RunSecretsByBinding(ctx, job.Args.RunSecretBinding); err == nil && len(pairs) > 1 {

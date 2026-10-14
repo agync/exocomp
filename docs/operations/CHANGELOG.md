@@ -14,6 +14,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the web run config names the sandbox grants
+
+- **The run configuration tile surfaces a sandboxed run's grants.** The job detail
+  already marked a run `unsandboxed`, but nothing showed what a sandboxed run was
+  permitted to touch. The RUN CONFIGURATION grid now carries the declared `--egress`
+  port set (`Egress ports`) and the `--ssh-identity` files (`SSH identity`) a
+  sandboxed run could read, each a label over a mono value in the same tile grid. A
+  run with no declaration is the quiet default posture and carries neither tile; a
+  privileged run forfeited the sandbox, so no grant applied and the grant tiles stay
+  absent while the `Privileged` tile names the posture. A file is shown as a PATH,
+  never as key material.
+
 ## 2026-10-14 — close the privileged attribution gap for CLI runs
 
 - **Attributed enqueue-time privileged records on every path.** `run-cli`,
