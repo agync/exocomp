@@ -159,6 +159,63 @@ exocomp secrets add ansible-vault/homelab     # or derive it
 exocomp playbook run site.yml --vault-project homelab
 ```
 
+## Using a non-fleet identity for one source or subset
+
+exocomp mints and seals **one** fleet key (`fleet/ssh`) and that key is what
+`host onboard` pushes into a node's `authorized_keys`. There is no per-source or
+per-host key factory: if you want a separate identity for one source, one
+inventory, or a subset of hosts, bring the key yourself. Treat it like any other
+operator-supplied connection credential — exocomp seals nothing new and pushes
+nothing for you.
+
+1. **Generate the key outside exocomp** (or accept one from the identity provider
+   that issues it), and keep the private file **off the source checkout**. A key
+   committed to, or generated inside, a (read-only) source tree will be readable
+   but not the usual place for controller secrets, and a read-only checkout is not
+   granted writes.
+
+2. **Reference it the ordinary Ansible way** in that source's inventory or
+   `group_vars`:
+   ```
+   ansible_ssh_private_key_file: /run/keys/sources/infra-deploy
+   ```
+   For passwords rather than keys, use `ansible_password` / `ansible_ssh_pass`
+   backed by a vaulted variable and `--vault-project <project>`.
+
+3. **Grant the sandbox read access to it.** The key lives outside the checkout, so
+   a default-deny ansible job cannot open it. Declare the absolute path on the
+   run:
+   ```
+   exocomp playbook run site.yml --source infra --ssh-identity /run/keys/sources/infra-deploy
+   ```
+   or bake it into a recurring rule:
+   ```
+   exocomp rule add deploy-infra --expr '...' --action playbook \
+     --repo-source infra --playbook site.yml --ssh-identity /run/keys/sources/infra-deploy
+   ```
+   `--ssh-identity` is per job and defaults to nothing declared, takes a list,
+   names **single files only** (never `~/.ssh` or a directory), requires an
+   absolute (or working-directory-relative) path, and rejects a declaration that
+   would cover the data dir. A `--privileged` (unsandboxed) run ignores the
+   grant because the whole box is visible; use that only for trusted work.
+
+4. **Authorize the public half yourself.** Either run a playbook that writes the
+   key into `~/.ssh/authorized_keys` for the target nodes, or pre-stage it out
+   of band. The `host onboard` runbook authorizes the fleet public key only.
+
+5. **Host verification still rides on v1's caveat.** exocomp records each host key
+   during `host onboard` and backs it up, but does **not** yet wire the recorded
+   `known_hosts` into a run or load the fleet (or any other) key into a
+   per-job ssh-agent (v1.1). Until then a run connects with whatever its
+   inventory, vaulted variables, or `--ssh-identity` path declares, and Ansible's
+   own `host_key_checking` applies. Do not assume a recorded pin is enforced.
+
+The combination above is the documented escape hatch for a dedicated key today;
+there is no `exocomp source add --ssh-key` or secret-to-file promotion step that
+mints one for you. If the key must rotate, reissue it where it is minted, then
+replace the file and (if stored in the envelope) the sealed copy — exocomp
+replaces sealed material but cannot revoke what lives upstream.
+
 ## OpenTofu state backends
 
 The web UI presents these under "Workspaces" as managed OpenTofu state (with a paste-ready backend config); the CLI verb and

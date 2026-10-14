@@ -69,3 +69,30 @@ To manage target nodes without distributing individual SSH keys, exocomp maintai
    exocomp host known-hosts
    ```
    exocomp strictly verifies host fingerprints against its trusted `known_hosts` store. Connecting to an unpinned or changed host key is refused.
+
+## Using a different key for one source
+
+exocomp's fleet key is deliberately **one key for every host**. If one source, inventory,
+or subset of hosts needs its own identity, bring the key yourself and wire it in as an
+ordinary Ansible credential, with the sandbox grant that lets the run read it:
+
+1. Store the private key outside the source checkout; a committed or checked-out
+   controller key widens the repo's trust boundary and never needs to be there.
+2. Reference it in the source's `group_vars` or inventory:
+   `ansible_ssh_private_key_file: /run/keys/sources/infra-deploy`
+3. Grant that file to the run:
+   ```bash
+   exocomp playbook run site.yml --source infra --ssh-identity /run/keys/sources/infra-deploy
+   ```
+4. Push its public half to the target nodes with your own playbook — the onboarding
+   runbook authorizes only the fleet public key.
+
+The key declaration is per job and defaults to nothing; `--ssh-identity` is documented
+fully in [playbook run flags](../operations/playbook-run.md) and
+[running the daemon](../operations/serve.md). A run cannot read `~/.ssh` or any
+directory, only the exact named file(s).
+
+Note that in v1 the recorded `known_hosts` is **not yet enforced** by a run and the
+fleet (or any other) key is **not yet loaded into a per-job ssh-agent** (v1.1). Until
+then Ansible's own connection settings apply. See
+[Managed-host SSH in operations/sources.md](../operations/sources.md).
