@@ -37,13 +37,13 @@ To pair your mobile device:
 
 When exocomp operates quietly, the mobile home view presents a calm, zero-overhead status summary:
 
-![Mobile home view](../design/assets/mobile/2a-home-quiet.png)
+<img src="../design/assets/mobile/2a-home-quiet.png" alt="Mobile home view" width="320">
 
 When an event triggers an approval gate (such as an OpenTofu apply or sensitive playbook run), you receive a push notification via `ntfy`.
 
 Tapping the notification opens the dedicated approval drawer:
 
-![Mobile approval drawer](../design/assets/mobile/2e-approval-decision.png)
+<img src="../design/assets/mobile/2e-approval-decision.png" alt="Mobile approval drawer" width="320">
 
 The approval view provides high-density context tailored for one-thumb decisions in under ten seconds:
 - High-contrast monospace plan diffs.
