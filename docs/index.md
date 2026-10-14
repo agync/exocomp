@@ -101,7 +101,7 @@ Foundational architectural design and immutable decisions — [architecture/inde
 - [Execution driver](architecture/execution.md): Sandbox tiers (`disabled`, `enforcing` with `nono`, `container`).
 - [Platform contract](architecture/platform-contract.md): Support tiers for systemd, Podman, and SELinux enforcing.
 - [Reactive layer](architecture/reactive.md): CEL evaluation, guardrails, and ledger ordering.
-- [Decision records 0001–0020](decisions/index.md): Foundational architecture decision records.
+- [Decision records 0001–0022](decisions/index.md): Foundational architecture decision records.
 
 ---
 
