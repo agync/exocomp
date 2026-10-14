@@ -5,12 +5,13 @@ package web
 const glyphSend = "M21 3L10 14M21 3l-7 18-4-7-7-4z"
 
 // ntfyCard is the ntfy leg of the /system self-care page (SPEC §2): the
-// three-word judgment ON / REFUSED / OFF, the topic label as the figure, and the
-// one Edit/Set up verb that opens the ntfy modal. The tile is deliberately lean
-// — the configuration, the push-detail switch, the push preview and the test
-// all live in the modal, so the card carries no facts block and no fan-out
-// table. The URL and topic are ordinary settings, so the card never claims they
-// are sealed.
+// three-word judgment ON / REFUSED / OFF, the topic label as the figure, a
+// facts block naming the channel's configuration at a glance (server URL,
+// token presence, push detail), and the one Edit/Set up verb that opens the
+// ntfy modal. The URL and topic are ordinary settings, so the card names the
+// server URL; only the token stays presence-only. The push-detail switch, the
+// push preview and the test still live in the modal, so there is no fan-out
+// table.
 templ ntfyCard(vm systemVM) {
 	<section class="leg" id="ntfy" aria-label="ntfy" data-state={ ntfyRing(vm.Ntfy) }>
 		<div class="leg-head">
@@ -35,6 +36,22 @@ templ ntfyCard(vm systemVM) {
 				<span class="note">no channel · nothing set</span>
 			}
 		</div>
+		if vm.Ntfy.State == NtfyStateOn || vm.Ntfy.State == NtfyStateRefused {
+			<dl class="leg-facts">
+				if vm.Ntfy.ConfiguredURL != "" {
+					<dt>server</dt>
+					<dd class="ellipsis">{ vm.Ntfy.ConfiguredURL }</dd>
+				}
+				<dt>token</dt>
+				if vm.Ntfy.TokenSealed {
+					<dd>sealed</dd>
+				} else {
+					<dd class="fail">missing</dd>
+				}
+				<dt>detail</dt>
+				<dd>{ ntfyDetail(vm.Ntfy.Detail) } · { ntfyDetailMeaning(vm.Ntfy.Detail) }</dd>
+			</dl>
+		}
 		if vm.Ntfy.State == NtfyStateRefused {
 			<p class="leg-sentence">A public topic without a token would publish approval links to anyone who guesses the name — add an access token, or self-host ntfy.</p>
 		}
@@ -89,7 +106,7 @@ templ ntfyModal(leg ntfyCardVM, form *ntfyModalVM, base string, test ntfyTestSta
 					<input type="radio" id="ntfy-detail-terse" name="detail" value="terse" checked?={ leg.Detail == "terse" }/>
 					<label for="ntfy-detail-terse">terse</label>
 				</span>
-				<span class="meta">full names the workspace, host and error, with Approve/Reject · summary hides the detail and the buttons · terse names nothing</span>
+				<span class="meta">full { ntfyDetailMeaning("full") } · summary { ntfyDetailMeaning("summary") } · terse { ntfyDetailMeaning("terse") }</span>
 			</div>
 			<div class="push-preview" role="group" aria-label="What a push says">
 				<div class="kicker">WHAT A PUSH SAYS</div>

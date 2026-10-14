@@ -58,6 +58,47 @@ func TestNtfyCardOnFigureIsTopicLabel(t *testing.T) {
 	}
 }
 
+// TestNtfyCardFactsNameTheChannel is the gate for the facts wave: the ON tile
+// names the configured server URL (ellipsized so a long URL truncates), the
+// sealed token, and the push-detail rung with its one-line meaning. The detail
+// meaning comes from the SAME source the modal's field help renders, so the two
+// surfaces cannot disagree. The MUTATION — dropping the facts block, or
+// renaming a rung on one surface only — reds an assertion.
+func TestNtfyCardFactsNameTheChannel(t *testing.T) {
+	h := newHarness(t)
+	seedOnChannel(t, h)
+	srv := serverWithNtfy(t, h, &fakeNtfy{st: onPresence()})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, client, ts.URL+"/system")
+	if code != http.StatusOK {
+		t.Fatalf("/system = %d, want 200", code)
+	}
+	card := ntfyCardHTML(t, page)
+	for _, want := range []string{
+		`<dl class="leg-facts">`,
+		`<dt>server</dt><dd class="ellipsis">https://push.lan</dd>`,
+		`<dt>token</dt><dd>sealed</dd>`,
+		`<dt>detail</dt><dd>full · names the workspace, host and error, with Approve/Reject</dd>`,
+	} {
+		if !strings.Contains(card, want) {
+			t.Errorf("ON card facts missing %q; card:\n%s", want, card)
+		}
+	}
+	// The modal's field help renders the same meanings — one source, no drift.
+	for _, want := range []string{
+		"full names the workspace, host and error, with Approve/Reject",
+		"summary hides the detail and the buttons",
+		"terse names nothing",
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("modal help missing %q", want)
+		}
+	}
+}
+
 // TestLegHeadWrapsInsteadOfClipping gates the narrow-card head: the identity
 // cluster and the verb pair share a line only while they fit. Without the wrap
 // the chip shrinks and its label runs under the first button ("REPLICA" then a

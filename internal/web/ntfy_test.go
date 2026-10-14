@@ -68,6 +68,22 @@ func sealNtfy(t *testing.T, h *harness, name, value, sentinel string) {
 	}
 }
 
+// ntfyCardHTML returns the ntfy leg section from a rendered /system page so a
+// test can assert on the card alone — the page carries three other leg cards
+// that also render a leg-facts grid.
+func ntfyCardHTML(t *testing.T, page string) string {
+	t.Helper()
+	start := strings.Index(page, `<section class="leg" id="ntfy"`)
+	if start < 0 {
+		t.Fatalf("no ntfy section in:\n%s", page)
+	}
+	end := strings.Index(page[start:], "</section>")
+	if end < 0 {
+		t.Fatalf("unterminated ntfy section")
+	}
+	return page[start : start+end]
+}
+
 // seedOnChannel writes the ON state: the URL and topic as settings (the model
 // now), the token sealed, and the topic label + detail set.
 func seedOnChannel(t *testing.T, h *harness) {
@@ -94,8 +110,9 @@ func onPresence() NtfySeamState {
 }
 
 // TestNtfyCardOn is the ON tile: the topic label figures with the server class,
-// the Edit verb opens the modal, and the tile carries NO facts block or fan-out
-// table (those moved into the modal).
+// the Edit verb opens the modal, and the facts block names the channel — the
+// configured server URL, the sealed token and the push-detail rung with its
+// meaning. There is no fan-out mini table (that moved into the modal).
 func TestNtfyCardOn(t *testing.T) {
 	h := newHarness(t)
 	seedOnChannel(t, h)
@@ -108,6 +125,7 @@ func TestNtfyCardOn(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
+	card := ntfyCardHTML(t, page)
 	for _, want := range []string{
 		`<section class="leg" id="ntfy"`,
 		"chip ok",
@@ -115,15 +133,18 @@ func TestNtfyCardOn(t *testing.T) {
 		"exocomp-7f3a",
 		"topic · self-hosted server",
 		`data-modal-open="ntfy-modal">Edit</button>`,
+		`<dt>server</dt><dd class="ellipsis">https://push.lan</dd>`,
+		`<dt>token</dt><dd>sealed</dd>`,
+		`<dt>detail</dt><dd>full · names the workspace, host and error, with Approve/Reject</dd>`,
 	} {
-		if !strings.Contains(page, want) {
+		if !strings.Contains(card, want) {
 			t.Errorf("ON tile missing %q", want)
 		}
 	}
-	// The tile is pruned: no fan-out mini table, no "rotate in Secrets" fact.
+	// No fan-out mini table, no "rotate in Secrets" link: those moved in.
 	for _, banned := range []string{"leg-mini", "rotate in Secrets", "max on re-notify"} {
-		if strings.Contains(page, banned) {
-			t.Errorf("pruned tile still renders %q", banned)
+		if strings.Contains(card, banned) {
+			t.Errorf("ON tile still renders %q", banned)
 		}
 	}
 	// The token never renders: neither the plaintext nor the ciphertext sentinel.
@@ -156,21 +177,26 @@ func TestNtfyCardRefused(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
+	card := ntfyCardHTML(t, page)
 	for _, want := range []string{
 		"chip fail",
 		">REFUSED</span>",
 		"topic · public server",
 		`data-modal-open="ntfy-modal">Edit</button>`,
 		"add an access token, or self-host ntfy",
+		// The facts block still renders on REFUSED; the token reads missing.
+		`<dt>server</dt><dd class="ellipsis">https://ntfy.sh</dd>`,
+		`<dt>token</dt><dd class="fail">missing</dd>`,
+		`<dt>detail</dt><dd>full · names the workspace, host and error, with Approve/Reject</dd>`,
 	} {
-		if !strings.Contains(page, want) {
+		if !strings.Contains(card, want) {
 			t.Errorf("REFUSED tile missing %q", want)
 		}
 	}
 	if !strings.Contains(page, `data-state="fail"`) {
 		t.Errorf("REFUSED tile missing the fail ring: %s", page)
 	}
-	if strings.Contains(page, "max on re-notify") {
+	if strings.Contains(card, "max on re-notify") {
 		t.Errorf("REFUSED tile rendered the fan-out")
 	}
 }
@@ -188,6 +214,7 @@ func TestNtfyCardOff(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system = %d, want 200", code)
 	}
+	card := ntfyCardHTML(t, page)
 	for _, want := range []string{
 		"chip dim",
 		">OFF</span>",
@@ -196,9 +223,13 @@ func TestNtfyCardOff(t *testing.T) {
 		`data-modal-open="ntfy-modal">Set up</button>`,
 		"exocomp setup notify",
 	} {
-		if !strings.Contains(page, want) {
+		if !strings.Contains(card, want) {
 			t.Errorf("OFF tile missing %q", want)
 		}
+	}
+	// OFF names no channel: no facts block, just the sentence.
+	if strings.Contains(card, "leg-facts") {
+		t.Errorf("OFF tile must carry no facts block; card:\n%s", card)
 	}
 }
 

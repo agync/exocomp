@@ -87,6 +87,20 @@ func ntfyDetail(raw string) string {
 	}
 }
 
+// ntfyDetailMeaning is the one-line meaning of a push-detail rung — the single
+// source the card's `detail` fact and the modal's field help both render, so the
+// tile and the modal cannot disagree.
+func ntfyDetailMeaning(detail string) string {
+	switch ntfyDetail(detail) {
+	case string(notify.DetailSummary):
+		return "hides the detail and the buttons"
+	case string(notify.DetailTerse):
+		return "names nothing"
+	default:
+		return "names the workspace, host and error, with Approve/Reject"
+	}
+}
+
 // ntfyCardVM builds the leg's render state for the /system card and the modal:
 // the judgment, the topic label, the configured URL, the server class, the
 // Detail setting, and the keys' presence (the token is the one that is sealed).

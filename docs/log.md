@@ -12,6 +12,11 @@ Newest first.
   their numbers and meaning; the label `ADR NNNN` is now `Decision NNNN` and prose says
   "record" instead of "ADR". Every path, link, and pointer was retargeted; no decision's
   meaning changed — this renames the collection and its term only.
+- **Correction**: The system-management design record's rule "server class
+  (public / self-hosted) is a fact about the URL, not the URL" is superseded.
+  The URL became an ordinary setting, not a sealed secret, in the modal round, so
+  the ntfy card may name it (a `server` fact). The topic figure's
+  `topic · {class} server` note still carries the private-vs-public fact.
 
 ## 2026-10-13
 

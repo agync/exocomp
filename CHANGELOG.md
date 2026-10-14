@@ -14,6 +14,18 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the ntfy tile shows its channel again
+
+- **The ntfy card carries a facts block again.** The tile names the configured
+  server URL (ellipsized so a long URL truncates rather than wraps), the token's
+  presence (`sealed`/`missing`), and the push-detail rung with its one-line
+  meaning. The URL and topic are ordinary settings, so naming the URL is safe;
+  only the token stays presence-only. REFUSED shows the same block (`token`
+  reads `missing`) beside its sentence; OFF shows its sentence alone.
+- **The detail meaning has one source.** The card's `detail` fact and the
+  modal's field help both render from one mapping, so the tile and the modal
+  cannot disagree.
+
 ## 2026-10-14 — the leg tile head wraps instead of clipping
 
 - **The state chip no longer runs under the tile verbs.** At a narrow card the
