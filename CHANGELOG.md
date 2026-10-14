@@ -14,6 +14,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — review fixes: ntfy token, back link, secret log
+
+- **An ON ntfy channel no longer alarms about a missing token.** A self-hosted
+  channel is legal without one, so the tile's token fact branches on the
+  judgment: `sealed` when set, a quiet `none` on ON, and the fail-tinted
+  `missing` only on REFUSED, where the absent token is the cause.
+- **The `/system` leg pages name their parent.** `/system/deadman` and
+  `/system/litestream` set the app-bar back label to `System`, so the link
+  announces "Back to System" rather than the job-detail fallback's "Back to
+  jobs".
+- **The secret-change log names the honest verb.** A successful change to an
+  operator-supplied secret logs `web: secret replace`; only a generated secret
+  logs `web: secret rotate`. The route, handler and store method keep their
+  compatibility names.
+
 ## 2026-10-14 — the sidebar toggle stops reading as "back"
 
 - **The rail toggle is a panel mark, not a back chevron.** The sidebar's
