@@ -13,11 +13,26 @@ Newest first.
   release-please owns later versions. The acceptance bar stays met and gate-tested —
   `test/e2e/v1-acceptance-gate.sh` is the evidence — so only the label moved. The
   table in [decisions/index.md](decisions/index.md) gains its row.
-- **Correction of fact**: [design/v1-acceptance.md](design/v1-acceptance.md) read as
-  a shipped-release page. It gains a status note separating the met bar from the
-  withdrawn label, and its sequencing line no longer says "declare v1.0". The
-  2026-08-22 result section the page once carried was dropped by the 2026-08-24
-  page rewrite; the gate script, not the page, is the record.
+- **Removed**: the development-process pages, pruned as material that served the
+  build rather than the operator. Gone from [design/](design/index.md):
+  `delivery.md` (milestones with effort), `v1.1-roadmap.md` (the ranked backlog),
+  `v1-acceptance.md` (the acceptance bar — its gate,
+  `test/e2e/v1-acceptance-gate.sh`, stays as the evidence), `ui-brief.md` and
+  `tui-brief.md` (superseded by `web-system.md` and `tui-system.md`),
+  `web-ui-renders.md`, `first-run-walkthrough.html`, `personas.md`,
+  `bootstrap-first.md` (the shipped half is [operations/ansible-first-bootstrap.md](operations/ansible-first-bootstrap.md)),
+  `amendments.md` and `requirements.md` (their substance is the operations pages
+  that implement it). The `design/reference/tui/` handoff inputs go with them;
+  `tui-system.md` is the distilled page. Every reference in code, decisions, and
+  operations was retargeted rather than left dangling.
+- **Removed**: 30 screenshots under `design/assets/` (5.3 MB of the section's
+  8.3 MB) that no page, README, or code referenced.
+- **Correction of fact**: `okf validate` reports image links as `okf/links/broken`
+  because it resolves every link target as a concept id, and an asset is not a
+  concept. The 21 findings are [design/gallery.md](design/gallery.md) plus the
+  guide pages' asset references; the renderer resolves both link forms to the same
+  correct path, so no link is actually broken. The count fell from 29 to 21 only
+  because `web-ui-renders.md` was pruned with the pages above.
 
 ## 2026-10-14
 

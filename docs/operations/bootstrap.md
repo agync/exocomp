@@ -78,7 +78,7 @@ that turns the recovery chain from a design claim into an observed fact.
 The wizard seeds an `exocomp-self` project containing the Quadlet unit, the daemon config,
 and a `self-update` runbook, so updating the control plane is a normal approval-gated,
 logged, rollback-able job — and every upgrade takes a mandatory pre-upgrade snapshot first
-([amendment 3](../design/amendments.md#3-upgrade-and-rollback-of-the-control-plane-itself)).
+([upgrade and rollback](upgrade.md)).
 
 The *recovery* primitive is deliberately **not** "run the control plane". It is the
 separately versioned `recovery.sh`. Self-update is opt-in and never automatic: an unattended

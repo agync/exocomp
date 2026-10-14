@@ -198,7 +198,7 @@ func sensitiveOutputValue(raw json.RawMessage) []byte {
 // passphrase — keeps only the declared, NON-sensitive outputs, shapes them into
 // an Ansible inventory, and writes it to outPath (0600, parent 0700).
 //
-// The governing rule (docs/design/v1-acceptance.md): the inventory is built
+// The governing rule (docs/operations/terraform-ansible-handoff.md): the inventory is built
 // from declared output blocks, never the state file, and a sensitive-marked
 // output is dropped before anything is written or emitted. The raw tfstate is
 // never read here; `tofu output` returns only what the module declared.

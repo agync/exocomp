@@ -15,8 +15,7 @@ Accepted · 2026-08-21
 ## Context
 
 The brief is six jobs at homelab scale (one operator, a handful of hosts), each of which
-must survive two hard constraints — trivial bootstrap and trivial disaster recovery. See
-[requirements](../design/requirements.md).
+must survive two hard constraints — trivial bootstrap and trivial disaster recovery.
 
 Three architectures were designed independently and then reviewed adversarially; the
 review found 30 enumerated gaps (sections A–H). The critique that produced them is
@@ -60,8 +59,10 @@ The single hard rule: the core never reimplements a tool that exists. It contain
 backup engine, no Terraform executor, no Ansible executor, no rules DSL of its own
 invention, and no database server.
 
-The detail-level flaws the review found in thin-core are closed by the
-[amendments](../design/amendments.md), which are normative over the candidate document.
+The detail-level flaws the review found in thin-core are closed by the design
+amendments, which are normative over the candidate document. Their substance is
+carried by the operations pages that implement it — the offline caches, the
+upgrade and rollback choreography, and the vault wiring.
 
 ## Consequences
 

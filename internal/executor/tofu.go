@@ -144,7 +144,7 @@ type TofuOptions struct {
 	// not only the intended cluster (docs/operations/serve.md).
 	ExtraPorts []int
 	// OfflineProviders restricts provider resolution to PluginCacheDir alone:
-	// no registry, no network (design/amendments.md item 8). Set it only once
+	// no registry, no network (the offline-guarantee amendment). Set it only once
 	// the cache is known warm; a provider missing from it then fails the run
 	// instead of falling back to the network. Requires PluginCacheDir.
 	OfflineProviders bool
@@ -162,7 +162,7 @@ type TofuOptions struct {
 	// falling back to disk only when tmpfs is unusable — StageRunSecretFiles,
 	// ConfigureRunSecretStaging) and its env rewritten to that path, for a
 	// tool (kubectl/helm, an exec-auth provider) that wants a KUBECONFIG file
-	// (Phase 3, docs/design/bootstrap-first.md). The value never touches argv
+	// (bootstrap-first phase 3). The value never touches argv
 	// or an event, and the file is gone once this Run returns.
 	RunSecretFiles []string
 	// InventoryOut, when set and an apply succeeds, is the path this run writes
@@ -170,7 +170,8 @@ type TofuOptions struct {
 	// outputs captured by `tofu output -json` at apply end. It is the
 	// producer half of the Terraform->Ansible handoff. Empty skips capture, so
 	// a plain apply is unchanged. The raw tfstate is never the source —
-	// declared outputs only, sensitive ones dropped (v1-acceptance.md).
+	// declared outputs only, sensitive ones dropped
+	// (docs/operations/terraform-ansible-handoff.md).
 	InventoryOut string
 	// OutputSealer, when set, seals each `sensitive = true` tofu output into the
 	// envelope as a run-secret named tf-output/<workspace>/<name> instead of

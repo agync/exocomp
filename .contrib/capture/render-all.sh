@@ -1,6 +1,6 @@
 #!/bin/sh
 # Promote raw shots into the committed renders: annotate the artboard band the
-# originals carry, and write the eight files docs/design/web-ui-renders.md links.
+# originals carry, and write the eight committed web renders.
 #
 #   render-all.sh [--shots DIR] [--out DIR]
 set -eu

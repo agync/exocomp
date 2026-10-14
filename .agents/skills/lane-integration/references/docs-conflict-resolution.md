@@ -24,7 +24,7 @@ its trailing relative link line.
 
 ## The roadmap under `docs/design/` — union the rows
 
-Currently `docs/design/v1.1-roadmap.md`. Two lanes each add or tick a row.
+Currently `CHANGELOG.md` and its `docs/operations/CHANGELOG.md` mirror. Two lanes each add a row.
 
 Resolution: **union the rows** — keep every row both sides added, and if both
 edited the *status* of the same existing row, that is no longer mechanical:

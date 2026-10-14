@@ -131,7 +131,7 @@ it; single use is the approval row's state, not the token's secrecy over time.
 Both the token and its stored hash are compared in constant time, and the row
 stores only the hash — a copy of the database approves nothing.
 
-Against the [approval surface contract](../design/ui-brief.md):
+Against the approval surface contract:
 
 1. **Terse lock screen** — the notification is a count and a TTL. It names no
    host, workspace, playbook, or resource.

@@ -31,7 +31,7 @@ type Workspace struct {
 	// not only the intended one (docs/operations/serve.md).
 	ExtraEgressPorts []int
 	// OfflineProviders resolves tofu providers from the local filesystem mirror
-	// alone, with no registry access (docs/design/amendments.md item 8). False
+	// alone, with no registry access (the offline-guarantee amendment). False
 	// is the default posture: a workspace without the flag keeps the built-in
 	// online resolution. The executor requires a plugin cache when offline is
 	// set, which every exocomp run has.

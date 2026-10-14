@@ -18,7 +18,7 @@ import (
 )
 
 // TestTofuPlanRunsOfflineFromPluginCache proves the §3.8 offline-DR property
-// (design/amendments.md item 8) for OpenTofu: one online apply warms
+// (the offline-guarantee amendment) for OpenTofu: one online apply warms
 // PluginCacheDir with the hashicorp/local provider, and a later plan run
 // with OfflineProviders set and no network access at all still succeeds.
 //

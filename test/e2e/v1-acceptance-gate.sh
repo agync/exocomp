@@ -1,7 +1,7 @@
 #!/bin/sh
-# v1.0 acceptance gate: the five stories that gate v1.0 (docs/design/v1-acceptance.md),
-# each proven by its own end-to-end gate. This runner sequences them and reports a
-# single verdict. Any gate that SKIPs (a tool absent) is reported, not failed.
+# Acceptance gate: the five core stories, each proven by its own end-to-end gate.
+# This runner sequences them and reports a single verdict. Any gate that SKIPs (a
+# tool absent) is reported, not failed.
 #
 #   Story 1  "here is my git repo, go run my playbook regularly"   -> m3d-story1-gate.sh
 #   Story 2  "on event/alert, run X"                               -> m3d-story2-gate.sh

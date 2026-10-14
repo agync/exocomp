@@ -21,7 +21,7 @@ import (
 
 // collectionsCacheDir is where vendored ansible collections live inside the
 // data dir. The ansible driver appends it to ANSIBLE_COLLECTIONS_PATH
-// (design/amendments.md item 8), so a playbook resolves them without
+// (the offline-guarantee amendment), so a playbook resolves them without
 // Ansible Galaxy being reachable.
 const collectionsCacheDir = "cache/collections"
 

@@ -15,13 +15,13 @@ import (
 
 // chunkSize bounds one part of a chunked git-leg snapshot. 90 MB keeps every
 // part under the 100 MB single-file limit GitHub and most git hosts enforce
-// (docs/design/amendments.md item 2). It is a var, not a const, so a test can
+// (the chunking amendment). It is a var, not a const, so a test can
 // shrink it instead of generating a genuinely huge fixture.
 var chunkSize int64 = 90 * 1024 * 1024
 
 // repoSizeGuard is the bare repository size, as repoDU sees the objects
 // directory, past which the git leg refuses rather than growing a remote
-// nobody sized for it (docs/design/amendments.md item 2).
+// nobody sized for it (the chunking amendment).
 const repoSizeGuard int64 = 4 * 1024 * 1024 * 1024
 
 // partsSuffix names the manifest that lists one snapshot's parts, appended to

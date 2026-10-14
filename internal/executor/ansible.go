@@ -133,8 +133,8 @@ type AnsibleOptions struct {
 	// Empty uses the system temp dir.
 	PrivateDirRoot string
 	// CollectionsPath is appended to ANSIBLE_COLLECTIONS_PATH so a run also
-	// searches collections vendored by `playbook vendor` (design/amendments.md
-	// item 8) without discarding a path the operator already set. Empty
+	// searches collections vendored by `playbook vendor` (the offline-guarantee
+	// amendment) without discarding a path the operator already set. Empty
 	// leaves ANSIBLE_COLLECTIONS_PATH exactly as inherited.
 	CollectionsPath string
 	// Interpreter, when set, is the Python the controller's modules execute

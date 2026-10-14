@@ -326,7 +326,7 @@ func newWorkspaceOfflineCmd() *cobra.Command {
 		Short: "Resolve a workspace's tofu providers from the local mirror only",
 		Long: "Flips the workspace's offline-provider posture. On makes every tofu run " +
 			"resolve providers from the local filesystem mirror alone, with no registry " +
-			"access — the amendment-8 offline guarantee (docs/design/amendments.md). The " +
+			"access — the amendment-8 offline guarantee. The " +
 			"mirror is populated by the first online init and kept warm by scheduled " +
 			"providers-lock runs, so set this only once the cache is known warm; a " +
 			"provider missing from it then fails the run rather than falling back to " +

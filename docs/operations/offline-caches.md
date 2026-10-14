@@ -9,7 +9,7 @@ tags: [operations, offline, ansible, terraform]
 # Offline dependency caches
 
 Disaster recovery must not depend on Ansible Galaxy or `registry.opentofu.org` being
-reachable (see [the design amendments](../design/amendments.md)). Two caches, both inside
+reachable. Two caches, both inside
 the 0700 data dir and both covered by the ordinary backup snapshot, make that true.
 
 ## Ansible collections

@@ -21,7 +21,7 @@ import (
 const offlineChildVar = "EXOCOMP_OFFLINE_TEST_CHILD"
 
 // TestAnsiblePlaybookRunsOfflineFromVendoredCollection proves the §3.8
-// offline-DR property (design/amendments.md item 8) for Ansible: a
+// offline-DR property (the offline-guarantee amendment) for Ansible: a
 // collection vendored once while online is usable by a playbook run with no
 // network access at all, via CollectionsPath alone.
 //
