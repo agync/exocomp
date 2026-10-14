@@ -14,6 +14,14 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — one authority for the job field roster
+
+- **The agent-interface design doc defers on job fields.** §3.2 listed them inline, already
+  stale — it omitted `source`, `progress`, `plan`, `expires_at`, and `privileged`. It now points
+  at [machine-output.md](machine-output.md) as the authoritative field reference and keeps only
+  the contract's shape and the values-free discipline, so a view's fields are documented once
+  instead of drifting across two lists.
+
 ## 2026-10-14 — the CLI text marks the unsandboxed run
 
 - **`jobs get` and `jobs list` name a privileged run.** The JSON face already carried

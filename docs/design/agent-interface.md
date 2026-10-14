@@ -152,10 +152,11 @@ One shared marshaller under golden tests is what keeps the three faces byte-iden
 - `kind` names the payload so an agent can dispatch without guessing.
 
 **Values-free and low-token**, following the drift precedent (tofu_drift.go): emit identifiers,
-states, keys, counts — never attribute values, ciphertext, or full stdout. A job is
-`{id, runbook, kind, trigger, state, exit_code, partial, queued_at, started_at, finished_at}`;
-the log body is fetched separately, cursor-paged. `omitempty` everywhere, so a quiet system
-returns a tiny document.
+states, keys, counts — never attribute values, ciphertext, or full stdout. The log body is
+fetched separately, cursor-paged. `omitempty` everywhere, so a quiet system returns a tiny
+document. The field roster per kind is not pinned here: [Machine-readable
+output](../operations/machine-output.md) is the authoritative field reference, so a view's
+fields are documented once, not mirrored into a design doc that would drift.
 
 **Deterministic ordering.** Sort by a stable key exactly as the store already orders
 (`ListJobs` oldest-first, internal/store/job.go:216; tokens by id). Never map-iteration order.
