@@ -217,7 +217,9 @@ When ssh-to-self is not possible and the run genuinely needs host access, two wa
    run that also names a runner is refused rather than run uncapped.
 
 Both are visible after the fact: the job detail wears an `unsandboxed` chip,
-the jobs list names it beside the source, the log opens with the attributed
+the jobs list names it beside the source, the rerun dialog states it and starts
+the escalation off, the TUI ledger marks the row, `jobs get` and
+`jobs list --output json` carry `privileged`, the log opens with the attributed
 enqueue band, and `exocomp doctor` reports the privilege posture as a finding.
 Reaching the host over SSH (option 1's remote half) is the sandbox-preserving
 default; `--privileged` is for the run that must be unsandboxed on the

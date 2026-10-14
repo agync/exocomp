@@ -14,6 +14,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the privilege posture reaches the rerun dialog, the TUI, and the API
+
+- **The rerun dialog names the original's posture and starts the escalation off.** Rerunning a
+  privileged job silently de-escalated it: the v2 rewrite dropped the toggle, so a scope that
+  needs in-sandbox sudo failed with no way to re-escalate from the UI. The dialog now states
+  that the job ran `unsandboxed` and carries the "Run unsandboxed (privileged)" toggle
+  unchecked — re-escalating is a deliberate act, and the handler still never trusts the client
+  to keep an escalation.
+- **The TUI jobs table marks the unsandboxed run.** The SOURCE cell carries `· unsandboxed`
+  (fail-tinted) on a privileged row at both the 120 full and 80 degraded widths. The TUI has no
+  job detail, so the ledger is the only place the posture shows.
+- **`jobs get` and `jobs list --output json` carry `privileged`.** A `privileged: true` field
+  on a run that opted out of the kernel sandbox (absent on a sandboxed run) lets an agent
+  reading a job over the API see the posture. It is an additive optional field, so the
+  envelope's `schema_version` stays `1`, the same as the earlier `progress` addition.
+
 ## 2026-10-14 — sandbox denials name their fix, ad-hoc runs get `--ssh-identity`
 
 - **A denied ssh key read is classified.** A sandboxed ansible run that fails because the

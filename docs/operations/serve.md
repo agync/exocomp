@@ -66,9 +66,11 @@ work that genuinely needs host access, and it is operator-only (the web and API 
 a readonly or approve token; the local CLI operator is already trusted), off by default, and
 audited: the marker is persisted on the job row, an attributed ledger event records who asked,
 and the queue records the unsandboxed execution. The read surfaces show it: the job detail's
-run card wears an `unsandboxed` chip, the jobs list names it beside the source, the log opens
-with the attributed enqueue band, and `exocomp doctor` reports the privilege posture — how many
-runs in the last 30 days ran unsandboxed — as a finding. A privileged job can reach the data dir,
+run card wears an `unsandboxed` chip, the jobs list names it beside the source, the rerun
+dialog states it and starts the escalation off, the TUI ledger marks the row, `jobs get` and
+`jobs list --output json` carry `privileged`, the log opens with the attributed enqueue band,
+and `exocomp doctor` reports the privilege posture — how many runs in the last 30 days ran
+unsandboxed — as a finding. A privileged job can reach the data dir,
 `host.key`, `keyring.age`, and the database, and mint tokens via the local CLI — the same
 trusted-playbook posture the `disabled` tier documents, so never run an untrusted playbook
 privileged (see [security/threat-model.md](../security/threat-model.md)).

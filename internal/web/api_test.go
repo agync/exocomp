@@ -589,3 +589,31 @@ func TestAPIJobsFilterAcceptsDegradedState(t *testing.T) {
 		t.Fatalf("GET /api/v1/jobs?state=bogus status = %d, want 400 (body: %s)", code, body)
 	}
 }
+
+// TestAPIJobPrivilegedField is the wire gate: a job that ran unsandboxed
+// carries privileged:true in its job.get body over the API, so an agent reading
+// a job can see it; a sandboxed job omits the field. Dropping the projection
+// must red.
+func TestAPIJobPrivilegedField(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	token := h.mint(t, "agent", "readonly")
+
+	priv := seedJobWithRecap(t, h, store.StateSucceeded, 0, nil, nil,
+		store.JobArgs{Argv: []string{"/bin/true"}, Privileged: true})
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/jobs/"+itoa64(priv.ID), token)
+	if code != http.StatusOK {
+		t.Fatalf("privileged job get = %d, want 200 (%s)", code, body)
+	}
+	if !strings.Contains(body, `"privileged":true`) {
+		t.Errorf("privileged job get missing privileged:true:\n%s", body)
+	}
+
+	plain := seedJobWithRecap(t, h, store.StateSucceeded, 0, nil, nil,
+		store.JobArgs{Argv: []string{"/bin/true"}})
+	_, _, plainBody := bearerGet(t, ts.URL, "/api/v1/jobs/"+itoa64(plain.ID), token)
+	if strings.Contains(plainBody, `"privileged"`) {
+		t.Errorf("sandboxed job get must omit privileged:\n%s", plainBody)
+	}
+}

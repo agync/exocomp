@@ -68,7 +68,12 @@ type JobView struct {
 	// Source is the registered source this job ran from (job.Args.Source),
 	// unlike the rest of Args it is a display fact, not operator-supplied
 	// material, so it is projected here rather than omitted with the row.
-	Source         string           `json:"source,omitempty"`
+	Source string `json:"source,omitempty"`
+	// Privileged reports that the run opted out of the kernel sandbox
+	// (job.Args.Privileged). Like Source it is a display fact, not
+	// operator-supplied material: an agent reading a job over the API can see
+	// it ran unsandboxed.
+	Privileged     bool             `json:"privileged,omitempty"`
 	State          string           `json:"state"`
 	ExitCode       *int             `json:"exit_code,omitempty"`
 	Partial        bool             `json:"partial,omitempty"`
@@ -93,6 +98,7 @@ func NewJobView(j store.Job) JobView {
 		Kind:           j.Kind,
 		Trigger:        j.Trigger,
 		Source:         j.Args.Source,
+		Privileged:     j.Args.Privileged,
 		State:          string(j.State),
 		ExitCode:       j.ExitCode,
 		Partial:        j.Partial,

@@ -48,6 +48,42 @@ func TestGoldenJobList(t *testing.T) {
 	}
 }
 
+// TestGoldenJobPrivileged pins the additive privileged field: it appears only
+// on a job that ran unsandboxed, beside the source display fact, and its
+// absence on a sandboxed job leaves TestGoldenJobList's bytes unchanged. An
+// additive optional field is not a schema break — the progress field was added
+// the same way (internal/wire/progress.go) without a SchemaVersion bump.
+func TestGoldenJobPrivileged(t *testing.T) {
+	job := store.Job{
+		ID:       7,
+		Runbook:  "web",
+		Kind:     "ansible",
+		Trigger:  "manual",
+		State:    store.JobState("succeeded"),
+		QueuedAt: at("2026-01-02T03:04:05Z"),
+		Args:     store.JobArgs{Source: "tree", Privileged: true},
+	}
+	got, err := wire.MarshalSuccess(wire.KindJob, wire.NewJobView(job))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"schema_version":1,"kind":"job.get","data":{"id":7,"runbook":"web","kind":"ansible","trigger":"manual","source":"tree","privileged":true,"state":"succeeded","queued_at":"2026-01-02T03:04:05Z"}}` + "\n"
+	if string(got) != want {
+		t.Fatalf("privileged job bytes drift:\n got: %s\nwant: %s", got, want)
+	}
+
+	// A sandboxed job omits the field entirely (omitempty), so the quiet
+	// default stays a tiny document.
+	job.Args.Privileged = false
+	got, err = wire.MarshalSuccess(wire.KindJob, wire.NewJobView(job))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(got), "privileged") {
+		t.Fatalf("sandboxed job must omit privileged: %s", got)
+	}
+}
+
 func TestGoldenEmptyList(t *testing.T) {
 	got, err := wire.MarshalSuccess(wire.KindJobList, wire.NewJobList(nil))
 	if err != nil {
