@@ -202,15 +202,6 @@ a:focus-visible, button:focus-visible {
   flex-shrink: 0;
 }
 
-.brand-version {
-  font-size: 11px;
-  color: var(--ink-500);
-  font-weight: 500;
-  border: 1px solid var(--hairline);
-  padding: 1px 6px;
-  border-radius: var(--radius-chip);
-}
-
 .nav-links {
   display: flex;
   align-items: center;
@@ -1092,7 +1083,6 @@ main {
 }
 
 @media (max-width: 480px) {
-  .brand-version { display: none; }
   .btn-primary { padding: 6px 12px; font-size: 13px; }
   .header-actions { gap: 6px; }
   .hero-title { font-size: 32px; }
