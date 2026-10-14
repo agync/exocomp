@@ -457,6 +457,13 @@ func (a *Ansible) vaultEntries() []VaultEntry {
 // artifact that carries no inline --inventory), whose hosts own their own
 // interpreter, never the controller's venv path.
 func localOnlyTarget(argv []string) bool {
+	inventories := inventoryArgs(argv)
+	return len(inventories) == 1 && inventories[0] == "localhost,"
+}
+
+// inventoryArgs returns every inventory value argv names through -i/--inventory,
+// in the order they appear.
+func inventoryArgs(argv []string) []string {
 	var inventories []string
 	for i := 0; i < len(argv); i++ {
 		switch {
@@ -470,7 +477,27 @@ func localOnlyTarget(argv []string) bool {
 			inventories = append(inventories, argv[i][2:])
 		}
 	}
-	return len(inventories) == 1 && inventories[0] == "localhost,"
+	return inventories
+}
+
+// localConnectionTarget reports whether argv reaches the controller itself over
+// a local connection: an explicit `localhost,` inline inventory (localOnlyTarget),
+// or an ad-hoc run whose sole host pattern is a loopback name and names no
+// inventory. Only then does become's sudo run inside the sandbox rather than on
+// a remote host, so the elevation hint can name the connection type as the cause
+// instead of blaming the task.
+func localConnectionTarget(argv []string) bool {
+	if localOnlyTarget(argv) {
+		return true
+	}
+	if len(argv) < 2 || filepath.Base(argv[0]) != AnsibleAdhocBinary {
+		return false
+	}
+	switch argv[1] {
+	case "localhost", "127.0.0.1", "::1":
+		return len(inventoryArgs(argv)) == 0
+	}
+	return false
 }
 
 // writePrivate fills the private directory and returns the arguments pointing

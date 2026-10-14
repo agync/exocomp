@@ -199,29 +199,50 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	drv := NewAnsible(opts)
 	drv.inner = NewSandbox(KindAnsible, sb, drv.inner)
 	// A failed run may be the sandbox denying become's sudo (the loader-denied
-	// /usr/libexec/sudo) — enforcement, not a broken host. The observer scans
-	// every emitted event for the signature so the driver can recognize it after
-	// the process exits and append the operator's action to the failure. The
-	// signature lands on stdout (LevelInfo) in the real ansible run and on
-	// stderr in other tools, so the observer does not care which stream carried
-	// it. A privileged run left at runUnsandboxed above, so only a run the
-	// sandbox actually wrapped is ever enriched.
-	hint := &elevationHintObserver{inner: sink}
-	res, err := drv.Run(ctx, spec, hint)
-	if err == nil && res.ExitCode != 0 && hint.deniedSignature() {
-		emitElevationHint(sink)
+	// /usr/libexec/sudo) or an ssh identity key it cannot read — enforcement,
+	// not a broken host. The observer scans every emitted event for either
+	// signature so the driver can recognize it after the process exits and
+	// append the operator's action to the failure. A signature lands on stdout
+	// (LevelInfo) in the real ansible run and on stderr in other tools, so the
+	// observer does not care which stream carried it. A privileged run left at
+	// runUnsandboxed above, so only a run the sandbox actually wrapped is ever
+	// enriched.
+	obs := &sandboxDenialObserver{inner: sink}
+	res, err := drv.Run(ctx, spec, obs)
+	if err == nil && res.ExitCode != 0 {
+		emitSandboxHints(sink, spec, obs.denials())
 	}
 	return res, err
 }
 
 // elevationHintCopy is the operator-facing line appended to a sandboxed run
-// whose failure is the sandbox denying become's sudo. The loader-denied sudo
-// is correct enforcement (invariant 6), not a broken host; the hint names the
-// operator's two ways out. It is diagnosis copy only — the un-granted sudo
-// stays denied.
-const elevationHintCopy = "the sandbox denied privilege escalation (sudo) — re-run with " +
-	"--privileged (operator-gated, unsandboxed) or run the elevated part outside " +
-	"the agent surface"
+// whose failure is the sandbox denying become's sudo. The loader-denied sudo is
+// correct enforcement (invariant 6), not a broken host. The sandbox only denies
+// the escalation when ansible's connection is local — a remote target runs its
+// own sudo on the far side — so the hint leads with the sandbox-preserving fix
+// and names --privileged only as the last resort. It is diagnosis copy only:
+// the un-granted sudo stays denied.
+const elevationHintCopy = "the sandbox denied privilege escalation (sudo) — become's " +
+	"sudo ran inside the sandbox; target the host over SSH instead of a local " +
+	"connection so the escalation runs on the far side, and only as a last resort " +
+	"re-run with --privileged (operator-gated, unsandboxed)"
+
+// elevationLocalHintCopy is elevationHintCopy's local-connection twin: the run's
+// inventory is the controller itself over a local connection, so the connection
+// type — not the task — is the cause, and the fix is to reach the host over SSH.
+const elevationLocalHintCopy = "the sandbox denied privilege escalation (sudo) — this " +
+	"run reaches the host over a local connection, so become's sudo executed inside " +
+	"the sandbox; point the inventory at the host over SSH (ssh-to-self) so the " +
+	"escalation runs on the far side, and only as a last resort re-run with " +
+	"--privileged (operator-gated, unsandboxed)"
+
+// sshIdentityHintCopy is the operator-facing line appended to a sandboxed run
+// whose failure is the sandbox denying a read of an ssh identity key. The grant
+// is per-run and single-file; a run that already declared one is not offered the
+// hint again, because the key it named is not the one that failed.
+const sshIdentityHintCopy = "the sandbox denied reading an ssh identity key — grant " +
+	"the key's path with --ssh-identity <path> (a single-file read grant, never its " +
+	"directory) and re-run"
 
 // becomeDenied reports whether one emitted message carries the signature of the
 // sandbox refusing become's sudo: a line naming sudo whose shared-object loader
@@ -232,42 +253,69 @@ func becomeDenied(msg string) bool {
 	return strings.Contains(msg, "sudo") && strings.Contains(msg, "cannot open shared object file")
 }
 
-// elevationHintObserver forwards every event unchanged and remembers whether
-// any of them carried the become-denied signature. It keeps only the flag, not
-// the lines: ansible puts the signature on stdout, which is the run's bulk, so
-// retaining stdout to scan it afterwards would grow memory with the run's
-// output. The flag is set under the mutex because Emit is called from the
-// stdout and stderr scanners concurrently.
-type elevationHintObserver struct {
-	inner  EventSink
-	mu     sync.Mutex
-	denied bool
+// sshKeyDenied reports whether one emitted message carries the signature of ssh
+// failing to load an identity key: ssh's own key-load denial, its generic
+// publickey failure, and its missing-identity line. The three travel together
+// because a sandbox that denies the read surfaces as whichever line the ssh
+// version reaches first. Like becomeDenied it is a diagnosis, never the verdict
+// (invariant 3).
+func sshKeyDenied(msg string) bool {
+	return (strings.Contains(msg, "Load key") && strings.Contains(msg, "Permission denied")) ||
+		strings.Contains(msg, "Permission denied (publickey)") ||
+		strings.Contains(msg, "no such identity")
 }
 
-func (o *elevationHintObserver) Emit(e Event) {
+// sandboxDenial records which sandbox denial a failed run's output carried.
+type sandboxDenial struct {
+	elevation bool
+	keyRead   bool
+}
+
+// sandboxDenialObserver forwards every event unchanged and remembers which
+// denial signatures any of them carried. It keeps only the flags, not the
+// lines: ansible puts the signatures on stdout, which is the run's bulk, so
+// retaining stdout to scan it afterwards would grow memory with the run's
+// output. The flags are set under the mutex because Emit is called from the
+// stdout and stderr scanners concurrently.
+type sandboxDenialObserver struct {
+	inner EventSink
+	mu    sync.Mutex
+	seen  sandboxDenial
+}
+
+func (o *sandboxDenialObserver) Emit(e Event) {
+	o.mu.Lock()
 	if becomeDenied(e.Msg) {
-		o.mu.Lock()
-		o.denied = true
-		o.mu.Unlock()
+		o.seen.elevation = true
 	}
+	if sshKeyDenied(e.Msg) {
+		o.seen.keyRead = true
+	}
+	o.mu.Unlock()
 	o.inner.Emit(e)
 }
 
-func (o *elevationHintObserver) deniedSignature() bool {
+func (o *sandboxDenialObserver) denials() sandboxDenial {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.denied
+	return o.seen
 }
 
-// emitElevationHint appends the operator's action to a failed sandboxed run
-// whose stderr carried the become-denied signature. The level matches the
-// failure it explains.
-func emitElevationHint(sink EventSink) {
-	sink.Emit(Event{
-		Ts:    time.Now().UTC(),
-		Level: LevelError,
-		Msg:   elevationHintCopy,
-	})
+// emitSandboxHints appends the operator's action to a failed sandboxed run whose
+// output carried a denial signature. Each hint is emitted at the failure's own
+// level. A run that declared its own ssh identity is not offered the key grant
+// again: the declared key is not the one that failed.
+func emitSandboxHints(sink EventSink, spec Spec, d sandboxDenial) {
+	if d.elevation {
+		msg := elevationHintCopy
+		if localConnectionTarget(spec.Argv) {
+			msg = elevationLocalHintCopy
+		}
+		sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelError, Msg: msg})
+	}
+	if d.keyRead && len(spec.SSHIdentityFiles) == 0 {
+		sink.Emit(Event{Ts: time.Now().UTC(), Level: LevelError, Msg: sshIdentityHintCopy})
+	}
 }
 
 // collectionsReadGrants splits a joined ANSIBLE_COLLECTIONS_PATH value into the

@@ -54,6 +54,19 @@ func fakeAnsiablePlaybook(t *testing.T, dir, script string) string {
 // down the unsandboxed path the driver honours for a --privileged job.
 func runSandboxedEligible(t *testing.T, script string, privileged bool) (Result, *collectSink) {
 	t.Helper()
+	return runSandboxedSpec(t, script, Spec{
+		Kind:       KindAnsible,
+		Argv:       AnsibleArgv(filepath.Join(t.TempDir(), "site.yml"), ""),
+		Privileged: privileged,
+	})
+}
+
+// runSandboxedSpec is runSandboxedEligible's general form: it runs the fake
+// playbook through the real sandboxed driver with the spec under test, so a
+// test can vary the argv (a local inventory, an ad-hoc pattern) and the
+// declared identity files without rebuilding the harness.
+func runSandboxedSpec(t *testing.T, script string, spec Spec) (Result, *collectSink) {
+	t.Helper()
 	data := t.TempDir()
 	fake := filepath.Join(t.TempDir(), "fake")
 	if err := os.Mkdir(fake, 0o700); err != nil {
@@ -70,11 +83,7 @@ func runSandboxedEligible(t *testing.T, script string, privileged bool) (Result,
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	var sink collectSink
-	res, err := drv.Run(ctx, Spec{
-		Kind:       KindAnsible,
-		Argv:       AnsibleArgv(filepath.Join(t.TempDir(), "site.yml"), ""),
-		Privileged: privileged,
-	}, &sink)
+	res, err := drv.Run(ctx, spec, &sink)
 	if err != nil {
 		t.Fatalf("sandboxed ansible run: %v", err)
 	}
@@ -207,6 +216,180 @@ func TestBecomeDeniedMatchesOnlyTheSignature(t *testing.T) {
 	} {
 		if got := becomeDenied(tc.msg); got != tc.want {
 			t.Errorf("%s: becomeDenied = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// keyDeniedLine is the line ssh prints when the sandbox refuses the read of an
+// identity key it was told to load — the key-read signature the hint fires on.
+const keyDeniedLine = `Load key "/home/op/.ssh/id_ed25519": Permission denied`
+
+// TestSandboxedAnsibleKeyReadHintFiresOnStdoutSignature: a failed sandboxed run
+// whose output carries the key-read signature gains the --ssh-identity hint.
+// Dropping the sshKeyDenied check in emitSandboxHints makes this red.
+func TestSandboxedAnsibleKeyReadHintFiresOnStdoutSignature(t *testing.T) {
+	t.Parallel()
+
+	script := "echo '" + keyDeniedLine + "'\nexit 1\n"
+	res, sink := runSandboxedEligible(t, script, false)
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if !sink.has(sshIdentityHintCopy) {
+		t.Errorf("a failed sandboxed run whose output carried the key-read signature gained no hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleKeyReadHintFiresOnStderrSignature: the signature on
+// stderr fires too; the channel varies with the tool, so the match must not
+// depend on which stream carried it.
+func TestSandboxedAnsibleKeyReadHintFiresOnStderrSignature(t *testing.T) {
+	t.Parallel()
+
+	script := "echo '" + keyDeniedLine + "' >&2\nexit 1\n"
+	res, sink := runSandboxedEligible(t, script, false)
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if !sink.has(sshIdentityHintCopy) {
+		t.Errorf("a failed sandboxed run with the key-read signature gained no hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleKeyReadHintSuppressedWhenIdentityDeclared: a run that
+// already declared --ssh-identity holds the grant, so the key it named is not
+// the one that failed and the hint is not repeated. Removing the
+// len(spec.SSHIdentityFiles) == 0 guard makes this red.
+func TestSandboxedAnsibleKeyReadHintSuppressedWhenIdentityDeclared(t *testing.T) {
+	t.Parallel()
+
+	script := "echo '" + keyDeniedLine + "'\nexit 1\n"
+	res, sink := runSandboxedSpec(t, script, Spec{
+		Kind:             KindAnsible,
+		Argv:             AnsibleArgv(filepath.Join(t.TempDir(), "site.yml"), ""),
+		SSHIdentityFiles: []string{filepath.Join(t.TempDir(), "id_ed25519")},
+	})
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if sink.has(sshIdentityHintCopy) {
+		t.Errorf("a run that already declared --ssh-identity repeated the key hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleKeyReadHintNeverOnSuccess: the signature only enriches a
+// FAILED run; a successful run that happens to print the line gains nothing.
+// Dropping the res.ExitCode != 0 guard makes this red.
+func TestSandboxedAnsibleKeyReadHintNeverOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	script := "echo '" + keyDeniedLine + "'\nexit 0\n"
+	res, sink := runSandboxedEligible(t, script, false)
+	if res.ExitCode != 0 {
+		t.Fatalf("run exit = %d, want the fake playbook's 0", res.ExitCode)
+	}
+	if sink.has(sshIdentityHintCopy) {
+		t.Errorf("a successful run gained the key hint:\n%s", strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleElevationHintNamesLocalConnection: when the run's
+// inventory is the controller itself (`localhost,`), the elevation hint blames
+// the connection type and points at ssh-to-self, not the task. Dropping the
+// localConnectionTarget branch in emitSandboxHints makes this red.
+func TestSandboxedAnsibleElevationHintNamesLocalConnection(t *testing.T) {
+	t.Parallel()
+
+	script := "echo \"" + becameDeniedLine + "\" >&2\nexit 1\n"
+	res, sink := runSandboxedSpec(t, script, Spec{
+		Kind: KindAnsible,
+		Argv: AnsibleArgv(filepath.Join(t.TempDir(), "site.yml"), "localhost,"),
+	})
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if !sink.has(elevationLocalHintCopy) {
+		t.Errorf("a local-connection elevation denial gained no local hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+	if sink.has(elevationHintCopy) {
+		t.Errorf("a local-connection elevation denial also got the generic hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSandboxedAnsibleElevationHintGenericWhenNotLocal: a run whose inventory
+// is not the controller gets the generic elevation hint, not the local one.
+func TestSandboxedAnsibleElevationHintGenericWhenNotLocal(t *testing.T) {
+	t.Parallel()
+
+	script := "echo \"" + becameDeniedLine + "\" >&2\nexit 1\n"
+	res, sink := runSandboxedSpec(t, script, Spec{
+		Kind: KindAnsible,
+		Argv: AnsibleArgv(filepath.Join(t.TempDir(), "site.yml"), "/etc/ansible/hosts"),
+	})
+	if res.ExitCode != 1 {
+		t.Fatalf("run exit = %d, want the fake playbook's 1", res.ExitCode)
+	}
+	if !sink.has(elevationHintCopy) {
+		t.Errorf("a non-local elevation denial gained no generic hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+	if sink.has(elevationLocalHintCopy) {
+		t.Errorf("a non-local elevation denial got the local hint:\n%s",
+			strings.Join(sink.msgs(), "\n"))
+	}
+}
+
+// TestSshKeyDeniedMatchesOnlyTheSignature: the matcher fires on ssh's key-load,
+// publickey and missing-identity lines and nothing else.
+func TestSshKeyDeniedMatchesOnlyTheSignature(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{"the key-load denial", keyDeniedLine, true},
+		{"the generic publickey failure", "fatal: [host]: UNREACHABLE! ... Permission denied (publickey).", true},
+		{"the missing-identity line", "no such identity: /keys/fleet: No such file or directory", true},
+		{"a loader-denied sudo line", becameDeniedLine, false},
+		{"a plain task failure", "fatal: [localhost]: FAILED! => {\"msg\": \"boom\"}", false},
+		{"an empty line", "", false},
+	} {
+		if got := sshKeyDenied(tc.msg); got != tc.want {
+			t.Errorf("%s: sshKeyDenied = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+// TestLocalConnectionTarget pins which argvs reach the controller itself: an
+// explicit `localhost,` inventory, or an ad-hoc loopback pattern with no
+// inventory. A remote inventory, a non-loopback pattern, or a playbook argv
+// with a real inventory is not a local connection.
+func TestLocalConnectionTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name string
+		argv []string
+		want bool
+	}{
+		{"playbook with localhost, inline", AnsibleArgv("/src/site.yml", "localhost,"), true},
+		{"playbook with a real inventory", AnsibleArgv("/src/site.yml", "/etc/ansible/hosts"), false},
+		{"playbook with no inventory", AnsibleArgv("/src/site.yml", ""), false},
+		{"ad-hoc localhost, no inventory", AnsibleAdhocArgv("localhost", "", "command", "hostname"), true},
+		{"ad-hoc 127.0.0.1, no inventory", AnsibleAdhocArgv("127.0.0.1", "", "command", "hostname"), true},
+		{"ad-hoc remote pattern", AnsibleAdhocArgv("web", "", "command", "hostname"), false},
+		{"ad-hoc localhost with a real inventory",
+			AnsibleAdhocArgv("localhost", "/etc/ansible/hosts", "command", "hostname"), false},
+	} {
+		if got := localConnectionTarget(tc.argv); got != tc.want {
+			t.Errorf("%s: localConnectionTarget = %v, want %v", tc.name, got, tc.want)
 		}
 	}
 }
