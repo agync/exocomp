@@ -26,11 +26,11 @@ type doctorEnvelope struct {
 	}
 }
 
-// wantSubsystems is doctor's fixed, ordered health projection — the five
+// wantSubsystems is doctor's fixed, ordered health projection — the six
 // subsystems in scope for the JSON summary (docs/design/agent-interface.md
 // §3.2). A drift here is a schema change.
 var wantSubsystems = []string{
-	"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream",
+	"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream", "privilege_posture",
 }
 
 func validHealthStatus(s string) bool {

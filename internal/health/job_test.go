@@ -68,7 +68,7 @@ func TestDoctorJobDriverEmitsFindings(t *testing.T) {
 		}
 		want = append(want, f.Name+" "+f.Status)
 	}
-	for _, name := range []string{"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream"} {
+	for _, name := range []string{"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream", "privilege_posture"} {
 		seen := false
 		for _, w := range want {
 			if strings.HasPrefix(w, name+" ") {

@@ -45,6 +45,9 @@ type Store interface {
 	ListSilences(ctx context.Context, activeOnly bool) ([]store.Silence, error)
 	ListNotifyMutes(ctx context.Context, activeOnly bool) ([]store.NotifyMute, error)
 	GetSetting(ctx context.Context, key string) (string, error)
+	// ListJobs is the recent-run read the privilege-posture probe counts over:
+	// how many runs in the window forfeited the kernel sandbox.
+	ListJobs(ctx context.Context, f store.JobFilter) ([]store.Job, error)
 }
 
 // OpenStore opens (or hands back) a Store for the probes that read persisted
@@ -59,7 +62,8 @@ type OpenStore func() (Store, func() error, error)
 // one read, and the per-subsystem status carries the fault. The sandbox tier
 // and the go-runtime line are deliberately not subsystems here
 // (docs/design/agent-interface.md §3.2 scopes health to data dir, secrets,
-// tools, self-observability, and litestream).
+// tools, self-observability, the privilege posture of recent runs, and
+// litestream).
 func Probe(ctx context.Context, dataDir string, open OpenStore) wire.HealthView {
 	report, fault := InspectDataDir(dataDir)
 	probes := ProbeOptionalTools()
@@ -69,6 +73,7 @@ func Probe(ctx context.Context, dataDir string, open OpenStore) wire.HealthView 
 		optionalToolsEntry(probes, ProbeToolchain(probes)),
 		selfObservabilityEntry(ProbeSelfObservability(ctx, dataDir, open)),
 		litestreamEntry(ProbeLitestream(ctx, dataDir, open)),
+		privilegePostureEntry(ProbePrivilegePosture(ctx, dataDir, open)),
 	}, ProbeImageRef(ctx, dataDir, open))
 }
 
@@ -367,6 +372,87 @@ func ProbeHoldStatus(ctx context.Context, dataDir string, open OpenStore) (statu
 		return wire.HealthOK, "none active"
 	}
 	return wire.HealthWarn, strings.Join(parts, " · ")
+}
+
+// PrivilegePostureWindow is the recent-run window the privilege-posture finding
+// counts over: the history an operator asking "is my estate actually safe" is
+// looking at, not the full archive.
+const PrivilegePostureWindow = 30 * 24 * time.Hour
+
+// privilegePostureScanLimit bounds the store read. Jobs are read newest-first,
+// so the scan reaches the window's oldest row well before the limit matters on
+// any homelab's history.
+const privilegePostureScanLimit = 2000
+
+// PrivilegePostureProbe is the recent-window privileged-run tally: how many
+// jobs queued in the window ran UNSANDBOXED, over the total queued in it.
+// Observed is false when there is no database to read yet.
+type PrivilegePostureProbe struct {
+	Observed   bool
+	Privileged int
+	Total      int
+}
+
+// ProbePrivilegePosture counts the runs in the recent window that opted out of
+// the kernel sandbox (job.Args.Privileged). It stats the database file before
+// opening a store, so a probe never creates one as a side effect of reporting
+// on it; absent a database, there is nothing to report.
+func ProbePrivilegePosture(ctx context.Context, dataDir string, open OpenStore) PrivilegePostureProbe {
+	if _, err := os.Stat(filepath.Join(dataDir, dbFileName)); err != nil {
+		return PrivilegePostureProbe{}
+	}
+	st, closeFn, err := open()
+	if err != nil {
+		return PrivilegePostureProbe{}
+	}
+	defer func() { _ = closeFn() }()
+	jobs, err := st.ListJobs(ctx, store.JobFilter{NewestFirst: true, Limit: privilegePostureScanLimit})
+	if err != nil {
+		return PrivilegePostureProbe{}
+	}
+	privileged, total := countPrivileged(jobs, time.Now().Add(-PrivilegePostureWindow))
+	return PrivilegePostureProbe{Observed: true, Privileged: privileged, Total: total}
+}
+
+// countPrivileged tallies the runs queued at or after since, split by the
+// unsandboxed marker. jobs are newest-first, so the scan stops at the first
+// row older than the window.
+func countPrivileged(jobs []store.Job, since time.Time) (privileged, total int) {
+	for _, j := range jobs {
+		if j.QueuedAt.Before(since) {
+			break
+		}
+		total++
+		if j.Args.Privileged {
+			privileged++
+		}
+	}
+	return privileged, total
+}
+
+// privilegePostureEntry classifies the tally: any unsandboxed run in the window
+// is a warn — a posture deviation worth seeing, never a fault — and none is the
+// quiet healthy state. The detail carries the counts, never a relative age, so
+// repeated polls of a quiet estate do not diff.
+func privilegePostureEntry(res PrivilegePostureProbe) wire.HealthEntry {
+	status := wire.HealthOK
+	if res.Privileged > 0 {
+		status = wire.HealthWarn
+	}
+	if !res.Observed {
+		status = wire.HealthUnknown
+	}
+	return wire.HealthEntry{Name: "privilege_posture", Status: status, Detail: PrivilegePostureDetail(res)}
+}
+
+// PrivilegePostureDetail is the one sentence the JSON health entry and the CLI
+// text report both print, so the two faces cannot disagree on the count.
+func PrivilegePostureDetail(res PrivilegePostureProbe) string {
+	if !res.Observed {
+		return "no database yet"
+	}
+	days := int(PrivilegePostureWindow / (24 * time.Hour))
+	return fmt.Sprintf("%d of %d runs in the last %d days ran unsandboxed", res.Privileged, res.Total, days)
 }
 
 // LitestreamProbe is ProbeLitestream's raw findings, captured once so a text

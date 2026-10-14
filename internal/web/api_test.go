@@ -337,7 +337,7 @@ func TestAPIHealthReadonlyGetsWireEnvelope(t *testing.T) {
 	if env.SchemaVersion != wire.SchemaVersion || env.Kind != wire.KindDoctor {
 		t.Fatalf("bad envelope header: %+v", env)
 	}
-	wantSubsystems := []string{"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream"}
+	wantSubsystems := []string{"data_dir", "secrets_protection", "optional_tools", "self_observability", "litestream", "privilege_posture"}
 	if len(env.Data) != len(wantSubsystems) {
 		t.Fatalf("subsystem count = %d, want %d: %s", len(env.Data), len(wantSubsystems), body)
 	}

@@ -117,6 +117,7 @@ func runDoctor(w io.Writer) error {
 	reportRunSecretFileStaging(w, dataDir)
 	reportSelfObservability(context.Background(), w, dataDir)
 	reportLitestream(context.Background(), w, dataDir)
+	reportPrivilegePosture(context.Background(), w, dataDir)
 	// The report prints first, so an operator sees why; then an enforcing
 	// request that cannot be enforced is a failing check.
 	return enforceSandboxTier(context.Background())
@@ -271,6 +272,16 @@ func printLitestream(w io.Writer, res health.LitestreamProbe) {
 	default:
 		p("  %-18s %s\n", "RPO age", "no replicated frames yet — sidecar not running?")
 	}
+}
+
+// reportPrivilegePosture prints how many recent runs opted out of the kernel
+// sandbox — the "is my estate actually safe" read the doctor exists to answer.
+// Any unsandboxed run is said, not hidden; the count is the fact.
+func reportPrivilegePosture(ctx context.Context, w io.Writer, dataDir string) {
+	res := health.ProbePrivilegePosture(ctx, dataDir, healthOpenStore)
+	p := func(format string, a ...any) { _, _ = fmt.Fprintf(w, format, a...) }
+	p("privilege posture:\n")
+	p("  %-18s %s\n", "recent runs", health.PrivilegePostureDetail(res))
 }
 
 func dataDir() (string, error) {
