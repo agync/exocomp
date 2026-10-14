@@ -14,6 +14,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — secret management names rotation honestly
+
+- **`secrets rotate` is now `secrets replace`, with `rotate` kept as an alias.**
+  The verb, the CLI output, the web dialogs and the TUI now branch on a secret's
+  source: a **generated** secret (exocomp minted it, nothing upstream holds the
+  old value) is genuinely rotated; an operator-supplied one is only **replaced**
+  — exocomp swaps the sealed copy, and the credential itself is reissued where
+  it is minted, by the operator. No command or URL breaks: `POST
+  /secrets/{name}/rotate` and the `rotate` alias are unchanged.
+- **The TUI's `ROTATED` column is now `CHANGED`** — one honest header for a
+  mixed list; the cell still reads `never` or a date.
+- **The store's comments match.** `RotatedAt` records when the sealed copy last
+  changed (a rotation for a generated secret, a replacement for a user one) and
+  `ExpiresAt` marks when the credential should be renewed or removed.
+
 ## 2026-10-14 — the ntfy tile shows its channel again
 
 - **The ntfy card carries a facts block again.** The tile names the configured

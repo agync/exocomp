@@ -8,6 +8,12 @@ Newest first.
 
 ## 2026-10-14
 
+- **Correction of fact**: the secret-management vocabulary now follows a secret's
+  source. `exocomp secrets replace` is the canonical verb (`rotate` stays an
+  alias), the guide's commands and list-example column use it (`CHANGED` for a
+  mixed list), and the TUI header is `CHANGED`. exocomp rotates only a secret it
+  minted; for an operator-supplied credential it replaces the sealed copy while
+  the old value is revoked upstream.
 - **Moved**: `docs/adr/` became [decisions/](decisions/index.md). The twenty records keep
   their numbers and meaning; the label `ADR NNNN` is now `Decision NNNN` and prose says
   "record" instead of "ADR". Every path, link, and pointer was retargeted; no decision's
