@@ -177,7 +177,7 @@ POST   /api/v1/checks/{name}/probe              # probe now, write nothing -> ch
 POST   /api/v1/netgroups                        # register a named CIDR set -> netgroup.get
 PUT    /api/v1/netgroups/{name}                 # replace the set in place -> netgroup.get
 DELETE /api/v1/netgroups/{name}                 # remove the set -> 204
-POST   /api/v1/hosts/self/requests            # host scope: ask to run an approved job on self -> host.request (?wait=true blocks to terminal)
+POST   /api/v1/hosts/self/requests            # host scope: ask to run an approved job on self -> host.request (?timeout max 5m; ?wait=true) (?wait=true blocks to terminal)
 ```
 
 `POST /jobs/{id}/notify` arms a one-shot, attributed page: the daemon notifies once when the

@@ -1567,7 +1567,7 @@ func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 			for {
 				select {
 				case <-r.Context().Done():
-					resp["job_state"] = "disconnected"
+					resp["job_state"] = "pending"
 					goto done
 				default:
 				}
@@ -1587,7 +1587,7 @@ func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 				}
 				select {
 				case <-r.Context().Done():
-					resp["job_state"] = "disconnected"
+					resp["job_state"] = "pending"
 					goto done
 				case <-time.After(500 * time.Millisecond):
 				}
