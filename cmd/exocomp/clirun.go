@@ -15,6 +15,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
 )
@@ -116,6 +117,7 @@ func newRunCLICmd() *cobra.Command {
 		"bind a run_secret set as named env for the run (the provider token the tool authenticates with)")
 	cmd.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().StringVar(&concurrencyKey, "concurrency-key", "",
 		"serialize this run against others holding the key (default: cli:<tool>; pass tofu:<workspace> to serialize with that workspace's runs)")
@@ -299,6 +301,11 @@ func gateCLIRun(ctx context.Context, cmd *cobra.Command, st *store.Store, dir st
 	if err != nil {
 		return 0, fmt.Errorf("run-cli: %w", err)
 	}
+	if spec.Privileged {
+		if err := service.New(st, dir, nil).RecordPrivileged(ctx, job.ID, service.Actor{}); err != nil {
+			return 0, err
+		}
+	}
 	if asJSON {
 		return 0, emitJSON(cmd, wire.KindJob, wire.NewJobViewResolved(ctx, st, job))
 	}
@@ -357,6 +364,11 @@ func cliRunInline(ctx context.Context, st *store.Store, dir string, tool store.C
 	job, err := q.Enqueue(ctx, spec)
 	if err != nil {
 		return store.Job{}, err
+	}
+	if spec.Privileged {
+		if err := service.New(st, dir, nil).RecordPrivileged(ctx, job.ID, service.Actor{}); err != nil {
+			return store.Job{}, err
+		}
 	}
 	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
 		return store.Job{}, err

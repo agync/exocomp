@@ -95,6 +95,7 @@ func newRunCmd() *cobra.Command {
 		"bind a run_secret set as named env for the play")
 	cmd.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	cmd.Flags().DurationVar(&timeout, "timeout", 0, "per-step timeout (0: no limit)")
 	cmd.Flags().BoolVar(&wait, "wait", false, "follow the workflow until it reaches a terminal state")

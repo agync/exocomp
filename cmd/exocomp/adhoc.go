@@ -17,6 +17,7 @@ import (
 	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/reactive"
 	"exocomp.dev/exocomp/internal/secrets"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/source"
 	"exocomp.dev/exocomp/internal/store"
 	"exocomp.dev/exocomp/internal/wire"
@@ -331,6 +332,11 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 		final, err = enqueueForDaemon(ctx, st, dir, queued, streamOut)
 	} else {
 		final, err = runPlaybookInline(ctx, st, dir, queued, streamOut, warn)
+		if err == nil && queued.Privileged {
+			if rerr := service.New(st, dir, nil).RecordPrivileged(ctx, final.ID, service.Actor{}); rerr != nil {
+				return 0, rerr
+			}
+		}
 	}
 	if err != nil {
 		return 0, err
@@ -434,6 +440,11 @@ func gateAdhoc(ctx context.Context, st *store.Store, dir string, spec queue.Spec
 	job, approval, err := gateJob(ctx, st, dir, spec)
 	if err != nil {
 		return 0, fmt.Errorf("command: %w", err)
+	}
+	if spec.Privileged {
+		if err := service.New(st, dir, nil).RecordPrivileged(ctx, job.ID, service.Actor{}); err != nil {
+			return 0, err
+		}
 	}
 	if mode == outputJSON {
 		return 0, wire.WriteSuccess(out, wire.KindApproval, wire.NewApprovalView(approval))

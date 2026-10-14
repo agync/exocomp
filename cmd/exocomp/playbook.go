@@ -195,6 +195,7 @@ func newPlaybookCmd() *cobra.Command {
 		"bind a run_secret set as named env for the run (a dynamic-inventory plugin or module authenticates from it)")
 	run.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	run.Flags().StringVar(&sourceName, "source", "",
 		"run from this registered source's checkout and honour its .exocomp/hooks.yml")

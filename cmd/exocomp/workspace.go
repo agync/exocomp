@@ -732,6 +732,7 @@ func newWorkspacePlanCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	plan.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	return plan
 }
@@ -784,6 +785,7 @@ func newWorkspaceApplyCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	apply.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	return apply
 }
@@ -829,6 +831,7 @@ func newWorkspaceDestroyCmd() *cobra.Command {
 		"bind a run_secret set as provider/TF_VAR_ env for the run")
 	destroy.Flags().StringVar(&runnerName, "runner", "",
 		"enforce this registered runner's memory_max/cpu_quota as a per-job cgroup cap "+
+			"(caps only; no runner image is built or run — that tier is deferred) "+
 			"(local-sandboxed only; refused, never run uncapped, if it cannot be enforced)")
 	return destroy
 }
