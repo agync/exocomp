@@ -242,6 +242,52 @@ func TestRemoteJobsListShowsRawRunbook(t *testing.T) {
 	}
 }
 
+// TestRemoteJobsTextMarksUnsandboxed proves the remote text renderers carry the
+// same unsandboxed marker as the local ones: the list beside the source, the get
+// detail as the privileged line, and neither on a sandboxed view.
+func TestRemoteJobsTextMarksUnsandboxed(t *testing.T) {
+	var out bytes.Buffer
+	cmd := &cobra.Command{}
+	cmd.SetOut(&out)
+
+	privileged := wire.JobView{
+		ID: 7, State: "succeeded", Runbook: "web", Source: "tree",
+		Privileged: true, QueuedAt: "2026-08-22T10:00:00Z",
+	}
+	if err := renderRemoteJobsList(cmd, outputText, []wire.JobView{privileged}); err != nil {
+		t.Fatalf("render remote jobs list: %v", err)
+	}
+	if !strings.Contains(out.String(), "tree · unsandboxed") {
+		t.Fatalf("remote jobs list missing the unsandboxed source fact: %q", out.String())
+	}
+
+	out.Reset()
+	if err := renderRemoteJobGet(cmd, outputText, privileged); err != nil {
+		t.Fatalf("render remote job get: %v", err)
+	}
+	if !strings.Contains(out.String(), "privileged") || !strings.Contains(out.String(), privilegedLine) {
+		t.Fatalf("remote job get missing the privileged line: %q", out.String())
+	}
+
+	sandboxed := wire.JobView{
+		ID: 8, State: "succeeded", Runbook: "web", Source: "tree", QueuedAt: "2026-08-22T10:00:00Z",
+	}
+	out.Reset()
+	if err := renderRemoteJobsList(cmd, outputText, []wire.JobView{sandboxed}); err != nil {
+		t.Fatalf("render remote jobs list: %v", err)
+	}
+	if strings.Contains(out.String(), "unsandboxed") {
+		t.Fatalf("remote sandboxed list claims unsandboxed: %q", out.String())
+	}
+	out.Reset()
+	if err := renderRemoteJobGet(cmd, outputText, sandboxed); err != nil {
+		t.Fatalf("render remote job get: %v", err)
+	}
+	if strings.Contains(out.String(), "privileged") || strings.Contains(out.String(), "UNSANDBOXED") {
+		t.Fatalf("remote sandboxed get claims a privileged posture: %q", out.String())
+	}
+}
+
 // TestRemoteEndpointMatchesWithTrailingSlash verifies that passing an endpoint with a trailing
 // slash on --remote matches the pinned entry without the trailing slash.
 func TestRemoteEndpointMatchesWithTrailingSlash(t *testing.T) {

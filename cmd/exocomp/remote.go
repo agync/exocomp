@@ -158,7 +158,7 @@ func renderRemoteJobsList(cmd *cobra.Command, mode string, rows []wire.JobView) 
 		// so a runbook read off a remote list is pasteable back into a filter
 		// on the same box. The human rule name is the get detail's stripped line.
 		_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Source), dashIfEmpty(j.Kind),
+			j.ID, j.State, dashIfEmpty(j.Runbook), sourceFact(j.Source, j.Privileged), dashIfEmpty(j.Kind),
 			dashIfEmpty(j.Trigger), exitCodeLabelPtr(j.ExitCode), fmtWireTS(j.QueuedAt))
 	}
 	return w.Flush()
@@ -188,6 +188,9 @@ func renderRemoteJobGet(cmd *cobra.Command, mode string, j wire.JobView) error {
 	_, _ = fmt.Fprintf(w, "runbook\t%s\n", dashIfEmpty(web.RunbookLabel(j.Runbook)))
 	_, _ = fmt.Fprintf(w, "runbook (raw)\t%s\n", dashIfEmpty(j.Runbook))
 	_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(j.Source))
+	if j.Privileged {
+		_, _ = fmt.Fprintf(w, "privileged\t%s\n", privilegedLine)
+	}
 	_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(j.Kind))
 	_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(j.Trigger))
 	_, _ = fmt.Fprintf(w, "exit\t%s\n", exitCodeLabelPtr(j.ExitCode))

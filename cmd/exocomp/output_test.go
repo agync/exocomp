@@ -296,3 +296,52 @@ func TestJobsGetProgressTextAndJSON(t *testing.T) {
 		t.Fatalf("unexpected progress data: %+v", env.Data.Progress)
 	}
 }
+
+// TestJobsTextMarksUnsandboxed proves the CLI's text faces mark a run that opted
+// out of the kernel sandbox: the list carries the "unsandboxed" fact beside the
+// source and the get detail carries the privileged line, in the words the
+// enqueue warning uses. A sandboxed run carries neither.
+func TestJobsTextMarksUnsandboxed(t *testing.T) {
+	st := seedStore(t)
+	sandboxed, err := st.CreateJob(context.Background(), store.NewJob{
+		Runbook: "web", Kind: "tofu.plan", Trigger: "manual", ConcurrencyKey: "workspace:web",
+		Args: store.JobArgs{Source: "tree"},
+	})
+	if err != nil {
+		t.Fatalf("seed sandboxed job: %v", err)
+	}
+	privileged, err := st.CreateJob(context.Background(), store.NewJob{
+		Runbook: "web", Kind: "tofu.plan", Trigger: "manual", ConcurrencyKey: "workspace:web2",
+		Args: store.JobArgs{Source: "tree", Privileged: true},
+	})
+	if err != nil {
+		t.Fatalf("seed privileged job: %v", err)
+	}
+
+	list, err := run(t, "jobs", "list")
+	if err != nil {
+		t.Fatalf("jobs list: %v", err)
+	}
+	if !strings.Contains(list, "tree · unsandboxed") {
+		t.Fatalf("jobs list missing the unsandboxed source fact: %q", list)
+	}
+	// The fact sits on the privileged row alone; the sandboxed row never claims it.
+	if n := strings.Count(list, "unsandboxed"); n != 1 {
+		t.Fatalf("jobs list has %d unsandboxed facts, want 1:\n%s", n, list)
+	}
+
+	get, err := run(t, "jobs", "get", strconv.FormatInt(privileged.ID, 10))
+	if err != nil {
+		t.Fatalf("jobs get privileged: %v", err)
+	}
+	if !strings.Contains(get, "privileged") || !strings.Contains(get, privilegedLine) {
+		t.Fatalf("jobs get privileged missing the privileged line: %q", get)
+	}
+	plain, err := run(t, "jobs", "get", strconv.FormatInt(sandboxed.ID, 10))
+	if err != nil {
+		t.Fatalf("jobs get sandboxed: %v", err)
+	}
+	if strings.Contains(plain, "privileged") || strings.Contains(plain, "UNSANDBOXED") {
+		t.Fatalf("jobs get sandboxed claims a privileged posture: %q", plain)
+	}
+}

@@ -177,7 +177,7 @@ func newJobsListCmd() *cobra.Command {
 				// read off the list is pasteable straight back into a filter.
 				// The human rule name is the jobs get detail's stripped line.
 				_, _ = fmt.Fprintf(w, "%d\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-					j.ID, j.State, dashIfEmpty(j.Runbook), dashIfEmpty(j.Args.Source), dashIfEmpty(j.Kind),
+					j.ID, j.State, dashIfEmpty(j.Runbook), sourceFact(j.Args.Source, j.Args.Privileged), dashIfEmpty(j.Kind),
 					dashIfEmpty(j.Trigger), exitCodeLabel(j.ExitCode),
 					j.QueuedAt.UTC().Format("2006-01-02 15:04:05Z"))
 			}
@@ -261,6 +261,9 @@ func newJobsGetCmd() *cobra.Command {
 			// stripped display line stays the human-facing rule name.
 			_, _ = fmt.Fprintf(w, "runbook (raw)\t%s\n", dashIfEmpty(job.Runbook))
 			_, _ = fmt.Fprintf(w, "source\t%s\n", dashIfEmpty(job.Args.Source))
+			if job.Args.Privileged {
+				_, _ = fmt.Fprintf(w, "privileged\t%s\n", privilegedLine)
+			}
 			_, _ = fmt.Fprintf(w, "kind\t%s\n", dashIfEmpty(job.Kind))
 			_, _ = fmt.Fprintf(w, "trigger\t%s\n", dashIfEmpty(job.Trigger))
 			_, _ = fmt.Fprintf(w, "exit\t%s\n", exitCodeLabel(job.ExitCode))
@@ -348,6 +351,28 @@ func dashIfEmpty(s string) string {
 	}
 	return s
 }
+
+// privilegedFact is the word a privileged run's list row carries — the same
+// "unsandboxed" the web list and the TUI show beside the source.
+const privilegedFact = "unsandboxed"
+
+// sourceFact renders a jobs row's SOURCE cell: the source name, with the
+// unsandboxed fact appended on a privileged run, matching the web list's
+// "tree · unsandboxed". A privileged run with no source shows the fact alone.
+func sourceFact(source string, privileged bool) string {
+	if !privileged {
+		return dashIfEmpty(source)
+	}
+	if source == "" {
+		return privilegedFact
+	}
+	return source + " · " + privilegedFact
+}
+
+// privilegedLine is the run card's privileged fact, in the words the enqueue
+// warning (warnPrivileged) uses, so the read surface and the moment of opting
+// out agree.
+const privilegedLine = "UNSANDBOXED (no kernel sandbox, full host access)"
 
 func exitCodeLabel(code *int) string {
 	if code == nil {

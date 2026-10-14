@@ -14,6 +14,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the CLI text marks the unsandboxed run
+
+- **`jobs get` and `jobs list` name a privileged run.** The JSON face already carried
+  `privileged`, but the human text did not, so an operator reading the CLI could not tell a run
+  was unsandboxed. `jobs get` prints a `privileged` line in the enqueue warning's own words
+  (`UNSANDBOXED (no kernel sandbox, full host access)`); `jobs list` carries the `unsandboxed`
+  fact beside the source (`tree · unsandboxed`), matching the web list. The local and `--remote`
+  renderers agree; a sandboxed run carries neither.
+
 ## 2026-10-14 — the privilege posture reaches the rerun dialog, the TUI, and the API
 
 - **The rerun dialog names the original's posture and starts the escalation off.** Rerunning a
