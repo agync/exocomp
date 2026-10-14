@@ -137,6 +137,16 @@ beneath it, the tools that run there coordinate over unix sockets placed inside 
 `AF_UNIX` addresses cap at 108. The probe measures it at startup and degrades loudly
 rather than letting each job discover it as a timeout.
 
+**Sandbox denial hints.** A sandboxed ansible run that fails because the kernel denied a
+read or an escalation appends one operator-facing hint to the job's events, naming the
+sandbox-preserving fix. An ssh identity key the run could not read points at
+`--ssh-identity <path>` (a single-file read grant, never its directory); a `sudo` the
+sandbox refused because the connection was local points at reaching the host over SSH —
+ssh-to-self for the controller's own host — so the escalation runs on the far side.
+`--privileged` is named only as the last resort. The hint is diagnosis: the exit code
+still decides the outcome (invariant 3), and the denied operation stays denied. The two
+classes and their exact copy are in [playbook-run.md](../operations/playbook-run.md).
+
 ## `container`
 
 Per-job sibling containers: Ansible via ansible-runner's native podman process isolation

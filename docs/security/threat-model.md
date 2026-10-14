@@ -151,7 +151,10 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
   warning; the web control is a deliberately-warned, non-default checkbox), and **attributed +
   audited** (the marker is persisted on the job row, an attributed ledger event records who
   requested it, and the queue records the unsandboxed execution on every path). It never weakens the
-  guard for a non-privileged run. An untrusted playbook must not be run privileged.
+  guard for a non-privileged run. A sandbox denial's own hint names the sandbox-preserving answers
+  first — an ssh identity grant (`--ssh-identity`), or reaching a self-host target over SSH
+  (ssh-to-self) — and names `--privileged` only as the last resort, so the escape hatch is not the
+  path of least resistance. An untrusted playbook must not be run privileged.
 
 ## Reactive engine and approvals
 

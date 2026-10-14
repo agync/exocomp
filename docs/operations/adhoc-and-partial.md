@@ -56,8 +56,9 @@ exocomp command --host 'web*' --output json -- hostname -f
 
 The command module runs no shell, so a pipe is an explicit `--shell`, never an
 accident. Local execution without an explicit `--source` resolves relative to the
-operator's home directory. Privilege escalation on localhost with `--become` requires
-`--privileged` (unsandboxed execution).
+operator's home directory. Privilege escalation on a **local** target with `--become`
+is refused up front and requires `--privileged` (unsandboxed execution); targeting the
+host over SSH instead runs the escalation on the far side, outside the sandbox.
 
 ## `exocomp ansible` — any module
 
@@ -85,6 +86,10 @@ Both verbs run through the one queue with the same credential and isolation mode
   its default hosts file) — no localhost is pinned.
 - **Sandboxed and redacted**, the vault-id from `--vault-project`, the run-secret
   set from `--run-secrets`, resolved from the envelope at run time.
+- **`--ssh-identity <path>`** grants read access to one ssh identity key file — never
+  its directory — on `command` and `ansible`, so a one-off against a key-only host does
+  not need `--privileged`. A sandboxed run whose ssh key read is denied appends a hint
+  naming this flag (see [playbook-run.md](playbook-run.md)).
 - **Secrets never on argv.** The vault password and run-secret / dynamic-inventory
   credentials keep their out-of-argv paths (a private-dir file, named env). What a
   run *does* is public and rides the job row; what it *authenticates with* does

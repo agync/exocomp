@@ -14,6 +14,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — sandbox denials name their fix, ad-hoc runs get `--ssh-identity`
+
+- **A denied ssh key read is classified.** A sandboxed ansible run that fails because the
+  profile grants no read of an identity key (`Load key "…": Permission denied`, `Permission
+  denied (publickey)`, `no such identity`) now appends an operator-facing hint naming
+  `--ssh-identity <path>`, the way the `sudo` denial already did. A run that already declared
+  `--ssh-identity` is not offered the hint again.
+- **The elevation hint leads with the sandbox-preserving fix.** It no longer opens with
+  `--privileged`; it leads with reaching the host over SSH, so the escalation runs on the far
+  side, and names `--privileged` (operator-gated, unsandboxed) only as the last resort. When
+  the run's inventory is the controller itself (`localhost,` or an ad-hoc loopback pattern),
+  the hint says the connection type is the cause and points at ssh-to-self.
+- **`--ssh-identity` reaches the ad-hoc verbs.** `exocomp command` and `exocomp ansible`
+  accept `--ssh-identity <path>` and carry it through the queue to the sandbox's single-file
+  read grant, so a one-off against a key-only host no longer forces `--privileged`.
+
 ## 2026-10-14 — host requests: bounded wait, honest states, the polling contract
 
 - **The host request's blocking wait is bounded.** `POST /hosts/self/requests?wait=true`

@@ -143,28 +143,68 @@ read each one's events through `AnsibleCheckChanges`, and raise an event when
 or gate on it. Wiring that sweep is the remaining step; the outcome and the
 read-back helper are in place for it.
 
-## Self-host targets, `become`, and `--privileged`
+## Sandbox denial hints: self-host `become`, keys, and `--privileged`
 
-A playbook that targets the host the daemon runs on can fail in a way that
-looks like a broken system: the run reports a `sudo` error about a missing
-shared library. It is the sandbox enforcing invariant 6, not a host fault.
+Two failures of a sandboxed ansible run look like broken systems but are the sandbox
+enforcing its policy. Both append one operator-facing hint to the failed run's events; the
+exit code is unchanged (invariant 3), and the hint is diagnosis only — the denied operation
+stays denied.
 
-- The inventory may resolve the local host to `connection: local` (the
-  homelab inventory does this dynamically when the inventory hostname is the
-  local one). With `become` enabled, the escalation's `sudo` then runs
-  **inside** the sandbox, not over SSH.
-- The sandbox is default-deny: it grants the source, the venv, and the
-  collections, never the setuid sudo's private libraries. A sandboxed process
-  that could invoke setuid-root `sudo` would be an escape, so the grant model
-  denies it and the loader reports a missing `libsudo_util`. A failed
-  sandboxed run whose output carries that signature now appends an explicit
-  hint: re-run with `--privileged` or run the elevated part outside the agent
-  surface.
-- The sandbox must not be widened to "allow sudo" — a sandbox that permits
-  escalation is not a sandbox. Escalation is the operator's explicit, per-run
-  decision.
+### Privilege escalation on a self-host target
 
-Two ways to run an elevated playbook:
+When a playbook targets the host the daemon runs on, the inventory may resolve the local host
+to `connection: local` (the homelab inventory does this dynamically when the inventory
+hostname is the local one). With `become` enabled, the escalation's `sudo` then runs
+**inside** the sandbox, not over SSH. The sandbox is default-deny and grants no setuid sudo's
+private libraries, so the loader reports a missing `libsudo_util`, and the failed run gains:
+
+```text
+the sandbox denied privilege escalation (sudo) — become's sudo ran inside the
+sandbox; target the host over SSH instead of a local connection so the
+escalation runs on the far side, and only as a last resort re-run with
+--privileged (operator-gated, unsandboxed)
+```
+
+When the run's inventory is the controller itself — `--inventory localhost,`, or an ad-hoc
+loopback pattern with no inventory — the hint names the connection type as the cause:
+
+```text
+the sandbox denied privilege escalation (sudo) — this run reaches the host over
+a local connection, so become's sudo executed inside the sandbox; point the
+inventory at the host over SSH (ssh-to-self) so the escalation runs on the far
+side, and only as a last resort re-run with --privileged (operator-gated,
+unsandboxed)
+```
+
+The sandbox-preserving fix is to reach the host over SSH. A remote target runs its own `sudo`
+on the far side, outside the sandbox; for the controller's own host that means **ssh-to-self**
+— point the inventory at the host over its SSH address so ansible connects to it as a remote
+rather than over a local connection. `--privileged` runs the job unsandboxed (the `disabled`
+tier, full host access); it is operator-only, off by default, and audited, and the hint names
+it last.
+
+### An ssh identity key outside the checkout
+
+The default profile allows TCP 22 egress but grants no read of `~/.ssh`, so a run that must
+load a private key fails at the ssh layer (`Load key "…": Permission denied`, `Permission
+denied (publickey)`, or `no such identity`). The failed run gains:
+
+```text
+the sandbox denied reading an ssh identity key — grant the key's path with
+--ssh-identity <path> (a single-file read grant, never its directory) and re-run
+```
+
+The sandbox-preserving fix is `--ssh-identity <path>`, which grants read access to **one**
+identity file and never its directory. It is available on `playbook run`, `run`, `rule add
+--action playbook`, `command`, and `ansible`, so a one-off against a key-only host does not
+have to reach for `--privileged`. A run that already declared `--ssh-identity` is not offered
+the hint again, because the key it named is not the one that failed.
+
+The sandbox is never widened to "allow sudo" or to grant `~/.ssh`: a sandbox that permits
+escalation, or a whole directory of keys, is not a sandbox. Each is an explicit, per-run,
+operator decision.
+
+When ssh-to-self is not possible and the run genuinely needs host access, two ways remain:
 
 1. **Run the self-host part separately, as privileged.** Keep the ordinary
    playbook run covering the remote hosts (for example `--limit` that
