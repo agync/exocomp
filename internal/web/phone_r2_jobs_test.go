@@ -155,8 +155,11 @@ func TestPhoneJobsListDropsHeading(t *testing.T) {
 // TestPhoneAppBarBackChevron is the R4 gate for the app bar's back slot: the
 // path was two parallel diagonals (a double-slash), not a chevron, and it
 // inherited the a{accent-text} purple. The path is a joined chevron and the
-// shell rule makes it ink. The MUTATION — restoring the double-slash or the
-// colour rule — reds this test.
+// shell rule makes it ink. It also covers the labeled slot: a page that names
+// its parent (deadman -> System) renders the worded link, not the job-detail
+// glyph, so the aria-label never lies about where the link goes. The MUTATION
+// — restoring the double-slash, the colour rule, or dropping the label — reds
+// this test.
 func TestPhoneAppBarBackChevron(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -173,6 +176,17 @@ func TestPhoneAppBarBackChevron(t *testing.T) {
 	}
 	if strings.Contains(body, `M15 5l-10 10M14 5l-7 7`) {
 		t.Error("the malformed double-slash back path must be gone")
+	}
+
+	// The labeled case: the /system leg pages name their parent, so the slot
+	// renders the worded link with an honest aria-label, not the job-detail
+	// fallback.
+	wantLabeled := `<a class="back" href="/system" onclick="exoCloseNav()" aria-label="Back to System">‹ <span>System</span></a>`
+	for _, path := range []string{"/system/deadman", "/system/litestream"} {
+		_, sysBody := getBody(t, client, ts.URL+path)
+		if !strings.Contains(sysBody, wantLabeled) {
+			t.Errorf("%s: the labeled app-bar back slot must render %q", path, wantLabeled)
+		}
 	}
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")

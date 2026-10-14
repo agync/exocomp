@@ -252,6 +252,7 @@ func (s *Server) deadmanVMFor(r *http.Request) (viewDeadmanVM, error) {
 	// /system (the phone bar reads the leg name, never "System · Dead-man").
 	vm := viewDeadmanVM{Page: s.pageFor(r, "Dead-man", "system")}
 	vm.Page.BackHref = s.url("/system")
+	vm.Page.BackLabel = "System"
 	vm.Page.Meta = "last good backup age vs the trip threshold"
 	vm.Deadman = s.deadmanVM(r)
 	return vm, nil

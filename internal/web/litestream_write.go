@@ -44,6 +44,7 @@ func (s *Server) litestreamPageVMFor(r *http.Request) litestreamPageVM {
 		Form: s.litestreamFormAtRest(r.Context()),
 	}
 	vm.Page.BackHref = s.url("/system")
+	vm.Page.BackLabel = "System"
 	vm.Page.Meta = litestreamPageMeta
 	return vm
 }
@@ -113,6 +114,7 @@ func (s *Server) litestreamRefusal(w http.ResponseWriter, r *http.Request, form 
 		Form: *form,
 	}
 	vm.Page.BackHref = s.url("/system")
+	vm.Page.BackLabel = "System"
 	vm.Page.Meta = litestreamPageMeta
 	s.render(w, r, http.StatusUnprocessableEntity, litestreamPage(vm))
 }
