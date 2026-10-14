@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-14
 
+- **Added**: [Decision 0021](decisions/0021-host-request-polling.md) keeps the
+  `host` scope write-only and makes the request response the polling surface.
+  The table in [decisions/index.md](decisions/index.md) gains its row; the host
+  request's parameters and response are now documented in
+  [operations/api.md](operations/api.md).
 - **Correction of fact**: the secret-management vocabulary now follows a secret's
   source. `exocomp secrets replace` is the canonical verb (`rotate` stays an
   alias), the guide's commands and list-example column use it (`CHANGED` for a

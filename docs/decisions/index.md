@@ -26,6 +26,7 @@ of fact land in [the evolution log](../log.md).
 | [0018](0018-aggregate-check-events.md) | Opt-in aggregate check events carrying the present host set, with `--limit-hosts` expansion governed by the trusted-source line | Superseded by [0019](0019-aggregate-check-events-removed.md) |
 | [0019](0019-aggregate-check-events-removed.md) | Aggregate check events, `event.hosts`, and `--limit-hosts` removed; per-host events are simpler, and migration 0041 stays as inert schema | Accepted |
 | [0020](0020-reload-restart-and-recovery.md) | Reload first, restart after drain, recover interrupted jobs; schedules reload without a restart | Accepted |
+| [0021](0021-host-request-polling.md) | Keep the host scope write-only; the request response itself is the polling surface | Accepted |
 
 Some decisions are recorded elsewhere because they are shape rather than choice: the twelve
 design amendments are in [design/amendments.md](../design/amendments.md), and the platform
