@@ -14,6 +14,21 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — host requests: bounded wait, honest states, the polling contract
+
+- **The host request's blocking wait is bounded.** `POST /hosts/self/requests?wait=true`
+  accepted any positive `?timeout=`, so `?timeout=999h` pinned a handler and its connection
+  indefinitely. It is now capped at `5m`; an over-cap value is a `400` naming the maximum
+  rather than a silent clamp.
+- **The wait reports the waiter, not the job.** A client disconnect set `job_state:
+  "cancelled"`, claiming the job was cancelled when only the caller went away. It now
+  returns `"disconnected"`. The deadline value `"pending"` was already honest and is
+  unchanged.
+- **The host scope stays write-only, and its response is the polling surface.** Reissuing a
+  request with the same `Idempotency-Key` returns the original `job_id`, and `?wait=true` on
+  that retry waits on the original job — poll-without-enumeration without handing a managed
+  host a read path. Recorded as Decision 0021.
+
 ## 2026-10-14 — review fixes: ntfy token, back link, secret log
 
 - **An ON ntfy channel no longer alarms about a missing token.** A self-hosted

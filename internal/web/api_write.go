@@ -1437,6 +1437,12 @@ type hostRequestBody struct {
 	Metadata map[string]string `json:"metadata,omitempty"`
 }
 
+// hostRequestMaxWait bounds the ?wait=true block. The handler holds the request
+// and its connection open until the job terminalises or the deadline passes, so
+// an unbounded timeout would pin both indefinitely. An over-cap value is a 400
+// naming this maximum, never a silent clamp.
+const hostRequestMaxWait = 5 * time.Minute
+
 func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 	id, _ := identityOf(r.Context())
 	if s.engine == nil {
@@ -1476,6 +1482,22 @@ func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 		s.apiError(w, http.StatusBadRequest,
 			wire.NewError(codeInvalidArgument, "status must be firing or resolved"))
 		return
+	}
+
+	wait := false
+	timeout := 30 * time.Second
+	if wq := r.URL.Query().Get("wait"); wq == "true" || wq == "1" {
+		wait = true
+		if raw := r.URL.Query().Get("timeout"); raw != "" {
+			if d, terr := time.ParseDuration(raw); terr == nil && d > 0 {
+				if d > hostRequestMaxWait {
+					s.apiError(w, http.StatusBadRequest, wire.NewError(codeInvalidArgument,
+						"timeout exceeds the maximum of "+hostRequestMaxWait.String()))
+					return
+				}
+				timeout = d
+			}
+		}
 	}
 
 	labels := map[string]string{}
@@ -1539,19 +1561,13 @@ func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 	}
 	resp["approval_id"] = approvalID
 
-	if wq := r.URL.Query().Get("wait"); wq == "true" || wq == "1" {
-		timeout := 30 * time.Second
-		if raw := r.URL.Query().Get("timeout"); raw != "" {
-			if d, terr := time.ParseDuration(raw); terr == nil && d > 0 {
-				timeout = d
-			}
-		}
+	if wait {
 		deadline := s.now().Add(timeout)
 		if respJobID != nil {
 			for {
 				select {
 				case <-r.Context().Done():
-					resp["job_state"] = "cancelled"
+					resp["job_state"] = "disconnected"
 					goto done
 				default:
 				}
@@ -1571,7 +1587,7 @@ func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
 				}
 				select {
 				case <-r.Context().Done():
-					resp["job_state"] = "cancelled"
+					resp["job_state"] = "disconnected"
 					goto done
 				case <-time.After(500 * time.Millisecond):
 				}

@@ -177,7 +177,7 @@ POST   /api/v1/checks/{name}/probe              # probe now, write nothing -> ch
 POST   /api/v1/netgroups                        # register a named CIDR set -> netgroup.get
 PUT    /api/v1/netgroups/{name}                 # replace the set in place -> netgroup.get
 DELETE /api/v1/netgroups/{name}                 # remove the set -> 204
-POST   /api/v1/hosts/self/requests            # host scope: ask to run an approved job on self -> host.request
+POST   /api/v1/hosts/self/requests            # host scope: ask to run an approved job on self -> host.request (?wait=true blocks to terminal)
 ```
 
 `POST /jobs/{id}/notify` arms a one-shot, attributed page: the daemon notifies once when the
@@ -253,6 +253,30 @@ return `maintenance.readiness: {cordoned, in_flight, safe_to_reboot}`, except th
 listing, which returns the ordinary `job.list`. A surface that runs no job queue (a
 standalone `exocomp web`) answers `503` rather than pretending to cordon a daemon it does not
 own.
+
+`POST /hosts/self/requests` is the `host` scope's one route, and the scope is **write-only** —
+a host token is refused by every read route, `GET /jobs` included. The body is
+`{request, reason?, status?, metadata?}`; `request` names the class of job, and the host
+identity comes from the token, never the body, so a host can only ask for action on itself.
+The response is `host.request: {event_id, outcome, reason, job_id, approval_id}`; `job_id`
+names the job the request fired or gated (null when it fired none), and `approval_id` the
+approval gating it (null when there is none). By default it returns at once, a pure enqueue through the same
+reactive rules, guardrails, and gates as any other event. With `?wait=true` (or `?wait=1`) the
+handler blocks until the job reaches a terminal state and adds `job_state` and, when the store
+recorded one, `exit_code` to the same response. `?timeout=` is a Go duration bounding that
+block; it defaults to `30s` and is capped at `5m` — an over-cap value is a
+`400 invalid_argument` naming the maximum, never a silent clamp.
+
+Two `job_state` values in that response are deliberately **not** `store.JobState`. `"pending"`
+means the deadline passed without a terminal state — an approval-gated job lands here, and
+`approval_id` names the approval it waits on. `"disconnected"` means the caller's connection
+went away while the handler was waiting; the job itself is untouched, so the value names the
+waiter that left rather than claiming the job was `cancelled`.
+
+The blocking path is itself the polling surface. For an asynchronous follow-up, reissue the
+same request with the same `Idempotency-Key`: dedup suppression returns the original `job_id`,
+and adding `?wait=true` to that retry waits on that original job — poll-without-enumeration,
+with no read path handed to the host ([Decision 0021](../decisions/0021-host-request-polling.md)).
 
 Every write is a **pure enqueue**: the route builds a `queue.Spec` through the same
 `internal/service` verb the CLI calls, inserts the row, and returns at once — it never runs
