@@ -58,6 +58,25 @@ func TestNtfyCardOnFigureIsTopicLabel(t *testing.T) {
 	}
 }
 
+// TestLegHeadWrapsInsteadOfClipping gates the narrow-card head: the identity
+// cluster and the verb pair share a line only while they fit. Without the wrap
+// the chip shrinks and its label runs under the first button ("REPLICA" then a
+// covered "TING") — the defect the /system artboard refresh caught.
+func TestLegHeadWrapsInsteadOfClipping(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	css := cssOf(t, h, ts, client, "lift.css")
+	if !strings.Contains(css, ".leg-head { display:flex; flex-wrap:wrap;") {
+		t.Error("leg head must wrap; a shrinking chip otherwise runs its label under the verbs")
+	}
+	if !strings.Contains(css, ".leg-head .verbs { display:flex; align-items:center; gap:4px; margin-left:auto;") {
+		t.Error("wrapped verbs must stay fixed to the card's right edge")
+	}
+}
+
 // ---- R2 · identity strip: the Change form rests closed ----
 
 // TestSystemIdentityStripRestsClosed is the R2 GATE: at rest the Change form

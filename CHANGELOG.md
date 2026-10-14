@@ -14,6 +14,14 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the leg tile head wraps instead of clipping
+
+- **The state chip no longer runs under the tile verbs.** At a narrow card the
+  identity cluster and the `Config`/`Restore` pair cannot share one line, and
+  the shrinking chip pushed its label ("REPLICA") beneath the first button. The
+  head now wraps, so the verbs drop to their own line and stay visible — no tile
+  hides its views behind a dropdown (the tile-verbs change above).
+
 ## 2026-10-14 — push detail is a three-rung ladder
 
 - **One control, three rungs** (modelled on Android's lock-screen setting):

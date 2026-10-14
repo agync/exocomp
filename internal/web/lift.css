@@ -87,15 +87,22 @@
   display:flex; flex-direction:column; gap:14px; }
 .leg[data-state="wait"] { box-shadow:inset 0 0 0 1px var(--wait-border); }
 .leg[data-state="fail"] { box-shadow:inset 0 0 0 1px var(--fail-border); }
-.leg-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+/* The head wraps rather than clips: at a narrow card the identity cluster and
+ * the verb pair cannot share one line, and the shrinking state chip ran its
+ * label under the buttons ("REPLICA" then a covered "TING"). The verbs drop to
+ * their own line, still visible, so no tile hides its views behind a dropdown. */
+.leg-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
 /* The identity cluster: name + state chip together on the left, so the chip
  * never floats to the middle of the head (the space-between middle slot). */
 .leg-head .leg-id { display:flex; align-items:center; gap:10px; min-width:0; }
 .leg-head .name { display:flex; align-items:center; gap:10px; font:600 15px/1.4 var(--font-ui); color:var(--ink-100); }
 .leg-head .name svg { width:18px; height:18px; color:var(--ink-400); }
-.leg-head .verbs { display:flex; align-items:center; gap:4px; }   /* ≤2 glyphs then ▾, fixed from the right */
+.leg-head .verbs { display:flex; align-items:center; gap:4px; margin-left:auto; }   /* ≤2 glyphs then ▾, fixed from the right */
 .leg-head .verbs .btn + .btn { margin-left:4px; }                 /* buttons read 8px apart, not 4 */
-.leg-figure { display:flex; align-items:baseline; gap:12px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
+/* The figure and its note share a line, but wrap rather than squeeze: a long
+ * topic at the 30px figure size otherwise broke mid-token ("exocomp-" / "7f3a")
+ * beside the note at narrow desktop widths. */
+.leg-figure { display:flex; flex-wrap:wrap; align-items:baseline; gap:12px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .leg-figure .value { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
 .leg-figure .value.topic { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
 .leg-figure .value.dim { color:var(--ink-500); }
