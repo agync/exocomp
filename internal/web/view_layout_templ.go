@@ -151,7 +151,7 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span> <span class=\"wordmark\">exocomp</span></a> <button type=\"button\" class=\"railtoggle\" id=\"railbtn\" onclick=\"exoToggleRail(event)\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\"><svg class=\"railchev\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M10 3L5 8l5 5\"></path></svg> <span class=\"raillabel\">Open sidebar</span></button></div><nav class=\"side-nav\"><div class=\"navgroup\">Operate</div>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 10, "</span> <span class=\"wordmark\">exocomp</span></a> <button type=\"button\" class=\"railtoggle\" id=\"railbtn\" onclick=\"exoToggleRail(event)\" aria-label=\"Collapse sidebar\" title=\"Collapse sidebar\"><svg class=\"railpanel\" width=\"16\" height=\"16\" viewBox=\"0 0 16 16\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M5 2.5h6a2.5 2.5 0 0 1 2.5 2.5v6a2.5 2.5 0 0 1-2.5 2.5H5A2.5 2.5 0 0 1 2.5 11V5A2.5 2.5 0 0 1 5 2.5zM6 2.5v11\"></path></svg> <span class=\"raillabel\">Open sidebar</span></button></div><nav class=\"side-nav\"><div class=\"navgroup\">Operate</div>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

@@ -234,8 +234,8 @@ a:visited { color: var(--accent-text); }
 .appbar .back { color: var(--ink-200); }
 
 /* Desktop rail: icon-only. At the top the exocomp brand mark rests in the
- * collapse toggle; hovering or focusing the toggle swaps it for the open
- * chevron and its "Open sidebar" flyout. Nav labels hide. */
+ * collapse toggle; hovering or focusing the toggle swaps it for the panel
+ * toggle and its "Open sidebar" flyout. Nav labels hide. */
 @media (min-width: 821px) {
   :root[data-nav="rail"] .sidebar { width: 64px; }
   :root[data-nav="rail"] .side-top { padding: 0; }
@@ -249,7 +249,6 @@ a:visited { color: var(--accent-text); }
     margin: 0; opacity: 0; border-color: transparent; background: transparent;
     transition: opacity .12s ease;
   }
-  :root[data-nav="rail"] .railchev { transform: rotate(180deg); }
   :root[data-nav="rail"] .side-top:hover .brandlink,
   :root[data-nav="rail"] .side-top:focus-within .brandlink { opacity: 0; }
   :root[data-nav="rail"] .side-top:hover .railtoggle,
