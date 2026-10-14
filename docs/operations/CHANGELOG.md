@@ -53,11 +53,12 @@ Newest first.
 
 ## 2026-10-14 — be honest that --runner is caps only
 
-- **`--runner` stops implying a container tier that does not exist.** The flag's
-  help text and the runner docs now state plainly that it applies only the named
-  runner's per-job cgroup caps; no runner image is built or run. The container
-  tier stays deferred, so the surface matches the code instead of reading as an
-  elevation path.
+- **`--runner` stops implying a container tier that does not exist.** On
+  `run-cli`, `playbook run`, `run` and `workspace plan/apply/destroy`, the flag's
+  help text, and in the runner docs, now state plainly that it applies only the
+  named runner's per-job cgroup caps; no runner image is built or run. The
+  container tier stays deferred, so the surface matches the code instead of
+  reading as an elevation path.
 
 ## 2026-10-14 — one authority for the job field roster
 
