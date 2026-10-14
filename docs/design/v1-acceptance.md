@@ -14,6 +14,14 @@ begin until this bar is met. Reliability of the core comes before breadth of
 features. Each scenario runs end-to-end on real infrastructure (a Lima Fedora node
 for the host-facing runs, real tofu/ansible/git/restic) behind its own gate script.
 
+## Status — the bar was met; the release label was withdrawn
+
+The bar was met on 2026-08-22 and `test/e2e/v1-acceptance-gate.sh` still runs the
+five story gates; that script, not this page, is the evidence. The *release label*
+was withdrawn on 2026-10-15: the release line is pre-1.0 from `v0.1.0`, and
+release-please owns later versions ([Decision 0022](../decisions/0022-pre-1.0-release-line.md)).
+"v1.0" below names the bar and the milestone, not a shipped release.
+
 ## The acceptance scenarios (each must run end-to-end, gate-tested)
 
 1. **"Here is my git repo, go run my playbook regularly."** Register a git
@@ -79,4 +87,5 @@ is a step-ledger workflow (Decision 0008); an apply→play dependency edge is th
 
 Source model + credential plane + surfaces → upgrade/rollback + plan policy + step
 ledger + the Terraform→Ansible inventory handoff → the v1.0 gate proving the full v1
-scope + maintenance → **declare v1.0** → THEN post-v1 (Litestream/GoAlert/OpenBao).
+scope + maintenance → **meet the bar** (met 2026-08-22) → THEN post-v1
+(Litestream/GoAlert/OpenBao).

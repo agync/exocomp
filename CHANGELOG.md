@@ -14,6 +14,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-15 — the release line is pre-1.0
+
+- **The version line starts at `v0.1.0`.** The project carried a local `v1.0.0`
+  tag (2026-08-22) that was never pushed to any remote and only ever set the build
+  string through `git describe`. 1.0 is a commitment about external compatibility,
+  so the label is withdrawn and the release line begins at `v0.1.0`; release-please
+  owns later versions from a 0.x manifest (Decision 0022). The acceptance bar stays
+  met and gate-tested — the label moved, not the evidence.
+
 ## 2026-10-14 — the ad-hoc verbs name the --runner tier plainly
 
 - **`command` and `ansible` carry the caps-only `--runner` wording.** The

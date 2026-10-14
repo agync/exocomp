@@ -1,7 +1,8 @@
 # Post-v1.0 program (operator-directed 2026-08-22)
 
-Trigger: begins only after v1.0 is verifiably declared (M3d gate green + maintenance).
-Until then this file is a plan, not work.
+Trigger: begins only after the acceptance bar is verifiably met (M3d gate green +
+maintenance). Met 2026-08-22; the release label was later withdrawn in favour of
+the pre-1.0 line (Decision 0022), which leaves the bar itself unchanged.
 
 ## Feature track (sequential milestones, each build+maintain workflow pair)
 

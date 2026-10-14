@@ -6,6 +6,19 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-15
+
+- **Added**: [Decision 0022](decisions/0022-pre-1.0-release-line.md) withdraws the
+  v1.0 release label. The release line is pre-1.0 and begins at `v0.1.0`;
+  release-please owns later versions. The acceptance bar stays met and gate-tested —
+  `test/e2e/v1-acceptance-gate.sh` is the evidence — so only the label moved. The
+  table in [decisions/index.md](decisions/index.md) gains its row.
+- **Correction of fact**: [design/v1-acceptance.md](design/v1-acceptance.md) read as
+  a shipped-release page. It gains a status note separating the met bar from the
+  withdrawn label, and its sequencing line no longer says "declare v1.0". The
+  2026-08-22 result section the page once carried was dropped by the 2026-08-24
+  page rewrite; the gate script, not the page, is the record.
+
 ## 2026-10-14
 
 - **Added**: [Decision 0021](decisions/0021-host-request-polling.md) keeps the
