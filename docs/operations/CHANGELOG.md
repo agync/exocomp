@@ -14,6 +14,15 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the ad-hoc inline run records the privilege at enqueue
+
+- **`command` and `ansible` record a privileged run at enqueue time.** The
+  no-daemon inline path appended the attributed `run requested UNSANDBOXED`
+  record only after the job drained and only when it succeeded, so a hard
+  enqueue or drain error dropped it and the ledger carried it after the
+  execution-time events. It is now appended right after the job is enqueued,
+  before it is drained, matching the run-cli, gated, and daemon paths.
+
 ## 2026-10-14 — the web run config names the sandbox grants
 
 - **The run configuration tile surfaces a sandboxed run's grants.** The job detail

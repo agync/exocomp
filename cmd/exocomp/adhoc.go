@@ -331,12 +331,17 @@ func runAdhoc(ctx context.Context, out, warn io.Writer, spec adhocSpec) (code in
 	if daemonRunning(ctx, dir) {
 		final, err = enqueueForDaemon(ctx, st, dir, queued, streamOut)
 	} else {
-		final, err = runPlaybookInline(ctx, st, dir, queued, streamOut, warn)
-		if err == nil && queued.Privileged {
-			if rerr := service.New(st, dir, nil).RecordPrivileged(ctx, final.ID, service.Actor{}); rerr != nil {
-				return 0, rerr
+		// The attributed record is written at enqueue time, before the job is
+		// drained, so a hard enqueue/drain error cannot drop it. The callback
+		// carries the job id the enqueue produced, matching the run-cli and
+		// daemon paths.
+		onEnqueued := func(jobID int64) error {
+			if !queued.Privileged {
+				return nil
 			}
+			return service.New(st, dir, nil).RecordPrivileged(ctx, jobID, service.Actor{})
 		}
+		final, err = runPlaybookInline(ctx, st, dir, queued, streamOut, warn, onEnqueued)
 	}
 	if err != nil {
 		return 0, err

@@ -22,6 +22,11 @@ import (
 // the escalation to whoever asked.
 const attributedPrivileged = "run requested UNSANDBOXED (privileged) by local CLI operator"
 
+// runningUnsandboxed is the queue's execution-time event (queue.execute) naming
+// that a privileged job ran with no kernel sandbox. It is emitted when the job
+// runs, so a true enqueue-time attributed record must precede it in the ledger.
+const runningUnsandboxed = "running UNSANDBOXED (privileged): no kernel sandbox for this job"
+
 // jobEvents joins a job's event messages so an assertion reads the whole ledger.
 func jobEvents(t *testing.T, jobID int64) string {
 	t.Helper()
@@ -98,8 +103,9 @@ func TestRunCLIGatedPrivilegedRecordsAttributedEvent(t *testing.T) {
 
 // TestAdhocPrivilegedRecordsAttributedEvent covers the inline ad-hoc enqueue
 // (runAdhoc, daemon not running, no gate): the `command` job the process drains
-// carries the attributed record. Removing the RecordPrivileged call from the
-// inline branch of runAdhoc makes this fail.
+// carries the attributed record at enqueue time, before the queue's
+// execution-time event. Removing the RecordPrivileged call from the inline
+// branch of runAdhoc makes this fail, and so does writing it after the drain.
 func TestAdhocPrivilegedRecordsAttributedEvent(t *testing.T) {
 	useDataDir(t, t.TempDir())
 	requireTools(t, "ansible")
@@ -115,9 +121,22 @@ func TestAdhocPrivilegedRecordsAttributedEvent(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("command exited %d:\n%s", code, out.String())
 	}
-	if !strings.Contains(jobEvents(t, lastJobID(t, "command")), attributedPrivileged) {
-		t.Fatalf("inline ad-hoc job carries no attributed privileged record:\n%s",
-			jobEvents(t, lastJobID(t, "command")))
+
+	events := jobEvents(t, lastJobID(t, "command"))
+	if !strings.Contains(events, attributedPrivileged) {
+		t.Fatalf("inline ad-hoc job carries no attributed privileged record:\n%s", events)
+	}
+	// Enqueue-time, not run-time: the attributed record must land before the
+	// queue's execution-time "running UNSANDBOXED" event. A record appended
+	// after the drain sits after every execution event, so this ordering is what
+	// makes "enqueue-time" true.
+	attrIdx := strings.Index(events, attributedPrivileged)
+	runIdx := strings.Index(events, runningUnsandboxed)
+	if attrIdx < 0 || runIdx < 0 {
+		t.Fatalf("event ledger missing a required event:\n%s", events)
+	}
+	if attrIdx > runIdx {
+		t.Fatalf("attributed record appended after the run started; want it at enqueue time:\n%s", events)
 	}
 }
 

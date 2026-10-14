@@ -441,7 +441,7 @@ type playbookInlineEnqueuer struct {
 }
 
 func (e playbookInlineEnqueuer) Enqueue(ctx context.Context, spec queue.Spec) (store.Job, error) {
-	return runPlaybookInline(ctx, e.st, e.dir, spec, e.out, e.warn)
+	return runPlaybookInline(ctx, e.st, e.dir, spec, e.out, e.warn, nil)
 }
 
 func (e playbookInlineEnqueuer) EnqueueGated(ctx context.Context, spec queue.Spec) (store.Job, error) {
@@ -520,8 +520,11 @@ func resolveInventoryArg(ctx context.Context, st *store.Store, dataDir, value st
 // runPlaybookInline enqueues the job and drains it in this process, which is
 // what a host with no daemon does. The vault password is derived here, held
 // for the length of the run, and added to what the redactor scrubs.
+// When onEnqueued is non-nil it is called with the new job's id immediately
+// after the job is enqueued and before it is drained, so a caller can append
+// a fact at enqueue time (the ad-hoc path records a privileged run there).
 func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec queue.Spec,
-	out, warn io.Writer) (store.Job, error) {
+	out, warn io.Writer, onEnqueued func(int64) error) (store.Job, error) {
 	var env *secrets.Envelope
 	if opened, err := secrets.Open(dir); err != nil {
 		_, _ = fmt.Fprintf(warn, "WARNING: no envelope in %s (%v): running without a vault "+
@@ -580,6 +583,11 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 	job, err := q.Enqueue(ctx, spec)
 	if err != nil {
 		return store.Job{}, err
+	}
+	if onEnqueued != nil {
+		if err := onEnqueued(job.ID); err != nil {
+			return store.Job{}, err
+		}
 	}
 	if err := drainAndTail(ctx, q, st, job.ID, out); err != nil {
 		return store.Job{}, err
