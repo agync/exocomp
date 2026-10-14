@@ -1,6 +1,6 @@
 # Contributor guide
 
-How work lands in exocomp and what gates it. The foundational contract lives in [AGENTS.md](../../AGENTS.md); this section provides the concrete developer manual and procedures.
+How work lands in exocomp and what gates it. The foundational contract lives in [AGENTS.md](https://github.com/abn/exocomp/blob/main/AGENTS.md); this section provides the concrete developer manual and procedures.
 
 ## Developer guides
 

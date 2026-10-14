@@ -29,7 +29,7 @@ On the host:
    recovery kit.
 
 The recovery primitive is deliberately **not** "run the control plane": it is
-the separately versioned `recovery.sh` ([invariant 7](../../AGENTS.md)), which
+the separately versioned `recovery.sh` ([invariant 7](https://github.com/abn/exocomp/blob/main/AGENTS.md)), which
 rebuilds a data dir from a backup with no exocomp code in the path — delegating
 to `exocomp restore` when a binary is present, and running the recovery card's
 hand chain (age → openssl HKDF → restic, sha256-verified) when it is not. Run

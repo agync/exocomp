@@ -9,7 +9,7 @@ tags: [sbom, dependencies, packaging]
 # Bill of materials
 
 Indicative pins as of 2026-08. **The frozen pins are committed at
-[`packaging/MANIFEST.json`](../../packaging/MANIFEST.json)** — the explicit source of the
+[`packaging/MANIFEST.json`](https://github.com/abn/exocomp/blob/main/packaging/MANIFEST.json)** — the explicit source of the
 toolchain versions, not a constant hidden in the binary. The image build copies that file
 to `/opt/exocomp/MANIFEST.json`, filling in only `git` (resolved from Fedora's signed
 repo), and sets `EXOCOMP_TOOLCHAIN_MANIFEST` so the daemon reads the shipped pin — a
