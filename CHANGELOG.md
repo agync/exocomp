@@ -14,6 +14,22 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — the sidebar toggle stops reading as "back"
+
+- **The rail toggle is a panel mark, not a back chevron.** The sidebar's
+  top-left collapse control drew a lone `‹` — the universal back affordance —
+  while it toggles a layout. It now draws a rounded panel outline with the
+  divider on its left edge, the conventional sidebar/panel mark, so the glyph
+  names the thing it toggles. The id, handler, `aria-label`/`title`, and the
+  collapsed "Open sidebar" flyout are unchanged; the collapsed rail no longer
+  mirrors the glyph into a panel-right.
+- **The app bar's parent link renders on desktop too.** The `‹ {parent}` back
+  link was phone-shell chrome, hidden above the phone breakpoint, so a desktop
+  detail page had no "up" at all. It now renders on the desktop bar when the
+  page sets a parent (`p.BackHref`) — a job to Jobs, the backup history to
+  targets — and stays absent on top-level pages like `/system`. It is the one
+  shared element, so the phone shell is unchanged.
+
 ## 2026-10-14 — secret management names rotation honestly
 
 - **`secrets rotate` is now `secrets replace`, with `rotate` kept as an alias.**

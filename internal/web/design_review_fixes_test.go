@@ -618,8 +618,8 @@ func TestBackupsLastRunJobLinksOnly(t *testing.T) {
 // ---- R8 · target history page ----
 
 // TestBackupHistoryBackLinkAndCopy is the R8 gate: `Back to targets` becomes
-// a `‹ targets` quiet link at the topbar's left with the meta full width, the
-// meta names drilled snapshots, and the footer joins its sentences with ` · `.
+// the app bar's one `‹ targets` parent link, the topbar meta is full width and
+// names drilled snapshots, and the footer joins its sentences with ` · `.
 func TestBackupHistoryBackLinkAndCopy(t *testing.T) {
 	h := newHarness(t)
 	nas := seedTarget(t, h, "nas01", "restic_local", "/var/backups/nas01", "daily=7,weekly=4", true)
@@ -632,11 +632,14 @@ func TestBackupHistoryBackLinkAndCopy(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("history = %d, want 200", code)
 	}
-	if !strings.Contains(page, `>‹ targets</a>`) {
-		t.Error("the history page topbar must render the '‹ targets' back link")
+	if !strings.Contains(page, `<a class="back" href="/system/backups" onclick="exoCloseNav()" aria-label="Back to targets">‹ <span>targets</span></a>`) {
+		t.Error("the history page must render the one app-bar '‹ targets' parent link")
 	}
 	if strings.Contains(page, ">Back to targets</a>") {
 		t.Error("the wrapping 'Back to targets' verb must be gone")
+	}
+	if strings.Contains(page, `class="sys-bk-back"`) {
+		t.Error("the redundant topbar back link must be gone (the app bar owns it)")
 	}
 	// The topbar meta names drilled snapshots (the footer keeps the forget
 	// gate's "absent on the newest and drilled" copy — that is the A12 rule).

@@ -535,7 +535,6 @@ templ restoreDrawerJS() {
 templ backupsHistory(vm backupsHistoryVM) {
 	@layout(vm.Page) {
 		<section class="sys-bkbar">
-			<a class="sys-bk-back" href={ urlWithBase(vm.Page.Base, "/system/backups") }>‹ targets</a>
 			<span class="sys-bk-meta">{ vm.Kind } target · forget removes a snapshot through the one queue · drilled snapshots</span>
 		</section>
 		if vm.Notice != "" {

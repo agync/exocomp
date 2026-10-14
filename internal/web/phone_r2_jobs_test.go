@@ -176,8 +176,8 @@ func TestPhoneAppBarBackChevron(t *testing.T) {
 	}
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
-	if !strings.Contains(app, `.appbar .back { color: var(--ink-200); }`) {
-		t.Error("app.css must render the back chevron in ink, not the a{accent-text} purple")
+	if !strings.Contains(app, `.appbar .back { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-200); }`) {
+		t.Error("app.css must render the back link in ink, not the a{accent-text} purple")
 	}
 }
 

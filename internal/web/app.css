@@ -224,14 +224,16 @@ a:visited { color: var(--accent-text); }
  * sit them at the bar's right end. */
 .appbar-actions { margin-left: auto; }
 .appbar-action { display: inline-flex; align-items: center; }
-/* The app-bar menu button, back chevron, and brandmark are the phone shell's
- * chrome (SPEC §2.0): on desktop the sidebar carries the brand, so these render
- * for the phone shell and hide here. The wordmark inside the app-bar brandlink
- * is likewise phone-hidden (the mark is the brand). */
-.appbar .hamburger, .appbar .back, .appbar .brandlink { display: none; }
-/* The back chevron is shell chrome, not a link: it must not inherit the
+/* The app-bar menu button and brandmark are the phone shell's chrome (SPEC
+ * §2.0): on desktop the sidebar carries the brand, so these render for the
+ * phone shell and hide here. The wordmark inside the app-bar brandlink is
+ * likewise phone-hidden (the mark is the brand). The back link is NOT hidden:
+ * it is the desktop app bar's "up to the parent" control too, and self-hides
+ * by rendering only when p.BackHref is set. */
+.appbar .hamburger, .appbar .brandlink { display: none; }
+/* The back link is shell chrome, not a body link: it must not inherit the
  * a{color:accent-text} purple (R4). */
-.appbar .back { color: var(--ink-200); }
+.appbar .back { display: inline-flex; align-items: center; gap: 4px; color: var(--ink-200); }
 
 /* Desktop rail: icon-only. At the top the exocomp brand mark rests in the
  * collapse toggle; hovering or focusing the toggle swaps it for the panel

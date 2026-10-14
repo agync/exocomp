@@ -191,13 +191,11 @@
 
 /* /system/backups header + footer (R7): the topbar is the breadcrumb — meta
  * left, verbs right (margin-left:auto, 24px gap) — and the footer's two
- * sentences join with a ` · `. The `‹ targets` back link sits at the left of
- * the history page's topbar (R8). */
+ * sentences join with a ` · `. The history page's `‹ targets` parent link is
+ * the shared app-bar back (p.BackHref), so the topbar carries the meta alone. */
 .sys-bkbar { display:flex; align-items:center; gap:24px; }
 .sys-bk-meta { flex:1; min-width:0; font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
 .sys-bk-verbs { margin-left:auto; }
-.sys-bk-back { font:400 12px/1.4 var(--font-mono); color:var(--ink-400); text-decoration:none; }
-.sys-bk-back:hover { color:var(--ink-100); text-decoration:underline; }
 /* The footer splits to TWO lines (R7c, 08-1): a flex row that wraps with a
  * 4px row gap, and a ≤1440 media query that stacks the two rows outright so
  * the freshness ladder drops onto its OWN line — deterministically, whatever

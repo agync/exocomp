@@ -28,13 +28,14 @@ type page struct {
 	// origin). pageFor fills it from the server's --base-path; the URL sweep
 	// re-prefixes root-absolute hrefs from it.
 	Base string
-	// BackHref is the detail page's back-chevron target (SPEC §2.0): the
-	// phone app bar swaps its menu button for a back chevron when set. Empty
-	// renders the menu button. BackLabel upgrades that back affordance to a
-	// worded `‹ {label}` quiet link (R8's `‹ targets` on the backup-history
-	// page); empty keeps the glyph chevron. TitleSub stacks under Title
-	// ("Job #5" / the mono playbook) on the phone shell; empty renders a
-	// single-line title.
+	// BackHref is the detail page's "up to the parent" target (SPEC §2.0):
+	// the desktop app bar renders a back link to it, and on the phone the app
+	// bar swaps its menu button for the same link. Empty renders no link on
+	// desktop and the menu button on phone. BackLabel upgrades that back
+	// affordance to a worded `‹ {label}` quiet link (R8's `‹ targets` on the
+	// backup-history page); empty keeps the glyph chevron. TitleSub stacks
+	// under Title ("Job #5" / the mono playbook) on the phone shell; empty
+	// renders a single-line title.
 	BackHref  string
 	BackLabel string
 	TitleSub  string
