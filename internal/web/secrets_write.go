@@ -76,6 +76,15 @@ func secretChangePastVerb(src string) string {
 	return "replaced"
 }
 
+// secretChangeVerb is the present-tense verb for a source, the log copy of
+// secretChangePastVerb.
+func secretChangeVerb(src string) string {
+	if src == store.SecretSourceGenerated {
+		return "rotate"
+	}
+	return "replace"
+}
+
 // secretBoundRefusal is the rm verb's binding refusal (forms/SPEC.md): a bound
 // secret stays, and the row says so — the CLI's --force override stays on the
 // CLI, so the row's copy names the binding without offering it.
@@ -201,12 +210,12 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	form := secretRotateFormVM{Name: name, Expires: expires}
 
 	if !r.Form.Has("generate") && r.PostFormValue("value") == "" {
-		s.log.Info("web: secret rotate refused", "err", "empty value", "by", ident.token.Name)
+		s.log.Info("web: secret "+secretChangeVerb(existing.Source)+" refused", "err", "empty value", "by", ident.token.Name)
 		form.ErrValue = secretValueRefusal
 		form.FirstInvalid = "value"
 	}
 	if !validDuration(expires) {
-		s.log.Info("web: secret rotate refused", "err", "bad expiry", "by", ident.token.Name)
+		s.log.Info("web: secret "+secretChangeVerb(existing.Source)+" refused", "err", "bad expiry", "by", ident.token.Name)
 		form.ErrExpires = secretExpiryRefusal
 		if form.FirstInvalid == "" {
 			form.FirstInvalid = "expires"
@@ -223,13 +232,13 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	}
 	sealed, err := s.sealer.Seal(existing.Name, existing.Kind, value)
 	if err != nil {
-		s.log.Error("web: secret rotate", "err", err.Error())
+		s.log.Error("web: secret "+secretChangeVerb(existing.Source), "err", err.Error())
 		form.ErrForm = secretChangeSubmitRefusal(existing.Source)
 		s.secretRefusal(w, r, nil, &form)
 		return
 	}
 	if err := s.store.RotateSecret(r.Context(), name, sealed.Nonce, sealed.Ciphertext); err != nil {
-		s.log.Error("web: secret rotate", "err", err.Error())
+		s.log.Error("web: secret "+secretChangeVerb(existing.Source), "err", err.Error())
 		form.ErrForm = secretChangeSubmitRefusal(existing.Source)
 		s.secretRefusal(w, r, nil, &form)
 		return
@@ -244,7 +253,7 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	// kit's derivation rule draws from, so the kit is stale until it is
 	// reprinted (SPEC §7 A3).
 	s.bumpKitChanges(r.Context())
-	s.log.Info("web: secret rotate", "secret", name, "by", ident.token.Name)
+	s.log.Info("web: secret "+secretChangeVerb(existing.Source), "secret", name, "by", ident.token.Name)
 	s.redirectFlash(w, r, "/secrets", secretChangePastVerb(existing.Source)+" "+name)
 }
 
