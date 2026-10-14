@@ -2117,6 +2117,10 @@ type jobRow struct {
 	QueuedAt      time.Time
 	// CheckMode reports the run's --check flag for the meta line.
 	CheckMode bool
+	// Privileged reports the run's --privileged marker: the job ran with no
+	// kernel sandbox. The list renders it as an "unsandboxed" mono fact beside
+	// the source and check-mode facts.
+	Privileged bool
 }
 
 func (j jobRow) FinishedAtISO() string {
@@ -3167,6 +3171,10 @@ type jobRunCardVM struct {
 	State     store.JobState
 	Tool      string
 	CheckMode bool
+	// Privileged marks a run that forfeited the kernel sandbox (--privileged);
+	// the chip row carries it at a glance, the Privileged config tile below
+	// carries the detail.
+	Privileged bool
 	// RerunOf is the parent job's id when this run is a rerun; 0 otherwise.
 	RerunOf  int64
 	Title    string

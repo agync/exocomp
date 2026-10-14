@@ -196,7 +196,7 @@ templ sourceDetail(vm sourceDetailVM) {
 							</details>
 							<div class="privileged">
 								@toggle("privileged", "Run unsandboxed (privileged)", vm.toggleState("privileged"), true)
-								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
+								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed. Prefer reaching the host over SSH when only the far side needs elevation — that keeps the sandbox on.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
 						</form>
@@ -215,7 +215,7 @@ templ sourceDetail(vm sourceDetailVM) {
 							@toggle("require_approval", "require approval before it runs", vm.toggleState("require_approval"), false)
 							<div class="privileged">
 								@toggle("privileged", "Run unsandboxed (privileged)", vm.toggleState("privileged"), true)
-								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
+								<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed. Prefer reaching the host over SSH when only the far side needs elevation — that keeps the sandbox on.</p>
 							</div>
 							@formStatus(vm.runPending(), vm.runFormText(), "Queueing run")
 						</form>

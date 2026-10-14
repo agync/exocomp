@@ -26,6 +26,9 @@ func phoneJobMeta(j jobRow) string {
 	if j.Source != "-" && j.Source != "" {
 		parts = append(parts, j.Source)
 	}
+	if j.Privileged {
+		parts = append(parts, "unsandboxed")
+	}
 	if j.FinishedRel != "" {
 		parts = append(parts, j.FinishedRel)
 	}
@@ -219,6 +222,9 @@ templ runCard(vm jobDetailVM) {
 		<div class="run-head">
 			<div class="chips">
 				@chip(vm.Job.StateClass(), string(vm.Job.State))
+				if vm.RunCard.Privileged {
+					<span class="chip chip--unsandboxed"><span class="dot"></span>unsandboxed</span>
+				}
 				if vm.RunCard.DegradedChip != "" {
 					<span class="chip chip--degraded"><span class="dot"></span>{ vm.RunCard.DegradedChip }</span>
 				}

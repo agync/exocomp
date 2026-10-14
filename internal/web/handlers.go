@@ -1228,7 +1228,8 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 		ID: j.ID, Runbook: j.Runbook, Kind: j.Kind, Trigger: j.Trigger, Source: "-",
 		State: j.State, Age: jobAge(j, now), ExitCode: "-", Argv: j.Args.Argv,
 		Title: jobTitle(j), CheckMode: hasFlag(j.Args.Argv, "--check"),
-		Duration: jobDuration(j, now), FinishedRel: jobFinishedRel(j, now),
+		Privileged: j.Args.Privileged,
+		Duration:   jobDuration(j, now), FinishedRel: jobFinishedRel(j, now),
 		FinishedClock: jobFinishedClock(j),
 		FinishedAt:    j.FinishedAt, QueuedAt: j.QueuedAt,
 	}
@@ -1244,6 +1245,9 @@ func (s *Server) jobRow(j store.Job, now time.Time) jobRow {
 	}
 	if row.CheckMode {
 		parts = append(parts, "check mode")
+	}
+	if row.Privileged {
+		parts = append(parts, "unsandboxed")
 	}
 	row.SourceMeta = strings.Join(parts, " · ")
 	return row
@@ -1329,7 +1333,8 @@ func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, sr
 	facts jobOutcomeFacts, actorName, face, runner string, rerunOfID int64) jobRunCardVM {
 	rc := jobRunCardVM{
 		State: job.State, Tool: job.Kind, CheckMode: hasFlag(job.Args.Argv, "--check"),
-		RerunOf: rerunOfID, Title: jobTitle(job),
+		Privileged: job.Args.Privileged,
+		RerunOf:    rerunOfID, Title: jobTitle(job),
 		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src),
 	}
 	rc.Sentence = "Queued by " + actorName + " from the " + face + " · " +
@@ -1589,8 +1594,18 @@ func unreachableSince(events []store.JobEvent, hosts []string) (latest time.Time
 // the child's ledger recorded (0 for a run that is not a rerun).
 func bandFor(job store.Job, msg string, facts jobOutcomeFacts, rerunOfID int64) (string, string) {
 	switch {
+	case strings.HasPrefix(msg, "run requested UNSANDBOXED"):
+		// The enqueue-time audit record (service.recordPrivileged): the run
+		// forfeited the kernel sandbox at the operator's request. Rendered as a
+		// fail-tinted band so the posture is visible in the log rather than
+		// buried among the dim system lines.
+		return "▸ " + msg, "unsandboxed"
 	case strings.HasPrefix(msg, "running UNSANDBOXED"):
-		return "", ""
+		// The queue's execution-time record, written on every path (daemon or
+		// inline drain) — the one privileged fact a CLI-enqueued run carries
+		// when the enqueue-time audit record is absent. Banded too, so no
+		// privileged run's log hides its posture among the dim system lines.
+		return "▸ " + msg, "unsandboxed"
 	case strings.HasPrefix(msg, "running "):
 		// Copy names a rerun's running band as "rerun of #{id} · tolerate
 		// unreachable on · workspace lock {ws} acquired". The workspace-lock

@@ -1589,6 +1589,14 @@ body { overflow-x: clip; }
 }
 .chip--degraded .dot { background: var(--signal-wait); }
 .chip--dashed { color: var(--ink-400); border-style: dashed; }
+/* The privileged (unsandboxed) posture: the same fail signal the launcher's
+ * privileged block uses, so "this run had no kernel sandbox" reads consistently
+ * wherever it appears. A posture, not a failure — the word carries the meaning. */
+.chip--unsandboxed {
+  color: var(--signal-fail); background: var(--fail-tint);
+  border-color: var(--fail-border);
+}
+.chip--unsandboxed .dot { background: var(--signal-fail); }
 /* The run card's compact head (2.1): the chip row and the verdict number share
  * one line — the exit figure pinned right, in the state colour — and the one
  * "Queued by …" meta line sits below. The title and job # are the app bar's own
@@ -1710,6 +1718,9 @@ body { overflow-x: clip; }
 .log .logband.ok { background: var(--ok-tint); color: var(--signal-ok); }
 .log .logband.fail { background: color-mix(in srgb, var(--signal-fail) 8%, transparent); color: var(--signal-fail); }
 .log .logband.wait { background: color-mix(in srgb, var(--signal-wait) 8%, transparent); color: var(--signal-wait); }
+/* The privileged enqueue record: fail-tinted like the chip, so the log names
+ * the unsandboxed posture instead of burying it in the dim system lines. */
+.log .logband.unsandboxed { background: color-mix(in srgb, var(--signal-fail) 8%, transparent); color: var(--signal-fail); }
 
 /* ---- Rerun dialog (1c) + launch drawer toggle ----
  * The OPTIONS toggles sit in rows with their description under the switch; the
