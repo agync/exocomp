@@ -24,7 +24,7 @@ templ backupsList(vm backupsVM) {
 			@backupAddDialog(vm)
 		}
 		<section class="sys-bkbar">
-			<span class="sys-bk-meta">System / Backups · { targetCountLabel(len(vm.Targets)) } · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
+			<span class="sys-bk-meta">{ targetCountLabel(len(vm.Targets)) } · any one recovers the system · dead-man reads the newest SUCCEEDED run</span>
 			if vm.Operator {
 				<span class="sys-bk-verbs page-actions">
 					<button type="button" class="btn danger ring" data-modal-open="restore-backups">Restore</button>

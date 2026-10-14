@@ -53,8 +53,8 @@ func TestNtfyCardOnFigureIsTopicLabel(t *testing.T) {
 		t.Error("a healthy ON leg must never figure a dash")
 	}
 	css := cssOf(t, h, ts, client, "lift.css")
-	if !strings.Contains(css, ".leg-figure .value.topic { font:600 19px/1.3 var(--font-mono);") {
-		t.Error("topic figure lacks the mono 19/600 sizing")
+	if !strings.Contains(css, ".leg-figure .value.topic { font:600 30px/1.1 var(--font-mono);") {
+		t.Error("topic figure lacks the mono 30px figure sizing")
 	}
 }
 
@@ -476,8 +476,8 @@ func TestBackupsHeaderMetaVerbsAndFooter(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("/system/backups = %d, want 200", code)
 	}
-	if !strings.Contains(page, ">System / Backups · 1 target · any one recovers the system") {
-		t.Error("the topbar meta must carry the breadcrumb and the singular targets line")
+	if !strings.Contains(page, ">1 target · any one recovers the system") {
+		t.Error("the topbar meta must carry the singular targets line")
 	}
 	if strings.Contains(page, `class="kicker">System / Backups</div>`) {
 		t.Error("the card must not repeat the SYSTEM / BACKUPS kicker")
@@ -882,12 +882,12 @@ func TestBackupsMetaCountPluralises(t *testing.T) {
 	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
 
 	_, page := getBody(t, client, ts.URL+"/system/backups")
-	if !strings.Contains(page, "System / Backups · 1 target ·") {
+	if !strings.Contains(page, "1 target ·") {
 		t.Error("a single target must read '1 target', not '1 targets'")
 	}
 	seedTarget(t, h, "nas02", "restic_local", "/var/backups/nas02", "", true)
 	_, page = getBody(t, client, ts.URL+"/system/backups")
-	if !strings.Contains(page, "System / Backups · 2 targets ·") {
+	if !strings.Contains(page, "2 targets ·") {
 		t.Error("multiple targets must read 'N targets'")
 	}
 }

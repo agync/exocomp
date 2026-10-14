@@ -72,15 +72,16 @@
   /* R11: the key stays — `public URL · not set` says what is not set — and the
    * Change verb is a bar-size ghost, not the filled 30px control. */
   .sys-identity .pub .label { display:inline; }
+  .sys-identity .pub .label { white-space:nowrap; }
   .sys-identity .pub .label::after { content:" ·"; }
-  .sys-identity .pub .val { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sys-identity .pub .val { white-space:normal; overflow-wrap:anywhere; min-width:0; }
   .sys-identity .change { height:36px; background:transparent; border-color:transparent; }
   .pubform input[type="url"] { max-width: 100%; }
 }
 
 
 /* leg grid + card anatomy */
-.sys-legs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--gap-card); }
+.sys-legs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:var(--gap-card); align-items:start; }
 @media (max-width:719px) { .sys-legs { display:none; } }
 .leg { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px;
   display:flex; flex-direction:column; gap:14px; }
@@ -96,7 +97,7 @@
 .leg-head .verbs .btn + .btn { margin-left:4px; }                 /* buttons read 8px apart, not 4 */
 .leg-figure { display:flex; align-items:baseline; gap:12px; font-family:var(--font-mono); font-variant-numeric:tabular-nums; }
 .leg-figure .value { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
-.leg-figure .value.topic { font:600 19px/1.3 var(--font-mono); letter-spacing:-.4px; color:var(--ink-100); }
+.leg-figure .value.topic { font:600 30px/1.1 var(--font-mono); letter-spacing:-1px; color:var(--ink-100); }
 .leg-figure .value.dim { color:var(--ink-500); }
 .leg-figure .value.wait, .leg-figure .note.wait { color:var(--signal-wait); }
 .leg-figure .value.fail, .leg-figure .note.fail { color:var(--signal-fail); }
@@ -195,7 +196,7 @@
  * the freshness ladder drops onto its OWN line — deterministically, whatever
  * the sentence lengths. The join ` · ` is the ladder's ::before, so the
  * stacked line can drop it cleanly. */
-.sys-bk-footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px;
+.sys-bk-footer { display:flex; flex-wrap:wrap; align-items:center; gap:4px 8px; line-height:1.5;
   font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }
 .sys-bk-footer .right { margin-left:auto; }
 .sys-bk-footer .right::before { content:"·"; margin-right:8px; }
