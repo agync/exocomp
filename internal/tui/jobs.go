@@ -61,18 +61,40 @@ func setColumnsAndRows(m *table.Model, cols []table.Column, rows []table.Row) {
 	}
 }
 
+// sourceColWidth is the SOURCE column's fixed width: the source plus, on a
+// privileged run, the "unsandboxed" posture beside it (the web list's
+// "tree · unsandboxed" fact). It reserves the fact's columns so the table's
+// ansi.Truncate never drops the marker off a long source name, at either width.
+const sourceColWidth = 26
+
+// privilegedFact is the fail-tinted word a privileged run's SOURCE cell carries
+// — the TUI has no job detail, so this cell is the only place the run's
+// opt-out of the kernel sandbox shows.
+const privilegedFact = " · unsandboxed"
+
+// sourceCell renders the SOURCE cell: the source name, with the unsandboxed
+// posture appended on a privileged run. The name yields exactly the columns the
+// fact needs, so the marker survives any source length.
+func sourceCell(j store.Job) string {
+	src := orDash(j.Args.Source)
+	if !j.Args.Privileged {
+		return src
+	}
+	return truncate(src, sourceColWidth-rw(privilegedFact)) + styleErr.Render(privilegedFact)
+}
+
 func jobsColumns(width int) []table.Column {
 	if width < degradedWidth {
 		return []table.Column{
 			{Title: "ID", Width: 6},
-			{Title: "SOURCE", Width: 12},
+			{Title: "SOURCE", Width: sourceColWidth},
 			{Title: "STATE", Width: 12},
 			{Title: "EXIT", Width: 5},
 		}
 	}
 	return []table.Column{
 		{Title: "ID", Width: 6},
-		{Title: "SOURCE", Width: 12},
+		{Title: "SOURCE", Width: sourceColWidth},
 		{Title: "KIND", Width: 12},
 		{Title: "STATE", Width: 12},
 		{Title: "QUEUED", Width: 10},
@@ -115,7 +137,7 @@ func jobRows(jobs []store.Job) []table.Row {
 	for i, j := range jobs {
 		rows[i] = table.Row{
 			strconv.FormatInt(j.ID, 10),
-			orDash(j.Args.Source),
+			sourceCell(j),
 			j.Kind,
 			renderState(string(j.State)),
 			formatTime(j.QueuedAt),

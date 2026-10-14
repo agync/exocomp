@@ -13,7 +13,11 @@ state keywords and keys are never what's dropped.
   loading:    table skeleton, rows fill top-down
   empty:      "no jobs yet — they appear when a schedule or alert fires"
   populated:  table + enter → tail viewport
-  degraded80: duration + trigger merge into one meta column
+  privileged: the SOURCE cell carries "· unsandboxed" (fail-tinted) on a run
+              that opted out of the kernel sandbox — the TUI's only job posture
+              marker, since it has no job-detail view
+  degraded80: duration + trigger merge into one meta column; SOURCE and its
+              unsandboxed fact survive
 
 [2] backups
   loading:    targets listed, ages –
