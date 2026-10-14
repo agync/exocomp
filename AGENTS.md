@@ -11,7 +11,9 @@ Start with `docs/index.md` for architecture, ADRs, and operations.
 
 Breaking any of these fails review, regardless of how good the change is otherwise.
 
-1. One operator, one container, no external database — ever.
+1. One operator, one binary, no external database — ever. The binary is both client and
+   server; run it as a host service, a container, or a unit file, however the host is best
+   kept. State is the SQLite file beside it, never a database someone else operates.
 2. Nothing is stored in a bespoke format: plain SQLite, plain restic repos, plain git
    bundles, plain age files, standard tofu state.
 3. Subprocess correctness is decided by exit codes only; parsed output enriches the UI.
