@@ -11,6 +11,7 @@ import (
 	"exocomp.dev/exocomp/internal/api"
 	"exocomp.dev/exocomp/internal/executor"
 	"exocomp.dev/exocomp/internal/queue"
+	"exocomp.dev/exocomp/internal/service"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -59,6 +60,11 @@ func enqueueAllForDaemon(ctx context.Context, st *store.Store, dir string, specs
 		job, err := q.Enqueue(ctx, spec)
 		if err != nil {
 			return nil, err
+		}
+		if spec.Privileged {
+			if err := service.New(st, dir, nil).RecordPrivileged(ctx, job.ID, service.Actor{}); err != nil {
+				return nil, err
+			}
 		}
 		_, _ = fmt.Fprintf(out, "job %d queued for the running daemon\n", job.ID)
 		ids = append(ids, job.ID)

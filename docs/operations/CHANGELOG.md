@@ -14,6 +14,13 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## 2026-10-14 — close the privileged attribution gap for CLI runs
+
+- **Attributed enqueue-time privileged records on every path.** `run-cli`,
+  `command`, and `ansible` enqueue through `queue.Spec` directly; they now
+  append `service.RecordPrivileged` like the playbook and web paths, so CLI
+  unsandboxed runs are attributed to the local operator too.
+
 ## 2026-10-14 — be honest that --runner is caps only
 
 - **`--runner` stops implying a container tier that does not exist.** The flag's
