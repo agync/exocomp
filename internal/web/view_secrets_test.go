@@ -32,8 +32,8 @@ func seedSecrets(t *testing.T, h *harness) {
 	}); err != nil {
 		t.Fatalf("seed api-token: %v", err)
 	}
-	// A generated secret, expiring soon, unbound. A rotation stamp so the
-	// rotated column is not "never".
+	// A generated secret, expiring soon, unbound. A change stamp so the
+	// lifecycle cell is not "never".
 	if _, err := h.store.CreateSecret(ctx, store.SecretRow{
 		Name: "session-key", Kind: "hmac", Source: store.SecretSourceGenerated,
 		Nonce: []byte("NONCE-SENTINEL-B"), Ciphertext: []byte("CIPHER-SENTINEL-B"),
@@ -101,7 +101,7 @@ func TestSecretsSurfaceGated(t *testing.T) {
 
 	// Fields, columns, sources, timestamps. The inline row is the scan set
 	// only — Name · Kind · Source · Expiry · Last used (+ Actions); Created,
-	// Last rotated and Used by live in the row's details dialog.
+	// the change label and Used by live in the row's details dialog.
 	for _, want := range []string{
 		`scope="col"`, "Sealed values",
 		"api-token", "session-key", "ntfy-url",
@@ -112,7 +112,7 @@ func TestSecretsSurfaceGated(t *testing.T) {
 		`<th scope="col">Source</th>`,
 		`<th scope="col">Expiry</th>`,
 		`<th scope="col">Last used</th>`,
-		"never", // never-rotated / never-used cells
+		"never", // never-changed / never-used cells
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/secrets missing field %q", want)
@@ -183,9 +183,10 @@ func TestSecretsNavElsewhere(t *testing.T) {
 	}
 }
 
-// TestSecretsRowActions is the GATE for the v0.6 secrets row actions: Rotate
-// opens the reauth dialog (with the value/generate/confirm-token form), Remove
-// is a confirmed glyph, and a bound secret's menu carries the Bindings item.
+// TestSecretsRowActions is the GATE for the v0.6 secrets row actions: the
+// change verb (Replace for a user secret) opens the reauth dialog (with the
+// value/generate/confirm-token form), Remove is a confirmed glyph, and a bound
+// secret's menu carries the Bindings item.
 func TestSecretsRowActions(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
@@ -205,7 +206,7 @@ func TestSecretsRowActions(t *testing.T) {
 		t.Fatalf("/secrets = %d", code)
 	}
 	for _, want := range []string{
-		`aria-label="Rotate"`,
+		`aria-label="Replace"`,
 		`id="secret-rotate-ssh-key"`,
 		`name="confirm_token"`,
 		`aria-label="Remove"`,
@@ -411,10 +412,11 @@ func TestSecretAddDuplicateRefuses(t *testing.T) {
 	}
 }
 
-// TestSecretRotateFormAtRest renders the rotate dialog for a seeded secret and
-// asserts the field anatomy: a never-echoing value control and an expires
-// control, each with its always-present meta line and a status line.
-func TestSecretRotateFormAtRest(t *testing.T) {
+// TestSecretReplaceFormAtRest renders the change dialog for a seeded USER
+// secret and asserts the field anatomy: a never-echoing value control and an
+// expires control, each with its always-present meta line and a status line.
+// The verb copy is the honest "replace" (only a generated secret is rotated).
+func TestSecretReplaceFormAtRest(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
 	defer ts.Close()
@@ -441,12 +443,57 @@ func TestSecretRotateFormAtRest(t *testing.T) {
 		"Sealed into the envelope — never shown again.",
 		"A duration — e.g. 720h, 30d.",
 		`role="status" aria-live="polite"`,
-		"Rotate",
+		"Replace ssh-key",
+		`data-pending="Replacing secret"`,
+		`>Replace</button>`,
 		`name="confirm_token"`,
 	} {
 		if !strings.Contains(page, want) {
-			t.Errorf("rotate form missing %q", want)
+			t.Errorf("replace form missing %q", want)
 		}
+	}
+}
+
+// TestSecretChangeVerbBranchesOnSource is the GATE for the honest verb: a
+// generated secret (exocomp minted it; nothing upstream holds the old value) is
+// Rotated; an operator-supplied one is only Replaced — the sealed copy swaps
+// while the credential itself is reissued upstream. The route stays /rotate for
+// both, so no existing URL breaks.
+func TestSecretChangeVerbBranchesOnSource(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	for _, sec := range []store.SecretRow{
+		{Name: "minted", Kind: "generic", Source: store.SecretSourceGenerated, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "minted|generic"},
+		{Name: "supplied", Kind: "generic", Source: store.SecretSourceUser, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "supplied|generic"},
+	} {
+		if _, err := h.store.CreateSecret(ctx, sec); err != nil {
+			t.Fatalf("CreateSecret %s: %v", sec.Name, err)
+		}
+	}
+
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	op := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	code, page := getBody(t, op, ts.URL+"/secrets")
+	if code != http.StatusOK {
+		t.Fatalf("/secrets = %d, want 200", code)
+	}
+	for _, want := range []string{
+		"Rotate minted",
+		`data-name="minted" data-pending="Rotating secret"`,
+		`aria-label="Rotate"`,
+		"Replace supplied",
+		`data-name="supplied" data-pending="Replacing secret"`,
+		`aria-label="Replace"`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/secrets missing source-branched verb copy %q", want)
+		}
+	}
+	// The route is unchanged for both rows.
+	if n := strings.Count(page, `/rotate"`); n != 2 {
+		t.Errorf("/secrets has %d change routes, want 2", n)
 	}
 }
 
@@ -569,8 +616,8 @@ func TestSecretsKeyDeepLinkFocus(t *testing.T) {
 // the inline row is the scan set only (Name · Kind · Source · Expiry · Last
 // used, + Actions), the row opens a native details dialog (data-modal-row),
 // the name cell carries the keyboard-reachable opener, and the dialog carries
-// the facts that left the row (Created, Last rotated, Used by) plus the row's
-// actions. The sealed value never renders in either surface.
+// the facts that left the row (Created, the source's change label, Used by)
+// plus the row's actions. The sealed value never renders in either surface.
 func TestSecretsInlineColumnsAndDetail(t *testing.T) {
 	h := newHarness(t)
 	seedSecrets(t, h)
@@ -621,15 +668,16 @@ func TestSecretsInlineColumnsAndDetail(t *testing.T) {
 	}
 
 	// The details dialog carries the full record, the moved facts, and the
-	// row's actions.
+	// row's actions. api-token is a user secret, so its verb copy is the honest
+	// "replace" wording.
 	for _, want := range []string{
 		`id="secret-detail-api-token"`,
 		`aria-labelledby="secret-detail-api-token-title"`,
 		"<dt>Kind</dt>", "<dt>Source</dt>", "<dt>Created</dt>",
-		"<dt>Last rotated</dt>", "<dt>Last used</dt>", "<dt>Expiry</dt>",
+		"<dt>Last replaced</dt>", "<dt>Last used</dt>", "<dt>Expiry</dt>",
 		"<dt>Used by</dt>",
 		`used by <span class="mono">deploy-app</span> as <span class="mono">$API_TOKEN</span>`,
-		`aria-label="Rotate"`, `aria-label="Remove"`,
+		`aria-label="Replace"`, `aria-label="Remove"`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("/secrets detail dialog missing %q", want)

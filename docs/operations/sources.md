@@ -78,11 +78,11 @@ At execution the named set is resolved from the envelope, injected as env for th
 alone, and scrubbed from events by the redactor. Only the binding name travels on the job
 row — never the value.
 
-### Minting, rotating, and removing a secret
+### Minting, replacing, and removing a secret
 
 ```
 exocomp secrets add proxmox/token --generate --expires 720h
-exocomp secrets rotate proxmox/token --expires 720h
+exocomp secrets replace proxmox/token --expires 720h
 exocomp secrets rm proxmox/token
 ```
 
@@ -91,13 +91,14 @@ random bytes, base64url-encoded) rather than asking the operator to invent one. 
 tags the secret for the AAD (default `generic`); `--expires` takes a Go duration (`720h`) or
 an RFC3339 timestamp and is recorded as an absolute instant.
 
-`secrets rotate <name>` reseals the value under the unchanged `name|kind` AAD, so every
-existing binding still opens it. A **generated** secret (or `rotate --generate`) mints a
-fresh random value automatically — nothing upstream holds the old one to re-enter; a **user**
-secret reads its replacement from stdin and prints a reminder that the previous value may
-still be live upstream and revoking it there is the operator's job. `--expires` on `rotate`
-re-sets the expiry (an empty value clears it); omitting the flag leaves the existing expiry
-untouched.
+`secrets replace <name>` (with `rotate` kept as an alias) reseals the value under the
+unchanged `name|kind` AAD, so every existing binding still opens it. A **generated** secret
+(or `replace --generate`) mints a fresh random value automatically — nothing upstream holds
+the old one to re-enter, so this is a true rotation; a **user** secret reads its replacement
+from stdin and prints a reminder that the previous value may still be live upstream and
+revoking it there is the operator's job — the sealed copy is replaced, but the credential
+itself is not. `--expires` on `replace` re-sets the expiry (an empty value clears it);
+omitting the flag leaves the existing expiry untouched.
 
 `secrets rm <name>` is guarded: a secret still referenced by one or more `run-secret`
 bindings is refused unless `--assume-yes` (or `--force`, deprecated) forces past the

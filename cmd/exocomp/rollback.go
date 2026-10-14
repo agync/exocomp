@@ -127,7 +127,7 @@ func warnRollbackDiscards(out io.Writer, workflowID string) {
 		"upgrade %s.\nEverything written to the database SINCE that upgrade is DISCARDED, including:\n"+
 		"  - jobs run and their event history\n"+
 		"  - backups recorded, workspaces and their tofu state rows\n"+
-		"  - secrets sealed or rotated, approvals and schedule changes\n"+
+		"  - secrets sealed or changed, approvals and schedule changes\n"+
 		"The binary is also reverted to the pre-upgrade one.\n", workflowID)
 }
 

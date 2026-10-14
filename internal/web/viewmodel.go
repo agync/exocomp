@@ -1829,6 +1829,33 @@ type secretRow struct {
 	Refusal string
 }
 
+// changeVerb names the write verb honestly for this row's source: exocomp
+// rotates a secret it minted (nothing upstream holds the old value) and only
+// replaces the sealed copy of an operator-supplied one. An empty source is a
+// legacy user secret, so it reads as a replacement.
+func (r secretRow) changeVerb() string {
+	if r.Source == store.SecretSourceGenerated {
+		return "Rotate"
+	}
+	return "Replace"
+}
+
+// changeVerbGerund is changeVerb as the pending/status phrase.
+func (r secretRow) changeVerbGerund() string {
+	if r.Source == store.SecretSourceGenerated {
+		return "Rotating"
+	}
+	return "Replacing"
+}
+
+// changeLabel is the detail dialog's lifecycle label for RotatedAt.
+func (r secretRow) changeLabel() string {
+	if r.Source == store.SecretSourceGenerated {
+		return "Last rotated"
+	}
+	return "Last replaced"
+}
+
 // secretBindingRow is one run-secret binding that injects a secret and the env
 // var name it maps the value to at execution time. It carries no value.
 type secretBindingRow struct {

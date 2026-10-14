@@ -1,16 +1,17 @@
 package web
 
-// secretRowActions is the v0.6 row-action set for one secret: the Rotate and
-// Remove verb glyphs, and — when the secret is bound — a Bindings menu item
-// that opens the read-only bindings dialog. Rotate opens the reauth dialog
-// (the value/generate/confirm-token form); Remove POSTs with the confirmed
-// flag (the shared confirm dialog is the safety). The Rotate glyph is only
-// offered when sealing is available (a web-only surface holds no envelope).
+// secretRowActions is the v0.6 row-action set for one secret: the change
+// (Rotate/Replace) and Remove verb glyphs, and — when the secret is bound — a
+// Bindings menu item that opens the read-only bindings dialog. The change verb
+// is named for the row's source; it opens the reauth dialog (the
+// value/generate/confirm-token form). Remove POSTs with the confirmed flag (the
+// shared confirm dialog is the safety). The change glyph is only offered when
+// sealing is available (a web-only surface holds no envelope).
 func secretRowActions(sc secretRow, sealAvailable bool) []rowAction {
 	acts := []rowAction{}
 	if sealAvailable {
 		acts = append(acts, rowAction{
-			Name: "Rotate", Path: glyphRotate,
+			Name: sc.changeVerb(), Path: glyphRotate,
 			Modal: "secret-rotate-" + sc.Name,
 		})
 	}

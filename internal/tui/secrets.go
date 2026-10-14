@@ -26,7 +26,7 @@ type SecretsModel struct {
 	rows    []secretRow
 }
 
-const secretsKeys = "read-only · manage via exocomp secrets add|rotate|rm"
+const secretsKeys = "read-only · manage via exocomp secrets add|replace|rm"
 
 // renderSecretsScreen draws the secrets table. Each secret is a metadata row
 // followed by an indented bindings line, so the (binding -> env var) breakdown
@@ -39,7 +39,7 @@ func renderSecretsScreen(m SecretsModel) string {
 		lr(m.summary, m.clock, w),
 		hrule(w),
 		row(cell{1, "NAME"}, cell{24, "KIND"}, cell{40, "SOURCE"}, cell{52, "CREATED"},
-			cell{66, "ROTATED"}, cell{80, "LAST USED"}, cell{94, "EXPIRY"}),
+			cell{66, "CHANGED"}, cell{80, "LAST USED"}, cell{94, "EXPIRY"}),
 	}
 	if len(m.rows) == 0 {
 		lines = append(lines, "", " no secrets stored — add one with exocomp secrets add")

@@ -29,12 +29,12 @@ exocomp secrets list
 ```
 
 ```
-NAME              KIND       CREATED              ROTATED
+NAME              KIND       CREATED              CHANGED
 cloudflare_token  bearer     2026-10-01 10:15:00  2026-10-10 14:20:00
 nas_backup_pass   password   2026-09-15 08:00:00  never
 ```
 
-In the Web UI, secrets are displayed as metadata-only cards with explicit rotation and removal controls:
+In the Web UI, secrets are displayed as metadata-only cards with explicit change and removal controls:
 
 ![Secrets metadata interface](../design/assets/web/1e-secrets.png)
 
@@ -47,11 +47,18 @@ echo -n "super-secret" | exocomp secrets add cloudflare_token
 # Or mint a random secret:
 exocomp secrets add nas_backup_pass --generate
 
-# Rotate an existing secret:
-exocomp secrets rotate cloudflare_token
+# Replace an existing secret's sealed copy:
+exocomp secrets replace cloudflare_token
 ```
 
 Entering secret values reads from stdin or mints via `--generate`.
+
+exocomp only rotates what it minted. A **generated** secret has no upstream
+holder, so a replace mints a fresh random value — a true rotation. An
+operator-supplied secret (a bearer token, a deploy key, an upstream database
+password) is only **replaced**: exocomp swaps the sealed copy, but the old
+credential stays live where it was issued, and revoking it there is your job.
+The `rotate` verb remains an alias of `replace`.
 
 ## Binding run-secrets to jobs
 

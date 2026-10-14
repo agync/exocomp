@@ -27,7 +27,7 @@ func newSecretsCmd() *cobra.Command {
 		Short: "Manage sealed secrets",
 	}
 	cmd.AddCommand(newSecretsAddCmd(), newSecretsListCmd(),
-		newSecretsRotateCmd(), newSecretsRmCmd())
+		newSecretsReplaceCmd(), newSecretsRmCmd())
 	return cmd
 }
 
@@ -176,15 +176,16 @@ func newSecretsAddCmd() *cobra.Command {
 	return add
 }
 
-func newSecretsRotateCmd() *cobra.Command {
+func newSecretsReplaceCmd() *cobra.Command {
 	var (
 		generate bool
 		expires  string
 	)
-	rotate := &cobra.Command{
-		Use:   "rotate <name>",
-		Short: "Replace a secret's sealed value",
-		Args:  cobra.ExactArgs(1),
+	replace := &cobra.Command{
+		Use:     "replace <name>",
+		Aliases: []string{"rotate"},
+		Short:   "Replace a secret's sealed value (mints a fresh one for generated secrets)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 
@@ -194,7 +195,7 @@ func newSecretsRotateCmd() *cobra.Command {
 				var err error
 				expiresAt, err = parseExpiry(expires)
 				if err != nil {
-					return fmt.Errorf("secrets rotate: %w", err)
+					return fmt.Errorf("secrets replace: %w", err)
 				}
 			}
 
@@ -206,7 +207,7 @@ func newSecretsRotateCmd() *cobra.Command {
 
 			existing, err := st.GetSecret(cmd.Context(), name)
 			if err != nil {
-				return fmt.Errorf("secrets rotate: %w", err)
+				return fmt.Errorf("secrets replace: %w", err)
 			}
 
 			// A generated secret regenerates by default (nothing upstream holds the
@@ -215,25 +216,25 @@ func newSecretsRotateCmd() *cobra.Command {
 			var (
 				value       []byte
 				fromStdin   bool
-				userRotated bool
+				userReplace bool
 			)
 			switch {
 			case generate || existing.Source == store.SecretSourceGenerated:
 				value, err = generateSecretValue()
 				if err != nil {
-					return fmt.Errorf("secrets rotate: %w", err)
+					return fmt.Errorf("secrets replace: %w", err)
 				}
 			default:
 				value, err = readSecretValue(cmd.InOrStdin())
 				if err != nil {
-					return fmt.Errorf("secrets rotate: read value from stdin: %w", err)
+					return fmt.Errorf("secrets replace: read value from stdin: %w", err)
 				}
 				value = []byte(strings.TrimRight(string(value), "\n"))
 				if len(value) == 0 {
-					return errors.New("secrets rotate: empty value on stdin (a user secret needs a new value)")
+					return errors.New("secrets replace: empty value on stdin (a user secret needs a new value)")
 				}
 				fromStdin = true
-				userRotated = true
+				userReplace = true
 			}
 
 			dir, err := dataDir()
@@ -242,24 +243,31 @@ func newSecretsRotateCmd() *cobra.Command {
 			}
 			env, err := secrets.Open(dir)
 			if err != nil {
-				return fmt.Errorf("secrets rotate: open envelope: %w", err)
+				return fmt.Errorf("secrets replace: open envelope: %w", err)
 			}
 			defer func() { _ = env.Close() }()
 
 			// Reseal under the unchanged name|kind so the row still opens.
 			sealed, err := env.Seal(existing.Name, existing.Kind, value)
 			if err != nil {
-				return fmt.Errorf("secrets rotate: %w", err)
+				return fmt.Errorf("secrets replace: %w", err)
 			}
 			if err := st.RotateSecret(cmd.Context(), name, sealed.Nonce, sealed.Ciphertext); err != nil {
-				return fmt.Errorf("secrets rotate: %w", err)
+				return fmt.Errorf("secrets replace: %w", err)
 			}
 			if reExpire {
 				if err := st.SetSecretExpiry(cmd.Context(), name, expiresAt); err != nil {
-					return fmt.Errorf("secrets rotate: %w", err)
+					return fmt.Errorf("secrets replace: %w", err)
 				}
 			}
 
+			// The verb names what actually happened: a generated secret is
+			// genuinely rotated (nothing upstream holds the old value), a user
+			// secret's sealed copy is only replaced.
+			verb := "replaced"
+			if existing.Source == store.SecretSourceGenerated {
+				verb = "rotated"
+			}
 			mode := "regenerated"
 			if fromStdin {
 				mode = "read from stdin"
@@ -268,18 +276,18 @@ func newSecretsRotateCmd() *cobra.Command {
 			if reExpire {
 				suffix = expirySuffix(expiresAt)
 			}
-			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "rotated %q (%s, %d bytes)%s\n",
-				name, mode, len(value), suffix)
-			if userRotated {
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s %q (%s, %d bytes)%s\n",
+				verb, name, mode, len(value), suffix)
+			if userReplace {
 				_, _ = fmt.Fprintln(cmd.ErrOrStderr(),
 					"reminder: the PREVIOUS value may still be live upstream; revoking it there is yours to do.")
 			}
 			return nil
 		},
 	}
-	rotate.Flags().BoolVar(&generate, "generate", false, "mint a random value even for a user secret")
-	rotate.Flags().StringVar(&expires, "expires", "", "re-set expiry as a Go duration (720h) or RFC3339 timestamp; empty clears it")
-	return rotate
+	replace.Flags().BoolVar(&generate, "generate", false, "mint a random value even for a user secret")
+	replace.Flags().StringVar(&expires, "expires", "", "re-set expiry as a Go duration (720h) or RFC3339 timestamp; empty clears it")
+	return replace
 }
 
 func newSecretsRmCmd() *cobra.Command {

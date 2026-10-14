@@ -37,9 +37,11 @@ type SecretRow struct {
 	AAD        string
 	// Source is how the value was minted (SecretSourceUser|SecretSourceGenerated).
 	Source string
-	// ExpiresAt is when the secret should be rotated or removed; nil means never.
-	ExpiresAt  *time.Time
-	CreatedAt  time.Time
+	// ExpiresAt is when the credential should be renewed or removed; nil means never.
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+	// RotatedAt is when the sealed copy last changed: a rotation for a generated
+	// secret, a replacement for an operator-supplied one; nil means never.
 	RotatedAt  *time.Time
 	LastUsedAt *time.Time
 }
@@ -217,7 +219,7 @@ func (s *Store) RotateSecret(ctx context.Context, name string, nonce, ciphertext
 }
 
 // SetSecretExpiry sets (or with a nil at, clears) a secret's expiry. It is the
-// lifecycle attribute the rotate path re-stamps; it never touches the sealed
+// lifecycle attribute the replace path re-stamps; it never touches the sealed
 // value.
 func (s *Store) SetSecretExpiry(ctx context.Context, name string, at *time.Time) error {
 	res, err := s.db.ExecContext(ctx,

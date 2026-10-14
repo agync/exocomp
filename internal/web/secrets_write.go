@@ -44,20 +44,37 @@ func validDuration(s string) bool {
 	return err == nil && d > 0
 }
 
-// The seal-a-secret and rotate dialogs' human refusal copy (forms/copy.txt):
-// the raw validator words go to the log; the meta lines and status line carry
-// these sentences.
+// The seal-a-secret and change (replace/rotate) dialogs' human refusal copy
+// (forms/copy.txt): the raw validator words go to the log; the meta lines and
+// status line carry these sentences.
 const (
-	secretNameRefusal         = "Use letters, digits, dots, hyphens, underscores, slashes."
-	secretValueRefusal        = "Give the secret a value, or generate one."
-	secretExpiryRefusal       = "That's not a duration — like 720h or 30d."
-	secretSubmitRefusal       = "Couldn't seal the secret — nothing was saved."
-	secretRotateSubmitRefusal = "Couldn't rotate the secret — nothing was saved."
+	secretNameRefusal   = "Use letters, digits, dots, hyphens, underscores, slashes."
+	secretValueRefusal  = "Give the secret a value, or generate one."
+	secretExpiryRefusal = "That's not a duration — like 720h or 30d."
+	secretSubmitRefusal = "Couldn't seal the secret — nothing was saved."
 	// secretRemoveConfirmRefusal is the rm verb's confirm-gate refusal
 	// (forms/SPEC.md): the shared confirm dialog's hidden confirmed=1 is the
 	// safety, and a confirmed-less remove is refused on the row.
 	secretRemoveConfirmRefusal = "Nothing was removed — confirm the removal in the dialog."
 )
+
+// secretChangeSubmitRefusal names the whole-submit refusal for the source's
+// honest verb: a generated secret is rotated, an operator-supplied one is only
+// replaced.
+func secretChangeSubmitRefusal(src string) string {
+	if src == store.SecretSourceGenerated {
+		return "Couldn't rotate the secret — nothing was saved."
+	}
+	return "Couldn't replace the secret — nothing was saved."
+}
+
+// secretChangePastVerb is the success flash's past-tense verb for a source.
+func secretChangePastVerb(src string) string {
+	if src == store.SecretSourceGenerated {
+		return "rotated"
+	}
+	return "replaced"
+}
 
 // secretBoundRefusal is the rm verb's binding refusal (forms/SPEC.md): a bound
 // secret stays, and the row says so — the CLI's --force override stays on the
@@ -207,13 +224,13 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 	sealed, err := s.sealer.Seal(existing.Name, existing.Kind, value)
 	if err != nil {
 		s.log.Error("web: secret rotate", "err", err.Error())
-		form.ErrForm = secretRotateSubmitRefusal
+		form.ErrForm = secretChangeSubmitRefusal(existing.Source)
 		s.secretRefusal(w, r, nil, &form)
 		return
 	}
 	if err := s.store.RotateSecret(r.Context(), name, sealed.Nonce, sealed.Ciphertext); err != nil {
 		s.log.Error("web: secret rotate", "err", err.Error())
-		form.ErrForm = secretRotateSubmitRefusal
+		form.ErrForm = secretChangeSubmitRefusal(existing.Source)
 		s.secretRefusal(w, r, nil, &form)
 		return
 	}
@@ -223,11 +240,12 @@ func (s *Server) handleSecretRotate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// A rotation changes the envelope the recovery kit's derivation rule draws
-	// from, so the kit is stale until it is reprinted (SPEC §7 A3).
+	// A secret change (replace or rotate) alters the envelope the recovery
+	// kit's derivation rule draws from, so the kit is stale until it is
+	// reprinted (SPEC §7 A3).
 	s.bumpKitChanges(r.Context())
 	s.log.Info("web: secret rotate", "secret", name, "by", ident.token.Name)
-	s.redirectFlash(w, r, "/secrets", "rotated "+name)
+	s.redirectFlash(w, r, "/secrets", secretChangePastVerb(existing.Source)+" "+name)
 }
 
 // secretRefusal re-renders the secrets surface at 422 with the add or rotate

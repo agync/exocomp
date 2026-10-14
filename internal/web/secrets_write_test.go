@@ -56,3 +56,65 @@ func TestSecretRmRequiresConfirmation(t *testing.T) {
 		t.Fatal("secret still present after confirmed rm")
 	}
 }
+
+// TestSecretChangeSubmitRefusalNamesSource pins the whole-submit refusal and
+// the success flash to the honest verb: rotate for a generated secret, replace
+// for an operator-supplied one.
+func TestSecretChangeSubmitRefusalNamesSource(t *testing.T) {
+	if got := secretChangeSubmitRefusal(store.SecretSourceGenerated); !strings.Contains(got, "rotate") {
+		t.Errorf("generated refusal = %q, want rotate", got)
+	}
+	if got := secretChangeSubmitRefusal(store.SecretSourceUser); !strings.Contains(got, "replace") {
+		t.Errorf("user refusal = %q, want replace", got)
+	}
+	if got := secretChangePastVerb(store.SecretSourceGenerated); got != "rotated" {
+		t.Errorf("generated flash verb = %q, want rotated", got)
+	}
+	if got := secretChangePastVerb(store.SecretSourceUser); got != "replaced" {
+		t.Errorf("user flash verb = %q, want replaced", got)
+	}
+}
+
+// TestSecretChangeFlashNamesSource drives the unchanged /secrets/{name}/rotate
+// route for both sources and asserts the success flash branches: a user secret
+// is replaced, a generated one is rotated.
+func TestSecretChangeFlashNamesSource(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	tok := h.mint(t, "laptop", "operator")
+	op := login(t, ts.URL, tok)
+	ctx := context.Background()
+	for _, sec := range []store.SecretRow{
+		{Name: "supplied", Kind: "generic", Source: store.SecretSourceUser, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "supplied|generic"},
+		{Name: "minted", Kind: "generic", Source: store.SecretSourceGenerated, Nonce: []byte("N"), Ciphertext: []byte("C"), AAD: "minted|generic"},
+	} {
+		if _, err := h.store.CreateSecret(ctx, sec); err != nil {
+			t.Fatalf("CreateSecret %s: %v", sec.Name, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		name string
+		form url.Values
+		want string
+	}{
+		{"supplied", url.Values{"value": {"new"}, "confirm_token": {tok}}, "replaced supplied"},
+		{"minted", url.Values{"generate": {"1"}, "confirm_token": {tok}}, "rotated minted"},
+	} {
+		resp := postForm(t, op, ts.URL+"/secrets/"+tc.name+"/rotate", tc.form, nil)
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			t.Fatalf("%s change = %d, want 303", tc.name, resp.StatusCode)
+		}
+		var flash string
+		for _, c := range resp.Cookies() {
+			if c.Name == flashCookie {
+				flash = c.Value
+			}
+		}
+		if flash != tc.want {
+			t.Errorf("%s flash = %q, want %q", tc.name, flash, tc.want)
+		}
+	}
+}

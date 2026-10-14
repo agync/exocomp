@@ -470,8 +470,8 @@ func secretDate(t *time.Time) string {
 	return t.Local().Format("2006-01-02")
 }
 
-// secretDateOrNever renders an unset rotate/last-used timestamp as "never"
-// rather than the neutral dash, so an un-rotated or never-used secret says so.
+// secretDateOrNever renders an unset changed/last-used timestamp as "never"
+// rather than the neutral dash, so a never-changed or never-used secret says so.
 func secretDateOrNever(t *time.Time) string {
 	if t == nil {
 		return "never"

@@ -106,12 +106,17 @@ func TestSecretsRotateGeneratedChangesValue(t *testing.T) {
 	}
 	before, _ := openSecretValue(t, dir, "token")
 
-	out, err := runSecrets(t, "", "rotate", "token")
+	// `replace` is the canonical verb; a generated secret is genuinely
+	// rotated, so the output names that verb.
+	out, err := runSecrets(t, "", "replace", "token")
 	if err != nil {
-		t.Fatalf("rotate: %v (%s)", err, out)
+		t.Fatalf("replace: %v (%s)", err, out)
 	}
 	if !strings.Contains(out, "regenerated") {
-		t.Errorf("rotate output = %q, want it to say regenerated", out)
+		t.Errorf("replace output = %q, want it to say regenerated", out)
+	}
+	if !strings.Contains(out, "rotated") {
+		t.Errorf("replace output = %q, want it to say rotated for a generated secret", out)
 	}
 	after, row := openSecretValue(t, dir, "token")
 	if after == before {
@@ -136,9 +141,14 @@ func TestSecretsRotateUserFromStdin(t *testing.T) {
 		t.Fatalf("initial value = %q, want old-value", before)
 	}
 
+	// `rotate` still works as an alias; a user secret is only replaced, so the
+	// output names that verb and keeps the upstream-revoke reminder.
 	out, err := runSecrets(t, "new-value\n", "rotate", "cred")
 	if err != nil {
 		t.Fatalf("rotate: %v (%s)", err, out)
+	}
+	if !strings.Contains(out, "replaced") {
+		t.Errorf("rotate output = %q, want it to say replaced for a user secret", out)
 	}
 	if !strings.Contains(out, "reminder:") {
 		t.Errorf("rotate output = %q, want the upstream-revoke reminder", out)
