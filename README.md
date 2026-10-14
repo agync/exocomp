@@ -1,9 +1,24 @@
 # exocomp
 
-A single-container, single-binary control plane for a homelab: one operator, a
-handful of hosts, no external database. One static Go binary (`exocompd`) owns
-state, sequencing, keys, and recovery, and shells out to pinned tools
-(`ansible-core`, `opentofu`, `restic`, `sops`, `age`, `git`) for the actual work.
+A single-binary homelab control plane: one operator, a handful of hosts, no
+external database. One static Go binary (`exocompd`) owns state, sequencing, keys,
+and recovery, and shells out to pinned tools (`ansible-core`, `opentofu`, `restic`,
+`sops`, `age`, `git`) for the actual work.
+
+Run it as a host service, a container, or a unit file — whatever keeps the host
+best. State is the SQLite file beside it, never a database someone else operates.
+
+**[exocomp.dev](https://exocomp.dev/) · [Documentation](https://exocomp.dev/docs/)**
+
+## What it looks like
+
+| Web console | OpenTofu plan diff | Live job output |
+|:---:|:---:|:---:|
+| ![The web console](docs/design/assets/web/1a-shell-dashboard.png) | ![An OpenTofu plan diff under decision](docs/design/assets/tofu/1b-plan-diff.png) | ![A job's output tail](docs/design/assets/jobs/1c-job-log-tail.png) |
+
+| System and self-care | Phone approvals | Terminal UI |
+|:---:|:---:|:---:|
+| ![The four self-care legs](docs/design/assets/system/1a-system-desktop.png) | ![A one-thumb approval on a phone](docs/design/assets/mobile/2e-approval-decision.png) | ![The TUI home screen](docs/design/assets/tui/tui-home.png) |
 
 ## What it combines
 
@@ -33,8 +48,8 @@ state, sequencing, keys, and recovery, and shells out to pinned tools
 - **Trivial disaster recovery.** The recovery chain from a printed key to a
   restored host is executable by hand; it depends on no registry, vendor, or this
   project's own code.
-- **Minimal footprint.** One rootless container, one process, one SQLite file. The
-  image size and idle RSS are budgeted and checked in CI (`make budgets`).
+- **Minimal footprint.** One process, one SQLite file. The image size and idle RSS
+  are budgeted and checked in CI (`make budgets`).
 - **Plain formats only.** Plain SQLite, plain restic repos, plain git bundles,
   plain age files, standard OpenTofu state — nothing bespoke.
 - **Sandboxed jobs.** Executor tiers `local` / `local-sandboxed` (the default, via
@@ -65,15 +80,18 @@ make check      # fast gate: fmt, vet, lint, tidy, and -short tests
 make check-race # full gate: fmt, vet, lint, tidy, and the race test suite
 ```
 
-For a real deployment, the installer drops rootless Podman Quadlet units (with a
-Docker Compose fallback) and runs the first-run wizard. It is versioned separately
-from `exocompd` so the recovery path never depends on the thing that broke. See
-[docs/operations/bootstrap.md](docs/operations/bootstrap.md) and
+For a real deployment, install the binary and run it under a user systemd unit, or
+drop the rootless Podman Quadlet units (with a Docker Compose fallback). Either way
+the first-run wizard runs the same recoverable setup. The packaging is versioned
+separately from `exocompd` so the recovery path never depends on the thing that
+broke. See [docs/operations/bootstrap.md](docs/operations/bootstrap.md),
+[docs/guide/quickstart.md](docs/guide/quickstart.md) and
 [packaging/recovery.sh](packaging/recovery.sh).
 
 ## Documentation
 
-The `docs/` tree is the reference for everything else:
+The `docs/` tree is the reference for everything else, rendered at
+[exocomp.dev/docs](https://exocomp.dev/docs/):
 
 - [docs/index.md](docs/index.md) — architecture, decisions, design, operations, and
   provenance, in one place.
