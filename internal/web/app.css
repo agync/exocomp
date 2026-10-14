@@ -644,14 +644,20 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   font: inherit; color: inherit; cursor: pointer; text-align: left;
 }
 .ramenu-count { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
-/* auto-fit, not auto-fill: the empty tracks auto-fill creates are what left the
- * right half of a two-target card bare. auto-fit collapses them, so the tiles
- * share the width the card actually has. */
+/* Bounded tracks, not stretched ones. auto-fit with an unbounded 1fr max let a
+ * lone target stretch to the whole card while its two-target neighbours showed
+ * halves, and grew every tile with the window. auto-fill with a MAX track keeps
+ * one tile the same size as its neighbours' whatever the card width; the tracks
+ * sit at the start so the trailing space reads as the end of the list. */
 .targetgrid {
   list-style: none; margin: 0; padding: 0;
   display: grid; gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(260px, 380px));
+  justify-content: start;
 }
+/* No extra breakpoint: the 260px floor already collapses to one column inside
+ * the 719px phone shell's padded width, so the one phone block stays the only
+ * responsive rule this file carries. */
 .target {
   background: var(--surface-tray); border-radius: var(--radius-row);
   padding: 12px 14px;

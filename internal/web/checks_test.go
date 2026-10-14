@@ -1268,12 +1268,17 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 }
 
 // TestChecksCardUsesItsWidthAndFlowsTheMeta is the layout gate for the checks
-// deck: auto-fill left the empty tracks a two-target card never filled, so the
-// right half of the card was bare — auto-fit collapses them and the tiles share
-// the width the card has. The location slot is one flowing sentence, not a flex
-// row whose narrowed facts stacked into parallel columns and broke "on home ·
-// 1d ago · down while home" mid-phrase. The MUTATION — restoring auto-fill or
-// the flex row — reds this test.
+// deck. The tiles take a BOUNDED track: an unbounded 1fr max (auto-fit) let a
+// lone target stretch across the whole card while its two-target neighbours
+// showed halves, and grew every tile with the window. auto-fill with a max keeps
+// one tile the size of its neighbours' whatever the card width, and the tracks
+// start at the left so trailing space reads as the end of the list. The floor is
+// small enough to collapse to one column inside the one 719px phone block, so no
+// second breakpoint is needed. The location slot is one flowing sentence, not a
+// flex row whose narrowed facts stacked into parallel columns and broke "on home
+// · 1d ago · down while home" mid-phrase. The MUTATION — restoring an unbounded
+// track, dropping the start alignment, adding a second breakpoint, or the flex
+// row — reds this test.
 func TestChecksCardUsesItsWidthAndFlowsTheMeta(t *testing.T) {
 	h := newHarness(t)
 	ts := httptest.NewServer(h.server.Handler())
@@ -1282,8 +1287,16 @@ func TestChecksCardUsesItsWidthAndFlowsTheMeta(t *testing.T) {
 
 	_, app := getBody(t, client, ts.URL+"/assets/app.css")
 	grid := ruleDecl(app, ".targetgrid {")
-	if !strings.Contains(grid, "grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));") {
-		t.Errorf(".targetgrid must fill the card width (auto-fit), got: %q", grid)
+	if !strings.Contains(grid, "grid-template-columns: repeat(auto-fill, minmax(260px, 380px));") {
+		t.Errorf(".targetgrid must bound its tracks (auto-fill + a max), got: %q", grid)
+	}
+	if !strings.Contains(grid, "justify-content: start") {
+		t.Errorf(".targetgrid must keep its tracks at the start, got: %q", grid)
+	}
+	// The floor must stay small enough to collapse to one column inside the one
+	// 719px phone block's padded width, so no extra breakpoint is needed.
+	if strings.Contains(app, "@media (max-width: 560px)") {
+		t.Error(".targetgrid must not add a second breakpoint (the 719px phone block is the only one)")
 	}
 	where := ruleDecl(app, ".target .where {")
 	if !strings.Contains(where, "display: block") {
