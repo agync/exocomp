@@ -643,10 +643,13 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
   font: inherit; color: inherit; cursor: pointer; text-align: left;
 }
 .ramenu-count { margin-left: auto; font: var(--type-log); color: var(--ink-500); }
+/* auto-fit, not auto-fill: the empty tracks auto-fill creates are what left the
+ * right half of a two-target card bare. auto-fit collapses them, so the tiles
+ * share the width the card actually has. */
 .targetgrid {
   list-style: none; margin: 0; padding: 0;
   display: grid; gap: 10px;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
 }
 .target {
   background: var(--surface-tray); border-radius: var(--radius-row);
@@ -660,9 +663,12 @@ tr:hover .raglyph, .raglyph:hover { color: var(--ink-400); }
 .target .tstate .meta b { color: var(--ink-400); font-weight: 600; }
 /* Checks netgroup slot (SPEC §5.1): the tile's second line opens with the route
  * glyph + "on {netgroup}" (a link → Netgroups) · age — location stays meta,
- * never a chip. An unobserved tile explains itself in the same slot in wait. */
-.target .where { display: flex; align-items: center; gap: 6px; min-width: 0; font: 400 12px var(--font-mono); color: var(--ink-500); }
-.target .where svg { width: 13px; height: 13px; flex: none; }
+ * never a chip. An unobserved tile explains itself in the same slot in wait.
+ * The slot is one flowing sentence: a flex row narrowed the facts into parallel
+ * columns that broke "on home · 1d ago · down while home" mid-phrase, so the
+ * facts are inline and wrap at word boundaries instead. */
+.target .where { display: block; min-width: 0; font: 400 12px var(--font-mono); color: var(--ink-500); overflow-wrap: anywhere; }
+.target .where svg { width: 13px; height: 13px; vertical-align: -2px; margin-right: 4px; }
 .target .where a { color: var(--ink-400); }
 .target .where .away { color: var(--signal-wait); }
 
@@ -2120,7 +2126,11 @@ body { overflow-x: clip; }
   .jobs-row:not(.queue-row) .line:first-child .cell--state { flex: none; margin-left: auto; }
   .jobs-row:not(.queue-row) .line:first-child .cell--state .reason { display: none; }
   .jobs-row .line + .line .cell { display: none; }
-  .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* The meta line wraps, never ellipsizes (a value is never silently cut on
+   * phone): at 390px the flat TriggerMeta · Source · Age · Duration · reason run
+   * overran one line and the ellipsis ate the duration. overflow-wrap:anywhere
+   * bounds a single long token; the row stays two lines. */
+  .jobs-row .line + .line .cell--meta { display: block; flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
   /* Events tray phone (SPEC 1a): the same seven grid cells re-flow into two
    * lines — line 1 the alert · received clock · outcome · chevron (the order
    * properties force the wrap points), line 2 the `source → rule` pair — one

@@ -1267,6 +1267,36 @@ func TestChecksNetgroupAndRecency(t *testing.T) {
 	}
 }
 
+// TestChecksCardUsesItsWidthAndFlowsTheMeta is the layout gate for the checks
+// deck: auto-fill left the empty tracks a two-target card never filled, so the
+// right half of the card was bare — auto-fit collapses them and the tiles share
+// the width the card has. The location slot is one flowing sentence, not a flex
+// row whose narrowed facts stacked into parallel columns and broke "on home ·
+// 1d ago · down while home" mid-phrase. The MUTATION — restoring auto-fill or
+// the flex row — reds this test.
+func TestChecksCardUsesItsWidthAndFlowsTheMeta(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	grid := ruleDecl(app, ".targetgrid {")
+	if !strings.Contains(grid, "grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));") {
+		t.Errorf(".targetgrid must fill the card width (auto-fit), got: %q", grid)
+	}
+	where := ruleDecl(app, ".target .where {")
+	if !strings.Contains(where, "display: block") {
+		t.Errorf(".target .where must flow as one sentence (display: block), got: %q", where)
+	}
+	if strings.Contains(where, "display: flex") {
+		t.Errorf(".target .where must not be a flex row (the column-soup defect), got: %q", where)
+	}
+	if !strings.Contains(where, "overflow-wrap: anywhere") {
+		t.Errorf(".target .where must bound a long fact instead of overflowing, got: %q", where)
+	}
+}
+
 // TestChecksDownAndHomeAttention: a target DOWN while classified into a
 // registered netgroup is attention-worthy — the header counts it and the tile
 // carries the note — while an ordinary roaming down (down and away) stays

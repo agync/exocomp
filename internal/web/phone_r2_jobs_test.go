@@ -299,3 +299,28 @@ func TestPhoneRunConfigCollapsesSingleTile(t *testing.T) {
 		t.Error("app.css missing the R6 collapsed config line (12px mono)")
 	}
 }
+
+// TestPhoneJobsMetaWrapsNotTruncates pins the line-2 meta's phone form: the
+// flat mono run overran one phone line, so the ellipsis ate the duration off
+// its tail. The meta wraps instead (overflow-wrap: anywhere, no text-overflow
+// ellipsis), and the two-line row shape is unchanged — the primary line over
+// the mono meta line. The MUTATION — restoring white-space: nowrap with the
+// ellipsis — reds this test.
+func TestPhoneJobsMetaWrapsNotTruncates(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, app := getBody(t, client, ts.URL+"/assets/app.css")
+	meta := ruleDecl(app, ".jobs-row .line + .line .cell--meta {")
+	if !strings.Contains(meta, "white-space: normal") || !strings.Contains(meta, "overflow-wrap: anywhere") {
+		t.Errorf("the phone meta cell must wrap its facts, got: %q", meta)
+	}
+	if strings.Contains(meta, "text-overflow: ellipsis") {
+		t.Errorf("the phone meta cell must never ellipsize a fact, got: %q", meta)
+	}
+	if !strings.Contains(app, `.jobs-row, .queue-row { display: flex; flex-direction: column; align-items: stretch; gap: 5px; height: auto; padding: 11px 12px; }`) {
+		t.Error("the phone two-line row shape must stay")
+	}
+}
