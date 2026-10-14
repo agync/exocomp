@@ -57,7 +57,7 @@ against the source checkout (see the CWD caveat in SKILL.md).
 ## 5. The requirements.txt vs remote check (the load-bearing one)
 
 If the source carries a project-root `requirements.txt`, exocomp resolves a
-per-source uv venv (hash-gated, per ADR 0011) and runs the venv's own
+per-source uv venv (hash-gated, per Decision 0011) and runs the venv's own
 `ansible-playbook`. The trap: the controller-side venv python must **not** be
 forced as the remote module interpreter.
 
@@ -94,7 +94,7 @@ exocomp playbook run …
 `vendor` runs `ansible-galaxy collection install` into a per-source collections
 cache dir (`cache/collections/<source>/<requirements-hash>`, derived from the
 `--requirements` file's project root and content — `cmd/exocomp/vendor.go`), the
-same hash-keyed layout the run path resolves into at claim time (ADR 0015);
+same hash-keyed layout the run path resolves into at claim time (Decision 0015);
 `playbook run` appends `<per-source>:<shared>` to `ANSIBLE_COLLECTIONS_PATH`
 automatically (see `ansibleEnv`, `internal/executor/ansible_env_test.go`). Prove
 attribution by confirming the collection resolved only from the per-source

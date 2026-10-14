@@ -8,7 +8,7 @@ tags: [contributing, architecture, packages, internals]
 
 # Codebase architecture map
 
-exocomp implements a **thin-core architecture** ([ADR 0001](../adr/0001-thin-core-architecture.md)): one rootless Go process that owns state, sequencing, keys, and recovery, delegating all external work to pinned CLI subprocesses.
+exocomp implements a **thin-core architecture** ([Decision 0001](../decisions/0001-thin-core-architecture.md)): one rootless Go process that owns state, sequencing, keys, and recovery, delegating all external work to pinned CLI subprocesses.
 
 ## Package layout
 

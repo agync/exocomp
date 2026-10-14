@@ -11,8 +11,8 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
-// This file mounts the MCP transport on the SAME ADR-0009 listener as /api/v1
-// and the browser surface — one listener, one authentication story (ADR 0014 §3;
+// This file mounts the MCP transport on the SAME Decision 0009 listener as /api/v1
+// and the browser surface — one listener, one authentication story (Decision 0014 §3;
 // agent-interface.md §3.5). It is a TRANSPORT only: the catalog, the handlers,
 // and the scope floors all live in internal/mcp; this file supplies the framing
 // (one POST, one JSON-RPC message or batch) and the Caller it dispatches for.

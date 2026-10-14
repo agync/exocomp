@@ -19,7 +19,7 @@ import (
 // TestServeWebSurfaceSeparateFromLoopbackBackend proves item-7: the state
 // backend binds loopback-only and takes no LAN token, while the web+API surface
 // is a separate non-loopback listener that refuses to bind without a token and,
-// once one exists, serves — gated — to a caller presenting it (ADR 0009).
+// once one exists, serves — gated — to a caller presenting it (Decision 0009).
 func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
 	if testing.Short() {
 		t.Skip("integration")
@@ -56,7 +56,7 @@ func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
 		t.Fatalf("web engine: %v", err)
 	}
 
-	// A non-loopback web bind with no active token refuses (ADR 0009 gate).
+	// A non-loopback web bind with no active token refuses (Decision 0009 gate).
 	if _, err := startWebSurface(ctx, st, env, dir, engine, nil, nil, "", "0.0.0.0:0", true, io.Discard); err == nil {
 		t.Fatal("expected a non-loopback web bind with no token to refuse")
 	}

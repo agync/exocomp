@@ -52,7 +52,7 @@ func newProvisionCmd() *cobra.Command {
 			"for their SSH to come up, run the seeded onboarding runbook against them " +
 			"(record the host key, push the fleet key, create the automation user), then " +
 			"run the configure play against the same materialized inventory. It is one " +
-			"step-ledger workflow (ADR 0008): step N+1 runs only if step N succeeded, and " +
+			"step-ledger workflow (Decision 0008): step N+1 runs only if step N succeeded, and " +
 			"a daemon that dies mid-chain resumes it from the ledger.",
 	}
 	cmd.AddCommand(newProvisionRunCmd(), newProvisionStatusCmd())

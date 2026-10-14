@@ -78,12 +78,12 @@ type Venv struct {
 	// localhost-over-local run.
 	Python string
 	// SitePackages is Dir/lib/pythonX.Y/site-packages, the project's installed
-	// libraries (ADR 0016). It is bridged to the PATH-resolved fallback ansible
+	// libraries (Decision 0016). It is bridged to the PATH-resolved fallback ansible
 	// through PYTHONPATH.
 	SitePackages string
 	// Ansible is the venv's ansible-playbook. It exists only when the project
 	// declared ansible-core; an absent one leaves the run on the PATH-resolved
-	// fallback toolchain (ADR 0016).
+	// fallback toolchain (Decision 0016).
 	Ansible string
 	// Created is true when uv was invoked on this call; false on a cache hit.
 	Created bool
@@ -93,7 +93,7 @@ type Venv struct {
 // when the hash-gated marker is absent. On a cache hit it invokes no uv and
 // touches no network. It is fail-closed: a provisioning failure removes the
 // half-built venv and returns an error, so a run never proceeds against
-// half-met dependencies (ADR 0011).
+// half-met dependencies (Decision 0011).
 //
 // A successful provision also prunes this source's other stale venvs
 // (PruneVenvs, keep-policy defaults DefaultKeepVenvs/DefaultKeepVenvsSince,
@@ -132,7 +132,7 @@ func EnsureVenv(ctx context.Context, spec VenvSpec) (Venv, error) {
 
 // provision creates the venv and installs the declared deps into it, writing
 // the ready marker only after the install exits clean. The interpreter is the
-// one the image froze (ADR 0016) and no ansible-core is forced: ansible is a
+// one the image froze (Decision 0016) and no ansible-core is forced: ansible is a
 // command on PATH, and a project that declares its own core shadows it. The
 // venv's site-packages is resolved here, after uv has laid the directory down,
 // and returned so the caller can bridge it through PYTHONPATH.
@@ -213,7 +213,7 @@ func runUV(ctx context.Context, uv string, spec VenvSpec, workDir string, args .
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	cmd.Dir = workDir
 	// Hardlink-seed from the shared uv cache so per-source venvs are cheap and
-	// offline once cached (ADR 0011); uv falls back to copy across filesystems.
+	// offline once cached (Decision 0011); uv falls back to copy across filesystems.
 	cmd.Env = append(os.Environ(), "UV_LINK_MODE=hardlink")
 	if spec.UVCacheDir != "" {
 		cmd.Env = append(cmd.Env, "UV_CACHE_DIR="+spec.UVCacheDir)
@@ -248,7 +248,7 @@ func installArgs(m PythonManifest) []string {
 }
 
 // imagePython resolves the interpreter the image froze into its toolchain
-// manifest (ADR 0016), or "" when none is reachable. The fallback ansible
+// manifest (Decision 0016), or "" when none is reachable. The fallback ansible
 // toolchain and every per-source venv must share one interpreter so the
 // site-packages PYTHONPATH bridge is ABI-compatible; an empty pin omits uv's
 // --python and leaves the default. A switched image moves the pin with it, no

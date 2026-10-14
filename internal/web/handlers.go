@@ -451,7 +451,7 @@ func deadmanShortID(id string) string {
 // §7 A6): the full-width card plus the ▾ views — the generated config
 // (read-only yml, secrets by name) and the deep link into the DR drawer's
 // replica mode — and the Set-target form that persists the replica target and
-// the unencrypted-remote ack (A6). There is still no pause verb (ADR 0012):
+// the unencrypted-remote ack (A6). There is still no pause verb (Decision 0012):
 // the daemon generates config and observes, it never runs litestream.
 func (s *Server) handleLitestream(w http.ResponseWriter, r *http.Request) {
 	s.render(w, r, http.StatusOK, litestreamPage(s.litestreamPageVMFor(r)))

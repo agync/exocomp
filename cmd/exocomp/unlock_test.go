@@ -101,7 +101,7 @@ func tryLock(t *testing.T, addr, workspace, lockID string) int {
 	return resp.StatusCode
 }
 
-// TestStaleStateLockIsFlaggedAndBreakable is the recovery ADR 0004 promises
+// TestStaleStateLockIsFlaggedAndBreakable is the recovery Decision 0004 promises
 // and nothing implemented: a job killed mid-apply leaves the workspace locked
 // by a process that is gone, and no later run can ever take that lock.
 func TestStaleStateLockIsFlaggedAndBreakable(t *testing.T) {

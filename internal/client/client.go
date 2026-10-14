@@ -80,7 +80,7 @@ func New(cfg Config) (*Client, error) {
 		DialContext:         (&net.Dialer{Timeout: connectTimeout}).DialContext,
 		TLSHandshakeTimeout: connectTimeout,
 		// Standard chain verification is skipped on purpose: trust is the
-		// pinned leaf fingerprint (TOFU, ADR 0009 §4), not a CA. The pin is
+		// pinned leaf fingerprint (TOFU, Decision 0009 §4), not a CA. The pin is
 		// enforced in VerifyConnection below, which STILL runs when
 		// InsecureSkipVerify is set — so a wrong cert is refused there.
 		TLSClientConfig: &tls.Config{

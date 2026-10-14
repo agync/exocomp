@@ -1,7 +1,7 @@
 # Resolved by `uv pip compile --universal --python-version 3.14` from the pins in
 # Containerfile. Regenerate with the same command when a pin moves; the image
 # build passes this file to `uv tool install -c`, so an unpinned transitive
-# dependency cannot drift between builds (ADR 0006).
+# dependency cannot drift between builds (Decision 0006).
 ansible-core==2.21.3
     # via -r tool-req.in
 ansible-runner==2.4.3

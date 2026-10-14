@@ -22,7 +22,7 @@ import (
 // are requested the controller MUST prepare successfully — a writable, delegated
 // v2 subtree with the memory and cpu controllers — or the job is refused. A
 // requested cap that cannot be enforced never silently degrades to an uncapped
-// run (the same "never silently" posture ADR 0005 holds for the sandbox tier).
+// run (the same "never silently" posture Decision 0005 holds for the sandbox tier).
 
 // cgroupRoot is where a cgroup v2 hierarchy is mounted in the container. Under
 // the quadlet's cgroup delegation this is the container's own namespaced root.

@@ -50,6 +50,6 @@ incompatibility:
 
 Operator docs do not suggest MinIO as a fresh deployment choice. Existing installs using
 MinIO keep working: the S3 leg is restic's generic `s3:` backend, never MinIO-specific.
-State locking is unaffected: [ADR 0004](../adr/0004-opentofu-http-state-backend.md)
+State locking is unaffected: [Decision 0004](../decisions/0004-opentofu-http-state-backend.md)
 moved locking into SQLite because S3 conditional-write support is inconsistent across
 stores, so no fixture needs `If-None-Match` on PUT.

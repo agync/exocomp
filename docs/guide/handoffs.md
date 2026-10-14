@@ -43,7 +43,7 @@ Inspect the step ledger and current workflow state with:
 exocomp provision status prod
 ```
 
-If a daemon restart or crash interrupts execution mid-chain, the sequencer automatically resumes the in-flight workflow from the SQLite step ledger upon reboot without re-applying completed infrastructure steps (ADR 0008). Interrupted standalone jobs can be inspected and re-queued via `exocomp jobs redrive`.
+If a daemon restart or crash interrupts execution mid-chain, the sequencer automatically resumes the in-flight workflow from the SQLite step ledger upon reboot without re-applying completed infrastructure steps (Decision 0008). Interrupted standalone jobs can be inspected and re-queued via `exocomp jobs redrive`.
 
 ## The dynamic `tf:<workspace>` inventory
 

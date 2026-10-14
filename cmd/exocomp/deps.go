@@ -13,7 +13,7 @@ import (
 
 // pythonCacheDir is the venv cache root under the data dir. It sits beside
 // cache/collections so both dependency planes live under one backed-up,
-// offline-restorable tree (ADR 0011).
+// offline-restorable tree (Decision 0011).
 const pythonCacheDir = "cache/python"
 
 // uvCacheSubdir is uv's own download cache, under the venv cache root so it is
@@ -36,7 +36,7 @@ const galaxyTool = "ansible-galaxy"
 const galaxyCacheDir = "cache/galaxy"
 
 // resolveProjectVenv resolves the per-source uv venv a playbook run executes
-// inside (ADR 0011). It discovers the project's Python manifest from the
+// inside (Decision 0011). It discovers the project's Python manifest from the
 // playbook's directory; a source that declares none returns a zero Venv, so the
 // run stays on the shared image toolchain — which is also what keeps DR-path
 // runbooks (seeded standalone, carrying no manifest) on the image, never a
@@ -84,7 +84,7 @@ func resolveProjectVenv(ctx context.Context, dataDir, playbook string) (deps.Ven
 }
 
 // resolveSourceCollections resolves the per-source ansible collections a
-// playbook run executes with (ADR 0015), mirroring resolveProjectVenv. It
+// playbook run executes with (Decision 0015), mirroring resolveProjectVenv. It
 // discovers the project's galaxy manifest from the playbook's directory; a
 // source that declares none returns a zero Collections, so the run falls back
 // to the shared cache/collections dir — which is also what keeps DR-path
@@ -108,7 +108,7 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	}
 	// Resolve the venv first: its ansible-galaxy sibling, when present, is this
 	// source's collections resolver — the way its ansible-playbook is the run's
-	// binary (ADR 0015). An absent venv leaves galaxy to PATH.
+	// binary (Decision 0015). An absent venv leaves galaxy to PATH.
 	venv, err := resolveProjectVenv(ctx, dataDir, playbook)
 	if err != nil {
 		return deps.Collections{}, err
@@ -129,7 +129,7 @@ func resolveSourceCollections(ctx context.Context, dataDir, playbook string) (de
 	// and the requirements, denied the data dir and the keys; the
 	// daemon-context resolve stays only where no sandbox can enforce it. The
 	// galaxy that actually executes is granted — the venv's sibling when one
-	// was resolved, the image's otherwise (ADR 0015).
+	// was resolved, the image's otherwise (Decision 0015).
 	if sandboxed(ctx) {
 		galaxyCache := filepath.Join(dataDir, galaxyCacheDir)
 		// The requirements file may name a local collection artifact
@@ -163,7 +163,7 @@ func executable(path string) bool {
 // ansibleCollectionsPath is the ANSIBLE_COLLECTIONS_PATH value a run gets: the
 // per-source resolved collections dir ahead of the shared cache/collections
 // fallback when the source resolved collections, the shared dir alone
-// otherwise (ADR 0015). The per-source path wins because it comes first.
+// otherwise (Decision 0015). The per-source path wins because it comes first.
 func ansibleCollectionsPath(dataDir string, collections deps.Collections) string {
 	shared := filepath.Join(dataDir, collectionsCacheDir)
 	if collections.Dir == "" {
@@ -194,7 +194,7 @@ func ansiblePlaybookPath(argv []string) string {
 	return last
 }
 
-// applyVenv points ansible options at a resolved venv (ADR 0016): its
+// applyVenv points ansible options at a resolved venv (Decision 0016): its
 // site-packages is bridged to the run through PYTHONPATH, its interpreter
 // drives the localhost-over-local modules, and its bin leads PATH. Binary is
 // set only when the venv's own ansible-playbook exists — a project that

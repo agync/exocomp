@@ -1,6 +1,6 @@
 package wire
 
-// KindSealStatus is the kind of an OpenBao Transit seal status report (ADR
+// KindSealStatus is the kind of an OpenBao Transit seal status report (Decision
 // 0013).
 const KindSealStatus = "seal.status"
 

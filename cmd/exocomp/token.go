@@ -21,7 +21,7 @@ func init() {
 func newTokenCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "token",
-		Short: "Manage LAN access tokens (ADR 0009)",
+		Short: "Manage LAN access tokens (Decision 0009)",
 		Long: "LAN access tokens are the only credential the network surface accepts. " +
 			"They are minted from local auth — this command, which needs the data dir — " +
 			"argon2id-hashed at rest, and revocable. A browser session is bound to its " +

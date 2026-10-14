@@ -93,15 +93,15 @@ Precise specifications and wire protocols — [reference/index.md](reference/ind
 
 ---
 
-## 6. Architecture & ADRs
+## 6. Architecture & decision records
 
-Foundational architectural design and immutable decisions — [architecture/index.md](architecture/index.md) & [adr/index.md](adr/index.md).
+Foundational architectural design and immutable decisions — [architecture/index.md](architecture/index.md) & [decisions/index.md](decisions/index.md).
 
 - [Architecture overview](architecture/overview.md): Component map, the one-queue convergence property, state layout.
 - [Execution driver](architecture/execution.md): Sandbox tiers (`disabled`, `enforcing` with `nono`, `container`).
 - [Platform contract](architecture/platform-contract.md): Support tiers for systemd, Podman, and SELinux enforcing.
 - [Reactive layer](architecture/reactive.md): CEL evaluation, guardrails, and ledger ordering.
-- [ADRs 0001–0020](adr/index.md): Foundational architecture decision records.
+- [Decision records 0001–0020](decisions/index.md): Foundational architecture decision records.
 
 ---
 
@@ -115,5 +115,5 @@ Foundational architectural design and immutable decisions — [architecture/inde
 ## Conventions
 
 - Every cross-reference in this bundle is a relative link.
-- ADRs are appended and superseded, never rewritten to change meaning.
+- Decision records are appended and superseded, never rewritten to change meaning.
 - Docs move with code: structural changes are recorded in [log.md](log.md).

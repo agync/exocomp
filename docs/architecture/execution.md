@@ -117,7 +117,7 @@ refusal has to come from the kernel policy, not from there being nothing to reac
 **A `connect(2)` to a pathname `AF_UNIX` socket is not mediated by any Landlock ABI shipped
 so far**: Landlock hooks path opening, and connecting to a unix socket opens nothing.
 Abstract sockets, which Landlock does scope, are refused; pathname ones are not. The socket
-denial in [ADR 0005](../adr/0005-job-sandboxing-nono.md) therefore holds by placement rather
+denial in [Decision 0005](../decisions/0005-job-sandboxing-nono.md) therefore holds by placement rather
 than by policy — exocomp ships no unix socket for a job to reach, its own surface is
 loopback TCP, and no podman socket is mounted into the container — and `doctor` prints the
 gap instead of implying a denial it cannot make. This is why the probe asserts against live
@@ -174,7 +174,7 @@ run:
   backend configuration verbatim, bearer included, so it dies with the run.
 - `TF_ENCRYPTION` naming the `pbkdf2` key provider with a passphrase derived per workspace.
   Tofu encrypts its own state; `exocompd` stores the envelope it is handed
-  ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)).
+  ([Decision 0004](../decisions/0004-opentofu-http-state-backend.md)).
 - an environment built from an allowlist. `TF_VAR_` names pass through; other `TF_` names
   do not, because `TF_CLI_ARGS` would let whatever the operator exported rewrite the argv
   the job row records.

@@ -488,7 +488,7 @@ func (s *Store) ListTFLocks(ctx context.Context) ([]TFLock, error) {
 
 // StaleTFLocks returns the locks whose owning job can no longer release them:
 // the job reached a terminal state, or the lock names no job at all. A killed
-// apply leaves exactly this, and nothing else in the system moves it (ADR
+// apply leaves exactly this, and nothing else in the system moves it (Decision
 // 0004: stale-lock recovery is an audited force-unlock, flagged on boot).
 //
 // It reads the job table as it stands, so callers run it after the boot sweep

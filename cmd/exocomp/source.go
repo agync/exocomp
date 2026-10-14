@@ -33,7 +33,7 @@ func deployKeySecretName(source string) string { return "source/" + source + "/d
 func newSourceCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "source",
-		Short: "Register and sync the git repos and paths runs execute from (ADR 0010)",
+		Short: "Register and sync the git repos and paths runs execute from (Decision 0010)",
 	}
 	cmd.AddCommand(newSourceAddCmd(), newSourceListCmd(), newSourceSyncCmd(), newSourceRmCmd())
 	return cmd
@@ -331,7 +331,7 @@ func runSourceSync(cmd *cobra.Command, name, refOverride string) error {
 		opts.DeployKeyPEM = key
 	}
 
-	// Pin the forge's host key from the recorded known_hosts store (ADR 0010):
+	// Pin the forge's host key from the recorded known_hosts store (Decision 0010):
 	// without it the ssh transport trusts whatever key the forge presents on
 	// first contact. When the forge host has a recorded key, verify
 	// against it strictly; a mismatch fails the sync rather than trusting a new
@@ -455,7 +455,7 @@ func runSourceRm(cmd *cobra.Command, name string) error {
 // purgeSourceCachesIfUnreferenced removes a deleted source's dependency caches
 // (cache/python/<SourceKey> and cache/collections/<SourceKey> under dataDir)
 // unless another registered source resolves to the same root and therefore
-// shares the key (ADR 0015). A disabled source still owns its cache when
+// shares the key (Decision 0015). A disabled source still owns its cache when
 // re-enabled, so it counts as a reference. The source row is already deleted by
 // the caller. Any failure leaves the caches in place: the failure mode is a
 // stale cache, never a wrong purge. It reports whether it actually removed

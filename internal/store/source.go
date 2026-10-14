@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-// Source kinds (ADR 0010). git is the managed, auto-synced, deploy-keyed
+// Source kinds (Decision 0010). git is the managed, auto-synced, deploy-keyed
 // locality; path is a tree already on the box (absolute, or relative to the
 // data volume). Read/write is not the kind's business — it is the Writable bit.
 const (

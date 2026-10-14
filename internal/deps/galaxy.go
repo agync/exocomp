@@ -21,7 +21,7 @@ const (
 
 // GalaxyManifest is a discovered ansible collections requirements file, the
 // input to EnsureCollections (internal/deps/collections.go), which installs the
-// collections into a per-source cache dir for offline resolution (ADR 0015).
+// collections into a per-source cache dir for offline resolution (Decision 0015).
 type GalaxyManifest struct {
 	// Root is the project root discovery settled on, the namespace the
 	// per-source collections cache is keyed by (PythonManifest.Root, mirrored).

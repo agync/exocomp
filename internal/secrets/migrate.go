@@ -23,7 +23,7 @@ const (
 
 // MigrateOptions describes a change to who can unwrap the DEK, or to where the
 // host identity is stored. The DEK itself never changes: re-wrapping is O(1)
-// and leaves every sealed secret and every derived subkey alone (ADR 0003).
+// and leaves every sealed secret and every derived subkey alone (Decision 0003).
 type MigrateOptions struct {
 	// Add takes "age1…" or "label=age1…" recipients.
 	Add []string

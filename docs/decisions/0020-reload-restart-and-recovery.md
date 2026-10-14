@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0020 — Reload first, restart after drain, recover interrupted jobs"
+title: "Decision 0020 — Reload first, restart after drain, recover interrupted jobs"
 description: "Reload first, restart after drain, and recover interrupted jobs, with schedules reloading without a restart."
 status: stable
 tags: [decision, serve, recovery]
 ---
 
-# ADR 0020 — Reload first, restart after drain, recover interrupted jobs
+# Decision 0020 — Reload first, restart after drain, recover interrupted jobs
 
 Status: accepted · 2026-10-09
 
@@ -65,7 +65,7 @@ Prefer reload over restart, and restart only after drain, in three phases:
    durable marker: job rows are never pruned (the store has no job retention,
    and nothing deletes a job row), so no schema column has to remember a
    redrive. A workflow-step
-   row is excluded: the sequencer re-arms it from the ledger (ADR 0008), so
+   row is excluded: the sequencer re-arms it from the ledger (Decision 0008), so
    re-driving it would run the step twice and drop any approval gate it
    carried. A real run needs confirmation (`--yes`, or an answered prompt;
    `--dry-run` enqueues nothing); a clean restart-after-drain interrupts

@@ -99,7 +99,7 @@ The `docs/` tree is the reference for everything else, rendered at
   property, the platform contract, execution tiers, the reactive layer.
 - [docs/operations/](docs/operations/index.md) — bootstrap, running the daemon,
   disaster recovery, backups, remote access, the API and MCP surfaces, and more.
-- [docs/adr/](docs/adr/index.md) — the accepted architecture decisions and their
+- [docs/decisions/](docs/decisions/index.md) — the accepted architecture decisions and their
   consequences.
 
 ## Contributing

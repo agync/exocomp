@@ -72,7 +72,7 @@ case "${1:-}" in
                 grep -o 'exo_[0-9][0-9]*_[A-Za-z0-9_-]*' | head -1)
         fi
         log "starting serve on $ADDR, data dir $BASE_DATA"
-        # EXOCOMP_E2E_TLS=1 serves real TLS (self-signed, ADR 0009) instead of
+        # EXOCOMP_E2E_TLS=1 serves real TLS (self-signed, Decision 0009) instead of
         # cleartext --web-insecure-http. Used by the browser demo so the login
         # page shows the certificate fingerprint, not the "not secure" alert;
         # the matrix default stays insecure-http for its http:// curl and MCP

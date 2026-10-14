@@ -16,7 +16,7 @@ import (
 // TransitSealName is the file holding the DEK wrapped by an OpenBao Transit key.
 // It rides beside keyring.age and is purely additive: keyring.age still wraps
 // the DEK to the age recipients (host + recovery), so the printed recovery card
-// opens the store with no OpenBao in reach (ADR 0013). The blob is transit
+// opens the store with no OpenBao in reach (Decision 0013). The blob is transit
 // ciphertext ("vault:v1:…"), safe to keep at rest — the transit key never lands
 // on host disk.
 const TransitSealName = "keyring.transit"
@@ -46,7 +46,7 @@ const transitTimeout = 15 * time.Second
 
 // SealConfig points the envelope at an OpenBao Transit key that wraps the DEK.
 // It is optional: a nil or unconfigured SealConfig leaves Open on the age
-// host-key path, byte-for-byte as before (ADR 0013).
+// host-key path, byte-for-byte as before (Decision 0013).
 type SealConfig struct {
 	Address   string
 	Token     string
@@ -135,7 +135,7 @@ func (c *SealConfig) client() *transitClient {
 // OpenWithSeal opens the envelope, using an OpenBao Transit seal when one is
 // configured and the age host-key path otherwise. With a nil or unconfigured
 // seal it is exactly Open: same reads, same result, so the unconfigured path is
-// unchanged (ADR 0013).
+// unchanged (Decision 0013).
 //
 // When the seal is configured, the DEK is unwrapped from keyring.transit via
 // transit/decrypt — no host key needed, the auto-unseal value. An unreachable

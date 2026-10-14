@@ -167,7 +167,7 @@ func TestResticLocalRoundTrip(t *testing.T) {
 	target := f.target(t, "nas", KindResticLocal, repo)
 
 	// The deployment's image ref rides into RECOVERY.md, read best-effort from
-	// the store at write time (ADR 0016).
+	// the store at write time (Decision 0016).
 	const imageRef = "ghcr.io/abn/exocomp:test"
 	if err := f.store.PutSetting(t.Context(), store.SettingImageRef, imageRef); err != nil {
 		t.Fatalf("put image ref: %v", err)

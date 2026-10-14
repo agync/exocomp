@@ -192,7 +192,7 @@ func newServeCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opts.basePath, "base-path", "",
 		"origin sub-path the web surface is served under (e.g. /exocomp); empty serves at the origin root")
 	cmd.Flags().StringVar(&opts.webAddr, "web-addr", "",
-		"also serve the token-gated LAN web+API surface here over TLS (ADR 0009); empty starts no web listener")
+		"also serve the token-gated LAN web+API surface here over TLS (Decision 0009); empty starts no web listener")
 	cmd.Flags().BoolVar(&opts.webInsecure, "web-insecure-http", false,
 		"serve the web surface as cleartext HTTP (loud, never the documented path)")
 	cmd.Flags().StringVar(&opts.sandbox, "sandbox", "",
@@ -335,7 +335,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 
 	// The deployment's image ref, set by the unit's EXOCOMP_IMAGE, is recorded
 	// so RECOVERY.md and `exocomp doctor` name what a recovered host must load
-	// (ADR 0016). A restart with a changed image updates it; an unset env
+	// (Decision 0016). A restart with a changed image updates it; an unset env
 	// leaves the stored value alone.
 	if err := recordImageRef(ctx, st, os.Getenv("EXOCOMP_IMAGE")); err != nil {
 		return fmt.Errorf("serve: persist EXOCOMP_IMAGE: %w", err)
@@ -472,7 +472,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	printHooks(out, env, base)
 
 	// The LAN web/token surface is a second, separate listener: non-loopback
-	// and TLS, token-gated per ADR 0009, sharing this process's engine so an
+	// and TLS, token-gated per Decision 0009, sharing this process's engine so an
 	// approval decided in a browser releases the job into this queue. The
 	// loopback state backend above stays loopback-only and takes no LAN token.
 	var surface *webSurface
@@ -557,7 +557,7 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	// first pass is ResumeAll, so a workflow a crash left mid-flight continues
 	// from the ledger, and it then keeps live workflows — the apply->play
 	// handoff — progressing. The queue stays the sole executor; this only
-	// releases each next step and records its outcome (ADR 0008).
+	// releases each next step and records its outcome (Decision 0008).
 	seq := queue.NewSequencer(q)
 	seqDone := make(chan struct{})
 	go func() {
@@ -940,7 +940,7 @@ func sweepReactive(ctx context.Context, st *store.Store, engine *reactive.Engine
 // flagStaleLocks names every workspace whose state lock outlived the job that
 // took it. Breaking one is the operator's call, not the daemon's — an apply
 // that is still running somewhere would lose its state to an automatic
-// release — so this reports and points at the command (ADR 0004).
+// release — so this reports and points at the command (Decision 0004).
 //
 // It runs after the boot sweep, so a lock whose job that sweep just retired is
 // already visible as stale.

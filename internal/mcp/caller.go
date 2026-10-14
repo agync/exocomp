@@ -12,10 +12,10 @@ import (
 // Caller the transport resolved, and the catalog a caller sees — plus the check
 // re-run on every tools/call — is derived from that one value. Nothing in here
 // reads process state: the HTTP transport resolves a bearer token to a Caller
-// per request and hands it straight in (ADR 0014 §3).
+// per request and hands it straight in (Decision 0014 §3).
 
 // capability is what a tool needs of its caller. The three map 1:1 onto the
-// ADR-0009 scopes: R is readonly-or-higher, W is operator, A is approve.
+// Decision 0009 scopes: R is readonly-or-higher, W is operator, A is approve.
 type capability int
 
 const (
@@ -54,7 +54,7 @@ type DecideFunc func(ctx context.Context, approvalID int64, decision string) (De
 
 // Caller is the authenticated principal behind one MCP request.
 type Caller struct {
-	// Scope is the ADR-0009 scope the transport resolved (store.Scope*). An
+	// Scope is the Decision 0009 scope the transport resolved (store.Scope*). An
 	// unrecognized value authorizes nothing, so a zero Caller is inert.
 	Scope string
 	// Actor is what a write records on the job's event ledger, so an agent's

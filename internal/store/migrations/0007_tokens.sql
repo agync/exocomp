@@ -1,4 +1,4 @@
--- LAN access tokens (ADR 0009, amendment 11 token lifecycle). Tokens are the
+-- LAN access tokens (Decision 0009, amendment 11 token lifecycle). Tokens are the
 -- only credential the network surface accepts; they are minted from local auth
 -- (the data dir) and hashed here with argon2id, never stored in the clear.
 --

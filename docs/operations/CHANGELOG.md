@@ -228,7 +228,7 @@ Newest first.
   daemon](serve.md) names what is live (secrets/redaction, mutes, approvals),
   what reloads (schedules), and what still needs a restart (a binary or
   `serve` flag change), with the `ExecReload` step for the Ansible-managed
-  unit ([ADR 0020](../adr/0020-reload-restart-and-recovery.md)).
+  unit ([Decision 0020](../decisions/0020-reload-restart-and-recovery.md)).
 
 ## 2026-10-07 — the secrets list scans, with a details view
 
@@ -375,11 +375,11 @@ Newest first.
   `event.hosts`, and a `playbook` rule no longer accepts `--limit-hosts`.
   Per-host events are simpler to reason about and debug, and the "one run over
   the present host set" capability was not wanted
-  ([ADR 0019](../adr/0019-aggregate-check-events-removed.md)).
+  ([Decision 0019](../decisions/0019-aggregate-check-events-removed.md)).
 - **Migration 0041 stays.** `check_row.aggregate`/`min_up` remain as inert
   schema: the file is forward-only, and deleting it would make a database
-  already at `user_version` 41 unreadable by the binary. ADR 0018 is superseded
-  by ADR 0019.
+  already at `user_version` 41 unreadable by the binary. Decision 0018 is superseded
+  by Decision 0019.
 
 ## 2026-09-25 — probe guard on every dialing kind, and honest residuals
 
@@ -1133,7 +1133,7 @@ Newest first.
   checkbox at 422, the same caveat the CLI enforces at persistence; a local
   target writes ack=false. The form states its own boundary in its header: the
   daemon cannot verify a target (no probe exists), so it writes the two
-  settings and no more — there is still no pause verb (ADR 0012).
+  settings and no more — there is still no pause verb (Decision 0012).
 
 
 ## 2026-09-12 — the schedules↔backups linkage reads both ways (SPEC §7 A5)
@@ -1272,7 +1272,7 @@ Newest first.
   in the emitted file, never a value — and `restore from replica` deep-links
   into the DR drawer's replica mode (`/system/backups?from=litestream#restore`;
   the drawer template and typed confirm land with the backups lane). The whole
-  surface is read-only by design (ADR 0012): the daemon generates config and
+  surface is read-only by design (Decision 0012): the daemon generates config and
   observes, it never runs litestream, so there is no pause verb anywhere on it.
 
 
@@ -2055,7 +2055,7 @@ Newest first.
 ## 2026-09-06 — per-source ansible collections isolation
 
 - **Ansible collections follow the venv model: per-source, hash-keyed,
-  resolved at claim time** ([ADR 0015](../adr/0015-per-source-collections.md)).
+  resolved at claim time** ([Decision 0015](../decisions/0015-per-source-collections.md)).
   A source's collections live in `cache/collections/<source>/<requirements-hash>`,
   provisioned by `ansible-galaxy` as a subprocess of the claimed job when the
   hash changes (a matching ready marker is a no-op); the shared
@@ -3018,6 +3018,6 @@ already trusts instead of failing closed on it.
 - **Source kinds** are now `git` and a single `path` (an absolute path, or one relative to the
   data volume), with a `writable` flag (default read-only, now enforced in the sandbox). The
   `hostpath`/`volpath` split is gone. [operations/sources.md](sources.md) and the
-  [ADR 0010](../adr/0010-source-and-credential-model.md) addendum carry the model.
+  [Decision 0010](../decisions/0010-source-and-credential-model.md) addendum carry the model.
 - **Runs are launched from a source's page.** Each source has a playbook/command launcher; the
   standalone run surface is retired. Reflected in [operations/serve.md](serve.md).

@@ -22,7 +22,7 @@ tier — BYO images, the podman socket, the build/cache machinery — remains de
 **Not this tier:** an operator who wants arbitrary system packages or a different toolchain
 can build an image that inherits from exocomp and run it. The daemon neither builds nor pulls
 any image and mounts no podman socket, so no registry enters the job or recovery path
-([ADR 0016](../adr/0016-artifact-carrier-image.md)). That is the supported image story; the
+([Decision 0016](../decisions/0016-artifact-carrier-image.md)). That is the supported image story; the
 in-daemon per-job image runner this document specifies stays deferred.
 
 ---
@@ -42,7 +42,7 @@ deliberate deferral with a shipped alternative. Verified against the docs and th
   code: `internal/executor/sandbox.go:21-32` defines only `TierDisabled`, `TierEnforcing`,
   and `TierOpportunistic`. There is no `container` Tier constant. "Designed, deferred" is literally
   true.
-- **[ADR 0005](../adr/0005-job-sandboxing-nono.md) adopted nono/Landlock precisely to
+- **[Decision 0005](../decisions/0005-job-sandboxing-nono.md) adopted nono/Landlock precisely to
   capture most of the container tier's prize without the socket.** Its Context (0005:16-21)
   names the container tier's two costs as the disqualifier: it "costs `exocompd` a mounted
   podman socket (effectively host-user power: the sensitive capability moves rather than
@@ -56,7 +56,7 @@ deliberate deferral with a shipped alternative. Verified against the docs and th
   Podman-in-podman and sidecar topologies both break invariant 1; a registry pull on restore
   breaks invariant 7.
 - **uv-venv already delivers per-project dependency/tool versioning.**
-  [ADR 0011](../adr/0011-project-dependency-resolution.md) +
+  [Decision 0011](../decisions/0011-project-dependency-resolution.md) +
   `internal/deps/venv.go`: each source resolves its declared deps into a hash-gated,
   offline-restorable venv at `cache/python/<source>/<manifest-hash>`, carrying a
   project-pinned `ansible-core`. This is the first half of what execution.md:133 attributes
@@ -66,17 +66,17 @@ deliberate deferral with a shipped alternative. Verified against the docs and th
 
 | Capability | Mechanism | Where |
 |---|---|---|
-| Per-job filesystem isolation | nono/Landlock default-deny, kernel-enforced | ADR 0005, sandbox.go |
+| Per-job filesystem isolation | nono/Landlock default-deny, kernel-enforced | Decision 0005, sandbox.go |
 | DB/key/socket denial from jobs | default-deny + name-check guard + doctor canary | sandbox.go:72-80, execution.md:98-101 |
-| Per-project dep/tool versioning | hash-gated uv-venv per source | ADR 0011, venv.go |
-| Offline/DR-safe execution | Landlock is local; venvs hardlink-seeded, `--offline` | ADR 0005:47, venv.go:55-56 |
+| Per-project dep/tool versioning | hash-gated uv-venv per source | Decision 0011, venv.go |
+| Offline/DR-safe execution | Landlock is local; venvs hardlink-seeded, `--offline` | Decision 0005:47, venv.go:55-56 |
 | Per-job network scoping (by port) | Landlock ABI v4 network rules | execution.md:85-89 |
 
 **What BYO-runner would ADD** — and *only* these, because everything else is already covered:
 
 1. **BYO execution-environment images** — an operator supplies a bootstrap script or
    Containerfile so jobs run with arbitrary baked-in **system packages** (the one thing
-   ADR 0011:86 explicitly leaves out: "bring-your-own-runner is the post-v1 seam for
+   Decision 0011:86 explicitly leaves out: "bring-your-own-runner is the post-v1 seam for
    arbitrary baked-in system deps") and independent ansible/collection pins as a full image
    rather than a venv.
 2. **Hard per-job resource caps** — memory/CPU ceilings the kernel enforces (execution.md:147
@@ -188,7 +188,7 @@ Rationale:
 2. **buildah/containers-storage as Go libraries are cgo-heavy** and pull a large transitive
    tree. Embedding them jeopardizes the `CGO_ENABLED=0` static-binary build
    (`packaging/Containerfile` build stage) and the ~500 MB working-image ceiling
-   ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md):58) — for a tier that is deferred and
+   ([Decision 0006](../decisions/0006-uv-toolchain-escape-hatch.md):58) — for a tier that is deferred and
    may never ship.
 3. **ansible-runner already shells podman for EE isolation** (execution.md:129-131), so
    exocompd's *own* podman surface is thin: build/pull a runner image, `podman run` a tofu
@@ -220,7 +220,7 @@ How exocompd drives podman to build+run runner containers, per topology:
   already-running rootless podman via the mounted socket. The EE build/run happens on the
   host's podman, where it belongs. Keeps **one** exocomp container (invariant 1). This is the
   topology execution.md:138 and platform-contract.md:11 already name as the container driver's
-  mechanism, and the one ADR 0005 priced.
+  mechanism, and the one Decision 0005 priced.
 - **(b) podman-in-podman [rejected].** Nests userns/subuid-subgid mappings, is fragile and
   slow, and on enforcing SELinux the nested MCS labeling is a known pain surface. Adds no
   benefit over (a) and multiplies the failure modes.
@@ -229,7 +229,7 @@ How exocompd drives podman to build+run runner containers, per topology:
   socket-power problem — you still hand something the socket.
 
 **Trade-off, stated honestly.** Option (a) is genuinely host-user-equivalent power inside
-exocompd's container — ADR 0005's exact objection (0005:18, execution.md:138: "the sensitive
+exocompd's container — Decision 0005's exact objection (0005:18, execution.md:138: "the sensitive
 capability moves rather than disappears"). Any code path reaching the mounted socket can run
 arbitrary host-user containers. Therefore:
 
@@ -242,7 +242,7 @@ arbitrary host-user containers. Therefore:
   container tier's build/run path and never from a job profile.
 
 This decision is *coupled* to the sandbox's only guarantee against local sockets: Landlock
-cannot refuse `connect(2)` on a pathname `AF_UNIX` socket (execution.md:103-112, ADR 0005:58-65),
+cannot refuse `connect(2)` on a pathname `AF_UNIX` socket (execution.md:103-112, Decision 0005:58-65),
 so the sandbox's socket denial holds **by placement** — exocomp mounts no podman socket today.
 Turning on the socket mount directly attacks that placement mitigation. The two decisions must
 be made together, not independently.
@@ -259,7 +259,7 @@ volume-relabel prior art.
   mount needs `--security-opt label=disable` (or Quadlet `SecurityLabelDisable`) on *that
   mount* (platform-contract.md:35-36). **Do NOT blanket-disable labels on the whole
   container** — that would remove container-selinux's socket confinement, which
-  platform-contract.md:33-34 and ADR 0005:55 rely on as a *second, independent* enforcement of
+  platform-contract.md:33-34 and Decision 0005:55 rely on as a *second, independent* enforcement of
   "jobs reach no local sockets." Getting this wrong yields either broken jobs (forgot it →
   AVC denials that look like generic podman failures) or weakened isolation (over-applied).
 - **`:z` / `:Z` on bind mounts.** Per-job workspace/data bind mounts need `:Z` (private
@@ -315,7 +315,7 @@ Mechanism, per opted-in job:
    `SysProcAttr.UseCgroupFD`), so the ceiling is in force from the process's first
    instruction. Teardown `cgroup.kill`s the subtree and `rmdir`s it with the job.
 3. **Fail-closed.** Caps requested with no delegated, writable subtree are refused, never run
-   uncapped — the same "never silently" posture ADR 0005 holds for the sandbox tier.
+   uncapped — the same "never silently" posture Decision 0005 holds for the sandbox tier.
    `exocomp doctor` reports availability under "per-job caps".
 
 ### A job selects caps by naming a runner
@@ -358,7 +358,7 @@ podman does not grant by default. The default deployment stays rootless + keep-i
 
 ## 7. Cache and lifecycle — port the uv-venv model to OCI images
 
-The BYO-runner cache should be a **near-mechanical port** of the ADR 0011 uv-venv cache. That
+The BYO-runner cache should be a **near-mechanical port** of the Decision 0011 uv-venv cache. That
 cache is hash-gated on manifest content, keyed under the backed-up data volume, fail-closed,
 and offline-restorable (`internal/deps/venv.go`). Reuse its exact shape.
 
@@ -414,10 +414,10 @@ a fast no-op" property). Default cadence **weekly**. Reuses `ValidateCron`/`fire
 never race.
 
 **No CVE-feed rebuild trigger.** Invariant 7 forbids depending on an external vendor feed, and
-it would reinject network into the steady state ADR 0011 removed. The **base-digest refresh IS
+it would reinject network into the steady state Decision 0011 removed. The **base-digest refresh IS
 the CVE mechanism** — Fedora ships CVE fixes in the base, so pulling a moved digest is the patch
 path. `exocomp doctor` surfaces the running runner's base digest + age for an operator to force
-a rebuild (mirroring how doctor diffs the toolchain against `MANIFEST.json`, ADR 0006).
+a rebuild (mirroring how doctor diffs the toolchain against `MANIFEST.json`, Decision 0006).
 
 ### 7.5 GC / prune — one job, both caches (closes an existing gap)
 
@@ -444,14 +444,14 @@ would compound this. Ship **one bounded-cache prune job covering BOTH**:
   `podman run --pull=never` — no network (mirrors the venv `--offline` hit, venv.go:55-56).
   Only a **miss** triggers an online build (a build fundamentally needs the base + a package
   index). BYO-runner runbooks are **refused on the DR path** by the same doctor gate that pins
-  DR to the image toolchain (execution.md:140-142, ADR 0011:79-80). A registry pull on restore
+  DR to the image toolchain (execution.md:140-142, Decision 0011:79-80). A registry pull on restore
   breaks invariant 7 — enforce this gate, do not merely document it.
 
 ### 7.7 Build is operator-initiated, never a job side effect
 
-Any build needs podman/buildah = the exact privileged surface ADR 0005 excluded. So the runner
+Any build needs podman/buildah = the exact privileged surface Decision 0005 excluded. So the runner
 **build** must be **operator-initiated, approval-gated, and doctor-visible** — framed like the
-ADR 0006 escape hatch ("operator-initiated, at a shell, on purpose"), **never** triggered
+Decision 0006 escape hatch ("operator-initiated, at a shell, on purpose"), **never** triggered
 implicitly by a sandboxed job (whose profile grants no socket, sandbox.go:72-80). The mitigation
 is a *process* control, so it needs an explicit doctor assertion, not just a convention.
 
@@ -465,7 +465,7 @@ is a *process* control, so it needs an explicit doctor assertion, not just a con
    dependencies. Do not build the container tier speculatively.
 2. **Build BYO-runner only when a concrete need justifies it** — either (a) a real BYO
    execution-environment requirement (arbitrary baked-in **system packages** that uv-venv
-   cannot provide, ADR 0011:86), or (b) **hard per-job resource caps**. If the need is caps
+   cannot provide, Decision 0011:86), or (b) **hard per-job resource caps**. If the need is caps
    only, **build §6 (systemd scopes) instead of the container tier** — it is far cheaper and
    does not lower the threat tier.
 3. **When built, use exactly the shape above**: shell podman/buildah (§3), host-socket mount

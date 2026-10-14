@@ -14,7 +14,7 @@ import (
 // transitClient speaks the OpenBao (and Vault) Transit HTTP API: POST
 // /v1/transit/encrypt/<key> and /v1/transit/decrypt/<key>, authenticated with a
 // token header. It wraps and unwraps the DEK without the transit key ever
-// leaving OpenBao — the auto-unseal pattern (ADR 0013). No third-party client:
+// leaving OpenBao — the auto-unseal pattern (Decision 0013). No third-party client:
 // two endpoints and a bearer header do not earn a dependency.
 type transitClient struct {
 	addr      string
@@ -73,7 +73,7 @@ func (c *transitClient) decrypt(ctx context.Context, ciphertext string) ([]byte,
 // do issues one transit request and decodes the JSON response into out. A
 // transport error (OpenBao unreachable) and a non-2xx status both surface as
 // explicit errors: Open must never treat an unreachable seal as a reason to
-// fall back to a weaker path (ADR 0013).
+// fall back to a weaker path (Decision 0013).
 func (c *transitClient) do(ctx context.Context, op string, body []byte, out any) error {
 	url := strings.TrimRight(c.addr, "/") + "/v1/transit/" + op + "/" + c.keyName
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))

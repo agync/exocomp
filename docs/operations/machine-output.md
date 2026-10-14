@@ -11,7 +11,7 @@ tags: [operations, cli, json]
 A structured-output contract (`internal/wire`) that the CLI, the HTTP API, and the MCP
 server all marshal through, so a resource's bytes are identical whichever face asked.
 Design rationale: [agent-interface.md §3.2](../design/agent-interface.md); recorded in
-[ADR 0014](../adr/0014-agent-facing-surface.md).
+[Decision 0014](../decisions/0014-agent-facing-surface.md).
 
 ## Selecting JSON
 
@@ -131,7 +131,7 @@ fault carried per-entry rather than aborting the probe. `GET /api/v1/health` and
 
 The `optional_tools` entry also folds in the toolchain-manifest comparison: each resolved
 tool version is diffed against its pin in the manifest named by `EXOCOMP_TOOLCHAIN_MANIFEST`.
-A tool off its pin is `warn` — never `fail`, because the [ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)
+A tool off its pin is `warn` — never `fail`, because the [Decision 0006](../decisions/0006-uv-toolchain-escape-hatch.md)
 operator escape hatch is a supported state; a version the extraction rule cannot parse is
 named in the detail without moving the status; and no manifest env at all leaves the entry
 `unknown`, a state to read rather than a fault. The text report marks each divergent line
@@ -142,7 +142,7 @@ image to load.
 
 ## MCP-over-HTTP: the third face
 
-exocomp maintains exactly one agent MCP surface: `POST /mcp` on the ADR-0009 listener, the
+exocomp maintains exactly one agent MCP surface: `POST /mcp` on the Decision 0009 listener, the
 same one `/api/v1` rides. It runs one catalog and one set of handlers, so every tool call and
 resource read routes to the same `internal/service` verbs and marshals the same `wire`
 envelope the CLI and the API use — a resource's MCP bytes match its `--output json` and

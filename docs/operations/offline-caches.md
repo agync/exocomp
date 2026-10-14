@@ -15,7 +15,7 @@ the 0700 data dir and both covered by the ordinary backup snapshot, make that tr
 ## Ansible collections
 
 A source's collections are vendored per source, mirroring the venv model
-([ADR 0015](../adr/0015-per-source-collections.md)): into
+([Decision 0015](../decisions/0015-per-source-collections.md)): into
 `<data dir>/cache/collections/<source>/<requirements-hash>/`, where `<source>`
 is the same slug+hash key a source's uv venv uses and the requirements file is
 `.exocomp/requirements.yml`, overriding a repo-root `requirements.yml` (the same
@@ -63,7 +63,7 @@ warning describes running `ansible-galaxy` directly, not a playbook run through
 A source that declares Python dependencies (`requirements.txt`, or a
 `pyproject.toml` with PEP 621 / `[dependency-groups]` deps) resolves into a
 per-source uv venv at `<data dir>/cache/python/<source>/<manifest-hash>`
-([ADR 0011](../adr/0011-project-dependency-resolution.md)). uv's own download
+([Decision 0011](../decisions/0011-project-dependency-resolution.md)). uv's own download
 cache lands at `<data dir>/cache/python/uv-cache`, so both travel with the
 backup.
 
@@ -72,7 +72,7 @@ installs a project's declared deps, and a manifest can steer that — a
 `pyproject.toml` build backend is arbitrary code, run at install time, derived
 from an untrusted source. So when the sandbox tier is in effect the uv
 invocation is wrapped in the same nono launcher every job runs under
-([ADR 0005](../adr/0005-job-sandboxing-nono.md)): uv is granted write on its
+([Decision 0005](../decisions/0005-job-sandboxing-nono.md)): uv is granted write on its
 venv and cache, read on its tool tree and the manifest, and HTTPS to fetch
 packages, and is **denied the data dir, `host.key`, `keyring.age`, and the
 database** by the same profile guard a run's grants pass through. A resolve that

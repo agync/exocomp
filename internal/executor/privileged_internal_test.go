@@ -40,7 +40,7 @@ func TestRunUnsandboxedDelegatesWithoutCaps(t *testing.T) {
 
 // TestRunUnsandboxedRefusesCaps: caps cannot be enforced without the sandbox, so
 // a privileged run that also named a runner is refused rather than run silently
-// uncapped (ADR 0005, "never silently").
+// uncapped (Decision 0005, "never silently").
 func TestRunUnsandboxedRefusesCaps(t *testing.T) {
 	t.Parallel()
 

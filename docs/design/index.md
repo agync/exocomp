@@ -16,4 +16,4 @@ Dark is the native theme; Light is a warm, low-chroma remap inspired by physical
 
 ## Foundational design decisions
 
-The accepted design is thin-core ([ADR 0001](../adr/0001-thin-core-architecture.md)). Historical design phase research notes and candidate critiques are archived in the exocomp section of the lab wiki.
+The accepted design is thin-core ([Decision 0001](../decisions/0001-thin-core-architecture.md)). Historical design phase research notes and candidate critiques are archived in the exocomp section of the lab wiki.

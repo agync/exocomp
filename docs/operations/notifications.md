@@ -108,7 +108,7 @@ freshness — the last successful backup, the oldest unanswered approval, and th
 
 The loopback backend is reachable by tofu-tier jobs, so the scrape is **bearer-gated**:
 every request must carry the `metrics-scrape` bearer, a token
-derived from the envelope like the state backend's own (ADR 0004). Configure Prometheus
+derived from the envelope like the state backend's own (Decision 0004). Configure Prometheus
 with it as an `authorization` credential; an unauthenticated scrape is refused with `401`.
 
 Related: [Reacting to alerts](reactive.md) · [LAN access](lan-access.md) ·

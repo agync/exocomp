@@ -21,7 +21,7 @@ func init() {
 
 // sandboxTierEnv selects the isolation tier when no flag names one:
 // opportunistic | enforcing | disabled. Enforcing is the default and fails
-// closed where the kernel cannot enforce the sandbox (ADR 0005).
+// closed where the kernel cannot enforce the sandbox (Decision 0005).
 const sandboxTierEnv = "EXOCOMP_SANDBOX"
 
 // sandboxCanarySubcommand is the argv the probe re-enters this binary with.
@@ -70,7 +70,7 @@ func requestSandboxTier(name string, warn io.Writer) error {
 }
 
 // sandboxTier resolves the effective tier, probing at most once. A degradation
-// is written to the warning stream — ADR 0005's "never silently" applies to the
+// is written to the warning stream — Decision 0005's "never silently" applies to the
 // daemon's log as much as to the doctor.
 func sandboxTier(ctx context.Context) executor.ProbeResult {
 	sandbox.once.Do(func() {
@@ -115,7 +115,7 @@ func sandboxed(ctx context.Context) bool {
 // boundary with a warning — that is what "opportunistic" means. An explicit
 // enforcing request is a policy, not a preference: running the fleet's jobs
 // unsandboxed is not what was asked for, so the daemon and the doctor refuse
-// rather than quietly downgrade (ADR 0005, "never silently"). Enforcing is also
+// rather than quietly downgrade (Decision 0005, "never silently"). Enforcing is also
 // the secure-by-default tier, so an empty flag reaches this same refusal.
 func enforceSandboxTier(ctx context.Context) error {
 	res := sandboxTier(ctx)
@@ -307,7 +307,7 @@ var jobCaps struct {
 // capsController returns the daemon's delegated cgroup controller, preparing
 // it on first use. A non-nil error means per-job caps cannot be enforced on
 // this host; the caller (withCaps, through applyJobCaps) refuses the capped
-// job rather than running it uncapped — ADR 0005's "never silently" posture,
+// job rather than running it uncapped — Decision 0005's "never silently" posture,
 // extended from the sandbox tier to the caps feature. warn receives one line
 // the first time preparation is attempted, successful or not, so the
 // daemon's own log carries the same signal `exocomp doctor` reports under
@@ -413,7 +413,7 @@ func tofuTierDriver(dataDir string, opts executor.TofuOptions, caps executor.Cap
 }
 
 // reportSandbox writes the doctor's sandbox block: the launcher's version
-// against the floor ADR 0005 pins, the kernel's Landlock ABI, the tier in
+// against the floor Decision 0005 pins, the kernel's Landlock ABI, the tier in
 // effect, and what the probe actually asserted.
 func reportSandbox(ctx context.Context, w io.Writer) {
 	res := sandboxTier(ctx)

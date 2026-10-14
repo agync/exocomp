@@ -1,18 +1,18 @@
 ---
 type: Decision
-title: "ADR 0011 — Project dependency resolution: uv at runtime for declared manifests"
+title: "Decision 0011 — Project dependency resolution: uv at runtime for declared manifests"
 description: "Project dependencies resolve from root requirements.txt or pyproject.toml into hash-gated caches, with uv shipped at runtime."
 status: stable
 tags: [decision, dependencies, offline]
 ---
 
-# ADR 0011 — Project dependency resolution: uv at runtime for declared manifests
+# Decision 0011 — Project dependency resolution: uv at runtime for declared manifests
 
 Superseded by [0015](0015-per-source-collections.md) for the collections decision; the venv, tofu-provider, tofu-modules, and system-package decisions stand.
 
 ## Status
 
-Accepted · 2026-08-22 — refines the boundary in [ADR 0006](0006-uv-toolchain-escape-hatch.md).
+Accepted · 2026-08-22 — refines the boundary in [Decision 0006](0006-uv-toolchain-escape-hatch.md).
 
 ## Context
 
@@ -31,11 +31,11 @@ Operators declare Python dependencies the ordinary way: a **`requirements.txt`**
 root** — the files their editor, CI, and `uv` already understand. exocomp should honour
 those, not demand a bespoke manifest.
 
-This bumps a boundary in ADR 0006: *"the control plane never invokes uv … no on-demand
+This bumps a boundary in Decision 0006: *"the control plane never invokes uv … no on-demand
 installs on the job path."* That rule exists to keep the ansible-core **toolchain switch**
 an operator-initiated act with no registry on the DR path. It was not written to forbid
-exocomp from resolving a project's *declared* dependencies — ADR 0006 itself (Consequences)
-anticipates per-project venvs. This ADR draws the line precisely.
+exocomp from resolving a project's *declared* dependencies — Decision 0006 itself (Consequences)
+anticipates per-project venvs. This record draws the line precisely.
 
 ## Decision
 
@@ -55,7 +55,7 @@ source model):
 source (project/workspace).** The run is never launched against the bare shared
 interpreter; the driver always activates a uv venv keyed to the source + manifest hash.
 That venv carries `ansible-core` (project-pinned; default = the image toolchain pin from
-ADR 0006) + `ansible-runner` + the source's declared Python deps. Per-source isolation is
+Decision 0006) + `ansible-runner` + the source's declared Python deps. Per-source isolation is
 cheap because uv seeds each venv from its shared package cache by hardlink (no re-download,
 offline once cached), and the manifest hash means an unchanged project reuses its venv as a
 no-op. A source that declares NO extra deps resolves to the shared base toolchain venv (also
@@ -63,7 +63,7 @@ uv-managed — there is nothing project-specific to isolate); the moment it decl
 gets its own. This gives the homelab/hybrid case what it wants — a playbook can pin its own
 ansible-core and libraries without disturbing another project — while the **DR-path runbooks
 (backup, restore drill, host onboarding) still execute the image-pinned toolchain, never a
-project venv** (ADR 0006: a fresh restore has the image before it has the volume).
+project venv** (Decision 0006: a fresh restore has the image before it has the volume).
 - **Ansible collections** — `.exocomp/requirements.yml` (or a repo-root `requirements.yml`)
   vendored into `cache/collections` (already built; `ANSIBLE_COLLECTIONS_PATH`).
 - **Tofu providers** — the existing plugin cache + `filesystem_mirror` (already built).
@@ -75,16 +75,16 @@ project venv** (ADR 0006: a fresh restore has the image before it has the volume
 true and keeps the network off the steady-state job path.
 
 **uv ships in the distribution.** It is already in the runtime image (Containerfile runtime
-stage + `MANIFEST.json` pin `uv==0.9.7`); this ADR makes that load-bearing, not incidental.
+stage + `MANIFEST.json` pin `uv==0.9.7`); this record makes that load-bearing, not incidental.
 For a host (non-container) install, uv joins the pinned runtime tool set alongside
 ansible-core/tofu/restic/age/sops, and **`exocomp doctor` probes it** (today it probes
 ansible/tofu/restic/age/sops but not uv/git — a later pass adds them).
 
-Boundary refinements to ADR 0006 (what stays true, what changes):
+Boundary refinements to Decision 0006 (what stays true, what changes):
 
 - **UNCHANGED — the toolchain switch stays operator-initiated.** exocomp never runs
   `uv tool install ansible-core==Y` on the job path; swapping ansible-core is still a human
-  act at a shell (ADR 0006).
+  act at a shell (Decision 0006).
 - **UNCHANGED — the DR path is pinned to the image.** Backup, restore-drill, and host-
   onboarding runbooks execute the baked-in image toolchain and image-pinned deps, never a
   volume-resolved project venv: a fresh restore has the image before it has the volume.
@@ -101,7 +101,7 @@ Boundary refinements to ADR 0006 (what stays true, what changes):
 - A vendoring step (`[pre-run] resolve deps if manifest hash changed`) becomes part of the
   run lifecycle, expressible as a step-ledger step; on a stable hash it is a fast no-op.
 - Project venvs live in the data-volume toolchain dir → backed up, offline-restorable,
-  drill-covered — the same guarantees ADR 0006 gives the core toolchain.
+  drill-covered — the same guarantees Decision 0006 gives the core toolchain.
 - uv is now a declared runtime dependency, not a build-only tool; doctor gains uv (and git)
   probes and the bill of materials lists uv as runtime.
 - The `<manifest-hash>` venv path means switching a dependency set is a new cache entry, not

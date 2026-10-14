@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0018 — Opt-in aggregate check events with governed `--limit-hosts`"
-description: "Opt-in aggregate check events carrying the present host set, superseded by ADR 0019 which removes them."
+title: "Decision 0018 — Opt-in aggregate check events with governed `--limit-hosts`"
+description: "Opt-in aggregate check events carrying the present host set, superseded by Decision 0019 which removes them."
 status: deprecated
 tags: [decision, checks, superseded]
 ---
 
-# ADR 0018 — Opt-in aggregate check events with governed `--limit-hosts`
+# Decision 0018 — Opt-in aggregate check events with governed `--limit-hosts`
 
 Status: accepted · 2026-09-15
 

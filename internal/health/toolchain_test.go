@@ -31,7 +31,7 @@ func writeToolchainManifest(t *testing.T, body string) string {
 
 // TestOptionalToolsEntryFlagsAPinDeviation: a resolved version other than the
 // manifest pin is a warn that names the tool and both versions — the escape
-// hatch is a supported state (ADR 0006), so it is never a fail.
+// hatch is a supported state (Decision 0006), so it is never a fail.
 func TestOptionalToolsEntryFlagsAPinDeviation(t *testing.T) {
 	probes := []ToolProbe{foundProbe("restic", "0.19.1"), foundProbe("tofu", "1.11.5")}
 	path := writeToolchainManifest(t, `{"restic":"0.19.0","tofu":"1.11.5"}`)

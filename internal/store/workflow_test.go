@@ -226,7 +226,7 @@ func TestListIncompleteWorkflows(t *testing.T) {
 	}
 }
 
-// TestCompleteStepTxAtomicWithEffect is the same-transaction gate (ADR 0008):
+// TestCompleteStepTxAtomicWithEffect is the same-transaction gate (Decision 0008):
 // a step's own effect and its ledger row commit or roll back together, so a
 // crash between them cannot land the effect while the ledger still calls the
 // step running — the state a resume would re-run. The effect stands in as an

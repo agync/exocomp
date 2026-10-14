@@ -16,13 +16,13 @@ func init() {
 }
 
 // newSealCmd manages the optional OpenBao Transit seal for the envelope's DEK
-// (ADR 0013). It is the auto-unseal path: with a seal enabled the daemon opens
+// (Decision 0013). It is the auto-unseal path: with a seal enabled the daemon opens
 // the store from OpenBao instead of the on-disk host key. The recovery card
 // still opens it without OpenBao — the seal is additive, never a replacement.
 func newSealCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "seal",
-		Short: "Manage the optional OpenBao Transit seal for the envelope (ADR 0013)",
+		Short: "Manage the optional OpenBao Transit seal for the envelope (Decision 0013)",
 		Long: "Wraps the data-encryption key with an OpenBao Transit key so the daemon " +
 			"auto-unseals from OpenBao instead of the on-disk host key. Configure it " +
 			"through the environment (" + secrets.EnvSealAddress + ", " + secrets.EnvSealKey +

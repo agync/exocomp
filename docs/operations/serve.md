@@ -31,7 +31,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 
 | Flag | Default | Effect |
 |---|---|---|
-| `--port` | `0` | Loopback port for the state backend; `0` takes an ephemeral one. The bound address is written to `<data dir>/state-backend.addr`, which is how a CLI finds it. The backend binds `127.0.0.1` only ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)) — remote access is a reverse proxy's job, never a bind address. |
+| `--port` | `0` | Loopback port for the state backend; `0` takes an ephemeral one. The bound address is written to `<data dir>/state-backend.addr`, which is how a CLI finds it. The backend binds `127.0.0.1` only ([Decision 0004](../decisions/0004-opentofu-http-state-backend.md)) — remote access is a reverse proxy's job, never a bind address. |
 | `--drain-grace` | `30s` | How long jobs already running may finish after a signal before they are cancelled. Generous on purpose: a backup leg writes its own `backup_run` row at the end. |
 | `--reload-interval` | `1m` | How often schedules are rebuilt from the database, so `schedule add/enable/disable` reaches a running daemon without a signal. `0` means only `SIGHUP` reloads. |
 | `--sandbox` | `$EXOCOMP_SANDBOX`, else `enforcing` | Job isolation tier: `opportunistic`, `enforcing`, or `disabled`. See below. |
@@ -40,7 +40,7 @@ WARNING: workspace prod holds a stale state lock (apply by ci@lima since 2026-08
 ## Job isolation
 
 Every job subprocess runs under a kernel sandbox where the host supports one
-([ADR 0005](../adr/0005-job-sandboxing-nono.md)). The tier is decided once at startup and
+([Decision 0005](../decisions/0005-job-sandboxing-nono.md)). The tier is decided once at startup and
 printed:
 
 ```
@@ -293,7 +293,7 @@ the daemon actually registered.
 
 ### Reload or restart
 
-The full read-once audit ([ADR 0020](../adr/0020-reload-restart-and-recovery.md)).
+The full read-once audit ([Decision 0020](../decisions/0020-reload-restart-and-recovery.md)).
 Anything not named here is read from the store per use — a change to it reaches
 a running daemon with no action.
 
@@ -312,7 +312,7 @@ but note the daemon's notifier does not currently attach that checker, so a mute
 holds nothing on the daemon's push path. That is a separate gap, not a reload
 one.
 
-See [ADR 0020](../adr/0020-reload-restart-and-recovery.md).
+See [Decision 0020](../decisions/0020-reload-restart-and-recovery.md).
 
 ## Restarting the daemon
 
@@ -367,7 +367,7 @@ The safety rules:
 The new process re-acquires the `serve.lock` flock (the descriptor is
 close-on-exec, so the re-exec releases it) and takes over the same-host active
 lease; the lease TTL covers the gap. See
-[ADR 0020](../adr/0020-reload-restart-and-recovery.md).
+[Decision 0020](../decisions/0020-reload-restart-and-recovery.md).
 
 The re-exec boundary — controller drain → serve loop → clean shutdown → re-exec
 — is covered end-to-end in-process (`TestServeRestartOrchestrationEndToEnd`),
@@ -402,7 +402,7 @@ Auto-redrive is deliberately off: nothing re-runs on its own.
 
 Two rows are not re-driven. A **workflow step** is skipped and reported: an
 interrupted step job is auto-re-armed from its ledger by the sequencer
-([ADR 0008](../adr/0008-step-ledger-over-dbos.md)), so re-driving it would run
+([Decision 0008](../decisions/0008-step-ledger-over-dbos.md)), so re-driving it would run
 the step twice and drop any approval gate it carried. A row **already
 re-driven** is skipped too: each redrive lands under a deterministic key
 derived from the cut-off row's id, so a repeated `jobs redrive` finds the first
@@ -501,7 +501,7 @@ error naming the job rather than waiting on a row nothing will move.
 
 ## The browser surface
 
-`--web-addr` serves a browser surface behind the ADR-0009 token→session exchange, with the
+`--web-addr` serves a browser surface behind the Decision 0009 token→session exchange, with the
 token's scope deciding what it may do. It is not view-only: an `operator`-scoped session
 manages the daemon from the browser, not just the CLI.
 

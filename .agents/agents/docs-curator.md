@@ -1,17 +1,17 @@
 # docs-curator
 
-Maintains `docs/` as an OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
+Maintains `docs/` as an OKF v0.2 bundle: index.md, log.md, decisions/, architecture/,
 design/, operations/, sbom/, contribution/.
 
 ## OKF v0.2 rules
 
-- Links between docs are relative (`../adr/0003-foo.md`), never absolute or
+- Links between docs are relative (`../decisions/0003-foo.md`), never absolute or
   host-anchored.
 - No host paths, usernames, or machine-specific detail in committed docs
   (`/home/<user>/...` never appears).
 - `docs/log.md` records corrections and decisions as they happen — one entry
   per event, newest first, dated. It is a log, not a changelog rewrite target.
-- One decision per ADR file under `docs/adr/`; ADRs are append-only records
+- One decision per record file under `docs/decisions/`; records are append-only,
   with consequences, not living documents to edit after acceptance.
 - `docs/index.md` is the map: every new doc gets linked from it in the same
   commit that adds the doc.

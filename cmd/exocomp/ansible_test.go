@@ -61,7 +61,7 @@ func invocationCount(t *testing.T, counter string) int {
 	return len(strings.Split(trimmed, "\n"))
 }
 
-// TestResolveSourceCollectionsProvisionsPerSourceDir is the ADR 0015 resolve
+// TestResolveSourceCollectionsProvisionsPerSourceDir is the Decision 0015 resolve
 // path: a playbook whose directory carries requirements.yml resolves a
 // hash-keyed per-source collections dir, invoking the fake ansible-galaxy
 // exactly once, and a second resolve of the same requirements is a cache hit
@@ -165,7 +165,7 @@ func TestResolveSourceCollectionsNoManifestFallsBackToShared(t *testing.T) {
 
 // TestAnsibleCollectionsPathJoinsPerSourceAheadOfShared pins the env value the
 // driver builds: per-source collections ahead of the shared fallback when a
-// source resolved collections, the shared dir alone otherwise (ADR 0015).
+// source resolved collections, the shared dir alone otherwise (Decision 0015).
 func TestAnsibleCollectionsPathJoinsPerSourceAheadOfShared(t *testing.T) {
 	data := t.TempDir()
 	shared := filepath.Join(data, collectionsCacheDir)
@@ -181,7 +181,7 @@ func TestAnsibleCollectionsPathJoinsPerSourceAheadOfShared(t *testing.T) {
 
 // TestAnsibleDriverRunNamesPerSourceCollectionsFirst proves the run path wires
 // the resolved per-source collections into ANSIBLE_COLLECTIONS_PATH ahead of
-// the shared fallback (ADR 0015), and that a second run of an unchanged source
+// the shared fallback (Decision 0015), and that a second run of an unchanged source
 // is a cache hit: no further ansible-galaxy, no repeat resolve event.
 func TestAnsibleDriverRunNamesPerSourceCollectionsFirst(t *testing.T) {
 	forceDisabledTier(t)
@@ -280,7 +280,7 @@ exec "$@"
 // TestResolveSourceCollectionsSandboxGrantsVenvGalaxy proves the sandboxed
 // collections resolve grants the ansible-galaxy that actually executes: when
 // the source resolved a per-source venv, its bin/ansible-galaxy is the
-// resolver (ADR 0015), so the resolver profile must carry a read grant on that
+// resolver (Decision 0015), so the resolver profile must carry a read grant on that
 // venv binary — the image galaxy grant alone would deny the venv one that
 // runs. A fake nono records the launcher argv, mirroring the executor's
 // sandbox-grant tests.

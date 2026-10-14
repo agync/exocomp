@@ -17,7 +17,7 @@ transition-only emission, N-consecutive hysteresis, and cold-start seeding
 netgroup and check pages and a read-only rules page; rule mutation stays
 CLI. The set-event host-set expansion (§7.4) was later built and then removed
 by operator decision; see
-[ADR 0019](../adr/0019-aggregate-check-events-removed.md). Still not built: the
+[Decision 0019](../decisions/0019-aggregate-check-events-removed.md). Still not built: the
 presence shim (§8.2), a web rule-builder, and run-secrets/vault on rules. Where
 the shipped code diverges from this proposal, code wins and the correction is
 recorded in `docs/log.md`.
@@ -273,7 +273,7 @@ whole present subset) was proposed here and later built, then removed by
 operator decision. Phase 2 ships per-target events only, and the normalized
 `Event` (`event.go:35`) carries no host-set field. For the removal and its
 rationale see
-[ADR 0019](../adr/0019-aggregate-check-events-removed.md).
+[Decision 0019](../decisions/0019-aggregate-check-events-removed.md).
 
 ---
 
@@ -430,7 +430,7 @@ the queue guardrails do not bound: default-deny, matching the repo's posture.
 In the shipped phase a per-target event means exactly one thing to run:
 `event.host`; the rule pins its own target(s) at add time. Nothing expands an
 event value into argv; the set-event expansion was proposed for §7.4 and is now
-removed (ADR 0019).
+removed (Decision 0019).
 
 The CLI flag is `--repo-source` for the playbook's registered source, because
 `--source` is already taken by a rule's event-source filter (`cmd/exocomp/rule.go:133`);
@@ -452,7 +452,7 @@ expanded into a fixed host pattern) served the narrower "run over exactly the
 present subset" need. It was designed here, later built, and then removed by
 operator decision: per-target rules cover the operator's cases, and the set
 model's extra field plus expansion and validation path were not wanted. See
-[ADR 0019](../adr/0019-aggregate-check-events-removed.md).
+[Decision 0019](../decisions/0019-aggregate-check-events-removed.md).
 
 ---
 
@@ -568,7 +568,7 @@ ship.
   discipline. Only for hosts a probe cannot reach.
 - **Phase 4 — set-event (built then removed).** A set event carrying the full
   present set and its host-pattern expansion was proposed here, later built, and
-  removed by operator decision (ADR 0019). The headline case does not need it
+  removed by operator decision (Decision 0019). The headline case does not need it
   (§7.4).
 
 ---
@@ -589,4 +589,4 @@ ship.
   adds the `rule_fire.dedup_key` column; sweep-source rules key cooldown off
   the event's dedup key (`check:<check>:<target>`), webhooks stay per-rule.
 - **Set-event host-set expansion** (§7.4): designed, built, then removed by
-  operator decision in favor of per-target events (ADR 0019).
+  operator decision in favor of per-target events (Decision 0019).

@@ -31,7 +31,7 @@ than to whatever is in the data volume.
 | # | Goal | What it means | How the design answers it |
 |---|---|---|---|
 | 1 | **Run engine** | Playbook runs and plan/apply runs, inventory, schedules, job history — the AWX and Terraform Cloud roles in one place | One SQLite job queue with live event streams; `ansible-playbook` (v0.1) and `opentofu` as pinned subprocesses ([overview](../architecture/overview.md)) |
-| 2 | **Secrets** | A real root of trust feeding ansible-vault, sops files, and encrypted OpenTofu state — recoverable from one printed key | age recipients → DEK → HKDF subkeys, so the printed kit carries one secret ([ADR 0003](../adr/0003-secrets-envelope.md)) |
+| 2 | **Secrets** | A real root of trust feeding ansible-vault, sops files, and encrypted OpenTofu state — recoverable from one printed key | age recipients → DEK → HKDF subkeys, so the printed kit carries one secret ([Decision 0003](../decisions/0003-secrets-envelope.md)) |
 | 3 | **Backup** | Encrypted, verified backup of all control-plane state to a NAS, S3-compatible storage, and a private GitHub repo | Three independent restic/git legs from one staging tree, rotating verification, and a monthly automated restore drill ([disaster recovery](../operations/disaster-recovery.md)) |
 | 4 | **Reactive runbooks** | Alerts from Alertmanager or Uptime Kuma trigger runbooks — behind approval gates, cooldowns, and caps | Normalized webhooks → CEL rules → guardrails enforced *in the queue* → ntfy-tappable approvals → the same job path as manual runs |
 | 5 | **TUI first** | Terminal UI as the primary interface, web second, desktop third | All three are thin clients of one API; business logic exists only in `internal/service`. Bubble Tea v2, also served over SSH via Wish |

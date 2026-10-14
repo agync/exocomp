@@ -26,7 +26,7 @@ func newLitestreamCmd() *cobra.Command {
 		Use:   "litestream",
 		Short: "Manage the optional Litestream WAL-replication sidecar",
 		Long: "Litestream replicates exocomp.db's WAL to a replica for seconds-level RPO,\n" +
-			"as a fast-RPO complement to the authoritative restic DR chain (ADR 0012).\n" +
+			"as a fast-RPO complement to the authoritative restic DR chain (Decision 0012).\n" +
 			"It runs beside exocompd as a sidecar; exocomp generates its config and\n" +
 			"observes the replica, it does not run litestream inside the daemon.",
 	}

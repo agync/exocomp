@@ -47,7 +47,7 @@ the authoritative record.
 - **Guard.** The decision tools are gone from the stdio face; a gated job is
   decided from the browser/phone surface, the CLI, or an `approve`-scope
   `/api/v1` token. They return only with a token-carrying HTTP/SSE transport
-  under ADR 0014 §3's scope-gated visibility.
+  under Decision 0014 §3's scope-gated visibility.
 - **Test.** `TestMCPScopesStayDisjoint` on the MCP HTTP face.
 - **Residual.** The stdio face still runs unauthenticated at the local
   operator's authority for `workspace_plan`/`workspace_apply` — a stated

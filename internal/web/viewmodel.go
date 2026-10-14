@@ -677,7 +677,7 @@ type litestreamObserved struct {
 // litestreamVM is the Litestream leg of the /system self-care page (SPEC §3):
 // the derived word-state plus the facts the card and the /system/litestream
 // page render, and the generated config for the ▾ view. Read-only by design —
-// the daemon generates config and observes, it never runs litestream (ADR
+// the daemon generates config and observes, it never runs litestream (Decision
 // 0012) — so the VM carries no verb that mutates anything.
 type litestreamVM struct {
 	State      string // REPLICATING|STALE|BEHIND|REMOTE|NO REPLICA|NO SIDECAR|UNPARSEABLE
@@ -1070,7 +1070,7 @@ type ntfyTestStatus struct {
 	Msg   string
 }
 
-// sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
+// sourceRow is one run-tree source (Decision 0010) on the sources surface: where a
 // run's tree comes from, whether its ref is signed, and the commit its last
 // sync landed on. Read-only — registration stays a CLI-and-local-auth path.
 type sourceRow struct {
@@ -1183,7 +1183,7 @@ func (r scheduleRow) BackupTarget() string {
 	return ""
 }
 
-// workflowRow is one step-ledger chain (ADR 0008): the provision->onboard->
+// workflowRow is one step-ledger chain (Decision 0008): the provision->onboard->
 // converge and TF->ansible handoff workflows. Steps carries the ordered ledger
 // for the detail view; the dashboard shows the derived state and a step tally.
 type workflowRow struct {

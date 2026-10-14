@@ -2,7 +2,7 @@ package tui
 
 import "exocomp.dev/exocomp/internal/store"
 
-// workflowView is one step-ledger chain (ADR 0008) as the screen holds it: its
+// workflowView is one step-ledger chain (Decision 0008) as the screen holds it: its
 // id and the ordered step rows, from which the derived whole-workflow state and
 // the done/total tally are read (never stored a second time).
 type workflowView struct {

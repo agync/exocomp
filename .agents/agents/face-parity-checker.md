@@ -1,12 +1,12 @@
 # face-parity-checker
 
-Guards the "one core, three thin faces" architecture ADR-0014 sets out: every
+Guards the "one core, three thin faces" architecture Decision 0014 sets out: every
 write verb lives once in `internal/service` and is exposed identically over the
 CLI (`--output json`), the HTTP `/api/v1`, and the MCP server. When a service
 write verb is added or its contract changes, this agent verifies the three faces
 stayed in parity — same scope floor, same wire envelope and error taxonomy, same
 exit-code mapping, same actor attribution, all writes enqueuing through the one
-queue — or that a face is DELIBERATELY absent per ADR-0014, not accidentally
+queue — or that a face is DELIBERATELY absent per Decision 0014, not accidentally
 dropped.
 
 This agent checks that the faces *agree*, not that any one face is correct on its
@@ -25,7 +25,7 @@ directly for a write; it calls a verb and supplies an `Enqueuer`
 across — the spec assembly and the gate decision are above it, so the only thing
 a face legitimately varies is which `Enqueuer` it hands in.
 
-The ground-truth map as of ADR-0014's write phase:
+The ground-truth map as of Decision 0014's write phase:
 
 | service verb | CLI verb | HTTP `/api/v1` route | MCP tool |
 |---|---|---|---|
@@ -59,7 +59,7 @@ Establish ground truth from the source yourself; never infer a face's behaviour
 from another face's comments. For the changed verb, confirm each of the
 following holds on every face that exposes it.
 
-- **Same scope floor, from the disjoint set.** The three ADR-0009 scopes are
+- **Same scope floor, from the disjoint set.** The three Decision 0009 scopes are
   `readonly` / `operator` / `approve` (`store.Scope*`), mapping 1:1 onto R / W /
   A. A write needs `operator` *exactly* — not operator-or-higher: `approve` does
   not satisfy a write. Verify the MCP floor in `Caller.allows`
@@ -120,11 +120,11 @@ following holds on every face that exposes it.
   the verb's `Enqueuer` and does not shell out, mutate the store directly, or run
   the job in the request path. The CLI is the sole face that may run inline (its
   no-daemon `workspaceInlineEnqueuer`, `cmd/exocomp/workspace.go`); a machine
-  face that does is the divergent path ADR-0014 §2 rules out.
+  face that does is the divergent path Decision 0014 §2 rules out.
 
 ## Deliberate absences — parity does not mean identical
 
-ADR-0014 permits a verb to be present on some faces and absent from others when
+Decision 0014 permits a verb to be present on some faces and absent from others when
 the absence is reasoned and recorded. Do NOT report these as gaps; DO report an
 absence that has no such basis, or a stated deferral that has quietly become
 permanent without a note.

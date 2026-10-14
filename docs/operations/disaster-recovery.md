@@ -138,7 +138,7 @@ the snapshot alike. Recipient changes and host-key rotation bump the generation
 Every arrow is executable with off-the-shelf tools. The second circularity — needing a
 storage credential to fetch anything at all — is closed by putting a **read-only** storage
 credential per off-host leg on the printed kit itself
-([ADR 0003](../adr/0003-secrets-envelope.md)).
+([Decision 0003](../decisions/0003-secrets-envelope.md)).
 
 ### The image the deployment ran
 
@@ -158,7 +158,7 @@ podman load -i exocomp-image.tar   # or `podman pull <image-ref>` with a registr
 install or rollback; `--image-ref` names the image the unit should run. Set the unit's
 `EXOCOMP_IMAGE` to that ref so the daemon records it and the next `RECOVERY.md` reflects
 reality ([containers](containers.md)). A custom image also records its source base digests
-in the recovery set ([ADR 0016](../adr/0016-artifact-carrier-image.md)): a registry tag may
+in the recovery set ([Decision 0016](../decisions/0016-artifact-carrier-image.md)): a registry tag may
 be used to install, but recovery must not need one (invariant 7). `exocomp doctor` prints
 the stored ref, or says it was never recorded.
 

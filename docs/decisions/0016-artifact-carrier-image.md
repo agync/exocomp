@@ -1,18 +1,18 @@
 ---
 type: Decision
-title: "ADR 0016 — exocomp ships as an artifact-carrier image"
+title: "Decision 0016 — exocomp ships as an artifact-carrier image"
 description: "exocomp ships as a self-contained base image that is also an artifact carrier, bootstrapping uv when absent and delegating ansible on PATH."
 status: stable
 tags: [decision, packaging, containers]
 ---
 
-# ADR 0016 — exocomp ships as an artifact-carrier image
+# Decision 0016 — exocomp ships as an artifact-carrier image
 
 ## Status
 
-Accepted · 2026-09-17 — amends [ADR 0006](0006-uv-toolchain-escape-hatch.md) (the
+Accepted · 2026-09-17 — amends [Decision 0006](0006-uv-toolchain-escape-hatch.md) (the
 control plane may install uv and manage its own fallback ansible toolchain) and
-[ADR 0011](0011-project-dependency-resolution.md) (ansible-core stops being
+[Decision 0011](0011-project-dependency-resolution.md) (ansible-core stops being
 forced into every source venv).
 
 ## Context
@@ -27,8 +27,8 @@ that is served:
   for: the one queue, the sandbox, and a recovery path that depends on no registry
   (invariant 7).
 
-ADR 0006 pinned the Python toolchain to the image and made uv, in the data volume,
-an operator-only escape hatch; ADR 0011 had every source venv carry its own
+Decision 0006 pinned the Python toolchain to the image and made uv, in the data volume,
+an operator-only escape hatch; Decision 0011 had every source venv carry its own
 `ansible-core`, forced to the image pin. Both predate treating the container image
 itself as a distributable artifact. uv's own Docker guide shows the shape adopted
 here: its image exists to hand out two static binaries (`/uv`, `/uvx`) that a
@@ -54,7 +54,7 @@ exocomp manages its own fallback toolchain with uv.
 exocomp installs a pinned uv (version + sha256, checked as `tool-digests.txt` is)
 into the data volume when no `uv` is on `PATH`, and uses that. Offline with no uv
 present is a loud failure: the recovery path must have uv already present, never
-fetch it. This amends ADR 0006's "the control plane never invokes uv" — uv is a
+fetch it. This amends Decision 0006's "the control plane never invokes uv" — uv is a
 runtime dependency the control plane may satisfy itself.
 
 ### The Python version follows ansible-core, and is frozen

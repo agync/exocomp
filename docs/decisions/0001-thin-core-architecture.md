@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0001 — Thin-core architecture"
+title: "Decision 0001 — Thin-core architecture"
 description: "Thin-core architecture: one Go binary owning state, sequencing, keys and recovery, with every other tool kept as a pinned subprocess."
 status: stable
 tags: [decision, architecture]
 ---
 
-# ADR 0001 — Thin-core architecture
+# Decision 0001 — Thin-core architecture
 
 ## Status
 

@@ -13,7 +13,7 @@ import (
 const GitBinary = "git"
 
 // ForgeHost returns the SSH host a git URL connects to, so a sync can pin that
-// host's key from the recorded known_hosts store (ADR 0010). It
+// host's key from the recorded known_hosts store (Decision 0010). It
 // returns "" for a URL that reaches no SSH host — a local path, or an explicit
 // file/http/git transport — where there is no host key to verify. A port, when
 // present, is dropped: the store keys a host by name, matching how it is

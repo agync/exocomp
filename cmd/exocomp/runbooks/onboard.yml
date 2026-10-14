@@ -1,5 +1,5 @@
 ---
-# Seeded fleet-onboarding runbook (ADR 0010, credential plane 3). Run once per
+# Seeded fleet-onboarding runbook (Decision 0010, credential plane 3). Run once per
 # new host from an account that can already log in and escalate; exocomp writes
 # this file and the fleet public key, then runs it through the sandboxed, gated
 # queue. It creates the automation user, authorizes the fleet key, and grants

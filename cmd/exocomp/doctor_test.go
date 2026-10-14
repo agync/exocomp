@@ -102,7 +102,7 @@ func TestInitCreatesAPrivateDataDir(t *testing.T) {
 	}
 }
 
-// TestDoctorProbesUvAndGit: uv and git became runtime dependencies with ADR
+// TestDoctorProbesUvAndGit: uv and git became runtime dependencies with Decision
 // 0011 (project-dependency resolution and git sources), so doctor must list
 // them beside the other optional tools rather than staying silent about a gap
 // an operator only discovers mid-run.

@@ -74,7 +74,7 @@ func boolProp(desc string) map[string]any {
 	return map[string]any{"type": "boolean", "description": desc}
 }
 
-// tools is the catalog one caller sees. Visibility is scope-gated (ADR 0014 §3):
+// tools is the catalog one caller sees. Visibility is scope-gated (Decision 0014 §3):
 // a readonly token is advertised only read tools, so an agent is never shown a
 // verb its credential cannot exercise — and the same floors are re-checked per
 // call in handleToolsCall, because a catalog is a snapshot and a token can be

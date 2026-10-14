@@ -295,7 +295,7 @@ func TestReleaseTFLockChecksLockID(t *testing.T) {
 
 // TestStaleTFLocksNamesWhatNoJobWillRelease: a lock's holder is a job, and a
 // job that ended will never send UNLOCK. Nothing else in the system moves that
-// row, so it has to be findable (ADR 0004).
+// row, so it has to be findable (Decision 0004).
 func TestStaleTFLocksNamesWhatNoJobWillRelease(t *testing.T) {
 	s, _ := open(t)
 	ctx := context.Background()

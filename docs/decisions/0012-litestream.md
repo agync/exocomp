@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0012 — Litestream as an optional fast-RPO sidecar"
+title: "Decision 0012 — Litestream as an optional fast-RPO sidecar"
 description: "Litestream as an optional fast-RPO sidecar replicating the database WAL, with restic staying authoritative and an unencrypted remote refused without an acknowledgement."
 status: stable
 tags: [decision, backup, replication]
 ---
 
-# ADR 0012 — Litestream as an optional fast-RPO sidecar
+# Decision 0012 — Litestream as an optional fast-RPO sidecar
 
 ## Status
 
@@ -37,9 +37,9 @@ Two rules from the existing architecture bound the decision:
   chain a bare host recovers from is restic. Litestream cannot become the thing the
   recovery card derives, because its replica is not encrypted and its restore is not
   the manual `age`/`openssl`/`restic` path the card guarantees.
-- **no second heavy service inside the daemon** (ADR 0001). The thin core owns state,
+- **no second heavy service inside the daemon** (Decision 0001). The thin core owns state,
   sequencing, keys, and recovery, and shells out to pinned tools for everything else.
-  A backup engine compiled into `exocompd` would violate the one hard rule of ADR
+  A backup engine compiled into `exocompd` would violate the one hard rule of Decision
   0001 as surely as an embedded Terraform executor would.
 
 ## Decision

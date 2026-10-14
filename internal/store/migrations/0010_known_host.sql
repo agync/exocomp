@@ -1,4 +1,4 @@
--- Recorded SSH host keys for the managed fleet (ADR 0010, credential plane 3).
+-- Recorded SSH host keys for the managed fleet (Decision 0010, credential plane 3).
 -- Onboarding records a host's key here so later runs verify it with
 -- StrictHostKeyChecking rather than trust-on-first-use into a run. The table
 -- lives in the same SQLite store the backup copies wholesale, so known_hosts

@@ -50,7 +50,7 @@ func newPlaybookVendorCmd() *cobra.Command {
 		Long: "Runs `ansible-galaxy collection install -r <requirements>` into " +
 			"the per-source cache dir <data dir>/cache/collections/<source>/<hash> " +
 			"through the queue, so a later playbook run resolves those collections " +
-			"without Ansible Galaxy being reachable (ADR 0015). <source> and <hash> " +
+			"without Ansible Galaxy being reachable (Decision 0015). <source> and <hash> " +
 			"derive from the --requirements file's project root and content, the " +
 			"same dir the run path resolves. Needs network access for whatever the " +
 			"cache does not already hold.",
@@ -91,7 +91,7 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey s
 	if err != nil {
 		return 0, fmt.Errorf("playbook vendor: resolve data dir: %w", err)
 	}
-	// The install target is per-source (ADR 0015): keyed by the requirements
+	// The install target is per-source (Decision 0015): keyed by the requirements
 	// file's project root and content hash, not the shared cache dir, so the
 	// vendor step and the run path's resolve land in the same dir. The shared
 	// dir is left as a read-only fallback nothing writes anymore.
@@ -143,7 +143,7 @@ func runVendor(ctx context.Context, out, warn io.Writer, requirements, idemKey s
 		// marker carries the requirements hash; without one it treats the dir
 		// as half-built, removes it, and re-dials galaxy. Mark the dir the
 		// install just populated so the vendored collections serve the next
-		// run offline (ADR 0015).
+		// run offline (Decision 0015).
 		if err := deps.MarkCollectionsReady(cache, hash); err != nil {
 			return 0, fmt.Errorf("playbook vendor: mark collections ready: %w", err)
 		}

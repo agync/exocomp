@@ -4,7 +4,7 @@ import "golang.org/x/sys/unix"
 
 // MemoryLock reports whether a secret buffer was pinned into RAM with mlock(2),
 // keeping it out of swap and core dumps, and why not when it was not. It is
-// what `exocomp doctor` reads to state the real posture rather than the ADR's
+// what `exocomp doctor` reads to state the real posture rather than the record's
 // claim.
 type MemoryLock struct {
 	Locked bool

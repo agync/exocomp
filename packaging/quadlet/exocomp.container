@@ -37,7 +37,7 @@ UserNS=keep-id
 Environment=XDG_DATA_HOME=/var/lib
 # The image this unit runs, recorded by the daemon as the recovery chain's
 # image-ref. Keep it equal to Image= above: a local tag dies with the host, and
-# RECOVERY.md is how the next host learns what to load (ADR 0016).
+# RECOVERY.md is how the next host learns what to load (Decision 0016).
 Environment=EXOCOMP_IMAGE=ghcr.io/abn/exocomp:latest
 # host.key at rest: systemd decrypts the encrypted credential into
 # $CREDENTIALS_DIRECTORY/host.key at start, using a secret

@@ -35,7 +35,7 @@ var onboardRunbook []byte
 
 // fleetKeySecret is the sealed-secret name the fleet SSH private key lives under.
 // One key for the whole fleet, sealed in the envelope and loaded into a per-job
-// agent from memory (ADR 0010) — never written to disk on a run.
+// agent from memory (Decision 0010) — never written to disk on a run.
 const fleetKeySecret = "fleet/ssh"
 
 // fleetKeyKind labels the sealed fleet key.
@@ -61,7 +61,7 @@ var keyscanHost = func(ctx context.Context, host string, port int) ([]byte, erro
 func newHostCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "host",
-		Short: "Onboard and track managed fleet hosts (ADR 0010)",
+		Short: "Onboard and track managed fleet hosts (Decision 0010)",
 	}
 	cmd.AddCommand(newHostOnboardCmd(), newHostKnownHostsCmd())
 	return cmd

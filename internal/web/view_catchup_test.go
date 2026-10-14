@@ -156,7 +156,7 @@ func TestSystemPageHealth(t *testing.T) {
 }
 
 // TestPostV1RoutesGated: each new route refuses a request with no session
-// (redirect to login), and renders for a session (ADR 0009, the gate_test
+// (redirect to login), and renders for a session (Decision 0009, the gate_test
 // pattern).
 func TestPostV1RoutesGated(t *testing.T) {
 	h := newHarness(t)

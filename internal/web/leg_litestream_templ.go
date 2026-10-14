@@ -13,7 +13,7 @@ import templruntime "github.com/a-h/templ/runtime"
 // · NO SIDECAR, plus the wait UNPARSEABLE) with the §0.1 anatomy — chip ·
 // figure · facts · sentence — and the two read-only views as header buttons:
 // config (the generated yml on the leg page) and the DR-drawer restore link.
-// The leg is read-only by design (ADR 0012: the daemon generates config and
+// The leg is read-only by design (Decision 0012: the daemon generates config and
 // observes, it never runs litestream), so the verbs slot holds no verb that
 // mutates anything.
 func litestreamCard(ls litestreamVM, base string) templ.Component {

@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0003 — Secrets envelope: age recipients → DEK → HKDF subkeys"
+title: "Decision 0003 — Secrets envelope: age recipients → DEK → HKDF subkeys"
 description: "Secrets envelope of age recipients, a DEK and HKDF subkeys, with a recovery kit that closes the credential loop."
 status: stable
 tags: [decision, secrets, security]
 ---
 
-# ADR 0003 — Secrets envelope: age recipients → DEK → HKDF subkeys
+# Decision 0003 — Secrets envelope: age recipients → DEK → HKDF subkeys
 
 ## Status
 

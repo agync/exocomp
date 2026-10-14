@@ -52,7 +52,7 @@ type Options struct {
 // Server is the OpenTofu HTTP state backend. It binds loopback only: the
 // backend is reachable by this host's own job subprocesses and nothing else,
 // which is what lets a derived bearer stand in for a full authentication
-// stack (ADR 0004).
+// stack (Decision 0004).
 type Server struct {
 	store  *store.Store
 	tokens TokenDeriver

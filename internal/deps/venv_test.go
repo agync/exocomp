@@ -66,7 +66,7 @@ func manifestFor(t *testing.T, root, body string) PythonManifest {
 	return m
 }
 
-// TestEnsureVenvIsHashGated is the core of the ADR 0011 promise: a first
+// TestEnsureVenvIsHashGated is the core of the Decision 0011 promise: a first
 // resolve invokes uv and provisions the venv; a second resolve of the same
 // manifest invokes uv zero more times and returns the same directory; a changed
 // manifest lands a new hash directory and invokes uv again.
@@ -170,7 +170,7 @@ func TestEnsureVenvRejectsUnsafeSource(t *testing.T) {
 	}
 }
 
-// TestEnsureVenvInstallsOnlyDeclaredDeps is the ADR 0016 gate: a per-source venv
+// TestEnsureVenvInstallsOnlyDeclaredDeps is the Decision 0016 gate: a per-source venv
 // carries only the project's declared libraries. ansible-core is a command, not
 // a project dependency, so the captured `uv pip install` argv must name the
 // manifest and must not force ansible-core or ansible-runner into the venv.
@@ -199,7 +199,7 @@ func TestEnsureVenvInstallsOnlyDeclaredDeps(t *testing.T) {
 }
 
 // TestEnsureVenvPinsInterpreterFromManifest: the venv is built with the
-// interpreter the image froze into its manifest (ADR 0016), so its
+// interpreter the image froze into its manifest (Decision 0016), so its
 // site-packages are ABI-compatible with the fallback ansible toolchain. No
 // reachable manifest omits --python and leaves uv's own default.
 func TestEnsureVenvPinsInterpreterFromManifest(t *testing.T) {
@@ -226,7 +226,7 @@ func TestEnsureVenvPinsInterpreterFromManifest(t *testing.T) {
 }
 
 // TestEnsureVenvSitePackages: the venv's site-packages is the PYTHONPATH bridge
-// target (ADR 0016), so it must sit under the venv root — the path the run
+// target (Decision 0016), so it must sit under the venv root — the path the run
 // sandbox already grants read for the venv.
 func TestEnsureVenvSitePackages(t *testing.T) {
 	cache := t.TempDir()

@@ -912,7 +912,7 @@ func TestSourceLaunchDrawerFooterOutsideBody(t *testing.T) {
 
 // TestSourceDeleteConfirmNamesCacheRemoval: the source detail's Delete
 // confirmation states that deleting a source also removes its cached Python
-// venv and ansible collections (ADR 0015), so an operator sees the full scope
+// venv and ansible collections (Decision 0015), so an operator sees the full scope
 // of the destructive action before confirming.
 func TestSourceDeleteConfirmNamesCacheRemoval(t *testing.T) {
 	h := newHarness(t)

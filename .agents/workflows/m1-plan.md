@@ -20,7 +20,7 @@ in worktrees with the file-ownership map below; integrator reviews and fast-forw
 - HKDF domain-separation salt: `exocomp/v1` (fresh project, no legacy data; the
   pre-rename archive's `control/v1` is history). Printed on the recovery card.
 - Secrets at rest: AES-256-GCM under a 32-byte DEK; `name|kind` as AAD; DEK wrapped
-  per age recipient in the keyring (ADR 0003).
+  per age recipient in the keyring (Decision 0003).
 - Job states: `queued → running → succeeded|failed|cancelled|timed_out|interrupted`,
   plus `awaiting_approval` reserved (M3). Transitions enforced in one place.
 - Subprocess success is exit-code-only (AGENTS.md invariant 3).
@@ -178,17 +178,17 @@ trust gap (exocomp-owned allowed-signers). The post-v1 program
 now begin.
 
 Stages: M3a (reactive core + sandbox/image + security folds), M3b (web UI + metrics
-+ onboarding/wizard + LAN tokens per ADR 0009), M3c (upgrade/rollback + plan policy
-+ step ledger per ADR 0008), M3d (v1.0 gate + maintenance). Binding inputs:
++ onboarding/wizard + LAN tokens per Decision 0009), M3c (upgrade/rollback + plan policy
++ step ledger per Decision 0008), M3d (v1.0 gate + maintenance). Binding inputs:
 docs/design/ui-brief.md "Approval surface contract", docs/design/tui-brief.md,
-ADR 0008/0009, internal/web/tokens.css, docs/design/user-feedback.md M3 folds.
+Decision 0008/0009, internal/web/tokens.css, docs/design/user-feedback.md M3 folds.
 
 ## File ownership (M3a)
 
 | Lane | Owns exclusively |
 |---|---|
 | reactive | internal/reactive/**, internal/notify/**, migration 0005 (event, rule, silence, approval, rule_fire), internal/queue/gate.go (+ minimal queue wiring for the approval gate), internal/sched tofu-plan schedule kind, cmd/exocomp/{rule.go,silence.go,approval.go}, cmd/exocomp/serve.go (ingress + engine wiring) |
-| sandbox | internal/executor/sandbox*.go (nono local-sandboxed tier + selection + doctor probes), packaging/Containerfile (uv toolchain layer per ADR 0006), packaging budget make targets + tests |
+| sandbox | internal/executor/sandbox*.go (nono local-sandboxed tier + selection + doctor probes), packaging/Containerfile (uv toolchain layer per Decision 0006), packaging budget make targets + tests |
 | secfolds | internal/secrets (keyring version counter, kit derive/verify support), internal/backup (manifest + parts HMAC, downgrade refusal, plan-artifact encryption call sites), cmd/exocomp/kit.go (kit derive [--list] / kit verify / identity migrate), DCO file + AGENTS.md contributor line |
 
 ## Gate (M3a)
@@ -211,9 +211,9 @@ ADR 0008/0009, internal/web/tokens.css, docs/design/user-feedback.md M3 folds.
 
 # M3b — v1.0 surfaces + the real source/credential model
 
-REVISED after ADR 0010 and the two expert reviews (docs/design/expert-reviews.md).
+REVISED after Decision 0010 and the two expert reviews (docs/design/expert-reviews.md).
 The credential-plane binding is now the spine of this milestone, not a side note.
-Binding inputs: ADR 0009 (LAN tokens), ADR 0010 (source model + 3 localities),
+Binding inputs: Decision 0009 (LAN tokens), Decision 0010 (source model + 3 localities),
 expert-reviews.md v1 must-fixes, docs/design/{ui-brief,tui-brief}.md + the v0.2
 handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
 
@@ -221,8 +221,8 @@ handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
 
 | Lane | Owns exclusively |
 |---|---|
-| sources | internal/source/** (git repo register + auto-sync + deploy key; host-path + in-container-path localities per ADR 0010), migration 0006 (source, inventory, run_secret bindings), cmd/exocomp/{source.go,host.go}, the RUN-ENV CREDENTIAL BINDING in internal/executor/{ansible,tofu}.go (sealed-secret set → named env; the convergent must-fix), ansible flag passthrough (--check/--limit/--tags/-e) + ansible.cfg Dir fix + multi-vault-id, tofu arg passthrough (-var-file/-target/-replace) + workspace add --state-only emit + the workspace-collision doc + offline lock-hash fix (tofu providers lock -fs-mirror) + tfstate pruning policy |
-| web | internal/web/** (templ+htmx on tokens.css: dashboard incl. banner states, jobs+tail SSE, phone approval 390px per the approval-surface contract, events+trace), ADR 0009 LAN auth (token new/list/revoke, session cookie, self-signed TLS + fingerprint), cmd/exocomp/{web.go,token.go} |
+| sources | internal/source/** (git repo register + auto-sync + deploy key; host-path + in-container-path localities per Decision 0010), migration 0006 (source, inventory, run_secret bindings), cmd/exocomp/{source.go,host.go}, the RUN-ENV CREDENTIAL BINDING in internal/executor/{ansible,tofu}.go (sealed-secret set → named env; the convergent must-fix), ansible flag passthrough (--check/--limit/--tags/-e) + ansible.cfg Dir fix + multi-vault-id, tofu arg passthrough (-var-file/-target/-replace) + workspace add --state-only emit + the workspace-collision doc + offline lock-hash fix (tofu providers lock -fs-mirror) + tfstate pruning policy |
+| web | internal/web/** (templ+htmx on tokens.css: dashboard incl. banner states, jobs+tail SSE, phone approval 390px per the approval-surface contract, events+trace), Decision 0009 LAN auth (token new/list/revoke, session cookie, self-signed TLS + fingerprint), cmd/exocomp/{web.go,token.go} |
 | ops-ui | internal/tui/** (Home[0]/Approvals[5]/Events[6] screens + banner system + q-root-only + [0]-home, matching internal/tui/testdata/frames golden fixtures; notification-mute for the PAUSED-vs-MUTED banner split), internal/metrics/** (/metrics staleness gauges + seeded alert rules), cmd/exocomp/setup.go (the 4-step wizard: identity→kit→backup+drill→handover, nothing-written-until-step-4), doctor self-observability lines |
 
 ## Gate (M3b)
@@ -236,7 +236,7 @@ handoff fixtures in internal/tui/testdata, internal/web/tokens.css.
   tofu uses successfully (state lands encrypted+locked); mode B runs a provider
   that needs a bound token; -var-file passes; offline init succeeds against the
   fs-mirror lock. All under the sandbox tier.
-- web: token-gated LAN listener (ADR 0009 gate assertions: tokenless bind refused,
+- web: token-gated LAN listener (Decision 0009 gate assertions: tokenless bind refused,
   revoked token rejected, session dies with token, insecure warns); dashboard +
   phone approval render on tokens.css; approve-from-phone runs a gated job; a11y
   hard reqs (keyboard, focus ring, both themes, 48px).
@@ -273,7 +273,7 @@ where noted.
 5. **tfstate pruning policy** (keep last N + last M days).
 6. **Banner reconciliation**: web dashboard must show MUTED (notify-mute, jobs run)
    distinct from PAUSED (reactive silence), matching the TUI + ops-ui's model.
-7. **Listener decision**: web mounts on the same listener; ADR 0009 wants a
+7. **Listener decision**: web mounts on the same listener; Decision 0009 wants a
    separate non-loopback TLS listener distinct from the loopback state backend.
    Resolve: state backend stays loopback-only; the web+API bearer surface is the
    TLS LAN listener. Wire and doc.
@@ -287,12 +287,12 @@ where noted.
 
 # M3c — the last build milestone (durable choreography + policy + story 5)
 
-The four items share ONE spine: the ADR 0008 step ledger (`workflow_step` table,
+The four items share ONE spine: the Decision 0008 step ledger (`workflow_step` table,
 each step's effect written in the same tx as its ledger row, resume-from-ledger in
 the boot sweep, the queue stays the sole execution authority). Because upgrade and
 the story-5 chain are choreographies ON the ledger, M3c runs in TWO merged passes,
 NOT one parallel fan-out: pass 1 lands the primitives, I merge, pass 2 builds the
-choreographies on them. Grounding: docs/adr/0008-step-ledger-over-dbos.md,
+choreographies on them. Grounding: docs/decisions/0008-step-ledger-over-dbos.md,
 docs/design/v1-acceptance.md (stories 3 + 5 especially, and the governing rule
 "never expose raw state"), docs/design/expert-reviews.md.
 
@@ -364,14 +364,14 @@ Built AFTER pass 2 merges (it touches executor/{ansible,tofu}.go which story5 ed
 Exact file ownership is finalised against pass 2's actual edits at authoring time.
 
 Scope (v1 — the decided line + the one pulled-in correctness item + cheap folds):
-1. **Dependency vendoring, hash-gated + offline** (ADR 0011; extends the existing
+1. **Dependency vendoring, hash-gated + offline** (Decision 0011; extends the existing
    collections vendor + tofu plugin cache pattern). Manifest discovery is repo-side
    default with a `.exocomp/` override:
    - **Python** — project-root `pyproject.toml` (PEP 621 `[project.dependencies]` /
      `[dependency-groups]`) OR `requirements.txt` (honour the files operators already
      use), `.exocomp/requirements.txt` overrides. Resolved by **uv** into a venv at
      `cache/python/<source>/<manifest-hash>`, wired via `ansible_python_interpreter` +
-     PATH. EXECUTION MODEL (ADR 0011): every ansible run executes INSIDE a uv-managed
+     PATH. EXECUTION MODEL (Decision 0011): every ansible run executes INSIDE a uv-managed
      venv scoped to its source — the venv carries ansible-core (project-pinned; default
      = image toolchain pin) + ansible-runner + declared deps; a no-deps source reuses
      the shared base venv; DR-path runbooks always use the image toolchain, never a
@@ -383,7 +383,7 @@ Scope (v1 — the decided line + the one pulled-in correctness item + cheap fold
      not re-fetched every init); providers already cached.
    A manifest CONTENT HASH gates re-vendor; unchanged → reuse cache → resolve offline.
    "Deps met, never fresh every run." The control plane MAY invoke uv for PROJECT deps
-   (ADR 0011) but NEVER for the ansible-core toolchain switch, and NEVER on the DR-path
+   (Decision 0011) but NEVER for the ansible-core toolchain switch, and NEVER on the DR-path
    runbooks (image-pinned). System packages are OUT of runtime scope (host provides
    them, or the user adds a container layer; **bring-your-own-runner** is the named
    post-v1 seam — do not paint over it).
@@ -490,5 +490,5 @@ shared-file edits:
     a deliberate, documented boundary (the gate/verify step does network in-daemon). Note
     for operators; a per-kind egress grant is a v1.1 option if demand appears.
 14. **No-deps sources stay on the image toolchain** rather than a distinct uv base venv
-    (pragmatic reading of ADR 0011's shared base). Fine for v1; a uv base venv is a
+    (pragmatic reading of Decision 0011's shared base). Fine for v1; a uv base venv is a
     follow-up if uniformity is wanted.

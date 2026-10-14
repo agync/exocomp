@@ -50,9 +50,9 @@ Selecting a source opens its detail view, where you can inspect playbooks, run h
 exocomp enforces strict per-source isolation:
 
 1. **Python dependencies (`pyproject.toml` or `requirements.txt`)**:
-   If a playbook directory contains a Python dependency manifest, exocomp uses `uv` to build an isolated virtualenv under `cache/python/<source>/<hash>` (ADR 0011). If no manifest is present, it executes using the pinned container toolchain.
+   If a playbook directory contains a Python dependency manifest, exocomp uses `uv` to build an isolated virtualenv under `cache/python/<source>/<hash>` (Decision 0011). If no manifest is present, it executes using the pinned container toolchain.
 2. **Ansible collections (`requirements.yml`)**:
-   Per-source collection manifests are resolved via `ansible-galaxy` into `cache/collections/<source>/<hash>` (ADR 0015). Under the enforcing sandbox, local collection artifact paths (e.g. `type: dir` or `type: file` pointing to sibling directories) are granted read-only permissions automatically so collections install without sandbox permission violations.
+   Per-source collection manifests are resolved via `ansible-galaxy` into `cache/collections/<source>/<hash>` (Decision 0015). Under the enforcing sandbox, local collection artifact paths (e.g. `type: dir` or `type: file` pointing to sibling directories) are granted read-only permissions automatically so collections install without sandbox permission violations.
 
 ## SSH fleet keys and host onboarding
 

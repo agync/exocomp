@@ -43,7 +43,7 @@ type PythonManifest struct {
 }
 
 // HasDeps reports whether the source declares a Python manifest at all. A
-// source with none stays on the shared image toolchain (ADR 0011), so callers
+// source with none stays on the shared image toolchain (Decision 0011), so callers
 // gate venv resolution on this.
 func (m PythonManifest) HasDeps() bool { return m.Kind != KindNone && m.Kind != "" }
 
@@ -68,7 +68,7 @@ func FindProjectRoot(start string) string {
 }
 
 // DiscoverPython resolves the Python manifest for the project rooted at (or
-// above) start. Precedence follows ADR 0011: an .exocomp/requirements.txt
+// above) start. Precedence follows Decision 0011: an .exocomp/requirements.txt
 // override wins, then a repo-root pyproject.toml with PEP 621 dependencies,
 // then a repo-root requirements.txt. A pyproject that declares no dependencies
 // is treated as none, so a project carrying pyproject only for tool config does
@@ -133,7 +133,7 @@ func requirementsManifest(root, path string, body []byte) PythonManifest {
 // hashManifest is the content hash the venv cache is keyed by. The kind is
 // mixed in so identical bytes under two manifest kinds never collide onto one
 // venv, and the full file bytes are hashed: over-resolving on an unrelated edit
-// is safe, under-resolving on a dependency change is not (ADR 0011 fail-safe).
+// is safe, under-resolving on a dependency change is not (Decision 0011 fail-safe).
 func hashManifest(kind string, body []byte) string {
 	h := sha256.New()
 	h.Write([]byte(kind))

@@ -8,7 +8,7 @@ tags: [design, api, mcp]
 
 # Agent interface — one core, three programmatic faces
 
-Status: accepted — the decision is recorded in ADR-0014 (agent-facing surface)
+Status: accepted — the decision is recorded in Decision 0014 (agent-facing surface)
 
 ## 1. Vision
 
@@ -54,7 +54,7 @@ primitive we are exposing rather than inventing:
 |---|---|---|---|---|
 | `exocomp` CLI | local process, reads data dir, `Drain`s its own jobs | aligned human text (272 `Fprintf`/tabwriter sites; zero `--json`/`--output` flag; zero cobra `Example`) | filesystem perms on data dir | No — screen-scrape only |
 | TUI | local + ssh (Wish) | Bubble Tea render | data-dir / ssh | No |
-| Web + phone approval | `--web-addr` TLS listener | templ **HTML** behind session cookie | ADR-0009 bearer→session, three scopes | No — HTML only |
+| Web + phone approval | `--web-addr` TLS listener | templ **HTML** behind session cookie | Decision 0009 bearer→session, three scopes | No — HTML only |
 | OpenTofu state backend | loopback `127.0.0.1` only | JSON | HKDF-derived per-workspace bearer | Yes, but **workspace-state only**, not general ops (internal/api/state.go) |
 | `/metrics`, `/healthz` | daemon listener | Prometheus / text | none | Read-only telemetry |
 
@@ -69,7 +69,7 @@ To run ops from `workstation` over the tailnet to `server`, four things are miss
 
 1. **No general operator API.** The tofu backend speaks only tfstate/tflock and binds
    loopback; there is no `/api/v1/jobs`, `/workspaces`, `/approvals`. The web listener carries
-   the right auth (ADR 0009) but emits HTML.
+   the right auth (Decision 0009) but emits HTML.
 2. **No remote CLI client mode.** The CLI always operates locally against the data dir. There
    is no `--remote` / `EXOCOMP_REMOTE` that makes it a thin HTTP client of a remote daemon.
 3. **No structured-output contract.** Nothing emits a stable, versioned, values-free JSON an
@@ -80,7 +80,7 @@ To run ops from `workstation` over the tailnet to `server`, four things are miss
 
 The tailnet itself is already the intended remote path (docs/architecture/platform-contract.md:47-49
 "wizard detects a tailnet and configures the TCP listener bound to the tailnet address"), and
-ADR 0009 already delivers the credential (`token new`), the transport guard (non-loopback bind
+Decision 0009 already delivers the credential (`token new`), the transport guard (non-loopback bind
 refuses without a token), and the pinning material (self-signed cert fingerprint printed for
 trust-on-first-use). The pieces are on the bench; they are not assembled into a programmatic
 operator surface.
@@ -96,7 +96,7 @@ operator surface.
                 │  tailnet (bearer token + pinned cert / Tailscale Serve TLS)
    server ─────┼──────────────┼───────────────┼──────────────────────
         ┌───────▼──────────────▼───────────────▼────────┐
-        │  ADR-0009 token-gated listener (internal/web)  │  ← one auth story
+        │  Decision 0009 token-gated listener (internal/web)  │  ← one auth story
         │  /            (HTML, existing)                 │
         │  /api/v1/...  (JSON, new)  ── requireAuth+scope │
         │  POST /mcp    (MCP over HTTP, bearer+scope)    │
@@ -178,7 +178,7 @@ Timestamps are fixed RFC3339 UTC (the store normalizes to UTC ms). Volatile fiel
 | `forbidden` | scope check (auth.go:241) | token scope too low for this verb |
 
 **Exit-code table** (the primary agent signal — codify what invariant 3 already gives). Kept
-deliberately small, and defined in the same ADR as the contract:
+deliberately small, and defined in the same record as the contract:
 
 | Code | Meaning |
 |---|---|
@@ -220,7 +220,7 @@ exocomp --remote server approval decide 42 --approve
   `--token`, `--idempotency-key`, and the non-interactive contract (`--assume-yes`,
   `--no-input`, replacing the divergent `--force` / `--yes-really`).
 
-### 3.4 Operator HTTP/JSON API (`/api/v1`, mounted on the ADR-0009 listener)
+### 3.4 Operator HTTP/JSON API (`/api/v1`, mounted on the Decision 0009 listener)
 
 The general API is **not** a new listener and **not** a second auth story. It is JSON routes
 added to the existing token-gated web mux (internal/web/server.go:121-148), behind the same
@@ -271,10 +271,10 @@ queue's reserved `wf:` step keys are unaddressable from any face. `httpError`'s 
 `wire` typed envelope. Apply applies the **saved** plan, not a fresh one — the plan→apply seam
 is two linked job rows and the approver sees the actual plan (overview.md:64-66).
 
-### 3.5 MCP face (MCP over HTTP, `POST /mcp` on the ADR-0009 listener)
+### 3.5 MCP face (MCP over HTTP, `POST /mcp` on the Decision 0009 listener)
 
 exocomp maintains exactly one programmatic MCP surface: MCP over HTTP, mounted at `POST /mcp`
-on the same ADR-0009 listener as `/api/v1`, behind the same bearer+scope guard
+on the same Decision 0009 listener as `/api/v1`, behind the same bearer+scope guard
 (`internal/web/mcp_http.go`). It is a thin adapter that maps MCP tool calls to
 `internal/service` verbs and marshals the identical `wire` envelope — the agent-aware wrapper
 around the `/api/v1` bearer tokens, not a second server. Every MCP principal presents a scoped
@@ -331,7 +331,7 @@ resources are the "be aware of" surface.
 
 ## 4. Auth and safety model
 
-- **Reuse ADR 0009 tokens + three scopes.** `token new <name> --scope operator|readonly|approve`
+- **Reuse Decision 0009 tokens + three scopes.** `token new <name> --scope operator|readonly|approve`
   (store/token.go:13-17); argon2id-hashed at rest, revocable, minted only with the data dir on
   `server`. Scope maps 1:1 onto R / W / A across CLI, API, and MCP. A non-loopback bind still
   refuses without an active token (web/auth.go:250-268). An out-of-scope call is rejected with
@@ -356,7 +356,7 @@ resources are the "be aware of" surface.
   deciding an approval for a job its own token asked for. An operator driving a remote daemon
   with `approval decide --remote` needs an `approve`-scope token for that verb.
 - **Cert pinning for the bare tailnet.** The listener already prints its self-signed cert
-  fingerprint for trust-on-first-use (ADR 0009 §4). `exocomp login` performs the TOFU pin and
+  fingerprint for trust-on-first-use (Decision 0009 §4). `exocomp login` performs the TOFU pin and
   stores `{host, fingerprint, token}` in `~/.config/exocomp/hosts.toml` (SSH-known-hosts
   discipline); later calls verify the pinned fingerprint. Where Tailscale Serve / Caddy+ACME
   fronts the surface, real TLS supersedes the pin. Operator-scope MCP/API over `--insecure-http`
@@ -388,14 +388,14 @@ resources are the "be aware of" surface.
   service extraction proceeds in parallel and is the prerequisite for the **API and MCP** faces,
   which must not fork logic. The CLI's JSON path and the API/MCP path converge on the one `wire`
   marshaller, so they stay byte-identical.
-- **The caution about a general HTTP API** (risk of reintroducing the ADR-0001 bypass)
+- **The caution about a general HTTP API** (risk of reintroducing the Decision 0001 bypass)
   is honored: the API is a thin reflection whose every write is `queue.Enqueue`
   / `EnqueueGated`. No endpoint shells out or mutates state directly; the queue remains the sole
-  execution authority. The API also reuses the *existing* ADR-0009 listener and auth rather than
-  standing up a second session system (which ADR 0001 explicitly rejected).
+  execution authority. The API also reuses the *existing* Decision 0009 listener and auth rather than
+  standing up a second session system (which Decision 0001 explicitly rejected).
 - **Where the operator API lives.** Not the loopback tofu backend (`internal/api`, which stays
   workspace-state-only) and not a new listener — the JSON routes mount on the token-gated web
-  listener that already carries ADR-0009 auth, keeping one auth story.
+  listener that already carries Decision 0009 auth, keeping one auth story.
 
 ## 6. Build order
 
@@ -403,7 +403,7 @@ Each step is a self-contained unit; the earlier steps ship value on their own an
 schema the later faces reuse. The `wire` contract and CLI JSON (step 1) do not depend on the
 service extraction (step 2), so they land first.
 
-1. **Contract foundation (no network).** The governing ADR + `internal/wire` envelope, error
+1. **Contract foundation (no network).** The governing record + `internal/wire` envelope, error
    taxonomy, exit-code table + `--output json` on all read/list/status CLI verbs +
    `EXOCOMP_OUTPUT`. Golden tests pin the schema. cobra `Example` on every command +
    `exocomp commands --output json`. A local agent on `server` can already branch on JSON.
@@ -411,20 +411,20 @@ service extraction (step 2), so they land first.
    (today a stub with no callers, so this is a rewrite, not a refactor). Surface
    `--idempotency-key` on mutating paths. Land the non-interactive contract
    (`--assume-yes`/`--no-input`, unify `--force`/`--yes-really`). doctor `--output json`/summary.
-3. **Operator HTTP API (read).** JSON read endpoints on the ADR-0009 listener over the service
+3. **Operator HTTP API (read).** JSON read endpoints on the Decision 0009 listener over the service
    verbs, typed `wire` errors, OpenAPI 3.1 spec + `internal/client`. SSE job-follow.
 4. **Remote CLI + write API.** `exocomp login` (TOFU pinning) + `--remote`/`EXOCOMP_REMOTE`
    client mode; write/approval endpoints (plan/apply/run/decide) through queue+gate.
    `workstation → tailnet → server` works end to end.
 5. **MCP face.** `POST /mcp` (MCP over HTTP) adapter over the service verbs, same envelope;
-   tool/resource catalog with scope gating, on the ADR-0009 bearer+scope guard. The local
+   tool/resource catalog with scope gating, on the Decision 0009 bearer+scope guard. The local
    agent path is the agent-aware CLI; exocomp ships no stdio MCP server (a stdio client bridges
    to `POST /mcp` with an off-the-shelf http-to-stdio wrapper).
 
 ## 7. Risks and open decisions
 
 - **Charter scope.** No existing design doc names an agent/MCP/remote-CLI consumer as a
-  requirement; the original operator-centric charter did not name agent-fit as first-class. ADR-0014
+  requirement; the original operator-centric charter did not name agent-fit as first-class. Decision 0014
   records that decision and its one resolved design question — a single MCP surface over HTTP
   with no ambient authority — so the surface is a decision with consequences, not an assumption.
 - **Schema is a contract.** If the CLI and API/MCP envelopes ever diverge, or a field shape
@@ -452,7 +452,7 @@ service extraction (step 2), so they land first.
   hides internals from job subprocesses.
 - internal/web/server.go:58-60,121-148,174-187 — web reads the store directly for one auth
   story; the mux behind `requireAuth`; strict CSP/security headers (the seam the JSON API rides).
-- internal/web/auth.go:41,173-268 — ADR-0009 resolve (session→bearer), `mayApprove`, KDF gate
+- internal/web/auth.go:41,173-268 — Decision 0009 resolve (session→bearer), `mayApprove`, KDF gate
   (`ErrKDFBusy`), refuse non-loopback bind with no active token, `--insecure-http` warning.
 - internal/store/token.go:13-45,136-146 — three scopes; argon2id at rest; revoke;
   `CountActiveTokens` (the bind guard).
@@ -477,7 +477,7 @@ service extraction (step 2), so they land first.
   runs.
 - cmd/exocomp/serve.go:109-128 — `--port` loopback state backend vs `--web-addr` token-gated LAN
   web+API surface over TLS; `--web-insecure-http`.
-- docs/adr/0009-lan-access-tokens.md:15-35 — bearer required for non-loopback; mint via local
+- docs/decisions/0009-lan-access-tokens.md:15-35 — bearer required for non-loopback; mint via local
   auth; TLS + printed fingerprint for TOFU pinning; audit records token name.
 - docs/architecture/platform-contract.md:47-49 — the tailnet is the intended remote path (wizard
   binds the TCP listener to the tailnet address).

@@ -17,7 +17,7 @@ import (
 	"exocomp.dev/exocomp/internal/store"
 )
 
-// sandboxDataDir stands up a data dir holding the files ADR 0005 says a job
+// sandboxDataDir stands up a data dir holding the files Decision 0005 says a job
 // must never reach, so a run that reaches one fails visibly.
 func sandboxDataDir(t *testing.T) string {
 	t.Helper()
@@ -84,7 +84,7 @@ func TestSandboxedAnsibleRunsANormalPlaybook(t *testing.T) {
 	}
 }
 
-// TestSandboxedAnsibleCannotReachTheDataDir is the gate ADR 0005 states: a
+// TestSandboxedAnsibleCannotReachTheDataDir is the gate Decision 0005 states: a
 // playbook is arbitrary code from a repository, and under this tier it can no
 // longer read the database or the keys. The same playbook under the plain
 // local tier reads every one of them, which is what makes this a test of the

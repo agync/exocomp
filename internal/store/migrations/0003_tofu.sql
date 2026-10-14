@@ -1,6 +1,6 @@
 -- OpenTofu state lives here, not in an object store: locking is a row with a
 -- UNIQUE primary key rather than a conditional PUT no homelab S3 clone
--- implements correctly (ADR 0004).
+-- implements correctly (Decision 0004).
 
 CREATE TABLE workspace (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,

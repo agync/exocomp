@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0009 — LAN access: bearer tokens minted by local auth"
+title: "Decision 0009 — LAN access: bearer tokens minted by local auth"
 description: "LAN listeners require locally-minted bearer tokens, with TLS on by default."
 status: stable
 tags: [decision, security, auth]
 ---
 
-# ADR 0009 — LAN access: bearer tokens minted by local auth
+# Decision 0009 — LAN access: bearer tokens minted by local auth
 
 Status: accepted · 2026-08-22
 
@@ -39,7 +39,7 @@ root of trust for minting network credentials.
    the token (and in `doctor`) for trust-on-first-use pinning. `--insecure-http`
    exists, is loud at startup and in the UI footer, and is never the documented
    path. Tailscale Serve / Caddy+ACME remain the recommended fronts where
-   available; this ADR covers the bare-LAN case.
+   available; this record covers the bare-LAN case.
 5. Audit rows record the token name behind every session action (transport
    `web`), preserving the resolved-identity guarantee.
 

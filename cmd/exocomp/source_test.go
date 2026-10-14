@@ -321,7 +321,7 @@ func TestForgeKnownHosts(t *testing.T) {
 	}
 }
 
-// --- source rm cache GC (ADR 0015) ---
+// --- source rm cache GC (Decision 0015) ---
 
 func TestSourceRmPurgesSoleSourceCaches(t *testing.T) {
 	dir := initForSource(t)
@@ -393,7 +393,7 @@ func TestSourceRmDisabledSiblingKeepsCaches(t *testing.T) {
 	if _, err := runSource(t, "add", "b", "--path", root); err != nil {
 		t.Fatalf("source add b: %v", err)
 	}
-	// A disabled source still owns its cache when re-enabled (ADR 0015), so it
+	// A disabled source still owns its cache when re-enabled (Decision 0015), so it
 	// is a reference the guard must count.
 	disableSource(t, dir, "b")
 
@@ -443,7 +443,7 @@ func runInventory(t *testing.T, args ...string) (string, error) {
 
 // plantSourceCaches creates the dependency-cache planes a synced source leaves
 // under dataDir for the given root (cache/python and cache/collections under
-// the root's SourceKey, ADR 0015), returning both plane roots.
+// the root's SourceKey, Decision 0015), returning both plane roots.
 func plantSourceCaches(t *testing.T, dir, root string) (pythonDir, collectionsDir string) {
 	t.Helper()
 	if err := os.MkdirAll(root, 0o700); err != nil {

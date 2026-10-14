@@ -168,7 +168,7 @@ func runJobsRedrive(cmd *cobra.Command, opt redriveOptions) error {
 			skipped = append(skipped, redriveSkip{ID: job.ID, Reason: "no command to re-drive"})
 		case queue.IsWorkflowStepKey(job.IdempotencyKey):
 			// The sequencer owns a workflow step: an interrupted step job is
-			// auto-re-armed from the ledger (ADR 0008), so re-driving it here
+			// auto-re-armed from the ledger (Decision 0008), so re-driving it here
 			// would run the step twice and drop any approval gate it carried.
 			skipped = append(skipped, redriveSkip{
 				ID: job.ID, Reason: "workflow step; the sequencer re-arms it",

@@ -507,7 +507,7 @@ func (s *Server) handleSourceSync(w http.ResponseWriter, r *http.Request) {
 // purgeSourceCaches removes a deleted source's dependency caches
 // (cache/python/<SourceKey> and cache/collections/<SourceKey> under the data
 // dir) unless another registered source resolves to the same root and therefore
-// shares the key (ADR 0015). A disabled source still owns its cache when
+// shares the key (Decision 0015). A disabled source still owns its cache when
 // re-enabled, so it counts as a reference. The source row is already deleted by
 // the caller. Any failure leaves the caches in place: the failure mode is a
 // stale cache, never a wrong purge.

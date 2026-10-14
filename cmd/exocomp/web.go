@@ -43,7 +43,7 @@ func newWebCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "web",
-		Short: "Serve the token-gated LAN web UI (ADR 0009)",
+		Short: "Serve the token-gated LAN web UI (Decision 0009)",
 		Long: "Serves the browser dashboard and phone approval surface over TLS, " +
 			"authenticated by LAN access tokens. A non-loopback bind refuses to start " +
 			"without at least one active token. The web process shares the store with a " +
@@ -127,7 +127,7 @@ func runWeb(ctx context.Context, out, warn io.Writer, opts webOptions) (err erro
 // webSurface is a running token-gated LAN web listener. It is started by the
 // `web` command and, when `serve --web-addr` is set, alongside the loopback
 // state backend in the daemon — a separate non-loopback TLS listener for the
-// web/token surface, distinct from the loopback state backend (ADR 0009). The
+// web/token surface, distinct from the loopback state backend (Decision 0009). The
 // state backend never requires a LAN token; this surface always does.
 type webSurface struct {
 	http *http.Server
@@ -160,7 +160,7 @@ func (w *webSurface) Shutdown(ctx context.Context) error {
 }
 
 // startWebSurface builds and starts the LAN web listener sharing st/env and
-// deciding approvals through decider. It runs the ADR 0009 bind guard first: a
+// deciding approvals through decider. It runs the Decision 0009 bind guard first: a
 // non-loopback address refuses to bind without an active token, and
 // --insecure-http is loud. decider is the caller's reactive engine, so an
 // approval decided here releases the job into that process's queue. ntfy is

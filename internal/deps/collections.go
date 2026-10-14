@@ -138,7 +138,7 @@ type Collections struct {
 // it with ansible-galaxy only when the hash-gated marker is absent. On a cache
 // hit it invokes no ansible-galaxy and touches no network. It is fail-closed:
 // a provisioning failure removes the half-built dir and returns an error, so a
-// run never proceeds against half-met collections (ADR 0015).
+// run never proceeds against half-met collections (Decision 0015).
 //
 // A successful provision also prunes this source's other stale collections
 // dirs (PruneCollections, keep-policy defaults DefaultKeepVenvs/
@@ -296,7 +296,7 @@ func galaxyMarkerMatches(dir, hash string) bool {
 // carries, so a later EnsureCollections reads it as a cache hit and never
 // re-dials galaxy. It is the counterpart to provisionCollections' marker
 // write, byte-identical (the hash plus a newline), exposed so `playbook
-// vendor` can mark the dir it populated offline (ADR 0015): without it a
+// vendor` can mark the dir it populated offline (Decision 0015): without it a
 // vendored dir with no marker is rebuilt — and its contents removed — on the
 // next run.
 func MarkCollectionsReady(dir, hash string) error {

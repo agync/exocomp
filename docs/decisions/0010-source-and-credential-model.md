@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0010 — Source and credential model (git-centric, real usage)"
+title: "Decision 0010 — Source and credential model (git-centric, real usage)"
 description: "A git-centric source model with deploy and fleet keys, and state-only versus run-in-server workspaces."
 status: stable
 tags: [decision, sources, credentials]
 ---
 
-# ADR 0010 — Source and credential model (git-centric, real usage)
+# Decision 0010 — Source and credential model (git-centric, real usage)
 
 Status: accepted · 2026-08-22 · amended 2026-08-25 (source-kind collapse, see addendum)
 

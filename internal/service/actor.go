@@ -41,7 +41,7 @@ type actorEventPayload struct {
 
 // recordActor appends a system job_event naming who asked for a write, the
 // same append-only ledger every other job fact already lands on (no schema
-// migration, consistent with ADR 0007's audit-surface story). A zero Actor —
+// migration, consistent with Decision 0007's audit-surface story). A zero Actor —
 // today's CLI default — records nothing and returns nil at once.
 //
 // When an actor IS present, a failure to append is returned rather than

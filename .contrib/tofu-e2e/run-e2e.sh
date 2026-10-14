@@ -285,7 +285,7 @@ scenario_S10() { # state-only external client
     log "S10 state-only external client"
     # Mode-A workspace: exocomp stores state for an unmodified external tofu.
     # The emitted backend block + bearer let tofu run plan/apply itself while
-    # exocomp owns the state (ADR 0010). This asserts the block emits and the
+    # exocomp owns the state (Decision 0010). This asserts the block emits and the
     # recorded backend address resolves; a full external-client run is the
     # operator's manual leg (needs tofu pointed at the emitted block).
     run_cli workspace add "$PROJECT-ext" --state-only 2>&1 | grep -q 'backend "http"' \

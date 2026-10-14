@@ -33,7 +33,7 @@ const DefaultVaultID = "exocomp"
 // every ANSIBLE_-prefixed name. Everything else is dropped: a run must not
 // pick up whatever the operator happened to export. PYTHONPATH is deliberately
 // absent: the venv site-packages bridge is set by the driver after this filter
-// (ADR 0016), so an inherited value is dropped rather than merged.
+// (Decision 0016), so an inherited value is dropped rather than merged.
 var ansibleEnvAllow = []string{"HOME", "LANG", "LC_ALL", "PATH", "TZ"}
 
 const ansibleEnvPrefix = "ANSIBLE_"
@@ -138,7 +138,7 @@ type AnsibleOptions struct {
 	// leaves ANSIBLE_COLLECTIONS_PATH exactly as inherited.
 	CollectionsPath string
 	// Interpreter, when set, is the Python the controller's modules execute
-	// under: the per-source uv venv's interpreter (ADR 0011). The driver forces
+	// under: the per-source uv venv's interpreter (Decision 0011). The driver forces
 	// it as ansible_python_interpreter through extra-vars only for the built-in
 	// localhost-over-local run, where the controller is the sole host — the venv
 	// path is controller-side and would not exist on a remote target. A remote
@@ -152,7 +152,7 @@ type AnsibleOptions struct {
 	VenvBin string
 	// PythonPath, when set, is set as PYTHONPATH so the project venv's
 	// site-packages is importable by the PATH-resolved fallback ansible — the
-	// ADR 0016 bridge that lets a project's libraries reach the controller's
+	// Decision 0016 bridge that lets a project's libraries reach the controller's
 	// interpreter. Empty leaves PYTHONPATH unset. It is a controller-side
 	// bridge: ansible_python_interpreter is target-side only and does not
 	// substitute for it.
@@ -358,7 +358,7 @@ func (a *Ansible) classifyDegraded(res *Result, lines []string, sink EventSink) 
 }
 
 // pythonPathEnv is the environment variable the venv site-packages bridge is
-// carried on (ADR 0016).
+// carried on (Decision 0016).
 const pythonPathEnv = "PYTHONPATH"
 
 // prependPath puts dir at the front of the PATH entry in env so the venv's own
@@ -371,7 +371,7 @@ func prependPath(env []string, dir string) []string {
 // prependEnvList puts value at the front of the named colon-joined entry in
 // env, preserving whatever the entry already carried. A run with no such entry
 // gets one naming only value. It is the shared shape behind PATH (the venv's
-// bin) and PYTHONPATH (the venv's site-packages bridge, ADR 0016).
+// bin) and PYTHONPATH (the venv's site-packages bridge, Decision 0016).
 func prependEnvList(env []string, name, value string) []string {
 	prefix := name + "="
 	for i, kv := range env {
@@ -530,7 +530,7 @@ func (a *Ansible) writePrivate(dir string, localOnly bool, captureDir string) ([
 	// host makes that host's modules resolve a python that does not exist there
 	// (rc 127). A remote host takes its interpreter from the inventory or ansible's
 	// own discovery; a controller-side task delegated to localhost still resolves
-	// the venv because ansible itself runs under it (ADR 0011). The forced value
+	// the venv because ansible itself runs under it (Decision 0011). The forced value
 	// merges into the caller's own extra-vars rather than replacing them.
 	extraVars := a.opts.ExtraVars
 	forceInterpreter := a.opts.Interpreter != "" && localOnly

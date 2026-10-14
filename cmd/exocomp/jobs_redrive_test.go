@@ -466,7 +466,7 @@ func seedCutOffKeyed(t *testing.T, st *store.Store, to store.JobState, key, runb
 }
 
 // TestJobsRedriveSkipsWorkflowSteps: an interrupted workflow-step row is the
-// sequencer's to re-arm (ADR 0008), so redrive leaves it alone and reports why
+// sequencer's to re-arm (Decision 0008), so redrive leaves it alone and reports why
 // rather than duplicating the step's effect.
 func TestJobsRedriveSkipsWorkflowSteps(t *testing.T) {
 	st := openSeededStore(t)

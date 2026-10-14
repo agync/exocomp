@@ -10,7 +10,7 @@ import (
 
 // TestDoctorTextMarksPinDeviations: a tool that resolves to a version other
 // than its MANIFEST.json pin is marked on its own line, and the active
-// manifest path is printed once — the text half of ADR 0006's diff. A fake
+// manifest path is printed once — the text half of Decision 0006's diff. A fake
 // restic on PATH makes the resolved version deterministic without the host's
 // toolchain.
 func TestDoctorTextMarksPinDeviations(t *testing.T) {

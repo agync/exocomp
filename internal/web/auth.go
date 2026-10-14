@@ -48,7 +48,7 @@ var ErrAuthThrottled = errors.New("web: too many failed authentications, retry l
 var ErrKDFBusy = errors.New("web: authentication is busy, retry shortly")
 
 // identity is the resolved caller behind a request: the token row that
-// authenticated it. Every audited action names it (ADR 0009 §5).
+// authenticated it. Every audited action names it (Decision 0009 §5).
 type identity struct {
 	token store.APIToken
 	via   string // "session" or "bearer"
@@ -319,7 +319,7 @@ func (s *Server) decidedBySelf(ctx context.Context, jobID int64, id identity) (b
 	return actor.Kind == service.ActorKindToken && actor.Name == id.token.Name, nil
 }
 
-// RequireTokenForBind enforces ADR 0009 point 1: a non-loopback listener needs
+// RequireTokenForBind enforces Decision 0009 point 1: a non-loopback listener needs
 // at least one active token, unless the operator opted into cleartext with
 // --insecure-http (which is loud, never silent). A loopback bind is always
 // allowed. It returns the error a refused bind reports and a warning to print
@@ -334,7 +334,7 @@ func RequireTokenForBind(ctx context.Context, st *store.Store, addr string, inse
 	}
 	if active == 0 {
 		return "", fmt.Errorf("web: refusing to bind non-loopback address %q with no active token: "+
-			"mint one with `exocomp token new <name>` (ADR 0009)", addr)
+			"mint one with `exocomp token new <name>` (Decision 0009)", addr)
 	}
 	if insecure {
 		return "WARNING: --insecure-http serves the LAN surface over cleartext; " +

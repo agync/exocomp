@@ -17,7 +17,7 @@ import (
 )
 
 // litestreamBinary is the sidecar exocomp shells out to for a fast-RPO restore.
-// It is never compiled in and never run inside exocompd (ADR 0001): the daemon
+// It is never compiled in and never run inside exocompd (Decision 0001): the daemon
 // generates the sidecar's config and, here, drives a one-shot restore beside it.
 const litestreamBinary = "litestream"
 

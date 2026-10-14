@@ -50,7 +50,7 @@ type ResolverSandboxOptions struct {
 }
 
 // NewResolverSandbox builds the resolver's confinement from the executor's
-// job-sandbox machinery (ADR 0005) — the same launcher every job runs under,
+// job-sandbox machinery (Decision 0005) — the same launcher every job runs under,
 // not a second sandbox. uv is granted write on its venv and cache, read on its
 // tool tree and the manifest, HTTPS only when it must download, and nothing
 // else; the data dir and the keys are denied by the guard ProfileFor runs.

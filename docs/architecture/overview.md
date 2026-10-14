@@ -11,7 +11,7 @@ tags: [architecture]
 `exocompd` is one Go binary deployed as a systemd host service or rootless container. It owns **state, sequencing, keys,
 and recovery**; `ansible-core`, `opentofu`, `restic`, `sops`, `age` and `git` are pinned
 subprocesses that do the actual work. Rationale in
-[ADR 0001](../adr/0001-thin-core-architecture.md).
+[Decision 0001](../decisions/0001-thin-core-architecture.md).
 
 ```mermaid
 graph TB
@@ -68,7 +68,7 @@ rather than advisory:
 - **Serialization is a queue property.** `concurrency_key` (defaulting to the workspace or
   project) means one control plane never runs two applies against one workspace — which is
   what removes the dependency on storage-backend locking entirely
-  ([ADR 0004](../adr/0004-opentofu-http-state-backend.md)).
+  ([Decision 0004](../decisions/0004-opentofu-http-state-backend.md)).
 - **Approval is a queue state**, not a UI convention. Plan-then-apply is two `job` rows
   linked by `parent_job_id`, so the approver sees the actual saved plan and the apply runs
   that plan file rather than a fresh one that may have drifted.
@@ -100,13 +100,13 @@ Every event is persisted with its outcome, its reason, and the trace that produc
 | Component | Owns | Notes |
 |---|---|---|
 | API (`internal/api`) | the loopback OpenTofu HTTP state backend | `127.0.0.1` only, HKDF-derived per-workspace bearer; a separate listener from the operator `/api/v1` surface below |
-| Operator API (`internal/web` `/api/v1`) | thin HTTP/JSON over `internal/service`, mounted on the ADR-0009 token-gated listener | read and write routes are both live — see [Machine output](../operations/machine-output.md) and [The API surface](../operations/api.md) |
+| Operator API (`internal/web` `/api/v1`) | thin HTTP/JSON over `internal/service`, mounted on the Decision 0009 token-gated listener | read and write routes are both live — see [Machine output](../operations/machine-output.md) and [The API surface](../operations/api.md) |
 | Service (`internal/service`) | the four write verbs (`PlanWorkspace`/`ApplyWorkspace`/`RunPlaybook`/`DecideApproval`) and their resolvers | the CLI, the `/api/v1` write routes, and MCP-over-HTTP (the agent-aware wrapper over `/api/v1`) all enqueue through these, so a write can't fork a divergent path; **reads go store-direct** in every face — only writes are unified through the service layer |
 | Job queue + scheduler | state machine, concurrency keys, cancel, timeouts, event ingest | `robfig/cron/v3`; schedules live in SQLite and cron entries are rebuilt from the DB on boot and on mutation |
 | Rule engine | normalization, `cel-go` matching, guardrail ledgers | CEL is sandboxed and non-Turing-complete with a hard time budget — arbitrary code must not be able to fire an apply |
 | Approval gates | HMAC single-use tokens, TTL, constant-time compare | delivered via ntfy action button, TUI, or web to one endpoint |
-| Secrets envelope | keyring, DEK, HKDF subkeys, redaction filter | [ADR 0003](../adr/0003-secrets-envelope.md) |
-| OpenTofu state backend | `tfstate` versions, `tflock` | [ADR 0004](../adr/0004-opentofu-http-state-backend.md) |
+| Secrets envelope | keyring, DEK, HKDF subkeys, redaction filter | [Decision 0003](../decisions/0003-secrets-envelope.md) |
+| OpenTofu state backend | `tfstate` versions, `tflock` | [Decision 0004](../decisions/0004-opentofu-http-state-backend.md) |
 | Backup engine | staging tree, three-leg fan-out, retention, verification, drills | [disaster recovery](../operations/disaster-recovery.md) |
 | Executor drivers | subprocess isolation tier | [execution](execution.md) |
 | Clients | TUI (priority 1), web (2), desktop (3) | all thin clients of the one API |

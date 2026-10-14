@@ -1,6 +1,6 @@
 package tui
 
-// sourceRow is one run-tree source (ADR 0010) on the sources surface: where a
+// sourceRow is one run-tree source (Decision 0010) on the sources surface: where a
 // run's tree comes from, the ref it is pinned to, the commit its last sync
 // landed on, and its trust posture. Read-only — registration stays a
 // CLI-and-local-auth path, so this screen carries no mutation.

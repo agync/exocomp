@@ -1,17 +1,17 @@
 ---
 type: Decision
-title: "ADR 0015 — Per-source ansible collection isolation"
+title: "Decision 0015 — Per-source ansible collection isolation"
 description: "Ansible collections go per-source in a content-hash-keyed cache resolved at claim time and garbage-collected with the source lifecycle."
 status: stable
 tags: [decision, ansible, offline]
 ---
 
-# ADR 0015 — Per-source ansible collection isolation
+# Decision 0015 — Per-source ansible collection isolation
 
 ## Status
 
-Accepted · 2026-09-06 — supersedes [ADR 0011](0011-project-dependency-resolution.md)'s
-collections decision; the venv decision in ADR 0011 stands.
+Accepted · 2026-09-06 — supersedes [Decision 0011](0011-project-dependency-resolution.md)'s
+collections decision; the venv decision in Decision 0011 stands.
 
 ## Context
 
@@ -19,7 +19,7 @@ The dependency model has three planes with three scopes:
 
 | Plane | Cache | Scope | Versions per item | Lifecycle GC |
 |---|---|---|---|---|
-| Python deps (uv venvs, ADR 0011) | `cache/python/<source>/<hash>` | **per-source** | per-source, hash-gated, concurrent | `PruneVenvs` (keep-N + since) |
+| Python deps (uv venvs, Decision 0011) | `cache/python/<source>/<hash>` | **per-source** | per-source, hash-gated, concurrent | `PruneVenvs` (keep-N + since) |
 | Ansible collections | `cache/collections/` (flat) | **shared** | **one per collection, global** | none |
 | Tofu providers | `cache/tofu/plugin-cache` (+ per-workspace modules) | shared providers / per-workspace modules | one per provider | none |
 
@@ -47,7 +47,7 @@ behave the way venvs already do.
 
 Apply the venv model to collections: a **per-source, content-hash-keyed
 collections dir**, resolved at claim time, with lifecycle GC. This supersedes
-ADR 0011's shared `cache/collections` vendoring decision.
+Decision 0011's shared `cache/collections` vendoring decision.
 
 ### Layout
 
@@ -69,7 +69,7 @@ the offline guarantee never regresses for an existing deployment.
 
 `.exocomp/requirements.yml` overrides a repo-root `requirements.yml`, matching
 the Python manifest precedence (already implemented in `internal/deps/galaxy.go`;
-this ADR adds the `Root`/namespace plumbing and the first production callers).
+this record adds the `Root`/namespace plumbing and the first production callers).
 
 ### Vendoring = resolve at claim time
 
@@ -81,7 +81,7 @@ no Galaxy dial; on a new hash it runs `ansible-galaxy collection install -r
 inline drain path resolves the same way before enqueue, matching the venv's two
 call sites. The explicit `playbook vendor` command stays as the manual
 queued-job path, now source-keyed. This is the "vendoring step, part of the run
-lifecycle" ADR 0011 anticipated and the same pattern `offline-caches.md` already
+lifecycle" Decision 0011 anticipated and the same pattern `offline-caches.md` already
 documents for the venv resolver: it is a subprocess of a queued job, not a new
 execution path, and an inline dial is bounded by the playbook job's own timeout.
 
@@ -132,12 +132,12 @@ per-run grant ensures the per-source path is readable at all.
 Galaxy **roles** are out of scope: they install through a different binary,
 resolve through `roles_path`, have no cache today, and the ecosystem moves roles
 into collections. A collection that *contains* roles is fully in scope. Roles get
-their own ADR if a need appears. Keeping a **shared fallback** for undeclared
+their own record if a need appears. Keeping a **shared fallback** for undeclared
 collections is part of the decision (see Layout).
 
 ### System packages
 
-Unchanged from ADR 0011: out of runtime scope — the host or a container layer
+Unchanged from Decision 0011: out of runtime scope — the host or a container layer
 provides them.
 
 ## Consequences
@@ -154,7 +154,7 @@ provides them.
 - `DeleteSource` gains a cache side effect — must be reviewable as part of the
   source lifecycle, and must be reference-aware (a source whose root is shared
   with another registered source keeps the caches).
-- ADR 0011's collections section is superseded; its venv, tofu-provider,
+- Decision 0011's collections section is superseded; its venv, tofu-provider,
   tofu-modules, and system-package decisions are untouched.
 
 ## Addendum — 2026-10-06: local-directory artifacts are read-granted

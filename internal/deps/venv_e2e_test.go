@@ -14,7 +14,7 @@ import (
 	"exocomp.dev/exocomp/internal/executor"
 )
 
-// TestVenvRunImportsDeclaredDep is the ADR 0016 gate exercised end to end with
+// TestVenvRunImportsDeclaredDep is the Decision 0016 gate exercised end to end with
 // the real uv and the PATH-resolved ansible-playbook: a project's per-source
 // venv carries only its declared libraries, and the run's fallback ansible
 // imports them through the site-packages PYTHONPATH bridge; a second run of the

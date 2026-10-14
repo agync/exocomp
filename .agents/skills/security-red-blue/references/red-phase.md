@@ -20,8 +20,8 @@ regression test.
   components it threatens (e.g. store + queue), not a built binary. Do not
   over-index on grading every finding against a running binary; grade against
   whatever real surface the attacker would actually touch.
-- The surface under test is the three programmatic faces ADR 0014
-  (`docs/adr/0014-agent-facing-surface.md`) ratifies:
+- The surface under test is the three programmatic faces Decision 0014
+  (`docs/decisions/0014-agent-facing-surface.md`) ratifies:
   - the **write half of `/api/v1`** — the write routes in `internal/web`
     (`api_write.go`, `mcp_http.go`) with bearer scopes minted per token;
   - the **remote CLI** — `exocomp login` / `--remote` (pin + bearer);

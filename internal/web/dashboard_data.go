@@ -431,7 +431,7 @@ func humanBytes(n int) string {
 	return fmt.Sprintf("%d B", n)
 }
 
-// sources reads the run-tree sources (ADR 0010) into rows: where each run's
+// sources reads the run-tree sources (Decision 0010) into rows: where each run's
 // tree comes from, whether its ref is signed and pinned to allowed-signers, and
 // the commit its last sync landed on. Read-only — registration is a
 // CLI-and-local-auth path, not a web mutation.

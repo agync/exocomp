@@ -11,7 +11,7 @@ import (
 	"exocomp.dev/exocomp/internal/secrets"
 )
 
-// TestWorkspaceAddStateOnlyEmitsBackendBlock proves mode A (ADR 0010): the
+// TestWorkspaceAddStateOnlyEmitsBackendBlock proves mode A (Decision 0010): the
 // emitted backend "http" block carries the workspace's state URL and its
 // deterministic bearer, states the one-workspace-one-state rule, and — where
 // tofu is on PATH — parses as valid HCL.

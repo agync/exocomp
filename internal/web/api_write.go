@@ -23,7 +23,7 @@ import (
 )
 
 // This file mounts the operator HTTP/JSON WRITE API (agent-interface §3.4) on
-// the SAME ADR-0009 listener as the reads. Every mutating route routes through
+// the SAME Decision 0009 listener as the reads. Every mutating route routes through
 // the SAME internal/service verbs the CLI calls, so no client has a divergent
 // execution path (AGENTS.md invariant 5): the verb assembles the queue.Spec and
 // makes the gate decision, and this face supplies a PURE-ENQUEUE Enqueuer —

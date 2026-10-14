@@ -27,7 +27,7 @@ func decodeData(t *testing.T, body string, v any) {
 
 // TestAPIDecisionRefusesOperatorScope proves the scope that may enqueue a
 // write cannot also settle the approval that write raised. On the machine
-// API, A is the approve scope alone (ADR 0014 §3's R/W/A mapping), so an
+// API, A is the approve scope alone (Decision 0014 §3's R/W/A mapping), so an
 // operator token — the only scope that can plan/apply — is forbidden, and the
 // gated job stays parked.
 func TestAPIDecisionRefusesOperatorScope(t *testing.T) {

@@ -14,7 +14,7 @@ import (
 
 // applyJobCaps sets up a per-job cgroup when the sandbox options ask for caps,
 // mutating spec so the subprocess is born inside it, and returns the teardown.
-// It is fail-closed on both edges ADR 0005's "never silently" cares about: caps
+// It is fail-closed on both edges Decision 0005's "never silently" cares about: caps
 // requested without a delegated controller is refused, and a controller that
 // cannot mint the cgroup is refused — a capped job never falls back to running
 // uncapped. Empty caps are the common path and cost nothing.
@@ -55,7 +55,7 @@ func applyJobCaps(sb SandboxOptions, spec *Spec) (func(EventSink), error) {
 // place a sandboxed driver honours Spec.Privileged, so all three kinds skip the
 // sandbox the same way. Caps cannot be enforced without the sandbox
 // (applyJobCaps runs only inside it), so a privileged job that also named a
-// runner is refused rather than run silently uncapped — ADR 0005's "never
+// runner is refused rather than run silently uncapped — Decision 0005's "never
 // silently", the same posture requireSandboxedForCaps takes for the disabled
 // tier.
 func runUnsandboxed(ctx context.Context, plain Driver, caps Caps, spec Spec, sink EventSink) (Result, error) {
@@ -69,7 +69,7 @@ func runUnsandboxed(ctx context.Context, plain Driver, caps Caps, spec Spec, sin
 // jobDirPrefix names the per-job private directory the sandboxed tier creates
 // inside the private root. Each job gets its own so a grant covers one job's
 // material and not the material of every job sharing that root — "other jobs'
-// tmpfs" is on ADR 0005's denied list. The name is short for the reason
+// tmpfs" is on Decision 0005's denied list. The name is short for the reason
 // newJobDir explains.
 const jobDirPrefix = "job-"
 
@@ -169,7 +169,7 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	// this driver reuses.
 	sb.ReadFiles = append(slices.Clone(sb.ReadFiles), spec.SSHIdentityFiles...)
 	// CollectionsPath is a joined ANSIBLE_COLLECTIONS_PATH value — per-source
-	// collections ahead of the shared fallback (ADR 0015). Each component is a
+	// collections ahead of the shared fallback (Decision 0015). Each component is a
 	// real directory, so each is granted individually; the joined string itself
 	// names no existing path and granting it would deny the read the run needs.
 	sb.ReadPaths = append(slices.Clone(sb.ReadPaths), collectionsReadGrants(a.opts.CollectionsPath)...)
@@ -178,7 +178,7 @@ func (a *sandboxedAnsible) Run(ctx context.Context, spec Spec, sink EventSink) (
 	// An ad-hoc run executes `ansible`, a sibling of ansible-playbook; grant it
 	// too so `exocomp command`/`ansible` resolve their tool under the sandbox.
 	sb.ReadPaths = append(sb.ReadPaths, ToolGrants(AnsibleAdhocBinary)...)
-	// The per-source uv venv (ADR 0011) holds the interpreter and the project's
+	// The per-source uv venv (Decision 0011) holds the interpreter and the project's
 	// installed libraries; a module that cannot read them fails, so the venv
 	// root is granted read when the run is bound to one. It is a data-volume
 	// cache path granted for this run, not added to any global allowlist.
@@ -272,7 +272,7 @@ func emitElevationHint(sink EventSink) {
 
 // collectionsReadGrants splits a joined ANSIBLE_COLLECTIONS_PATH value into the
 // directories it names, so a sandbox grant covers each real directory instead
-// of one nonexistent joined path (ADR 0015).
+// of one nonexistent joined path (Decision 0015).
 func collectionsReadGrants(collectionsPath string) []string {
 	if collectionsPath == "" {
 		return nil
@@ -439,7 +439,7 @@ func (t *sandboxedTofu) Run(ctx context.Context, spec Spec, sink EventSink) (Res
 		// An online init downloads into the cache, so read-only is not enough.
 		sb.WritePaths = append(sb.WritePaths, t.opts.PluginCacheDir)
 	}
-	// The persistent module cache (ADR 0011) is written by init through the
+	// The persistent module cache (Decision 0011) is written by init through the
 	// symlink the driver plants in TF_DATA_DIR, so the target itself must be a
 	// granted write path or the redirected write is denied.
 	if cache := moduleCacheDir(t.opts); cache != "" {

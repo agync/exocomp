@@ -159,7 +159,7 @@ func newWorkspaceTokenCmd() *cobra.Command {
 // newWorkspaceAdoptCmd registers the one-shot adoption verb: migrate a
 // workspace's pre-existing local tofu state onto the HTTP backend. It is the
 // CLI face of the documented "take over existing OpenTofu state" runbook
-// (docs/operations/bootstrap.md, ADR 0004).
+// (docs/operations/bootstrap.md, Decision 0004).
 func newWorkspaceAdoptCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "adopt <name>",
@@ -399,7 +399,7 @@ func newWorkspaceUnlockCmd() *cobra.Command {
 
 // runWorkspaceUnlock breaks one workspace's lock. The audit row is the point:
 // a lock that vanished without a trace is indistinguishable from one that was
-// never taken (ADR 0004).
+// never taken (Decision 0004).
 func runWorkspaceUnlock(cmd *cobra.Command, name string) (err error) {
 	ctx := cmd.Context()
 	out := cmd.OutOrStdout()
@@ -572,7 +572,7 @@ func newWorkspaceAddCmd() *cobra.Command {
 	return add
 }
 
-// runWorkspaceAddStateOnly registers a mode-A workspace (ADR 0010) and prints
+// runWorkspaceAddStateOnly registers a mode-A workspace (Decision 0010) and prints
 // the backend "http" block an external tofu pastes. The bearer is deterministic
 // (api.WorkspaceToken), so it is the same one the backend will check; it is
 // printed once, kit discipline, and never stored beyond the workspace name it

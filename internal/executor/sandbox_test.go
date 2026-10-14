@@ -93,7 +93,7 @@ func TestSandboxEgressIsPerKind(t *testing.T) {
 	}
 }
 
-// TestSandboxNeverGrantsAUnixSocket: ADR 0005's CVE lesson is that a sandboxed
+// TestSandboxNeverGrantsAUnixSocket: Decision 0005's CVE lesson is that a sandboxed
 // process reaching a powerful local unix socket is the escape. No profile this
 // package builds may carry a socket grant, whatever the caller asks for.
 func TestSandboxNeverGrantsAUnixSocket(t *testing.T) {

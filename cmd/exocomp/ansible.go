@@ -40,7 +40,7 @@ func newAnsibleDriver(dataDir string, env *secrets.Envelope, vaultProject string
 		OutputSealer: sealer,
 	}
 	// A source that declared Python dependencies runs inside its per-source uv
-	// venv (ADR 0011): the venv's ansible-playbook, interpreter, and PATH. A
+	// venv (Decision 0011): the venv's ansible-playbook, interpreter, and PATH. A
 	// zero venv leaves the driver on the image toolchain.
 	applyVenv(&opts, venv)
 	if env == nil || vaultProject == "" {
@@ -98,7 +98,7 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 		return executor.Result{}, err
 	}
 
-	// Resolve the per-source venv before the run (ADR 0011 vendoring step). A
+	// Resolve the per-source venv before the run (Decision 0011 vendoring step). A
 	// failure fails the job: a run must not proceed against half-met deps.
 	venv, err := resolveProjectVenv(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))
 	if err != nil {
@@ -109,7 +109,7 @@ func (d ansibleJobDriver) Run(ctx context.Context, spec executor.Spec, sink exec
 			Msg: "resolved project deps into " + venv.Dir})
 	}
 
-	// Resolve the per-source ansible collections the same way (ADR 0015
+	// Resolve the per-source ansible collections the same way (Decision 0015
 	// vendoring step); the shared cache/collections dir stays as the fallback
 	// when the source declares no requirements.
 	collections, err := resolveSourceCollections(ctx, d.dataDir, ansiblePlaybookPath(spec.Argv))

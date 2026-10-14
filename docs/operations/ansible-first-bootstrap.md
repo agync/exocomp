@@ -15,7 +15,7 @@ workflow. It is the ordering for a persona where Ansible bootstraps nodes and
 Terraform then manages resources on top of them — `kubeadm` brings up a control
 plane, then the `kubernetes`/`helm` providers manage cluster objects.
 
-This is not a new engine. The [Sequencer](../adr/0008-step-ledger-over-dbos.md) has
+This is not a new engine. The [Sequencer](../decisions/0008-step-ledger-over-dbos.md) has
 always run steps in list order; every shipped verb happened to put `tofu apply`
 first. `bootstrap run` is the CLI verb that composes `[ansible-play, tofu-apply]`
 instead. The apply runs only if the play succeeded; a daemon that dies mid-chain

@@ -2,7 +2,7 @@
 # Litestream ships exocomp.db's WAL frames to a replica for seconds-level RPO.
 # It is the FAST-RPO COMPLEMENT to the authoritative restic DR chain, never a
 # replacement: restic stays the encrypted, drill-covered chain a bare host
-# recovers from. Litestream runs BESIDE exocompd as a sidecar (ADR 0012); the
+# recovers from. Litestream runs BESIDE exocompd as a sidecar (Decision 0012); the
 # daemon generates this config and observes the replica, it does not run it.
 #
 # WARNING: this is a REMOTE target Litestream does NOT encrypt. The operator

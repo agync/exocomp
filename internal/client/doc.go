@@ -1,8 +1,8 @@
 // Package client is the typed HTTP client the CLI uses in remote mode to drive a
 // remote exocompd over the tailnet (the workstation -> daemon path, agent-interface
 // §3.3). It targets the read-only /api/v1 surface (internal/web/api.go), sends
-// the ADR-0009 bearer token, and verifies the daemon's self-signed certificate
-// against a pinned SHA-256 fingerprint (trust-on-first-use, ADR 0009 §4) — never
+// the Decision 0009 bearer token, and verifies the daemon's self-signed certificate
+// against a pinned SHA-256 fingerprint (trust-on-first-use, Decision 0009 §4) — never
 // a CA chain. It decodes the shared wire envelope into the SAME wire projection
 // types the CLI's --output json emits, so a resource's remote bytes and its
 // local bytes are identical, and it surfaces the wire error envelope as a typed

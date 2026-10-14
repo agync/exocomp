@@ -10,7 +10,7 @@ tags: [operations, security, auth, web]
 
 The browser dashboard and phone approval surface reach the LAN over a bearer-token-gated
 TLS listener that is separate from the loopback state backend. The model is
-[ADR 0009](../adr/0009-lan-access-tokens.md).
+[Decision 0009](../decisions/0009-lan-access-tokens.md).
 
 ## Two listeners, two auth stories
 

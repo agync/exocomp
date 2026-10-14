@@ -1,4 +1,4 @@
--- Source and credential model (ADR 0010). Three tables realise the git-centric
+-- Source and credential model (Decision 0010). Three tables realise the git-centric
 -- flows the M1 `repo` sketch only named.
 --
 -- A source is where a run's tree comes from: a registered git repo (auto-synced,

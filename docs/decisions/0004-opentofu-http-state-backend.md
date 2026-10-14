@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0004 — OpenTofu state: HTTP backend implemented in SQLite"
+title: "Decision 0004 — OpenTofu state: HTTP backend implemented in SQLite"
 description: "OpenTofu HTTP state backend implemented in SQLite, sidestepping the S3 conditional-write gap."
 status: stable
 tags: [decision, state, terraform]
 ---
 
-# ADR 0004 — OpenTofu state: HTTP backend implemented in SQLite
+# Decision 0004 — OpenTofu state: HTTP backend implemented in SQLite
 
 ## Status
 
@@ -49,7 +49,7 @@ applies against one workspace regardless of what any storage backend can promise
 
 State remains encrypted by OpenTofu itself: `exocompd` sets `TF_ENCRYPTION` with the
 `pbkdf2` key provider and a passphrase derived per workspace from the DEK
-([ADR 0003](0003-secrets-envelope.md)), so there is no extra secret to lose and no third
+([Decision 0003](0003-secrets-envelope.md)), so there is no extra secret to lose and no third
 party in the DR path.
 
 ## Consequences

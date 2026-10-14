@@ -1,4 +1,4 @@
--- The step ledger (ADR 0008): a multi-step choreography is a row per step, its
+-- The step ledger (Decision 0008): a multi-step choreography is a row per step, its
 -- status advanced in the same transaction as the step's own effect. The queue
 -- stays the sole execution authority; this table only records where a workflow
 -- got to, so a boot resume continues it without re-running a succeeded step.

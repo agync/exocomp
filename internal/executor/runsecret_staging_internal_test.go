@@ -34,7 +34,7 @@ func TestResolveStagingAutoUsesTmpfsWhenUsable(t *testing.T) {
 // auto asked for tmpfs, tmpfs is unusable (simulated by pointing the probe at
 // a non-tmpfs directory), and the result is a LOUD disk fallback — resolved to
 // the disk root, FellBack set, and a warning actually written to the warn
-// writer, never a silent downgrade (ADR 0005).
+// writer, never a silent downgrade (Decision 0005).
 func TestResolveStagingAutoFallsBackToDiskLoudly(t *testing.T) {
 	t.Parallel()
 	diskRoot := t.TempDir()

@@ -6,6 +6,13 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-14
+
+- **Moved**: `docs/adr/` became [decisions/](decisions/index.md). The twenty records keep
+  their numbers and meaning; the label `ADR NNNN` is now `Decision NNNN` and prose says
+  "record" instead of "ADR". Every path, link, and pointer was retargeted; no decision's
+  meaning changed — this renames the collection and its term only.
+
 ## 2026-10-13
 
 - **Reconciliation against code and runtime**:
@@ -35,8 +42,8 @@ Newest first.
   rejected alternatives and no design-phase provenance.
 - [index.md](index.md) loses its History section, and [design/index.md](design/index.md),
   [design/amendments.md](design/amendments.md),
-  [adr/0001-thin-core-architecture.md](adr/0001-thin-core-architecture.md) and
-  [adr/0002-project-name-exocomp.md](adr/0002-project-name-exocomp.md) state their
+  [decisions/0001-thin-core-architecture.md](decisions/0001-thin-core-architecture.md) and
+  [decisions/0002-project-name-exocomp.md](decisions/0002-project-name-exocomp.md) state their
   conclusions inline instead of linking across to another wiki.
 - [AGENTS.md](../AGENTS.md) and the docs-curator role card no longer list `history/` in the
   bundle layout.
@@ -61,7 +68,7 @@ Newest first.
 
 - resolver reads local collection artifacts.
 
-- [ADR 0015](adr/0015-per-source-collections.md) gains an addendum: the
+- [Decision 0015](decisions/0015-per-source-collections.md) gains an addendum: the
   collections resolver's sandbox grants read on the local `type: dir`/`type: file`
   artifact paths a requirements file names, so `ansible-galaxy` can read a
   sibling checkout's `galaxy.yml` under the enforcing tier. The
@@ -76,8 +83,8 @@ Newest first.
   [operations/reactive.md](operations/reactive.md), [operations/mcp.md](operations/mcp.md),
   and [operations/api.md](operations/api.md); the now-moot `--limit-hosts` residual is dropped
   from [security/threat-model.md](security/threat-model.md).
-  [ADR 0018](adr/0018-aggregate-check-events.md) is superseded by
-  [ADR 0019](adr/0019-aggregate-check-events-removed.md).
+  [Decision 0018](decisions/0018-aggregate-check-events.md) is superseded by
+  [Decision 0019](decisions/0019-aggregate-check-events-removed.md).
 - `check_row.aggregate`/`min_up` and migration
   [0041](../internal/store/migrations/0041_check_aggregate.sql) remain as inert
   schema; no drop-column migration is added.
@@ -101,7 +108,7 @@ Newest first.
 - **`RECOVERY.md` now carries `image-ref:`** at each target root: the ref the daemon read
   from the unit's `EXOCOMP_IMAGE` and stored as `deploy.image_ref`. An unset ref omits the
   line rather than printing an empty value. This is the gap
-  [ADR 0016](adr/0016-artifact-carrier-image.md) names — a local tag dies with the host, so
+  [Decision 0016](decisions/0016-artifact-carrier-image.md) names — a local tag dies with the host, so
   the recovery chain must name the image to re-load.
 - `install.sh` gains `--image-load FILE` (`podman load -i`, or `docker load -i` on the
   Docker tier, before install or rollback) and `--image-ref REF`. The Quadlet unit and the
@@ -117,7 +124,7 @@ Newest first.
 
 - **`doctor` now diffs each resolved tool version against its `MANIFEST.json` pin.** The
   comparison folds into the existing `optional_tools` health entry, so the fixed subsystem
-  list is unchanged. A version off its pin is `warn`, never `fail` — the ADR 0006 operator
+  list is unchanged. A version off its pin is `warn`, never `fail` — the Decision 0006 operator
   escape hatch is a supported state; a version the extraction rule cannot parse is named in
   the detail without moving the status; and no manifest env at all leaves the entry
   `unknown`. The text report marks each divergent line against its pin and prints the active
@@ -126,22 +133,22 @@ Newest first.
 
 ## 2026-09-17
 
-- ADR 0016 and the container page.
+- Decision 0016 and the container page.
 
-- **New [ADR 0016](adr/0016-artifact-carrier-image.md):** the base image is a
+- **New [Decision 0016](decisions/0016-artifact-carrier-image.md):** the base image is a
   distributable artifact carrier; uv is bootstrapped when absent, the Python pin
   is resolved from ansible and frozen, and ansible-core is a PATH-delegated
-  command rather than a forced per-venv dependency. Amends ADRs 0006 and 0011.
+  command rather than a forced per-venv dependency. Amends decision records 0006 and 0011.
 - **New [operations/containers.md](operations/containers.md):** the base image and
   what it carries, running it as shipped, inheriting to add system packages or
   Python dependencies, offline and multi-arch builds, and capturing an operator's
   image for recovery. Copying artifacts into a foreign base is deferred.
-- **Correction of fact:** `index.md` labelled its six-row ADR table "Six accepted
-  ADRs"; the bundle now carries sixteen, so the table is retitled a foundational
-  subset and points at the full list at [adr/index.md](adr/index.md).
+- **Correction of fact:** `index.md` labelled its six-row record table "Six accepted
+  decision records"; the bundle now carries sixteen, so the table is retitled a foundational
+  subset and points at the full list at [decisions/index.md](decisions/index.md).
 - `platform-contract.md` gains an operator-built-image tier row;
   `bill-of-materials.md` lists `uvx` and the base image as a digest-pinned
-  distribution artifact; `design/byo-runner.md` cross-references ADR 0016 so the
+  distribution artifact; `design/byo-runner.md` cross-references Decision 0016 so the
   deferred in-daemon tier is not confused with the supported image story.
 
 ## 2026-09-15
@@ -197,10 +204,10 @@ Newest first.
 
 ## 2026-09-06
 
-- ADR 0015 page added.
+- Decision 0015 page added.
 
-- **A new `adr/0015-per-source-collections.md` page records the per-source
-  ansible collections isolation decision**, superseding ADR 0011's collections
+- **A new `decisions/0015-per-source-collections.md` page records the per-source
+  ansible collections isolation decision**, superseding Decision 0011's collections
   decision; the venv, tofu-provider, tofu-modules, and system-package decisions
   stand. Structural: a page added.
 
@@ -420,7 +427,7 @@ expose no mint.
   aliases. Terminology reconciled across [architecture/execution.md](architecture/execution.md),
   [operations/serve.md](operations/serve.md), [design/byo-runner.md](design/byo-runner.md),
   [security/threat-model.md](security/threat-model.md),
-  [adr/0005-job-sandboxing-nono.md](adr/0005-job-sandboxing-nono.md), and the index, runners,
+  [decisions/0005-job-sandboxing-nono.md](decisions/0005-job-sandboxing-nono.md), and the index, runners,
   cli-run, provision-converge, and SBOM pages.
 
 
@@ -434,7 +441,7 @@ expose no mint.
 
 - source kinds collapsed; runs move to the source page.
 
-- **ADR 0010 addendum** and operations/sources.md updated for the git/path (+writable) model; serve.md reflects the source-page launchers.
+- **Decision 0010 addendum** and operations/sources.md updated for the git/path (+writable) model; serve.md reflects the source-page launchers.
 
 ## 2026-08-25
 
@@ -456,7 +463,7 @@ from the bearer-only `/api/v1`.
 - **New** repo-root `README.md`, current to shipped reality (OpenTofu, the single
   MCP-over-HTTP surface, remote CLI, sandbox tiers).
 - **Voice.** Internal build codenames — milestone tags, finding and review ids, process
-  jargon — are removed across the docs and ADRs; pages describe current behaviour and read
+  jargon — are removed across the docs and decision records; pages describe current behaviour and read
   harness-neutral.
 
 
@@ -550,9 +557,9 @@ and unlink-on-exit. `exocomp doctor` reports the resolved backend and residual p
 
 The stdio MCP server documentation is removed. [operations/mcp.md](operations/mcp.md) now
 describes one programmatic surface — MCP over HTTP on the `serve` listener, bearer-scoped
-([ADR 0009](adr/0009-lan-access-tokens.md)) — with an off-the-shelf http-to-stdio bridge for
+([Decision 0009](decisions/0009-lan-access-tokens.md)) — with an off-the-shelf http-to-stdio bridge for
 stdio-only clients and the agent-aware CLI as the local path.
-[adr/0014-agent-facing-surface.md](adr/0014-agent-facing-surface.md) and
+[decisions/0014-agent-facing-surface.md](decisions/0014-agent-facing-surface.md) and
 [design/agent-interface.md](design/agent-interface.md) are reconciled to this; several pages
 (threat model, architecture overview, operations index) were caught up to the removal.
 
@@ -609,18 +616,18 @@ stdio-only clients and the agent-aware CLI as the local path.
   approval-surface contract.
 - **Correction.** The printed recovery card's derivation block renders from code, not from
   the mock: the shipped envelope uses the constant salt `exocomp/v1` with `info = purpose:id`
-  ([ADR 0003](adr/0003-secrets-envelope.md)); the mock's `exo` command shorthand is not used
-  ([ADR 0002](adr/0002-project-name-exocomp.md)).
+  ([Decision 0003](decisions/0003-secrets-envelope.md)); the mock's `exo` command shorthand is not used
+  ([Decision 0002](decisions/0002-project-name-exocomp.md)).
 
 
 ## 2026-08-22
 
-- ADRs 0008 and 0009 recorded.
+- Decision records 0008 and 0009 recorded.
 
-- [ADR 0008](adr/0008-step-ledger-over-dbos.md): durable execution is a step-ledger extension of the
+- [Decision 0008](decisions/0008-step-ledger-over-dbos.md): durable execution is a step-ledger extension of the
   job store; DBOS is assessed and deferred (young SQLite path, single maintainer, second
   runtime).
-- [ADR 0009](adr/0009-lan-access-tokens.md): LAN exposure is secured by local-minted bearer
+- [Decision 0009](decisions/0009-lan-access-tokens.md): LAN exposure is secured by local-minted bearer
   tokens with default self-signed TLS and fingerprint pinning.
 
 
@@ -646,12 +653,12 @@ pre-repository design archive. The curated pages summarize; the archive's source
 were imported byte-identical under [history/](history/index.md) — thirteen files, checked
 for absolute paths and home directories (none present).
 
-- **Sections and pages**: `index.md`, this `log.md`, `adr/` (0001–0006, Accepted),
+- **Sections and pages**: `index.md`, this `log.md`, `decisions/` (0001–0006, Accepted),
   `architecture/` (`overview.md`, `platform-contract.md`, `execution.md`), `design/`
   (`requirements.md`, `amendments.md`, `delivery.md`), `operations/` (`bootstrap.md`,
   `disaster-recovery.md`), `sbom/` (`bill-of-materials.md`), and `history/`.
 - **Naming.** Most of the archive predates the rename from the working name "control" to
-  **exocomp** ([ADR 0002](adr/0002-project-name-exocomp.md)); curated pages use the current
+  **exocomp** ([Decision 0002](decisions/0002-project-name-exocomp.md)); curated pages use the current
   name throughout, and imported history was deliberately not rewritten (see
   [history/index.md](history/index.md)).
 - **Precedence.** Where a curated page and a history page disagree, the curated page wins;

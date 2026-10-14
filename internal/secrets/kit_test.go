@@ -44,7 +44,7 @@ func TestKitRendersSecretKeyOnlyAtInit(t *testing.T) {
 		}
 	}
 	// The card must not promise what it does not carry, must not name a flag
-	// the binary does not have, and must not print the `exo` shorthand ADR 0002
+	// the binary does not have, and must not print the `exo` shorthand Decision 0002
 	// forbids.
 	for _, phrase := range []string{"credential from this card", "--deep", "exo kit", "exo backup"} {
 		if strings.Contains(minted, phrase) {

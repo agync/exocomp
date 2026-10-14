@@ -1,10 +1,10 @@
 // Package litestream generates and reasons about the optional Litestream
-// sidecar that replicates exocomp.db's WAL for seconds-level RPO (ADR 0012).
+// sidecar that replicates exocomp.db's WAL for seconds-level RPO (Decision 0012).
 //
 // The sidecar runs BESIDE exocompd, never inside it: this package emits a
 // litestream.yml config and observes a replica's freshness, but it never
 // links, compiles in, or spawns litestream from within the daemon. That keeps
-// the thin-core invariant (ADR 0001) intact — Litestream is a pinned tool the
+// the thin-core invariant (Decision 0001) intact — Litestream is a pinned tool the
 // operator runs, like restic, not a second service the daemon owns.
 //
 // Litestream is the fast-RPO complement to the authoritative restic DR chain,

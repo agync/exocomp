@@ -331,7 +331,7 @@ func TestLitestreamPageConfigAndRestore(t *testing.T) {
 	}
 	// A6 (SPEC §7) landed the Set-target form on this page, so it is no longer
 	// form-free; what must not exist is a verb that pretends the daemon runs
-	// the sidecar (ADR 0012 — the daemon generates config and observes).
+	// the sidecar (Decision 0012 — the daemon generates config and observes).
 	if !strings.Contains(page, `action="/system/litestream/target"`) {
 		t.Error("/system/litestream missing the Set-target form")
 	}

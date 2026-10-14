@@ -12,7 +12,7 @@ exocomp provides native lifecycle management for OpenTofu (`opentofu`) configura
 
 ## The SQLite HTTP state backend
 
-exocomp implements OpenTofu's HTTP state backend directly inside `exocompd` backed by the local SQLite database (ADR 0004):
+exocomp implements OpenTofu's HTTP state backend directly inside `exocompd` backed by the local SQLite database (Decision 0004):
 
 - **No external S3 or MinIO required**: Eliminates the conditional-write/consistency bugs of self-hosted object stores.
 - **Automatic version history**: Every state update is recorded with full rollback history.

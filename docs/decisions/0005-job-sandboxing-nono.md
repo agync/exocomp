@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0005 — Job sandboxing: the `enforcing` tier via nono"
+title: "Decision 0005 — Job sandboxing: the `enforcing` tier via nono"
 description: "Job sandboxing via nono's enforcing tier, so a job is denied every powerful local socket."
 status: stable
 tags: [decision, security, sandbox]
 ---
 
-# ADR 0005 — Job sandboxing: the `enforcing` tier via nono
+# Decision 0005 — Job sandboxing: the `enforcing` tier via nono
 
 ## Status
 

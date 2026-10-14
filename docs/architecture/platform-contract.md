@@ -17,11 +17,11 @@ CI, so these tiers are commitments the delivery plan states, not verified claims
 | systemd (Quadlet) | first-class | `Type=notify` + `WatchdogSec`. Readiness is signalled by `sd_notify` **after** DB integrity check and keyring unwrap; the watchdog is pinged from the scheduler loop, so a *wedged* daemon is restarted, not merely a dead one. The installer runs `loginctl enable-linger`; `MemoryMax=` lives in the unit; logs go to journald |
 | podman (rootless) | first-class | Quadlet units, podman ≥ 4.4 floor. Podman auto-update is **disabled** for our unit — self-update is the approval-gated job instead. Socket mounting is confined to the deferred `container` driver |
 | docker / compose | supported, degraded loudly | shipped compose file; `restart: unless-stopped` and json-file logs instead of systemd. **No `systemd-creds` path, so the host key is a 0400 file and TPM sealing is unavailable.** Rootful unless the operator runs rootless Docker. The shipped compose file states the degraded tier rather than pretending parity |
-| operator-built image | supported, base-only | inherit `FROM ghcr.io/abn/exocomp` with version-pinned layers; the built image is captured into the recovery set (`podman save`) or recorded by Dockerfile + source base digests. Copying our artifacts into a foreign base with `COPY --from` is deferred ([ADR 0016](../adr/0016-artifact-carrier-image.md)) |
+| operator-built image | supported, base-only | inherit `FROM ghcr.io/abn/exocomp` with version-pinned layers; the built image is captured into the recovery set (`podman save`) or recorded by Dockerfile + source base digests. Copying our artifacts into a foreign base with `COPY --from` is deferred ([Decision 0016](../decisions/0016-artifact-carrier-image.md)) |
 | SELinux enforcing | supported, CI-tested | see below |
 
 The degraded Docker tier is the design's honesty test: it is documented as a lower threat
-tier ([ADR 0003](../adr/0003-secrets-envelope.md) — the host key protects against off-host
+tier ([Decision 0003](../decisions/0003-secrets-envelope.md) — the host key protects against off-host
 attackers and stolen disks, not root on the box) rather than quietly shipped as equivalent.
 
 ## SELinux
@@ -37,7 +37,7 @@ bundle may depend on permissive mode.
   rather than a silently missing backup leg.
 - **nono/Landlock stacks with SELinux.** Both are LSMs and their policies AND together;
   this is asserted in the enforcing CI job, not assumed
-  ([ADR 0005](../adr/0005-job-sandboxing-nono.md)).
+  ([Decision 0005](../decisions/0005-job-sandboxing-nono.md)).
 - **container-selinux's socket confinement** is treated as a second, independent
   enforcement of the "jobs reach no local sockets" rule. The one place it bites is
   documented: the deferred `container` driver's podman-socket mount needs `label=disable`

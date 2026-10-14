@@ -14,7 +14,7 @@ Values never render in web templates, TUI screens, JSON event logs, or error dum
 
 ## The age secrets envelope
 
-At initialization, exocomp creates a root Data Encryption Key (DEK) wrapped by age identity keys (ADR 0003):
+At initialization, exocomp creates a root Data Encryption Key (DEK) wrapped by age identity keys (Decision 0003):
 
 - **At rest**: The DEK is encrypted inside `keyring.age` on the data volume.
 - **In memory**: The decrypted DEK is held in RAM and locked using `mlock` to prevent paging to swap.

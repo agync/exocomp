@@ -10,7 +10,7 @@ tags: [operations, containers, packaging]
 
 exocomp ships as one container. This page covers running it, extending it by
 inheriting from it, and recovering it. The decisions behind it are
-[ADR 0016](../adr/0016-artifact-carrier-image.md); the recovery chain it plugs
+[Decision 0016](../decisions/0016-artifact-carrier-image.md); the recovery chain it plugs
 into is [disaster recovery](disaster-recovery.md).
 
 ## Status
@@ -20,8 +20,8 @@ into is [disaster recovery](disaster-recovery.md).
 | Base image builds and runs (`make image`), `doctor` green | **shipped** |
 | Inheriting from the base (`FROM exocomp`) | **supported** |
 | Published `ghcr.io/abn/exocomp` (multi-arch, digest) | decided, lands with the packaging work |
-| uv self-bootstrap; PATH-delegated ansible with `PYTHONPATH` | decided in ADR 0016, lands with the packaging work |
-| `COPY --from` into a foreign base | **deferred** (ADR 0016, Scope) |
+| uv self-bootstrap; PATH-delegated ansible with `PYTHONPATH` | decided in Decision 0016, lands with the packaging work |
+| `COPY --from` into a foreign base | **deferred** (Decision 0016, Scope) |
 
 Until the published ref exists, substitute the locally built
 `localhost/exocomp:dev` (`make image`) for the image name below.
@@ -64,24 +64,24 @@ USER 1000:1000
 Version-pin the packages and end on `USER 1000:1000`. Two things to know: a
 system binary a job runs must be reachable under the job sandbox, so a
 nono grant is needed and `exocomp doctor` reports the addition; and this is the
-one seam ADR 0011 leaves out of runtime scope, which is why it is an image
+one seam Decision 0011 leaves out of runtime scope, which is why it is an image
 change and not a manifest change.
 
 When running a custom derived image under systemd, update both `Image=` and
 `Environment=EXOCOMP_IMAGE=` in `~/.config/containers/systemd/exocomp.container`
-so the unit executes your image tag and records it for disaster recovery (ADR 0016).
+so the unit executes your image tag and records it for disaster recovery (Decision 0016).
 
 ## Add Python dependencies
 
 Prefer the declared-manifest path. A project's root `requirements.txt` or
 `pyproject.toml` (PEP 621 / dependency-groups) is resolved by uv into a
 per-source, hash-gated venv — offline after the first resolve
-([ADR 0011](../adr/0011-project-dependency-resolution.md)). A source that
+([Decision 0011](../decisions/0011-project-dependency-resolution.md)). A source that
 declares nothing stays on the shared toolchain.
 
 To change the shared toolchain itself, the operator escape hatch applies uv at a
 shell into the data volume, so the switch persists, rides in backups, and is
-visible to `doctor` ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)):
+visible to `doctor` ([Decision 0006](../decisions/0006-uv-toolchain-escape-hatch.md)):
 
 ```
 uv tool install --python <interpreter> ansible-core==<version> --with <module-dep>
@@ -96,10 +96,10 @@ manifest path is the supported one. Baking is for a dependency every run needs.
 
 ## Pin a different ansible-core
 
-Today the image pin moves through the ADR 0006 escape hatch or an image rebuild;
-a per-source venv does not override it. ADR 0016 changes this: the fallback
+Today the image pin moves through the Decision 0006 escape hatch or an image rebuild;
+a per-source venv does not override it. Decision 0016 changes this: the fallback
 toolchain is exocomp-managed and a project that declares `ansible-core` in its
-manifest shadows it. Landed behavior follows that ADR.
+manifest shadows it. Landed behavior follows that record.
 
 ## Offline and air-gapped
 

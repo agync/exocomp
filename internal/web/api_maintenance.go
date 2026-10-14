@@ -9,7 +9,7 @@ import (
 	"exocomp.dev/exocomp/internal/wire"
 )
 
-// This file mounts the drain/cordon maintenance action on the ADR-0009 listener,
+// This file mounts the drain/cordon maintenance action on the Decision 0009 listener,
 // the operator-scoped channel the CLI already reaches the daemon through. It is
 // the one place an operator can cordon a RUNNING daemon ahead of a planned
 // reboot: cordon stops new schedule fires and new job claims while in-flight work

@@ -17,7 +17,7 @@ import (
 )
 
 // This file mounts the read-only operator HTTP/JSON API (agent-interface §3.4)
-// on the SAME ADR-0009 listener as the browser surface. Every route reuses the
+// on the SAME Decision 0009 listener as the browser surface. Every route reuses the
 // browser's auth resolution (s.resolve, the same session/bearer + KDF-gate path
 // requireAuth uses) and marshals the SAME wire projections the CLI's
 // `--output json` emits, so a resource's API bytes and its CLI bytes
@@ -139,7 +139,7 @@ func (s *Server) apiGuard(allow func(identity) bool, denyMsg string, next http.H
 	}
 }
 
-// canRead reports whether a resolved scope may read. All three ADR-0009 scopes
+// canRead reports whether a resolved scope may read. All three Decision 0009 scopes
 // are readonly-or-higher, so any valid token qualifies; the switch is the
 // explicit floor, and rejects an unknown/empty scope rather than defaulting open.
 func canRead(id identity) bool {
@@ -159,7 +159,7 @@ func canWrite(id identity) bool {
 }
 
 // canApprove reports whether a resolved scope may decide an approval on the
-// MACHINE face. It is the approve scope alone: ADR 0014 §3 maps readonly/
+// MACHINE face. It is the approve scope alone: Decision 0014 §3 maps readonly/
 // operator/approve onto R/W/A, and a token that may enqueue a gated apply must
 // not also hold the release for the gate it raised. The browser
 // surface keeps mayApprove's operator-or-approve floor — that is the human at

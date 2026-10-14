@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0017 — One probe vocabulary for checks and gates"
+title: "Decision 0017 — One probe vocabulary for checks and gates"
 description: "One shared probe vocabulary for checks and gates, with the SSRF guard applied per face and Location opt-in per kind."
 status: stable
 tags: [decision, checks, probes]
 ---
 
-# ADR 0017 — One probe vocabulary for checks and gates
+# Decision 0017 — One probe vocabulary for checks and gates
 
 Status: accepted · 2026-09-15
 
@@ -53,4 +53,4 @@ Two consequences are explicit, not incidental:
 - `internal/probe` does not import `store`; the store builds a `Spec` from a
   check kind + target, and validation delegates to the same `Spec.Validate`.
 - A future probe kind is a Go addition plus, only if it changes the stored
-  `kind` set, one widening migration — the same shape this ADR already paid for.
+  `kind` set, one widening migration — the same shape this record already paid for.

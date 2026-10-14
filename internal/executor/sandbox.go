@@ -24,7 +24,7 @@ const (
 	// choice.
 	TierDisabled Tier = "disabled"
 	// TierEnforcing wraps every job subprocess in a default-deny nono sandbox
-	// (ADR 0005) and fails closed at startup when the host cannot enforce it.
+	// (Decision 0005) and fails closed at startup when the host cannot enforce it.
 	TierEnforcing Tier = "enforcing"
 	// TierOpportunistic asks for TierEnforcing and accepts a loud degradation to
 	// TierDisabled when the host cannot enforce it.
@@ -61,7 +61,7 @@ func ParseTier(s string) (Tier, error) {
 // NonoBinary is the sandbox launcher the enforcing tier runs jobs under.
 const NonoBinary = "nono"
 
-// NonoMinVersion is the floor ADR 0005 pins: CVE-2026-47128 — an escape via a
+// NonoMinVersion is the floor Decision 0005 pins: CVE-2026-47128 — an escape via a
 // powerful local unix socket — is fixed in 0.55.0, and that escape class is
 // exactly what this project's own sockets would be vulnerable to.
 const NonoMinVersion = "0.55.0"
@@ -94,7 +94,7 @@ var deniedDataDirNames = []string{
 // SandboxOptions is the per-run policy the sandbox enforces. Every path is a
 // grant; everything not named here is denied by the kernel, unix sockets
 // included — no profile this package builds carries a socket grant, which is
-// the CVE lesson ADR 0005 records.
+// the CVE lesson Decision 0005 records.
 type SandboxOptions struct {
 	// Binary overrides the launcher. Empty resolves nono on PATH.
 	Binary string
@@ -512,7 +512,7 @@ func ParseCanaryTargets(args []string) (CanaryTargets, error) {
 	return t, nil
 }
 
-// RunCanary attempts, from inside the sandbox, exactly what ADR 0005 says a job
+// RunCanary attempts, from inside the sandbox, exactly what Decision 0005 says a job
 // must never manage: read a file standing in for host.key, reach a local unix
 // socket, and open a TCP connection the profile does not grant. It prints one
 // line naming each outcome and returns 0 only when the three the kernel can
@@ -631,7 +631,7 @@ const (
 // long is not a sandbox anyone should wait on at boot.
 const probeTimeout = 30 * time.Second
 
-// Probe asserts the sandbox rather than assuming it (ADR 0005): it stands up a
+// Probe asserts the sandbox rather than assuming it (Decision 0005): it stands up a
 // fake host.key, two listening unix sockets, and a listening loopback TCP port,
 // runs the canary under a profile that grants none of them, and requires the
 // canary to report the refusals. Every target is live — a refusal has to come
@@ -656,7 +656,7 @@ func Probe(ctx context.Context, want Tier, opts ProbeOptions) ProbeResult {
 	}
 	res.NonoVersion = version
 	if !versionAtLeast(version, NonoMinVersion) {
-		res.Reason = fmt.Sprintf("%s %s is below the %s floor ADR 0005 pins",
+		res.Reason = fmt.Sprintf("%s %s is below the %s floor Decision 0005 pins",
 			NonoBinary, version, NonoMinVersion)
 		return res
 	}

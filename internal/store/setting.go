@@ -60,7 +60,7 @@ const (
 	// SettingImageRef is the image this deployment runs, read from the unit's
 	// EXOCOMP_IMAGE at startup. It is recorded so RECOVERY.md and `exocomp
 	// doctor` name what a recovered host must load: a local image tag lives in
-	// the store of the host that can fail (ADR 0016).
+	// the store of the host that can fail (Decision 0016).
 	SettingImageRef = "deploy.image_ref"
 )
 

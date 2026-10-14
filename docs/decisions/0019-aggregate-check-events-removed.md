@@ -1,20 +1,20 @@
 ---
 type: Decision
-title: "ADR 0019 — Aggregate check events removed"
+title: "Decision 0019 — Aggregate check events removed"
 description: "Aggregate check events, the event host set and the limit-hosts flag are removed, leaving migration 0041 as inert schema."
 status: stable
 tags: [decision, checks]
 ---
 
-# ADR 0019 — Aggregate check events removed
+# Decision 0019 — Aggregate check events removed
 
-Status: accepted · 2026-09-26 · supersedes [ADR 0018](0018-aggregate-check-events.md)
+Status: accepted · 2026-09-26 · supersedes [Decision 0018](0018-aggregate-check-events.md)
 
 ## Context
 
-ADR 0018 introduced an opt-in check-level aggregate: a check could emit one
+Decision 0018 introduced an opt-in check-level aggregate: a check could emit one
 event over the targets currently up, carrying `Hosts`, and a `playbook` rule
-could derive its ansible `--limit` from that set via `--limit-hosts`. The ADR
+could derive its ansible `--limit` from that set via `--limit-hosts`. The record
 itself flagged the capability as unproven and named its own kill criterion
 (S9): if the operator's real work is served by per-target rules, remove it
 rather than carry it.
@@ -51,7 +51,7 @@ migration is added.
   is moot and is removed with the feature; a webhook body can no longer reach
   ansible argv because there is no expansion path left to reach.
 - A `playbook` rule requires its fixed `--limit` again, unchanged in meaning
-  from before ADR 0018.
+  from before Decision 0018.
 - `check_row` keeps two unused columns. That is deliberate, recorded debt: they
   are inert, defaulted, and never read or written by the binary.
 - `TestMigration0041UpgradesFrom040` no longer asserts the aggregate config; it

@@ -1,17 +1,17 @@
 ---
 type: Decision
-title: "ADR 0014 — Agent-facing surface: one core, three thin programmatic faces"
+title: "Decision 0014 — Agent-facing surface: one core, three thin programmatic faces"
 description: "One core with three thin programmatic faces, the machine CLI, the HTTP API and MCP, sharing the one auth model, the one queue and the wire envelope."
 status: stable
 tags: [decision, api, mcp, cli]
 ---
 
-# ADR 0014 — Agent-facing surface: one core, three thin programmatic faces
+# Decision 0014 — Agent-facing surface: one core, three thin programmatic faces
 
 Status: Accepted · 2026-08-23
 
 > exocomp maintains exactly one programmatic MCP surface — MCP over HTTP with a bearer token
-> and the ADR-0009 scopes — and no ambient-authority MCP path. The MCP surface uses this
+> and the Decision 0009 scopes — and no ambient-authority MCP path. The MCP surface uses this
 > uniform bearer token, never ambient local-operator authority.
 
 ## Context
@@ -19,7 +19,7 @@ Status: Accepted · 2026-08-23
 exocomp's charter is operator-centric: a human runs the CLI, the TUI, or the web/phone
 approval surface. The charter does not name an agent, an MCP client, or a remote CLI consumer
 as a requirement. `docs/design/agent-interface.md` extends the charter to cover that gap
-(design doc §7); this ADR makes agent-fit a first-class charter concern instead of an
+(design doc §7); this record makes agent-fit a first-class charter concern instead of an
 assumption a design doc carries alone.
 
 The concrete need is real and built: run homelab-ansible operations from an operator
@@ -32,7 +32,7 @@ Two invariants bound the design space:
 
 - **Invariant 5** — every execution path goes through the one job queue; guardrails live in
   the queue, not in configuration. A programmatic face that could enqueue by any other means
-  would be the divergent path ADR-0001's thin-core decision rules out.
+  would be the divergent path Decision 0001's thin-core decision rules out.
 - **Invariant 3** — subprocess correctness is decided by exit codes only. A machine face
   gets the same signal a human gets from a shell, not a parallel truth.
 
@@ -42,7 +42,7 @@ exocomp exposes the core through three thin programmatic faces on one contract f
 remote CLI client mode, and the HTTP MCP server extend that foundation; each passes security
 review and the usual `make check` gates.
 
-`/api/v1` and the HTTP MCP transport ride the ADR-0009 web listener (`internal/web`), not
+`/api/v1` and the HTTP MCP transport ride the Decision 0009 web listener (`internal/web`), not
 `internal/api` — the separate loopback tofu state backend, which has no route-extension hook of
 its own. The web mount seam and `internal/service` are the infrastructure that makes this
 possible.
@@ -73,14 +73,14 @@ credential.**
    managed-state and execution writes to the queue; it does not turn every control-plane toggle
    into a job.
 
-3. **One agent-aware MCP surface: HTTP + bearer + the ADR-0009 scopes.** exocomp maintains
-   exactly one programmatic MCP surface — MCP over HTTP, mounted on the same ADR-0009 listener
+3. **One agent-aware MCP surface: HTTP + bearer + the Decision 0009 scopes.** exocomp maintains
+   exactly one programmatic MCP surface — MCP over HTTP, mounted on the same Decision 0009 listener
    as `/api/v1` (`POST /mcp`, `internal/web/mcp_http.go`), behind the same `/api/v1` write
    guard, stateless so a revoke bites on the next call. It is not a second server: there is one
    MCP core — one tool/resource catalog, one set of handlers, one dispatch (`internal/mcp`) —
    and it calls the same in-process `internal/service` verbs `/api/v1` calls. The MCP-HTTP face
    is the agent-aware wrapper around the `/api/v1` bearer tokens: every MCP principal presents a
-   scoped token, and the three ADR-0009 scopes map 1:1 onto the capabilities the catalog gates
+   scoped token, and the three Decision 0009 scopes map 1:1 onto the capabilities the catalog gates
    on — `readonly` / `operator` / `approve` are R / W / A (`internal/mcp/caller.go`).
 
    **Scope-gated, with W and A disjoint.** MCP tool visibility is scope-gated on the token: a
@@ -170,21 +170,21 @@ credential.**
    workstation drive a remote daemon over the tailnet. The selector is `--remote`, not
    `--host`: `--host` is already the ansible target pattern (`exocomp command --host
    <pattern>`) and reusing it for the daemon would collide. The HTTP MCP server (`internal/mcp`
-   dispatch mounted at `POST /mcp` on the ADR-0009 listener, `internal/web/mcp_http.go`)
+   dispatch mounted at `POST /mcp` on the Decision 0009 listener, `internal/web/mcp_http.go`)
    completes the set. All three pass the same security review and `make check` gates as the
    rest of the surface.
 
 ## Consequences
 
 - Agent-fit is a first-class charter concern, not an assumption implicit in a design doc —
-  future work on the CLI, `/api/v1`, or MCP cites this ADR instead of re-litigating whether a
+  future work on the CLI, `/api/v1`, or MCP cites this record instead of re-litigating whether a
   programmatic surface belongs here at all.
 - The three faces converge on one marshaller and one set of golden tests: a CLI JSON shape and
   an API JSON shape are the same commitment, not two contracts that can drift apart.
 - `internal/service` is the one verb layer the write API and MCP faces call; the CLI,
   `/api/v1`, and MCP share it rather than each reimplementing a verb.
 - **A revoked token cuts off every programmatic face at once.** Every programmatic face is
-  token-bearing: the remote CLI (`--remote`), `/api/v1`, and MCP-HTTP each present an ADR-0009
+  token-bearing: the remote CLI (`--remote`), `/api/v1`, and MCP-HTTP each present an Decision 0009
   bearer, each is stateless and re-resolves the credential per call, and there is no tokenless
   MCP path for a revoke to miss. A revoke bites on the next request on every face, not at
   session end — there is no ambient-authority path it could fail to reach, because exocomp
@@ -194,7 +194,7 @@ credential.**
   minted `approve` token, so a face that raises a gate can never also settle it.
 - One follow-on is deferred, not a blocker: OAuth 2.1 for the MCP-HTTP transport. The seam
   exists (the transport already resolves a bearer per request through the hardened `/api/v1`
-  path), but token-issuance flows beyond ADR-0009 minting are not built; a harness that wants
+  path), but token-issuance flows beyond Decision 0009 minting are not built; a harness that wants
   OAuth today is served by the bearer it already carries.
 - The exit-code table and typed-error taxonomy are a stable contract: a future change to
   either bumps `schema_version`, the same discipline the envelope shape already follows.

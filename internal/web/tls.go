@@ -19,7 +19,7 @@ import (
 
 // certFile and keyFile are where the LAN listener's self-signed material lives
 // in the data dir. The key is written 0600 and never leaves the box; the cert
-// is what a phone pins on first use (ADR 0009).
+// is what a phone pins on first use (Decision 0009).
 const (
 	certFile = "web-cert.pem"
 	keyFile  = "web-key.pem"

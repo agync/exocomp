@@ -92,7 +92,7 @@ func (r *recordingSandbox) Wrap(argv []string) ([]string, error) {
 	return argv, nil
 }
 
-// TestEnsureCollectionsIsHashGated is the core of the ADR 0015 promise: a
+// TestEnsureCollectionsIsHashGated is the core of the Decision 0015 promise: a
 // first resolve invokes ansible-galaxy and provisions the dir; a second
 // resolve of the same requirements invokes it zero more times and returns the
 // same directory; changed requirements land a new hash directory and invoke
@@ -160,7 +160,7 @@ func TestEnsureCollectionsIsHashGated(t *testing.T) {
 
 // TestEnsureCollectionsFailClosed: an ansible-galaxy that exits non-zero must
 // leave no reusable dir behind, so a run never proceeds against half-met
-// collections (ADR 0015).
+// collections (Decision 0015).
 func TestEnsureCollectionsFailClosed(t *testing.T) {
 	cache := t.TempDir()
 	project := t.TempDir()

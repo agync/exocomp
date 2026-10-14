@@ -9,7 +9,7 @@ tags: [operations, sources, credentials]
 # Sources, inventories, and the credential plane
 
 How a run's tree arrives, what inventory it targets, and how it authenticates to the
-outside world. The model is [ADR 0010](../adr/0010-source-and-credential-model.md).
+outside world. The model is [Decision 0010](../decisions/0010-source-and-credential-model.md).
 
 ## Sources — two localities
 
@@ -163,7 +163,7 @@ exocomp playbook run site.yml --vault-project homelab
 The web UI presents these under "Workspaces" as managed OpenTofu state (with a paste-ready backend config); the CLI verb and
 the `workspace` store/API stay as they are.
 
-Two first-class modes ([ADR 0010](../adr/0010-source-and-credential-model.md)):
+Two first-class modes ([Decision 0010](../decisions/0010-source-and-credential-model.md)):
 
 - **Mode A — state store only.** `exocomp workspace add <name> --state-only` emits a
   ready-to-paste `backend "http"` block plus its bearer. An unmodified external `tofu`

@@ -21,7 +21,7 @@
 //
 // Auth model: the TRANSPORT authenticates and this package authorizes. Every
 // dispatch takes the Caller the transport resolved (TokenCaller, built from an
-// ADR-0009 bearer token), and both the advertised catalog and the per-call
+// Decision 0009 bearer token), and both the advertised catalog and the per-call
 // check derive from it, so a readonly token is shown only read tools and a
 // revoked or downgraded token stops working on its next call.
 //

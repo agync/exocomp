@@ -67,7 +67,7 @@ type Step struct {
 }
 
 // Sequencer runs an ordered list of steps over the existing queue, one at a
-// time, advancing to step N+1 only once step N reached succeeded (ADR 0008).
+// time, advancing to step N+1 only once step N reached succeeded (Decision 0008).
 // It is not a second runtime: every step is an ordinary queue job, and the
 // queue's own workers execute it. The sequencer only decides what to release
 // next and records each step's outcome in the ledger.
@@ -233,7 +233,7 @@ func (s *Sequencer) runStep(ctx context.Context, workflowID string, step store.W
 	// A job that did NOT reach a decision — the boot sweep retired it to
 	// interrupted, or a shutdown cancelled it mid-run — means the process died
 	// under the step before it could finish. The ledger's contract is to resume
-	// (ADR 0008), so the step is re-armed and run again rather than recorded as
+	// (Decision 0008), so the step is re-armed and run again rather than recorded as
 	// a failure that would block the rest of the workflow.
 	if found && job.State.Terminal() {
 		if !nonDecision(job) {
@@ -325,7 +325,7 @@ func nonDecision(job store.Job) bool {
 // rearmStep enqueues a fresh gated job from an interrupted step's own spec,
 // under a new idempotency key, and retargets the ledger step back to pending so
 // the caller can release and run it. The old job stays terminal as history; the
-// step's effect is expected to be idempotent (ADR 0008), so re-running a swap,
+// step's effect is expected to be idempotent (Decision 0008), so re-running a swap,
 // an apply, or a play that a crash cut short converges rather than duplicates.
 func (s *Sequencer) rearmStep(ctx context.Context, workflowID string, step store.WorkflowStep, job store.Job) (store.Job, error) {
 	newKey := fmt.Sprintf("%s:r%d", step.IdempotencyKey, time.Now().UTC().UnixNano())
@@ -460,7 +460,7 @@ const workflowStepKeyPrefix = "wf:"
 
 // IsWorkflowStepKey reports whether a job's idempotency key marks it as a
 // workflow step. A bulk redrive must leave such a row alone: the sequencer
-// re-arms it (ADR 0008), so re-driving it would duplicate the step's effect and
+// re-arms it (Decision 0008), so re-driving it would duplicate the step's effect and
 // drop any approval gate the step carried.
 func IsWorkflowStepKey(key string) bool {
 	return strings.HasPrefix(key, workflowStepKeyPrefix)

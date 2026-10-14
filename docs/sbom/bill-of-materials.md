@@ -51,7 +51,7 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 
 | Tool | Pin | License | Role | Interface contract |
 |---|---|---|---|---|
-| uv (+ `uvx`) | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: `exocompd` invokes uv to resolve project-declared Python deps (root `requirements.txt`/`pyproject.toml`) into hash-gated caches ([ADR 0011](../adr/0011-project-dependency-resolution.md)); exocomp installs a pinned uv itself when none is present, and manages the fallback ansible toolchain with `uv tool install` ([ADR 0016](../adr/0016-artifact-carrier-image.md)). The ansible-core toolchain switch remains an operator-only, doctor-gated escape hatch ([ADR 0006](../adr/0006-uv-toolchain-escape-hatch.md)) | build stage + runtime (project-dep vendoring, fallback toolchain, self-bootstrap) + operator shell |
+| uv (+ `uvx`) | 0.9.7 | Apache-2.0/MIT | build: `uv tool install` of the pinned Ansible toolchain, constraints-pinned and frozen into `MANIFEST.json`. Runtime: `exocompd` invokes uv to resolve project-declared Python deps (root `requirements.txt`/`pyproject.toml`) into hash-gated caches ([Decision 0011](../decisions/0011-project-dependency-resolution.md)); exocomp installs a pinned uv itself when none is present, and manages the fallback ansible toolchain with `uv tool install` ([Decision 0016](../decisions/0016-artifact-carrier-image.md)). The ansible-core toolchain switch remains an operator-only, doctor-gated escape hatch ([Decision 0006](../decisions/0006-uv-toolchain-escape-hatch.md)) | build stage + runtime (project-dep vendoring, fallback toolchain, self-bootstrap) + operator shell |
 | ansible-core (+ Python via uv) | 2.21.3 / CPython 3.14.0 | GPL-3.0+ / PSF | playbook execution | direct `ansible-playbook` subprocess, stdout line-scanned into events; exit codes gate success |
 | ansible-runner | 2.4.3 (in the image, unused by the driver) | Apache-2.0 | **not used.** The driver is a direct `ansible-playbook` subprocess — exit-code correctness, line-scanned output — rather than ansible-runner's per-task JSON events and artifact capture. A JSON task-tree callback plugin over the direct driver is backlogged v1.1 | v1.1 backlog |
 | vendored Galaxy collections (`community.sops`, …) | `requirements.yml` lock | GPL-3.0 (mostly) | playbook deps, offline-restorable | data volume cache, in every backup |
@@ -60,13 +60,13 @@ Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
 | sops | 3.13.3 (sha256-pinned) | MPL-2.0 | repo-file secret ops, identical behaviour to the operator CLI | shelled out |
 | age (CLI) | 1.3.1 (sha256-pinned) | BSD-3 | repo-file ops and the printed-card manual recovery path | shelled out |
 | git | 2.4x | GPL-2.0 | project sources; bundle and push for the GitHub backup leg | plumbing only |
-| nono | 0.74.0, floor ≥ 0.55.0 (sha256-pinned) | Apache-2.0 | kernel sandbox around job subprocesses, the `enforcing` tier and Linux default ([ADR 0005](../adr/0005-job-sandboxing-nono.md)) | `nono run` with per-kind grants; doctor probes the Landlock ABI and asserts the denials |
-| Litestream *(optional sidecar)* | 0.5.x | Apache-2.0 | continuous WAL replication, seconds-level RPO; fast-RPO complement to the authoritative restic chain ([ADR 0012](../adr/0012-litestream.md)). Does not encrypt — LAN-local or already-encrypted target only | own process (never embedded); `exocompd` generates its config and observes replica freshness, does not run it |
+| nono | 0.74.0, floor ≥ 0.55.0 (sha256-pinned) | Apache-2.0 | kernel sandbox around job subprocesses, the `enforcing` tier and Linux default ([Decision 0005](../decisions/0005-job-sandboxing-nono.md)) | `nono run` with per-kind grants; doctor probes the Landlock ABI and asserts the denials |
+| Litestream *(optional sidecar)* | 0.5.x | Apache-2.0 | continuous WAL replication, seconds-level RPO; fast-RPO complement to the authoritative restic chain ([Decision 0012](../decisions/0012-litestream.md)). Does not encrypt — LAN-local or already-encrypted target only | own process (never embedded); `exocompd` generates its config and observes replica freshness, does not run it |
 
 Image target ≤ 800 MB measured in CI, with a working target of ~500 MB. The base is a slim
 glibc image — the Python requirement rules out distroless-static.
 
-The image is also a distribution artifact ([ADR 0016](../adr/0016-artifact-carrier-image.md)):
+The image is also a distribution artifact ([Decision 0016](../decisions/0016-artifact-carrier-image.md)):
 `ghcr.io/abn/exocomp`, multi-arch, published as a manifest list and pinned by digest. uv and
 `uvx` are lifted in with the documented `COPY --from=<uv image> /uv /uvx /bin/`, with the uv
 image pinned by digest like every other build input.

@@ -72,7 +72,7 @@ func Probe(ctx context.Context, dataDir string, open OpenStore) wire.HealthView 
 	}, ProbeImageRef(ctx, dataDir, open))
 }
 
-// ProbeImageRef reads the deployment's recorded image ref (ADR 0016),
+// ProbeImageRef reads the deployment's recorded image ref (Decision 0016),
 // best-effort: no database, an unopenable store, or no stored key is simply no
 // ref, never a doctor failure. It stats the database file before opening a
 // store so the probe never creates one as a side effect of reporting.
@@ -488,14 +488,14 @@ var OptionalTools = []Tool{
 	{Name: "age", Args: []string{"--version"}},
 	{Name: "sops", Args: []string{"--version"}},
 	// uv resolves project dependency manifests at runtime and git syncs git
-	// sources; both are declared runtime dependencies (ADR 0011), so a missing
+	// sources; both are declared runtime dependencies (Decision 0011), so a missing
 	// one is a real gap the operator should see rather than discover mid-run.
 	{Name: "uv", Args: []string{"--version"}},
 	{Name: "git", Args: []string{"--version"}},
 }
 
 // ManifestEnv names the environment variable pointing at the image toolchain
-// manifest; the container sets it to /opt/exocomp/MANIFEST.json (ADR 0006).
+// manifest; the container sets it to /opt/exocomp/MANIFEST.json (Decision 0006).
 const ManifestEnv = "EXOCOMP_TOOLCHAIN_MANIFEST"
 
 // ToolProbe is one optional tool's resolved state: whether it is on PATH, the
@@ -652,7 +652,7 @@ func ProbeToolchain(probes []ToolProbe) ToolchainProbe {
 
 // optionalToolsEntry rolls every tool probe and the toolchain-manifest
 // comparison into one subsystem status: a missing tool is a warn (every one of
-// them is still optional) and a version off its pin is a warn too — the ADR
+// them is still optional) and a version off its pin is a warn too — the Decision
 // 0006 escape hatch is made visible, not refused. No manifest at all is
 // unknown, a state to read.
 func optionalToolsEntry(probes []ToolProbe, tc ToolchainProbe) wire.HealthEntry {

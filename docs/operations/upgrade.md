@@ -9,7 +9,7 @@ tags: [operations, serve, rollback]
 # Upgrading and rolling back the binary
 
 `exocomp upgrade` swaps in a new `exocomp` binary as a step-ledger choreography
-(ADR 0008): every step is one row in the `workflow_step` ledger and one job
+(Decision 0008): every step is one row in the `workflow_step` ledger and one job
 through the queue, and any failed step rolls the whole thing back, leaving the
 system exactly as it was. `exocomp rollback` is the manual escape hatch that
 reverts the most recent upgrade on demand.

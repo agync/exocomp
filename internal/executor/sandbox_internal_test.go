@@ -508,7 +508,7 @@ func TestAnsibleSourceDirsIgnoresAdhocHostPattern(t *testing.T) {
 	}
 }
 
-// TestCollectionsReadGrantsSplitsOnPathSeparator pins the ADR 0015 sandbox
+// TestCollectionsReadGrantsSplitsOnPathSeparator pins the Decision 0015 sandbox
 // fix: a joined ANSIBLE_COLLECTIONS_PATH value names the per-source collections
 // dir and the shared fallback, two real directories, and each must be granted
 // read individually. Granting the joined string as one path would name a

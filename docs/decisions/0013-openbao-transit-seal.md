@@ -1,22 +1,22 @@
 ---
 type: Decision
-title: "ADR 0013 — OpenBao Transit as an optional external seal for the DEK"
+title: "Decision 0013 — OpenBao Transit as an optional external seal for the DEK"
 description: "OpenBao Transit as an optional additive seal for the DEK, keeping the age keyring recovery path and treating unreachable as an explicit error."
 status: stable
 tags: [decision, secrets, backup]
 ---
 
-# ADR 0013 — OpenBao Transit as an optional external seal for the DEK
+# Decision 0013 — OpenBao Transit as an optional external seal for the DEK
 
 ## Status
 
-Accepted · 2026-08-23. Extends ADR 0003: the key-provider seam it named ("an external KMS
+Accepted · 2026-08-23. Extends Decision 0003: the key-provider seam it named ("an external KMS
 or OpenBao Transit key can substitute at bootstrap") is now realised as an *additive*
 unseal path, not a substitution.
 
 ## Context
 
-ADR 0003 wraps one 32-byte DEK to N age recipients. The daemon opens the store by
+Decision 0003 wraps one 32-byte DEK to N age recipients. The daemon opens the store by
 unwrapping the DEK with the host identity (`host.key`), whose at-rest protection is a
 systemd credential, a scrypt passphrase, or — insecurely — plaintext in the data dir.
 
@@ -60,7 +60,7 @@ The age recovery recipient opens the store **without OpenBao**, exactly as befor
 every subkey offline. Transit is an *additional* unseal path for the daemon, never the only
 one. Losing OpenBao loses auto-unseal, not the data: the operator either restores OpenBao,
 or opens with the host key (unset the seal env), or recovers from the printed card. The
-monthly DR drill (ADR 0003) still runs from kit contents alone, with no OpenBao present.
+monthly DR drill (Decision 0003) still runs from kit contents alone, with no OpenBao present.
 
 ## Failure mode
 
@@ -88,5 +88,5 @@ dropped connection does.
 - Rotating the transit key on OpenBao's side is handled by re-running `seal enable`, which
   re-wraps the current DEK; the old `keyring.transit` is overwritten.
 
-See ADR 0003 for the envelope this extends, and `docs/security/threat-model.md` for the
+See Decision 0003 for the envelope this extends, and `docs/security/threat-model.md` for the
 seal's place in the model.

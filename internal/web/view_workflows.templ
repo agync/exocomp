@@ -13,7 +13,7 @@ templ stepDots(steps []workflowStepRow) {
 	</span>
 }
 
-// workflowsList is the step-ledger surface (ADR 0008): the provision->onboard->
+// workflowsList is the step-ledger surface (Decision 0008): the provision->onboard->
 // converge and TF->ansible handoff chains, in-flight and recently finished. The
 // whole-workflow state is derived from its steps, and the step rail shows the
 // ledger's shape without opening it.
@@ -53,7 +53,7 @@ templ workflowsList(vm workflowsVM) {
 
 // workflowDetail is one chain's ordered step ledger: each step's kind, status
 // (pending/running/succeeded/failed/blocked), and the job that ran it. The
-// status is read from the ledger rows, the single source of truth (ADR 0008),
+// status is read from the ledger rows, the single source of truth (Decision 0008),
 // never recomputed.
 templ workflowDetail(vm workflowVM) {
 	@layout(vm.Page) {

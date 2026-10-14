@@ -5,7 +5,7 @@ owns state, sequencing, keys, and recovery, shelling out to pinned tools
 (ansible-core, opentofu, restic, sops, age, git) for everything else.
 
 This file is the entrypoint and contract for every agent and human working here.
-Start with `docs/index.md` for architecture, ADRs, and operations.
+Start with `docs/index.md` for architecture, decision records, and operations.
 
 ## Invariants
 
@@ -49,7 +49,7 @@ AGENTS.md        this contract
 .agents/         agents/ skills/ scripts/ workflows/ brain/ — automation lives here;
                  brain/specs holds specs for in-flight work; scripts/ holds the
                  local-hook helpers (see .pre-commit-config.yaml)
-docs/            OKF v0.2 bundle: index.md, log.md, adr/, architecture/,
+docs/            OKF v0.2 bundle: index.md, log.md, decisions/, architecture/,
                  design/, operations/, sbom/, contribution/
 cmd/exocomp/     the single cobra binary (`exocompd` = alias for `exocomp serve`)
 internal/        service, api, queue, secrets, executor, tui, web
@@ -63,7 +63,7 @@ test/lima/       Fedora lima templates for dummy managed nodes + smoke tests
 - Read `docs/index.md` before changing architecture-relevant code; if docs and code
   disagree, code wins and the correction lands in `docs/log.md`.
 - Verification before completion: run the check, paste the output, then claim done.
-- ADRs record decisions with consequences; one decision per file under `docs/adr/`.
+- Decision records capture decisions with consequences; one record per file under `docs/decisions/`.
 - See [docs/contribution/index.md](docs/contribution/index.md) for the full
   contribution guide.
 - The design system: root DESIGN.md (machine tokens) + docs/design/INVARIANTS.md

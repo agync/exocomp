@@ -1,5 +1,5 @@
 // Package source resolves where an Ansible or OpenTofu run's tree comes from
-// and keeps a git source synced to a pinned ref (ADR 0010). A source is one of
+// and keeps a git source synced to a pinned ref (Decision 0010). A source is one of
 // two localities — a registered git repo, or a path already on the box
 // (absolute, or relative to the data volume) — and the credential planes are
 // identical across both; only how the tree arrives differs.

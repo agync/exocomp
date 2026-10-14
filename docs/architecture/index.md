@@ -9,6 +9,6 @@ How exocomp is put together, and which parts of "works with" are contractual.
 | [Execution](execution.md) | The `ExecutorDriver` tiers `disabled`, `enforcing`, and `container`; offline-restorable job dependencies; boot-time reconciliation |
 | [Reactive layer](reactive.md) | Webhook ingress, the one event shape, CEL rules, the guardrails in ledger order, approvals, and drift as an event |
 
-Decisions behind these pages: [ADR 0001](../adr/0001-thin-core-architecture.md)
-(thin-core), [ADR 0004](../adr/0004-opentofu-http-state-backend.md) (state backend),
-[ADR 0005](../adr/0005-job-sandboxing-nono.md) (sandboxing).
+Decisions behind these pages: [Decision 0001](../decisions/0001-thin-core-architecture.md)
+(thin-core), [Decision 0004](../decisions/0004-opentofu-http-state-backend.md) (state backend),
+[Decision 0005](../decisions/0005-job-sandboxing-nono.md) (sandboxing).

@@ -8,7 +8,7 @@ import (
 )
 
 // ScrapePurpose is the HKDF purpose the metrics scrape bearer is derived under.
-// Like the state backend's per-workspace token (ADR 0004), it is a subkey of
+// Like the state backend's per-workspace token (Decision 0004), it is a subkey of
 // the envelope DEK, so it is deterministic — the daemon, `exocomp doctor`, and
 // a recovery-time operator with the envelope all compute the same string — and
 // nothing extra is stored at rest.

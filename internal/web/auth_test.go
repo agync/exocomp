@@ -23,7 +23,7 @@ func TestIsLoopbackBind(t *testing.T) {
 	}
 }
 
-// TestRequireTokenForBind is the ADR 0009 point-1 gate: a non-loopback bind is
+// TestRequireTokenForBind is the Decision 0009 point-1 gate: a non-loopback bind is
 // refused without a token, allowed with one, and --insecure-http is loud.
 func TestRequireTokenForBind(t *testing.T) {
 	h := newHarness(t)

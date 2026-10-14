@@ -25,7 +25,7 @@ for the host-facing runs, real tofu/ansible/git/restic) behind its own gate scri
    `plan`/`-refresh-only`, drift surfaced with resource-level detail, notified —
    true drift distinguished from pending config change.
 4. **"Load my working directory into the server and run ansible/terraform."**
-   Host-path and in-container-path sources (ADR 0010) run the same as a repo,
+   Host-path and in-container-path sources (Decision 0010) run the same as a repo,
    minus sync.
 5. **"Run terraform, then trigger dynamic inventory FROM terraform for my
    ansible play and execute it."** The IaC→CM handoff, native: a workspace's
@@ -73,7 +73,7 @@ state key to the consumer.
   sensitive-marked attributes.
 
 The chain — apply succeeds → outputs captured → inventory refreshes → play runs —
-is a step-ledger workflow (ADR 0008); an apply→play dependency edge is the minimum.
+is a step-ledger workflow (Decision 0008); an apply→play dependency edge is the minimum.
 
 ## Sequencing
 

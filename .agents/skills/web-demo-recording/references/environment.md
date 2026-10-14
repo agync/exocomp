@@ -21,7 +21,7 @@ kubectl delete configmap e2e-marker -n exocomp-e2e --ignore-not-found
 EXOCOMP_E2E_TLS=1 EXOCOMP_BIN=bin/exocomp .contrib/tofu-e2e/lib/daemon.sh start
 ```
 - `EXOCOMP_E2E_TLS=1` makes the harness serve `--web-addr` WITHOUT
-  `--web-insecure-http` (real self-signed TLS, ADR 0009). Verify:
+  `--web-insecure-http` (real self-signed TLS, Decision 0009). Verify:
   `grep -E "listening|certificate" /tmp/exocomp-throwaway/tofu-e2e/daemon.log`
   → `web surface listening on https://[::]:8642` + a fingerprint.
 - The matrix default stays `--web-insecure-http` for its `http://` curl/MCP

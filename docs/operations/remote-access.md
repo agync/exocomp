@@ -11,7 +11,7 @@ tags: [operations, remote, cli]
 `exocomp login` pins a remote daemon's certificate and a bearer token so the same CLI can
 drive a box other than the one it runs on. `--remote` then points any command at that box's
 `/api/v1` instead of the local data dir. Reads render the daemon's own projections; writes
-enqueue there and the job can be followed live. The transport is the [ADR 0009](../adr/0009-lan-access-tokens.md)
+enqueue there and the job can be followed live. The transport is the [Decision 0009](../decisions/0009-lan-access-tokens.md)
 TLS listener ([LAN access](lan-access.md)) with the certificate pinned trust-on-first-use.
 
 ## Pinning a remote (TOFU)

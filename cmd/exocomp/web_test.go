@@ -13,7 +13,7 @@ import (
 	"exocomp.dev/exocomp/internal/web"
 )
 
-// TestWebRefusesTokenlessLANBind is the ADR 0009 gate at the command boundary:
+// TestWebRefusesTokenlessLANBind is the Decision 0009 gate at the command boundary:
 // `exocomp web` on a non-loopback address with no token refuses before it ever
 // binds.
 func TestWebRefusesTokenlessLANBind(t *testing.T) {

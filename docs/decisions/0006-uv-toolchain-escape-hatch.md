@@ -1,12 +1,12 @@
 ---
 type: Decision
-title: "ADR 0006 — uv build-time toolchain with an operator escape hatch"
+title: "Decision 0006 — uv build-time toolchain with an operator escape hatch"
 description: "A uv build-time Python toolchain plus a doctor-gated operator escape hatch in the data volume."
 status: stable
 tags: [decision, toolchain, offline]
 ---
 
-# ADR 0006 — uv build-time toolchain with an operator escape hatch
+# Decision 0006 — uv build-time toolchain with an operator escape hatch
 
 ## Status
 
@@ -59,7 +59,7 @@ Boundary rules keep the hatch from becoming a hole:
 
 - Per-project Python module dependencies may likewise be uv-installed into cached venvs
   under the same volume toolchain directory — backed up, offline-restorable, drill-covered.
-  [ADR 0011](0011-project-dependency-resolution.md) refines the "control plane never invokes
+  [Decision 0011](0011-project-dependency-resolution.md) refines the "control plane never invokes
   uv" boundary for exactly this case: exocomp MAY resolve a project's *declared* deps
   (root `requirements.txt`/`pyproject.toml`) via uv, hash-gated and off the DR path, while
   the ansible-core toolchain switch stays operator-initiated.

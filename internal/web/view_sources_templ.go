@@ -53,7 +53,7 @@ func signedChip(sc sourceRow) templ.Component {
 	})
 }
 
-// sourcesList is the run-tree sources surface (ADR 0010): where every run's
+// sourcesList is the run-tree sources surface (Decision 0010): where every run's
 // tree comes from, its trust posture (signed / allowed-signers), and the commit
 // its last sync landed on. An operator gets add/enable/disable/rm controls
 // (sources_write.go); a signed/allowed-signers posture and `source sync` stay

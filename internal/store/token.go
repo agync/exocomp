@@ -144,7 +144,7 @@ func (s *Store) ListTokens(ctx context.Context, includeRevoked bool) ([]APIToken
 
 // CountActiveTokens counts tokens that authenticate at now: not revoked and not
 // past their expiry. It is what a non-loopback bind checks before it refuses
-// (ADR 0009).
+// (Decision 0009).
 func (s *Store) CountActiveTokens(ctx context.Context, now time.Time) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `

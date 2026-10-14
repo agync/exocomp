@@ -181,7 +181,7 @@ func TestMCPHandshakeAndResourceRead(t *testing.T) {
 	}
 }
 
-// TestMCPReadonlyTokenSeesNoWriteTools is ADR 0014 §3's scope-gated visibility
+// TestMCPReadonlyTokenSeesNoWriteTools is Decision 0014 §3's scope-gated visibility
 // on the HTTP face, plus its per-call half: a readonly token is advertised no
 // write tool, and calling one anyway is refused BEFORE the store is touched.
 func TestMCPReadonlyTokenSeesNoWriteTools(t *testing.T) {

@@ -41,7 +41,7 @@ func toolNames(t *testing.T, result json.RawMessage) map[string]bool {
 	return have
 }
 
-// TestCatalogIsScopeFiltered asserts ADR 0014 §3's scope-gated tool visibility:
+// TestCatalogIsScopeFiltered asserts Decision 0014 §3's scope-gated tool visibility:
 // a readonly token is advertised only read tools, an operator token also the
 // write tools, and neither is advertised a decision tool.
 func TestCatalogIsScopeFiltered(t *testing.T) {

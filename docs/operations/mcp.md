@@ -9,10 +9,10 @@ tags: [operations, mcp]
 # The MCP surface
 
 One MCP server, one transport. `POST /mcp` speaks it over HTTP on the same
-[ADR-0009](../adr/0009-lan-access-tokens.md) token-gated listener the browser surface and
+[Decision 0009](../decisions/0009-lan-access-tokens.md) token-gated listener the browser surface and
 [`/api/v1`](api.md) already use — not a second listener, not a second auth story. Design
 rationale: [agent-interface.md §3.5](../design/agent-interface.md); recorded in
-[ADR 0014](../adr/0014-agent-facing-surface.md).
+[Decision 0014](../decisions/0014-agent-facing-surface.md).
 
 There is no bespoke stdio MCP server, and none is coming back: a process running at the
 local operator's ambient authority with no credential and no scope is exactly the shape
@@ -65,7 +65,7 @@ terminates TLS.
 
 ## Scopes decide the surface
 
-The three ADR-0009 scopes map 1:1 onto read / write / approve, and **`tools/list` is
+The three Decision 0009 scopes map 1:1 onto read / write / approve, and **`tools/list` is
 filtered by the caller's scope** — an agent is never shown a verb its credential cannot
 exercise. The same floor is re-checked on every `tools/call`, before any store read, so a
 call to a tool outside the caller's scope is refused rather than executed.
@@ -185,7 +185,7 @@ returns its outcome; the capability is derived and consumed server-side.
 ## Later: OAuth
 
 The MCP specification's own authorization story is OAuth 2.1, and some hosted clients
-expect it. exocomp deliberately does not implement it yet: ADR 0014 §3 commits to ADR-0009
+expect it. exocomp deliberately does not implement it yet: Decision 0014 §3 commits to Decision 0009
 bearer tokens and their three scopes across all three faces, and one credential type is the
 whole point. The seam is narrow when it is wanted — `apiGuard`/`resolve` is the single place
 a request becomes an `identity`, and `mcpCaller` is the single place an identity becomes an

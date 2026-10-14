@@ -542,13 +542,13 @@ func runPlaybookInline(ctx context.Context, st *store.Store, dir string, spec qu
 			return store.Job{}, err
 		}
 	}
-	// Resolve the per-source venv (ADR 0011 vendoring step) before draining the
+	// Resolve the per-source venv (Decision 0011 vendoring step) before draining the
 	// job inline. Fail-closed: a manifest that will not resolve stops the run.
 	venv, err := resolveProjectVenv(ctx, dir, ansiblePlaybookPath(spec.Argv))
 	if err != nil {
 		return store.Job{}, err
 	}
-	// Resolve the per-source ansible collections (ADR 0015 vendoring step) the
+	// Resolve the per-source ansible collections (Decision 0015 vendoring step) the
 	// same way; the shared cache/collections dir stays as the fallback.
 	collections, err := resolveSourceCollections(ctx, dir, ansiblePlaybookPath(spec.Argv))
 	if err != nil {

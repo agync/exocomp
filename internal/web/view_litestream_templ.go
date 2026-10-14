@@ -16,7 +16,7 @@ import templruntime "github.com/a-h/templ/runtime"
 // uri and the unencrypted-remote ack, the two settings the daemon can persist.
 // The daemon cannot verify a replica target (no probe exists), so the form
 // only writes the two settings and echoes the CLI; there is still no pause
-// verb (ADR 0012).
+// verb (Decision 0012).
 func litestreamPage(vm litestreamPageVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context

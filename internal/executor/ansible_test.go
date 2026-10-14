@@ -154,7 +154,7 @@ env | sed 's/^/env:/'
 	}
 }
 
-// TestAnsiblePythonPathBridge is the ADR 0016 gate on the run environment: the
+// TestAnsiblePythonPathBridge is the Decision 0016 gate on the run environment: the
 // venv's site-packages is set on PYTHONPATH so the PATH-resolved fallback
 // ansible imports the project's libraries. PYTHONPATH is not on the inherited
 // allowlist, so an operator's own value is dropped rather than merged; without

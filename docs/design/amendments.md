@@ -25,7 +25,7 @@ URL, and the ansible-pull trust anchor fingerprint if pull mode is enabled. Thes
 and rotating one regenerates the kit with a nag until reprinted. The **monthly DR drill
 runs from a scratch container holding only the kit contents** — no host state, no shell
 history — so this class of circularity fails a scheduled test instead of a real disaster.
-See [ADR 0003](../adr/0003-secrets-envelope.md).
+See [Decision 0003](../decisions/0003-secrets-envelope.md).
 
 ## 2. A GitHub backup leg that actually reclaims space
 

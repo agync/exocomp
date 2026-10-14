@@ -14,7 +14,7 @@ handoff](terraform-ansible-handoff.md) by the two steps that stand
 between a finished `tofu apply` and a machine you can actually run plays
 against: waiting for its SSH to come up, and onboarding it.
 
-The whole thing is one step-ledger workflow ([ADR 0008](../adr/0008-step-ledger-over-dbos.md)):
+The whole thing is one step-ledger workflow ([Decision 0008](../decisions/0008-step-ledger-over-dbos.md)):
 four steps, each releasing the next only on success, resumable from the ledger
 after a crash. There is no new driver — the three plays are ordinary
 ansible-kind jobs through the one queue.
@@ -179,12 +179,12 @@ captured 2 output(s) to inventory /…/edge.json naming 0 host(s)
   <path>` (or a playbook rule's `--ssh-identity`) and the sandbox grants that
   one file read-only — never a directory, so the rest of the keys' home stays
   out of the job's reach
-  ([ADR 0005](../adr/0005-job-sandboxing-nono.md)). Cloud VMs on port 22 with
+  ([Decision 0005](../decisions/0005-job-sandboxing-nono.md)). Cloud VMs on port 22 with
   credentials from the vault or a run-secret are unaffected.
 - **The recorded `known_hosts` is not yet what the run verifies against.** The
   pin is recorded and backed up; wiring it into the run as
   `UserKnownHostsFile`, alongside loading the fleet key into a per-job ssh-agent,
-  is the ADR 0010 v1.1 runtime item. Until then the play connects with whatever
+  is the Decision 0010 v1.1 runtime item. Until then the play connects with whatever
   its inventory or vault declares.
 - **The onboarding runbook needs `ansible.posix`.** Vendor it once with
   `exocomp playbook vendor --requirements requirements.yml` so the step does not

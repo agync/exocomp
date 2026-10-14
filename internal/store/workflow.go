@@ -181,7 +181,7 @@ func (s *Store) StartStep(ctx context.Context, workflowID string, stepNo int, jo
 }
 
 // CompleteStepTx moves a running step to a terminal status inside the caller's
-// transaction. This is the ledger's whole crash-safety contract (ADR 0008):
+// transaction. This is the ledger's whole crash-safety contract (Decision 0008):
 // the caller writes the step's own effect and this ledger row in one tx, so a
 // crash cannot land the effect while leaving the step pending — the state a
 // resume would re-run. status must be succeeded or failed.

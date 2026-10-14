@@ -188,7 +188,7 @@ func redacted(red *secrets.Redactor, err error) error {
 // storedImageRef reads the deployment's recorded image ref. It is best-effort:
 // an unset key, or a store that cannot be read, is simply no ref — never a
 // failed leg. The ref rides beside keyring.age so a host recovering from this
-// target knows what image to load (ADR 0016, invariant 7).
+// target knows what image to load (Decision 0016, invariant 7).
 func (e *Engine) storedImageRef(ctx context.Context) string {
 	ref, err := e.store.GetSetting(ctx, store.SettingImageRef)
 	if err != nil {

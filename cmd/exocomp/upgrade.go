@@ -25,7 +25,7 @@ import (
 
 // The upgrade choreography's steps, in order. Each is one ledger step and one
 // gated queue job; the sequencer runs step N+1 only once step N succeeded
-// (ADR 0008). The swap is deliberately LAST among the mutating steps: a crash
+// (Decision 0008). The swap is deliberately LAST among the mutating steps: a crash
 // before it leaves the old binary live, a crash after it is recoverable by the
 // rollback path, and nothing in between can leave a half-written binary.
 const (
@@ -73,7 +73,7 @@ func newUpgradeCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "upgrade <path-to-new-binary>",
 		Short: "Swap in a new exocomp binary as a resumable, rollback-guarded workflow",
-		Long: "Runs a step-ledger choreography (ADR 0008): snapshot the data dir, stage the " +
+		Long: "Runs a step-ledger choreography (Decision 0008): snapshot the data dir, stage the " +
 			"new binary beside the current one, verify it (version + doctor), atomically swap " +
 			"it in, then health-check the swapped binary. Any failed step rolls back — the prior " +
 			"binary and the pre-upgrade data snapshot are restored, leaving the system as it was.\n\n" +

@@ -93,7 +93,7 @@ type JobArgs struct {
 	// env_binding is resolved into the run's credential env alongside
 	// RunSecretBinding. The name is public; the values it binds are not.
 	Inventory string `json:"inventory,omitempty"`
-	// Source names the registered source (ADR 0010) this run executed from,
+	// Source names the registered source (Decision 0010) this run executed from,
 	// when one was named. It is a display fact only — Dir already carries the
 	// checkout path a claiming process needs — recorded so the job event
 	// stream and every job face can show which source ran rather than an

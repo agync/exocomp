@@ -30,7 +30,7 @@ from it (lane-brief-authoring), in the `mNN` style but as a post-v1 program.
   aggregate config; aggregate event with `Hosts`; governed `--limit-hosts`
   expansion; reserved `*` state row). Per-host events are simpler to reason
   about and debug, and the "one run over the present target set" capability is
-  not wanted; see [ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md).
+  not wanted; see [Decision 0019](../../docs/decisions/0019-aggregate-check-events-removed.md).
   Migration 0041 and its two columns stay as inert schema.
 - **C6 — landed** (`check/netgroup export` + `apply -f`, idempotent, `--prune`
   confirmed; apply preflights every row before writing).
@@ -48,7 +48,7 @@ dogfood or days-to-expiry ladder is required.
 
 ### Post-program closure
 
-- **ADRs 0017/0018/0019** record the shared probe vocabulary, the opt-in
+- **Decision records 0017/0018/0019** record the shared probe vocabulary, the opt-in
   aggregate event with governed `--limit-hosts` (0018), and its removal (0019).
 - **Functional gaps closed:** `duration_ms` on check transition events (the
   "up but slow" rule signal), `check list --netgroup`, `--check-canary` `ip:port`
@@ -94,7 +94,7 @@ A phase is **not done** because tests are green. It is done when:
 4. **Agent-facing surfaces pass `mcp-comprehension-audit`**, and new write
    tools pass `security-red-blue`, before they merge.
 5. **Docs move with the code** (invariant 8): `docs/operations/reactive.md`,
-   the design doc, `docs/operations/CHANGELOG.md`, and an ADR for any
+   the design doc, `docs/operations/CHANGELOG.md`, and a record for any
    hard-to-reverse interface (probe type, aggregate-event semantics).
 
 ## 3. Named scenarios (the definition of useful)
@@ -122,7 +122,7 @@ cert expiry is not a scenario; the `tls` kind stays as a general capability.
 - **D1 — one probe package.** New `internal/probe`: a tagged-union probe with
   per-kind validate/run, consumed by `reactive` (events) and `verify` (gates).
   `verify` keeps its argv encoding and job routing; its kind implementations
-  move. This is the load-bearing decision; get an ADR.
+  move. This is the load-bearing decision; get a record.
 - **D2 — shared probe runner (revised twice: plan review + FK reality).** The
   one probe vocabulary is realized as a new `internal/probe` package (a union
   `Spec` + `Run`), consumed by both `reactive` checks and `verify` gates. Store
@@ -146,7 +146,7 @@ cert expiry is not a scenario; the `tls` kind stays as a general capability.
 - **D5 — aggregate semantics (removed).** C5 defined a check-level event keyed
   `check:<check>:aggregate` with `Event.Hosts` populated only by sweep sources.
   Removed by operator decision (2026-09-26); see
-  [ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md).
+  [Decision 0019](../../docs/decisions/0019-aggregate-check-events-removed.md).
 - **D6 — migration reservation.** Numbers 0037+ are reserved to this program;
   each lane claims one at brief time, never renumbers. Every introduction
   migration carries a pinned in-place-upgrade test (`migration-authoring`).
@@ -248,7 +248,7 @@ persistence; `make check-race`.
 - **Gate:** a real TLS check against the operator's cert surfaces days-to-expiry;
   a metric check against a real endpoint crosses its threshold and fires; S1
   regression test proves the laptop scenario is byte-identical.
-- **Review:** plan review before branching (D1 is expensive); ADR for the probe
+- **Review:** plan review before branching (D1 is expensive); a record for the probe
   type.
 
 ### C3 — netgroup as a primitive (small–medium)
@@ -297,7 +297,7 @@ persistence; `make check-race`.
 
 ### C5 — aggregate checks + set-event (removed)
 
-- **Removed 2026-09-26 by operator decision** ([ADR 0019](../../docs/adr/0019-aggregate-check-events-removed.md)):
+- **Removed 2026-09-26 by operator decision** ([Decision 0019](../../docs/decisions/0019-aggregate-check-events-removed.md)):
   the check-level aggregate (`--min-up`), the `check:<check>:aggregate` event,
   `Event.Hosts`, and the governed `--limit-hosts` expansion are gone. Migration
   0041 stays as inert schema.

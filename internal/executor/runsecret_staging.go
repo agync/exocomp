@@ -18,7 +18,7 @@ type StagingBackend string
 const (
 	// StagingAuto uses the tmpfs root when it is usable (present, actually
 	// tmpfs, adequate free space) and falls back to the disk root otherwise —
-	// loudly, never silently (ADR 0005's posture applied to this path). It is
+	// loudly, never silently (Decision 0005's posture applied to this path). It is
 	// the default.
 	StagingAuto StagingBackend = "auto"
 	// StagingTmpfs forces the tmpfs root and fails closed if it is unusable:
@@ -64,7 +64,7 @@ type StagingConfig struct {
 	// uses the default floor.
 	MinTmpfsFree int64
 	// Warn receives the loud, one-line notice a StagingAuto fallback to disk
-	// writes — ADR 0005's never-silently-downgrade posture. Nil discards it
+	// writes — Decision 0005's never-silently-downgrade posture. Nil discards it
 	// (still returned as ResolvedStaging.FellBack for a caller to report
 	// through its own channel).
 	Warn io.Writer

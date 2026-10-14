@@ -25,7 +25,7 @@ const TofuBinary = "tofu"
 // TofuStatePurpose is the HKDF purpose the state-encryption passphrase is
 // derived under; the workspace name is the derivation id. Tofu encrypts its
 // own state with it, so there is no second format and nothing extra to lose
-// (ADR 0004).
+// (Decision 0004).
 const TofuStatePurpose = "tofu-state"
 
 // BackendOverrideFile is the file the driver drops into a workspace directory
@@ -131,7 +131,7 @@ type TofuOptions struct {
 	// installs on init. TF_DATA_DIR is per-run and ephemeral, so registry and
 	// git modules would re-download every init; pointing the run's modules
 	// directory at this stable path lets a second init reuse what the first
-	// fetched (ADR 0011), the module-plane twin of PluginCacheDir. Empty derives
+	// fetched (Decision 0011), the module-plane twin of PluginCacheDir. Empty derives
 	// a default beside PluginCacheDir when both a plugin cache and a workspace
 	// name are set, and otherwise leaves modules per-run as before.
 	ModuleCacheDir string
@@ -643,7 +643,7 @@ func writeBackendOverride(dir string) (func(EventSink), error) {
 
 // linkModuleCache points the run's per-run modules directory at a persistent
 // per-workspace home, so modules a prior init fetched are reused rather than
-// re-downloaded (ADR 0011). tofu installs modules at $TF_DATA_DIR/modules; a
+// re-downloaded (Decision 0011). tofu installs modules at $TF_DATA_DIR/modules; a
 // symlink there redirects the writes to the stable cache transparently, and a
 // following init finds modules.json already present and skips the fetch.
 //
@@ -736,7 +736,7 @@ func (t *Tofu) env(dataDir, cliConfig string, rs RunSecrets) ([]string, error) {
 
 // encryptionConfig is the TF_ENCRYPTION document: pbkdf2 over the derived
 // passphrase, AES-GCM over the state. Tofu does the encrypting, so there is no
-// second format and no third party in the recovery path (ADR 0004).
+// second format and no third party in the recovery path (Decision 0004).
 //
 // In adoption mode (AdoptState) it also declares an `unencrypted` method and
 // wires it as the state target's fallback, so an init migrating pre-existing

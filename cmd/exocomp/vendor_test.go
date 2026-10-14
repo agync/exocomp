@@ -94,7 +94,7 @@ func TestRunVendorRefusesMissingRequirementsFile(t *testing.T) {
 }
 
 // TestRunVendorInstallsIntoPerSourceDir proves `playbook vendor` is source-keyed
-// (ADR 0015): the install target derives from the --requirements file's project
+// (Decision 0015): the install target derives from the --requirements file's project
 // root and content hash, not the shared cache dir. A fake ansible-galaxy records
 // the -p it was handed, so no network is involved.
 func TestRunVendorInstallsIntoPerSourceDir(t *testing.T) {
@@ -136,7 +136,7 @@ func TestRunVendorInstallsIntoPerSourceDir(t *testing.T) {
 	}
 }
 
-// TestRunVendorThenResolveIsOfflineCacheHit proves the full offline loop (ADR
+// TestRunVendorThenResolveIsOfflineCacheHit proves the full offline loop (Decision
 // 0015): `playbook vendor` populates the per-source dir and marks it ready, so
 // a following run-path resolve is a cache hit — EnsureCollections reuses the
 // dir, invokes ansible-galaxy exactly once total (during the vendor), and

@@ -72,7 +72,7 @@ output "db_password" {
 exocomp handoff run <workspace> <playbook> [--vault-project P] [--run-secrets B] [--require-approval] [--wait]
 ```
 
-This defines a two-step step-ledger workflow (ADR 0008): step 1 is the apply
+This defines a two-step step-ledger workflow (Decision 0008): step 1 is the apply
 (with capture), step 2 is the play. Step 2 runs only if step 1 succeeded;
 a failed apply leaves the play `blocked`, readable with:
 

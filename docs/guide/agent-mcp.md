@@ -8,7 +8,7 @@ tags: [guide, mcp, agents, automation, llm]
 
 # AI agent integration
 
-exocomp serves an embedded **Model Context Protocol (MCP)** server over HTTP at `POST /mcp` on its LAN listener (ADR 0009 and ADR 0014).
+exocomp serves an embedded **Model Context Protocol (MCP)** server over HTTP at `POST /mcp` on its LAN listener (Decision 0009 and Decision 0014).
 
 This allows developer assistants (such as Claude Code, Cursor, Antigravity, and Cline) to query homelab state, inspect job outputs, review OpenTofu plans, and queue operational playbooks under strict governance.
 
@@ -23,7 +23,7 @@ exocomp token new agent-readonly --scope readonly
 exocomp token new agent-operator --scope operator
 ```
 
-Tokens respect three granular scopes (ADR 0009):
+Tokens respect three granular scopes (Decision 0009):
 - `readonly`: Read-only queries over jobs, workspaces, drift, checks, netgroups, approvals, sources, schedules, rules, and events.
 - `operator`: All read tools, plus `workspace_plan`, `workspace_apply`, and check/netgroup management.
 - `approve`: All read tools, plus `approve_job` and `reject_job`.

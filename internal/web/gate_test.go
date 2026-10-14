@@ -57,7 +57,7 @@ func getBody(t *testing.T, client *http.Client, url string) (int, string) {
 }
 
 // TestSessionCookieAttributes checks the cookie is HttpOnly and SameSite=Strict
-// (ADR 0009 §3): the phone surface never wants a cross-site cookie and script
+// (Decision 0009 §3): the phone surface never wants a cross-site cookie and script
 // never needs to read it.
 func TestSessionCookieAttributes(t *testing.T) {
 	h := newHarness(t)
@@ -127,7 +127,7 @@ func TestUnauthenticatedRedirects(t *testing.T) {
 }
 
 // TestRevokedTokenRejected: a revoked token neither authenticates a bearer
-// request nor keeps its session alive (ADR 0009 gate: "session dies with its
+// request nor keeps its session alive (Decision 0009 gate: "session dies with its
 // token").
 func TestRevokedTokenRejected(t *testing.T) {
 	h := newHarness(t)

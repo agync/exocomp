@@ -105,6 +105,6 @@ off](serve.md#recovering-jobs-a-restart-cut-off).
 
 `SIGHUP` reloads schedules and `SIGTERM` drains-and-stops, but a signal cannot carry the
 in-flight count back, so it cannot answer "safe yet?". The cordon is therefore an
-operator-scoped API action on the ADR-0009 listener, gated exactly like `plan`/`apply`: a
+operator-scoped API action on the Decision 0009 listener, gated exactly like `plan`/`apply`: a
 read-only token is refused, and a browser session may not drive it. It is deliberately *not*
 a queue job — a cordon is control-plane state, not a run, so it has no ledger entry.

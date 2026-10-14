@@ -56,7 +56,7 @@ func TestMigrateRoundTripsARecipient(t *testing.T) {
 	}
 
 	// The DEK is untouched by a re-wrap, so every sealed secret and every
-	// derived subkey survives it — the property ADR 0003 buys with the envelope.
+	// derived subkey survives it — the property Decision 0003 buys with the envelope.
 	reopened, err := Open(dir)
 	if err != nil {
 		t.Fatalf("Open after add: %v", err)

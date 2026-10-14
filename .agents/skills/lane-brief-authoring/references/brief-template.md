@@ -8,7 +8,7 @@ the per-lane block, then the gate, then the schema.
 ## COMMON block (shared verbatim across all lanes of one dispatch)
 
 ```
-Read <worktree>/AGENTS.md FIRST, plus [any BINDING ADR / design doc this
+Read <worktree>/AGENTS.md FIRST, plus [any BINDING record / design doc this
 milestone gates]. Conventions: lane-owned paths ONLY (never another lane's
 files or migration number); logical-unit commits via "git -C <worktree>";
 conventional titles (feat|fix|chore|docs|refactor|test|perf|build)(scope):

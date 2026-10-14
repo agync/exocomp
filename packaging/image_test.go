@@ -71,7 +71,7 @@ func TestQuadletCarriesNoRunDirTmpfsMount(t *testing.T) {
 	}
 }
 
-// TestContainerfileBakesTheToolchain: ADR 0006's determinism half. The image
+// TestContainerfileBakesTheToolchain: Decision 0006's determinism half. The image
 // resolves its own pinned toolchain, and the operator escape hatch stays
 // opt-in, so a restore comes back with the versions that produced the backup.
 func TestContainerfileBakesTheToolchain(t *testing.T) {
@@ -94,7 +94,7 @@ func TestContainerfileBakesTheToolchain(t *testing.T) {
 		}
 		if strings.Contains(line, "UV_TOOL_DIR=/var/lib") {
 			t.Error("the image's default toolchain points at the data volume; " +
-				"a fresh restore has the image before it has the volume (ADR 0006)")
+				"a fresh restore has the image before it has the volume (Decision 0006)")
 		}
 	}
 	if !strings.Contains(body, "HOME=/home/exocomp") {
@@ -143,7 +143,7 @@ func containerfileArg(t *testing.T, body, name string) string {
 }
 
 // TestManifestPinsMatchTheContainerfile: MANIFEST.json is the explicit,
-// committed source of the toolchain pins (ADR 0006), so it must not drift from
+// committed source of the toolchain pins (Decision 0006), so it must not drift from
 // the ARGs the build actually fetches and installs. git is the one field the
 // committed file leaves empty — the build fills it from Fedora's resolved
 // version — so it is asserted empty here rather than against an ARG.
@@ -222,7 +222,7 @@ func TestEveryFetchedToolIsPinnedByDigest(t *testing.T) {
 
 // TestConstraintsPinTheResolvedSet: `uv tool install` consumes no lockfile, so
 // the committed constraints file is what keeps a transitive dependency from
-// moving between two builds of the same tag (ADR 0006).
+// moving between two builds of the same tag (Decision 0006).
 func TestConstraintsPinTheResolvedSet(t *testing.T) {
 	body := readPackagingFile(t, "toolchain-constraints.txt")
 

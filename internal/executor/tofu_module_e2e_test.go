@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestModuleCacheReuseWithRealTofu is the ADR 0011 tofu gate: a workspace with a
+// TestModuleCacheReuseWithRealTofu is the Decision 0011 tofu gate: a workspace with a
 // git module resolves it once, and a second init through a fresh per-run
 // TF_DATA_DIR whose modules directory is linked to the persistent cache reuses
 // it — proven by deleting the module source before the second init, so any

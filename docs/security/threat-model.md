@@ -37,7 +37,7 @@ threat's section.
 
 - **Data volume vs. host root.** The at-rest data dir is assumed reachable by an attacker who
   is *not* root on the live host (a stolen SSD, a volume snapshot, an evil-maid read). Root on
-  the running box is explicitly **out of scope** — the same boundary ADR 0003 draws.
+  the running box is explicitly **out of scope** — the same boundary Decision 0003 draws.
 - **Daemon context vs. job sandbox.** Untrusted-source-derived code (dependency resolution,
   playbooks, tofu) runs under the nono/Landlock job sandbox tier, never in the daemon's own
   privilege.
@@ -103,7 +103,7 @@ Playbooks, tofu, and their dependencies are untrusted-source-derived until prove
 | T6 | Dependency resolution (`uv pip install`) running in the daemon context, before the job sandbox, lets a poisoned `pyproject.toml`/`requirements.txt` execute with daemon privileges. | The resolver runs under the job sandbox tier: every `uv` invocation is wrapped in the nono launcher, granted its venv cache, the manifest, and HTTPS, and denied the data dir and keys by the profile guard. A manifest whose install step reads a denied path fails closed. |
 | T7 | A `--signed` ref gate falling back to ambient host git config when `allowed_signers` is empty accepts an attacker-signed ref. | `--signed` fails closed with no exocomp-owned allowed-signers and never consults ambient git config; `source add --signed` refuses at add time without `--allowed-signers`/`--signer`; verification is pinned to ssh signature format. |
 | T8 | A pyproject dependency specifier passed as raw argv to `uv` allows flag injection (`--index-url=…`, `-e /etc`). | A specifier beginning with `-` is refused at parse; accepted specifiers reach `uv` only after `--`. |
-| T9 | Git source-sync using trust-on-first-use for the forge host key (the `known_hosts` pin of ADR 0010 never applied) allows a first-sync MITM. | An `ssh://` source pins the forge host key from the recorded `known_host` store: strict verification when the key is recorded, a host-key mismatch fails the sync. |
+| T9 | Git source-sync using trust-on-first-use for the forge host key (the `known_hosts` pin of Decision 0010 never applied) allows a first-sync MITM. | An `ssh://` source pins the forge host key from the recorded `known_host` store: strict verification when the key is recorded, a host-key mismatch fails the sync. |
 
 **Accepted residuals.**
 
@@ -280,14 +280,14 @@ Backups must not let an attacker downgrade an authenticated target to an unauthe
 
 ## Agent surface
 
-The three programmatic faces defined in ADR 0014: the write half of `/api/v1`, `exocomp login`
+The three programmatic faces defined in Decision 0014: the write half of `/api/v1`, `exocomp login`
 + `--remote`, and the MCP-over-HTTP server. The threat here is a delegated agent or script —
 possibly reading attacker-influenced event text — exceeding its scope or slipping a write past
 the gate.
 
 | id | threat | mitigation in place |
 |---|---|---|
-| T16 | An MCP stdio face with no credential and no scope advertised `approve_job`/`reject_job` beside `workspace_apply`, so an agent could gate its own destructive job and then approve it; `get_job_events`/`list_events` returning attacker-posted webhook text to the same session amplifies it via prompt injection. | The bespoke stdio server is removed. The one MCP surface is MCP-over-HTTP (`POST /mcp`), which authenticates with an ADR-0009 bearer token, scope-gates `tools/list` and every `tools/call`, and re-checks the token on every call so a revoke bites on the next request. A gated job is decided from the browser/phone surface, the CLI, or an `approve`-scope `/api/v1` token. |
+| T16 | An MCP stdio face with no credential and no scope advertised `approve_job`/`reject_job` beside `workspace_apply`, so an agent could gate its own destructive job and then approve it; `get_job_events`/`list_events` returning attacker-posted webhook text to the same session amplifies it via prompt injection. | The bespoke stdio server is removed. The one MCP surface is MCP-over-HTTP (`POST /mcp`), which authenticates with an Decision 0009 bearer token, scope-gates `tools/list` and every `tools/call`, and re-checks the token on every call so a revoke bites on the next request. A gated job is decided from the browser/phone surface, the CLI, or an `approve`-scope `/api/v1` token. |
 | T17 | A `--require-approval` step in a composed chain was not durably gated mid-run: the Sequencer released an `awaiting_approval` step unconditionally and `ClaimJob` had no approval join, so a running daemon released and ran a gated step with no operator decision. | A gated step is marked `require_approval` in the ledger; the Sequencer arms a pending approval and parks the step in `awaiting_approval` instead of releasing it — approve releases exactly that step, reject cancels it and blocks downstream. `ClaimJob` refuses any queued job carrying a pending approval, so the gate holds at the claim however a job reached queued. |
 | T18 | `operator` satisfying both the write and approve scopes meant the only scope that can enqueue a gated apply could also settle its approval — handing an agent the plan/apply token handed it the authority the gate withholds. | `/api/v1`'s decision route takes the `approve` scope alone, and both decision paths refuse a caller the gated job's ledger records as its actor. The browser surface keeps operator-or-approve for the human at the console. |
 | T19 | A TOCTOU between `CreateArtifact` and the verdict event let an apply-by-id landing in the window read "no verdict" as "no policy" and enqueue plainly against a deny-all workspace. | A plan on a workspace with enabled policies and no adjudication record is unconsumable on every face; the seal records a no-match adjudication so a legitimately unmatched plan still applies; and the daemon evaluates policy before it seals, so the remaining window is one event append. |
@@ -301,7 +301,7 @@ the gate.
 | T27 | No rate limit or lockout on bearer auth (the KDF gate caps parallelism, not rate), and the early return for an unknown/inactive row was a timing oracle for which token ids exist. | Consecutive failures back off per source and per token row (429 + `Retry-After`, no KDF spent) and are logged once per run — this is the guard that bounds guessing. The verify path looks up the row; absent, inactive, or secret-mismatch all return unauthenticated with no KDF; the constant-time digest compare on a live row is unchanged. |
 | T28 | A `--source` playbook escaping its checkout (`../`, or an un-rebased absolute path) ran a tree the source signature never covered. | The joined path is resolved (symlinks included) and required to stay inside the checkout; an absolute playbook with `--source` is refused; a source name is charset-validated before it is spliced into any path. |
 | T29 | MCP writes were wholly unattributed — an agent's write read off the ledger as the operator's own CLI run — and a `tools/call` sent as a notification mutated state while writing zero bytes back. | Writes record the `mcp` face, and a side-effecting method sent without an id is refused with `invalid_request` instead of executed. |
-| T37 | The TUI's write keys (pause/mute/approve/reject/cancel/toggle) run with operator authority in-process — and `ssh-serve` exposes the same surface to every `authorized_keys` holder — so a delegated key is an operator by construction, with no ADR-0009 scope like the web's `writeGuard`. | The TUI surface is deliberately operator-authority at the data dir, matching the CLI's decide seam (documented in DESIGN.md): approve/reject still go through the reactive engine's token, TTL and stale-plan checks and the enqueue-only queue never drains (invariant 5), so the queue's own guardrails hold regardless of the caller's nominal scope. `ssh-serve` authentication is public-key only via `authorized_keys`; every accepted session is an operator by that credential. |
+| T37 | The TUI's write keys (pause/mute/approve/reject/cancel/toggle) run with operator authority in-process — and `ssh-serve` exposes the same surface to every `authorized_keys` holder — so a delegated key is an operator by construction, with no Decision 0009 scope like the web's `writeGuard`. | The TUI surface is deliberately operator-authority at the data dir, matching the CLI's decide seam (documented in DESIGN.md): approve/reject still go through the reactive engine's token, TTL and stale-plan checks and the enqueue-only queue never drains (invariant 5), so the queue's own guardrails hold regardless of the caller's nominal scope. `ssh-serve` authentication is public-key only via `authorized_keys`; every accepted session is an operator by that credential. |
 
 **Accepted residuals.**
 
@@ -335,7 +335,7 @@ the gate.
   attributable after the fact. Closing it needs a store-level writer/ledger seam; it is not
   attempted here.
 
-## Optional OpenBao Transit seal (ADR 0013)
+## Optional OpenBao Transit seal (Decision 0013)
 
 An operator may move the DEK's wrapping key off the data volume into an OpenBao Transit key
 (the auto-unseal pattern). It is **additive**: `keyring.transit` wraps the DEK via
@@ -353,4 +353,4 @@ the store **without OpenBao** — recovery never depends on the vendor (invarian
   operator's threat model. The token authenticating to OpenBao is sourced from env or a file
   outside the data dir and is never written into it; neither the token nor the DEK plaintext
   reaches a log line or job event.
-- **Not a defence against root** on the box, same as ADR 0003.
+- **Not a defence against root** on the box, same as Decision 0003.

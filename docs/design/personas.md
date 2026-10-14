@@ -59,7 +59,7 @@ until needed.
 
 ## The security engineer
 
-Runs SELinux enforcing, reads ADRs and licenses before installing, and assumes any node can
+Runs SELinux enforcing, reads decision records and licenses before installing, and assumes any node can
 be lost or seized. Trusts the tool only where its claims are demonstrated, not asserted.
 
 - **Wants:** signed releases with an SBOM and reproducible builds, an in-repo signed
