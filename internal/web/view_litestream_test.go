@@ -447,6 +447,28 @@ func TestLitestreamPagePhoneForm(t *testing.T) {
 	}
 }
 
+// TestLitestreamSetTargetButtonNaturalWidth is the GATE for the button ladder
+// on this page: the Set-target primary is the form's one dominant verb, so it
+// keeps the shared `.actions` anatomy and its 44px min-height — but an in-page
+// settings form is not a modal's submit bar, so the shared width:100% comes
+// back to the verb's natural width via the page's scoped override. The MUTATION
+// — dropping the scoped rule (or the wrapper) — must red this test.
+func TestLitestreamSetTargetButtonNaturalWidth(t *testing.T) {
+	h := newHarness(t)
+	withSidecar(h)
+	setReplicaTarget(t, h, "s3://exocomp-replica/nibbler")
+	page := getPage(t, h, "/system/litestream")
+
+	for _, want := range []string{
+		`<div class="actions"><button type="submit" class="btn primary"`,
+		`.ls-target .actions .btn { width: auto; }`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("/system/litestream missing %q", want)
+		}
+	}
+}
+
 // TestLitestreamSetTargetWritesBothSettings is the GATE for the A6 write (SPEC
 // §7 A6): a submit persists the replica target and the ack — the two settings,
 // nothing else — and redirects 303 with the success flash. A remote target with

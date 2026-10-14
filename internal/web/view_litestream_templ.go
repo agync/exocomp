@@ -58,14 +58,14 @@ func litestreamPage(vm litestreamPageVM) templ.Component {
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<section class=\"ls-target\" id=\"target\" aria-label=\"Set the replica target\"><style>\n\t\t\t\t/* Set-target section (SPEC §7 A6): the honest boundary — the daemon\n\t\t\t\t * cannot verify a replica, so the form writes the two settings and\n\t\t\t\t * echoes the CLI. Scoped so the form rides the shared writeform/field\n\t\t\t\t * anatomy without touching lift.css. */\n\t\t\t\t.ls-target { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px; }\n\t\t\t\t.ls-target header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; }\n\t\t\t\t.ls-target header h1 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }\n\t\t\t\t.ls-target header .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }\n\t\t\t\t.ls-target .echo { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); margin-top:14px; }\n\t\t\t\t@media (max-width:719px) {\n\t\t\t\t\t.ls-target header { flex-direction: column; align-items: flex-start; gap: 2px; }\n\t\t\t\t\t.ls-target { padding: 18px 16px 50px; }\n\t\t\t\t}\n\t\t\t\t</style><header><h1>Replica target</h1><span class=\"meta\">writes the two settings · the daemon cannot verify a target</span></header><form method=\"post\" action=\"")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 2, "<section class=\"ls-target\" id=\"target\" aria-label=\"Set the replica target\"><style>\n\t\t\t\t/* Set-target section (SPEC §7 A6): the honest boundary — the daemon\n\t\t\t\t * cannot verify a replica, so the form writes the two settings and\n\t\t\t\t * echoes the CLI. Scoped so the form rides the shared writeform/field\n\t\t\t\t * anatomy without touching lift.css. */\n\t\t\t\t.ls-target { background:var(--surface-card); border-radius:var(--radius-card); padding:18px 22px 20px; }\n\t\t\t\t.ls-target header { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:14px; }\n\t\t\t\t.ls-target header h1 { font:600 15px/1.4 var(--font-ui); color:var(--ink-100); margin:0; }\n\t\t\t\t.ls-target header .meta { font:400 12px/1.4 var(--font-mono); color:var(--ink-500); }\n\t\t\t\t.ls-target .echo { font:400 12px/1.5 var(--font-mono); color:var(--ink-500); margin-top:14px; }\n\t\t\t/* The shared `.actions .btn` rule is a modal's submit bar — width:100%\n\t\t\t * with the 44px dominant-verb min-height. This form is in-page, so it\n\t\t\t * keeps the height but takes the verb's natural width back. */\n\t\t\t.ls-target .actions .btn { width: auto; }\n\t\t\t\t@media (max-width:719px) {\n\t\t\t\t\t.ls-target header { flex-direction: column; align-items: flex-start; gap: 2px; }\n\t\t\t\t\t.ls-target { padding: 18px 16px 50px; }\n\t\t\t\t}\n\t\t\t\t</style><header><h1>Replica target</h1><span class=\"meta\">writes the two settings · the daemon cannot verify a target</span></header><form method=\"post\" action=\"")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}
 			var templ_7745c5c3_Var3 templ.SafeURL
 			templ_7745c5c3_Var3, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/system/litestream/target")))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 37, Col: 102}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 41, Col: 102}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var3))
 			if templ_7745c5c3_Err != nil {
@@ -151,7 +151,7 @@ func litestreamPage(vm litestreamPageVM) templ.Component {
 				var templ_7745c5c3_Var8 string
 				templ_7745c5c3_Var8, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Form.ErrAckText())
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 47, Col: 48}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 51, Col: 48}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var8))
 				if templ_7745c5c3_Err != nil {
@@ -192,7 +192,7 @@ func litestreamPage(vm litestreamPageVM) templ.Component {
 			var templ_7745c5c3_Var9 string
 			templ_7745c5c3_Var9, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Form.cliEcho())
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 55, Col: 40}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 59, Col: 40}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var9))
 			if templ_7745c5c3_Err != nil {
@@ -218,7 +218,7 @@ func litestreamPage(vm litestreamPageVM) templ.Component {
 				var templ_7745c5c3_Var10 string
 				templ_7745c5c3_Var10, templ_7745c5c3_Err = templ.JoinStringErrs(vm.LS.Config)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 66, Col: 39}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 70, Col: 39}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var10))
 				if templ_7745c5c3_Err != nil {
@@ -236,7 +236,7 @@ func litestreamPage(vm litestreamPageVM) templ.Component {
 				var templ_7745c5c3_Var11 string
 				templ_7745c5c3_Var11, templ_7745c5c3_Err = templ.JoinStringErrs(vm.LS.ConfigErr)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 68, Col: 44}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_litestream.templ`, Line: 72, Col: 44}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var11))
 				if templ_7745c5c3_Err != nil {
