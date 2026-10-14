@@ -39,6 +39,14 @@ exocomp playbook run playbooks/tailscale.yml \
   --privileged
 ```
 
+`--privileged` is a per-run opt-out of the kernel sandbox, not a default: it is operator-only, off by
+default, and audited. The product shows it wherever a run is read — the job detail's run card wears an
+`unsandboxed` chip, the jobs list names it beside the source, the run's log opens with an attributed
+"run requested UNSANDBOXED" band, and `exocomp doctor` reports how many recent runs ran unsandboxed.
+When only a remote host needs the elevation (or the egress), prefer reaching that host over SSH so the
+work happens on the far side and the daemon's sandbox stays on; reserve `--privileged` for work that
+must run unsandboxed on the controller itself.
+
 ## Live job streaming and execution logs
 
 When a job runs, the Web UI streams logs and execution progress in real time:

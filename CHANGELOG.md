@@ -30,6 +30,23 @@ Newest first.
   accept `--ssh-identity <path>` and carry it through the queue to the sandbox's single-file
   read grant, so a one-off against a key-only host no longer forces `--privileged`.
 
+## 2026-10-14 — the privilege posture is visible on every read surface
+
+- **A privileged run is distinguishable from a sandboxed one at a glance.** The job detail's
+  run card wears an `unsandboxed` chip in the fail signal the launcher's privileged block
+  already uses; the jobs list carries the same fact beside the source (`tree · unsandboxed`)
+  and in the phone meta. The run's log renders the enqueue-time audit record as an attributed
+  `▸ run requested UNSANDBOXED …` band rather than dimming it among the system lines.
+- **The doctor reports the privilege posture.** A sixth health finding, `privilege_posture`,
+  counts how many runs queued in the last 30 days ran unsandboxed (`3 of 240 runs in the last
+  30 days ran unsandboxed`); any such run is a `warn`, none is the quiet `ok` state. It is one
+  probe, so `exocomp doctor` (text and `--output json`), `GET /api/v1/health`, the web Doctor
+  verb's findings rows, and the `/system` identity strip all agree.
+
+- **The launcher names the sandbox-preserving alternative.** The privileged toggle's help
+  now points at reaching the host over SSH when only the far side needs elevation, rather
+  than offering the unsandboxed run alone.
+
 ## 2026-10-14 — host requests: bounded wait, honest states, the polling contract
 
 - **The host request's blocking wait is bounded.** `POST /hosts/self/requests?wait=true`

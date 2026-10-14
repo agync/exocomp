@@ -216,6 +216,13 @@ When ssh-to-self is not possible and the run genuinely needs host access, two wa
    of the kernel sandbox for one run; it cannot enforce per-job caps, so a
    run that also names a runner is refused rather than run uncapped.
 
+Both are visible after the fact: the job detail wears an `unsandboxed` chip,
+the jobs list names it beside the source, the log opens with the attributed
+enqueue band, and `exocomp doctor` reports the privilege posture as a finding.
+Reaching the host over SSH (option 1's remote half) is the sandbox-preserving
+default; `--privileged` is for the run that must be unsandboxed on the
+controller itself.
+
 Related: [Ad-hoc runs and the unreachable-tolerant outcome](adhoc-and-partial.md) ·
 [Reacting to alerts](reactive.md) · [Gating tofu plans](plan-policy.md) ·
 [Provision → onboard → converge](provision-converge.md) ·

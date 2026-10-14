@@ -368,6 +368,12 @@ principle the card serves; an `h3` titles it. Empty states are a single quiet
 tinted pill. Five variants — `ok`, `wait`, `fail`, `run` (accent, breathing dot),
 `dim` — map one-to-one to the signal palette. Never color-only.
 
+**Privilege chip.** A run that opted out of the kernel sandbox carries an
+`unsandboxed` chip (`chip--unsandboxed`, the fail signal the launcher's
+privileged block already uses — a posture, not a failure) in the job detail's
+chip row; the jobs list carries the same fact as a mono word beside the source,
+where the 52px row has no room for a second chip.
+
 **Step rail.** A row of 10px dots rendering a workflow's ledger at a glance, using
 the same five states as the chip.
 
@@ -390,7 +396,9 @@ the verbatim plan diff, and secret-backed values rendered as `[redacted · secre
 The phone never carries a value the web UI would not show.
 
 **Log tail.** Void-surface box, mono, capped height, scrollable, with error lines
-in fail color and system lines dimmed.
+in fail color and system lines dimmed. Its state bands carry the terminal
+verdicts; the privileged enqueue record is a fail-tinted `unsandboxed` band so
+the posture is not buried among the dim system lines.
 
 **Login.** A single card: paste a token, see the certificate fingerprint. Errors
 in fail color, insecure-HTTP warned explicitly.
