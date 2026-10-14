@@ -54,7 +54,7 @@ func TestWebShutdownReturnsNilWithStreamAttached(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	token, _, err := web.MintToken(context.Background(), st, "op", "operator", 0)
+	token, _, err := web.MintToken(context.Background(), st, "op", "operator", "", 0)
 	if err != nil {
 		t.Fatalf("mint token: %v", err)
 	}

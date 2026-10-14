@@ -11,7 +11,7 @@ import (
 // operator. The secret is generated, argon2id-hashed, and stored; the returned
 // string is the only time the plaintext exists outside the operator's paste
 // buffer. A zero expires means the token never expires.
-func MintToken(ctx context.Context, st *store.Store, name, scope string, expires time.Duration) (string, store.APIToken, error) {
+func MintToken(ctx context.Context, st *store.Store, name, scope, host string, expires time.Duration) (string, store.APIToken, error) {
 	secret, err := newSecret()
 	if err != nil {
 		return "", store.APIToken{}, err
@@ -21,7 +21,7 @@ func MintToken(ctx context.Context, st *store.Store, name, scope string, expires
 		return "", store.APIToken{}, err
 	}
 
-	row := store.APIToken{Name: name, Scope: scope, Prefix: prefixOf(secret), Hash: hash}
+	row := store.APIToken{Name: name, Scope: scope, Host: host, Prefix: prefixOf(secret), Hash: hash}
 	if expires > 0 {
 		exp := time.Now().UTC().Add(expires)
 		row.ExpiresAt = &exp

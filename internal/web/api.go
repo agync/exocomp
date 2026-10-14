@@ -167,6 +167,11 @@ func canWrite(id identity) bool {
 // refuse a principal deciding its own write (decidedBySelf).
 func canApprove(id identity) bool { return id.token.Scope == store.ScopeApprove }
 
+// canHostRequest is the W floor for the host self-service request route: a host
+// token alone may ask for a job on itself, and no ambient (cookie) credential
+// may. The route itself re-checks the token's host binding.
+func canHostRequest(id identity) bool { return id.token.Scope == store.ScopeHostToken }
+
 // apiSuccess writes a 200 wire success envelope. It goes through the exact
 // wire.WriteSuccess the CLI uses, so the bytes match `--output json` for the
 // same kind and projection.

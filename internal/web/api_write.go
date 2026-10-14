@@ -142,6 +142,8 @@ func (s *Server) registerWriteAPI(mux *http.ServeMux) {
 		s.apiGuard(bearerOnly(canWrite), writeDeny("manage netgroups", "operator"), s.apiNetgroupUpdate))
 	mux.HandleFunc("DELETE /api/v1/netgroups/{name}",
 		s.apiGuard(bearerOnly(canWrite), writeDeny("manage netgroups", "operator"), s.apiNetgroupDelete))
+	mux.HandleFunc("POST /api/v1/hosts/self/requests",
+		s.apiGuard(bearerOnly(canHostRequest), writeDeny("request jobs", "host"), s.apiHostRequest))
 }
 
 // bearerOnly narrows a scope predicate to callers presenting an explicit bearer
@@ -1418,4 +1420,169 @@ func (s *Server) apiNetgroupDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// --- host self-service requests ---------------------------------------------
+//
+// A host-scoped token asks exocomp to run a class of job on itself. The
+// request is normalized to a reactive event with the host identity taken from
+// the token, never from the body, so it converges on the same rules,
+// guardrails, and approval gates as any other event. Scope "host" authorizes
+// nothing else.
+
+type hostRequestBody struct {
+	Request  string            `json:"request"`
+	Reason   string            `json:"reason,omitempty"`
+	Status   string            `json:"status,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+func (s *Server) apiHostRequest(w http.ResponseWriter, r *http.Request) {
+	id, _ := identityOf(r.Context())
+	if s.engine == nil {
+		s.apiError(w, http.StatusServiceUnavailable,
+			wire.NewError(wire.CodeInternal, "host requests are not available on this surface"))
+		return
+	}
+	if id.token.Scope != store.ScopeHostToken || strings.TrimSpace(id.token.Host) == "" {
+		s.apiError(w, http.StatusForbidden,
+			wire.NewError(wire.CodeForbidden, "this token is not bound to a host"))
+		return
+	}
+	host := id.token.Host
+
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		s.apiError(w, http.StatusRequestEntityTooLarge,
+			wire.NewError(codeInvalidArgument, "body too large"))
+		return
+	}
+	var payload hostRequestBody
+	if err := json.Unmarshal(body, &payload); err != nil {
+		s.apiError(w, http.StatusBadRequest,
+			wire.NewError(codeInvalidArgument, "body is not valid JSON"))
+		return
+	}
+	if strings.TrimSpace(payload.Request) == "" {
+		s.apiError(w, http.StatusBadRequest,
+			wire.NewError(codeInvalidArgument, "request is required"))
+		return
+	}
+	status := payload.Status
+	if status == "" {
+		status = reactive.StatusFiring
+	}
+	if status != reactive.StatusFiring && status != reactive.StatusResolved {
+		s.apiError(w, http.StatusBadRequest,
+			wire.NewError(codeInvalidArgument, "status must be firing or resolved"))
+		return
+	}
+
+	labels := map[string]string{}
+	if payload.Reason != "" {
+		labels["reason"] = payload.Reason
+	}
+	for k, v := range payload.Metadata {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		labels["meta."+k] = v
+	}
+	ev := reactive.Event{
+		Source:     reactive.SourceHost,
+		Kind:       "request",
+		Name:       payload.Request,
+		Host:       host,
+		Instance:   host,
+		Status:     status,
+		Labels:     labels,
+		ReceivedAt: s.now(),
+	}
+	if key := strings.TrimSpace(r.Header.Get("Idempotency-Key")); key != "" {
+		ev.Fingerprint = key
+		ev.DedupKey = reactive.SourceHost + ":" + host + ":fp:" + key
+	} else {
+		ev.DedupKey = reactive.SourceHost + ":" + payload.Request + ":" + host
+	}
+
+	stored, err := s.engine.Ingest(r.Context(), ev, body)
+	if err != nil {
+		s.log.Error("api: host request ingest", "host", host, "err", err)
+		s.apiError(w, http.StatusInternalServerError,
+			wire.NewError(wire.CodeInternal, "request failed"))
+		return
+	}
+
+	// A suppressed duplicate tells the caller nothing about the in-flight
+	// job on its own. Look the previous decision up so the retry gets the
+	// handle it needs instead of re-posting blindly.
+	respJobID := stored.JobID
+	if stored.Outcome == store.OutcomeSuppressed && respJobID == nil {
+		if prev, perr := s.store.LastEventByDedupKey(r.Context(), stored.DedupKey); perr == nil {
+			respJobID = prev.JobID
+		}
+	}
+
+	resp := map[string]any{
+		"event_id": stored.ID,
+		"outcome":  string(stored.Outcome),
+		"reason":   stored.Reason,
+		"job_id":   respJobID,
+	}
+	var approvalID *int64
+	if respJobID != nil {
+		if a, aerr := s.store.ApprovalByJob(r.Context(), *respJobID); aerr == nil {
+			idv := a.ID
+			approvalID = &idv
+		}
+	}
+	resp["approval_id"] = approvalID
+
+	if wq := r.URL.Query().Get("wait"); wq == "true" || wq == "1" {
+		timeout := 30 * time.Second
+		if raw := r.URL.Query().Get("timeout"); raw != "" {
+			if d, terr := time.ParseDuration(raw); terr == nil && d > 0 {
+				timeout = d
+			}
+		}
+		deadline := s.now().Add(timeout)
+		if respJobID != nil {
+			for {
+				select {
+				case <-r.Context().Done():
+					resp["job_state"] = "cancelled"
+					goto done
+				default:
+				}
+				job, jerr := s.store.GetJob(r.Context(), *respJobID)
+				if jerr == nil && (job.State == store.StateSucceeded || job.State == store.StateFailed ||
+					job.State == store.StateCancelled || job.State == store.StateInterrupted ||
+					job.State == store.StateTimedOut || job.State == store.StateDegraded) {
+					resp["job_state"] = string(job.State)
+					if job.ExitCode != nil {
+						resp["exit_code"] = *job.ExitCode
+					}
+					break
+				}
+				if s.now().After(deadline) {
+					resp["job_state"] = "pending"
+					break
+				}
+				select {
+				case <-r.Context().Done():
+					resp["job_state"] = "cancelled"
+					goto done
+				case <-time.After(500 * time.Millisecond):
+				}
+			}
+		}
+	done:
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	if err := wire.WriteSuccess(w, wire.KindHostRequest, resp); err != nil {
+		s.log.Error("api: write host request", "err", err)
+	}
 }

@@ -62,7 +62,7 @@ func TestServeWebSurfaceSeparateFromLoopbackBackend(t *testing.T) {
 	}
 
 	// With a token minted, the LAN surface binds and serves.
-	token, _, err := web.MintToken(ctx, st, "laptop", "operator", 0)
+	token, _, err := web.MintToken(ctx, st, "laptop", "operator", "", 0)
 	if err != nil {
 		t.Fatalf("mint token: %v", err)
 	}

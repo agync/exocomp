@@ -312,7 +312,7 @@ func (s *Server) handleTokenNew(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-		secret, row, err = MintToken(r.Context(), s.store, want, scope, expiry)
+		secret, row, err = MintToken(r.Context(), s.store, want, scope, "", expiry)
 		if errors.Is(err, store.ErrDuplicate) {
 			if autogen && attempt < 4 {
 				continue

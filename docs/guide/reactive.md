@@ -81,3 +81,18 @@ exocomp silence add \
 ```
 
 Any matching events that arrive during the silence window are recorded in the event log but will not trigger associated actions.
+
+
+## Host self-service requests
+
+A managed host can request a pre-approved job that runs on itself without holding
+an operator token:
+
+```bash
+curl -X POST https://exocomp.example/api/v1/hosts/self/requests   -H "Authorization: Bearer $HOST_TOKEN"   -H "Idempotency-Key: pre-reboot-$(hostname)"   -H "Content-Type: application/json"   -d '{"request":"upgrade","reason":"before reboot"}'
+```
+
+The host's canonical identity is taken from the token, never from the body. A
+request either fires immediately, lands in `awaiting_approval`, or is suppressed
+by the same cooldown/cap/dedup guardrails as any other event; `?wait=true` (with
+an optional `timeout=30s`) blocks until the job reaches a terminal state.

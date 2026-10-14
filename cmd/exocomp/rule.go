@@ -244,6 +244,15 @@ func validatePlaybookRule(ctx context.Context, st *store.Store, repoSource, play
 	if hooked {
 		return fmt.Errorf("rule add: source %q has hooks; a rule playbook is a plain run", repoSource)
 	}
+	if strings.Contains(limit, "{{host}}") {
+		// Host templates resolve at request time; validate the rest of the
+		// ansible arguments now by substituting a placeholder host.
+		checkLimit := strings.ReplaceAll(limit, "{{host}}", "host")
+		if _, _, err := service.AnsiblePassthrough(checkLimit, tags, "", check, diff, nil); err != nil {
+			return fmt.Errorf("rule add: %w", err)
+		}
+		return nil
+	}
 	if _, _, err := service.AnsiblePassthrough(limit, tags, "", check, diff, nil); err != nil {
 		return fmt.Errorf("rule add: %w", err)
 	}

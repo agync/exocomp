@@ -5,15 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
 // Token scopes. operator drives runs and approvals; approve can only decide
 // pending approvals; readonly sees the surfaces and nothing that mutates.
 const (
-	ScopeOperator = "operator"
-	ScopeReadonly = "readonly"
-	ScopeApprove  = "approve"
+	ScopeOperator  = "operator"
+	ScopeReadonly  = "readonly"
+	ScopeApprove   = "approve"
+	ScopeHostToken = "host"
 )
 
 // APIToken is one LAN access credential at rest. The secret itself is never a
@@ -24,6 +26,7 @@ type APIToken struct {
 	ID         int64
 	Name       string
 	Scope      string
+	Host       string
 	Prefix     string
 	Hash       string
 	CreatedAt  time.Time
@@ -56,16 +59,19 @@ func (t APIToken) CredentialEpoch() int64 {
 	return t.CreatedAt.UnixMilli()
 }
 
-const apiTokenColumns = `id, name, scope, prefix, hash, created_at,
+const apiTokenColumns = `id, name, scope, host, prefix, hash, created_at,
 	expires_at, last_used_at, revoked_at, rotated_at`
 
 // CreateToken inserts a token row. A duplicate name returns ErrDuplicate.
 func (s *Store) CreateToken(ctx context.Context, t APIToken) (APIToken, error) {
 	switch t.Scope {
-	case ScopeOperator, ScopeReadonly, ScopeApprove:
+	case ScopeOperator, ScopeReadonly, ScopeApprove, ScopeHostToken:
 	default:
-		return APIToken{}, fmt.Errorf("store: create token: scope %q is not %s, %s, or %s",
-			t.Scope, ScopeOperator, ScopeReadonly, ScopeApprove)
+		return APIToken{}, fmt.Errorf("store: create token: scope %q is not %s, %s, %s, or %s",
+			t.Scope, ScopeOperator, ScopeReadonly, ScopeApprove, ScopeHostToken)
+	}
+	if t.Scope == ScopeHostToken && strings.TrimSpace(t.Host) == "" {
+		return APIToken{}, errors.New("store: create token: host scope requires a host binding")
 	}
 	if t.Name == "" {
 		return APIToken{}, errors.New("store: create token: a name is mandatory")
@@ -73,14 +79,22 @@ func (s *Store) CreateToken(ctx context.Context, t APIToken) (APIToken, error) {
 	if t.Hash == "" {
 		return APIToken{}, errors.New("store: create token: no hash")
 	}
+	t.Host = strings.TrimSpace(t.Host)
+	if t.Scope == ScopeHostToken {
+		if !validHostBinding(t.Host) {
+			return APIToken{}, errors.New("store: create token: host binding contains whitespace or separators")
+		}
+	} else {
+		t.Host = ""
+	}
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = time.Now().UTC()
 	}
 
 	res, err := s.db.ExecContext(ctx, `
-		INSERT INTO api_token (name, scope, prefix, hash, created_at, expires_at, last_used_at, revoked_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		t.Name, t.Scope, t.Prefix, t.Hash, t.CreatedAt.UnixMilli(),
+		INSERT INTO api_token (name, scope, host, prefix, hash, created_at, expires_at, last_used_at, revoked_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		t.Name, t.Scope, nullHost(t.Host), t.Prefix, t.Hash, t.CreatedAt.UnixMilli(),
 		msPtr(t.ExpiresAt), msPtr(t.LastUsedAt), msPtr(t.RevokedAt))
 	if err != nil {
 		return APIToken{}, wrap("create token", err)
@@ -233,8 +247,9 @@ func scanToken(row rowScanner) (APIToken, error) {
 		t                                           APIToken
 		createdAt                                   int64
 		expiresAt, lastUsedAt, revokedAt, rotatedAt sql.NullInt64
+		host                                        sql.NullString
 	)
-	err := row.Scan(&t.ID, &t.Name, &t.Scope, &t.Prefix, &t.Hash, &createdAt,
+	err := row.Scan(&t.ID, &t.Name, &t.Scope, &host, &t.Prefix, &t.Hash, &createdAt,
 		&expiresAt, &lastUsedAt, &revokedAt, &rotatedAt)
 	if err != nil {
 		return APIToken{}, err
@@ -244,5 +259,34 @@ func scanToken(row rowScanner) (APIToken, error) {
 	t.LastUsedAt = timePtr(lastUsedAt)
 	t.RevokedAt = timePtr(revokedAt)
 	t.RotatedAt = timePtr(rotatedAt)
+	if host.Valid {
+		t.Host = host.String
+	}
 	return t, nil
+}
+
+// nullHost turns an empty host binding into SQL NULL so non-host scopes store
+// no per-machine identity.
+func nullHost(h string) any {
+	if strings.TrimSpace(h) == "" {
+		return nil
+	}
+	return h
+}
+
+// validHostBinding rejects anything that could widen a host token's target:
+// spaces/newlines and commas would let one token masquerade as a list of hosts.
+func validHostBinding(h string) bool {
+	if h == "" {
+		return false
+	}
+	for _, r := range h {
+		if r == ' ' || r == '\t' || r == '\n' || r == '\r' || r == ',' {
+			return false
+		}
+		if r < 0x20 || r == 0x7f {
+			return false
+		}
+	}
+	return true
 }

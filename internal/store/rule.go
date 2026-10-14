@@ -49,6 +49,9 @@ type RuleAction struct {
 	// granted read-only as a single file. Empty is the default posture: a rule
 	// without the field grants no key outside the checkout.
 	SSHIdentityFiles []string `json:"ssh_identity_files,omitempty"`
+	// AllowCrossHost lets a host-requested rule target a host other than the
+	// one that requested it. Defaults to false: a request acts only on itself.
+	AllowCrossHost bool `json:"allow_cross_host,omitempty"`
 }
 
 // Rule is one row of the rule table: a CEL expression over a normalized event

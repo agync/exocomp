@@ -21,6 +21,10 @@ const (
 	// listens to. It is deliberately absent from Sources — that list is the
 	// webhook surface the ingress resolves tokens for.
 	SourceCheck = "check"
+	// SourceHost is not a webhook: it is a job request posted by a managed
+	// host that authenticated as itself, entering the same pipeline so the
+	// configured rules, guardrails, and approval gates apply to it.
+	SourceHost = "host"
 )
 
 // Sources lists every source the ingress accepts, in the order tokens are

@@ -186,10 +186,15 @@ func startWebSurface(ctx context.Context, st *store.Store, env *secrets.Envelope
 		tlsCert, fingerprint = cert, fp
 	}
 
+	var eng *reactive.Engine
+	if e, ok := decider.(*reactive.Engine); ok {
+		eng = e
+	}
 	srv, err := web.New(web.Options{
 		Store:       st,
 		Deriver:     env,
 		Decider:     decider,
+		Engine:      eng,
 		Plans:       env,
 		Sealer:      env,
 		Maint:       maint,

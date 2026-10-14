@@ -26,7 +26,7 @@ import (
 // rule never composes the lifecycle workflow `exocomp run` owns. The source
 // checkout must exist on disk (containedPath resolves symlinks on the deepest
 // existing ancestor), the same posture as `playbook run --source`.
-func (s *Service) BuildPlaybookSpec(ctx context.Context, _ reactive.Event, rule store.Rule) (queue.Spec, error) {
+func (s *Service) BuildPlaybookSpec(ctx context.Context, ev reactive.Event, rule store.Rule) (queue.Spec, error) {
 	if rule.Action.Source == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action names no source", rule.Name)
 	}
@@ -34,8 +34,22 @@ func (s *Service) BuildPlaybookSpec(ctx context.Context, _ reactive.Event, rule 
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action names no playbook", rule.Name)
 	}
 	limit := rule.Action.Limit
+	if strings.Contains(limit, "{{host}}") {
+		if ev.Source != reactive.SourceHost {
+			return queue.Spec{}, fmt.Errorf("rule %q: {{host}} templates are only valid for host-requested runs", rule.Name)
+		}
+		if strings.TrimSpace(ev.Host) == "" {
+			return queue.Spec{}, fmt.Errorf("rule %q: host-requested run has no requesting host", rule.Name)
+		}
+		limit = strings.ReplaceAll(limit, "{{host}}", ev.Host)
+	}
 	if limit == "" {
 		return queue.Spec{}, fmt.Errorf("rule %q: playbook action needs a --limit (default-deny)", rule.Name)
+	}
+	if ev.Source == reactive.SourceHost && !rule.Action.AllowCrossHost {
+		if limit != ev.Host {
+			return queue.Spec{}, fmt.Errorf("rule %q: host request may only target the requesting host (%s)", rule.Name, ev.Host)
+		}
 	}
 	// The passthrough argv is discarded here; it is re-derived from the same
 	// fields when the spec is assembled below. What this call buys is the

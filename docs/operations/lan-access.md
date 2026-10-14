@@ -30,6 +30,7 @@ Tokens are minted only from the box (the data dir is the root of trust):
 
 ```
 exocomp token new laptop --scope operator --expires 720h
+exocomp token new node.lan --scope host --host node.lan
 exocomp token list
 exocomp token revoke laptop
 ```

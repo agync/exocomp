@@ -56,7 +56,11 @@ type Options struct {
 	Store   *store.Store
 	Deriver Deriver
 	Decider Decider
-	Plans   PlanOpener
+	// Engine is the reactive engine the host self-service request route drives.
+	// A nil engine makes that route unavailable (503) rather than silently
+	// dropping the request.
+	Engine *reactive.Engine
+	Plans  PlanOpener
 	// Maint drives the drain/cordon maintenance action. It is the running
 	// daemon's control seam; a nil Maint (a web-only process that runs no jobs
 	// and no scheduler) makes the maintenance routes answer "not available here".
@@ -95,6 +99,7 @@ type Server struct {
 	store       *store.Store
 	deriver     Deriver
 	decider     Decider
+	engine      *reactive.Engine
 	plans       PlanOpener
 	maint       Maintenance
 	ntfy        NtfyDriver
@@ -211,6 +216,7 @@ func New(opts Options) (*Server, error) {
 		store:                  opts.Store,
 		deriver:                opts.Deriver,
 		decider:                opts.Decider,
+		engine:                 opts.Engine,
 		plans:                  opts.Plans,
 		maint:                  opts.Maint,
 		ntfy:                   opts.Ntfy,

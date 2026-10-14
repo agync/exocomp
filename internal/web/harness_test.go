@@ -143,7 +143,7 @@ func buildHarness(t *testing.T, base string, parallel bool) *harness {
 	t.Cleanup(func() { cancel(); <-done })
 
 	srv, err := New(Options{
-		Store: st, Deriver: env, Decider: engine, Plans: env, Sealer: env,
+		Store: st, Deriver: env, Decider: engine, Engine: engine, Plans: env, Sealer: env,
 		Version: "test", DataDir: dir, BasePath: base,
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func buildHarness(t *testing.T, base string, parallel bool) *harness {
 // mint issues a token of the given scope and returns the one-time string.
 func (h *harness) mint(t *testing.T, name, scope string) string {
 	t.Helper()
-	token, _, err := MintToken(context.Background(), h.store, name, scope, 0)
+	token, _, err := MintToken(context.Background(), h.store, name, scope, "", 0)
 	if err != nil {
 		t.Fatalf("MintToken: %v", err)
 	}

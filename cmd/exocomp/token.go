@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"text/tabwriter"
 	"time"
 
@@ -33,6 +34,7 @@ func newTokenCmd() *cobra.Command {
 
 func newTokenNewCmd() *cobra.Command {
 	var scope string
+	var hostFlag string
 	var expires time.Duration
 	var showQR bool
 
@@ -43,10 +45,13 @@ func newTokenNewCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			switch scope {
-			case store.ScopeOperator, store.ScopeReadonly, store.ScopeApprove:
+			case store.ScopeOperator, store.ScopeReadonly, store.ScopeApprove, store.ScopeHostToken:
 			default:
-				return fmt.Errorf("token new: --scope must be %s, %s, or %s",
-					store.ScopeOperator, store.ScopeReadonly, store.ScopeApprove)
+				return fmt.Errorf("token new: --scope must be %s, %s, %s, or %s",
+					store.ScopeOperator, store.ScopeReadonly, store.ScopeApprove, store.ScopeHostToken)
+			}
+			if scope == store.ScopeHostToken && strings.TrimSpace(hostFlag) == "" {
+				return fmt.Errorf("token new: --host is required for scope %s", store.ScopeHostToken)
 			}
 
 			dir, err := dataDir()
@@ -59,7 +64,7 @@ func newTokenNewCmd() *cobra.Command {
 			}
 			defer func() { _ = st.Close() }()
 
-			token, row, err := web.MintToken(cmd.Context(), st, name, scope, expires)
+			token, row, err := web.MintToken(cmd.Context(), st, name, scope, hostFlag, expires)
 			if errors.Is(err, store.ErrDuplicate) {
 				return duplicateTokenError(cmd, st, name)
 			}
@@ -91,7 +96,9 @@ func newTokenNewCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&scope, "scope", store.ScopeOperator,
-		"token scope: operator, readonly, or approve")
+		"token scope: operator, readonly, approve, or host")
+	cmd.Flags().StringVar(&hostFlag, "host", "",
+		"bound hostname for a host-scoped token (required with --scope host)")
 	cmd.Flags().DurationVar(&expires, "expires", 0,
 		"how long the token is valid (0: never expires)")
 	cmd.Flags().BoolVar(&showQR, "qr", true,

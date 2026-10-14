@@ -35,6 +35,7 @@ const (
 	KindSecretList    = "secret.list"
 	KindBackupList    = "backup.list"
 	KindTokenList     = "token.list"
+	KindHostRequest   = "host.request"
 	KindPolicyList    = "policy.list"
 	KindCommands      = "commands"
 	KindDoctor        = "doctor"
