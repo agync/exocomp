@@ -3035,10 +3035,15 @@ func pinCount(state string, n int) string {
 
 // jobRerunVM prefills the "Run again" resubmit modal from the original job. The
 // toggles carry the original run's flags (Check/Diff detected in the stored
-// argv, Privileged from Args.Privileged, Tolerate from Args.TolerateUnreachable);
-// Limit/Tags are the editable values pulled from the argv's two-token flags.
-// Command/Inventory/ExtraVars are the read-only identity — the run's own
-// resolved command line and the names it carried, never a secret value.
+// argv, Tolerate from Args.TolerateUnreachable); Limit/Tags are the editable
+// values pulled from the argv's two-token flags. Command/Inventory/ExtraVars are
+// the read-only identity — the run's own resolved command line and the names it
+// carried, never a secret value.
+//
+// Privileged reports that the ORIGINAL run went unsandboxed; the dialog renders
+// it as a fact and starts its privileged toggle unchecked. It is deliberately
+// not the toggle's checked state: the handler never trusts the client to keep an
+// escalation, so re-escalating is a fresh, deliberate act.
 type jobRerunVM struct {
 	Check      bool
 	Diff       bool

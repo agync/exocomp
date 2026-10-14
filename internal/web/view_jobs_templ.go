@@ -1698,8 +1698,12 @@ func outputCard(vm jobDetailVM) templ.Component {
 // rerunDialog is the resubmit modal (1c): the facts block (read-only identity
 // plus the editable Limit), the OPTIONS toggles (Check mode, Show diff,
 // Tolerate unreachable hosts — pre-highlighted when this job failed on
-// unreachable hosts), and the footer contract button. ?rerun=1 renders it open
-// for JS-off.
+// unreachable hosts), the privileged escalation block, and the footer contract
+// button. ?rerun=1 renders it open for JS-off.
+//
+// The privileged block names the original's posture as a fact and starts the
+// toggle OFF: the handler honours a checked box but never trusts the client to
+// keep an escalation, so a rerun re-escalates only by a deliberate act.
 func rerunDialog(vm jobDetailVM) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
@@ -1738,7 +1742,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var86 string
 		templ_7745c5c3_Var86, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 411, Col: 55}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 415, Col: 55}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var86))
 		if templ_7745c5c3_Err != nil {
@@ -1751,7 +1755,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var87 templ.SafeURL
 		templ_7745c5c3_Var87, templ_7745c5c3_Err = templ.JoinURLErrs(templ.SafeURL(urlWithBase(vm.Page.Base, "/jobs/"+itoa64(vm.Job.ID))))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 421, Col: 144}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 425, Col: 144}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var87))
 		if templ_7745c5c3_Err != nil {
@@ -1764,7 +1768,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var88 string
 		templ_7745c5c3_Var88, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 421, Col: 167}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 425, Col: 167}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var88))
 		if templ_7745c5c3_Err != nil {
@@ -1777,7 +1781,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var89 templ.SafeURL
 		templ_7745c5c3_Var89, templ_7745c5c3_Err = templ.JoinURLErrs(rerunAction(vm.Page.Base, vm.Job.ID))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 422, Col: 68}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 426, Col: 68}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var89))
 		if templ_7745c5c3_Err != nil {
@@ -1790,7 +1794,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var90 string
 		templ_7745c5c3_Var90, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RunCard.Title)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 424, Col: 65}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 428, Col: 65}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var90))
 		if templ_7745c5c3_Err != nil {
@@ -1808,7 +1812,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var91 string
 			templ_7745c5c3_Var91, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Source)
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 426, Col: 57}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 430, Col: 57}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var91))
 			if templ_7745c5c3_Err != nil {
@@ -1826,7 +1830,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var92 string
 		templ_7745c5c3_Var92, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.RefLabel))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 428, Col: 63}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 432, Col: 63}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var92))
 		if templ_7745c5c3_Err != nil {
@@ -1839,7 +1843,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 		var templ_7745c5c3_Var93 string
 		templ_7745c5c3_Var93, templ_7745c5c3_Err = templ.JoinStringErrs(orDash(vm.Rerun.Inventory))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 429, Col: 76}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 433, Col: 76}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var93))
 		if templ_7745c5c3_Err != nil {
@@ -1911,7 +1915,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var96 string
 			templ_7745c5c3_Var96, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 444, Col: 34}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 448, Col: 34}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var96))
 			if templ_7745c5c3_Err != nil {
@@ -1924,7 +1928,7 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 			var templ_7745c5c3_Var97 string
 			templ_7745c5c3_Var97, templ_7745c5c3_Err = templ.JoinStringErrs(andList(vm.RerunFailedOn))
 			if templ_7745c5c3_Err != nil {
-				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 444, Col: 74}
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 448, Col: 74}
 			}
 			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var97))
 			if templ_7745c5c3_Err != nil {
@@ -1935,33 +1939,60 @@ func rerunDialog(vm jobDetailVM) templ.Component {
 				return templ_7745c5c3_Err
 			}
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "<span>CLI: --tolerate-unreachable</span></p></div><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Queue run</button></div><p class=\"meta\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 162, "<span>CLI: --tolerate-unreachable</span></p></div><div class=\"privileged\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		var templ_7745c5c3_Var98 string
-		templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RerunMeta())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 452, Col: 36}
+		if vm.Rerun.Privileged {
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "<p class=\"meta\">Job #")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			var templ_7745c5c3_Var98 string
+			templ_7745c5c3_Var98, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(vm.Job.ID))
+			if templ_7745c5c3_Err != nil {
+				return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 455, Col: 46}
+			}
+			_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, " ran <span class=\"fail-text\">unsandboxed</span> — no kernel sandbox. This rerun runs sandboxed unless you switch the toggle on.</p>")
+			if templ_7745c5c3_Err != nil {
+				return templ_7745c5c3_Err
+			}
 		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var98))
+		templ_7745c5c3_Err = toggle("privileged", "Run unsandboxed (privileged)", false, true).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 163, "</p><p class=\"meta mono rerun-summary\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "<p class=\"meta\">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p></div><div class=\"actions\"><button type=\"submit\" class=\"btn primary\">Queue run</button></div><p class=\"meta\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var99 string
-		templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Rerun.Summary())
+		templ_7745c5c3_Var99, templ_7745c5c3_Err = templ.JoinStringErrs(vm.RerunMeta())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 453, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 463, Col: 36}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var99))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 164, "</p><button type=\"button\" class=\"btn quiet\" data-modal-dismiss>Cancel</button></form></div></dialog>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "</p><p class=\"meta mono rerun-summary\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var100 string
+		templ_7745c5c3_Var100, templ_7745c5c3_Err = templ.JoinStringErrs(vm.Rerun.Summary())
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 464, Col: 59}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var100))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</p><button type=\"button\" class=\"btn quiet\" data-modal-dismiss>Cancel</button></form></div></dialog>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -1989,56 +2020,56 @@ func logLine(e eventLine) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var100 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var100 == nil {
-			templ_7745c5c3_Var100 = templ.NopComponent
+		templ_7745c5c3_Var101 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var101 == nil {
+			templ_7745c5c3_Var101 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		var templ_7745c5c3_Var101 = []any{"line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system")}
-		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var101...)
+		var templ_7745c5c3_Var102 = []any{"line", templ.KV("err", e.Level == "error"), templ.KV("sys", e.Level == "system")}
+		templ_7745c5c3_Err = templ.RenderCSSItems(ctx, templ_7745c5c3_Buffer, templ_7745c5c3_Var102...)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 165, "<span class=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var102 string
-		templ_7745c5c3_Var102, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var101).String())
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 1, Col: 0}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var102))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 166, "\"><span class=\"ts\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "<span class=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var103 string
-		templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
+		templ_7745c5c3_Var103, templ_7745c5c3_Err = templ.JoinStringErrs(templ.CSSClasses(templ_7745c5c3_Var102).String())
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 466, Col: 25}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 1, Col: 0}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var103))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 167, "</span> <span class=\"msg\">")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "\"><span class=\"ts\">")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var104 string
-		templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
+		templ_7745c5c3_Var104, templ_7745c5c3_Err = templ.JoinStringErrs(e.Ts)
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 467, Col: 27}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 477, Col: 25}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var104))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 168, "</span></span>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "</span> <span class=\"msg\">")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var105 string
+		templ_7745c5c3_Var105, templ_7745c5c3_Err = templ.JoinStringErrs(e.Msg)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 478, Col: 27}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var105))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "</span></span>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -2078,51 +2109,51 @@ func jobStream(id int64, since int64, base string) templ.Component {
 			}()
 		}
 		ctx = templ.InitializeContext(ctx)
-		templ_7745c5c3_Var105 := templ.GetChildren(ctx)
-		if templ_7745c5c3_Var105 == nil {
-			templ_7745c5c3_Var105 = templ.NopComponent
+		templ_7745c5c3_Var106 := templ.GetChildren(ctx)
+		if templ_7745c5c3_Var106 == nil {
+			templ_7745c5c3_Var106 = templ.NopComponent
 		}
 		ctx = templ.ClearChildren(ctx)
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 169, "<script data-job=\"")
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		var templ_7745c5c3_Var106 string
-		templ_7745c5c3_Var106, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(id))
-		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 488, Col: 30}
-		}
-		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var106))
-		if templ_7745c5c3_Err != nil {
-			return templ_7745c5c3_Err
-		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 170, "\" data-since=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "<script data-job=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var107 string
-		templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(since))
+		templ_7745c5c3_Var107, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(id))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 488, Col: 59}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 499, Col: 30}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var107))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 171, "\" data-base=\"")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 173, "\" data-since=\"")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
 		var templ_7745c5c3_Var108 string
-		templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(base)
+		templ_7745c5c3_Var108, templ_7745c5c3_Err = templ.JoinStringErrs(itoa64(since))
 		if templ_7745c5c3_Err != nil {
-			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 488, Col: 78}
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 499, Col: 59}
 		}
 		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var108))
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 172, "\">\n\t(function () {\n\t\tvar script = document.currentScript;\n\t\tvar job = script.getAttribute(\"data-job\");\n\t\tvar since = script.getAttribute(\"data-since\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tvar stale = document.getElementById(\"jobs-stale\");\n\t\tvar pin = document.getElementById(\"log-pin\");\n\t\tvar tailBtn = document.getElementById(\"log-tail\");\n\t\tvar tailN = document.getElementById(\"log-tail-n\");\n\t\tvar following = true; // pinned to the tail; false once the operator scrolls up\n\t\tvar sincePin = 0;     // lines appended while unpinned, for the Tail +N badge\n\t\tvar base = script.getAttribute(\"data-base\") || \"\";\n\t\tvar es = new EventSource(base + \"/jobs/\" + job + \"/stream?since=\" + since);\n\t\t// setPin moves the chip between the four states; tail is the .n span's\n\t\t// text (the \" · N lines\" count, \" · scrolled up\"), empty on following.\n\t\t// The dot vs check glyph is the state's shape: complete swaps in the\n\t\t// check, every other state keeps the dot.\n\t\tfunction setPin(state, tail) {\n\t\t\tif (!pin) return;\n\t\t\tpin.setAttribute(\"data-state\", state);\n\t\t\tvar dot = pin.querySelector(\".dot\");\n\t\t\tvar check = pin.querySelector(\".check\");\n\t\t\tif (dot) dot.hidden = state === \"complete\";\n\t\t\tif (check) check.hidden = state !== \"complete\";\n\t\t\tvar word = pin.querySelector(\".pinword\");\n\t\t\tif (word) word.textContent = state === \"following\" ? \"FOLLOWING TAIL\" : state === \"paused\" ? \"PAUSED\" : state === \"cut\" ? \"LOG CUT\" : \"LOG COMPLETE\";\n\t\t\tvar nEl = pin.querySelector(\".n\");\n\t\t\tif (nEl) nEl.textContent = tail || \"\";\n\t\t}\n\t\tfunction rePin() {\n\t\t\tfollowing = true;\n\t\t\tsincePin = 0;\n\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t\tsetPin(\"following\", \"\");\n\t\t\tif (tailBtn) tailBtn.hidden = true;\n\t\t}\n\t\t// The operator scrolling up unpins; reaching the bottom re-pins.\n\t\tlog.addEventListener(\"scroll\", function () {\n\t\t\tif (following && log.scrollTop + log.clientHeight < log.scrollHeight - 6) {\n\t\t\t\tfollowing = false;\n\t\t\t\tsetPin(\"paused\", \" · scrolled up\");\n\t\t\t} else if (!following && log.scrollTop + log.clientHeight >= log.scrollHeight - 6) {\n\t\t\t\trePin();\n\t\t\t}\n\t\t});\n\t\tif (tailBtn) tailBtn.addEventListener(\"click\", rePin);\n\t\tes.addEventListener(\"line\", function (ev) {\n\t\t\tvar d = JSON.parse(ev.data);\n\t\t\tvar span;\n\t\t\t// A system line that bandFor re-renders arrives as the styled band\n\t\t\t// (the same .logband the server renders), so the tail and the\n\t\t\t// reloaded page agree on the terminal line.\n\t\t\tif (d.band) {\n\t\t\t\tspan = document.createElement(\"div\");\n\t\t\t\tspan.className = \"logband \" + d.band_class;\n\t\t\t\tvar bts = document.createElement(\"span\");\n\t\t\t\tbts.className = \"ts\";\n\t\t\t\tbts.textContent = d.ts.slice(11, 19);\n\t\t\t\tspan.appendChild(bts);\n\t\t\t\tspan.appendChild(document.createTextNode(\" \" + d.band));\n\t\t\t} else {\n\t\t\t\tspan = document.createElement(\"span\");\n\t\t\t\tspan.className = \"line\" + (d.level === \"error\" ? \" err\" : d.level === \"system\" ? \" sys\" : \"\");\n\t\t\t\tvar ts = document.createElement(\"span\");\n\t\t\t\tts.className = \"ts\";\n\t\t\t\tts.textContent = d.ts.slice(11, 19);\n\t\t\t\tspan.appendChild(ts);\n\t\t\t\tvar msg = document.createElement(\"span\");\n\t\t\t\tmsg.className = \"msg\";\n\t\t\t\tmsg.textContent = d.msg;\n\t\t\t\tspan.appendChild(msg);\n\t\t\t}\n\t\t\tlog.appendChild(span);\n\t\t\tif (window.exoFilterLog) window.exoFilterLog();\n\t\t\tif (following) {\n\t\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t\t} else {\n\t\t\t\tsincePin++;\n\t\t\t\tif (tailBtn) {\n\t\t\t\t\ttailBtn.hidden = false;\n\t\t\t\t\tif (tailN) tailN.textContent = \"+\" + sincePin;\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t\tes.addEventListener(\"done\", function () {\n\t\t\t// Flash the terminal state from the last band before the reload\n\t\t\t// renders the true final page: a verdict band (ok/fail/wait) means\n\t\t\t// complete, anything else (or none) means the stream ended without\n\t\t\t// the terminal line.\n\t\t\tvar bands = log.querySelectorAll(\".logband\");\n\t\t\tvar last = bands.length ? bands[bands.length - 1].className : \"\";\n\t\t\tvar state = (last.indexOf(\"ok\") !== -1 || last.indexOf(\"fail\") !== -1 || last.indexOf(\"wait\") !== -1) ? \"complete\" : \"cut\";\n\t\t\tsetPin(state, \"\");\n\t\t\tlocation.reload();\n\t\t});\n\t\tes.onerror = function () {\n\t\t\t// Only a permanently-closed stream is a real failure worth\n\t\t\t// surfacing: EventSource fires onerror on every transient drop\n\t\t\t// while it retries, and a refused (503) stream is closed for good.\n\t\t\tif (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;\n\t\t};\n\t\tes.onopen = function () {\n\t\t\t// A reconnect is proof the stream is live again, even if the quiet\n\t\t\t// job then emits nothing for a long stretch — the banner must not\n\t\t\t// stay up on a healthy stream.\n\t\t\tif (stale) stale.hidden = true;\n\t\t};\n\t})();\n\t</script>")
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 174, "\" data-base=\"")
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		var templ_7745c5c3_Var109 string
+		templ_7745c5c3_Var109, templ_7745c5c3_Err = templ.JoinStringErrs(base)
+		if templ_7745c5c3_Err != nil {
+			return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_jobs.templ`, Line: 499, Col: 78}
+		}
+		_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var109))
+		if templ_7745c5c3_Err != nil {
+			return templ_7745c5c3_Err
+		}
+		templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 175, "\">\n\t(function () {\n\t\tvar script = document.currentScript;\n\t\tvar job = script.getAttribute(\"data-job\");\n\t\tvar since = script.getAttribute(\"data-since\");\n\t\tvar log = document.getElementById(\"log\");\n\t\tvar stale = document.getElementById(\"jobs-stale\");\n\t\tvar pin = document.getElementById(\"log-pin\");\n\t\tvar tailBtn = document.getElementById(\"log-tail\");\n\t\tvar tailN = document.getElementById(\"log-tail-n\");\n\t\tvar following = true; // pinned to the tail; false once the operator scrolls up\n\t\tvar sincePin = 0;     // lines appended while unpinned, for the Tail +N badge\n\t\tvar base = script.getAttribute(\"data-base\") || \"\";\n\t\tvar es = new EventSource(base + \"/jobs/\" + job + \"/stream?since=\" + since);\n\t\t// setPin moves the chip between the four states; tail is the .n span's\n\t\t// text (the \" · N lines\" count, \" · scrolled up\"), empty on following.\n\t\t// The dot vs check glyph is the state's shape: complete swaps in the\n\t\t// check, every other state keeps the dot.\n\t\tfunction setPin(state, tail) {\n\t\t\tif (!pin) return;\n\t\t\tpin.setAttribute(\"data-state\", state);\n\t\t\tvar dot = pin.querySelector(\".dot\");\n\t\t\tvar check = pin.querySelector(\".check\");\n\t\t\tif (dot) dot.hidden = state === \"complete\";\n\t\t\tif (check) check.hidden = state !== \"complete\";\n\t\t\tvar word = pin.querySelector(\".pinword\");\n\t\t\tif (word) word.textContent = state === \"following\" ? \"FOLLOWING TAIL\" : state === \"paused\" ? \"PAUSED\" : state === \"cut\" ? \"LOG CUT\" : \"LOG COMPLETE\";\n\t\t\tvar nEl = pin.querySelector(\".n\");\n\t\t\tif (nEl) nEl.textContent = tail || \"\";\n\t\t}\n\t\tfunction rePin() {\n\t\t\tfollowing = true;\n\t\t\tsincePin = 0;\n\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t\tsetPin(\"following\", \"\");\n\t\t\tif (tailBtn) tailBtn.hidden = true;\n\t\t}\n\t\t// The operator scrolling up unpins; reaching the bottom re-pins.\n\t\tlog.addEventListener(\"scroll\", function () {\n\t\t\tif (following && log.scrollTop + log.clientHeight < log.scrollHeight - 6) {\n\t\t\t\tfollowing = false;\n\t\t\t\tsetPin(\"paused\", \" · scrolled up\");\n\t\t\t} else if (!following && log.scrollTop + log.clientHeight >= log.scrollHeight - 6) {\n\t\t\t\trePin();\n\t\t\t}\n\t\t});\n\t\tif (tailBtn) tailBtn.addEventListener(\"click\", rePin);\n\t\tes.addEventListener(\"line\", function (ev) {\n\t\t\tvar d = JSON.parse(ev.data);\n\t\t\tvar span;\n\t\t\t// A system line that bandFor re-renders arrives as the styled band\n\t\t\t// (the same .logband the server renders), so the tail and the\n\t\t\t// reloaded page agree on the terminal line.\n\t\t\tif (d.band) {\n\t\t\t\tspan = document.createElement(\"div\");\n\t\t\t\tspan.className = \"logband \" + d.band_class;\n\t\t\t\tvar bts = document.createElement(\"span\");\n\t\t\t\tbts.className = \"ts\";\n\t\t\t\tbts.textContent = d.ts.slice(11, 19);\n\t\t\t\tspan.appendChild(bts);\n\t\t\t\tspan.appendChild(document.createTextNode(\" \" + d.band));\n\t\t\t} else {\n\t\t\t\tspan = document.createElement(\"span\");\n\t\t\t\tspan.className = \"line\" + (d.level === \"error\" ? \" err\" : d.level === \"system\" ? \" sys\" : \"\");\n\t\t\t\tvar ts = document.createElement(\"span\");\n\t\t\t\tts.className = \"ts\";\n\t\t\t\tts.textContent = d.ts.slice(11, 19);\n\t\t\t\tspan.appendChild(ts);\n\t\t\t\tvar msg = document.createElement(\"span\");\n\t\t\t\tmsg.className = \"msg\";\n\t\t\t\tmsg.textContent = d.msg;\n\t\t\t\tspan.appendChild(msg);\n\t\t\t}\n\t\t\tlog.appendChild(span);\n\t\t\tif (window.exoFilterLog) window.exoFilterLog();\n\t\t\tif (following) {\n\t\t\t\tlog.scrollTop = log.scrollHeight;\n\t\t\t} else {\n\t\t\t\tsincePin++;\n\t\t\t\tif (tailBtn) {\n\t\t\t\t\ttailBtn.hidden = false;\n\t\t\t\t\tif (tailN) tailN.textContent = \"+\" + sincePin;\n\t\t\t\t}\n\t\t\t}\n\t\t});\n\t\tes.addEventListener(\"done\", function () {\n\t\t\t// Flash the terminal state from the last band before the reload\n\t\t\t// renders the true final page: a verdict band (ok/fail/wait) means\n\t\t\t// complete, anything else (or none) means the stream ended without\n\t\t\t// the terminal line.\n\t\t\tvar bands = log.querySelectorAll(\".logband\");\n\t\t\tvar last = bands.length ? bands[bands.length - 1].className : \"\";\n\t\t\tvar state = (last.indexOf(\"ok\") !== -1 || last.indexOf(\"fail\") !== -1 || last.indexOf(\"wait\") !== -1) ? \"complete\" : \"cut\";\n\t\t\tsetPin(state, \"\");\n\t\t\tlocation.reload();\n\t\t});\n\t\tes.onerror = function () {\n\t\t\t// Only a permanently-closed stream is a real failure worth\n\t\t\t// surfacing: EventSource fires onerror on every transient drop\n\t\t\t// while it retries, and a refused (503) stream is closed for good.\n\t\t\tif (es.readyState === EventSource.CLOSED && stale) stale.hidden = false;\n\t\t};\n\t\tes.onopen = function () {\n\t\t\t// A reconnect is proof the stream is live again, even if the quiet\n\t\t\t// job then emits nothing for a long stretch — the banner must not\n\t\t\t// stay up on a healthy stream.\n\t\t\tif (stale) stale.hidden = true;\n\t\t};\n\t})();\n\t</script>")
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}

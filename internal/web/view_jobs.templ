@@ -402,8 +402,12 @@ templ outputCard(vm jobDetailVM) {
 // rerunDialog is the resubmit modal (1c): the facts block (read-only identity
 // plus the editable Limit), the OPTIONS toggles (Check mode, Show diff,
 // Tolerate unreachable hosts — pre-highlighted when this job failed on
-// unreachable hosts), and the footer contract button. ?rerun=1 renders it open
-// for JS-off.
+// unreachable hosts), the privileged escalation block, and the footer contract
+// button. ?rerun=1 renders it open for JS-off.
+//
+// The privileged block names the original's posture as a fact and starts the
+// toggle OFF: the handler honours a checked box but never trusts the client to
+// keep an escalation, so a rerun re-escalates only by a deliberate act.
 templ rerunDialog(vm jobDetailVM) {
 	<dialog class="modal" id="job-rerun" aria-labelledby="job-rerun-title" open?={ vm.RerunOpen }>
 		<div class="modal-head">
@@ -445,6 +449,13 @@ templ rerunDialog(vm jobDetailVM) {
 						}
 						<span> CLI: --tolerate-unreachable</span>
 					</p>
+				</div>
+				<div class="privileged">
+					if vm.Rerun.Privileged {
+						<p class="meta">Job #{ itoa64(vm.Job.ID) } ran <span class="fail-text">unsandboxed</span> — no kernel sandbox. This rerun runs sandboxed unless you switch the toggle on.</p>
+					}
+					@toggle("privileged", "Run unsandboxed (privileged)", false, true)
+					<p class="meta">Full host access, no kernel sandbox. Operator only; the run is audited and attributed.</p>
 				</div>
 				<div class="actions">
 					<button type="submit" class="btn primary">Queue run</button>

@@ -372,7 +372,9 @@ tinted pill. Five variants — `ok`, `wait`, `fail`, `run` (accent, breathing do
 `unsandboxed` chip (`chip--unsandboxed`, the fail signal the launcher's
 privileged block already uses — a posture, not a failure) in the job detail's
 chip row; the jobs list carries the same fact as a mono word beside the source,
-where the 52px row has no room for a second chip.
+where the 52px row has no room for a second chip. The rerun dialog names the
+original's posture the same way and offers the escalation as the launcher's
+fail-tinted toggle, unchecked: a rerun re-escalates only by a deliberate act.
 
 **Step rail.** A row of 10px dots rendering a workflow's ledger at a glance, using
 the same five states as the chip.
