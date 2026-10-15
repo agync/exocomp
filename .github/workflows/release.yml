@@ -1,0 +1,103 @@
+name: release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# release-please force-pushes the release PR branch on each update, so the
+# changelog mirror must run after the action in the same job (ADR 0022 keeps
+# CHANGELOG.md and docs/operations/CHANGELOG.md byte-identical).
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # The checkout is done with the app token so the job's git remote is
+      # authenticated for the changelog mirror push below.
+      - name: Get GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+      # Manifest mode is automatic when config-file and manifest-file are set.
+      - name: Release Please
+        id: release
+        uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      # ADR 0022: release-please writes one changelog file; this repository
+      # keeps CHANGELOG.md and docs/operations/CHANGELOG.md byte-identical.
+      # The mirror sync is part of the release-please setup, so push the copy
+      # onto the release branch it opened.
+      - name: Mirror changelog into docs bundle
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          set -euo pipefail
+          branch="$(echo "$PRS" | jq -r '.[0].headBranchName')"
+          git fetch origin "$branch"
+          git checkout "$branch"
+          cp CHANGELOG.md docs/operations/CHANGELOG.md
+          git add docs/operations/CHANGELOG.md
+          if git diff --cached --quiet; then
+            echo "changelog already mirrored; nothing to push"
+            exit 0
+          fi
+          git commit -m "docs(operations): mirror changelog"
+          git push origin "$branch"
+
+  release-assets:
+    name: Publish release assets
+    if: needs.release-please.outputs.release_created == 'true'
+    needs: release-please
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Get GitHub App installation token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Build binary
+        run: make build
+
+      - name: Upload binary to release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          cp bin/exocomp /tmp/exocomp
+          gh release upload "${{ needs.release-please.outputs.tag_name }}" \
+            /tmp/exocomp --clobber

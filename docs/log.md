@@ -8,6 +8,16 @@ Newest first.
 
 ## 2026-10-15
 
+- **Added**: CI and release automation land with the org move. `.github/workflows/`
+  gates every PR and push: `make check` on pull requests and main, `make check-race`
+  on main (invariant 12). `release-please-config.json` + `.release-please-manifest.json`
+  start the pre-1.0 release line at `v0.1.0` (Decision 0022) and release-please,
+  authenticated as the org's **agync-bot** GitHub App, owns the changelog and tags.
+  Per Decision 0022 the app mirrors `CHANGELOG.md` to `docs/operations/CHANGELOG.md`
+  as part of the release setup, so the two stay byte-identical.
+
+## 2026-10-15
+
 - **Added**: [Decision 0022](decisions/0022-pre-1.0-release-line.md) withdraws the
   v1.0 release label. The release line is pre-1.0 and begins at `v0.1.0`;
   release-please owns later versions. The acceptance bar stays met and gate-tested —
