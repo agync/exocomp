@@ -41,9 +41,14 @@ writes only to `site/.toolchain/`, which is untracked. `build.sh` runs it on its
 neither renderer is present, so a CI build command is just the build script.
 
 ```bash
-site/build.sh       # renders and assembles site/dist/
+make site/build     # renders and assembles site/dist/
+make site/serve     # builds, then serves site/dist on :8788 (SITE_PORT=)
 site/toolchain.sh   # only to install the renderer ahead of a build
 ```
+
+`site/serve` goes through wrangler rather than a plain file server, because `_headers` and
+`_redirects` are Pages features and a preview that ignores them is not a preview of the
+deployment.
 
 | Variable | Effect |
 |---|---|

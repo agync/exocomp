@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: build budgets check check-hygiene check-race clean fmt fmt-check help hooks image lint test test-race tidy-check vet
+.PHONY: build budgets check check-hygiene check-race clean fmt fmt-check help hooks image lint site/build site/serve test test-race tidy-check vet
 
 MODULE    := exocomp.dev/exocomp
 VERSION   := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
@@ -94,6 +94,18 @@ budgets: build ## Print image size and idle RSS against their ceilings, failing 
 		if [ "$$mb" -gt "$(RSS_MAX_MB)" ]; then echo '  FAIL'; fail=1; else echo '  ok'; fi; \
 	fi; \
 	exit $$fail
+
+##@ Site
+
+SITE_PORT ?= 8788
+
+site/build: ## Build the landing page and rendered docs into site/dist
+	site/build.sh
+
+# Wrangler rather than a plain file server: _headers and _redirects are Pages
+# features, and a preview that ignores them is not a preview of the deployment.
+site/serve: site/build ## Build, then serve site/dist for preview (:8788)
+	cd site && npx --yes wrangler pages dev dist --port $(SITE_PORT)
 
 ##@ Utilities
 
