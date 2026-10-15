@@ -37,11 +37,12 @@ rather than a quiet downgrade.
 published binary: `go install` for `github.com/abn/okf-wiki/cmd/okf-wiki` into
 `site/.toolchain/bin/`, then the same pinned mermaid bundle the image bakes, built with npm
 and esbuild from that module's source. It needs Go 1.25 or newer and Node with npm, and it
-writes only to `site/.toolchain/`, which is untracked.
+writes only to `site/.toolchain/`, which is untracked. `build.sh` runs it on its own when
+neither renderer is present, so a CI build command is just the build script.
 
 ```bash
-site/toolchain.sh   # hosts without podman; skipped where podman is installed
 site/build.sh       # renders and assembles site/dist/
+site/toolchain.sh   # only to install the renderer ahead of a build
 ```
 
 | Variable | Effect |
@@ -68,8 +69,8 @@ directory, so the two choices travel together:
 
 | Root directory (advanced) | Build command | Build output directory |
 |---|---|---|
-| repository root (the default) | `bash site/toolchain.sh && bash site/build.sh` | `site/dist` |
-| `site` | `./toolchain.sh && ./build.sh` | `dist` |
+| repository root (the default) | `bash site/build.sh` | `site/dist` |
+| `site` | `./build.sh` | `dist` |
 
 Set the build variable `GO_VERSION` to the 1.25 line: the Pages build image defaults to Go
 1.24.3 and the renderer's module asks for 1.25, so without it every build spends a minute

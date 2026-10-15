@@ -27,6 +27,13 @@ fi
 
 echo "==> Building exocomp site..."
 
+# A host with no container runtime and no renderer yet gets one built, because
+# that host is a CI build image and its build command should not have to know.
+if [ -z "$BIN" ] && ! command -v podman >/dev/null 2>&1 && [ -x "$SCRIPT_DIR/toolchain.sh" ]; then
+  "$SCRIPT_DIR/toolchain.sh"
+  BIN="$TOOLCHAIN/bin/okf-wiki"
+fi
+
 mkdir -p "$SCRIPT_DIR/dist"
 
 echo "==> 1. Rendering docs with okf-wiki..."
