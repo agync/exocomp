@@ -3,4 +3,7 @@ compatibility_date = "2026-10-01"
 pages_build_output_dir = "dist"
 
 # Production domain: exocomp.dev
-# Deployment: wrangler pages deploy dist --project-name exocomp
+# From a workstation: wrangler pages deploy dist --project-name exocomp
+# From a Git-connected Pages project: build command
+# `bash site/toolchain.sh && bash site/build.sh`, output directory site/dist
+# (see docs/operations/landing-site.md).
