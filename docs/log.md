@@ -20,8 +20,13 @@ Newest first.
 ## 2026-10-15
 
 - **Added**: CI and release automation land with the org move. `.github/workflows/`
-  gates every PR and push: `make check` on pull requests and main, `make check-race`
-  on main (invariant 12). `release-please-config.json` + `.release-please-manifest.json`
+  gates every PR and push: the fast lane (`fmt`, `vet`, `tidy`, `lint`,
+  `test -short`, `build`, pre-commit hygiene) runs in parallel on every change;
+  the `-race` merge gate (invariant 12) is sharded across four runners and runs
+  on Go changes plus every main push; image+budgets and `okf` bundle gates are
+  path-filtered; and a separate `e2e` workflow runs the lima-backed acceptance
+  gates on a schedule or manual dispatch, self-skipping when tools are absent.
+  `release-please-config.json` + `.release-please-manifest.json`
   start the pre-1.0 release line at `v0.1.0` (Decision 0022) and release-please,
   authenticated as the org's **agync-bot** GitHub App, owns the changelog and tags.
   Per Decision 0022 the app mirrors `CHANGELOG.md` to `docs/operations/CHANGELOG.md`

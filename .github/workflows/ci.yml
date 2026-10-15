@@ -5,36 +5,258 @@ on:
   push:
     branches: [main]
 
+# Fast feedback + auto-cancel: on a PR, every push cancels the previous run so
+# only the latest commit's verdict matters; on main, a pushed gate (the -race
+# suite above all) runs to completion, never murdered by the next commit.
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
-  check:
-    name: make check
+  # Determine what changed; the heavy jobs gate on these outputs.
+  changes:
     runs-on: ubuntu-latest
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      packaging: ${{ steps.filter.outputs.packaging }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Makefile'
+              - '.golangci.yml'
+            packaging:
+              - 'packaging/**'
+              - 'Makefile'
+            docs:
+              - 'docs/**'
+
+  # Fast lane — one job per gate, all run in parallel; each is a single
+  # Makefile target or its equivalent CLI, so the Makefile stays the single
+  # source of truth. They run unconditionally (seconds each) so a verdict never
+  # depends on path filters.
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+          cache: true
+      - run: make fmt-check
+
+  vet:
+    name: vet
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go vet ./...
+
+  tidy:
+    name: tidy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: go mod tidy -diff
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
       - uses: golangci/golangci-lint-action@v6
         with:
           version: latest
-      - run: make check
+      - run: golangci-lint run ./...
 
-  race:
-    # The full -race suite is the merge gate (AGENTS.md invariant 12); the PR
-    # lane runs the fast check, main runs the race suite.
-    name: make check-race
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  test:
+    name: test (-short)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
-      - run: make check-race
+          cache: true
+      - run: make test
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - run: make build
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: exocomp-linux-amd64
+          path: bin/exocomp
+          if-no-files-found: error
+
+  hygiene:
+    name: hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install pre-commit
+        run: python3 -m pip install --user pre-commit
+      # The Go-facing hooks (make-check, make-check-race) already run as the
+      # dedicated jobs above; run the file/hygiene hooks here instead of
+      # re-running the whole suite via `make check-hygiene`.
+      - name: File and hygiene hooks
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          for hook in \
+            trailing-whitespace end-of-file-fixer check-yaml check-json \
+            check-merge-conflict check-added-large-files no-host-paths
+          do
+            pre-commit run --hook-stage pre-commit "$hook" --all-files
+          done
+
+  # Slow lane — the project's merge gate (invariant 12). Sharded so the -race
+  # suite runs across N parallel runners instead of one 30-minute serial pass.
+  # Test tools are installed first so tool-dependent tests actually execute
+  # (option a); tests self-skip when a tool is absent, so a failed install
+  # degrades to the skip path rather than failing the gate.
+  race:
+    name: race (shard ${{ matrix.shard }}/${{ strategy.job-total }})
+    needs: changes
+    if: needs.changes.outputs.go == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install test tools (tofu, restic, sops, age, ansible)
+        run: |
+          mkdir -p "$HOME/.local/bin"
+
+          # tofu (>= 1.8 per SBOM) — official standalone installer
+          (curl -fsSL --proto '=https' --tlsv1.2 \
+            https://get.opentofu.org/install-opentofu.sh | \
+            sh -s -- --install-method standalone \
+            --install-dir "$HOME/.local/bin") >/dev/null 2>&1 || true
+
+          # restic 0.19.1
+          (curl -fsSL -o /tmp/restic.bz2 \
+            https://github.com/restic/restic/releases/download/v0.19.1/restic_0.19.1_linux_amd64.bz2 \
+            && bzip2 -dc /tmp/restic.bz2 > "$HOME/.local/bin/restic" \
+            && chmod +x "$HOME/.local/bin/restic") || true
+
+          # sops 3.13.3
+          (curl -fsSL -o "$HOME/.local/bin/sops" \
+            https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64 \
+            && chmod +x "$HOME/.local/bin/sops") || true
+
+          # age 1.3.1 (ships age + age-keygen)
+          (curl -fsSL -o /tmp/age.tar.gz \
+            https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-amd64.tar.gz \
+            && tar xzf /tmp/age.tar.gz -C /tmp \
+            && mv /tmp/age/age /tmp/age/age-keygen "$HOME/.local/bin/") || true
+
+          # ansible-core 2.21.3 via uv (the project's own toolchain)
+          (curl -fsSL https://astral.sh/uv/install.sh | sh) >/dev/null 2>&1 || true
+          PATH="$HOME/.local/bin:$PATH" uv tool install \
+            --force ansible-core==2.21.3 >/dev/null 2>&1 || true
+
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Compute shard packages
+        run: |
+          go list ./... | sort \
+            | awk -v n=${{ strategy.job-total }} -v i=${{ matrix.shard }} \
+              'NR % n == (i-1)' > /tmp/shard-pkgs.txt
+          echo "packages in this shard: $(wc -l < /tmp/shard-pkgs.txt)"
+
+      - name: go test -race
+        run: |
+          if [ -s /tmp/shard-pkgs.txt ]; then
+            go test -race -count=1 -timeout 30m $(cat /tmp/shard-pkgs.txt)
+          fi
+
+  # Packaging gate — builds the image and enforces the size/RSS budgets from
+  # docs/sbom/bill-of-materials.md. Runs when packaging changes or on main.
+  image:
+    name: image + budgets
+    needs: changes
+    if: needs.changes.outputs.packaging == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install podman
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq podman
+          fi
+      - run: make image
+      - run: make budgets
+
+  # Docs gate — the OKF bundle must validate and lint clean. The site render
+  # itself is a Cloudflare Worker's job, not CI's.
+  docs:
+    name: okf validate + lint
+    needs: changes
+    if: needs.changes.outputs.docs == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Install okf
+        run: go install github.com/okfcli/okf/cmd/okf@v0.5.0
+      - name: Validate bundle
+        run: okf validate docs
+      - name: Lint bundle
+        run: okf lint docs

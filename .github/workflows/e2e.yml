@@ -1,0 +1,44 @@
+name: e2e
+
+# The end-to-end gates (test/e2e/*-gate.sh) drive real subcontractors — a lima
+# VM node, tofu, ansible, restic, a SeaweedFS fixture. They are kept out of the
+# PR lane: never required on a pull request, serialized, and self-skipping when
+# a tool is absent (every gate exits 0 with "SKIP:" so a hosted run reports
+# skips rather than failing).
+#
+# GitHub-hosted ubuntu runners have none of the tools, so this workflow mostly
+# SKIPs there. To run the real gates, point it at a self-hosted runner (the
+# project's machine has lima + podman already): set `runs-on` labels below and
+# run `make hooks` + install tofu/restic/ansible/uv on that host.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1-5" # weekdays 03:17 UTC — quiet hours, catches policy drift
+
+concurrency:
+  group: e2e
+  cancel-in-progress: false # lima instances are one-per-repo; never overlap
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest # change to [self-hosted, linux] to run for real
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build binary
+        run: make build
+
+      - name: Run acceptance gate
+        run: sh test/e2e/v1-acceptance-gate.sh
