@@ -63,18 +63,17 @@ cd site && npx wrangler pages deploy dist --project-name exocomp
 ```
 
 For a Git-integrated project, create it under **Workers & Pages → Create application →
-Pages → Connect to Git**, then set:
+Pages → Connect to Git**. Build command and output directory are both relative to the root
+directory, so the two choices travel together:
 
-| Setting | Value |
-|---|---|
-| Build command | `bash site/toolchain.sh && bash site/build.sh` |
-| Build output directory | `site/dist` |
-| Root directory | repository root (the default) |
-| Build variable `GO_VERSION` | the 1.25 line |
+| Root directory (advanced) | Build command | Build output directory |
+|---|---|---|
+| repository root (the default) | `bash site/toolchain.sh && bash site/build.sh` | `site/dist` |
+| `site` | `./toolchain.sh && ./build.sh` | `dist` |
 
-`GO_VERSION` is worth setting because the Pages build image defaults to Go 1.24.3 and the
-renderer's module asks for 1.25; left unset, the build fetches the newer toolchain on every
-run instead of failing.
+Set the build variable `GO_VERSION` to the 1.25 line: the Pages build image defaults to Go
+1.24.3 and the renderer's module asks for 1.25, so without it every build spends a minute
+downloading a newer toolchain first.
 
 The **Workers Builds** setup form — the one whose deploy command is `npx wrangler deploy` —
 is a different product. This repository's `site/wrangler.toml` carries
