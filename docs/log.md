@@ -8,6 +8,13 @@ Newest first.
 
 ## 2026-10-15
 
+- **Added**: [Landing site](operations/landing-site.md) — building `site/dist` with podman
+  or with the toolchain `site/toolchain.sh` installs for a CI build image, and the Cloudflare
+  Pages settings that publish it. The build script gains a standalone-renderer path so a host
+  without a container runtime can still render this bundle.
+
+## 2026-10-15
+
 - **Added**: CI and release automation land with the org move. `.github/workflows/`
   gates every PR and push: `make check` on pull requests and main, `make check-race`
   on main (invariant 12). `release-please-config.json` + `.release-please-manifest.json`

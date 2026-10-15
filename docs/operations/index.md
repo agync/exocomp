@@ -22,6 +22,12 @@ For everyday task workflows (running playbooks, OpenTofu, checks), see the [User
 | [Cold-standby failover](failover.md) | Replicated store takeover, Litestream fast-forward, and split-brain active lease guards |
 | [Offline caches and vendoring](offline-caches.md) | Vendoring Ansible collections and OpenTofu providers for airgapped operations |
 
+## Project site
+
+| Runbook | Description |
+|---|---|
+| [Landing site](landing-site.md) | Building `exocomp.dev` — the landing page and the rendered docs — and the Cloudflare Pages settings that publish it |
+
 ## Reference specifications
 
 For full API and CLI references, see the [Technical reference](../reference/index.md).
