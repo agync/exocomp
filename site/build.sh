@@ -14,7 +14,7 @@ BRAND="exocomp"
 BRAND_SUB="docs"
 TITLE="exocomp knowledge base"
 BASE="/docs/"
-NAV_LINKS="Website=https://exocomp.dev/,GitHub=https://github.com/abn/exocomp"
+NAV_LINKS="Website=https://exocomp.dev/,GitHub=https://github.com/agync/exocomp"
 
 BIN="${OKF_WIKI_BIN:-}"
 if [ -z "$BIN" ] && ! command -v podman >/dev/null 2>&1; then
