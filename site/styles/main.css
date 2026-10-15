@@ -136,6 +136,11 @@ body {
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: clip;
+}
+
+img {
+  max-width: 100%;
 }
 
 code, kbd, samp, pre {
@@ -178,12 +183,16 @@ a:focus-visible, button:focus-visible {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+  min-width: 0;
   color: var(--ink-100);
   font-family: var(--font-mono);
   font-weight: 600;
@@ -209,6 +218,10 @@ a:focus-visible, button:focus-visible {
   list-style: none;
 }
 
+.menu-group {
+  display: none;
+}
+
 .nav-link {
   color: var(--ink-400);
   font-size: 13.5px;
@@ -229,6 +242,8 @@ a:focus-visible, button:focus-visible {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 /* Buttons */
@@ -902,16 +917,20 @@ main {
 .cli-prompt {
   color: var(--ink-500);
   user-select: none;
+  overflow-wrap: anywhere;
 }
 
 .cli-cmd {
   color: #ECEFF0;
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .cli-output {
   margin-top: 8px;
   white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 /* Disaster Recovery Walkthrough */
@@ -1041,15 +1060,49 @@ main {
 
 /* Responsive */
 @media (max-width: 820px) {
-  .nav-links {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    max-width: 52vw;
-    gap: 14px;
+  .header-inner { padding: 0 16px; gap: 12px; }
+  .cta-standalone { display: none; }
+  .menu-group { display: inline-flex; align-items: stretch; flex-shrink: 0; }
+  .menu-cta { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .btn.menu-toggle {
+    display: inline-flex;
+    width: auto;
+    padding: 0 12px;
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: 1px solid rgba(255, 255, 255, 0.35);
   }
-  .nav-links::-webkit-scrollbar { display: none; }
-  .nav-link { white-space: nowrap; }
+  .site-header nav {
+    display: none;
+    position: absolute;
+    top: calc(100% + 8px);
+    left: auto;
+    right: 12px;
+    width: min(320px, calc(100vw - 24px));
+    background: var(--surface-card);
+    border: 1px solid var(--hairline);
+    border-radius: var(--radius-card);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    max-height: calc(100vh - var(--header-h) - 16px);
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .site-header.nav-open nav { display: block; }
+  .nav-links {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    max-width: none;
+    padding: 8px;
+  }
+  .nav-links li { width: 100%; }
+  .nav-link {
+    display: block;
+    white-space: nowrap;
+    padding: 12px 16px;
+    min-height: 44px;
+    font-size: 14px;
+  }
   .footer-inner { grid-template-columns: 1fr 1fr; }
 }
 
@@ -1062,8 +1115,10 @@ main {
   .dr-steps { grid-template-columns: 1fr; }
   .quickstart-bar > span { display: none; }
   .cli-bar > span { display: none; }
+  .cli-bar { gap: 8px; }
   .cli-pill-list { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 4px; }
-  .quickstart-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; }
+  .quickstart-tabs { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; max-width: 100%; }
+  .quickstart-bar { gap: 8px; }
   .gallery-tabs {
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -1076,14 +1131,28 @@ main {
     flex: 0 0 auto;
     scroll-snap-align: start;
   }
-  .quickstart-code { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .quickstart-copy { margin-left: 0; }
+  .quickstart-code { padding: 12px 14px; font-size: 12.5px; }
+  #quickstart-target { padding-right: 72px; }
+  .cli-screen { padding: 16px; font-size: 12.5px; }
   .gallery-caption { flex-direction: column; align-items: flex-start; }
-  .gallery-stage { min-height: 320px; }
+  .gallery-stage { min-height: 320px; padding: 12px; }
+  .hero-actions .btn { flex: 1 1 auto; min-height: 44px; }
+  .site-footer { padding-bottom: max(30px, env(safe-area-inset-bottom)); }
 }
 
 @media (max-width: 480px) {
-  .btn-primary { padding: 6px 12px; font-size: 13px; }
+  .header-inner { padding: 0 12px; gap: 8px; }
   .header-actions { gap: 6px; }
+  .header-actions .btn-primary { padding: 0 12px; font-size: 13px; height: 38px; }
   .hero-title { font-size: 32px; }
+  .origin-banner { flex-direction: column; gap: 12px; }
+  .card-footer { flex-wrap: wrap; gap: 8px; }
+}
+
+@media (pointer: coarse) {
+  .btn { min-height: 44px; }
+  .btn-icon { width: 44px; height: 44px; }
+  .cli-pill { padding: 10px 14px; }
+  .quickstart-tab { padding: 10px 12px; }
+  .gallery-tab { padding: 12px 16px; }
 }
