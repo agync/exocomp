@@ -1,9 +1,16 @@
+# The Worker "exocomp" is static assets only, no script. The name here must
+# match the Worker in the Cloudflare dashboard, and the build's deploy command
+# (`npx wrangler deploy`) reads this file from the root directory.
 name = "exocomp"
 compatibility_date = "2026-10-01"
-pages_build_output_dir = "dist"
 
-# Production domain: exocomp.dev
-# From a workstation: wrangler pages deploy dist --project-name exocomp
-# From a Git-connected Pages project: build command
-# `bash site/toolchain.sh && bash site/build.sh`, output directory site/dist
-# (see docs/operations/landing-site.md).
+# What `site/build.sh` writes. wrangler uploads the whole tree; `_headers` and
+# `_redirects` inside it are parsed by Workers static assets.
+[assets]
+directory = "./dist"
+
+# Production domain: exocomp.dev, added under the Worker's Settings > Domains &
+# Routes.
+# Local deploy: npx wrangler deploy (from site/).
+# Git-connected build settings and the pipeline they run in:
+# docs/operations/landing-site.md.

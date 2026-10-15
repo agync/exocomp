@@ -102,10 +102,11 @@ SITE_PORT ?= 8788
 site/build: ## Build the landing page and rendered docs into site/dist
 	site/build.sh
 
-# Wrangler rather than a plain file server: _headers and _redirects are Pages
-# features, and a preview that ignores them is not a preview of the deployment.
+# wrangler, not a plain file server: it reads the same config the deployment
+# does and applies _headers and _redirects. 8788, because wrangler's own default
+# 8787 is the obvious ad-hoc `python3 -m http.server` port.
 site/serve: site/build ## Build, then serve site/dist for preview (:8788)
-	cd site && npx --yes wrangler pages dev dist --port $(SITE_PORT)
+	cd site && npx --yes wrangler dev --port $(SITE_PORT)
 
 ##@ Utilities
 

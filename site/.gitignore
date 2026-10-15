@@ -1,11 +1,14 @@
 # Build output. `./build.sh` regenerates it (with podman and the okf-wiki
-# image, or with the toolchain `./toolchain.sh` installs); deploy with
-# `wrangler pages deploy dist`.
+# image, or with the toolchain `./toolchain.sh` installs); `wrangler deploy`
+# uploads it as the Worker's assets.
 /dist/
 
 # Renderer and mermaid runtime for hosts without podman. `./toolchain.sh`
 # regenerates it; CI runs that before build.sh.
 /.toolchain/
+
+# Local state `wrangler dev`/`wrangler deploy` write.
+/.wrangler/
 
 # Layout scratch captures. The shipped screenshots live in assets/screenshots/
 # and are the only images index.html references.

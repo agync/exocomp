@@ -1,7 +1,7 @@
 ---
 type: Guide
 title: "Landing site"
-description: "Building the exocomp.dev landing page together with the rendered docs bundle, with podman or with a CI toolchain, and the Cloudflare Pages settings that publish them."
+description: "Building the exocomp.dev landing page together with the rendered docs bundle, with podman or with a CI toolchain, and the Cloudflare build that publishes them."
 status: stable
 tags: [operations, site, deployment]
 ---
@@ -46,9 +46,10 @@ make site/serve     # builds, then serves site/dist on :8788 (SITE_PORT=)
 site/toolchain.sh   # only to install the renderer ahead of a build
 ```
 
-`site/serve` goes through wrangler rather than a plain file server, because `_headers` and
-`_redirects` are Pages features and a preview that ignores them is not a preview of the
-deployment.
+`site/serve` runs `wrangler dev`, which reads the same config the deployment does. A plain
+file server would ignore `_headers` and `_redirects`, and a preview that ignores them is not
+a preview of the deployment; on a host with no Node, `python3 -m http.server -d site/dist`
+is enough to read the pages.
 
 | Variable | Effect |
 |---|---|
@@ -57,32 +58,37 @@ deployment.
 | `OKF_WIKI_VENDOR` | Directory holding `mermaid-bundle.min.mjs`; defaults to the toolchain's copy |
 | `OKF_WIKI_REF` | Source tag or commit `toolchain.sh` builds from |
 
-## Publishing to Cloudflare Pages
+## Publishing to Cloudflare
 
-The Pages project is `exocomp` and serves `exocomp.dev`. The production branch is `main`;
-every other branch is a preview deployment of the same build.
-
-Two ways to deploy, and the config file speaks to the first:
+The site is the Worker `exocomp`, serving `exocomp.dev` as static assets with no script.
+`site/wrangler.toml` names the build output — `[assets] directory = "./dist"` — and
+`wrangler deploy` uploads that tree, `_headers` and `_redirects` included. The Worker's name
+in the dashboard must match the config's `name`.
 
 ```bash
-cd site && npx wrangler pages deploy dist --project-name exocomp
+cd site && npx wrangler deploy   # local deploy; needs `wrangler login`
 ```
 
-For a Git-integrated project, create it under **Workers & Pages → Create application →
-Pages → Connect to Git**. Build command and output directory are both relative to the root
-directory, so the two choices travel together:
+The Git-connected build lives under the Worker's **Settings → Build**:
 
-| Root directory (advanced) | Build command | Build output directory |
-|---|---|---|
-| repository root (the default) | `bash site/build.sh` | `site/dist` |
-| `site` | `./build.sh` | `dist` |
+| Setting | Value |
+|---|---|
+| Production branch | `main` |
+| Root directory | `site` |
+| Build command | `./build.sh` |
+| Deploy command | `npx wrangler deploy` |
+| Preview command | `npx wrangler versions upload` |
+| Build variable `GO_VERSION` | the 1.25 line |
 
-Set the build variable `GO_VERSION` to the 1.25 line: the Pages build image defaults to Go
-1.24.3 and the renderer's module asks for 1.25, so without it every build spends a minute
-downloading a newer toolchain first.
+The root directory has to be `site` and not the repository root: it is both where the build
+command runs and where the deploy command reads this config from. Set `GO_VERSION` as well —
+the build image defaults to Go 1.24.3 and the renderer's module asks for 1.25, so without it
+every build spends a minute downloading a newer toolchain first. `exocomp.dev` is added under
+the Worker's **Domains & Routes**.
 
-The **Workers Builds** setup form — the one whose deploy command is `npx wrangler deploy` —
-is a different product. This repository's `site/wrangler.toml` carries
-`pages_build_output_dir`, which marks the project as Pages, and `wrangler deploy` reads that
-key as Pages configuration; a Worker deploy would take an `[assets]` block instead. Until
-that trade is wanted, the form to fill in is the Pages one.
+A Workers Builds run is two commands in one environment: the build command in the root
+directory, then the deploy command, each on a fresh Ubuntu 24.04 sandbox per push. That
+sandbox has Go and npm but no container runtime, which is why the build renders with a
+standalone binary and installs its toolchain itself. The output path is not a dashboard
+field: the deploy command takes it from `[assets] directory`, so the build command only has
+to finish writing `dist/` before the deploy command starts.

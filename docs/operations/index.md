@@ -26,7 +26,7 @@ For everyday task workflows (running playbooks, OpenTofu, checks), see the [User
 
 | Runbook | Description |
 |---|---|
-| [Landing site](landing-site.md) | Building `exocomp.dev` — the landing page and the rendered docs — and the Cloudflare Pages settings that publish it |
+| [Landing site](landing-site.md) | Building `exocomp.dev` — the landing page and the rendered docs — and the Cloudflare build that publishes it |
 
 ## Reference specifications
 
