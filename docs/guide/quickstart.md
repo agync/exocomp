@@ -76,16 +76,22 @@ The wizard guides through four atomic steps before committing anything to disk:
 
 ## 3. Save the recovery card
 
-Disaster recovery never depends on the running system. Save the age recovery secret key printed during setup, and re-render the stored public recovery card recipe at any time with:
+Disaster recovery never depends on the running system. The **age recovery secret key is
+printed once**, at `setup` (or at a rotation); it is never written to the database, and
+`exocomp recovery-kit` cannot reprint it. Print the card at setup and store the key on
+physical media or an offline copy — without it, a lost host key is unrecoverable by
+design.
+
+Re-render the rest of the card — the recipients, their fingerprints, the HKDF salt, and
+the exact restore recipe — at any time:
 
 ```bash
-exocomp recovery-kit > recovery-card.txt
+exocomp recovery-kit > recovery-recipe.txt
 ```
 
-Print this card or save it onto physical media. The card contains:
-- The age recovery secret key.
-- The off-host read-only S3 and Git credentials.
-- The exact shell commands to restore the control plane onto a blank machine using only `age`, `restic`, and `curl` (no exocomp binary required).
+The card as printed at setup carries the age recovery secret key, the off-host read-only
+S3 and Git credentials, and the exact shell commands to restore the control plane onto a
+blank machine using only `age`, `restic`, and `curl` (no exocomp binary required).
 
 ## 4. Verify system health
 

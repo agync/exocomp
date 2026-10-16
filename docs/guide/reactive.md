@@ -14,21 +14,25 @@ Every triggered run is submitted to the single job queue, ensuring all reactive 
 
 ## Webhook ingress
 
-Send external events (e.g. from Alertmanager, Grafana, or GitHub) to the ingress endpoint:
+Each source has a hook URL, printed by `exocomp serve` at startup:
+
+```
+hook alertmanager  http://127.0.0.1:8642/hook/<token>
+hook healthchecks  http://127.0.0.1:8642/hook/<token>
+hook generic       http://127.0.0.1:8642/hook/<token>
+```
+
+The token in the path is the credential — there is no bearer header — and it is derived
+from the envelope, so it survives a restore and is never written down. Point a monitor
+at its source's URL; Alertmanager posts its own v4 webhook body there. For a sender with
+no adapter, post any JSON object to the `generic` hook: the body must carry a `name`,
+`alertname`, `title`, or `event` key, and every top-level scalar becomes a label a rule
+can read:
 
 ```bash
-curl -X POST http://127.0.0.1:8642/api/v1/events \
-  -H "Authorization: Bearer $TOKEN" \
+curl -X POST http://127.0.0.1:8642/hook/<generic-token> \
   -H "Content-Type: application/json" \
-  -d '{
-    "source": "alertmanager",
-    "kind": "alert",
-    "payload": {
-      "alertname": "DiskPressure",
-      "instance": "nas.lan",
-      "severity": "warning"
-    }
-  }'
+  -d '{"name": "DiskPressure", "host": "nas.lan", "severity": "warning"}'
 ```
 
 ## Writing CEL event rules
@@ -38,7 +42,7 @@ Define event rules using `exocomp rule add`:
 ```bash
 exocomp rule add auto-disk-cleanup \
   --source alertmanager \
-  --expr "event.payload.alertname == 'DiskPressure' && event.payload.severity == 'warning'" \
+  --expr "event.name == 'DiskPressure' && event.labels['severity'] == 'warning'" \
   --action playbook \
   --repo-source homelab \
   --playbook playbooks/clean-cache.yml \
@@ -49,6 +53,12 @@ exocomp rule add auto-disk-cleanup \
 The `--expr` expression is compiled and evaluated using Google CEL:
 - Safe execution: CEL expressions cannot invoke system calls, allocate unbounded memory, or hang indefinitely.
 - Idempotent: Rules evaluate strictly against the normalized event payload and system status.
+
+An expression reads the normalized `event`, which carries `source`, `kind`, `name`,
+`status`, `severity`, `host`, `instance`, `fingerprint`, `summary`, and the `labels` and
+`annotations` maps. There is no `payload` field: a sender's own body is normalized onto
+those fields, with Alertmanager's `alertname` and `severity` labels landing on
+`event.name` and `event.severity`.
 
 ## Approval gates and notifications
 

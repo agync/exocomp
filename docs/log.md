@@ -6,6 +6,24 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-16
+
+- **Correction of fact**: three `guide/` examples contradicted the running code.
+  [Reacting to alerts](guide/reactive.md) posted events to `POST /api/v1/events` with a
+  bearer token and a `{"source","kind","payload"}` body; the ingress is
+  `POST /hook/<token>` — the path token is the credential, there is no bearer header —
+  and it reads each sender's native body. The same page's CEL example read
+  `event.payload.*`; a normalized event carries `event.name`, `event.severity`, and
+  `event.labels`, never a payload. [Health checks](guide/checks.md) matched a check
+  transition on `event.check` and `event.status == 'down'`; a check event carries
+  `event.name` (the check) and `event.host` (the target), and `status` is `firing` on a
+  target coming up and `resolved` on it going down, the polarity
+  [Reacting to alerts](operations/reactive.md) and
+  [check-triggered runs](design/check-triggered-runs.md) already state.
+  [Quickstart](guide/quickstart.md) read as though `exocomp recovery-kit` reprints the
+  age recovery key; the key is printed once at setup or rotation and never stored, so
+  `recovery-kit` re-renders the recipe, recipients, and fingerprints but not the key.
+
 ## 2026-10-15
 
 - **Added**: [Landing site](operations/landing-site.md) — building `site/dist` with podman

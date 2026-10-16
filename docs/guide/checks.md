@@ -39,14 +39,21 @@ The UI adheres strictly to the design invariant: **State is colour plus word**. 
 
 ## Check-triggered runs
 
-When a check target transitions between states (e.g. from `up` to `down`), exocomp emits an internal event. You can bind reactive rules to trigger an automated playbook run when a service fails:
+When a check target transitions between states, exocomp emits an internal event. You
+can bind reactive rules to trigger an automated playbook run when a service fails:
 
 ```bash
 exocomp rule add restart-dns-on-failure \
   --source check \
-  --expr "event.check == 'dns-resolver' && event.status == 'down'" \
+  --expr "event.name == 'dns-resolver' && event.host == 'resolver' && event.status == 'resolved'" \
   --action playbook \
   --repo-source homelab \
   --playbook playbooks/restart-dns.yml \
   --limit dns-servers
 ```
+
+A check event names the check in `event.name` and the probed target in `event.host`. The
+status is presence-oriented: `firing` when a target comes **up**, `resolved` when it goes
+**down** — so a "restart on failure" rule matches `resolved`. See
+[Reacting to alerts](../operations/reactive.md#checks-as-an-event) for the full event
+shape and the hysteresis that precedes a transition.
