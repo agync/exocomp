@@ -21,7 +21,11 @@ XDG_DATA_HOME=$scratch "$bin" init >"$scratch/init.log" 2>&1 || {
 	exit 1
 }
 
-XDG_DATA_HOME=$scratch "$bin" serve --port 0 >"$scratch/serve.log" 2>&1 &
+# The sandbox tier does not affect the daemon's idle footprint, and a bare
+# runner has no `nono` on PATH, so run it opportunistically: use the sandbox
+# when present, degrade loudly when not, and measure the same baseline either
+# way.
+XDG_DATA_HOME=$scratch "$bin" serve --port 0 --sandbox opportunistic >"$scratch/serve.log" 2>&1 &
 pid=$!
 
 # The queue line is the last thing startup prints before the daemon is idle.
