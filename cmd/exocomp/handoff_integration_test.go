@@ -204,7 +204,9 @@ func TestHandoffResumesAfterDaemonRestart(t *testing.T) {
 	if err := d1.cmd.Process.Signal(syscall.SIGKILL); err != nil {
 		t.Fatalf("kill daemon: %v", err)
 	}
-	<-d1.done
+	if err := <-d1.done; err != nil {
+		t.Logf("daemon exited after kill: %v", err)
+	}
 	d1.exited = true
 
 	// Let the play through once it is restarted.

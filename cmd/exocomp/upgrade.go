@@ -177,7 +177,9 @@ func upgradeWithBinary(ctx context.Context, out io.Writer, live, source string) 
 		runErr = seq.Run(ctx, workflowID)
 	}
 	qcancel()
-	<-qdone
+	if qErr := <-qdone; qErr != nil {
+		runErr = errors.Join(runErr, qErr)
+	}
 	if runErr != nil {
 		return fmt.Errorf("upgrade: drive workflow: %w", runErr)
 	}

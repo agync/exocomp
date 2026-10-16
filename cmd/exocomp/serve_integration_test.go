@@ -549,7 +549,9 @@ func startDaemon(t *testing.T, bin string, args ...string) *daemon {
 			return
 		}
 		_ = d.cmd.Process.Kill()
-		<-d.done
+		if err := <-d.done; err != nil {
+			t.Logf("daemon exited after kill: %v", err)
+		}
 	})
 	return d
 }

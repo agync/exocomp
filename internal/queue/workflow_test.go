@@ -219,7 +219,9 @@ func TestSequencerResumesFromLedgerAfterRestart(t *testing.T) {
 
 		// Kill the sequencer and the daemon — the crash.
 		seqCancel()
-		<-seqDone
+		if err := <-seqDone; err != nil {
+			t.Logf("sequencer exited after cancel: %v", err)
+		}
 		stopDaemon(t, cancel, done)
 
 		ledger := mustSteps(t, st, "wf-c")

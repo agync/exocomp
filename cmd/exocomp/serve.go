@@ -497,7 +497,9 @@ func runServe(ctx context.Context, out, warn io.Writer, opts serveOptions) (err 
 	s := sched.New(st, q, nil)
 	if err := s.Start(jobCtx); err != nil {
 		cancelJobs()
-		<-qDone
+		if qErr := <-qDone; qErr != nil {
+			err = errors.Join(err, qErr)
+		}
 		return fmt.Errorf("serve: %w", err)
 	}
 	cordon.setScheduler(s)
