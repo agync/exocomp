@@ -262,7 +262,8 @@ func (r workspaceWriteRow) StateLine() string {
 	if !r.HasState() {
 		return "no state yet"
 	}
-	return "serial " + itoa(r.Serial) + " · " + itoa(int64(r.SerialCount)) + " serials · " + r.StateSize
+	return "serial " + itoa(r.Serial) + " · " + itoa(int64(r.SerialCount)) + " " +
+		plural(r.SerialCount, "serial", "serials") + " · " + r.StateSize
 }
 
 // StateMeta renders the TOFU STATE column's second line: it names the newest

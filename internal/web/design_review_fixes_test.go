@@ -240,7 +240,7 @@ func TestBackupRestoreSnapshotRowsCustom(t *testing.T) {
 		`<div class="snaps"`,
 		`class="snap-row"`,
 		`type="radio" name="snapshot"`,
-		"newest first across every target · all 1 snapshots",
+		"newest first across every target · all 1 snapshot",
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("snapshot group missing %q", want)

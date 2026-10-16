@@ -56,7 +56,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 			} else if len(vm.Row.Plans) == 0 {
 				<p class="meta">No saved plans yet — run Plan to save one.</p>
 			} else {
-				<p class="meta">{ itoa(int64(len(vm.Row.Plans))) } plans · newest first · latest is applicable</p>
+				<p class="meta">{ itoa(int64(len(vm.Row.Plans))) } { plural(len(vm.Row.Plans), "plan", "plans") } · newest first · latest is applicable</p>
 				<div class="tray-table plans">
 					<div class="row tt-col">
 						<span>PLAN</span>
@@ -180,7 +180,7 @@ templ workspaceDetail(vm workspaceDetailVM) {
 			if len(vm.StateTray) == 0 {
 				<p class="meta">No state stored yet — this workspace holds no tfstate.</p>
 			} else {
-				<p class="meta">{ itoa(int64(len(vm.StateTray))) } serials · newest first · <span class="ws-encrypted"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>ENCRYPTED AT REST</span></p>
+				<p class="meta">{ itoa(int64(len(vm.StateTray))) } { plural(len(vm.StateTray), "serial", "serials") } · newest first · <span class="ws-encrypted"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={ glyphLock }></path></svg>ENCRYPTED AT REST</span></p>
 				<div class="tray-table state">
 					<div class="row tt-col state">
 						<span>SERIAL</span>

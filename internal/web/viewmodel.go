@@ -2862,7 +2862,7 @@ func (vm workspaceDetailVM) TileProviderWait() bool { return vm.ProviderOffline 
 // TileState is the §2.1 Tofu state tile: the stored serial count, the value
 // whose link lands on the tray card below.
 func (vm workspaceDetailVM) TileState() string {
-	return itoa(int64(len(vm.StateTray))) + " serials"
+	return itoa(int64(len(vm.StateTray))) + " " + plural(len(vm.StateTray), "serial", "serials")
 }
 
 // jobDetailVM is the streamed job view: its header plus the events seen so far.

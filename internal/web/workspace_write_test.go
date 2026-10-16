@@ -1529,7 +1529,7 @@ func TestPlanDetailConsumedShowsJob(t *testing.T) {
 	if code != http.StatusOK {
 		t.Fatalf("GET /workspaces/web = %d", code)
 	}
-	if !strings.Contains(body, "1 plans · newest first · latest is applicable") {
+	if !strings.Contains(body, "1 plan · newest first · latest is applicable") {
 		t.Error("consumed plan tray does not read one plan")
 	}
 	for _, want := range []string{

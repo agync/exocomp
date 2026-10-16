@@ -282,7 +282,7 @@ templ restoreDrawer(f *restoreFormVM, base string) {
 								</span>
 							</label>
 						}
-						<span class="meta">newest first across every target · all { itoa(int64(len(f.effective().Snapshots))) } snapshots</span>
+						<span class="meta">newest first across every target · all { itoa(int64(len(f.effective().Snapshots))) } { plural(len(f.effective().Snapshots), "snapshot", "snapshots") }</span>
 					</div>
 				}
 				<div class="wh">
