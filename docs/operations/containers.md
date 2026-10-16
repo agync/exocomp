@@ -48,6 +48,22 @@ Under systemd use the Quadlet unit; under Docker use the compose file
 `/var/lib/exocomp`; that volume is the only state, and it is what every backup
 leg copies.
 
+Two Quadlet constraints the unit keeps but no longer spells out in comments: it
+sets **no `Tmpfs=`** on the data dir — under the rootless `UserNS=keep-id`
+posture podman rejects one ("the 'noswap' option is only allowed with rootful
+tmpfs mounts") and the container will not start; staged secret material lives in
+`/dev/shm`, the RAM-backed tmpfs every rootless container has anyway. And it sets
+**no `[Service] Type=`** — the generated unit is `Type=notify` by default and
+conmon supplies `READY=1`, so it works without `exocompd` calling `sd_notify`.
+
+Two Quadlet constraints the unit keeps but no longer spells out in comments: it
+sets **no `Tmpfs=`** on the data dir — under the rootless `UserNS=keep-id`
+posture podman rejects one ("the 'noswap' option is only allowed with rootful
+tmpfs mounts") and the container will not start; staged secret material lives in
+`/dev/shm`, the RAM-backed tmpfs every rootless container has anyway. And it sets
+**no `[Service] Type=`** — the generated unit is `Type=notify` by default and
+conmon supplies `READY=1`, so it works without `exocompd` calling `sd_notify`.
+
 ## Add a system package
 
 A playbook that shells out to a binary the base does not carry gets it by
