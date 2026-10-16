@@ -576,7 +576,7 @@ func workspaceDetail(vm workspaceDetailVM) templ.Component {
 					return templ_7745c5c3_Err
 				}
 			}
-			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div><div class=\"cards mt18\"><div class=\"card backend\"><div class=\"kicker\">Backend config</div><h3>Backend</h3>")
+			templ_7745c5c3_Err = templruntime.WriteString(templ_7745c5c3_Buffer, 53, "</div><div class=\"ws-cards mt18\"><div class=\"card backend\"><div class=\"kicker\">Backend config</div><h3>Backend</h3>")
 			if templ_7745c5c3_Err != nil {
 				return templ_7745c5c3_Err
 			}

@@ -338,6 +338,19 @@ main { flex: 1; padding: var(--pad-page); padding-bottom: calc(var(--powerline-h
   gap: var(--gap-card);
   align-items: stretch;
 }
+/* SPEC §2.3-2.4: the workspace detail's lower pair (Tofu state beside Backend)
+ * are equal halves, not the compact auto-fill pack. The state tray's four
+ * columns need the width, and an auto-fill track would sit empty beside two
+ * cards. auto-fit drops that empty track and splits the row in two, and still
+ * collapses to one column when a half is too narrow to hold the tray. The 430
+ * floor is what a half needs so the tray's SERIAL · WRITTEN BY · WHEN · DIFF
+ * columns fit their labels on one line. */
+.ws-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+  gap: var(--gap-card);
+  align-items: stretch;
+}
 .card {
   background: var(--surface-card);
   border: 1px solid var(--hairline-faint);
@@ -851,7 +864,12 @@ td.uri { min-width: 24ch; max-width: 32ch; overflow-wrap: anywhere; }
 .detail-tiles .tile { text-decoration: none; }
 .detail-tiles a.tile:hover, .detail-tiles a.tile:focus-visible { border-color: var(--accent-border); text-decoration: none; }
 .detail-tiles .tile .tmeta { font: 400 11px var(--font-mono); color: var(--ink-500); }
-.state .row { grid-template-columns: 76px minmax(0,1fr) 104px 150px; }
+.state .row { grid-template-columns: 66px minmax(0,1fr) 84px 104px; }
+/* A grid track can shrink below its content, so a starved column used to let
+ * WRITTEN overflow and superimpose on WHEN: header labels ellipsize rather than
+ * collide, and a long unbreakable word in a cell breaks instead of escaping. */
+.state .row > span { min-width: 0; overflow-wrap: anywhere; }
+.state .row.tt-col > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state .adoption { font: 400 12px var(--font-mono); color: var(--ink-400); }
 
 /* ---- Plan detail (SPEC §4, lift.css §diff) ----

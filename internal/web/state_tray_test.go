@@ -178,3 +178,33 @@ func TestWorkspaceDetailStateTrayReadonly(t *testing.T) {
 		t.Error("readonly session missing the state tray")
 	}
 }
+
+// TestStateTrayColumnsFitTheirLabels is the collision gate for the §2.3 tray.
+// Its four tracks are three fixed plus one flexible middle. When the fixed
+// tracks ate the whole half-width content box the middle resolved to 0px and
+// WRITTEN overflowed onto WHEN, reading as a struck-through label. Two rules
+// keep that impossible: the tracks are budgeted so the middle holds a label,
+// and the detail page's lower pair is a two-half grid rather than the
+// auto-fill pack that left an empty third column beside two cards. The
+// MUTATION — restoring the wide fixed tracks, the auto-fill grid, or dropping
+// the header ellipsis — reds this test.
+func TestStateTrayColumnsFitTheirLabels(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	app := cssOf(t, h, ts, client, "app.css")
+
+	row := ruleDecl(app, ".state .row {")
+	if !strings.Contains(row, "grid-template-columns: 66px minmax(0,1fr) 84px 104px;") {
+		t.Errorf(".state row template must leave the middle track a label's width, got: %q", row)
+	}
+	cards := ruleDecl(app, ".ws-cards {")
+	if !strings.Contains(cards, "repeat(auto-fit, minmax(430px, 1fr))") {
+		t.Errorf(".ws-cards must split the detail's lower pair into two halves, got: %q", cards)
+	}
+	if !strings.Contains(app, ".state .row.tt-col > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }") {
+		t.Error(".state header cells must ellipsize rather than superimpose on a starved track")
+	}
+}
