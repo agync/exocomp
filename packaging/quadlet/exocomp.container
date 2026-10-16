@@ -3,55 +3,22 @@ Description=exocomp control plane
 After=exocomp.volume
 
 [Container]
-# Default base container image. When running a custom derived image (e.g.
-# FROM ghcr.io/abn/exocomp:latest with added packages or dependencies),
-# update both Image= here and Environment=EXOCOMP_IMAGE below to match.
+# Default base image; for a derived image update both Image= and
+# Environment=EXOCOMP_IMAGE= below.
 Image=ghcr.io/abn/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
-# A captured secret that must reach a tool as a file (bootstrap-first Phase 3,
-# a KUBECONFIG above all) is staged to /dev/shm — the RAM-backed tmpfs every
-# rootless podman container has unconditionally — never under dataDir/run on
-# the durable volume above. No mount is needed here: unlike a `Tmpfs=` unit on
-# this path (podman errors "the 'noswap' option is only allowed with rootful
-# tmpfs mounts" under the rootless UserNS=keep-id posture below, so that line
-# used to prevent the container from starting at all), /dev/shm needs nothing
-# added to this unit. The per-job run directory itself is ordinary storage on
-# the data volume now; only the staged secret material lives in RAM, and its
-# bytes are additionally mlocked best-effort (see `exocomp doctor`).
+# Rootless keep-id posture; per-job caps stay off (byo-runner.md).
 UserNS=keep-id
-# Per-job resource caps (docs/design/byo-runner.md §6) are OPT-IN and OFF in this
-# default deployment: it stays rootless and capless, and a job that requests caps
-# is REFUSED rather than run uncapped (fail-closed). Enforcing caps needs a
-# writable cgroup v2 subtree the daemon can create child cgroups in, which this
-# rootless keep-id container does not get — validated 2026-08-24: a keep-id
-# non-root process is denied writes to /sys/fs/cgroup even with --systemd=always.
-# To turn caps on, use the owner-approved root-in-container model: remove the
-# `UserNS=keep-id` line above and add
-#   PodmanArgs=--systemd=always
-# so podman mounts /sys/fs/cgroup read-write and PID 1 runs as uid 0 inside the
-# rootless user namespace (still no host root). The daemon then vacates its own
-# cgroup and writes memory.max / memory.swap.max / cpu.max per job. `exocomp
-# doctor` reports whether this is in effect under "per-job caps".
-# The data dir is <XDG_DATA_HOME>/exocomp, which is the mount above.
+# Staged secrets live in /dev/shm; no Tmpfs= mount (breaks rootless startup).
 Environment=XDG_DATA_HOME=/var/lib
-# The image this unit runs, recorded by the daemon as the recovery chain's
-# image-ref. Keep it equal to Image= above: a local tag dies with the host, and
-# RECOVERY.md is how the next host learns what to load (Decision 0016).
+# Recorded by the daemon for the recovery chain (Decision 0016).
 Environment=EXOCOMP_IMAGE=ghcr.io/abn/exocomp:latest
-# host.key at rest: systemd decrypts the encrypted credential into
-# $CREDENTIALS_DIRECTORY/host.key at start, using a secret
-# (/var/lib/systemd/credential.secret, or the TPM) that never enters the data
-# volume. A stolen volume holds only host.key.cred, which is useless without it.
-# install.sh writes host.key.cred with `systemd-creds encrypt` and deletes the
-# plaintext key; the daemon reads the credential in preference to any file.
+# host.key delivered as an encrypted systemd credential (bootstrap.md).
 LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
-# Named rather than inherited from the image: the unit says what it runs.
 Exec=serve
 
 [Service]
-# The generated unit is Type=notify by default; conmon supplies READY=1,
-# so this works even though exocompd does not call sd_notify yet (M0).
 Restart=always
 RestartSec=5
 MemoryMax=1.5G

@@ -15,7 +15,6 @@ services:
     volumes:
       - exocomp-state:/var/lib/exocomp
     environment:
-      EXOCOMP_STATE_DIR: /var/lib/exocomp
       EXOCOMP_IMAGE: ghcr.io/abn/exocomp:latest
 
 volumes:
