@@ -340,7 +340,8 @@ func classifyPlan(blob []byte) (resources []planResource, ok bool) {
 	}
 	for _, rc := range plan.ResourceChanges {
 		action := classifyActions(rc.Change.Actions)
-		redacted := hasSensitive(rc.Change.AfterSensitive) || hasSensitive(rc.Change.BeforeSensitive)
+		redacted := wire.HasSensitiveValue(rc.Change.AfterSensitive, rc.Change.After) ||
+			wire.HasSensitiveValue(rc.Change.BeforeSensitive, rc.Change.Before)
 		resources = append(resources, planResource{
 			Action:   action,
 			Address:  rc.Address,
@@ -781,13 +782,6 @@ func classifyActions(actions []string) string {
 	default:
 		return "no-op"
 	}
-}
-
-// hasSensitive reports whether a plan's *_sensitive tree marks anything secret.
-// It delegates to the shared classifier (wire.HasSensitivePlan) so the web,
-// TUI, API, and CLI read one decision, never a per-face fork.
-func hasSensitive(raw json.RawMessage) bool {
-	return wire.HasSensitivePlan(raw)
 }
 
 func decidedNotice(a store.Approval) string {

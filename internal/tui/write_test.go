@@ -171,8 +171,8 @@ func runCmd(t *testing.T, m Model, cmd tea.Cmd) Model {
 func seedSensitivePlanArtifact(t *testing.T, st *store.Store, env *secrets.Envelope, jobID int64) *int64 {
 	t.Helper()
 	changes := `[{"address":"aws_db_instance.legacy_reports","change":{"actions":["update"],` +
-		`"after":{"engine":"pg14"},"after_sensitive":{"password":"s3cr3t-p@ss","sensitive":true},` +
-		`"before_sensitive":{"password":"s3cr3t-p@ss","sensitive":true}}}]`
+		`"after":{"engine":"pg14","password":"s3cr3t-p@ss"},"after_sensitive":{"password":true},` +
+		`"before_sensitive":{"password":true}}}]`
 	seedShowArtifact(t, st, env, jobID, fmt.Sprintf(`{"resource_changes":%s}`, changes))
 	return seedBinaryPlanArtifact(t, st, env, jobID)
 }
@@ -534,9 +534,10 @@ func TestApproveDestroyCarryingPlanRequiresTypedConfirm(t *testing.T) {
 }
 
 // TestApprovalDiffRedactsSensitivePlan proves the [d] pager never shows a
-// secret value: a plan whose *_sensitive trees mark anything true renders
-// [redacted · secret] for the resource and the SECRETS section counts it, the
-// shared wire.HasSensitivePlan classifier the web uses. Deleting the
+// secret value: a plan that carries a sensitive value (a `true` leaf in the
+// *_sensitive tree whose matching after/before value is set) renders
+// [redacted · secret] for the resource and the SECRETS section counts it, via
+// the shared wire.HasSensitiveValue classifier the web uses. Deleting the
 // redaction branch leaves no marker and fails.
 func TestApprovalDiffRedactsSensitivePlan(t *testing.T) {
 	st := openTestStore(t)

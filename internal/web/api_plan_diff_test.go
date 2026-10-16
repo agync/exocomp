@@ -282,3 +282,38 @@ func TestAPIApprovalPlanNoPlan(t *testing.T) {
 		t.Fatalf("no-plan status = %d, want 404 (%s)", code, body)
 	}
 }
+
+// TestAPIApprovalPlanUnsetSensitiveNotRedacted is the over-redaction gate: a
+// provider may mark a schema attribute sensitive whether or not it is used
+// (hashicorp/local marks `sensitive_content` on every local_file), and tofu
+// carries that true into the *_sensitive tree even when the attribute is unset.
+// A resource whose only flagged attribute has no value must show its plaintext,
+// not [redacted · secret].
+func TestAPIApprovalPlanUnsetSensitiveNotRedacted(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+
+	const planJSON = `{"resource_changes":[
+		{"address":"local_file.marker","change":{"actions":["create"],
+		 "after":{"content":"plain marker","filename":"./out/marker.txt","sensitive_content":null},
+		 "after_sensitive":{"content":false,"sensitive_content":true}}}
+	]}`
+	approval := h.sealedPlanApproval(t, planJSON)
+	op := h.mint(t, "op", "operator")
+	code, _, body := bearerGet(t, ts.URL, "/api/v1/approvals/"+itoa64(approval.ID)+"/plan", op)
+	if code != http.StatusOK {
+		t.Fatalf("plan status = %d, want 200 (%s)", code, body)
+	}
+	var v wire.ApprovalPlanView
+	decodeData(t, body, &v)
+	if len(v.Creates) != 1 {
+		t.Fatalf("creates = %+v, want the one created resource", v.Creates)
+	}
+	if v.Creates[0].Redacted {
+		t.Errorf("a resource whose flagged attribute is unset must not be redacted: %+v", v.Creates[0])
+	}
+	if !strings.Contains(body, "plain marker") {
+		t.Errorf("the plaintext value must appear in the plan diff: %s", body)
+	}
+}

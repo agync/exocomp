@@ -232,6 +232,8 @@ func planDiffItems(blob []byte) (destroys, changes, creates []approvalItem, secr
 			Address string `json:"address"`
 			Change  struct {
 				Actions         []string        `json:"actions"`
+				Before          map[string]any  `json:"before"`
+				After           map[string]any  `json:"after"`
 				AfterSensitive  json.RawMessage `json:"after_sensitive"`
 				BeforeSensitive json.RawMessage `json:"before_sensitive"`
 			} `json:"change"`
@@ -242,7 +244,8 @@ func planDiffItems(blob []byte) (destroys, changes, creates []approvalItem, secr
 	}
 	for _, rc := range plan.ResourceChanges {
 		item := approvalItem{addr: rc.Address}
-		if wire.HasSensitivePlan(rc.Change.AfterSensitive) || wire.HasSensitivePlan(rc.Change.BeforeSensitive) {
+		if wire.HasSensitiveValue(rc.Change.AfterSensitive, rc.Change.After) ||
+			wire.HasSensitiveValue(rc.Change.BeforeSensitive, rc.Change.Before) {
 			item.detail = "[redacted · secret]"
 			secrets++
 		}
