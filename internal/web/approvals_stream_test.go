@@ -330,14 +330,30 @@ func TestApprovalsStreamPerTokenCap(t *testing.T) {
 		t.Fatalf("close stream: %v", err)
 	}
 	open = open[1:]
-	again, err := client.Get(ts.URL + "/approvals/stream")
-	if err != nil {
-		t.Fatalf("re-open after close: %v", err)
+
+	// The slot is released by the handler's deferred decrement, which runs when
+	// the server notices the client left — not synchronously with Body.Close().
+	// Poll the re-open, so the assertion tests the release and not TCP-close
+	// latency under a loaded runner.
+	var again *http.Response
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		resp, err := client.Get(ts.URL + "/approvals/stream")
+		if err != nil {
+			t.Fatalf("re-open after close: %v", err)
+		}
+		if resp.StatusCode == http.StatusOK {
+			again = resp
+			break
+		}
+		code := resp.StatusCode
+		_ = resp.Body.Close()
+		if time.Now().After(deadline) {
+			t.Fatalf("re-open after close status = %d after 5s, want 200", code)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
 	defer func() { _ = again.Body.Close() }()
-	if again.StatusCode != http.StatusOK {
-		t.Fatalf("re-open after close status = %d, want 200", again.StatusCode)
-	}
 }
 
 // TestApprovalsStreamPerTokenDoesNotBlockOtherIdentity is the F1(b) regression:
