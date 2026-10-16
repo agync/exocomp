@@ -200,6 +200,25 @@ func (s *Store) RecordScheduleFire(ctx context.Context, id int64, lastJobID *int
 	return nil
 }
 
+// SetScheduleNextAt records a schedule's next scheduled fire without advancing
+// last_run. Registration stamps it, so a schedule that has never fired still
+// shows the fire it is waiting for; RecordScheduleFire keeps it fresh after.
+func (s *Store) SetScheduleNextAt(ctx context.Context, id int64, next time.Time) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE schedule SET next_at = ? WHERE id = ?`, next.UTC().UnixMilli(), id)
+	if err != nil {
+		return wrap("set schedule next fire", err)
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return wrap("set schedule next fire", err)
+	}
+	if affected == 0 {
+		return fmt.Errorf("store: set schedule next fire %d: %w", id, ErrNotFound)
+	}
+	return nil
+}
+
 // SetScheduleLastRun overwrites a schedule's last_run. RecordScheduleFire
 // covers the live path; this exists to seed last_run to a past instant so a
 // test (or a migration/import) can model a daemon that was down across an

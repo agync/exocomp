@@ -104,6 +104,11 @@ func (s *Scheduler) Start(ctx context.Context) error {
 	runCtx := s.runCtx
 	s.mu.Unlock()
 
+	// With the clock running, stamp each schedule's next fire — a cron entry's
+	// Next is unset until now, for a six-field expression and a relative
+	// "@every" alike — before catching up.
+	s.stampNextFires(runCtx)
+
 	// Catch up after the clock is running so a coalesced fire can read its own
 	// next scheduled time back off the live entry.
 	s.catchUp(runCtx)
@@ -170,6 +175,7 @@ func (s *Scheduler) Reload(ctx context.Context) error {
 	runCtx := s.runCtx
 	s.mu.Unlock()
 
+	s.stampNextFires(runCtx)
 	s.catchUp(runCtx)
 	return nil
 }
@@ -385,6 +391,32 @@ func (s *Scheduler) dispatch(ctx context.Context, sc store.Schedule, idem string
 	next := s.nextFireTime(sc.ID)
 	if err := s.store.RecordScheduleFire(ctx, sc.ID, lastJobID, next); err != nil {
 		s.log.Error("sched: stamp fire", "schedule", sc.Name, "err", err)
+	}
+}
+
+// stampNextFires records each registered schedule's next fire, so a schedule
+// that has never fired still shows the fire it is waiting for. It must run
+// after the clock starts: a cron entry's Next is unset until then. Only a
+// missing or already-passed value is written, so a reload does not churn the
+// row; RecordScheduleFire advances it on every fire.
+func (s *Scheduler) stampNextFires(ctx context.Context) {
+	rows, err := s.store.ListSchedules(ctx, true)
+	if err != nil {
+		s.log.Error("sched: stamp next fires: list schedules", "err", err)
+		return
+	}
+	now := time.Now()
+	for _, sc := range rows {
+		next := s.nextFireTime(sc.ID)
+		if next == nil || next.IsZero() {
+			continue
+		}
+		if sc.NextAt != nil && sc.NextAt.After(now) {
+			continue
+		}
+		if err := s.store.SetScheduleNextAt(ctx, sc.ID, *next); err != nil {
+			s.log.Error("sched: stamp next fire", "schedule", sc.Name, "err", err)
+		}
 	}
 }
 

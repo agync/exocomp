@@ -326,6 +326,32 @@ func TestFireEnqueuesAndStampsSchedule(t *testing.T) {
 	}
 }
 
+// TestRegisterStampsNextFire pins that a schedule shows the fire it is waiting
+// for before it has ever fired: Start registers the cron entry and stamps
+// next_at, so a fresh schedule never renders a blank NEXT FIRE.
+func TestRegisterStampsNextFire(t *testing.T) {
+	t.Parallel()
+	st := newTestStore(t)
+	sc := createShellSchedule(t, st, "waiting", 0)
+
+	s := New(st, &fakeEnqueuer{store: st}, testLogger())
+	if err := s.Start(context.Background()); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	t.Cleanup(s.Stop)
+
+	got, err := st.GetSchedule(t.Context(), sc.Name)
+	if err != nil {
+		t.Fatalf("get schedule: %v", err)
+	}
+	if got.NextAt == nil {
+		t.Fatal("next_at not stamped at registration")
+	}
+	if !got.NextAt.After(time.Now()) {
+		t.Errorf("next_at = %v, want a future time", got.NextAt)
+	}
+}
+
 func TestFireRespectsJitterBound(t *testing.T) {
 	t.Parallel()
 	st := newTestStore(t)
