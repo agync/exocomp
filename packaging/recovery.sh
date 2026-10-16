@@ -30,6 +30,10 @@ Options:
                      (any non-local target)
   --target-name NAME The name the repository password was derived from; read
                      from RECOVERY.md when omitted
+  --image-load FILE  Load an OCI archive into the container runtime
+                     (podman load -i, or docker load -i) before restore
+  --image-ref REF    The container image this deployment runs (recorded for
+                     the recovery chain); echoed for the operator
   --help             Show this help and exit
 
 Restore runs "exocomp restore" when a binary is available: on PATH, or named by
@@ -65,6 +69,8 @@ dest=""
 identity=""
 keyring=""
 target_name=""
+image_load=""
+image_ref=""
 data_dir=${EXOCOMP_DATA_DIR:-/var/lib/exocomp}
 
 while [ $# -gt 0 ]; do
@@ -98,6 +104,16 @@ while [ $# -gt 0 ]; do
             target_name="$2"
             shift
             ;;
+        --image-load)
+            [ $# -ge 2 ] || fail "--image-load requires a value"
+            image_load="$2"
+            shift
+            ;;
+        --image-ref)
+            [ $# -ge 2 ] || fail "--image-ref requires a value"
+            image_ref="$2"
+            shift
+            ;;
         *)
             echo "recovery.sh: unknown argument: $1" >&2
             usage >&2
@@ -108,6 +124,24 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$dest" ] || dest="$data_dir"
+
+# Load a captured image archive into the local container runtime before any
+# restore runs, so the unit has something to start from on the new host.
+if [ -n "$image_load" ]; then
+    [ -f "$image_load" ] || fail "image archive $image_load is not a file"
+    if command -v podman >/dev/null 2>&1; then
+        runtime=podman
+    elif command -v docker >/dev/null 2>&1; then
+        runtime=docker
+    else
+        fail "no container runtime found to load $image_load (need podman or docker)"
+    fi
+    echo "recovery.sh: loading image from $image_load with $runtime"
+    "$runtime" load -i "$image_load" || fail "$runtime could not load $image_load"
+fi
+if [ -n "$image_ref" ]; then
+    echo "recovery.sh: image ref $image_ref"
+fi
 
 exocomp_bin=""
 if [ -n "${EXOCOMP_BIN:-}" ]; then
