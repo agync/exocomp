@@ -2158,14 +2158,18 @@ func (j jobRow) ReasonClass() string {
 // outputMeta renders the Output bar's meta line: "stdout + stderr · ended
 // {hh:mm:ss}" on a terminal job, "stdout + stderr · {n} lines · streaming" on
 // a live one (copy.txt). The count lives in the pin chip, never twice here.
-func outputMeta(n int, terminal bool, ended string) string {
-	if terminal {
+func outputMeta(n int, pinState, ended string) string {
+	switch pinState {
+	case "complete", "cut":
 		if ended != "" {
 			return fmt.Sprintf("stdout + stderr · ended %s", ended)
 		}
 		return fmt.Sprintf("stdout + stderr · %d lines", n)
+	case "held":
+		return "not running — awaiting approval"
+	default: // following
+		return fmt.Sprintf("stdout + stderr · %d lines · streaming", n)
 	}
-	return fmt.Sprintf("stdout + stderr · %d lines · streaming", n)
 }
 
 // RunbookLabel strips the "rule:" prefix a rule-triggered job's runbook
@@ -3016,6 +3020,8 @@ func pinWord(state string) string {
 		return "LOG COMPLETE"
 	case "paused":
 		return "PAUSED"
+	case "held":
+		return "AWAITING APPROVAL"
 	default:
 		return "FOLLOWING TAIL"
 	}

@@ -348,7 +348,7 @@ templ outputCard(vm jobDetailVM) {
 					</svg>
 					<span class="pinword">{ pinWord(vm.PinState) }</span><span class="n">{ pinCount(vm.PinState, len(vm.Events)) }</span>
 				</span>
-				<span class="meta mono">{ outputMeta(len(vm.Events), vm.Job.State.Terminal(), vm.EndedClock) }</span>
+				<span class="meta mono">{ outputMeta(len(vm.Events), vm.PinState, vm.EndedClock) }</span>
 			</span>
 			<span class="controls">
 				<input id="log-search" type="search" autocomplete="off" placeholder="filter log" aria-label="Filter log"/>

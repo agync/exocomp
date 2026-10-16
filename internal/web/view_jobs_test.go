@@ -1395,6 +1395,26 @@ func TestJobDetailPinStates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("seed cut job: %v", err)
 	}
+
+	// Gated -> held: the job has not run, so the pin must not read as a live
+	// following tail and the meta must not claim to stream.
+	_, gatedBody := getBody(t, client, ts.URL+"/jobs/"+itoa64(cut.ID))
+	if !strings.Contains(gatedBody, `id="log-pin" data-state="held"`) {
+		t.Error("a gated job must render the pin held")
+	}
+	if !strings.Contains(gatedBody, `<span class="pinword">AWAITING APPROVAL</span>`) {
+		t.Error("the held pin must read AWAITING APPROVAL")
+	}
+	if !strings.Contains(gatedBody, `not running — awaiting approval`) {
+		t.Error("the held output meta must say it is not running")
+	}
+	if strings.Contains(gatedBody, `streaming`) {
+		t.Error("a gated job must never render a streaming meta")
+	}
+	if !strings.Contains(gatedBody, `· runs on `) {
+		t.Error("a gated job's run card must read 'runs on', not 'ran on'")
+	}
+
 	if err := h.store.TransitionJob(ctx, cut.ID, store.StateAwaitingApproval, store.StateRunning); err != nil {
 		t.Fatalf("start cut job: %v", err)
 	}

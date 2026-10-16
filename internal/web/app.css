@@ -1368,6 +1368,7 @@ main > .pageheader + dialog + .card { margin-top: 0; }
 .pin[data-state="following"] { background: var(--accent-tint); color: var(--accent-text); }
 .pin[data-state="following"] .dot { animation: var(--breathe); }
 .pin[data-state="paused"] { background: var(--wait-tint); color: var(--signal-wait); }
+.pin[data-state="held"] { background: var(--wait-tint); color: var(--signal-wait); }
 .pin[data-state="complete"] { background: var(--surface-control); color: var(--ink-400); }
 .pin[data-state="complete"] .n { color: var(--ink-500); }
 .pin[data-state="complete"] svg { width: 13px; height: 13px; }

@@ -817,6 +817,12 @@ func (s *Server) jobDetailVMFor(w http.ResponseWriter, r *http.Request) (jobDeta
 			vm.PinState = "cut"
 		}
 	}
+	// A gated job has not run: it must not render as a live tail. "held" is its
+	// own pin state (wait-tint, "AWAITING APPROVAL") so the output card never
+	// claims to stream a log that does not exist yet.
+	if job.State == store.StateAwaitingApproval {
+		vm.PinState = "held"
+	}
 	if rule, ok := strings.CutPrefix(job.Runbook, "rule:"); ok {
 		vm.FiredRule = rule
 		ev, err := s.store.EventByJobID(r.Context(), job.ID)
@@ -1337,8 +1343,12 @@ func (s *Server) runCardVM(ctx context.Context, job store.Job, source string, sr
 		RerunOf:    rerunOfID, Title: jobTitle(job),
 		RanLine: ranLine(job), Tiles: s.runCardTiles(ctx, source, job, src),
 	}
+	verb := "ran on "
+	if job.State == store.StateQueued || job.State == store.StateAwaitingApproval {
+		verb = "runs on "
+	}
 	rc.Sentence = "Queued by " + actorName + " from the " + face + " · " +
-		utcStamp(job.QueuedAt) + " · ran on " + runner
+		utcStamp(job.QueuedAt) + " · " + verb + runner
 	if job.ExitCode != nil {
 		rc.Verdict = "exit " + strconv.Itoa(*job.ExitCode)
 		if job.State == store.StateDegraded {
