@@ -37,6 +37,15 @@ make check-race
 
 Runs the entire test suite with Go's race detector (`go test -race ./...`).
 
+### 3. Documentation-expression guard (inside `make check`)
+
+`internal/docexpr` reads every `--expr` value quoted in `docs/` and compiles it
+against the same `reactive`/`policy` environment its verb uses, so a guide's CEL
+example cannot drift from the code it documents. An unknown `event` field, a
+status compared to a value the pipeline never emits, or an expression that no
+longer compiles fails `TestDocsExamples` in the fast gate. It reuses the real
+compilers, so what it accepts is exactly what `rule add` and `policy add` accept.
+
 ## Mutation testing of safety guards
 
 Invariant 5 dictates that guardrails live in the execution queue, not configuration.
