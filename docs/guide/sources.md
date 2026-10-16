@@ -39,11 +39,11 @@ homelab  git   main   2026-10-11 22:30:00  trusted
 
 In the Web UI, the sources list shows synchronization health, branch tracking, and active execution cards. Git sources can be synchronized from the CLI with `exocomp source sync <name>` or via the **Sync now** button in the Web UI:
 
-![Sources list view](../design/assets/web/1c-sources.png)
+<p><img src="../design/assets/web/1c-sources.png" alt="Sources list view"></p>
 
 Selecting a source opens its detail view, where you can inspect playbooks, run histories, trigger syncs, and launch new executions:
 
-![Source detail drawer](../design/assets/web/1d-source-detail.png)
+<p><img src="../design/assets/web/1d-source-detail.png" alt="Source detail drawer"></p>
 
 ## Dependency management in sources
 

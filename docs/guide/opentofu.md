@@ -44,7 +44,7 @@ terraform {
 2. **Inspect the plan diff**:
    In the Web UI, the workspace view renders high-contrast, structured plan diffs:
 
-   ![OpenTofu plan diff viewer](../design/assets/tofu/1b-plan-diff.png)
+   <p><img src="../design/assets/tofu/1b-plan-diff.png" alt="OpenTofu plan diff viewer"></p>
 
    The diff engine implements strict formatting invariants:
    - Top-level non-server-set keys are counted precisely (`N of K keys changed`).

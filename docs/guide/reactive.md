@@ -66,7 +66,7 @@ If a rule sets `--require-approval`, the triggered job does not run immediately.
 1. An approval request is recorded in the SQLite step ledger.
 2. A push notification is dispatched to your configured `ntfy` topic (configurable in the Web UI via the contextual setup modal on `/system`):
 
-   ![Push notifications drawer](../design/assets/system/1c-ntfy-states.png)
+   <p><img src="../design/assets/system/1c-ntfy-states.png" alt="Push notifications drawer"></p>
 
 3. The operator approves or rejects the execution from the Web UI, TUI, or mobile interface.
 

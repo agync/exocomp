@@ -23,6 +23,13 @@ Newest first.
   [Quickstart](guide/quickstart.md) read as though `exocomp recovery-kit` reprints the
   age recovery key; the key is printed once at setup or rotation and never stored, so
   `recovery-kit` re-renders the recipe, recipients, and fingerprints but not the key.
+- **Convention.** Bundle images are written as HTML `<img>` rather than Markdown
+  `![alt](path)`. `okf validate` reads every Markdown link target as a concept id and
+  cannot see a non-Markdown asset, so each image was reported as `okf/links/broken`
+  (21 warnings); the renderer passes `<img>` through and copies the asset at the same
+  path, so the page is unchanged. A standalone image keeps the `<p>` wrapper the
+  Markdown form produced, so the paragraph margin is preserved; an in-table image is
+  left bare, as it rendered before.
 
 ## 2026-10-15
 
