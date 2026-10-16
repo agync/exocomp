@@ -155,23 +155,23 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "dashboard", urlWithBase(p.Base, "/"), "Dashboard", iconDashboard, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "dashboard", urlWithBase(p.Base, "/"), "Dashboard", iconDashboard, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "approvals", urlWithBase(p.Base, "/approvals"), "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "approvals", urlWithBase(p.Base, "/approvals"), "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait", itoa(int64(p.Badges.Approvals))+" "+plural(p.Badges.Approvals, "approval pending", "approvals pending")).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "jobs", urlWithBase(p.Base, "/jobs"), "Jobs", iconJobs, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "jobs", urlWithBase(p.Base, "/jobs"), "Jobs", iconJobs, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "events", urlWithBase(p.Base, "/events"), "Events", iconEvents, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "events", urlWithBase(p.Base, "/events"), "Events", iconEvents, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "workflows", urlWithBase(p.Base, "/workflows"), "Workflows", iconWorkflows, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "workflows", urlWithBase(p.Base, "/workflows"), "Workflows", iconWorkflows, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -179,19 +179,19 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "checks", urlWithBase(p.Base, "/checks"), "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "checks", urlWithBase(p.Base, "/checks"), "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail", itoa(int64(p.Badges.ChecksDown))+" "+plural(p.Badges.ChecksDown, "probe target down", "probe targets down")).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "rules", urlWithBase(p.Base, "/rules"), "Rules", iconRules, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "rules", urlWithBase(p.Base, "/rules"), "Rules", iconRules, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "schedules", urlWithBase(p.Base, "/schedules"), "Schedules", iconSchedules, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "schedules", urlWithBase(p.Base, "/schedules"), "Schedules", iconSchedules, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "policies", urlWithBase(p.Base, "/policies"), "Policies", iconPolicies, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "policies", urlWithBase(p.Base, "/policies"), "Policies", iconPolicies, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -199,15 +199,15 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "sources", urlWithBase(p.Base, "/sources"), "Sources", iconSources, badgeNum(p.Badges.Sources), "wait").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "sources", urlWithBase(p.Base, "/sources"), "Sources", iconSources, badgeNum(p.Badges.Sources), "wait", itoa(int64(p.Badges.Sources))+" "+plural(p.Badges.Sources, "source never synced", "sources never synced")).Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "workspaces", urlWithBase(p.Base, "/workspaces"), "Workspaces", iconWorkspaces, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "workspaces", urlWithBase(p.Base, "/workspaces"), "Workspaces", iconWorkspaces, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "runners", urlWithBase(p.Base, "/runners"), "Runners", iconRunners, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "runners", urlWithBase(p.Base, "/runners"), "Runners", iconRunners, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -215,11 +215,11 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "secrets", urlWithBase(p.Base, "/secrets"), "Secrets", iconSecrets, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "secrets", urlWithBase(p.Base, "/secrets"), "Secrets", iconSecrets, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "tokens", urlWithBase(p.Base, "/tokens"), "Tokens", iconTokens, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "tokens", urlWithBase(p.Base, "/tokens"), "Tokens", iconTokens, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -227,7 +227,7 @@ func layout(p page) templ.Component {
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
-		templ_7745c5c3_Err = navlink(p.Nav, "system", urlWithBase(p.Base, "/system"), "System", iconSystem, "", "").Render(ctx, templ_7745c5c3_Buffer)
+		templ_7745c5c3_Err = navlink(p.Nav, "system", urlWithBase(p.Base, "/system"), "System", iconSystem, "", "", "").Render(ctx, templ_7745c5c3_Buffer)
 		if templ_7745c5c3_Err != nil {
 			return templ_7745c5c3_Err
 		}
@@ -734,7 +734,7 @@ func brandMark() templ.Component {
 // active entry keeps class before href so the rendered
 // `href="/x" aria-current="page"` stays contiguous (asserted by the render
 // tests).
-func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Component {
+func navlink(active, key, href, label, icon, badge, badgeCls, badgeLabel string) templ.Component {
 	return templruntime.GeneratedTemplate(func(templ_7745c5c3_Input templruntime.GeneratedComponentInput) (templ_7745c5c3_Err error) {
 		templ_7745c5c3_W, ctx := templ_7745c5c3_Input.Writer, templ_7745c5c3_Input.Context
 		if templ_7745c5c3_CtxErr := ctx.Err(); templ_7745c5c3_CtxErr != nil {
@@ -818,9 +818,9 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var37 string
-				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(badge + " need attention")
+				templ_7745c5c3_Var37, templ_7745c5c3_Err = templ.JoinStringErrs(badgeLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var37))
 				if templ_7745c5c3_Err != nil {
@@ -833,7 +833,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var38 string
 				templ_7745c5c3_Var38, templ_7745c5c3_Err = templ.JoinStringErrs(badge)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 89}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 188, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var38))
 				if templ_7745c5c3_Err != nil {
@@ -924,9 +924,9 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 					return templ_7745c5c3_Err
 				}
 				var templ_7745c5c3_Var44 string
-				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(badge + " need attention")
+				templ_7745c5c3_Var44, templ_7745c5c3_Err = templ.JoinStringErrs(badgeLabel)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 79}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 64}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var44))
 				if templ_7745c5c3_Err != nil {
@@ -939,7 +939,7 @@ func navlink(active, key, href, label, icon, badge, badgeCls string) templ.Compo
 				var templ_7745c5c3_Var45 string
 				templ_7745c5c3_Var45, templ_7745c5c3_Err = templ.JoinStringErrs(badge)
 				if templ_7745c5c3_Err != nil {
-					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 89}
+					return templ.Error{Err: templ_7745c5c3_Err, FileName: `internal/web/view_layout.templ`, Line: 196, Col: 74}
 				}
 				_, templ_7745c5c3_Err = templ_7745c5c3_Buffer.WriteString(templ.EscapeString(templ_7745c5c3_Var45))
 				if templ_7745c5c3_Err != nil {

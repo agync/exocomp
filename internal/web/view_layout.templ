@@ -44,25 +44,25 @@ templ layout(p page) {
 					</div>
 					<nav class="side-nav">
 						<div class="navgroup">Operate</div>
-						@navlink(p.Nav, "dashboard", urlWithBase(p.Base, "/"), "Dashboard", iconDashboard, "", "")
-						@navlink(p.Nav, "approvals", urlWithBase(p.Base, "/approvals"), "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait")
-						@navlink(p.Nav, "jobs", urlWithBase(p.Base, "/jobs"), "Jobs", iconJobs, "", "")
-						@navlink(p.Nav, "events", urlWithBase(p.Base, "/events"), "Events", iconEvents, "", "")
-						@navlink(p.Nav, "workflows", urlWithBase(p.Base, "/workflows"), "Workflows", iconWorkflows, "", "")
+						@navlink(p.Nav, "dashboard", urlWithBase(p.Base, "/"), "Dashboard", iconDashboard, "", "", "")
+						@navlink(p.Nav, "approvals", urlWithBase(p.Base, "/approvals"), "Approvals", iconApprovals, badgeNum(p.Badges.Approvals), "wait", itoa(int64(p.Badges.Approvals))+" "+plural(p.Badges.Approvals, "approval pending", "approvals pending"))
+						@navlink(p.Nav, "jobs", urlWithBase(p.Base, "/jobs"), "Jobs", iconJobs, "", "", "")
+						@navlink(p.Nav, "events", urlWithBase(p.Base, "/events"), "Events", iconEvents, "", "", "")
+						@navlink(p.Nav, "workflows", urlWithBase(p.Base, "/workflows"), "Workflows", iconWorkflows, "", "", "")
 						<div class="navgroup">Automate</div>
-						@navlink(p.Nav, "checks", urlWithBase(p.Base, "/checks"), "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail")
-						@navlink(p.Nav, "rules", urlWithBase(p.Base, "/rules"), "Rules", iconRules, "", "")
-						@navlink(p.Nav, "schedules", urlWithBase(p.Base, "/schedules"), "Schedules", iconSchedules, "", "")
-						@navlink(p.Nav, "policies", urlWithBase(p.Base, "/policies"), "Policies", iconPolicies, "", "")
+						@navlink(p.Nav, "checks", urlWithBase(p.Base, "/checks"), "Checks", iconChecks, badgeNum(p.Badges.ChecksDown), "fail", itoa(int64(p.Badges.ChecksDown))+" "+plural(p.Badges.ChecksDown, "probe target down", "probe targets down"))
+						@navlink(p.Nav, "rules", urlWithBase(p.Base, "/rules"), "Rules", iconRules, "", "", "")
+						@navlink(p.Nav, "schedules", urlWithBase(p.Base, "/schedules"), "Schedules", iconSchedules, "", "", "")
+						@navlink(p.Nav, "policies", urlWithBase(p.Base, "/policies"), "Policies", iconPolicies, "", "", "")
 						<div class="navgroup">Provision</div>
-						@navlink(p.Nav, "sources", urlWithBase(p.Base, "/sources"), "Sources", iconSources, badgeNum(p.Badges.Sources), "wait")
-						@navlink(p.Nav, "workspaces", urlWithBase(p.Base, "/workspaces"), "Workspaces", iconWorkspaces, "", "")
-						@navlink(p.Nav, "runners", urlWithBase(p.Base, "/runners"), "Runners", iconRunners, "", "")
+						@navlink(p.Nav, "sources", urlWithBase(p.Base, "/sources"), "Sources", iconSources, badgeNum(p.Badges.Sources), "wait", itoa(int64(p.Badges.Sources))+" "+plural(p.Badges.Sources, "source never synced", "sources never synced"))
+						@navlink(p.Nav, "workspaces", urlWithBase(p.Base, "/workspaces"), "Workspaces", iconWorkspaces, "", "", "")
+						@navlink(p.Nav, "runners", urlWithBase(p.Base, "/runners"), "Runners", iconRunners, "", "", "")
 						<div class="navgroup">Access</div>
-						@navlink(p.Nav, "secrets", urlWithBase(p.Base, "/secrets"), "Secrets", iconSecrets, "", "")
-						@navlink(p.Nav, "tokens", urlWithBase(p.Base, "/tokens"), "Tokens", iconTokens, "", "")
+						@navlink(p.Nav, "secrets", urlWithBase(p.Base, "/secrets"), "Secrets", iconSecrets, "", "", "")
+						@navlink(p.Nav, "tokens", urlWithBase(p.Base, "/tokens"), "Tokens", iconTokens, "", "", "")
 						<div class="navdivider" role="separator" aria-hidden="true"></div>
-						@navlink(p.Nav, "system", urlWithBase(p.Base, "/system"), "System", iconSystem, "", "")
+						@navlink(p.Nav, "system", urlWithBase(p.Base, "/system"), "System", iconSystem, "", "", "")
 					</nav>
 					<div class="side-foot">
 						@themeToggle()
@@ -179,13 +179,13 @@ templ brandMark() {
 // active entry keeps class before href so the rendered
 // `href="/x" aria-current="page"` stays contiguous (asserted by the render
 // tests).
-templ navlink(active, key, href, label, icon, badge, badgeCls string) {
+templ navlink(active, key, href, label, icon, badge, badgeCls, badgeLabel string) {
 	if active == key {
 		<a class="navitem active" href={ templ.SafeURL(href) } aria-current="page">
 			@navicon(icon)
 			<span>{ label }</span>
 			if badge != "" {
-				<span class={ "navbadge", badgeCls } aria-label={ badge + " need attention" }>{ badge }</span>
+				<span class={ "navbadge", badgeCls } aria-label={ badgeLabel }>{ badge }</span>
 			}
 		</a>
 	} else {
@@ -193,7 +193,7 @@ templ navlink(active, key, href, label, icon, badge, badgeCls string) {
 			@navicon(icon)
 			<span>{ label }</span>
 			if badge != "" {
-				<span class={ "navbadge", badgeCls } aria-label={ badge + " need attention" }>{ badge }</span>
+				<span class={ "navbadge", badgeCls } aria-label={ badgeLabel }>{ badge }</span>
 			}
 		</a>
 	}

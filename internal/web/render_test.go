@@ -439,8 +439,8 @@ func TestAppbarAndNavGroups(t *testing.T) {
 		`class="navgroup">Automate</div>`,
 		`class="navgroup">Provision</div>`,
 		`class="navgroup">Access</div>`,
-		`<span class="navbadge fail" aria-label="1 need attention">1</span>`,
-		`<span class="navbadge wait" aria-label="1 need attention">1</span>`,
+		`<span class="navbadge fail" aria-label="1 probe target down">1</span>`,
+		`<span class="navbadge wait" aria-label="1 approval pending">1</span>`,
 	} {
 		if !strings.Contains(page, want) {
 			t.Errorf("dashboard missing %q", want)
