@@ -33,7 +33,7 @@ Options:
   --image-load FILE  Load an OCI archive into the container runtime
                      (podman load -i, or docker load -i) before restore
   --image-ref REF    The container image this deployment runs (recorded for
-                     the recovery chain); echoed for the operator
+                     the recovery chain); prints the unit's Environment= line
   --help             Show this help and exit
 
 Restore runs "exocomp restore" when a binary is available: on PATH, or named by
@@ -140,7 +140,8 @@ if [ -n "$image_load" ]; then
     "$runtime" load -i "$image_load" || fail "$runtime could not load $image_load"
 fi
 if [ -n "$image_ref" ]; then
-    echo "recovery.sh: image ref $image_ref"
+    echo "recovery.sh: this deployment runs image $image_ref"
+    echo "recovery.sh: set it on the unit with Environment=EXOCOMP_IMAGE=$image_ref"
 fi
 
 exocomp_bin=""

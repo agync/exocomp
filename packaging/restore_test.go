@@ -214,3 +214,40 @@ func TestRecoveryShRestoreFailsLoudly(t *testing.T) {
 		})
 	}
 }
+
+// TestRecoveryShImageFlags pins the two disaster-recovery image flags the
+// container docs describe: --image-load refuses a missing archive before any
+// restore, and --image-ref prints the unit's Environment= line so the operator
+// can set EXOCOMP_IMAGE= on the new host (Decision 0016).
+func TestRecoveryShImageFlags(t *testing.T) {
+	requireTools(t, "sh")
+	home := t.TempDir()
+
+	// --image-load refuses an archive that is not there, before a target is
+	// ever opened.
+	out, err := runRecovery(t, home, "--image-load", filepath.Join(home, "missing.tar"))
+	if err == nil {
+		t.Fatalf("--image-load on a missing archive exited 0:\n%s", out)
+	}
+	if !strings.Contains(out, "is not a file") {
+		t.Errorf("--image-load did not name the missing archive:\n%s", out)
+	}
+
+	// --image-ref prints the exact unit line, with or without a restore to
+	// follow (no --from here, so the run stops right after the echo).
+	const ref = "ghcr.io/abn/exocomp:0.1.0"
+	out, _ = runRecovery(t, home, "--image-ref", ref)
+	if want := "Environment=EXOCOMP_IMAGE=" + ref; !strings.Contains(out, want) {
+		t.Errorf("--image-ref did not print %q:\n%s", want, out)
+	}
+
+	help, err := runRecovery(t, home, "--help")
+	if err != nil {
+		t.Fatalf("recovery.sh --help: %v\n%s", err, help)
+	}
+	for _, flag := range []string{"--image-load", "--image-ref"} {
+		if !strings.Contains(help, flag) {
+			t.Errorf("recovery.sh --help does not list %s:\n%s", flag, help)
+		}
+	}
+}
