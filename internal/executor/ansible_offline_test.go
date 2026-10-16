@@ -144,10 +144,22 @@ func runAnsibleOfflineChild(t *testing.T) {
 // tool is missing, rather than failing a proof that could not run at all.
 func requireOfflineProofTools(t *testing.T, names ...string) {
 	t.Helper()
+	needUserns := false
 	for _, name := range names {
 		if _, err := exec.LookPath(name); err != nil {
 			t.Skipf("%s not on PATH: %v", name, err)
 		}
+		if name == "unshare" {
+			needUserns = true
+		}
+	}
+	// unshare existing is not enough: the offline proofs need an unprivileged
+	// user+network namespace, which a host may forbid — GitHub's ubuntu-latest
+	// runners restrict unprivileged user namespaces, and the child then fails
+	// at `write /proc/self/uid_map: Operation not permitted`. Probe a bare
+	// namespace and skip rather than fail the gate.
+	if needUserns && exec.Command("unshare", "-rn", "true").Run() != nil {
+		t.Skip("unprivileged user namespaces are unavailable")
 	}
 }
 
