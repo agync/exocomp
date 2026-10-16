@@ -127,9 +127,9 @@ and record the image ref and every source base digest in `RECOVERY.md`
 ([disaster recovery](disaster-recovery.md)). A registry tag may be used to
 install; recovery must not need it (invariant 7). `podman load -i FILE` (or
 `docker load -i FILE` on the Docker tier) loads the captured archive with the
-detected engine before the Quadlet units start.
-rolling back. The unit's `EXOCOMP_IMAGE` is what the daemon records, so the
-`image-ref:` line in `RECOVERY.md` and `exocomp doctor` name what actually runs.
+detected engine before the Quadlet units start. The unit's `EXOCOMP_IMAGE` is
+what the daemon records, so the `image-ref:` line in `RECOVERY.md` and
+`exocomp doctor` name what actually runs.
 
 ## Updating and rollback
 
