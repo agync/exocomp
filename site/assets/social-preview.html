@@ -1,0 +1,47 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 1280px; height: 640px; background: #0A0C0D; overflow: hidden; }
+  .card {
+    width: 1280px; height: 640px; box-sizing: border-box; padding: 92px 96px 78px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: #ECEFF0;
+    background: radial-gradient(1200px 640px at 88% -10%, rgba(164,53,206,0.16), transparent 60%), #0A0C0D;
+  }
+  .top { display: flex; align-items: center; gap: 44px; }
+  .mark { width: 156px; height: 156px; color: #ECEFF0; flex: none; }
+  .brand { font-size: 108px; font-weight: 700; letter-spacing: -3px; line-height: 1; }
+  .tag { margin-top: 26px; font-size: 31px; color: #A6AFB2; letter-spacing: -0.2px; }
+  .foot { display: flex; justify-content: space-between; align-items: baseline; }
+  .chips { display: flex; gap: 14px; }
+  .chip { border: 1px solid rgba(190,123,235,0.34); border-radius: 999px; padding: 9px 20px;
+          color: #BE7BEB; font-size: 22px; }
+  .url { font-size: 24px; color: #8A9296; font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="top">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+        <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+      </svg>
+      <div>
+        <div class="brand">exocomp</div>
+        <div class="tag">Sovereign homelab control plane</div>
+      </div>
+    </div>
+    <div class="foot">
+      <div class="chips">
+        <span class="chip">one binary</span>
+        <span class="chip">one queue</span>
+        <span class="chip">trivial recovery</span>
+      </div>
+      <div class="url">exocomp.dev</div>
+    </div>
+  </div>
+</body>
+</html>
