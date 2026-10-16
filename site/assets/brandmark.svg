@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 32 32" role="img" aria-label="exocomp">
+  <rect width="32" height="32" fill="#0A0C0D"/>
+  <g transform="translate(4 4)" fill="none" stroke="#ECEFF0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 6.2A2.2 2.2 0 0 1 6.2 4h8.4L20 9.4v8.4A2.2 2.2 0 0 1 17.8 20H6.2A2.2 2.2 0 0 1 4 17.8Z"/>
+    <circle cx="9.4" cy="14.6" r="2.1" fill="#A435CE" stroke="none"/>
+  </g>
+</svg>
