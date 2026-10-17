@@ -59,7 +59,10 @@ A container does not inherit the service's credential directory, and
 directory read-only and points the variable at the mount. The mount carries `Z`: with
 a plain `ro` the credential keeps its host SELinux label and the container's read is
 denied, which surfaces as `host key absent — run exocomp init` rather than as a
-permission error.
+permission error. `Z` rather than `z` on purpose, since `z` is the shared label a
+second container can read. The relabel is safe because the source is this service's own
+tmpfs directory, recreated at every start; it is not a shared store, so there is no
+hard-linked content to corrupt and nothing that has to survive the label.
 
 ## The wizard
 
