@@ -20,7 +20,12 @@ Newest first.
   ships: `.github/workflows/publish.yml` builds each architecture on its own native
   runner and assembles the list, so the page records the workflow, the tags it pushes,
   and how the job logs in.
-- **Correction of fact**: the project moved from the `abn` GitHub org to `agync`, so the
+- **Correction of fact**: [Bill of materials](sbom/bill-of-materials.md) quoted 592 MB for
+  the image and 17 MB for the daemon's idle RSS. Re-measured with the same `make budgets`
+  method, against the published image, they are 618 MB and 32 MB (CI's own run agrees: 618 MB and 32 MB); the binary row claimed a
+  ~20 MB target the pinned toolchain does not meet and now states the measured 46 MB. The
+  rows carry the date of measurement, and `make budgets` fails when a dated figure is older
+  than 180 days, so a stale number is a failing check rather than a claim nobody re-read.
   published image ref is `ghcr.io/agync/exocomp`. Every exocomp reference follows it: the
   Quadlet unit, the compose file, the configuration reference, the platform contract, the
   SBOM, the published landing page, and the code that records and reports the ref. The

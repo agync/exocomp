@@ -45,7 +45,8 @@ a process boundary or does not ship.
 | `spf13/cobra` | 1.x | Apache-2.0 | CLI surface |
 | *(deferred)* Wails | v2 | MIT | desktop wrapper of the web UI |
 
-Binary target ~20 MB; idle RSS ≤ 60 MB, with CI failing above 80 MB.
+Binary 46 MB measured (the early ~20 MB figure was a target the pinned toolchain does not
+meet); idle RSS ≤ 60 MB, with CI failing above 80 MB.
 
 ## Layer 2 — pinned subprocess tools shipped in the image
 
@@ -101,8 +102,8 @@ enforced by something.
 
 | Budget | Value | Enforced by |
 |---|---|---|
-| Image size | ≤ 800 MB | `make budgets` (592 MB measured) |
-| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | `make budgets` (17 MB measured) |
+| Image size | ≤ 800 MB | `make budgets` (618 MB measured 2026-10-17) |
+| `exocompd` idle RSS | ≤ 60 MB, fail above 80 MB | `make budgets` (32 MB measured 2026-10-17 in CI, 31 MB on the author's host: it moves with the host's Go runtime and cgroup setup) |
 | Container memory | `MemoryMax=1.5G` | the Quadlet unit |
 | Concurrent jobs | 2 by default, memory-derived | queue config |
 | Target hardware | 4 GB N100 / Raspberry Pi 4, amd64 + arm64 | reference benchmark in CI |

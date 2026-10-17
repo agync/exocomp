@@ -72,13 +72,19 @@ clean: ## Remove build artifacts
 IMAGE        := localhost/exocomp:dev
 IMAGE_MAX_MB := 800
 RSS_MAX_MB   := 80
+# A measured figure in the bill of materials is evidence only while its date is
+# near; past this it is a claim nobody has checked.
+DOC_MAX_DAYS := 180
 
 image: ## Build the container image
 	podman build -t $(IMAGE) -f packaging/Containerfile \
 		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
 
 # The budgets are the ones docs/sbom/bill-of-materials.md commits to. A number
-# in a README is a wish; this target exits non-zero, so it is a constraint.
+# in a README is a wish; this target exits non-zero, so it is a constraint. The
+# doc's measured figures are checked by date and not by value: they move with the
+# host and the day's base images, so equality would cry wolf, while a figure
+# nobody has re-measured for six months is worth failing on.
 budgets: build ## Print image size and idle RSS against their ceilings, failing above
 	@fail=0; \
 	if size=$$(podman image inspect --format '{{.Size}}' $(IMAGE) 2>/dev/null); then \
@@ -94,6 +100,14 @@ budgets: build ## Print image size and idle RSS against their ceilings, failing 
 		printf 'idle RSS     %4d MB  (ceiling %d MB)' "$$mb" "$(RSS_MAX_MB)"; \
 		if [ "$$mb" -gt "$(RSS_MAX_MB)" ]; then echo '  FAIL'; fail=1; else echo '  ok'; fi; \
 	fi; \
+	now=$$(date +%s); \
+	dates=$$(grep -oE 'measured [0-9]{4}-[0-9]{2}-[0-9]{2}' docs/sbom/bill-of-materials.md | awk '{print $$2}'); \
+	if [ -z "$$dates" ]; then echo 'doc figures  no dated measurement  FAIL'; fail=1; fi; \
+	for d in $$dates; do \
+		age=$$(( (now - $$(date -d "$$d" +%s)) / 86400 )); \
+		printf 'doc figure   measured %s  (%3d days old, ceiling %d)' "$$d" "$$age" "$(DOC_MAX_DAYS)"; \
+		if [ "$$age" -gt "$(DOC_MAX_DAYS)" ]; then echo '  FAIL'; fail=1; else echo '  ok'; fi; \
+	done; \
 	exit $$fail
 
 ##@ Site
