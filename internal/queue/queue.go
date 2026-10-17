@@ -350,9 +350,16 @@ func (q *Queue) dispatch(ctx context.Context, claimAny bool) error {
 			return nil
 		}
 		job, ok, err := q.claim(ctx, claimAny)
-		if err != nil || !ok {
+		if err != nil {
 			q.finishSlot()
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return nil
+			}
 			return err
+		}
+		if !ok {
+			q.finishSlot()
+			return nil
 		}
 		q.launch(ctx, job)
 	}
@@ -372,7 +379,13 @@ const claimPageSize = 512
 // window of held-key rows older than one page cannot starve a runnable job
 // sitting behind it.
 func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, error) {
-	// A cordoned daemon claims nothing new: the row it would take stays queued
+	// A cancelled context is not an error: Run/Drain are expected to wind down
+	// quietly when cancelled, and a claim attempted during shutdown must not
+	// surface as "context canceled" to the caller.
+	if ctx.Err() != nil {
+		return store.Job{}, false, nil
+	}
+	// A cordoned daemon claims nothing new...
 	// until the cordon lifts (or the next boot sweeps it), so a planned reboot
 	// drains to empty instead of picking up more work.
 	if q.claimGate != nil && !q.claimGate() {
@@ -386,6 +399,9 @@ func (q *Queue) claim(ctx context.Context, claimAny bool) (store.Job, bool, erro
 			Offset: offset,
 		})
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return store.Job{}, false, nil
+			}
 			return store.Job{}, false, err
 		}
 		if len(jobs) == 0 {
@@ -596,6 +612,9 @@ func (q *Queue) idle(ctx context.Context) (bool, error) {
 	for _, id := range q.mine() {
 		job, err := q.store.GetJob(ctx, id)
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return false, nil
+			}
 			return false, err
 		}
 		if !job.State.Terminal() {
