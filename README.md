@@ -1,5 +1,7 @@
 # exocomp
 
+[![exocomp.dev](https://img.shields.io/badge/site-exocomp.dev-blue)](https://exocomp.dev/) [![Documentation](https://img.shields.io/badge/docs-exocomp.dev%2Fdocs-blue)](https://exocomp.dev/docs/) [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/agync/exocomp)
+
 A single-binary homelab control plane: one operator, a handful of hosts, no
 external database. One static Go binary (`exocompd`) owns state, sequencing, keys,
 and recovery, and shells out to pinned tools (`ansible-core`, `opentofu`, `restic`,
@@ -7,8 +9,6 @@ and recovery, and shells out to pinned tools (`ansible-core`, `opentofu`, `resti
 
 Run it as a host service, a container, or a unit file — whatever keeps the host
 best. State is the SQLite file beside it, never a database someone else operates.
-
-**[exocomp.dev](https://exocomp.dev/) · [Documentation](https://exocomp.dev/docs/)**
 
 ## What it looks like
 
