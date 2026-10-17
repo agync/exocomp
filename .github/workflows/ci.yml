@@ -259,7 +259,11 @@ jobs:
           go-version-file: go.mod
           cache: true
       - name: Install okf
-        run: go install github.com/okfcli/okf/cmd/okf@v0.5.0
+        run: |
+          curl -fsSL -o /tmp/okf.tar.gz \
+            https://github.com/okfcli/okf/releases/download/v0.5.0/okf_0.5.0_linux_amd64.tar.gz
+          tar xzf /tmp/okf.tar.gz -C /tmp
+          install -m0755 /tmp/okf /usr/local/bin/okf
       - name: Validate bundle
         run: okf validate docs
       - name: Lint bundle
