@@ -1,0 +1,30 @@
+# One grouped pull request per ecosystem per month, so a dependency bump arrives as
+# a decision rather than as a stream of notifications.
+#
+# No `docker` entry: every FROM in packaging/Containerfile is ARG-indirected
+# (`FROM ${GO_IMAGE}`), so a version-update scan sees no image reference to bump,
+# and the subprocess tools are pinned by digest in packaging/tool-digests.txt.
+# Both stay hand-managed.
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      go-modules:
+        patterns: ["*"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      github-actions:
+        patterns: ["*"]
