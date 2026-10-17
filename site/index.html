@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <script>(function(){try{var t=localStorage.getItem('exocomp-theme');if(!t){t=window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);}catch(e){}})();</script>
-  <title>exocomp · Sovereign homelab control plane</title>
-  <meta name="description" content="Sovereign homelab control plane. Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs, and store age envelope secrets. Zero sudo, plain SQLite.">
+  <title>exocomp · homelab control plane in one Go binary</title>
+  <meta name="description" content="Homelab control plane in one Go binary: Ansible, OpenTofu, backups and checks through one job queue, with state in plain SQLite.">
   <link rel="canonical" href="https://exocomp.dev/">
-  <meta property="og:title" content="exocomp · Sovereign homelab control plane">
-  <meta property="og:description" content="Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs, and store age envelope secrets in plain SQLite. Zero sudo.">
+  <meta property="og:title" content="exocomp · homelab control plane in one Go binary">
+  <meta property="og:description" content="Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs and approval gates, and keep secrets in an age envelope. One queue, plain SQLite.">
   <meta property="og:url" content="https://exocomp.dev/">
   <meta property="og:image" content="https://exocomp.dev/assets/screenshots/dashboard-split.png">
   <meta property="og:image:width" content="1600">
@@ -19,8 +19,8 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:site" content="@abn">
   <meta name="twitter:url" content="https://exocomp.dev/">
-  <meta name="twitter:title" content="exocomp · Sovereign homelab control plane">
-  <meta name="twitter:description" content="Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs, and store age envelope secrets in plain SQLite. Zero sudo.">
+  <meta name="twitter:title" content="exocomp · homelab control plane in one Go binary">
+  <meta name="twitter:description" content="Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs and approval gates, and keep secrets in an age envelope. One queue, plain SQLite.">
   <meta name="twitter:image" content="https://exocomp.dev/assets/screenshots/dashboard-split.png">
   <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -32,7 +32,7 @@
     "@type": "SoftwareApplication",
     "name": "exocomp",
     "url": "https://exocomp.dev/",
-    "description": "Sovereign homelab control plane. Run Ansible playbooks with drift detection, manage OpenTofu remote state with plan diffs, and store age envelope secrets in plain SQLite with zero sudo.",
+    "description": "Homelab control plane in one Go binary: Ansible, OpenTofu, backups and checks through one job queue, with state in plain SQLite.",
     "operatingSystem": "Linux",
     "applicationCategory": "DevOpsApplication",
     "offers": {
@@ -94,10 +94,10 @@
     <!-- Hero Section: Leads with orchestration and capabilities -->
     <section class="hero">
       <div class="hero-content">
-        <div class="kicker">HOMELAB CONTROL PLANE · SOVEREIGN ORCHESTRATION</div>
+        <div class="kicker">HOMELAB CONTROL PLANE · ONE JOB QUEUE</div>
         <h1 class="hero-title">Orchestrate, converge,<br>and secure your infrastructure.</h1>
         <p class="hero-subtitle">
-          An unprivileged control plane for self-hosted fleets. Run Ansible playbooks with factual drift detection, manage OpenTofu remote state with plan diffs and approval gates, and store envelope secrets with age encryption. Everything runs through one serialized queue in plain SQLite with zero sudo and zero SaaS dependencies.
+          An unprivileged control plane for self-hosted fleets. Run Ansible playbooks with factual drift detection, manage OpenTofu remote state with plan diffs and approval gates, and store envelope secrets with age encryption. Everything runs through one serialized queue in plain SQLite.
         </p>
 
         <div class="hero-actions">
@@ -279,7 +279,7 @@
         <div class="origin-text">
           <h4>Origins: The Quality of Life</h4>
           <p>
-            Named after the autonomous engineering units from <em>Star Trek: The Next Generation</em>. In the series, exocomps are self-contained devices equipped with a versatile tool bay that reconfigure themselves to solve unpredictable operational problems. Here, that philosophy translates to a sovereign control plane managing your fleet through standard, un-opinionated tools.
+            Named after the autonomous engineering units from <em>Star Trek: The Next Generation</em>. In the series, exocomps are self-contained devices equipped with a versatile tool bay that reconfigure themselves to solve unpredictable operational problems. Here, that philosophy translates to one control plane managing your fleet through standard, un-opinionated tools.
           </p>
         </div>
       </div>
@@ -502,7 +502,7 @@ systemctl --user daemon-reload &amp;&amp; systemctl --user enable --now exocomp<
           exocomp
         </h3>
         <p>
-          Sovereign homelab control plane. Host service or rootless container, plain SQLite, exit-code truth, and standard tools.
+          Homelab control plane in one Go binary. Host service or rootless container, plain SQLite, exit-code truth, and standard tools.
         </p>
       </div>
 
