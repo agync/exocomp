@@ -14,6 +14,28 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.1.1](https://github.com/agync/exocomp/compare/v0.1.0...v0.1.1) (2026-10-17)
+
+
+### Bug Fixes
+
+* **budgets:** sample idle RSS without nono ([a7049e9](https://github.com/agync/exocomp/commit/a7049e9f8c5eba75f2be4195fa23e2e9c1fd235e))
+* **ci:** let the changes job read a pull request ([1715a83](https://github.com/agync/exocomp/commit/1715a8350f2adb38e305aa0dc672e138b3cbbf04))
+* **packaging:** hand the host key to the container ([66aa96b](https://github.com/agync/exocomp/commit/66aa96b223879de2610c2973208db0abfc5a3c25))
+* **packaging:** publish the web surface ([fde3a42](https://github.com/agync/exocomp/commit/fde3a42895bfc74adf0a47dce38f3daf6b518dd6))
+* **sched:** stamp a schedule's next fire at start ([b5d81b4](https://github.com/agync/exocomp/commit/b5d81b4704dbfcd8a4b486ff3d7019a7526e2db3))
+* **site:** declare the previews table for PR builds ([06681f4](https://github.com/agync/exocomp/commit/06681f4ab8884aeb5ec5a170d2713a33ab31e7b7))
+* **site:** deploy to Cloudflare as a Worker ([bac2bd1](https://github.com/agync/exocomp/commit/bac2bd1efd37735c768234c1cbc7d78db34be442))
+* **site:** mobile header drawer, no page overflow ([93a9768](https://github.com/agync/exocomp/commit/93a9768cc0020df543d23aed0b6e6409a4bfc6ef))
+* **site:** point the nav links at agync/exocomp ([c92a058](https://github.com/agync/exocomp/commit/c92a0580ab17ba3da333d5c419549c5561d3fdbc))
+* surface the errors drained from worker channels ([74edd63](https://github.com/agync/exocomp/commit/74edd63a0ca5b16daf8fd2a54b8496aa74c8aa06))
+* **web:** a gated job is not a live tail ([21d81dc](https://github.com/agync/exocomp/commit/21d81dc0e1385cc7741b36c845fe9f12d3b8a350))
+* **web:** equalize system leg card heights ([44fae1f](https://github.com/agync/exocomp/commit/44fae1faeade89526bec3acd1cc6df67bd5f9e41))
+* **web:** name what each nav badge counts ([1c5c016](https://github.com/agync/exocomp/commit/1c5c0168ecdd9d9f2d75f08166395735e99f1a3c))
+* **web:** pluralize serial and plan counts ([a894698](https://github.com/agync/exocomp/commit/a894698987d9df582424eeffe842c98b1ff8d373))
+* **web:** stop the state tray header colliding ([3f53b91](https://github.com/agync/exocomp/commit/3f53b919b8ad4e74f354c6e92d80686f1db0d50b))
+* **wire:** a sensitive flag needs a value to redact ([2bfb17f](https://github.com/agync/exocomp/commit/2bfb17fd1edd9f71903368de7240c6e8f95ab4c7))
+
 ## 2026-10-15 — the release line is pre-1.0
 
 - **The version line starts at `v0.1.0`.** The project carried a local `v1.0.0`
