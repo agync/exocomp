@@ -54,6 +54,13 @@ The quadlet's `LoadCredentialEncrypted=host.key:…` decrypts it back to
 `$CREDENTIALS_DIRECTORY/host.key` at start. If TPM sealing fails, retry with
 `--with-key=host`. This is a documented one-off, not a scripted mode.
 
+A container does not inherit the service's credential directory, and
+`$CREDENTIALS_DIRECTORY` is therefore not set inside it, so the unit mounts that
+directory read-only and points the variable at the mount. The mount carries `Z`: with
+a plain `ro` the credential keeps its host SELinux label and the container's read is
+denied, which surfaces as `host key absent — run exocomp init` rather than as a
+permission error.
+
 ## The wizard
 
 The wizard is the TUI's first-run mode. Six screens, each **idempotent** — check before
