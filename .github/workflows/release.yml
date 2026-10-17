@@ -101,5 +101,11 @@ jobs:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           cp bin/exocomp /tmp/exocomp
+          # The toolchain manifest travels with the release, with the git pin
+          # resolved the way the image resolves it at build time, so the asset
+          # matches what the image ships at /opt/exocomp/MANIFEST.json.
+          gitver=$(git --version | awk '{print $3}')
+          sed "s/\"git\": \"\"/\"git\": \"$gitver\"/" packaging/MANIFEST.json > /tmp/MANIFEST.json
+          ( cd /tmp && sha256sum exocomp > exocomp.sha256 )
           gh release upload "${{ needs.release-please.outputs.tag_name }}" \
-            /tmp/exocomp --clobber
+            /tmp/exocomp /tmp/MANIFEST.json /tmp/exocomp.sha256 --clobber
