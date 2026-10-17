@@ -4,6 +4,15 @@
 name = "exocomp"
 compatibility_date = "2026-10-01"
 
+# The pull request builds run `npx wrangler preview`, which is Cloudflare's
+# Previews mechanism rather than a production deploy. It reads its configuration
+# from `previews` and refuses to run at all without the table. Every setting this
+# Worker uses is top level, and Cloudflare's guidance for that case is an empty
+# block: `assets` and `compatibility_*` stay top level, and `wrangler deploy`
+# never reads this. The table has to sit above `[assets]`, or the keys would
+# parse into that table instead. See docs/operations/landing-site.md.
+previews = { }
+
 # What `site/build.sh` writes. wrangler uploads the whole tree; `_headers` and
 # `_redirects` inside it are parsed by Workers static assets.
 [assets]

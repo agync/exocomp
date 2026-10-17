@@ -6,6 +6,16 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-17
+
+- **Correction of fact**: [Landing site](operations/landing-site.md) named
+  `npx wrangler versions upload` as the Worker's Preview command. The pull request builds
+  run `npx wrangler preview`, which is Cloudflare's Previews mechanism: a branch build is
+  served at a Preview URL, inherits none of the production settings, and never reaches
+  `exocomp.dev`. It reads its configuration from a `previews` table and refuses to run
+  without one, so `site/wrangler.toml` now declares an empty one, above `[assets]` so the
+  keys cannot parse into that table. The page states what a Preview is and is not.
+
 ## 2026-10-16
 
 - **Correction of fact**: three `guide/` examples contradicted the running code.

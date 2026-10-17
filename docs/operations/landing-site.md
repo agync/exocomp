@@ -77,7 +77,7 @@ The Git-connected build lives under the Worker's **Settings → Build**:
 | Root directory | `site` |
 | Build command | `./build.sh` |
 | Deploy command | `npx wrangler deploy` |
-| Preview command | `npx wrangler versions upload` |
+| Preview command | `npx wrangler preview` |
 | Build variable `GO_VERSION` | the 1.25 line |
 
 The root directory has to be `site` and not the repository root: it is both where the build
@@ -85,6 +85,15 @@ command runs and where the deploy command reads this config from. Set `GO_VERSIO
 the build image defaults to Go 1.24.3 and the renderer's module asks for 1.25, so without it
 every build spends a minute downloading a newer toolchain first. `exocomp.dev` is added under
 the Worker's **Domains & Routes**.
+
+The Preview command is not a smaller deploy. A pull request build runs Cloudflare's Previews
+mechanism, which serves that branch at a Preview URL and does not inherit production
+settings, so nothing it does reaches `exocomp.dev`. It reads its own configuration from a
+`previews` table and refuses to run without one. Every setting this Worker uses is top level,
+`assets` and `compatibility_date` included, which is the case Cloudflare's guidance answers
+with an empty block, and that is what `site/wrangler.toml` declares. The table has to sit
+above `[assets]` in the file, or its keys parse into `[assets]` and the block reads as
+missing again.
 
 A Workers Builds run is two commands in one environment: the build command in the root
 directory, then the deploy command, each on a fresh Ubuntu 24.04 sandbox per push. That
