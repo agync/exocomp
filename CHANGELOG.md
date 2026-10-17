@@ -14,6 +14,13 @@ which records only bundle-structural history and corrections of fact.
 
 Newest first.
 
+## [0.1.2](https://github.com/agync/exocomp/compare/v0.1.1...v0.1.2) (2026-10-17)
+
+
+### Bug Fixes
+
+* **queue:** avoid context canceled during shutdown ([6f1b27b](https://github.com/agync/exocomp/commit/6f1b27b0f6dedcfd5a697a53a5da7a095002c77d))
+
 ## [0.1.1](https://github.com/agync/exocomp/compare/v0.1.0...v0.1.1) (2026-10-17)
 
 
