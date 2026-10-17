@@ -8,20 +8,40 @@ After=exocomp.volume
 Image=ghcr.io/agync/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
+# The daemon reads the host key from $CREDENTIALS_DIRECTORY, and a container does
+# not inherit the service's credential directory, so mount it read-only and point
+# the variable at it. systemd creates it before ExecStart runs. The `Z` is not
+# decorative: without a private relabel SELinux leaves the host label on the
+# credential and the container's read is denied.
+Volume=%t/credentials/exocomp.service:/run/credentials/exocomp.service:ro,Z
+Environment=CREDENTIALS_DIRECTORY=/run/credentials/exocomp.service
 # Rootless keep-id posture; per-job caps stay off (byo-runner.md).
 UserNS=keep-id
 # Staged secrets live in /dev/shm; no Tmpfs= mount (breaks rootless startup).
 Environment=XDG_DATA_HOME=/var/lib
 # Recorded by the daemon for the recovery chain (Decision 0016).
 Environment=EXOCOMP_IMAGE=ghcr.io/agync/exocomp:latest
-# host.key delivered as an encrypted systemd credential (bootstrap.md).
-LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
-Exec=serve
+# The web surface is token-gated (Decision 0009) and serve REFUSES a
+# non-loopback bind with no active token, so mint the first one before the first
+# start — a unit that binds without it would crash-loop on Restart=always:
+#   podman run --rm -v exocomp.volume:/var/lib/exocomp \
+#     ghcr.io/agync/exocomp:latest --no-input token new web
+# Inside the container the web surface must bind 0.0.0.0 to be reachable through
+# the published port, and --port keeps the state/API backend on loopback.
+PublishPort=127.0.0.1:8642:8642
+# The tofu state/API backend, for a tofu on the host that keeps its own state
+# (mode A). Bearer-gated, so loopback only.
+PublishPort=127.0.0.1:8643:8643
+Exec=serve --port 8643 --web-addr 0.0.0.0:8642
 
 [Service]
 Restart=always
 RestartSec=5
 MemoryMax=1.5G
+# host.key arrives as an encrypted systemd credential, decrypted to
+# $CREDENTIALS_DIRECTORY/host.key at start (bootstrap.md). It is a service key:
+# the Quadlet generator rejects it in [Container].
+LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
 
 [Install]
 WantedBy=default.target

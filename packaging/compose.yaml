@@ -16,6 +16,16 @@ services:
       - exocomp-state:/var/lib/exocomp
     environment:
       EXOCOMP_IMAGE: ghcr.io/agync/exocomp:latest
+    # Same surface as the Quadlet: the web listener needs a token first
+    # (Decision 0009 refuses a non-loopback bind without one), and it must bind
+    # 0.0.0.0 inside the container to be reachable through the published port.
+    # Mint it with:
+    #   docker run --rm -v exocomp-state:/var/lib/exocomp \
+    #     ghcr.io/agync/exocomp:latest --no-input token new web
+    command: ["serve", "--port", "8643", "--web-addr", "0.0.0.0:8642"]
+    ports:
+      - "127.0.0.1:8642:8642"
+      - "127.0.0.1:8643:8643"
 
 volumes:
   exocomp-state: {}

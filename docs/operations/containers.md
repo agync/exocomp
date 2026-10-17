@@ -64,6 +64,25 @@ tmpfs mounts") and the container will not start; staged secret material lives in
 **no `[Service] Type=`** — the generated unit is `Type=notify` by default and
 conmon supplies `READY=1`, so it works without `exocompd` calling `sd_notify`.
 
+## Reaching the web surface
+
+Both units publish the web surface on `127.0.0.1:8642` (token-gated TLS) and the tofu
+state backend on `127.0.0.1:8643` (bearer-gated), and nothing else. The web listener
+needs a token before it starts: `serve` refuses a non-loopback bind while no token is
+active ([Decision 0009](../decisions/0009-lan-access-tokens.md)), and a unit that bound
+anyway would crash-loop under `Restart=always`. Mint the first one against the volume,
+before the unit starts:
+
+```sh
+podman run --rm -v systemd-exocomp:/var/lib/exocomp \
+  ghcr.io/agync/exocomp:latest --no-input token new web
+```
+
+The volume name is the generated one for the Quadlet; compose prefixes its own
+(`exocomp-state`). Inside the container the listener has to bind `0.0.0.0` to be
+reachable through the published port, which is why `Exec=serve --web-addr 0.0.0.0:8642`
+differs from the host service's loopback bind in the quickstart.
+
 ## Add a system package
 
 A playbook that shells out to a binary the base does not carry gets it by
