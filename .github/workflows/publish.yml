@@ -1,0 +1,104 @@
+# Publish the container image as a multi-arch manifest list (ADR 0016:
+# ghcr.io/abn/exocomp, which consumers pin by digest).
+#
+# Each architecture is built on its own runner rather than under emulation, so
+# nothing here needs qemu: ubuntu-24.04 for amd64 and ubuntu-24.04-arm for
+# arm64, both with the arm64 base images the Containerfile's FROM lines pull
+# natively. The arch is passed to the build explicitly because the tool
+# downloads are arch-specific and `TARGETARCH` defaults to amd64.
+#
+# Namespace: GITHUB_TOKEN can only write the repository owner's namespace, and
+# this package is declared in a user namespace (ADR 0016), so the login prefers
+# a GHCR_TOKEN secret (a PAT with write:packages for the namespace owner) and
+# falls back to GITHUB_TOKEN. Either grant this repository write access to the
+# package (package settings, Manage Actions access), or set the IMAGE_NAME
+# repository variable to ghcr.io/<repository owner>/exocomp to publish where
+# GITHUB_TOKEN already has access.
+name: publish
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+# One publish at a time: a tag push and the main push it sits on both write
+# :latest, and interleaving them would race the manifest.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+env:
+  IMAGE: ${{ vars.IMAGE_NAME || 'ghcr.io/abn/exocomp' }}
+
+jobs:
+  arch:
+    name: image ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            arch: amd64
+          - runner: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install podman
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq podman
+          fi
+      - name: Log in
+        run: |
+          podman login "${IMAGE%%/*}" \
+            -u "${{ github.actor }}" \
+            -p "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+      - name: Build the ${{ matrix.arch }} image
+        run: |
+          podman build -f packaging/Containerfile \
+            --build-arg TARGETARCH=${{ matrix.arch }} \
+            -t "$IMAGE:build-${{ matrix.arch }}" .
+      - name: Push the per-arch tag
+        run: podman push "$IMAGE:build-${{ matrix.arch }}"
+
+  manifest:
+    name: manifest list
+    needs: arch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install podman
+        run: |
+          if ! command -v podman >/dev/null 2>&1; then
+            sudo apt-get update -qq && sudo apt-get install -y -qq podman
+          fi
+      - name: Log in
+        run: |
+          podman login "${IMAGE%%/*}" \
+            -u "${{ github.actor }}" \
+            -p "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+      - name: Assemble the manifest list and push it
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          set -eu
+          podman manifest create "$IMAGE:latest"
+          for arch in amd64 arm64; do
+            podman manifest add --arch "$arch" --os linux \
+              "$IMAGE:latest" "docker://$IMAGE:build-$arch"
+          done
+          podman manifest push --all "$IMAGE:latest"
+          # A tag push also publishes the version, so a host can pin one.
+          if [ -n "$RELEASE_TAG" ]; then
+            podman tag "$IMAGE:latest" "$IMAGE:$RELEASE_TAG"
+            podman manifest push --all "$IMAGE:$RELEASE_TAG"
+          fi
+          podman manifest inspect "$IMAGE:latest" > /tmp/index.json
+          python3 -c 'import json; i=json.load(open("/tmp/index.json")); print("platforms:", sorted(p["os"] + "/" + p["architecture"] for p in (m["platform"] for m in i["manifests"])))'

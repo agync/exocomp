@@ -15,6 +15,11 @@ Newest first.
   `exocomp.dev`. It reads its configuration from a `previews` table and refuses to run
   without one, so `site/wrangler.toml` now declares an empty one, above `[assets]` so the
   keys cannot parse into that table. The page states what a Preview is and is not.
+- **Correction of fact**: [Containers](operations/containers.md) listed the published
+  `ghcr.io/abn/exocomp` manifest list as "decided, lands with the packaging work". It
+  ships: `.github/workflows/publish.yml` builds each architecture on its own native
+  runner and assembles the list, so the page records the workflow, the tags it pushes,
+  and the namespace the login needs.
 
 ## 2026-10-16
 

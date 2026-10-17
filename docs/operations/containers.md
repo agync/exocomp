@@ -19,11 +19,11 @@ into is [disaster recovery](disaster-recovery.md).
 |---|---|
 | Base image builds and runs (`make image`), `doctor` green | **shipped** |
 | Inheriting from the base (`FROM exocomp`) | **supported** |
-| Published `ghcr.io/abn/exocomp` (multi-arch, digest) | decided, lands with the packaging work |
+| Published `ghcr.io/abn/exocomp` (multi-arch, digest) | **shipped** (`.github/workflows/publish.yml`) |
 | uv self-bootstrap; PATH-delegated ansible with `PYTHONPATH` | decided in Decision 0016, lands with the packaging work |
 | `COPY --from` into a foreign base | **deferred** (Decision 0016, Scope) |
 
-Until the published ref exists, substitute the locally built
+The units reference the published ref. To run a local build instead, substitute
 `localhost/exocomp:dev` (`make image`) for the image name below.
 
 ## What the base image carries
@@ -129,6 +129,22 @@ carry its base images and the wheelhouse; `uv` runs with `--offline`.
 The base is published as a manifest list (`amd64`, `arm64`). Publish a derived
 image for the same platforms, and pin `FROM` by `@sha256:` rather than a tag so a
 rebuild does not silently drift.
+
+`.github/workflows/publish.yml` builds that list. Each architecture builds on its
+own runner (`ubuntu-24.04`, `ubuntu-24.04-arm`) rather than under emulation, so no
+qemu is involved, and the build passes `TARGETARCH` explicitly because the tool
+downloads are arch-specific. Per-arch tags are pushed as `:build-amd64` and
+`:build-arm64`, then a manifest job assembles them into the list and pushes
+`:latest`, plus the version tag when the run came from a tag. It runs on pushes to
+`main`, on `v*` tags, and on `workflow_dispatch`.
+
+Two settings are worth knowing. `GITHUB_TOKEN` can only write the repository
+owner's namespace, and this package is declared in a user namespace, so the login
+prefers a `GHCR_TOKEN` secret (a PAT with `write:packages` for that owner) and
+falls back to `GITHUB_TOKEN`; either grant this repository write access to the
+package, or set the `IMAGE_NAME` repository variable to
+`ghcr.io/<repository owner>/exocomp`, where `GITHUB_TOKEN` already has access.
+`IMAGE_NAME` also overrides the published ref for a fork or a mirror.
 
 ## Disaster recovery of a custom image
 
