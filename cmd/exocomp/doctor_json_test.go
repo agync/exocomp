@@ -179,7 +179,7 @@ func TestDoctorReportsTheImageRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
-	if err := st.PutSetting(t.Context(), store.SettingImageRef, "ghcr.io/abn/exocomp:test"); err != nil {
+	if err := st.PutSetting(t.Context(), store.SettingImageRef, "ghcr.io/agync/exocomp:test"); err != nil {
 		t.Fatalf("put image ref: %v", err)
 	}
 	_ = st.Close()
@@ -188,7 +188,7 @@ func TestDoctorReportsTheImageRef(t *testing.T) {
 	if err := runDoctor(&out); err != nil {
 		t.Fatalf("runDoctor: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "image ref          ghcr.io/abn/exocomp:test") {
+	if !strings.Contains(out.String(), "image ref          ghcr.io/agync/exocomp:test") {
 		t.Errorf("text report does not name the image ref:\n%s", out.String())
 	}
 
@@ -196,7 +196,7 @@ func TestDoctorReportsTheImageRef(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doctor --output json: %v (%s)", err, js)
 	}
-	if !strings.Contains(js, "image-ref: ghcr.io/abn/exocomp:test") {
+	if !strings.Contains(js, "image-ref: ghcr.io/agync/exocomp:test") {
 		t.Errorf("optional_tools detail does not carry the image ref: %s", js)
 	}
 }

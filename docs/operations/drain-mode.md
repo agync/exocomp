@@ -16,7 +16,7 @@ For a *planned* reboot you want the opposite: cordon the running daemon ahead of
 in-flight work finish on its own clock, and be told when it is safe to reboot.
 
 `exocomp drain` is that action. It is one operator on one node ([invariant
-1](https://github.com/abn/exocomp/blob/main/AGENTS.md)); there is no failover partner and none is needed — this is planned
+1](https://github.com/agync/exocomp/blob/main/AGENTS.md)); there is no failover partner and none is needed — this is planned
 maintenance, not a crash.
 
 ## What a cordon does

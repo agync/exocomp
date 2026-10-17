@@ -20,17 +20,17 @@ func TestRecordImageRefPersists(t *testing.T) {
 	defer func() { _ = st.Close() }()
 	ctx := context.Background()
 
-	if err := recordImageRef(ctx, st, "ghcr.io/abn/exocomp:latest"); err != nil {
+	if err := recordImageRef(ctx, st, "ghcr.io/agync/exocomp:latest"); err != nil {
 		t.Fatalf("record ref: %v", err)
 	}
-	if got, err := st.GetSetting(ctx, store.SettingImageRef); err != nil || got != "ghcr.io/abn/exocomp:latest" {
+	if got, err := st.GetSetting(ctx, store.SettingImageRef); err != nil || got != "ghcr.io/agync/exocomp:latest" {
 		t.Fatalf("stored ref = %q, %v", got, err)
 	}
 
 	if err := recordImageRef(ctx, st, ""); err != nil {
 		t.Fatalf("record empty: %v", err)
 	}
-	if got, _ := st.GetSetting(ctx, store.SettingImageRef); got != "ghcr.io/abn/exocomp:latest" {
+	if got, _ := st.GetSetting(ctx, store.SettingImageRef); got != "ghcr.io/agync/exocomp:latest" {
 		t.Errorf("unset env overwrote the stored ref: %q", got)
 	}
 

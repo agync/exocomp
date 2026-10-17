@@ -20,9 +20,9 @@ func TestRenderRecoveryImageRef(t *testing.T) {
 	}}
 	now := time.Date(2026, 9, 17, 12, 0, 0, 0, time.UTC)
 
-	withFacts := factsBlock(t, string(renderRecovery(tgt, nil, now, "ghcr.io/abn/exocomp:latest")))
+	withFacts := factsBlock(t, string(renderRecovery(tgt, nil, now, "ghcr.io/agync/exocomp:latest")))
 	t.Logf("Facts with a ref:\n%s", withFacts)
-	if !strings.Contains(withFacts, "image-ref: ghcr.io/abn/exocomp:latest\n") {
+	if !strings.Contains(withFacts, "image-ref: ghcr.io/agync/exocomp:latest\n") {
 		t.Errorf("Facts block does not carry the image ref:\n%s", withFacts)
 	}
 

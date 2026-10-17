@@ -43,12 +43,12 @@ Description=exocomp control plane
 After=exocomp.volume
 
 [Container]
-Image=ghcr.io/abn/exocomp:latest
+Image=ghcr.io/agync/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
 UserNS=keep-id
 Environment=XDG_DATA_HOME=/var/lib
-Environment=EXOCOMP_IMAGE=ghcr.io/abn/exocomp:latest
+Environment=EXOCOMP_IMAGE=ghcr.io/agync/exocomp:latest
 LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
 Exec=serve
 

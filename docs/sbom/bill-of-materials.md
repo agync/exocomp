@@ -9,7 +9,7 @@ tags: [sbom, dependencies, packaging]
 # Bill of materials
 
 Indicative pins as of 2026-08. **The frozen pins are committed at
-[`packaging/MANIFEST.json`](https://github.com/abn/exocomp/blob/main/packaging/MANIFEST.json)** — the explicit source of the
+[`packaging/MANIFEST.json`](https://github.com/agync/exocomp/blob/main/packaging/MANIFEST.json)** — the explicit source of the
 toolchain versions, not a constant hidden in the binary. The image build copies that file
 to `/opt/exocomp/MANIFEST.json`, filling in only `git` (resolved from Fedora's signed
 repo), and sets `EXOCOMP_TOOLCHAIN_MANIFEST` so the daemon reads the shipped pin — a
@@ -67,7 +67,7 @@ Image target ≤ 800 MB measured in CI, with a working target of ~500 MB. The ba
 glibc image — the Python requirement rules out distroless-static.
 
 The image is also a distribution artifact ([Decision 0016](../decisions/0016-artifact-carrier-image.md)):
-`ghcr.io/abn/exocomp`, multi-arch, published as a manifest list and pinned by digest. uv and
+`ghcr.io/agync/exocomp`, multi-arch, published as a manifest list and pinned by digest. uv and
 `uvx` are lifted in with the documented `COPY --from=<uv image> /uv /uvx /bin/`, with the uv
 image pinned by digest like every other build input.
 

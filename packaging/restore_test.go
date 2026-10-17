@@ -235,7 +235,7 @@ func TestRecoveryShImageFlags(t *testing.T) {
 
 	// --image-ref prints the exact unit line, with or without a restore to
 	// follow (no --from here, so the run stops right after the echo).
-	const ref = "ghcr.io/abn/exocomp:0.1.0"
+	const ref = "ghcr.io/agync/exocomp:0.1.0"
 	out, _ = runRecovery(t, home, "--image-ref", ref)
 	if want := "Environment=EXOCOMP_IMAGE=" + ref; !strings.Contains(out, want) {
 		t.Errorf("--image-ref did not print %q:\n%s", want, out)

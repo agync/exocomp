@@ -1,5 +1,5 @@
 # Publish the container image as a multi-arch manifest list (ADR 0016:
-# ghcr.io/abn/exocomp, which consumers pin by digest).
+# ghcr.io/agync/exocomp, which consumers pin by digest).
 #
 # Each architecture is built on its own runner rather than under emulation, so
 # nothing here needs qemu: ubuntu-24.04 for amd64 and ubuntu-24.04-arm for
@@ -7,13 +7,10 @@
 # natively. The arch is passed to the build explicitly because the tool
 # downloads are arch-specific and `TARGETARCH` defaults to amd64.
 #
-# Namespace: GITHUB_TOKEN can only write the repository owner's namespace, and
-# this package is declared in a user namespace (ADR 0016), so the login prefers
-# a GHCR_TOKEN secret (a PAT with write:packages for the namespace owner) and
-# falls back to GITHUB_TOKEN. Either grant this repository write access to the
-# package (package settings, Manage Actions access), or set the IMAGE_NAME
-# repository variable to ghcr.io/<repository owner>/exocomp to publish where
-# GITHUB_TOKEN already has access.
+# Namespace: the package lives in the repository owner's namespace
+# (ghcr.io/agync/exocomp), which is where the built-in GITHUB_TOKEN can push, so
+# no secret is needed. Set the IMAGE_NAME repository variable to publish
+# elsewhere, such as a fork's own namespace.
 name: publish
 
 on:
@@ -33,7 +30,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ${{ vars.IMAGE_NAME || 'ghcr.io/abn/exocomp' }}
+  IMAGE: ${{ vars.IMAGE_NAME || 'ghcr.io/agync/exocomp' }}
 
 jobs:
   arch:
@@ -59,7 +56,7 @@ jobs:
         run: |
           podman login "${IMAGE%%/*}" \
             -u "${{ github.actor }}" \
-            -p "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+            -p "${{ secrets.GITHUB_TOKEN }}"
       - name: Build the ${{ matrix.arch }} image
         run: |
           podman build -f packaging/Containerfile \
@@ -83,7 +80,7 @@ jobs:
         run: |
           podman login "${IMAGE%%/*}" \
             -u "${{ github.actor }}" \
-            -p "${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}"
+            -p "${{ secrets.GITHUB_TOKEN }}"
       - name: Assemble the manifest list and push it
         env:
           RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}

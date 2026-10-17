@@ -20,7 +20,7 @@ hosts (Synology, TrueNAS); see
 
 On the host:
 
-1. get the image — `podman pull ghcr.io/abn/exocomp:latest`, or on an air-gapped
+1. get the image — `podman pull ghcr.io/agync/exocomp:latest`, or on an air-gapped
    box `podman load -i exocomp-image.tar` from the recovery set,
 2. drop `quadlet/exocomp.container` and `quadlet/exocomp.volume` into
    `~/.config/containers/systemd/` and run `loginctl enable-linger`,
@@ -29,7 +29,7 @@ On the host:
    recovery kit.
 
 The recovery primitive is deliberately **not** "run the control plane": it is
-the separately versioned `recovery.sh` ([invariant 7](https://github.com/abn/exocomp/blob/main/AGENTS.md)), which
+the separately versioned `recovery.sh` ([invariant 7](https://github.com/agync/exocomp/blob/main/AGENTS.md)), which
 rebuilds a data dir from a backup with no exocomp code in the path — delegating
 to `exocomp restore` when a binary is present, and running the recovery card's
 hand chain (age → openssl HKDF → restic, sha256-verified) when it is not. Run

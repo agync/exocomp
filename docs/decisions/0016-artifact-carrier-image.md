@@ -8,6 +8,9 @@ tags: [decision, packaging, containers]
 
 # Decision 0016 — exocomp ships as an artifact-carrier image
 
+The image ref moved to `ghcr.io/agync/exocomp` when the project moved to the `agync` org
+(2026-10-17). The decision below is unchanged.
+
 ## Status
 
 Accepted · 2026-09-17 — amends [Decision 0006](0006-uv-toolchain-escape-hatch.md) (the

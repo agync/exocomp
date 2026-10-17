@@ -5,7 +5,7 @@ After=exocomp.volume
 [Container]
 # Default base image; for a derived image update both Image= and
 # Environment=EXOCOMP_IMAGE= below.
-Image=ghcr.io/abn/exocomp:latest
+Image=ghcr.io/agync/exocomp:latest
 ContainerName=exocomp
 Volume=exocomp.volume:/var/lib/exocomp
 # Rootless keep-id posture; per-job caps stay off (byo-runner.md).
@@ -13,7 +13,7 @@ UserNS=keep-id
 # Staged secrets live in /dev/shm; no Tmpfs= mount (breaks rootless startup).
 Environment=XDG_DATA_HOME=/var/lib
 # Recorded by the daemon for the recovery chain (Decision 0016).
-Environment=EXOCOMP_IMAGE=ghcr.io/abn/exocomp:latest
+Environment=EXOCOMP_IMAGE=ghcr.io/agync/exocomp:latest
 # host.key delivered as an encrypted systemd credential (bootstrap.md).
 LoadCredentialEncrypted=host.key:/var/lib/exocomp/host.key.cred
 Exec=serve

@@ -121,7 +121,7 @@ EOF
 systemctl --user daemon-reload && systemctl --user enable --now exocomp`,
 
     binary: `# Download and run the standalone binary directly
-curl -fsSL https://github.com/abn/exocomp/releases/latest/download/exocomp-linux-amd64 \\
+curl -fsSL https://github.com/agync/exocomp/releases/latest/download/exocomp \\
   -o ~/.local/bin/exocomp && chmod +x ~/.local/bin/exocomp
 
 # Run setup wizard & start the daemon
@@ -136,7 +136,7 @@ Description=exocomp homelab control plane
 After=network-online.target
 
 [Container]
-Image=ghcr.io/abn/exocomp:latest
+Image=ghcr.io/agync/exocomp:latest
 ContainerName=exocomp
 PublishPort=127.0.0.1:8080:8080
 Volume=%h/.local/share/exocomp:/data:Z
@@ -149,7 +149,7 @@ systemctl --user daemon-reload && systemctl --user start exocomp`,
     compose: `# Docker Compose rootless container
 services:
   exocomp:
-    image: ghcr.io/abn/exocomp:latest
+    image: ghcr.io/agync/exocomp:latest
     container_name: exocomp
     restart: unless-stopped
     ports:

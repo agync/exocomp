@@ -16,10 +16,16 @@ Newest first.
   without one, so `site/wrangler.toml` now declares an empty one, above `[assets]` so the
   keys cannot parse into that table. The page states what a Preview is and is not.
 - **Correction of fact**: [Containers](operations/containers.md) listed the published
-  `ghcr.io/abn/exocomp` manifest list as "decided, lands with the packaging work". It
+  manifest list as "decided, lands with the packaging work". It
   ships: `.github/workflows/publish.yml` builds each architecture on its own native
   runner and assembles the list, so the page records the workflow, the tags it pushes,
-  and the namespace the login needs.
+  and how the job logs in.
+- **Correction of fact**: the project moved from the `abn` GitHub org to `agync`, so the
+  published image ref is `ghcr.io/agync/exocomp`. Every exocomp reference follows it: the
+  Quadlet unit, the compose file, the configuration reference, the platform contract, the
+  SBOM, the published landing page, and the code that records and reports the ref. The
+  package now sits in the repository owner's namespace, which is where a workflow's
+  built-in `GITHUB_TOKEN` can push, so the publish job needs no secret.
 
 ## 2026-10-16
 
