@@ -14,6 +14,10 @@ concurrency:
 
 permissions:
   contents: read
+  # On a pull_request the path filter reads the PR's changed files through the
+  # API, so the changes job needs this; a push uses a local git diff and does
+  # not. Without it every pull request fails in that job.
+  pull-requests: read
 
 jobs:
   # Determine what changed; the heavy jobs gate on these outputs.
