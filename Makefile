@@ -74,7 +74,8 @@ IMAGE_MAX_MB := 800
 RSS_MAX_MB   := 80
 
 image: ## Build the container image
-	podman build -t $(IMAGE) -f packaging/Containerfile .
+	podman build -t $(IMAGE) -f packaging/Containerfile \
+		--build-arg VERSION=$(VERSION) --build-arg COMMIT=$(COMMIT) --build-arg DATE=$(DATE) .
 
 # The budgets are the ones docs/sbom/bill-of-materials.md commits to. A number
 # in a README is a wish; this target exits non-zero, so it is a constraint.

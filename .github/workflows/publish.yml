@@ -47,6 +47,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          # `git describe` needs the tags, so the image can carry the same
+          # version stamp `make build` injects.
+          fetch-depth: 0
       - name: Install podman
         run: |
           if ! command -v podman >/dev/null 2>&1; then
@@ -61,6 +65,9 @@ jobs:
         run: |
           podman build -f packaging/Containerfile \
             --build-arg TARGETARCH=${{ matrix.arch }} \
+            --build-arg VERSION="$(git describe --tags --always)" \
+            --build-arg COMMIT="$(git rev-parse --short HEAD)" \
+            --build-arg DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
             -t "$IMAGE:build-${{ matrix.arch }}" .
       - name: Push the per-arch tag
         run: podman push "$IMAGE:build-${{ matrix.arch }}"

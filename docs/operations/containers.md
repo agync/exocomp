@@ -143,6 +143,10 @@ owner's namespace, which is the one a workflow's built-in `GITHUB_TOKEN` can wri
 Set the `IMAGE_NAME` repository variable to publish elsewhere, such as a fork's own
 namespace.
 
+The build passes the release version into the binary — the same three stamps
+`make build` injects — so a published image names its release in `doctor` and on the
+recovery card instead of reading `dev`.
+
 ## Disaster recovery of a custom image
 
 A local image tag lives in the store of the host that can fail, so it is not a

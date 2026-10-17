@@ -4,11 +4,18 @@ ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.9.7@sha256:ba4857bf2a068e9bc0e64eed8563b0659
 
 # --- Build exocompd binary ---
 FROM ${GO_IMAGE} AS build
+# The same three stamps `make build` injects, so a published image names its
+# release in `doctor` and on the recovery card instead of reading "dev".
+ARG VERSION=dev
+ARG COMMIT=dev
+ARG DATE=dev
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -o /out/exocompd ./cmd/exocomp
+RUN CGO_ENABLED=0 go build -trimpath \
+      -ldflags "-X exocomp.dev/exocomp/internal/version.Version=$VERSION -X exocomp.dev/exocomp/internal/version.Commit=$COMMIT -X exocomp.dev/exocomp/internal/version.Date=$DATE" \
+      -o /out/exocompd ./cmd/exocomp
 
 # --- Static uv binaries ---
 FROM ${UV_IMAGE} AS uv
