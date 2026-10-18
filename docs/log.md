@@ -8,6 +8,11 @@ Newest first.
 
 ## 2026-10-18
 
+- **New page** [decisions/0023](decisions/0023-source-egress-defaults.md): a source-scoped
+  default egress set for ansible runs, merged at queue admission. The
+  [decision index](decisions/index.md) gains its row, and the threat model's port-only egress
+  residual notes the extended reach.
+
 - **Correction of fact**: [Ansible automation](guide/ansible.md) pointed a control-plane
   playbook at `--privileged` for API egress. The sandbox scopes egress by port, and a run
   declares a port with `--egress <port>` (on `playbook run`, `run`, and a playbook rule),
