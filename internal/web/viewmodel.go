@@ -3501,7 +3501,11 @@ type approvalVM struct {
 	StaleNotice string
 	// Provenance is the standing guardrail copy and what matched.
 	Provenance string
-	CanDecide  bool
+	// EgressPorts is the effective port set the released job may open beyond
+	// its kind's defaults — the same set the job detail's Egress ports tile
+	// shows. Empty is the quiet default posture.
+	EgressPorts []int
+	CanDecide   bool
 	// Kill is the global-kill form's refusal state (the forms pattern): nil at
 	// rest, the filled form on a 422 re-render with the kill details open.
 	Kill *jobKillForm

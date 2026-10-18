@@ -168,13 +168,19 @@ func (h *harness) mint(t *testing.T, name, scope string) string {
 // does; the default succeeds.
 func (h *harness) gatedJob(t *testing.T, ttl time.Duration, argv ...string) (store.Job, store.Approval) {
 	t.Helper()
-	ctx := context.Background()
 	if len(argv) == 0 {
 		argv = []string{"/bin/sh", "-c", "echo ran; exit 0"}
 	}
-	job, err := h.queue.EnqueueGated(ctx, queue.Spec{
-		Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: argv,
-	})
+	return h.gatedJobSpec(t, ttl, queue.Spec{Runbook: "deploy-app", Kind: "shell", Trigger: "manual", Argv: argv})
+}
+
+// gatedJobSpec writes a gated job from an explicit spec — how a test sets a
+// field the default argv form does not carry, e.g. EgressPorts — with an
+// approval bound to it.
+func (h *harness) gatedJobSpec(t *testing.T, ttl time.Duration, spec queue.Spec) (store.Job, store.Approval) {
+	t.Helper()
+	ctx := context.Background()
+	job, err := h.queue.EnqueueGated(ctx, spec)
 	if err != nil {
 		t.Fatalf("EnqueueGated: %v", err)
 	}

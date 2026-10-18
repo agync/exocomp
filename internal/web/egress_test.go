@@ -9,7 +9,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
+	"exocomp.dev/exocomp/internal/queue"
 	"exocomp.dev/exocomp/internal/store"
 )
 
@@ -193,5 +195,48 @@ func TestJobRerunPreservesEgressPorts(t *testing.T) {
 	got := rerunJob(t, h)
 	if !slices.Equal(got.Args.EgressPorts, []int{2222}) {
 		t.Fatalf("rerun EgressPorts = %v, want [2222]", got.Args.EgressPorts)
+	}
+}
+
+// TestApprovalPageRendersEgressPorts: an approver sees the effective port set
+// the released job may open — the same grant the job detail's Egress ports tile
+// shows. Without it a released job widens egress, exactly where the grant
+// becomes real, unseen.
+func TestApprovalPageRendersEgressPorts(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, approval := h.gatedJobSpec(t, time.Minute, queue.Spec{
+		Runbook: "deploy-app", Kind: "shell", Trigger: "manual",
+		Argv:        []string{"/bin/sh", "-c", "echo ran"},
+		EgressPorts: []int{22, 2222},
+	})
+	code, page := getBody(t, client, ts.URL+"/approvals/"+itoa64(approval.ID))
+	if code != http.StatusOK {
+		t.Fatalf("approval surface status = %d, want 200", code)
+	}
+	if !strings.Contains(page, `<span class="keyword">Egress ports</span>`) ||
+		!strings.Contains(page, "22, 2222") {
+		t.Errorf("approval surface missing the egress grant:\n%s", page)
+	}
+}
+
+// TestApprovalPageOmitsEmptyEgress: a run that declared no ports keeps the
+// quiet default posture — the approval page renders no Egress ports line.
+func TestApprovalPageOmitsEmptyEgress(t *testing.T) {
+	h := newHarness(t)
+	ts := httptest.NewServer(h.server.Handler())
+	defer ts.Close()
+	client := login(t, ts.URL, h.mint(t, "laptop", "operator"))
+
+	_, approval := h.gatedJob(t, time.Minute)
+	code, page := getBody(t, client, ts.URL+"/approvals/"+itoa64(approval.ID))
+	if code != http.StatusOK {
+		t.Fatalf("approval surface status = %d, want 200", code)
+	}
+	if strings.Contains(page, `<span class="keyword">Egress ports</span>`) {
+		t.Errorf("approval surface shows an Egress ports line for an empty set:\n%s", page)
 	}
 }
