@@ -222,7 +222,11 @@ Endpoints and listeners the daemon exposes on the LAN/tailnet.
   a proxy.
 - **Port-only egress filtering —** sandbox egress is filtered by port, not destination, so a
   job can reach any host on 22/443. Accepted for v1 with the posture documented; a destination
-  allowlist is future hardening. The one combination this would otherwise open — a job reaching
+  allowlist is future hardening. A per-source default egress set ([Decision 0023](../decisions/0023-source-egress-defaults.md))
+  widens an ansible run the same way and persists the grant on the source. It is operator-set in
+  the store and never read from repo content, so a repository cannot widen its own reach, but it
+  can name the daemon's own listener or state-backend ports; that reach stays closed on the
+  credential side, per the paragraph below. The one combination this would otherwise open — a job reaching
   the API port and holding a token to drive it — is closed on the credential side: a job
   receives no access token by default, and the run-secret resolver refuses to inject a sealed
   value shaped like one (`exo_<id>_<secret>`), so an operator cannot bind the daemon's own
