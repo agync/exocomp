@@ -20,6 +20,13 @@ Newest first.
   unsandboxed opt-out — for work that must run unsandboxed on the controller itself. The
   bundle [index](index.md) described the page the same stale way and carries the same fix.
 
+- **Extended** [Ansible automation](guide/ansible.md) and [Sources, inventories, and the
+  credential plane](operations/sources.md) with the source-scoped default egress set:
+  `exocomp source egress <name> [port...]` records an operator-set default that every run
+  naming the source inherits at queue admission, unioned with the run's `--egress` and the
+  kind's SSH port 22. The source detail page reads it and, for an operator, sets it through
+  the same verb (`POST /sources/{name}/egress`).
+
 ## 2026-10-17
 
 - **Correction of fact**: [Landing site](operations/landing-site.md) named
