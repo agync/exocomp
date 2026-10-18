@@ -35,6 +35,9 @@ templ sourceDetail(vm sourceDetailVM) {
 				<div><dt>Last sync</dt>
 					<dd class={ templ.KV("mono", true), templ.KV("wait-text", vm.Source.NeverSynced()) }>{ vm.Source.LastSyncLabel() }</dd>
 				</div>
+				if vm.EgressDefaultLabel() != "" {
+					<div><dt>Egress ports</dt><dd class="mono">{ vm.EgressDefaultLabel() }</dd></div>
+				}
 			</dl>
 			if vm.Operator {
 				<div class="rowactions">
@@ -67,6 +70,20 @@ templ sourceDetail(vm sourceDetailVM) {
 		</div>
 		if vm.Source.NeverSynced() {
 			<p class="meta mt8">Sync with "Sync now" or run <code>exocomp source sync { vm.Source.Name }</code> on the host to bring the checkout down and read its playbooks.</p>
+		}
+		if vm.Operator {
+			<div class="card span2 mt18">
+				<div class="kicker">Egress default</div>
+				<form method="post" action={ templ.SafeURL(urlWithBase(vm.Page.Base, "/sources/" + vm.Source.Name + "/egress")) } class="writeform">
+					@fieldInput(vm.EgressDefaultField())
+					<p class="meta">Every ansible run from this source inherits these ports, unioned with the ports that run declares. The sandbox filters egress by port, not by destination — a granted port reaches any host on that port, not only the intended one.</p>
+					@formStatus(false, vm.EgressRefusal, "Setting egress")
+					<div class="actions">
+						<button type="submit" class="btn">Set egress default</button>
+					</div>
+				</form>
+				<p class="meta">{ vm.EgressCliEcho() } on the host</p>
+			</div>
 		}
 		<div class="card span2 mt18">
 			<div class="kicker">Playbooks</div>

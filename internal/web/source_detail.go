@@ -89,6 +89,18 @@ type sourceDetailVM struct {
 	// SyncRefusal is the sync verb's refusal copy shown on the detail page
 	// when a sync fails or cannot run. Empty at rest.
 	SyncRefusal string
+	// DefaultEgress is the operator-set default egress set every ansible run
+	// naming this source inherits, on top of its declared ports (Decision
+	// 0023). Empty renders no Egress ports line — the quiet default posture.
+	DefaultEgress []int
+	// EgressInput is the egress-default form's typed value on a 422
+	// re-render, so a refused set keeps what the operator entered; empty falls
+	// back to the current default.
+	EgressInput string
+	// EgressRefusal is the egress-default verb's refusal copy shown on the
+	// detail page when a set is refused (a junk or out-of-range port). Empty
+	// at rest.
+	EgressRefusal string
 }
 
 // sourceRunForm is one launcher tab's refusal state: the typed values an
@@ -298,6 +310,39 @@ func (vm sourceDetailVM) LaunchMeta() string {
 // reads ("22, 443"). Empty is the port-22 default posture.
 func (vm sourceDetailVM) EgressPrefill() string { return joinPorts(vm.Egress, ", ") }
 
+// EgressDefaultLabel is the identity card's Egress ports value: the operator-set
+// default egress set joined for display ("443, 2222"). The template renders the
+// row only when it is non-empty, so an undeclared default adds no line.
+func (vm sourceDetailVM) EgressDefaultLabel() string { return joinPorts(vm.DefaultEgress, ", ") }
+
+// EgressDefaultField is the egress-default form's field state: the typed value
+// kept on a 422 re-render, else the current default; the refusal sentence on a
+// refusal, else the at-rest help. It never carries a secret.
+func (vm sourceDetailVM) EgressDefaultField() fieldMeta {
+	v := vm.EgressInput
+	if v == "" {
+		v = joinPorts(vm.DefaultEgress, ", ")
+	}
+	return fieldMeta{
+		ID: "src-egress", Label: "Egress ports (TCP, comma-separated)", Name: "egress",
+		Value: v, Placeholder: "443, 2222",
+		Help:   "The default every run from this source inherits. Empty clears it.",
+		ErrMsg: vm.EgressRefusal,
+	}
+}
+
+// EgressCliEcho is the egress card's one-line contract (the page echoes CLI
+// commands): the exact host command that records the same default. Ports join
+// bare (the CLI's space-separated argument form), and an undeclared default
+// echoes the placeholder a set would replace.
+func (vm sourceDetailVM) EgressCliEcho() string {
+	line := "same as exocomp source egress " + vm.Source.Name
+	if ports := joinPorts(vm.DefaultEgress, " "); ports != "" {
+		return line + " " + ports
+	}
+	return line + " <ports...>"
+}
+
 // PlaybooksMeta is the Playbook select's always-present meta (SPEC §5.2): "N
 // playbooks found at {ref}" plus the source's last playbook run when one
 // exists. A ref-less source omits "at {ref}".
@@ -383,6 +428,9 @@ func (s *Server) sourceDetailVMFor(w http.ResponseWriter, r *http.Request, name 
 		Tab:      "playbook",
 		Playbook: r.URL.Query().Get("playbook"),
 		Launch:   r.URL.Query().Get("launch") == "1",
+		// The operator-set default egress set (Decision 0023), read for
+		// everyone; the template renders its line only when non-empty.
+		DefaultEgress: src.ExtraEgressPorts,
 	}
 	if r.URL.Query().Get("tab") == "command" {
 		vm.Tab = "command"
