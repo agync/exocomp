@@ -6,6 +6,15 @@ fixes belong to the project's release notes, not here.
 
 Newest first.
 
+## 2026-10-18
+
+- **Correction of fact**: [Ansible automation](guide/ansible.md) pointed a control-plane
+  playbook at `--privileged` for API egress. The sandbox scopes egress by port, and a run
+  declares a port with `--egress <port>` (on `playbook run`, `run`, and a playbook rule),
+  so the page now leads with the scoped grant and reserves `--privileged` — a per-run,
+  unsandboxed opt-out — for work that must run unsandboxed on the controller itself. The
+  bundle [index](index.md) described the page the same stale way and carries the same fix.
+
 ## 2026-10-17
 
 - **Correction of fact**: [Landing site](operations/landing-site.md) named
